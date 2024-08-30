@@ -1,0 +1,3 @@
+/Users/atsushi/sources/UniversalAudioPluginMidiDevice/src/service/cmake-build-debug/CMakeFiles/UniversalAudioPluginMidiDevice.dir
+/Users/atsushi/sources/UniversalAudioPluginMidiDevice/src/service/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/atsushi/sources/UniversalAudioPluginMidiDevice/src/service/cmake-build-debug/CMakeFiles/rebuild_cache.dir
