@@ -17,10 +17,6 @@ UAPMD consists of two programs:
 
 ### uapmd-setup
 
-## Implementation
+> $ uapmd-setup
 
-For virtual MIDI 2.0 device part it makes use of libremidi. It should work on Linux 6.5 or later, MacOS 14.0 or later, and Windows probably 11 or later (`src/service/VirtualMidiDevices`).
-
-For audio plugin hosting, we build our own hosting later (`src/service/AudioPluginHosting`).
-
-For `uapmd-setup` GUI we plan to use Tauri 2.0 Web UI, and connect to the service (`src/service/Controller` and `client`).
+Launches the GUI by default.

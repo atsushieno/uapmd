@@ -1,7 +1,8 @@
 #include <iostream>
 
+#include "Shell/CommandShell.h"
 
-int main() {
-    std::cout << "Hello, World!" << std::endl;
-    return 0;
+int main(int argc, const char** argv) {
+    auto shell = CommandShell::create(argc, argv);
+    return shell->run();
 }

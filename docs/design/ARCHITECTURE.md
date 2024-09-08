@@ -74,3 +74,20 @@ By default, we use platform's default audio I/O device settings.
   - `PreparePlugins`: load all the registered plugins and prepare everything to play
 
 [Enhancement] The service can add or remove plugins while they are instantiated.
+
+## Audio Plugin Hosting
+
+We need up to 256 audio plugin "tracks" where each of them maps to an audio plugin graph.
+
+For this purpose we need a realtime sequencer-like audio engine.
+
+an audio plugin track contains an audio plugin graph.
+
+
+## Implementation
+
+For virtual MIDI 2.0 device part it makes use of libremidi. It should work on Linux 6.5 or later, MacOS 14.0 or later, and Windows probably 11 or later (`src/service/VirtualMidiDevices`).
+
+For audio plugin hosting, we build our own hosting later (`src/service/AudioPluginHosting`). We will also need audio plugin graphs.
+
+For `uapmd-setup` GUI we plan to use Tauri 2.0 Web UI, and connect to the service (`src/service/Controller` and `client`).
