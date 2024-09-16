@@ -2,15 +2,19 @@
 set(SERVICE_APP uapmd-service)
 
 add_subdirectory(../../external/libremidi "libremidi")
+add_subdirectory(../../external/remidy "remidy")
 
-add_executable(${SERVICE_APP})
+add_executable(${SERVICE_APP}
+)
 
 target_include_directories(${SERVICE_APP} PRIVATE
         ../../external/libremidi/include
+        ../../external/remidy/include
 )
 
 target_link_libraries(${SERVICE_APP} PRIVATE
         libremidi::libremidi
+        remidy::remidy
 )
 
 target_sources(${SERVICE_APP} PRIVATE
@@ -24,6 +28,7 @@ target_sources(${SERVICE_APP} PRIVATE
         AudioPluginHosting/AudioPluginTrack.cpp
         Common/AudioBufferList.cpp
         Common/MidiSequence.cpp
+        Common/AudioProcessContext.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         Controller/VirtualMidiDeviceController.cpp
