@@ -2,10 +2,17 @@
 #include <memory>
 
 #include "AudioPluginTrack.hpp"
+#include "../Common/AudioBufferList.hpp"
+#include "../Common/MidiSequence.hpp"
 
 class AudioPluginHost {
+    class Impl;
+    Impl *impl;
+
 public:
-    static std::unique_ptr<AudioPluginHost> create();
+    AudioPluginHost();
+    ~AudioPluginHost();
 
     AudioPluginTrack* getTrack(int32_t index);
+    uapmd_status_t processAudio(AudioBufferList *audioBufferList, MidiSequence *midiSequence);
 };

@@ -18,7 +18,9 @@ target_sources(${SERVICE_APP} PRIVATE
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         AudioPluginHosting/impl/AudioPluginHostImpl.cpp
+        AudioPluginHosting/AudioPluginGraph.cpp
         AudioPluginHosting/AudioPluginHost.cpp
+        AudioPluginHosting/AudioPluginNode.cpp
         AudioPluginHosting/AudioPluginTrack.cpp
         Common/AudioBufferList.cpp
         Common/MidiSequence.cpp

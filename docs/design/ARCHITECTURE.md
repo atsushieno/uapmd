@@ -81,13 +81,14 @@ We need up to 256 audio plugin "tracks" where each of them maps to an audio plug
 
 For this purpose we need a realtime sequencer-like audio engine.
 
-an audio plugin track contains an audio plugin graph.
+an audio plugin track contains an audio plugin graph, and an audio plugin graph (in practice) contains an instrument, optionally followed by effect plugins. In the simplest version, the audio plugin graph is just a sequential list of audio plugins. MIDI input port to the instrument, and stereo connections on primary audio bus between the rest of the plugins are assumed.
 
+[Enhancement] we can have a fully-featured audio plugin graph.
 
 ## Implementation
 
 For virtual MIDI 2.0 device part it makes use of libremidi. It should work on Linux 6.5 or later, MacOS 14.0 or later, and Windows probably 11 or later (`src/service/VirtualMidiDevices`).
 
-For audio plugin hosting, we build our own hosting later (`src/service/AudioPluginHosting`). We will also need audio plugin graphs.
+For audio plugin hosting, we're currently evaluating libossia. It can be Tracktion Engine, but we're not sure if it is good enough to process MIDI events appropriately dispatched to each track. Also it is concerning that the Tracktion developers are quite negative on MIDI 2.0.
 
 For `uapmd-setup` GUI we plan to use Tauri 2.0 Web UI, and connect to the service (`src/service/Controller` and `client`).

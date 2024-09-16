@@ -7,8 +7,8 @@
 
 class UapmdMidiDevice {
     std::unique_ptr<PlatformVirtualMidiDevice> platformDevice;
+    std::unique_ptr<AudioPluginHost> audioPluginHost;
     uapmd_status_t maybeLoadConfiguration(std::string& portId);
-    uapmd_status_t createPluginHost(AudioPluginHost** host);
     uapmd_status_t preparePlugins();
 
 public:

@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-CommandShell::CommandShell(std::string configName) {
+CommandShell::CommandShell(const std::string& configName) {
 
 }
 
@@ -16,7 +16,7 @@ std::unique_ptr<CommandShell> CommandShell::create(int32_t argc, const char** ar
 
 int CommandShell::run() {
     controller = std::make_unique<VirtualMidiDeviceController>();
-    auto deviceName = "UAPMD";
+    const auto deviceName = "UAPMD";
     std::cerr << "Starting " << deviceName << std::endl;
     device = controller->createDevice(deviceName, "UAPMD Project", "0.1");
 

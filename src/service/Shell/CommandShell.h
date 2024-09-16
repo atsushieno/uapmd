@@ -12,7 +12,7 @@ class CommandShell {
     std::unique_ptr<UapmdMidiDevice> device;
 
 public:
-    explicit CommandShell(std::string configName);
+    explicit CommandShell(const std::string& configName);
 
     static std::unique_ptr<CommandShell> create(int32_t argc, const char** argv);
     int run();
