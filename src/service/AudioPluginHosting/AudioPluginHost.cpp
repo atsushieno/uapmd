@@ -1,34 +1,39 @@
 #include "AudioPluginHost.hpp"
 #include "AudioPluginHost.hpp"
 
-class AudioPluginHost::Impl {
-  std::vector<AudioPluginTrack*> tracks{};
-public:
-  AudioPluginTrack* getTrack(int32_t index);
+namespace uapmd {
 
-  int32_t processAudio(AudioBufferList * audio_buffers, MidiSequence * midi_sequence);
-};
+    class AudioPluginHost::Impl {
+        std::vector<AudioPluginTrack*> tracks{};
+    public:
+        AudioPluginTrack* getTrack(int32_t index);
 
-AudioPluginHost::AudioPluginHost() {
-  impl = new Impl();
-}
+        int32_t processAudio(AudioProcessContext* process);
+    };
 
-AudioPluginHost::~AudioPluginHost() {
-  delete impl;
-}
+    AudioPluginHost::AudioPluginHost() {
+        impl = new Impl();
+    }
 
-AudioPluginTrack * AudioPluginHost::getTrack(int32_t index) {
-  return impl->getTrack(index);
-}
+    AudioPluginHost::~AudioPluginHost() {
+        delete impl;
+    }
 
-uapmd_status_t AudioPluginHost::processAudio(AudioBufferList *audioBufferList, MidiSequence *midiSequence) {
-  // FIXME: we should actually implement UMP dispatching to each track
-  return impl->processAudio(audioBufferList, midiSequence);
-}
+    AudioPluginTrack * AudioPluginHost::getTrack(int32_t index) {
+        return impl->getTrack(index);
+    }
 
-AudioPluginTrack* AudioPluginHost::Impl::getTrack(int32_t index) {
-  return tracks[index];
-}
+    uapmd_status_t AudioPluginHost::processAudio(AudioProcessContext* process) {
+        // FIXME: we should actually implement UMP dispatching to each track
+        return impl->processAudio(process);
+    }
 
-int32_t AudioPluginHost::Impl::processAudio(AudioBufferList *audio_buffers, MidiSequence *midi_sequence) {
+    AudioPluginTrack* AudioPluginHost::Impl::getTrack(int32_t index) {
+        return tracks[index];
+    }
+
+    int32_t AudioPluginHost::Impl::processAudio(AudioProcessContext* process) {
+        std::runtime_error("Not implemented");
+    }
+
 }

@@ -21,6 +21,10 @@ target_sources(remidy PRIVATE
         src/AudioPluginFormatVST3.cpp
         src/AudioPluginInstance.cpp
         src/AudioPluginLibrary.cpp
+
+        src/AudioBufferList.cpp
+        src/MidiSequence.cpp
+        src/AudioProcessContext.cpp
 )
 
 add_library(remidy::remidy ALIAS remidy)

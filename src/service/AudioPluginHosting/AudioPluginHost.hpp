@@ -2,17 +2,20 @@
 #include <memory>
 
 #include "AudioPluginTrack.hpp"
-#include "../Common/AudioBufferList.hpp"
-#include "../Common/MidiSequence.hpp"
+#include "remidy/remidy.hpp"
 
-class AudioPluginHost {
-    class Impl;
-    Impl *impl;
+namespace uapmd {
 
-public:
-    AudioPluginHost();
-    ~AudioPluginHost();
+    class AudioPluginHost {
+        class Impl;
+        Impl *impl;
 
-    AudioPluginTrack* getTrack(int32_t index);
-    uapmd_status_t processAudio(AudioBufferList *audioBufferList, MidiSequence *midiSequence);
-};
+    public:
+        AudioPluginHost();
+        ~AudioPluginHost();
+
+        AudioPluginTrack* getTrack(int32_t index);
+        uapmd_status_t processAudio(AudioProcessContext* process);
+    };
+
+}

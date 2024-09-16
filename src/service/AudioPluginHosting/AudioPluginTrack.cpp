@@ -1,36 +1,40 @@
 
 #include "AudioPluginTrack.hpp"
 
-class AudioPluginTrack::Impl {
-public:
-    bool bypass{false};
-    bool frozen{false};
-    AudioPluginGraph graph{};
-    int32_t processAudio(AudioBufferList *audio_buffers, MidiSequence *midi_sequence);
-};
 
-int32_t AudioPluginTrack::Impl::processAudio(AudioBufferList *audio_buffers, MidiSequence *midi_sequence) {
-    return graph.processAudio(audio_buffers, midi_sequence);
-}
+namespace uapmd {
+    class AudioPluginTrack::Impl {
+    public:
+        bool bypass{false};
+        bool frozen{false};
+        AudioPluginGraph graph{};
+        int32_t processAudio(AudioProcessContext* process);
+    };
 
-AudioPluginTrack::AudioPluginTrack() {
-}
+    int32_t AudioPluginTrack::Impl::processAudio(AudioProcessContext* process) {
+        return graph.processAudio(process);
+    }
 
-AudioPluginTrack::~AudioPluginTrack() {
-}
+    AudioPluginTrack::AudioPluginTrack() {
+    }
 
-AudioPluginGraph& AudioPluginTrack::getGraph() {
-    return impl->graph;
-}
+    AudioPluginTrack::~AudioPluginTrack() {
+    }
 
-bool AudioPluginTrack::isBypass() { return impl->bypass; }
+    AudioPluginGraph& AudioPluginTrack::getGraph() {
+        return impl->graph;
+    }
 
-bool AudioPluginTrack::isFrozen() { return impl->frozen; }
+    bool AudioPluginTrack::isBypass() { return impl->bypass; }
 
-void AudioPluginTrack::setBypass(bool value) { impl->bypass = value; }
+    bool AudioPluginTrack::isFrozen() { return impl->frozen; }
 
-void AudioPluginTrack::setFrozen(bool value) { impl->frozen = value; }
+    void AudioPluginTrack::setBypass(bool value) { impl->bypass = value; }
 
-int32_t AudioPluginTrack::processAudio(AudioBufferList *audio_buffers, MidiSequence *midi_sequence) {
-    return impl->processAudio(audio_buffers, midi_sequence);
+    void AudioPluginTrack::setFrozen(bool value) { impl->frozen = value; }
+
+    int32_t AudioPluginTrack::processAudio(AudioProcessContext* process) {
+        return impl->processAudio(process);
+    }
+
 }

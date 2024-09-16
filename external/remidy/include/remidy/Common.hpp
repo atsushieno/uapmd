@@ -4,6 +4,8 @@
 #include <string>
 
 typedef int32_t remidy_status_t;
+typedef uint32_t remidy_ump_t;
+typedef int64_t remidy_timestamp_t;
 
 namespace remidy {
     class AudioPluginLibrary;

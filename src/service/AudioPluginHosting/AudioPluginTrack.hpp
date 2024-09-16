@@ -1,23 +1,26 @@
 #pragma once
 #include "../Common/CommonTypes.hpp"
 #include "AudioPluginGraph.hpp"
-#include "../Common/MidiSequence.hpp"
-#include "../Common/AudioBufferList.hpp"
+#include "remidy/remidy.hpp"
 
-class AudioPluginTrack {
-    class Impl;
-    Impl* impl;
+namespace uapmd {
 
-public:
-    AudioPluginTrack();
-    ~AudioPluginTrack();
+    class AudioPluginTrack {
+        class Impl;
+        Impl* impl;
 
-    AudioPluginGraph& getGraph();
+    public:
+        AudioPluginTrack();
+        ~AudioPluginTrack();
 
-    bool isBypass();
-    bool isFrozen();
-    void setBypass(bool value);
-    void setFrozen(bool value);
+        AudioPluginGraph& getGraph();
 
-    int32_t processAudio(AudioBufferList *audio_buffers, MidiSequence *midi_sequence);
-};
+        bool isBypass();
+        bool isFrozen();
+        void setBypass(bool value);
+        void setFrozen(bool value);
+
+        int32_t processAudio(AudioProcessContext* process);
+    };
+
+}

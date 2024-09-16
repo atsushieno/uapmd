@@ -4,7 +4,7 @@
 #include "AudioBufferList.hpp"
 #include "MidiSequence.hpp"
 
-namespace uapmd {
+namespace remidy {
     class AudioProcessContext {
     public:
         AudioProcessContext();

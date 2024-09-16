@@ -1,13 +1,17 @@
 #pragma once
 #include <string>
 
-class AudioDeviceConfiguration {
-    std::string configName;
-    std::string deviceName;
+namespace uapmd {
 
-public:
-    AudioDeviceConfiguration(std::string configName, std::string deviceName);
+    class AudioDeviceConfiguration {
+        std::string configName;
+        std::string deviceName;
 
-    const char* name();
-    const char* audioDeviceName();
-};
+    public:
+        AudioDeviceConfiguration(std::string configName, std::string deviceName);
+
+        const char* name();
+        const char* audioDeviceName();
+    };
+
+}

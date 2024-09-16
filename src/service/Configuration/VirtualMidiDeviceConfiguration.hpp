@@ -1,11 +1,15 @@
 #pragma once
 #include "AudioDeviceConfiguration.hpp"
 
-class VirtualMidiDeviceConfiguration {
-    std::string name;
+namespace uapmd {
 
-public:
-    VirtualMidiDeviceConfiguration(std::string name, AudioDeviceConfiguration* con);
+    class VirtualMidiDeviceConfiguration {
+        std::string name;
 
-    const char* getName();
-};
+    public:
+        VirtualMidiDeviceConfiguration(std::string name, AudioDeviceConfiguration* con);
+
+        const char* getName();
+    };
+
+}

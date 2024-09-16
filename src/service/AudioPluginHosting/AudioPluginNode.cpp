@@ -3,25 +3,29 @@
 
 #include <string>
 
-class AudioPluginNode::Impl {
-public:
-    std::string pluginId;
-    bool bypassed;
-};
+namespace uapmd {
 
-bool AudioPluginNode::isBypassed() { return impl->bypassed; }
+    class AudioPluginNode::Impl {
+    public:
+        std::string pluginId;
+        bool bypassed;
+    };
 
-void AudioPluginNode::setBypassed(bool value) { impl->bypassed = value;; }
+    bool AudioPluginNode::isBypassed() { return impl->bypassed; }
 
-AudioPluginNode::AudioPluginNode(const char *pluginId) {
-    impl = new Impl();
-    impl->pluginId = pluginId;
-}
+    void AudioPluginNode::setBypassed(bool value) { impl->bypassed = value;; }
 
-AudioPluginNode::~AudioPluginNode() {
-    delete impl;
-}
+    AudioPluginNode::AudioPluginNode(const char *pluginId) {
+        impl = new Impl();
+        impl->pluginId = pluginId;
+    }
 
-const char * AudioPluginNode::getPluginId() const {
-    return impl->pluginId.c_str();
+    AudioPluginNode::~AudioPluginNode() {
+        delete impl;
+    }
+
+    const char * AudioPluginNode::getPluginId() const {
+        return impl->pluginId.c_str();
+    }
+
 }

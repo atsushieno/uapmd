@@ -2,14 +2,18 @@
 #include <vector>
 
 #include "AudioPluginNode.hpp"
-#include "../Common/AudioBufferList.hpp"
-#include "../Common/MidiSequence.hpp"
+#include "../Common/CommonTypes.hpp"
+#include "remidy/remidy.hpp"
 
-class AudioPluginGraph {
-    class Impl;
-    Impl* impl{};
-public:
-    AudioPluginGraph();
-    ~AudioPluginGraph();
-    int32_t processAudio(AudioBufferList *audio_buffers, MidiSequence *midi_sequence);
-};
+namespace uapmd {
+
+    class AudioPluginGraph {
+        class Impl;
+        Impl* impl{};
+    public:
+        AudioPluginGraph();
+        ~AudioPluginGraph();
+        int32_t processAudio(AudioProcessContext* process);
+    };
+
+}

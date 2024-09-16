@@ -7,13 +7,17 @@
 #include "../Controller/VirtualMidiDeviceController.hpp"
 #include "../VirtualMidiDevices/UapmdMidiDevice.hpp"
 
-class CommandShell {
-    std::unique_ptr<VirtualMidiDeviceController> controller;
-    std::unique_ptr<UapmdMidiDevice> device;
+namespace uapmd {
 
-public:
-    explicit CommandShell(const std::string& configName);
+    class CommandShell {
+        std::unique_ptr<VirtualMidiDeviceController> controller;
+        std::unique_ptr<UapmdMidiDevice> device;
 
-    static std::unique_ptr<CommandShell> create(int32_t argc, const char** argv);
-    int run();
-};
+    public:
+        explicit CommandShell(const std::string& configName);
+
+        static std::unique_ptr<CommandShell> create(int32_t argc, const char** argv);
+        int run();
+    };
+
+}

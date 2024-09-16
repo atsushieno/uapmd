@@ -3,7 +3,11 @@
 
 #include "../AudioPluginTrack.hpp"
 
-class AudioPluginHostImpl {
-public:
-    AudioPluginTrack* getTrack(int32_t index);
-};
+namespace uapmd {
+
+    class AudioPluginHostImpl {
+    public:
+        AudioPluginTrack* getTrack(int32_t index);
+    };
+
+}
