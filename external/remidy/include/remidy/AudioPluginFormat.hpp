@@ -11,8 +11,11 @@ namespace remidy {
     class AudioPluginInstance;
 
     class AudioPluginFormat {
+        class Impl;
+        Impl *impl{};
 
     protected:
+        AudioPluginFormat();
         virtual ~AudioPluginFormat() = default;
 
     public:
@@ -21,6 +24,9 @@ namespace remidy {
             MAYBE,
             YES
         };
+
+        bool hasPluginListCache();
+        std::vector<AudioPluginIdentifier*> getAvailablePlugins();
 
         virtual bool usePluginSearchPaths() = 0;
         virtual std::vector<std::string>& getDefaultSearchPaths() = 0;

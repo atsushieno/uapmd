@@ -12,9 +12,9 @@ std::vector<remidy::AudioPluginFormat*> getFormats() {
 
 int main(int argc, const char * argv[]) {
     for (auto format : getFormats()) {
-        auto pluginIds = format->scanAllAvailablePlugins();
+        auto pluginIds = format->getAvailablePlugins();
         for (auto &pluginId : pluginIds) {
-            std::cout << pluginId->getDisplayName() << std::endl;
+            std::cout << pluginId->getDisplayName() << " : " << pluginId->getVendor() << " : " << pluginId->getUrl() << std::endl;
         }
         return 0;
     }

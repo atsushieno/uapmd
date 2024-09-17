@@ -16,5 +16,7 @@ namespace remidy {
         virtual ~AudioPluginIdentifier() = default;
         virtual std::string& getUniqueId() = 0;
         virtual std::string& getDisplayName() = 0;
+        virtual std::string& getVendor() = 0;
+        virtual std::string& getUrl() = 0;
     };
 }

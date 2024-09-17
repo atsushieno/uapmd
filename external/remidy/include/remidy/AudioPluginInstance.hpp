@@ -8,8 +8,19 @@ namespace remidy {
 
     class AudioPluginInstance {
     protected:
+        explicit AudioPluginInstance() = default;
         virtual ~AudioPluginInstance() = default;
+
     public:
+        class Extensibility {
+            AudioPluginInstance& owner;
+        protected:
+            explicit Extensibility(AudioPluginInstance& owner) : owner(owner) {
+            }
+            virtual ~Extensibility() = default;
+        };
+
+        virtual Extensibility* getExtensibility() { return nullptr; }
 
         virtual remidy_status_t configure(int32_t sampleRate) = 0;
 
