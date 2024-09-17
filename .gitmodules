@@ -1,3 +1,9 @@
 [submodule "external/libremidi"]
 	path = external/libremidi
 	url = https://github.com/celtera/libremidi.git
+[submodule "external/vst3_public_sdk"]
+	path = external/vst3_public_sdk
+	url = https://github.com/steinbergmedia/vst3_public_sdk.git
+[submodule "external/vst3_cmake"]
+	path = external/vst3_cmake
+	url = https://github.com/steinbergmedia/vst3_cmake.git

@@ -1,18 +1,19 @@
 #pragma once
 
 #include <string>
+#include <filesystem>
 #include "Common.hpp"
 #include "AudioPluginFormat.hpp"
 
 namespace remidy {
 
     class AudioPluginLibrary {
-        std::string directory;
+        std::filesystem::path& libraryFile;
         std::vector<AudioPluginIdentifier> ids;
     public:
-        AudioPluginLibrary(std::string directory, std::vector<AudioPluginIdentifier> ids)
-            : directory(std::move(directory)), ids(std::move(ids)) {}
-        std::string& getDirectory() { return directory; }
+        AudioPluginLibrary(std::filesystem::path& libraryFile, std::vector<AudioPluginIdentifier> ids)
+            : libraryFile(libraryFile), ids(std::move(ids)) {}
+        std::filesystem::path& getLibraryFile() { return libraryFile; }
         std::vector<AudioPluginIdentifier>& getPluginIds() { return ids; }
     };
 }

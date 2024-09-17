@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.29)
-project(remidy)
+project(remidy LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
@@ -8,12 +8,14 @@ set(CMAKE_CXX_STANDARD 23)
 add_library(remidy)
 
 target_include_directories(remidy PRIVATE
+        ../../external/travesty
         #../../external/libremidi/include
         include/remidy
 )
 
 target_link_libraries(remidy PRIVATE
         #libremidi::libremidi
+        "-framework CoreFoundation"
 )
 
 target_sources(remidy PRIVATE
