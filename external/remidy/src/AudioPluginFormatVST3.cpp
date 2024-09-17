@@ -2,7 +2,6 @@
 #include <cassert>
 #include <dlfcn.h>
 #include <iostream>
-#include <travesty/factory.h>
 #include "VST3Helper.hpp"
 #include "AudioPluginFormatVST3.hpp"
 
@@ -10,7 +9,6 @@ namespace remidy {
 
     class AudioPluginIdentifierVST3 : public AudioPluginIdentifier {
     private:
-        PluginClassInfo info;
         std::string idString{};
     public:
         std::string & getVendor() override;
@@ -23,6 +21,8 @@ namespace remidy {
 
     private:
     public:
+        PluginClassInfo info;
+
         explicit AudioPluginIdentifierVST3(PluginClassInfo& info) : info(info) {
             idString = reinterpret_cast<char *>(info.tuid);
         }
@@ -110,13 +110,50 @@ namespace remidy {
     }
 
     class AudioPluginInstanceVST3 : public AudioPluginInstance {
+    public:
+        remidy_status_t configure(int32_t sampleRate) override;
+
+        remidy_status_t process(AudioProcessContext &process) override;
+
+    private:
         v3_plugin_base* plugin;
     public:
         explicit AudioPluginInstanceVST3(v3_plugin_base* plugin) : plugin(plugin) {
         }
     };
 
-    AudioPluginInstance * AudioPluginFormatVST3::createInstance(AudioPluginIdentifier *uniqueId) {
-        throw std::runtime_error("AudioPluginFormatVST3::createInstance() not implemented");
+    remidy_status_t AudioPluginInstanceVST3::configure(int32_t sampleRate) {
+        throw std::runtime_error("AudioPluginInstanceVST3::configure() not implemented");
+    }
+
+    remidy_status_t AudioPluginInstanceVST3::process(AudioProcessContext &process) {
+        throw std::runtime_error("AudioPluginInstanceVST3::process() not implemented");
+    }
+
+    AudioPluginInstance* AudioPluginFormatVST3::createInstance(AudioPluginIdentifier *uniqueId) {
+        auto vst3Id = (AudioPluginIdentifierVST3*) uniqueId;
+        auto library = loadLibraryFromBundle(vst3Id->info.bundlePath);
+        if (!library)
+            return nullptr;
+        const auto factory = getFactoryFromLibrary(library);
+        if (!factory)
+            return nullptr;
+        v3_plugin_base* instance{};
+        // FIXME: everyone fails here...
+        auto result = factory->vtable->factory.create_instance(factory, vst3Id->info.tuid, v3_component_iid, (void**) &instance);
+        if (result) {
+            std::cerr << "Failed to create VST3 instance: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
+            return nullptr;
+        }
+
+
+        IHostApplicationDelegate host{factory};
+        result = instance->initialize(instance, (v3_funknown**) &host);
+        if (result) {
+            std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
+            return nullptr;
+        }
+
+        return new AudioPluginInstanceVST3(instance);
     }
 }

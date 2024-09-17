@@ -9,9 +9,10 @@ namespace remidy {
     class AudioPluginInstance {
     protected:
         explicit AudioPluginInstance() = default;
-        virtual ~AudioPluginInstance() = default;
 
     public:
+        virtual ~AudioPluginInstance() = default;
+
         class Extensibility {
             AudioPluginInstance& owner;
         protected:

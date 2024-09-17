@@ -1,25 +1,74 @@
 #pragma once
 
+#include <codecvt>
 #include <filesystem>
 #include <vector>
 
 #include "../include/remidy/Common.hpp"
+#include <travesty/factory.h>
+#include <travesty/host.h>
 
 #if __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
+#define kVstAudioEffectClass "Audio Module Class"
+
 namespace remidy {
-    struct IPluginFactoryVTable {
+static constexpr const v3_tuid v3_component_iid =
+    V3_ID(0xE831FF31, 0xF2D54301, 0x928EBBEE, 0x25697802);
+
+    struct FUnknownVTable {
         v3_funknown unknown;
+    };
+    struct IPluginFactoryVTable : public FUnknownVTable {
         v3_plugin_factory factory;
+    };
+    struct IPluginFactory2VTable : public IPluginFactoryVTable {
         v3_plugin_factory_2 factory_2;
+        v3_plugin_factory_3 factory_3;
+    };
+    struct IPluginFactory3VTable : public IPluginFactory2VTable {
         v3_plugin_factory_3 factory_3;
     };
     struct IPluginFactory {
         struct IPluginFactoryVTable *vtable;
     };
+    struct IPluginFactory2 {
+        struct IPluginFactoryVTable2 *vtable;
+    };
+    struct IPluginFactory3 {
+        struct IPluginFactoryVTable3 *vtable;
+    };
+    struct IHostApplicationVTable : public FUnknownVTable {
+        v3_host_application application;
+    };
+    struct IHostApplication {
+        struct IHostApplicationVTable *vtable{};
+    };
+    class IHostApplicationDelegate : public IHostApplication {
+        IHostApplicationVTable vt{};
+        IPluginFactory* factory;
+        static v3_result create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj);
+        static v3_result get_name(void *self, v3_str_128 name);
+    public:
+        explicit IHostApplicationDelegate(IPluginFactory* factory) : factory(factory) {
+            vtable = &vt;
+            vt.unknown = factory->vtable->unknown;
+            vt.application.create_instance = create_instance;
+            vt.application.get_name = get_name;
+        }
+    };
 
+    inline v3_result IHostApplicationDelegate::create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj) {
+        auto h = (IHostApplicationDelegate*) self;
+        return h->factory->vtable->factory.create_instance(h->factory, cid, iid, obj);
+    }
+
+    inline v3_result IHostApplicationDelegate::get_name(void *self, v3_str_128 name) {
+        auto s = std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.from_bytes("remidy");
+        s.copy((char16_t*) name, s.length());
+    }
 
     std::filesystem::path getPluginCodeFile(std::filesystem::path& pluginPath) {
         // https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Format.html
@@ -49,7 +98,7 @@ namespace remidy {
         return {};
     }
 
-    typedef void* (*get_plugin_factory_func)();
+    typedef IPluginFactory* (*get_plugin_factory_func)();
     typedef bool (*vst3_module_entry_func)(void*);
     typedef bool (*vst3_module_exit_func)();
     typedef bool (*vst3_bundle_entry_func)(void*);
@@ -152,7 +201,7 @@ namespace remidy {
 #endif
     }
 
-    void* getFactoryFromLibrary(void* library) {
+    IPluginFactory* getFactoryFromLibrary(void* library) {
 #if _WIN32
         auto sym = (get_plugin_factory_func) GetProcAddress((HMODULE) library, "GetPluginFactory");
 #elif __APPLE__
@@ -160,7 +209,6 @@ namespace remidy {
         auto sym = (get_plugin_factory_func) CFBundleGetFunctionPointerForName(bundle, createCFString("GetPluginFactory"));
 #else
         auto sym = (get_plugin_factory_func) dlsym(library, "GetPluginFactory");
-        sym = sym ? sym : (get_plugin_factory_func) dlsym(library, "_GetPluginFactory");
 #endif
         assert(sym);
         return sym();
@@ -192,7 +240,7 @@ namespace remidy {
         if (library) {
             auto err = initializeModule(library);
             if (err == 0) {
-                auto factory = (IPluginFactory*) getFactoryFromLibrary(library);
+                auto factory = getFactoryFromLibrary(library);
                 if (!factory)
                     return;
 
@@ -203,8 +251,8 @@ namespace remidy {
                     auto result = factory->vtable->factory.get_class_info(factory, i, &cls);
                     if (result == 0) {
                         //std::cerr << i << ": (" << cls.category << ") " << cls.name << std::endl;
-                        // FIXME: can we check this by class_id? Is there any defined constant for `56 53 54 5a 4f 39 4d 4f 7a 6f 6e 65 20 39 20 4d` ?
-                        if (!strcmp(cls.category, "Audio Module Class")) {
+                        // FIXME: can we check this in any better way?
+                        if (!strcmp(cls.category, kVstAudioEffectClass)) {
                             std::string name = cls.name;
                             std::string vendor = fInfo.vendor;
                             std::string url = fInfo.url;
