@@ -2,6 +2,7 @@
 
 #include <codecvt>
 #include <filesystem>
+#include <functional>
 #include <vector>
 
 #include "../include/remidy/Common.hpp"
@@ -101,6 +102,7 @@ namespace remidy {
 
     inline uint32_t HostApplication::add_ref(void *self) {
         auto host = (HostApplication*) self;
+        assert(host->ref_counter >= 0);
         return ++host->ref_counter;
     }
 
@@ -283,7 +285,7 @@ namespace remidy {
         }
     };
 
-    void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results) {
+    void forEachPlugin(std::filesystem::path vst3Dir, std::function<void(IPluginFactory* factory, PluginClassInfo& info)> func) {
         // FIXME: try to load moduleinfo.json and skip loading dynamic library.
 
         const auto library = loadLibraryFromBundle(vst3Dir);
@@ -309,7 +311,7 @@ namespace remidy {
                             std::string vendor = std::string{fInfo.vendor}.substr(0, strlen(fInfo.vendor));
                             std::string url = std::string{fInfo.url}.substr(0, strlen(fInfo.url));
                             PluginClassInfo info(vst3Dir, vendor, url, name, cls.class_id);
-                            results.emplace_back(info);
+                            func(factory, info);
                         }
                     }
                     else
@@ -322,5 +324,11 @@ namespace remidy {
         }
         else
             std::cerr << "Could not load the library from bundle: " << vst3Dir.c_str() << " : " << dlerror() << std::endl;
+    }
+
+    void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results) {
+        forEachPlugin(vst3Dir, [&](IPluginFactory* factory, PluginClassInfo& pluginInfo) {
+            results.emplace_back(pluginInfo);
+        });
     }
 }

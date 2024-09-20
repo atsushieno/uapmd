@@ -20,8 +20,6 @@ int main(int argc, const char * argv[]) {
             if (pluginId->getDisplayName().starts_with("sfizz"))
                 continue;
             // FIXME: they should pass
-            if (pluginId->getDisplayName().starts_with("AIDA-X"))
-                continue;
             if (pluginId->getVendor().starts_with("iZotope"))
                 continue;
             if (pluginId->getVendor().starts_with("Native Instruments"))
