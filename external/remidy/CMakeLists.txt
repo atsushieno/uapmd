@@ -5,8 +5,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 #add_subdirectory("../../external/libremidi" "libremidi")
 
-add_library(remidy
-        include/remidy/VST3Helper.h)
+add_library(remidy)
 
 target_include_directories(remidy PRIVATE
         ../../external/travesty

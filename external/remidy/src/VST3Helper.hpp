@@ -6,6 +6,7 @@
 
 #include "../include/remidy/Common.hpp"
 #include <travesty/factory.h>
+#include <travesty/component.h>
 #include <travesty/host.h>
 
 #if __APPLE__
@@ -15,8 +16,6 @@
 #define kVstAudioEffectClass "Audio Module Class"
 
 namespace remidy {
-static constexpr const v3_tuid v3_component_iid =
-    V3_ID(0xE831FF31, 0xF2D54301, 0x928EBBEE, 0x25697802);
 
     struct FUnknownVTable {
         v3_funknown unknown;
@@ -31,6 +30,16 @@ static constexpr const v3_tuid v3_component_iid =
     struct IPluginFactory3VTable : public IPluginFactory2VTable {
         v3_plugin_factory_3 factory_3;
     };
+    struct IPluginBaseVTable : FUnknownVTable {
+        v3_plugin_base base;
+    };
+    struct IComponentVtable : IPluginBaseVTable {
+        v3_component component;
+    };
+
+    struct FUnknown {
+        FUnknownVTable *vtable;
+    };
     struct IPluginFactory {
         struct IPluginFactoryVTable *vtable;
     };
@@ -40,35 +49,77 @@ static constexpr const v3_tuid v3_component_iid =
     struct IPluginFactory3 {
         struct IPluginFactoryVTable3 *vtable;
     };
+    struct IComponent {
+        struct IComponentVtable *vtable;
+    };
+
     struct IHostApplicationVTable : public FUnknownVTable {
         v3_host_application application;
     };
     struct IHostApplication {
         struct IHostApplicationVTable *vtable{};
     };
-    class IHostApplicationDelegate : public IHostApplication {
-        IHostApplicationVTable vt{};
-        IPluginFactory* factory;
+
+    class HostApplication : public IHostApplication {
+        uint32_t ref_counter{0};
+        IHostApplicationVTable vtable{};
+
+        static v3_result query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t add_ref(void *self);
+        static uint32_t remove_ref(void *self);
         static v3_result create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj);
         static v3_result get_name(void *self, v3_str_128 name);
     public:
-        explicit IHostApplicationDelegate(IPluginFactory* factory) : factory(factory) {
-            vtable = &vt;
-            vt.unknown = factory->vtable->unknown;
-            vt.application.create_instance = create_instance;
-            vt.application.get_name = get_name;
+        explicit HostApplication() {
+            IHostApplication::vtable = &vtable;
+            vtable.unknown.query_interface = query_interface;
+            vtable.unknown.ref = add_ref;
+            vtable.unknown.unref = remove_ref;
+            vtable.application.create_instance = create_instance;
+            vtable.application.get_name = get_name;
         }
+        ~HostApplication() = default;
+
+        v3_result queryInterface(const v3_tuid iid, void **obj);
     };
 
-    inline v3_result IHostApplicationDelegate::create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj) {
-        auto h = (IHostApplicationDelegate*) self;
-        return h->factory->vtable->factory.create_instance(h->factory, cid, iid, obj);
+    inline v3_result HostApplication::query_interface(void *self, const v3_tuid iid, void **obj) {
+        return ((HostApplication*) self)->queryInterface(iid, obj);
+    }
+    inline v3_result HostApplication::queryInterface(const v3_tuid iid, void **obj) {
+        if (
+            !memcmp(iid, v3_host_application_iid, sizeof(v3_tuid)) ||
+            !memcmp(iid, v3_funknown_iid, sizeof(v3_tuid))
+        ) {
+            *obj = this;
+            return 0;
+        } else {
+            *obj = nullptr;
+            return -1;
+        }
     }
 
-    inline v3_result IHostApplicationDelegate::get_name(void *self, v3_str_128 name) {
+    inline uint32_t HostApplication::add_ref(void *self) {
+        auto host = (HostApplication*) self;
+        return ++host->ref_counter;
+    }
+
+    inline uint32_t HostApplication::remove_ref(void *self) {
+        auto host = (HostApplication*) self;
+        return --host->ref_counter;
+    }
+
+    inline v3_result HostApplication::create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj) {
+        *obj = nullptr;
+        return -1;
+    }
+
+    inline v3_result HostApplication::get_name(void *self, v3_str_128 name) {
         auto s = std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.from_bytes("remidy");
         s.copy((char16_t*) name, s.length());
     }
+
+
 
     std::filesystem::path getPluginCodeFile(std::filesystem::path& pluginPath) {
         // https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Format.html
@@ -228,7 +279,7 @@ static constexpr const v3_tuid v3_component_iid =
             std::string& className,
             v3_tuid tuid
         ): bundlePath(bundlePath), vendor(vendor), url(url), className(className) {
-            memcpy(this->tuid, tuid, sizeof(tuid));
+            memcpy(this->tuid, tuid, 16);
         }
     };
 
@@ -244,6 +295,7 @@ static constexpr const v3_tuid v3_component_iid =
                 if (!factory)
                     return;
 
+                // FIXME: we need to retrieve classInfo2, classInfo3, ...
                 v3_factory_info fInfo{};
                 factory->vtable->factory.get_factory_info(factory, &fInfo);
                 for (int i = 0, n = factory->vtable->factory.num_classes(factory); i < n; i++) {
@@ -253,9 +305,9 @@ static constexpr const v3_tuid v3_component_iid =
                         //std::cerr << i << ": (" << cls.category << ") " << cls.name << std::endl;
                         // FIXME: can we check this in any better way?
                         if (!strcmp(cls.category, kVstAudioEffectClass)) {
-                            std::string name = cls.name;
-                            std::string vendor = fInfo.vendor;
-                            std::string url = fInfo.url;
+                            std::string name = std::string{cls.name}.substr(0, strlen(cls.name));
+                            std::string vendor = std::string{fInfo.vendor}.substr(0, strlen(fInfo.vendor));
+                            std::string url = std::string{fInfo.url}.substr(0, strlen(fInfo.url));
                             PluginClassInfo info(vst3Dir, vendor, url, name, cls.class_id);
                             results.emplace_back(info);
                         }

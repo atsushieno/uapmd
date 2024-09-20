@@ -116,9 +116,13 @@ namespace remidy {
         remidy_status_t process(AudioProcessContext &process) override;
 
     private:
-        v3_plugin_base* plugin;
+        FUnknown* instance;
     public:
-        explicit AudioPluginInstanceVST3(v3_plugin_base* plugin) : plugin(plugin) {
+        explicit AudioPluginInstanceVST3(FUnknown* instance) : instance(instance) {
+        }
+
+        ~AudioPluginInstanceVST3() override {
+            // FIXME: release instance
         }
     };
 
@@ -138,22 +142,38 @@ namespace remidy {
         const auto factory = getFactoryFromLibrary(library);
         if (!factory)
             return nullptr;
-        v3_plugin_base* instance{};
-        // FIXME: everyone fails here...
-        auto result = factory->vtable->factory.create_instance(factory, vst3Id->info.tuid, v3_component_iid, (void**) &instance);
-        if (result) {
-            std::cerr << "Failed to create VST3 instance: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
+        FUnknown* instance{};
+        v3_factory_info factoryInfo{};
+        auto result = factory->vtable->factory.get_factory_info(factory, &factoryInfo);
+        if (result != 0)
+            // FIXME: report error
             return nullptr;
+        for (int classIdx = 0, n = factory->vtable->factory.num_classes(factory); classIdx < n; classIdx++) {
+            v3_class_info classInfo{};
+            factory->vtable->factory.get_class_info(factory, classIdx, &classInfo);
+            if (!memcmp(classInfo.class_id, v3_component_iid, sizeof(v3_tuid)))
+                continue;
+            result = factory->vtable->factory.create_instance(factory, vst3Id->info.tuid, v3_funknown_iid, (void**) &instance);
+            if (result) {
+                std::cerr << "Failed to create FUnknown for " << uniqueId->getDisplayName() << " result: " << result << std::endl;
+                return nullptr;
+            }
+            IComponent *component{};
+            result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void**) &component);
+            if (result) {
+                std::cerr << "Failed to create VST3 instance: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
+                return nullptr;
+            }
+
+            HostApplication host{};
+            result = component->vtable->base.initialize(instance, (v3_funknown**) &host);
+            if (result) {
+                std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
+                return nullptr;
+            }
+
+            return new AudioPluginInstanceVST3(instance);
         }
-
-
-        IHostApplicationDelegate host{factory};
-        result = instance->initialize(instance, (v3_funknown**) &host);
-        if (result) {
-            std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
-            return nullptr;
-        }
-
-        return new AudioPluginInstanceVST3(instance);
+        return nullptr;
     }
 }
