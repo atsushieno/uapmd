@@ -18,6 +18,12 @@
 
 namespace remidy {
 
+    enum V3_IO_MODES {
+        V3_IO_SIMPLE,
+        V3_IO_ADVANCED,
+        V3_IO_OFFLINE_PROCESSING
+    };
+
     struct FUnknownVTable {
         v3_funknown unknown;
     };

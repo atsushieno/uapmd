@@ -176,12 +176,26 @@ namespace remidy {
             result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void**) &component);
             if (result == V3_OK) {
                 try {
-                    result = component->vtable->base.initialize(instance, (v3_funknown**) &host);
-                    if (result == V3_OK) {
-                        ret = new AudioPluginInstanceVST3(component, instance);
-                        return;
+                    // From https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/API+Documentation/Index.html#initialization :
+                    // > Hosts should not call other functions before initialize is called, with the sole exception of Steinberg::Vst::IComponent::setIoMode
+                    // > which must be called before initialize.
+                    result = component->vtable->component.set_io_mode(instance, V3_IO_SIMPLE);
+                    if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
+                        // > Steinberg::Vst::IComponent::getControllerClassId can also be called before (See VST 3 Workflow Diagrams).
+                        // huh?
+                        v3_tuid controllerClassId{};
+                        result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
+                        if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
+                            result = component->vtable->base.initialize(instance, (v3_funknown**) &host);
+                            if (result == V3_OK) {
+                                ret = new AudioPluginInstanceVST3(component, instance);
+                                return;
+                            }
+                        }
+                        std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
                     }
-                    std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
+                    else
+                        std::cerr << "Failed to set vst3 I/O mode: " << uniqueId->getDisplayName() << std::endl;
                 } catch (...) {
                     std::cerr << "Crash on initializing vst3: " << uniqueId->getDisplayName() << std::endl;
                 }

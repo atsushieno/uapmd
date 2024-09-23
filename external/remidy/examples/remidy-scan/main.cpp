@@ -20,8 +20,20 @@ int main(int argc, const char * argv[]) {
             if (pluginId->getDisplayName().starts_with("sfizz"))
                 continue;
             // FIXME: they should pass
-            if (pluginId->getVendor().starts_with("iZotope"))
+            if (pluginId->getDisplayName().starts_with("Ozone 9"))
                 continue;
+            if (pluginId->getDisplayName().starts_with("Neutron 3"))
+                continue;
+            if (pluginId->getDisplayName().starts_with("Neoverb"))
+                continue;
+            if (pluginId->getDisplayName().starts_with("VocalSynth 2"))
+                continue;
+            if (pluginId->getDisplayName().starts_with("Tonal Balance Control 2"))
+                continue;
+            if (pluginId->getDisplayName().starts_with("Relay"))
+                continue;
+            //if (!pluginId->getVendor().starts_with("iZotope"))
+            //    continue;
 
             std::cerr << pluginId->getDisplayName() << " : " << pluginId->getVendor() << " (" << pluginId->getUrl() << ")" << std::endl;
 
