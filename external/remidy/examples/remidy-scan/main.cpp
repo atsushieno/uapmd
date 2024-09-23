@@ -22,8 +22,6 @@ int main(int argc, const char * argv[]) {
             // FIXME: they should pass
             if (pluginId->getVendor().starts_with("iZotope"))
                 continue;
-            if (pluginId->getVendor().starts_with("Native Instruments"))
-                continue;
 
             std::cerr << pluginId->getDisplayName() << " : " << pluginId->getVendor() << " (" << pluginId->getUrl() << ")" << std::endl;
 

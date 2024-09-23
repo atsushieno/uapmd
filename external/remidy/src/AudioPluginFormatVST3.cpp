@@ -116,13 +116,19 @@ namespace remidy {
         remidy_status_t process(AudioProcessContext &process) override;
 
     private:
+        IComponent* component;
         FUnknown* instance;
     public:
-        explicit AudioPluginInstanceVST3(FUnknown* instance) : instance(instance) {
+        explicit AudioPluginInstanceVST3(
+            IComponent* component,
+            FUnknown* instance
+        ) : component(component), instance(instance) {
         }
 
         ~AudioPluginInstanceVST3() override {
             // FIXME: release instance
+            //component->vtable->base.terminate(instance);
+            //instance->vtable->unknown.unref(instance);
         }
     };
 
@@ -137,27 +143,53 @@ namespace remidy {
     AudioPluginInstance* AudioPluginFormatVST3::createInstance(AudioPluginIdentifier *uniqueId) {
         auto vst3Id = (AudioPluginIdentifierVST3*) uniqueId;
         AudioPluginInstanceVST3* ret{nullptr};
+        HostApplication host{};
+
         forEachPlugin(vst3Id->info.bundlePath, [&](IPluginFactory* factory, PluginClassInfo &info) {
+
+            IPluginFactory3* factory3{nullptr};
+            auto result = factory->vtable->unknown.query_interface(factory, v3_plugin_factory_3_iid, (void**) &factory3);
+            if (result == V3_OK) {
+                result = factory3->vtable->factory_3.set_host_context(factory3, (v3_funknown**) &host);
+                // There are weird plugins that "implements IPluginFactory3" and then returns kNotImplemented :angry:
+                //  in that case, it is not callable anyway, so treat it as if IPluginFactory3 were not queryable.
+                factory3->vtable->unknown.unref(factory3);
+                if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
+                    std::cerr << "Failed to set HostApplication to IPluginFactory3: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
+                    return;
+                }
+            }
+
+            /*
+            FUnknown* compatibility{};
+            result = factory->vtable->factory.create_instance(factory, vst3Id->info.tuid, v3_compatibility_iid, (void**) &compatibility);
+            if (result) // not about this class
+                return;*/
+
             FUnknown* instance{};
-            auto result = factory->vtable->factory.create_instance(factory, vst3Id->info.tuid, v3_funknown_iid, (void**) &instance);
+            result = factory->vtable->factory.create_instance(factory, vst3Id->info.tuid, v3_component_iid, (void**) &instance);
             if (result) // not about this class
                 return;
 
+            bool success = false;
             IComponent *component{};
             result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void**) &component);
-            if (result) {
-                std::cerr << "Failed to create VST3 component: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
-                return;
+            if (result == V3_OK) {
+                try {
+                    result = component->vtable->base.initialize(instance, (v3_funknown**) &host);
+                    if (result == V3_OK) {
+                        ret = new AudioPluginInstanceVST3(component, instance);
+                        return;
+                    }
+                    std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
+                } catch (...) {
+                    std::cerr << "Crash on initializing vst3: " << uniqueId->getDisplayName() << std::endl;
+                }
             }
+            else
+                std::cerr << "Failed to query VST3 component: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
 
-            HostApplication host{};
-            result = component->vtable->base.initialize(instance, (v3_funknown**) &host);
-            if (result) {
-                std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
-                return;
-            }
-
-            ret = new AudioPluginInstanceVST3(instance);
+            component->vtable->unknown.unref(component);
         });
         return ret;
     }

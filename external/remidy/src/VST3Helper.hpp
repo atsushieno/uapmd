@@ -26,7 +26,6 @@ namespace remidy {
     };
     struct IPluginFactory2VTable : public IPluginFactoryVTable {
         v3_plugin_factory_2 factory_2;
-        v3_plugin_factory_3 factory_3;
     };
     struct IPluginFactory3VTable : public IPluginFactory2VTable {
         v3_plugin_factory_3 factory_3;
@@ -39,19 +38,19 @@ namespace remidy {
     };
 
     struct FUnknown {
-        FUnknownVTable *vtable;
+        FUnknownVTable *vtable{};
     };
     struct IPluginFactory {
-        struct IPluginFactoryVTable *vtable;
+        struct IPluginFactoryVTable *vtable{};
     };
     struct IPluginFactory2 {
-        struct IPluginFactoryVTable2 *vtable;
+        struct IPluginFactory2VTable *vtable{};
     };
     struct IPluginFactory3 {
-        struct IPluginFactoryVTable3 *vtable;
+        struct IPluginFactory3VTable *vtable{};
     };
     struct IComponent {
-        struct IComponentVtable *vtable;
+        struct IComponentVtable *vtable{};
     };
 
     struct IHostApplicationVTable : public FUnknownVTable {
@@ -62,8 +61,8 @@ namespace remidy {
     };
 
     class HostApplication : public IHostApplication {
-        uint32_t ref_counter{0};
         IHostApplicationVTable vtable{};
+        static const std::basic_string<char16_t> name16t;
 
         static v3_result query_interface(void *self, const v3_tuid iid, void **obj);
         static uint32_t add_ref(void *self);
@@ -71,18 +70,20 @@ namespace remidy {
         static v3_result create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj);
         static v3_result get_name(void *self, v3_str_128 name);
     public:
-        explicit HostApplication() {
-            IHostApplication::vtable = &vtable;
+        explicit HostApplication(): IHostApplication() {
             vtable.unknown.query_interface = query_interface;
             vtable.unknown.ref = add_ref;
             vtable.unknown.unref = remove_ref;
             vtable.application.create_instance = create_instance;
             vtable.application.get_name = get_name;
+            IHostApplication::vtable = &vtable;
         }
         ~HostApplication() = default;
 
         v3_result queryInterface(const v3_tuid iid, void **obj);
     };
+
+    const std::basic_string<char16_t> HostApplication::name16t{std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.from_bytes("remidy")};
 
     inline v3_result HostApplication::query_interface(void *self, const v3_tuid iid, void **obj) {
         return ((HostApplication*) self)->queryInterface(iid, obj);
@@ -92,6 +93,7 @@ namespace remidy {
             !memcmp(iid, v3_host_application_iid, sizeof(v3_tuid)) ||
             !memcmp(iid, v3_funknown_iid, sizeof(v3_tuid))
         ) {
+            add_ref(this);
             *obj = this;
             return 0;
         } else {
@@ -101,24 +103,23 @@ namespace remidy {
     }
 
     inline uint32_t HostApplication::add_ref(void *self) {
-        auto host = (HostApplication*) self;
-        assert(host->ref_counter >= 0);
-        return ++host->ref_counter;
+        // it seems to not be managed allocation by these refs.
+        return 1; //++host->ref_counter;
     }
 
     inline uint32_t HostApplication::remove_ref(void *self) {
-        auto host = (HostApplication*) self;
-        return --host->ref_counter;
+        // it seems to not be managed allocation by these refs.
+        return 1; //--host->ref_counter;
     }
 
     inline v3_result HostApplication::create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj) {
         *obj = nullptr;
-        return -1;
+        throw std::runtime_error("HostApplication::create_instance() is not implemented");
     }
 
     inline v3_result HostApplication::get_name(void *self, v3_str_128 name) {
-        auto s = std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.from_bytes("remidy");
-        s.copy((char16_t*) name, s.length());
+        name16t.copy((char16_t*) name, name16t.length());
+        return V3_OK;
     }
 
 
