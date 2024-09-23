@@ -9,6 +9,9 @@
 #include <travesty/factory.h>
 #include <travesty/component.h>
 #include <travesty/host.h>
+#include <travesty/edit_controller.h>
+#include <travesty/unit.h>
+#include <travesty/view.h>
 
 #if __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
@@ -42,6 +45,18 @@ namespace remidy {
     struct IComponentVtable : IPluginBaseVTable {
         v3_component component;
     };
+    struct IEditControllerVTable : IPluginBaseVTable {
+        v3_edit_controller controller;
+    };
+    struct IComponentHandlerVtable : FUnknownVTable {
+        v3_component_handler handler;
+    };
+    struct IComponentHandler2Vtable : FUnknownVTable {
+        v3_component_handler2 handler;
+    };
+    struct IHostApplicationVTable : public FUnknownVTable {
+        v3_host_application application;
+    };
 
     struct FUnknown {
         FUnknownVTable *vtable{};
@@ -58,16 +73,27 @@ namespace remidy {
     struct IComponent {
         struct IComponentVtable *vtable{};
     };
-
-    struct IHostApplicationVTable : public FUnknownVTable {
-        v3_host_application application;
+    struct IEditController {
+        struct IEditControllerVTable *vtable{};
+    };
+    struct IComponentHandler {
+        struct IComponentHandlerVtable *vtable{};
+    };
+    struct IComponentHandler2 {
+        struct IComponentHandler2Vtable *vtable{};
     };
     struct IHostApplication {
         struct IHostApplicationVTable *vtable{};
     };
 
-    class HostApplication : public IHostApplication {
-        IHostApplicationVTable vtable{};
+    class HostApplication :
+        public IComponentHandler,
+        public IComponentHandler2,
+        public IHostApplication
+    {
+        IComponentHandlerVtable handler_vtable{};
+        IComponentHandler2Vtable handler_vtable2{};
+        IHostApplicationVTable host_vtable{};
         static const std::basic_string<char16_t> name16t;
 
         static v3_result query_interface(void *self, const v3_tuid iid, void **obj);
@@ -75,14 +101,29 @@ namespace remidy {
         static uint32_t remove_ref(void *self);
         static v3_result create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj);
         static v3_result get_name(void *self, v3_str_128 name);
+
+        static v3_result begin_edit(void *self, v3_param_id);
+        static v3_result end_edit(void *self, v3_param_id);
+        static v3_result perform_edit(void *self, v3_param_id, double value_normalised);
+        static v3_result restart_component(void *self, int32_t flags);
+
     public:
         explicit HostApplication(): IHostApplication() {
-            vtable.unknown.query_interface = query_interface;
-            vtable.unknown.ref = add_ref;
-            vtable.unknown.unref = remove_ref;
-            vtable.application.create_instance = create_instance;
-            vtable.application.get_name = get_name;
-            IHostApplication::vtable = &vtable;
+            host_vtable.unknown.query_interface = query_interface;
+            host_vtable.unknown.ref = add_ref;
+            host_vtable.unknown.unref = remove_ref;
+            host_vtable.application.create_instance = create_instance;
+            host_vtable.application.get_name = get_name;
+            IHostApplication::vtable = &host_vtable;
+
+            handler_vtable.unknown = host_vtable.unknown;
+            handler_vtable.handler.begin_edit = begin_edit;
+            handler_vtable.handler.end_edit = end_edit;
+            handler_vtable.handler.perform_edit = perform_edit;
+            handler_vtable.handler.restart_component = restart_component;
+            IComponentHandler::vtable = &handler_vtable;
+            handler_vtable2.unknown = host_vtable.unknown;
+            IComponentHandler2::vtable = &handler_vtable2;
         }
         ~HostApplication() = default;
 
@@ -128,6 +169,21 @@ namespace remidy {
         return V3_OK;
     }
 
+    inline v3_result HostApplication::begin_edit(void *self, v3_param_id) {
+        return V3_NOT_IMPLEMENTED;
+    }
+
+    inline v3_result HostApplication::end_edit(void *self, v3_param_id) {
+        return V3_NOT_IMPLEMENTED;
+    }
+
+    inline v3_result HostApplication::perform_edit(void *self, v3_param_id, double value_normalised) {
+        return V3_NOT_IMPLEMENTED;
+    }
+
+    inline v3_result HostApplication::restart_component(void *self, int32_t flags) {
+        return V3_NOT_IMPLEMENTED;
+    }
 
 
     std::filesystem::path getPluginCodeFile(std::filesystem::path& pluginPath) {
@@ -292,15 +348,18 @@ namespace remidy {
         }
     };
 
-    void forEachPlugin(std::filesystem::path vst3Dir, std::function<void(IPluginFactory* factory, PluginClassInfo& info)> func) {
+    void forEachPlugin(std::filesystem::path vst3Dir,
+        std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)> func,
+        std::function<void(void* module)> cleanup
+    ) {
         // FIXME: try to load moduleinfo.json and skip loading dynamic library.
 
-        const auto library = loadLibraryFromBundle(vst3Dir);
+        auto module = loadLibraryFromBundle(vst3Dir);
 
-        if (library) {
-            auto err = initializeModule(library);
+        if (module) {
+            auto err = initializeModule(module);
             if (err == 0) {
-                auto factory = getFactoryFromLibrary(library);
+                auto factory = getFactoryFromLibrary(module);
                 if (!factory)
                     return;
 
@@ -318,7 +377,7 @@ namespace remidy {
                             std::string vendor = std::string{fInfo.vendor}.substr(0, strlen(fInfo.vendor));
                             std::string url = std::string{fInfo.url}.substr(0, strlen(fInfo.url));
                             PluginClassInfo info(vst3Dir, vendor, url, name, cls.class_id);
-                            func(factory, info);
+                            func(module, factory, info);
                         }
                     }
                     else
@@ -327,15 +386,17 @@ namespace remidy {
             }
             else
                 std::cerr << "Could not initialize the module from bundle: " << vst3Dir.c_str() << std::endl;
-            unloadLibrary(library);
+            cleanup(module);
         }
         else
             std::cerr << "Could not load the library from bundle: " << vst3Dir.c_str() << " : " << dlerror() << std::endl;
     }
 
     void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results) {
-        forEachPlugin(vst3Dir, [&](IPluginFactory* factory, PluginClassInfo& pluginInfo) {
+        forEachPlugin(vst3Dir, [&](void* module, IPluginFactory* factory, PluginClassInfo& pluginInfo) {
             results.emplace_back(pluginInfo);
+        }, [&](void* module) {
+            unloadLibrary(module);
         });
     }
 }

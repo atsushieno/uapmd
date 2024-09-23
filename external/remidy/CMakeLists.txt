@@ -7,6 +7,12 @@ set(CMAKE_CXX_STANDARD 23)
 
 add_library(remidy)
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+target_compile_definitions(remidy PRIVATE
+        V3_COM_COMPAT=1
+)
+endif ()
+
 target_include_directories(remidy PRIVATE
         ../../external/travesty
         #../../external/libremidi/include

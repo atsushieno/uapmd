@@ -116,19 +116,30 @@ namespace remidy {
         remidy_status_t process(AudioProcessContext &process) override;
 
     private:
+        void* module;
         IComponent* component;
+        IEditController* controller;
         FUnknown* instance;
     public:
         explicit AudioPluginInstanceVST3(
+            void* module,
             IComponent* component,
+            IEditController* controller,
             FUnknown* instance
-        ) : component(component), instance(instance) {
+        ) : module(module), component(component), controller(controller), instance(instance) {
         }
 
         ~AudioPluginInstanceVST3() override {
             // FIXME: release instance
-            //component->vtable->base.terminate(instance);
-            //instance->vtable->unknown.unref(instance);
+            if (controller) {
+                //controller->vtable->base.terminate(controller);
+                //controller->vtable->unknown.unref(controller);
+            }
+            //component->vtable->base.terminate(component);
+            component->vtable->unknown.unref(component);
+
+            // FIXME: this should be enabled (but we might need decent refcounted module handler
+            //unloadLibrary(module);
         }
     };
 
@@ -145,14 +156,14 @@ namespace remidy {
         AudioPluginInstanceVST3* ret{nullptr};
         HostApplication host{};
 
-        forEachPlugin(vst3Id->info.bundlePath, [&](IPluginFactory* factory, PluginClassInfo &info) {
+        forEachPlugin(vst3Id->info.bundlePath, [&](void* module, IPluginFactory* factory, PluginClassInfo &info) {
 
             IPluginFactory3* factory3{nullptr};
             auto result = factory->vtable->unknown.query_interface(factory, v3_plugin_factory_3_iid, (void**) &factory3);
             if (result == V3_OK) {
                 result = factory3->vtable->factory_3.set_host_context(factory3, (v3_funknown**) &host);
-                // There are weird plugins that "implements IPluginFactory3" and then returns kNotImplemented :angry:
-                //  in that case, it is not callable anyway, so treat it as if IPluginFactory3 were not queryable.
+                // It seems common that a plugin often "implements IPluginFactory3" and then returns kNotImplemented...
+                // In that case, it is not callable anyway, so treat it as if IPluginFactory3 were not queryable.
                 factory3->vtable->unknown.unref(factory3);
                 if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
                     std::cerr << "Failed to set HostApplication to IPluginFactory3: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
@@ -179,17 +190,34 @@ namespace remidy {
                     // From https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/API+Documentation/Index.html#initialization :
                     // > Hosts should not call other functions before initialize is called, with the sole exception of Steinberg::Vst::IComponent::setIoMode
                     // > which must be called before initialize.
-                    result = component->vtable->component.set_io_mode(instance, V3_IO_SIMPLE);
+                    result = component->vtable->component.set_io_mode(instance, V3_IO_ADVANCED);
                     if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
                         // > Steinberg::Vst::IComponent::getControllerClassId can also be called before (See VST 3 Workflow Diagrams).
-                        // huh?
+                        // ... is it another "sole exception" ?
                         v3_tuid controllerClassId{};
                         result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
                         if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
-                            result = component->vtable->base.initialize(instance, (v3_funknown**) &host);
+                            IEditController* controller{nullptr};
+                            bool controllerDistinct = false;
+                            if (memcmp(vst3Id->info.tuid, controllerClassId, sizeof(v3_tuid)) != 0)
+                                controllerDistinct = true;
+                            result = component->vtable->base.initialize(component, (v3_funknown**) &host);
                             if (result == V3_OK) {
-                                ret = new AudioPluginInstanceVST3(component, instance);
-                                return;
+                                bool controllerValid = false;
+                                if (controllerDistinct) {
+                                    result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid, (void**) &controller);
+                                    if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
+                                        result = controller->vtable->base.initialize(controller, (v3_funknown**) &host);
+                                        if (result == V3_OK)
+                                            controllerValid = true;
+                                    }
+                                }
+                                else
+                                    controllerValid = true;
+                                if (controllerValid && result == V3_OK) {
+                                    ret = new AudioPluginInstanceVST3(module, component, controller, instance);
+                                    return;
+                                }
                             }
                         }
                         std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
@@ -204,6 +232,8 @@ namespace remidy {
                 std::cerr << "Failed to query VST3 component: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
 
             component->vtable->unknown.unref(component);
+        }, [&](void* module) {
+            // do not unload library here.
         });
         return ret;
     }
