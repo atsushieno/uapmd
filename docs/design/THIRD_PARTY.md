@@ -24,7 +24,7 @@ Rust: There are too many delusive MIDI libraries that only takes name and implem
 
 - We hope to have our own multi-format hosting abstraction layer, as no one built such one in a liberal license.
   - it is so far located at `external/remidy`.
-  - We hope to use travesty for VST3.
+  - We use travesty for VST3.
   - We can use lilv for LV2.
   - We hope to use clap-wrapper for CLAP to load them as VST3.
     - There is no hosting library (there won't be, as it will compete against Bitwig Studio)
@@ -37,11 +37,12 @@ Rust: There are too many delusive MIDI libraries that only takes name and implem
   - tracktion_engine
     - multi-track ready
     - the licensing situation is not any better than JUCE (we need multiple layers of GPL/AGPL)
-    - the developers and the community is quite hostile against MIDI.
+    - not a safe option as the developers and the community are quite hostile against MIDI 2.0.
   - Carla
     - simple solution for single track
     - the licenses are unclear, and the core part falls into the same problem as JUCE (GPL2? 3?)
 
 ## Setup Client
 
-- We could use webview.h (or choc::WebView)
+- We could use webview.h
+  - or we could use choc::WebView, but embedding non-Evergreen Microsoft WebView2 is a security risk.

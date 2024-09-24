@@ -9,7 +9,7 @@ namespace remidy {
         Impl *impl;
     public:
         explicit AudioPluginFormatVST3(std::vector<std::string> &overrideSearchPaths);
-        ~AudioPluginFormatVST3();
+        ~AudioPluginFormatVST3() override;
 
         bool usePluginSearchPaths() override;
         std::vector<std::string>& getDefaultSearchPaths() override;

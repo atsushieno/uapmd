@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "AudioPluginLibrary.hpp"
+#include "AudioPluginLibraryPool.hpp"
 
 namespace remidy {
 

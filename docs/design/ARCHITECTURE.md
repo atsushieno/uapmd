@@ -77,7 +77,7 @@ By default, we use platform's default audio I/O device settings.
 
 ## Audio Plugin Hosting
 
-We need up to 256 audio plugin "tracks" where each of them maps to an audio plugin graph.
+We need to support up to 256 audio plugin "tracks" where each of them maps to an audio plugin graph.
 
 For this purpose we need a realtime sequencer-like audio engine.
 

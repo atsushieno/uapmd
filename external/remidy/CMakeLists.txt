@@ -28,7 +28,8 @@ target_sources(remidy PRIVATE
         src/AudioPluginFormat.cpp
         src/AudioPluginFormatVST3.cpp
         src/AudioPluginInstance.cpp
-        src/AudioPluginLibrary.cpp
+        src/HostApplication.cpp
+        src/AudioPluginLibraryPool.cpp
 
         src/AudioBufferList.cpp
         src/MidiSequence.cpp
