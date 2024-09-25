@@ -11,6 +11,7 @@
 #include <travesty/host.h>
 #include <travesty/edit_controller.h>
 #include <travesty/unit.h>
+#include <travesty/events.h>
 #include <travesty/view.h>
 
 #if __APPLE__
@@ -25,6 +26,16 @@ namespace remidy {
         V3_IO_SIMPLE,
         V3_IO_ADVANCED,
         V3_IO_OFFLINE_PROCESSING
+    };
+
+    typedef int32_t v3_unit_id;
+    typedef int32_t v3_program_list_id;
+    struct v3_unit_handler {
+#ifndef __cplusplus
+        struct v3_funknown;
+#endif
+        v3_result (V3_API* notify_unit_selection)(void* self, v3_unit_id unitId);
+        v3_result (V3_API* notify_program_list_change)(void* self, v3_program_list_id listId, int32_t programIndex);
     };
 
     struct FUnknownVTable {
@@ -54,6 +65,9 @@ namespace remidy {
     struct IComponentHandler2Vtable : FUnknownVTable {
         v3_component_handler2 handler;
     };
+    struct IUnitHandlerVTable : FUnknownVTable {
+        v3_unit_handler handler;
+    };
     struct IHostApplicationVTable : public FUnknownVTable {
         v3_host_application application;
     };
@@ -82,6 +96,9 @@ namespace remidy {
     struct IComponentHandler2 {
         struct IComponentHandler2Vtable *vtable{};
     };
+    struct IUnitHandler {
+        struct IUnitHandlerVTable *vtable{};
+    };
     struct IHostApplication {
         struct IHostApplicationVTable *vtable{};
     };
@@ -89,10 +106,12 @@ namespace remidy {
     class HostApplication :
         public IComponentHandler,
         public IComponentHandler2,
+        public IUnitHandler,
         public IHostApplication
     {
         IComponentHandlerVtable handler_vtable{};
         IComponentHandler2Vtable handler_vtable2{};
+        IUnitHandlerVTable unit_handler_vtable{};
         IHostApplicationVTable host_vtable{};
         static const std::basic_string<char16_t> name16t;
 
@@ -106,6 +125,9 @@ namespace remidy {
         static v3_result end_edit(void *self, v3_param_id);
         static v3_result perform_edit(void *self, v3_param_id, double value_normalised);
         static v3_result restart_component(void *self, int32_t flags);
+
+        static v3_result notify_unit_selection(void *self, v3_unit_id unitId);
+        static v3_result notify_program_list_change(void *self, v3_program_list_id listId, int32_t programIndex);
 
     public:
         explicit HostApplication(): IHostApplication() {
@@ -123,6 +145,9 @@ namespace remidy {
             handler_vtable.handler.restart_component = restart_component;
             IComponentHandler::vtable = &handler_vtable;
             handler_vtable2.unknown = host_vtable.unknown;
+            IUnitHandler::vtable = &unit_handler_vtable;
+            unit_handler_vtable.handler.notify_unit_selection = notify_unit_selection;
+            unit_handler_vtable.handler.notify_program_list_change = notify_program_list_change;
             IComponentHandler2::vtable = &handler_vtable2;
         }
         ~HostApplication() = default;

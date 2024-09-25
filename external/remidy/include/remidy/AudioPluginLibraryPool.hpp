@@ -48,7 +48,8 @@ namespace remidy {
     private:
         std::function<remidy_status_t(std::filesystem::path& vst3Dir, void** module)> load;
         std::function<remidy_status_t(std::filesystem::path& vst3Dir, void* module)> unload;
-        RetentionPolicy retentionPolicy{UnloadImmediately};
+        // FIXME: the default should be `UnloadImmediately`.
+        RetentionPolicy retentionPolicy{Retain};
         std::map<std::filesystem::path, ModuleEntry> entries{};
     };
 }

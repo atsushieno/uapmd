@@ -172,11 +172,11 @@ namespace remidy {
                 (void*) c == (void*) controller;
             if (controllerDistinct) {
                 // FIXME: terminate instance
-                //controller->vtable->base.terminate(controller);
+                controller->vtable->base.terminate(controller);
                 controller->vtable->unknown.unref(controller);
             }
             // FIXME: terminate instance
-            //component->vtable->base.terminate(component);
+            component->vtable->base.terminate(component);
 
             component->vtable->unknown.unref(component);
 
@@ -202,6 +202,8 @@ namespace remidy {
         HostApplication host{};
 
         forEachPlugin(vst3Id->info.bundlePath, [&](void* module, IPluginFactory* factory, PluginClassInfo &info) {
+            if (memcmp(info.tuid, vst3Id->info.tuid, sizeof(v3_tuid)) != 0)
+                return;
 
             IPluginFactory3* factory3{nullptr};
             auto result = factory->vtable->unknown.query_interface(factory, v3_plugin_factory_3_iid, (void**) &factory3);
@@ -210,9 +212,10 @@ namespace remidy {
                 // It seems common that a plugin often "implements IPluginFactory3" and then returns kNotImplemented...
                 // In that case, it is not callable anyway, so treat it as if IPluginFactory3 were not queryable.
                 factory3->vtable->unknown.unref(factory3);
-                if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
+                if (result != V3_OK) {
                     std::cerr << "Failed to set HostApplication to IPluginFactory3: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
-                    return;
+                    if (result != V3_NOT_IMPLEMENTED)
+                        return;
                 }
             }
 
@@ -433,12 +436,18 @@ namespace remidy {
     ) {
         // FIXME: try to load moduleinfo.json and skip loading dynamic library.
 
+        // JUCE seems to do this, not sure if it is required (not sure if this point is correct either).
+        auto savedPath = std::filesystem::current_path();
+        std::filesystem::current_path(vst3Dir);
+
         auto module = this->library_pool.loadOrAddReference(vst3Dir);
 
         if (module) {
             auto factory = getFactoryFromLibrary(module);
-            if (!factory)
+            if (!factory) {
+                std::filesystem::current_path(savedPath);
                 return;
+            }
 
             // FIXME: we need to retrieve classInfo2, classInfo3, ...
             v3_factory_info fInfo{};
@@ -464,6 +473,8 @@ namespace remidy {
         }
         else
             std::cerr << "Could not load the library from bundle: " << vst3Dir.c_str() << std::endl;
+
+        std::filesystem::current_path(savedPath);
     }
 
     void AudioPluginFormatVST3::Impl::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results) {

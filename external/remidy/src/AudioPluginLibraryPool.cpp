@@ -23,12 +23,12 @@ void remidy::AudioPluginLibraryPool::setRetentionPolicy(RetentionPolicy value) {
 }
 
 void* remidy::AudioPluginLibraryPool::loadOrAddReference(std::filesystem::path &vst3Dir) {
-    std::cerr << "AudioPluginLibraryPool::loadOrAddReference(" << vst3Dir.string() << ")" << std::endl;
+    //std::cerr << "AudioPluginLibraryPool::loadOrAddReference(" << vst3Dir.string() << ")" << std::endl;
 
     auto existing = entries.find(vst3Dir);
     if (existing != entries.end()) {
         existing->second.refCount++;
-        return &existing->second.module;
+        return existing->second.module;
     }
     void* lib{nullptr};
     auto result = load(vst3Dir, &lib);
@@ -39,7 +39,7 @@ void* remidy::AudioPluginLibraryPool::loadOrAddReference(std::filesystem::path &
 }
 
 remidy_status_t remidy::AudioPluginLibraryPool::removeReference(std::filesystem::path &libraryFile) {
-    std::cerr << "AudioPluginLibraryPool::removeReference(" << libraryFile.string() << ")" << std::endl;
+    //std::cerr << "AudioPluginLibraryPool::removeReference(" << libraryFile.string() << ")" << std::endl;
 
     auto entry = entries.find(libraryFile);
     if (entry == entries.end())
