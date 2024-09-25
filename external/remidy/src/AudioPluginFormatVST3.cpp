@@ -33,9 +33,18 @@ namespace remidy {
     std::string& AudioPluginIdentifierVST3::getUniqueId() { return idString; }
     std::string & AudioPluginIdentifierVST3::getDisplayName() { return info.className; }
 
-    std::function<remidy_status_t(std::filesystem::path &libraryFile, void **module)> loadFunc =
-            [](std::filesystem::path &libraryFile, void** module) {
-        *module = loadLibraryFromBinary(libraryFile);
+    std::function<remidy_status_t(std::filesystem::path &vst3Dir, void **module)> loadFunc =
+            [](std::filesystem::path &vst3Dir, void** module) {
+        *module = loadLibraryFromBundle(vst3Dir);
+        if (*module) {
+            auto err = initializeModule(*module);
+            if (err != 0) {
+                std::cerr << "Could not initialize the module from bundle: " << vst3Dir.c_str() << std::endl;
+                unloadLibrary(*module);
+                *module = nullptr;
+            }
+        }
+
         // FIXME: define status codes
         return *module == nullptr;
     };
@@ -63,6 +72,8 @@ namespace remidy {
             std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)> func,
             std::function<void(void* module)> cleanup
         );
+        AudioPluginInstance* createInstance(AudioPluginIdentifier *uniqueId);
+        void removeInstance(AudioPluginIdentifierVST3* vst3Id);
     };
 
     std::vector<std::string>& AudioPluginFormatVST3::getDefaultSearchPaths() {
@@ -138,17 +149,21 @@ namespace remidy {
         remidy_status_t process(AudioProcessContext &process) override;
 
     private:
+        AudioPluginFormatVST3::Impl* owner;
+        AudioPluginIdentifierVST3* identifier;
         void* module;
         IComponent* component;
         IEditController* controller;
         FUnknown* instance;
     public:
         explicit AudioPluginInstanceVST3(
+            AudioPluginFormatVST3::Impl* owner,
+            AudioPluginIdentifierVST3* identifier,
             void* module,
             IComponent* component,
             IEditController* controller,
             FUnknown* instance
-        ) : module(module), component(component), controller(controller), instance(instance) {
+        ) : owner(owner), identifier(identifier), module(module), component(component), controller(controller), instance(instance) {
         }
 
         ~AudioPluginInstanceVST3() override {
@@ -160,8 +175,7 @@ namespace remidy {
             //component->vtable->base.terminate(component);
             component->vtable->unknown.unref(component);
 
-            // FIXME: this should be enabled (but we might need decent refcounted module handler
-            //unloadLibrary(module);
+            owner->removeInstance(identifier);
         }
     };
 
@@ -174,11 +188,15 @@ namespace remidy {
     }
 
     AudioPluginInstance* AudioPluginFormatVST3::createInstance(AudioPluginIdentifier *uniqueId) {
+        return impl->createInstance(uniqueId);
+    }
+
+    AudioPluginInstance * AudioPluginFormatVST3::Impl::createInstance(AudioPluginIdentifier *uniqueId) {
         auto vst3Id = (AudioPluginIdentifierVST3*) uniqueId;
         AudioPluginInstanceVST3* ret{nullptr};
         HostApplication host{};
 
-        impl->forEachPlugin(vst3Id->info.bundlePath, [&](void* module, IPluginFactory* factory, PluginClassInfo &info) {
+        forEachPlugin(vst3Id->info.bundlePath, [&](void* module, IPluginFactory* factory, PluginClassInfo &info) {
 
             IPluginFactory3* factory3{nullptr};
             auto result = factory->vtable->unknown.query_interface(factory, v3_plugin_factory_3_iid, (void**) &factory3);
@@ -203,6 +221,7 @@ namespace remidy {
             result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void**) &component);
             if (result == V3_OK) {
                 try {
+                    bool controllerDistinct = false;
                     // From https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/API+Documentation/Index.html#initialization :
                     // > Hosts should not call other functions before initialize is called, with the sole exception of Steinberg::Vst::IComponent::setIoMode
                     // > which must be called before initialize.
@@ -212,28 +231,27 @@ namespace remidy {
                         // ... is it another "sole exception" ?
                         v3_tuid controllerClassId{};
                         result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
-                        if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
-                            IEditController* controller{nullptr};
-                            bool controllerDistinct = false;
+                        if (result == V3_OK) {
                             if (memcmp(vst3Id->info.tuid, controllerClassId, sizeof(v3_tuid)) != 0)
                                 controllerDistinct = true;
-                            result = component->vtable->base.initialize(component, (v3_funknown**) &host);
-                            if (result == V3_OK) {
-                                bool controllerValid = false;
-                                if (controllerDistinct) {
-                                    result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid, (void**) &controller);
-                                    if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
-                                        result = controller->vtable->base.initialize(controller, (v3_funknown**) &host);
-                                        if (result == V3_OK)
-                                            controllerValid = true;
-                                    }
+                        }
+                        result = component->vtable->base.initialize(component, (v3_funknown**) &host);
+                        if (result == V3_OK) {
+                            IEditController* controller{nullptr};
+                            bool controllerValid = false;
+                            if (controllerDistinct) {
+                                result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid, (void**) &controller);
+                                if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
+                                    result = controller->vtable->base.initialize(controller, (v3_funknown**) &host);
+                                    if (result == V3_OK)
+                                        controllerValid = true;
                                 }
-                                else
-                                    controllerValid = true;
-                                if (controllerValid && result == V3_OK) {
-                                    ret = new AudioPluginInstanceVST3(module, component, controller, instance);
-                                    return;
-                                }
+                            }
+                            else
+                                controllerValid = true;
+                            if (controllerValid && result == V3_OK) {
+                                ret = new AudioPluginInstanceVST3(this, vst3Id, module, component, controller, instance);
+                                return;
                             }
                         }
                         std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
@@ -252,6 +270,11 @@ namespace remidy {
             // do not unload library here.
         });
         return ret;
+    }
+
+    void AudioPluginFormatVST3::Impl::removeInstance(AudioPluginIdentifierVST3* vst3Id) {
+        // FIXME: this should be enabled (but we might need decent refcounted module handler
+        library_pool.removeReference(vst3Id->info.bundlePath);
     }
 
     // Loader helpers
@@ -401,39 +424,34 @@ namespace remidy {
         auto module = this->library_pool.loadOrAddReference(vst3Dir);
 
         if (module) {
-            auto err = initializeModule(module);
-            if (err == 0) {
-                auto factory = getFactoryFromLibrary(module);
-                if (!factory)
-                    return;
+            auto factory = getFactoryFromLibrary(module);
+            if (!factory)
+                return;
 
-                // FIXME: we need to retrieve classInfo2, classInfo3, ...
-                v3_factory_info fInfo{};
-                factory->vtable->factory.get_factory_info(factory, &fInfo);
-                for (int i = 0, n = factory->vtable->factory.num_classes(factory); i < n; i++) {
-                    v3_class_info cls{};
-                    auto result = factory->vtable->factory.get_class_info(factory, i, &cls);
-                    if (result == 0) {
-                        //std::cerr << i << ": (" << cls.category << ") " << cls.name << std::endl;
-                        // FIXME: can we check this in any better way?
-                        if (!strcmp(cls.category, kVstAudioEffectClass)) {
-                            std::string name = std::string{cls.name}.substr(0, strlen(cls.name));
-                            std::string vendor = std::string{fInfo.vendor}.substr(0, strlen(fInfo.vendor));
-                            std::string url = std::string{fInfo.url}.substr(0, strlen(fInfo.url));
-                            PluginClassInfo info(vst3Dir, vendor, url, name, cls.class_id);
-                            func(module, factory, info);
-                        }
+            // FIXME: we need to retrieve classInfo2, classInfo3, ...
+            v3_factory_info fInfo{};
+            factory->vtable->factory.get_factory_info(factory, &fInfo);
+            for (int i = 0, n = factory->vtable->factory.num_classes(factory); i < n; i++) {
+                v3_class_info cls{};
+                auto result = factory->vtable->factory.get_class_info(factory, i, &cls);
+                if (result == 0) {
+                    //std::cerr << i << ": (" << cls.category << ") " << cls.name << std::endl;
+                    // FIXME: can we check this in any better way?
+                    if (!strcmp(cls.category, kVstAudioEffectClass)) {
+                        std::string name = std::string{cls.name}.substr(0, strlen(cls.name));
+                        std::string vendor = std::string{fInfo.vendor}.substr(0, strlen(fInfo.vendor));
+                        std::string url = std::string{fInfo.url}.substr(0, strlen(fInfo.url));
+                        PluginClassInfo info(vst3Dir, vendor, url, name, cls.class_id);
+                        func(module, factory, info);
                     }
-                    else
-                        std::cerr << i << ": ERROR in " << cls.name << std::endl;
                 }
+                else
+                    std::cerr << i << ": ERROR in " << cls.name << std::endl;
             }
-            else
-                std::cerr << "Could not initialize the module from bundle: " << vst3Dir.c_str() << std::endl;
             cleanup(module);
         }
         else
-            std::cerr << "Could not load the library from bundle: " << vst3Dir.c_str() << " : " << dlerror() << std::endl;
+            std::cerr << "Could not load the library from bundle: " << vst3Dir.c_str() << std::endl;
     }
 
     void AudioPluginFormatVST3::Impl::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results) {

@@ -21,7 +21,7 @@ int main(int argc, const char * argv[]) {
             if (pluginId->getDisplayName().starts_with("sfizz"))
                 continue;
             // FIXME: this should be unblocked
-            if (pluginId->getDisplayName().starts_with("FM8"))
+            if (pluginId->getVendor().starts_with("iZotope"))
                 continue;
 
             std::cerr << "[" << i + 1 << "/" << pluginIds.size() << "] " << pluginId->getDisplayName() << " : " << pluginId->getVendor() << " (" << pluginId->getUrl() << ") ... ";

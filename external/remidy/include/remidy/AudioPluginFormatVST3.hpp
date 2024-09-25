@@ -5,9 +5,9 @@
 namespace remidy {
 
     class AudioPluginFormatVST3 : public DesktopAudioPluginFormat {
-        class Impl;
-        Impl *impl;
     public:
+        class Impl;
+
         explicit AudioPluginFormatVST3(std::vector<std::string> &overrideSearchPaths);
         ~AudioPluginFormatVST3() override;
 
@@ -17,6 +17,9 @@ namespace remidy {
         ScanningStrategyValue scanRequiresInstantiation() override;
         std::vector<AudioPluginIdentifier*> scanAllAvailablePlugins() override;
         AudioPluginInstance* createInstance(AudioPluginIdentifier* uniqueId) override;
+
+    private:
+        Impl *impl;
     };
 
 }

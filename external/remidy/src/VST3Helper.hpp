@@ -139,7 +139,8 @@ namespace remidy {
     typedef bool (*vst3_init_dll_func)();
     typedef bool (*vst3_exit_dll_func)();
 
-    void* loadLibraryFromBinary(std::filesystem::path libraryFile);
+    void* loadLibraryFromBundle(std::filesystem::path vst3Dir);
+    int32_t initializeModule(void* library);
     void unloadLibrary(void* library);
 
     struct PluginClassInfo {

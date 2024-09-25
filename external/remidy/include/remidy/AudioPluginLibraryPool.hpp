@@ -31,7 +31,7 @@ namespace remidy {
 
         struct ModuleEntry {
             uint32_t refCount;
-            std::filesystem::path libraryFile;
+            std::filesystem::path vst3Dir;
             void* module;
         };
         enum RetentionPolicy {
@@ -46,8 +46,8 @@ namespace remidy {
         remidy_status_t removeReference(std::filesystem::path& libraryFile);
 
     private:
-        std::function<remidy_status_t(std::filesystem::path& libraryFile, void** module)> load;
-        std::function<remidy_status_t(std::filesystem::path& libraryFile, void* module)> unload;
+        std::function<remidy_status_t(std::filesystem::path& vst3Dir, void** module)> load;
+        std::function<remidy_status_t(std::filesystem::path& vst3Dir, void* module)> unload;
         RetentionPolicy retentionPolicy{UnloadImmediately};
         std::map<std::filesystem::path, ModuleEntry> entries{};
     };
