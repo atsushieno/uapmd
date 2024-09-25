@@ -167,12 +167,17 @@ namespace remidy {
         }
 
         ~AudioPluginInstanceVST3() override {
-            // FIXME: release instance
-            if (controller) {
+            IEditController* c;
+            bool controllerDistinct = instance->vtable->unknown.query_interface(instance, v3_edit_controller_iid, (void**) &c) == V3_OK &&
+                (void*) c == (void*) controller;
+            if (controllerDistinct) {
+                // FIXME: terminate instance
                 //controller->vtable->base.terminate(controller);
-                //controller->vtable->unknown.unref(controller);
+                controller->vtable->unknown.unref(controller);
             }
+            // FIXME: terminate instance
             //component->vtable->base.terminate(component);
+
             component->vtable->unknown.unref(component);
 
             owner->removeInstance(identifier);
@@ -216,7 +221,6 @@ namespace remidy {
             if (result) // not about this class
                 return;
 
-            bool success = false;
             IComponent *component{};
             result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void**) &component);
             if (result == V3_OK) {
@@ -238,21 +242,29 @@ namespace remidy {
                         result = component->vtable->base.initialize(component, (v3_funknown**) &host);
                         if (result == V3_OK) {
                             IEditController* controller{nullptr};
+
                             bool controllerValid = false;
                             if (controllerDistinct) {
                                 result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid, (void**) &controller);
-                                if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
+                                if (result == V3_OK) {
                                     result = controller->vtable->base.initialize(controller, (v3_funknown**) &host);
                                     if (result == V3_OK)
                                         controllerValid = true;
                                 }
+                            } else {
+                                result = component->vtable->unknown.query_interface(component, v3_edit_controller_iid, (void**) &controller);
+                                if (result == V3_OK)
+                                    controllerValid = true;
                             }
-                            else
-                                controllerValid = true;
-                            if (controllerValid && result == V3_OK) {
-                                ret = new AudioPluginInstanceVST3(this, vst3Id, module, component, controller, instance);
-                                return;
+                            if (controllerValid) {
+                                result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) &host);
+                                if (result == V3_OK) {
+                                    ret = new AudioPluginInstanceVST3(this, vst3Id, module, component, controller, instance);
+                                    return;
+                                }
                             }
+                            if (controller)
+                                controller->vtable->unknown.unref(controller);
                         }
                         std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
                     }
