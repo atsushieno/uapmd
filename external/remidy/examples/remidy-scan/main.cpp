@@ -25,20 +25,12 @@ int main(int argc, const char * argv[]) {
 
             // FIXME: this should be unblocked
 
-            // Their terminate() causes SIGKILL
-            if (pluginId->getVendor() == "Native Instruments")
-                continue;
-            // They also cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
+            // They can be loaded but causes: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
             if (pluginId->getDisplayName().starts_with("Battery"))
                 continue;
             if (pluginId->getDisplayName() == "Kontakt")
                 continue;
             if (pluginId->getDisplayName() == "Kontakt 7")
-                continue;
-
-            // Process finished with exit code 137 (interrupted by signal 9:SIGKILL)
-            // it's probably due to mishandling of instantiation (It fails due to setIOMode() timing).
-            if (pluginId->getDisplayName().starts_with("AIDA-X"))
                 continue;
 
             // They somehow need AudioPluginLibraryPool::RetentionPolicy::Retain
@@ -62,10 +54,10 @@ int main(int argc, const char * argv[]) {
             auto instance = format->createInstance(pluginId);
             if (!instance)
                 std::cerr << "Could not instantiate plugin " << pluginId->getDisplayName() << std::endl;
-            delete instance;
-
-            if (!pluginId->getDisplayName().empty())
-                std::cerr << pluginId->getDisplayName() << " done." << std::endl;
+            else {
+                delete instance;
+                std::cerr << "Successfully instantiated and deleted " << pluginId->getDisplayName() << std::endl;
+            }
         }
 
         std::cerr << "Completed." << std::endl;

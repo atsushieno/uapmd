@@ -58,6 +58,7 @@ namespace remidy {
     class AudioPluginFormatVST3::Impl {
         AudioPluginFormatVST3* owner;
         AudioPluginLibraryPool library_pool;
+        HostApplication host{};
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
 
     public:
@@ -154,6 +155,7 @@ namespace remidy {
         void* module;
         IComponent* component;
         IEditController* controller;
+        bool isControllerDistinctFromComponent;
         FUnknown* instance;
     public:
         explicit AudioPluginInstanceVST3(
@@ -162,22 +164,17 @@ namespace remidy {
             void* module,
             IComponent* component,
             IEditController* controller,
+            bool isControllerDistinctFromComponent,
             FUnknown* instance
-        ) : owner(owner), identifier(identifier), module(module), component(component), controller(controller), instance(instance) {
+        ) : owner(owner), identifier(identifier), module(module), component(component), controller(controller), isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
         }
 
         ~AudioPluginInstanceVST3() override {
-            IEditController* c;
-            bool controllerDistinct = instance->vtable->unknown.query_interface(instance, v3_edit_controller_iid, (void**) &c) == V3_OK &&
-                (void*) c == (void*) controller;
-            if (controllerDistinct) {
-                // FIXME: terminate instance
+            if (isControllerDistinctFromComponent) {
                 controller->vtable->base.terminate(controller);
                 controller->vtable->unknown.unref(controller);
             }
-            // FIXME: terminate instance
             component->vtable->base.terminate(component);
-
             component->vtable->unknown.unref(component);
 
             owner->removeInstance(identifier);
@@ -199,7 +196,6 @@ namespace remidy {
     AudioPluginInstance * AudioPluginFormatVST3::Impl::createInstance(AudioPluginIdentifier *uniqueId) {
         auto vst3Id = (AudioPluginIdentifierVST3*) uniqueId;
         AudioPluginInstanceVST3* ret{nullptr};
-        HostApplication host{};
 
         forEachPlugin(vst3Id->info.bundlePath, [&](void* module, IPluginFactory* factory, PluginClassInfo &info) {
             if (memcmp(info.tuid, vst3Id->info.tuid, sizeof(v3_tuid)) != 0)
@@ -226,60 +222,57 @@ namespace remidy {
 
             IComponent *component{};
             result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void**) &component);
-            if (result == V3_OK) {
-                try {
-                    bool controllerDistinct = false;
-                    // From https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/API+Documentation/Index.html#initialization :
-                    // > Hosts should not call other functions before initialize is called, with the sole exception of Steinberg::Vst::IComponent::setIoMode
-                    // > which must be called before initialize.
-                    result = component->vtable->component.set_io_mode(instance, V3_IO_ADVANCED);
-                    if (result == V3_OK || result == V3_NOT_IMPLEMENTED) {
-                        // > Steinberg::Vst::IComponent::getControllerClassId can also be called before (See VST 3 Workflow Diagrams).
-                        // ... is it another "sole exception" ?
-                        v3_tuid controllerClassId{};
-                        result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
-                        if (result == V3_OK) {
-                            if (memcmp(vst3Id->info.tuid, controllerClassId, sizeof(v3_tuid)) != 0)
-                                controllerDistinct = true;
-                        }
-                        result = component->vtable->base.initialize(component, (v3_funknown**) &host);
-                        if (result == V3_OK) {
-                            IEditController* controller{nullptr};
+            if (result != V3_OK) {
+                std::cerr << "Failed to query VST3 component: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
+                return;
+            }
 
-                            bool controllerValid = false;
-                            if (controllerDistinct) {
-                                result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid, (void**) &controller);
-                                if (result == V3_OK) {
-                                    result = controller->vtable->base.initialize(controller, (v3_funknown**) &host);
-                                    if (result == V3_OK)
-                                        controllerValid = true;
-                                }
-                            } else {
-                                result = component->vtable->unknown.query_interface(component, v3_edit_controller_iid, (void**) &controller);
-                                if (result == V3_OK)
-                                    controllerValid = true;
-                            }
-                            if (controllerValid) {
-                                result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) &host);
-                                if (result == V3_OK) {
-                                    ret = new AudioPluginInstanceVST3(this, vst3Id, module, component, controller, instance);
-                                    return;
-                                }
-                            }
-                            if (controller)
-                                controller->vtable->unknown.unref(controller);
-                        }
-                        std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
+            // From https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/API+Documentation/Index.html#initialization :
+            // > Hosts should not call other functions before initialize is called, with the sole exception of Steinberg::Vst::IComponent::setIoMode
+            // > which must be called before initialize.
+            result = component->vtable->component.set_io_mode(instance, V3_IO_ADVANCED);
+            if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
+                std::cerr << "Failed to set vst3 I/O mode: " << uniqueId->getDisplayName() << std::endl;
+                component->vtable->unknown.unref(component);
+                return;
+            }
+
+            // If we can instantiate controller from the component, just use it.
+            bool controllerDistinct = false;
+            IEditController* controller{nullptr};
+            bool controllerValid = false;
+            result = component->vtable->unknown.query_interface(component, v3_edit_controller_iid, (void**) &controller);
+            if (result == V3_OK)
+                controllerValid = true;
+
+            // Now initialize the component, and optionally initialize the controller.
+            result = component->vtable->base.initialize(component, (v3_funknown**) &host);
+            if (result == V3_OK) {
+                // > Steinberg::Vst::IComponent::getControllerClassId can also be called before (See VST 3 Workflow Diagrams).
+                // ... is it another "sole exception" ?
+                v3_tuid controllerClassId{};
+                result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
+                if (result == V3_OK && memcmp(vst3Id->info.tuid, controllerClassId, sizeof(v3_tuid)) != 0) {
+                    controllerDistinct = true;
+                    result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid, (void**) &controller);
+                    if (result == V3_OK) {
+                        result = controller->vtable->base.initialize(controller, (v3_funknown**) &host);
+                        if (result == V3_OK)
+                            controllerValid = true;
                     }
-                    else
-                        std::cerr << "Failed to set vst3 I/O mode: " << uniqueId->getDisplayName() << std::endl;
-                } catch (...) {
-                    std::cerr << "Crash on initializing vst3: " << uniqueId->getDisplayName() << std::endl;
                 }
             }
-            else
-                std::cerr << "Failed to query VST3 component: " << uniqueId->getDisplayName() << " result: " << result << std::endl;
-
+            if (controllerValid) {
+                auto handler = host.getComponentHandler();
+                result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) handler);
+                if (result == V3_OK) {
+                    ret = new AudioPluginInstanceVST3(this, vst3Id, module, component, controller, controllerDistinct, instance);
+                    return;
+                }
+            }
+            if (controller)
+                controller->vtable->unknown.unref(controller);
+            std::cerr << "Failed to initialize vst3: " << uniqueId->getDisplayName() << std::endl;
             component->vtable->unknown.unref(component);
         }, [&](void* module) {
             // do not unload library here.
@@ -456,8 +449,6 @@ namespace remidy {
                 v3_class_info cls{};
                 auto result = factory->vtable->factory.get_class_info(factory, i, &cls);
                 if (result == 0) {
-                    //std::cerr << i << ": (" << cls.category << ") " << cls.name << std::endl;
-                    // FIXME: can we check this in any better way?
                     if (!strcmp(cls.category, kVstAudioEffectClass)) {
                         std::string name = std::string{cls.name}.substr(0, strlen(cls.name));
                         std::string vendor = std::string{fInfo.vendor}.substr(0, strlen(fInfo.vendor));
@@ -467,7 +458,7 @@ namespace remidy {
                     }
                 }
                 else
-                    std::cerr << i << ": ERROR in " << cls.name << std::endl;
+                    std::cerr << ": failed to retrieve class info at " << i << ", in " << vst3Dir.string() << std::endl;
             }
             cleanup(module);
         }

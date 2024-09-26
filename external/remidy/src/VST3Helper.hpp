@@ -37,6 +37,8 @@ namespace remidy {
         v3_result (V3_API* notify_unit_selection)(void* self, v3_unit_id unitId);
         v3_result (V3_API* notify_program_list_change)(void* self, v3_program_list_id listId, int32_t programIndex);
     };
+    static constexpr const v3_tuid v3_unit_handler_iid =
+        V3_ID(0x4B5147F8, 0x4654486B, 0x8DAB30BA, 0x163A3C56);
 
     struct FUnknownVTable {
         v3_funknown unknown;
@@ -53,16 +55,16 @@ namespace remidy {
     struct IPluginBaseVTable : FUnknownVTable {
         v3_plugin_base base;
     };
-    struct IComponentVtable : IPluginBaseVTable {
+    struct IComponentVTable : IPluginBaseVTable {
         v3_component component;
     };
     struct IEditControllerVTable : IPluginBaseVTable {
         v3_edit_controller controller;
     };
-    struct IComponentHandlerVtable : FUnknownVTable {
+    struct IComponentHandlerVTable : FUnknownVTable {
         v3_component_handler handler;
     };
-    struct IComponentHandler2Vtable : FUnknownVTable {
+    struct IComponentHandler2VTable : FUnknownVTable {
         v3_component_handler2 handler;
     };
     struct IUnitHandlerVTable : FUnknownVTable {
@@ -85,16 +87,16 @@ namespace remidy {
         struct IPluginFactory3VTable *vtable{};
     };
     struct IComponent {
-        struct IComponentVtable *vtable{};
+        struct IComponentVTable *vtable{};
     };
     struct IEditController {
         struct IEditControllerVTable *vtable{};
     };
     struct IComponentHandler {
-        struct IComponentHandlerVtable *vtable{};
+        struct IComponentHandlerVTable *vtable{};
     };
     struct IComponentHandler2 {
-        struct IComponentHandler2Vtable *vtable{};
+        struct IComponentHandler2VTable *vtable{};
     };
     struct IUnitHandler {
         struct IUnitHandlerVTable *vtable{};
@@ -104,15 +106,16 @@ namespace remidy {
     };
 
     class HostApplication :
-        public IComponentHandler,
-        public IComponentHandler2,
-        public IUnitHandler,
+        //public IComponentHandler,
+        //public IUnitHandler,
         public IHostApplication
     {
-        IComponentHandlerVtable handler_vtable{};
-        IComponentHandler2Vtable handler_vtable2{};
+        IComponentHandlerVTable handler_vtable{};
         IUnitHandlerVTable unit_handler_vtable{};
         IHostApplicationVTable host_vtable{};
+        IComponentHandler handler{nullptr};
+        IUnitHandler unit_handler{nullptr};
+
         static const std::basic_string<char16_t> name16t;
 
         static v3_result query_interface(void *self, const v3_tuid iid, void **obj);
@@ -136,23 +139,25 @@ namespace remidy {
             host_vtable.unknown.unref = remove_ref;
             host_vtable.application.create_instance = create_instance;
             host_vtable.application.get_name = get_name;
-            IHostApplication::vtable = &host_vtable;
+            vtable = &host_vtable;
 
             handler_vtable.unknown = host_vtable.unknown;
             handler_vtable.handler.begin_edit = begin_edit;
             handler_vtable.handler.end_edit = end_edit;
             handler_vtable.handler.perform_edit = perform_edit;
             handler_vtable.handler.restart_component = restart_component;
-            IComponentHandler::vtable = &handler_vtable;
-            handler_vtable2.unknown = host_vtable.unknown;
-            IUnitHandler::vtable = &unit_handler_vtable;
+            handler.vtable = &handler_vtable;
+            unit_handler_vtable.unknown = host_vtable.unknown;
             unit_handler_vtable.handler.notify_unit_selection = notify_unit_selection;
             unit_handler_vtable.handler.notify_program_list_change = notify_program_list_change;
-            IComponentHandler2::vtable = &handler_vtable2;
+            unit_handler.vtable = &unit_handler_vtable;
         }
-        ~HostApplication() = default;
+        ~HostApplication();
 
         v3_result queryInterface(const v3_tuid iid, void **obj);
+
+        inline IComponentHandler* getComponentHandler() { return &handler; }
+        inline IUnitHandler* getUnitHandler() { return &unit_handler; }
     };
     std::filesystem::path getPluginCodeFile(std::filesystem::path& pluginPath);
 
