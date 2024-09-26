@@ -35,12 +35,12 @@ namespace remidy {
 
     std::function<remidy_status_t(std::filesystem::path &vst3Dir, void **module)> loadFunc =
             [](std::filesystem::path &vst3Dir, void** module) {
-        *module = loadLibraryFromBundle(vst3Dir);
+        *module = loadModuleFromVst3Path(vst3Dir);
         if (*module) {
             auto err = initializeModule(*module);
             if (err != 0) {
                 std::cerr << "Could not initialize the module from bundle: " << vst3Dir.c_str() << std::endl;
-                unloadLibrary(*module);
+                unloadModule(*module);
                 *module = nullptr;
             }
         }
@@ -50,7 +50,7 @@ namespace remidy {
     };
     std::function<remidy_status_t(std::filesystem::path &libraryFile, void* module)> unloadFunc =
             [](std::filesystem::path &libraryFile, void* module) {
-                unloadLibrary(module);
+                unloadModule(module);
                 // FIXME: define status codes
                 return 0;
     };
@@ -288,6 +288,9 @@ namespace remidy {
     // Loader helpers
 
     std::filesystem::path getPluginCodeFile(std::filesystem::path& pluginPath) {
+        // The ABI subdirectory name is VST3 specific. Therefore, this function is only usable with VST3.
+        // But similar code structure would be usable with other plugin formats.
+
         // https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Format.html
 #if _WIN32
 #if __x86_64__
@@ -315,13 +318,14 @@ namespace remidy {
         return {};
     }
 
-    void* loadLibraryFromBundle(std::filesystem::path vst3Dir) {
+    void* loadModuleFromVst3Path(std::filesystem::path vst3Dir) {
 #if __APPLE__
         auto u8 = (const UInt8*) vst3Dir.c_str();
-        auto ret = CFBundleCreate(kCFAllocatorDefault,
-            CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
-                CFStringCreateWithBytes(kCFAllocatorDefault, u8, vst3Dir.string().size(), CFStringEncoding{}, false),
-                kCFURLPOSIXPathStyle, true));
+        auto filePath = CFStringCreateWithBytes(kCFAllocatorDefault, u8, vst3Dir.string().size(), CFStringEncoding{}, false);
+        auto cfurl = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, filePath, kCFURLPOSIXPathStyle, true);
+        auto ret = CFBundleCreate(kCFAllocatorDefault, cfurl);
+        CFRelease(cfurl);
+        CFRelease(filePath);
         assert(ret);
         return ret;
 #else
@@ -342,11 +346,11 @@ namespace remidy {
 
     // The returned library (platform dependent) must be released later (in the platform manner)
     // It might fail due to ABI mismatch on macOS. We have to ignore the error and return NULL.
-    void* loadLibraryFromBinary(std::filesystem::path libraryFile) {
+    void* loadLibraryFromBinary(std::filesystem::path& vst3Dir) {
 #if _WIN32
         auto ret = LoadLibraryA(libraryFile.c_str());
 #elif __APPLE__
-        auto cfStringRef = createCFString(libraryFile.string().c_str());
+        auto cfStringRef = createCFString(vst3Dir.string().c_str());
         auto ret = CFBundleCreate(kCFAllocatorDefault,
             CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
                 cfStringRef,
@@ -361,63 +365,65 @@ namespace remidy {
         return ret;
     }
 
-    int32_t initializeModule(void* library) {
+    int32_t initializeModule(void* module) {
 #if _WIN32
-        auto module = (HMODULE) library;
+        auto module = (HMODULE) module;
         auto initDll = (init_dll_func) GetProcAddress(module, "initDll");
         if (initDll) // optional
             initDll();
 #elif __APPLE__
-        auto bundle = (CFBundleRef) library;
+        auto bundle = (CFBundleRef) module;
         if (!CFBundleLoadExecutable(bundle))
             return -1;
         auto bundleEntry = (vst3_bundle_entry_func) CFBundleGetFunctionPointerForName(bundle, createCFString("bundleEntry"));
         if (!bundleEntry)
             return -2;
         // check this in prior (not calling now).
-        auto bundleExit = !bundleEntry ? nullptr : CFBundleGetFunctionPointerForName(bundle, createCFString("bundleExit"));
+        auto bundleExit = !module ? nullptr : CFBundleGetFunctionPointerForName(bundle, createCFString("bundleExit"));
         if (!bundleExit)
             return -3;
         if (!bundleEntry(bundle))
             return -4;
 #else
-        auto moduleEntry = (vst3_module_entry_func) dlsym(library, "ModuleEntry");
+        auto moduleEntry = (vst3_module_entry_func) dlsym(module, "ModuleEntry");
         if (!errno)
-            dlsym(library, "ModuleExit"); // check this in prior.
+            dlsym(module, "ModuleExit"); // check this in prior.
         if (errno)
             return errno;
-        moduleEntry(library);
+        moduleEntry(module);
 #endif
         return 0;
     }
 
-    void unloadLibrary(void* library) {
+    void unloadModule(void* moduleBundle) {
 #if _WIN32
         auto exitDll = (vst3_exit_dll_func) GetProcAddress(module, "exitDll");
         if (exitDll) // optional
             exitDll();
-        FreeLibrary((HMODULE) library);
+        FreeLibrary((HMODULE) moduleBundle);
 #elif __APPLE__
-        auto bundle = (CFBundleRef) library;
+        auto bundle = (CFBundleRef) moduleBundle;
         auto bundleExit = (vst3_bundle_exit_func) CFBundleGetFunctionPointerForName(bundle, createCFString("bundleExit"));
         if (bundleExit) // it might not exist, as it may fail to load the library e.g. ABI mismatch.
             bundleExit();
+        // FIXME: use CFAllocatorDeallocate(bundle) instead
         CFBundleUnloadExecutable(bundle);
+        //CFAllocatorDeallocate(kCFAllocatorDefault, bundle);
 #else
         auto moduleExit = (vst3_module_exit_func) dlsym(library, "ModuleExit");
         moduleExit(); // no need to check existence, it's done at loading.
-        dlclose(library);
+        dlclose(moduleBundle);
 #endif
     }
 
-    IPluginFactory* getFactoryFromLibrary(void* library) {
+    IPluginFactory* getFactoryFromLibrary(void* module) {
 #if _WIN32
-        auto sym = (get_plugin_factory_func) GetProcAddress((HMODULE) library, "GetPluginFactory");
+        auto sym = (get_plugin_factory_func) GetProcAddress((HMODULE) module, "GetPluginFactory");
 #elif __APPLE__
-        auto bundle = (CFBundleRef) library;
+        auto bundle = (CFBundleRef) module;
         auto sym = (get_plugin_factory_func) CFBundleGetFunctionPointerForName(bundle, createCFString("GetPluginFactory"));
 #else
-        auto sym = (get_plugin_factory_func) dlsym(library, "GetPluginFactory");
+        auto sym = (get_plugin_factory_func) dlsym(module, "GetPluginFactory");
 #endif
         assert(sym);
         return sym();

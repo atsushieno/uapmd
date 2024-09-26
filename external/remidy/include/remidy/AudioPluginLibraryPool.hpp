@@ -24,14 +24,14 @@ namespace remidy {
     class AudioPluginLibraryPool {
     public:
         explicit AudioPluginLibraryPool(
-            std::function<remidy_status_t(std::filesystem::path& libraryFile, void** module)>& load,
-            std::function<remidy_status_t(std::filesystem::path& libraryFile, void* module)>& unload
+            std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void** module)>& load,
+            std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void* module)>& unload
         );
         virtual ~AudioPluginLibraryPool();
 
         struct ModuleEntry {
             uint32_t refCount;
-            std::filesystem::path vst3Dir;
+            std::filesystem::path moduleBundlePath;
             void* module;
         };
         enum RetentionPolicy {
@@ -42,12 +42,13 @@ namespace remidy {
 
         RetentionPolicy getRetentionPolicy();
         void setRetentionPolicy(RetentionPolicy value);
-        void* loadOrAddReference(std::filesystem::path& libraryFile);
-        remidy_status_t removeReference(std::filesystem::path& libraryFile);
+        // Returns either HMODULE, CFBundle*, or dlopen-ed library.
+        void* loadOrAddReference(std::filesystem::path& moduleBundlePath);
+        remidy_status_t removeReference(std::filesystem::path& moduleBundlePath);
 
     private:
-        std::function<remidy_status_t(std::filesystem::path& vst3Dir, void** module)> load;
-        std::function<remidy_status_t(std::filesystem::path& vst3Dir, void* module)> unload;
+        std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void** module)> load;
+        std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void* module)> unload;
         // FIXME: the default should be `UnloadImmediately`.
         RetentionPolicy retentionPolicy{Retain};
         std::map<std::filesystem::path, ModuleEntry> entries{};
