@@ -26,28 +26,13 @@ int main(int argc, const char * argv[]) {
             // FIXME: this should be unblocked
 
             // They can be loaded but causes: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
+
             if (pluginId->getDisplayName().starts_with("Battery"))
                 continue;
             if (pluginId->getDisplayName() == "Kontakt")
                 continue;
             if (pluginId->getDisplayName() == "Kontakt 7")
                 continue;
-
-            // They somehow need AudioPluginLibraryPool::RetentionPolicy::Retain
-            /*
-            if (pluginId->getDisplayName().starts_with("Ozone 9"))
-                continue;
-            if (pluginId->getDisplayName().starts_with("Neutron 3"))
-                continue;
-            if (pluginId->getDisplayName().starts_with("Neoverb"))
-                continue;
-            if (pluginId->getDisplayName().starts_with("VocalSynth 2"))
-                continue;
-            if (pluginId->getDisplayName().starts_with("Tonal Balance Control 2"))
-                continue;
-            if (pluginId->getDisplayName().starts_with("Relay"))
-                continue;
-            */
 
             std::cerr << "instantiating " << pluginId->getDisplayName() << std::endl;
 

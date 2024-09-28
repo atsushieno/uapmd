@@ -320,11 +320,35 @@ namespace remidy {
 
     void* loadModuleFromVst3Path(std::filesystem::path vst3Dir) {
 #if __APPLE__
-        auto u8 = (const UInt8*) vst3Dir.c_str();
-        auto filePath = CFStringCreateWithBytes(kCFAllocatorDefault, u8, vst3Dir.string().size(), CFStringEncoding{}, false);
-        auto cfurl = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, filePath, kCFURLPOSIXPathStyle, true);
-        auto ret = CFBundleCreate(kCFAllocatorDefault, cfurl);
-        CFRelease(cfurl);
+        const auto allBundles = CFBundleGetAllBundles();
+        CFBundleRef bundle{nullptr};
+        for (size_t i = 0, n = CFArrayGetCount(allBundles); i < n; i++) {
+            bundle = (CFBundleRef) CFArrayGetValueAtIndex(allBundles, i);
+            const auto url = CFBundleCopyBundleURL(bundle);
+            const auto pathString = CFURLCopyPath(url);
+            if (!strcmp(CFStringGetCStringPtr(pathString, kCFStringEncodingUTF8), vst3Dir.c_str())) {
+                // increase the reference count and return it
+                CFRetain(bundle);
+                CFRelease(pathString);
+                CFRelease(url);
+                return bundle;
+            }
+            CFRelease(pathString);
+            CFRelease(url);
+        }
+        const auto filePath = CFStringCreateWithBytes(
+            kCFAllocatorDefault,
+            (const UInt8*) vst3Dir.c_str(),
+            vst3Dir.string().size(),
+            CFStringEncoding{},
+            false);
+        const auto cfUrl = CFURLCreateWithFileSystemPath(
+            kCFAllocatorDefault,
+            filePath,
+            kCFURLPOSIXPathStyle,
+            true);
+        const auto ret = CFBundleCreate(kCFAllocatorDefault, cfUrl);
+        CFRelease(cfUrl);
         CFRelease(filePath);
         assert(ret);
         return ret;
@@ -406,9 +430,7 @@ namespace remidy {
         auto bundleExit = (vst3_bundle_exit_func) CFBundleGetFunctionPointerForName(bundle, createCFString("bundleExit"));
         if (bundleExit) // it might not exist, as it may fail to load the library e.g. ABI mismatch.
             bundleExit();
-        // FIXME: use CFAllocatorDeallocate(bundle) instead
-        CFBundleUnloadExecutable(bundle);
-        //CFAllocatorDeallocate(kCFAllocatorDefault, bundle);
+        CFRelease(bundle);
 #else
         auto moduleExit = (vst3_module_exit_func) dlsym(library, "ModuleExit");
         moduleExit(); // no need to check existence, it's done at loading.

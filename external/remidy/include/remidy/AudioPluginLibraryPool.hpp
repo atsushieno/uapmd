@@ -49,8 +49,7 @@ namespace remidy {
     private:
         std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void** module)> load;
         std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void* module)> unload;
-        // FIXME: the default should be `UnloadImmediately`.
-        RetentionPolicy retentionPolicy{Retain};
+        RetentionPolicy retentionPolicy{UnloadImmediately};
         std::map<std::filesystem::path, ModuleEntry> entries{};
     };
 }

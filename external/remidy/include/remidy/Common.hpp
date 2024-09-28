@@ -8,8 +8,6 @@ typedef uint32_t remidy_ump_t;
 typedef int64_t remidy_timestamp_t;
 
 namespace remidy {
-    class AudioPluginLibrary;
-
     class AudioPluginIdentifier {
     public:
         AudioPluginIdentifier() = default;
