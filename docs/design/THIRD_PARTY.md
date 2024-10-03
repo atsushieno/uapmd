@@ -44,5 +44,6 @@ Rust: There are too many delusive MIDI libraries that only takes name and implem
 
 ## Setup Client
 
-- We could use webview.h
-  - or we could use choc::WebView, but embedding non-Evergreen Microsoft WebView2 is a security risk.
+- We could use saucer
+  - webview.h is good enough too, though we do not have to go with C API. We might also want to use native stream requests.
+  - we could use choc::WebView, but embedding non-Evergreen Microsoft WebView2 is a security risk.

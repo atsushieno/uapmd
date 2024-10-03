@@ -30,6 +30,7 @@ target_sources(remidy PRIVATE
         src/AudioPluginInstance.cpp
         src/HostApplication.cpp
         src/AudioPluginLibraryPool.cpp
+        src/PluginCatalog.cpp
 
         src/AudioBufferList.cpp
         src/MidiSequence.cpp

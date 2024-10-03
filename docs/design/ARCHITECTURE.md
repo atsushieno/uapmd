@@ -50,6 +50,21 @@ Our hosting support is limited to the following features:
 
 Namely, we do not particularly support plugin UI.
 
+### Audio Plugin IDs and metadata
+
+See [PLUGIN_LIST_CACHE.md](PLUGIN_LIST_CACHE.md).
+
+### Multi-format ready plugin state
+
+There are handful concerns around saving and restoring audio plugins:
+
+- States should not be bound to local PC
+  e.g. my plugin state saved on my work PC should be recoverable on my home PC.
+- Saved states should be loadable on different OSes
+  e.g. my plugin state saved on Linux should be loadable on Windows.
+- Saved states should be loadable *across* plugin formats
+  e.g. my plugin state saved in VST3 should be loadable in AU, LV2, or CLAP.
+
 ## Audio Configuration
 
 By default, we use platform's default audio I/O device settings.

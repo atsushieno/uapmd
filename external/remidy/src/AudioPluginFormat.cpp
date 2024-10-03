@@ -1,14 +1,14 @@
 
-#include "AudioPluginFormat.hpp"
+#include "remidy.hpp"
 
 namespace remidy {
     class AudioPluginFormat::Impl {
         AudioPluginFormat* owner;
-        std::vector<AudioPluginIdentifier*> cached_plugins{};
+        std::vector<PluginCatalogEntry*> cached_plugins{};
     public:
         explicit Impl(AudioPluginFormat* owner);
         bool hasPluginListCache();
-        std::vector<AudioPluginIdentifier*> getAvailablePlugins();
+        std::vector<PluginCatalogEntry*> getAvailablePlugins();
     };
 
     AudioPluginFormat::AudioPluginFormat() {
@@ -19,7 +19,7 @@ namespace remidy {
         return impl->hasPluginListCache();
     }
 
-    std::vector<AudioPluginIdentifier*> AudioPluginFormat::getAvailablePlugins() {
+    std::vector<PluginCatalogEntry*> AudioPluginFormat::getAvailablePlugins() {
         return impl->getAvailablePlugins();
     }
 
@@ -27,7 +27,7 @@ namespace remidy {
 
     bool AudioPluginFormat::Impl::hasPluginListCache() { return !cached_plugins.empty(); }
 
-    std::vector<AudioPluginIdentifier*> AudioPluginFormat::Impl::getAvailablePlugins() {
+    std::vector<PluginCatalogEntry*> AudioPluginFormat::Impl::getAvailablePlugins() {
         if (cached_plugins.empty())
             cached_plugins.append_range(owner->scanAllAvailablePlugins());
         return cached_plugins;

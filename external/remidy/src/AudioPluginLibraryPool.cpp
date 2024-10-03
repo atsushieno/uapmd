@@ -1,7 +1,15 @@
 
-#include "AudioPluginLibraryPool.hpp"
+#include "remidy.hpp"
 
 #include <iostream>
+
+void remidy::PluginCatalog::load(std::filesystem::path path) {
+    throw std::runtime_error("remidy::PluginCatalog::load() is not implemented.");
+}
+
+void remidy::PluginCatalog::save(std::filesystem::path path) {
+    throw std::runtime_error("remidy::PluginCatalog::save() is not implemented.");
+}
 
 remidy::AudioPluginLibraryPool::AudioPluginLibraryPool(
     std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void** module)>& load,

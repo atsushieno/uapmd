@@ -5,7 +5,7 @@
 #include <functional>
 #include <vector>
 
-#include "../include/remidy/Common.hpp"
+#include "remidy.hpp"
 #include <travesty/factory.h>
 #include <travesty/component.h>
 #include <travesty/host.h>
@@ -177,16 +177,16 @@ namespace remidy {
         std::filesystem::path bundlePath;
         std::string vendor;
         std::string url;
-        std::string className;
+        std::string name;
         v3_tuid tuid{};
 
         PluginClassInfo(
             std::filesystem::path& bundlePath,
             std::string& vendor,
             std::string& url,
-            std::string& className,
+            std::string& name,
             v3_tuid tuid
-        ): bundlePath(bundlePath), vendor(vendor), url(url), className(className) {
+        ): bundlePath(bundlePath), vendor(vendor), url(url), name(name) {
             memcpy(this->tuid, tuid, 16);
         }
     };
