@@ -23,13 +23,13 @@ int main(int argc, const char * argv[]) {
     auto formats = std::vector<remidy::AudioPluginFormat*>{&vst3};
 
     for (auto format : formats) {
-        auto pluginIds = format->getAvailablePlugins();
-        for (int i = 0, n = pluginIds.size(); i < n; ++i) {
-            auto pluginId = pluginIds[i];
+        auto infos = format->getAvailablePlugins().getPlugins();
+        for (int i = 0, n = infos.size(); i < n; ++i) {
+            auto pluginId = infos[i];
             auto displayName = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
             auto vendor = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::VendorName);
             auto url = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::ProductUrl);
-            std::cerr << "[" << i + 1 << "/" << pluginIds.size() << "] " << displayName << " : " << vendor << " (" << url << ")" << std::endl;
+            std::cerr << "[" << i + 1 << "/" << infos.size() << "] " << displayName << " : " << vendor << " (" << url << ")" << std::endl;
 
             // FIXME: implement blocklist
             if (displayName.starts_with("Firefly Synth 1.8.6 VST3"))

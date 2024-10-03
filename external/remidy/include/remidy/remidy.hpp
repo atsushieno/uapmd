@@ -14,6 +14,14 @@ typedef int64_t remidy_timestamp_t;
 
 namespace remidy {
 
+    enum RemidyStatus {
+        OK,
+        BUNDLE_NOT_FOUND,
+        FAILED_TO_INSTANTIATE
+    };
+
+    // Represents a list of audio buffers, separate per channel.
+    // It is part of `AudioProcessingContext`.
     class AudioBufferList {
     public:
         float* getFloatBufferForChannel(int32_t channel);
@@ -21,7 +29,8 @@ namespace remidy {
         int32_t size();
     };
 
-    // Represents a sample-accurate sequence of UMPs
+    // Represents a sample-accurate sequence of UMPs.
+    // It is part of `AudioProcessingContext`.
     class MidiSequence {
         std::vector<remidy_ump_t> messages;
     public:
@@ -54,14 +63,14 @@ namespace remidy {
         // Set a new plugin ID. It is settable only because deserializers will use it.
         remidy_status_t pluginId(std::string& newId) {
             id = newId;
-            return remidy_status_t(0); // FIXME: define constants
+            return RemidyStatus::OK;
         }
         // Returns a file system path to the bundle, if the format supports it.
         std::filesystem::path& bundlePath() { return bundle; }
         // Sets a file system path to the bundle, if the format supports it.
         remidy_status_t bundlePath(const std::filesystem::path& newPath) {
             bundle = newPath;
-            return remidy_status_t(0); // FIXME: define constants
+            return RemidyStatus::OK;
         }
         std::string getMetadataProperty(const MetadataPropertyID id) {
             const auto ret = props.find(id);
@@ -73,22 +82,24 @@ namespace remidy {
     };
 
     class PluginCatalog {
-        std::vector<std::unique_ptr<PluginCatalogEntry>> list;
+        std::vector<std::unique_ptr<PluginCatalogEntry>> list{};
 
     public:
-        std::vector<std::unique_ptr<PluginCatalogEntry>>& getPlugins() { return list; }
+        std::vector<PluginCatalogEntry*> getPlugins();
+        void add(std::unique_ptr<PluginCatalogEntry> entry);
+        void clear();
         void load(std::filesystem::path path);
         void save(std::filesystem::path path);
     };
 
 
-    class AudioPluginLibraryPool {
+    class PluginBundlePool {
     public:
-        explicit AudioPluginLibraryPool(
+        explicit PluginBundlePool(
             std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void** module)>& load,
             std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void* module)>& unload
         );
-        virtual ~AudioPluginLibraryPool();
+        virtual ~PluginBundlePool();
 
         struct ModuleEntry {
             uint32_t refCount;
@@ -167,13 +178,13 @@ namespace remidy {
         // This impacts on whether we will have to discard and instantiate a plugin
         // when our use app changes the sample rate.
         bool instantiateRequiresSampleRate();
-        std::vector<PluginCatalogEntry*> getAvailablePlugins();
+        PluginCatalog& getAvailablePlugins();
 
         virtual bool usePluginSearchPaths() = 0;
         virtual std::vector<std::string>& getDefaultSearchPaths() = 0;
         virtual ScanningStrategyValue scanRequiresLoadLibrary() = 0;
         virtual ScanningStrategyValue scanRequiresInstantiation() = 0;
-        virtual std::vector<PluginCatalogEntry*> scanAllAvailablePlugins() = 0;
+        virtual PluginCatalog scanAllAvailablePlugins() = 0;
 
         virtual std::string savePluginInformation(PluginCatalogEntry* identifier) = 0;
         virtual std::string savePluginInformation(AudioPluginInstance* instance) = 0;
@@ -191,7 +202,7 @@ namespace remidy {
         std::vector<std::string>& getOverrideSearchPaths() { return overrideSearchPaths; }
         void addSearchPath(const std::string& path) { overrideSearchPaths.emplace_back(path); }
 
-        virtual std::vector<std::unique_ptr<PluginCatalogEntry>> createPluginInformation(std::filesystem::path &bundlePath) = 0;
+        virtual PluginCatalog createCatalogFragment(std::filesystem::path &bundlePath) = 0;
     };
 
 
@@ -206,7 +217,7 @@ namespace remidy {
         std::vector<std::string>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         ScanningStrategyValue scanRequiresInstantiation() override;
-        std::vector<PluginCatalogEntry*> scanAllAvailablePlugins() override;
+        PluginCatalog scanAllAvailablePlugins() override;
 
         std::string savePluginInformation(PluginCatalogEntry* identifier) override;
         std::string savePluginInformation(AudioPluginInstance* instance) override;
@@ -214,7 +225,7 @@ namespace remidy {
 
         AudioPluginInstance* createInstance(PluginCatalogEntry* uniqueId) override;
 
-        std::vector<std::unique_ptr<PluginCatalogEntry>> createPluginInformation(std::filesystem::path &bundlePath) override;
+        PluginCatalog createCatalogFragment(std::filesystem::path &bundlePath) override;
 
     private:
         Impl *impl;

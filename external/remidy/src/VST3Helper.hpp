@@ -5,7 +5,6 @@
 #include <functional>
 #include <vector>
 
-#include "remidy.hpp"
 #include <travesty/factory.h>
 #include <travesty/component.h>
 #include <travesty/host.h>

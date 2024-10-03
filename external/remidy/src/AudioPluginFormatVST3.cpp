@@ -21,19 +21,17 @@ namespace remidy {
             }
         }
 
-        // FIXME: define status codes
-        return *module == nullptr;
+        return *module == nullptr ? RemidyStatus::FAILED_TO_INSTANTIATE : RemidyStatus::OK;
     };
     std::function<remidy_status_t(std::filesystem::path &libraryFile, void* module)> unloadFunc =
             [](std::filesystem::path &libraryFile, void* module) {
                 unloadModule(module);
-                // FIXME: define status codes
-                return 0;
+                return RemidyStatus::OK;
     };
 
     class AudioPluginFormatVST3::Impl {
         AudioPluginFormatVST3* owner;
-        AudioPluginLibraryPool library_pool;
+        PluginBundlePool library_pool;
         HostApplication host{};
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
@@ -44,15 +42,14 @@ namespace remidy {
             library_pool(loadFunc,unloadFunc) {
         }
 
-        PluginCatalog catalog;
-        void scanAllAvailablePlugins();
+        PluginCatalog scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path vst3Dir,
             std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)> func,
             std::function<void(void* module)> cleanup
         );
         AudioPluginInstance* createInstance(PluginCatalogEntry *uniqueId);
         void removeInstance(PluginCatalogEntry *info);
-        std::vector<std::unique_ptr<PluginCatalogEntry>> createPluginInformation(const std::filesystem::path &bundlePath);
+        PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
     };
 
     std::unique_ptr<PluginCatalogEntry> AudioPluginFormatVST3::Impl::createPluginInformation(PluginClassInfo &info) {
@@ -144,12 +141,8 @@ namespace remidy {
 
     AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresInstantiation() { return MAYBE; }
 
-    std::vector<PluginCatalogEntry*> AudioPluginFormatVST3::scanAllAvailablePlugins() {
-        std::vector<PluginCatalogEntry*> ret{};
-        impl->scanAllAvailablePlugins();
-        for (auto& info : impl->catalog.getPlugins())
-            ret.emplace_back(info.get());
-        return ret;
+    PluginCatalog AudioPluginFormatVST3::scanAllAvailablePlugins() {
+        return impl->scanAllAvailablePlugins();
     }
 
     std::string AudioPluginFormatVST3::savePluginInformation(AudioPluginInstance *instance) {
@@ -162,16 +155,16 @@ namespace remidy {
         throw std::runtime_error("restorePluginInformation() is not implemented yet.");
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatVST3::Impl::createPluginInformation(
+    PluginCatalog AudioPluginFormatVST3::Impl::createCatalogFragment(
         const std::filesystem::path &bundlePath) {
         if (strcasecmp(bundlePath.extension().c_str(), ".vst3") != 0)
-            return std::vector<std::unique_ptr<PluginCatalogEntry>>{};
+            return PluginCatalog{};
         std::vector<PluginClassInfo> infos{};
         scanAllAvailablePluginsFromLibrary(bundlePath, infos);
 
-        std::vector<std::unique_ptr<PluginCatalogEntry>> ret;
+        PluginCatalog ret{};
         for (auto& info : infos) {
-            ret.emplace_back(createPluginInformation(info));
+            ret.add(createPluginInformation(info));
         }
         return ret;
     }
@@ -180,7 +173,8 @@ namespace remidy {
         return identifier->bundlePath();
     }
 
-    void AudioPluginFormatVST3::Impl::scanAllAvailablePlugins() {
+    PluginCatalog AudioPluginFormatVST3::Impl::scanAllAvailablePlugins() {
+        PluginCatalog ret{};
         std::vector<PluginClassInfo> infos;
         for (auto &path : owner->getDefaultSearchPaths()) {
             std::filesystem::path dir{path};
@@ -192,11 +186,9 @@ namespace remidy {
                 }
             }
         }
-        for (auto &id : catalog.getPlugins())
-            id.reset();
-        catalog.getPlugins().clear();
         for (auto &info : infos)
-            catalog.getPlugins().emplace_back(createPluginInformation(info));
+            ret.add(createPluginInformation(info));
+        return ret;
     }
 
     // AudioPluginInstanceVST3
@@ -213,8 +205,8 @@ namespace remidy {
         return impl->createInstance(uniqueId);
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatVST3::createPluginInformation(std::filesystem::path &bundlePath) {
-        return impl->createPluginInformation(bundlePath);
+    PluginCatalog AudioPluginFormatVST3::createCatalogFragment(std::filesystem::path &bundlePath) {
+        return impl->createCatalogFragment(bundlePath);
     }
 
     AudioPluginInstance * AudioPluginFormatVST3::Impl::createInstance(PluginCatalogEntry *pluginInfo) {
