@@ -23,23 +23,6 @@ void remidy::Logger::log(LogLevel level, const char *format, ...) {
     va_end(args);
 }
 
-void remidy::Logger::logv(LogLevel level, const char *format, va_list args) {
-    rt_logger.Logv(LogContext{.level = level, .owner = this, .logger = &rt_logger}, format, args);
-}
-
-#define DEFINE_DEFAULT_LOGGER(UPPER, CAMEL) \
-void remidy::Logger::defaultLog##CAMEL(const char *format, ...) { \
-    va_list args; \
-    va_start(args, format); \
-    remidy::Logger::getGlobal()->logv(UPPER, format, args); \
-    va_end(args); \
-}
-
-DEFINE_DEFAULT_LOGGER(ERROR , Error)
-DEFINE_DEFAULT_LOGGER(WARNING , Warning)
-DEFINE_DEFAULT_LOGGER(INFO , Info)
-DEFINE_DEFAULT_LOGGER(DIAGNOSTIC , Diagnostic)
-
 class CallbackMessageFunctor
 {
 public:
@@ -69,6 +52,41 @@ rtlog::LogProcessingThread<RealtimeLogger, CallbackMessageFunctor>* getLaunchedL
     return &thread;
 }
 
+class remidy::Logger::Impl {
+    Logger* owner;
+
+public:
+    explicit Impl(Logger* owner) :
+        owner(owner) {
+        initializeGlobalLogger();
+    }
+    ~Impl() {
+        getLaunchedLoggerThread()->Stop();
+    }
+
+    void initializeGlobalLogger();
+
+    void log(LogLevel level, const char *format, ...) {
+        va_list args;
+        va_start(args, format);
+        logv(level, format, args);
+        va_end(args);
+    }
+
+    void logv(LogLevel level, const char *format, va_list args) {
+        rt_logger.Logv(LogContext{.level = level, .owner = owner, .logger = &rt_logger}, format, args);
+    }
+};
+
+
+remidy::Logger::Logger() {
+    impl = new Impl(this);
+}
+
+remidy::Logger::~Logger() {
+    delete impl;
+}
+
 static const char* levelString(remidy::Logger::LogLevel level) {
     switch (level) {
         case remidy::Logger::LogLevel::INFO: return "I";
@@ -79,28 +97,40 @@ static const char* levelString(remidy::Logger::LogLevel level) {
     return "";
 }
 
-remidy::Logger * remidy::Logger::getGlobal() {
-    static Logger instance{};
-    static bool loggerInitialized{false};
+void remidy::Logger::Impl::initializeGlobalLogger() {
+    static std::atomic<bool> loggerInitialized{false};
 
-    if (!loggerInitialized) {
-        getLaunchedLoggerThread(); // launch it by static member
-        instance.callbacks.emplace_back([](remidy::Logger::LogLevel level, size_t serial, const char* fstring, ...) {
-            std::array<char, MAX_LOG_MESSAGE_LENGTH> buffer;
-
-            va_list args;
-            va_start(args, fstring);
-            vsnprintf(buffer.data(), buffer.size(), fstring, args);
-            va_end(args);
-
-            std::cerr << "[remidy-global #" << serial << " (" << levelString(level) << ")]: " << buffer.data() << std::endl;
+    if (!loggerInitialized.exchange(true)) {
+        owner->callbacks.emplace_back([](remidy::Logger::LogLevel level, size_t serial, const char* s) {
+            std::cerr << "[remidy #" << serial << " (" << levelString(level) << ")]: " << s << std::endl;
         });
-        loggerInitialized = true;
+        getLaunchedLoggerThread();
     }
+}
 
-    return &instance;
+void remidy::Logger::logv(LogLevel level, const char *format, va_list args) {
+    impl->logv(level, format, args);
 }
 
 void remidy::Logger::stopDefaultLogger() {
     getLaunchedLoggerThread()->Stop();
+}
+
+#define DEFINE_DEFAULT_LOGGER(UPPER, CAMEL) \
+void remidy::Logger::log##CAMEL(const char *format, ...) { \
+va_list args; \
+va_start(args, format); \
+impl->logv(UPPER, format, args); \
+va_end(args); \
+}
+
+DEFINE_DEFAULT_LOGGER(ERROR , Error)
+DEFINE_DEFAULT_LOGGER(WARNING , Warning)
+DEFINE_DEFAULT_LOGGER(INFO , Info)
+DEFINE_DEFAULT_LOGGER(DIAGNOSTIC , Diagnostic)
+
+
+static remidy::Logger instance{};
+remidy::Logger* remidy::Logger::global() {
+    return &instance;
 }

@@ -21,6 +21,8 @@ namespace remidy {
 
     class Logger {
     public:
+        class Impl;
+
         enum LogLevel {
             DIAGNOSTIC,
             INFO,
@@ -28,19 +30,23 @@ namespace remidy {
             ERROR
         };
 
-        static Logger* getGlobal();
-        static void defaultLogError(const char* format, ...);
-        static void defaultLogWarning(const char* format, ...);
-        static void defaultLogInfo(const char* format, ...);
-        static void defaultLogDiagnostic(const char* format, ...);
+        static Logger* global();
+        void logError(const char* format, ...);
+        void logWarning(const char* format, ...);
+        void logInfo(const char* format, ...);
+        void logDiagnostic(const char* format, ...);
         static void stopDefaultLogger();
 
-        Logger() = default;
+        Logger();
+        ~Logger();
 
         void log(LogLevel level, const char* format, ...);
         void logv(LogLevel level, const char* format, va_list args);
 
         std::vector<std::function<void(LogLevel level, size_t serial, const char* s)>> callbacks;
+
+    private:
+        Impl *impl{nullptr};
     };
 
     // Represents a list of audio buffers, separate per channel.

@@ -8,30 +8,15 @@
 
 namespace remidy {
 
-    std::function loadFunc = [](std::filesystem::path &vst3Dir, void** module) -> StatusCode {
-        *module = loadModuleFromVst3Path(vst3Dir);
-        if (*module) {
-            auto err = initializeModule(*module);
-            if (err != 0) {
-                auto s = vst3Dir.string();
-                auto cp = s.c_str();
-                Logger::defaultLogWarning("Could not initialize the module from bundle: %s", cp);
-                unloadModule(*module);
-                *module = nullptr;
-            }
-        }
-
-        return *module == nullptr ? StatusCode::FAILED_TO_INSTANTIATE : StatusCode::OK;
-    };
-
-    std::function unloadFunc = [](std::filesystem::path &libraryFile, void* module) -> StatusCode {
-        unloadModule(module);
-        return StatusCode::OK;
-    };
-
     class AudioPluginFormatVST3::Impl {
         AudioPluginFormatVST3* owner;
+        Logger* logger;
         Extensibility extensibility;
+
+        StatusCode doLoad(std::filesystem::path &vst3Dir, void** module) const;
+        static StatusCode doUnload(std::filesystem::path &vst3Dir, void* module);
+        std::function<StatusCode(std::filesystem::path &vst3Dir, void** module)> loadFunc;
+        std::function<StatusCode(std::filesystem::path &vst3Dir, void* module)> unloadFunc;
 
         PluginBundlePool library_pool;
         HostApplication host{};
@@ -41,20 +26,44 @@ namespace remidy {
     public:
         explicit Impl(AudioPluginFormatVST3* owner) :
             owner(owner),
+            logger(Logger::global()),
             extensibility(*owner),
+            loadFunc([&](std::filesystem::path &vst3Dir, void** module)->StatusCode { return doLoad(vst3Dir, module); }),
+            unloadFunc([&](std::filesystem::path &vst3Dir, void* module)->StatusCode { return doUnload(vst3Dir, module); }),
             library_pool(loadFunc,unloadFunc) {
         }
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
         PluginCatalog scanAllAvailablePlugins();
-        void forEachPlugin(std::filesystem::path vst3Dir,
-            std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)> func,
-            std::function<void(void* module)> cleanup
+        void forEachPlugin(std::filesystem::path& vst3Dir,
+            const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
+            const std::function<void(void* module)>& cleanup
         );
-        AudioPluginInstance* createInstance(PluginCatalogEntry *uniqueId);
+        AudioPluginInstance* createInstance(PluginCatalogEntry *info);
         void unrefLibrary(PluginCatalogEntry *info);
         PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
     };
+
+    StatusCode AudioPluginFormatVST3::Impl::doLoad(std::filesystem::path &vst3Dir, void** module) const {
+        *module = loadModuleFromVst3Path(vst3Dir);
+        if (*module) {
+            auto err = initializeModule(*module);
+            if (err != 0) {
+                auto s = vst3Dir.string();
+                auto cp = s.c_str();
+                logger->logWarning("Could not initialize the module from bundle: %s", cp);
+                unloadModule(*module);
+                *module = nullptr;
+            }
+        }
+
+        return *module == nullptr ? StatusCode::FAILED_TO_INSTANTIATE : StatusCode::OK;
+    };
+
+    StatusCode AudioPluginFormatVST3::Impl::doUnload(std::filesystem::path &vst3Dir, void* module) {
+        unloadModule(module);
+        return StatusCode::OK;
+    }
 
     AudioPluginExtensibility<AudioPluginFormat> * AudioPluginFormatVST3::Impl::getExtensibility() {
         return &extensibility;
@@ -245,7 +254,7 @@ namespace remidy {
                 factory3->vtable->unknown.unref(factory3);
                 if (result != V3_OK) {
                     if (((Extensibility*) getExtensibility())->reportNotImplemented())
-                        Logger::defaultLogWarning("Failed to set HostApplication to IPluginFactory3: %s result: %d", name.c_str(), result);
+                        logger->logWarning("Failed to set HostApplication to IPluginFactory3: %s result: %d", name.c_str(), result);
                     if (result != V3_NOT_IMPLEMENTED)
                         return;
                 }
@@ -259,7 +268,7 @@ namespace remidy {
             IComponent *component{};
             result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void**) &component);
             if (result != V3_OK) {
-                Logger::defaultLogError("Failed to query VST3 component: %s result: %d", name.c_str(), result);
+                logger->logError("Failed to query VST3 component: %s result: %d", name.c_str(), result);
                 instance->vtable->unknown.unref(instance);
                 return;
             }
@@ -269,7 +278,7 @@ namespace remidy {
             // > which must be called before initialize.
             result = component->vtable->component.set_io_mode(instance, V3_IO_ADVANCED);
             if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
-                Logger::defaultLogError("Failed to set vst3 I/O mode: %s", name.c_str());
+                logger->logError("Failed to set vst3 I/O mode: %s", name.c_str());
                 component->vtable->unknown.unref(component);
                 instance->vtable->unknown.unref(instance);
                 return;
@@ -278,7 +287,7 @@ namespace remidy {
             // Now initialize the component, and optionally initialize the controller.
             result = component->vtable->base.initialize(component, (v3_funknown**) &host);
             if (result != V3_OK) {
-                Logger::defaultLogError("Failed to initialize vst3: %s (status: %d ", name.c_str(), result);
+                logger->logError("Failed to initialize vst3: %s (status: %d ", name.c_str(), result);
                 component->vtable->unknown.unref(component);
                 instance->vtable->unknown.unref(instance);
                 return;
@@ -310,13 +319,13 @@ namespace remidy {
                     ret = new AudioPluginInstanceVST3(this, pluginInfo, module, component, controller, controllerDistinct, instance);
                     return;
                 }
-                Logger::defaultLogError("Failed to set vst3 component handler: %s", name.c_str());
+                logger->logError("Failed to set vst3 component handler: %s", name.c_str());
             }
             else
-                Logger::defaultLogError("Failed to find valid controller vst3: %s", name.c_str());
+                logger->logError("Failed to find valid controller vst3: %s", name.c_str());
             if (controller)
                 controller->vtable->unknown.unref(controller);
-            Logger::defaultLogError("Failed to instantiate vst3: %s", name.c_str());
+            logger->logError("Failed to instantiate vst3: %s", name.c_str());
             component->vtable->base.terminate(component);
             // regardless of the result, we go on...
 
@@ -496,9 +505,9 @@ namespace remidy {
         return sym();
     }
 
-    void AudioPluginFormatVST3::Impl::forEachPlugin(std::filesystem::path vst3Dir,
-        std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)> func,
-        std::function<void(void* module)> cleanup
+    void AudioPluginFormatVST3::Impl::forEachPlugin(std::filesystem::path& vst3Dir,
+        const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
+        const std::function<void(void* module)>& cleanup
     ) {
         // FIXME: try to load moduleinfo.json and skip loading dynamic library.
 
@@ -531,12 +540,12 @@ namespace remidy {
                     }
                 }
                 else
-                    Logger::defaultLogError("failed to retrieve class info at %d, in %s", i, vst3Dir.c_str());
+                    logger->logError("failed to retrieve class info at %d, in %s", i, vst3Dir.c_str());
             }
             cleanup(module);
         }
         else
-            Logger::defaultLogError("Could not load the library from bundle: %s", vst3Dir.c_str());
+            logger->logError("Could not load the library from bundle: %s", vst3Dir.c_str());
 
         std::filesystem::current_path(savedPath);
     }
