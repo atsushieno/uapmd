@@ -27,9 +27,6 @@ namespace remidy {
             WARNING,
             ERROR
         };
-        struct LogMetadata {
-            LogLevel level;
-        };
 
         static Logger* getGlobal();
         static void defaultLogError(const char* format, ...);
@@ -40,9 +37,10 @@ namespace remidy {
 
         Logger() = default;
 
-        void log(LogMetadata level, const char* format, ...);
+        void log(LogLevel level, const char* format, ...);
+        void logv(LogLevel level, const char* format, va_list args);
 
-        std::vector<std::function<void(LogMetadata, const char* s)>> callbacks;
+        std::vector<std::function<void(LogLevel level, size_t serial, const char* s)>> callbacks;
     };
 
     // Represents a list of audio buffers, separate per channel.

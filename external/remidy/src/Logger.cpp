@@ -7,74 +7,76 @@ constexpr auto MAX_LOG_MESSAGE_LENGTH = 1024;
 
 static std::atomic<std::size_t> log_serial{ 0 };
 
-using RealtimeLogger = rtlog::Logger<remidy::Logger::LogMetadata, MAX_NUM_LOG_MESSAGES, MAX_LOG_MESSAGE_LENGTH, log_serial>;
-static RealtimeLogger logger;
+struct LogContext {
+    remidy::Logger::LogLevel level;
+    const remidy::Logger* owner;
+    const void* logger;
+};
 
-void remidy::Logger::log(LogMetadata data, const char *format, ...) {
-    for (auto& func : callbacks) {
-        va_list args;
-        va_start(args, format);
-        logger.Log(std::move(data), format, args);
-        va_end(args);
-    }
+using RealtimeLogger = rtlog::Logger<LogContext, MAX_NUM_LOG_MESSAGES, MAX_LOG_MESSAGE_LENGTH, log_serial>;
+static RealtimeLogger rt_logger;
+
+void remidy::Logger::log(LogLevel level, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    logv(level, format, args);
+    va_end(args);
 }
 
-#define REMIDY_LOGGER_FUNC(LEVEL, format) \
+void remidy::Logger::logv(LogLevel level, const char *format, va_list args) {
+    rt_logger.Logv(LogContext{.level = level, .owner = this, .logger = &rt_logger}, format, args);
+}
+
+#define DEFINE_DEFAULT_LOGGER(UPPER, CAMEL) \
+void remidy::Logger::defaultLog##CAMEL(const char *format, ...) { \
     va_list args; \
     va_start(args, format); \
-    Logger::getGlobal()->log({LEVEL}, format, args); \
+    remidy::Logger::getGlobal()->logv(UPPER, format, args); \
     va_end(args); \
-
-void remidy::Logger::defaultLogError(const char *format, ...) {
-    REMIDY_LOGGER_FUNC(Logger::LogLevel::ERROR, format)
-}
-void remidy::Logger::defaultLogWarning(const char *format, ...) {
-    REMIDY_LOGGER_FUNC(Logger::LogLevel::WARNING, format)
-}
-void remidy::Logger::defaultLogInfo(const char *format, ...) {
-    REMIDY_LOGGER_FUNC(Logger::LogLevel::INFO, format)
-}
-void remidy::Logger::defaultLogDiagnostic(const char *format, ...) {
-    REMIDY_LOGGER_FUNC(Logger::LogLevel::DIAGNOSTIC, format)
 }
 
-class PrintMessageFunctor
+DEFINE_DEFAULT_LOGGER(ERROR , Error)
+DEFINE_DEFAULT_LOGGER(WARNING , Warning)
+DEFINE_DEFAULT_LOGGER(INFO , Info)
+DEFINE_DEFAULT_LOGGER(DIAGNOSTIC , Diagnostic)
+
+class CallbackMessageFunctor
 {
 public:
-    PrintMessageFunctor() = default;
-    PrintMessageFunctor(const PrintMessageFunctor&) = delete;
-    PrintMessageFunctor(PrintMessageFunctor&&) = delete;
-    PrintMessageFunctor& operator=(const PrintMessageFunctor&) = delete;
-    PrintMessageFunctor& operator=(PrintMessageFunctor&&) = delete;
+    CallbackMessageFunctor() = default;
+    CallbackMessageFunctor(const CallbackMessageFunctor&) = delete;
+    CallbackMessageFunctor(CallbackMessageFunctor&&) = delete;
+    CallbackMessageFunctor& operator=(const CallbackMessageFunctor&) = delete;
+    CallbackMessageFunctor& operator=(CallbackMessageFunctor&&) = delete;
 
-    static const char* levelString(remidy::Logger::LogLevel level) {
-        switch (level) {
-            case remidy::Logger::LogLevel::INFO: return "I";
-            case remidy::Logger::LogLevel::WARNING: return "W";
-            case remidy::Logger::LogLevel::ERROR: return "E";
-            case remidy::Logger::LogLevel::DIAGNOSTIC: return "D";
-        }
-        return "";
-    }
-
-    void operator()(const remidy::Logger::LogMetadata& data, size_t serial, const char* fstring, ...) __attribute__ ((format (printf, 4, 5)))
-    {
+    void operator()(const LogContext& data, size_t serial, const char* format, ...) __attribute__ ((format (printf, 4, 5))) {
         std::array<char, MAX_LOG_MESSAGE_LENGTH> buffer;
 
         va_list args;
-        va_start(args, fstring);
-        vsnprintf(buffer.data(), buffer.size(), fstring, args);
+        va_start(args, format);
+        vsnprintf(buffer.data(), buffer.size(), format, args);
         va_end(args);
-
-        std::cerr << "[remidy #" << serial << " (" << levelString(data.level) << ")]: " << buffer.data() << std::endl;
+        for (auto& func : data.owner->callbacks) {
+            func(data.level, serial, buffer.data());
+        }
     }
 };
 
-static PrintMessageFunctor PrintMessage;
+static CallbackMessageFunctor ForwardToCallbacks;
 
-rtlog::LogProcessingThread<RealtimeLogger, PrintMessageFunctor>* getLaunchedLoggerThread() {
-    static rtlog::LogProcessingThread thread(logger, PrintMessage, std::chrono::milliseconds(10));
+rtlog::LogProcessingThread<RealtimeLogger, CallbackMessageFunctor>* getLaunchedLoggerThread() {
+    static rtlog::LogProcessingThread thread(rt_logger, ForwardToCallbacks, std::chrono::milliseconds(10));
     return &thread;
+}
+
+static const char* levelString(remidy::Logger::LogLevel level) {
+    switch (level) {
+        case remidy::Logger::LogLevel::INFO: return "I";
+        case remidy::Logger::LogLevel::WARNING: return "W";
+        case remidy::Logger::LogLevel::ERROR: return "E";
+        case remidy::Logger::LogLevel::DIAGNOSTIC: return "D";
+    }
+    return "";
 }
 
 remidy::Logger * remidy::Logger::getGlobal() {
@@ -83,11 +85,15 @@ remidy::Logger * remidy::Logger::getGlobal() {
 
     if (!loggerInitialized) {
         getLaunchedLoggerThread(); // launch it by static member
-        instance.callbacks.emplace_back([](remidy::Logger::LogMetadata data, const char* fstring, ...) {
+        instance.callbacks.emplace_back([](remidy::Logger::LogLevel level, size_t serial, const char* fstring, ...) {
+            std::array<char, MAX_LOG_MESSAGE_LENGTH> buffer;
+
             va_list args;
             va_start(args, fstring);
-            PrintMessage(data, log_serial++, fstring, args);
+            vsnprintf(buffer.data(), buffer.size(), fstring, args);
             va_end(args);
+
+            std::cerr << "[remidy-global #" << serial << " (" << levelString(level) << ")]: " << buffer.data() << std::endl;
         });
         loggerInitialized = true;
     }

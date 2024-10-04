@@ -4,6 +4,7 @@ project(remidy LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 23)
 
 #add_subdirectory("../../external/libremidi" "libremidi")
+#add_subdirectory("../../external/rtlog-cpp" "rtlog-cpp")
 
 add_library(remidy)
 
@@ -16,8 +17,8 @@ endif ()
 # <rtlog>
 include(FetchContent)
 FetchContent_Declare(rtlog-cpp
-        GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
-        GIT_TAG ab103a63e637b6523251ada9b917fd24ac2f978e
+        GIT_REPOSITORY https://github.com/atsushieno/rtlog-cpp
+        GIT_TAG f3bce82ff9aac3f43a5ff270b00412f16cf3c0e0
 )
 FetchContent_MakeAvailable(rtlog-cpp)
 target_link_libraries(remidy PRIVATE rtlog::rtlog)
@@ -31,6 +32,7 @@ target_include_directories(remidy PRIVATE
 
 target_link_libraries(remidy PRIVATE
         #libremidi::libremidi
+        rtlog::rtlog
         "-framework CoreFoundation"
 )
 

@@ -13,7 +13,9 @@ namespace remidy {
         if (*module) {
             auto err = initializeModule(*module);
             if (err != 0) {
-                Logger::defaultLogWarning("Could not initialize the module from bundle: %s", vst3Dir.c_str());
+                auto s = vst3Dir.string();
+                auto cp = s.c_str();
+                Logger::defaultLogWarning("Could not initialize the module from bundle: %s", cp);
                 unloadModule(*module);
                 *module = nullptr;
             }
