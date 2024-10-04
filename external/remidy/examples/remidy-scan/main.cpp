@@ -34,10 +34,6 @@ int main(int argc, const char * argv[]) {
             // FIXME: implement blocklist
             if (displayName.starts_with("Firefly Synth 1.8.6 VST3"))
                 continue;
-            if (displayName.starts_with("sfizz"))
-                continue;
-            if (displayName.starts_with("JEQ8")) // memory leaker
-                continue;
 
             // FIXME: this should be unblocked
 
@@ -48,7 +44,7 @@ int main(int argc, const char * argv[]) {
             if (displayName.starts_with("Kontakt"))
                 continue;
 
-            // causes JUCE leak detector exception
+            // causes JUCE leak detector exception (not on OPNplug though)
             //if (!displayName.starts_with("ADL"))
             //    continue;
 

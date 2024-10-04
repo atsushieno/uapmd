@@ -8,16 +8,41 @@
 #include <functional>
 
 
-typedef int32_t remidy_status_t;
 typedef uint32_t remidy_ump_t;
 typedef int64_t remidy_timestamp_t;
 
 namespace remidy {
 
-    enum RemidyStatus {
+    enum StatusCode {
         OK,
         BUNDLE_NOT_FOUND,
         FAILED_TO_INSTANTIATE
+    };
+
+    class Logger {
+    public:
+        enum LogLevel {
+            DIAGNOSTIC,
+            INFO,
+            WARNING,
+            ERROR
+        };
+        struct LogMetadata {
+            LogLevel level;
+        };
+
+        static Logger* getGlobal();
+        static void defaultLogError(const char* format, ...);
+        static void defaultLogWarning(const char* format, ...);
+        static void defaultLogInfo(const char* format, ...);
+        static void defaultLogDiagnostic(const char* format, ...);
+        static void stopDefaultLogger();
+
+        Logger() = default;
+
+        void log(LogMetadata level, const char* format, ...);
+
+        std::vector<std::function<void(LogMetadata, const char* s)>> callbacks;
     };
 
     // Represents a list of audio buffers, separate per channel.
@@ -61,16 +86,16 @@ namespace remidy {
         // Returns the plugin ID.
         std::string pluginId() { return id; }
         // Set a new plugin ID. It is settable only because deserializers will use it.
-        remidy_status_t pluginId(std::string& newId) {
+        StatusCode pluginId(std::string& newId) {
             id = newId;
-            return RemidyStatus::OK;
+            return StatusCode::OK;
         }
         // Returns a file system path to the bundle, if the format supports it.
         std::filesystem::path& bundlePath() { return bundle; }
         // Sets a file system path to the bundle, if the format supports it.
-        remidy_status_t bundlePath(const std::filesystem::path& newPath) {
+        StatusCode bundlePath(const std::filesystem::path& newPath) {
             bundle = newPath;
-            return RemidyStatus::OK;
+            return StatusCode::OK;
         }
         std::string getMetadataProperty(const MetadataPropertyID id) {
             const auto ret = props.find(id);
@@ -96,8 +121,8 @@ namespace remidy {
     class PluginBundlePool {
     public:
         explicit PluginBundlePool(
-            std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void** module)>& load,
-            std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void* module)>& unload
+            std::function<StatusCode(std::filesystem::path& moduleBundlePath, void** module)>& load,
+            std::function<StatusCode(std::filesystem::path& moduleBundlePath, void* module)>& unload
         );
         virtual ~PluginBundlePool();
 
@@ -115,13 +140,28 @@ namespace remidy {
         void setRetentionPolicy(RetentionPolicy value);
         // Returns either HMODULE, CFBundle*, or dlopen-ed library.
         void* loadOrAddReference(std::filesystem::path& moduleBundlePath);
-        remidy_status_t removeReference(std::filesystem::path& moduleBundlePath);
+        StatusCode removeReference(std::filesystem::path& moduleBundlePath);
 
     private:
-        std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void** module)> load;
-        std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void* module)> unload;
+        std::function<StatusCode(std::filesystem::path& moduleBundlePath, void** module)> load;
+        std::function<StatusCode(std::filesystem::path& moduleBundlePath, void* module)> unload;
         RetentionPolicy retentionPolicy{UnloadImmediately};
         std::map<std::filesystem::path, ModuleEntry> entries{};
+    };
+
+
+    // Facade to extension points in audio plugin abstraction layers such as
+    // `AudioPluginFormat` and `AudioPluginInstance`.
+    // Each extendable class implementors provide a derived class and provide
+    // a getter that users of the extendable class can downcast to each class.
+    // See how `AudioPluginFormatVST3::getExtensibility()` works for example.
+    template <typename T>
+    class AudioPluginExtensibility {
+        T& owner;
+    protected:
+        explicit AudioPluginExtensibility(T& owner) : owner(owner) {
+        }
+        virtual ~AudioPluginExtensibility() = default;
     };
 
 
@@ -141,19 +181,11 @@ namespace remidy {
     public:
         virtual ~AudioPluginInstance() = default;
 
-        class Extensibility {
-            AudioPluginInstance& owner;
-        protected:
-            explicit Extensibility(AudioPluginInstance& owner) : owner(owner) {
-            }
-            virtual ~Extensibility() = default;
-        };
+        virtual AudioPluginExtensibility<AudioPluginInstance>* getExtensibility() { return nullptr; }
 
-        virtual Extensibility* getExtensibility() { return nullptr; }
+        virtual StatusCode configure(int32_t sampleRate) = 0;
 
-        virtual remidy_status_t configure(int32_t sampleRate) = 0;
-
-        virtual remidy_status_t process(AudioProcessContext& process) = 0;
+        virtual StatusCode process(AudioProcessContext& process) = 0;
     };
 
     class AudioPluginFormat {
@@ -170,6 +202,8 @@ namespace remidy {
             MAYBE,
             YES
         };
+
+        virtual AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() { return nullptr; }
 
         bool hasPluginListCache();
         bool supportsGlobalIdentifier();
@@ -210,9 +244,22 @@ namespace remidy {
     public:
         class Impl;
 
+        class Extensibility : public AudioPluginExtensibility<AudioPluginFormat> {
+            bool report_not_implemented{false};
+        public:
+            explicit Extensibility(AudioPluginFormat& format);
+
+            bool reportNotImplemented() { return report_not_implemented; }
+            StatusCode reportNotImplemented(bool newValue) {
+                report_not_implemented = newValue;
+                return StatusCode::OK;
+            }
+        };
+
         explicit AudioPluginFormatVST3(std::vector<std::string>& overrideSearchPaths);
         ~AudioPluginFormatVST3() override;
 
+        AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
         bool usePluginSearchPaths() override;
         std::vector<std::string>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;

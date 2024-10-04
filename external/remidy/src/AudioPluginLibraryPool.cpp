@@ -4,8 +4,8 @@
 #include <iostream>
 
 remidy::PluginBundlePool::PluginBundlePool(
-    std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void** module)>& load,
-    std::function<remidy_status_t(std::filesystem::path& moduleBundlePath, void* module)>& unload
+    std::function<StatusCode(std::filesystem::path& moduleBundlePath, void** module)>& load,
+    std::function<StatusCode(std::filesystem::path& moduleBundlePath, void* module)>& unload
 ) : load(load), unload(unload) {
 }
 
@@ -38,19 +38,19 @@ void* remidy::PluginBundlePool::loadOrAddReference(std::filesystem::path &module
     return module;
 }
 
-remidy_status_t remidy::PluginBundlePool::removeReference(std::filesystem::path &moduleBundlePath) {
+remidy::StatusCode remidy::PluginBundlePool::removeReference(std::filesystem::path &moduleBundlePath) {
     //std::cerr << "AudioPluginLibraryPool::removeReference(" << libraryFile.string() << ")" << std::endl;
 
     auto entry = entries.find(moduleBundlePath);
     if (entry == entries.end())
-        return RemidyStatus::BUNDLE_NOT_FOUND;
+        return StatusCode::BUNDLE_NOT_FOUND;
     if (--entry->second.refCount == 0 && retentionPolicy == RetentionPolicy::UnloadImmediately) {
         auto result = unload(entry->second.moduleBundlePath, entry->second.module);
         if (result != 0)
             return result;
         entries.erase(entry);
     }
-    return RemidyStatus::OK;
+    return StatusCode::OK;
 }
 
 std::vector<remidy::PluginCatalogEntry*> remidy::PluginCatalog::getPlugins() {

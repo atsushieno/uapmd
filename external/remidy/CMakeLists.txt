@@ -13,6 +13,16 @@ target_compile_definitions(remidy PRIVATE
 )
 endif ()
 
+# <rtlog>
+include(FetchContent)
+FetchContent_Declare(rtlog-cpp
+        GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
+        GIT_TAG ab103a63e637b6523251ada9b917fd24ac2f978e
+)
+FetchContent_MakeAvailable(rtlog-cpp)
+target_link_libraries(remidy PRIVATE rtlog::rtlog)
+# </rtlog>
+
 target_include_directories(remidy PRIVATE
         ../../external/travesty
         #../../external/libremidi/include
@@ -25,16 +35,18 @@ target_link_libraries(remidy PRIVATE
 )
 
 target_sources(remidy PRIVATE
-        src/AudioPluginFormat.cpp
-        src/AudioPluginFormatVST3.cpp
-        src/AudioPluginInstance.cpp
-        src/HostApplication.cpp
-        src/AudioPluginLibraryPool.cpp
-        src/PluginCatalog.cpp
-
+        src/Logger.cpp
         src/AudioBufferList.cpp
         src/MidiSequence.cpp
+
+        src/HostApplication.cpp
+        src/PluginCatalog.cpp
+        src/AudioPluginLibraryPool.cpp
+        src/AudioPluginFormat.cpp
+        src/AudioPluginFormatVST3.cpp
+
         src/AudioProcessContext.cpp
+        src/AudioPluginInstance.cpp
 )
 
 add_library(remidy::remidy ALIAS remidy)
