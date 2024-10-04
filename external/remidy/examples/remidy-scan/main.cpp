@@ -25,10 +25,10 @@ int main(int argc, const char * argv[]) {
     for (auto format : formats) {
         auto infos = format->getAvailablePlugins().getPlugins();
         for (int i = 0, n = infos.size(); i < n; ++i) {
-            auto pluginId = infos[i];
-            auto displayName = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
-            auto vendor = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::VendorName);
-            auto url = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::ProductUrl);
+            auto info = infos[i];
+            auto displayName = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
+            auto vendor = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::VendorName);
+            auto url = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::ProductUrl);
             std::cerr << "[" << i + 1 << "/" << infos.size() << "] " << displayName << " : " << vendor << " (" << url << ")" << std::endl;
 
             // FIXME: implement blocklist
@@ -45,12 +45,14 @@ int main(int argc, const char * argv[]) {
 
             if (displayName.starts_with("Battery"))
                 continue;
-            if (displayName == "Kontakt")
-                continue;
-            if (displayName == "Kontakt 7")
+            if (displayName.starts_with("Kontakt"))
                 continue;
 
-            testCreateInstance(format, pluginId);
+            // causes JUCE leak detector exception
+            //if (!displayName.starts_with("ADL"))
+            //    continue;
+
+            testCreateInstance(format, info);
         }
 
         std::cerr << "Completed." << std::endl;

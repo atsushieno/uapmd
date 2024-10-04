@@ -48,7 +48,7 @@ namespace remidy {
             std::function<void(void* module)> cleanup
         );
         AudioPluginInstance* createInstance(PluginCatalogEntry *uniqueId);
-        void removeInstance(PluginCatalogEntry *info);
+        void unrefLibrary(PluginCatalogEntry *info);
         PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
     };
 
@@ -97,7 +97,9 @@ namespace remidy {
             component->vtable->base.terminate(component);
             component->vtable->unknown.unref(component);
 
-            owner->removeInstance(info);
+            instance->vtable->unknown.unref(instance);
+
+            owner->unrefLibrary(info);
         }
     };
 
@@ -218,7 +220,6 @@ namespace remidy {
         forEachPlugin(pluginInfo->bundlePath(), [&](void* module, IPluginFactory* factory, PluginClassInfo &info) {
             if (memcmp(info.tuid, tuid, sizeof(v3_tuid)) != 0)
                 return;
-
             IPluginFactory3* factory3{nullptr};
             auto result = factory->vtable->unknown.query_interface(factory, v3_plugin_factory_3_iid, (void**) &factory3);
             if (result == V3_OK) {
@@ -235,13 +236,14 @@ namespace remidy {
 
             FUnknown* instance{};
             result = factory->vtable->factory.create_instance(factory, tuid, v3_component_iid, (void**) &instance);
-            if (result) // not about this class
+            if (result)
                 return;
 
             IComponent *component{};
             result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void**) &component);
             if (result != V3_OK) {
                 std::cerr << "Failed to query VST3 component: " << name << " result: " << result << std::endl;
+                instance->vtable->unknown.unref(instance);
                 return;
             }
 
@@ -252,34 +254,38 @@ namespace remidy {
             if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
                 std::cerr << "Failed to set vst3 I/O mode: " << name << std::endl;
                 component->vtable->unknown.unref(component);
+                instance->vtable->unknown.unref(instance);
                 return;
             }
 
+            // Now initialize the component, and optionally initialize the controller.
+            result = component->vtable->base.initialize(component, (v3_funknown**) &host);
+            if (result != V3_OK) {
+                std::cerr << "Failed to initialize vst3: " << name << " (status: " << result << ")" << std::endl;
+                component->vtable->unknown.unref(component);
+                instance->vtable->unknown.unref(instance);
+                return;
+            }
             // If we can instantiate controller from the component, just use it.
             bool controllerDistinct = false;
             IEditController* controller{nullptr};
             bool controllerValid = false;
-            result = component->vtable->unknown.query_interface(component, v3_edit_controller_iid, (void**) &controller);
-            if (result == V3_OK)
-                controllerValid = true;
 
-            // Now initialize the component, and optionally initialize the controller.
-            result = component->vtable->base.initialize(component, (v3_funknown**) &host);
+            // > Steinberg::Vst::IComponent::getControllerClassId can also be called before (See VST 3 Workflow Diagrams).
+            // ... is it another "sole exception" ?
+            v3_tuid controllerClassId{};
+            result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
+            if (result == V3_OK && memcmp(tuid, controllerClassId, sizeof(v3_tuid)) != 0)
+                controllerDistinct = true;
+            else
+                memcpy(controllerClassId, tuid, sizeof(v3_tuid));
+            result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid, (void**) &controller);
             if (result == V3_OK) {
-                // > Steinberg::Vst::IComponent::getControllerClassId can also be called before (See VST 3 Workflow Diagrams).
-                // ... is it another "sole exception" ?
-                v3_tuid controllerClassId{};
-                result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
-                if (result == V3_OK && memcmp(tuid, controllerClassId, sizeof(v3_tuid)) != 0) {
-                    controllerDistinct = true;
-                    result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid, (void**) &controller);
-                    if (result == V3_OK) {
-                        result = controller->vtable->base.initialize(controller, (v3_funknown**) &host);
-                        if (result == V3_OK)
-                            controllerValid = true;
-                    }
-                }
+                result = controller->vtable->base.initialize(controller, (v3_funknown**) &host);
+                if (result == V3_OK)
+                    controllerValid = true;
             }
+
             if (controllerValid) {
                 auto handler = host.getComponentHandler();
                 result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) handler);
@@ -287,18 +293,26 @@ namespace remidy {
                     ret = new AudioPluginInstanceVST3(this, pluginInfo, module, component, controller, controllerDistinct, instance);
                     return;
                 }
+                else
+                    std::cerr << "Failed to instantiate vst3: " << name << std::endl;
             }
+            else
+                std::cerr << "Failed to find valid controller vst3: " << name << std::endl;
             if (controller)
                 controller->vtable->unknown.unref(controller);
-            std::cerr << "Failed to initialize vst3: " << name << std::endl;
+            std::cerr << "Failed to instantiate vst3: " << name << std::endl;
+            component->vtable->base.terminate(component);
+            // regardless of the result, we go on...
+
             component->vtable->unknown.unref(component);
+            instance->vtable->unknown.unref(instance);
         }, [&](void* module) {
             // do not unload library here.
         });
         return ret;
     }
 
-    void AudioPluginFormatVST3::Impl::removeInstance(PluginCatalogEntry* info) {
+    void AudioPluginFormatVST3::Impl::unrefLibrary(PluginCatalogEntry* info) {
         library_pool.removeReference(info->bundlePath());
     }
 
@@ -367,7 +381,6 @@ namespace remidy {
         const auto ret = CFBundleCreate(kCFAllocatorDefault, cfUrl);
         CFRelease(cfUrl);
         CFRelease(filePath);
-        assert(ret);
         return ret;
 #else
         const auto libraryFilePath = getPluginCodeFile(vst3Dir);
@@ -464,7 +477,6 @@ namespace remidy {
 #else
         auto sym = (get_plugin_factory_func) dlsym(module, "GetPluginFactory");
 #endif
-        assert(sym);
         return sym();
     }
 
