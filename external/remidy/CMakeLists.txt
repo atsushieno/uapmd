@@ -17,8 +17,8 @@ endif ()
 # <rtlog>
 include(FetchContent)
 FetchContent_Declare(rtlog-cpp
-        GIT_REPOSITORY https://github.com/atsushieno/rtlog-cpp
-        GIT_TAG f3bce82ff9aac3f43a5ff270b00412f16cf3c0e0
+        GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
+        GIT_TAG 5774ba063ecc25057e0f616d61e50c079e939e82
 )
 FetchContent_MakeAvailable(rtlog-cpp)
 target_link_libraries(remidy PRIVATE rtlog::rtlog)
