@@ -2,7 +2,7 @@
 
 #include "VST3Helper.hpp"
 
-namespace remidy {
+namespace remidy_vst3 {
 
     const std::basic_string<char16_t> HostApplication::name16t{std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.from_bytes("remidy")};
 

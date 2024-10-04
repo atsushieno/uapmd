@@ -37,11 +37,13 @@ target_link_libraries(remidy PRIVATE
 )
 
 target_sources(remidy PRIVATE
+        src/vst3/VST3Helper.cpp
+        src/vst3/HostApplication.cpp
+
         src/Logger.cpp
         src/AudioBufferList.cpp
         src/MidiSequence.cpp
 
-        src/HostApplication.cpp
         src/PluginCatalog.cpp
         src/AudioPluginLibraryPool.cpp
         src/AudioPluginFormat.cpp

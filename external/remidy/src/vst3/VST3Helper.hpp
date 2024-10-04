@@ -19,7 +19,7 @@
 
 #define kVstAudioEffectClass "Audio Module Class"
 
-namespace remidy {
+namespace remidy_vst3 {
 
     enum V3_IO_MODES {
         V3_IO_SIMPLE,
@@ -171,6 +171,7 @@ namespace remidy {
     void* loadModuleFromVst3Path(std::filesystem::path vst3Dir);
     int32_t initializeModule(void* library);
     void unloadModule(void* library);
+    IPluginFactory* getFactoryFromLibrary(void* module);
 
     struct PluginClassInfo {
         std::filesystem::path bundlePath;
