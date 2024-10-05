@@ -1,4 +1,9 @@
 #pragma once
+#include <map>
+#include <filesystem>
+#include <vector>
+
+#include "../remidy.hpp"
 
 namespace remidy {
 

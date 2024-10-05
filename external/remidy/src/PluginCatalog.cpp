@@ -28,7 +28,6 @@ void remidy::PluginCatalog::clear() {
 }
 
 
-
 // These functions are mostly based on https://stackoverflow.com/a/35599923/1465645
 std::string encodeByteArray(std::string s, bool capital = false) {
     std::string ret{};

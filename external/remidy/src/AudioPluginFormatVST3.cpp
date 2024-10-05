@@ -1,5 +1,4 @@
 
-#include <dlfcn.h>
 #include <iostream>
 
 #include "remidy.hpp"
