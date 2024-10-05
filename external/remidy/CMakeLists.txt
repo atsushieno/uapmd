@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 23)
 
 #add_subdirectory("../../external/libremidi" "libremidi")
 #add_subdirectory("../../external/rtlog-cpp" "rtlog-cpp")
+add_subdirectory("../../external/cpplocate" "cpplocate")
+add_subdirectory("../../external/json" "json")
 
 add_library(remidy)
 
@@ -26,6 +28,8 @@ target_link_libraries(remidy PRIVATE rtlog::rtlog)
 
 target_include_directories(remidy PRIVATE
         ../../external/travesty
+        ../../external/cpplocate/source/cpplocate/include
+        ../../external/json/include
         #../../external/libremidi/include
         include/remidy
 )
@@ -33,6 +37,7 @@ target_include_directories(remidy PRIVATE
 target_link_libraries(remidy PRIVATE
         #libremidi::libremidi
         rtlog::rtlog
+        cpplocate::cpplocate
         "-framework CoreFoundation"
 )
 

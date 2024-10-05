@@ -53,27 +53,3 @@ remidy::StatusCode remidy::PluginBundlePool::removeReference(std::filesystem::pa
     return StatusCode::OK;
 }
 
-std::vector<remidy::PluginCatalogEntry*> remidy::PluginCatalog::getPlugins() {
-    std::vector<remidy::PluginCatalogEntry *> ret{};
-    ret.reserve(list.size());
-    for (auto& entry : list)
-        ret.emplace_back(entry.get());
-    return ret;
-}
-
-void remidy::PluginCatalog::add(std::unique_ptr<PluginCatalogEntry> entry) {
-    list.emplace_back(std::move(entry));
-}
-
-void remidy::PluginCatalog::clear() {
-    list.clear();
-}
-
-void remidy::PluginCatalog::load(std::filesystem::path path) {
-    throw std::runtime_error("remidy::PluginCatalog::load() is not implemented.");
-}
-
-void remidy::PluginCatalog::save(std::filesystem::path path) {
-    throw std::runtime_error("remidy::PluginCatalog::save() is not implemented.");
-}
-

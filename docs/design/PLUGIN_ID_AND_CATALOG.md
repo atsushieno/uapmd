@@ -5,9 +5,9 @@ DRAFT DRAFT DRAFT
 
 In Remidy, and within a plugin format, an audio plugin ID is a URI string that is used to identify a specific plugin that resides in a plugin bundle.
 With the plugin format name, it can precisely indicate the plugin type/class to instantiate.
-`AudioPluginInformation` contains a handful of plugin metadata including the plugin ID and the plugin format ID. It would need instantiation of the plugin, at least once for caching.
+`PluginCatalogEntry` contains a handful of plugin metadata including the plugin ID and the plugin format ID. It would need instantiation of the plugin, at least once for caching.
 
-There are some requirements imposed on `AudioPluginInformation`:
+There are some requirements imposed on `PluginCatalogEntry`:
 
 - deserializable from a string without `AudioPluginInstance`.
 - detached from `AudioPluginFormat` instance: no need to internally hold the reference to it.
@@ -18,7 +18,7 @@ There are some requirements imposed on `AudioPluginInformation`:
 
 We would typically use JSON to convert to and from string.
 
-Neither of `AudioPluginIdentifier` and `AudioPluginInformation` ensures that the indicated plugin is valid.
+Neither of the plugin ID and `PluginCatalogEntry` field ensures that the indicated plugin is valid.
 The plugin may disappear from the system at any time.
 
 There are some requirements for a plugin to meet "Remidy Plugin Metadata Standard":

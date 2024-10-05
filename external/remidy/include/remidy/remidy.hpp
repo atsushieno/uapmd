@@ -116,6 +116,7 @@ namespace remidy {
     public:
         std::vector<PluginCatalogEntry*> getPlugins();
         void add(std::unique_ptr<PluginCatalogEntry> entry);
+        void merge(PluginCatalog&& other);
         void clear();
         void load(std::filesystem::path path);
         void save(std::filesystem::path path);
