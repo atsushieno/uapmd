@@ -52,7 +52,7 @@ Namely, we do not particularly support plugin UI.
 
 ### Audio Plugin IDs and metadata
 
-See [PLUGIN_LIST_CACHE.md](PLUGIN_LIST_CACHE.md).
+See [PLUGIN_ID_AND_CATALOG.md](PLUGIN_ID_AND_CATALOG.md).
 
 ### Multi-format ready plugin state
 
@@ -102,8 +102,6 @@ an audio plugin track contains an audio plugin graph, and an audio plugin graph 
 
 ## Implementation
 
-For virtual MIDI 2.0 device part it makes use of libremidi. It should work on Linux 6.5 or later, MacOS 14.0 or later, and Windows probably 11 or later (`src/service/VirtualMidiDevices`).
+### Choices of Third Party Libraries
 
-For audio plugin hosting, we're currently evaluating libossia. It can be Tracktion Engine, but we're not sure if it is good enough to process MIDI events appropriately dispatched to each track. Also it is concerning that the Tracktion developers are quite negative on MIDI 2.0.
-
-For `uapmd-setup` GUI we plan to use Tauri 2.0 Web UI, and connect to the service (`src/service/Controller` and `client`).
+See [THIRD_PARTY.md](THIRD_PARTY.md).

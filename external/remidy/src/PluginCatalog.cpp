@@ -84,18 +84,6 @@ void remidy::PluginCatalog::load(std::filesystem::path path) {
         list.emplace_back(std::move(entry));
 }
 
-/*
-nlohmann::json toJson(remidy::PluginCatalogEntry* entry) {
-    nlohmann::ordered_json j = {
-        {"id", encodeByteArray(entry->pluginId())},
-        {"bundle", entry->bundlePath().string()},
-        {"name", entry->getMetadataProperty(remidy::PluginCatalogEntry::DisplayName)},
-        {"vendor", entry->getMetadataProperty(remidy::PluginCatalogEntry::VendorName)},
-        {"url", entry->getMetadataProperty(remidy::PluginCatalogEntry::ProductUrl)}
-    };
-    return j;
-}*/
-
 nlohmann::json toJson(remidy::PluginCatalog* catalog) {
     auto transformed = catalog->getPlugins() | std::views::transform([](remidy::PluginCatalogEntry* e) {
         return nlohmann::ordered_json {

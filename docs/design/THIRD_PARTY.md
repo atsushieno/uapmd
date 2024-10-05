@@ -1,10 +1,4 @@
-# Choice of third party libraries
-
-## Languages
-
-- service: C++ because we chose libremidi.
-  
-- setup client: Rust because we choose tauri 2.0.
+# Choices of third party libraries
 
 ## MIDI 2.0 I/O
 
@@ -19,6 +13,8 @@ Rust: There are too many delusive MIDI libraries that only takes name and implem
 
 - probably we use miniaudio. It is cross-platform ready, has its own audio graph.
 - choc might be an option too, but I'm unsure if its complicated buffer converters achieve good performance.
+  - Their audio block dispatcher would have been usable if they were not against MIDI 2.0.
+    There is no way to dispatch UMPs in their API.
 
 ## Audio plugin hosting
 
@@ -27,7 +23,7 @@ Rust: There are too many delusive MIDI libraries that only takes name and implem
   - We use travesty for VST3.
   - We can use lilv for LV2.
   - We hope to use clap-wrapper for CLAP to load them as VST3.
-    - There is no hosting library (there won't be, as it will compete against Bitwig Studio)
+    - There is no official hosting library (there won't be, as it will compete against Bitwig Studio)
     - It's okay to limit CLAP ability down to what VST3 offers, it's their problem.
 - Other options:
   - juce_audio_plugin_client
