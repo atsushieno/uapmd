@@ -23,7 +23,8 @@ const char* APP_NAME= "remidy-scan";
 int main(int argc, const char * argv[]) {
     std::vector<std::string> vst3SearchPaths{};
     remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
-    auto formats = std::vector<remidy::AudioPluginFormat*>{&vst3};
+    remidy::AudioPluginFormatAU auv2{};
+    auto formats = std::vector<remidy::AudioPluginFormat*>{&auv2, &vst3};
 
     remidy::PluginCatalog catalog{};
     auto dir = cpplocate::localDir(APP_NAME);

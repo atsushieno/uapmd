@@ -165,9 +165,9 @@ namespace remidy {
 
     bool AudioPluginFormatVST3::usePluginSearchPaths() { return true;}
 
-    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresLoadLibrary() { return YES; }
+    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresLoadLibrary() { return MAYBE; }
 
-    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresInstantiation() { return MAYBE; }
+    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresInstantiation() { return YES; }
 
     PluginCatalog AudioPluginFormatVST3::scanAllAvailablePlugins() {
         return impl->scanAllAvailablePlugins();

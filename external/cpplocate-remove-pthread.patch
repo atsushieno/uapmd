@@ -1,0 +1,17 @@
+diff --git a/cmake/CompileOptions.cmake b/cmake/CompileOptions.cmake
+index 4b143bd..8fbcec8 100644
+--- a/cmake/CompileOptions.cmake
++++ b/cmake/CompileOptions.cmake
+@@ -136,11 +136,11 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU" OR "${CMAKE_CXX_COMPILER_ID}" MATCH
+             -fno-asynchronous-unwind-tables
+         >
+ 
+-    PUBLIC
+         $<$<PLATFORM_ID:Darwin>:
+             -pthread
+         >
+ 
++    PUBLIC
+         $<$<VERSION_LESS:${CMAKE_VERSION},3.1>:
+             -std=c++11
+             -std=c11

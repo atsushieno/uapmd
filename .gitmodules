@@ -16,9 +16,6 @@
 [submodule "external/rtlog-cpp"]
 	path = external/rtlog-cpp
 	url = https://github.com/cjappl/rtlog-cpp
-[submodule "external/cpplocate"]
-	path = external/cpplocate
-	url = https://github.com/cginternals/cpplocate.git
 [submodule "external/json"]
 	path = external/json
 	url = https://github.com/nlohmann/json.git
