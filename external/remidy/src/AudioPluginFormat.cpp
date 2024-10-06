@@ -7,7 +7,6 @@ namespace remidy {
         PluginCatalog cached_plugins{};
     public:
         explicit Impl(AudioPluginFormat* owner);
-        bool hasPluginListCache();
         PluginCatalog& getAvailablePlugins();
     };
 
@@ -16,7 +15,7 @@ namespace remidy {
     }
 
     bool AudioPluginFormat::hasPluginListCache() {
-        return impl->hasPluginListCache();
+        return scanRequiresInstantiation() != ScanningStrategyValue::NO;
     }
 
     PluginCatalog& AudioPluginFormat::getAvailablePlugins() {
@@ -25,10 +24,8 @@ namespace remidy {
 
     AudioPluginFormat::Impl::Impl(AudioPluginFormat* owner) : owner(owner) {}
 
-    bool AudioPluginFormat::Impl::hasPluginListCache() { return !cached_plugins.getPlugins().empty(); }
-
     PluginCatalog& AudioPluginFormat::Impl::getAvailablePlugins() {
-        if (cached_plugins.getPlugins().empty())
+        if (!owner->hasPluginListCache() || cached_plugins.getPlugins().empty())
             cached_plugins = owner->scanAllAvailablePlugins();
         return cached_plugins;
     }

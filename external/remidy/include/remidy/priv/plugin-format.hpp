@@ -1,5 +1,6 @@
 #pragma once
 
+#include <future>
 #include "../remidy.hpp"
 
 namespace remidy {
@@ -12,11 +13,7 @@ namespace remidy {
         virtual ~AudioPluginFormat() = default;
 
     public:
-        enum ScanningStrategyValue {
-            NO,
-            MAYBE,
-            YES
-        };
+        virtual std::string name() = 0;
 
         virtual AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() { return nullptr; }
 
@@ -31,15 +28,24 @@ namespace remidy {
 
         virtual bool usePluginSearchPaths() = 0;
         virtual std::vector<std::string>& getDefaultSearchPaths() = 0;
+        enum ScanningStrategyValue {
+            NO,
+            MAYBE,
+            YES
+        };
         virtual ScanningStrategyValue scanRequiresLoadLibrary() = 0;
         virtual ScanningStrategyValue scanRequiresInstantiation() = 0;
         virtual PluginCatalog scanAllAvailablePlugins() = 0;
 
-        virtual std::string savePluginInformation(PluginCatalogEntry* identifier) = 0;
+        virtual std::string savePluginInformation(PluginCatalogEntry* info) = 0;
         virtual std::string savePluginInformation(AudioPluginInstance* instance) = 0;
         virtual std::unique_ptr<PluginCatalogEntry> restorePluginInformation(std::string& data) = 0;
 
-        virtual AudioPluginInstance* createInstance(PluginCatalogEntry* uniqueId) = 0;
+        struct InvokeResult {
+            std::unique_ptr<AudioPluginInstance> instance;
+            std::string error;
+        };
+        virtual void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) = 0;
     };
 
     class DesktopAudioPluginFormat : public AudioPluginFormat {

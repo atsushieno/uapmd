@@ -1,4 +1,4 @@
-
+#include <atomic>
 #include <iostream>
 #include <ostream>
 
@@ -8,14 +8,18 @@
 void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* pluginId) {
     auto displayName = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
     std::cerr << "instantiating " << displayName << std::endl;
+    std::atomic<bool> completed{false};
 
-    auto instance = format->createInstance(pluginId);
-    if (!instance)
-        std::cerr << "Could not instantiate plugin " << displayName << std::endl;
-    else {
-        delete instance;
-        std::cerr << "Successfully instantiated and deleted " << displayName << std::endl;
-    }
+    format->createInstance(pluginId, [&](remidy::AudioPluginFormat::InvokeResult result) {
+        auto instance = std::move(result.instance);
+        if (!instance)
+            std::cerr << format->name() << ": Could not instantiate plugin " << displayName << ". Details: " << result.error << std::endl;
+        else
+            std::cerr << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
+        completed = true;
+        completed.notify_one();
+    });
+    completed.wait(false);
 }
 
 const char* APP_NAME= "remidy-scan";
@@ -24,7 +28,7 @@ int main(int argc, const char * argv[]) {
     std::vector<std::string> vst3SearchPaths{};
     remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
     remidy::AudioPluginFormatAU auv2{};
-    auto formats = std::vector<remidy::AudioPluginFormat*>{&auv2, &vst3};
+    auto formats = std::vector<remidy::AudioPluginFormat*>{&auv2/*, &vst3*/};
 
     remidy::PluginCatalog catalog{};
     auto dir = cpplocate::localDir(APP_NAME);

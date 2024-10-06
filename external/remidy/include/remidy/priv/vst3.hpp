@@ -22,6 +22,7 @@ namespace remidy {
         explicit AudioPluginFormatVST3(std::vector<std::string>& overrideSearchPaths);
         ~AudioPluginFormatVST3() override;
 
+        virtual std::string name() { return "VST3"; }
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
         bool usePluginSearchPaths() override;
         std::vector<std::string>& getDefaultSearchPaths() override;
@@ -33,7 +34,7 @@ namespace remidy {
         std::string savePluginInformation(AudioPluginInstance* instance) override;
         std::unique_ptr<PluginCatalogEntry> restorePluginInformation(std::string& data) override;
 
-        AudioPluginInstance* createInstance(PluginCatalogEntry* uniqueId) override;
+        void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) override;
 
         PluginCatalog createCatalogFragment(std::filesystem::path &bundlePath) override;
 

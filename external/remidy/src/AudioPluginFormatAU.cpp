@@ -10,6 +10,18 @@
 namespace remidy {
     class AudioPluginFormatAU::Impl {
     };
+
+    class AudioPluginInstanceAU : public AudioPluginInstance {
+        AudioPluginFormatAU *format;
+        AudioComponentInstance instance;
+    public:
+        StatusCode configure(int32_t sampleRate) override;
+
+        StatusCode process(AudioProcessContext &process) override;
+
+        AudioPluginInstanceAU(AudioPluginFormatAU* format, AudioComponentInstance instance);
+        ~AudioPluginInstanceAU();
+    };
 }
 
 remidy::AudioPluginFormatAU::AudioPluginFormatAU() {
@@ -77,6 +89,7 @@ std::vector<AUPluginEntry> scanAllAvailableAUPlugins() {
                 continue;
         }
 
+        // LAMESPEC: it is quite hacky and lame expectation that the AudioComponent `name` always has `: ` ...
         auto name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
         auto firstColon = name.find_first_of(':');
         auto vendor = name.substr(0, firstColon);
@@ -96,9 +109,11 @@ remidy::PluginCatalog remidy::AudioPluginFormatAU::scanAllAvailablePlugins() {
 
     for (auto& plugin : scanAllAvailableAUPlugins()) {
         std::cerr << "Found: [" << plugin.id << " (flags: " << plugin.flags <<  ")] " << plugin.vendor << ": " << plugin.name << std::endl;
-        PluginCatalogEntry entry{};
-        entry.pluginId(plugin.id);
-        entry.setMetadataProperty(PluginCatalogEntry::DisplayName, plugin.name);
+        auto entry = std::make_unique<PluginCatalogEntry>();
+        entry->pluginId(plugin.id);
+        entry->setMetadataProperty(PluginCatalogEntry::DisplayName, plugin.name);
+        entry->setMetadataProperty(PluginCatalogEntry::VendorName, plugin.vendor);
+        ret.add(std::move(entry));
     }
     return ret;
 }
@@ -118,9 +133,44 @@ std::unique_ptr<remidy::PluginCatalogEntry> remidy::AudioPluginFormatAU::restore
     throw std::runtime_error("restorePluginInformation() is not implemented yet.");
 }
 
-inline remidy::AudioPluginInstance * remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *uniqueId) {
+void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) {
+    std::unique_ptr<std::promise<InvokeResult>> promise{};
+
+    std::async(std::launch::async, [this](PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) -> void {
+        AudioComponentDescription desc{};
+        std::istringstream id{info->pluginId()};
+        id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;
+
+        auto component = AudioComponentFindNext(nullptr, &desc);
+        if (component == nullptr) {
+            callback(InvokeResult{nullptr, std::string{"The specified AudioUnit component was not found"}});
+        }
+
+        AudioComponentInstantiationOptions options = 0;
+        AudioComponentInstantiate(component, options, ^(AudioComponentInstance instance, OSStatus status) {
+            callback(InvokeResult{std::make_unique<AudioPluginInstanceAU>(this, instance), std::string{}});
+        });
+    }, info, callback);
+}
+
+
+
+
+remidy::StatusCode remidy::AudioPluginInstanceAU::configure(int32_t sampleRate) {
     // FIXME: implement
-    throw std::runtime_error("createInstance() is not implemented yet.");
+    throw std::runtime_error("configure() is not implemented yet.");
+}
+
+remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &process) {
+    // FIXME: implement
+    throw std::runtime_error("process() is not implemented yet.");
+}
+
+remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(AudioPluginFormatAU *format, AudioComponentInstance instance) :
+    format(format), instance(instance) {
+}
+remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
+    AudioComponentInstanceDispose(instance);
 }
 
 #endif

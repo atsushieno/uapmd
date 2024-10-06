@@ -8,6 +8,7 @@
 using namespace remidy_vst3;
 
 namespace remidy {
+    class AudioPluginInstanceVST3;
 
     class AudioPluginFormatVST3::Impl {
         AudioPluginFormatVST3* owner;
@@ -40,7 +41,7 @@ namespace remidy {
             const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
             const std::function<void(void* module)>& cleanup
         );
-        AudioPluginInstance* createInstance(PluginCatalogEntry *info);
+        void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback);
         void unrefLibrary(PluginCatalogEntry *info);
         PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
     };
@@ -229,16 +230,16 @@ namespace remidy {
         throw std::runtime_error("AudioPluginInstanceVST3::process() not implemented");
     }
 
-    AudioPluginInstance* AudioPluginFormatVST3::createInstance(PluginCatalogEntry *uniqueId) {
-        return impl->createInstance(uniqueId);
+    void AudioPluginFormatVST3::createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) {
+        return impl->createInstance(info, callback);
     }
 
     PluginCatalog AudioPluginFormatVST3::createCatalogFragment(std::filesystem::path &bundlePath) {
         return impl->createCatalogFragment(bundlePath);
     }
 
-    AudioPluginInstance * AudioPluginFormatVST3::Impl::createInstance(PluginCatalogEntry *pluginInfo) {
-        AudioPluginInstanceVST3* ret{nullptr};
+    void AudioPluginFormatVST3::Impl::createInstance(PluginCatalogEntry *pluginInfo, std::function<void(InvokeResult)> callback) {
+        std::unique_ptr<AudioPluginInstanceVST3> ret{nullptr};
         v3_tuid tuid{};
         memcpy(&tuid, pluginInfo->pluginId().c_str(), sizeof(tuid));
         std::string name = pluginInfo->getMetadataProperty(PluginCatalogEntry::DisplayName);
@@ -317,7 +318,7 @@ namespace remidy {
                 auto handler = host.getComponentHandler();
                 result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) handler);
                 if (result == V3_OK) {
-                    ret = new AudioPluginInstanceVST3(this, pluginInfo, module, component, controller, controllerDistinct, instance);
+                    ret = std::make_unique<AudioPluginInstanceVST3>(this, pluginInfo, module, component, controller, controllerDistinct, instance);
                     return;
                 }
                 logger->logError("Failed to set vst3 component handler: %s", name.c_str());
@@ -335,7 +336,7 @@ namespace remidy {
         }, [&](void* module) {
             // do not unload library here.
         });
-        return ret;
+        callback(InvokeResult{std::move(ret), std::string{""}});
     }
 
     void AudioPluginFormatVST3::Impl::unrefLibrary(PluginCatalogEntry* info) {

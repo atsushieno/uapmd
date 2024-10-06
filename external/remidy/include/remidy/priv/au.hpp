@@ -11,6 +11,7 @@ namespace remidy {
         AudioPluginFormatAU();
         ~AudioPluginFormatAU() override;
 
+        virtual std::string name() { return "AU"; }
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
 
         bool usePluginSearchPaths() override { return false; }
@@ -23,12 +24,12 @@ namespace remidy {
 
         PluginCatalog scanAllAvailablePlugins() override;
 
-        std::string savePluginInformation(PluginCatalogEntry *identifier) override;
+        std::string savePluginInformation(PluginCatalogEntry *info) override;
 
         std::string savePluginInformation(AudioPluginInstance *instance) override;
 
         std::unique_ptr<PluginCatalogEntry> restorePluginInformation(std::string &data) override;
 
-        AudioPluginInstance * createInstance(PluginCatalogEntry *uniqueId) override;
+        void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) override;
     };
 }
