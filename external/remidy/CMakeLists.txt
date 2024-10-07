@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 23)
 #add_subdirectory("../../external/rtlog-cpp" "rtlog-cpp")
 #add_subdirectory("../../external/cpplocate" "cpplocate" EXCLUDE_FROM_ALL)
 add_subdirectory("../../external/json" "json")
+include("../../external/LV2Kit.cmake")
 
 add_library(remidy)
 
@@ -41,6 +42,7 @@ target_include_directories(remidy PRIVATE
         ../../external/travesty
         ../../external/cpplocate/source/cpplocate/include
         ../../external/json/include
+        ${LV2KIT_INCLUDE_DIRS}
         #../../external/libremidi/include
         include/remidy
         ${CMAKE_BINARY_DIR}/generated/include
@@ -50,6 +52,7 @@ target_link_libraries(remidy PRIVATE
         #libremidi::libremidi
         rtlog::rtlog
         cpplocate::cpplocate
+        lv2kit
         "-framework CoreFoundation"
         "-framework AVFoundation"
 )
@@ -75,6 +78,7 @@ target_sources(remidy PRIVATE
         src/AudioPluginFormat.cpp
         src/AudioPluginFormatVST3.cpp
         src/AudioPluginFormatAU.cpp
+        src/AudioPluginFormatLV2.cpp
 
         src/AudioProcessContext.cpp
         src/AudioPluginInstance.cpp

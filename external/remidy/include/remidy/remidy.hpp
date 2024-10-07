@@ -7,3 +7,4 @@
 #include "priv/plugin-format.hpp"
 #include "priv/vst3.hpp"
 #include "priv/au.hpp"
+#include "priv/lv2.hpp"
