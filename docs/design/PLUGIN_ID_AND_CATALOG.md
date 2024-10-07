@@ -7,7 +7,7 @@ Identifying an audio plugin is a crucial task for audio plugin hosts, but it is 
 
 ## Objectives
 
-Remidy has a clear objective on its plugin identification system that most of the existing plugins do not meet. The key concepts are:
+Remidy has a clear objectives on its plugin identification system that most of the existing plugins do not meet. The key concepts are:
 
 1. instantiation: we must be able to instantiate a plugin from an identifier
 2. fast instantiation: we should be able to instantiate a plugin without scanning all the installed plugins on the system every time
@@ -15,13 +15,13 @@ Remidy has a clear objective on its plugin identification system that most of th
 4. consistent: like a cool URL never changes, a plugin of the same identifier should maintain backward compatibility of its audio/MIDI outputs.
 5. fast scanning: each plugin format provides optimal way to scan plugin so that users can quickly identify which to instantiate, and multi-format wrappers like Remidy should not block their efficient design.
 6. platform-agnostic: the identifier should work for a plugin that works across multiple platforms.
-6. **format-agnostic**: the identifier should work for a plugin states work across multiple formats
+7. **format-agnostic**: the identifier should work for a plugin states work across multiple formats
 
 ### instantiation
 
 Regarding #1, a plugin ID within the format usually does not describe which format it is in. Therefore, to achieve #1, we need **both** a plugin ID and the format specifier.
 
-It should be noted that the actual plugin ID **might** depend on the actual `AudioPluginFormat` implementation. Unless there is only one dominant `AudioPluginFormat` class, the format identifier should also **identify the implementation** (Remidy itself provides the reference implementations for VST3 and AU and we use `vst3` and `au` for each).
+It should be noted that the actual plugin ID **might** depend on the actual `AudioPluginFormat` implementation. Unless there is only one dominant `AudioPluginFormat` class, the format identifier should also **identify the implementation** (Remidy itself provides the reference implementations for VST3 and AU and we use `VST3` and `AU` for each).
 
 ### fast instantiation
 
@@ -57,7 +57,7 @@ and `componentSubtype`). If we include `name` of the plugin from `AudioComponent
 
 Regarding #5 (it's looking similar to #2 but what we actually need is quite different), our plugin metadata should not try to offer "too much" to avoid needing to instantiate plugins beyond what plugin formats provide.
 
-For example, scanning AudioUnit plugins in JUCE takes too long because it instantiates all the plugins just like it does for VST3. But Apple's AudioToolbox provides fast scanning because it can only scan plugins' `Info.plist` files to avoid loading huge plugin binaries. Remidy can construct AudioUnit plugin catalog of hundreds within a second or two.
+For example, scanning AudioUnit plugins in JUCE takes too long because it instantiates all the plugins just like it does for VST3. But Apple's AudioToolbox provides fast scanning because it can scan only plugins' `Info.plist` files to avoid loading huge plugin binaries. Remidy can construct AudioUnit plugin catalog of hundreds within a second or two.
 
 ### platform and format agnostic
 

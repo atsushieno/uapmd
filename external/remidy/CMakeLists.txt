@@ -26,7 +26,7 @@ FetchContent_Declare(cpplocate
 )
 FetchContent_MakeAvailable(cpplocate)
 target_link_libraries(remidy PRIVATE cpplocate::cpplocate)
-# </rtlog>
+# </cpplocate>
 # <rtlog>
 include(FetchContent)
 FetchContent_Declare(rtlog-cpp

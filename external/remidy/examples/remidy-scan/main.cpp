@@ -60,9 +60,11 @@ int main(int argc, const char * argv[]) {
             // FIXME: this should be unblocked
 
             // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
-            if (displayName.starts_with("Battery"))
+            if (format->name() == "VST3" && displayName.starts_with("Battery"))
                 continue;
-            if (displayName.starts_with("Kontakt"))
+            if (format->name() == "VST3" && displayName.starts_with("Kontakt"))
+                continue;
+            if (format->name() == "AU" && displayName.starts_with("FL Studio"))
                 continue;
             // causes JUCE leak detector exception (not on OPNplug-AE though)
             //if (!displayName.starts_with("ADLplug-AE"))
