@@ -124,8 +124,8 @@ namespace remidy {
 
     // AudioPluginFormatVST3
 
-    std::vector<std::string>& AudioPluginFormatVST3::getDefaultSearchPaths() {
-        static std::string defaultSearchPathsVST3[] = {
+    std::vector<std::filesystem::path>& AudioPluginFormatVST3::getDefaultSearchPaths() {
+        static std::filesystem::path defaultSearchPathsVST3[] = {
 #if _WIN32
             std::string(getenv("LOCALAPPDATA")) + "\\Programs\\Common\\VST3",
             std::string(getenv("PROGRAMFILES")) + "\\Common Files\\VST3",
@@ -140,8 +140,8 @@ namespace remidy {
             "/usr/local/lib/vst3"
 #endif
         };
-        static std::vector<std::string> ret = [] {
-            std::vector<std::string> paths{};
+        static std::vector<std::filesystem::path> ret = [] {
+            std::vector<std::filesystem::path> paths{};
             paths.append_range(defaultSearchPathsVST3);
             return paths;
         }();

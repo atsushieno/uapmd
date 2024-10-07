@@ -37,8 +37,8 @@ remidy::AudioPluginExtensibility<remidy::AudioPluginFormat> * remidy::AudioPlugi
     throw std::runtime_error("getExtensibility() is not implemented yet.");
 }
 
-std::vector<std::string> ret{};
-std::vector<std::string>& remidy::AudioPluginFormatAU::getDefaultSearchPaths() {
+std::vector<std::filesystem::path> ret{};
+std::vector<std::filesystem::path>& remidy::AudioPluginFormatAU::getDefaultSearchPaths() {
     ret.clear();
     return ret;
 }

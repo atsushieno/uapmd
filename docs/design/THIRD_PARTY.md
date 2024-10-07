@@ -21,7 +21,7 @@ Rust: There are too many delusive MIDI libraries that only takes name and implem
 - We hope to have our own multi-format hosting abstraction layer, as no one built such one in a liberal license.
   - it is so far located at `external/remidy`.
   - We use travesty for VST3.
-  - We can use lilv for LV2.
+  - We can use lv2sdk (lilv, serd, sord, sratom, zix) for LV2.
   - We hope to use clap-wrapper for CLAP to load them as VST3.
     - There is no official hosting library (there won't be, as it will compete against Bitwig Studio)
     - It's okay to limit CLAP ability down to what VST3 offers, it's their problem.

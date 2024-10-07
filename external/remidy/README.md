@@ -12,3 +12,4 @@ Remidy makes use of the following libraries:
   - for submodules see their [LICENSE.md](https://github.com/cjappl/rtlog-cpp/blob/main/LICENSE.md) (modified BSD, MIT)
 - [cginternals/cpplocate](https://github.com/cginternals/cpplocate): the MIT license.
 - [nlohmann/json](https://github.com/nlohmann/json): the MIT license.
+- [lv2/lv2kit](https://github.com/lv2/lv2kit): the ISC license.

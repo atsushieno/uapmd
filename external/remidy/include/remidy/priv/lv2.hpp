@@ -15,12 +15,12 @@ namespace remidy {
         explicit AudioPluginFormatLV2(std::vector<std::string>& overrideSearchPaths);
         ~AudioPluginFormatLV2() override;
 
-        virtual std::string name() { return "LV2"; }
+        virtual std::string name() override { return "LV2"; }
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
-        bool usePluginSearchPaths() { return true; }
-        std::vector<std::string>& getDefaultSearchPaths() override;
-        ScanningStrategyValue scanRequiresLoadLibrary() { return ScanningStrategyValue::NO; }
-        ScanningStrategyValue scanRequiresInstantiation() { return ScanningStrategyValue::NO; }
+        bool usePluginSearchPaths() override { return true; }
+        std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
+        ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NO; }
+        ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NO; }
         PluginCatalog scanAllAvailablePlugins() override;
 
         std::string savePluginInformation(PluginCatalogEntry* identifier) override;

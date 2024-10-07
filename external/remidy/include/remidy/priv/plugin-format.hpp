@@ -27,7 +27,7 @@ namespace remidy {
         PluginCatalog& getAvailablePlugins();
 
         virtual bool usePluginSearchPaths() = 0;
-        virtual std::vector<std::string>& getDefaultSearchPaths() = 0;
+        virtual std::vector<std::filesystem::path>& getDefaultSearchPaths() = 0;
         enum ScanningStrategyValue {
             NO,
             MAYBE,

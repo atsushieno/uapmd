@@ -11,12 +11,12 @@ namespace remidy {
         AudioPluginFormatAU();
         ~AudioPluginFormatAU() override;
 
-        virtual std::string name() { return "AU"; }
+        virtual std::string name() override { return "AU"; }
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
 
         bool usePluginSearchPaths() override { return false; }
 
-        std::vector<std::string> & getDefaultSearchPaths() override;
+        std::vector<std::filesystem::path> & getDefaultSearchPaths() override;
 
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NO; }
 

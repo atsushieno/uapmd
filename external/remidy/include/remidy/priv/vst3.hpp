@@ -22,10 +22,10 @@ namespace remidy {
         explicit AudioPluginFormatVST3(std::vector<std::string>& overrideSearchPaths);
         ~AudioPluginFormatVST3() override;
 
-        virtual std::string name() { return "VST3"; }
+        virtual std::string name() override { return "VST3"; }
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
         bool usePluginSearchPaths() override;
-        std::vector<std::string>& getDefaultSearchPaths() override;
+        std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         ScanningStrategyValue scanRequiresInstantiation() override;
         PluginCatalog scanAllAvailablePlugins() override;

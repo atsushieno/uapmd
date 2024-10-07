@@ -84,9 +84,26 @@ namespace remidy {
         return impl->getExtensibility();
     }
 
-    std::vector<std::string> & AudioPluginFormatLV2::getDefaultSearchPaths() {
-        // FIXME: implement
-        throw std::runtime_error("AudioPluginFormatLV2::getDefaultSearchPaths() is not implemented");
+    std::vector<std::filesystem::path>& AudioPluginFormatLV2::getDefaultSearchPaths() {
+        static std::filesystem::path defaultSearchPathsLV2[] = {
+#if _WIN32
+            std::string(getenv("APPDATA")) + "\\LV2",
+            std::string(getenv("COMMONPROGRAMFILES")) + "\\LV2"
+#elif __APPLE__
+            std::string(getenv("HOME")) + "/Library/Audio/Plug-Ins/LV2",
+            "/Library/Audio/Plug-Ins/LV2"
+#else // We assume the rest covers Linux and other Unix-y platforms
+            std::string(getenv("HOME")) + "/.lv2",
+            "/usr/local/lib/lv2", // $PREFIX-based path
+            "/usr/lib/lv2" // $PREFIX-based path
+#endif
+        };
+        static std::vector<std::filesystem::path> ret = [] {
+            std::vector<std::filesystem::path> paths{};
+            paths.append_range(defaultSearchPathsLV2);
+            return paths;
+        }();
+        return ret;
     }
 
     PluginCatalog AudioPluginFormatLV2::scanAllAvailablePlugins() {
