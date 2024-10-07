@@ -8,15 +8,8 @@ namespace remidy {
         class Impl;
 
         class Extensibility : public AudioPluginExtensibility<AudioPluginFormat> {
-            bool report_not_implemented{false};
         public:
             explicit Extensibility(AudioPluginFormat& format);
-
-            bool reportNotImplemented() { return report_not_implemented; }
-            StatusCode reportNotImplemented(bool newValue) {
-                report_not_implemented = newValue;
-                return StatusCode::OK;
-            }
         };
 
         explicit AudioPluginFormatLV2(std::vector<std::string>& overrideSearchPaths);

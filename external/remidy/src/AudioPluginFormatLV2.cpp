@@ -6,12 +6,18 @@ namespace remidy {
         AudioPluginFormatLV2* owner;
         Logger* logger;
         Extensibility extensibility;
+        LilvWorld *world;
 
     public:
         explicit Impl(AudioPluginFormatLV2* owner) :
             owner(owner),
             logger(Logger::global()),
             extensibility(*owner) {
+            world = lilv_world_new();
+            lilv_world_load_all(world);
+        }
+        ~Impl() {
+            lilv_free(world);
         }
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
@@ -22,8 +28,30 @@ namespace remidy {
     };
 
     PluginCatalog AudioPluginFormatLV2::Impl::scanAllAvailablePlugins() {
-        // FIXME: implement
-        throw std::runtime_error("AudioPluginFormatLV2::scanAllAvailablePlugins() is not implemented");
+        PluginCatalog ret{};
+
+        auto plugins = lilv_world_get_all_plugins(world);
+        LILV_FOREACH(plugins, iter, plugins) {
+            const LilvPlugin* plugin = lilv_plugins_get(plugins, iter);
+            auto entry = std::make_unique<PluginCatalogEntry>();
+            auto uriNode = lilv_plugin_get_uri(plugin);
+            std::string uri = lilv_node_as_uri(uriNode);
+            auto bundleUriNode = lilv_plugin_get_bundle_uri(plugin);
+            auto bundlePath = lilv_uri_to_path(lilv_node_as_uri(bundleUriNode));
+            entry->bundlePath(std::filesystem::path{bundlePath});
+            entry->pluginId(uri);
+            auto nameNode = lilv_plugin_get_name(plugin);
+            std::string name = lilv_node_as_string(nameNode);
+            auto authorNameNode = lilv_plugin_get_author_name(plugin);
+            auto authorName = lilv_node_as_string(authorNameNode);
+            auto authorUrlNode = lilv_plugin_get_author_homepage(plugin);
+            auto authorUrl = lilv_node_as_string(authorUrlNode);
+            entry->setMetadataProperty(remidy::PluginCatalogEntry::DisplayName, name);
+            entry->setMetadataProperty(remidy::PluginCatalogEntry::VendorName, authorName);
+            entry->setMetadataProperty(remidy::PluginCatalogEntry::ProductUrl, authorUrl);
+            ret.add(std::move(entry));
+        }
+        return ret;
     }
 
     void AudioPluginFormatLV2::Impl::createInstance(PluginCatalogEntry *info,
