@@ -12,7 +12,8 @@ namespace remidy {
     enum StatusCode {
         OK,
         BUNDLE_NOT_FOUND,
-        FAILED_TO_INSTANTIATE
+        FAILED_TO_INSTANTIATE,
+        ALREADY_INSTANTIATED
     };
 
     class Logger {

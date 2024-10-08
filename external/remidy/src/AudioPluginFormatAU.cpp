@@ -136,7 +136,8 @@ std::unique_ptr<remidy::PluginCatalogEntry> remidy::AudioPluginFormatAU::restore
 void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) {
     std::unique_ptr<std::promise<InvokeResult>> promise{};
 
-    std::async(std::launch::async, [this](PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) -> void {
+    // It is "fire and forget" async...
+    auto result = std::async(std::launch::async, [this](PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) -> void {
         AudioComponentDescription desc{};
         std::istringstream id{info->pluginId()};
         id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;

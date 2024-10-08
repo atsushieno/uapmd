@@ -69,6 +69,9 @@ target_sources(remidy PRIVATE
         src/vst3/VST3Helper.cpp
         src/vst3/HostApplication.cpp
 
+        src/lv2/LV2Helper.cpp
+        src/lv2/symap.cpp
+
         src/Logger.cpp
         src/AudioBufferList.cpp
         src/MidiSequence.cpp

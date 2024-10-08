@@ -14,8 +14,13 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
         auto instance = std::move(result.instance);
         if (!instance)
             std::cerr << format->name() << ": Could not instantiate plugin " << displayName << ". Details: " << result.error << std::endl;
-        else
-            std::cerr << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
+        else {
+            auto code = instance->configure(48000);
+            if (code != remidy::OK)
+                std::cerr << format->name() << ": " << displayName << " : configure() failed. Error code " << code << std::endl;
+            else
+                std::cerr << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
+        }
         completed = true;
         completed.notify_one();
     });
@@ -68,6 +73,14 @@ int main(int argc, const char * argv[]) {
                 continue;
             if (format->name() == "AU" && displayName.starts_with("FL Studio"))
                 continue;
+#if __APPLE__ || WIN32
+            // they generate *.dylib in .ttl, but the library is *.so...
+            if (format->name() == "LV2" && displayName.starts_with("AIDA-X"))
+                continue;
+            // they generate *.so in .ttl, but the library is *.dylib...
+            if (format->name() == "LV2" && displayName.starts_with("sfizz"))
+                continue;
+#endif
             // causes JUCE leak detector exception (not on OPNplug-AE though)
             //if (!displayName.starts_with("ADLplug-AE"))
             //    continue;

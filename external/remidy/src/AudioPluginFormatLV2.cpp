@@ -1,24 +1,23 @@
+#include <atomic>
+
 #include "remidy.hpp"
 #include <lilv/lilv.h>
+
+#include "lv2/LV2Helper.hpp"
 
 namespace remidy {
     class AudioPluginFormatLV2::Impl {
         AudioPluginFormatLV2* owner;
         Logger* logger;
         Extensibility extensibility;
-        LilvWorld *world;
 
     public:
-        explicit Impl(AudioPluginFormatLV2* owner) :
-            owner(owner),
-            logger(Logger::global()),
-            extensibility(*owner) {
-            world = lilv_world_new();
-            lilv_world_load_all(world);
-        }
-        ~Impl() {
-            lilv_free(world);
-        }
+        explicit Impl(AudioPluginFormatLV2* owner);
+        ~Impl();
+
+        LilvWorld *world;
+        lv2::LV2ImplWorldContext *worldContext;
+        std::vector<LV2_Feature*> features{};
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
         PluginCatalog scanAllAvailablePlugins();
@@ -26,6 +25,64 @@ namespace remidy {
         void unrefLibrary(PluginCatalogEntry *info);
         PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
     };
+
+    class AudioPluginInstanceLV2 : public AudioPluginInstance {
+        AudioPluginFormatLV2::Impl* formatImpl;
+        const LilvPlugin* plugin;
+        LilvInstance* instance{nullptr};
+
+    public:
+        explicit AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
+        ~AudioPluginInstanceLV2() override;
+
+        StatusCode configure(int32_t sampleRate) override;
+        StatusCode process(AudioProcessContext &process) override;
+    };
+
+    AudioPluginFormatLV2::Impl::Impl(AudioPluginFormatLV2* owner) :
+        owner(owner),
+        logger(Logger::global()),
+        extensibility(*owner) {
+        world = lilv_world_new();
+        // FIXME: setup paths
+        lilv_world_load_all(world);
+
+        // This also initializes features
+        worldContext = new lv2::LV2ImplWorldContext(world);
+    }
+    AudioPluginFormatLV2::Impl::~Impl() {
+        delete worldContext;
+        lilv_free(world);
+    }
+
+    AudioPluginInstanceLV2::AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
+        formatImpl(formatImpl), plugin(plugin) {
+    }
+
+    AudioPluginInstanceLV2::~AudioPluginInstanceLV2() {
+        if (instance)
+            lilv_instance_free(instance);
+        instance = nullptr;
+    }
+
+    StatusCode AudioPluginInstanceLV2::configure(int32_t sampleRate) {
+        if (instance)
+            // we need to save state delete instance, recreate instance with the
+            // new configuration, and restore the state.
+            throw std::runtime_error("AudioPluginInstanceLV2::configure() re-configuration is not implemented");
+
+        instance = remidy::lv2::instantiate_plugin(formatImpl->worldContext, plugin, sampleRate);
+        if (!instance) {
+            return StatusCode::FAILED_TO_INSTANTIATE;
+        }
+
+        return StatusCode::OK;
+    }
+
+    StatusCode AudioPluginInstanceLV2::process(AudioProcessContext &process) {
+        // FIXME: implement
+        throw std::runtime_error("AudioPluginInstanceLV2::process() is not implemented");
+    }
 
     PluginCatalog AudioPluginFormatLV2::Impl::scanAllAvailablePlugins() {
         PluginCatalog ret{};
@@ -37,7 +94,7 @@ namespace remidy {
             auto uriNode = lilv_plugin_get_uri(plugin);
             std::string uri = lilv_node_as_uri(uriNode);
             auto bundleUriNode = lilv_plugin_get_bundle_uri(plugin);
-            auto bundlePath = lilv_uri_to_path(lilv_node_as_uri(bundleUriNode));
+            auto bundlePath = lilv_node_as_uri(bundleUriNode);
             entry->bundlePath(std::filesystem::path{bundlePath});
             entry->pluginId(uri);
             auto nameNode = lilv_plugin_get_name(plugin);
@@ -54,10 +111,19 @@ namespace remidy {
         return ret;
     }
 
-    void AudioPluginFormatLV2::Impl::createInstance(PluginCatalogEntry *info,
-        std::function<void(InvokeResult)> callback) {
-        // FIXME: implement
-        throw std::runtime_error("AudioPluginFormatLV2::createInstance() is not implemented");
+    void AudioPluginFormatLV2::Impl::createInstance(
+        PluginCatalogEntry *info,
+        std::function<void(InvokeResult)> callback
+    ) {
+        auto targetUri = lilv_new_uri(world, info->pluginId().c_str());
+        auto plugins = lilv_world_get_all_plugins(world);
+        auto plugin = lilv_plugins_get_by_uri(plugins, targetUri);
+        if (plugin) {
+            auto instance = std::make_unique<AudioPluginInstanceLV2>(this, plugin);
+            callback(InvokeResult{std::move(instance), std::string{}});
+            return;
+        }
+        callback(InvokeResult{nullptr, std::string{"Plugin '"} + info->pluginId() + "' was not found"});
     }
 
     void AudioPluginFormatLV2::Impl::unrefLibrary(PluginCatalogEntry *info) {
