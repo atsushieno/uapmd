@@ -35,7 +35,7 @@ int main(int argc, const char * argv[]) {
     remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
     remidy::AudioPluginFormatAU au{};
     remidy::AudioPluginFormatLV2 lv2{lv2SearchPaths};
-    auto formats = std::vector<remidy::AudioPluginFormat*>{&lv2/*, &au, &vst3*/};
+    auto formats = std::vector<remidy::AudioPluginFormat*>{/*&lv2, &au,*/ &vst3};
 
     remidy::PluginCatalog catalog{};
     auto dir = cpplocate::localDir(APP_NAME);

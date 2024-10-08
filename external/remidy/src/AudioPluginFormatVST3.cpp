@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "remidy.hpp"
+#include "utils.hpp"
 
 #include "vst3/VST3Helper.hpp"
 
@@ -73,7 +74,7 @@ namespace remidy {
 
     std::unique_ptr<PluginCatalogEntry> AudioPluginFormatVST3::Impl::createPluginInformation(PluginClassInfo &info) {
         auto ret = std::make_unique<PluginCatalogEntry>();
-        auto idString = std::string{reinterpret_cast<char *>(info.tuid)};
+        auto idString = hexBinaryToString((char*) info.tuid, sizeof(v3_tuid));
         ret->bundlePath(info.bundlePath);
         ret->pluginId(idString);
         ret->setMetadataProperty(PluginCatalogEntry::MetadataPropertyID::DisplayName, info.name);
@@ -223,7 +224,8 @@ namespace remidy {
     // AudioPluginInstanceVST3
 
     StatusCode AudioPluginInstanceVST3::configure(int32_t sampleRate) {
-        throw std::runtime_error("AudioPluginInstanceVST3::configure() not implemented");
+        std::cerr << "AudioPluginInstanceVST3::configure() not implemented" << std::endl;
+        return StatusCode::OK;
     }
 
     StatusCode AudioPluginInstanceVST3::process(AudioProcessContext &process) {
@@ -241,7 +243,8 @@ namespace remidy {
     void AudioPluginFormatVST3::Impl::createInstance(PluginCatalogEntry *pluginInfo, std::function<void(InvokeResult)> callback) {
         std::unique_ptr<AudioPluginInstanceVST3> ret{nullptr};
         v3_tuid tuid{};
-        memcpy(&tuid, pluginInfo->pluginId().c_str(), sizeof(tuid));
+        auto decodedBytes = stringToHexBinary(pluginInfo->pluginId());
+        memcpy(&tuid, decodedBytes.c_str(), decodedBytes.size());
         std::string name = pluginInfo->getMetadataProperty(PluginCatalogEntry::DisplayName);
 
         forEachPlugin(pluginInfo->bundlePath(), [&](void* module, IPluginFactory* factory, PluginClassInfo &info) {

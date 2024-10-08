@@ -29,7 +29,7 @@ typedef int (*PresetSink)(LV2ImplPluginContext*           jalv,
                           const LilvNode* title,
                           void*           data);
 
-// imported from jalv/src/state.c with some changes to match AAPLV2Context
+// imported from jalv/src/state.c with some changes to match LV2ImplPluginContext
 int
 jalv_load_presets(LV2ImplPluginContext* jalv, PresetSink sink, void* data)
 {

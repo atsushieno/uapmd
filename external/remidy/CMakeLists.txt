@@ -66,6 +66,8 @@ target_sources(remidy PRIVATE
         # swift sources generate C++ header files in use later, so compile them first.
         src/auv2/AUv2Helper.swift
 
+        src/utils.cpp
+
         src/vst3/VST3Helper.cpp
         src/vst3/HostApplication.cpp
 
