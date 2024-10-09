@@ -24,7 +24,6 @@ namespace remidy {
         // This impacts on whether we will have to discard and instantiate a plugin
         // when our use app changes the sample rate.
         bool instantiateRequiresSampleRate();
-        PluginCatalog& getAvailablePlugins();
 
         virtual bool usePluginSearchPaths() = 0;
         virtual std::vector<std::filesystem::path>& getDefaultSearchPaths() = 0;
@@ -35,7 +34,7 @@ namespace remidy {
         };
         virtual ScanningStrategyValue scanRequiresLoadLibrary() = 0;
         virtual ScanningStrategyValue scanRequiresInstantiation() = 0;
-        virtual PluginCatalog scanAllAvailablePlugins() = 0;
+        virtual std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() = 0;
 
         virtual std::string savePluginInformation(PluginCatalogEntry* info) = 0;
         virtual std::string savePluginInformation(AudioPluginInstance* instance) = 0;

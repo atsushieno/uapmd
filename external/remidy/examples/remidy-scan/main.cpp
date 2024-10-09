@@ -1,6 +1,7 @@
 #include <atomic>
 #include <iostream>
 #include <ostream>
+#include <ranges>
 
 #include <cpplocate/cpplocate.h>
 #include <remidy/remidy.hpp>
@@ -29,13 +30,18 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
 
 const char* APP_NAME= "remidy-scan";
 
+auto filterByFormat(std::vector<remidy::PluginCatalogEntry*> entries, std::string format) {
+    erase_if(entries, [format](remidy::PluginCatalogEntry* entry) { return entry->format() != format; });
+    return entries;
+}
+
 int main(int argc, const char * argv[]) {
     std::vector<std::string> vst3SearchPaths{};
     std::vector<std::string> lv2SearchPaths{};
     remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
     remidy::AudioPluginFormatAU au{};
     remidy::AudioPluginFormatLV2 lv2{lv2SearchPaths};
-    auto formats = std::vector<remidy::AudioPluginFormat*>{/*&lv2, &au,*/ &vst3};
+    auto formats = std::vector<remidy::AudioPluginFormat*>{&lv2, &au, &vst3};
 
     remidy::PluginCatalog catalog{};
     auto dir = cpplocate::localDir(APP_NAME);
@@ -45,20 +51,23 @@ int main(int argc, const char * argv[]) {
         std::cerr << "Loaded plugin list cache from " << pluginListCacheFile << std::endl;
     }
 
-    if (catalog.getPlugins().empty()) {
-        for (auto format : formats) {
-            catalog.merge(std::move(format->getAvailablePlugins()));
-        }
+    // build catalog
+    for (auto& format : formats) {
+        auto plugins = filterByFormat(catalog.getPlugins(), format->name());
+        if (!format->hasPluginListCache() || plugins.empty())
+            for (auto& info : format->scanAllAvailablePlugins())
+                catalog.add(std::move(info));
     }
 
-    for (auto format : formats) {
-        auto infos = catalog.getPlugins();
-        for (int i = 0, n = infos.size(); i < n; ++i) {
-            auto info = infos[i];
+    for (auto& format : formats) {
+        auto plugins = filterByFormat(catalog.getPlugins(), format->name());
+
+        int i= 0;
+        for (auto& info : plugins) {
             auto displayName = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
             auto vendor = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::VendorName);
             auto url = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::ProductUrl);
-            std::cerr << "[" << i + 1 << "/" << infos.size() << "] " << displayName << " : " << vendor << " (" << url << ")" << std::endl;
+            std::cerr << "[" << ++i << "/" << plugins.size() << "] (" << info->format() << ") " << displayName << " : " << vendor << " (" << url << ")" << std::endl;
 
             // FIXME: implement blocklist
             if (displayName.starts_with("Firefly Synth 1.8.6 VST3"))

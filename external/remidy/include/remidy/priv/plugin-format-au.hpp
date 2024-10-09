@@ -22,7 +22,7 @@ namespace remidy {
 
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NO; }
 
-        PluginCatalog scanAllAvailablePlugins() override;
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
 
         std::string savePluginInformation(PluginCatalogEntry *info) override;
 

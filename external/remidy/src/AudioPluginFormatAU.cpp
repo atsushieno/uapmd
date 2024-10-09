@@ -104,16 +104,18 @@ std::vector<AUPluginEntry> scanAllAvailableAUPlugins() {
     }
 }
 
-remidy::PluginCatalog remidy::AudioPluginFormatAU::scanAllAvailablePlugins() {
-    remidy::PluginCatalog ret{};
+std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginFormatAU::scanAllAvailablePlugins() {
+    std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
 
     for (auto& plugin : scanAllAvailableAUPlugins()) {
         std::cerr << "Found: [" << plugin.id << " (flags: " << plugin.flags <<  ")] " << plugin.vendor << ": " << plugin.name << std::endl;
         auto entry = std::make_unique<PluginCatalogEntry>();
+        static std::string format{"AU"};
+        entry->format(format);
         entry->pluginId(plugin.id);
         entry->setMetadataProperty(PluginCatalogEntry::DisplayName, plugin.name);
         entry->setMetadataProperty(PluginCatalogEntry::VendorName, plugin.vendor);
-        ret.add(std::move(entry));
+        ret.emplace_back(std::move(entry));
     }
     return ret;
 }

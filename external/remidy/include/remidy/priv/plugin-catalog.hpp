@@ -16,14 +16,22 @@ namespace remidy {
         };
 
     private:
-        std::string id;
-        std::filesystem::path bundle;
+        std::string fmt{};
+        std::string id{};
+        std::filesystem::path bundle{};
         std::map<MetadataPropertyID, std::string> props{};
 
     public:
         PluginCatalogEntry() = default;
         virtual ~PluginCatalogEntry() = default;
 
+        // Returns the plugin format.
+        std::string format() { return fmt; }
+        // Set a new plugin ID. It is settable only because deserializers will use it.
+        StatusCode format(std::string& newFormat) {
+            fmt = newFormat;
+            return StatusCode::OK;
+        }
         // Returns the plugin ID.
         std::string pluginId() { return id; }
         // Set a new plugin ID. It is settable only because deserializers will use it.
@@ -48,15 +56,17 @@ namespace remidy {
     };
 
     class PluginCatalog {
-        std::vector<std::unique_ptr<PluginCatalogEntry>> list{};
+        std::vector<std::unique_ptr<PluginCatalogEntry>> entries{};
+        std::vector<std::unique_ptr<PluginCatalogEntry>> denyList{};
 
     public:
         std::vector<PluginCatalogEntry*> getPlugins();
+        std::vector<PluginCatalogEntry*> getDenyList();
         void add(std::unique_ptr<PluginCatalogEntry> entry);
         void merge(PluginCatalog&& other);
         void clear();
-        void load(std::filesystem::path path);
-        void save(std::filesystem::path path);
+        void load(std::filesystem::path& path);
+        void save(std::filesystem::path& path);
     };
 
 

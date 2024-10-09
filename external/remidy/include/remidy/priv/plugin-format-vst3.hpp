@@ -28,7 +28,7 @@ namespace remidy {
         std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         ScanningStrategyValue scanRequiresInstantiation() override;
-        PluginCatalog scanAllAvailablePlugins() override;
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
 
         std::string savePluginInformation(PluginCatalogEntry* identifier) override;
         std::string savePluginInformation(AudioPluginInstance* instance) override;

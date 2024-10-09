@@ -18,15 +18,5 @@ namespace remidy {
         return scanRequiresInstantiation() != ScanningStrategyValue::NO;
     }
 
-    PluginCatalog& AudioPluginFormat::getAvailablePlugins() {
-        return impl->getAvailablePlugins();
-    }
-
     AudioPluginFormat::Impl::Impl(AudioPluginFormat* owner) : owner(owner) {}
-
-    PluginCatalog& AudioPluginFormat::Impl::getAvailablePlugins() {
-        if (!owner->hasPluginListCache() || cached_plugins.getPlugins().empty())
-            cached_plugins = owner->scanAllAvailablePlugins();
-        return cached_plugins;
-    }
 }

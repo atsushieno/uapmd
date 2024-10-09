@@ -37,7 +37,7 @@ namespace remidy {
         }
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
-        PluginCatalog scanAllAvailablePlugins();
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path& vst3Dir,
             const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
             const std::function<void(void* module)>& cleanup
@@ -74,6 +74,8 @@ namespace remidy {
 
     std::unique_ptr<PluginCatalogEntry> AudioPluginFormatVST3::Impl::createPluginInformation(PluginClassInfo &info) {
         auto ret = std::make_unique<PluginCatalogEntry>();
+        static std::string format{"VST3"};
+        ret->format(format);
         auto idString = hexBinaryToString((char*) info.tuid, sizeof(v3_tuid));
         ret->bundlePath(info.bundlePath);
         ret->pluginId(idString);
@@ -171,7 +173,7 @@ namespace remidy {
 
     AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresInstantiation() { return YES; }
 
-    PluginCatalog AudioPluginFormatVST3::scanAllAvailablePlugins() {
+    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatVST3::scanAllAvailablePlugins() {
         return impl->scanAllAvailablePlugins();
     }
 
@@ -203,8 +205,8 @@ namespace remidy {
         return identifier->bundlePath();
     }
 
-    PluginCatalog AudioPluginFormatVST3::Impl::scanAllAvailablePlugins() {
-        PluginCatalog ret{};
+    std::vector<std::unique_ptr<PluginCatalogEntry>>  AudioPluginFormatVST3::Impl::scanAllAvailablePlugins() {
+        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
         std::vector<PluginClassInfo> infos;
         for (auto &path : owner->getDefaultSearchPaths()) {
             std::filesystem::path dir{path};
@@ -217,7 +219,7 @@ namespace remidy {
             }
         }
         for (auto &info : infos)
-            ret.add(createPluginInformation(info));
+            ret.emplace_back(createPluginInformation(info));
         return ret;
     }
 

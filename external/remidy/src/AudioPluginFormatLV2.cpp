@@ -20,7 +20,7 @@ namespace remidy {
         std::vector<LV2_Feature*> features{};
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
-        PluginCatalog scanAllAvailablePlugins();
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback);
         void unrefLibrary(PluginCatalogEntry *info);
         PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
@@ -84,13 +84,15 @@ namespace remidy {
         throw std::runtime_error("AudioPluginInstanceLV2::process() is not implemented");
     }
 
-    PluginCatalog AudioPluginFormatLV2::Impl::scanAllAvailablePlugins() {
-        PluginCatalog ret{};
+    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatLV2::Impl::scanAllAvailablePlugins() {
+        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
 
         auto plugins = lilv_world_get_all_plugins(world);
         LILV_FOREACH(plugins, iter, plugins) {
             const LilvPlugin* plugin = lilv_plugins_get(plugins, iter);
             auto entry = std::make_unique<PluginCatalogEntry>();
+            static std::string lv2Format{"LV2"};
+            entry->format(lv2Format);
             auto uriNode = lilv_plugin_get_uri(plugin);
             std::string uri = lilv_node_as_uri(uriNode);
             auto bundleUriNode = lilv_plugin_get_bundle_uri(plugin);
@@ -106,7 +108,7 @@ namespace remidy {
             entry->setMetadataProperty(remidy::PluginCatalogEntry::DisplayName, name);
             entry->setMetadataProperty(remidy::PluginCatalogEntry::VendorName, authorName);
             entry->setMetadataProperty(remidy::PluginCatalogEntry::ProductUrl, authorUrl);
-            ret.add(std::move(entry));
+            ret.emplace_back(std::move(entry));
         }
         return ret;
     }
@@ -172,7 +174,7 @@ namespace remidy {
         return ret;
     }
 
-    PluginCatalog AudioPluginFormatLV2::scanAllAvailablePlugins() {
+    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatLV2::scanAllAvailablePlugins() {
         return impl->scanAllAvailablePlugins();
     }
 

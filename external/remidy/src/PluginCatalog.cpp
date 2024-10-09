@@ -2,31 +2,36 @@
 #include <fstream>
 #include <list>
 #include <nlohmann/json.hpp>
-#include <travesty/base.h>
 
 #include "remidy.hpp"
-#include "utils.hpp"
 
 
-std::vector<remidy::PluginCatalogEntry*> remidy::PluginCatalog::getPlugins() {
-    std::vector<remidy::PluginCatalogEntry *> ret{};
+template<typename T>
+std::vector<T*> getUnownedList(std::vector<std::unique_ptr<T>>& list) {
+    std::vector<T *> ret{};
     ret.reserve(list.size());
     for (auto& entry : list)
         ret.emplace_back(entry.get());
     return ret;
 }
+std::vector<remidy::PluginCatalogEntry*> remidy::PluginCatalog::getPlugins() {
+    return getUnownedList(entries);
+}
+std::vector<remidy::PluginCatalogEntry*> remidy::PluginCatalog::getDenyList() {
+    return getUnownedList(denyList);
+}
 
 void remidy::PluginCatalog::add(std::unique_ptr<PluginCatalogEntry> entry) {
-    list.emplace_back(std::move(entry));
+    entries.emplace_back(std::move(entry));
 }
 
 void remidy::PluginCatalog::merge(PluginCatalog&& other) {
-    for (auto& entry : other.list)
-        list.emplace_back(std::move(entry));
+    for (auto& entry : other.entries)
+        entries.emplace_back(std::move(entry));
 }
 
 void remidy::PluginCatalog::clear() {
-    list.clear();
+    entries.clear();
 }
 
 
@@ -35,6 +40,8 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> fromJson(nlohmann::json
     auto jPlugins = j.at("plugins");
     for_each(jPlugins.begin(), jPlugins.end(), [&](nlohmann::ordered_json jPlugin) {
         auto entry = std::make_unique<remidy::PluginCatalogEntry>();
+        std::string format = jPlugin.at("format");
+        entry->format(format);
         std::string id = jPlugin.at("id");
         entry->pluginId(id);
         std::string bundle = jPlugin.at("bundle");
@@ -50,7 +57,7 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> fromJson(nlohmann::json
     return list;
 }
 
-void remidy::PluginCatalog::load(std::filesystem::path path) {
+void remidy::PluginCatalog::load(std::filesystem::path& path) {
     if (!std::filesystem::exists(path))
         return;
 
@@ -60,27 +67,34 @@ void remidy::PluginCatalog::load(std::filesystem::path path) {
     ifs.close();
 
     for (auto& entry : fromJson(j))
-        list.emplace_back(std::move(entry));
+        entries.emplace_back(std::move(entry));
 }
 
-nlohmann::json toJson(remidy::PluginCatalog* catalog) {
-    auto transformed = catalog->getPlugins() | std::views::transform([](remidy::PluginCatalogEntry* e) {
-        return nlohmann::ordered_json {
-            // FIXME: this "string" needs to be escaped.
+auto pluginEntriesToJson(std::vector<remidy::PluginCatalogEntry*> list) {
+    std::vector<nlohmann::ordered_json> ret{};
+    for (auto e : list)
+        ret.emplace_back(nlohmann::ordered_json {
+            {"format", e->format()},
             {"id", e->pluginId()},
             {"bundle", e->bundlePath()},
             {"name", e->getMetadataProperty(remidy::PluginCatalogEntry::DisplayName)},
             {"vendor", e->getMetadataProperty(remidy::PluginCatalogEntry::VendorName)},
             {"url", e->getMetadataProperty(remidy::PluginCatalogEntry::ProductUrl)},
-        };
-    });
+        });
+    return ret;
+}
+
+nlohmann::json toJson(remidy::PluginCatalog* catalog) {
+    auto plugins = pluginEntriesToJson(catalog->getPlugins());
+    auto denyList = pluginEntriesToJson(catalog->getDenyList());
     nlohmann::json j = {
-        {"plugins", std::vector(transformed.begin(), transformed.end()) },
+        {"plugins", std::vector(plugins.begin(), plugins.end()) },
+        {"denyList", std::vector(denyList.begin(), denyList.end()) }
     };
     return j;
 }
 
-void remidy::PluginCatalog::save(std::filesystem::path path) {
+void remidy::PluginCatalog::save(std::filesystem::path& path) {
     if (!std::filesystem::exists(path.parent_path()))
         std::filesystem::create_directories(path.parent_path());
 
