@@ -9,27 +9,36 @@
 
 namespace remidy {
     class AudioPluginFormatAU::Impl {
+        Logger* logger;
+    public:
+        Impl(Logger* logger) : logger(logger) {}
+
+        Logger* getLogger() { return logger; }
     };
 
     class AudioPluginInstanceAU : public AudioPluginInstance {
         AudioPluginFormatAU *format;
-        AudioComponentInstance instance;
+        AudioUnit instance;
     public:
-        StatusCode configure(int32_t sampleRate) override;
+        StatusCode configure(int32_t sampleRate, bool offlineMode) override;
 
         StatusCode process(AudioProcessContext &process) override;
 
-        AudioPluginInstanceAU(AudioPluginFormatAU* format, AudioComponentInstance instance);
+        AudioPluginInstanceAU(AudioPluginFormatAU* format, AudioUnit instance);
         ~AudioPluginInstanceAU();
     };
 }
 
 remidy::AudioPluginFormatAU::AudioPluginFormatAU() {
-    impl = new Impl();
+    impl = new Impl(Logger::global());
 }
 
 remidy::AudioPluginFormatAU::~AudioPluginFormatAU() {
     delete impl;
+}
+
+remidy::Logger* remidy::AudioPluginFormatAU::getLogger() {
+    return impl->getLogger();
 }
 
 remidy::AudioPluginExtensibility<remidy::AudioPluginFormat> * remidy::AudioPluginFormatAU::getExtensibility() {
@@ -143,8 +152,24 @@ void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *info, std::
 
 
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::configure(int32_t sampleRate) {
-    std::cerr << "AudioPluginInstanceAU::configure() not implemented" << std::endl;
+remidy::StatusCode remidy::AudioPluginInstanceAU::configure(int32_t sampleRate, bool offlineMode) {
+    double sampleRateDouble = (double) sampleRate;
+    auto result = AudioUnitSetProperty(instance, kAudioUnitProperty_SampleRate, kAudioUnitScope_Input, 0, &sampleRateDouble, sizeof(double));
+    if (result != 0) {
+        this->format->getLogger()->logError("configure() on AudioPluginInstanceAU failed to set input sampleRate. Status: %d", result);
+        return StatusCode::FAILED_TO_CONFIGURE;
+    }
+    result = AudioUnitSetProperty(instance, kAudioUnitProperty_SampleRate, kAudioUnitScope_Output, 0, &sampleRateDouble, sizeof(double));
+    if (result != 0) {
+        this->format->getLogger()->logError("configure() on AudioPluginInstanceAU failed to set output sampleRate. Status: %d", result);
+        return StatusCode::FAILED_TO_CONFIGURE;
+    }
+    // it could be an invalid property. maybe just ignore that.
+    result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &offlineMode, sizeof(bool));
+    if (result != 0) {
+        this->format->getLogger()->logError("configure() on AudioPluginInstanceAU failed to set offlineMode. Status: %d", result);
+    }
+
     return StatusCode::OK;
 }
 

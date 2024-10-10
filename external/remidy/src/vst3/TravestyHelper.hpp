@@ -8,12 +8,13 @@
 #include <travesty/factory.h>
 #include <travesty/component.h>
 #include <travesty/host.h>
+#include <travesty/audio_processor.h>
 #include <travesty/edit_controller.h>
 #include <travesty/unit.h>
 #include <travesty/events.h>
 #include <travesty/view.h>
 
-#include <remidy.hpp>
+#include <priv/common.hpp>// for Logger
 #include "ClassModuleInfo.hpp"
 
 
@@ -59,6 +60,9 @@ namespace remidy_vst3 {
     struct IComponentVTable : IPluginBaseVTable {
         v3_component component;
     };
+    struct IAudioProcessorVTable : FUnknownVTable {
+        v3_audio_processor processor;
+    };
     struct IEditControllerVTable : IPluginBaseVTable {
         v3_edit_controller controller;
     };
@@ -89,6 +93,9 @@ namespace remidy_vst3 {
     };
     struct IComponent {
         struct IComponentVTable *vtable{};
+    };
+    struct IAudioProcessor {
+        struct IAudioProcessorVTable *vtable{};
     };
     struct IEditController {
         struct IEditControllerVTable *vtable{};

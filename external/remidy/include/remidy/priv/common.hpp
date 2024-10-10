@@ -13,7 +13,8 @@ namespace remidy {
         OK,
         BUNDLE_NOT_FOUND,
         FAILED_TO_INSTANTIATE,
-        ALREADY_INSTANTIATED
+        ALREADY_INSTANTIATED,
+        FAILED_TO_CONFIGURE
     };
 
     class Logger {

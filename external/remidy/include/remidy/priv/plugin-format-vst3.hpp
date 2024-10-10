@@ -32,8 +32,6 @@ namespace remidy {
 
         void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) override;
 
-        PluginCatalog createCatalogFragment(std::filesystem::path &bundlePath) override;
-
     private:
         Impl *impl;
     };

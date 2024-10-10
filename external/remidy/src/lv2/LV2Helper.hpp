@@ -113,8 +113,12 @@ namespace remidy::lv2 {
                     urid_midi_event_type{0},
                     urid_time_frame{0},
                     urid_atom_float_type{0},
+                    urid_atom_bool_type{0},
+                    urid_atom_int_type{0},
                     urid_patch_set{0},
-                    urid_patch_property{0};
+                    urid_patch_property{0},
+                    urid_core_free_wheeling{0},
+                    urid_core_integer{0};
         };
 
         explicit LV2ImplWorldContext(remidy::Logger* logger, LilvWorld *world) :
@@ -149,8 +153,11 @@ namespace remidy::lv2 {
             urids.urid_midi_event_type = map->map(map->handle, LV2_MIDI__MidiEvent);
             urids.urid_time_frame = map->map(map->handle, LV2_ATOM__frameTime);
             urids.urid_atom_float_type = map->map(map->handle, LV2_ATOM__Float);
+            urids.urid_atom_bool_type = map->map(map->handle, LV2_ATOM__Bool);
+            urids.urid_atom_int_type = map->map(map->handle, LV2_ATOM__Int);
             urids.urid_patch_set = map->map(map->handle, LV2_PATCH__Set);
             urids.urid_patch_property = map->map(map->handle, LV2_PATCH__property);
+            urids.urid_core_free_wheeling = map->map(map->handle, LV2_CORE__freeWheeling);
 
             features.logFeature.data = logger;
 
@@ -480,7 +487,8 @@ public:
     LilvInstance* instantiate_plugin(
         LV2ImplWorldContext* worldContext,
         const LilvPlugin* plugin,
-        int sampleRate);
+        int sampleRate,
+        bool offlineMode);
 }
 
 #endif // ifndef AAP_LV2_INTERNAL_INCLUDED

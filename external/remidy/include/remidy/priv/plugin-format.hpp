@@ -51,7 +51,5 @@ namespace remidy {
 
         std::vector<std::string>& getOverrideSearchPaths() { return overrideSearchPaths; }
         void addSearchPath(const std::string& path) { overrideSearchPaths.emplace_back(path); }
-
-        virtual PluginCatalog createCatalogFragment(std::filesystem::path &bundlePath) = 0;
     };
 }

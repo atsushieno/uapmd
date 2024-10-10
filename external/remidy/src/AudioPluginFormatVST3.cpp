@@ -37,15 +37,18 @@ namespace remidy {
             host(logger) {
         }
 
+        Logger* getLogger() { return logger; }
+
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path& vst3Dir,
             const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
             const std::function<void(void* module)>& cleanup
         );
-        void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback);
         void unrefLibrary(PluginCatalogEntry *info);
-        PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
+
+        void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback);
+        StatusCode configure(int32_t sampleRate);
     };
 
     StatusCode AudioPluginFormatVST3::Impl::doLoad(std::filesystem::path &vst3Dir, void** module) const {
@@ -88,7 +91,7 @@ namespace remidy {
 
     class AudioPluginInstanceVST3 : public AudioPluginInstance {
     public:
-        StatusCode configure(int32_t sampleRate) override;
+        StatusCode configure(int32_t sampleRate, bool offlineMode) override;
 
         StatusCode process(AudioProcessContext &process) override;
 
@@ -97,6 +100,7 @@ namespace remidy {
         PluginCatalogEntry* info;
         void* module;
         IComponent* component;
+        IAudioProcessor* processor;
         IEditController* controller;
         bool isControllerDistinctFromComponent;
         FUnknown* instance;
@@ -106,10 +110,13 @@ namespace remidy {
             PluginCatalogEntry* info,
             void* module,
             IComponent* component,
+            IAudioProcessor* processor,
             IEditController* controller,
             bool isControllerDistinctFromComponent,
             FUnknown* instance
-        ) : owner(owner), info(info), module(module), component(component), controller(controller), isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
+        ) : owner(owner), info(info), module(module),
+            component(component), processor(processor), controller(controller),
+            isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
         }
 
         ~AudioPluginInstanceVST3() override {
@@ -117,6 +124,9 @@ namespace remidy {
                 controller->vtable->base.terminate(controller);
                 controller->vtable->unknown.unref(controller);
             }
+
+            processor->vtable->unknown.unref(processor);
+
             component->vtable->base.terminate(component);
             component->vtable->unknown.unref(component);
 
@@ -178,20 +188,6 @@ namespace remidy {
         return impl->scanAllAvailablePlugins();
     }
 
-    PluginCatalog AudioPluginFormatVST3::Impl::createCatalogFragment(
-        const std::filesystem::path &bundlePath) {
-        if (strcasecmp(bundlePath.extension().c_str(), ".vst3") != 0)
-            return PluginCatalog{};
-        std::vector<PluginClassInfo> infos{};
-        scanAllAvailablePluginsFromLibrary(bundlePath, infos);
-
-        PluginCatalog ret{};
-        for (auto& info : infos) {
-            ret.add(createPluginInformation(info));
-        }
-        return ret;
-    }
-
     std::vector<std::unique_ptr<PluginCatalogEntry>>  AudioPluginFormatVST3::Impl::scanAllAvailablePlugins() {
         std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
         std::vector<PluginClassInfo> infos;
@@ -210,23 +206,8 @@ namespace remidy {
         return ret;
     }
 
-    // AudioPluginInstanceVST3
-
-    StatusCode AudioPluginInstanceVST3::configure(int32_t sampleRate) {
-        std::cerr << "AudioPluginInstanceVST3::configure() not implemented" << std::endl;
-        return StatusCode::OK;
-    }
-
-    StatusCode AudioPluginInstanceVST3::process(AudioProcessContext &process) {
-        throw std::runtime_error("AudioPluginInstanceVST3::process() not implemented");
-    }
-
     void AudioPluginFormatVST3::createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) {
         return impl->createInstance(info, callback);
-    }
-
-    PluginCatalog AudioPluginFormatVST3::createCatalogFragment(std::filesystem::path &bundlePath) {
-        return impl->createCatalogFragment(bundlePath);
     }
 
     void AudioPluginFormatVST3::Impl::createInstance(PluginCatalogEntry *pluginInfo, std::function<void(InvokeResult)> callback) {
@@ -277,6 +258,14 @@ namespace remidy {
                 instance->vtable->unknown.unref(instance);
                 return;
             }
+            IAudioProcessor *processor{};
+            result = component->vtable->unknown.query_interface(component, v3_audio_processor_iid, (void**) &processor);
+            if (result != V3_OK) {
+                logger->logError("Could not query vst3 IAudioProcessor interface: %s (status: %d ", name.c_str(), result);
+                component->vtable->unknown.unref(component);
+                instance->vtable->unknown.unref(instance);
+                return;
+            }
 
             // Now initialize the component, and optionally initialize the controller.
             result = component->vtable->base.initialize(component, (v3_funknown**) &host);
@@ -310,7 +299,7 @@ namespace remidy {
                 auto handler = host.getComponentHandler();
                 result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) handler);
                 if (result == V3_OK) {
-                    ret = std::make_unique<AudioPluginInstanceVST3>(this, pluginInfo, module, component, controller, controllerDistinct, instance);
+                    ret = std::make_unique<AudioPluginInstanceVST3>(this, pluginInfo, module, component, processor, controller, controllerDistinct, instance);
                     return;
                 }
                 logger->logError("Failed to set vst3 component handler: %s", name.c_str());
@@ -395,4 +384,28 @@ namespace remidy {
             library_pool.removeReference(vst3Dir);
         });
     }
+
+    // AudioPluginInstanceVST3
+
+    StatusCode AudioPluginInstanceVST3::configure(int32_t sampleRate, bool offlineMode) {
+        v3_process_setup setup{};
+        setup.sample_rate = sampleRate;
+        // FIXME: make them customizable
+        setup.max_block_size = 4096;
+        setup.symbolic_sample_size = V3_SAMPLE_32;
+        setup.process_mode = offlineMode ? V3_OFFLINE : V3_REALTIME;
+
+        auto result = processor->vtable->processor.setup_processing(processor, &setup);
+        if (result != V3_OK) {
+            owner->getLogger()->logError("Failed to call vst3 setup_processing() result: %d", result);
+            return StatusCode::FAILED_TO_CONFIGURE;
+        }
+        return StatusCode::OK;
+    }
+
+    StatusCode AudioPluginInstanceVST3::process(AudioProcessContext &process) {
+        throw std::runtime_error("AudioPluginInstanceVST3::process() not implemented");
+    }
+
+
 }

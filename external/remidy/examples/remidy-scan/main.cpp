@@ -16,7 +16,7 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
         if (!instance)
             std::cerr << format->name() << ": Could not instantiate plugin " << displayName << ". Details: " << result.error << std::endl;
         else {
-            auto code = instance->configure(48000);
+            auto code = instance->configure(48000, false);
             if (code != remidy::OK)
                 std::cerr << format->name() << ": " << displayName << " : configure() failed. Error code " << code << std::endl;
             else

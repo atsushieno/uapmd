@@ -419,7 +419,8 @@ jalv_worker_finish(JalvWorker* worker);
 LilvInstance* instantiate_plugin(
         LV2ImplWorldContext* worldContext,
         const LilvPlugin* plugin,
-        int sampleRate) {
+        int sampleRate,
+        bool offlineMode) {
     auto ctx = new LV2ImplPluginContext(worldContext, worldContext->world, plugin, sampleRate);
 
     if (zix_sem_init(&ctx->work_lock, 1)) {
@@ -463,6 +464,19 @@ LilvInstance* instantiate_plugin(
             jalv_worker_init(worldContext, &ctx->state_worker, iface, false);
         }
     }
+
+    // set offline mode
+    if (offlineMode) {
+        auto iface = (LV2_Options_Interface*) lilv_instance_get_extension_data(ctx->instance, LV2_OPTIONS__options);
+        LV2_Options_Option opts[] = {
+            {LV2_OPTIONS_INSTANCE, 0, ctx->statics->urids.urid_core_free_wheeling, sizeof(bool), ctx->statics->urids.urid_atom_bool_type, &offlineMode},
+            {LV2_OPTIONS_INSTANCE, 0, 0, 0, 0}
+        };
+        auto result = iface->set(ctx->instance, opts);
+        if (result != LV2_OPTIONS_SUCCESS)
+            ctx->statics->logger->logWarning("Failed to set offlineMode (most likely ignored)");
+    }
+
 
     return ctx->instance;
 }

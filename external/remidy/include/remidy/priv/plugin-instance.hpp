@@ -13,7 +13,7 @@ namespace remidy {
 
         virtual AudioPluginExtensibility<AudioPluginInstance>* getExtensibility() { return nullptr; }
 
-        virtual StatusCode configure(int32_t sampleRate) = 0;
+        virtual StatusCode configure(int32_t sampleRate, bool offlineMode) = 0;
 
         virtual StatusCode process(AudioProcessContext& process) = 0;
     };
