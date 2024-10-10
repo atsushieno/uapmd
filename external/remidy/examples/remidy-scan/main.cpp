@@ -56,6 +56,7 @@ int main(int argc, const char * argv[]) {
         auto plugins = filterByFormat(catalog.getPlugins(), format->name());
         if (!format->hasPluginListCache() || plugins.empty())
             for (auto& info : format->scanAllAvailablePlugins())
+                if (!catalog.contains(info->format(), info->pluginId()))
                 catalog.add(std::move(info));
     }
 

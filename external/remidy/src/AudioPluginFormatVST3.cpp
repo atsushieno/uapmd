@@ -22,7 +22,7 @@ namespace remidy {
         std::function<StatusCode(std::filesystem::path &vst3Dir, void* module)> unloadFunc;
 
         PluginBundlePool library_pool;
-        HostApplication host{};
+        HostApplication host;
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
 
@@ -33,7 +33,8 @@ namespace remidy {
             extensibility(*owner),
             loadFunc([&](std::filesystem::path &vst3Dir, void** module)->StatusCode { return doLoad(vst3Dir, module); }),
             unloadFunc([&](std::filesystem::path &vst3Dir, void* module)->StatusCode { return doUnload(vst3Dir, module); }),
-            library_pool(loadFunc,unloadFunc) {
+            library_pool(loadFunc,unloadFunc),
+            host(logger) {
         }
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();

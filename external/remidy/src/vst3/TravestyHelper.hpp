@@ -5,7 +5,6 @@
 #include <functional>
 #include <vector>
 
-#include "ClassModuleInfo.hpp"
 #include <travesty/factory.h>
 #include <travesty/component.h>
 #include <travesty/host.h>
@@ -13,6 +12,10 @@
 #include <travesty/unit.h>
 #include <travesty/events.h>
 #include <travesty/view.h>
+
+#include <remidy.hpp>
+#include "ClassModuleInfo.hpp"
+
 
 #if __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
@@ -113,6 +116,7 @@ namespace remidy_vst3 {
         IHostApplicationVTable host_vtable{};
         IComponentHandler handler{nullptr};
         IUnitHandler unit_handler{nullptr};
+        remidy::Logger* logger;
 
         static const std::basic_string<char16_t> name16t;
 
@@ -131,25 +135,7 @@ namespace remidy_vst3 {
         static v3_result notify_program_list_change(void *self, v3_program_list_id listId, int32_t programIndex);
 
     public:
-        explicit HostApplication(): IHostApplication() {
-            host_vtable.unknown.query_interface = query_interface;
-            host_vtable.unknown.ref = add_ref;
-            host_vtable.unknown.unref = remove_ref;
-            host_vtable.application.create_instance = create_instance;
-            host_vtable.application.get_name = get_name;
-            vtable = &host_vtable;
-
-            handler_vtable.unknown = host_vtable.unknown;
-            handler_vtable.handler.begin_edit = begin_edit;
-            handler_vtable.handler.end_edit = end_edit;
-            handler_vtable.handler.perform_edit = perform_edit;
-            handler_vtable.handler.restart_component = restart_component;
-            handler.vtable = &handler_vtable;
-            unit_handler_vtable.unknown = host_vtable.unknown;
-            unit_handler_vtable.handler.notify_unit_selection = notify_unit_selection;
-            unit_handler_vtable.handler.notify_program_list_change = notify_program_list_change;
-            unit_handler.vtable = &unit_handler_vtable;
-        }
+        explicit HostApplication(remidy::Logger* logger);
         ~HostApplication();
 
         v3_result queryInterface(const v3_tuid iid, void **obj);

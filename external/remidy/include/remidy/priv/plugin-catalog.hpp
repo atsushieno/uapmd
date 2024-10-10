@@ -26,14 +26,14 @@ namespace remidy {
         virtual ~PluginCatalogEntry() = default;
 
         // Returns the plugin format.
-        std::string format() { return fmt; }
+        std::string& format() { return fmt; }
         // Set a new plugin ID. It is settable only because deserializers will use it.
         StatusCode format(std::string& newFormat) {
             fmt = newFormat;
             return StatusCode::OK;
         }
         // Returns the plugin ID.
-        std::string pluginId() { return id; }
+        std::string& pluginId() { return id; }
         // Set a new plugin ID. It is settable only because deserializers will use it.
         StatusCode pluginId(std::string& newId) {
             id = newId;
@@ -62,6 +62,7 @@ namespace remidy {
     public:
         std::vector<PluginCatalogEntry*> getPlugins();
         std::vector<PluginCatalogEntry*> getDenyList();
+        bool contains(std::string& format, std::string& pluginId) const;
         void add(std::unique_ptr<PluginCatalogEntry> entry);
         void merge(PluginCatalog&& other);
         void clear();

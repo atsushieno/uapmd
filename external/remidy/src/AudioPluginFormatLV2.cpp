@@ -48,7 +48,7 @@ namespace remidy {
         lilv_world_load_all(world);
 
         // This also initializes features
-        worldContext = new lv2::LV2ImplWorldContext(world);
+        worldContext = new lv2::LV2ImplWorldContext(logger, world);
     }
     AudioPluginFormatLV2::Impl::~Impl() {
         delete worldContext;

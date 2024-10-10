@@ -10,8 +10,27 @@ namespace remidy_vst3 {
         return ((HostApplication*) self)->queryInterface(iid, obj);
     }
 
+    HostApplication::HostApplication(remidy::Logger* logger): IHostApplication(), logger(logger) {
+        host_vtable.unknown.query_interface = query_interface;
+        host_vtable.unknown.ref = add_ref;
+        host_vtable.unknown.unref = remove_ref;
+        host_vtable.application.create_instance = create_instance;
+        host_vtable.application.get_name = get_name;
+        vtable = &host_vtable;
+
+        handler_vtable.unknown = host_vtable.unknown;
+        handler_vtable.handler.begin_edit = begin_edit;
+        handler_vtable.handler.end_edit = end_edit;
+        handler_vtable.handler.perform_edit = perform_edit;
+        handler_vtable.handler.restart_component = restart_component;
+        handler.vtable = &handler_vtable;
+        unit_handler_vtable.unknown = host_vtable.unknown;
+        unit_handler_vtable.handler.notify_unit_selection = notify_unit_selection;
+        unit_handler_vtable.handler.notify_program_list_change = notify_program_list_change;
+        unit_handler.vtable = &unit_handler_vtable;
+    }
+
     HostApplication::~HostApplication() {
-        std::cerr << "HostApplication being deleted." << std::endl;
     }
 
     v3_result HostApplication::queryInterface(const v3_tuid iid, void **obj) {

@@ -39,10 +39,13 @@
 #include <lv2/patch/patch.h>
 #include <format>
 
+#include "remidy.hpp"
+
 namespace remidy::lv2 {
 
-    inline int log_vprintf(LV2_Log_Handle, LV2_URID type, const char *fmt, va_list ap) {
-        std::cerr << std::vformat(std::string{fmt}, std::make_format_args(ap));
+    inline int log_vprintf(LV2_Log_Handle handle, LV2_URID type, const char *fmt, va_list ap) {
+        auto logger = (remidy::Logger*) handle;
+        logger->logv(remidy::Logger::LogLevel::INFO, fmt, ap);
         return 0;
     }
 
@@ -114,7 +117,8 @@ namespace remidy::lv2 {
                     urid_patch_property{0};
         };
 
-        explicit LV2ImplWorldContext(LilvWorld *world) : world(world) {
+        explicit LV2ImplWorldContext(remidy::Logger* logger, LilvWorld *world) :
+            logger(logger), world(world) {
             audio_port_uri_node = lilv_new_uri(world, LV2_CORE__AudioPort);
             control_port_uri_node = lilv_new_uri(world, LV2_CORE__ControlPort);
             input_port_uri_node = lilv_new_uri(world, LV2_CORE__InputPort);
@@ -147,6 +151,8 @@ namespace remidy::lv2 {
             urids.urid_atom_float_type = map->map(map->handle, LV2_ATOM__Float);
             urids.urid_patch_set = map->map(map->handle, LV2_PATCH__Set);
             urids.urid_patch_property = map->map(map->handle, LV2_PATCH__property);
+
+            features.logFeature.data = logger;
 
             *features.minBlockLengthOption = {LV2_OPTIONS_INSTANCE,
                                                   0,
@@ -195,6 +201,7 @@ namespace remidy::lv2 {
             return ret;
         }
 
+        remidy::Logger* logger;
         LilvWorld* world;
         LV2ImplFeatures features;
         LilvNode *audio_port_uri_node, *control_port_uri_node, *atom_port_uri_node,

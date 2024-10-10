@@ -21,6 +21,13 @@ std::vector<remidy::PluginCatalogEntry*> remidy::PluginCatalog::getDenyList() {
     return getUnownedList(denyList);
 }
 
+bool remidy::PluginCatalog::contains(std::string& format, std::string& pluginId) const {
+    for (auto & e : entries)
+        if (e->format() == format && e->pluginId() == pluginId)
+            return true;
+    return false;
+}
+
 void remidy::PluginCatalog::add(std::unique_ptr<PluginCatalogEntry> entry) {
     entries.emplace_back(std::move(entry));
 }

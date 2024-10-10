@@ -423,8 +423,7 @@ LilvInstance* instantiate_plugin(
     auto ctx = new LV2ImplPluginContext(worldContext, worldContext->world, plugin, sampleRate);
 
     if (zix_sem_init(&ctx->work_lock, 1)) {
-        // FIXME: report error
-        std::cerr << "Failed to initialize semaphore (work_lock)" << std::endl;
+        worldContext->logger->logError("Failed to initialize semaphore (work_lock)");
         return nullptr;
     }
     ctx->worker.ctx = ctx;
@@ -438,7 +437,7 @@ LilvInstance* instantiate_plugin(
 
     // for jalv worker
     if (zix_sem_init(&ctx->worker.sem, 0)) {
-        std::cerr << "Failed to initialize semaphore on worker." << std::endl;
+        worldContext->logger->logError("Failed to initialize semaphore on worker.");
         return nullptr;
     }
 
@@ -452,7 +451,7 @@ LilvInstance* instantiate_plugin(
 
     ctx->instance = lilv_plugin_instantiate(plugin, sampleRate, worldContext->features.features);
     if (!ctx->instance) {
-        std::cerr << "Failed to instantiate plugin." << std::endl;
+        worldContext->logger->logError("Failed to instantiate plugin.");
         return nullptr;
     }
     if (lilv_plugin_has_extension_data(ctx->plugin, ctx->statics->work_interface_uri_node)) {
