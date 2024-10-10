@@ -50,10 +50,6 @@ Our hosting support is limited to the following features:
 
 Namely, we do not particularly support plugin UI.
 
-### Audio Plugin IDs and metadata
-
-See [PLUGIN_ID_AND_CATALOG.md](PLUGIN_ID_AND_CATALOG.md).
-
 ### Multi-format ready plugin state
 
 There are handful concerns around saving and restoring audio plugins:

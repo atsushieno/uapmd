@@ -4,7 +4,7 @@
 #include "remidy.hpp"
 #include "utils.hpp"
 
-#include "vst3/VST3Helper.hpp"
+#include "vst3/TravestyHelper.hpp"
 
 using namespace remidy_vst3;
 
@@ -177,16 +177,6 @@ namespace remidy {
         return impl->scanAllAvailablePlugins();
     }
 
-    std::string AudioPluginFormatVST3::savePluginInformation(AudioPluginInstance *instance) {
-        // FIXME: implement
-        throw std::runtime_error("savePluginInformation() is not implemented yet.");
-    }
-
-    std::unique_ptr<PluginCatalogEntry> AudioPluginFormatVST3::restorePluginInformation(std::string &data) {
-        // FIXME: implement
-        throw std::runtime_error("restorePluginInformation() is not implemented yet.");
-    }
-
     PluginCatalog AudioPluginFormatVST3::Impl::createCatalogFragment(
         const std::filesystem::path &bundlePath) {
         if (strcasecmp(bundlePath.extension().c_str(), ".vst3") != 0)
@@ -199,10 +189,6 @@ namespace remidy {
             ret.add(createPluginInformation(info));
         }
         return ret;
-    }
-
-    std::string AudioPluginFormatVST3::savePluginInformation(PluginCatalogEntry *identifier) {
-        return identifier->bundlePath();
     }
 
     std::vector<std::unique_ptr<PluginCatalogEntry>>  AudioPluginFormatVST3::Impl::scanAllAvailablePlugins() {

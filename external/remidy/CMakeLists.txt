@@ -68,7 +68,7 @@ target_sources(remidy PRIVATE
 
         src/utils.cpp
 
-        src/vst3/VST3Helper.cpp
+        src/vst3/TravestyHelper.cpp
         src/vst3/HostApplication.cpp
 
         src/lv2/LV2Helper.cpp

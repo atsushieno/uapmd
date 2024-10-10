@@ -178,21 +178,6 @@ namespace remidy {
         return impl->scanAllAvailablePlugins();
     }
 
-    std::string AudioPluginFormatLV2::savePluginInformation(PluginCatalogEntry *identifier) {
-        // FIXME: implement
-        throw std::runtime_error("AudioPluginFormatLV2::savePluginInformation() is not implemented");
-    }
-
-    std::string AudioPluginFormatLV2::savePluginInformation(AudioPluginInstance *instance) {
-        // FIXME: implement
-        throw std::runtime_error("AudioPluginFormatLV2::savePluginInformation() is not implemented");
-    }
-
-    std::unique_ptr<PluginCatalogEntry> AudioPluginFormatLV2::restorePluginInformation(std::string &data) {
-        // FIXME: implement
-        throw std::runtime_error("AudioPluginFormatLV2::restorePluginInformation() is not implemented");
-    }
-
     void AudioPluginFormatLV2::createInstance(PluginCatalogEntry *info,
         std::function<void(InvokeResult)> callback) {
         impl->createInstance(info, callback);

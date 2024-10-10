@@ -120,21 +120,6 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginForm
     return ret;
 }
 
-std::string remidy::AudioPluginFormatAU::savePluginInformation(PluginCatalogEntry *identifier) {
-    // FIXME: implement
-    throw std::runtime_error("savePluginInformation() is not implemented yet.");
-}
-
-std::string remidy::AudioPluginFormatAU::savePluginInformation(AudioPluginInstance *instance) {
-    // FIXME: implement
-    throw std::runtime_error("savePluginInformation() is not implemented yet.");
-}
-
-std::unique_ptr<remidy::PluginCatalogEntry> remidy::AudioPluginFormatAU::restorePluginInformation(std::string &data) {
-    // FIXME: implement
-    throw std::runtime_error("restorePluginInformation() is not implemented yet.");
-}
-
 void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) {
     std::unique_ptr<std::promise<InvokeResult>> promise{};
 

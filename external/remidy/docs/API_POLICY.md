@@ -5,7 +5,7 @@
 - We will follow semantic versioning.
   - We will keep making breaking changes until version 1.0 release.
   - At some stage we will start maintaining API stability on every minor release (during x in version 0.x).
-- We might add preprocessing symbols like `UAPMD_API` and `REMIDY_API` at some stage.
+- We might add preprocessing symbols like `REMIDY_API` at some stage.
 
 ## ABI compatibility
 

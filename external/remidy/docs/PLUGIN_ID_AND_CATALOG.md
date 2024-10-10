@@ -9,13 +9,13 @@ Identifying an audio plugin is a crucial task for audio plugin hosts, but it is 
 
 Remidy has a clear objectives on its plugin identification system that most of the existing plugins do not meet. The key concepts are:
 
-1. instantiation: we must be able to instantiate a plugin from an identifier
-2. fast instantiation: we should be able to instantiate a plugin without scanning all the installed plugins on the system every time
-3. globally identifiable: an identifier should be resilient against file system changes
-4. consistent: like a cool URL never changes, a plugin of the same identifier should maintain backward compatibility of its audio/MIDI outputs.
-5. fast scanning: each plugin format provides optimal way to scan plugin so that users can quickly identify which to instantiate, and multi-format wrappers like Remidy should not block their efficient design.
-6. platform-agnostic: the identifier should work for a plugin that works across multiple platforms.
-7. **format-agnostic**: the identifier should work for a plugin states work across multiple formats
+1. **instantiation**: we must be able to instantiate a plugin from an identifier
+2. **fast instantiation**: we should be able to instantiate a plugin without scanning all the installed plugins on the system every time
+3. **globally identifiable**: an identifier should be resilient against file system changes
+4. **consistent**: like a cool URL never changes, a plugin of the same identifier should maintain backward compatibility of its audio/MIDI outputs.
+5. **fast scanning**: each plugin format provides optimal way to scan plugin so that users can quickly identify which to instantiate, and multi-format wrappers like Remidy should not block their efficient design.
+6. **platform-agnostic**: the identifier should work for a plugin that works across multiple platforms.
+7. **format-agnostic**: the identifier should work for a plugin whose states work across multiple formats
 
 ### instantiation
 
@@ -64,6 +64,12 @@ For example, scanning AudioUnit plugins in JUCE takes too long because it instan
 Regarding #6 and #7, Most cross-platform plugin formats achieve that as they do not have to change the behavior per platform. But most of the plugins do not work in format-agnostic way, as they do not save and load state in the compatible binary manner. We need to use something like MIDI-CI Property Exchange Get and Set Device State. Or YAMAHA DX-7 Cart which is just a sequence of MIDI 1.0 SysEx messages.
 
 It is mostly not about plugin identification, but if there is no way to extract the "identity" of the "same" plugin, then cross-format portability will not happen. So it is still an essential requirement here.
+
+## Dealing With Inconsistency
+
+Users may remove audio plugins at any time and we cannot detect any changes so far (in theory we could though, at least for those plugin formats that are based on filesystem using filesystem watcher). When we report users about missing plugins, the error message would not make sense without plugin name (human-readable). PluginIDs are not meant for human beings (especially on AudioUnit, as their IDs are based only on 3 four-byte fields).
+
+You should probably save the entire `PluginCatalogEntry` instead of the plugin ID. The simple plugin ID string isn't enough as you will have to save its plugin format name, anyway.
 
 ----
 

@@ -36,10 +36,6 @@ namespace remidy {
         virtual ScanningStrategyValue scanRequiresInstantiation() = 0;
         virtual std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() = 0;
 
-        virtual std::string savePluginInformation(PluginCatalogEntry* info) = 0;
-        virtual std::string savePluginInformation(AudioPluginInstance* instance) = 0;
-        virtual std::unique_ptr<PluginCatalogEntry> restorePluginInformation(std::string& data) = 0;
-
         struct InvokeResult {
             std::unique_ptr<AudioPluginInstance> instance;
             std::string error;

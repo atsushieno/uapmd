@@ -30,10 +30,6 @@ namespace remidy {
         ScanningStrategyValue scanRequiresInstantiation() override;
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
 
-        std::string savePluginInformation(PluginCatalogEntry* identifier) override;
-        std::string savePluginInformation(AudioPluginInstance* instance) override;
-        std::unique_ptr<PluginCatalogEntry> restorePluginInformation(std::string& data) override;
-
         void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) override;
 
         PluginCatalog createCatalogFragment(std::filesystem::path &bundlePath) override;

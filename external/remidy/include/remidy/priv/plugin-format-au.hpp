@@ -24,12 +24,6 @@ namespace remidy {
 
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
 
-        std::string savePluginInformation(PluginCatalogEntry *info) override;
-
-        std::string savePluginInformation(AudioPluginInstance *instance) override;
-
-        std::unique_ptr<PluginCatalogEntry> restorePluginInformation(std::string &data) override;
-
         void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) override;
     };
 }
