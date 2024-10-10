@@ -382,6 +382,12 @@ namespace remidy {
     }
 
     void AudioPluginFormatVST3::Impl::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results) {
+        // fast path scanning using moduleinfo.json
+        if (remidy_vst3::hasModuleInfo(vst3Dir)) {
+            for (auto& e : remidy_vst3::getModuleInfo(vst3Dir))
+                results.emplace_back(e);
+            return;
+        }
         forEachPlugin(vst3Dir, [&](void* module, IPluginFactory* factory, PluginClassInfo& pluginInfo) {
             results.emplace_back(pluginInfo);
         }, [&](void* module) {

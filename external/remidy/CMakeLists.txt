@@ -17,8 +17,10 @@ target_compile_definitions(remidy PRIVATE
 )
 endif ()
 
-# <cpplocate>
+set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
+
 include(FetchContent)
+# <cpplocate>
 FetchContent_Declare(cpplocate
         GIT_REPOSITORY https://github.com/cginternals/cpplocate
         GIT_TAG b796990d8df747758dbd6217b6315b7bdbb0c27e
@@ -29,7 +31,6 @@ FetchContent_MakeAvailable(cpplocate)
 target_link_libraries(remidy PRIVATE cpplocate::cpplocate)
 # </cpplocate>
 # <rtlog>
-include(FetchContent)
 FetchContent_Declare(rtlog-cpp
         GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
         GIT_TAG 5774ba063ecc25057e0f616d61e50c079e939e82
@@ -40,7 +41,7 @@ target_link_libraries(remidy PRIVATE rtlog::rtlog)
 
 target_include_directories(remidy PRIVATE
         ../../external/travesty
-        ../../external/cpplocate/source/cpplocate/include
+        ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ../../external/json/include
         ${LV2KIT_INCLUDE_DIRS}
         #../../external/libremidi/include
@@ -70,6 +71,9 @@ target_sources(remidy PRIVATE
 
         src/vst3/TravestyHelper.cpp
         src/vst3/HostApplication.cpp
+        src/vst3/ClassModuleInfo.cpp
+
+        ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}/moduleinfoparser.cpp
 
         src/lv2/LV2Helper.cpp
         src/lv2/symap.cpp

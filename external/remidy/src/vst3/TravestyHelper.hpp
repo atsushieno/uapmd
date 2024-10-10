@@ -5,6 +5,7 @@
 #include <functional>
 #include <vector>
 
+#include "ClassModuleInfo.hpp"
 #include <travesty/factory.h>
 #include <travesty/component.h>
 #include <travesty/host.h>
@@ -16,8 +17,6 @@
 #if __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #endif
-
-#define kVstAudioEffectClass "Audio Module Class"
 
 namespace remidy_vst3 {
 
@@ -172,24 +171,6 @@ namespace remidy_vst3 {
     int32_t initializeModule(void* library);
     void unloadModule(void* library);
     IPluginFactory* getFactoryFromLibrary(void* module);
-
-    struct PluginClassInfo {
-        std::filesystem::path bundlePath;
-        std::string vendor;
-        std::string url;
-        std::string name;
-        v3_tuid tuid{};
-
-        PluginClassInfo(
-            std::filesystem::path& bundlePath,
-            std::string& vendor,
-            std::string& url,
-            std::string& name,
-            v3_tuid tuid
-        ): bundlePath(bundlePath), vendor(vendor), url(url), name(name) {
-            memcpy(this->tuid, tuid, 16);
-        }
-    };
 
     void forEachPlugin(std::filesystem::path vst3Dir,
         std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)> func,

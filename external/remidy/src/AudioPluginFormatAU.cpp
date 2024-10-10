@@ -108,7 +108,6 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginForm
     std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
 
     for (auto& plugin : scanAllAvailableAUPlugins()) {
-        std::cerr << "Found: [" << plugin.id << " (flags: " << plugin.flags <<  ")] " << plugin.vendor << ": " << plugin.name << std::endl;
         auto entry = std::make_unique<PluginCatalogEntry>();
         static std::string format{"AU"};
         entry->format(format);
