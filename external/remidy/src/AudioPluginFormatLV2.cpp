@@ -36,6 +36,8 @@ namespace remidy {
         ~AudioPluginInstanceLV2() override;
 
         StatusCode configure(int32_t sampleRate, bool offlineMode) override;
+        StatusCode startProcessing() override;
+        StatusCode stopProcessing() override;
         StatusCode process(AudioProcessContext &process) override;
     };
 
@@ -63,26 +65,6 @@ namespace remidy {
         if (instance)
             lilv_instance_free(instance);
         instance = nullptr;
-    }
-
-    StatusCode AudioPluginInstanceLV2::configure(int32_t sampleRate, bool offlineMode) {
-        // Do we have to deal with offlineMode? LV2 only mentions hardRT*Capable*.
-
-        if (instance)
-            // we need to save state delete instance, recreate instance with the
-            // new configuration, and restore the state.
-            throw std::runtime_error("AudioPluginInstanceLV2::configure() re-configuration is not implemented");
-
-        instance = remidy::lv2::instantiate_plugin(formatImpl->worldContext, plugin, sampleRate, offlineMode);
-        if (!instance)
-            return StatusCode::FAILED_TO_INSTANTIATE;
-
-        return StatusCode::OK;
-    }
-
-    StatusCode AudioPluginInstanceLV2::process(AudioProcessContext &process) {
-        // FIXME: implement
-        throw std::runtime_error("AudioPluginInstanceLV2::process() is not implemented");
     }
 
     std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatLV2::Impl::scanAllAvailablePlugins() {
@@ -186,5 +168,37 @@ namespace remidy {
 
     AudioPluginFormatLV2::Extensibility::Extensibility(AudioPluginFormat &format) :
         AudioPluginExtensibility(format) {
+    }
+
+    // AudioPluginInstanceLV2
+
+    StatusCode AudioPluginInstanceLV2::configure(int32_t sampleRate, bool offlineMode) {
+        // Do we have to deal with offlineMode? LV2 only mentions hardRT*Capable*.
+
+        if (instance)
+            // we need to save state delete instance, recreate instance with the
+                // new configuration, and restore the state.
+                    throw std::runtime_error("AudioPluginInstanceLV2::configure() re-configuration is not implemented");
+
+        instance = remidy::lv2::instantiate_plugin(formatImpl->worldContext, plugin, sampleRate, offlineMode);
+        if (!instance)
+            return StatusCode::FAILED_TO_INSTANTIATE;
+
+        return StatusCode::OK;
+    }
+
+    StatusCode AudioPluginInstanceLV2::startProcessing() {
+        lilv_instance_activate(instance);
+        return StatusCode::OK;
+    }
+
+    StatusCode AudioPluginInstanceLV2::stopProcessing() {
+        lilv_instance_deactivate(instance);
+        return StatusCode::OK;
+    }
+
+    StatusCode AudioPluginInstanceLV2::process(AudioProcessContext &process) {
+        // FIXME: implement
+        throw std::runtime_error("AudioPluginInstanceLV2::process() is not implemented");
     }
 }

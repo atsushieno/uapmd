@@ -15,6 +15,10 @@ namespace remidy {
 
         virtual StatusCode configure(int32_t sampleRate, bool offlineMode) = 0;
 
+        virtual StatusCode startProcessing() = 0;
+
+        virtual StatusCode stopProcessing() = 0;
+
         virtual StatusCode process(AudioProcessContext& process) = 0;
     };
 

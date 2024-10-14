@@ -93,6 +93,9 @@ namespace remidy {
     public:
         StatusCode configure(int32_t sampleRate, bool offlineMode) override;
 
+        StatusCode startProcessing() override;
+        StatusCode stopProcessing() override;
+
         StatusCode process(AudioProcessContext &process) override;
 
     private:
@@ -399,6 +402,24 @@ namespace remidy {
         if (result != V3_OK) {
             owner->getLogger()->logError("Failed to call vst3 setup_processing() result: %d", result);
             return StatusCode::FAILED_TO_CONFIGURE;
+        }
+        return StatusCode::OK;
+    }
+
+    StatusCode AudioPluginInstanceVST3::startProcessing() {
+        auto result = processor->vtable->processor.set_processing(processor, true);
+        if (result != V3_OK) {
+            owner->getLogger()->logError("Failed to start vst3 processing. Result: %d", result);
+            return StatusCode::FAILED_TO_START_PROCESSING;
+        }
+        return StatusCode::OK;
+    }
+
+    StatusCode AudioPluginInstanceVST3::stopProcessing() {
+        auto result = processor->vtable->processor.set_processing(processor, false);
+        if (result != V3_OK) {
+            owner->getLogger()->logError("Failed to stop vst3 processing. Result: %d", result);
+            return StatusCode::FAILED_TO_STOP_PROCESSING;
         }
         return StatusCode::OK;
     }

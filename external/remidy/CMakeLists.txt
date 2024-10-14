@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.29)
-project(remidy LANGUAGES C CXX OBJCXX Swift)
+project(remidy LANGUAGES C CXX OBJC OBJCXX Swift)
 
 set(CMAKE_CXX_STANDARD 23)
 
@@ -49,16 +49,23 @@ target_include_directories(remidy PRIVATE
         ${CMAKE_BINARY_DIR}/generated/include
 )
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    set(remidy_LIBS_PLAT
+        "-framework CoreFoundation"
+        "-framework CoreAudio"
+    )
+endif ()
+
 target_link_libraries(remidy PRIVATE
         #libremidi::libremidi
         rtlog::rtlog
         cpplocate::cpplocate
         lv2kit
-        "-framework CoreFoundation"
-        "-framework AVFoundation"
+        ${remidy_LIBS_PLAT}
 )
 
 target_compile_options(remidy PRIVATE
+        $<$<COMPILE_LANGUAGE:ObjCXX>:-framework CoreAudio -framework CoreFoundation>
         $<$<COMPILE_LANGUAGE:Swift>:-cxx-interoperability-mode=default -emit-clang-header-path ${CMAKE_BINARY_DIR}/generated/include/swift-interop/remidy-Swift.h>
 )
 
@@ -86,7 +93,7 @@ target_sources(remidy PRIVATE
         src/AudioPluginLibraryPool.cpp
         src/AudioPluginFormat.cpp
         src/AudioPluginFormatVST3.cpp
-        src/AudioPluginFormatAU.cpp
+        src/AudioPluginFormatAU.mm
         src/AudioPluginFormatLV2.cpp
 
         src/AudioProcessContext.cpp

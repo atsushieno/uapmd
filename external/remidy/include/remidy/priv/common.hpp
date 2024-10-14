@@ -14,7 +14,9 @@ namespace remidy {
         BUNDLE_NOT_FOUND,
         FAILED_TO_INSTANTIATE,
         ALREADY_INSTANTIATED,
-        FAILED_TO_CONFIGURE
+        FAILED_TO_CONFIGURE,
+        FAILED_TO_START_PROCESSING,
+        FAILED_TO_STOP_PROCESSING
     };
 
     class Logger {

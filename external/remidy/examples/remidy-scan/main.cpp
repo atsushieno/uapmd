@@ -19,8 +19,19 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
             auto code = instance->configure(48000, false);
             if (code != remidy::OK)
                 std::cerr << format->name() << ": " << displayName << " : configure() failed. Error code " << code << std::endl;
-            else
-                std::cerr << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
+            else {
+                code = instance->startProcessing();
+                if (code != remidy::OK)
+                    std::cerr << format->name() << ": " << displayName << " : startProcessing() failed. Error code " << code << std::endl;
+                else {
+
+                    code = instance->stopProcessing();
+                    if (code != remidy::OK)
+                        std::cerr << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << code << std::endl;
+                    else
+                    std::cerr << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
+                }
+            }
         }
         completed = true;
         completed.notify_one();
