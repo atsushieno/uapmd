@@ -17,11 +17,6 @@
 #include <priv/common.hpp>// for Logger
 #include "ClassModuleInfo.hpp"
 
-
-#if __APPLE__
-#include <CoreFoundation/CoreFoundation.h>
-#endif
-
 namespace remidy_vst3 {
 
     enum V3_IO_MODES {
@@ -39,44 +34,74 @@ namespace remidy_vst3 {
         v3_result (V3_API* notify_unit_selection)(void* self, v3_unit_id unitId);
         v3_result (V3_API* notify_program_list_change)(void* self, v3_program_list_id listId, int32_t programIndex);
     };
+    struct v3_plug_interface_support {
+        v3_result (V3_API* is_plug_interface_supported)(void* self, const v3_tuid iid);
+    };
+
     static constexpr const v3_tuid v3_unit_handler_iid =
         V3_ID(0x4B5147F8, 0x4654486B, 0x8DAB30BA, 0x163A3C56);
+    static constexpr const v3_tuid v3_plug_interface_support_iid =
+        V3_ID(0x4FB58B9E, 0x9EAA4E0F, 0xAB361C1C, 0xCCB56FEA);
 
     struct FUnknownVTable {
-        v3_funknown unknown;
+        v3_funknown unknown{nullptr};
     };
     struct IPluginFactoryVTable : public FUnknownVTable {
-        v3_plugin_factory factory;
+        v3_plugin_factory factory{nullptr};
     };
     struct IPluginFactory2VTable : public IPluginFactoryVTable {
-        v3_plugin_factory_2 factory_2;
+        v3_plugin_factory_2 factory_2{nullptr};
     };
     struct IPluginFactory3VTable : public IPluginFactory2VTable {
-        v3_plugin_factory_3 factory_3;
+        v3_plugin_factory_3 factory_3{nullptr};
     };
     struct IPluginBaseVTable : FUnknownVTable {
-        v3_plugin_base base;
+        v3_plugin_base base{nullptr};
     };
     struct IComponentVTable : IPluginBaseVTable {
-        v3_component component;
+        v3_component component{nullptr};
     };
     struct IAudioProcessorVTable : FUnknownVTable {
-        v3_audio_processor processor;
+        v3_audio_processor processor{nullptr};
     };
     struct IEditControllerVTable : IPluginBaseVTable {
-        v3_edit_controller controller;
+        v3_edit_controller controller{nullptr};
+    };
+    struct IAttributeListVTable : FUnknownVTable {
+        v3_attribute_list attribute_list{nullptr};
+    };
+    struct IEventHandlerVTable : FUnknownVTable {
+        v3_event_handler event_handler{nullptr};
     };
     struct IComponentHandlerVTable : FUnknownVTable {
-        v3_component_handler handler;
+        v3_component_handler handler{nullptr};
     };
     struct IComponentHandler2VTable : FUnknownVTable {
-        v3_component_handler2 handler;
+        v3_component_handler2 handler{nullptr};
     };
     struct IUnitHandlerVTable : FUnknownVTable {
-        v3_unit_handler handler;
+        v3_unit_handler handler{nullptr};
+    };
+    struct IMessageVTable : FUnknownVTable {
+        v3_message message{nullptr};
+    };
+    struct IParamValueQueueVTable : FUnknownVTable {
+        v3_param_value_queue param_value_queue{nullptr};
+    };
+    struct IParameterChangesVTable : FUnknownVTable {
+        v3_param_changes parameter_changes{nullptr};
+    };
+    struct IPlugFrameVTable : FUnknownVTable {
+        v3_plugin_frame plug_frame{nullptr};
+    };
+    struct IConnectionPointVTable : FUnknownVTable {
+        v3_connection_point connection_point{nullptr};
     };
     struct IHostApplicationVTable : public FUnknownVTable {
-        v3_host_application application;
+        v3_host_application application{nullptr};
+    };
+    struct IPlugInterfaceSupportVTable : public FUnknownVTable {
+        v3_plug_interface_support support{nullptr};
     };
 
     struct FUnknown {
@@ -100,6 +125,12 @@ namespace remidy_vst3 {
     struct IEditController {
         struct IEditControllerVTable *vtable{};
     };
+    struct IAttributeList {
+        struct IAttributeListVTable *vtable{};
+    };
+    struct IEventHandler {
+        struct IEventHandlerVTable *vtable{};
+    };
     struct IComponentHandler {
         struct IComponentHandlerVTable *vtable{};
     };
@@ -109,20 +140,61 @@ namespace remidy_vst3 {
     struct IUnitHandler {
         struct IUnitHandlerVTable *vtable{};
     };
+    struct IMessage {
+        struct IMessageVTable *vtable{};
+    };
+    struct IParamValueQueue {
+        struct IParamValueQueueVTable *vtable{};
+    };
+    struct IParameterChanges {
+        struct IParameterChangesVTable *vtable{};
+    };
+    struct IPlugFrame {
+        struct IPlugFrameVTable *vtable{};
+    };
     struct IHostApplication {
         struct IHostApplicationVTable *vtable{};
     };
+    struct IConnectionPoint {
+        struct IConnectionPointVTable *vtable{};
+    };
+    struct IPlugInterfaceSupport {
+        struct IPlugInterfaceSupportVTable *vtable{};
+    };
 
     class HostApplication :
+        // we cannot simply implement them. That will mess vtables.
+        //public IAttributeList,
+        //public IEventHandler,
         //public IComponentHandler,
+        //public IMessage,
+        //public IParamValueQueue,
+        //public IParameterChanges,
+        //public IPlugFrame,
         //public IUnitHandler,
+        //public IPlugInterfaceSupport,
         public IHostApplication
     {
+        IAttributeListVTable attribute_list_vtable{};
+        IEventHandlerVTable event_handler_vtable{};
         IComponentHandlerVTable handler_vtable{};
         IUnitHandlerVTable unit_handler_vtable{};
+        IMessageVTable message_vtable{};
+        IParamValueQueueVTable param_value_queue_table{};
+        IParameterChangesVTable parameter_changes_vtable{};
+        IPlugFrameVTable plug_frame_vtable{};
+        IPlugInterfaceSupportVTable support_vtable{};
         IHostApplicationVTable host_vtable{};
+        IAttributeList attribute_list{nullptr};
+        IEventHandler event_handler{nullptr};
         IComponentHandler handler{nullptr};
         IUnitHandler unit_handler{nullptr};
+        IMessage message{nullptr};
+        IParamValueQueue param_value_queue{nullptr};
+        IParameterChanges parameter_changes{nullptr};
+        IPlugFrame plug_frame{nullptr};
+        IPlugInterfaceSupport support{nullptr};
+
         remidy::Logger* logger;
 
         static const std::basic_string<char16_t> name16t;
@@ -133,6 +205,19 @@ namespace remidy_vst3 {
         static v3_result create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj);
         static v3_result get_name(void *self, v3_str_128 name);
 
+        static v3_result set_int(void *self, const char* id, int64_t value);
+        static v3_result get_int(void *self, const char* id, int64_t* value);
+        static v3_result set_float(void *self, const char* id, double value);
+        static v3_result get_float(void *self, const char* id, double* value);
+        static v3_result set_string(void *self, const char* id, const int16_t* value);
+        static v3_result get_string(void *self, const char* id, int16_t* value, uint32_t sizeInBytes);
+        static v3_result set_binary(void *self, const char* id, const void* data, uint32_t sizeInBytes);
+        static v3_result get_binary(void *self, const char* id, const void** data, uint32_t *sizeInBytes);
+
+        static int32_t get_event_count(void *self);
+        static v3_result get_event(void *self, int32_t index, v3_event &e);
+        static v3_result add_event(void *self, v3_event &e);
+
         static v3_result begin_edit(void *self, v3_param_id);
         static v3_result end_edit(void *self, v3_param_id);
         static v3_result perform_edit(void *self, v3_param_id, double value_normalised);
@@ -140,6 +225,23 @@ namespace remidy_vst3 {
 
         static v3_result notify_unit_selection(void *self, v3_unit_id unitId);
         static v3_result notify_program_list_change(void *self, v3_program_list_id listId, int32_t programIndex);
+
+        static const char* get_message_id(void *self);
+        static void set_message_id(void *self, const char* id);
+        static IAttributeList* get_attributes(void *self);
+
+        static v3_param_id get_param_id(void* self);
+        static int32_t get_point_count(void* self);
+        static v3_result get_point(void* self, int32_t idx, int32_t* sample_offset, double* value);
+        static v3_result add_point(void* self, int32_t sample_offset, double value, int32_t* idx);
+
+        static int32_t get_param_count(void* self);
+        static struct v3_param_value_queue** get_param_data(void* self, int32_t idx);
+        static struct v3_param_value_queue** add_param_data(void* self, const v3_param_id* id, int32_t* idx);
+
+        static v3_result resize_view(void* self, struct v3_plugin_view**, struct v3_view_rect*);
+
+        static v3_result is_plug_interface_supported(void* self, const v3_tuid iid);
 
     public:
         explicit HostApplication(remidy::Logger* logger);
@@ -149,26 +251,13 @@ namespace remidy_vst3 {
 
         inline IComponentHandler* getComponentHandler() { return &handler; }
         inline IUnitHandler* getUnitHandler() { return &unit_handler; }
+        inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return &support; }
     };
-    std::filesystem::path getPluginCodeFile(std::filesystem::path& pluginPath);
 
-    typedef IPluginFactory* (*get_plugin_factory_func)();
-    typedef bool (*vst3_module_entry_func)(void*);
-    typedef bool (*vst3_module_exit_func)();
-    typedef bool (*vst3_bundle_entry_func)(void*);
-    typedef bool (*vst3_bundle_exit_func)();
-    typedef bool (*vst3_init_dll_func)();
-    typedef bool (*vst3_exit_dll_func)();
-
-    void* loadModuleFromVst3Path(std::filesystem::path vst3Dir);
-    int32_t initializeModule(void* library);
-    void unloadModule(void* library);
     IPluginFactory* getFactoryFromLibrary(void* module);
 
     void forEachPlugin(std::filesystem::path vst3Dir,
         std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)> func,
         std::function<void(void* module)> cleanup
     );
-
-    void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
 }

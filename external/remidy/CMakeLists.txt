@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 23)
 add_subdirectory("../../external/json" "json")
 include("../../external/LV2Kit.cmake")
 
-add_library(remidy)
+add_library(remidy STATIC)
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 target_compile_definitions(remidy PRIVATE

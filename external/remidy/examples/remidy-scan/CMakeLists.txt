@@ -9,6 +9,7 @@ target_include_directories(remidy-scan PRIVATE
 target_link_libraries(remidy-scan PRIVATE
         remidy::remidy
         cpplocate::cpplocate
+        "-framework AudioToolbox"
 )
 
 target_sources(remidy-scan PRIVATE

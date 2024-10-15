@@ -302,6 +302,10 @@ namespace remidy {
                 auto handler = host.getComponentHandler();
                 result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) handler);
                 if (result == V3_OK) {
+                    // not sure if we want to error out here, so no result check.
+                    processor->vtable->processor.set_processing(processor, false);
+                    component->vtable->component.set_active(component, false);
+
                     ret = std::make_unique<AudioPluginInstanceVST3>(this, pluginInfo, module, component, processor, controller, controllerDistinct, instance);
                     return;
                 }

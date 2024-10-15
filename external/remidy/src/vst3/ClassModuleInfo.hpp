@@ -27,4 +27,10 @@ namespace remidy_vst3 {
 
     bool hasModuleInfo(std::filesystem::path& bundlePath);
     std::vector<PluginClassInfo> getModuleInfo(std::filesystem::path& bundlePath);
+
+    void* loadModuleFromVst3Path(std::filesystem::path vst3Dir);
+    int32_t initializeModule(void* library);
+    void unloadModule(void* library);
+
+    void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
 }
