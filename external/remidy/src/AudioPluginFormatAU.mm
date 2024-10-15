@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include "remidy.hpp"
+#include "auv2/AUv2Helper.hpp"
 #include <AVFoundation/AVFoundation.h>
 #include <CoreFoundation/CoreFoundation.h>
 
@@ -96,7 +97,7 @@ std::vector<std::filesystem::path>& remidy::AudioPluginFormatAU::getDefaultSearc
 }
 
 struct AUPluginEntry {
-    AVAudioUnitComponent* component;
+    AudioComponent component;
     UInt32 flags;
     std::string id;
     std::string name;
@@ -119,41 +120,6 @@ std::string retrieveCFStringRelease(const std::function<void(CFStringRef&)>&& re
 }
 
 std::vector<AUPluginEntry> scanAllAvailableAUPlugins() {
-    std::vector<AUPluginEntry> ret{};
-    AVAudioUnitComponentManager* manager = [AVAudioUnitComponentManager sharedAudioUnitComponentManager];
-    AudioComponentDescription desc{};
-    auto list = [manager componentsMatchingDescription: desc];
-
-    for (AVAudioUnitComponent* component in list) {
-        switch (desc.componentType) {
-            case kAudioUnitType_MusicDevice:
-            case kAudioUnitType_Effect:
-            case kAudioUnitType_Generator:
-            case kAudioUnitType_MusicEffect:
-            case kAudioUnitType_MIDIProcessor:
-                break;
-            default:
-                continue;
-        }
-
-        NSString* nsName = [component name];
-        const char* chars = [nsName UTF8String];
-        auto name = std::string{chars};
-        // LAMESPEC: it is quite hacky and lame expectation that the AudioComponent `name` always has `: ` ...
-        auto firstColon = name.find_first_of(':');
-        auto vendor = name.substr(0, firstColon);
-        auto pluginName = name.substr(firstColon + 2); // remaining after ": "
-        std::ostringstream id{};
-        id << std::hex << desc.componentManufacturer << " " << desc.componentType << " " << desc.componentSubType;
-
-        ret.emplace_back(AUPluginEntry{component, desc.componentFlags, id.str(),
-            pluginName,
-            vendor
-        });
-    }
-    return ret;
-
-    /*
     std::vector<AUPluginEntry> ret{};
     AudioComponent component{nullptr};
 
@@ -186,7 +152,8 @@ std::vector<AUPluginEntry> scanAllAvailableAUPlugins() {
             pluginName,
             vendor
         });
-    }*/
+    }
+    return ret;
 }
 
 std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginFormatAU::scanAllAvailablePlugins() {
@@ -275,14 +242,14 @@ remidy::StatusCode remidy::AudioPluginInstanceAUv2::sampleRate(double sampleRate
     UInt32* data;
     UInt32 size;
 
-    if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &data, &size) == 0 && *data > 0) {
+    if (audioUnitHasIO(instance, kAudioUnitScope_Input)) {
         auto result = AudioUnitSetProperty(instance, kAudioUnitProperty_SampleRate, kAudioUnitScope_Input, 0, &sampleRate, sizeof(double));
         if (result != 0) {
             this->format->getLogger()->logError("%s: configure() on AudioPluginInstanceAUv2 failed to set input sampleRate. Status: %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
     }
-    if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementCount, kAudioUnitScope_Output, 0, &data, &size) == 0 && *data > 0) {
+    if (audioUnitHasIO(instance, kAudioUnitScope_Output)) {
         auto result = AudioUnitSetProperty(instance, kAudioUnitProperty_SampleRate, kAudioUnitScope_Output, 0, &sampleRate, sizeof(double));
         if (result != 0) {
             this->format->getLogger()->logError("%s: configure() on AudioPluginInstanceAUv2 failed to set output sampleRate. Status: %d", name.c_str(), result);
