@@ -254,6 +254,147 @@ namespace remidy_vst3 {
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return &support; }
     };
 
+    class HostAttributeList : public IAttributeList {
+        IAttributeList list;
+        uint32_t refCount;
+
+    public:
+        IAttributeListVTable vtable;
+
+        static v3_result query_interface(void *self, const v3_tuid iid, void **obj) {
+            // FIXME: remove when we move this to impl. code.
+            printf("WHY HERE?");
+            return V3_NO_INTERFACE;
+        }
+        static uint32_t add_ref(void *self) {
+            return ++((HostAttributeList *)self)->refCount;
+        }
+        static uint32_t remove_ref(void *self) {
+            return --((HostAttributeList *)self)->refCount;
+        }
+
+        static v3_result set_int(void *self, const char *id, int64_t value) {
+            // FIXME: remove when we move this to impl. code.
+            printf("WHY HERE?");
+            return V3_NOT_IMPLEMENTED;
+        }
+
+        static v3_result get_int(void *self, const char *id, int64_t *value) {
+            // FIXME: remove when we move this to impl. code.
+            printf("WHY HERE?");
+            return V3_NOT_IMPLEMENTED;
+        }
+
+        static v3_result set_float(void *self, const char *id, double value) {
+            // FIXME: remove when we move this to impl. code.
+            printf("WHY HERE?");
+            return V3_NOT_IMPLEMENTED;
+        }
+
+        static v3_result get_float(void *self, const char *id, double *value) {
+            // FIXME: remove when we move this to impl. code.
+            printf("WHY HERE?");
+            return V3_NOT_IMPLEMENTED;
+        }
+
+        static v3_result set_string(void *self, const char *id, const int16_t *value) {
+            // FIXME: remove when we move this to impl. code.
+            printf("WHY HERE?");
+            return V3_NOT_IMPLEMENTED;
+        }
+
+        static v3_result get_string(void *self, const char *id, int16_t *value, uint32_t sizeInBytes) {
+            // FIXME: remove when we move this to impl. code.
+            printf("WHY HERE?");
+            return V3_NOT_IMPLEMENTED;
+        }
+        static v3_result set_binary(void *self, const char *id, const void *data, uint32_t sizeInBytes) {
+            // FIXME: remove when we move this to impl. code.
+            printf("WHY HERE?");
+            return V3_NOT_IMPLEMENTED;
+        }
+
+        static v3_result get_binary(void *self, const char *id, const void **data, uint32_t *sizeInBytes) {
+            // FIXME: remove when we move this to impl. code.
+            printf("WHY HERE?");
+            return V3_NOT_IMPLEMENTED;
+        }
+
+        explicit HostAttributeList() : refCount(1) {
+            vtable.unknown.query_interface = query_interface;
+            vtable.unknown.ref = add_ref;
+            vtable.unknown.unref = remove_ref;
+            vtable.attribute_list.set_int = set_int;
+            vtable.attribute_list.get_int = get_int;
+            vtable.attribute_list.set_float= set_float;
+            vtable.attribute_list.get_float= get_float;
+            vtable.attribute_list.set_string= set_string;
+            vtable.attribute_list.get_string = get_string;
+            vtable.attribute_list.set_binary = set_binary;
+            vtable.attribute_list.get_binary = get_binary;
+            list.vtable = &vtable;
+        }
+        ~HostAttributeList() = default;
+
+    };
+
+    class HostMessage {
+        IMessageVTable vtable;
+        IMessage msg;
+        uint32_t refCount;
+        std::string id;
+        HostAttributeList list;
+
+    public:
+        static v3_result query_interface(void *self, const v3_tuid iid, void **obj) {
+            return ((HostMessage *)self)->queryInterface(iid, obj);
+        }
+        static uint32_t add_ref(void *self) {
+            return ++((HostMessage *)self)->refCount;
+        }
+        static uint32_t remove_ref(void *self) {
+            return --((HostMessage *)self)->refCount;
+        }
+
+        explicit HostMessage() : refCount(1), list(list) {
+            vtable.unknown.query_interface = query_interface;
+            vtable.unknown.ref = add_ref;
+            vtable.unknown.unref = remove_ref;
+            vtable.message.get_message_id = get_message_id;
+            vtable.message.set_message_id = set_message_id;
+            vtable.message.get_attributes = get_attributes;
+            msg.vtable = &vtable;
+        }
+        ~HostMessage() = default;
+
+        v3_result queryInterface(const v3_tuid iid, void **obj) {
+            if (
+                !memcmp(iid, v3_message_iid, sizeof(v3_tuid)) ||
+                !memcmp(iid, v3_funknown_iid, sizeof(v3_tuid))
+            ) {
+                add_ref(this);
+                *obj = this;
+                return V3_OK;
+            }
+            *obj = nullptr;
+            return V3_NO_INTERFACE;
+        }
+
+        static const char* get_message_id(void *self) {
+            auto& i = ((HostMessage*) self)->id;
+            return i.empty() ? nullptr : i.c_str();
+        }
+
+        static void set_message_id(void *self, const char *id) {
+            ((HostMessage*) self)->id = id;
+        }
+
+        static v3_attribute_list** get_attributes(void *self) {
+            auto& list = ((HostMessage*) self)->list;
+            return (v3_attribute_list**) &list.vtable;
+        }
+    };
+
     IPluginFactory* getFactoryFromLibrary(void* module);
 
     void forEachPlugin(std::filesystem::path vst3Dir,

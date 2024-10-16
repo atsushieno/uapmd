@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "TravestyHelper.hpp"
+#include "../utils.hpp"
 
 namespace remidy_vst3 {
 
@@ -92,7 +93,7 @@ namespace remidy_vst3 {
         }
 
         *obj = nullptr;
-        return -1;
+        return V3_NO_INTERFACE;
     }
 
     uint32_t HostApplication::add_ref(void *self) {
@@ -107,7 +108,13 @@ namespace remidy_vst3 {
 
     v3_result HostApplication::create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj) {
         *obj = nullptr;
-        throw std::runtime_error("HostApplication::create_instance() is not implemented");
+        if (v3_tuid_match(cid, v3_attribute_list_iid))
+            *obj = new HostAttributeList();
+        else if (v3_tuid_match(cid, v3_message_iid))
+            *obj = new HostMessage();
+        else
+            return V3_NO_INTERFACE;
+        return V3_OK;
     }
 
     v3_result HostApplication::get_name(void *self, v3_str_128 name) {

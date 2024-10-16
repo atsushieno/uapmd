@@ -24,7 +24,6 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
                 if (code != remidy::OK)
                     std::cerr << format->name() << ": " << displayName << " : startProcessing() failed. Error code " << code << std::endl;
                 else {
-
                     code = instance->stopProcessing();
                     if (code != remidy::OK)
                         std::cerr << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << code << std::endl;
@@ -80,33 +79,37 @@ int main(int argc, const char * argv[]) {
             auto vendor = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::VendorName);
             auto url = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::ProductUrl);
             std::cerr << "[" << ++i << "/" << plugins.size() << "] (" << info->format() << ") " << displayName << " : " << vendor << " (" << url << ")" << std::endl;
+            bool skip = false;
 
             // FIXME: implement blocklist
             if (displayName.starts_with("Firefly Synth 1.8.6 VST3"))
-                continue;
+                skip = true;
 
             // FIXME: this should be unblocked
 
             // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
             if (format->name() == "VST3" && displayName.starts_with("Battery"))
-                continue;
+                skip = true;
             if (format->name() == "VST3" && displayName.starts_with("Kontakt"))
-                continue;
+                skip = true;
             if (format->name() == "AU" && displayName.starts_with("FL Studio"))
-                continue;
+                skip = true;
 #if __APPLE__ || WIN32
             // they generate *.dylib in .ttl, but the library is *.so...
             if (format->name() == "LV2" && displayName.starts_with("AIDA-X"))
-                continue;
+                skip = true;
             // they generate *.so in .ttl, but the library is *.dylib...
             if (format->name() == "LV2" && displayName.starts_with("sfizz"))
-                continue;
+                skip = true;
 #endif
             // causes JUCE leak detector exception (not on OPNplug-AE though)
             //if (!displayName.starts_with("ADLplug-AE"))
             //    continue;
 
-            testCreateInstance(format, info);
+            if (skip)
+                std::cerr << "  Plugin (" << info->format() << ") " << displayName << " is skipped." << std::endl;
+            else
+                testCreateInstance(format, info);
         }
     }
 

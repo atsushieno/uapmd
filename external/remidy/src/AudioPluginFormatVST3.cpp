@@ -6,6 +6,10 @@
 
 #include "vst3/TravestyHelper.hpp"
 
+#if __APPLE__
+#include <CoreFoundation/CFRunLoop.h>
+#endif
+
 using namespace remidy_vst3;
 
 namespace remidy {
@@ -107,6 +111,9 @@ namespace remidy {
         IEditController* controller;
         bool isControllerDistinctFromComponent;
         FUnknown* instance;
+        IConnectionPoint* connPointComp{nullptr};
+        IConnectionPoint* connPointEdit{nullptr};
+
     public:
         explicit AudioPluginInstanceVST3(
             AudioPluginFormatVST3::Impl* owner,
@@ -120,9 +127,36 @@ namespace remidy {
         ) : owner(owner), info(info), module(module),
             component(component), processor(processor), controller(controller),
             isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
+
+            // set up IConnectionPoint-s
+            auto result = component->vtable->unknown.query_interface(component, v3_connection_point_iid, (void**) &connPointComp);
+            if (result != V3_OK && result != V3_NO_INTERFACE)
+                owner->getLogger()->logError("%s: IComponent failed to return query for IConnectionPoint as expected. Result: %d", info->getMetadataProperty(PluginCatalogEntry::DisplayName).c_str(), result);
+            result = controller->vtable->unknown.query_interface(controller, v3_connection_point_iid, (void**) &connPointEdit);
+            if (result != V3_OK && result != V3_NO_INTERFACE)
+                owner->getLogger()->logError("%s: IEditController failed to return query for IConnectionPoint as expected. Result: %d", info->getMetadataProperty(PluginCatalogEntry::DisplayName).c_str(), result);
+
+            // From JUCE interconnectComponentAndController():
+            // > Some plugins need to be "connected" to intercommunicate between their implemented classes
+            if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
+                // FIXME: we need some cross-platform main thread dispatcher.
+                CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopDefaultMode, ^(void) {
+                    connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
+                    connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
+                });
+            }
+
+            // not sure if we want to error out here, so no result check.
+            processor->vtable->processor.set_processing(processor, false);
+            component->vtable->component.set_active(component, false);
         }
 
         ~AudioPluginInstanceVST3() override {
+            if (connPointEdit)
+                connPointEdit->vtable->unknown.unref(connPointEdit);
+            if (connPointComp)
+                connPointComp->vtable->unknown.unref(connPointComp);
+
             if (isControllerDistinctFromComponent) {
                 controller->vtable->base.terminate(controller);
                 controller->vtable->unknown.unref(controller);
@@ -302,10 +336,6 @@ namespace remidy {
                 auto handler = host.getComponentHandler();
                 result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) handler);
                 if (result == V3_OK) {
-                    // not sure if we want to error out here, so no result check.
-                    processor->vtable->processor.set_processing(processor, false);
-                    component->vtable->component.set_active(component, false);
-
                     ret = std::make_unique<AudioPluginInstanceVST3>(this, pluginInfo, module, component, processor, controller, controllerDistinct, instance);
                     return;
                 }
