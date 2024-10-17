@@ -46,6 +46,8 @@ auto filterByFormat(std::vector<remidy::PluginCatalogEntry*> entries, std::strin
 }
 
 int main(int argc, const char * argv[]) {
+    remidy::EventLoop::initializeOnUIThread();
+
     std::vector<std::string> vst3SearchPaths{};
     std::vector<std::string> lv2SearchPaths{};
     remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};

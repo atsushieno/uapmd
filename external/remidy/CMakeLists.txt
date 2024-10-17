@@ -75,6 +75,9 @@ target_sources(remidy PRIVATE
         src/auv2/AUv2Helper.swift
 
         src/utils.cpp
+        src/EventLoop.posix.cpp
+        src/EventLoop.windows.cpp
+        src/EventLoop.darwin.cpp
 
         src/vst3/TravestyHelper.cpp
         src/vst3/HostApplication.cpp

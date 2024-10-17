@@ -6,10 +6,6 @@
 
 #include "vst3/TravestyHelper.hpp"
 
-#if __APPLE__
-#include <CoreFoundation/CFRunLoop.h>
-#endif
-
 using namespace remidy_vst3;
 
 namespace remidy {
@@ -115,6 +111,9 @@ namespace remidy {
         IConnectionPoint* connPointEdit{nullptr};
 
     public:
+        // FIXME: we should make edit controller lazily loaded.
+        //  Some plugins take long time to instantiate IEditController, and it does not make sense for
+        //  non-UI-based audio processing like our virtual MIDI devices.
         explicit AudioPluginInstanceVST3(
             AudioPluginFormatVST3::Impl* owner,
             PluginCatalogEntry* info,
@@ -128,7 +127,7 @@ namespace remidy {
             component(component), processor(processor), controller(controller),
             isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
 
-            // set up IConnectionPoint-s
+            // set up IConnectionPoints
             auto result = component->vtable->unknown.query_interface(component, v3_connection_point_iid, (void**) &connPointComp);
             if (result != V3_OK && result != V3_NO_INTERFACE)
                 owner->getLogger()->logError("%s: IComponent failed to return query for IConnectionPoint as expected. Result: %d", info->getMetadataProperty(PluginCatalogEntry::DisplayName).c_str(), result);
@@ -139,8 +138,7 @@ namespace remidy {
             // From JUCE interconnectComponentAndController():
             // > Some plugins need to be "connected" to intercommunicate between their implemented classes
             if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
-                // FIXME: we need some cross-platform main thread dispatcher.
-                CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopDefaultMode, ^(void) {
+                EventLoop::asyncRunOnMainThread([&] {
                     connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
                     connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
                 });
