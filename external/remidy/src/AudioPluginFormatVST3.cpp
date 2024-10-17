@@ -440,7 +440,9 @@ namespace remidy {
 
     StatusCode AudioPluginInstanceVST3::startProcessing() {
         auto result = processor->vtable->processor.set_processing(processor, true);
-        if (result != V3_OK) {
+        // Surprisingly?, some VST3 plugins do not implement this function.
+        // We do not prevent them just because of this.
+        if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
             owner->getLogger()->logError("Failed to start vst3 processing. Result: %d", result);
             return StatusCode::FAILED_TO_START_PROCESSING;
         }
@@ -449,7 +451,8 @@ namespace remidy {
 
     StatusCode AudioPluginInstanceVST3::stopProcessing() {
         auto result = processor->vtable->processor.set_processing(processor, false);
-        if (result != V3_OK) {
+        // regarding V3_NOT_IMPLEMENTED, see startProcessing().
+        if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
             owner->getLogger()->logError("Failed to stop vst3 processing. Result: %d", result);
             return StatusCode::FAILED_TO_STOP_PROCESSING;
         }
