@@ -3,33 +3,110 @@
 #include "../remidy.hpp"
 
 namespace remidy {
-
-    // Represents a list of audio buffers, separate per channel.
+    // Represents a list of audio buffers in an audio bus, separate per channel.
     // It is part of `AudioProcessingContext`.
-    class AudioBufferList {
+    class AudioBusBufferList {
+        uint32_t channel_count;
+        uint32_t buffer_size;
+        float** float_buffers;
+        double** double_buffers;
+
     public:
-        float* getFloatBufferForChannel(int32_t channel);
-        double* getDoubleBufferForChannel(int32_t channel);
-        int32_t size();
+        AudioBusBufferList(uint32_t channelCount, uint32_t bufferSizeInFrames) :
+            channel_count(channelCount),
+            buffer_size(bufferSizeInFrames) {
+            float_buffers = static_cast<float **>(calloc(sizeof(float *), channelCount));
+            double_buffers = static_cast<double **>(calloc(sizeof(double *), channelCount));
+            for (int32_t i = 0; i < channelCount; i++) {
+                float_buffers[i] = static_cast<float *>(calloc(sizeof(float), bufferSizeInFrames));
+                double_buffers[i] = static_cast<double *>(calloc(sizeof(double), bufferSizeInFrames));
+            }
+        }
+        ~AudioBusBufferList() {
+            free(float_buffers);
+            free(double_buffers);
+        }
+
+        float* getFloatBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : float_buffers[channel]; }
+        double* getDoubleBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : double_buffers[channel]; };
+        uint32_t channelCount() const { return channel_count; }
+        uint32_t bufferSizeInFrames() const { return buffer_size; }
+    };
+
+    // Represents a set of audio input bus buffers and audio output bus buffers
+    // that are to be passed at AudioPluginInstance::process().
+    class AudioBufferList {
+        std::vector<AudioBusBufferList*> input_bus_buffers{};
+        std::vector<AudioBusBufferList*> output_bus_buffers{};
+
+    public:
+        AudioBufferList() = default;
+
+        AudioBufferList(
+            const uint32_t inputBusCount,
+            const uint32_t outputBusCount,
+            const uint32_t channelCount,
+            const uint32_t bufferSizeInFrames
+        ) {
+            input_bus_buffers = std::vector<AudioBusBufferList*>(inputBusCount);
+            output_bus_buffers = std::vector<AudioBusBufferList*>(outputBusCount);
+            for (uint32_t bus = 0; bus < inputBusCount; bus++)
+                input_bus_buffers[bus] = new AudioBusBufferList(channelCount, bufferSizeInFrames);
+            for (uint32_t bus = 0; bus < outputBusCount; bus++)
+                output_bus_buffers[bus] = new AudioBusBufferList(channelCount, bufferSizeInFrames);
+        }
+
+        ~AudioBufferList() {
+            for (const auto bus : input_bus_buffers)
+                delete bus;
+            for (const auto bus : output_bus_buffers)
+                delete bus;
+        }
+
+        int32_t inputBusCount() { return input_bus_buffers.size(); }
+        int32_t outputBusCount() { return output_bus_buffers.size(); }
+        AudioBusBufferList* inputBus(int32_t bus) const { return input_bus_buffers[bus]; }
+        AudioBusBufferList* outputBus(int32_t bus) const { return output_bus_buffers[bus]; }
+
+        void addInputBus(AudioBusBufferList&& bus) { input_bus_buffers.push_back(std::move(&bus)); }
+        void addOutputBus(AudioBusBufferList&& bus) { output_bus_buffers.push_back(std::move(&bus)); }
     };
 
     // Represents a sample-accurate sequence of UMPs.
     // It is part of `AudioProcessingContext`.
     class MidiSequence {
-        std::vector<remidy_ump_t> messages;
+        std::vector<remidy_ump_t> messages{};
     public:
-        remidy_ump_t* getMessages();
-        size_t sizeInInts();
-        size_t sizeInBytes();
+        explicit MidiSequence(size_t messageBufferSizeInInt) : messages(messageBufferSizeInInt) {}
+        remidy_ump_t* getMessages() { return messages.data(); }
+        size_t sizeInInts() const { return messages.size(); }
+        size_t sizeInBytes() const { return messages.size() * sizeof(remidy_ump_t); }
     };
 
     class AudioProcessContext {
-    public:
-        AudioProcessContext();
+        AudioBufferList audio_buf;
+        MidiSequence midi_in;
+        MidiSequence midi_out;
+        int32_t frame_count{0};
 
-        AudioBufferList input{};
-        AudioBufferList output{};
-        MidiSequence midi{};
+    public:
+        AudioProcessContext(
+            const uint32_t numAudioInputBuses,
+            const uint32_t numAudioOutputBuses,
+            const uint32_t numAudioChannels,
+            const uint32_t audioBufferSizeInSamples,
+            const uint32_t umpBufferSizeInInts
+        ) : audio_buf(numAudioInputBuses, numAudioOutputBuses, numAudioChannels, audioBufferSizeInSamples),
+            midi_in(umpBufferSizeInInts),
+            midi_out(umpBufferSizeInInts) {
+        }
+
+        int32_t frameCount() const { return frame_count; }
+        void frameCount(const int32_t newCount) { frame_count = newCount; }
+
+        AudioBufferList& audio() { return audio_buf; }
+        MidiSequence& midiIn() { return midi_in; }
+        MidiSequence& midiOut() { return midi_out; }
     };
 
 }

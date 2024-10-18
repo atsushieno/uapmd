@@ -16,7 +16,8 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
         if (!instance)
             std::cerr << format->name() << ": Could not instantiate plugin " << displayName << ". Details: " << result.error << std::endl;
         else {
-            auto code = instance->configure(48000, false);
+            remidy::AudioPluginInstance::Configuration config{};
+            auto code = instance->configure(config);
             if (code != remidy::OK)
                 std::cerr << format->name() << ": " << displayName << " : configure() failed. Error code " << code << std::endl;
             else {
@@ -24,6 +25,10 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
                 if (code != remidy::OK)
                     std::cerr << format->name() << ": " << displayName << " : startProcessing() failed. Error code " << code << std::endl;
                 else {
+                    remidy::AudioProcessContext ctx{1, 1, 2, 1024, 4096};
+                    ctx.frameCount(512);
+                    instance->process(ctx);
+
                     code = instance->stopProcessing();
                     if (code != remidy::OK)
                         std::cerr << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << code << std::endl;

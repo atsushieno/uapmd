@@ -4,7 +4,7 @@
 #include "remidy.hpp"
 #include "utils.hpp"
 
-#include "vst3/TravestyHelper.hpp"
+#include "vst3/HostClasses.hpp"
 
 using namespace remidy_vst3;
 
@@ -22,7 +22,7 @@ namespace remidy {
         std::function<StatusCode(std::filesystem::path &vst3Dir, void* module)> unloadFunc;
 
         PluginBundlePool library_pool;
-        HostApplication host;
+        remidy_vst3::HostApplication host;
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
 
@@ -38,6 +38,7 @@ namespace remidy {
         }
 
         Logger* getLogger() { return logger; }
+        HostApplication* getHost() { return &host; }
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
@@ -90,18 +91,11 @@ namespace remidy {
     }
 
     class AudioPluginInstanceVST3 : public AudioPluginInstance {
-    public:
-        StatusCode configure(int32_t sampleRate, bool offlineMode) override;
-
-        StatusCode startProcessing() override;
-        StatusCode stopProcessing() override;
-
-        StatusCode process(AudioProcessContext &process) override;
-
-    private:
         AudioPluginFormatVST3::Impl* owner;
         PluginCatalogEntry* info;
         void* module;
+        IPluginFactory* factory;
+        std::string pluginName;
         IComponent* component;
         IAudioProcessor* processor;
         IEditController* controller;
@@ -110,65 +104,38 @@ namespace remidy {
         IConnectionPoint* connPointComp{nullptr};
         IConnectionPoint* connPointEdit{nullptr};
 
+        int32_t maxAudioFrameCount = 4096; // FIXME: retrieve appropriate config
+        v3_process_data processData{};
+        v3_audio_bus_buffers inputAudioBusBuffers{};
+        v3_audio_bus_buffers outputAudioBusBuffers{};
+        HostEventList processDataInputEvents{};
+        HostEventList processDataOutputEvents{};
+        HostParameterChanges processDataInputParameterChanges{};
+        HostParameterChanges processDataOutputParameterChanges{};
+
+        void allocateProcessData();
+        void deallocateProcessData();
+
     public:
-        // FIXME: we should make edit controller lazily loaded.
-        //  Some plugins take long time to instantiate IEditController, and it does not make sense for
-        //  non-UI-based audio processing like our virtual MIDI devices.
         explicit AudioPluginInstanceVST3(
             AudioPluginFormatVST3::Impl* owner,
             PluginCatalogEntry* info,
             void* module,
+            IPluginFactory* factory,
             IComponent* component,
             IAudioProcessor* processor,
             IEditController* controller,
             bool isControllerDistinctFromComponent,
             FUnknown* instance
-        ) : owner(owner), info(info), module(module),
-            component(component), processor(processor), controller(controller),
-            isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
+            );
+        ~AudioPluginInstanceVST3() override;
 
-            // set up IConnectionPoints
-            auto result = component->vtable->unknown.query_interface(component, v3_connection_point_iid, (void**) &connPointComp);
-            if (result != V3_OK && result != V3_NO_INTERFACE)
-                owner->getLogger()->logError("%s: IComponent failed to return query for IConnectionPoint as expected. Result: %d", info->getMetadataProperty(PluginCatalogEntry::DisplayName).c_str(), result);
-            result = controller->vtable->unknown.query_interface(controller, v3_connection_point_iid, (void**) &connPointEdit);
-            if (result != V3_OK && result != V3_NO_INTERFACE)
-                owner->getLogger()->logError("%s: IEditController failed to return query for IConnectionPoint as expected. Result: %d", info->getMetadataProperty(PluginCatalogEntry::DisplayName).c_str(), result);
+        StatusCode configure(Configuration& configuration) override;
 
-            // From JUCE interconnectComponentAndController():
-            // > Some plugins need to be "connected" to intercommunicate between their implemented classes
-            if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
-                EventLoop::asyncRunOnMainThread([&] {
-                    connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
-                    connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
-                });
-            }
+        StatusCode startProcessing() override;
+        StatusCode stopProcessing() override;
 
-            // not sure if we want to error out here, so no result check.
-            processor->vtable->processor.set_processing(processor, false);
-            component->vtable->component.set_active(component, false);
-        }
-
-        ~AudioPluginInstanceVST3() override {
-            if (connPointEdit)
-                connPointEdit->vtable->unknown.unref(connPointEdit);
-            if (connPointComp)
-                connPointComp->vtable->unknown.unref(connPointComp);
-
-            if (isControllerDistinctFromComponent) {
-                controller->vtable->base.terminate(controller);
-                controller->vtable->unknown.unref(controller);
-            }
-
-            processor->vtable->unknown.unref(processor);
-
-            component->vtable->base.terminate(component);
-            component->vtable->unknown.unref(component);
-
-            instance->vtable->unknown.unref(instance);
-
-            owner->unrefLibrary(info);
-        }
+        StatusCode process(AudioProcessContext &process) override;
     };
 
     // AudioPluginFormatVST3
@@ -334,7 +301,7 @@ namespace remidy {
                 auto handler = host.getComponentHandler();
                 result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) handler);
                 if (result == V3_OK) {
-                    ret = std::make_unique<AudioPluginInstanceVST3>(this, pluginInfo, module, component, processor, controller, controllerDistinct, instance);
+                    ret = std::make_unique<AudioPluginInstanceVST3>(this, pluginInfo, module, factory, component, processor, controller, controllerDistinct, instance);
                     return;
                 }
                 logger->logError("Failed to set vst3 component handler: %s", name.c_str());
@@ -422,20 +389,158 @@ namespace remidy {
 
     // AudioPluginInstanceVST3
 
-    StatusCode AudioPluginInstanceVST3::configure(int32_t sampleRate, bool offlineMode) {
+    // FIXME: we should make edit controller lazily loaded.
+    //  Some plugins take long time to instantiate IEditController, and it does not make sense for
+    //  non-UI-based audio processing like our virtual MIDI devices.
+    AudioPluginInstanceVST3::AudioPluginInstanceVST3(
+        AudioPluginFormatVST3::Impl* owner,
+        PluginCatalogEntry* info,
+        void* module,
+        IPluginFactory* factory,
+        IComponent* component,
+        IAudioProcessor* processor,
+        IEditController* controller,
+        bool isControllerDistinctFromComponent,
+        FUnknown* instance
+    ) : owner(owner), info(info), module(module), factory(factory),
+        component(component), processor(processor), controller(controller),
+        isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
+
+        pluginName = info->getMetadataProperty(PluginCatalogEntry::MetadataPropertyID::DisplayName);
+
+        // set up IConnectionPoints
+        auto result = component->vtable->unknown.query_interface(component, v3_connection_point_iid, (void**) &connPointComp);
+        if (result != V3_OK && result != V3_NO_INTERFACE)
+            owner->getLogger()->logError("%s: IComponent failed to return query for IConnectionPoint as expected. Result: %d", pluginName.c_str(), result);
+        result = controller->vtable->unknown.query_interface(controller, v3_connection_point_iid, (void**) &connPointEdit);
+        if (result != V3_OK && result != V3_NO_INTERFACE)
+            owner->getLogger()->logError("%s: IEditController failed to return query for IConnectionPoint as expected. Result: %d", pluginName.c_str(), result);
+
+        // From JUCE interconnectComponentAndController():
+        // > Some plugins need to be "connected" to intercommunicate between their implemented classes
+        if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
+            EventLoop::asyncRunOnMainThread([&] {
+                connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
+                connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
+            });
+        }
+
+        // not sure if we want to error out here, so no result check.
+        processor->vtable->processor.set_processing(processor, false);
+        component->vtable->component.set_active(component, false);
+    }
+
+    AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
+        deallocateProcessData();
+
+        if (connPointEdit)
+            connPointEdit->vtable->unknown.unref(connPointEdit);
+        if (connPointComp)
+            connPointComp->vtable->unknown.unref(connPointComp);
+
+        if (isControllerDistinctFromComponent) {
+            controller->vtable->base.terminate(controller);
+            controller->vtable->unknown.unref(controller);
+        }
+
+        processor->vtable->unknown.unref(processor);
+
+        component->vtable->base.terminate(component);
+        component->vtable->unknown.unref(component);
+
+        instance->vtable->unknown.unref(instance);
+
+        owner->unrefLibrary(info);
+    }
+
+    StatusCode AudioPluginInstanceVST3::configure(Configuration& configuration) {
         v3_process_setup setup{};
-        setup.sample_rate = sampleRate;
+        setup.sample_rate = configuration.sampleRate;
         // FIXME: make them customizable
         setup.max_block_size = 4096;
-        setup.symbolic_sample_size = V3_SAMPLE_32;
-        setup.process_mode = offlineMode ? V3_OFFLINE : V3_REALTIME;
+        setup.symbolic_sample_size = configuration.dataType == AudioContentType::Float64 ? V3_SAMPLE_64 : V3_SAMPLE_32;
+        setup.process_mode = configuration.offlineMode ? V3_OFFLINE : V3_REALTIME;
 
         auto result = processor->vtable->processor.setup_processing(processor, &setup);
         if (result != V3_OK) {
             owner->getLogger()->logError("Failed to call vst3 setup_processing() result: %d", result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
+
+        // FIXME: setup process_data here.
+        allocateProcessData();
+
         return StatusCode::OK;
+    }
+
+    void AudioPluginInstanceVST3::allocateProcessData() {
+        auto ctx = (v3_process_context*) calloc(sizeof(v3_process_context), 1);
+        // FIXME: retrieve these properties by some means.
+        ctx->sample_rate = 48000;
+        processData.ctx = ctx;
+
+        processData.input_events = (v3_event_list**) processDataInputEvents.v3();
+        processData.output_events = (v3_event_list**) processDataOutputEvents.v3();
+        processData.input_params = (v3_param_changes**) processDataInputParameterChanges.v3();
+        processData.output_params = (v3_param_changes**) processDataOutputParameterChanges.v3();
+
+        // FIXME: adjust audio buses and channels
+        int32_t numInputBuses = 1; // might be 0
+        int32_t numOutputBuses = 1; // might be 0
+        processData.num_input_buses = numInputBuses;
+        processData.num_output_buses = numOutputBuses;
+        processData.inputs = &inputAudioBusBuffers;
+        processData.outputs = &outputAudioBusBuffers;
+        int32_t numChannels = 2;
+        int32_t symbolicSampleSize = V3_SAMPLE_32;
+        if (symbolicSampleSize == V3_SAMPLE_32) {
+            for (int32_t bus = 0; bus < numInputBuses; bus++) {
+                processData.inputs[bus].num_channels = numChannels;
+                processData.inputs[bus].channel_buffers_32 = (float**) calloc(sizeof(float*), numChannels);
+            }
+            for (int32_t bus = 0; bus < numOutputBuses; bus++) {
+                processData.outputs[bus].num_channels = numChannels;
+                processData.outputs[bus].channel_buffers_32 = (float**) calloc(sizeof(float*), numChannels);
+            }
+        } else {
+            for (int32_t bus = 0; bus < numInputBuses; bus++) {
+                processData.inputs[bus].num_channels = numChannels;
+                processData.inputs[bus].channel_buffers_64 = (double**) calloc(sizeof(double*), numChannels);
+            }
+            for (int32_t bus = 0; bus < numOutputBuses; bus++) {
+                processData.outputs[bus].num_channels = numChannels;
+                processData.outputs[bus].channel_buffers_64 = (double**) calloc(sizeof(double*), numChannels);
+            }
+        }
+
+        processData.process_mode = V3_REALTIME; // FIXME: assign specified value
+        processData.symbolic_sample_size = V3_SAMPLE_32; // FIXME: assign specified value
+    }
+
+    void AudioPluginInstanceVST3::deallocateProcessData() {
+        // FIXME: adjust audio buses and channels
+        int32_t numInputBuses = 1;
+        int32_t numOutputBuses = 1;
+        int32_t numChannels = 2;
+        int32_t symbolicSampleSize = V3_SAMPLE_32;
+        if (symbolicSampleSize == V3_SAMPLE_32) {
+            for (int32_t bus = 0; bus < numInputBuses; bus++)
+                free(processData.inputs[bus].channel_buffers_32);
+            for (int32_t bus = 0; bus < numOutputBuses; bus++)
+                free(processData.outputs[bus].channel_buffers_32);
+        } else {
+            for (int32_t bus = 0; bus < numInputBuses; bus++)
+                free(processData.inputs[bus].channel_buffers_64);
+            for (int32_t bus = 0; bus < numOutputBuses; bus++)
+                free(processData.outputs[bus].channel_buffers_64);
+        }
+
+        if (processData.input_params)
+            delete (HostParameterChanges*) processData.input_params;
+        if (processData.output_params)
+            delete (HostParameterChanges*) processData.output_params;
+        if (processData.ctx)
+            free(processData.ctx);
     }
 
     StatusCode AudioPluginInstanceVST3::startProcessing() {
@@ -459,8 +564,38 @@ namespace remidy {
         return StatusCode::OK;
     }
 
+    void updateProcessDataBuffers(v3_process_data& processData, v3_audio_bus_buffers& dstBus, AudioBusBufferList* srcBuf) {
+        int32_t numChannels = srcBuf->channelCount();
+        dstBus.num_channels = srcBuf->channelCount();
+        if (processData.symbolic_sample_size == V3_SAMPLE_32) {
+            for (int32_t ch = 0; ch < numChannels; ch++)
+                dstBus.channel_buffers_32[ch] = srcBuf->getFloatBufferForChannel(ch);
+        } else {
+            for (int32_t ch = 0; ch < numChannels; ch++)
+                dstBus.channel_buffers_64[ch] = srcBuf->getDoubleBufferForChannel(ch);
+        }
+    }
+
     StatusCode AudioPluginInstanceVST3::process(AudioProcessContext &process) {
-        throw std::runtime_error("AudioPluginInstanceVST3::process() not implemented");
+        // update audio buffer pointers
+        const int32_t numFrames = process.frameCount();
+        auto& audio =process.audio();
+        const int32_t numInputBus = audio.inputBusCount();
+        const int32_t numOutputBus = audio.outputBusCount();
+        for (int32_t bus = 0; bus < numInputBus; bus++)
+            updateProcessDataBuffers(processData, processData.inputs[bus], audio.inputBus(bus));
+        for (int32_t bus = 0; bus < numOutputBus; bus++)
+            updateProcessDataBuffers(processData, processData.outputs[bus], audio.outputBus(bus));
+
+        const auto& ctx = processData.ctx;
+
+        // FIXME: crashes around here.
+        processData.nframes = numFrames;
+        processor->vtable->processor.process(processor, &processData);
+
+        // post-processing
+        ctx->continuous_time_in_samples += numFrames;
+        return StatusCode::OK;
     }
 
 

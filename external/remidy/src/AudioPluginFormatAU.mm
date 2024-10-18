@@ -35,7 +35,7 @@ namespace remidy {
             AUV2 = 2,
             AUV3 = 3
         };
-        StatusCode configure(int32_t sampleRate, bool offlineMode) override;
+        StatusCode configure(Configuration& configuration) override;
 
         StatusCode process(AudioProcessContext &process) override;
 
@@ -209,13 +209,13 @@ remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
     AudioComponentInstanceDispose(instance);
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::configure(int32_t sampleRate, bool offlineMode) {
+remidy::StatusCode remidy::AudioPluginInstanceAU::configure(Configuration& configuration) {
     OSStatus result;
 
-    this->sampleRate((double) sampleRate);
+    this->sampleRate((double) configuration.sampleRate);
 
     // it could be an invalid property. maybe just ignore that.
-    result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &offlineMode, sizeof(bool));
+    result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &configuration.offlineMode, sizeof(bool));
     if (result != 0) {
         this->format->getLogger()->logWarning("%s: configure() on AudioPluginInstanceAU failed to set offlineMode. Status: %d", name.c_str(), result);
     }

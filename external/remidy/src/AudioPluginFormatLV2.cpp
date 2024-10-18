@@ -35,7 +35,7 @@ namespace remidy {
         explicit AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
         ~AudioPluginInstanceLV2() override;
 
-        StatusCode configure(int32_t sampleRate, bool offlineMode) override;
+        StatusCode configure(Configuration& configuration) override;
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
         StatusCode process(AudioProcessContext &process) override;
@@ -172,7 +172,7 @@ namespace remidy {
 
     // AudioPluginInstanceLV2
 
-    StatusCode AudioPluginInstanceLV2::configure(int32_t sampleRate, bool offlineMode) {
+    StatusCode AudioPluginInstanceLV2::configure(Configuration& configuration) {
         // Do we have to deal with offlineMode? LV2 only mentions hardRT*Capable*.
 
         if (instance)
@@ -180,7 +180,8 @@ namespace remidy {
                 // new configuration, and restore the state.
                     throw std::runtime_error("AudioPluginInstanceLV2::configure() re-configuration is not implemented");
 
-        instance = remidy::lv2::instantiate_plugin(formatImpl->worldContext, plugin, sampleRate, offlineMode);
+        instance = remidy::lv2::instantiate_plugin(formatImpl->worldContext, plugin,
+            configuration.sampleRate, configuration.offlineMode);
         if (!instance)
             return StatusCode::FAILED_TO_INSTANTIATE;
 

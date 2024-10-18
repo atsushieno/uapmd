@@ -80,7 +80,7 @@ target_sources(remidy PRIVATE
         src/EventLoop.darwin.cpp
 
         src/vst3/TravestyHelper.cpp
-        src/vst3/HostApplication.cpp
+        src/vst3/HostClasses.cpp
         src/vst3/ClassModuleInfo.cpp
 
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}/moduleinfoparser.cpp
