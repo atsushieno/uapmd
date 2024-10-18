@@ -479,10 +479,10 @@ namespace remidy {
         ctx->sample_rate = 48000;
         processData.ctx = ctx;
 
-        processData.input_events = (v3_event_list**) processDataInputEvents.v3();
-        processData.output_events = (v3_event_list**) processDataOutputEvents.v3();
-        processData.input_params = (v3_param_changes**) processDataInputParameterChanges.v3();
-        processData.output_params = (v3_param_changes**) processDataOutputParameterChanges.v3();
+        processData.input_events = (v3_event_list**) processDataInputEvents.asInterface();
+        processData.output_events = (v3_event_list**) processDataOutputEvents.asInterface();
+        processData.input_params = (v3_param_changes**) processDataInputParameterChanges.asInterface();
+        processData.output_params = (v3_param_changes**) processDataOutputParameterChanges.asInterface();
 
         // FIXME: adjust audio buses and channels
         int32_t numInputBuses = 1; // might be 0
@@ -566,7 +566,6 @@ namespace remidy {
 
     void updateProcessDataBuffers(v3_process_data& processData, v3_audio_bus_buffers& dstBus, AudioBusBufferList* srcBuf) {
         int32_t numChannels = srcBuf->channelCount();
-        dstBus.num_channels = srcBuf->channelCount();
         if (processData.symbolic_sample_size == V3_SAMPLE_32) {
             for (int32_t ch = 0; ch < numChannels; ch++)
                 dstBus.channel_buffers_32[ch] = srcBuf->getFloatBufferForChannel(ch);

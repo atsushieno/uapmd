@@ -25,6 +25,7 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
                 if (code != remidy::OK)
                     std::cerr << format->name() << ": " << displayName << " : startProcessing() failed. Error code " << code << std::endl;
                 else {
+                    // FIXME: use appropriate buses settings
                     remidy::AudioProcessContext ctx{1, 1, 2, 1024, 4096};
                     ctx.frameCount(512);
                     instance->process(ctx);

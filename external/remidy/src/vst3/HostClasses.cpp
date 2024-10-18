@@ -83,7 +83,8 @@ namespace remidy_vst3 {
         QUERY_HOST_INTERFACE(v3_plug_interface_support_iid, support)
 
         if (v3_tuid_match(iid,v3_param_changes_iid)) {
-            parameter_changes.asInterface()->unknown.ref(&parameter_changes);
+            auto iface = parameter_changes.asInterface();
+            iface->vtable->unknown.ref(iface);
             *obj = &parameter_changes;
             return V3_OK;
         }
@@ -289,13 +290,13 @@ namespace remidy_vst3 {
     struct v3_param_value_queue** HostParameterChanges::get_param_data(void *self, int32_t idx) {
         // FIXME: implement
         std::cerr << "HostParameterChanges::get_param_data() is not implemented" << std::endl;
-        return (v3_param_value_queue**) &((HostParameterChanges*) self)->queue.asInterface()->param_value_queue;
+        return (v3_param_value_queue**) ((HostParameterChanges*) self)->queue.asInterface();
     }
 
     struct v3_param_value_queue** HostParameterChanges::add_param_data(void *self, const v3_param_id *id, int32_t *idx) {
         // FIXME: implement
         std::cerr << "HostParameterChanges::add_param_data() is not implemented" << std::endl;
-        return (v3_param_value_queue**) &((HostParameterChanges*) self)->queue.asInterface()->param_value_queue;
+        return (v3_param_value_queue**) ((HostParameterChanges*) self)->queue.asInterface();
     }
 
 }

@@ -7,14 +7,14 @@ namespace remidy {
     // It is part of `AudioProcessingContext`.
     class AudioBusBufferList {
         uint32_t channel_count;
-        uint32_t buffer_size;
-        float** float_buffers;
-        double** double_buffers;
+        uint32_t frame_count;
+        float** float_buffers{nullptr};
+        double** double_buffers{nullptr};
 
     public:
         AudioBusBufferList(uint32_t channelCount, uint32_t bufferSizeInFrames) :
             channel_count(channelCount),
-            buffer_size(bufferSizeInFrames) {
+            frame_count(bufferSizeInFrames) {
             float_buffers = static_cast<float **>(calloc(sizeof(float *), channelCount));
             double_buffers = static_cast<double **>(calloc(sizeof(double *), channelCount));
             for (int32_t i = 0; i < channelCount; i++) {
@@ -30,7 +30,7 @@ namespace remidy {
         float* getFloatBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : float_buffers[channel]; }
         double* getDoubleBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : double_buffers[channel]; };
         uint32_t channelCount() const { return channel_count; }
-        uint32_t bufferSizeInFrames() const { return buffer_size; }
+        uint32_t bufferSizeInFrames() const { return frame_count; }
     };
 
     // Represents a set of audio input bus buffers and audio output bus buffers
