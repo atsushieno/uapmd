@@ -1,5 +1,3 @@
-#include "LV2Helper.hpp"
-
 #include <lv2/core/lv2.h>
 
 
@@ -21,7 +19,9 @@
 #include <lv2/worker/worker.h>
 #include <zix/sem.h>
 
-namespace remidy::lv2 {
+#include "LV2Helper.hpp"
+
+namespace remidy_lv2 {
 
 // imported from jalv_internal.h
 typedef int (*PresetSink)(LV2ImplPluginContext*           jalv,
@@ -418,10 +418,11 @@ jalv_worker_finish(JalvWorker* worker);
 
 LilvInstance* instantiate_plugin(
         LV2ImplWorldContext* worldContext,
+        LV2ImplPluginContext* pluginContext,
         const LilvPlugin* plugin,
         int sampleRate,
         bool offlineMode) {
-    auto ctx = new LV2ImplPluginContext(worldContext, worldContext->world, plugin, sampleRate);
+    auto ctx = pluginContext;
 
     if (zix_sem_init(&ctx->work_lock, 1)) {
         worldContext->logger->logError("Failed to initialize semaphore (work_lock)");

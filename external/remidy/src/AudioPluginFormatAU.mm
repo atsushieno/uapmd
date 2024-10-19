@@ -20,6 +20,14 @@ namespace remidy {
     };
 
     class AudioPluginInstanceAU : public AudioPluginInstance {
+        struct BusSearchResult {
+            uint32_t numAudioIn{0};
+            uint32_t numAudioOut{0};
+            uint32_t numEventIn{0};
+            uint32_t numEventOut{0};
+        };
+        BusSearchResult buses;
+        BusSearchResult inspectBuses();
 
     protected:
         AudioPluginFormatAU *format;
@@ -35,12 +43,18 @@ namespace remidy {
             AUV2 = 2,
             AUV3 = 3
         };
-        StatusCode configure(Configuration& configuration) override;
 
+        // audio processing core functions.
+        StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode process(AudioProcessContext &process) override;
-
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
+
+        // port helpers
+        bool hasAudioInputs() override { return buses.numAudioIn > 0; }
+        bool hasAudioOutputs() override { return buses.numAudioOut > 0; }
+        bool hasEventInputs() override { return buses.numEventIn > 0; }
+        bool hasEventOutputs() override { return buses.numAudioOut > 0; }
 
         virtual AUVersion auVersion() = 0;
         virtual StatusCode sampleRate(double sampleRate) = 0;
@@ -204,12 +218,13 @@ void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *info, std::
 remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(AudioPluginFormatAU *format, AudioComponent component, AudioComponentInstance instance) :
     format(format), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
+    buses = inspectBuses();
 }
 remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
     AudioComponentInstanceDispose(instance);
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::configure(Configuration& configuration) {
+remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest& configuration) {
     OSStatus result;
 
     this->sampleRate((double) configuration.sampleRate);
@@ -233,7 +248,23 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::stopProcessing() {
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &process) {
     // FIXME: implement
-    throw std::runtime_error("process() is not implemented yet.");
+    std::cerr << "process() is not implemented yet." << std::endl;
+    return StatusCode::FAILED_TO_PROCESS;
+}
+
+remidy::AudioPluginInstanceAU::BusSearchResult remidy::AudioPluginInstanceAU::inspectBuses() {
+    BusSearchResult ret{};
+    ::AudioChannelLayout layout{};
+    UInt32 size{};
+    if (0 == AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, 0, &layout, &size)) {
+        ret.numAudioIn = AudioChannelLayoutTag_GetNumberOfChannels(layout.mChannelLayoutTag);
+    }
+    if (0 == AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, 0, &layout, &size)) {
+        ret.numAudioOut = AudioChannelLayoutTag_GetNumberOfChannels(layout.mChannelLayoutTag);
+    }
+
+    // FIXME: get numEventsIn and numEventsOut too.
+    return ret;
 }
 
 // AudioPluginInstanceAUv2

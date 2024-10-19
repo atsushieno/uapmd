@@ -115,6 +115,16 @@ namespace remidy {
 
         void allocateProcessData();
         void deallocateProcessData();
+        std::vector<v3_speaker_arrangement> getVst3SpeakerConfigs(int32_t direction);
+
+        struct BusSearchResult {
+            uint32_t numAudioIn{0};
+            uint32_t numAudioOut{0};
+            uint32_t numEventIn{0};
+            uint32_t numEventOut{0};
+        };
+        BusSearchResult busesInfo{};
+        BusSearchResult inspectBuses();
 
     public:
         explicit AudioPluginInstanceVST3(
@@ -130,12 +140,17 @@ namespace remidy {
             );
         ~AudioPluginInstanceVST3() override;
 
-        StatusCode configure(Configuration& configuration) override;
-
+        // audio processing core features
+        StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
-
         StatusCode process(AudioProcessContext &process) override;
+
+        // port helpers
+        bool hasAudioInputs() override { return busesInfo.numAudioIn > 0; }
+        bool hasAudioOutputs() override { return busesInfo.numAudioOut > 0; }
+        bool hasEventInputs() override { return busesInfo.numEventIn > 0; }
+        bool hasEventOutputs() override { return busesInfo.numEventOut > 0; }
     };
 
     // AudioPluginFormatVST3
@@ -332,8 +347,6 @@ namespace remidy {
         const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
         const std::function<void(void* module)>& cleanup
     ) {
-        // FIXME: try to load moduleinfo.json and skip loading dynamic library.
-
         // JUCE seems to do this, not sure if it is required (not sure if this point is correct either).
         auto savedPath = std::filesystem::current_path();
         std::filesystem::current_path(vst3Dir);
@@ -428,6 +441,8 @@ namespace remidy {
         // not sure if we want to error out here, so no result check.
         processor->vtable->processor.set_processing(processor, false);
         component->vtable->component.set_active(component, false);
+
+        busesInfo = inspectBuses();
     }
 
     AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
@@ -453,11 +468,48 @@ namespace remidy {
         owner->unrefLibrary(info);
     }
 
-    StatusCode AudioPluginInstanceVST3::configure(Configuration& configuration) {
+    /*
+    std::vector<v3_speaker_arrangement> convertToVst3SpeakerConfigs(std::vector<BusConfiguration>& srcBuses) {
+        std::vector<v3_speaker_arrangement> ret{};
+        for (auto& src : srcBuses) {
+            v3_speaker_arrangement v;
+            if (src == BusConfiguration::mono())
+                v = V3_SPEAKER_C;
+            else if (src == BusConfiguration::stereo()) {
+                v = V3_SPEAKER_L | V3_SPEAKER_R;
+            }
+            else {
+                // FIXME: implement more maybe.
+                v = 0; // not supported yet
+            }
+            ret.emplace_back(v);
+        }
+        return ret;
+    }*/
+
+    /*
+    std::vector<v3_speaker_arrangement> AudioPluginInstanceVST3::getVst3SpeakerConfigs(int32_t direction) {
+        std::vector<v3_speaker_arrangement> ret{};
+        auto n = component->vtable->component.get_bus_count(component, V3_AUDIO, direction);
+        for (int32_t i = 0; i < n; i++) {
+            v3_bus_info info;
+            component->vtable->component.get_bus_info(component, V3_AUDIO, direction, i, &info);
+            // We can only guess the speaker arrangement by name...
+            switch (info.channel_count) {
+                case 1: ret.emplace_back(V3_SPEAKER_C); break;
+                case 2: ret.emplace_back(V3_SPEAKER_L | V3_SPEAKER_R); break;
+                // FIXME: implement more, but we can only depend on bus_name...
+                default: ret.emplace_back(0); break;
+            }
+        }
+        return ret;
+    }*/
+
+    StatusCode AudioPluginInstanceVST3::configure(ConfigurationRequest& configuration) {
+        // setupProcessing.
         v3_process_setup setup{};
         setup.sample_rate = configuration.sampleRate;
-        // FIXME: make them customizable
-        setup.max_block_size = 4096;
+        setup.max_block_size = static_cast<int32_t>(configuration.bufferSizeInSamples);
         setup.symbolic_sample_size = configuration.dataType == AudioContentType::Float64 ? V3_SAMPLE_64 : V3_SAMPLE_32;
         setup.process_mode = configuration.offlineMode ? V3_OFFLINE : V3_REALTIME;
 
@@ -467,7 +519,27 @@ namespace remidy {
             return StatusCode::FAILED_TO_CONFIGURE;
         }
 
-        // FIXME: setup process_data here.
+        // set audio bus configuration, if explicitly specified.
+        /*
+        if (configuration.inputBuses.has_value() || configuration.outputBuses.has_value()) {
+            auto inputBuses = configuration.inputBuses.has_value() ?
+                convertToVst3SpeakerConfigs(configuration.inputBuses.value()) : getVst3SpeakerConfigs(V3_INPUT);
+            auto outputBuses = configuration.outputBuses.has_value() ?
+                convertToVst3SpeakerConfigs(configuration.outputBuses.value()) : getVst3SpeakerConfigs(V3_OUTPUT);
+            processor->vtable->processor.set_bus_arrangements(processor,
+                inputBuses.data(), (int32_t) inputBuses.size(),
+                outputBuses.data(), (int32_t) outputBuses.size());
+        }*/
+        // We can only process simple buses so far. Keep others disabled.
+        if (hasAudioInputs())
+            component->vtable->component.activate_bus(component, V3_AUDIO, V3_INPUT, 0, true);
+        if (hasAudioOutputs())
+            component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, 0, true);
+
+        // lastly activate the instance.
+        component->vtable->component.set_active(component, true);
+
+        // setup process_data here.
         allocateProcessData();
 
         return StatusCode::OK;
@@ -484,15 +556,15 @@ namespace remidy {
         processData.input_params = (v3_param_changes**) processDataInputParameterChanges.asInterface();
         processData.output_params = (v3_param_changes**) processDataOutputParameterChanges.asInterface();
 
-        // FIXME: adjust audio buses and channels
-        int32_t numInputBuses = 1; // might be 0
-        int32_t numOutputBuses = 1; // might be 0
+        // FIXME: adjust audio buses and channels appropriately.
+        int32_t numInputBuses = hasAudioInputs() ? 1 : 0;
+        int32_t numOutputBuses = hasAudioOutputs() ? 1 : 0;
         processData.num_input_buses = numInputBuses;
         processData.num_output_buses = numOutputBuses;
         processData.inputs = &inputAudioBusBuffers;
         processData.outputs = &outputAudioBusBuffers;
         int32_t numChannels = 2;
-        int32_t symbolicSampleSize = V3_SAMPLE_32;
+        int32_t symbolicSampleSize = processData.symbolic_sample_size;
         if (symbolicSampleSize == V3_SAMPLE_32) {
             for (int32_t bus = 0; bus < numInputBuses; bus++) {
                 processData.inputs[bus].num_channels = numChannels;
@@ -522,7 +594,7 @@ namespace remidy {
         int32_t numInputBuses = 1;
         int32_t numOutputBuses = 1;
         int32_t numChannels = 2;
-        int32_t symbolicSampleSize = V3_SAMPLE_32;
+        int32_t symbolicSampleSize = processData.symbolic_sample_size;
         if (symbolicSampleSize == V3_SAMPLE_32) {
             for (int32_t bus = 0; bus < numInputBuses; bus++)
                 free(processData.inputs[bus].channel_buffers_32);
@@ -535,10 +607,6 @@ namespace remidy {
                 free(processData.outputs[bus].channel_buffers_64);
         }
 
-        if (processData.input_params)
-            delete (HostParameterChanges*) processData.input_params;
-        if (processData.output_params)
-            delete (HostParameterChanges*) processData.output_params;
         if (processData.ctx)
             free(processData.ctx);
     }
@@ -597,5 +665,13 @@ namespace remidy {
         return StatusCode::OK;
     }
 
+    AudioPluginInstanceVST3::BusSearchResult AudioPluginInstanceVST3::inspectBuses() {
+        BusSearchResult ret{};
+        ret.numAudioIn = component->vtable->component.get_bus_count(component, V3_AUDIO, V3_INPUT);
+        ret.numAudioOut = component->vtable->component.get_bus_count(component, V3_AUDIO, V3_OUTPUT);
+        ret.numEventIn = component->vtable->component.get_bus_count(component, V3_EVENT, V3_INPUT);
+        ret.numEventOut = component->vtable->component.get_bus_count(component, V3_EVENT, V3_OUTPUT);
+        return ret;
+    }
 
 }

@@ -32,7 +32,7 @@ void* remidy::PluginBundlePool::loadOrAddReference(std::filesystem::path &module
     }
     void* module{nullptr};
     auto result = load(moduleBundlePath, &module);
-    if (result != 0)
+    if (result != StatusCode::OK)
         return nullptr;
     entries.emplace(moduleBundlePath, ModuleEntry{1, moduleBundlePath, module});
     return module;
@@ -46,7 +46,7 @@ remidy::StatusCode remidy::PluginBundlePool::removeReference(std::filesystem::pa
         return StatusCode::BUNDLE_NOT_FOUND;
     if (--entry->second.refCount == 0 && retentionPolicy == RetentionPolicy::UnloadImmediately) {
         auto result = unload(entry->second.moduleBundlePath, entry->second.module);
-        if (result != 0)
+        if (result != StatusCode::OK)
             return result;
         entries.erase(entry);
     }

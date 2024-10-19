@@ -9,14 +9,15 @@ typedef int64_t remidy_timestamp_t;
 
 namespace remidy {
 
-    enum StatusCode {
+    enum class StatusCode {
         OK,
         BUNDLE_NOT_FOUND,
         FAILED_TO_INSTANTIATE,
         ALREADY_INSTANTIATED,
         FAILED_TO_CONFIGURE,
         FAILED_TO_START_PROCESSING,
-        FAILED_TO_STOP_PROCESSING
+        FAILED_TO_STOP_PROCESSING,
+        FAILED_TO_PROCESS
     };
 
     class Logger {

@@ -16,7 +16,7 @@ namespace remidy {
         ~Impl();
 
         LilvWorld *world;
-        lv2::LV2ImplWorldContext *worldContext;
+        remidy_lv2::LV2ImplWorldContext *worldContext;
         std::vector<LV2_Feature*> features{};
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
@@ -30,15 +30,32 @@ namespace remidy {
         AudioPluginFormatLV2::Impl* formatImpl;
         const LilvPlugin* plugin;
         LilvInstance* instance{nullptr};
+        remidy_lv2::LV2ImplPluginContext implContext;
+
+        struct BusSearchResult {
+            uint32_t numAudioIn{0};
+            uint32_t numAudioOut{0};
+            uint32_t numEventIn{0};
+            uint32_t numEventOut{0};
+        };
+        BusSearchResult buses;
+        BusSearchResult inspectBuses();
 
     public:
         explicit AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
         ~AudioPluginInstanceLV2() override;
 
-        StatusCode configure(Configuration& configuration) override;
+        // audio processing core functions.
+        StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
         StatusCode process(AudioProcessContext &process) override;
+
+        // port helpers
+        bool hasAudioInputs() override { return buses.numAudioIn > 0; }
+        bool hasAudioOutputs() override { return buses.numAudioOut > 0; }
+        bool hasEventInputs() override { return buses.numEventIn > 0; }
+        bool hasEventOutputs() override { return buses.numEventOut > 0; }
     };
 
     AudioPluginFormatLV2::Impl::Impl(AudioPluginFormatLV2* owner) :
@@ -50,21 +67,11 @@ namespace remidy {
         lilv_world_load_all(world);
 
         // This also initializes features
-        worldContext = new lv2::LV2ImplWorldContext(logger, world);
+        worldContext = new remidy_lv2::LV2ImplWorldContext(logger, world);
     }
     AudioPluginFormatLV2::Impl::~Impl() {
         delete worldContext;
         lilv_free(world);
-    }
-
-    AudioPluginInstanceLV2::AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
-        formatImpl(formatImpl), plugin(plugin) {
-    }
-
-    AudioPluginInstanceLV2::~AudioPluginInstanceLV2() {
-        if (instance)
-            lilv_instance_free(instance);
-        instance = nullptr;
     }
 
     std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatLV2::Impl::scanAllAvailablePlugins() {
@@ -172,7 +179,19 @@ namespace remidy {
 
     // AudioPluginInstanceLV2
 
-    StatusCode AudioPluginInstanceLV2::configure(Configuration& configuration) {
+    AudioPluginInstanceLV2::AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
+        formatImpl(formatImpl), plugin(plugin),
+        implContext(formatImpl->worldContext, formatImpl->world, plugin) {
+        buses = inspectBuses();
+    }
+
+    AudioPluginInstanceLV2::~AudioPluginInstanceLV2() {
+        if (instance)
+            lilv_instance_free(instance);
+        instance = nullptr;
+    }
+
+    StatusCode AudioPluginInstanceLV2::configure(ConfigurationRequest& configuration) {
         // Do we have to deal with offlineMode? LV2 only mentions hardRT*Capable*.
 
         if (instance)
@@ -180,7 +199,7 @@ namespace remidy {
                 // new configuration, and restore the state.
                     throw std::runtime_error("AudioPluginInstanceLV2::configure() re-configuration is not implemented");
 
-        instance = remidy::lv2::instantiate_plugin(formatImpl->worldContext, plugin,
+        instance = remidy_lv2::instantiate_plugin(formatImpl->worldContext, &implContext, plugin,
             configuration.sampleRate, configuration.offlineMode);
         if (!instance)
             return StatusCode::FAILED_TO_INSTANTIATE;
@@ -200,6 +219,23 @@ namespace remidy {
 
     StatusCode AudioPluginInstanceLV2::process(AudioProcessContext &process) {
         // FIXME: implement
-        throw std::runtime_error("AudioPluginInstanceLV2::process() is not implemented");
+        std::cerr << "AudioPluginInstanceLV2::process() is not implemented" << std::endl;
+        return StatusCode::FAILED_TO_PROCESS;
+    }
+
+    AudioPluginInstanceLV2::BusSearchResult AudioPluginInstanceLV2::inspectBuses() {
+        BusSearchResult ret{};
+        for (uint32_t p = 0; p < lilv_plugin_get_num_ports(plugin); p++) {
+            auto port = lilv_plugin_get_port_by_index(plugin, p);
+            if (implContext.IS_AUDIO_IN(plugin, port))
+                ret.numAudioIn++;
+            else if (implContext.IS_AUDIO_OUT(plugin, port))
+                ret.numAudioOut++;
+            if (implContext.IS_ATOM_IN(plugin, port))
+                ret.numEventIn++;
+            if (implContext.IS_ATOM_OUT(plugin, port))
+                ret.numEventOut++;
+        }
+        return ret;
     }
 }

@@ -41,7 +41,7 @@
 
 #include "remidy.hpp"
 
-namespace remidy::lv2 {
+namespace remidy_lv2 {
 
     inline int log_vprintf(LV2_Log_Handle handle, LV2_URID type, const char *fmt, va_list ap) {
         auto logger = (remidy::Logger*) handle;
@@ -279,13 +279,13 @@ public:
 };
 */
 
+// removed sampleRate from aap-lv2 version...
 class LV2ImplPluginContext {
 public:
     LV2ImplPluginContext(LV2ImplWorldContext *statics,
                         LilvWorld *world,
-                        const LilvPlugin *plugin, int32_t sampleRate)
-            : statics(statics), world(world), plugin(plugin),
-              sample_rate(sampleRate) {
+                        const LilvPlugin *plugin)
+            : statics(statics), world(world), plugin(plugin) {
         // They don't have default assignment...
         worker.threaded = false;
         state_worker.threaded = false;
@@ -306,14 +306,12 @@ public:
             free(control_buffer_pointers);
         free(dummy_raw_buffer);
         */
-        free(statics);
     }
 
     LV2ImplWorldContext *statics;
     LilvWorld *world;
     const LilvPlugin *plugin;
     LilvInstance *instance{nullptr};
-    int32_t sample_rate;
 
     /*
     std::string aap_plugin_id{};
@@ -414,6 +412,7 @@ public:
         if(maxNode) lilv_node_free(maxNode);
         if(propertyTypeNode) lilv_node_free(propertyTypeNode);
     }
+*/
 
 #define PORTCHECKER_SINGLE(_name_,_type_) inline bool _name_ (const LilvPlugin* plugin, const LilvPort* port) { return lilv_port_is_a (plugin, port, statics->_type_); }
 #define PORTCHECKER_AND(_name_,_cond1_,_cond2_) inline bool _name_ (const LilvPlugin* plugin, const LilvPort* port) { return _cond1_ (plugin, port) && _cond2_ (plugin, port); }
@@ -425,7 +424,10 @@ public:
         PORTCHECKER_SINGLE (IS_ATOM_PORT, atom_port_uri_node)
         PORTCHECKER_AND (IS_AUDIO_IN, IS_AUDIO_PORT, IS_INPUT_PORT)
         PORTCHECKER_AND (IS_AUDIO_OUT, IS_AUDIO_PORT, IS_OUTPUT_PORT)
+        PORTCHECKER_AND (IS_ATOM_IN, IS_ATOM_PORT, IS_INPUT_PORT)
+        PORTCHECKER_AND (IS_ATOM_OUT, IS_ATOM_PORT, IS_OUTPUT_PORT)
 
+/*
     void buildParameterList() {
         aapParams.clear();
         aapParamIdToEnumIndex.clear();
@@ -486,6 +488,7 @@ public:
 
     LilvInstance* instantiate_plugin(
         LV2ImplWorldContext* worldContext,
+        LV2ImplPluginContext* pluginContext,
         const LilvPlugin* plugin,
         int sampleRate,
         bool offlineMode);

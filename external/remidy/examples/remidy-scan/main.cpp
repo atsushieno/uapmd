@@ -16,23 +16,26 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
         if (!instance)
             std::cerr << format->name() << ": Could not instantiate plugin " << displayName << ". Details: " << result.error << std::endl;
         else {
-            remidy::AudioPluginInstance::Configuration config{};
+            remidy::AudioPluginInstance::ConfigurationRequest config{};
             auto code = instance->configure(config);
-            if (code != remidy::OK)
-                std::cerr << format->name() << ": " << displayName << " : configure() failed. Error code " << code << std::endl;
+            if (code != remidy::StatusCode::OK)
+                std::cerr << format->name() << ": " << displayName << " : configure() failed. Error code " << (int32_t) code << std::endl;
             else {
                 code = instance->startProcessing();
-                if (code != remidy::OK)
-                    std::cerr << format->name() << ": " << displayName << " : startProcessing() failed. Error code " << code << std::endl;
+                if (code != remidy::StatusCode::OK)
+                    std::cerr << format->name() << ": " << displayName << " : startProcessing() failed. Error code " << (int32_t) code << std::endl;
                 else {
                     // FIXME: use appropriate buses settings
-                    remidy::AudioProcessContext ctx{1, 1, 2, 1024, 4096};
+                    uint32_t numAudioIn = instance->hasAudioInputs() ? 1 : 0;
+                    uint32_t numAudioOut = instance->hasAudioOutputs() ? 1 : 0;
+                    remidy::AudioProcessContext ctx{numAudioIn, numAudioOut,
+                        2, 1024, 4096};
                     ctx.frameCount(512);
                     instance->process(ctx);
 
                     code = instance->stopProcessing();
-                    if (code != remidy::OK)
-                        std::cerr << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << code << std::endl;
+                    if (code != remidy::StatusCode::OK)
+                        std::cerr << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << (int32_t) code << std::endl;
                     else
                     std::cerr << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
                 }
@@ -59,7 +62,7 @@ int main(int argc, const char * argv[]) {
     remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
     remidy::AudioPluginFormatAU au{};
     remidy::AudioPluginFormatLV2 lv2{lv2SearchPaths};
-    auto formats = std::vector<remidy::AudioPluginFormat*>{/*&lv2, &au,*/ &vst3};
+    auto formats = std::vector<remidy::AudioPluginFormat*>{&lv2, &vst3, &au};
 
     remidy::PluginCatalog catalog{};
     auto dir = cpplocate::localDir(APP_NAME);
@@ -94,6 +97,10 @@ int main(int argc, const char * argv[]) {
                 skip = true;
 
             // FIXME: this should be unblocked
+
+            // freezes after I implemented audio bus setup and process().
+            if (format->name() == "VST3" && displayName.starts_with("Massive X"))
+                skip = true;
 
             // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
             if (format->name() == "VST3" && displayName.starts_with("Battery"))
