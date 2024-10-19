@@ -453,7 +453,7 @@ LilvInstance* instantiate_plugin(
 
     ctx->instance = lilv_plugin_instantiate(plugin, sampleRate, worldContext->features.features);
     if (!ctx->instance) {
-        worldContext->logger->logError("Failed to instantiate plugin.");
+        worldContext->logger->logError("Failed to instantiate LV2 plugin.");
         return nullptr;
     }
     if (lilv_plugin_has_extension_data(ctx->plugin, ctx->statics->work_interface_uri_node)) {

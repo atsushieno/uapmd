@@ -446,6 +446,10 @@ namespace remidy {
     }
 
     AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
+
+        processor->vtable->processor.set_processing(processor, false);
+        component->vtable->component.set_active(component, false);
+
         deallocateProcessData();
 
         if (connPointEdit)
@@ -453,19 +457,31 @@ namespace remidy {
         if (connPointComp)
             connPointComp->vtable->unknown.unref(connPointComp);
 
-        if (isControllerDistinctFromComponent) {
-            controller->vtable->base.terminate(controller);
-            controller->vtable->unknown.unref(controller);
-        }
 
-        processor->vtable->unknown.unref(processor);
+        std::function releaseRemaining = [&] {
+            processor->vtable->unknown.unref(processor);
 
-        component->vtable->base.terminate(component);
-        component->vtable->unknown.unref(component);
+            component->vtable->base.terminate(component);
+            component->vtable->unknown.unref(component);
 
-        instance->vtable->unknown.unref(instance);
+            instance->vtable->unknown.unref(instance);
 
-        owner->unrefLibrary(info);
+            owner->unrefLibrary(info);
+        };
+
+        EventLoop::asyncRunOnMainThread([&] {
+            // We cannot safely clean up Component without making sure that we cleaned up IEditController,
+            // so if we do it, then do everything in the main thread(!)
+            // We should do this until we somehow get a "UI is totally separate from logic" safety criteria in VST3 plugins...
+            if (isControllerDistinctFromComponent) {
+                controller->vtable->base.terminate(controller);
+                controller->vtable->unknown.unref(controller);
+
+                releaseRemaining();
+            }
+            else
+                releaseRemaining();
+        });
     }
 
     /*
@@ -656,9 +672,12 @@ namespace remidy {
 
         const auto& ctx = processData.ctx;
 
-        // FIXME: crashes around here.
         processData.nframes = numFrames;
-        processor->vtable->processor.process(processor, &processData);
+        auto result = processor->vtable->processor.process(processor, &processData);
+        if (result != V3_OK) {
+            owner->getLogger()->logError("Failed to process vst3 audio. Result: %d", result);
+            return StatusCode::FAILED_TO_PROCESS;
+        }
 
         // post-processing
         ctx->continuous_time_in_samples += numFrames;
