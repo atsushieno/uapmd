@@ -28,7 +28,7 @@ namespace remidy {
         };
         BusSearchResult buses;
         BusSearchResult inspectBuses();
-        std::unique_ptr<::AudioBufferList> auData{nullptr};
+        ::AudioBufferList* auData{nullptr};
         AudioTimeStamp process_timestamp{};
         bool process_replacing{false};
 
@@ -232,6 +232,7 @@ remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(AudioPluginFormatAU *format
     buses = inspectBuses();
 }
 remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
+    free(auData);
     AudioComponentInstanceDispose(instance);
 }
 
@@ -289,8 +290,10 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     AudioUnitGetProperty(instance, kAudioUnitProperty_InPlaceProcessing, kAudioUnitScope_Global, 0, &process_replacing, &size);
     // FIXME: this audio bus count is hacky and inaccurate.
     UInt32 nBuffers = hasAudioInputs() ? hasAudioOutputs() && !process_replacing ? 2 : 1 : 0;
-    auData = std::make_unique<::AudioBufferList>();
+    auData = (AudioBufferList*) calloc(1, sizeof(AudioBufferList) + sizeof(::AudioBuffer) * (nBuffers - 1));
     auData->mNumberBuffers = nBuffers;
+
+    process_timestamp.mSampleTime = 0;
 
     // Once everything is set, initialize the instance here.
     result = AudioUnitInitialize(instance);
@@ -311,7 +314,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::stopProcessing() {
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &process) {
-/*
+
     int32_t dstBus = 0;
     uint32_t channelBufSize = process.frameCount() * sizeof(float);
     if (hasAudioInputs()) {
@@ -350,10 +353,11 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
             }
             auData->mBuffers[dstBus].mDataByteSize = channelBufSize * busBuf->channelCount();
         }
-    }*/
+    }
 
-    process_timestamp.mFlags = kAudioTimeStampSampleTimeValid;
-    auto status = AudioUnitRender(instance, nullptr, &process_timestamp, 0, process.frameCount(), auData.get());
+    process_timestamp.mHostTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    process_timestamp.mFlags = kAudioTimeStampSampleTimeValid | kAudioTimeStampHostTimeValid;
+    auto status = AudioUnitRender(instance, nullptr, &process_timestamp, 0, process.frameCount(), auData);
     if (status != 0) {
         format->getLogger()->logError("%s: failed to process audio AudioPluginInstanceAU::process(). Status: %d", name.c_str(), status);
         return StatusCode::FAILED_TO_PROCESS;

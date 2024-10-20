@@ -109,8 +109,8 @@ int main(int argc, const char * argv[]) {
 
             // FIXME: this should be unblocked
 
-            // crashes at AudioUnitRender()
-            if (format->name() == "AU" && displayName.starts_with("Reaktor 6 MIDIFX"))
+            // goes unresponsive at AudioUnitRender().
+            if (format->name() == "AU" && vendor == "Tracktion")
                 skip = true;
 
             // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
