@@ -666,13 +666,12 @@ namespace remidy {
     StatusCode AudioPluginInstanceVST3::process(AudioProcessContext &process) {
         // update audio buffer pointers
         const int32_t numFrames = process.frameCount();
-        auto& audio =process.audio();
-        const int32_t numInputBus = audio.inputBusCount();
-        const int32_t numOutputBus = audio.outputBusCount();
+        const int32_t numInputBus = process.audioInBusCount();
+        const int32_t numOutputBus = process.audioOutBusCount();
         for (int32_t bus = 0; bus < numInputBus; bus++)
-            updateProcessDataBuffers(processData, processData.inputs[bus], audio.inputBus(bus));
+            updateProcessDataBuffers(processData, processData.inputs[bus], process.audioIn(bus));
         for (int32_t bus = 0; bus < numOutputBus; bus++)
-            updateProcessDataBuffers(processData, processData.outputs[bus], audio.outputBus(bus));
+            updateProcessDataBuffers(processData, processData.outputs[bus], process.audioOut(bus));
 
         const auto& ctx = processData.ctx;
 

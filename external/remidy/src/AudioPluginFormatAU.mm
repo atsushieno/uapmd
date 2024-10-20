@@ -29,6 +29,7 @@ namespace remidy {
         BusSearchResult buses;
         BusSearchResult inspectBuses();
         std::unique_ptr<::AudioBufferList> auData{nullptr};
+        AudioTimeStamp process_timestamp{};
         bool process_replacing{false};
 
     protected:
@@ -245,7 +246,6 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
 
     sampleRate((double) configuration.sampleRate);
 
-    // It is said required, but really? didn't work either... https://stackoverflow.com/questions/51836792/audiounitrender-error-50-meaning
     AudioStreamBasicDescription stream{};
     stream.mSampleRate = configuration.sampleRate;
     stream.mFormatID = kAudioFormatLinearPCM;
@@ -311,39 +311,54 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::stopProcessing() {
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &process) {
-
+/*
     int32_t dstBus = 0;
+    uint32_t channelBufSize = process.frameCount() * sizeof(float);
     if (hasAudioInputs()) {
-        for (int32_t bus = 0, n = process.audio().inputBusCount(); bus < n; bus++, dstBus++) {
-            auto busBuf =process.audio().inputBus(0);
+        for (int32_t bus = 0, n = process.audioInBusCount(); bus < n; bus++, dstBus++) {
+            auto busBuf =process.audioIn(0);
             auData->mBuffers[dstBus].mNumberChannels = busBuf->channelCount();
             for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
                 // FIXME: might be 64bit float?
-                auData->mBuffers[dstBus].mDataByteSize = process.frameCount() * sizeof(float);
-                auData->mBuffers[dstBus].mData = busBuf->getFloatBufferForChannel(ch);
+                if (ch == 0)
+                    auData->mBuffers[dstBus].mData = busBuf->getFloatBufferForChannel(ch);
+                else {
+                    auto nextDst = (float*) auData->mBuffers[dstBus].mData + process.frameCount() * (ch);
+                    auto nextSrc = busBuf->getFloatBufferForChannel(ch);
+                    if (nextDst == nextSrc) {} // then no copy needed!
+                    else
+                        memcpy(nextDst, busBuf->getFloatBufferForChannel(ch), channelBufSize);
+                }
             }
+            auData->mBuffers[dstBus].mDataByteSize = channelBufSize * busBuf->channelCount();
         }
     }
     if (hasAudioOutputs() && !process_replacing) {
-        for (int32_t bus = 0, n = process.audio().outputBusCount(); bus < n; bus++, dstBus++) {
-            auto busBuf =process.audio().outputBus(0);
+        for (int32_t bus = 0, n = process.audioOutBusCount(); bus < n; bus++, dstBus++) {
+            auto busBuf =process.audioOut(0);
             auData->mBuffers[dstBus].mNumberChannels = busBuf->channelCount();
             for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
                 // FIXME: might be 64bit float?
-                auData->mBuffers[dstBus].mDataByteSize = process.frameCount() * sizeof(float);
-                auData->mBuffers[dstBus].mData = busBuf->getFloatBufferForChannel(ch);
+                if (ch == 0)
+                    auData->mBuffers[dstBus].mData = busBuf->getFloatBufferForChannel(ch);
+                else {
+                    auto nextPtr = (float*) auData->mBuffers[dstBus].mData + process.frameCount() * (ch);
+                    if (nextPtr == busBuf->getFloatBufferForChannel(ch)) {} // then no copy needed!
+                    else
+                        memcpy(nextPtr, busBuf->getFloatBufferForChannel(ch), channelBufSize);
+                }
             }
+            auData->mBuffers[dstBus].mDataByteSize = channelBufSize * busBuf->channelCount();
         }
-    }
+    }*/
 
-    // FIXME: this results in -50!?
-    AudioTimeStamp timestamp{};
-    timestamp.mFlags = kAudioTimeStampSampleTimeValid;
-    auto status = AudioUnitRender(instance, nullptr, &timestamp, 0, process.frameCount(), auData.get());
+    process_timestamp.mFlags = kAudioTimeStampSampleTimeValid;
+    auto status = AudioUnitRender(instance, nullptr, &process_timestamp, 0, process.frameCount(), auData.get());
     if (status != 0) {
         format->getLogger()->logError("%s: failed to process audio AudioPluginInstanceAU::process(). Status: %d", name.c_str(), status);
         return StatusCode::FAILED_TO_PROCESS;
     }
+    process_timestamp.mSampleTime += process.frameCount();
 
     return StatusCode::OK;
 }

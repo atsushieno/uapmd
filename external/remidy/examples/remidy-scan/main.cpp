@@ -28,9 +28,20 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
                     // FIXME: use appropriate buses settings
                     uint32_t numAudioIn = instance->hasAudioInputs() ? 1 : 0;
                     uint32_t numAudioOut = instance->hasAudioOutputs() ? 1 : 0;
-                    remidy::AudioProcessContext ctx{numAudioIn, numAudioOut,
-                        2, 1024, 4096};
+                    remidy::AudioProcessContext ctx{4096};
+                    if (numAudioIn > 0)
+                        ctx.addAudioIn(2, 1024);
+                    if (numAudioOut > 0)
+                        ctx.addAudioOut(2, 1024);
                     ctx.frameCount(512);
+                    if (ctx.audioInBusCount() > 0) {
+                        memcpy(ctx.audioIn(0)->getFloatBufferForChannel(0), (void*) "0123456789ABCDEF", 16);
+                        memcpy(ctx.audioIn(0)->getFloatBufferForChannel(1), (void*) "FEDCBA9876543210", 16);
+                    }
+                    if (ctx.audioOutBusCount() > 0) {
+                        memcpy(ctx.audioOut(0)->getFloatBufferForChannel(0), (void*) "02468ACE13579BDF", 16);
+                        memcpy(ctx.audioOut(0)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);
+                    }
                     instance->process(ctx);
 
                     code = instance->stopProcessing();
@@ -62,7 +73,7 @@ int main(int argc, const char * argv[]) {
     remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
     remidy::AudioPluginFormatAU au{};
     remidy::AudioPluginFormatLV2 lv2{lv2SearchPaths};
-    auto formats = std::vector<remidy::AudioPluginFormat*>{/*&lv2, &vst3,*/ &au};
+    auto formats = std::vector<remidy::AudioPluginFormat*>{&lv2/*, &vst3*/, &au};
 
     remidy::PluginCatalog catalog{};
     auto dir = cpplocate::localDir(APP_NAME);
@@ -97,6 +108,10 @@ int main(int argc, const char * argv[]) {
                 skip = true;
 
             // FIXME: this should be unblocked
+
+            // crashes at AudioUnitRender()
+            if (format->name() == "AU" && displayName.starts_with("Reaktor 6 MIDIFX"))
+                skip = true;
 
             // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
             if (format->name() == "VST3" && displayName.starts_with("Battery"))
