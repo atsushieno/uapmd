@@ -140,6 +140,10 @@ namespace remidy {
             );
         ~AudioPluginInstanceVST3() override;
 
+        AudioPluginUIThreadRequirement requiresUIThreadOn() override {
+            return AudioPluginUIThreadRequirement::AllNonAudioOperation;
+        }
+
         // audio processing core features
         StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode startProcessing() override;

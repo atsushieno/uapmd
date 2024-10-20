@@ -45,6 +45,10 @@ namespace remidy {
         explicit AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
         ~AudioPluginInstanceLV2() override;
 
+        AudioPluginUIThreadRequirement requiresUIThreadOn() override {
+            return AudioPluginUIThreadRequirement::None;
+        }
+
         // audio processing core functions.
         StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode startProcessing() override;

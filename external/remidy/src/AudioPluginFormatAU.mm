@@ -28,6 +28,8 @@ namespace remidy {
         };
         BusSearchResult buses;
         BusSearchResult inspectBuses();
+        std::unique_ptr<::AudioBufferList> auData{nullptr};
+        bool process_replacing{false};
 
     protected:
         AudioPluginFormatAU *format;
@@ -43,6 +45,10 @@ namespace remidy {
             AUV2 = 2,
             AUV3 = 3
         };
+
+        AudioPluginUIThreadRequirement requiresUIThreadOn() override {
+            return AudioPluginUIThreadRequirement::None;
+        }
 
         // audio processing core functions.
         StatusCode configure(ConfigurationRequest& configuration) override;
@@ -204,10 +210,14 @@ void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *info, std::
         AudioComponentInstantiationOptions options = 0;
 
         AudioComponentInstantiate(component, options, ^(AudioComponentInstance instance, OSStatus status) {
-            if (v3)
-                callback(InvokeResult{std::make_unique<AudioPluginInstanceAUv3>(this, component, instance), std::string{}});
+            if (status == noErr) {
+                if (v3)
+                    callback(InvokeResult{std::make_unique<AudioPluginInstanceAUv3>(this, component, instance), std::string{}});
+                else
+                    callback(InvokeResult{std::make_unique<AudioPluginInstanceAUv2>(this, component, instance), std::string{}});
+            }
             else
-                callback(InvokeResult{std::make_unique<AudioPluginInstanceAUv2>(this, component, instance), std::string{}});
+              callback(InvokeResult{nullptr, std::string("Failed to instantiate AudioUnit.")});
         });
     }, info, callback);
 }
@@ -227,12 +237,66 @@ remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
 remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest& configuration) {
     OSStatus result;
 
-    this->sampleRate((double) configuration.sampleRate);
+    result = AudioUnitReset(instance, kAudioUnitScope_Global, 0);
+    if (result) {
+        format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to reset instance!?: OSStatus %d", name.c_str(), result);
+        return StatusCode::FAILED_TO_CONFIGURE;
+    }
+
+    sampleRate((double) configuration.sampleRate);
+
+    // It is said required, but really? didn't work either... https://stackoverflow.com/questions/51836792/audiounitrender-error-50-meaning
+    AudioStreamBasicDescription stream{};
+    stream.mSampleRate = configuration.sampleRate;
+    stream.mFormatID = kAudioFormatLinearPCM;
+    stream.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved | kAudioFormatFlagsNativeEndian | kLinearPCMFormatFlagIsPacked;
+    stream.mBitsPerChannel = 8 * sizeof (float);
+    stream.mFramesPerPacket = 1;
+    // FIXME: retrieve from bus
+    stream.mChannelsPerFrame = 2;
+    stream.mBytesPerFrame = stream.mBytesPerPacket = sizeof (float);
+    if (hasAudioInputs()) {
+        result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0,
+                                      &stream, sizeof(AudioStreamBasicDescription));
+        if (result) {
+            format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
+            return StatusCode::FAILED_TO_CONFIGURE;
+        }
+    }
+    if (hasAudioOutputs()) {
+        result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0,
+                                      &stream, sizeof(AudioStreamBasicDescription));
+        if (result) {
+            format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
+            return StatusCode::FAILED_TO_CONFIGURE;
+        }
+    }
 
     // it could be an invalid property. maybe just ignore that.
     result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &configuration.offlineMode, sizeof(bool));
     if (result != 0) {
         this->format->getLogger()->logWarning("%s: configure() on AudioPluginInstanceAU failed to set offlineMode. Status: %d", name.c_str(), result);
+    }
+
+    UInt32 frameSize = (UInt32) configuration.bufferSizeInSamples;
+    result = AudioUnitSetProperty(instance, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &frameSize, sizeof (frameSize));
+    if (result) {
+        format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_MaximumFramesPerSlice: OSStatus %d", name.c_str(), result);
+        return StatusCode::FAILED_TO_CONFIGURE;
+    }
+
+    UInt32 size;
+    AudioUnitGetProperty(instance, kAudioUnitProperty_InPlaceProcessing, kAudioUnitScope_Global, 0, &process_replacing, &size);
+    // FIXME: this audio bus count is hacky and inaccurate.
+    UInt32 nBuffers = hasAudioInputs() ? hasAudioOutputs() && !process_replacing ? 2 : 1 : 0;
+    auData = std::make_unique<::AudioBufferList>();
+    auData->mNumberBuffers = nBuffers;
+
+    // Once everything is set, initialize the instance here.
+    result = AudioUnitInitialize(instance);
+    if (result) {
+        format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to initialize AudioUnit: OSStatus %d", name.c_str(), result);
+        return StatusCode::FAILED_TO_CONFIGURE;
     }
 
     return StatusCode::OK;
@@ -247,21 +311,59 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::stopProcessing() {
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &process) {
-    // FIXME: implement
-    std::cerr << "process() is not implemented yet." << std::endl;
-    return StatusCode::FAILED_TO_PROCESS;
+
+    int32_t dstBus = 0;
+    if (hasAudioInputs()) {
+        for (int32_t bus = 0, n = process.audio().inputBusCount(); bus < n; bus++, dstBus++) {
+            auto busBuf =process.audio().inputBus(0);
+            auData->mBuffers[dstBus].mNumberChannels = busBuf->channelCount();
+            for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
+                // FIXME: might be 64bit float?
+                auData->mBuffers[dstBus].mDataByteSize = process.frameCount() * sizeof(float);
+                auData->mBuffers[dstBus].mData = busBuf->getFloatBufferForChannel(ch);
+            }
+        }
+    }
+    if (hasAudioOutputs() && !process_replacing) {
+        for (int32_t bus = 0, n = process.audio().outputBusCount(); bus < n; bus++, dstBus++) {
+            auto busBuf =process.audio().outputBus(0);
+            auData->mBuffers[dstBus].mNumberChannels = busBuf->channelCount();
+            for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
+                // FIXME: might be 64bit float?
+                auData->mBuffers[dstBus].mDataByteSize = process.frameCount() * sizeof(float);
+                auData->mBuffers[dstBus].mData = busBuf->getFloatBufferForChannel(ch);
+            }
+        }
+    }
+
+    // FIXME: this results in -50!?
+    AudioTimeStamp timestamp{};
+    timestamp.mFlags = kAudioTimeStampSampleTimeValid;
+    auto status = AudioUnitRender(instance, nullptr, &timestamp, 0, process.frameCount(), auData.get());
+    if (status != 0) {
+        format->getLogger()->logError("%s: failed to process audio AudioPluginInstanceAU::process(). Status: %d", name.c_str(), status);
+        return StatusCode::FAILED_TO_PROCESS;
+    }
+
+    return StatusCode::OK;
 }
 
 remidy::AudioPluginInstanceAU::BusSearchResult remidy::AudioPluginInstanceAU::inspectBuses() {
+    OSStatus result;
     BusSearchResult ret{};
     ::AudioChannelLayout layout{};
-    UInt32 size{};
-    if (0 == AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, 0, &layout, &size)) {
-        ret.numAudioIn = AudioChannelLayoutTag_GetNumberOfChannels(layout.mChannelLayoutTag);
-    }
-    if (0 == AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, 0, &layout, &size)) {
-        ret.numAudioOut = AudioChannelLayoutTag_GetNumberOfChannels(layout.mChannelLayoutTag);
-    }
+    UInt32 count{};
+    UInt32 size = sizeof(UInt32);
+    result = AudioUnitGetProperty(instance, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &count, &size);
+    if (result)
+        format->getLogger()->logWarning("%s: failed to retrieve input kAudioUnitProperty_ElementCount. Status: %d", name.c_str(), result);
+    else
+        ret.numAudioIn = count;
+    result = AudioUnitGetProperty(instance, kAudioUnitProperty_ElementCount, kAudioUnitScope_Output, 0, &count, &size);
+    if (result)
+        format->getLogger()->logWarning("%s: failed to retrieve output kAudioUnitProperty_ElementCount. Status: %d", name.c_str(), result);
+    else
+        ret.numAudioOut = count;
 
     // FIXME: get numEventsIn and numEventsOut too.
     return ret;

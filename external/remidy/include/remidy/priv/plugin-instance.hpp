@@ -9,6 +9,14 @@ namespace remidy {
         Float64
     };
 
+    enum AudioPluginUIThreadRequirement : uint32_t {
+        // AudioUnit and LV2, by default (probably bad behaved plugins can be explicitly marked as dirty = AllNonAudioOperation)
+        None = 0,
+        // CLAP and VST3, by default (probably good plugins can be excluded out to switch to None)
+        // Strictly speaking, CLAP does not require [main-thread] to everything, but it's close enough to label as everything.
+        AllNonAudioOperation = 0xFFFFFFFF
+    };
+
     class AudioPluginInstance {
     protected:
         explicit AudioPluginInstance() = default;
@@ -27,6 +35,8 @@ namespace remidy {
         virtual ~AudioPluginInstance() = default;
 
         virtual AudioPluginExtensibility<AudioPluginInstance>* getExtensibility() { return nullptr; }
+
+        virtual AudioPluginUIThreadRequirement requiresUIThreadOn() = 0;
 
         // Returns true if there is a main audio input bus.
         // In a long term, it should be just a shorthand property for current bus configuration.
