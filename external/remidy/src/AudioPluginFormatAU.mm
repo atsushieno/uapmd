@@ -236,6 +236,8 @@ remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
     AudioComponentInstanceDispose(instance);
 }
 
+OSStatus dummyAURenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) { return 0; }
+
 remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest& configuration) {
     OSStatus result;
 
@@ -285,6 +287,12 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
         format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_MaximumFramesPerSlice: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
+
+    // dummy callback
+    AURenderCallbackStruct callbackStruct;
+    callbackStruct.inputProc = dummyAURenderCallback;
+    callbackStruct.inputProcRefCon = nullptr;
+    AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callbackStruct, sizeof(callbackStruct));
 
     UInt32 size;
     AudioUnitGetProperty(instance, kAudioUnitProperty_InPlaceProcessing, kAudioUnitScope_Global, 0, &process_replacing, &size);

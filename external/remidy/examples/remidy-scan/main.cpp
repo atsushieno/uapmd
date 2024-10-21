@@ -12,6 +12,7 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
     std::atomic<bool> completed{false};
 
     format->createInstance(pluginId, [&](remidy::AudioPluginFormat::InvokeResult result) {
+        bool successful = false;
         auto instance = std::move(result.instance);
         if (!instance)
             std::cerr << format->name() << ": Could not instantiate plugin " << displayName << ". Details: " << result.error << std::endl;
@@ -42,16 +43,18 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
                         memcpy(ctx.audioOut(0)->getFloatBufferForChannel(0), (void*) "02468ACE13579BDF", 16);
                         memcpy(ctx.audioOut(0)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);
                     }
-                    instance->process(ctx);
+                    code = instance->process(ctx);
+                    if (code == remidy::StatusCode::OK)
+                        successful = true;
 
                     code = instance->stopProcessing();
                     if (code != remidy::StatusCode::OK)
                         std::cerr << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << (int32_t) code << std::endl;
-                    else
-                    std::cerr << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
                 }
             }
         }
+        if (successful)
+            std::cerr << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
         completed = true;
         completed.notify_one();
     });
