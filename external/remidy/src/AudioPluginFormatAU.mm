@@ -23,11 +23,17 @@ namespace remidy {
         struct BusSearchResult {
             uint32_t numAudioIn{0};
             uint32_t numAudioOut{0};
-            uint32_t numEventIn{0};
-            uint32_t numEventOut{0};
+            bool hasMidiIn{false};
+            bool hasMidiOut{false};
         };
         BusSearchResult buses;
         BusSearchResult inspectBuses();
+        AUMIDIOutputCallbackStruct midi_callback;
+        OSStatus midiOutputCallback(const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist);
+        static OSStatus midiOutputCallback(void *userData, const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist) {
+              return ((remidy::AudioPluginInstanceAU*) userData)->midiOutputCallback(timeStamp, midiOutNum, pktlist);
+        }
+
         ::AudioBufferList* auData{nullptr};
         AudioTimeStamp process_timestamp{};
         bool process_replacing{false};
@@ -60,8 +66,8 @@ namespace remidy {
         // port helpers
         bool hasAudioInputs() override { return buses.numAudioIn > 0; }
         bool hasAudioOutputs() override { return buses.numAudioOut > 0; }
-        bool hasEventInputs() override { return buses.numEventIn > 0; }
-        bool hasEventOutputs() override { return buses.numAudioOut > 0; }
+        bool hasEventInputs() override { return buses.hasMidiIn; }
+        bool hasEventOutputs() override { return buses.hasMidiOut; }
 
         virtual AUVersion auVersion() = 0;
         virtual StatusCode sampleRate(double sampleRate) = 0;
@@ -231,12 +237,19 @@ remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(AudioPluginFormatAU *format
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     buses = inspectBuses();
 }
+
 remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
     free(auData);
     AudioComponentInstanceDispose(instance);
 }
 
 OSStatus dummyAURenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) { return 0; }
+
+OSStatus remidy::AudioPluginInstanceAU::midiOutputCallback(const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist) {
+    // FIXME: implement
+    std::cerr << "remidy::AudioPluginInstanceAU::midiOutputCallback() not implemented." << std::endl;
+    return 0;
+}
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest& configuration) {
     OSStatus result;
@@ -293,6 +306,17 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     callbackStruct.inputProc = dummyAURenderCallback;
     callbackStruct.inputProcRefCon = nullptr;
     AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callbackStruct, sizeof(callbackStruct));
+
+    // MIDI callback
+    if (buses.hasMidiIn) {
+        midi_callback.midiOutputCallback = midiOutputCallback;
+        midi_callback.userData = this;
+        result = AudioUnitSetProperty (instance, kAudioUnitProperty_MIDIOutputCallback, kAudioUnitScope_Global, 0, &midi_callback, sizeof (midi_callback));
+        if (result) {
+            format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_MIDIOutputCallback: OSStatus %d", name.c_str(), result);
+            return StatusCode::FAILED_TO_CONFIGURE;
+        }
+    }
 
     UInt32 size;
     AudioUnitGetProperty(instance, kAudioUnitProperty_InPlaceProcessing, kAudioUnitScope_Global, 0, &process_replacing, &size);
@@ -392,7 +416,19 @@ remidy::AudioPluginInstanceAU::BusSearchResult remidy::AudioPluginInstanceAU::in
     else
         ret.numAudioOut = count;
 
-    // FIXME: get numEventsIn and numEventsOut too.
+    AudioComponentDescription desc;
+    AudioComponentGetDescription(component, &desc);
+    switch (desc.componentType) {
+        case kAudioUnitType_MusicDevice:
+        case kAudioUnitType_MusicEffect:
+        case kAudioUnitType_MIDIProcessor:
+          ret.hasMidiIn = true;
+    }
+    Boolean writable;
+    auto status = AudioUnitGetPropertyInfo(instance, kAudioUnitProperty_MIDIOutputCallbackInfo, kAudioUnitScope_Global, 0, nullptr, &writable);
+    if (status == 0 && writable)
+        ret.hasMidiOut = true;
+
     return ret;
 }
 

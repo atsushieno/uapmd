@@ -44,7 +44,9 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
                         memcpy(ctx.audioOut(0)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);
                     }
                     code = instance->process(ctx);
-                    if (code == remidy::StatusCode::OK)
+                    if (code != remidy::StatusCode::OK)
+                        std::cerr << format->name() << ": " << displayName << " : process() failed. Error code " << (int32_t) code << std::endl;
+                    else
                         successful = true;
 
                     code = instance->stopProcessing();
