@@ -64,7 +64,11 @@ target_link_libraries(remidy PRIVATE
         ${remidy_LIBS_PLAT}
 )
 
+add_compile_options(-fsanitize=address)
+add_link_options(-fsanitize=address)
+
 target_compile_options(remidy PRIVATE
+
         $<$<COMPILE_LANGUAGE:ObjCXX>:-framework CoreAudio -framework CoreFoundation>
         $<$<COMPILE_LANGUAGE:Swift>:-cxx-interoperability-mode=default -emit-clang-header-path ${CMAKE_BINARY_DIR}/generated/include/swift-interop/remidy-Swift.h>
 )
@@ -72,7 +76,7 @@ target_compile_options(remidy PRIVATE
 target_sources(remidy PRIVATE
 
         # swift sources generate C++ header files in use later, so compile them first.
-        src/auv2/AUv2Helper.swift
+        #src/auv2/AUv2Helper.swift
 
         src/utils.cpp
         src/EventLoop.posix.cpp

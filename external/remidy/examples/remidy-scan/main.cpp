@@ -30,19 +30,23 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
                     uint32_t numAudioIn = instance->hasAudioInputs() ? 1 : 0;
                     uint32_t numAudioOut = instance->hasAudioOutputs() ? 1 : 0;
                     remidy::AudioProcessContext ctx{4096};
+                    // FIXME: channel count is not precise.
                     if (numAudioIn > 0)
                         ctx.addAudioIn(2, 1024);
                     if (numAudioOut > 0)
                         ctx.addAudioOut(2, 1024);
                     ctx.frameCount(512);
-                    if (ctx.audioInBusCount() > 0) {
-                        memcpy(ctx.audioIn(0)->getFloatBufferForChannel(0), (void*) "0123456789ABCDEF", 16);
-                        memcpy(ctx.audioIn(0)->getFloatBufferForChannel(1), (void*) "FEDCBA9876543210", 16);
+                    for (uint32_t i = 0; i < numAudioIn; i++) {
+                        // FIXME: channel count is not precise.
+                        memcpy(ctx.audioIn(i)->getFloatBufferForChannel(0), (void*) "0123456789ABCDEF", 16);
+                        memcpy(ctx.audioIn(i)->getFloatBufferForChannel(1), (void*) "FEDCBA9876543210", 16);
                     }
-                    if (ctx.audioOutBusCount() > 0) {
-                        memcpy(ctx.audioOut(0)->getFloatBufferForChannel(0), (void*) "02468ACE13579BDF", 16);
-                        memcpy(ctx.audioOut(0)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);
+                    for (uint32_t i = 0; i < numAudioOut; i++) {
+                        // FIXME: channel count is not precise.
+                        memcpy(ctx.audioOut(i)->getFloatBufferForChannel(0), (void*) "02468ACE13579BDF", 16);
+                        memcpy(ctx.audioOut(i)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);
                     }
+
                     code = instance->process(ctx);
                     if (code != remidy::StatusCode::OK)
                         std::cerr << format->name() << ": " << displayName << " : process() failed. Error code " << (int32_t) code << std::endl;
@@ -116,6 +120,10 @@ int main(int argc, const char * argv[]) {
 
             // goes unresponsive at AudioUnitRender().
             if (format->name() == "AU" && vendor == "Tracktion")
+                skip = true;
+            if (format->name() == "AU" && displayName == "AUSpeechSynthesis")
+                skip = true;
+            if (format->name() == "AU" && displayName == "Massive X")
                 skip = true;
 
             // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
