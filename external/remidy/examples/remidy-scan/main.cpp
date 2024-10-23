@@ -3,28 +3,31 @@
 #include <ostream>
 #include <ranges>
 
+#include <cpptrace/from_current.hpp>
 #include <cpplocate/cpplocate.h>
 #include <remidy/remidy.hpp>
 
-void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* pluginId) {
+// -------- instancing --------
+
+void doCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* pluginId) {
     auto displayName = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
-    std::cerr << "instantiating " << displayName << std::endl;
+    std::cerr << "  instantiating " << format->name().c_str() << " " << displayName << std::endl;
     std::atomic<bool> completed{false};
 
     format->createInstance(pluginId, [&](remidy::AudioPluginFormat::InvokeResult result) {
         bool successful = false;
         auto instance = std::move(result.instance);
         if (!instance)
-            std::cerr << format->name() << ": Could not instantiate plugin " << displayName << ". Details: " << result.error << std::endl;
+            std::cerr << "  " << format->name() << ": Could not instantiate plugin " << displayName << ". Details: " << result.error << std::endl;
         else {
             remidy::AudioPluginInstance::ConfigurationRequest config{};
             auto code = instance->configure(config);
             if (code != remidy::StatusCode::OK)
-                std::cerr << format->name() << ": " << displayName << " : configure() failed. Error code " << (int32_t) code << std::endl;
+                std::cerr << "  " << format->name() << ": " << displayName << " : configure() failed. Error code " << (int32_t) code << std::endl;
             else {
                 code = instance->startProcessing();
                 if (code != remidy::StatusCode::OK)
-                    std::cerr << format->name() << ": " << displayName << " : startProcessing() failed. Error code " << (int32_t) code << std::endl;
+                    std::cerr << "  " << format->name() << ": " << displayName << " : startProcessing() failed. Error code " << (int32_t) code << std::endl;
                 else {
                     // FIXME: use appropriate buses settings
                     uint32_t numAudioIn = instance->hasAudioInputs() ? 1 : 0;
@@ -49,23 +52,46 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
 
                     code = instance->process(ctx);
                     if (code != remidy::StatusCode::OK)
-                        std::cerr << format->name() << ": " << displayName << " : process() failed. Error code " << (int32_t) code << std::endl;
+                        std::cerr << "  " << format->name() << ": " << displayName << " : process() failed. Error code " << (int32_t) code << std::endl;
                     else
                         successful = true;
 
                     code = instance->stopProcessing();
                     if (code != remidy::StatusCode::OK)
-                        std::cerr << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << (int32_t) code << std::endl;
+                        std::cerr << "  " << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << (int32_t) code << std::endl;
                 }
             }
         }
         if (successful)
-            std::cerr << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
+            std::cerr << "  " << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
         completed = true;
         completed.notify_one();
     });
     completed.wait(false);
 }
+
+void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* pluginId) {
+    auto displayName = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
+    auto vendor = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::VendorName);
+
+    bool forceMainThread =
+        format->name() == "AU" && vendor == "Tracktion"
+        || format->name() == "AU" && displayName == "AUSpeechSynthesis"
+        || format->name() == "AU" && displayName == "FL Studio"
+        || format->name() == "AU" && displayName == "Massive X"
+        || format->name() == "AU" && displayName == "Bite" // [threadmgrsupport] _TSGetMainThread_block_invoke():Main thread potentially initialized incorrectly, cf <rdar://problem/67741850>
+        || format->name() == "AU" && displayName == "Guitar Rig 6 MFX" // WARNING: QApplication was not created in the main() thread
+    ;
+
+    if (forceMainThread || format->requiresUIThreadOn() == remidy::AllNonAudioOperation)
+        remidy::EventLoop::asyncRunOnMainThread([&] {
+            doCreateInstance(format, pluginId);
+        });
+    else
+        doCreateInstance(format, pluginId);
+}
+
+// -------- scanning --------
 
 const char* APP_NAME= "remidy-scan";
 
@@ -74,15 +100,13 @@ auto filterByFormat(std::vector<remidy::PluginCatalogEntry*> entries, std::strin
     return entries;
 }
 
-int main(int argc, const char * argv[]) {
-    remidy::EventLoop::initializeOnUIThread();
-
+int performPluginScanning() {
     std::vector<std::string> vst3SearchPaths{};
     std::vector<std::string> lv2SearchPaths{};
     remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
     remidy::AudioPluginFormatAU au{};
     remidy::AudioPluginFormatLV2 lv2{lv2SearchPaths};
-    auto formats = std::vector<remidy::AudioPluginFormat*>{&lv2/*, &vst3*/, &au};
+    auto formats = std::vector<remidy::AudioPluginFormat*>{&lv2, &vst3, &au};
 
     remidy::PluginCatalog catalog{};
     auto dir = cpplocate::localDir(APP_NAME);
@@ -118,12 +142,15 @@ int main(int argc, const char * argv[]) {
 
             // FIXME: this should be unblocked
 
-            // goes unresponsive at AudioUnitRender().
-            if (format->name() == "AU" && vendor == "Tracktion")
+            // Plugin crashing!!!
+            // Process finished with exit code 9
+            if (format->name() == "AU" && displayName.starts_with("BYOD"))
                 skip = true;
-            if (format->name() == "AU" && displayName == "AUSpeechSynthesis")
-                skip = true;
-            if (format->name() == "AU" && displayName == "Massive X")
+if (format->name() == "AU" && !displayName.starts_with("Bite"))
+skip = true;
+
+            // goes unresponsive at AudioUnitRender(), including ones that hangs only on Debug builds.
+            if (format->name() == "AU" && displayName.starts_with("AIDA-X"))
                 skip = true;
 
             // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
@@ -160,4 +187,27 @@ int main(int argc, const char * argv[]) {
     std::cerr << "Completed." << std::endl;
 
     return 0;
+}
+
+int main(int argc, const char* argv[]) {
+    int result{0};
+    CPPTRACE_TRY {
+        remidy::EventLoop::initializeOnUIThread();
+        std::thread thread([&] {
+            CPPTRACE_TRY {
+                result = performPluginScanning();
+            } CPPTRACE_CATCH(const std::exception& e) {
+                std::cerr << "Exception in main: " << e.what() << std::endl;
+                cpptrace::from_current_exception().print();
+            }
+        });
+        remidy::EventLoop::start();
+
+        std::cerr << "Type [CR] to quit." << std::endl;
+        std::cin.get();
+        } CPPTRACE_CATCH(const std::exception& e) {
+        std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
+        cpptrace::from_current_exception().print();
+    }
+    return result;
 }

@@ -61,7 +61,8 @@ namespace remidy {
         };
 
         AudioPluginUIThreadRequirement requiresUIThreadOn() override {
-            return AudioPluginUIThreadRequirement::None;
+            // maybe we add some entries for known issues
+            return format->requiresUIThreadOn();
         }
 
         // audio processing core functions.

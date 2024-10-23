@@ -13,8 +13,10 @@ namespace remidy {
 
         Logger* getLogger();
 
-        virtual std::string name() override { return "AU"; }
+        std::string name() override { return "AU"; }
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
+
+        AudioPluginUIThreadRequirement requiresUIThreadOn() override { return None; }
 
         bool usePluginSearchPaths() override { return false; }
 

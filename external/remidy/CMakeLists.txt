@@ -4,8 +4,6 @@ project(remidy LANGUAGES C CXX OBJC OBJCXX Swift)
 set(CMAKE_CXX_STANDARD 23)
 
 #add_subdirectory("../../external/libremidi" "libremidi")
-#add_subdirectory("../../external/rtlog-cpp" "rtlog-cpp")
-#add_subdirectory("../../external/cpplocate" "cpplocate" EXCLUDE_FROM_ALL)
 add_subdirectory("../../external/json" "json")
 include("../../external/LV2Kit.cmake")
 
@@ -64,9 +62,6 @@ target_link_libraries(remidy PRIVATE
         ${remidy_LIBS_PLAT}
 )
 
-add_compile_options(-fsanitize=address)
-add_link_options(-fsanitize=address)
-
 target_compile_options(remidy PRIVATE
 
         $<$<COMPILE_LANGUAGE:ObjCXX>:-framework CoreAudio -framework CoreFoundation>
@@ -76,7 +71,7 @@ target_compile_options(remidy PRIVATE
 target_sources(remidy PRIVATE
 
         # swift sources generate C++ header files in use later, so compile them first.
-        #src/auv2/AUv2Helper.swift
+        src/auv2/AUv2Helper.swift
 
         src/utils.cpp
         src/EventLoop.posix.cpp

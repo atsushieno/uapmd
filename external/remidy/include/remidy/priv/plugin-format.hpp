@@ -17,6 +17,8 @@ namespace remidy {
 
         virtual AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() { return nullptr; }
 
+        virtual AudioPluginUIThreadRequirement requiresUIThreadOn() = 0;
+
         bool hasPluginListCache();
         bool supportsGlobalIdentifier();
         // Indicates whether the plugin API requires sample rate at *instantiating*.

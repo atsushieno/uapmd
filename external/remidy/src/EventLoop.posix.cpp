@@ -121,8 +121,12 @@ namespace remidy {
         delete func;
     }
 
-    void EventLoop::asyncRunOnMainThread(std::function<void()>&& func) {
+    void EventLoop::asyncRunOnMainThread(std::function<void()> func) {
         x11_runloop_perform(dispatcher.get(), doInvoke, std::move(&func));
+    }
+
+    void EventLoop::start() {
+        // nothing to do here...?
     }
 }
 

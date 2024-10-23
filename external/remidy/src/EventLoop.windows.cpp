@@ -83,8 +83,12 @@ namespace remidy {
             dispatcher = std::make_unique<WindowsRunLoop>();
     }
 
-    void EventLoop::asyncRunOnMainThread(std::function<void()>&& func) {
+    void EventLoop::asyncRunOnMainThread(std::function<void()> func) {
         dispatcher->PerformBlock(func);
+    }
+
+    void EventLoop::start() {
+        dispatcher->Run();
     }
 }
 

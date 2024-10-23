@@ -15,6 +15,7 @@ namespace remidy {
         explicit Impl(AudioPluginFormatLV2* owner);
         ~Impl();
 
+        auto format() const { return owner; }
         LilvWorld *world;
         remidy_lv2::LV2ImplWorldContext *worldContext;
         std::vector<LV2_Feature*> features{};
@@ -48,7 +49,8 @@ namespace remidy {
         ~AudioPluginInstanceLV2() override;
 
         AudioPluginUIThreadRequirement requiresUIThreadOn() override {
-            return AudioPluginUIThreadRequirement::None;
+            // maybe we add some entries for known issues
+            return formatImpl->format()->requiresUIThreadOn();
         }
 
         // audio processing core functions.

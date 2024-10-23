@@ -37,6 +37,7 @@ namespace remidy {
             host(logger) {
         }
 
+        auto format() const { return owner; }
         Logger* getLogger() { return logger; }
         HostApplication* getHost() { return &host; }
 
@@ -143,7 +144,8 @@ namespace remidy {
         ~AudioPluginInstanceVST3() override;
 
         AudioPluginUIThreadRequirement requiresUIThreadOn() override {
-            return AudioPluginUIThreadRequirement::AllNonAudioOperation;
+            // maybe we add some entries for known issues
+            return owner->format()->requiresUIThreadOn();
         }
 
         // audio processing core features
