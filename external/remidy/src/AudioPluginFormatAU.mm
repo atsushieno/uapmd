@@ -28,6 +28,9 @@ namespace remidy {
         };
         BusSearchResult buses{};
         BusSearchResult inspectBuses();
+        std::vector<AudioBusConfiguration*> input_buses;
+        std::vector<AudioBusConfiguration*> output_buses;
+
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
         static OSStatus audioInputRenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) {
             return ((AudioPluginInstanceAU *)inRefCon)->audioInputRenderCallback(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, ioData);
@@ -72,6 +75,9 @@ namespace remidy {
         bool hasAudioOutputs() override { return buses.numAudioOut > 0; }
         bool hasEventInputs() override { return buses.hasMidiIn; }
         bool hasEventOutputs() override { return buses.hasMidiOut; }
+
+        const std::vector<AudioBusConfiguration*> audioInputBuses() const override;
+        const std::vector<AudioBusConfiguration*> audioOutputBuses() const override;
 
         virtual AUVersion auVersion() = 0;
         virtual StatusCode sampleRate(double sampleRate) = 0;
@@ -454,6 +460,8 @@ remidy::AudioPluginInstanceAU::BusSearchResult remidy::AudioPluginInstanceAU::in
     else
         ret.numAudioOut = count;
 
+    // FIXME: we need to fill input_buses and output_buses here.
+
     AudioComponentDescription desc;
     AudioComponentGetDescription(component, &desc);
     switch (desc.componentType) {
@@ -469,6 +477,9 @@ remidy::AudioPluginInstanceAU::BusSearchResult remidy::AudioPluginInstanceAU::in
 
     return ret;
 }
+
+const std::vector<remidy::AudioBusConfiguration*> remidy::AudioPluginInstanceAU::audioInputBuses() const { return input_buses; }
+const std::vector<remidy::AudioBusConfiguration*> remidy::AudioPluginInstanceAU::audioOutputBuses() const { return output_buses; }
 
 // AudioPluginInstanceAUv2
 

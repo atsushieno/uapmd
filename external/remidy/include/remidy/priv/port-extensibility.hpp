@@ -21,13 +21,13 @@ namespace remidy {
         uint32_t channels() { return num_channels; }
         std::string& name() { return predefined_name; }
 
-        static AudioChannelLayout& mono() {
-            static AudioChannelLayout ret{"Mono", 1};
-            return ret;
-        };
-        static AudioChannelLayout& stereo() {
-            static AudioChannelLayout ret{"Stereo", 2};
-            return ret;
+        static const AudioChannelLayout* mono() {
+            static const AudioChannelLayout ret{"Mono", 1};
+            return &ret;
+        }
+        static const AudioChannelLayout* stereo() {
+            static const AudioChannelLayout ret{"Stereo", 2};
+            return &ret;
         }
     };
 
@@ -40,6 +40,7 @@ namespace remidy {
     class AudioBusDefinition {
         std::string bus_name{};
         AudioBusRole bus_role;
+        std::vector<AudioChannelLayout*> layouts;
 
     public:
         AudioBusDefinition(std::string busName, AudioBusRole role) :
@@ -51,20 +52,25 @@ namespace remidy {
         AudioBusRole role() { return bus_role; }
 
         bool operator==(AudioBusDefinition & other) const {
+            // assumes layouts are consistent where name and role are identical.
             return bus_name == other.bus_name && bus_role == other.bus_role;
         }
+
+        std::vector<AudioChannelLayout*>& supportedChannelLayouts() { return layouts; }
     };
 
     class AudioBusConfiguration {
         AudioBusDefinition* def;
-        AudioChannelLayout& channel_layout{AudioChannelLayout::stereo()};
+        const AudioChannelLayout* channel_layout{AudioChannelLayout::stereo()};
     public:
         AudioBusConfiguration(AudioBusDefinition* definition) : def(definition) {
-
         }
 
-        AudioChannelLayout& channel() { return channel_layout; }
-        StatusCode channel(AudioChannelLayout& newValue) {
+        const AudioChannelLayout* channelLayout() { return channel_layout; }
+        StatusCode channelLayout(const AudioChannelLayout* newValue) {
+            if (auto layouts = def->supportedChannelLayouts();
+                std::find(layouts.begin(), layouts.end(), newValue) == layouts.end())
+            return StatusCode::UNSUPPORTED_CHANNEL_LAYOUT_REQUESTED;
             channel_layout = newValue;
             return StatusCode::OK;
         }

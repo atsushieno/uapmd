@@ -40,6 +40,8 @@ namespace remidy {
         };
         BusSearchResult buses;
         BusSearchResult inspectBuses();
+        std::vector<AudioBusConfiguration*> input_buses;
+        std::vector<AudioBusConfiguration*> output_buses;
 
     public:
         explicit AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
@@ -60,6 +62,9 @@ namespace remidy {
         bool hasAudioOutputs() override { return buses.numAudioOut > 0; }
         bool hasEventInputs() override { return buses.numEventIn > 0; }
         bool hasEventOutputs() override { return buses.numEventOut > 0; }
+
+        const std::vector<AudioBusConfiguration*> audioInputBuses() const override;
+        const std::vector<AudioBusConfiguration*> audioOutputBuses() const override;
     };
 
     AudioPluginFormatLV2::Impl::Impl(AudioPluginFormatLV2* owner) :
@@ -229,6 +234,8 @@ namespace remidy {
 
     AudioPluginInstanceLV2::BusSearchResult AudioPluginInstanceLV2::inspectBuses() {
         BusSearchResult ret{};
+
+        // FIXME: we need to fill input_buses and output_buses here.
         for (uint32_t p = 0; p < lilv_plugin_get_num_ports(plugin); p++) {
             auto port = lilv_plugin_get_port_by_index(plugin, p);
             if (implContext.IS_AUDIO_IN(plugin, port))
@@ -242,4 +249,7 @@ namespace remidy {
         }
         return ret;
     }
+
+    const std::vector<AudioBusConfiguration*> AudioPluginInstanceLV2::audioInputBuses() const { return input_buses; }
+    const std::vector<AudioBusConfiguration*> AudioPluginInstanceLV2::audioOutputBuses() const { return output_buses; }
 }

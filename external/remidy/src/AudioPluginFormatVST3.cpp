@@ -125,6 +125,8 @@ namespace remidy {
         };
         BusSearchResult busesInfo{};
         BusSearchResult inspectBuses();
+        std::vector<AudioBusConfiguration*> input_buses;
+        std::vector<AudioBusConfiguration*> output_buses;
 
     public:
         explicit AudioPluginInstanceVST3(
@@ -155,6 +157,9 @@ namespace remidy {
         bool hasAudioOutputs() override { return busesInfo.numAudioOut > 0; }
         bool hasEventInputs() override { return busesInfo.numEventIn > 0; }
         bool hasEventOutputs() override { return busesInfo.numEventOut > 0; }
+
+        const std::vector<AudioBusConfiguration*> audioInputBuses() const override;
+        const std::vector<AudioBusConfiguration*> audioOutputBuses() const override;
     };
 
     // AudioPluginFormatVST3
@@ -693,7 +698,13 @@ namespace remidy {
         ret.numAudioOut = component->vtable->component.get_bus_count(component, V3_AUDIO, V3_OUTPUT);
         ret.numEventIn = component->vtable->component.get_bus_count(component, V3_EVENT, V3_INPUT);
         ret.numEventOut = component->vtable->component.get_bus_count(component, V3_EVENT, V3_OUTPUT);
+
+        // FIXME: we need to fill input_buses and output_buses here.
+
         return ret;
     }
+
+    const std::vector<AudioBusConfiguration*> AudioPluginInstanceVST3::audioInputBuses() const { return input_buses; }
+    const std::vector<AudioBusConfiguration*> AudioPluginInstanceVST3::audioOutputBuses() const { return output_buses; }
 
 }

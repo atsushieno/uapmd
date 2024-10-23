@@ -17,7 +17,8 @@ namespace remidy {
         FAILED_TO_CONFIGURE,
         FAILED_TO_START_PROCESSING,
         FAILED_TO_STOP_PROCESSING,
-        FAILED_TO_PROCESS
+        FAILED_TO_PROCESS,
+        UNSUPPORTED_CHANNEL_LAYOUT_REQUESTED
     };
 
     class Logger {

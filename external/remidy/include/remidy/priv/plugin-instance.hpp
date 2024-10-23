@@ -1,5 +1,6 @@
 #pragma once
 
+#include "port-extensibility.hpp"
 #include "../remidy.hpp"
 
 namespace remidy {
@@ -51,8 +52,8 @@ namespace remidy {
         // In a long term, it should be just a shorthand property for current bus configuration.
         virtual bool hasEventOutputs() = 0;
 
-        //virtual StatusCode getAudioInputBuses(std::vector<BusConfiguration>& results);
-        //virtual StatusCode getAudioOutputBuses(std::vector<BusConfiguration>& results);
+        const virtual std::vector<AudioBusConfiguration*> audioInputBuses() const = 0;
+        const virtual std::vector<AudioBusConfiguration*> audioOutputBuses() const = 0;
 
         virtual StatusCode configure(ConfigurationRequest& configuration) = 0;
 
