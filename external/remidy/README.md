@@ -13,5 +13,6 @@ Remidy makes use of the following libraries:
 - [cginternals/cpplocate](https://github.com/cginternals/cpplocate): the MIT license.
 - [nlohmann/json](https://github.com/nlohmann/json): the MIT license.
 - [lv2/lv2kit](https://github.com/lv2/lv2kit): the ISC license.
-- [moduleinfo], part of steinbergmedia/vst3_public_sdk: VST 3 SDK public_sdk License (BSD like)
+- [moduleinfo](https://github.com/steinbergmedia/vst3_public_sdk/tree/master/source/vst/moduleinfo), part of steinbergmedia/vst3_public_sdk: VST 3 SDK public_sdk License (BSD like)
   (modified to remove dependencies on `vst3_pluginterfaces` which is GPLed)
+- [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.

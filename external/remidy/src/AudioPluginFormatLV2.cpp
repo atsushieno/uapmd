@@ -50,7 +50,7 @@ namespace remidy {
 
         AudioPluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
-            return formatImpl->format()->requiresUIThreadOn();
+            return formatImpl->format()->requiresUIThreadOn(nullptr);
         }
 
         // audio processing core functions.
@@ -169,7 +169,8 @@ namespace remidy {
         };
         static std::vector<std::filesystem::path> ret = [] {
             std::vector<std::filesystem::path> paths{};
-            paths.append_range(defaultSearchPathsLV2);
+            for (auto& path : defaultSearchPathsLV2)
+                paths.emplace_back(path);
             return paths;
         }();
         return ret;

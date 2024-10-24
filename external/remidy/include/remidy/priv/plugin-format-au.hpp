@@ -16,15 +16,15 @@ namespace remidy {
         std::string name() override { return "AU"; }
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
 
-        AudioPluginUIThreadRequirement requiresUIThreadOn() override { return None; }
+        AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return None; }
 
         bool usePluginSearchPaths() override { return false; }
 
         std::vector<std::filesystem::path> & getDefaultSearchPaths() override;
 
-        ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NO; }
+        ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
 
-        ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NO; }
+        ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
 
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
 

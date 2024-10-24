@@ -17,7 +17,7 @@ namespace remidy {
 
         virtual AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() { return nullptr; }
 
-        virtual AudioPluginUIThreadRequirement requiresUIThreadOn() = 0;
+        virtual AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) = 0;
 
         bool hasPluginListCache();
         bool supportsGlobalIdentifier();
@@ -29,10 +29,10 @@ namespace remidy {
 
         virtual bool usePluginSearchPaths() = 0;
         virtual std::vector<std::filesystem::path>& getDefaultSearchPaths() = 0;
-        enum ScanningStrategyValue {
-            NO,
+        enum class ScanningStrategyValue {
+            NEVER,
             MAYBE,
-            YES
+            ALWAYS
         };
         virtual ScanningStrategyValue scanRequiresLoadLibrary() = 0;
         virtual ScanningStrategyValue scanRequiresInstantiation() = 0;

@@ -9,6 +9,7 @@ namespace remidy {
         static void initializeOnUIThread();
         static void asyncRunOnMainThread(std::function<void()> func);
         static void start();
+        static void stop();
     };
 
 }

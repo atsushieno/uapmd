@@ -145,7 +145,7 @@ namespace remidy {
 
         AudioPluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
-            return owner->format()->requiresUIThreadOn();
+            return owner->format()->requiresUIThreadOn(info);
         }
 
         // audio processing core features
@@ -184,7 +184,8 @@ namespace remidy {
         };
         static std::vector<std::filesystem::path> ret = [] {
             std::vector<std::filesystem::path> paths{};
-            paths.append_range(defaultSearchPathsVST3);
+            for (auto& path : defaultSearchPathsVST3)
+                paths.emplace_back(path);
             return paths;
         }();
         return ret;
@@ -208,9 +209,9 @@ namespace remidy {
 
     bool AudioPluginFormatVST3::usePluginSearchPaths() { return true;}
 
-    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresLoadLibrary() { return MAYBE; }
+    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
 
-    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresInstantiation() { return YES; }
+    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
 
     std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatVST3::scanAllAvailablePlugins() {
         return impl->scanAllAvailablePlugins();
@@ -442,12 +443,13 @@ namespace remidy {
 
         // From JUCE interconnectComponentAndController():
         // > Some plugins need to be "connected" to intercommunicate between their implemented classes
-        if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
+        // FIXME: enable this once we sort out why RX-8 Breath Control crashes here.
+        /*if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
             EventLoop::asyncRunOnMainThread([&] {
                 connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
                 connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
             });
-        }
+        }*/
 
         // not sure if we want to error out here, so no result check.
         processor->vtable->processor.set_processing(processor, false);

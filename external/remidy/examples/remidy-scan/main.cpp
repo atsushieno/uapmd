@@ -9,12 +9,14 @@
 
 // -------- instancing --------
 
-void doCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* pluginId) {
-    auto displayName = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
-    std::cerr << "  instantiating " << format->name().c_str() << " " << displayName << std::endl;
+class RemidyScan {
+
+void doCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* entry) {
+    auto displayName = entry->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
+    std::cerr << "  instantiating " << format->name() << " " << displayName << std::endl;
     std::atomic<bool> completed{false};
 
-    format->createInstance(pluginId, [&](remidy::AudioPluginFormat::InvokeResult result) {
+    format->createInstance(entry, [&](remidy::AudioPluginFormat::InvokeResult result) {
         bool successful = false;
         auto instance = std::move(result.instance);
         if (!instance)
@@ -65,35 +67,47 @@ void doCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEn
         if (successful)
             std::cerr << "  " << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
         completed = true;
-        completed.notify_one();
+        completed.notify_all();
     });
     completed.wait(false);
 }
 
-void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* pluginId) {
-    auto displayName = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
-    auto vendor = pluginId->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::VendorName);
+void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* entry) {
+    auto displayName = entry->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
+    auto vendor = entry->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::VendorName);
 
     bool forceMainThread =
         format->name() == "AU" && vendor == "Tracktion"
         || format->name() == "AU" && displayName == "AUSpeechSynthesis"
         || format->name() == "AU" && displayName == "FL Studio"
+        // QObject::killTimer: Timers cannot be stopped from another thread
+        // QObject::~QObject: Timers cannot be stopped from another thread
         || format->name() == "AU" && displayName == "Massive X"
-        || format->name() == "AU" && displayName == "Bite" // [threadmgrsupport] _TSGetMainThread_block_invoke():Main thread potentially initialized incorrectly, cf <rdar://problem/67741850>
-        || format->name() == "AU" && displayName == "Guitar Rig 6 MFX" // WARNING: QApplication was not created in the main() thread
+        // [threadmgrsupport] _TSGetMainThread_block_invoke():Main thread potentially initialized incorrectly, cf <rdar://problem/67741850>
+        || format->name() == "AU" && displayName == "Bite"
+        // WARNING: QApplication was not created in the main() thread
+        || format->name() == "AU" && displayName == "Guitar Rig 6 MFX"
     ;
 
-    if (forceMainThread || format->requiresUIThreadOn() == remidy::AllNonAudioOperation)
-        remidy::EventLoop::asyncRunOnMainThread([&] {
-            doCreateInstance(format, pluginId);
+    if (forceMainThread || format->requiresUIThreadOn(entry) == remidy::AllNonAudioOperation) {
+        remidy::EventLoop::asyncRunOnMainThread([format,entry,this] {
+            doCreateInstance(format, entry);
         });
+    }
     else
-        doCreateInstance(format, pluginId);
+        doCreateInstance(format, entry);
 }
 
 // -------- scanning --------
 
 const char* APP_NAME= "remidy-scan";
+
+    std::vector<std::string> vst3SearchPaths{};
+    std::vector<std::string> lv2SearchPaths{};
+    remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
+    remidy::AudioPluginFormatAU au{};
+    remidy::AudioPluginFormatLV2 lv2{lv2SearchPaths};
+    std::vector<remidy::AudioPluginFormat*> formats{&lv2, &vst3, &au};
 
 auto filterByFormat(std::vector<remidy::PluginCatalogEntry*> entries, std::string format) {
     erase_if(entries, [format](remidy::PluginCatalogEntry* entry) { return entry->format() != format; });
@@ -101,12 +115,6 @@ auto filterByFormat(std::vector<remidy::PluginCatalogEntry*> entries, std::strin
 }
 
 int performPluginScanning() {
-    std::vector<std::string> vst3SearchPaths{};
-    std::vector<std::string> lv2SearchPaths{};
-    remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
-    remidy::AudioPluginFormatAU au{};
-    remidy::AudioPluginFormatLV2 lv2{lv2SearchPaths};
-    auto formats = std::vector<remidy::AudioPluginFormat*>{&lv2, &vst3, &au};
 
     remidy::PluginCatalog catalog{};
     auto dir = cpplocate::localDir(APP_NAME);
@@ -122,14 +130,14 @@ int performPluginScanning() {
         if (!format->hasPluginListCache() || plugins.empty())
             for (auto& info : format->scanAllAvailablePlugins())
                 if (!catalog.contains(info->format(), info->pluginId()))
-                catalog.add(std::move(info));
+                    catalog.add(std::move(info));
     }
 
     for (auto& format : formats) {
         auto plugins = filterByFormat(catalog.getPlugins(), format->name());
 
         int i= 0;
-        for (auto& info : plugins) {
+        for (auto info : plugins) {
             auto displayName = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
             auto vendor = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::VendorName);
             auto url = info->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::ProductUrl);
@@ -146,11 +154,11 @@ int performPluginScanning() {
             // Process finished with exit code 9
             if (format->name() == "AU" && displayName.starts_with("BYOD"))
                 skip = true;
-if (format->name() == "AU" && !displayName.starts_with("Bite"))
-skip = true;
 
             // goes unresponsive at AudioUnitRender(), including ones that hangs only on Debug builds.
             if (format->name() == "AU" && displayName.starts_with("AIDA-X"))
+                skip = true;
+            if (format->name() == "AU" && displayName.starts_with("AUSpeechSynthesis"))
                 skip = true;
 
             // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
@@ -160,6 +168,15 @@ skip = true;
                 skip = true;
             if (format->name() == "AU" && displayName.starts_with("FL Studio"))
                 skip = true;
+
+            // likewise, but SIGTRAP, not SIGABRT.
+            // They are most likely causing blocked operations.
+            // (I guess they are caught as SIGTRAP because they run on the main thread. Otherwise their thread would be just stuck forever.)
+            if (format->name() == "AU" && vendor == "Tracktion")
+                skip = true;
+            if (displayName.starts_with("Massive X")) // AU and VST3
+                skip = true;
+
 #if __APPLE__ || WIN32
             // they generate *.dylib in .ttl, but the library is *.so...
             if (format->name() == "LV2" && displayName.starts_with("AIDA-X"))
@@ -184,30 +201,40 @@ skip = true;
         std::cerr << "Saved plugin list cache as " << pluginListCacheFile << std::endl;
     }
 
-    std::cerr << "Completed." << std::endl;
+    std::cerr << "Completed ";
+    for (auto& format : formats)
+        std::cerr << format->name() << " " << std::endl;
+    std::cerr << "formats.";
 
     return 0;
 }
 
-int main(int argc, const char* argv[]) {
+public:
+int run(int argc, const char* argv[]) {
     int result{0};
     CPPTRACE_TRY {
         remidy::EventLoop::initializeOnUIThread();
+
         std::thread thread([&] {
             CPPTRACE_TRY {
                 result = performPluginScanning();
+                remidy::EventLoop::stop();
             } CPPTRACE_CATCH(const std::exception& e) {
                 std::cerr << "Exception in main: " << e.what() << std::endl;
                 cpptrace::from_current_exception().print();
             }
         });
         remidy::EventLoop::start();
-
-        std::cerr << "Type [CR] to quit." << std::endl;
-        std::cin.get();
-        } CPPTRACE_CATCH(const std::exception& e) {
+    } CPPTRACE_CATCH(const std::exception& e) {
         std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
         cpptrace::from_current_exception().print();
     }
     return result;
+}
+
+};
+
+int main(int argc, const char* argv[]) {
+    RemidyScan scanner{};
+    scanner.run(argc, argv);
 }

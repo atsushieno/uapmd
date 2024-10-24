@@ -15,7 +15,7 @@ namespace remidy {
     }
 
     bool AudioPluginFormat::hasPluginListCache() {
-        return scanRequiresInstantiation() != ScanningStrategyValue::NO;
+        return scanRequiresInstantiation() != ScanningStrategyValue::NEVER;
     }
 
     AudioPluginFormat::Impl::Impl(AudioPluginFormat* owner) : owner(owner) {}

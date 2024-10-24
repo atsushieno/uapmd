@@ -1,21 +1,9 @@
 cmake_minimum_required(VERSION 3.29)
 project(remidy LANGUAGES C CXX OBJC OBJCXX Swift)
 
-set(CMAKE_CXX_STANDARD 23)
-
 #add_subdirectory("../../external/libremidi" "libremidi")
 add_subdirectory("../../external/json" "json")
 include("../../external/LV2Kit.cmake")
-
-add_library(remidy STATIC)
-
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-target_compile_definitions(remidy PRIVATE
-        V3_COM_COMPAT=1
-)
-endif ()
-
-set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
 
 include(FetchContent)
 # <cpplocate>
@@ -26,21 +14,34 @@ FetchContent_Declare(cpplocate
         PATCH_COMMAND git reset --hard && git apply ${CMAKE_CURRENT_SOURCE_DIR}/../cpplocate-remove-pthread.patch
 )
 FetchContent_MakeAvailable(cpplocate)
-target_link_libraries(remidy PRIVATE cpplocate::cpplocate)
 # </cpplocate>
+
 # <rtlog>
 FetchContent_Declare(rtlog-cpp
         GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
         GIT_TAG 5774ba063ecc25057e0f616d61e50c079e939e82
 )
 FetchContent_MakeAvailable(rtlog-cpp)
-target_link_libraries(remidy PRIVATE rtlog::rtlog)
 # </rtlog>
+
+
+set(CMAKE_CXX_STANDARD 20)
+
+set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
+
+add_library(remidy STATIC)
+
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+    target_compile_definitions(remidy PRIVATE
+            V3_COM_COMPAT=1
+    )
+endif ()
 
 target_include_directories(remidy PRIVATE
         ../../external/travesty
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ../../external/json/include
+        ../../external/choc
         ${LV2KIT_INCLUDE_DIRS}
         #../../external/libremidi/include
         include/remidy
@@ -51,6 +52,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     set(remidy_LIBS_PLAT
         "-framework CoreFoundation"
         "-framework CoreAudio"
+        "-framework Foundation"
     )
 endif ()
 
@@ -71,12 +73,13 @@ target_compile_options(remidy PRIVATE
 target_sources(remidy PRIVATE
 
         # swift sources generate C++ header files in use later, so compile them first.
-        src/auv2/AUv2Helper.swift
+        #src/auv2/AUv2Helper.swift
 
         src/utils.cpp
-        src/EventLoop.posix.cpp
-        src/EventLoop.windows.cpp
-        src/EventLoop.darwin.cpp
+        src/EventLoop.cpp
+        #src/EventLoop.posix.cpp
+        #src/EventLoop.windows.cpp
+        #src/EventLoop.darwin.cpp
 
         src/vst3/TravestyHelper.cpp
         src/vst3/HostClasses.cpp
