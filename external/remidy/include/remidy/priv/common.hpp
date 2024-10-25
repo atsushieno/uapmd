@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <string>
 #include <functional>
+#if !WIN32
+#include <pthread.h>
+#endif
 
 typedef uint32_t remidy_ump_t;
 typedef int64_t remidy_timestamp_t;
@@ -64,5 +67,11 @@ namespace remidy {
         }
         virtual ~AudioPluginExtensibility() = default;
     };
+
+    inline void setCurrentThreadNameIfPossible(std::string const threadName) {
+#if !WIN32
+        pthread_setname_np(threadName.c_str());
+#endif
+    }
 
 }

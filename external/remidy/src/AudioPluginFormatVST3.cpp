@@ -493,17 +493,13 @@ namespace remidy {
             owner->unrefLibrary(info);
         };
 
-        if (isControllerDistinctFromComponent) {
-            std::atomic<bool> waiter{false};
-            EventLoop::asyncRunOnMainThread([&] {
+        EventLoop::runTaskOnMainThread([&] {
+            if (isControllerDistinctFromComponent) {
                 controller->vtable->base.terminate(controller);
                 controller->vtable->unknown.unref(controller);
-                waiter = true;
-                waiter.notify_all();
-            });
-            waiter.wait(false);
-        }
-        releaseRemaining();
+            }
+            releaseRemaining();
+        });
     }
 
     /*
@@ -573,9 +569,6 @@ namespace remidy {
             component->vtable->component.activate_bus(component, V3_AUDIO, V3_INPUT, 0, true);
         if (hasAudioOutputs())
             component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, 0, true);
-
-        // lastly activate the instance.
-        component->vtable->component.set_active(component, true);
 
         // setup process_data here.
         allocateProcessData();
@@ -650,6 +643,9 @@ namespace remidy {
     }
 
     StatusCode AudioPluginInstanceVST3::startProcessing() {
+        // activate the instance.
+        component->vtable->component.set_active(component, true);
+
         auto result = processor->vtable->processor.set_processing(processor, true);
         // Surprisingly?, some VST3 plugins do not implement this function.
         // We do not prevent them just because of this.
@@ -667,6 +663,8 @@ namespace remidy {
             owner->getLogger()->logError("Failed to stop vst3 processing. Result: %d", result);
             return StatusCode::FAILED_TO_STOP_PROCESSING;
         }
+
+        component->vtable->component.set_active(component, false);
         return StatusCode::OK;
     }
 
