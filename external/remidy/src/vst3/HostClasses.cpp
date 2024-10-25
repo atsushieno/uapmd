@@ -77,7 +77,7 @@ namespace remidy_vst3 {
         }
         QUERY_HOST_INTERFACE(v3_component_handler_iid, handler)
         QUERY_HOST_INTERFACE(v3_message_iid, message)
-        QUERY_HOST_INTERFACE(v3_param_value_queue_iid, param_value_queue)
+        //QUERY_HOST_INTERFACE(v3_param_value_queue_iid, param_value_queue)
         QUERY_HOST_INTERFACE(v3_plugin_frame_iid, plug_frame)
         QUERY_HOST_INTERFACE(v3_unit_handler_iid, unit_handler)
         QUERY_HOST_INTERFACE(v3_plug_interface_support_iid, support)
@@ -238,65 +238,4 @@ namespace remidy_vst3 {
             v3_tuid_match(iid, v3_host_application_iid) ?
             V3_TRUE : V3_FALSE;
     }
-
-    uint32_t HostEventList::get_event_count(void *self) {
-        // FIXME: implement
-        std::cerr << "HostEventList::get_event_count() is not implemented" << std::endl;
-        return 0;
-    }
-
-    v3_result HostEventList::get_event(void *self, int32_t index, v3_event *e) {
-        // FIXME: implement
-        std::cerr << "HostEventList::get_event() is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostEventList::add_event(void *self, v3_event *e) {
-        // FIXME: implement
-        std::cerr << "HostEventList::add_event() is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_param_id HostParamValueQueue::get_param_id(void *self) {
-        // FIXME: implement
-        std::cerr << "HostParamValueQueue::get_param_id() is not implemented" << std::endl;
-        return 0;
-    }
-
-    int32_t HostParamValueQueue::get_point_count(void *self) {
-        // FIXME: implement
-        std::cerr << "HostParamValueQueue::get_point_count() is not implemented" << std::endl;
-        return 0;
-    }
-
-    v3_result HostParamValueQueue::get_point(void *self, int32_t idx, int32_t *sample_offset, double *value) {
-        // FIXME: implement
-        std::cerr << "HostParamValueQueue::get_point() is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostParamValueQueue::add_point(void *self, int32_t sample_offset, double value, int32_t *idx) {
-        // FIXME: implement
-        std::cerr << "HostParamValueQueue::add_point() is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    int32_t HostParameterChanges::get_param_count(void *self) {
-        // FIXME: implement
-        std::cerr << "HostParameterChanges::get_param_count() is not implemented" << std::endl;
-        return 0;
-    }
-
-    struct v3_param_value_queue** HostParameterChanges::get_param_data(void *self, int32_t idx) {
-        // FIXME: implement
-        std::cerr << "HostParameterChanges::get_param_data() is not implemented" << std::endl;
-        return (v3_param_value_queue**) ((HostParameterChanges*) self)->queue.asInterface();
-    }
-
-    struct v3_param_value_queue** HostParameterChanges::add_param_data(void *self, const v3_param_id *id, int32_t *idx) {
-        // FIXME: implement
-        std::cerr << "HostParameterChanges::add_param_data() is not implemented" << std::endl;
-        return (v3_param_value_queue**) ((HostParameterChanges*) self)->queue.asInterface();
-    }
-
 }

@@ -6,7 +6,7 @@ namespace remidy_vst3 {
 
     // Host implementation
 #define IMPLEMENT_FUNKNOWN_REFS(TYPE) \
-    uint32_t refCount; \
+    uint32_t refCount{1}; \
     static uint32_t add_ref(void *self) { return ++((TYPE *)self)->refCount; } \
     static uint32_t remove_ref(void *self) { return --((TYPE *)self)->refCount; } \
     static v3_result query_interface(void *self, const v3_tuid iid, void **obj) { \
@@ -15,7 +15,8 @@ namespace remidy_vst3 {
 #define FILL_FUNKNOWN_VTABLE \
     refCount = 1; \
     vtable.unknown.query_interface = query_interface; \
-    vtable.unknown.ref = add_ref;
+    vtable.unknown.ref = add_ref; \
+    vtable.unknown.unref = remove_ref;
 
     class HostAttributeList : public IAttributeList {
         IAttributeListVTable vtable;
@@ -144,11 +145,21 @@ namespace remidy_vst3 {
 
     class HostEventList {
         IEventListVTable vtable{};
-        IEventList impl;
+        IEventList impl{};
         IMPLEMENT_FUNKNOWN_REFS(HostEventList)
-        static uint32_t get_event_count(void *self);
-        static v3_result get_event(void *self, int32_t index, struct v3_event* e);
-        static v3_result add_event(void *self, struct v3_event *e);
+        static uint32_t get_event_count(void *self) {
+            return ((HostEventList*) self)->events.size();
+        }
+        static v3_result get_event(void *self, int32_t index, struct v3_event* e) {
+            *e = ((HostEventList*) self)->events[index];
+            return V3_OK;
+        }
+        static v3_result add_event(void *self, struct v3_event *e) {
+            ((HostEventList*) self)->events.emplace_back(*e);
+            return V3_OK;
+        }
+
+        std::vector<v3_event> events{};
 
     public:
         explicit HostEventList() {
@@ -167,26 +178,50 @@ namespace remidy_vst3 {
         }
     };
 
-    class HostParamValueQueue {
-        IParamValueQueueVTable vtable;
-        IParamValueQueue impl;
+    class HostParamValueQueue : public IParamValueQueue {
+        IParamValueQueueVTable impl{};
         IMPLEMENT_FUNKNOWN_REFS(HostParamValueQueue)
-        static v3_param_id get_param_id(void* self);
-        static int32_t get_point_count(void* self);
-        static v3_result get_point(void* self, int32_t idx, int32_t* sample_offset, double* value);
-        static v3_result add_point(void* self, int32_t sample_offset, double value, int32_t* idx);
+
+        struct Point {
+            int32_t offset;
+            double value;
+        };
+        const v3_param_id id;
+        std::vector<Point> points{};
+
+        static v3_param_id get_param_id(void* self) { return ((HostParamValueQueue*) self)->id; }
+        static int32_t get_point_count(void* self) { return ((HostParamValueQueue*) self)->points.size(); }
+        static v3_result get_point(void* self, int32_t idx, int32_t* sample_offset, double* value) {
+            return ((HostParamValueQueue*) self)->getPoint(idx, sample_offset, value);
+        }
+        v3_result getPoint(int32_t idx, int32_t* sample_offset, double* value) {
+            auto& p = points[idx];
+            *sample_offset = p.offset;
+            *value = p.value;
+            return V3_OK;
+        }
+        static v3_result add_point(void* self, int32_t sample_offset, double value, int32_t* idx) {
+            return ((HostParamValueQueue*) self)->addPoint(sample_offset, value, idx);
+        }
+        v3_result addPoint(int32_t sample_offset, double value, int32_t* idx) {
+            *idx = points.size();
+            Point pt{sample_offset, value};
+            points.emplace_back(pt);
+            return V3_OK;
+        }
 
     public:
-        explicit HostParamValueQueue() {
+        explicit HostParamValueQueue(const v3_param_id* id) : id{*id} {
+            this->vtable = &impl;
+            auto& vtable = impl;
             FILL_FUNKNOWN_VTABLE
 
             vtable.param_value_queue.get_param_id = get_param_id;
             vtable.param_value_queue.get_point_count = get_point_count;
             vtable.param_value_queue.get_point = get_point;
             vtable.param_value_queue.add_point = add_point;
-            impl.vtable = &vtable;
         }
-        auto asInterface() { return &impl; }
+        auto asInterface() { return this; }
 
         v3_result queryInterface(const v3_tuid iid, void **obj) {
             std::cerr << "WHY querying over IParamValueQueue?" << std::endl;
@@ -194,31 +229,47 @@ namespace remidy_vst3 {
         }
     };
 
-    class HostParameterChanges {
-        IParameterChangesVTable vtable;
-        IParameterChanges impl;
+    class HostParameterChanges : public IParameterChanges {
+        IParameterChangesVTable impl{};
         IMPLEMENT_FUNKNOWN_REFS(HostParameterChanges)
-        HostParamValueQueue queue{};
+        std::vector<std::unique_ptr<HostParamValueQueue>> queues{};
 
-        static int32_t get_param_count(void* self);
-        static struct v3_param_value_queue** get_param_data(void* self, int32_t idx);
-        static struct v3_param_value_queue** add_param_data(void* self, const v3_param_id* id, int32_t* idx);
+        static int32_t get_param_count(void* self) { return ((HostParameterChanges*) self)->queues.size(); }
+        static struct v3_param_value_queue** get_param_data(void* self, int32_t idx) {
+            return (v3_param_value_queue**) ((HostParameterChanges*) self)->queues[idx]->asInterface();
+        }
+        static struct v3_param_value_queue** add_param_data(void* self, const v3_param_id* id, int32_t* idx) {
+            auto pc = (HostParameterChanges*) self;
+            for (int32_t i = 0; i < pc->queues.size(); ++i) {
+                auto iface = pc->queues[i]->asInterface();
+                if (iface->vtable->param_value_queue.get_param_id(iface) == *id) {
+                    *idx = i;
+                    return (v3_param_value_queue**) iface;
+                }
+            }
+            *idx = pc->queues.size();
+            pc->queues.emplace_back(std::make_unique<HostParamValueQueue>(id));
+            return (v3_param_value_queue**) pc->queues[*idx]->asInterface();
+        }
 
     public:
         explicit HostParameterChanges() {
+            this->vtable = &impl;
+            auto& vtable = impl;
             FILL_FUNKNOWN_VTABLE
 
             vtable.parameter_changes.get_param_count = get_param_count;
             vtable.parameter_changes.get_param_data = get_param_data;
             vtable.parameter_changes.add_param_data = add_param_data;
-            impl.vtable = &vtable;
         }
-        auto asInterface() { return &impl; }
+        IParameterChanges* asInterface() { return this; }
 
         v3_result queryInterface(const v3_tuid iid, void **obj) {
             std::cerr << "WHY querying over IParameterChanges?" << std::endl;
             return V3_NO_INTERFACE;
         }
+        struct v3_param_value_queue** getParamData(int32_t idx);
+        struct v3_param_value_queue** addParamData(const v3_param_id* id, int32_t* idx);
     };
 
     class HostApplication :
@@ -251,7 +302,8 @@ namespace remidy_vst3 {
         IPlugFrame plug_frame{nullptr};
         IPlugInterfaceSupport support{nullptr};
         HostParameterChanges parameter_changes{};
-        HostParamValueQueue param_value_queue{};
+        // I'm not sure how this should be implemented without `v3_param_id`.
+        //HostParamValueQueue param_value_queue{};
 
         remidy::Logger* logger;
 
