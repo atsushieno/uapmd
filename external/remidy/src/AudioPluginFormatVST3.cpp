@@ -692,7 +692,9 @@ namespace remidy {
         const auto& ctx = processData.ctx;
 
         processData.nframes = numFrames;
+
         auto result = processor->vtable->processor.process(processor, &processData);
+
         if (result != V3_OK) {
             owner->getLogger()->logError("Failed to process vst3 audio. Result: %d", result);
             return StatusCode::FAILED_TO_PROCESS;

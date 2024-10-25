@@ -19,8 +19,7 @@ namespace remidy_vst3 {
     vtable.unknown.unref = remove_ref;
 
     class HostAttributeList : public IAttributeList {
-        IAttributeListVTable vtable;
-        IAttributeList impl;
+        IAttributeListVTable impl;
 
         IMPLEMENT_FUNKNOWN_REFS(HostAttributeList)
 
@@ -79,7 +78,10 @@ namespace remidy_vst3 {
         }
 
         explicit HostAttributeList() {
+            this->vtable = &impl;
+            auto& vtable = impl;
             FILL_FUNKNOWN_VTABLE
+
             vtable.unknown.unref = remove_ref;
             vtable.attribute_list.set_int = set_int;
             vtable.attribute_list.get_int = get_int;
@@ -89,28 +91,40 @@ namespace remidy_vst3 {
             vtable.attribute_list.get_string = get_string;
             vtable.attribute_list.set_binary = set_binary;
             vtable.attribute_list.get_binary = get_binary;
-            impl.vtable = &vtable;
         }
         ~HostAttributeList() = default;
-
     };
 
-    class HostMessage {
-        IMessageVTable vtable;
-        IMessage impl;
+    class HostMessage : public IMessage {
+        IMessageVTable impl;
         std::string id;
         HostAttributeList list{};
 
         IMPLEMENT_FUNKNOWN_REFS(HostMessage)
 
+        static const char* get_message_id(void *self) {
+            auto& i = ((HostMessage*) self)->id;
+            return i.empty() ? nullptr : i.c_str();
+        }
+
+        static void set_message_id(void *self, const char *id) {
+            ((HostMessage*) self)->id = id;
+        }
+
+        static v3_attribute_list** get_attributes(void *self) {
+            auto& list = ((HostMessage*) self)->list;
+            return (v3_attribute_list**) list.asInterface();
+        }
+
     public:
         explicit HostMessage() {
+            this->vtable = &impl;
+            auto& vtable = impl;
             FILL_FUNKNOWN_VTABLE
 
             vtable.message.get_message_id = get_message_id;
             vtable.message.set_message_id = set_message_id;
             vtable.message.get_attributes = get_attributes;
-            impl.vtable = &vtable;
         }
         ~HostMessage() = default;
         auto asInterface() { return &impl; }
@@ -127,26 +141,12 @@ namespace remidy_vst3 {
             *obj = nullptr;
             return V3_NO_INTERFACE;
         }
-
-        static const char* get_message_id(void *self) {
-            auto& i = ((HostMessage*) self)->id;
-            return i.empty() ? nullptr : i.c_str();
-        }
-
-        static void set_message_id(void *self, const char *id) {
-            ((HostMessage*) self)->id = id;
-        }
-
-        static v3_attribute_list** get_attributes(void *self) {
-            auto& list = ((HostMessage*) self)->list;
-            return (v3_attribute_list**) list.asInterface();
-        }
     };
 
-    class HostEventList {
-        IEventListVTable vtable{};
-        IEventList impl{};
+    class HostEventList : public IEventList {
+        IEventListVTable impl{};
         IMPLEMENT_FUNKNOWN_REFS(HostEventList)
+
         static uint32_t get_event_count(void *self) {
             return ((HostEventList*) self)->events.size();
         }
@@ -163,14 +163,15 @@ namespace remidy_vst3 {
 
     public:
         explicit HostEventList() {
+            this->vtable = &impl;
+            auto& vtable = impl;
             FILL_FUNKNOWN_VTABLE
 
             vtable.event_list.get_event_count = get_event_count;
             vtable.event_list.get_event = get_event;
             vtable.event_list.add_event = add_event;
-            impl.vtable = &vtable;
         }
-        auto asInterface() { return &impl; }
+        auto asInterface() { return this; }
 
         v3_result queryInterface(const v3_tuid iid, void **obj) {
             std::cerr << "WHY querying over IEventList?" << std::endl;
@@ -239,17 +240,19 @@ namespace remidy_vst3 {
             return (v3_param_value_queue**) ((HostParameterChanges*) self)->queues[idx]->asInterface();
         }
         static struct v3_param_value_queue** add_param_data(void* self, const v3_param_id* id, int32_t* idx) {
-            auto pc = (HostParameterChanges*) self;
-            for (int32_t i = 0; i < pc->queues.size(); ++i) {
-                auto iface = pc->queues[i]->asInterface();
+            return ((HostParameterChanges*) self)->addParamData(id, idx);
+        }
+        struct v3_param_value_queue** addParamData(const v3_param_id* id, int32_t* idx) {
+            for (int32_t i = 0; i < queues.size(); ++i) {
+                auto iface = queues[i]->asInterface();
                 if (iface->vtable->param_value_queue.get_param_id(iface) == *id) {
                     *idx = i;
                     return (v3_param_value_queue**) iface;
                 }
             }
-            *idx = pc->queues.size();
-            pc->queues.emplace_back(std::make_unique<HostParamValueQueue>(id));
-            return (v3_param_value_queue**) pc->queues[*idx]->asInterface();
+            *idx = queues.size();
+            queues.emplace_back(std::make_unique<HostParamValueQueue>(id));
+            return (v3_param_value_queue**) queues[*idx]->asInterface();
         }
 
     public:
@@ -268,8 +271,6 @@ namespace remidy_vst3 {
             std::cerr << "WHY querying over IParameterChanges?" << std::endl;
             return V3_NO_INTERFACE;
         }
-        struct v3_param_value_queue** getParamData(int32_t idx);
-        struct v3_param_value_queue** addParamData(const v3_param_id* id, int32_t* idx);
     };
 
     class HostApplication :

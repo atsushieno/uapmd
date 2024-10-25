@@ -18,7 +18,7 @@ namespace remidy {
             num_channels(channels) {
         }
 
-        uint32_t channels() { return num_channels; }
+        uint32_t channels() const { return num_channels; }
         std::string& name() { return predefined_name; }
 
         static const AudioChannelLayout* mono() {
@@ -71,7 +71,7 @@ namespace remidy {
         StatusCode channelLayout(const AudioChannelLayout* newValue) {
             if (auto layouts = def->supportedChannelLayouts();
                 std::find(layouts.begin(), layouts.end(), newValue) == layouts.end())
-            return StatusCode::UNSUPPORTED_CHANNEL_LAYOUT_REQUESTED;
+                return StatusCode::UNSUPPORTED_CHANNEL_LAYOUT_REQUESTED;
             channel_layout = newValue;
             return StatusCode::OK;
         }

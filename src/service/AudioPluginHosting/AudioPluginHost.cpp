@@ -33,7 +33,7 @@ namespace uapmd {
     }
 
     int32_t AudioPluginHost::Impl::processAudio(AudioProcessContext* process) {
-        std::runtime_error("Not implemented");
+        throw std::runtime_error("Not implemented");
     }
 
 }

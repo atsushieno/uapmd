@@ -17,7 +17,7 @@ void doCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEn
     std::cerr << "  instantiating " << format->name() << " " << displayName << std::endl;
 
     format->createInstance(entry, [&](remidy::AudioPluginFormat::InvokeResult result) {
-        remidy::setCurrentThreadNameIfPossible("remidy-scan." + format->name() + ":" + entry->getMetadataProperty(remidy::PluginCatalogEntry::DisplayName));
+        remidy::setCurrentThreadNameIfPossible(std::format("remidy-scan.{}:{}", format->name(), entry->getMetadataProperty(remidy::PluginCatalogEntry::DisplayName)));
         bool successful = false;
         auto instance = std::move(result.instance);
         if (!instance)
@@ -106,7 +106,7 @@ const char* APP_NAME= "remidy-scan";
     remidy::AudioPluginFormatVST3 vst3{vst3SearchPaths};
     remidy::AudioPluginFormatAU au{};
     remidy::AudioPluginFormatLV2 lv2{lv2SearchPaths};
-    std::vector<remidy::AudioPluginFormat*> formats{&lv2, &vst3, &au};
+    std::vector<remidy::AudioPluginFormat*> formats{&lv2, &au, &vst3};
 
 auto filterByFormat(std::vector<remidy::PluginCatalogEntry*> entries, std::string format) {
     erase_if(entries, [format](remidy::PluginCatalogEntry* entry) { return entry->format() != format; });
@@ -169,9 +169,13 @@ int performPluginScanning() {
             // likewise, but SIGTRAP, not SIGABRT.
             // They are most likely causing blocked operations.
             // (I guess they are caught as SIGTRAP because they run on the main thread. Otherwise their thread would be just stuck forever.)
-            if (format->name() == "AU" && vendor == "Tracktion")
+            if (displayName == "Vienna Synchron Player") // AU and VST3
                 skip = true;
             if (displayName.starts_with("Massive X")) // AU and VST3
+                skip = true;
+            if (format->name() == "AU" && displayName == "#TAuto Filter")
+                skip = true;
+            if (displayName == "Vienna Ensemble")
                 skip = true;
 
 #if __APPLE__ || WIN32
