@@ -167,9 +167,10 @@ std::vector<AUPluginEntry> scanAllAvailableAUPlugins() {
 
     while(true) {
         AudioComponentDescription desc{};
-        AudioComponentGetDescription(component, &desc);
+        component = AudioComponentFindNext(component, &desc);
         if (!component)
             return ret;
+        AudioComponentGetDescription(component, &desc);
 
         switch (desc.componentType) {
             case kAudioUnitType_MusicDevice:
