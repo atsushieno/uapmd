@@ -23,7 +23,7 @@ Regarding #1, a plugin ID within the format usually does not describe which form
 
 It should be noted that the actual plugin ID **might** depend on the actual `AudioPluginFormat` implementation. Unless there is only one dominant `AudioPluginFormat` class, the format identifier should also **identify the implementation** (Remidy itself provides the reference implementations for VST3 and AU and we use `VST3` and `AU` for each).
 
-### fast instantiation
+### scanning without instantiation
 
 Regarding #2, it is impossible for such a "non-fast" plugin format to instantiate a plugin only with a global identifier, where a "non-fast" plugin format here means such a format that requires loading the library of a plugin.
 
@@ -53,11 +53,11 @@ Including the product name or the vendor name into the plugin ID is sometimes un
 A related issue is that there is no reliable identifier in Apple AudioUnit. There are only 3 fields of 4-bytes (`manufacturerName`, `componentType`, 
 and `componentSubtype`). If we include `name` of the plugin from `AudioComponentDescription`, it will become practically identifying (less fear of conflicts), but plugin vendors may change it at any time. Thus it is not a good idea to use it, and we can only resort to those 12 bytes at best.
 
-### fast scanning
+### limited metadata for fast scanning
 
 Regarding #5 (it's looking similar to #2 but what we actually need is quite different), our plugin metadata should not try to offer "too much" to avoid needing to instantiate plugins beyond what plugin formats provide.
 
-For example, scanning AudioUnit plugins in JUCE takes too long because it instantiates all the plugins just like it does for VST3. But Apple's AudioToolbox provides fast scanning because it can scan only plugins' `Info.plist` files to avoid loading huge plugin binaries. Remidy can construct AudioUnit plugin catalog of hundreds within a second or two.
+For example, scanning AudioUnit plugins in JUCE takes too long because it instantiates all the plugins just like it does for VST3. But Apple's AudioToolbox provides fast scanning because it can scan only plugins' `Info.plist` files to avoid loading huge plugin binaries. JUCE has to do it because there are too many items in `PluginDescription` and they cannot break their API backward compatibility anymore. Remidy can construct AudioUnit plugin catalog of hundreds within a second or two.
 
 ### platform and format agnostic
 
@@ -67,7 +67,7 @@ It is mostly not about plugin identification, but if there is no way to extract 
 
 ## Dealing With Inconsistency
 
-Users may remove audio plugins at any time and we cannot detect any changes so far (in theory we could though, at least for those plugin formats that are based on filesystem using filesystem watcher). When we report users about missing plugins, the error message would not make sense without plugin name (human-readable). PluginIDs are not meant for human beings (especially on AudioUnit, as their IDs are based only on 3 four-byte fields).
+Users may remove audio plugins at any time and we cannot detect any changes so far (in theory we could though, at least for those plugin formats that are based on filesystem using filesystem watcher). When we report users about missing plugins, the error message would not make sense without plugin name (human-readable). PluginIDs are not meant for human beings (especially on AudioUnit, as their IDs are based only on 3 four-byte fields) and your users wouldn't like to see messages like "AudioUnit V2 Plugin '&%"$#' does not exist".
 
 You should probably save the entire `PluginCatalogEntry` instead of the plugin ID. The simple plugin ID string isn't enough as you will have to save its plugin format name, anyway.
 
