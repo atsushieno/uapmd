@@ -11,6 +11,11 @@ namespace remidy {
         AudioPluginFormatAU();
         ~AudioPluginFormatAU() override;
 
+        class Extensibility : public AudioPluginExtensibility<AudioPluginFormat> {
+        public:
+            explicit Extensibility(AudioPluginFormat& format);
+        };
+
         Logger* getLogger();
 
         std::string name() override { return "AU"; }

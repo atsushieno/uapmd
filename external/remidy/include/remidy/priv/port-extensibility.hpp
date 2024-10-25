@@ -36,7 +36,7 @@ namespace remidy {
         Aux
     };
 
-    // Plugin defines them. Host just loads them. User has no access.
+    // Plugin defines them. Host just loads them. User has no control.
     class AudioBusDefinition {
         std::string bus_name{};
         AudioBusRole bus_role;
@@ -59,6 +59,7 @@ namespace remidy {
         std::vector<AudioChannelLayout*>& supportedChannelLayouts() { return layouts; }
     };
 
+    // Host instantiates them per definition. User configures them.
     class AudioBusConfiguration {
         AudioBusDefinition* def;
         const AudioChannelLayout* channel_layout{AudioChannelLayout::stereo()};

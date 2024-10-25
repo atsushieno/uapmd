@@ -126,8 +126,8 @@ namespace remidy {
         };
         BusSearchResult busesInfo{};
         BusSearchResult inspectBuses();
-        std::vector<AudioBusConfiguration*> input_buses;
-        std::vector<AudioBusConfiguration*> output_buses;
+        std::vector<AudioBusConfiguration*> input_buses{};
+        std::vector<AudioBusConfiguration*> output_buses{};
 
     public:
         explicit AudioPluginInstanceVST3(
@@ -241,12 +241,13 @@ namespace remidy {
 
     void AudioPluginFormatVST3::Impl::createInstance(PluginCatalogEntry *pluginInfo, std::function<void(InvokeResult)> callback) {
         std::unique_ptr<AudioPluginInstanceVST3> ret{nullptr};
+        std::string error{};
         v3_tuid tuid{};
         auto decodedBytes = stringToHexBinary(pluginInfo->pluginId());
         memcpy(&tuid, decodedBytes.c_str(), decodedBytes.size());
         std::string name = pluginInfo->getMetadataProperty(PluginCatalogEntry::DisplayName);
 
-        forEachPlugin(pluginInfo->bundlePath(), [&](void* module, IPluginFactory* factory, PluginClassInfo &info) {
+        forEachPlugin(pluginInfo->bundlePath(), [&ret,tuid,name,&error,pluginInfo,this](void* module, IPluginFactory* factory, PluginClassInfo &info) {
             if (memcmp(info.tuid, tuid, sizeof(v3_tuid)) != 0)
                 return;
             IPluginFactory3* factory3{nullptr};
@@ -280,6 +281,12 @@ namespace remidy {
             // From https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/API+Documentation/Index.html#initialization :
             // > Hosts should not call other functions before initialize is called, with the sole exception of Steinberg::Vst::IComponent::setIoMode
             // > which must be called before initialize.
+            //
+            // Although, none of known plugins use this feature, and the role of this mode looks overlapped with
+            // other processing modes. Since it should be considered harmful to set anything before `initialize()`
+            // and make it non-updatable, I find this feature a design mistake at Steinberg.
+            // So, let's not even try to support this.
+            #if 0
             result = component->vtable->component.set_io_mode(instance, V3_IO_ADVANCED);
             if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
                 logger->logError("Failed to set vst3 I/O mode: %s", name.c_str());
@@ -287,10 +294,13 @@ namespace remidy {
                 instance->vtable->unknown.unref(instance);
                 return;
             }
+            #endif
+
             IAudioProcessor *processor{};
             result = component->vtable->unknown.query_interface(component, v3_audio_processor_iid, (void**) &processor);
             if (result != V3_OK) {
                 logger->logError("Could not query vst3 IAudioProcessor interface: %s (status: %d ", name.c_str(), result);
+                error = "Could not query vst3 IAudioProcessor interface";
                 component->vtable->unknown.unref(component);
                 instance->vtable->unknown.unref(instance);
                 return;
@@ -300,6 +310,7 @@ namespace remidy {
             result = component->vtable->base.initialize(component, (v3_funknown**) &host);
             if (result != V3_OK) {
                 logger->logError("Failed to initialize vst3: %s (status: %d ", name.c_str(), result);
+                error = "Failed to initialize vst3";
                 component->vtable->unknown.unref(component);
                 instance->vtable->unknown.unref(instance);
                 return;
@@ -331,13 +342,13 @@ namespace remidy {
                     ret = std::make_unique<AudioPluginInstanceVST3>(this, pluginInfo, module, factory, component, processor, controller, controllerDistinct, instance);
                     return;
                 }
-                logger->logError("Failed to set vst3 component handler: %s", name.c_str());
+                error = "Failed to set vst3 component handler";
             }
             else
-                logger->logError("Failed to find valid controller vst3: %s", name.c_str());
+                error = "Failed to find valid controller vst3";
             if (controller)
                 controller->vtable->unknown.unref(controller);
-            logger->logError("Failed to instantiate vst3: %s", name.c_str());
+            error = "Failed to instantiate vst3";
             component->vtable->base.terminate(component);
             // regardless of the result, we go on...
 
@@ -346,7 +357,7 @@ namespace remidy {
         }, [&](void* module) {
             // do not unload library here.
         });
-        callback(InvokeResult{std::move(ret), std::string{""}});
+        callback(InvokeResult{std::move(ret), error});
     }
 
     void AudioPluginFormatVST3::Impl::unrefLibrary(PluginCatalogEntry* info) {
@@ -482,19 +493,17 @@ namespace remidy {
             owner->unrefLibrary(info);
         };
 
-        EventLoop::asyncRunOnMainThread([&] {
-            // We cannot safely clean up Component without making sure that we cleaned up IEditController,
-            // so if we do it, then do everything in the main thread(!)
-            // We should do this until we somehow get a "UI is totally separate from logic" safety criteria in VST3 plugins...
-            if (isControllerDistinctFromComponent) {
+        if (isControllerDistinctFromComponent) {
+            std::atomic<bool> waiter{false};
+            EventLoop::asyncRunOnMainThread([&] {
                 controller->vtable->base.terminate(controller);
                 controller->vtable->unknown.unref(controller);
-
-                releaseRemaining();
-            }
-            else
-                releaseRemaining();
-        });
+                waiter = true;
+                waiter.notify_all();
+            });
+            waiter.wait(false);
+        }
+        releaseRemaining();
     }
 
     /*

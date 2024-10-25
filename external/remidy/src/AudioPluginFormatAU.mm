@@ -12,10 +12,13 @@
 
 namespace remidy {
     class AudioPluginFormatAU::Impl {
+        AudioPluginFormat* format;
         Logger* logger;
+        Extensibility extensibility;
     public:
-        Impl(Logger* logger) : logger(logger) {}
+        Impl(AudioPluginFormat* format, Logger* logger) : format(format), logger(logger), extensibility(*format) {}
 
+        Extensibility* getExtensibility() { return &extensibility; }
         Logger* getLogger() { return logger; }
     };
 
@@ -44,6 +47,7 @@ namespace remidy {
         std::vector<::AudioBufferList*> auDataOuts{};
         AudioTimeStamp process_timestamp{};
         bool process_replacing{false};
+        AudioContentType audio_content_type{AudioContentType::Float32};
 
     protected:
         AudioPluginFormatAU *format;
@@ -113,7 +117,7 @@ namespace remidy {
 }
 
 remidy::AudioPluginFormatAU::AudioPluginFormatAU() {
-    impl = new Impl(Logger::global());
+    impl = new Impl(this, Logger::global());
 }
 
 remidy::AudioPluginFormatAU::~AudioPluginFormatAU() {
@@ -125,8 +129,7 @@ remidy::Logger* remidy::AudioPluginFormatAU::getLogger() {
 }
 
 remidy::AudioPluginExtensibility<remidy::AudioPluginFormat> * remidy::AudioPluginFormatAU::getExtensibility() {
-    // FIXME: implement
-    throw std::runtime_error("getExtensibility() is not implemented yet.");
+    return impl->getExtensibility();
 }
 
 std::vector<std::filesystem::path> ret{};
@@ -236,6 +239,9 @@ void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *info, std::
     });
 }
 
+remidy::AudioPluginFormatAU::Extensibility::Extensibility(AudioPluginFormat &format) : AudioPluginExtensibility(format) {
+}
+
 
 // AudioPluginInstanceAU
 
@@ -287,24 +293,38 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
 
     // FIXME: there seems some misunderstandings on either how we represent channel or
     // how we should copy audio buffer.
+    audio_content_type = configuration.dataType;
     UInt32 sampleSize = configuration.dataType == AudioContentType::Float64 ? sizeof(double) : sizeof(float);
     AudioStreamBasicDescription stream{};
     stream.mSampleRate = configuration.sampleRate;
     stream.mFormatID = kAudioFormatLinearPCM;
-    stream.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved | kAudioFormatFlagsNativeEndian | kLinearPCMFormatFlagIsPacked;
+    stream.mFormatFlags = kAudioFormatFlagsAudioUnitCanonical;
     stream.mBitsPerChannel = 8 * sampleSize;
     stream.mFramesPerPacket = 1;
-    // FIXME: retrieve from bus
-    stream.mChannelsPerFrame = 2;
     stream.mBytesPerFrame = sampleSize;
     stream.mBytesPerPacket = sampleSize;
     for (auto i = 0; i < buses.numAudioIn; i++) {
+        // FIXME: retrieve from bus
+        stream.mChannelsPerFrame = 2;
         result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i,
                                       &stream, sizeof(AudioStreamBasicDescription));
         if (result) {
             format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
+
+        /*
+        ::AudioChannelLayout auLayout{};
+        // FIXME: retrieve from bus
+        auLayout.mChannelBitmap = kAudioChannelBit_Left | kAudioChannelBit_Right;
+        auLayout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
+        UInt32 size;
+        result = AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, i, &auLayout, &size);
+        //result = AudioUnitSetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, i, &auLayout, sizeof(::AudioChannelLayout));
+        if (result) {
+            format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_AudioChannelLayout: OSStatus %d", name.c_str(), result);
+            return StatusCode::FAILED_TO_CONFIGURE;
+        }*/
     }
     for (auto i = 0; i < buses.numAudioOut; i++) {
         result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i,
@@ -313,6 +333,16 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
             format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
+
+        /*
+        ::AudioChannelLayout auLayout{};
+        // FIXME: retrieve from bus
+        auLayout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
+        result = AudioUnitSetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, i, &auLayout, sizeof(::AudioChannelLayout));
+        if (result) {
+            format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_AudioChannelLayout: OSStatus %d", name.c_str(), result);
+            return StatusCode::FAILED_TO_CONFIGURE;
+        }*/
     }
 
     // it could be an invalid property. maybe just ignore that.
@@ -328,7 +358,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
-    // dummy callback
+    // audio input retriever
     if (hasAudioInputs()) {
         AURenderCallbackStruct callback;
         callback.inputProc = audioInputRenderCallback;
@@ -354,6 +384,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
 
     UInt32 size;
     AudioUnitGetProperty(instance, kAudioUnitProperty_InPlaceProcessing, kAudioUnitScope_Global, 0, &process_replacing, &size);
+
     for (int32_t i = 0; i < buses.numAudioIn; i++) {
         // FIXME: get precise channel count
         int numChannels = 2;
@@ -392,8 +423,9 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
 
     // It seems the AudioUnit framework resets this information every time...
 
-    // FIXME: is may be sizeof(double)
-    uint32_t channelBufSize = process.frameCount() * sizeof(float);
+    bool useDouble = audio_content_type == AudioContentType::Float64;
+    UInt32 sampleSize = useDouble ? sizeof(double) : sizeof(float);
+    uint32_t channelBufSize = process.frameCount() * sampleSize;
     for (int32_t bus = 0, n = process.audioInBusCount(); bus < n; bus++) {
         auto auDataIn = auDataIns[bus];
         auDataIn->mNumberBuffers = 0;
@@ -401,8 +433,9 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
         auto numChannels = busBuf->channelCount();
         auDataIn->mBuffers[bus].mNumberChannels = numChannels;
         for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
-            // FIXME: might be 64bit float
-            auDataIn->mBuffers[ch].mData = busBuf->getFloatBufferForChannel(ch);
+            auDataIn->mBuffers[ch].mData = useDouble ?
+                (void*) busBuf->getDoubleBufferForChannel(ch) :
+                busBuf->getFloatBufferForChannel(ch);
             auDataIn->mBuffers[ch].mDataByteSize = channelBufSize;
             auDataIn->mNumberBuffers++;
         }
@@ -418,8 +451,9 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
         auto numChannels = busBuf->channelCount();
         auDataOut->mBuffers[bus].mNumberChannels = numChannels;
         for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
-            // FIXME: might be 64bit float
-            auDataOut->mBuffers[ch].mData = busBuf->getFloatBufferForChannel(ch);
+            auDataOut->mBuffers[ch].mData = useDouble ?
+                (void*) busBuf->getDoubleBufferForChannel(ch) :
+                busBuf->getFloatBufferForChannel(ch);
             auDataOut->mBuffers[ch].mDataByteSize = channelBufSize;
             auDataOut->mNumberBuffers++;
         }
