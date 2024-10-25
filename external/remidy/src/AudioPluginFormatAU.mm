@@ -246,8 +246,9 @@ remidy::AudioPluginFormatAU::Extensibility::Extensibility(AudioPluginFormat &for
 // AudioPluginInstanceAU
 
 remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(AudioPluginFormatAU *format, PluginCatalogEntry& info, AudioComponent component, AudioComponentInstance instance) :
-    format(format), info(info), component(component), instance(instance) {
+    format(format), info(PluginCatalogEntry{info}), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
+    setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     buses = inspectBuses();
 }
 
@@ -282,6 +283,7 @@ OSStatus remidy::AudioPluginInstanceAU::midiOutputCallback(const AudioTimeStamp 
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest& configuration) {
     OSStatus result;
+    UInt32 size; // unused field for AudioUnitGetProperty
 
     result = AudioUnitReset(instance, kAudioUnitScope_Global, 0);
     if (result) {
@@ -296,21 +298,25 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     audio_content_type = configuration.dataType;
     UInt32 sampleSize = configuration.dataType == AudioContentType::Float64 ? sizeof(double) : sizeof(float);
     AudioStreamBasicDescription stream{};
-    stream.mSampleRate = configuration.sampleRate;
-    stream.mFormatID = kAudioFormatLinearPCM;
-    stream.mFormatFlags = kAudioFormatFlagsAudioUnitCanonical;
-    stream.mBitsPerChannel = 8 * sampleSize;
-    stream.mFramesPerPacket = 1;
-    stream.mBytesPerFrame = sampleSize;
-    stream.mBytesPerPacket = sampleSize;
     for (auto i = 0; i < buses.numAudioIn; i++) {
-        // FIXME: retrieve from bus
-        stream.mChannelsPerFrame = 2;
-        result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i,
-                                      &stream, sizeof(AudioStreamBasicDescription));
-        if (result) {
-            format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
-            return StatusCode::FAILED_TO_CONFIGURE;
+        result = AudioUnitGetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i,
+                                      &stream, &size);
+        if (result == noErr) { // some plugins do not seem to support this property...
+            stream.mSampleRate = configuration.sampleRate;
+            stream.mFormatID = kAudioFormatLinearPCM;
+            stream.mFormatFlags = kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved;
+            stream.mBitsPerChannel = 8 * sampleSize;
+            stream.mFramesPerPacket = 1;
+            stream.mBytesPerFrame = sampleSize;
+            stream.mBytesPerPacket = sampleSize;
+            // FIXME: retrieve from bus
+            stream.mChannelsPerFrame = 2;
+            result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i,
+                                          &stream, sizeof(AudioStreamBasicDescription));
+            if (result) {
+                format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
+                return StatusCode::FAILED_TO_CONFIGURE;
+            }
         }
 
         /*
@@ -327,11 +333,24 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
         }*/
     }
     for (auto i = 0; i < buses.numAudioOut; i++) {
-        result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i,
-                                      &stream, sizeof(AudioStreamBasicDescription));
-        if (result) {
-            format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
-            return StatusCode::FAILED_TO_CONFIGURE;
+        result = AudioUnitGetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i,
+                                      &stream, &size);
+        if (result == noErr) { // some plugins do not seem to support this property...
+            stream.mSampleRate = configuration.sampleRate;
+            stream.mFormatID = kAudioFormatLinearPCM;
+            stream.mFormatFlags = kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved;
+            stream.mBitsPerChannel = 8 * sampleSize;
+            stream.mFramesPerPacket = 1;
+            stream.mBytesPerFrame = sampleSize;
+            stream.mBytesPerPacket = sampleSize;
+            // FIXME: retrieve from bus
+            stream.mChannelsPerFrame = 2;
+            result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i,
+                                          &stream, sizeof(AudioStreamBasicDescription));
+            if (result) {
+                format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
+                return StatusCode::FAILED_TO_CONFIGURE;
+            }
         }
 
         /*
@@ -382,7 +401,6 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
         }
     }
 
-    UInt32 size;
     AudioUnitGetProperty(instance, kAudioUnitProperty_InPlaceProcessing, kAudioUnitScope_Global, 0, &process_replacing, &size);
 
     for (int32_t i = 0; i < buses.numAudioIn; i++) {
