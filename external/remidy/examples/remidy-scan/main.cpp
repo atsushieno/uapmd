@@ -11,12 +11,13 @@
 
 class RemidyScan {
 
-void doCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* entry) {
+void doCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry catalogEntry) {
+    auto entry = &catalogEntry;
     auto displayName = entry->getMetadataProperty(remidy::PluginCatalogEntry::MetadataPropertyID::DisplayName);
     std::cerr << "  instantiating " << format->name() << " " << displayName << std::endl;
-    std::atomic<bool> completed{false};
 
     format->createInstance(entry, [&](remidy::AudioPluginFormat::InvokeResult result) {
+        remidy::setCurrentThreadNameIfPossible("remidy-scan." + format->name() + ":" + entry->getMetadataProperty(remidy::PluginCatalogEntry::DisplayName));
         bool successful = false;
         auto instance = std::move(result.instance);
         if (!instance)
@@ -66,10 +67,7 @@ void doCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEn
         }
         if (successful)
             std::cerr << "  " << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
-        completed = true;
-        completed.notify_all();
     });
-    completed.wait(false);
 }
 
 void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalogEntry* entry) {
@@ -89,13 +87,14 @@ void testCreateInstance(remidy::AudioPluginFormat* format, remidy::PluginCatalog
         || format->name() == "AU" && displayName == "Guitar Rig 6 MFX"
     ;
 
-    if (forceMainThread || format->requiresUIThreadOn(entry) == remidy::AllNonAudioOperation) {
-        remidy::EventLoop::asyncRunOnMainThread([format,entry,this] {
-            doCreateInstance(format, entry);
+    auto e = *entry; // copy
+    if (forceMainThread || format->requiresUIThreadOn(entry) != remidy::None) {
+        remidy::EventLoop::runTaskOnMainThread([format,e,this] {
+            doCreateInstance(format, e);
         });
     }
     else
-        doCreateInstance(format, entry);
+        doCreateInstance(format, e);
 }
 
 // -------- scanning --------
@@ -152,12 +151,10 @@ int performPluginScanning() {
 
             // Plugin crashing!!!
             // Process finished with exit code 9
-            if (format->name() == "AU" && displayName.starts_with("BYOD"))
+            if (displayName.starts_with("BYOD"))
                 skip = true;
 
-            // goes unresponsive at AudioUnitRender(), including ones that hangs only on Debug builds.
-            if (format->name() == "AU" && displayName.starts_with("AIDA-X"))
-                skip = true;
+            // goes unresponsive at AudioUnitRender()
             if (format->name() == "AU" && displayName.starts_with("AUSpeechSynthesis"))
                 skip = true;
 
