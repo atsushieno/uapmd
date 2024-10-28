@@ -14,7 +14,7 @@ namespace remidy {
         impl = new Impl(this);
     }
 
-    bool AudioPluginFormat::hasPluginListCache() {
+    bool AudioPluginFormat::scanningMayBeSlow() {
         return scanRequiresInstantiation() != ScanningStrategyValue::NEVER;
     }
 

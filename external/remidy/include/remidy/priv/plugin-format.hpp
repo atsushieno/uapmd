@@ -15,6 +15,8 @@ namespace remidy {
     public:
         virtual std::string name() = 0;
 
+        // Provides format-specific extension points.
+        // Cast to the type of the format to access those format-specifics.
         virtual AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() { return nullptr; }
 
         // Indicates whether you should invoke plugin methods on the UI/main thread.
@@ -30,8 +32,9 @@ namespace remidy {
         // formats behave unstable.
         virtual AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) = 0;
 
-        bool hasPluginListCache();
-        bool supportsGlobalIdentifier();
+        // Returns true if scanRequiresLoadLibrary() does not return `ScanningStrategyValue::NEVER`.
+        // Usually this means that you should resort to plugin list cache.
+        bool scanningMayBeSlow();
 
         // Indicates whether the plugin API requires sample rate at *instantiating*.
         // Only LV2 requires this, among VST3, AUv2/v3, LV2, and CLAP.
@@ -39,9 +42,6 @@ namespace remidy {
         // when our use app changes the sample rate.
         bool instantiateRequiresSampleRate();
 
-        // Indicates that scanning of the plugins in this format is based on file paths (VST3, LV2, CLAP vs. AU).
-        virtual bool usePluginSearchPaths() = 0;
-        virtual std::vector<std::filesystem::path>& getDefaultSearchPaths() = 0;
         enum class ScanningStrategyValue {
             NEVER,
             MAYBE,
@@ -61,12 +61,20 @@ namespace remidy {
             std::unique_ptr<AudioPluginInstance> instance;
             std::string error;
         };
+
+        // Asynchronously creates a plugin instance.
         virtual void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) = 0;
     };
 
-    class DesktopAudioPluginFormat : public AudioPluginFormat {
+    // Desktop specific plugin format members.
+    class FileBasedAudioPluginFormat : public AudioPluginFormat {
     protected:
-        explicit DesktopAudioPluginFormat() = default;
+        explicit FileBasedAudioPluginFormat() = default;
+
+        // Indicates that scanning of the plugins in this format is based on file paths (VST3, LV2, CLAP vs. AU).
+        virtual bool usePluginSearchPaths() = 0;
+        // Provides the default search paths for the format, if its plugin scanning is file-based.
+        virtual std::vector<std::filesystem::path>& getDefaultSearchPaths() = 0;
 
         std::vector<std::string> overrideSearchPaths{};
 

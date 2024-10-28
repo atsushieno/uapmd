@@ -4,54 +4,65 @@
 #include "remidy.hpp"
 #include "utils.hpp"
 
-#include "vst3/HostClasses.hpp"
+#include "AudioPluginFormatVST3.hpp"
 
 using namespace remidy_vst3;
 
 namespace remidy {
-    class AudioPluginInstanceVST3;
+    // AudioPluginFormatVST3
 
-    class AudioPluginFormatVST3::Impl {
-        AudioPluginFormatVST3* owner;
-        Logger* logger;
-        Extensibility extensibility;
+    std::vector<std::filesystem::path>& AudioPluginFormatVST3::getDefaultSearchPaths() {
+        static std::filesystem::path defaultSearchPathsVST3[] = {
+#if _WIN32
+            std::string(getenv("LOCALAPPDATA")) + "\\Programs\\Common\\VST3",
+            std::string(getenv("PROGRAMFILES")) + "\\Common Files\\VST3",
+            std::string(getenv("PROGRAMFILES(x86)")) + "\\Common Files\\VST3"
+#elif __APPLE__
+            std::string(getenv("HOME")) + "/Library/Audio/Plug-Ins/VST3",
+            "/Library/Audio/Plug-Ins/VST3",
+            "/Network/Library/Audio/Plug-Ins/VST3"
+#else // We assume the rest covers Linux and other Unix-y platforms
+            std::string(getenv("HOME")) + "/.vst3",
+            "/usr/lib/vst3",
+            "/usr/local/lib/vst3"
+#endif
+        };
+        static std::vector<std::filesystem::path> ret = [] {
+            std::vector<std::filesystem::path> paths{};
+            for (auto& path : defaultSearchPathsVST3)
+                paths.emplace_back(path);
+            return paths;
+        }();
+        return ret;
+    }
 
-        StatusCode doLoad(std::filesystem::path &vst3Dir, void** module) const;
-        static StatusCode doUnload(std::filesystem::path &vst3Dir, void* module);
-        std::function<StatusCode(std::filesystem::path &vst3Dir, void** module)> loadFunc;
-        std::function<StatusCode(std::filesystem::path &vst3Dir, void* module)> unloadFunc;
+    AudioPluginFormatVST3::Extensibility::Extensibility(AudioPluginFormat &format)
+        : AudioPluginExtensibility(format) {
+    }
 
-        PluginBundlePool library_pool;
-        remidy_vst3::HostApplication host;
-        void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
-        std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
+    AudioPluginFormatVST3::AudioPluginFormatVST3(std::vector<std::string> &overrideSearchPaths)
+        : FileBasedAudioPluginFormat() {
+        impl = new Impl(this);
+    }
+    AudioPluginFormatVST3::~AudioPluginFormatVST3() {
+        delete impl;
+    }
 
-    public:
-        explicit Impl(AudioPluginFormatVST3* owner) :
-            owner(owner),
-            logger(Logger::global()),
-            extensibility(*owner),
-            loadFunc([&](std::filesystem::path &vst3Dir, void** module)->StatusCode { return doLoad(vst3Dir, module); }),
-            unloadFunc([&](std::filesystem::path &vst3Dir, void* module)->StatusCode { return doUnload(vst3Dir, module); }),
-            library_pool(loadFunc,unloadFunc),
-            host(logger) {
-        }
+    AudioPluginExtensibility<AudioPluginFormat>* AudioPluginFormatVST3::getExtensibility() {
+        return impl->getExtensibility();
+    }
 
-        auto format() const { return owner; }
-        Logger* getLogger() { return logger; }
-        HostApplication* getHost() { return &host; }
+    bool AudioPluginFormatVST3::usePluginSearchPaths() { return true;}
 
-        AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
-        void forEachPlugin(std::filesystem::path& vst3Dir,
-            const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
-            const std::function<void(void* module)>& cleanup
-        );
-        void unrefLibrary(PluginCatalogEntry *info);
+    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
 
-        void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback);
-        StatusCode configure(int32_t sampleRate);
-    };
+    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
+
+    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatVST3::scanAllAvailablePlugins() {
+        return impl->scanAllAvailablePlugins();
+    }
+
+    // Impl
 
     StatusCode AudioPluginFormatVST3::Impl::doLoad(std::filesystem::path &vst3Dir, void** module) const {
         *module = loadModuleFromVst3Path(vst3Dir);
@@ -89,132 +100,6 @@ namespace remidy {
         ret->setMetadataProperty(PluginCatalogEntry::MetadataPropertyID::VendorName, info.vendor);
         ret->setMetadataProperty(PluginCatalogEntry::MetadataPropertyID::ProductUrl, info.url);
         return std::move(ret);
-    }
-
-    class AudioPluginInstanceVST3 : public AudioPluginInstance {
-        AudioPluginFormatVST3::Impl* owner;
-        PluginCatalogEntry* info;
-        void* module;
-        IPluginFactory* factory;
-        std::string pluginName;
-        IComponent* component;
-        IAudioProcessor* processor;
-        IEditController* controller;
-        bool isControllerDistinctFromComponent;
-        FUnknown* instance;
-        IConnectionPoint* connPointComp{nullptr};
-        IConnectionPoint* connPointEdit{nullptr};
-
-        int32_t maxAudioFrameCount = 4096; // FIXME: retrieve appropriate config
-        v3_process_data processData{};
-        v3_audio_bus_buffers inputAudioBusBuffers{};
-        v3_audio_bus_buffers outputAudioBusBuffers{};
-        HostEventList processDataInputEvents{};
-        HostEventList processDataOutputEvents{};
-        HostParameterChanges processDataInputParameterChanges{};
-        HostParameterChanges processDataOutputParameterChanges{};
-
-        void allocateProcessData();
-        void deallocateProcessData();
-        std::vector<v3_speaker_arrangement> getVst3SpeakerConfigs(int32_t direction);
-
-        struct BusSearchResult {
-            uint32_t numAudioIn{0};
-            uint32_t numAudioOut{0};
-            uint32_t numEventIn{0};
-            uint32_t numEventOut{0};
-        };
-        BusSearchResult busesInfo{};
-        BusSearchResult inspectBuses();
-        std::vector<AudioBusConfiguration*> input_buses{};
-        std::vector<AudioBusConfiguration*> output_buses{};
-
-    public:
-        explicit AudioPluginInstanceVST3(
-            AudioPluginFormatVST3::Impl* owner,
-            PluginCatalogEntry* info,
-            void* module,
-            IPluginFactory* factory,
-            IComponent* component,
-            IAudioProcessor* processor,
-            IEditController* controller,
-            bool isControllerDistinctFromComponent,
-            FUnknown* instance
-            );
-        ~AudioPluginInstanceVST3() override;
-
-        AudioPluginUIThreadRequirement requiresUIThreadOn() override {
-            // maybe we add some entries for known issues
-            return owner->format()->requiresUIThreadOn(info);
-        }
-
-        // audio processing core features
-        StatusCode configure(ConfigurationRequest& configuration) override;
-        StatusCode startProcessing() override;
-        StatusCode stopProcessing() override;
-        StatusCode process(AudioProcessContext &process) override;
-
-        // port helpers
-        bool hasAudioInputs() override { return busesInfo.numAudioIn > 0; }
-        bool hasAudioOutputs() override { return busesInfo.numAudioOut > 0; }
-        bool hasEventInputs() override { return busesInfo.numEventIn > 0; }
-        bool hasEventOutputs() override { return busesInfo.numEventOut > 0; }
-
-        const std::vector<AudioBusConfiguration*> audioInputBuses() const override;
-        const std::vector<AudioBusConfiguration*> audioOutputBuses() const override;
-    };
-
-    // AudioPluginFormatVST3
-
-    std::vector<std::filesystem::path>& AudioPluginFormatVST3::getDefaultSearchPaths() {
-        static std::filesystem::path defaultSearchPathsVST3[] = {
-#if _WIN32
-            std::string(getenv("LOCALAPPDATA")) + "\\Programs\\Common\\VST3",
-            std::string(getenv("PROGRAMFILES")) + "\\Common Files\\VST3",
-            std::string(getenv("PROGRAMFILES(x86)")) + "\\Common Files\\VST3"
-#elif __APPLE__
-            std::string(getenv("HOME")) + "/Library/Audio/Plug-Ins/VST3",
-            "/Library/Audio/Plug-Ins/VST3",
-            "/Network/Library/Audio/Plug-Ins/VST3"
-#else // We assume the rest covers Linux and other Unix-y platforms
-            std::string(getenv("HOME")) + "/.vst3",
-            "/usr/lib/vst3",
-            "/usr/local/lib/vst3"
-#endif
-        };
-        static std::vector<std::filesystem::path> ret = [] {
-            std::vector<std::filesystem::path> paths{};
-            for (auto& path : defaultSearchPathsVST3)
-                paths.emplace_back(path);
-            return paths;
-        }();
-        return ret;
-    }
-
-    AudioPluginFormatVST3::Extensibility::Extensibility(AudioPluginFormat &format)
-        : AudioPluginExtensibility(format) {
-    }
-
-    AudioPluginFormatVST3::AudioPluginFormatVST3(std::vector<std::string> &overrideSearchPaths)
-        : DesktopAudioPluginFormat() {
-        impl = new Impl(this);
-    }
-    AudioPluginFormatVST3::~AudioPluginFormatVST3() {
-        delete impl;
-    }
-
-    AudioPluginExtensibility<AudioPluginFormat>* AudioPluginFormatVST3::getExtensibility() {
-        return impl->getExtensibility();
-    }
-
-    bool AudioPluginFormatVST3::usePluginSearchPaths() { return true;}
-
-    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
-
-    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
-
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatVST3::scanAllAvailablePlugins() {
-        return impl->scanAllAvailablePlugins();
     }
 
     std::vector<std::unique_ptr<PluginCatalogEntry>>  AudioPluginFormatVST3::Impl::scanAllAvailablePlugins() {
@@ -466,7 +351,7 @@ namespace remidy {
         processor->vtable->processor.set_processing(processor, false);
         component->vtable->component.set_active(component, false);
 
-        busesInfo = inspectBuses();
+        inspectBuses();
     }
 
     AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
@@ -500,16 +385,22 @@ namespace remidy {
             }
             releaseRemaining();
         });
+
+        for (const auto bus : input_buses)
+            delete bus;
+        for (const auto bus : output_buses)
+            delete bus;
+
     }
 
     /*
-    std::vector<v3_speaker_arrangement> convertToVst3SpeakerConfigs(std::vector<BusConfiguration>& srcBuses) {
+    std::vector<v3_speaker_arrangement> convertToVst3SpeakerConfigs(std::vector<AudioChannelLayout>& layouts) {
         std::vector<v3_speaker_arrangement> ret{};
-        for (auto& src : srcBuses) {
+        for (const auto& src : layouts) {
             v3_speaker_arrangement v;
-            if (src == BusConfiguration::mono())
+            if (src == AudioChannelLayout::mono())
                 v = V3_SPEAKER_C;
-            else if (src == BusConfiguration::stereo()) {
+            else if (src == AudioChannelLayout::stereo()) {
                 v = V3_SPEAKER_L | V3_SPEAKER_R;
             }
             else {
@@ -517,24 +408,6 @@ namespace remidy {
                 v = 0; // not supported yet
             }
             ret.emplace_back(v);
-        }
-        return ret;
-    }*/
-
-    /*
-    std::vector<v3_speaker_arrangement> AudioPluginInstanceVST3::getVst3SpeakerConfigs(int32_t direction) {
-        std::vector<v3_speaker_arrangement> ret{};
-        auto n = component->vtable->component.get_bus_count(component, V3_AUDIO, direction);
-        for (int32_t i = 0; i < n; i++) {
-            v3_bus_info info;
-            component->vtable->component.get_bus_info(component, V3_AUDIO, direction, i, &info);
-            // We can only guess the speaker arrangement by name...
-            switch (info.channel_count) {
-                case 1: ret.emplace_back(V3_SPEAKER_C); break;
-                case 2: ret.emplace_back(V3_SPEAKER_L | V3_SPEAKER_R); break;
-                // FIXME: implement more, but we can only depend on bus_name...
-                default: ret.emplace_back(0); break;
-            }
         }
         return ret;
     }*/
@@ -705,16 +578,55 @@ namespace remidy {
         return StatusCode::OK;
     }
 
-    AudioPluginInstanceVST3::BusSearchResult AudioPluginInstanceVST3::inspectBuses() {
+    AudioChannelLayout fromVst3SpeakerArrangment(v3_speaker_arrangement src) {
+        uint32_t channels = 0;
+        for (int32_t i = 0; i < 19; i++)
+            if (src & (1 << i))
+                channels++;
+        return AudioChannelLayout{"", channels};
+    }
+
+    void AudioPluginInstanceVST3::inspectBuses() {
         BusSearchResult ret{};
         ret.numAudioIn = component->vtable->component.get_bus_count(component, V3_AUDIO, V3_INPUT);
         ret.numAudioOut = component->vtable->component.get_bus_count(component, V3_AUDIO, V3_OUTPUT);
         ret.numEventIn = component->vtable->component.get_bus_count(component, V3_EVENT, V3_INPUT);
         ret.numEventOut = component->vtable->component.get_bus_count(component, V3_EVENT, V3_OUTPUT);
 
-        // FIXME: we need to fill input_buses and output_buses here.
+        input_bus_defs.clear();
+        output_bus_defs.clear();
+        for (auto bus : input_buses)
+            delete bus;
+        for (auto bus : output_buses)
+            delete bus;
+        input_buses.clear();
+        output_buses.clear();
+        v3_bus_info info;
+        std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> u16conv;
+        for (uint32_t bus = 0; bus < ret.numAudioIn; bus++) {
+            component->vtable->component.get_bus_info(component, V3_AUDIO, V3_INPUT, bus, &info);
+            auto name = u16conv.to_bytes((char16_t*) info.bus_name);
+            auto def = AudioBusDefinition{name, info.flags & V3_MAIN ? AudioBusRole::Main : AudioBusRole::Aux};
+            input_bus_defs.emplace_back(def);
+            auto conf = new AudioBusConfiguration(&input_bus_defs[bus]);
+            v3_speaker_arrangement arr;
+            processor->vtable->processor.get_bus_arrangement(processor, V3_INPUT, bus, &arr);
+            conf->channelLayout(fromVst3SpeakerArrangment(arr));
+            input_buses.emplace_back(conf);
+        }
+        for (uint32_t bus = 0; bus < ret.numAudioOut; bus++) {
+            component->vtable->component.get_bus_info(component, V3_AUDIO, V3_OUTPUT, bus, &info);
+            auto name = u16conv.to_bytes((char16_t*) info.bus_name);
+            auto def = AudioBusDefinition{name, info.flags & V3_MAIN ? AudioBusRole::Main : AudioBusRole::Aux};
+            output_bus_defs.emplace_back(def);
+            auto conf = new AudioBusConfiguration(&output_bus_defs[bus]);
+            v3_speaker_arrangement arr;
+            processor->vtable->processor.get_bus_arrangement(processor, V3_OUTPUT, bus, &arr);
+            conf->channelLayout(fromVst3SpeakerArrangment(arr));
+            output_buses.emplace_back(conf);
+        }
 
-        return ret;
+        busesInfo = ret;
     }
 
     const std::vector<AudioBusConfiguration*> AudioPluginInstanceVST3::audioInputBuses() const { return input_buses; }

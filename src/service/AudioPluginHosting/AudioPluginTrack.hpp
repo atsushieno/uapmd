@@ -15,10 +15,10 @@ namespace uapmd {
 
         AudioPluginGraph& getGraph();
 
-        bool isBypass();
-        bool isFrozen();
-        void setBypass(bool value);
-        void setFrozen(bool value);
+        bool bypassed();
+        bool frozen();
+        void bypassed(bool value);
+        void frozen(bool value);
 
         int32_t processAudio(AudioProcessContext* process);
     };

@@ -23,10 +23,6 @@ namespace remidy {
 
         AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return None; }
 
-        bool usePluginSearchPaths() override { return false; }
-
-        std::vector<std::filesystem::path> & getDefaultSearchPaths() override;
-
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
 
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }

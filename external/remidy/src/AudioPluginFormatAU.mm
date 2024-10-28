@@ -132,12 +132,6 @@ remidy::AudioPluginExtensibility<remidy::AudioPluginFormat> * remidy::AudioPlugi
     return impl->getExtensibility();
 }
 
-std::vector<std::filesystem::path> ret{};
-std::vector<std::filesystem::path>& remidy::AudioPluginFormatAU::getDefaultSearchPaths() {
-    ret.clear();
-    return ret;
-}
-
 struct AUPluginEntry {
     AudioComponent component;
     UInt32 flags;

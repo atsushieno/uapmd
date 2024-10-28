@@ -126,7 +126,7 @@ int performPluginScanning() {
     // build catalog
     for (auto& format : formats) {
         auto plugins = filterByFormat(catalog.getPlugins(), format->name());
-        if (!format->hasPluginListCache() || plugins.empty())
+        if (!format->scanningMayBeSlow() || plugins.empty())
             for (auto& info : format->scanAllAvailablePlugins())
                 if (!catalog.contains(info->format(), info->pluginId()))
                     catalog.add(std::move(info));

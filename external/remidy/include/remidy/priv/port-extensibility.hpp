@@ -7,6 +7,10 @@
 
 namespace remidy {
 
+    // We might have to reconsider how to deal with channel layout names:
+    // - VST3 has no concept of named channel layouts; it only has SpeakerArrangement
+    //   and there is no pre-defined combinations of speaker bits whereas (to our understanding)
+    //   we need them, otherwise user has no idea on how those channels are in known order.
     class AudioChannelLayout {
         std::string predefined_name;
         uint32_t num_channels;
@@ -21,13 +25,18 @@ namespace remidy {
         uint32_t channels() const { return num_channels; }
         std::string& name() { return predefined_name; }
 
-        static const AudioChannelLayout* mono() {
-            static const AudioChannelLayout ret{"Mono", 1};
-            return &ret;
+        friend bool operator==(const AudioChannelLayout &lhs, const AudioChannelLayout &rhs) {
+            return lhs.predefined_name == rhs.predefined_name
+                   && lhs.num_channels == rhs.num_channels;
         }
-        static const AudioChannelLayout* stereo() {
+
+        static const AudioChannelLayout& mono() {
+            static const AudioChannelLayout ret{"Mono", 1};
+            return ret;
+        }
+        static const AudioChannelLayout& stereo() {
             static const AudioChannelLayout ret{"Stereo", 2};
-            return &ret;
+            return ret;
         }
     };
 
@@ -40,7 +49,7 @@ namespace remidy {
     class AudioBusDefinition {
         std::string bus_name{};
         AudioBusRole bus_role;
-        std::vector<AudioChannelLayout*> layouts;
+        std::vector<AudioChannelLayout> layouts;
 
     public:
         AudioBusDefinition(std::string busName, AudioBusRole role) :
@@ -56,19 +65,19 @@ namespace remidy {
             return bus_name == other.bus_name && bus_role == other.bus_role;
         }
 
-        std::vector<AudioChannelLayout*>& supportedChannelLayouts() { return layouts; }
+        const std::vector<AudioChannelLayout>& supportedChannelLayouts() { return layouts; }
     };
 
     // Host instantiates them per definition. User configures them.
     class AudioBusConfiguration {
         AudioBusDefinition* def;
-        const AudioChannelLayout* channel_layout{AudioChannelLayout::stereo()};
+        AudioChannelLayout channel_layout{AudioChannelLayout::stereo()};
     public:
         AudioBusConfiguration(AudioBusDefinition* definition) : def(definition) {
         }
 
-        const AudioChannelLayout* channelLayout() { return channel_layout; }
-        StatusCode channelLayout(const AudioChannelLayout* newValue) {
+        AudioChannelLayout& channelLayout() { return channel_layout; }
+        StatusCode channelLayout(const AudioChannelLayout& newValue) {
             if (auto layouts = def->supportedChannelLayouts();
                 std::find(layouts.begin(), layouts.end(), newValue) == layouts.end())
                 return StatusCode::UNSUPPORTED_CHANNEL_LAYOUT_REQUESTED;

@@ -3,7 +3,7 @@
 #include "../remidy.hpp"
 
 namespace remidy {
-    class AudioPluginFormatVST3 : public DesktopAudioPluginFormat {
+    class AudioPluginFormatVST3 : public FileBasedAudioPluginFormat {
     public:
         class Impl;
 
