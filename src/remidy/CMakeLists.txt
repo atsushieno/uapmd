@@ -11,7 +11,7 @@ FetchContent_Declare(cpplocate
         GIT_REPOSITORY https://github.com/cginternals/cpplocate
         GIT_TAG b796990d8df747758dbd6217b6315b7bdbb0c27e
         # required to mix CPP and Swift in the same project...
-        PATCH_COMMAND git reset --hard && git apply ${CMAKE_CURRENT_SOURCE_DIR}/../cpplocate-remove-pthread.patch
+        PATCH_COMMAND git reset --hard && git apply ${CMAKE_CURRENT_SOURCE_DIR}/../../external/cpplocate-remove-pthread.patch
 )
 FetchContent_MakeAvailable(cpplocate)
 # </cpplocate>
@@ -44,7 +44,7 @@ target_include_directories(remidy PRIVATE
         ../../external/choc
         ${LV2KIT_INCLUDE_DIRS}
         #../../external/libremidi/include
-        include/remidy
+        ../../include/remidy
         ${CMAKE_BINARY_DIR}/generated/include
 )
 
@@ -75,36 +75,34 @@ target_sources(remidy PRIVATE
         # swift sources generate C++ header files in use later, so compile them first.
         #src/auv2/AUv2Helper.swift
 
-        src/utils.cpp
-        src/EventLoop.cpp
-        #src/EventLoop.posix.cpp
-        #src/EventLoop.windows.cpp
-        #src/EventLoop.darwin.cpp
+        utils.cpp
+        EventLoop.cpp
+        #EventLoop.posix.cpp
+        #EventLoop.windows.cpp
+        #EventLoop.darwin.cpp
 
-        src/vst3/TravestyHelper.cpp
-        src/vst3/HostClasses.cpp
-        src/vst3/ClassModuleInfo.cpp
+        vst3/TravestyHelper.cpp
+        vst3/HostClasses.cpp
+        vst3/ClassModuleInfo.cpp
 
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}/moduleinfoparser.cpp
 
-        src/lv2/LV2Helper.cpp
-        src/lv2/symap.cpp
+        lv2/LV2Helper.cpp
+        lv2/symap.cpp
 
-        src/Logger.cpp
-        src/AudioBufferList.cpp
-        src/MidiSequence.cpp
+        Logger.cpp
+        AudioBufferList.cpp
+        MidiSequence.cpp
 
-        src/PluginCatalog.cpp
-        src/AudioPluginLibraryPool.cpp
-        src/AudioPluginFormat.cpp
-        src/AudioPluginFormatVST3.cpp
-        src/AudioPluginFormatAU.mm
-        src/AudioPluginFormatLV2.cpp
+        PluginCatalog.cpp
+        AudioPluginLibraryPool.cpp
+        AudioPluginFormat.cpp
+        AudioPluginFormatVST3.cpp
+        AudioPluginFormatAU.mm
+        AudioPluginFormatLV2.cpp
 
-        src/AudioProcessContext.cpp
-        src/AudioPluginInstance.cpp
+        AudioProcessContext.cpp
+        AudioPluginInstance.cpp
 )
 
 add_library(remidy::remidy ALIAS remidy)
-
-add_subdirectory(examples/remidy-scan)

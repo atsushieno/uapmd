@@ -2,14 +2,13 @@
 set(SERVICE_APP uapmd-service)
 
 add_subdirectory(../../external/libremidi "libremidi")
-add_subdirectory(../../external/remidy "remidy")
 
 add_executable(${SERVICE_APP}
 )
 
 target_include_directories(${SERVICE_APP} PRIVATE
         ../../external/libremidi/include
-        ../../external/remidy/include
+        ../../include
 )
 
 target_link_libraries(${SERVICE_APP} PRIVATE
