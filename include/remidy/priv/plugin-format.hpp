@@ -67,6 +67,8 @@ namespace remidy {
     };
 
     // Desktop specific plugin format members.
+    // FIXME: maybe this should become extracted as a file system adapter rather than a base class
+    // as it brings in extraneous inheritance layer. It is not elegant.
     class FileBasedAudioPluginFormat : public AudioPluginFormat {
     protected:
         explicit FileBasedAudioPluginFormat() = default;

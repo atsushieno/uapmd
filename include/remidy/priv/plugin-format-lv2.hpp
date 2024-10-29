@@ -17,7 +17,7 @@ namespace remidy {
 
         std::string name() override { return "LV2"; }
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
-        AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return None; }
+        AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return AudioPluginUIThreadRequirement::None; }
         bool usePluginSearchPaths() override { return true; }
         std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }

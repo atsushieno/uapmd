@@ -23,5 +23,6 @@ target_link_libraries(remidy-scan PRIVATE
 )
 
 target_sources(remidy-scan PRIVATE
+        PluginScanner.cpp
         main.cpp
 )

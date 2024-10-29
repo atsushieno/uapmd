@@ -21,7 +21,7 @@ namespace remidy {
         std::string name() override { return "AU"; }
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
 
-        AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return None; }
+        AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return AudioPluginUIThreadRequirement::None; }
 
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
 

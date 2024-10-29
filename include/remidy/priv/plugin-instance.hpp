@@ -10,7 +10,7 @@ namespace remidy {
         Float64
     };
 
-    enum AudioPluginUIThreadRequirement : uint32_t {
+    enum class AudioPluginUIThreadRequirement : uint32_t {
         // AudioUnit and LV2, by default (probably bad behaved plugins can be explicitly marked as dirty = AllNonAudioOperation)
         None = 0,
         // CLAP and VST3, by default (probably good plugins can be excluded out to switch to None)
@@ -54,6 +54,12 @@ namespace remidy {
 
         const virtual std::vector<AudioBusConfiguration*> audioInputBuses() const = 0;
         const virtual std::vector<AudioBusConfiguration*> audioOutputBuses() const = 0;
+        // It can be implemented by each plugin format class so that it can return arbitrary index.
+        // The override must ensure that the returned value is either in range or < 0 when there is no input bus.
+        virtual int32_t mainInputBusIndex() { return audioInputBuses().size() > 0 ? 0 : -1; }
+        // It can be implemented by each plugin format class so that it can return arbitrary index.
+        // The override must ensure that the returned value is either in range or < 0 when there is no output bus.
+        virtual int32_t mainOutputBusIndex() { return audioOutputBuses().size() > 0 ? 0 : -1; }
 
         virtual StatusCode configure(ConfigurationRequest& configuration) = 0;
 
