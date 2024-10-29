@@ -40,6 +40,10 @@ namespace remidy {
         }
     };
 
+    // Indicates the role of the audio bus.
+    // `Main` means the primary bus, and `Aux` is for anything else e.g. sidechain.
+    // Note that AudioUnit has no such concept and will assign Main at index 0.
+    // On LV2 `isSideChain` port property is reflected.
     enum class AudioBusRole {
         Main,
         Aux
@@ -70,15 +74,22 @@ namespace remidy {
 
     // Host instantiates them per definition. User configures them.
     class AudioBusConfiguration {
-        AudioBusDefinition* def;
+        AudioBusDefinition def;
+        bool is_enabled{true};
         AudioChannelLayout channel_layout{AudioChannelLayout::stereo()};
     public:
-        AudioBusConfiguration(AudioBusDefinition* definition) : def(definition) {
+        AudioBusConfiguration(AudioBusDefinition& definition) : def(definition) {
+        }
+
+        bool enabled() { return is_enabled; }
+        StatusCode enabled(bool newValue) {
+            is_enabled = newValue;
+            return StatusCode::OK;
         }
 
         AudioChannelLayout& channelLayout() { return channel_layout; }
         StatusCode channelLayout(const AudioChannelLayout& newValue) {
-            if (auto layouts = def->supportedChannelLayouts();
+            if (auto& layouts = def.supportedChannelLayouts();
                 std::find(layouts.begin(), layouts.end(), newValue) == layouts.end())
                 return StatusCode::UNSUPPORTED_CHANNEL_LAYOUT_REQUESTED;
             channel_layout = newValue;

@@ -393,24 +393,15 @@ namespace remidy {
 
     }
 
-    /*
-    std::vector<v3_speaker_arrangement> convertToVst3SpeakerConfigs(std::vector<AudioChannelLayout>& layouts) {
-        std::vector<v3_speaker_arrangement> ret{};
-        for (const auto& src : layouts) {
-            v3_speaker_arrangement v;
-            if (src == AudioChannelLayout::mono())
-                v = V3_SPEAKER_C;
-            else if (src == AudioChannelLayout::stereo()) {
-                v = V3_SPEAKER_L | V3_SPEAKER_R;
-            }
-            else {
-                // FIXME: implement more maybe.
-                v = 0; // not supported yet
-            }
-            ret.emplace_back(v);
-        }
+    v3_speaker_arrangement toVstSpeakerArrangement(AudioChannelLayout src) {
+        v3_speaker_arrangement ret{0};
+        if (src == AudioChannelLayout::mono())
+            ret = V3_SPEAKER_C;
+        else if (src == AudioChannelLayout::stereo())
+            ret = V3_SPEAKER_L | V3_SPEAKER_R;
+        // FIXME: implement more
         return ret;
-    }*/
+    }
 
     StatusCode AudioPluginInstanceVST3::configure(ConfigurationRequest& configuration) {
         // setupProcessing.
@@ -426,22 +417,21 @@ namespace remidy {
             return StatusCode::FAILED_TO_CONFIGURE;
         }
 
+        std::vector<v3_speaker_arrangement> inArr{input_buses.size()};
+        for (const auto & input_buse : input_buses)
+            inArr.emplace_back(toVstSpeakerArrangement(input_buse->channelLayout()));
+        std::vector<v3_speaker_arrangement> outArr{output_buses.size()};
+        for (const auto & output_buse : output_buses)
+            outArr.emplace_back(toVstSpeakerArrangement(output_buse->channelLayout()));
+
         // set audio bus configuration, if explicitly specified.
-        /*
-        if (configuration.inputBuses.has_value() || configuration.outputBuses.has_value()) {
-            auto inputBuses = configuration.inputBuses.has_value() ?
-                convertToVst3SpeakerConfigs(configuration.inputBuses.value()) : getVst3SpeakerConfigs(V3_INPUT);
-            auto outputBuses = configuration.outputBuses.has_value() ?
-                convertToVst3SpeakerConfigs(configuration.outputBuses.value()) : getVst3SpeakerConfigs(V3_OUTPUT);
-            processor->vtable->processor.set_bus_arrangements(processor,
-                inputBuses.data(), (int32_t) inputBuses.size(),
-                outputBuses.data(), (int32_t) outputBuses.size());
-        }*/
-        // We can only process simple buses so far. Keep others disabled.
-        if (hasAudioInputs())
-            component->vtable->component.activate_bus(component, V3_AUDIO, V3_INPUT, 0, true);
-        if (hasAudioOutputs())
-            component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, 0, true);
+        processor->vtable->processor.set_bus_arrangements(processor,
+            inArr.data(), static_cast<int32_t>(inArr.size()),
+            outArr.data(), static_cast<int32_t>(outArr.size()));
+        for (size_t i = 0, n = input_buses.size(); i < n; ++i)
+            component->vtable->component.activate_bus(component, V3_AUDIO, V3_INPUT, i, input_buses[i]->enabled());
+        for (size_t i = 0, n = output_buses.size(); i < n; ++i)
+            component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, i, output_buses[i]->enabled());
 
         // setup process_data here.
         allocateProcessData();
@@ -608,7 +598,7 @@ namespace remidy {
             auto name = u16conv.to_bytes((char16_t*) info.bus_name);
             auto def = AudioBusDefinition{name, info.flags & V3_MAIN ? AudioBusRole::Main : AudioBusRole::Aux};
             input_bus_defs.emplace_back(def);
-            auto conf = new AudioBusConfiguration(&input_bus_defs[bus]);
+            auto conf = new AudioBusConfiguration(def);
             v3_speaker_arrangement arr;
             processor->vtable->processor.get_bus_arrangement(processor, V3_INPUT, bus, &arr);
             conf->channelLayout(fromVst3SpeakerArrangment(arr));
@@ -619,7 +609,7 @@ namespace remidy {
             auto name = u16conv.to_bytes((char16_t*) info.bus_name);
             auto def = AudioBusDefinition{name, info.flags & V3_MAIN ? AudioBusRole::Main : AudioBusRole::Aux};
             output_bus_defs.emplace_back(def);
-            auto conf = new AudioBusConfiguration(&output_bus_defs[bus]);
+            auto conf = new AudioBusConfiguration(def);
             v3_speaker_arrangement arr;
             processor->vtable->processor.get_bus_arrangement(processor, V3_OUTPUT, bus, &arr);
             conf->channelLayout(fromVst3SpeakerArrangment(arr));
