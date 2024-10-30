@@ -50,16 +50,13 @@ bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginC
         || format->name() == "AU" && displayName == "Reaktor 6 MIDIFX"
         || format->name() == "AU" && displayName == "Absynth 5"
         || format->name() == "AU" && displayName == "Reaktor 6"
+        || format->name() == "AU" && displayName == "Massive X"
         || format->name() == "AU" && displayName == "Ozone 9"
         || format->name() == "AU" && displayName == "BioTek"
         || format->name() == "AU" && displayName == "BioTek 2"
         || format->name() == "AU" && displayName == "Plugin Buddy"
         || format->name() == "AU" && displayName == "Collective"
         )
-        skip = true;
-
-    // goes unresponsive at AudioUnitRender()
-    if (format->name() == "AU" && displayName.starts_with("AUSpeechSynthesis"))
         skip = true;
 
     // This prevents IEditController and IAudioProcessor inter-connection.
@@ -85,7 +82,9 @@ bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginC
         || format->name() == "VST3" && displayName == "Ozone 9 Match EQ"
         || format->name() == "VST3" && displayName == "Ozone 9 Maximizer"
         || format->name() == "VST3" && displayName == "Neutron 3 Sculptor"
+        || format->name() == "VST3" && displayName == "Vienna Synchron Player"
         || format->name() == "VST3" && displayName == "Vienna Synchron Player Surround"
+        || format->name() == "AU" && displayName == "Vienna Synchron Player"
         )
         skip = true;
 
@@ -99,16 +98,8 @@ bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginC
     if (format->name() == "VST3" && displayName == "RX 9 Monitor")
         skip = true;
 
-    // likewise, but SIGTRAP, not SIGABRT.
-    // They are most likely causing blocked operations.
-    // (I guess they are caught as SIGTRAP because they run on the main thread. Otherwise their thread would be just stuck forever.)
-    if (displayName == "Vienna Synchron Player") // AU and VST3
-        skip = true;
-    if (displayName.starts_with("Massive X")) // AU and VST3
-        skip = true;
-    if (format->name() == "AU" && displayName == "#TAuto Filter")
-        skip = true;
-    if (displayName == "Vienna Ensemble")
+    // It depends on unimplemented perform_edit() and restart_component(). Results in unresponsiveness.
+    if (format->name() == "VST3" && displayName.starts_with("Massive X"))
         skip = true;
 
 #if __APPLE__ || WIN32

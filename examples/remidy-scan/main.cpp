@@ -39,12 +39,10 @@ int testInstancing() {
                 // ...
                 // you could adjust configuration here
                 // ...
-                std::atomic<bool> waitHandle{false};
                 instancing.makeAlive([&](std::string err) {
-                    waitHandle.store(true);
-                    waitHandle.notify_all();
                 });
-                while (!waitHandle.load())
+                while (instancing.instancingState() == remidy::PluginInstancingState::Created ||
+                       instancing.instancingState()  == remidy::PluginInstancingState::Preparing)
                     std::this_thread::yield();
 
                 std::cerr << "  " << format->name() << ": Successfully configured " << displayName << ". Instantiating now..." << std::endl;

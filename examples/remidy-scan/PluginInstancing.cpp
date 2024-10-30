@@ -63,7 +63,4 @@ void remidy::PluginInstancing::makeAlive(std::function<void(std::string error)>&
     }
     else
         setupInstance(std::move(callback));
-    while (instancingState() == PluginInstancingState::Created || instancingState()  == PluginInstancingState::Preparing)
-        std::this_thread::yield();
-    assert(instancingState() != PluginInstancingState::Preparing);
 }
