@@ -34,10 +34,11 @@ bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginC
 
     // FIXME: this should be unblocked
 
-    // Plugin crashing!!!
-    // Process finished with exit code 9
-    if (displayName.starts_with("BYOD"))
-        skip = true;
+    // > Plugin crashing!!!
+    // > Process finished with exit code 9
+    // although the scanner completes, so it is commented out.
+    // if (displayName.starts_with("BYOD"))
+    //    skip = true;
 
     // EXC_BAD_ACCESS
     if (format->name() == "AU" && displayName == "BioTek 2"
@@ -64,39 +65,23 @@ bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginC
     //    skip = true;
 
     // (goes unresponsive, only on debug builds, but still matters)
-    if (format->name() == "VST3" && displayName == "Vital"
-        || format->name() == "VST3" && vendor == "Tracktion"
-        || format->name() == "VST3" && displayName == "Neutron 3 Visual Mixer"
-        || format->name() == "VST3" && displayName == "Ozone 9 Dynamics"
-        || format->name() == "VST3" && displayName == "Stutter Edit 2"
-        || format->name() == "VST3" && displayName == "RX 9 De-plosive"
-        || format->name() == "VST3" && displayName == "RX 9 De-crackle"
-        || format->name() == "VST3" && displayName == "RX 9 De-hum"
-        || format->name() == "VST3" && displayName == "RX 9 Voice De-noise"
-        || format->name() == "VST3" && displayName == "RX 9 De-reverb"
-        || format->name() == "VST3" && displayName == "RX 9 Connect"
-        || format->name() == "VST3" && displayName == "Ozone 9 Equalizer"
-        || format->name() == "VST3" && displayName == "Ozone 9 Master Rebalance"
-        || format->name() == "VST3" && displayName == "Ozone 9 Spectral Shaper"
-        || format->name() == "VST3" && displayName == "Ozone 9 Imager"
-        || format->name() == "VST3" && displayName == "Ozone 9 Match EQ"
-        || format->name() == "VST3" && displayName == "Ozone 9 Maximizer"
-        || format->name() == "VST3" && displayName == "Neutron 3 Sculptor"
-        || format->name() == "VST3" && displayName == "Vienna Synchron Player"
+    if (format->name() == "VST3" && displayName == "Vienna Synchron Player"
         || format->name() == "VST3" && displayName == "Vienna Synchron Player Surround"
         || format->name() == "AU" && displayName == "Vienna Synchron Player"
         )
         skip = true;
 
     // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
+    /*
     if (format->name() == "VST3" && displayName.starts_with("Battery"))
         skip = true;
     if (format->name() == "VST3" && displayName.starts_with("Kontakt"))
         skip = true;
+    */
     if (format->name() == "AU" && displayName.starts_with("FL Studio"))
         skip = true;
-    if (format->name() == "VST3" && displayName == "RX 9 Monitor")
-        skip = true;
+    //if (format->name() == "VST3" && displayName == "RX 9 Monitor")
+    //    skip = true;
 
     // It depends on unimplemented perform_edit() and restart_component(). Results in unresponsiveness.
     if (format->name() == "VST3" && displayName.starts_with("Massive X"))
@@ -132,6 +117,7 @@ bool remidy::PluginScanner::createInstanceOnUIThread(AudioPluginFormat *format, 
         || format->name() == "AU" && displayName == "Raum"
         || format->name() == "AU" && displayName == "Guitar Rig 6 FX"
         || format->name() == "AU" && displayName == "Guitar Rig 6 MFX"
+        || format->name() == "AU" && displayName == "Vienna Synchron Player"
     ;
     return forceMainThread || format->requiresUIThreadOn(entry) != AudioPluginUIThreadRequirement::None;
 }
