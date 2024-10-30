@@ -63,7 +63,7 @@ namespace remidy {
         };
 
         // Asynchronously creates a plugin instance.
-        virtual void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) = 0;
+        virtual void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) = 0;
     };
 
     // Desktop specific plugin format members.

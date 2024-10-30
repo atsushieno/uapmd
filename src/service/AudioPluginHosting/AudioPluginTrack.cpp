@@ -25,13 +25,13 @@ namespace uapmd {
         return impl->graph;
     }
 
-    bool AudioPluginTrack::isBypass() { return impl->bypass; }
+    bool AudioPluginTrack::bypassed() { return impl->bypass; }
 
-    bool AudioPluginTrack::isFrozen() { return impl->frozen; }
+    bool AudioPluginTrack::frozen() { return impl->frozen; }
 
-    void AudioPluginTrack::setBypass(bool value) { impl->bypass = value; }
+    void AudioPluginTrack::bypassed(bool value) { impl->bypass = value; }
 
-    void AudioPluginTrack::setFrozen(bool value) { impl->frozen = value; }
+    void AudioPluginTrack::frozen(bool value) { impl->frozen = value; }
 
     int32_t AudioPluginTrack::processAudio(AudioProcessContext* process) {
         return impl->processAudio(process);

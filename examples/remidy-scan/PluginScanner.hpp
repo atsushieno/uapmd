@@ -18,7 +18,7 @@ namespace remidy {
         std::string app_name;
 
     public:
-        std::vector<AudioPluginFormat*> formats{&lv2, &au, &vst3};
+        std::vector<AudioPluginFormat*> formats{&lv2, &vst3, &au};
         PluginCatalog catalog{};
         auto filterByFormat(std::vector<PluginCatalogEntry*> entries, std::string format) {
             erase_if(entries, [format](PluginCatalogEntry* entry) { return entry->format() != format; });

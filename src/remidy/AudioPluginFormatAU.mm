@@ -87,21 +87,23 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginForm
         static std::string format{"AU"};
         entry->format(format);
         entry->pluginId(plugin.id);
-        entry->setMetadataProperty(PluginCatalogEntry::DisplayName, plugin.name);
-        entry->setMetadataProperty(PluginCatalogEntry::VendorName, plugin.vendor);
+        entry->displayName(plugin.name);
+        entry->vendorName(plugin.vendor);
+        // no product URL in the queryable metadata.
+
         ret.emplace_back(std::move(entry));
     }
     return ret;
 }
 
-void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) {
+void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
     AudioComponentDescription desc{};
     std::istringstream id{info->pluginId()};
     id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;
 
     auto component = AudioComponentFindNext(nullptr, &desc);
     if (component == nullptr) {
-        callback(InvokeResult{nullptr, std::string{"The specified AudioUnit component was not found"}});
+        callback(nullptr, "The specified AudioUnit component was not found");
     }
 
     AudioComponentGetDescription(component, &desc);
@@ -110,13 +112,16 @@ void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry *info, std::
 
     AudioComponentInstantiate(component, options, ^(AudioComponentInstance instance, OSStatus status) {
         if (status == noErr) {
-            if (v3)
-                callback(InvokeResult{std::make_unique<AudioPluginInstanceAUv3>(this, *info, component, instance), std::string{}});
-            else
-                callback(InvokeResult{std::make_unique<AudioPluginInstanceAUv2>(this, *info, component, instance), std::string{}});
+            if (v3) {
+                auto au = std::make_unique<AudioPluginInstanceAUv3>(this, info, component, instance);
+                callback(std::move(au), "");
+            } else {
+                auto au = std::make_unique<AudioPluginInstanceAUv2>(this, info, component, instance);
+                callback(std::move(au), "");
+            }
         }
         else
-          callback(InvokeResult{nullptr, std::string("Failed to instantiate AudioUnit.")});
+          callback(nullptr, std::format("Failed to instantiate AudioUnit {}", info->displayName()));
     });
 }
 
@@ -126,8 +131,8 @@ remidy::AudioPluginFormatAU::Extensibility::Extensibility(AudioPluginFormat &for
 
 // AudioPluginInstanceAU
 
-remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(AudioPluginFormatAU *format, PluginCatalogEntry& info, AudioComponent component, AudioComponentInstance instance) :
-    format(format), info(PluginCatalogEntry{info}), component(component), instance(instance) {
+remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(AudioPluginFormatAU *format, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
+    format(format), info(info), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     inspectBuses();

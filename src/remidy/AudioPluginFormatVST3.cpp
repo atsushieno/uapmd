@@ -96,10 +96,10 @@ namespace remidy {
         auto idString = hexBinaryToString((char*) info.tuid, sizeof(v3_tuid));
         ret->bundlePath(info.bundlePath);
         ret->pluginId(idString);
-        ret->setMetadataProperty(PluginCatalogEntry::MetadataPropertyID::DisplayName, info.name);
-        ret->setMetadataProperty(PluginCatalogEntry::MetadataPropertyID::VendorName, info.vendor);
-        ret->setMetadataProperty(PluginCatalogEntry::MetadataPropertyID::ProductUrl, info.url);
-        return std::move(ret);
+        ret->displayName(info.name);
+        ret->vendorName(info.vendor);
+        ret->productUrl(info.url);
+        return ret;
     }
 
     std::vector<std::unique_ptr<PluginCatalogEntry>>  AudioPluginFormatVST3::Impl::scanAllAvailablePlugins() {
@@ -120,19 +120,21 @@ namespace remidy {
         return ret;
     }
 
-    void AudioPluginFormatVST3::createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) {
-        return impl->createInstance(info, callback);
+    void AudioPluginFormatVST3::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
+        return impl->createInstance(info, std::move(callback));
     }
 
-    void AudioPluginFormatVST3::Impl::createInstance(PluginCatalogEntry *pluginInfo, std::function<void(InvokeResult)> callback) {
+    void AudioPluginFormatVST3::Impl::createInstance(PluginCatalogEntry* pluginInfo, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
+        PluginCatalogEntry* entry = pluginInfo;
         std::unique_ptr<AudioPluginInstanceVST3> ret{nullptr};
         std::string error{};
         v3_tuid tuid{};
-        auto decodedBytes = stringToHexBinary(pluginInfo->pluginId());
+        auto decodedBytes = stringToHexBinary(entry->pluginId());
         memcpy(&tuid, decodedBytes.c_str(), decodedBytes.size());
-        std::string name = pluginInfo->getMetadataProperty(PluginCatalogEntry::DisplayName);
+        std::string name = entry->displayName();
 
-        forEachPlugin(pluginInfo->bundlePath(), [&ret,tuid,name,&error,pluginInfo,this](void* module, IPluginFactory* factory, PluginClassInfo &info) {
+        auto bundle = entry->bundlePath();
+        forEachPlugin(bundle, [entry,&ret,tuid,name,&error,this](void* module, IPluginFactory* factory, PluginClassInfo &info) {
             if (memcmp(info.tuid, tuid, sizeof(v3_tuid)) != 0)
                 return;
             IPluginFactory3* factory3{nullptr};
@@ -224,7 +226,7 @@ namespace remidy {
                 auto handler = host.getComponentHandler();
                 result = controller->vtable->controller.set_component_handler(controller, (v3_component_handler**) handler);
                 if (result == V3_OK) {
-                    ret = std::make_unique<AudioPluginInstanceVST3>(this, pluginInfo, module, factory, component, processor, controller, controllerDistinct, instance);
+                    ret = std::make_unique<AudioPluginInstanceVST3>(this, entry, module, factory, component, processor, controller, controllerDistinct, instance);
                     return;
                 }
                 error = "Failed to set vst3 component handler";
@@ -242,7 +244,7 @@ namespace remidy {
         }, [&](void* module) {
             // do not unload library here.
         });
-        callback(InvokeResult{std::move(ret), error});
+        callback(std::move(ret), error);
     }
 
     void AudioPluginFormatVST3::Impl::unrefLibrary(PluginCatalogEntry* info) {
@@ -327,7 +329,7 @@ namespace remidy {
         component(component), processor(processor), controller(controller),
         isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
 
-        pluginName = info->getMetadataProperty(PluginCatalogEntry::MetadataPropertyID::DisplayName);
+        pluginName = info->displayName();
 
         // set up IConnectionPoints
         auto result = component->vtable->unknown.query_interface(component, v3_connection_point_iid, (void**) &connPointComp);
@@ -340,11 +342,17 @@ namespace remidy {
         // From JUCE interconnectComponentAndController():
         // > Some plugins need to be "connected" to intercommunicate between their implemented classes
         // FIXME: enable this once we sort out why RX-8 Breath Control crashes here.
-        /*if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
-            EventLoop::asyncRunOnMainThread([&] {
+        /*
+        if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
+            std::atomic<bool> waitHandle{false};
+            EventLoop::runTaskOnMainThread([&] {
                 connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
                 connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
+                waitHandle = true;
+                waitHandle.notify_all();
             });
+            while (!waitHandle)
+                std::this_thread::yield();
         }*/
 
         // not sure if we want to error out here, so no result check.
@@ -356,18 +364,17 @@ namespace remidy {
 
     AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
 
-        processor->vtable->processor.set_processing(processor, false);
-        component->vtable->component.set_active(component, false);
+        std::function releaseRemaining = [this] {
+            processor->vtable->processor.set_processing(processor, false);
+            component->vtable->component.set_active(component, false);
 
-        deallocateProcessData();
+            deallocateProcessData();
 
-        if (connPointEdit)
-            connPointEdit->vtable->unknown.unref(connPointEdit);
-        if (connPointComp)
-            connPointComp->vtable->unknown.unref(connPointComp);
+            if (connPointEdit)
+                connPointEdit->vtable->unknown.unref(connPointEdit);
+            if (connPointComp)
+                connPointComp->vtable->unknown.unref(connPointComp);
 
-
-        std::function releaseRemaining = [&] {
             processor->vtable->unknown.unref(processor);
 
             component->vtable->base.terminate(component);
@@ -378,13 +385,21 @@ namespace remidy {
             owner->unrefLibrary(info);
         };
 
+        std::cerr << "VST3 instance destructor: " << info->displayName() << std::endl;
+        std::atomic<bool> waitHandle{false};
         EventLoop::runTaskOnMainThread([&] {
             if (isControllerDistinctFromComponent) {
                 controller->vtable->base.terminate(controller);
                 controller->vtable->unknown.unref(controller);
             }
             releaseRemaining();
+            waitHandle = true;
+            waitHandle.notify_all();
         });
+        std::cerr << "  waiting for cleanup: " << info->displayName() << std::endl;
+        while (!waitHandle)
+            std::this_thread::yield();
+        std::cerr << "  cleanup done: " << info->displayName() << std::endl;
 
         for (const auto bus : input_buses)
             delete bus;
@@ -440,10 +455,9 @@ namespace remidy {
     }
 
     void AudioPluginInstanceVST3::allocateProcessData() {
-        auto ctx = (v3_process_context*) calloc(sizeof(v3_process_context), 1);
         // FIXME: retrieve these properties by some means.
-        ctx->sample_rate = 48000;
-        processData.ctx = ctx;
+        processData.ctx = &process_context;
+        process_context.sample_rate = 48000;
 
         processData.input_events = (v3_event_list**) processDataInputEvents.asInterface();
         processData.output_events = (v3_event_list**) processDataOutputEvents.asInterface();
@@ -451,58 +465,63 @@ namespace remidy {
         processData.output_params = (v3_param_changes**) processDataOutputParameterChanges.asInterface();
 
         // FIXME: adjust audio buses and channels appropriately.
-        int32_t numInputBuses = hasAudioInputs() ? 1 : 0;
-        int32_t numOutputBuses = hasAudioOutputs() ? 1 : 0;
+        inputAudioBusBuffersList.resize(input_buses.size());
+        outputAudioBusBuffersList.resize(output_buses.size());
+
+        int32_t numInputBuses = busesInfo.numAudioIn;
+        int32_t numOutputBuses = busesInfo.numAudioOut;
         processData.num_input_buses = numInputBuses;
         processData.num_output_buses = numOutputBuses;
-        processData.inputs = &inputAudioBusBuffers;
-        processData.outputs = &outputAudioBusBuffers;
+        processData.inputs = inputAudioBusBuffersList.data();
+        processData.outputs = outputAudioBusBuffersList.data();
         int32_t numChannels = 2;
         int32_t symbolicSampleSize = processData.symbolic_sample_size;
-        if (symbolicSampleSize == V3_SAMPLE_32) {
-            for (int32_t bus = 0; bus < numInputBuses; bus++) {
-                processData.inputs[bus].num_channels = numChannels;
-                processData.inputs[bus].channel_buffers_32 = (float**) calloc(sizeof(float*), numChannels);
-            }
-            for (int32_t bus = 0; bus < numOutputBuses; bus++) {
-                processData.outputs[bus].num_channels = numChannels;
-                processData.outputs[bus].channel_buffers_32 = (float**) calloc(sizeof(float*), numChannels);
-            }
-        } else {
-            for (int32_t bus = 0; bus < numInputBuses; bus++) {
-                processData.inputs[bus].num_channels = numChannels;
-                processData.inputs[bus].channel_buffers_64 = (double**) calloc(sizeof(double*), numChannels);
-            }
-            for (int32_t bus = 0; bus < numOutputBuses; bus++) {
-                processData.outputs[bus].num_channels = numChannels;
-                processData.outputs[bus].channel_buffers_64 = (double**) calloc(sizeof(double*), numChannels);
-            }
+        for (int32_t bus = 0; bus < numInputBuses; bus++) {
+            inputAudioBusBuffersList[bus].num_channels = numChannels;
+            if (symbolicSampleSize == V3_SAMPLE_32)
+                inputAudioBusBuffersList[bus].channel_buffers_32 = (float**) calloc(sizeof(float*), numChannels);
+            else
+                inputAudioBusBuffersList[bus].channel_buffers_64 = (double**) calloc(sizeof(double*), numChannels);
+        }
+        for (int32_t bus = 0; bus < numOutputBuses; bus++) {
+            outputAudioBusBuffersList[bus].num_channels = numChannels;
+            if (symbolicSampleSize == V3_SAMPLE_32)
+                outputAudioBusBuffersList[bus].channel_buffers_32 = (float**) calloc(sizeof(float*), numChannels);
+            else
+                outputAudioBusBuffersList[bus].channel_buffers_64 = (double**) calloc(sizeof(double*), numChannels);
         }
 
         processData.process_mode = V3_REALTIME; // FIXME: assign specified value
         processData.symbolic_sample_size = V3_SAMPLE_32; // FIXME: assign specified value
     }
 
+    // We cannot "free" pointers on processData because they might get updated by the
+    // plugin instance (e.g. by "processReplacing").
+    // We allocate memory in inputAudioBusBuffersList and outputAudioBusBuffersList.
     void AudioPluginInstanceVST3::deallocateProcessData() {
         // FIXME: adjust audio buses and channels
-        int32_t numInputBuses = 1;
-        int32_t numOutputBuses = 1;
+        int32_t numInputBuses = busesInfo.numAudioIn;
+        int32_t numOutputBuses = busesInfo.numAudioOut;
         int32_t numChannels = 2;
         int32_t symbolicSampleSize = processData.symbolic_sample_size;
         if (symbolicSampleSize == V3_SAMPLE_32) {
             for (int32_t bus = 0; bus < numInputBuses; bus++)
-                free(processData.inputs[bus].channel_buffers_32);
-            for (int32_t bus = 0; bus < numOutputBuses; bus++)
-                free(processData.outputs[bus].channel_buffers_32);
+                if (inputAudioBusBuffersList[bus].channel_buffers_32)
+                    free(inputAudioBusBuffersList[bus].channel_buffers_32);
         } else {
             for (int32_t bus = 0; bus < numInputBuses; bus++)
-                free(processData.inputs[bus].channel_buffers_64);
-            for (int32_t bus = 0; bus < numOutputBuses; bus++)
-                free(processData.outputs[bus].channel_buffers_64);
+                if (inputAudioBusBuffersList[bus].channel_buffers_64)
+                    free(inputAudioBusBuffersList[bus].channel_buffers_64);
         }
-
-        if (processData.ctx)
-            free(processData.ctx);
+        if (symbolicSampleSize == V3_SAMPLE_32) {
+            for (int32_t bus = 0; bus < numOutputBuses; bus++)
+                if (outputAudioBusBuffersList[bus].channel_buffers_32)
+                    free(outputAudioBusBuffersList[bus].channel_buffers_32);
+        } else {
+            for (int32_t bus = 0; bus < numOutputBuses; bus++)
+                if (outputAudioBusBuffersList[bus].channel_buffers_64)
+                    free(outputAudioBusBuffersList[bus].channel_buffers_64);
+        }
     }
 
     StatusCode AudioPluginInstanceVST3::startProcessing() {

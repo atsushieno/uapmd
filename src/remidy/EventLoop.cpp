@@ -10,13 +10,13 @@ namespace remidy {
         return choc::messageloop::callerIsOnMessageThread();
     }
 
-    void EventLoop::runTaskOnMainThread(std::function<void()> func) {
+    void EventLoop::runTaskOnMainThread(std::function<void()>&& func) {
         if (choc::messageloop::callerIsOnMessageThread())
             func();
         else
             choc::messageloop::postMessage(std::move(func));
     }
-    void EventLoop::enqueueTaskOnMainThread(std::function<void()> func) {
+    void EventLoop::enqueueTaskOnMainThread(std::function<void()>&& func) {
         choc::messageloop::postMessage(std::move(func));
     }
     void EventLoop::start() {

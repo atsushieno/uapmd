@@ -8,18 +8,12 @@
 namespace remidy {
 
     class PluginCatalogEntry {
-    public:
-        enum MetadataPropertyID {
-            DisplayName,
-            VendorName,
-            ProductUrl
-        };
-
-    private:
         std::string fmt{};
         std::string id{};
+        std::string display_name{};
+        std::string vendor_name{};
+        std::string product_url{};
         std::filesystem::path bundle{};
-        std::map<MetadataPropertyID, std::string> props{};
 
     public:
         PluginCatalogEntry() = default;
@@ -39,19 +33,27 @@ namespace remidy {
             id = newId;
             return StatusCode::OK;
         }
+        std::string& displayName() { return display_name; }
+        StatusCode displayName(const std::string& newValue) {
+            display_name = newValue;
+            return StatusCode::OK;
+        }
+        std::string& vendorName() { return vendor_name; }
+        StatusCode vendorName(const std::string& newValue) {
+            vendor_name = newValue;
+            return StatusCode::OK;
+        }
+        std::string& productUrl() { return product_url; }
+        StatusCode productUrl(const std::string& newValue) {
+            product_url = newValue;
+            return StatusCode::OK;
+        }
         // Returns a file system path to the bundle, if the format supports it.
         std::filesystem::path& bundlePath() { return bundle; }
         // Sets a file system path to the bundle, if the format supports it.
         StatusCode bundlePath(const std::filesystem::path& newPath) {
-            bundle = newPath;
+            bundle = newPath.lexically_normal();
             return StatusCode::OK;
-        }
-        std::string getMetadataProperty(const MetadataPropertyID id) {
-            const auto ret = props.find(id);
-            return ret == props.end() ? std::string{} : ret->second;
-        }
-        void setMetadataProperty(const MetadataPropertyID id, const std::string& value) {
-            props[id] = value;
         }
     };
 

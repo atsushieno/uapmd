@@ -44,9 +44,9 @@ namespace remidy {
             const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
             const std::function<void(void* module)>& cleanup
         );
-        void unrefLibrary(PluginCatalogEntry *info);
+        void unrefLibrary(PluginCatalogEntry* info);
 
-        void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback);
+        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback);
         StatusCode configure(int32_t sampleRate);
     };
 
@@ -66,8 +66,9 @@ namespace remidy {
 
         int32_t maxAudioFrameCount = 4096; // FIXME: retrieve appropriate config
         v3_process_data processData{};
-        v3_audio_bus_buffers inputAudioBusBuffers{};
-        v3_audio_bus_buffers outputAudioBusBuffers{};
+        v3_process_context process_context{};
+        std::vector<v3_audio_bus_buffers> inputAudioBusBuffersList{};
+        std::vector<v3_audio_bus_buffers> outputAudioBusBuffersList{};
         HostEventList processDataInputEvents{};
         HostEventList processDataOutputEvents{};
         HostParameterChanges processDataInputParameterChanges{};

@@ -31,7 +31,7 @@ namespace remidy {
         ScanningStrategyValue scanRequiresInstantiation() override;
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
 
-        void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback) override;
+        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) override;
 
     private:
         Impl *impl;

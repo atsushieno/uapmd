@@ -50,12 +50,12 @@ namespace remidy {
 
     protected:
         AudioPluginFormatAU *format;
-        PluginCatalogEntry info;
+        PluginCatalogEntry* info;
         AudioComponent component;
         AudioUnit instance;
         std::string name{};
 
-        AudioPluginInstanceAU(AudioPluginFormatAU* format, PluginCatalogEntry& info, AudioComponent component, AudioUnit instance);
+        AudioPluginInstanceAU(AudioPluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
         ~AudioPluginInstanceAU() override;
 
     public:
@@ -66,7 +66,7 @@ namespace remidy {
 
         AudioPluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
-            return format->requiresUIThreadOn(&info);
+            return format->requiresUIThreadOn(info);
         }
 
         // audio processing core functions.
@@ -90,7 +90,7 @@ namespace remidy {
 
     class AudioPluginInstanceAUv2 final : public AudioPluginInstanceAU {
     public:
-        AudioPluginInstanceAUv2(AudioPluginFormatAU* format, PluginCatalogEntry& info, AudioComponent component, AudioUnit instance
+        AudioPluginInstanceAUv2(AudioPluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
         ) : AudioPluginInstanceAU(format, info, component, instance) {
         }
 
@@ -103,7 +103,7 @@ namespace remidy {
 
     class AudioPluginInstanceAUv3 final : public AudioPluginInstanceAU {
     public:
-        AudioPluginInstanceAUv3(AudioPluginFormatAU* format, PluginCatalogEntry& info, AudioComponent component, AudioUnit instance
+        AudioPluginInstanceAUv3(AudioPluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
         ) : AudioPluginInstanceAU(format, info, component, instance) {
         }
 

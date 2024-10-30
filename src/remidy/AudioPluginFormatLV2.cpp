@@ -22,12 +22,13 @@ namespace remidy {
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
-        void createInstance(PluginCatalogEntry *info, std::function<void(InvokeResult)> callback);
-        void unrefLibrary(PluginCatalogEntry *info);
+        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)> callback);
+        void unrefLibrary(PluginCatalogEntry& info);
         PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
     };
 
     class AudioPluginInstanceLV2 : public AudioPluginInstance {
+        PluginCatalogEntry* entry;
         AudioPluginFormatLV2::Impl* formatImpl;
         const LilvPlugin* plugin;
         LilvInstance* instance{nullptr};
@@ -45,12 +46,12 @@ namespace remidy {
         std::vector<AudioBusConfiguration*> output_buses;
 
     public:
-        explicit AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
+        explicit AudioPluginInstanceLV2(PluginCatalogEntry* entry, AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
         ~AudioPluginInstanceLV2() override;
 
         AudioPluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
-            return formatImpl->format()->requiresUIThreadOn(nullptr);
+            return formatImpl->format()->requiresUIThreadOn(entry);
         }
 
         // audio processing core functions.
@@ -106,30 +107,30 @@ namespace remidy {
             auto authorName = lilv_node_as_string(authorNameNode);
             auto authorUrlNode = lilv_plugin_get_author_homepage(plugin);
             auto authorUrl = lilv_node_as_string(authorUrlNode);
-            entry->setMetadataProperty(remidy::PluginCatalogEntry::DisplayName, name);
-            entry->setMetadataProperty(remidy::PluginCatalogEntry::VendorName, authorName);
-            entry->setMetadataProperty(remidy::PluginCatalogEntry::ProductUrl, authorUrl);
+            entry->displayName(name);
+            entry->vendorName(authorName);
+            entry->productUrl(authorUrl);
             ret.emplace_back(std::move(entry));
         }
         return ret;
     }
 
     void AudioPluginFormatLV2::Impl::createInstance(
-        PluginCatalogEntry *info,
-        std::function<void(InvokeResult)> callback
+        PluginCatalogEntry* info,
+        std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)> callback
     ) {
         auto targetUri = lilv_new_uri(world, info->pluginId().c_str());
         auto plugins = lilv_world_get_all_plugins(world);
         auto plugin = lilv_plugins_get_by_uri(plugins, targetUri);
         if (plugin) {
-            auto instance = std::make_unique<AudioPluginInstanceLV2>(this, plugin);
-            callback(InvokeResult{std::move(instance), std::string{}});
+            auto instance = std::make_unique<AudioPluginInstanceLV2>(info, this, plugin);
+            callback(std::move(instance), "");
             return;
         }
-        callback(InvokeResult{nullptr, std::string{"Plugin '"} + info->pluginId() + "' was not found"});
+        callback(nullptr, std::string{"Plugin '"} + info->pluginId() + "' was not found");
     }
 
-    void AudioPluginFormatLV2::Impl::unrefLibrary(PluginCatalogEntry *info) {
+    void AudioPluginFormatLV2::Impl::unrefLibrary(PluginCatalogEntry& info) {
     }
 
     PluginCatalog AudioPluginFormatLV2::Impl::createCatalogFragment(const std::filesystem::path &bundlePath) {
@@ -180,8 +181,8 @@ namespace remidy {
         return impl->scanAllAvailablePlugins();
     }
 
-    void AudioPluginFormatLV2::createInstance(PluginCatalogEntry *info,
-        std::function<void(InvokeResult)> callback) {
+    void AudioPluginFormatLV2::createInstance(PluginCatalogEntry* info,
+        std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
         impl->createInstance(info, callback);
     }
 
@@ -191,8 +192,8 @@ namespace remidy {
 
     // AudioPluginInstanceLV2
 
-    AudioPluginInstanceLV2::AudioPluginInstanceLV2(AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
-        formatImpl(formatImpl), plugin(plugin),
+    AudioPluginInstanceLV2::AudioPluginInstanceLV2(PluginCatalogEntry* entry, AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
+        entry(entry), formatImpl(formatImpl), plugin(plugin),
         implContext(formatImpl->worldContext, formatImpl->world, plugin) {
         buses = inspectBuses();
     }
@@ -220,11 +221,15 @@ namespace remidy {
     }
 
     StatusCode AudioPluginInstanceLV2::startProcessing() {
+        if (!instance)
+            return StatusCode::ALREADY_INVALID_STATE;
         lilv_instance_activate(instance);
         return StatusCode::OK;
     }
 
     StatusCode AudioPluginInstanceLV2::stopProcessing() {
+        if (!instance)
+            return StatusCode::ALREADY_INVALID_STATE;
         lilv_instance_deactivate(instance);
         return StatusCode::OK;
     }

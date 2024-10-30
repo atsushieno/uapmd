@@ -45,7 +45,7 @@ void remidy::PluginCatalog::clear() {
 std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> fromJson(nlohmann::json j) {
     std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> list{};
     auto jPlugins = j.at("plugins");
-    for_each(jPlugins.begin(), jPlugins.end(), [&](nlohmann::ordered_json jPlugin) {
+    std::for_each(jPlugins.begin(), jPlugins.end(), [&](nlohmann::ordered_json jPlugin) {
         auto entry = std::make_unique<remidy::PluginCatalogEntry>();
         std::string format = jPlugin.at("format");
         entry->format(format);
@@ -54,11 +54,12 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> fromJson(nlohmann::json
         std::string bundle = jPlugin.at("bundle");
         entry->bundlePath(bundle);
         std::string name = jPlugin.at("name");
-        entry->setMetadataProperty(remidy::PluginCatalogEntry::DisplayName, name);
+        entry->displayName(name);
         std::string vendor = jPlugin.at("vendor");
-        entry->setMetadataProperty(remidy::PluginCatalogEntry::VendorName, vendor);
+        entry->vendorName(vendor);
         std::string url = jPlugin.at("url");
-        entry->setMetadataProperty(remidy::PluginCatalogEntry::ProductUrl, url);
+        entry->productUrl(url);
+
         list.emplace_back(std::move(entry));
     });
     return list;
@@ -84,9 +85,9 @@ auto pluginEntriesToJson(std::vector<remidy::PluginCatalogEntry*> list) {
             {"format", e->format()},
             {"id", e->pluginId()},
             {"bundle", e->bundlePath()},
-            {"name", e->getMetadataProperty(remidy::PluginCatalogEntry::DisplayName)},
-            {"vendor", e->getMetadataProperty(remidy::PluginCatalogEntry::VendorName)},
-            {"url", e->getMetadataProperty(remidy::PluginCatalogEntry::ProductUrl)},
+            {"name", e->displayName()},
+            {"vendor", e->vendorName()},
+            {"url", e->productUrl()},
         });
     return ret;
 }
