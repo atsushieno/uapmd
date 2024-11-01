@@ -96,8 +96,6 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginForm
     return ret;
 }
 
-std::map<AudioComponent,std::function<void(std::unique_ptr<remidy::AudioPluginInstance>,std::string)>> callbacks{};
-
 void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
     AudioComponentDescription desc{};
     std::istringstream id{info->pluginId()};
@@ -112,10 +110,8 @@ void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry* info, std::
     bool v3 = (desc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) > 0;
     AudioComponentInstantiationOptions options = 0;
 
-    callbacks[component] = std::move(callback);
+    __block auto cb = std::move(callback);
     AudioComponentInstantiate(component, options, ^(AudioComponentInstance instance, OSStatus status) {
-        auto cb = callbacks[component];
-        callbacks.erase(component);
         if (status == noErr) {
             if (v3) {
                 auto au = std::make_unique<AudioPluginInstanceAUv3>(this, info, component, instance);
