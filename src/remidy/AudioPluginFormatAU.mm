@@ -18,6 +18,10 @@ remidy::AudioPluginExtensibility<remidy::AudioPluginFormat> * remidy::AudioPlugi
     return impl->getExtensibility();
 }
 
+remidy::AudioPluginScanner* remidy::AudioPluginFormatAU::scanner() {
+    return impl->scanner();
+}
+
 struct AUPluginEntry {
     AudioComponent component;
     UInt32 flags;
@@ -79,7 +83,7 @@ std::vector<AUPluginEntry> scanAllAvailableAUPlugins() {
     return ret;
 }
 
-std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginFormatAU::scanAllAvailablePlugins() {
+std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginScannerAU::scanAllAvailablePlugins() {
     std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
 
     for (auto& plugin : scanAllAvailableAUPlugins()) {

@@ -3,7 +3,8 @@
 
 #pragma once
 
-namespace remidy {
+namespace remidy_scan {
+    using namespace remidy;
 
     class PluginScanner {
 

@@ -11,55 +11,23 @@ using namespace remidy_vst3;
 namespace remidy {
     // AudioPluginFormatVST3
 
-    std::vector<std::filesystem::path>& AudioPluginFormatVST3::getDefaultSearchPaths() {
-        static std::filesystem::path defaultSearchPathsVST3[] = {
-#if _WIN32
-            std::string(getenv("LOCALAPPDATA")) + "\\Programs\\Common\\VST3",
-            std::string(getenv("PROGRAMFILES")) + "\\Common Files\\VST3",
-            std::string(getenv("PROGRAMFILES(x86)")) + "\\Common Files\\VST3"
-#elif __APPLE__
-            std::string(getenv("HOME")) + "/Library/Audio/Plug-Ins/VST3",
-            "/Library/Audio/Plug-Ins/VST3",
-            "/Network/Library/Audio/Plug-Ins/VST3"
-#else // We assume the rest covers Linux and other Unix-y platforms
-            std::string(getenv("HOME")) + "/.vst3",
-            "/usr/lib/vst3",
-            "/usr/local/lib/vst3"
-#endif
-        };
-        static std::vector<std::filesystem::path> ret = [] {
-            std::vector<std::filesystem::path> paths{};
-            for (auto& path : defaultSearchPathsVST3)
-                paths.emplace_back(path);
-            return paths;
-        }();
-        return ret;
-    }
-
     AudioPluginFormatVST3::Extensibility::Extensibility(AudioPluginFormat &format)
         : AudioPluginExtensibility(format) {
     }
 
-    AudioPluginFormatVST3::AudioPluginFormatVST3(std::vector<std::string> &overrideSearchPaths)
-        : FileBasedAudioPluginFormat() {
+    AudioPluginFormatVST3::AudioPluginFormatVST3(std::vector<std::string> &overrideSearchPaths) {
         impl = new Impl(this);
     }
     AudioPluginFormatVST3::~AudioPluginFormatVST3() {
         delete impl;
     }
 
-    AudioPluginExtensibility<AudioPluginFormat>* AudioPluginFormatVST3::getExtensibility() {
-        return impl->getExtensibility();
+    AudioPluginScanner * AudioPluginFormatVST3::scanner() {
+        return impl->scanner();
     }
 
-    bool AudioPluginFormatVST3::usePluginSearchPaths() { return true;}
-
-    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
-
-    AudioPluginFormat::ScanningStrategyValue AudioPluginFormatVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
-
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatVST3::scanAllAvailablePlugins() {
-        return impl->scanAllAvailablePlugins();
+    AudioPluginExtensibility<AudioPluginFormat>* AudioPluginFormatVST3::getExtensibility() {
+        return impl->getExtensibility();
     }
 
     // Impl
@@ -87,37 +55,6 @@ namespace remidy {
 
     AudioPluginExtensibility<AudioPluginFormat> * AudioPluginFormatVST3::Impl::getExtensibility() {
         return &extensibility;
-    }
-
-    std::unique_ptr<PluginCatalogEntry> AudioPluginFormatVST3::Impl::createPluginInformation(PluginClassInfo &info) {
-        auto ret = std::make_unique<PluginCatalogEntry>();
-        static std::string format{"VST3"};
-        ret->format(format);
-        auto idString = hexBinaryToString((char*) info.tuid, sizeof(v3_tuid));
-        ret->bundlePath(info.bundlePath);
-        ret->pluginId(idString);
-        ret->displayName(info.name);
-        ret->vendorName(info.vendor);
-        ret->productUrl(info.url);
-        return ret;
-    }
-
-    std::vector<std::unique_ptr<PluginCatalogEntry>>  AudioPluginFormatVST3::Impl::scanAllAvailablePlugins() {
-        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
-        std::vector<PluginClassInfo> infos;
-        for (auto &path : owner->getDefaultSearchPaths()) {
-            std::filesystem::path dir{path};
-            if (is_directory(dir)) {
-                for (auto& entry : std::filesystem::directory_iterator(dir)) {
-                    if (!strcasecmp(entry.path().extension().c_str(), ".vst3")) {
-                        scanAllAvailablePluginsFromLibrary(entry.path(), infos);
-                    }
-                }
-            }
-        }
-        for (auto &info : infos)
-            ret.emplace_back(createPluginInformation(info));
-        return ret;
     }
 
     void AudioPluginFormatVST3::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
@@ -251,6 +188,85 @@ namespace remidy {
         library_pool.removeReference(info->bundlePath());
     }
 
+    // AudioPluginScannerVST3
+
+    std::vector<std::filesystem::path>& AudioPluginScannerVST3::getDefaultSearchPaths() {
+        static std::filesystem::path defaultSearchPathsVST3[] = {
+#if _WIN32
+            std::string(getenv("LOCALAPPDATA")) + "\\Programs\\Common\\VST3",
+            std::string(getenv("PROGRAMFILES")) + "\\Common Files\\VST3",
+            std::string(getenv("PROGRAMFILES(x86)")) + "\\Common Files\\VST3"
+#elif __APPLE__
+            std::string(getenv("HOME")) + "/Library/Audio/Plug-Ins/VST3",
+            "/Library/Audio/Plug-Ins/VST3",
+            "/Network/Library/Audio/Plug-Ins/VST3"
+#else // We assume the rest covers Linux and other Unix-y platforms
+            std::string(getenv("HOME")) + "/.vst3",
+            "/usr/lib/vst3",
+            "/usr/local/lib/vst3"
+#endif
+        };
+        static std::vector<std::filesystem::path> ret = [] {
+            std::vector<std::filesystem::path> paths{};
+            for (auto& path : defaultSearchPathsVST3)
+                paths.emplace_back(path);
+            return paths;
+        }();
+        return ret;
+    }
+
+    std::unique_ptr<PluginCatalogEntry> AudioPluginScannerVST3::createPluginInformation(PluginClassInfo &info) {
+        auto ret = std::make_unique<PluginCatalogEntry>();
+        static std::string format{"VST3"};
+        ret->format(format);
+        auto idString = hexBinaryToString((char*) info.tuid, sizeof(v3_tuid));
+        ret->bundlePath(info.bundlePath);
+        ret->pluginId(idString);
+        ret->displayName(info.name);
+        ret->vendorName(info.vendor);
+        ret->productUrl(info.url);
+        return ret;
+    }
+
+    bool AudioPluginScannerVST3::usePluginSearchPaths() { return true;}
+
+    AudioPluginScanner::ScanningStrategyValue AudioPluginScannerVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
+
+    AudioPluginScanner::ScanningStrategyValue AudioPluginScannerVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
+
+    std::vector<std::unique_ptr<PluginCatalogEntry>>  AudioPluginScannerVST3::scanAllAvailablePlugins() {
+        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
+        std::vector<PluginClassInfo> infos;
+        for (auto &path : getDefaultSearchPaths()) {
+            std::filesystem::path dir{path};
+            if (is_directory(dir)) {
+                for (auto& entry : std::filesystem::directory_iterator(dir)) {
+                    if (!strcasecmp(entry.path().extension().c_str(), ".vst3")) {
+                        scanAllAvailablePluginsFromLibrary(entry.path(), infos);
+                    }
+                }
+            }
+        }
+        for (auto &info : infos)
+            ret.emplace_back(createPluginInformation(info));
+        return ret;
+    }
+
+    void AudioPluginScannerVST3::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results) {
+        impl->getLogger()->logInfo("VST3: scanning %s ", vst3Dir.c_str());
+        // fast path scanning using moduleinfo.json
+        if (remidy_vst3::hasModuleInfo(vst3Dir)) {
+            for (auto& e : remidy_vst3::getModuleInfo(vst3Dir))
+                results.emplace_back(e);
+            return;
+        }
+        impl->forEachPlugin(vst3Dir, [&](void* module, IPluginFactory* factory, PluginClassInfo& pluginInfo) {
+            results.emplace_back(pluginInfo);
+        }, [&](void* module) {
+            impl->libraryPool()->removeReference(vst3Dir);
+        });
+    }
+
     // Loader helpers
 
     void AudioPluginFormatVST3::Impl::forEachPlugin(std::filesystem::path& vst3Dir,
@@ -294,21 +310,6 @@ namespace remidy {
             logger->logError("Could not load the library from bundle: %s", vst3Dir.c_str());
 
         std::filesystem::current_path(savedPath);
-    }
-
-    void AudioPluginFormatVST3::Impl::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results) {
-        logger->logInfo("VST3: scanning %s ", vst3Dir.c_str());
-        // fast path scanning using moduleinfo.json
-        if (remidy_vst3::hasModuleInfo(vst3Dir)) {
-            for (auto& e : remidy_vst3::getModuleInfo(vst3Dir))
-                results.emplace_back(e);
-            return;
-        }
-        forEachPlugin(vst3Dir, [&](void* module, IPluginFactory* factory, PluginClassInfo& pluginInfo) {
-            results.emplace_back(pluginInfo);
-        }, [&](void* module) {
-            library_pool.removeReference(vst3Dir);
-        });
     }
 
     // AudioPluginInstanceVST3

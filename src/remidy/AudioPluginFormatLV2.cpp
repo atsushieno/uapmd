@@ -6,10 +6,23 @@
 #include "lv2/LV2Helper.hpp"
 
 namespace remidy {
+    class AudioPluginScannerLV2 : public FileBasedAudioPluginScanner {
+        LilvWorld* world;
+    public:
+        AudioPluginScannerLV2(LilvWorld* world) : world(world) {}
+
+        bool usePluginSearchPaths() override { return true; }
+        std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
+        ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
+        ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
+    };
+
     class AudioPluginFormatLV2::Impl {
         AudioPluginFormatLV2* owner;
         Logger* logger;
         Extensibility extensibility;
+        AudioPluginScannerLV2 lv2_scanner{nullptr};
 
     public:
         explicit Impl(AudioPluginFormatLV2* owner);
@@ -21,6 +34,7 @@ namespace remidy {
         std::vector<LV2_Feature*> features{};
 
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
+        AudioPluginScanner* scanner() { return &lv2_scanner; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)> callback);
         void unrefLibrary(PluginCatalogEntry& info);
@@ -75,6 +89,7 @@ namespace remidy {
         logger(Logger::global()),
         extensibility(*owner) {
         world = lilv_world_new();
+        lv2_scanner = AudioPluginScannerLV2(world);
         // FIXME: setup paths
         lilv_world_load_all(world);
 
@@ -86,7 +101,7 @@ namespace remidy {
         lilv_free(world);
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatLV2::Impl::scanAllAvailablePlugins() {
+    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginScannerLV2::scanAllAvailablePlugins() {
         std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
 
         auto plugins = lilv_world_get_all_plugins(world);
@@ -154,7 +169,11 @@ namespace remidy {
         return impl->getExtensibility();
     }
 
-    std::vector<std::filesystem::path>& AudioPluginFormatLV2::getDefaultSearchPaths() {
+    AudioPluginScanner * AudioPluginFormatLV2::scanner() {
+        return impl->scanner();
+    }
+
+    std::vector<std::filesystem::path>& AudioPluginScannerLV2::getDefaultSearchPaths() {
         static std::filesystem::path defaultSearchPathsLV2[] = {
 #if _WIN32
             std::string(getenv("APPDATA")) + "\\LV2",
@@ -175,10 +194,6 @@ namespace remidy {
             return paths;
         }();
         return ret;
-    }
-
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginFormatLV2::scanAllAvailablePlugins() {
-        return impl->scanAllAvailablePlugins();
     }
 
     void AudioPluginFormatLV2::createInstance(PluginCatalogEntry* info,

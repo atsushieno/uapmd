@@ -8,14 +8,23 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 namespace remidy {
+    class AudioPluginScannerAU : public AudioPluginScanner {
+        ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
+        ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
+    };
+
     class AudioPluginFormatAU::Impl {
         AudioPluginFormat* format;
         Logger* logger;
         Extensibility extensibility;
+        AudioPluginScannerAU au_scanner{};
     public:
         Impl(AudioPluginFormat* format, Logger* logger) : format(format), logger(logger), extensibility(*format) {}
 
         Extensibility* getExtensibility() { return &extensibility; }
+        AudioPluginScanner* scanner() { return &au_scanner; }
+
         Logger* getLogger() { return logger; }
     };
 

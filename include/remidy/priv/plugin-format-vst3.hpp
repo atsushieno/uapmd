@@ -3,7 +3,7 @@
 #include "../remidy.hpp"
 
 namespace remidy {
-    class AudioPluginFormatVST3 : public FileBasedAudioPluginFormat {
+    class AudioPluginFormatVST3 : public AudioPluginFormat {
     public:
         class Impl;
 
@@ -23,13 +23,9 @@ namespace remidy {
         ~AudioPluginFormatVST3() override;
 
         std::string name() override { return "VST3"; }
+        AudioPluginScanner* scanner() override;
         AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
         AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return AudioPluginUIThreadRequirement::AllNonAudioOperation; }
-        bool usePluginSearchPaths() override;
-        std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
-        ScanningStrategyValue scanRequiresLoadLibrary() override;
-        ScanningStrategyValue scanRequiresInstantiation() override;
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
 
         void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) override;
 

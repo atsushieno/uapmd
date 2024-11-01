@@ -3,6 +3,7 @@
 #include "priv/common.hpp"
 #include "priv/event-loop.hpp"
 #include "priv/plugin-catalog.hpp"
+#include "priv/plugin-scanner.hpp"
 #include "priv/processing-context.hpp"
 #include "priv/plugin-instance.hpp"
 #include "priv/plugin-format.hpp"

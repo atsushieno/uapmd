@@ -4,7 +4,7 @@
 #include <iostream>
 
 
-void remidy::PluginInstancing::setupInstance(std::function<void(std::string error)>&& callback) {
+void remidy_scan::PluginInstancing::setupInstance(std::function<void(std::string error)>&& callback) {
     std::cerr << "  instantiating " << format->name() << " " << displayName << std::endl;
     instancing_state = PluginInstancingState::Preparing;
 
@@ -38,13 +38,13 @@ void remidy::PluginInstancing::setupInstance(std::function<void(std::string erro
     });
 }
 
-remidy::PluginInstancing::PluginInstancing(PluginScanner& scanner, AudioPluginFormat* format, PluginCatalogEntry* entry) :
+remidy_scan::PluginInstancing::PluginInstancing(PluginScanner& scanner, AudioPluginFormat* format, PluginCatalogEntry* entry) :
     scanner(scanner), format(format), entry(entry) {
     displayName = entry->displayName();
 }
 
 
-remidy::PluginInstancing::~PluginInstancing() {
+remidy_scan::PluginInstancing::~PluginInstancing() {
     assert(instancing_state != PluginInstancingState::Preparing);
     if (!instance)
         return;
@@ -55,7 +55,7 @@ remidy::PluginInstancing::~PluginInstancing() {
     instancing_state = PluginInstancingState::Terminated;
 }
 
-void remidy::PluginInstancing::makeAlive(std::function<void(std::string error)>&& callback) {
+void remidy_scan::PluginInstancing::makeAlive(std::function<void(std::string error)>&& callback) {
     if (scanner.createInstanceOnUIThread(format, entry)) {
         EventLoop::runTaskOnMainThread([&] {
             setupInstance(std::move(callback));

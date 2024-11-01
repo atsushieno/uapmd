@@ -12,7 +12,7 @@
 // -------- instancing --------
 const char* APP_NAME= "remidy-scan";
 
-remidy::PluginScanner scanner{};
+remidy_scan::PluginScanner scanner{};
 
 class RemidyScan {
 
@@ -35,14 +35,14 @@ int testInstancing() {
             bool successful = false;
             {
                 // scoped object
-                remidy::PluginInstancing instancing{scanner, format, info};
+                remidy_scan::PluginInstancing instancing{scanner, format, info};
                 // ...
                 // you could adjust configuration here
                 // ...
                 instancing.makeAlive([&](std::string err) {
                 });
-                while (instancing.instancingState() == remidy::PluginInstancingState::Created ||
-                       instancing.instancingState()  == remidy::PluginInstancingState::Preparing)
+                while (instancing.instancingState() == remidy_scan::PluginInstancingState::Created ||
+                       instancing.instancingState()  == remidy_scan::PluginInstancingState::Preparing)
                     std::this_thread::yield();
 
                 std::cerr << "  " << format->name() << ": Successfully configured " << displayName << ". Instantiating now..." << std::endl;

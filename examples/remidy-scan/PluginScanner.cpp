@@ -1,7 +1,7 @@
 
 #include "PluginScanner.hpp"
 
-int remidy::PluginScanner::performPluginScanning(std::filesystem::path& pluginListCacheFile)  {
+int remidy_scan::PluginScanner::performPluginScanning(std::filesystem::path& pluginListCacheFile)  {
     if (std::filesystem::exists(pluginListCacheFile)) {
         catalog.load(pluginListCacheFile);
     }
@@ -9,8 +9,8 @@ int remidy::PluginScanner::performPluginScanning(std::filesystem::path& pluginLi
     // build catalog
     for (auto& format : formats) {
         auto plugins = filterByFormat(catalog.getPlugins(), format->name());
-        if (!format->scanningMayBeSlow() || plugins.empty())
-            for (auto& info : format->scanAllAvailablePlugins())
+        if (!format->scanner()->scanningMayBeSlow() || plugins.empty())
+            for (auto& info : format->scanner()->scanAllAvailablePlugins())
                 if (!catalog.contains(info->format(), info->pluginId()))
                     catalog.add(std::move(info));
     }
@@ -19,7 +19,7 @@ int remidy::PluginScanner::performPluginScanning(std::filesystem::path& pluginLi
 }
 
 
-bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginCatalogEntry *entry) {
+bool remidy_scan::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginCatalogEntry *entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool skip = false;
@@ -80,7 +80,7 @@ bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginC
     return !skip;
 }
 
-bool remidy::PluginScanner::createInstanceOnUIThread(AudioPluginFormat *format, PluginCatalogEntry* entry) {
+bool remidy_scan::PluginScanner::createInstanceOnUIThread(AudioPluginFormat *format, PluginCatalogEntry* entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool forceMainThread =
