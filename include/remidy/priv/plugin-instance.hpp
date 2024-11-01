@@ -10,7 +10,7 @@ namespace remidy {
         Float64
     };
 
-    enum class AudioPluginUIThreadRequirement : uint32_t {
+    enum class PluginUIThreadRequirement : uint32_t {
         // AudioUnit and LV2, by default (probably bad behaved plugins can be explicitly marked as dirty = AllNonAudioOperation)
         None = 0,
         // CLAP and VST3, by default (probably good plugins can be excluded out to switch to None)
@@ -18,9 +18,9 @@ namespace remidy {
         AllNonAudioOperation = 0xFFFFFFFF
     };
 
-    class AudioPluginInstance {
+    class PluginInstance {
     protected:
-        explicit AudioPluginInstance() = default;
+        explicit PluginInstance() = default;
 
     public:
         struct ConfigurationRequest {
@@ -33,11 +33,11 @@ namespace remidy {
             //std::optional<std::vector<BusConfiguration>> outputBuses{};
         };
 
-        virtual ~AudioPluginInstance() = default;
+        virtual ~PluginInstance() = default;
 
-        virtual AudioPluginExtensibility<AudioPluginInstance>* getExtensibility() { return nullptr; }
+        virtual PluginExtensibility<PluginInstance>* getExtensibility() { return nullptr; }
 
-        virtual AudioPluginUIThreadRequirement requiresUIThreadOn() = 0;
+        virtual PluginUIThreadRequirement requiresUIThreadOn() = 0;
 
         // Returns true if there is a main audio input bus.
         // In a long term, it should be just a shorthand property for current bus configuration.

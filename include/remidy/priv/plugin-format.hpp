@@ -4,20 +4,20 @@
 #include "../remidy.hpp"
 
 namespace remidy {
-    class AudioPluginFormat {
+    class PluginFormat {
         class Impl;
         Impl *impl{};
 
     protected:
-        AudioPluginFormat();
-        virtual ~AudioPluginFormat() = default;
+        PluginFormat();
+        virtual ~PluginFormat() = default;
 
     public:
         virtual std::string name() = 0;
 
         // Provides format-specific extension points.
         // Cast to the type of the format to access those format-specifics.
-        virtual AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() { return nullptr; }
+        virtual PluginExtensibility<PluginFormat>* getExtensibility() { return nullptr; }
 
         // Indicates whether you should invoke plugin methods on the UI/main thread.
         //
@@ -30,9 +30,9 @@ namespace remidy {
         // process certain VST/CLAP plugins work in better "multi thread ready" way, or on the other
         // hand treat some AU/LV2 plugins work only on the main thread when any of plugins in those
         // formats behave unstable.
-        virtual AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) = 0;
+        virtual PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) = 0;
 
-        virtual AudioPluginScanner* scanner() = 0;
+        virtual PluginScanner* scanner() = 0;
 
         // Indicates whether the plugin API requires sample rate at *instantiating*.
         // Only LV2 requires this, among VST3, AUv2/v3, LV2, and CLAP.
@@ -41,11 +41,11 @@ namespace remidy {
         bool instantiateRequiresSampleRate();
 
         struct InvokeResult {
-            std::unique_ptr<AudioPluginInstance> instance;
+            std::unique_ptr<PluginInstance> instance;
             std::string error;
         };
 
         // Asynchronously creates a plugin instance.
-        virtual void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) = 0;
+        virtual void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) = 0;
     };
 }

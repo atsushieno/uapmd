@@ -6,7 +6,7 @@
 #include "lv2/LV2Helper.hpp"
 
 namespace remidy {
-    class AudioPluginScannerLV2 : public FileBasedAudioPluginScanner {
+    class AudioPluginScannerLV2 : public FileBasedPluginScanner {
         LilvWorld* world;
     public:
         AudioPluginScannerLV2(LilvWorld* world) : world(world) {}
@@ -18,14 +18,14 @@ namespace remidy {
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
     };
 
-    class AudioPluginFormatLV2::Impl {
-        AudioPluginFormatLV2* owner;
+    class PluginFormatLV2::Impl {
+        PluginFormatLV2* owner;
         Logger* logger;
         Extensibility extensibility;
         AudioPluginScannerLV2 lv2_scanner{nullptr};
 
     public:
-        explicit Impl(AudioPluginFormatLV2* owner);
+        explicit Impl(PluginFormatLV2* owner);
         ~Impl();
 
         auto format() const { return owner; }
@@ -33,17 +33,17 @@ namespace remidy {
         remidy_lv2::LV2ImplWorldContext *worldContext;
         std::vector<LV2_Feature*> features{};
 
-        AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
-        AudioPluginScanner* scanner() { return &lv2_scanner; }
+        PluginExtensibility<PluginFormat>* getExtensibility();
+        PluginScanner* scanner() { return &lv2_scanner; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
-        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)> callback);
+        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback);
         void unrefLibrary(PluginCatalogEntry& info);
         PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
     };
 
-    class AudioPluginInstanceLV2 : public AudioPluginInstance {
+    class AudioPluginInstanceLV2 : public PluginInstance {
         PluginCatalogEntry* entry;
-        AudioPluginFormatLV2::Impl* formatImpl;
+        PluginFormatLV2::Impl* formatImpl;
         const LilvPlugin* plugin;
         LilvInstance* instance{nullptr};
         remidy_lv2::LV2ImplPluginContext implContext;
@@ -60,10 +60,10 @@ namespace remidy {
         std::vector<AudioBusConfiguration*> output_buses;
 
     public:
-        explicit AudioPluginInstanceLV2(PluginCatalogEntry* entry, AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
+        explicit AudioPluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
         ~AudioPluginInstanceLV2() override;
 
-        AudioPluginUIThreadRequirement requiresUIThreadOn() override {
+        PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
             return formatImpl->format()->requiresUIThreadOn(entry);
         }
@@ -84,7 +84,7 @@ namespace remidy {
         const std::vector<AudioBusConfiguration*> audioOutputBuses() const override;
     };
 
-    AudioPluginFormatLV2::Impl::Impl(AudioPluginFormatLV2* owner) :
+    PluginFormatLV2::Impl::Impl(PluginFormatLV2* owner) :
         owner(owner),
         logger(Logger::global()),
         extensibility(*owner) {
@@ -96,7 +96,7 @@ namespace remidy {
         // This also initializes features
         worldContext = new remidy_lv2::LV2ImplWorldContext(logger, world);
     }
-    AudioPluginFormatLV2::Impl::~Impl() {
+    PluginFormatLV2::Impl::~Impl() {
         delete worldContext;
         lilv_free(world);
     }
@@ -130,9 +130,9 @@ namespace remidy {
         return ret;
     }
 
-    void AudioPluginFormatLV2::Impl::createInstance(
+    void PluginFormatLV2::Impl::createInstance(
         PluginCatalogEntry* info,
-        std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)> callback
+        std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
     ) {
         auto targetUri = lilv_new_uri(world, info->pluginId().c_str());
         auto plugins = lilv_world_get_all_plugins(world);
@@ -145,31 +145,31 @@ namespace remidy {
         callback(nullptr, std::string{"Plugin '"} + info->pluginId() + "' was not found");
     }
 
-    void AudioPluginFormatLV2::Impl::unrefLibrary(PluginCatalogEntry& info) {
+    void PluginFormatLV2::Impl::unrefLibrary(PluginCatalogEntry& info) {
     }
 
-    PluginCatalog AudioPluginFormatLV2::Impl::createCatalogFragment(const std::filesystem::path &bundlePath) {
+    PluginCatalog PluginFormatLV2::Impl::createCatalogFragment(const std::filesystem::path &bundlePath) {
         // FIXME: implement
         throw std::runtime_error("AudioPluginFormatLV2::createCatalogFragment() is not implemented");
     }
 
-    AudioPluginExtensibility<AudioPluginFormat> * AudioPluginFormatLV2::Impl::getExtensibility() {
+    PluginExtensibility<PluginFormat> * PluginFormatLV2::Impl::getExtensibility() {
         return &extensibility;
     }
 
-    AudioPluginFormatLV2::AudioPluginFormatLV2(std::vector<std::string> &overrideSearchPaths) {
+    PluginFormatLV2::PluginFormatLV2(std::vector<std::string> &overrideSearchPaths) {
         impl = new Impl(this);
     }
 
-    AudioPluginFormatLV2::~AudioPluginFormatLV2() {
+    PluginFormatLV2::~PluginFormatLV2() {
         delete impl;
     }
 
-    AudioPluginExtensibility<AudioPluginFormat> * AudioPluginFormatLV2::getExtensibility() {
+    PluginExtensibility<PluginFormat> * PluginFormatLV2::getExtensibility() {
         return impl->getExtensibility();
     }
 
-    AudioPluginScanner * AudioPluginFormatLV2::scanner() {
+    PluginScanner * PluginFormatLV2::scanner() {
         return impl->scanner();
     }
 
@@ -196,18 +196,18 @@ namespace remidy {
         return ret;
     }
 
-    void AudioPluginFormatLV2::createInstance(PluginCatalogEntry* info,
-        std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
+    void PluginFormatLV2::createInstance(PluginCatalogEntry* info,
+        std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) {
         impl->createInstance(info, callback);
     }
 
-    AudioPluginFormatLV2::Extensibility::Extensibility(AudioPluginFormat &format) :
-        AudioPluginExtensibility(format) {
+    PluginFormatLV2::Extensibility::Extensibility(PluginFormat &format) :
+        PluginExtensibility(format) {
     }
 
     // AudioPluginInstanceLV2
 
-    AudioPluginInstanceLV2::AudioPluginInstanceLV2(PluginCatalogEntry* entry, AudioPluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
+    AudioPluginInstanceLV2::AudioPluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
         entry(entry), formatImpl(formatImpl), plugin(plugin),
         implContext(formatImpl->worldContext, formatImpl->world, plugin) {
         buses = inspectBuses();

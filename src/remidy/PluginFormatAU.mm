@@ -1,24 +1,24 @@
 #if __APPLE__
 
-#include "AudioPluginFormatAU.hpp"
+#include "PluginFormatAU.hpp"
 
-remidy::AudioPluginFormatAU::AudioPluginFormatAU() {
+remidy::PluginFormatAU::PluginFormatAU() {
     impl = new Impl(this, Logger::global());
 }
 
-remidy::AudioPluginFormatAU::~AudioPluginFormatAU() {
+remidy::PluginFormatAU::~PluginFormatAU() {
     delete impl;
 }
 
-remidy::Logger* remidy::AudioPluginFormatAU::getLogger() {
+remidy::Logger* remidy::PluginFormatAU::getLogger() {
     return impl->getLogger();
 }
 
-remidy::AudioPluginExtensibility<remidy::AudioPluginFormat> * remidy::AudioPluginFormatAU::getExtensibility() {
+remidy::PluginExtensibility<remidy::PluginFormat> * remidy::PluginFormatAU::getExtensibility() {
     return impl->getExtensibility();
 }
 
-remidy::AudioPluginScanner* remidy::AudioPluginFormatAU::scanner() {
+remidy::PluginScanner* remidy::PluginFormatAU::scanner() {
     return impl->scanner();
 }
 
@@ -83,7 +83,7 @@ std::vector<AUPluginEntry> scanAllAvailableAUPlugins() {
     return ret;
 }
 
-std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginScannerAU::scanAllAvailablePlugins() {
+std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::PluginScannerAU::scanAllAvailablePlugins() {
     std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
 
     for (auto& plugin : scanAllAvailableAUPlugins()) {
@@ -100,7 +100,7 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::AudioPluginScan
     return ret;
 }
 
-void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
+void remidy::PluginFormatAU::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) {
     AudioComponentDescription desc{};
     std::istringstream id{info->pluginId()};
     id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;
@@ -130,13 +130,13 @@ void remidy::AudioPluginFormatAU::createInstance(PluginCatalogEntry* info, std::
     });
 }
 
-remidy::AudioPluginFormatAU::Extensibility::Extensibility(AudioPluginFormat &format) : AudioPluginExtensibility(format) {
+remidy::PluginFormatAU::Extensibility::Extensibility(PluginFormat &format) : PluginExtensibility(format) {
 }
 
 
 // AudioPluginInstanceAU
 
-remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(AudioPluginFormatAU *format, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
+remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
     format(format), info(info), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);

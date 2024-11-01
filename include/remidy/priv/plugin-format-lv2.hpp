@@ -3,24 +3,24 @@
 #include "../remidy.hpp"
 
 namespace remidy {
-    class AudioPluginFormatLV2 : public AudioPluginFormat {
+    class PluginFormatLV2 : public PluginFormat {
     public:
         class Impl;
 
-        class Extensibility : public AudioPluginExtensibility<AudioPluginFormat> {
+        class Extensibility : public PluginExtensibility<PluginFormat> {
         public:
-            explicit Extensibility(AudioPluginFormat& format);
+            explicit Extensibility(PluginFormat& format);
         };
 
-        explicit AudioPluginFormatLV2(std::vector<std::string>& overrideSearchPaths);
-        ~AudioPluginFormatLV2() override;
+        explicit PluginFormatLV2(std::vector<std::string>& overrideSearchPaths);
+        ~PluginFormatLV2() override;
 
         std::string name() override { return "LV2"; }
-        AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
-        AudioPluginScanner* scanner() override;
-        AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry*) override { return AudioPluginUIThreadRequirement::None; }
+        PluginExtensibility<PluginFormat>* getExtensibility() override;
+        PluginScanner* scanner() override;
+        PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry*) override { return PluginUIThreadRequirement::None; }
 
-        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) override;
+        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) override;
 
     private:
         Impl *impl;

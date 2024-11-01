@@ -8,14 +8,14 @@ using namespace remidy_vst3;
 namespace remidy {
     class AudioPluginInstanceVST3;
 
-    class AudioPluginScannerVST3 : public FileBasedAudioPluginScanner {
+    class AudioPluginScannerVST3 : public FileBasedPluginScanner {
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
 
-        AudioPluginFormatVST3::Impl* impl{};
+        PluginFormatVST3::Impl* impl{};
 
     public:
-        AudioPluginScannerVST3(AudioPluginFormatVST3::Impl* impl)
+        AudioPluginScannerVST3(PluginFormatVST3::Impl* impl)
             : impl(impl) {
         }
         bool usePluginSearchPaths() override;
@@ -25,8 +25,8 @@ namespace remidy {
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
     };
 
-    class AudioPluginFormatVST3::Impl {
-        AudioPluginFormatVST3* owner;
+    class PluginFormatVST3::Impl {
+        PluginFormatVST3* owner;
         Logger* logger;
         Extensibility extensibility;
         AudioPluginScannerVST3 vst3_scanner;
@@ -40,7 +40,7 @@ namespace remidy {
         HostApplication host;
 
     public:
-        explicit Impl(AudioPluginFormatVST3* owner) :
+        explicit Impl(PluginFormatVST3* owner) :
             owner(owner),
             // FIXME: should be provided by some means
             logger(Logger::global()),
@@ -57,8 +57,8 @@ namespace remidy {
         HostApplication* getHost() { return &host; }
         PluginBundlePool* libraryPool() { return &library_pool; }
 
-        AudioPluginExtensibility<AudioPluginFormat>* getExtensibility();
-        AudioPluginScanner* scanner() { return &vst3_scanner; }
+        PluginExtensibility<PluginFormat>* getExtensibility();
+        PluginScanner* scanner() { return &vst3_scanner; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path& vst3Dir,
             const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
@@ -66,12 +66,12 @@ namespace remidy {
         );
         void unrefLibrary(PluginCatalogEntry* info);
 
-        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback);
+        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback);
         StatusCode configure(int32_t sampleRate);
     };
 
-    class AudioPluginInstanceVST3 : public AudioPluginInstance {
-        AudioPluginFormatVST3::Impl* owner;
+    class AudioPluginInstanceVST3 : public PluginInstance {
+        PluginFormatVST3::Impl* owner;
         PluginCatalogEntry* info;
         void* module;
         IPluginFactory* factory;
@@ -113,7 +113,7 @@ namespace remidy {
 
     public:
         explicit AudioPluginInstanceVST3(
-            AudioPluginFormatVST3::Impl* owner,
+            PluginFormatVST3::Impl* owner,
             PluginCatalogEntry* info,
             void* module,
             IPluginFactory* factory,
@@ -125,7 +125,7 @@ namespace remidy {
             );
         ~AudioPluginInstanceVST3() override;
 
-        AudioPluginUIThreadRequirement requiresUIThreadOn() override {
+        PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
             return owner->format()->requiresUIThreadOn(info);
         }

@@ -61,12 +61,12 @@ namespace remidy {
     // a getter that users of the extendable class can downcast to each class.
     // See how `AudioPluginFormatVST3::getExtensibility()` works for example.
     template <typename T>
-    class AudioPluginExtensibility {
+    class PluginExtensibility {
         T& owner;
     protected:
-        explicit AudioPluginExtensibility(T& owner) : owner(owner) {
+        explicit PluginExtensibility(T& owner) : owner(owner) {
         }
-        virtual ~AudioPluginExtensibility() = default;
+        virtual ~PluginExtensibility() = default;
     };
 
     inline void setCurrentThreadNameIfPossible(std::string const threadName) {

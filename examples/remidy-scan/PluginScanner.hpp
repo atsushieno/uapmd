@@ -12,13 +12,13 @@ namespace remidy_scan {
 
         std::vector<std::string> vst3SearchPaths{};
         std::vector<std::string> lv2SearchPaths{};
-        AudioPluginFormatVST3 vst3{vst3SearchPaths};
-        AudioPluginFormatAU au{};
-        AudioPluginFormatLV2 lv2{lv2SearchPaths};
+        PluginFormatVST3 vst3{vst3SearchPaths};
+        PluginFormatAU au{};
+        PluginFormatLV2 lv2{lv2SearchPaths};
         std::filesystem::path pluginListCacheFile{};
 
     public:
-        std::vector<AudioPluginFormat*> formats{&lv2, &au, &vst3};
+        std::vector<PluginFormat*> formats{&lv2, &au, &vst3};
         PluginCatalog catalog{};
         auto filterByFormat(std::vector<PluginCatalogEntry*> entries, std::string format) {
             erase_if(entries, [format](PluginCatalogEntry* entry) { return entry->format() != format; });
@@ -33,8 +33,8 @@ namespace remidy_scan {
             catalog.save(fileToSave);
         }
 
-        bool safeToInstantiate(AudioPluginFormat* format, PluginCatalogEntry* entry);
+        bool safeToInstantiate(PluginFormat* format, PluginCatalogEntry* entry);
 
-        bool createInstanceOnUIThread(AudioPluginFormat* format, PluginCatalogEntry* entry);
+        bool createInstanceOnUIThread(PluginFormat* format, PluginCatalogEntry* entry);
     };
 }

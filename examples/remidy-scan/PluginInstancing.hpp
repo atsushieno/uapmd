@@ -18,21 +18,21 @@ namespace remidy_scan {
 
     class PluginInstancing {
         PluginScanner& scanner;
-        AudioPluginFormat* format{};
+        PluginFormat* format{};
         PluginCatalogEntry* entry{};
-        AudioPluginInstance::ConfigurationRequest config{};
-        std::unique_ptr<AudioPluginInstance> instance{nullptr};
+        PluginInstance::ConfigurationRequest config{};
+        std::unique_ptr<PluginInstance> instance{nullptr};
         std::string displayName;
         std::atomic<PluginInstancingState> instancing_state{PluginInstancingState::Created};
 
         void setupInstance(std::function<void(std::string error)>&& callback);
 
     public:
-        explicit PluginInstancing(PluginScanner& scanner, AudioPluginFormat* format, PluginCatalogEntry* entry);
+        explicit PluginInstancing(PluginScanner& scanner, PluginFormat* format, PluginCatalogEntry* entry);
         ~PluginInstancing();
         void makeAlive(std::function<void(std::string error)>&& callback);
 
-        void withInstance(std::function<void(AudioPluginInstance*)>&& callback) const {
+        void withInstance(std::function<void(PluginInstance*)>&& callback) const {
             assert(instancing_state != PluginInstancingState::Preparing);
             if (instancing_state != PluginInstancingState::Ready || !instance)
                 return;

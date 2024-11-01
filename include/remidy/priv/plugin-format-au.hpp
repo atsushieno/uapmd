@@ -3,27 +3,27 @@
 #include "../remidy.hpp"
 
 namespace remidy {
-    class AudioPluginFormatAU : public AudioPluginFormat {
+    class PluginFormatAU : public PluginFormat {
         class Impl;
         Impl* impl;
 
     public:
-        AudioPluginFormatAU();
-        ~AudioPluginFormatAU() override;
+        PluginFormatAU();
+        ~PluginFormatAU() override;
 
-        class Extensibility : public AudioPluginExtensibility<AudioPluginFormat> {
+        class Extensibility : public PluginExtensibility<PluginFormat> {
         public:
-            explicit Extensibility(AudioPluginFormat& format);
+            explicit Extensibility(PluginFormat& format);
         };
 
         Logger* getLogger();
 
         std::string name() override { return "AU"; }
-        AudioPluginExtensibility<AudioPluginFormat>* getExtensibility() override;
-        AudioPluginScanner* scanner() override;
+        PluginExtensibility<PluginFormat>* getExtensibility() override;
+        PluginScanner* scanner() override;
 
-        AudioPluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry*) override { return AudioPluginUIThreadRequirement::None; }
+        PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry*) override { return PluginUIThreadRequirement::None; }
 
-        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) override;
+        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) override;
     };
 }

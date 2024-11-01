@@ -19,7 +19,7 @@ int remidy_scan::PluginScanner::performPluginScanning(std::filesystem::path& plu
 }
 
 
-bool remidy_scan::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginCatalogEntry *entry) {
+bool remidy_scan::PluginScanner::safeToInstantiate(PluginFormat* format, PluginCatalogEntry *entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool skip = false;
@@ -80,7 +80,7 @@ bool remidy_scan::PluginScanner::safeToInstantiate(AudioPluginFormat* format, Pl
     return !skip;
 }
 
-bool remidy_scan::PluginScanner::createInstanceOnUIThread(AudioPluginFormat *format, PluginCatalogEntry* entry) {
+bool remidy_scan::PluginScanner::createInstanceOnUIThread(PluginFormat *format, PluginCatalogEntry* entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool forceMainThread =
@@ -110,5 +110,5 @@ bool remidy_scan::PluginScanner::createInstanceOnUIThread(AudioPluginFormat *for
         || format->name() == "AU" && displayName == "Reaktor 6 MFX"
         || format->name() == "AU" && displayName == "Reaktor 6 MIDIFX"
     ;
-    return forceMainThread || format->requiresUIThreadOn(entry) != AudioPluginUIThreadRequirement::None;
+    return forceMainThread || format->requiresUIThreadOn(entry) != PluginUIThreadRequirement::None;
 }

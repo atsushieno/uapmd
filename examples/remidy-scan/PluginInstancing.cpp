@@ -8,7 +8,7 @@ void remidy_scan::PluginInstancing::setupInstance(std::function<void(std::string
     std::cerr << "  instantiating " << format->name() << " " << displayName << std::endl;
     instancing_state = PluginInstancingState::Preparing;
 
-    format->createInstance(entry, [this, callback](std::unique_ptr<AudioPluginInstance> newInstance, std::string error) {
+    format->createInstance(entry, [this, callback](std::unique_ptr<PluginInstance> newInstance, std::string error) {
         if (!error.empty()) {
             instancing_state = PluginInstancingState::Error;
             callback(error);
@@ -38,7 +38,7 @@ void remidy_scan::PluginInstancing::setupInstance(std::function<void(std::string
     });
 }
 
-remidy_scan::PluginInstancing::PluginInstancing(PluginScanner& scanner, AudioPluginFormat* format, PluginCatalogEntry* entry) :
+remidy_scan::PluginInstancing::PluginInstancing(PluginScanner& scanner, PluginFormat* format, PluginCatalogEntry* entry) :
     scanner(scanner), format(format), entry(entry) {
     displayName = entry->displayName();
 }

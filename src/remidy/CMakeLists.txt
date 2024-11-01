@@ -96,14 +96,14 @@ target_sources(remidy PRIVATE
         MidiSequence.cpp
 
         PluginCatalog.cpp
-        AudioPluginLibraryPool.cpp
-        AudioPluginFormat.cpp
-        AudioPluginFormatVST3.cpp
-        AudioPluginFormatAU.mm
-        AudioPluginFormatLV2.cpp
+        PluginBundlePool.cpp
+        PluginFormat.cpp
+        PluginFormatVST3.cpp
+        PluginFormatAU.mm
+        PluginFormatLV2.cpp
 
         AudioProcessContext.cpp
-        AudioPluginInstance.cpp
+        PluginInstance.cpp
 )
 
 add_library(remidy::remidy ALIAS remidy)

@@ -4,35 +4,35 @@
 #include "remidy.hpp"
 #include "utils.hpp"
 
-#include "AudioPluginFormatVST3.hpp"
+#include "PluginFormatVST3.hpp"
 
 using namespace remidy_vst3;
 
 namespace remidy {
     // AudioPluginFormatVST3
 
-    AudioPluginFormatVST3::Extensibility::Extensibility(AudioPluginFormat &format)
-        : AudioPluginExtensibility(format) {
+    PluginFormatVST3::Extensibility::Extensibility(PluginFormat &format)
+        : PluginExtensibility(format) {
     }
 
-    AudioPluginFormatVST3::AudioPluginFormatVST3(std::vector<std::string> &overrideSearchPaths) {
+    PluginFormatVST3::PluginFormatVST3(std::vector<std::string> &overrideSearchPaths) {
         impl = new Impl(this);
     }
-    AudioPluginFormatVST3::~AudioPluginFormatVST3() {
+    PluginFormatVST3::~PluginFormatVST3() {
         delete impl;
     }
 
-    AudioPluginScanner * AudioPluginFormatVST3::scanner() {
+    PluginScanner * PluginFormatVST3::scanner() {
         return impl->scanner();
     }
 
-    AudioPluginExtensibility<AudioPluginFormat>* AudioPluginFormatVST3::getExtensibility() {
+    PluginExtensibility<PluginFormat>* PluginFormatVST3::getExtensibility() {
         return impl->getExtensibility();
     }
 
     // Impl
 
-    StatusCode AudioPluginFormatVST3::Impl::doLoad(std::filesystem::path &vst3Dir, void** module) const {
+    StatusCode PluginFormatVST3::Impl::doLoad(std::filesystem::path &vst3Dir, void** module) const {
         *module = loadModuleFromVst3Path(vst3Dir);
         if (*module) {
             auto err = initializeModule(*module);
@@ -48,20 +48,20 @@ namespace remidy {
         return *module == nullptr ? StatusCode::FAILED_TO_INSTANTIATE : StatusCode::OK;
     };
 
-    StatusCode AudioPluginFormatVST3::Impl::doUnload(std::filesystem::path &vst3Dir, void* module) {
+    StatusCode PluginFormatVST3::Impl::doUnload(std::filesystem::path &vst3Dir, void* module) {
         unloadModule(module);
         return StatusCode::OK;
     }
 
-    AudioPluginExtensibility<AudioPluginFormat> * AudioPluginFormatVST3::Impl::getExtensibility() {
+    PluginExtensibility<PluginFormat> * PluginFormatVST3::Impl::getExtensibility() {
         return &extensibility;
     }
 
-    void AudioPluginFormatVST3::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
+    void PluginFormatVST3::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) {
         return impl->createInstance(info, std::move(callback));
     }
 
-    void AudioPluginFormatVST3::Impl::createInstance(PluginCatalogEntry* pluginInfo, std::function<void(std::unique_ptr<AudioPluginInstance> instance, std::string error)>&& callback) {
+    void PluginFormatVST3::Impl::createInstance(PluginCatalogEntry* pluginInfo, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) {
         PluginCatalogEntry* entry = pluginInfo;
         std::unique_ptr<AudioPluginInstanceVST3> ret{nullptr};
         std::string error{};
@@ -184,7 +184,7 @@ namespace remidy {
         callback(std::move(ret), error);
     }
 
-    void AudioPluginFormatVST3::Impl::unrefLibrary(PluginCatalogEntry* info) {
+    void PluginFormatVST3::Impl::unrefLibrary(PluginCatalogEntry* info) {
         library_pool.removeReference(info->bundlePath());
     }
 
@@ -230,9 +230,9 @@ namespace remidy {
 
     bool AudioPluginScannerVST3::usePluginSearchPaths() { return true;}
 
-    AudioPluginScanner::ScanningStrategyValue AudioPluginScannerVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
+    PluginScanner::ScanningStrategyValue AudioPluginScannerVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
 
-    AudioPluginScanner::ScanningStrategyValue AudioPluginScannerVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
+    PluginScanner::ScanningStrategyValue AudioPluginScannerVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
 
     std::vector<std::unique_ptr<PluginCatalogEntry>>  AudioPluginScannerVST3::scanAllAvailablePlugins() {
         std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
@@ -269,7 +269,7 @@ namespace remidy {
 
     // Loader helpers
 
-    void AudioPluginFormatVST3::Impl::forEachPlugin(std::filesystem::path& vst3Dir,
+    void PluginFormatVST3::Impl::forEachPlugin(std::filesystem::path& vst3Dir,
         const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
         const std::function<void(void* module)>& cleanup
     ) {
@@ -318,7 +318,7 @@ namespace remidy {
     //  Some plugins take long time to instantiate IEditController, and it does not make sense for
     //  non-UI-based audio processing like our virtual MIDI devices.
     AudioPluginInstanceVST3::AudioPluginInstanceVST3(
-        AudioPluginFormatVST3::Impl* owner,
+        PluginFormatVST3::Impl* owner,
         PluginCatalogEntry* info,
         void* module,
         IPluginFactory* factory,

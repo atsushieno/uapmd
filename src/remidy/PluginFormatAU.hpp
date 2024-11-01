@@ -8,27 +8,27 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 namespace remidy {
-    class AudioPluginScannerAU : public AudioPluginScanner {
+    class PluginScannerAU : public PluginScanner {
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
     };
 
-    class AudioPluginFormatAU::Impl {
-        AudioPluginFormat* format;
+    class PluginFormatAU::Impl {
+        PluginFormatAU* format;
         Logger* logger;
         Extensibility extensibility;
-        AudioPluginScannerAU au_scanner{};
+        PluginScannerAU au_scanner{};
     public:
-        Impl(AudioPluginFormat* format, Logger* logger) : format(format), logger(logger), extensibility(*format) {}
+        Impl(PluginFormatAU* format, Logger* logger) : format(format), logger(logger), extensibility(*format) {}
 
         Extensibility* getExtensibility() { return &extensibility; }
-        AudioPluginScanner* scanner() { return &au_scanner; }
+        PluginScanner* scanner() { return &au_scanner; }
 
         Logger* getLogger() { return logger; }
     };
 
-    class AudioPluginInstanceAU : public AudioPluginInstance {
+    class AudioPluginInstanceAU : public PluginInstance {
         struct BusSearchResult {
             uint32_t numAudioIn{0};
             uint32_t numAudioOut{0};
@@ -58,13 +58,13 @@ namespace remidy {
         AudioContentType audio_content_type{AudioContentType::Float32};
 
     protected:
-        AudioPluginFormatAU *format;
+        PluginFormatAU *format;
         PluginCatalogEntry* info;
         AudioComponent component;
         AudioUnit instance;
         std::string name{};
 
-        AudioPluginInstanceAU(AudioPluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
+        AudioPluginInstanceAU(PluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
         ~AudioPluginInstanceAU() override;
 
     public:
@@ -73,7 +73,7 @@ namespace remidy {
             AUV3 = 3
         };
 
-        AudioPluginUIThreadRequirement requiresUIThreadOn() override {
+        PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
             return format->requiresUIThreadOn(info);
         }
@@ -99,7 +99,7 @@ namespace remidy {
 
     class AudioPluginInstanceAUv2 final : public AudioPluginInstanceAU {
     public:
-        AudioPluginInstanceAUv2(AudioPluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
+        AudioPluginInstanceAUv2(PluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
         ) : AudioPluginInstanceAU(format, info, component, instance) {
         }
 
@@ -112,7 +112,7 @@ namespace remidy {
 
     class AudioPluginInstanceAUv3 final : public AudioPluginInstanceAU {
     public:
-        AudioPluginInstanceAUv3(AudioPluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
+        AudioPluginInstanceAUv3(PluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
         ) : AudioPluginInstanceAU(format, info, component, instance) {
         }
 
