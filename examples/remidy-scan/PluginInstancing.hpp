@@ -2,7 +2,7 @@
 #include <cassert>
 #include <cpplocate/cpplocate.h>
 #include <remidy/remidy.hpp>
-#include "PluginScanner.hpp"
+#include "PluginScanning.hpp"
 
 namespace remidy_scan {
     using namespace remidy;
@@ -17,7 +17,7 @@ namespace remidy_scan {
     };
 
     class PluginInstancing {
-        PluginScanner& scanner;
+        PluginScanning& scanner;
         PluginFormat* format{};
         PluginCatalogEntry* entry{};
         PluginInstance::ConfigurationRequest config{};
@@ -28,7 +28,7 @@ namespace remidy_scan {
         void setupInstance(std::function<void(std::string error)>&& callback);
 
     public:
-        explicit PluginInstancing(PluginScanner& scanner, PluginFormat* format, PluginCatalogEntry* entry);
+        explicit PluginInstancing(PluginScanning& scanner, PluginFormat* format, PluginCatalogEntry* entry);
         ~PluginInstancing();
         void makeAlive(std::function<void(std::string error)>&& callback);
 

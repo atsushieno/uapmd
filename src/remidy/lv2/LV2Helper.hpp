@@ -25,6 +25,7 @@
 #include <lv2/atom/atom.h>
 #include <lv2/atom/util.h>
 #include <lv2/atom/forge.h>
+#include <lv2/port-groups/port-groups.h>
 #include <lv2/urid/urid.h>
 #include <lv2/midi/midi.h>
 #include <lv2/patch/patch.h>
@@ -121,6 +122,9 @@ namespace remidy_lv2 {
                     urid_core_integer{0};
         };
 
+// FIXME: remove this once https://github.com/lv2/lv2/pull/74 is merged and the new version is released.
+#define LV2_CORE__isSideChain LV2_CORE_PREFIX "isSideChain"
+
         explicit LV2ImplWorldContext(remidy::Logger* logger, LilvWorld *world) :
             logger(logger), world(world) {
             audio_port_uri_node = lilv_new_uri(world, LV2_CORE__AudioPort);
@@ -137,6 +141,8 @@ namespace remidy_lv2 {
             toggled_uri_node = lilv_new_uri (world, LV2_CORE__toggled);
             integer_uri_node = lilv_new_uri (world, LV2_CORE__integer);
             discrete_cv_uri_node = lilv_new_uri(world, LV2_PORT_PROPS__discreteCV);
+            is_side_chain_uri_node = lilv_new_uri(world, LV2_CORE__isSideChain);
+            port_group_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__group);
             rdfs_label_node = lilv_new_uri(world, LILV_NS_RDFS "label");
 
             features.urid_map_feature_data.handle = this;
@@ -216,6 +222,8 @@ namespace remidy_lv2 {
                 *default_uri_node,
                 *toggled_uri_node, *integer_uri_node,
                 *discrete_cv_uri_node,
+                *is_side_chain_uri_node,
+                *port_group_uri_node,
                 *midi_event_uri_node, *patch_message_uri_node,
                 *resize_port_minimum_size_node, *presets_preset_node,
                 *work_interface_uri_node, *rdfs_label_node;

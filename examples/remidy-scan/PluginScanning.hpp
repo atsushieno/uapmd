@@ -6,7 +6,7 @@
 namespace remidy_scan {
     using namespace remidy;
 
-    class PluginScanner {
+    class PluginScanning {
 
         // -------- scanning --------
 
@@ -25,7 +25,7 @@ namespace remidy_scan {
             return entries;
         }
 
-        ~PluginScanner() = default;
+        ~PluginScanning() = default;
 
         int performPluginScanning(std::filesystem::path& pluginListCacheFile);
 

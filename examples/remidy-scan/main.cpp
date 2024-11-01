@@ -6,13 +6,13 @@
 #include <cpptrace/from_current.hpp>
 #include <cpplocate/cpplocate.h>
 #include <remidy/remidy.hpp>
-#include "PluginScanner.hpp"
+#include "PluginScanning.hpp"
 #include "PluginInstancing.hpp"
 
 // -------- instancing --------
 const char* APP_NAME= "remidy-scan";
 
-remidy_scan::PluginScanner scanner{};
+remidy_scan::PluginScanning scanner{};
 
 class RemidyScan {
 
@@ -54,9 +54,9 @@ int testInstancing() {
                     remidy::AudioProcessContext ctx{4096};
                     // FIXME: channel count is not precise.
                     for (int32_t i = 0, n = numAudioIn; i < n; ++i)
-                        ctx.addAudioIn(2, 1024);
+                        ctx.addAudioIn(instance->audioInputBuses()[i]->channelLayout().channels(), 1024);
                     for (int32_t i = 0, n = numAudioOut; i < n; ++i)
-                        ctx.addAudioOut(2, 1024);
+                        ctx.addAudioOut(instance->audioOutputBuses()[i]->channelLayout().channels(), 1024);
                     ctx.frameCount(512);
                     for (uint32_t i = 0; i < numAudioIn; i++) {
                         // FIXME: channel count is not precise.

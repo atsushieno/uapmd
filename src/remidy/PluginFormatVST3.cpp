@@ -9,7 +9,7 @@
 using namespace remidy_vst3;
 
 namespace remidy {
-    // AudioPluginFormatVST3
+    // PluginFormatVST3
 
     PluginFormatVST3::Extensibility::Extensibility(PluginFormat &format)
         : PluginExtensibility(format) {
@@ -188,7 +188,7 @@ namespace remidy {
         library_pool.removeReference(info->bundlePath());
     }
 
-    // AudioPluginScannerVST3
+    // PluginScannerVST3
 
     std::vector<std::filesystem::path>& AudioPluginScannerVST3::getDefaultSearchPaths() {
         static std::filesystem::path defaultSearchPathsVST3[] = {
@@ -312,7 +312,7 @@ namespace remidy {
         std::filesystem::current_path(savedPath);
     }
 
-    // AudioPluginInstanceVST3
+    // PluginInstanceVST3
 
     // FIXME: we should make edit controller lazily loaded.
     //  Some plugins take long time to instantiate IEditController, and it does not make sense for

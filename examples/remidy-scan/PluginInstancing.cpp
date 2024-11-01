@@ -38,7 +38,7 @@ void remidy_scan::PluginInstancing::setupInstance(std::function<void(std::string
     });
 }
 
-remidy_scan::PluginInstancing::PluginInstancing(PluginScanner& scanner, PluginFormat* format, PluginCatalogEntry* entry) :
+remidy_scan::PluginInstancing::PluginInstancing(PluginScanning& scanner, PluginFormat* format, PluginCatalogEntry* entry) :
     scanner(scanner), format(format), entry(entry) {
     displayName = entry->displayName();
 }
@@ -48,10 +48,12 @@ remidy_scan::PluginInstancing::~PluginInstancing() {
     assert(instancing_state != PluginInstancingState::Preparing);
     if (!instance)
         return;
-    instancing_state = PluginInstancingState::Terminating;
-    auto code = instance->stopProcessing();
-    if (code != StatusCode::OK)
-        std::cerr << "  " << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << (int32_t) code << std::endl;
+    if (instancing_state == PluginInstancingState::Ready) {
+        instancing_state = PluginInstancingState::Terminating;
+        auto code = instance->stopProcessing();
+        if (code != StatusCode::OK)
+            std::cerr << "  " << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << (int32_t) code << std::endl;
+    }
     instancing_state = PluginInstancingState::Terminated;
 }
 

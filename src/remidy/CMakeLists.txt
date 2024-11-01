@@ -78,9 +78,6 @@ target_sources(remidy PRIVATE
 
         utils.cpp
         EventLoop.cpp
-        #EventLoop.posix.cpp
-        #EventLoop.windows.cpp
-        #EventLoop.darwin.cpp
 
         vst3/TravestyHelper.cpp
         vst3/HostClasses.cpp

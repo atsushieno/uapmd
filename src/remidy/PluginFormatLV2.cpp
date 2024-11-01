@@ -9,7 +9,7 @@ namespace remidy {
     class AudioPluginScannerLV2 : public FileBasedPluginScanner {
         LilvWorld* world;
     public:
-        AudioPluginScannerLV2(LilvWorld* world) : world(world) {}
+        explicit AudioPluginScannerLV2(LilvWorld* world) : world(world) {}
 
         bool usePluginSearchPaths() override { return true; }
         std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
@@ -35,7 +35,6 @@ namespace remidy {
 
         PluginExtensibility<PluginFormat>* getExtensibility();
         PluginScanner* scanner() { return &lv2_scanner; }
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback);
         void unrefLibrary(PluginCatalogEntry& info);
         PluginCatalog createCatalogFragment(const std::filesystem::path &bundlePath);
@@ -49,15 +48,24 @@ namespace remidy {
         remidy_lv2::LV2ImplPluginContext implContext;
 
         struct BusSearchResult {
-            uint32_t numAudioIn{0};
-            uint32_t numAudioOut{0};
             uint32_t numEventIn{0};
             uint32_t numEventOut{0};
         };
         BusSearchResult buses;
         BusSearchResult inspectBuses();
+        std::vector<AudioBusDefinition> input_bus_defs;
+        std::vector<AudioBusDefinition> output_bus_defs;
         std::vector<AudioBusConfiguration*> input_buses;
         std::vector<AudioBusConfiguration*> output_buses;
+        std::vector<void*> port_buffers{};
+
+        struct RemidyToLV2PortMapping {
+            size_t bus;
+            uint32_t channel;
+            int32_t lv2Port;
+        };
+        std::vector<RemidyToLV2PortMapping> audio_in_port_mapping{};
+        std::vector<RemidyToLV2PortMapping> audio_out_port_mapping{};
 
     public:
         explicit AudioPluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin);
@@ -75,8 +83,8 @@ namespace remidy {
         StatusCode process(AudioProcessContext &process) override;
 
         // port helpers
-        bool hasAudioInputs() override { return buses.numAudioIn > 0; }
-        bool hasAudioOutputs() override { return buses.numAudioOut > 0; }
+        bool hasAudioInputs() override { return !input_buses.empty(); }
+        bool hasAudioOutputs() override { return !output_buses.empty(); }
         bool hasEventInputs() override { return buses.numEventIn > 0; }
         bool hasEventOutputs() override { return buses.numEventOut > 0; }
 
@@ -214,9 +222,30 @@ namespace remidy {
     }
 
     AudioPluginInstanceLV2::~AudioPluginInstanceLV2() {
-        if (instance)
+        if (instance) {
+            lilv_instance_deactivate(instance);
             lilv_instance_free(instance);
+        }
         instance = nullptr;
+        if (plugin) {
+            uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
+            for (auto p : port_buffers)
+                if (p)
+                    free(p);
+        }
+    }
+
+    bool getNextAudioPortIndex(remidy_lv2::LV2ImplPluginContext& ctx, const LilvPlugin* plugin, const bool isInput, int32_t& result, int32_t& lv2PortIndex, uint32_t numPorts) {
+        while(lv2PortIndex < numPorts) {
+            auto port = lilv_plugin_get_port_by_index(plugin, lv2PortIndex);
+            if (isInput ? ctx.IS_AUDIO_IN(plugin, port) : ctx.IS_AUDIO_OUT(plugin, port)) {
+                result = lv2PortIndex++;
+                return true;
+            }
+            lv2PortIndex++;
+        }
+        result = -1;
+        return false;
     }
 
     StatusCode AudioPluginInstanceLV2::configure(ConfigurationRequest& configuration) {
@@ -227,10 +256,50 @@ namespace remidy {
                 // new configuration, and restore the state.
                     throw std::runtime_error("AudioPluginInstanceLV2::configure() re-configuration is not implemented");
 
-        instance = remidy_lv2::instantiate_plugin(formatImpl->worldContext, &implContext, plugin,
+        instance = instantiate_plugin(formatImpl->worldContext, &implContext, plugin,
             configuration.sampleRate, configuration.offlineMode);
         if (!instance)
             return StatusCode::FAILED_TO_INSTANTIATE;
+
+        // create port mappings
+        uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
+        int32_t portToScan = 0;
+        auto audioIns = audioInputBuses();
+        int32_t lv2AudioInIdx = 0;
+        for (size_t i = 0, n = audioIns.size(); i < n; i++) {
+            auto bus = audioIns[i];
+            for (uint32_t ch = 0, nCh = bus->channelLayout().channels(); ch < nCh; ch++) {
+                getNextAudioPortIndex(implContext, plugin, true, lv2AudioInIdx, portToScan, numPorts);
+                audio_in_port_mapping.emplace_back(RemidyToLV2PortMapping{.bus = i, .channel = ch, .lv2Port = lv2AudioInIdx});
+            }
+        }
+        portToScan = 0;
+        const auto audioOuts = audioOutputBuses();
+        int32_t lv2AudioOutIdx = 0;
+        for (size_t i = 0, n = audioOuts.size(); i < n; i++) {
+            const auto bus = audioOuts[i];
+            for (uint32_t ch = 0, nCh = bus->channelLayout().channels(); ch < nCh; ch++) {
+                getNextAudioPortIndex(implContext, plugin, false, lv2AudioOutIdx, portToScan, numPorts);
+                audio_out_port_mapping.emplace_back(RemidyToLV2PortMapping{.bus = i, .channel = ch, .lv2Port = lv2AudioOutIdx});
+            }
+        }
+
+        for (const auto p : port_buffers)
+            if (p)
+                free(p);
+        port_buffers.clear();
+        for (int i = 0; i < numPorts; i++) {
+            if (const auto port = lilv_plugin_get_port_by_index(plugin, i);
+                !implContext.IS_AUDIO_PORT(plugin, port)) {
+                const LilvNode* minSizeNode = lilv_port_get(plugin, port, implContext.statics->resize_port_minimum_size_node);
+                const int minSize = minSizeNode ? lilv_node_as_int(minSizeNode) : 0;
+                auto buffer = calloc(minSize ? minSize : sizeof(float), 1);
+                port_buffers.emplace_back(buffer);
+                lilv_instance_connect_port(instance, i, buffer);
+            }
+            else
+                port_buffers.emplace_back(nullptr);
+        }
 
         return StatusCode::OK;
     }
@@ -250,21 +319,62 @@ namespace remidy {
     }
 
     StatusCode AudioPluginInstanceLV2::process(AudioProcessContext &process) {
-        // FIXME: implement
-        std::cerr << "AudioPluginInstanceLV2::process() is not implemented" << std::endl;
-        return StatusCode::FAILED_TO_PROCESS;
+        for (auto& m : audio_in_port_mapping) {
+            auto audioIn = process.audioIn(m.bus)->getFloatBufferForChannel(m.channel);
+            lilv_instance_connect_port(instance, m.lv2Port, audioIn);
+        }
+        for (auto& m : audio_out_port_mapping) {
+            auto audioOut = process.audioOut(m.bus)->getFloatBufferForChannel(m.channel);
+            lilv_instance_connect_port(instance, m.lv2Port, audioOut);
+        }
+
+        // FIXME: process Atom inputs
+
+        lilv_instance_run(instance, process.frameCount());
+
+        // FIXME: process Atom outputs
+
+        return StatusCode::OK;
     }
 
     AudioPluginInstanceLV2::BusSearchResult AudioPluginInstanceLV2::inspectBuses() {
         BusSearchResult ret{};
 
-        // FIXME: we need to fill input_buses and output_buses here.
+        input_bus_defs.clear();
+        output_bus_defs.clear();
+        input_buses.clear();
+        output_buses.clear();
         for (uint32_t p = 0; p < lilv_plugin_get_num_ports(plugin); p++) {
             auto port = lilv_plugin_get_port_by_index(plugin, p);
-            if (implContext.IS_AUDIO_IN(plugin, port))
-                ret.numAudioIn++;
-            else if (implContext.IS_AUDIO_OUT(plugin, port))
-                ret.numAudioOut++;
+            if (implContext.IS_AUDIO_PORT(plugin, port)) {
+                bool isInput = implContext.IS_INPUT_PORT(plugin, port);
+                auto groupNode = lilv_port_get(plugin, port, implContext.statics->port_group_uri_node);
+                std::string group = groupNode == nullptr ? "" : lilv_node_as_string(groupNode);
+                auto scNode = lilv_port_get(plugin, port, implContext.statics->is_side_chain_uri_node);
+                bool isSideChain = scNode != nullptr && lilv_node_as_bool(scNode);
+                std::optional<AudioBusDefinition> def{};
+                int32_t index = 0;
+                for (auto d : isInput ? input_bus_defs : output_bus_defs) {
+                    if (d.name() == group) {
+                        def = d;
+                        break;
+                    }
+                    index++;
+                }
+                if (!def.has_value()) {
+                    def = AudioBusDefinition(group, isSideChain ? AudioBusRole::Aux : AudioBusRole::Main);
+                    (isInput ? input_bus_defs : output_bus_defs).emplace_back(def.value());
+                    auto bus = new AudioBusConfiguration(def.value());
+                    bus->channelLayout(AudioChannelLayout::mono());
+                    (isInput ? input_buses : output_buses).emplace_back(bus);
+                } else {
+                    auto bus = (isInput ? input_buses : output_buses)[index];
+                    if (bus->channelLayout() != AudioChannelLayout::mono())
+                        bus->channelLayout(AudioChannelLayout::stereo());
+                    else
+                        throw std::runtime_error{"Audio ports more than stereo channels are not supported yet."};
+                }
+            }
             if (implContext.IS_ATOM_IN(plugin, port))
                 ret.numEventIn++;
             if (implContext.IS_ATOM_OUT(plugin, port))
