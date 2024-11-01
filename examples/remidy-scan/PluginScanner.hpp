@@ -15,7 +15,6 @@ namespace remidy {
         AudioPluginFormatAU au{};
         AudioPluginFormatLV2 lv2{lv2SearchPaths};
         std::filesystem::path pluginListCacheFile{};
-        std::string app_name;
 
     public:
         std::vector<AudioPluginFormat*> formats{&lv2, &au, &vst3};
@@ -25,16 +24,12 @@ namespace remidy {
             return entries;
         }
 
-        explicit PluginScanner(std::string appName) : app_name(appName) {}
         ~PluginScanner() = default;
 
-        int performPluginScanning();
+        int performPluginScanning(std::filesystem::path& pluginListCacheFile);
 
-        void savePluginListCache() {
-            if (!pluginListCacheFile.empty()) {
-                catalog.save(pluginListCacheFile);
-                //std::cerr << "Saved plugin list cache as " << scanner.pluginListCacheFile << std::endl;
-            }
+        void savePluginListCache(std::filesystem::path& fileToSave) {
+            catalog.save(fileToSave);
         }
 
         bool safeToInstantiate(AudioPluginFormat* format, PluginCatalogEntry* entry);

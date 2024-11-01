@@ -12,7 +12,7 @@
 // -------- instancing --------
 const char* APP_NAME= "remidy-scan";
 
-remidy::PluginScanner scanner{APP_NAME};
+remidy::PluginScanner scanner{};
 
 class RemidyScan {
 
@@ -90,9 +90,13 @@ int run(int argc, const char* argv[]) {
     int result{0};
     CPPTRACE_TRY {
         remidy::EventLoop::initializeOnUIThread();
-        result = scanner.performPluginScanning();
-        scanner.savePluginListCache();
-        std::cerr << "Scanning completed. Start testing instancing... " << std::endl;
+        auto dir = cpplocate::localDir(APP_NAME);
+        auto pluginListCacheFile = dir.empty() ?  std::filesystem::path{""} : std::filesystem::path{dir}.append("plugin-list-cache.json");
+        std::cerr << "Trying to load plugin list cache from " << pluginListCacheFile << std::endl;
+        result = scanner.performPluginScanning(pluginListCacheFile);
+        scanner.savePluginListCache(pluginListCacheFile);
+        std::cerr << "Scanning completed and saved plugin list cache: " << pluginListCacheFile << std::endl;
+        std::cerr << "Start testing instantiation... " << std::endl;
 
         std::thread thread([&] {
             CPPTRACE_TRY {

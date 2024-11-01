@@ -1,13 +1,9 @@
 
 #include "PluginScanner.hpp"
 
-
-int remidy::PluginScanner::performPluginScanning()  {
-    auto dir = cpplocate::localDir(app_name);
-    pluginListCacheFile = dir.empty() ?  std::filesystem::path{""} : std::filesystem::path{dir}.append("plugin-list-cache.json");
+int remidy::PluginScanner::performPluginScanning(std::filesystem::path& pluginListCacheFile)  {
     if (std::filesystem::exists(pluginListCacheFile)) {
         catalog.load(pluginListCacheFile);
-        //std::cerr << "Loaded plugin list cache from " << pluginListCacheFile << std::endl;
     }
 
     // build catalog
@@ -29,8 +25,6 @@ bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginC
     bool skip = false;
 
     // FIXME: implement blocklist
-    if (displayName.starts_with("Firefly Synth 1.8.6 VST3"))
-        skip = true;
 
     // FIXME: this should be unblocked
 
@@ -40,24 +34,15 @@ bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginC
     // if (displayName.starts_with("BYOD"))
     //    skip = true;
 
-    // EXC_BAD_ACCESS
-    if (format->name() == "AU" && displayName == "BioTek 2"
-        || format->name() == "AU" && displayName == "DDSP Effect"
-        || format->name() == "AU" && displayName == "DDSP Synth"
-        || format->name() == "AU" && displayName == "RX 9 Music Rebalance"
-        || format->name() == "AU" && displayName == "RX 9 Spectral Editor"
-        || format->name() == "AU" && displayName == "Absynth 5 MFX"
-        || format->name() == "AU" && displayName == "Reaktor 6 MFX"
-        || format->name() == "AU" && displayName == "Reaktor 6 MIDIFX"
-        || format->name() == "AU" && displayName == "Absynth 5"
-        || format->name() == "AU" && displayName == "Reaktor 6"
-        || format->name() == "AU" && displayName == "Massive X"
-        || format->name() == "AU" && displayName == "Ozone 9"
+    // EXC_BAD_ACCESS (Massive X used to work though...)
+    if (format->name() == "AU" && displayName == "Massive X"
         || format->name() == "AU" && displayName == "BioTek"
         || format->name() == "AU" && displayName == "BioTek 2"
-        || format->name() == "AU" && displayName == "Plugin Buddy"
         || format->name() == "AU" && displayName == "Collective"
         )
+        skip = true;
+    // It depends on unimplemented perform_edit() and restart_component(). Results in unresponsiveness.
+    if (format->name() == "VST3" && displayName == "Massive X")
         skip = true;
 
     // This prevents IEditController and IAudioProcessor inter-connection.
@@ -72,24 +57,17 @@ bool remidy::PluginScanner::safeToInstantiate(AudioPluginFormat* format, PluginC
         skip = true;
 
     // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
-    /*
-    if (format->name() == "VST3" && displayName.starts_with("Battery"))
-        skip = true;
-    if (format->name() == "VST3" && displayName.starts_with("Kontakt"))
-        skip = true;
-    */
-    if (format->name() == "AU" && displayName.starts_with("FL Studio"))
-        skip = true;
-    //if (format->name() == "VST3" && displayName == "RX 9 Monitor")
-    //    skip = true;
-
-    // It depends on unimplemented perform_edit() and restart_component(). Results in unresponsiveness.
-    if (format->name() == "VST3" && displayName.starts_with("Massive X"))
+    /*if (format->name() == "VST3" && displayName.starts_with("Battery")
+        || format->name() == "VST3" && displayName.starts_with("Kontakt"))
+        || format->name() == "VST3" && displayName == "RX 9 Monitor"
+        )
+        skip = true;*/
+    if (format->name() == "AU" && displayName == "FL Studio")
         skip = true;
 
 #if __APPLE__ || WIN32
     // they generate *.dylib in .ttl, but the library is *.so...
-    if (format->name() == "LV2" && displayName.starts_with("AIDA-X"))
+    if (format->name() == "LV2" && displayName == "AIDA-X")
         skip = true;
     // they generate *.so in .ttl, but the library is *.dylib...
     if (format->name() == "LV2" && displayName.starts_with("sfizz"))
@@ -118,6 +96,19 @@ bool remidy::PluginScanner::createInstanceOnUIThread(AudioPluginFormat *format, 
         || format->name() == "AU" && displayName == "Guitar Rig 6 FX"
         || format->name() == "AU" && displayName == "Guitar Rig 6 MFX"
         || format->name() == "AU" && displayName == "Vienna Synchron Player"
+        // EXC_BAD_ACCESS, maybe because they are JUCE
+        || format->name() == "AU" && displayName == "DDSP Effect"
+        || format->name() == "AU" && displayName == "DDSP Synth"
+        || format->name() == "AU" && displayName == "Plugin Buddy"
+        // EXC_BAD_ACCESS, not sure why
+        || format->name() == "AU" && displayName == "RX 9 Music Rebalance"
+        || format->name() == "AU" && displayName == "RX 9 Spectral Editor"
+        || format->name() == "AU" && displayName == "Ozone 9"
+        || format->name() == "AU" && displayName == "Absynth 5"
+        || format->name() == "AU" && displayName == "Absynth 5 MFX"
+        || format->name() == "AU" && displayName == "Reaktor 6"
+        || format->name() == "AU" && displayName == "Reaktor 6 MFX"
+        || format->name() == "AU" && displayName == "Reaktor 6 MIDIFX"
     ;
     return forceMainThread || format->requiresUIThreadOn(entry) != AudioPluginUIThreadRequirement::None;
 }

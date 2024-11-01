@@ -180,8 +180,12 @@ namespace remidy_vst3 {
             initDll();
 #elif __APPLE__
         auto bundle = (CFBundleRef) module;
-        if (!CFBundleLoadExecutable(bundle))
+        CFErrorRef cfError;
+        if (!CFBundleLoadExecutableAndReturnError(bundle, &cfError)) {
+            // FIXME: we need logger here too
+            std::cerr << "CFBundleLoadExecutableAndReturnError : " << cfError << std::endl;
             return -1;
+        }
         auto bundleEntry = (vst3_bundle_entry_func) CFBundleGetFunctionPointerForName(bundle, createCFString("bundleEntry"));
         if (!bundleEntry)
             return -2;
