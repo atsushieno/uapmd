@@ -1,13 +1,13 @@
-add_executable(remidy-scan)
+add_executable(remidy-apply)
 
-target_include_directories(remidy-scan PRIVATE
+target_include_directories(remidy-apply PRIVATE
         ../../include
         ../remidy-tooling
         ../../../../external/choc
         ../../../../external/cpplocate/source/cpplocate/include
 )
 
-target_link_libraries(remidy-scan PRIVATE
+target_link_libraries(remidy-apply PRIVATE
         remidy
         remidy-tooling
         cpplocate::cpplocate
@@ -16,6 +16,6 @@ target_link_libraries(remidy-scan PRIVATE
         "-framework AppKit"
 )
 
-target_sources(remidy-scan PRIVATE
+target_sources(remidy-apply PRIVATE
         main.cpp
 )

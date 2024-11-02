@@ -3,7 +3,7 @@
 
 #pragma once
 
-namespace remidy_scan {
+namespace remidy_tooling {
     using namespace remidy;
 
     class PluginScanning {
@@ -35,6 +35,6 @@ namespace remidy_scan {
 
         bool safeToInstantiate(PluginFormat* format, PluginCatalogEntry* entry);
 
-        bool createInstanceOnUIThread(PluginFormat* format, PluginCatalogEntry* entry);
+        bool shouldCreateInstanceOnUIThread(PluginFormat* format, PluginCatalogEntry* entry);
     };
 }

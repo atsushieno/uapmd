@@ -4,7 +4,7 @@
 #include <remidy/remidy.hpp>
 #include "PluginScanning.hpp"
 
-namespace remidy_scan {
+namespace remidy_tooling {
     using namespace remidy;
 
     enum class PluginInstancingState {

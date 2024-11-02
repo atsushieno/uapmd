@@ -87,76 +87,40 @@ int testInstancing() {
 
 public:
 int run(int argc, const char* argv[]) {
-    int result{EXIT_SUCCESS};
-
-    bool help = false;
-    bool rescan = false;
-    bool performInstantVerification = false;
-    for (auto i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") || !strcmp(argv[i], "-?"))
-            help = true;
-        if (!strcmp(argv[i], "-rescan") || !strcmp(argv[i], "--rescan"))
-            rescan = true;
-        if (!strcmp(argv[i], "-full") || !strcmp(argv[i], "--full"))
-            performInstantVerification = true;
-    }
-    if (help) {
-        std::cerr << "Usage: " << argv[0] << "[-?|-help] [-rescan] [-full]" << std::endl;
-        std::cerr << "  -?: show this help message." << std::endl;
-        std::cerr << "  -rescan: perform rescanning and update plugin list cache." << std::endl;
-        std::cerr << "  -full: perform full scanning with instant verification (actually create instance)." << std::endl;
-        return EXIT_SUCCESS;
-    }
-
-    remidy::EventLoop::initializeOnUIThread();
-
-    static std::filesystem::path emptyPath{};
-
-    auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
-    auto pluginListCacheFile = dir.empty() ?  std::filesystem::path{""} : std::filesystem::path{dir}.append("plugin-list-cache.json");
-
-    if (performInstantVerification)
-        std::cerr << "Full scanning, ignoring existing plugin list cache..." << std::endl;
-    else
-        std::cerr << "Trying to load plugin list cache from " << pluginListCacheFile << std::endl;
-
-    result = scanner.performPluginScanning(performInstantVerification ? emptyPath : pluginListCacheFile);
-
-    scanner.savePluginListCache(pluginListCacheFile);
-    std::cerr << "Scanning completed and saved plugin list cache: " << pluginListCacheFile << std::endl;
-
-    if (!performInstantVerification) {
-        std::cerr << "To perform full instanti scanning, pass `-full` argument." << std::endl;
-        return EXIT_SUCCESS;
-    }
-
-    std::cerr << "Start testing instantiation... " << std::endl;
-
-    std::thread thread([&] {
-        CPPTRACE_TRY {
-            result = testInstancing();
-            remidy::EventLoop::stop();
-
-            std::cerr << "Completed " << std::endl;
-        } CPPTRACE_CATCH(const std::exception& e) {
-            std::cerr << "Exception in main: " << e.what() << std::endl;
-            cpptrace::from_current_exception().print();
+    int result{0};
+    CPPTRACE_TRY {
+        remidy::EventLoop::initializeOnUIThread();
+        auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
+        auto pluginListCacheFile = dir.empty() ?  std::filesystem::path{""} : std::filesystem::path{dir}.append("plugin-list-cache.json");
+        if (!std::filesystem::exists(pluginListCacheFile)) {
+            std::cerr << "  remidy-apply needs existing plugin list cache first. Run `remidy-scan` first." << std::endl;
+            return 1;
         }
-    });
-    remidy::EventLoop::start();
+        result = scanner.performPluginScanning(pluginListCacheFile);
+        std::cerr << "Start testing instantiation... " << std::endl;
 
+        std::thread thread([&] {
+            CPPTRACE_TRY {
+                result = testInstancing();
+                remidy::EventLoop::stop();
+
+                std::cerr << "Completed " << std::endl;
+            } CPPTRACE_CATCH(const std::exception& e) {
+                std::cerr << "Exception in main: " << e.what() << std::endl;
+                cpptrace::from_current_exception().print();
+            }
+        });
+        remidy::EventLoop::start();
+    } CPPTRACE_CATCH(const std::exception& e) {
+        std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
+        cpptrace::from_current_exception().print();
+    }
     return result;
 }
 
 };
 
 int main(int argc, const char* argv[]) {
-    CPPTRACE_TRY {
-        RemidyScan scanner{};
-        return scanner.run(argc, argv);
-    } CPPTRACE_CATCH(const std::exception& e) {
-        std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
-        cpptrace::from_current_exception().print();
-        return EXIT_FAILURE;
-    }
+    RemidyScan scanner{};
+    scanner.run(argc, argv);
 }

@@ -21,7 +21,7 @@ Remidy has a clear objectives on its plugin identification system that most of t
 
 Regarding #1, a plugin ID within the format usually does not describe which format it is in. Therefore, to achieve #1, we need **both** a plugin ID and the format specifier.
 
-It should be noted that the actual plugin ID **might** depend on the actual `AudioPluginFormat` implementation. Unless there is only one dominant `AudioPluginFormat` class, the format identifier should also **identify the implementation** (Remidy itself provides the reference implementations for VST3 and AU and we use `VST3` and `AU` for each).
+It should be noted that the actual plugin ID **might** depend on the actual `PluginFormat` implementation. Unless there is only one dominant `PluginFormat` class, the format identifier should also **identify the implementation** (Remidy itself provides the reference implementations for VST3 and AU and we use `VST3` and `AU` for each).
 
 ### scanning without instantiation
 
@@ -29,7 +29,7 @@ Regarding #2, it is impossible for such a "non-fast" plugin format to instantiat
 
 With VST3 (at least earlier than v3.7.6, those without moduleinfo.json), fast instantiation is impossible only with the plugin class ID (TUID) because we cannot know which plugin bundle contains the plugin without loading the bundle library. Almost same with CLAP, as (whereas the community claims that we do not have to "instantiate" the plugins) we still have to load the dynamic library to find relevant symbols to retrieve the plugins metadata. VST3 with `moduleinfo.json`, AudioUnit and LV2 are good citizens here, because they have metadata.
 
-In Remidy `AudioPluginFormat` API, we have the following functions to describe how each plugin formats work regarding plugin scanning:
+In Remidy `PluginFormat` API, we have the following functions to describe how each plugin formats work regarding plugin scanning:
 
 - `scanRequiresLoadLibrary()` indicates whether the format requires loading the library to scan the plugins (VST3: Maybe, AU: NO, LV2: NO, CLAP: YES)
 - `scanRequiresInstantiation()` indicates whether the format requires instantiation IF the library needs to be loaded (VST3: YES, AU: NO, LV2: NO, CLAP: NO).
@@ -83,8 +83,8 @@ Along with the plugin format name, it can precisely indicate the plugin type/cla
 
 There are some requirements imposed on `PluginCatalogEntry`:
 
-- deserializable from a string without `AudioPluginInstance`.
-- detached from `AudioPluginFormat` instance: no need to internally hold the reference to it.
+- deserializable from a string without `PluginInstance`.
+- detached from `PluginFormat` instance: no need to internally hold the reference to it.
 - serializable to string locally: you can use the plugin bundle location to identify it; not suitable for saving as part of state or song file.
     - It can be used to save plugin list cache.
 - serializable to string globally: the identifier works across different devices, and across multiple formats.
