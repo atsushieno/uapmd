@@ -1,6 +1,6 @@
 #include "uapmd/uapmd.hpp"
 
-/*
+
 namespace uapmd {
     class AudioIOService::Impl {
         AudioIOService* owner;
@@ -47,4 +47,3 @@ uapmd_status_t uapmd::AudioIOService::Impl::start() {
 uapmd_status_t uapmd::AudioIOService::Impl::stop() {
     return driver->stop();
 }
-*/

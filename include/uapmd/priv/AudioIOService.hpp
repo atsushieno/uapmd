@@ -3,7 +3,6 @@
 #include "AudioIODriver.hpp"
 
 namespace uapmd {
-    /*
     class AudioIOService {
         class Impl;
         Impl* impl;
@@ -14,6 +13,6 @@ namespace uapmd {
         void addAudioCallback(std::function<uapmd_status_t(AudioProcessContext& data)>&& callback);
         uapmd_status_t start();
         uapmd_status_t stop();
-    };*/
+    };
 }
 

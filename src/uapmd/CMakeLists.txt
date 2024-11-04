@@ -14,7 +14,9 @@ target_link_libraries(uapmd PRIVATE
 )
 
 target_sources(uapmd PRIVATE
+        AudioBackend/AudioIODriver.cpp
         AudioBackend/AudioIOService.cpp
+        AudioBackend/impl/MiniAudioIODriver.cpp
         AudioPluginHosting/impl/AudioPluginHostImpl.cpp
         AudioPluginHosting/AudioPluginGraph.cpp
         AudioPluginHosting/AudioPluginHost.cpp
