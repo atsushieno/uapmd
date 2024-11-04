@@ -35,6 +35,8 @@ void remidy::PluginCatalog::add(std::unique_ptr<PluginCatalogEntry> entry) {
 void remidy::PluginCatalog::merge(PluginCatalog&& other) {
     for (auto& entry : other.entries)
         entries.emplace_back(std::move(entry));
+    for (auto& entry : other.denyList)
+        denyList.emplace_back(std::move(entry));
 }
 
 void remidy::PluginCatalog::clear() {
