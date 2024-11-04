@@ -3,7 +3,7 @@
 #include <vector>
 #include <libremidi/libremidi-c.h>
 
-#include "../Common/CommonTypes.hpp"
+#include "uapmd/priv/CommonTypes.hpp"
 
 namespace uapmd {
 

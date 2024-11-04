@@ -1,5 +1,5 @@
 
-#include "AudioPluginGraph.hpp"
+#include "uapmd/uapmd.hpp"
 
 #include <cassert>
 

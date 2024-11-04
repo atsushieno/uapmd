@@ -1,9 +1,8 @@
 #pragma once
 #include <string>
 
+#include "uapmd/uapmd.hpp"
 #include "PlatformVirtualMidiDevice.hpp"
-#include "../Common/CommonTypes.hpp"
-#include "../AudioPluginHosting/AudioPluginHost.hpp"
 
 namespace uapmd {
 

@@ -1,5 +1,5 @@
 
-#include "AudioPluginNode.hpp"
+#include "uapmd/uapmd.hpp"
 
 #include <string>
 

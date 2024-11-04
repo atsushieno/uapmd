@@ -1,6 +1,5 @@
-#include <iostream>
 
-#include "Shell/CommandShell.h"
+#include "Shell/CommandShell.hpp"
 
 int main(int argc, const char** argv) {
     auto shell = uapmd::CommandShell::create(argc, argv);

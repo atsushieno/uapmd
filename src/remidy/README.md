@@ -16,3 +16,4 @@ Remidy makes use of the following libraries:
 - [moduleinfo](https://github.com/steinbergmedia/vst3_public_sdk/tree/master/source/vst/moduleinfo), part of steinbergmedia/vst3_public_sdk: VST 3 SDK public_sdk License (BSD like)
   (modified to remove dependencies on `vst3_pluginterfaces` which is GPLed)
 - [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.
+- [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): the MIT license.

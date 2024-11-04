@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "../Common/CommonTypes.hpp"
+#include "uapmd/uapmd.hpp"
 #include "../VirtualMidiDevices/UapmdMidiDevice.hpp"
 
 namespace uapmd {

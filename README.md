@@ -11,9 +11,10 @@ UAPMD consists of two programs:
 
 ### uapmd-service
 
-> $ uapmd-service -ac [audio-config-file] -md [midi-device-settings-file]
+> $ uapmd-service -audio [audio-config-file] -midi [midi-device-settings-file]
 
-- `-ac`: optional. Specifies audio configuration file that can be created by `uapmd-setup`
+- `-audio`: optional. Specifies audio configuration file that can be created by `uapmd-setup`.
+- `-midi`: required. Specifies MIDI device configuration file that can be created by `uapmd-setup`.
 
 ### uapmd-setup
 

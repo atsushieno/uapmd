@@ -1,5 +1,4 @@
-#include "AudioPluginHost.hpp"
-#include "AudioPluginHost.hpp"
+#include "uapmd/uapmd.hpp"
 
 namespace uapmd {
 

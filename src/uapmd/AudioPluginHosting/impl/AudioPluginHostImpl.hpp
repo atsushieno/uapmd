@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-#include "../AudioPluginTrack.hpp"
+#include "uapmd/priv/AudioPluginTrack.hpp"
 
 namespace uapmd {
 

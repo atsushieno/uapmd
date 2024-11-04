@@ -1,0 +1,31 @@
+add_executable(uapmd-service)
+
+target_include_directories(uapmd-service PRIVATE
+        ../../include
+        ../remidy-tooling
+        ../../external/choc
+        ../../external/libremidi/include
+        ../../external/cpplocate/source/cpplocate/include
+)
+
+target_link_libraries(uapmd-service PRIVATE
+        remidy
+        remidy-tooling
+        uapmd
+        cpplocate::cpplocate
+        cpptrace::cpptrace
+        libremidi::libremidi
+        "-framework AudioToolbox"
+        "-framework AppKit"
+)
+
+target_sources(uapmd-service PRIVATE
+        main.cpp
+        Configuration/AudioDeviceConfiguration.cpp
+        Configuration/VirtualMidiDeviceConfiguration.cpp
+        Controller/VirtualMidiDeviceController.cpp
+        Shell/CommandShell.cpp
+        VirtualMidiDevices/impl/PlatformVirtualMidiDeviceImpl.cpp
+        VirtualMidiDevices/PlatformVirtualMidiDevice.cpp
+        VirtualMidiDevices/UapmdMidiDevice.cpp
+)
