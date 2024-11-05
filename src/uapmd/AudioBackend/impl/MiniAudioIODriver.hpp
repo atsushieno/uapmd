@@ -5,6 +5,7 @@ namespace uapmd {
     class MiniAudioIODriver : public AudioIODriver {
         ma_engine_config config{};
         ma_engine engine{};
+        AudioProcessContext data{0}; // no UMP events handled here.
         std::vector<std::function<uapmd_status_t(AudioProcessContext& data)>> callbacks{};
 
     public:

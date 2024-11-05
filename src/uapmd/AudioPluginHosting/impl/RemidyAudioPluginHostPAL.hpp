@@ -11,7 +11,7 @@ namespace uapmd {
     class RemidyAudioPluginHostPAL : public AudioPluginHostPAL {
         remidy_tooling::PluginScanning scanning{};
     public:
-        RemidyAudioPluginHostPAL() = default;
+        RemidyAudioPluginHostPAL();
         void createPluginInstance(std::string &format, std::string &pluginId, std::function<void(AudioPluginNode* node, std::string error)>&& callback) override;
         uapmd_status_t processAudio(std::vector<remidy::AudioProcessContext*> contexts) override;
     };

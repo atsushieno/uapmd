@@ -1,27 +1,24 @@
 #include "uapmd/uapmd.hpp"
-#include "uapmd/priv/AudioPluginHost.hpp"
-
 
 namespace uapmd {
 
     class AudioPluginHost::Impl {
         std::vector<AudioPluginTrack*> tracks{};
     public:
-        Impl();
+        explicit Impl(AudioPluginHostPAL* pal);
         ~Impl();
 
         AudioPluginHostPAL* pal;
 
         std::vector<AudioPluginTrack*>& getTracks();
 
-        void createPluginInstance(std::string &format, std::string &pluginId, std::function<void(AudioPluginNode* node, std::string error)>&& callback);
         void addSimpleTrack(AudioPluginNode* node);
 
         uapmd_status_t processAudio(std::vector<remidy::AudioProcessContext*> contexts);
     };
 
-    AudioPluginHost::AudioPluginHost() {
-        impl = new Impl();
+    AudioPluginHost::AudioPluginHost(AudioPluginHostPAL* pal) {
+        impl = new Impl(pal);
     }
 
     AudioPluginHost::~AudioPluginHost() {
@@ -46,6 +43,7 @@ namespace uapmd {
     }
 
     // Impl
+    AudioPluginHost::Impl::Impl(AudioPluginHostPAL* pal) : pal(pal) {}
 
     AudioPluginHost::Impl::~Impl() {
         for (auto track : tracks)
@@ -72,10 +70,6 @@ namespace uapmd {
         auto track = new AudioPluginTrack();
         track->getGraph().appendNodeSimple(node);
         tracks.emplace_back(track);
-    }
-
-    AudioPluginHost::Impl::Impl() {
-        pal = AudioPluginHostPAL::instance();
     }
 
 }

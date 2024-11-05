@@ -8,3 +8,7 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(std::string &format, 
 uapmd_status_t uapmd::RemidyAudioPluginHostPAL::processAudio(std::vector<remidy::AudioProcessContext *> contexts) {
     return 0;
 }
+
+uapmd::RemidyAudioPluginHostPAL::RemidyAudioPluginHostPAL() {
+    scanning.performPluginScanning();
+}

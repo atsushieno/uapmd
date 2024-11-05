@@ -1,4 +1,5 @@
 #pragma once
+
 #include <cassert>
 #include "remidy/remidy.hpp"
 #include "PluginScanning.hpp"

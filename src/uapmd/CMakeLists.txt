@@ -6,6 +6,7 @@ add_library(uapmd)
 target_include_directories(uapmd PRIVATE
         ../../external/miniaudio
         ../../external/libremidi/include
+        ../../external/choc
         ../../include
 )
 

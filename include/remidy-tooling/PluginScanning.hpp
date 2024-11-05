@@ -1,6 +1,6 @@
-#include "remidy/remidy.hpp"
-
 #pragma once
+
+#include "remidy/remidy.hpp"
 
 namespace remidy_tooling {
     using namespace remidy;
@@ -14,9 +14,11 @@ namespace remidy_tooling {
         PluginFormatVST3 vst3{vst3SearchPaths};
         PluginFormatAU au{};
         PluginFormatLV2 lv2{lv2SearchPaths};
-        std::filesystem::path pluginListCacheFile{};
+        std::filesystem::path plugin_list_cache_file{};
 
     public:
+        PluginScanning();
+
         std::vector<PluginFormat*> formats{&lv2, &au, &vst3};
         PluginCatalog catalog{};
         auto filterByFormat(std::vector<PluginCatalogEntry*> entries, std::string format) {
@@ -26,8 +28,11 @@ namespace remidy_tooling {
 
         ~PluginScanning() = default;
 
+        std::filesystem::path& pluginListCacheFile() { return plugin_list_cache_file; }
+        int performPluginScanning();
         int performPluginScanning(std::filesystem::path& pluginListCacheFile);
 
+        void savePluginListCache() { savePluginListCache(pluginListCacheFile()); }
         void savePluginListCache(std::filesystem::path& fileToSave) {
             catalog.save(fileToSave);
         }

@@ -4,15 +4,12 @@
 #include <ranges>
 
 #include <cpptrace/from_current.hpp>
-#include <cpplocate/cpplocate.h>
 #include <remidy/remidy.hpp>
 #include <remidy-tooling/PluginScanning.hpp>
 #include <remidy-tooling/PluginInstancing.hpp>
 #include <cxxopts.hpp>
 
 // -------- instancing --------
-const char* TOOLING_DIR_NAME= "remidy-tooling";
-
 remidy_tooling::PluginScanning scanner{};
 
 class RemidyApply {
@@ -101,13 +98,11 @@ int run(int argc, const char* argv[]) {
         auto parsedOpts = options.parse(argc, argv);
 
         remidy::EventLoop::initializeOnUIThread();
-        auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
-        auto pluginListCacheFile = dir.empty() ?  std::filesystem::path{""} : std::filesystem::path{dir}.append("plugin-list-cache.json");
-        if (!std::filesystem::exists(pluginListCacheFile)) {
+        if (!std::filesystem::exists(scanner.pluginListCacheFile())) {
             std::cerr << "  remidy-apply needs existing plugin list cache first. Run `remidy-scan` first." << std::endl;
             return 1;
         }
-        result = scanner.performPluginScanning(pluginListCacheFile);
+        result = scanner.performPluginScanning();
 
         if (!parsedOpts.contains("p") || !parsedOpts.contains("f") || parsedOpts.contains("h")) {
             std::cerr << options.help();

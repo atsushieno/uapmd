@@ -4,13 +4,11 @@
 #include <ranges>
 
 #include <cpptrace/from_current.hpp>
-#include <cpplocate/cpplocate.h>
 #include <remidy/remidy.hpp>
 #include <remidy-tooling/PluginScanning.hpp>
 #include <remidy-tooling/PluginInstancing.hpp>
 
 // -------- instancing --------
-const char* TOOLING_DIR_NAME= "remidy-tooling";
 
 remidy_tooling::PluginScanning scanner{};
 
@@ -111,18 +109,18 @@ int run(int argc, const char* argv[]) {
 
     static std::filesystem::path emptyPath{};
 
-    auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
-    auto pluginListCacheFile = dir.empty() ?  std::filesystem::path{""} : std::filesystem::path{dir}.append("plugin-list-cache.json");
-
     if (performInstantVerification)
         std::cerr << "Full scanning, ignoring existing plugin list cache..." << std::endl;
     else
-        std::cerr << "Trying to load plugin list cache from " << pluginListCacheFile << std::endl;
+        std::cerr << "Trying to load plugin list cache from " << scanner.pluginListCacheFile() << std::endl;
 
-    result = scanner.performPluginScanning(performInstantVerification ? emptyPath : pluginListCacheFile);
+    if (performInstantVerification)
+        result = scanner.performPluginScanning(emptyPath);
+    else
+        result = scanner.performPluginScanning();
 
-    scanner.savePluginListCache(pluginListCacheFile);
-    std::cerr << "Scanning completed and saved plugin list cache: " << pluginListCacheFile << std::endl;
+    scanner.savePluginListCache();
+    std::cerr << "Scanning completed and saved plugin list cache: " << scanner.pluginListCacheFile() << std::endl;
 
     if (!performInstantVerification) {
         std::cerr << "To perform full instanti scanning, pass `-full` argument." << std::endl;

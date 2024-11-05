@@ -2,9 +2,22 @@
 #include "remidy-tooling/PluginScanning.hpp"
 #include "cpplocate/cpplocate.h"
 
-int remidy_tooling::PluginScanning::performPluginScanning(std::filesystem::path& pluginListCacheFile)  {
+const char* TOOLING_DIR_NAME= "remidy-tooling";
+
+remidy_tooling::PluginScanning::PluginScanning() {
+    auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
+    plugin_list_cache_file = dir.empty() ? std::filesystem::path{""} : std::filesystem::path{dir}.append(
+            "plugin-list-cache.json");
+}
+
+int remidy_tooling::PluginScanning::performPluginScanning() {
+    return performPluginScanning(plugin_list_cache_file);
+}
+
+int remidy_tooling::PluginScanning::performPluginScanning(std::filesystem::path& pluginListCacheFile) {
     if (std::filesystem::exists(pluginListCacheFile)) {
         catalog.load(pluginListCacheFile);
+        plugin_list_cache_file = pluginListCacheFile;
     }
 
     // build catalog

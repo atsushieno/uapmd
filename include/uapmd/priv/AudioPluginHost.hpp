@@ -5,13 +5,14 @@
 #include "remidy/remidy.hpp"
 
 namespace uapmd {
+    class AudioPluginHostPAL;
 
     class AudioPluginHost {
         class Impl;
         Impl *impl;
 
     public:
-        AudioPluginHost();
+        explicit AudioPluginHost(AudioPluginHostPAL* pal);
         ~AudioPluginHost();
 
         std::vector<AudioPluginTrack*>& tracks();
