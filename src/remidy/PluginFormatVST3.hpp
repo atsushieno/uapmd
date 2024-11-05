@@ -72,7 +72,6 @@ namespace remidy {
 
     class AudioPluginInstanceVST3 : public PluginInstance {
         PluginFormatVST3::Impl* owner;
-        PluginCatalogEntry* info;
         void* module;
         IPluginFactory* factory;
         std::string pluginName;
@@ -127,7 +126,7 @@ namespace remidy {
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
-            return owner->format()->requiresUIThreadOn(info);
+            return owner->format()->requiresUIThreadOn(info());
         }
 
         // audio processing core features

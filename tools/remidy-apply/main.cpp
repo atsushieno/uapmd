@@ -14,6 +14,36 @@ remidy_tooling::PluginScanning scanner{};
 
 class RemidyApply {
 
+int apply(remidy::PluginInstance* instance, std::optional<std::string> audio, std::optional<std::string> smf, std::optional<std::string> smf2) {
+    bool successful = false;
+
+    uint32_t numAudioIn = instance->audioInputBuses().size();
+    uint32_t numAudioOut = instance->audioOutputBuses().size();
+    remidy::AudioProcessContext ctx{4096};
+    for (int32_t i = 0, n = numAudioIn; i < n; ++i)
+        ctx.addAudioIn(instance->audioInputBuses()[i]->channelLayout().channels(), 1024);
+    for (int32_t i = 0, n = numAudioOut; i < n; ++i)
+        ctx.addAudioOut(instance->audioOutputBuses()[i]->channelLayout().channels(), 1024);
+    ctx.frameCount(512);
+    for (uint32_t i = 0; i < numAudioIn; i++) {
+        // FIXME: channel count is not precise.
+        memcpy(ctx.audioIn(i)->getFloatBufferForChannel(0), (void*) "0123456789ABCDEF", 16);
+        memcpy(ctx.audioIn(i)->getFloatBufferForChannel(1), (void*) "FEDCBA9876543210", 16);
+    }
+    for (uint32_t i = 0; i < numAudioOut; i++) {
+        // FIXME: channel count is not precise.
+        memcpy(ctx.audioOut(i)->getFloatBufferForChannel(0), (void*) "02468ACE13579BDF", 16);
+        memcpy(ctx.audioOut(i)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);
+    }
+
+    auto code = instance->process(ctx);
+    if (code != remidy::StatusCode::OK)
+        std::cerr << "  " << instance->info()->format() << ": " << instance->info()->displayName() << " : process() failed. Error code " << (int32_t) code << std::endl;
+    else
+        successful = true;
+    return successful ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 int apply(std::string formatName, std::string pluginName, std::optional<std::string> audio, std::optional<std::string> smf, std::optional<std::string> smf2) {
     auto format = *(scanner.formats | std::views::filter([&](auto fmt) { return fmt->name() == formatName; })).begin();
     if (!format) {
@@ -33,7 +63,6 @@ int apply(std::string formatName, std::string pluginName, std::optional<std::str
         std::cerr << "  Plugin (" << formatName << ") " << displayName << " is known to not work..." << std::endl;
         return EXIT_FAILURE;
     }
-    bool successful = false;
     {
         // scoped object
         remidy_tooling::PluginInstancing instancing{scanner, format, pluginInfo};
@@ -49,32 +78,7 @@ int apply(std::string formatName, std::string pluginName, std::optional<std::str
         std::cerr << "  " << format->name() << ": Successfully configured " << displayName << ". Instantiating now..." << std::endl;
 
         instancing.withInstance([&](auto instance) {
-
-            uint32_t numAudioIn = instance->audioInputBuses().size();
-            uint32_t numAudioOut = instance->audioOutputBuses().size();
-            remidy::AudioProcessContext ctx{4096};
-            for (int32_t i = 0, n = numAudioIn; i < n; ++i)
-                ctx.addAudioIn(instance->audioInputBuses()[i]->channelLayout().channels(), 1024);
-            for (int32_t i = 0, n = numAudioOut; i < n; ++i)
-                ctx.addAudioOut(instance->audioOutputBuses()[i]->channelLayout().channels(), 1024);
-            ctx.frameCount(512);
-            for (uint32_t i = 0; i < numAudioIn; i++) {
-                // FIXME: channel count is not precise.
-                memcpy(ctx.audioIn(i)->getFloatBufferForChannel(0), (void*) "0123456789ABCDEF", 16);
-                memcpy(ctx.audioIn(i)->getFloatBufferForChannel(1), (void*) "FEDCBA9876543210", 16);
-            }
-            for (uint32_t i = 0; i < numAudioOut; i++) {
-                // FIXME: channel count is not precise.
-                memcpy(ctx.audioOut(i)->getFloatBufferForChannel(0), (void*) "02468ACE13579BDF", 16);
-                memcpy(ctx.audioOut(i)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);
-            }
-
-            auto code = instance->process(ctx);
-            if (code != remidy::StatusCode::OK)
-                std::cerr << "  " << format->name() << ": " << displayName << " : process() failed. Error code " << (int32_t) code << std::endl;
-            else
-                successful = true;
-
+            return apply(instance, audio, smf, smf2);
         });
     }
 

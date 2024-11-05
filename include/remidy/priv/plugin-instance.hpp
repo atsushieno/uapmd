@@ -19,8 +19,10 @@ namespace remidy {
     };
 
     class PluginInstance {
+        PluginCatalogEntry* entry;
+
     protected:
-        explicit PluginInstance() = default;
+        explicit PluginInstance(PluginCatalogEntry* entry) : entry(entry) {}
 
     public:
         struct ConfigurationRequest {
@@ -34,6 +36,8 @@ namespace remidy {
         };
 
         virtual ~PluginInstance() = default;
+
+        PluginCatalogEntry* info() { return entry; }
 
         virtual PluginExtensibility<PluginInstance>* getExtensibility() { return nullptr; }
 

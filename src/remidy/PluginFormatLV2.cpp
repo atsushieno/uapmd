@@ -41,7 +41,6 @@ namespace remidy {
     };
 
     class AudioPluginInstanceLV2 : public PluginInstance {
-        PluginCatalogEntry* entry;
         PluginFormatLV2::Impl* formatImpl;
         const LilvPlugin* plugin;
         LilvInstance* instance{nullptr};
@@ -73,7 +72,7 @@ namespace remidy {
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
-            return formatImpl->format()->requiresUIThreadOn(entry);
+            return formatImpl->format()->requiresUIThreadOn(info());
         }
 
         // audio processing core functions.
@@ -214,7 +213,7 @@ namespace remidy {
     // AudioPluginInstanceLV2
 
     AudioPluginInstanceLV2::AudioPluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
-        entry(entry), formatImpl(formatImpl), plugin(plugin),
+        PluginInstance(entry), formatImpl(formatImpl), plugin(plugin),
         implContext(formatImpl->worldContext, formatImpl->world, plugin) {
         buses = inspectBuses();
     }

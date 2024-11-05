@@ -22,7 +22,7 @@ target_sources(uapmd PRIVATE
         AudioBackend/impl/MiniAudioIODriver.cpp
         AudioPluginHosting/impl/RemidyAudioPluginHostPAL.cpp
         AudioPluginHosting/AudioPluginGraph.cpp
-        AudioPluginHosting/AudioPluginHost.cpp
+        AudioPluginHosting/AudioPluginSequencer.cpp
         AudioPluginHosting/AudioPluginHostPAL.cpp
         AudioPluginHosting/impl/RemidyAudioPluginHostPAL.cpp
         AudioPluginHosting/AudioPluginNode.cpp

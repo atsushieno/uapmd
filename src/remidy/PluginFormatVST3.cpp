@@ -327,7 +327,7 @@ namespace remidy {
         IEditController* controller,
         bool isControllerDistinctFromComponent,
         FUnknown* instance
-    ) : owner(owner), info(info), module(module), factory(factory),
+    ) : PluginInstance(info), owner(owner), module(module), factory(factory),
         component(component), processor(processor), controller(controller),
         isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
 
@@ -384,10 +384,10 @@ namespace remidy {
 
             instance->vtable->unknown.unref(instance);
 
-            owner->unrefLibrary(info);
+            owner->unrefLibrary(info());
         };
 
-        std::cerr << "VST3 instance destructor: " << info->displayName() << std::endl;
+        std::cerr << "VST3 instance destructor: " << info()->displayName() << std::endl;
         std::atomic<bool> waitHandle{false};
         EventLoop::runTaskOnMainThread([&] {
             if (isControllerDistinctFromComponent) {
@@ -398,10 +398,10 @@ namespace remidy {
             waitHandle = true;
             waitHandle.notify_all();
         });
-        std::cerr << "  waiting for cleanup: " << info->displayName() << std::endl;
+        std::cerr << "  waiting for cleanup: " << info()->displayName() << std::endl;
         while (!waitHandle)
             std::this_thread::yield();
-        std::cerr << "  cleanup done: " << info->displayName() << std::endl;
+        std::cerr << "  cleanup done: " << info()->displayName() << std::endl;
 
         for (const auto bus : input_buses)
             delete bus;

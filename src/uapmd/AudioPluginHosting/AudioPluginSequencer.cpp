@@ -2,7 +2,7 @@
 
 namespace uapmd {
 
-    class AudioPluginHost::Impl {
+    class AudioPluginSequencer::Impl {
         std::vector<AudioPluginTrack*> tracks{};
     public:
         explicit Impl(AudioPluginHostPAL* pal);
@@ -14,26 +14,26 @@ namespace uapmd {
 
         void addSimpleTrack(AudioPluginNode* node);
 
-        uapmd_status_t processAudio(std::vector<remidy::AudioProcessContext*> contexts);
+        uapmd_status_t processAudio(SequenceData& data);
     };
 
-    AudioPluginHost::AudioPluginHost(AudioPluginHostPAL* pal) {
+    AudioPluginSequencer::AudioPluginSequencer(AudioPluginHostPAL* pal) {
         impl = new Impl(pal);
     }
 
-    AudioPluginHost::~AudioPluginHost() {
+    AudioPluginSequencer::~AudioPluginSequencer() {
         delete impl;
     }
 
-    std::vector<AudioPluginTrack *> &AudioPluginHost::tracks() {
+    std::vector<AudioPluginTrack *> &AudioPluginSequencer::tracks() {
         return impl->getTracks();
     }
 
-    uapmd_status_t AudioPluginHost::processAudio(std::vector<remidy::AudioProcessContext*> contexts) {
-        return impl->processAudio(contexts);
+    uapmd_status_t AudioPluginSequencer::processAudio(SequenceData& data) {
+        return impl->processAudio(data);
     }
 
-    void AudioPluginHost::addSimpleTrack(std::string &format, std::string &pluginId, std::function<void(std::string error)>&& callback) {
+    void AudioPluginSequencer::addSimpleTrack(std::string &format, std::string &pluginId, std::function<void(std::string error)>&& callback) {
         impl->pal->createPluginInstance(format, pluginId, [&](AudioPluginNode* node, std::string error) {
             if (!node)
                 callback("Could not create simple track: " + error);
@@ -43,30 +43,30 @@ namespace uapmd {
     }
 
     // Impl
-    AudioPluginHost::Impl::Impl(AudioPluginHostPAL* pal) : pal(pal) {}
+    AudioPluginSequencer::Impl::Impl(AudioPluginHostPAL* pal) : pal(pal) {}
 
-    AudioPluginHost::Impl::~Impl() {
+    AudioPluginSequencer::Impl::~Impl() {
         for (auto track : tracks)
             delete track;
 
         delete pal;
     }
 
-    std::vector<AudioPluginTrack*> &AudioPluginHost::Impl::getTracks() {
+    std::vector<AudioPluginTrack*> &AudioPluginSequencer::Impl::getTracks() {
         return tracks;
     }
 
-    int32_t AudioPluginHost::Impl::processAudio(std::vector<remidy::AudioProcessContext*> contexts) {
-        if (tracks.size() != contexts.size())
+    int32_t AudioPluginSequencer::Impl::processAudio(SequenceData& data) {
+        if (tracks.size() != data.tracks.size())
             // FIXME: define status codes
             return 1;
-        for (auto i = 0; i < contexts.size(); i++)
-            tracks[i]->processAudio(*contexts[i]);
+        for (auto i = 0; i < data.tracks.size(); i++)
+            tracks[i]->processAudio(*data.tracks[i]);
         // FIXME: define status codes
         return 0;
     }
 
-    void AudioPluginHost::Impl::addSimpleTrack(AudioPluginNode *node) {
+    void AudioPluginSequencer::Impl::addSimpleTrack(AudioPluginNode *node) {
         auto track = new AudioPluginTrack();
         track->getGraph().appendNodeSimple(node);
         tracks.emplace_back(track);

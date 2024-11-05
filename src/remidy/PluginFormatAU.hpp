@@ -59,7 +59,6 @@ namespace remidy {
 
     protected:
         PluginFormatAU *format;
-        PluginCatalogEntry* info;
         AudioComponent component;
         AudioUnit instance;
         std::string name{};
@@ -75,7 +74,7 @@ namespace remidy {
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
-            return format->requiresUIThreadOn(info);
+            return format->requiresUIThreadOn(info());
         }
 
         // audio processing core functions.
