@@ -8,10 +8,10 @@ namespace uapmd {
         bool bypass{false};
         bool frozen{false};
         AudioPluginGraph graph{};
-        int32_t processAudio(AudioProcessContext* process);
+        int32_t processAudio(AudioProcessContext& process);
     };
 
-    int32_t AudioPluginTrack::Impl::processAudio(AudioProcessContext* process) {
+    int32_t AudioPluginTrack::Impl::processAudio(AudioProcessContext& process) {
         return graph.processAudio(process);
     }
 
@@ -33,7 +33,7 @@ namespace uapmd {
 
     void AudioPluginTrack::frozen(bool value) { impl->frozen = value; }
 
-    int32_t AudioPluginTrack::processAudio(AudioProcessContext* process) {
+    int32_t AudioPluginTrack::processAudio(AudioProcessContext& process) {
         return impl->processAudio(process);
     }
 

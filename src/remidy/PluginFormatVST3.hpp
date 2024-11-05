@@ -137,8 +137,6 @@ namespace remidy {
         StatusCode process(AudioProcessContext &process) override;
 
         // port helpers
-        bool hasAudioInputs() override { return busesInfo.numAudioIn > 0; }
-        bool hasAudioOutputs() override { return busesInfo.numAudioOut > 0; }
         bool hasEventInputs() override { return busesInfo.numEventIn > 0; }
         bool hasEventOutputs() override { return busesInfo.numEventOut > 0; }
 

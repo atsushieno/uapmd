@@ -1,4 +1,4 @@
-#include "PluginInstancing.hpp"
+#include "remidy-tooling/PluginInstancing.hpp"
 
 #include <cassert>
 #include <iostream>

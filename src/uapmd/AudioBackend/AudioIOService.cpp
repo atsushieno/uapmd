@@ -15,7 +15,7 @@ namespace uapmd {
     };
 }
 
-uapmd::AudioIOService::AudioIOService(AudioIODriver* driver) : impl(new Impl(this, driver = driver ? driver : AudioIODriver::instance())) {
+uapmd::AudioIOService::AudioIOService(AudioIODriver* driver) : impl(new Impl(this, driver ? driver : AudioIODriver::instance())) {
 }
 
 uapmd::AudioIOService::~AudioIOService() {

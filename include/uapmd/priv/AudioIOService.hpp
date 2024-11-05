@@ -7,7 +7,7 @@ namespace uapmd {
         class Impl;
         Impl* impl;
     public:
-        AudioIOService(AudioIODriver* driver = nullptr);
+        explicit AudioIOService(AudioIODriver* driver = nullptr);
         ~AudioIOService();
 
         void addAudioCallback(std::function<uapmd_status_t(AudioProcessContext& data)>&& callback);

@@ -39,12 +39,6 @@ namespace remidy {
 
         virtual PluginUIThreadRequirement requiresUIThreadOn() = 0;
 
-        // Returns true if there is a main audio input bus.
-        // In a long term, it should be just a shorthand property for current bus configuration.
-        virtual bool hasAudioInputs() = 0;
-        // Returns true if there is a main audio output bus.
-        // In a long term, it should be just a shorthand property for current bus configuration.
-        virtual bool hasAudioOutputs() = 0;
         // Returns true if there is an event input bus that MIDI inputs that the instance received can be mapped to.
         // In a long term, it should be just a shorthand property for current bus configuration.
         virtual bool hasEventInputs() = 0;

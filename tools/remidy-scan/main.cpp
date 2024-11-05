@@ -6,8 +6,8 @@
 #include <cpptrace/from_current.hpp>
 #include <cpplocate/cpplocate.h>
 #include <remidy/remidy.hpp>
-#include "PluginScanning.hpp"
-#include "PluginInstancing.hpp"
+#include <remidy-tooling/PluginScanning.hpp>
+#include <remidy-tooling/PluginInstancing.hpp>
 
 // -------- instancing --------
 const char* TOOLING_DIR_NAME= "remidy-tooling";

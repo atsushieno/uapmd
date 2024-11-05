@@ -13,7 +13,10 @@ namespace uapmd {
     public:
         AudioPluginGraph();
         ~AudioPluginGraph();
-        int32_t processAudio(AudioProcessContext* process);
+
+        uapmd_status_t appendNodeSimple(AudioPluginNode* newNode);
+
+        int32_t processAudio(AudioProcessContext& process);
     };
 
 }

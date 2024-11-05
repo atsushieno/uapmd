@@ -2,15 +2,15 @@ add_executable(uapmd-service)
 
 target_include_directories(uapmd-service PRIVATE
         ../../include
-        ../remidy-tooling
+        ../../src/remidy-tooling
         ../../external/choc
         ../../external/libremidi/include
         ../../external/cpplocate/source/cpplocate/include
 )
 
 target_link_libraries(uapmd-service PRIVATE
-        remidy
-        remidy-tooling
+        remidy::remidy
+        remidy::remidy-tooling
         uapmd
         cpplocate::cpplocate
         cpptrace::cpptrace

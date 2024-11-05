@@ -12,7 +12,7 @@ target_include_directories(remidy-tooling PRIVATE
         ../../include
         ../../../../external/choc
         ../../../../external/cpplocate/source/cpplocate/include
-        ../remidy-tooling
+        .
 )
 
 target_link_libraries(remidy-tooling PRIVATE

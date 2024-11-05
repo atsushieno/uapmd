@@ -1,7 +1,6 @@
 #pragma once
 #include <cassert>
-#include <cpplocate/cpplocate.h>
-#include <remidy/remidy.hpp>
+#include "remidy/remidy.hpp"
 #include "PluginScanning.hpp"
 
 namespace remidy_tooling {

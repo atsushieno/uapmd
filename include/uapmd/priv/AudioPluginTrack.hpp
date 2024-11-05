@@ -20,7 +20,7 @@ namespace uapmd {
         void bypassed(bool value);
         void frozen(bool value);
 
-        int32_t processAudio(AudioProcessContext* process);
+        int32_t processAudio(AudioProcessContext& process);
     };
 
 }

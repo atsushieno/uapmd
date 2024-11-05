@@ -1,5 +1,6 @@
 
-#include "PluginScanning.hpp"
+#include "remidy-tooling/PluginScanning.hpp"
+#include "cpplocate/cpplocate.h"
 
 int remidy_tooling::PluginScanning::performPluginScanning(std::filesystem::path& pluginListCacheFile)  {
     if (std::filesystem::exists(pluginListCacheFile)) {

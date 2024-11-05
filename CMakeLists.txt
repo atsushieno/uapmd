@@ -6,9 +6,9 @@ set(CMAKE_CXX_STANDARD 23)
 
 add_subdirectory(src/remidy)
 
-add_subdirectory(src/uapmd)
+add_subdirectory(src/remidy-tooling)
 
-add_subdirectory(tools/remidy-tooling)
+add_subdirectory(src/uapmd)
 
 add_subdirectory(tools/remidy-scan)
 add_subdirectory(tools/remidy-apply)

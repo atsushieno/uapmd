@@ -1,5 +1,4 @@
-#include <remidy/remidy.hpp>
-#include <cpplocate/cpplocate.h>
+#include "remidy/remidy.hpp"
 
 #pragma once
 

@@ -269,7 +269,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     }
 
     // audio input retriever
-    if (hasAudioInputs()) {
+    if (!input_buses.empty()) {
         AURenderCallbackStruct callback;
         callback.inputProc = audioInputRenderCallback;
         callback.inputProcRefCon = this;

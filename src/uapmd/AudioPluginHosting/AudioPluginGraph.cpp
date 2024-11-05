@@ -1,5 +1,7 @@
 
 #include "uapmd/uapmd.hpp"
+#include "uapmd/priv/AudioPluginGraph.hpp"
+
 
 #include <cassert>
 
@@ -9,12 +11,21 @@ namespace uapmd {
         std::vector<AudioPluginNode*> nodes;
 
     public:
-        int32_t processAudio(AudioProcessContext* process);
+        uapmd_status_t appendNodeSimple(AudioPluginNode* newNode);
+        int32_t processAudio(AudioProcessContext& process);
     };
 
-    int32_t AudioPluginGraph::Impl::processAudio(AudioProcessContext* process) {
-        // FIXME: implement
-        assert(false);
+    int32_t AudioPluginGraph::Impl::processAudio(AudioProcessContext& process) {
+        for (auto node : nodes)
+            node->processAudio(process);
+        // FIXME: define return codes
+        return 0;
+    }
+
+    uapmd_status_t AudioPluginGraph::Impl::appendNodeSimple(AudioPluginNode *newNode) {
+        nodes.emplace_back(newNode);
+        // FIXME: define return codes
+        return 0;
     }
 
     AudioPluginGraph::AudioPluginGraph() {
@@ -25,8 +36,12 @@ namespace uapmd {
         delete impl;
     }
 
-    int32_t AudioPluginGraph::processAudio(AudioProcessContext* process) {
+    int32_t AudioPluginGraph::processAudio(AudioProcessContext& process) {
         return impl->processAudio(process);
+    }
+
+    uapmd_status_t AudioPluginGraph::appendNodeSimple(AudioPluginNode *newNode) {
+        return impl->appendNodeSimple(newNode);
     }
 
 }

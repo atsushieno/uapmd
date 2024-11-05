@@ -14,8 +14,11 @@ namespace uapmd {
         AudioPluginHost();
         ~AudioPluginHost();
 
-        AudioPluginTrack* getTrack(int32_t index);
-        uapmd_status_t processAudio(AudioProcessContext* process);
+        std::vector<AudioPluginTrack*>& tracks();
+
+        void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(std::string error)>&& callback);
+
+        uapmd_status_t processAudio(std::vector<remidy::AudioProcessContext*> contexts);
     };
 
 }

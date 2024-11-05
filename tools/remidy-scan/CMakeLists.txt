@@ -2,7 +2,7 @@ add_executable(remidy-scan)
 
 target_include_directories(remidy-scan PRIVATE
         ../../include
-        ../remidy-tooling
+        ../../src/remidy-tooling
         ../../../../external/choc
         ../../../../external/cpplocate/source/cpplocate/include
 )

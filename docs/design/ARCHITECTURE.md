@@ -35,9 +35,8 @@ We plan to work with these audio plugin formats:
 
 - LV2
 - VST3 (Travesty)
-- AudioUnit V2
-- AudioUnit V3
-- CLAP
+- AudioUnit (V2 and V3)
+- CLAP (if there is good hosting library like LV2 lilv)
 
 Our hosting support is limited to the following features:
 

@@ -85,8 +85,6 @@ namespace remidy {
         StatusCode stopProcessing() override;
 
         // port helpers
-        bool hasAudioInputs() override { return buses.numAudioIn > 0; }
-        bool hasAudioOutputs() override { return buses.numAudioOut > 0; }
         bool hasEventInputs() override { return buses.hasMidiIn; }
         bool hasEventOutputs() override { return buses.hasMidiOut; }
 
