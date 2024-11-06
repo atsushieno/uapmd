@@ -13,7 +13,7 @@ namespace uapmd {
         AudioPluginTrack();
         ~AudioPluginTrack();
 
-        AudioPluginGraph& getGraph();
+        AudioPluginGraph& graph();
 
         bool bypassed();
         bool frozen();

@@ -16,12 +16,14 @@ namespace uapmd {
     }
 
     AudioPluginTrack::AudioPluginTrack() {
+        impl = new Impl();
     }
 
     AudioPluginTrack::~AudioPluginTrack() {
+        delete impl;
     }
 
-    AudioPluginGraph& AudioPluginTrack::getGraph() {
+    AudioPluginGraph& AudioPluginTrack::graph() {
         return impl->graph;
     }
 

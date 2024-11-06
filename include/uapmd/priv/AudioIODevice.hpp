@@ -3,13 +3,13 @@
 #include <string>
 
 namespace uapmd {
-    class AudioIODriver {
+    class AudioIODevice {
     protected:
-        AudioIODriver() = default;
-        virtual ~AudioIODriver() = default;
+        AudioIODevice() = default;
+        virtual ~AudioIODevice() = default;
 
     public:
-        static AudioIODriver* instance(std::string driverName = "");
+        static AudioIODevice* instance(const std::string deviceName = "", const std::string driverName = "");
 
         virtual void addAudioCallback(std::function<uapmd_status_t(AudioProcessContext& data)>&& callback) = 0;
         virtual uapmd_status_t start() = 0;

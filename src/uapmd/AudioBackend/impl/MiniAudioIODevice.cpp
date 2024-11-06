@@ -1,26 +1,27 @@
 #define MINIAUDIO_IMPLEMENTATION 1
-#include "MiniAudioIODriver.hpp"
+#include "MiniAudioIODevice.hpp"
 #include <choc/audio/choc_SampleBuffers.h>
 
 static void data_callback(ma_device* device, void* output, const void* input, ma_uint32 frameCount) {
-    ((uapmd::MiniAudioIODriver*) device->pUserData)->dataCallback(output, input, frameCount);
+    ((uapmd::MiniAudioIODevice*) device->pUserData)->dataCallback(output, input, frameCount);
 }
 
-uapmd::MiniAudioIODriver::MiniAudioIODriver() {
+uapmd::MiniAudioIODevice::MiniAudioIODevice(const std::string& deviceName) {
     config = ma_engine_config_init();
     config.dataCallback = data_callback;
     config.pContext->pUserData = this;
+    // FIXME: support explicit device specification by `deviceName`,
 
     if (ma_engine_init(&config, &engine) != MA_SUCCESS) {
         throw std::runtime_error("uapmd: Failed to initialize miniaudio driver.");
     }
 }
 
-uapmd::MiniAudioIODriver::~MiniAudioIODriver() {
+uapmd::MiniAudioIODevice::~MiniAudioIODevice() {
     ma_engine_uninit(&engine);
 }
 
-uapmd_status_t uapmd::MiniAudioIODriver::start() {
+uapmd_status_t uapmd::MiniAudioIODevice::start() {
     data.addAudioIn(config.pDevice->capture.channels, config.periodSizeInFrames);
     data.addAudioOut(config.pDevice->playback.channels, config.periodSizeInFrames);
     ma_engine_start(&engine);
@@ -29,7 +30,7 @@ uapmd_status_t uapmd::MiniAudioIODriver::start() {
     return 0;
 }
 
-uapmd_status_t uapmd::MiniAudioIODriver::stop() {
+uapmd_status_t uapmd::MiniAudioIODevice::stop() {
     ma_engine_stop(&engine);
     data = AudioProcessContext{0};
 
@@ -37,7 +38,7 @@ uapmd_status_t uapmd::MiniAudioIODriver::stop() {
     return 0;
 }
 
-void uapmd::MiniAudioIODriver::dataCallback(void *output, const void *input, ma_uint32 frameCount) {
+void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_uint32 frameCount) {
     choc::buffer::BufferView<float, choc::buffer::SeparateChannelLayout> view{};
     if (data.audioInBusCount() > 0) {
         // FIXME: get appropriate main bus

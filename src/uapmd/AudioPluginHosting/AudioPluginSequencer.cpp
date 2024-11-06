@@ -68,7 +68,7 @@ namespace uapmd {
 
     void AudioPluginSequencer::Impl::addSimpleTrack(AudioPluginNode *node) {
         auto track = new AudioPluginTrack();
-        track->getGraph().appendNodeSimple(node);
+        track->graph().appendNodeSimple(node);
         tracks.emplace_back(track);
     }
 

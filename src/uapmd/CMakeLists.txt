@@ -17,9 +17,11 @@ target_link_libraries(uapmd PRIVATE
 )
 
 target_sources(uapmd PRIVATE
-        AudioBackend/AudioIODriver.cpp
-        AudioBackend/AudioIOService.cpp
-        AudioBackend/impl/MiniAudioIODriver.cpp
+        AudioBackend/AudioIODevice.cpp
+        AudioBackend/DeviceIODispatcher.cpp
+        AudioBackend/MidiIODevice.cpp
+        AudioBackend/impl/MiniAudioIODevice.cpp
+        AudioBackend/impl/LibreMidiIODevice.cpp
         AudioPluginHosting/impl/RemidyAudioPluginHostPAL.cpp
         AudioPluginHosting/AudioPluginGraph.cpp
         AudioPluginHosting/AudioPluginSequencer.cpp
