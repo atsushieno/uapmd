@@ -1,5 +1,5 @@
 #pragma once
-#include "CommonTypes.hpp"
+#include "uapmd/priv/CommonTypes.hpp"
 #include "AudioPluginGraph.hpp"
 #include "remidy/remidy.hpp"
 

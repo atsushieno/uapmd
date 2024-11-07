@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include "CommonTypes.hpp"
+#include "uapmd/priv/CommonTypes.hpp"
 
 namespace uapmd {
 

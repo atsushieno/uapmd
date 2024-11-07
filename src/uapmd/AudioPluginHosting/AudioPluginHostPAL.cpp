@@ -1,4 +1,4 @@
-#include "uapmd/priv/AudioPluginHostPAL.hpp"
+#include "uapmd/uapmd.hpp"
 #include "impl/RemidyAudioPluginHostPAL.hpp"
 
 

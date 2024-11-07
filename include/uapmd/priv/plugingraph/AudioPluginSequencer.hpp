@@ -2,7 +2,7 @@
 #include <memory>
 
 #include "AudioPluginTrack.hpp"
-#include "SequenceData.hpp"
+#include "uapmd/priv/SequenceData.hpp"
 #include "remidy/remidy.hpp"
 
 namespace uapmd {

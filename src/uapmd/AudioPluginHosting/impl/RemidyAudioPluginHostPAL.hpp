@@ -1,8 +1,8 @@
 #pragma once
 #include <cstdint>
 
-#include "uapmd/priv/AudioPluginNode.hpp"
-#include "uapmd/priv/AudioPluginHostPAL.hpp"
+#include "uapmd/priv/plugingraph/AudioPluginNode.hpp"
+#include "uapmd/priv/plugingraph/AudioPluginHostPAL.hpp"
 #include "remidy-tooling/PluginScanning.hpp"
 #include "remidy-tooling/PluginInstancing.hpp"
 

@@ -2,7 +2,7 @@
 #include <vector>
 
 #include "AudioPluginNode.hpp"
-#include "CommonTypes.hpp"
+#include "uapmd/priv/CommonTypes.hpp"
 #include "remidy/remidy.hpp"
 
 namespace uapmd {
