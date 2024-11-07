@@ -3,12 +3,13 @@
 #include <cassert>
 #include <iostream>
 
-
 void remidy_tooling::PluginInstancing::setupInstance(std::function<void(std::string error)>&& callback) {
     std::cerr << "  instantiating " << format->name() << " " << displayName << std::endl;
     instancing_state = PluginInstancingState::Preparing;
+    auto cb = std::move(callback);
 
-    format->createInstance(entry, [this, callback](std::unique_ptr<PluginInstance> newInstance, std::string error) {
+    format->createInstance(entry, [&](std::unique_ptr<PluginInstance> newInstance, std::string error) {
+        auto callback = std::move(cb);
         if (!error.empty()) {
             instancing_state = PluginInstancingState::Error;
             callback(error);

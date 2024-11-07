@@ -2,6 +2,7 @@
 
 #include <string>
 #include "uapmd/priv/CommonTypes.hpp"
+#include "AudioPluginHostPAL.hpp"
 
 namespace uapmd {
 
@@ -9,11 +10,11 @@ namespace uapmd {
         class Impl;
         Impl* impl;
     public:
-        AudioPluginNode(std::string& formatName, std::string& pluginId);
+        AudioPluginNode(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL);
         virtual ~AudioPluginNode();
 
-        std::string& formatName() const;
-        std::string& pluginId() const;
+        AudioPluginHostPAL::AudioPluginNodePAL* pal();
+
         bool bypassed();
         void bypassed(bool value);
 

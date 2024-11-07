@@ -9,6 +9,7 @@ target_include_directories(remidy-apply PRIVATE
 
 target_link_libraries(remidy-apply PRIVATE
         remidy-tooling
+        uapmd
         cpplocate::cpplocate
         cpptrace::cpptrace
         "-framework AudioToolbox"

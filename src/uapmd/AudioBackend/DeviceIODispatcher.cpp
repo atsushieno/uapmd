@@ -4,17 +4,19 @@
 namespace uapmd {
     class DeviceIODispatcher::Impl {
         std::vector<std::function<uapmd_status_t(AudioProcessContext& data)>> callbacks{};
-        DeviceIODispatcher* owner;
-        AudioIODevice* audio;
-        MidiIODevice* midi;
-        uapmd_ump_t* queued_inputs;
+        DeviceIODispatcher* owner{};
+        AudioIODevice* audio{};
+        MidiIODevice* midi{};
+        uapmd_ump_t* queued_inputs{};
         std::atomic<size_t> next_ump_position{0};
-        size_t ump_buffer_size_in_bytes;
+        size_t ump_buffer_size_in_bytes{0};
 
     public:
         explicit Impl(size_t umpInputBufferSizeInBytes, DeviceIODispatcher* owner, AudioIODevice* audioDriver, MidiIODevice* midiDriver);
 
         ~Impl() {
+            audio->clearAudioCallbacks();
+            callbacks.clear();
             free(queued_inputs);
         }
 
@@ -63,12 +65,12 @@ uapmd_status_t uapmd::DeviceIODispatcher::manuallyRunCallbacks(uapmd::AudioProce
 uapmd::DeviceIODispatcher::Impl::Impl(size_t umpInputBufferSizeInBytes, DeviceIODispatcher* owner, AudioIODevice* audioDriver, MidiIODevice* midiDriver) :
     owner(owner), audio(audioDriver), midi(midiDriver), ump_buffer_size_in_bytes(umpInputBufferSizeInBytes) {
     queued_inputs = (uapmd_ump_t*) calloc(1, umpInputBufferSizeInBytes);
-    audioDriver->addAudioCallback([&](auto& data) {
+    audioDriver->addAudioCallback([this](auto& data) {
         auto ret = runCallbacks(data);
         next_ump_position = 0; // clear MIDI input queue
         return ret;
     });
-    midiDriver->addCallback([&](AudioProcessContext& data) {
+    midiDriver->addCallback([this](AudioProcessContext& data) {
         auto& input = data.midiIn();
         size_t size = input.sizeInBytes();
         if (size + next_ump_position >= ump_buffer_size_in_bytes)

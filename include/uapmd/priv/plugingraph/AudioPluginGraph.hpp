@@ -14,7 +14,7 @@ namespace uapmd {
         AudioPluginGraph();
         ~AudioPluginGraph();
 
-        uapmd_status_t appendNodeSimple(AudioPluginNode* newNode);
+        uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode);
 
         int32_t processAudio(AudioProcessContext& process);
     };

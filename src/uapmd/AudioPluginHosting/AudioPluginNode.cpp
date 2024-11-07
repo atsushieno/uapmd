@@ -7,14 +7,13 @@
 namespace uapmd {
 
     class AudioPluginNode::Impl {
+        std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> node;
     public:
-        Impl(std::string& formatName, std::string& pluginId) :
-            formatName(formatName), pluginId(pluginId) {
+        explicit Impl(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL) : node(std::move(nodePAL)) {
         }
-        std::string formatName;
-        std::string pluginId;
         bool bypassed;
 
+        AudioPluginHostPAL::AudioPluginNodePAL* pal() { return node.get(); }
         uapmd_status_t processAudio(AudioProcessContext &process);
     };
 
@@ -22,27 +21,21 @@ namespace uapmd {
 
     void AudioPluginNode::bypassed(bool value) { impl->bypassed = value;; }
 
-    AudioPluginNode::AudioPluginNode(std::string& formatName, std::string& pluginId) {
-        impl = new Impl(formatName, pluginId);
+    AudioPluginNode::AudioPluginNode(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL) {
+        impl = new Impl(std::move(nodePAL));
     }
 
     AudioPluginNode::~AudioPluginNode() {
         delete impl;
     }
 
-    std::string& AudioPluginNode::formatName() const {
-        return impl->formatName;
-    }
-
-    std::string& AudioPluginNode::pluginId() const {
-        return impl->pluginId;
-    }
+    AudioPluginHostPAL::AudioPluginNodePAL* AudioPluginNode::pal() { return impl->pal(); }
 
     uapmd_status_t AudioPluginNode::processAudio(AudioProcessContext &process) {
         return impl->processAudio(process);
     }
 
     uapmd_status_t AudioPluginNode::Impl::processAudio(AudioProcessContext &process) {
-        throw std::runtime_error("Not implemented");
+        return pal()->processAudio(process);
     }
 }

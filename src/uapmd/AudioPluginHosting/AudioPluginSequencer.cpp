@@ -12,7 +12,7 @@ namespace uapmd {
 
         std::vector<AudioPluginTrack*>& getTracks();
 
-        void addSimpleTrack(AudioPluginNode* node);
+        void addSimpleTrack(std::unique_ptr<AudioPluginNode> node);
 
         uapmd_status_t processAudio(SequenceData& data);
     };
@@ -25,7 +25,7 @@ namespace uapmd {
         delete impl;
     }
 
-    std::vector<AudioPluginTrack *> &AudioPluginSequencer::tracks() {
+    std::vector<AudioPluginTrack *> & AudioPluginSequencer::tracks() const {
         return impl->getTracks();
     }
 
@@ -34,11 +34,14 @@ namespace uapmd {
     }
 
     void AudioPluginSequencer::addSimpleTrack(std::string &format, std::string &pluginId, std::function<void(std::string error)>&& callback) {
-        impl->pal->createPluginInstance(format, pluginId, [&](AudioPluginNode* node, std::string error) {
+        std::function<void(std::string error)> cb = std::move(callback);
+        impl->pal->createPluginInstance(format, pluginId, [this,cb](auto node, std::string error) {
             if (!node)
-                callback("Could not create simple track: " + error);
-            else
-                impl->addSimpleTrack(node);
+                cb("Could not create simple track: " + error);
+            else {
+                impl->addSimpleTrack(std::move(node));
+                cb("");
+            }
         });
     }
 
@@ -48,8 +51,7 @@ namespace uapmd {
     AudioPluginSequencer::Impl::~Impl() {
         for (auto track : tracks)
             delete track;
-
-        delete pal;
+        pal = nullptr; // do not delete
     }
 
     std::vector<AudioPluginTrack*> &AudioPluginSequencer::Impl::getTracks() {
@@ -66,9 +68,9 @@ namespace uapmd {
         return 0;
     }
 
-    void AudioPluginSequencer::Impl::addSimpleTrack(AudioPluginNode *node) {
+    void AudioPluginSequencer::Impl::addSimpleTrack(std::unique_ptr<AudioPluginNode> node) {
         auto track = new AudioPluginTrack();
-        track->graph().appendNodeSimple(node);
+        track->graph().appendNodeSimple(std::move(node));
         tracks.emplace_back(track);
     }
 

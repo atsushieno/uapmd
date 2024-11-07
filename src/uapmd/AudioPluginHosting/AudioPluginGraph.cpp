@@ -7,22 +7,22 @@
 namespace uapmd {
 
     class AudioPluginGraph::Impl {
-        std::vector<AudioPluginNode*> nodes;
+        std::vector<std::unique_ptr<AudioPluginNode>> nodes;
 
     public:
-        uapmd_status_t appendNodeSimple(AudioPluginNode* newNode);
+        uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode);
         int32_t processAudio(AudioProcessContext& process);
     };
 
     int32_t AudioPluginGraph::Impl::processAudio(AudioProcessContext& process) {
-        for (auto node : nodes)
+        for (auto& node : nodes)
             node->processAudio(process);
         // FIXME: define return codes
         return 0;
     }
 
-    uapmd_status_t AudioPluginGraph::Impl::appendNodeSimple(AudioPluginNode *newNode) {
-        nodes.emplace_back(newNode);
+    uapmd_status_t AudioPluginGraph::Impl::appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) {
+        nodes.emplace_back(std::move(newNode));
         // FIXME: define return codes
         return 0;
     }
@@ -39,8 +39,8 @@ namespace uapmd {
         return impl->processAudio(process);
     }
 
-    uapmd_status_t AudioPluginGraph::appendNodeSimple(AudioPluginNode *newNode) {
-        return impl->appendNodeSimple(newNode);
+    uapmd_status_t AudioPluginGraph::appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) {
+        return impl->appendNodeSimple(std::move(newNode));
     }
 
 }

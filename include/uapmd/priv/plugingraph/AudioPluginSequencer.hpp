@@ -13,10 +13,10 @@ namespace uapmd {
         Impl *impl;
 
     public:
-        explicit AudioPluginSequencer(AudioPluginHostPAL* pal);
+        explicit AudioPluginSequencer(AudioPluginHostPAL* pal = AudioPluginHostPAL::instance());
         ~AudioPluginSequencer();
 
-        std::vector<AudioPluginTrack*>& tracks();
+        std::vector<AudioPluginTrack *> & tracks() const;
 
         void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(std::string error)>&& callback);
 
