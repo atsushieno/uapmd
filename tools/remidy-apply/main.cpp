@@ -120,7 +120,7 @@ class RemidyApply {
             }
             static uint32_t UMP_BUFFER_SIZE = 65536;
             auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>(UMP_BUFFER_SIZE);
-            dispatcher->addCallback([&sequencer](auto data) {
+            dispatcher->addCallback([&sequencer](auto& data) {
                 for (auto & track : sequencer->tracks())
                     if (auto ret = track->processAudio(data); ret)
                         return ret;
