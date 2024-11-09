@@ -138,7 +138,7 @@ remidy::PluginFormatAU::Extensibility::Extensibility(PluginFormat &format) : Plu
 
 remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
     PluginInstance(info), format(format), component(component), instance(instance),
-    _parameters(new ParameterSupport()) {
+    _parameters(new ParameterSupport(this)) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     inspectBuses();
@@ -480,16 +480,38 @@ remidy::StatusCode remidy::AudioPluginInstanceAUv3::sampleRate(double sampleRate
 
 // AudioPluginInstanceAU::ParameterSupport
 
+remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioPluginInstanceAU *owner)
+    : owner(owner) {
+    AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &parameter_id_list, &parameter_list_size);
+    for (size_t i = 0, n = parameter_list_size / sizeof(AudioUnitParameterID); i < n; i++) {
+        auto id = parameter_id_list[i];
+        AudioUnitParameterInfo info;
+        UInt32 size;
+        AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, i, &info, &size);
+        std::string idString = std::format("{}", id);
+        std::string name{info.name};
+        std::string path{};
+        auto p = new PluginParameter(idString, name, path, info.defaultValue, info.minValue, info.maxValue, true);
+        parameter_list.emplace_back(p);
+    }
+}
+
 std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceAU::ParameterSupport::parameters() {
-    throw std::runtime_error("Not implemented");
+    return parameter_list;
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
-    throw std::runtime_error("Not implemented");
+    // FIXME: calculate inBufferOffsetInFrames from timestamp.
+    auto inBufferOffsetInFrames = 0;
+    AudioUnitSetParameter(owner->instance, parameter_id_list[index], kAudioUnitScope_Global, 0, value, inBufferOffsetInFrames);
+    return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::getParameter(uint32_t index, double* value) {
-    throw std::runtime_error("Not implemented");
+    AudioUnitParameterValue av;
+    AudioUnitGetParameter(owner->instance, parameter_id_list[index], kAudioUnitScope_Global, 0, &av);
+    *value = av;
+    return StatusCode::OK;
 }
 
 #endif
