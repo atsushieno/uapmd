@@ -60,13 +60,13 @@ namespace remidy {
 
     void PluginFormatVST3::createInstance(PluginCatalogEntry *info,
                                           std::function<void(std::unique_ptr<PluginInstance> instance,
-                                                             std::string error)> &&callback) {
-        return impl->createInstance(info, std::move(callback));
+                                                             std::string error)> callback) {
+        return impl->createInstance(info, callback);
     }
 
     void PluginFormatVST3::Impl::createInstance(PluginCatalogEntry *pluginInfo,
                                                 std::function<void(std::unique_ptr<PluginInstance> instance,
-                                                                   std::string error)> &&callback) {
+                                                                   std::string error)> callback) {
         PluginCatalogEntry *entry = pluginInfo;
         std::unique_ptr<AudioPluginInstanceVST3> ret{nullptr};
         std::string error{};
@@ -344,7 +344,7 @@ namespace remidy {
     ) : PluginInstance(info), owner(owner), module(module), factory(factory),
         component(component), processor(processor), controller(controller),
         isControllerDistinctFromComponent(isControllerDistinctFromComponent),
-        _parameters(new ParameterSupport()), instance(instance) {
+        _parameters(new ParameterSupport(this)), instance(instance) {
 
         pluginName = info->displayName();
 
@@ -636,10 +636,9 @@ namespace remidy {
         input_buses.clear();
         output_buses.clear();
         v3_bus_info info;
-        std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> u16conv;
         for (uint32_t bus = 0; bus < numAudioIn; bus++) {
             component->vtable->component.get_bus_info(component, V3_AUDIO, V3_INPUT, bus, &info);
-            auto name = u16conv.to_bytes((char16_t *) info.bus_name);
+            auto name = vst3StringToStdString(info.bus_name);
             auto def = AudioBusDefinition{name, info.flags & V3_MAIN ? AudioBusRole::Main : AudioBusRole::Aux};
             input_bus_defs.emplace_back(def);
             auto conf = new AudioBusConfiguration(def);
@@ -650,7 +649,7 @@ namespace remidy {
         }
         for (uint32_t bus = 0; bus < numAudioOut; bus++) {
             component->vtable->component.get_bus_info(component, V3_AUDIO, V3_OUTPUT, bus, &info);
-            auto name = u16conv.to_bytes((char16_t *) info.bus_name);
+            auto name = vst3StringToStdString(info.bus_name);
             auto def = AudioBusDefinition{name, info.flags & V3_MAIN ? AudioBusRole::Main : AudioBusRole::Aux};
             output_bus_defs.emplace_back(def);
             auto conf = new AudioBusConfiguration(def);
@@ -671,14 +670,46 @@ namespace remidy {
 
 // AudioPluginInstanceVST3::ParameterSupport
 
-std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceVST3::ParameterSupport::parameters() {
-    throw std::runtime_error("Not implemented");
+remidy::AudioPluginInstanceVST3::ParameterSupport::ParameterSupport(AudioPluginInstanceVST3* owner) : owner(owner) {
+    auto controller = owner->controller;
+    auto count = controller->vtable->controller.get_parameter_count(controller);
+
+    parameter_ids = (v3_param_id*) calloc(sizeof(v3_param_id), count);
+
+    for (auto i = 0; i < count; i++) {
+        v3_param_info info{};
+        controller->vtable->controller.get_parameter_info(controller, i, &info);
+        std::string id = std::format("{}", info.param_id);
+        std::string name = vst3StringToStdString(info.title);
+        std::string path{""};
+
+        auto p = new PluginParameter(id, name, path, info.default_normalised_value, 0, 1, false);
+        parameter_ids[i] = info.param_id;
+        parameter_defs.emplace_back(p);
+    }
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value) {
-    throw std::runtime_error("Not implemented");
+remidy::AudioPluginInstanceVST3::ParameterSupport::~ParameterSupport() {
+    for (auto p : parameter_defs)
+        delete p;
+    free(parameter_ids);
+}
+
+std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceVST3::ParameterSupport::parameters() {
+    return parameter_defs;
+}
+
+remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+    // FIXME: use IParamValueChanges for sample-accurate parameter changes
+    auto controller = owner->controller;
+    controller->vtable->controller.set_parameter_normalised(controller, parameter_ids[index], value);
+    return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::getParameter(uint32_t index, double* value) {
-    throw std::runtime_error("Not implemented");
+    if (!value)
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+    auto controller = owner->controller;
+    *value = controller->vtable->controller.get_parameter_normalised(controller, parameter_ids[index]);
+    return StatusCode::OK;
 }

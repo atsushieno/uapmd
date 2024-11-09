@@ -100,7 +100,7 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::PluginScannerAU
     return ret;
 }
 
-void remidy::PluginFormatAU::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) {
+void remidy::PluginFormatAU::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) {
     AudioComponentDescription desc{};
     std::istringstream id{info->pluginId()};
     id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;
@@ -484,7 +484,7 @@ std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceAU::ParameterSu
     throw std::runtime_error("Not implemented");
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::setParameter(uint32_t index, double value) {
+remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
     throw std::runtime_error("Not implemented");
 }
 

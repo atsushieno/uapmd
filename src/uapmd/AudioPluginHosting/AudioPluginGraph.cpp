@@ -1,5 +1,6 @@
 
 #include "uapmd/uapmd.hpp"
+#include "uapmd/priv/plugingraph/AudioPluginGraph.hpp"
 
 
 #include <cassert>
@@ -12,6 +13,7 @@ namespace uapmd {
     public:
         uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode);
         int32_t processAudio(AudioProcessContext& process);
+        std::vector<AudioPluginNode *> plugins();
     };
 
     int32_t AudioPluginGraph::Impl::processAudio(AudioProcessContext& process) {
@@ -25,6 +27,13 @@ namespace uapmd {
         nodes.emplace_back(std::move(newNode));
         // FIXME: define return codes
         return 0;
+    }
+
+    std::vector<AudioPluginNode *> AudioPluginGraph::Impl::plugins() {
+        std::vector<AudioPluginNode*> ret{};
+        for (auto& p : nodes)
+            ret.emplace_back(p.get());
+        return ret;
     }
 
     AudioPluginGraph::AudioPluginGraph() {
@@ -41,6 +50,10 @@ namespace uapmd {
 
     uapmd_status_t AudioPluginGraph::appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) {
         return impl->appendNodeSimple(std::move(newNode));
+    }
+
+    std::vector<AudioPluginNode *> AudioPluginGraph::plugins() {
+        return impl->plugins();
     }
 
 }

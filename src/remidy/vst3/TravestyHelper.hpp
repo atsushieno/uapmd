@@ -19,6 +19,8 @@
 
 namespace remidy_vst3 {
 
+    std::string vst3StringToStdString(v3_str_128& src);
+
     enum V3_IO_MODES {
         V3_IO_SIMPLE,
         V3_IO_ADVANCED,

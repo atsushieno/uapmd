@@ -5,6 +5,11 @@
 
 namespace remidy_vst3 {
 
+    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> u16conv;
+    std::string vst3StringToStdString(v3_str_128& src) {
+        return u16conv.to_bytes((char16_t *) src);
+    }
+
     const std::basic_string<char16_t> HostApplication::name16t{std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.from_bytes("remidy")};
 
     v3_result HostApplication::query_interface(void *self, const v3_tuid iid, void **obj) {

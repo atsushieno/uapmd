@@ -121,13 +121,14 @@ class RemidyApply {
             static uint32_t UMP_BUFFER_SIZE = 65536;
             auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>(UMP_BUFFER_SIZE);
             dispatcher->addCallback([&sequencer](auto& data) {
-                for (auto & track : sequencer->tracks())
+                for (auto track : sequencer->tracks())
                     if (auto ret = track->processAudio(data); ret)
                         return ret;
                 // FIXME: define status codes
                 return 0;
             });
             dispatcher->start();
+
             std::cerr << "Type [CR] to quit." << std::endl;
             std::cin.get();
             dispatcher->stop();

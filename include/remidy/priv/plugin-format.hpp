@@ -46,6 +46,6 @@ namespace remidy {
         };
 
         // Asynchronously creates a plugin instance.
-        virtual void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) = 0;
+        virtual void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) = 0;
     };
 }

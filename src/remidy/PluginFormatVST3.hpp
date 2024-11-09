@@ -15,7 +15,7 @@ namespace remidy {
         PluginFormatVST3::Impl* impl{};
 
     public:
-        AudioPluginScannerVST3(PluginFormatVST3::Impl* impl)
+        explicit AudioPluginScannerVST3(PluginFormatVST3::Impl* impl)
             : impl(impl) {
         }
         bool usePluginSearchPaths() override;
@@ -66,15 +66,21 @@ namespace remidy {
         );
         void unrefLibrary(PluginCatalogEntry* info);
 
-        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback);
+        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback);
         StatusCode configure(int32_t sampleRate);
     };
 
     class AudioPluginInstanceVST3 : public PluginInstance {
         class ParameterSupport : public PluginParameterSupport {
+            AudioPluginInstanceVST3* owner;
+            std::vector<PluginParameter*> parameter_defs{};
+            v3_param_id *parameter_ids{};
         public:
+            explicit ParameterSupport(AudioPluginInstanceVST3* owner);
+            ~ParameterSupport();
+
             std::vector<PluginParameter*> parameters() override;
-            StatusCode setParameter(uint32_t index, double value) override;
+            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getParameter(uint32_t index, double *value) override;
         };
 
@@ -90,7 +96,6 @@ namespace remidy {
         IConnectionPoint* connPointComp{nullptr};
         IConnectionPoint* connPointEdit{nullptr};
 
-        int32_t maxAudioFrameCount = 4096; // FIXME: retrieve appropriate config
         v3_process_data processData{};
         v3_process_context process_context{};
         std::vector<v3_audio_bus_buffers> inputAudioBusBuffersList{};

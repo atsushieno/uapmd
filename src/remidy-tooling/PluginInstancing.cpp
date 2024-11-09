@@ -3,13 +3,11 @@
 #include <cassert>
 #include <iostream>
 
-void remidy_tooling::PluginInstancing::setupInstance(std::function<void(std::string error)>&& callback) {
+void remidy_tooling::PluginInstancing::setupInstance(std::function<void(std::string error)> callback) {
     std::cerr << "  instantiating " << format->name() << " " << displayName << std::endl;
     instancing_state = PluginInstancingState::Preparing;
-    auto cb = std::move(callback);
 
-    format->createInstance(entry, [&](std::unique_ptr<PluginInstance> newInstance, std::string error) {
-        auto callback = std::move(cb);
+    auto cb = [this,callback](std::unique_ptr<PluginInstance> newInstance, std::string error) {
         if (!error.empty()) {
             instancing_state = PluginInstancingState::Error;
             callback(error);
@@ -36,7 +34,8 @@ void remidy_tooling::PluginInstancing::setupInstance(std::function<void(std::str
         }
         callback(error);
         instancing_state = PluginInstancingState::Error;
-    });
+    };
+    format->createInstance(entry, cb);
 }
 
 remidy_tooling::PluginInstancing::PluginInstancing(PluginScanning& scanner, PluginFormat* format, PluginCatalogEntry* entry) :
@@ -58,12 +57,12 @@ remidy_tooling::PluginInstancing::~PluginInstancing() {
     instancing_state = PluginInstancingState::Terminated;
 }
 
-void remidy_tooling::PluginInstancing::makeAlive(std::function<void(std::string error)>&& callback) {
+void remidy_tooling::PluginInstancing::makeAlive(std::function<void(std::string error)> callback) {
     if (scanner.shouldCreateInstanceOnUIThread(format, entry)) {
-        EventLoop::runTaskOnMainThread([&] {
-            setupInstance(std::move(callback));
+        EventLoop::runTaskOnMainThread([this,callback] {
+            setupInstance(callback);
         });
     }
     else
-        setupInstance(std::move(callback));
+        setupInstance(callback);
 }

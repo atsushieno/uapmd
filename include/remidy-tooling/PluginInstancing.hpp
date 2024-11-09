@@ -25,14 +25,14 @@ namespace remidy_tooling {
         std::string displayName;
         std::atomic<PluginInstancingState> instancing_state{PluginInstancingState::Created};
 
-        void setupInstance(std::function<void(std::string error)>&& callback);
+        void setupInstance(std::function<void(std::string error)> callback);
 
     public:
         explicit PluginInstancing(PluginScanning& scanner, PluginFormat* format, PluginCatalogEntry* entry);
         ~PluginInstancing();
-        void makeAlive(std::function<void(std::string error)>&& callback);
+        void makeAlive(std::function<void(std::string error)> callback);
 
-        void withInstance(std::function<void(PluginInstance*)>&& callback) const {
+        void withInstance(std::function<void(PluginInstance*)> callback) const {
             assert(instancing_state != PluginInstancingState::Preparing);
             if (instancing_state != PluginInstancingState::Ready || !instance)
                 return;

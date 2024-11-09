@@ -52,7 +52,7 @@ namespace remidy {
 
         }
         virtual ~LV2ParameterHandler() = default;
-        virtual StatusCode setParameter(double value) = 0;
+        virtual StatusCode setParameter(double value, uint64_t timestamp) = 0;
 
         virtual StatusCode getParameter(double* value) {
             *value = current;
@@ -68,7 +68,7 @@ namespace remidy {
 
         ~LV2AtomParameterHandler() override = default;
 
-        StatusCode setParameter(double value) override {
+        StatusCode setParameter(double value, uint64_t timestamp) override {
             current = value;
             // FIXME: add LV2 Atom for patch:Set
             std::cerr << "Not implemented yet" << std::endl;
@@ -86,7 +86,7 @@ namespace remidy {
 
         ~LV2ControlPortParameterProxyPort() override = default;
 
-        StatusCode setParameter(double value) override {
+        StatusCode setParameter(double value, uint64_t timestamp) override {
             current = value;
             // FIXME: set value on the corresponding ControlPort
             std::cerr << "Not implemented yet" << std::endl;
@@ -108,7 +108,7 @@ namespace remidy {
             ~ParameterSupport();
 
             std::vector<PluginParameter*> parameters() override;
-            StatusCode setParameter(uint32_t index, double value) override;
+            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getParameter(uint32_t index, double *value) override;
         };
 
@@ -278,7 +278,7 @@ namespace remidy {
     }
 
     void PluginFormatLV2::createInstance(PluginCatalogEntry* info,
-        std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)>&& callback) {
+        std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) {
         impl->createInstance(info, callback);
     }
 
@@ -577,7 +577,7 @@ namespace remidy {
         return parameter_handlers[index]->getParameter(value);
     }
 
-    StatusCode AudioPluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value) {
-        return parameter_handlers[index]->setParameter(value);
+    StatusCode AudioPluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+        return parameter_handlers[index]->setParameter(value, timestamp);
     }
 }

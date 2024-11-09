@@ -16,6 +16,8 @@ namespace uapmd {
 
         uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode);
 
+        std::vector<AudioPluginNode*> plugins();
+
         int32_t processAudio(AudioProcessContext& process);
     };
 
