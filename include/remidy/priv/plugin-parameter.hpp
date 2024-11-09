@@ -49,6 +49,7 @@ namespace remidy {
 
     class PluginParameterSupport {
     public:
+        virtual bool accessRequiresMainThread() = 0;
         virtual std::vector<PluginParameter*> parameters() = 0;
         virtual StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) = 0;
         virtual StatusCode getParameter(uint32_t index, double *value) = 0;

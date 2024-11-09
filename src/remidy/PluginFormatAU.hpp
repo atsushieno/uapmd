@@ -33,11 +33,13 @@ namespace remidy {
         class ParameterSupport : public PluginParameterSupport {
             remidy::AudioPluginInstanceAU *owner;
             AudioUnitParameterID* parameter_id_list{};
-            UInt32 parameter_list_size;
+            UInt32 parameter_list_size{};
             std::vector<PluginParameter*> parameter_list{};
 
         public:
-            ParameterSupport(AudioPluginInstanceAU* owner);
+            explicit ParameterSupport(AudioPluginInstanceAU* owner);
+
+            bool accessRequiresMainThread() override { return false; }
             std::vector<PluginParameter*> parameters() override;
             StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getParameter(uint32_t index, double *value) override;

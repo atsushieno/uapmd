@@ -79,6 +79,7 @@ namespace remidy {
             explicit ParameterSupport(AudioPluginInstanceVST3* owner);
             ~ParameterSupport();
 
+            bool accessRequiresMainThread() override { return true; }
             std::vector<PluginParameter*> parameters() override;
             StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getParameter(uint32_t index, double *value) override;

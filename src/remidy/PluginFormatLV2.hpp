@@ -125,6 +125,8 @@ namespace remidy {
 
             ~ParameterSupport();
 
+            bool accessRequiresMainThread() override { return false; }
+
             std::vector<PluginParameter *> parameters() override;
 
             StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;

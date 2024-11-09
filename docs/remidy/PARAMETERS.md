@@ -1,5 +1,7 @@
 # Parameter API Design Requirements
 
+Plugin parameter support is achieved through `remidy::PluginParameterSupport` class which is accessible via `parameters()`.
+
 ## Parameter API Differences Between Formats
 
 - VST3 and CLAP: parameter values are stored as `double`.
@@ -16,3 +18,16 @@ LV2 brings in the following design principles:
 - There is no numeric stable parameter ID. Parameters ID by index is instant and cannot be used in persistable states.
 - There may be read-only parameters and write-only parameters (if that makes sense).
 - Retrieving parameter values may not work (they may be write-only, or we don't have parameter value store - even if we store any parameter changes there may be parameters without initial default values.)
+
+VST3 and CLAP brings in the following design principles:
+
+- Since VST3 parameter access is achieved via `IEditController` API which involves GUI thread, `PluginParameterSupport` has a `bool accessRequiresMainThread()` property getter function. VST3 returns `true`.
+- The same goes for CLAP where `count()` and `get_info()` in `clap_plugin_params` are marked as `[main-thread]`.
+
+## Sample-accurate Parameter Changes
+
+All VST3, AU, LV2, and CLAP supports sample-accurate parameter changes. Those `setParameter()` calls that come with non-zero `timestamp` are "enqueued" for the next audio processing.
+
+## Per-Note Parameters (Controllers)
+
+VST3, AU, and CLAP supports per-note controllers.
