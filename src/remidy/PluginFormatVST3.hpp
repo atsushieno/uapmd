@@ -120,7 +120,7 @@ namespace remidy {
         std::vector<AudioBusConfiguration*> input_buses{};
         std::vector<AudioBusConfiguration*> output_buses{};
 
-        ParameterSupport* _parameters;
+        ParameterSupport* _parameters{};
 
     public:
         explicit AudioPluginInstanceVST3(
@@ -155,7 +155,7 @@ namespace remidy {
         const std::vector<AudioBusConfiguration*> audioOutputBuses() const override;
 
         // parameters
-        PluginParameterSupport* parameters() override { return _parameters; }
+        PluginParameterSupport* parameters() override;
     };
 
 }

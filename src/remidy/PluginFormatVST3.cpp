@@ -343,8 +343,7 @@ namespace remidy {
             FUnknown *instance
     ) : PluginInstance(info), owner(owner), module(module), factory(factory),
         component(component), processor(processor), controller(controller),
-        isControllerDistinctFromComponent(isControllerDistinctFromComponent),
-        _parameters(new ParameterSupport(this)), instance(instance) {
+        isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
 
         pluginName = info->displayName();
 
@@ -429,7 +428,8 @@ namespace remidy {
         for (const auto bus: output_buses)
             delete bus;
 
-        delete _parameters;
+        if (_parameters)
+            delete _parameters;
     }
 
     v3_speaker_arrangement toVstSpeakerArrangement(AudioChannelLayout src) {
@@ -666,6 +666,12 @@ namespace remidy {
 
     const std::vector<AudioBusConfiguration *>
     AudioPluginInstanceVST3::audioOutputBuses() const { return output_buses; }
+
+    PluginParameterSupport* AudioPluginInstanceVST3::parameters() {
+        if (!_parameters)
+            _parameters = new ParameterSupport(this);
+        return _parameters;
+    }
 }
 
 // AudioPluginInstanceVST3::ParameterSupport

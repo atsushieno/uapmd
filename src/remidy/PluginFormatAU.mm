@@ -137,14 +137,15 @@ remidy::PluginFormatAU::Extensibility::Extensibility(PluginFormat &format) : Plu
 // AudioPluginInstanceAU
 
 remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
-    PluginInstance(info), format(format), component(component), instance(instance),
-    _parameters(new ParameterSupport(this)) {
+    PluginInstance(info), format(format), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     inspectBuses();
 }
 
 remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
+    if (_parameters)
+        delete _parameters;
     for (auto auDataIn : auDataIns)
         free(auDataIn);
     for (auto auDataOut : auDataOuts)

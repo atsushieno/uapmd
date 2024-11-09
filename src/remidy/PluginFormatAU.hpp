@@ -109,7 +109,10 @@ namespace remidy {
         virtual AUVersion auVersion() = 0;
         virtual StatusCode sampleRate(double sampleRate) = 0;
 
-        PluginParameterSupport* parameters() override { return _parameters; }
+        PluginParameterSupport* parameters() override {
+            if (!_parameters) _parameters = new ParameterSupport(this);
+            return _parameters;
+        }
     };
 
     class AudioPluginInstanceAUv2 final : public AudioPluginInstanceAU {
