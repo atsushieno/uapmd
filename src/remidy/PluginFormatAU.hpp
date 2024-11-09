@@ -29,6 +29,14 @@ namespace remidy {
     };
 
     class AudioPluginInstanceAU : public PluginInstance {
+
+        class ParameterSupport : public PluginParameterSupport {
+        public:
+            std::vector<PluginParameter*> parameters() override;
+            StatusCode setParameter(uint32_t index, double value) override;
+            StatusCode getParameter(uint32_t index, double *value) override;
+        };
+
         struct BusSearchResult {
             uint32_t numAudioIn{0};
             uint32_t numAudioOut{0};
@@ -56,6 +64,8 @@ namespace remidy {
         AudioTimeStamp process_timestamp{};
         bool process_replacing{false};
         AudioContentType audio_content_type{AudioContentType::Float32};
+
+        ParameterSupport* _parameters;
 
     protected:
         PluginFormatAU *format;
@@ -92,6 +102,8 @@ namespace remidy {
 
         virtual AUVersion auVersion() = 0;
         virtual StatusCode sampleRate(double sampleRate) = 0;
+
+        PluginParameterSupport* parameters() override { return _parameters; }
     };
 
     class AudioPluginInstanceAUv2 final : public AudioPluginInstanceAU {

@@ -71,6 +71,13 @@ namespace remidy {
     };
 
     class AudioPluginInstanceVST3 : public PluginInstance {
+        class ParameterSupport : public PluginParameterSupport {
+        public:
+            std::vector<PluginParameter*> parameters() override;
+            StatusCode setParameter(uint32_t index, double value) override;
+            StatusCode getParameter(uint32_t index, double *value) override;
+        };
+
         PluginFormatVST3::Impl* owner;
         void* module;
         IPluginFactory* factory;
@@ -98,8 +105,6 @@ namespace remidy {
         std::vector<v3_speaker_arrangement> getVst3SpeakerConfigs(int32_t direction);
 
         struct BusSearchResult {
-            uint32_t numAudioIn{0};
-            uint32_t numAudioOut{0};
             uint32_t numEventIn{0};
             uint32_t numEventOut{0};
         };
@@ -109,6 +114,8 @@ namespace remidy {
         std::vector<AudioBusDefinition> output_bus_defs{};
         std::vector<AudioBusConfiguration*> input_buses{};
         std::vector<AudioBusConfiguration*> output_buses{};
+
+        ParameterSupport* _parameters;
 
     public:
         explicit AudioPluginInstanceVST3(
@@ -141,6 +148,9 @@ namespace remidy {
 
         const std::vector<AudioBusConfiguration*> audioInputBuses() const override;
         const std::vector<AudioBusConfiguration*> audioOutputBuses() const override;
+
+        // parameters
+        PluginParameterSupport* parameters() override { return _parameters; }
     };
 
 }

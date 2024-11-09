@@ -132,9 +132,13 @@ namespace remidy_lv2 {
             input_port_uri_node = lilv_new_uri(world, LV2_CORE__InputPort);
             output_port_uri_node = lilv_new_uri(world, LV2_CORE__OutputPort);
             default_uri_node = lilv_new_uri(world, LV2_CORE__default);
+            minimum_uri_node = lilv_new_uri(world, LV2_CORE__minimum);
+            maximum_uri_node = lilv_new_uri(world, LV2_CORE__maximum);
             atom_port_uri_node = lilv_new_uri(world, LV2_ATOM__AtomPort);
             midi_event_uri_node = lilv_new_uri(world, LV2_MIDI__MidiEvent);
             patch_message_uri_node = lilv_new_uri(world, LV2_PATCH__Message);
+            patch_readable_uri_node = lilv_new_uri(world, LV2_PATCH__readable);
+            patch_writable_uri_node = lilv_new_uri(world, LV2_PATCH__writable);
             work_interface_uri_node = lilv_new_uri(world, LV2_WORKER__interface);
             resize_port_minimum_size_node = lilv_new_uri(world, LV2_RESIZE_PORT__minimumSize);
             presets_preset_node = lilv_new_uri(world, LV2_PRESETS__Preset);
@@ -143,7 +147,10 @@ namespace remidy_lv2 {
             discrete_cv_uri_node = lilv_new_uri(world, LV2_PORT_PROPS__discreteCV);
             is_side_chain_uri_node = lilv_new_uri(world, LV2_CORE__isSideChain);
             port_group_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__group);
+            scale_point_uri_node = lilv_new_uri(world, LV2_CORE__scalePoint);
+            rdf_value_node = lilv_new_uri(world, LILV_NS_RDF "value");
             rdfs_label_node = lilv_new_uri(world, LILV_NS_RDFS "label");
+            rdfs_range_node = lilv_new_uri(world, LILV_NS_RDFS "range");
 
             features.urid_map_feature_data.handle = this;
             features.urid_map_feature_data.map = map_uri;
@@ -189,12 +196,21 @@ namespace remidy_lv2 {
             lilv_node_free(atom_port_uri_node);
             lilv_node_free(input_port_uri_node);
             lilv_node_free(output_port_uri_node);
+            lilv_node_free(default_uri_node);
+            lilv_node_free(minimum_uri_node);
+            lilv_node_free(maximum_uri_node);
+            lilv_node_free(is_side_chain_uri_node);
+            lilv_node_free(port_group_uri_node);
             lilv_node_free(midi_event_uri_node);
             lilv_node_free(patch_message_uri_node);
+            lilv_node_free(patch_readable_uri_node);
+            lilv_node_free(patch_writable_uri_node);
             lilv_node_free(work_interface_uri_node);
             lilv_node_free(resize_port_minimum_size_node);
             lilv_node_free(presets_preset_node);
+            lilv_node_free(rdf_value_node);
             lilv_node_free(rdfs_label_node);
+            lilv_node_free(rdfs_range_node);
         }
 
         // formerly stateFeaturesList()
@@ -219,14 +235,16 @@ namespace remidy_lv2 {
         LV2ImplFeatures features;
         LilvNode *audio_port_uri_node, *control_port_uri_node, *atom_port_uri_node,
                 *input_port_uri_node, *output_port_uri_node,
-                *default_uri_node,
+                *default_uri_node, *minimum_uri_node, *maximum_uri_node,
                 *toggled_uri_node, *integer_uri_node,
                 *discrete_cv_uri_node,
                 *is_side_chain_uri_node,
                 *port_group_uri_node,
-                *midi_event_uri_node, *patch_message_uri_node,
+                *scale_point_uri_node,
+                *midi_event_uri_node,
+                *patch_message_uri_node, *patch_readable_uri_node, *patch_writable_uri_node,
                 *resize_port_minimum_size_node, *presets_preset_node,
-                *work_interface_uri_node, *rdfs_label_node;
+                *work_interface_uri_node, *rdf_value_node, *rdfs_label_node, *rdfs_range_node;
         URIDs urids;
 
         Symap *symap{nullptr};          ///< URI map

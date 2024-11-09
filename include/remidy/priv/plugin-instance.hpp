@@ -66,6 +66,8 @@ namespace remidy {
         virtual StatusCode stopProcessing() = 0;
 
         virtual StatusCode process(AudioProcessContext& process) = 0;
+
+        virtual PluginParameterSupport* parameters() = 0;
     };
 
 }

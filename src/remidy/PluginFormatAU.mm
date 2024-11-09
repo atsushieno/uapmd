@@ -137,7 +137,8 @@ remidy::PluginFormatAU::Extensibility::Extensibility(PluginFormat &format) : Plu
 // AudioPluginInstanceAU
 
 remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
-    PluginInstance(info), format(format), component(component), instance(instance) {
+    PluginInstance(info), format(format), component(component), instance(instance),
+    _parameters(new ParameterSupport()) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     inspectBuses();
@@ -475,6 +476,20 @@ remidy::StatusCode remidy::AudioPluginInstanceAUv3::sampleRate(double sampleRate
     // FIXME: implement
     format->getLogger()->logWarning("AudioPluginInstanceAUv3::sampleRate() not implemented");
     return StatusCode::OK;
+}
+
+// AudioPluginInstanceAU::ParameterSupport
+
+std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceAU::ParameterSupport::parameters() {
+    throw std::runtime_error("Not implemented");
+}
+
+remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::setParameter(uint32_t index, double value) {
+    throw std::runtime_error("Not implemented");
+}
+
+remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::getParameter(uint32_t index, double* value) {
+    throw std::runtime_error("Not implemented");
 }
 
 #endif

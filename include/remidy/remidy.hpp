@@ -5,6 +5,7 @@
 #include "priv/plugin-catalog.hpp"
 #include "priv/plugin-scanner.hpp"
 #include "priv/processing-context.hpp"
+#include "priv/plugin-parameter.hpp"
 #include "priv/plugin-instance.hpp"
 #include "priv/plugin-format.hpp"
 #include "priv/plugin-format-vst3.hpp"
