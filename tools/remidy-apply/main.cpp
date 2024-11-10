@@ -9,6 +9,7 @@
 #include <remidy-tooling/PluginInstancing.hpp>
 #include <uapmd/uapmd.hpp>
 #include <cxxopts.hpp>
+#include <cmidi2.h>
 
 // -------- instancing --------
 remidy_tooling::PluginScanning scanner{};
@@ -20,7 +21,8 @@ class RemidyApply {
 
         uint32_t numAudioIn = instance->audioInputBuses().size();
         uint32_t numAudioOut = instance->audioOutputBuses().size();
-        remidy::AudioProcessContext ctx{4096};
+        remidy::TrackContext trackContext{};
+        remidy::AudioProcessContext ctx{4096, &trackContext};
         for (int32_t i = 0, n = numAudioIn; i < n; ++i)
             ctx.addAudioIn(instance->audioInputBuses()[i]->channelLayout().channels(), 1024);
         for (int32_t i = 0, n = numAudioOut; i < n; ++i)
@@ -119,11 +121,64 @@ class RemidyApply {
                 return;
             }
             static uint32_t UMP_BUFFER_SIZE = 65536;
+            uint32_t round = 0;
+            remidy_ump_t umpSequence[512];
+            remidy::TrackContext trackContext;
+            remidy::AudioProcessContext process{UMP_BUFFER_SIZE, &trackContext};
+            //process.addAudioIn(2, 1024);
+            process.addAudioOut(2, 1024);
+
             auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>(UMP_BUFFER_SIZE);
-            dispatcher->addCallback([&sequencer](auto& data) {
-                for (auto track : sequencer->tracks())
-                    if (auto ret = track->processAudio(data); ret)
+            dispatcher->addCallback([&](remidy::AudioProcessContext& data) {
+                for (auto track : sequencer->tracks()) {
+                    memset(umpSequence, 0, sizeof(remidy_ump_t) * 512);
+                    switch (round++) {
+                        case 0: {
+                            int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 40, 0, 0xF800, 0);
+                            umpSequence[0] = noteOn >> 32;
+                            umpSequence[1] = noteOn & UINT32_MAX;
+                            memcpy(process.midiIn().getMessages(), umpSequence, 8);
+                            process.midiIn().sizeInInts(2);
+                            break;
+                        }
+                        case 64: {
+                            int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 40, 0, 0xF800, 0);
+                            umpSequence[0] = noteOff >> 32;
+                            umpSequence[1] = noteOff & UINT32_MAX;
+                            memcpy(process.midiIn().getMessages(), umpSequence, 8);
+                            process.midiIn().sizeInInts(2);
+                            break;
+                        }
+                    }
+
+                    // FIXME: avoid memcpy (audio input)
+                    for (auto bus = 0, n = data.audioInBusCount(); bus < n; bus++) {
+                        auto buf = data.audioIn(bus);
+                        for (uint32_t ch = 0, nCh = buf->channelCount(); ch < nCh; ch++)
+                            memcpy(process.audioIn(bus)->getFloatBufferForChannel(ch),
+                                   buf->getFloatBufferForChannel(ch),
+                                   data.frameCount() * sizeof(float));
+                    }
+                    process.frameCount(data.frameCount());
+
+                    if (auto ret = track->processAudio(process); ret)
                         return ret;
+
+                    process.midiIn().sizeInInts(0); // reset
+
+                    // FIXME: avoid memcpy (audio output)
+                    for (auto bus = 0, n = process.audioOutBusCount(); bus < n; bus++) {
+                        auto buf = process.audioOut(bus);
+                        for (uint32_t ch = 0, nCh = buf->channelCount(); ch < nCh; ch++)
+                            memcpy(data.audioOut(bus)->getFloatBufferForChannel(ch),
+                                   buf->getFloatBufferForChannel(ch),
+                                   data.frameCount() * sizeof(float));
+                    }
+
+                    // FIXME: collect MIDI output
+
+                }
+
                 // FIXME: define status codes
                 return 0;
             });

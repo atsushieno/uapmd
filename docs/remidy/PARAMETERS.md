@@ -28,6 +28,19 @@ VST3 and CLAP brings in the following design principles:
 
 All VST3, AU, LV2, and CLAP supports sample-accurate parameter changes. Those `setParameter()` calls that come with non-zero `timestamp` are "enqueued" for the next audio processing.
 
+- VST3: use `IParameterChanges`
+- AU: use `AudioUnitScheduleParameters`
+- LV2: use `Atom_Sequence`
+
+(Not implemented yet.)
+
 ## Per-Note Parameters (Controllers)
 
-VST3, AU, and CLAP supports per-note controllers.
+VST3, AU, and CLAP supports per-note parameter controllers.
+
+- VST3: use `INoteExpressionController`
+- AU: use parameters with note scope
+- LV2: not supported
+- CLAP: use `clap_event_param_value_t` with `key`.
+
+The way how AU supports per-note parameters brings in some complication that parameter list for Global and per-Note *may* return different set of parameter IDs. This should not be supported in the first place, but things may happen.

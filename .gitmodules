@@ -28,3 +28,6 @@
 [submodule "external/miniaudio"]
 	path = external/miniaudio
 	url = https://github.com/mackron/miniaudio.git
+[submodule "external/cmidi2"]
+	path = external/cmidi2
+	url = https://github.com/atsushieno/cmidi2.git

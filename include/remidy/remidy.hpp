@@ -12,3 +12,4 @@
 #include "priv/plugin-format-au.hpp"
 #include "priv/plugin-format-lv2.hpp"
 #include "priv/port-extensibility.hpp"
+#include "priv/ump-dispatcher.hpp"

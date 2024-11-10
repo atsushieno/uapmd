@@ -30,14 +30,37 @@ namespace remidy {
     // It is part of `AudioProcessingContext`.
     class MidiSequence {
         std::vector<remidy_ump_t> messages{};
+        size_t size_in_ints{0};
     public:
         explicit MidiSequence(size_t messageBufferSizeInInt) : messages(messageBufferSizeInInt) {}
         remidy_ump_t* getMessages() { return messages.data(); }
-        size_t sizeInInts() const { return messages.size(); }
-        size_t sizeInBytes() const { return messages.size() * sizeof(remidy_ump_t); }
+        size_t sizeInInts() const { return size_in_ints; }
+        void sizeInInts(size_t n) { size_in_ints = n; }
+        size_t sizeInBytes() const { return size_in_ints * sizeof(remidy_ump_t); }
+        void copyFrom(MidiSequence& other) {
+            memcpy(messages.data() + size_in_ints, other.messages.data(), other.sizeInBytes());
+        }
+    };
+
+    class TrackContext {
+        uint16_t dctpq{480};
+        uint32_t tempo{500000};
+
+    public:
+        uint16_t deltaClockstampTicksPerQuarterNotes() { return dctpq; }
+        StatusCode deltaClockstampTicksPerQuarterNotes(uint16_t newValue) {
+            dctpq = newValue;
+            return StatusCode::OK;
+        }
+
+        double ppqPosition() {
+            // FIXME: calculate
+            return 0;
+        }
     };
 
     class AudioProcessContext {
+        TrackContext* track_context;
         std::vector<AudioBusBufferList*> audio_in{};
         std::vector<AudioBusBufferList*> audio_out{};
         MidiSequence midi_in;
@@ -46,8 +69,10 @@ namespace remidy {
 
     public:
         AudioProcessContext(
-            const uint32_t umpBufferSizeInInts
-        ) : midi_in(umpBufferSizeInInts),
+            const uint32_t umpBufferSizeInInts,
+            TrackContext* trackContext
+        ) : track_context(trackContext),
+            midi_in(umpBufferSizeInInts),
             midi_out(umpBufferSizeInInts) {
         }
         ~AudioProcessContext() {
@@ -58,6 +83,8 @@ namespace remidy {
                 if (bus)
                     delete bus;
         }
+
+        TrackContext* trackContext() { return track_context; }
 
         int32_t frameCount() const { return frame_count; }
         void frameCount(const int32_t newCount) { frame_count = newCount; }

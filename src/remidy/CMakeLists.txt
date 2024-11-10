@@ -44,6 +44,7 @@ target_include_directories(remidy PRIVATE
         ../../external/choc
         ${LV2KIT_INCLUDE_DIRS}
         #../../external/libremidi/include
+        ../../external/cmidi2
         ../../include/remidy
         ${CMAKE_BINARY_DIR}/generated/include
 )
@@ -101,6 +102,7 @@ target_sources(remidy PRIVATE
 
         AudioProcessContext.cpp
         PluginInstance.cpp
+        UmpInputDispatcher.cpp
 )
 
 add_library(remidy::remidy ALIAS remidy)

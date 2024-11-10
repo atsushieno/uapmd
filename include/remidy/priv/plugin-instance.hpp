@@ -10,9 +10,12 @@ namespace remidy {
         Float64
     };
 
+    // [flags]
     enum class PluginUIThreadRequirement : uint32_t {
         // AudioUnit and LV2, by default (probably bad behaved plugins can be explicitly marked as dirty = AllNonAudioOperation)
         None = 0,
+        InstanceControl = 1,
+        Parameters = 2,
         // CLAP and VST3, by default (probably good plugins can be excluded out to switch to None)
         // Strictly speaking, CLAP does not require [main-thread] to everything, but it's close enough to label as everything.
         AllNonAudioOperation = 0xFFFFFFFF
@@ -50,8 +53,8 @@ namespace remidy {
         // In a long term, it should be just a shorthand property for current bus configuration.
         virtual bool hasEventOutputs() = 0;
 
-        const virtual std::vector<AudioBusConfiguration*> audioInputBuses() const = 0;
-        const virtual std::vector<AudioBusConfiguration*> audioOutputBuses() const = 0;
+        virtual const std::vector<AudioBusConfiguration*> audioInputBuses() const = 0;
+        virtual const std::vector<AudioBusConfiguration*> audioOutputBuses() const = 0;
         // It can be implemented by each plugin format class so that it can return arbitrary index.
         // The override must ensure that the returned value is either in range or < 0 when there is no input bus.
         virtual int32_t mainInputBusIndex() { return audioInputBuses().size() > 0 ? 0 : -1; }

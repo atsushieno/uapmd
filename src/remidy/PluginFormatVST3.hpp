@@ -85,6 +85,25 @@ namespace remidy {
             StatusCode getParameter(uint32_t index, double *value) override;
         };
 
+        class VST3UmpInputDispatcher : public TypedUmpInputDispatcher {
+            AudioPluginInstanceVST3* owner;
+            int32_t note_serial{1};
+
+        public:
+            VST3UmpInputDispatcher(AudioPluginInstanceVST3* owner) : owner(owner) {}
+
+            void onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) override;
+            void onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index, uint32_t data) override;
+            void onPNAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t index, uint32_t data) override;
+            void onPNRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t index, uint32_t data) override;
+            void onPitchBend(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) override;
+            void onPressure(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t perNoteOrMinus, uint32_t data) override;
+            void onProgramChange(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t flags, remidy::uint7_t program, remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) override;
+            void onRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) override;
+            void onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
+            void onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
+        };
+
         PluginFormatVST3::Impl* owner;
         void* module;
         IPluginFactory* factory;
@@ -122,6 +141,8 @@ namespace remidy {
         std::vector<AudioBusConfiguration*> output_buses{};
 
         ParameterSupport* _parameters{};
+
+        VST3UmpInputDispatcher ump_input_dispatcher{this};
 
     public:
         explicit AudioPluginInstanceVST3(

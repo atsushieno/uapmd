@@ -36,7 +36,7 @@ uapmd_status_t uapmd::MiniAudioIODevice::start() {
 
 uapmd_status_t uapmd::MiniAudioIODevice::stop() {
     ma_engine_stop(&engine);
-    data = AudioProcessContext{0};
+    data = AudioProcessContext{0, data.trackContext()};
 
     // FIXME: maybe switch to remidy::StatusCode?
     return 0;
@@ -52,8 +52,9 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
         inputView.data.channels = (float* const *) input;
         for (size_t i = 0, n = mainBusIn->channelCount(); i < n; i++)
             memcpy(mainBusIn->getFloatBufferForChannel(i), inputView.getChannel(i).data.data, sizeof(float) * frameCount);
-        data.frameCount(frameCount);
     }
+    data.frameCount(frameCount);
+
     for (auto& callback : callbacks)
         callback(data);
 

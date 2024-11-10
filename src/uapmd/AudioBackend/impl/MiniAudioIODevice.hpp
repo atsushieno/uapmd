@@ -5,7 +5,8 @@ namespace uapmd {
     class MiniAudioIODevice : public AudioIODevice {
         ma_engine_config config{};
         ma_engine engine{};
-        remidy::AudioProcessContext data{0}; // no UMP events handled here.
+        remidy::TrackContext track_context{};
+        remidy::AudioProcessContext data{0, &track_context}; // no UMP events handled here.
         std::vector<std::function<uapmd_status_t(remidy::AudioProcessContext& data)>> callbacks{};
 
     public:
