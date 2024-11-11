@@ -125,7 +125,7 @@ namespace remidy {
         HostParameterChanges processDataInputParameterChanges{};
         HostParameterChanges processDataOutputParameterChanges{};
 
-        void allocateProcessData();
+        void allocateProcessData(v3_process_setup& setup);
         void deallocateProcessData();
         std::vector<v3_speaker_arrangement> getVst3SpeakerConfigs(int32_t direction);
 

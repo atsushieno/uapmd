@@ -21,6 +21,7 @@ namespace uapmd {
             callbacks.clear();
         }
         void dataCallback(void* output, const void* input, ma_uint32 frameCount);
+        double sampleRate() override;
         uapmd_status_t start() override;
         uapmd_status_t stop() override;
     };

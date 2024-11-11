@@ -45,6 +45,10 @@ uapmd_status_t uapmd::MiniAudioIODevice::stop() {
     return 0;
 }
 
+double uapmd::MiniAudioIODevice::sampleRate() {
+    return engine.pDevice->sampleRate;
+}
+
 void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_uint32 frameCount) {
     size_t framesPerCallback = 4096;
     if (data.audioInBusCount() > 0) {
@@ -65,7 +69,7 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
     {
         static double phase = 0.0;
         const double frequency = 440.0;  // A4 note
-        const double sampleRate = 48000.0;
+        const double sampleRate = sampleRate();
         const double amplitude = 0.5;    // 50% amplitude to avoid clipping
 
         auto bbb = data.audioOut(0);

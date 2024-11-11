@@ -137,7 +137,7 @@ class RemidyApply {
                     switch (round++) {
                         case 0: {
                             for (int m = 0; m < numNotes; m++) {
-                                int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 48 + 4 * m, 0, 0xF800, 0);
+                                int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 58 + 4 * m, 0, 0xF800, 0);
                                 umpSequence[m * 2] = noteOn >> 32;
                                 umpSequence[m * 2 + 1] = noteOn & UINT32_MAX;
                             }
@@ -147,7 +147,7 @@ class RemidyApply {
                         }
                         case 64: {
                             for (int m = 0; m < numNotes; m++) {
-                                int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 48 + 4 * m, 0, 0xF800, 0);
+                                int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 58 + 4 * m, 0, 0xF800, 0);
                                 umpSequence[m * 2] = noteOff >> 32;
                                 umpSequence[m * 2 + 1] = noteOff & UINT32_MAX;
                             }

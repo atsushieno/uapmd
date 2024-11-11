@@ -473,15 +473,15 @@ namespace remidy {
             component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, i, output_buses[i]->enabled());
 
         // setup process_data here.
-        allocateProcessData();
+        allocateProcessData(setup);
 
         return StatusCode::OK;
     }
 
-    void AudioPluginInstanceVST3::allocateProcessData() {
+    void AudioPluginInstanceVST3::allocateProcessData(v3_process_setup& setup) {
         // FIXME: retrieve these properties by some means.
         processData.ctx = &process_context;
-        process_context.sample_rate = 48000;
+        process_context.sample_rate = setup.sample_rate;
 
         processData.input_events = (v3_event_list **) processDataInputEvents.asInterface();
         processData.output_events = (v3_event_list **) processDataOutputEvents.asInterface();
