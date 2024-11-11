@@ -26,8 +26,11 @@ uapmd_status_t uapmd::MiniAudioIODevice::start() {
     auto device = ma_engine_get_device(&engine);
     if (device->capture.channels)
         data.addAudioIn(device->capture.channels, config.periodSizeInFrames);
-    if (device->playback.channels)
+    dataOutPtrs.clear();
+    if (device->playback.channels) {
         data.addAudioOut(device->playback.channels, config.periodSizeInFrames);
+        dataOutPtrs.resize(data.audioOut(0)->channelCount());
+    }
     ma_engine_start(&engine);
 
     // FIXME: maybe switch to remidy::StatusCode?
@@ -58,14 +61,37 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
     for (auto& callback : callbacks)
         callback(data);
 
+    /* ... or use this for testing I/O channel remapping.
+    {
+        static double phase = 0.0;
+        const double frequency = 440.0;  // A4 note
+        const double sampleRate = 48000.0;
+        const double amplitude = 0.5;    // 50% amplitude to avoid clipping
+
+        auto bbb = data.audioOut(0);
+        float *out = bbb->getFloatBufferForChannel(0);
+
+        for (int32_t i = 0; i < data.frameCount(); ++i) {
+            // Generate sine wave
+            out[i] = amplitude * std::sin(phase);
+
+            // Increment and wrap phase
+            phase += 2.0 * M_PI * frequency / sampleRate;
+            if (phase >= 2.0 * M_PI) {
+                phase -= 2.0 * M_PI;
+            }
+        }
+        memcpy(bbb->getFloatBufferForChannel(1), out, data.frameCount() * sizeof(float));
+    }*/
+
     if (data.audioOutBusCount() > 0) {
         // FIXME: get appropriate main bus
         auto mainBusOut = data.audioOut(0);
         // FIXME: it should be pre-allocated elsewhere
-        auto outputView = choc::buffer::createInterleavedView((float*) input, mainBusOut->channelCount(), frameCount);
-        outputView.data.data = (float*) output;
-        for (size_t i = 0, n = mainBusOut->channelCount(); i < n; i++)
-            memcpy(static_cast<void *>(outputView.getChannel(i).data.data), mainBusOut->getFloatBufferForChannel(i), sizeof(float) * frameCount);
-
+        for (int i = 0, n = mainBusOut->channelCount(); i < n; i++)
+            dataOutPtrs[i] = mainBusOut->getFloatBufferForChannel(i);
+        auto outcomeView = choc::buffer::createChannelArrayView(dataOutPtrs.data(), mainBusOut->channelCount(), frameCount);
+        auto outputView = choc::buffer::createInterleavedView((float*) output, mainBusOut->channelCount(), frameCount);
+        choc::buffer::copyRemappingChannels(outputView, outcomeView);
     }
 }

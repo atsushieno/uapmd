@@ -131,22 +131,28 @@ class RemidyApply {
             auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>(UMP_BUFFER_SIZE);
             dispatcher->addCallback([&](remidy::AudioProcessContext& data) {
                 for (auto track : sequencer->tracks()) {
+                    // Test MIDI input (some notes, one shot)
                     memset(umpSequence, 0, sizeof(remidy_ump_t) * 512);
+                    int numNotes = 1;
                     switch (round++) {
                         case 0: {
-                            int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 40, 0, 0xF800, 0);
-                            umpSequence[0] = noteOn >> 32;
-                            umpSequence[1] = noteOn & UINT32_MAX;
-                            memcpy(process.midiIn().getMessages(), umpSequence, 8);
-                            process.midiIn().sizeInInts(2);
+                            for (int m = 0; m < numNotes; m++) {
+                                int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 48 + 4 * m, 0, 0xF800, 0);
+                                umpSequence[m * 2] = noteOn >> 32;
+                                umpSequence[m * 2 + 1] = noteOn & UINT32_MAX;
+                            }
+                            memcpy(process.midiIn().getMessages(), umpSequence, 8 * numNotes);
+                            process.midiIn().sizeInInts(2 * numNotes);
                             break;
                         }
                         case 64: {
-                            int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 40, 0, 0xF800, 0);
-                            umpSequence[0] = noteOff >> 32;
-                            umpSequence[1] = noteOff & UINT32_MAX;
-                            memcpy(process.midiIn().getMessages(), umpSequence, 8);
-                            process.midiIn().sizeInInts(2);
+                            for (int m = 0; m < numNotes; m++) {
+                                int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 48 + 4 * m, 0, 0xF800, 0);
+                                umpSequence[m * 2] = noteOff >> 32;
+                                umpSequence[m * 2 + 1] = noteOff & UINT32_MAX;
+                            }
+                            memcpy(process.midiIn().getMessages(), umpSequence, 8 * numNotes);
+                            process.midiIn().sizeInInts(2 * numNotes);
                             break;
                         }
                     }

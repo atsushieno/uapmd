@@ -8,6 +8,7 @@ namespace uapmd {
         remidy::TrackContext track_context{};
         remidy::AudioProcessContext data{0, &track_context}; // no UMP events handled here.
         std::vector<std::function<uapmd_status_t(remidy::AudioProcessContext& data)>> callbacks{};
+        std::vector<const float *> dataOutPtrs{};
 
     public:
         explicit MiniAudioIODevice(const std::string& deviceName);
