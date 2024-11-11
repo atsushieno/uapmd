@@ -33,14 +33,13 @@ namespace uapmd {
         return impl->processAudio(data);
     }
 
-    void AudioPluginSequencer::addSimpleTrack(std::string &format, std::string &pluginId, std::function<void(std::string error)>&& callback) {
-        std::function<void(std::string error)> cb = std::move(callback);
-        impl->pal->createPluginInstance(format, pluginId, [this,cb](auto node, std::string error) {
+    void AudioPluginSequencer::addSimpleTrack(uint32_t sampleRate, std::string &format, std::string &pluginId, std::function<void(std::string error)> callback) {
+        impl->pal->createPluginInstance(sampleRate, format, pluginId, [this,callback](auto node, std::string error) {
             if (!node)
-                cb("Could not create simple track: " + error);
+                callback("Could not create simple track: " + error);
             else {
                 impl->addSimpleTrack(std::move(node));
-                cb("");
+                callback("");
             }
         });
     }

@@ -114,13 +114,14 @@ class RemidyApply {
 
         std::atomic playing{true};
 
-        sequencer->addSimpleTrack(formatName, pluginId, [&](std::string error) {
+        static uint32_t UMP_BUFFER_SIZE = 65536;
+        auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>(UMP_BUFFER_SIZE);
+        sequencer->addSimpleTrack(dispatcher->audioDriver()->sampleRate(), formatName, pluginId, [&](std::string error) {
             if (!error.empty()) {
                 std::cerr << "addSimpleTrack() failed." << std::endl;
                 playing = false;
                 return;
             }
-            static uint32_t UMP_BUFFER_SIZE = 65536;
             uint32_t round = 0;
             remidy_ump_t umpSequence[512];
             remidy::TrackContext trackContext;
@@ -128,16 +129,15 @@ class RemidyApply {
             //process.addAudioIn(2, 1024);
             process.addAudioOut(2, 1024);
 
-            auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>(UMP_BUFFER_SIZE);
             dispatcher->addCallback([&](remidy::AudioProcessContext& data) {
                 for (auto track : sequencer->tracks()) {
                     // Test MIDI input (some notes, one shot)
                     memset(umpSequence, 0, sizeof(remidy_ump_t) * 512);
                     int numNotes = 1;
                     switch (round++) {
-                        case 0: {
+                        case 64: {
                             for (int m = 0; m < numNotes; m++) {
-                                int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 58 + 4 * m, 0, 0xF800, 0);
+                                int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 72 + 4 * m, 0, 0xF800, 0);
                                 umpSequence[m * 2] = noteOn >> 32;
                                 umpSequence[m * 2 + 1] = noteOn & UINT32_MAX;
                             }
@@ -145,9 +145,9 @@ class RemidyApply {
                             process.midiIn().sizeInInts(2 * numNotes);
                             break;
                         }
-                        case 64: {
+                        case 128: {
                             for (int m = 0; m < numNotes; m++) {
-                                int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 58 + 4 * m, 0, 0xF800, 0);
+                                int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 72 + 4 * m, 0, 0xF800, 0);
                                 umpSequence[m * 2] = noteOff >> 32;
                                 umpSequence[m * 2 + 1] = noteOff & UINT32_MAX;
                             }

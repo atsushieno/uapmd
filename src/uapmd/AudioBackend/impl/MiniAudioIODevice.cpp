@@ -50,7 +50,6 @@ double uapmd::MiniAudioIODevice::sampleRate() {
 }
 
 void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_uint32 frameCount) {
-    size_t framesPerCallback = 4096;
     if (data.audioInBusCount() > 0) {
         // FIXME: get appropriate main bus
         auto mainBusIn = data.audioIn(0);
@@ -69,7 +68,6 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
     {
         static double phase = 0.0;
         const double frequency = 440.0;  // A4 note
-        const double sampleRate = sampleRate();
         const double amplitude = 0.5;    // 50% amplitude to avoid clipping
 
         auto bbb = data.audioOut(0);
@@ -80,7 +78,7 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
             out[i] = amplitude * std::sin(phase);
 
             // Increment and wrap phase
-            phase += 2.0 * M_PI * frequency / sampleRate;
+            phase += 2.0 * M_PI * frequency / sampleRate();
             if (phase >= 2.0 * M_PI) {
                 phase -= 2.0 * M_PI;
             }

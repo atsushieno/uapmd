@@ -18,7 +18,7 @@ namespace uapmd {
     };
 }
 
-void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
+void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
     scanning.performPluginScanning();
     auto format = *(scanning.formats | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning.catalog.getPlugins();
@@ -27,6 +27,7 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(std::string &formatNa
         callback(nullptr, "Plugin not found");
     else {
         auto instancing = new remidy_tooling::PluginInstancing(scanning, format, entry);
+        instancing->configurationRequest().sampleRate = (uint32_t) sampleRate;
         auto cb = std::move(callback);
         instancing->makeAlive([instancing,cb](std::string error) {
             if (error.empty())

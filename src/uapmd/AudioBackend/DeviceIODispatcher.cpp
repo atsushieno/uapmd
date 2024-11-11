@@ -20,6 +20,9 @@ namespace uapmd {
             free(queued_inputs);
         }
 
+        AudioIODevice* audioDriver() { return audio; }
+        MidiIODevice* midiDriver() { return midi; }
+
         void addCallback(std::function<uapmd_status_t(AudioProcessContext& data)>&& callback) {
             callbacks.emplace_back(std::move(callback));
         }
@@ -43,6 +46,9 @@ uapmd::DeviceIODispatcher::DeviceIODispatcher(size_t umpBufferSizeInBytes, Audio
 uapmd::DeviceIODispatcher::~DeviceIODispatcher() {
     delete impl;
 }
+
+uapmd::AudioIODevice* uapmd::DeviceIODispatcher::audioDriver() { return impl->audioDriver(); }
+uapmd::MidiIODevice* uapmd::DeviceIODispatcher::midiDriver() { return impl->midiDriver(); }
 
 void uapmd::DeviceIODispatcher::addCallback(std::function<uapmd_status_t(AudioProcessContext &)> &&callback) {
     impl->addCallback(std::move(callback));

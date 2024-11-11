@@ -39,6 +39,8 @@ namespace remidy_tooling {
             callback(instance.get());
         }
 
+        PluginInstance::ConfigurationRequest& configurationRequest() { return config; }
+
         std::atomic<PluginInstancingState>& instancingState() { return instancing_state; }
     };
 }

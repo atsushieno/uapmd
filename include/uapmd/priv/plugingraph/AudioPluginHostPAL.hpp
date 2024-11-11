@@ -16,7 +16,7 @@ namespace uapmd {
 
         static AudioPluginHostPAL* instance();
         virtual ~AudioPluginHostPAL() = default;
-        virtual void createPluginInstance(std::string &format, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode>, std::string)>&& callback) = 0;
+        virtual void createPluginInstance(uint32_t sampleRate, std::string &format, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode>, std::string)>&& callback) = 0;
         virtual uapmd_status_t processAudio(std::vector<remidy::AudioProcessContext*> contexts) = 0;
     };
 

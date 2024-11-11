@@ -733,7 +733,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::u
                                                                        uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // use IEventList to add Event (kNoteOnEvent)
     auto& el = owner->processDataInputEvents;
-    int32_t noteId = 0; // FIXME: create one
+    int32_t noteId = -1; // FIXME: create one
     v3_event_note_on noteOn{channel, note, 0, (float) (velocity / 65535.0), 0, noteId};
     v3_event e{group, static_cast<int32_t>(timestamp()), trackContext()->ppqPosition(), 0,
                v3_event_type::V3_EVENT_NOTE_ON, {.note_on = noteOn}};
@@ -744,7 +744,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::
                                                                         uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // use IEventList to add Event (kNoteOffEvent)
     auto& el = owner->processDataInputEvents;
-    int32_t noteId = 0; // FIXME: create one
+    int32_t noteId = -1; // FIXME: create one
     v3_event_note_off noteOff{channel, note, (float) (velocity / 65535.0), noteId};
     v3_event e{group, static_cast<int32_t>(timestamp()), trackContext()->ppqPosition(), 0,
                v3_event_type::V3_EVENT_NOTE_ON, {.note_off = noteOff}};
