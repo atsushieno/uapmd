@@ -1,6 +1,7 @@
 #if __APPLE__
 
 #include "PluginFormatAU.hpp"
+#include <cmidi2.h>
 
 remidy::PluginFormatAU::PluginFormatAU() {
     impl = new Impl(this, Logger::global());
@@ -369,14 +370,12 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
             auDataOut->mNumberBuffers++;
         }
 
-        try {
+        if (buses.hasMidiIn)
+            ump_input_dispatcher.process(0, process);
+
         auto status = AudioUnitRender(instance, nullptr, &process_timestamp, 0, process.frameCount(), auDataOut);
         if (status != noErr) {
             format->getLogger()->logError("%s: failed to process audio AudioPluginInstanceAU::process(). Status: %d", name.c_str(), status);
-            return StatusCode::FAILED_TO_PROCESS;
-        }
-        } catch (...) {
-            std::cerr << "RUNTIME CRASH" << std::endl;
             return StatusCode::FAILED_TO_PROCESS;
         }
     }
@@ -516,3 +515,27 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::getParameter
 }
 
 #endif
+
+remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::AUUmpInputDispatcher(remidy::AudioPluginInstanceAU *owner) :
+    owner(owner)
+{
+    #define AU_UMP_INPUT_DISPATCHER_UMP_EVENT_LIST_SIZE 65536
+    // FIXME: assign MIDI buffer size somewhere
+    ump_event_list = (MIDIEventList*) calloc(AU_UMP_INPUT_DISPATCHER_UMP_EVENT_LIST_SIZE, 1);
+}
+remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::~AUUmpInputDispatcher() {
+    if (ump_event_list)
+        free(ump_event_list);
+}
+
+void
+remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::process(uint64_t timestamp, remidy::AudioProcessContext &src) {
+    auto midiIn = src.midiIn();
+    auto cur = MIDIEventListInit(ump_event_list, kMIDIProtocol_2_0);
+    MIDIEventListAdd(ump_event_list, AU_UMP_INPUT_DISPATCHER_UMP_EVENT_LIST_SIZE,
+                     cur, timestamp, midiIn.sizeInInts(), midiIn.getMessages());
+    auto result = MusicDeviceMIDIEventList((MusicDeviceComponent) owner->instance, timestamp, ump_event_list);
+    if (result != noErr) {
+        owner->logger()->logError("Failed to add UMP events to AudioUnit: %d", result);
+    }
+}

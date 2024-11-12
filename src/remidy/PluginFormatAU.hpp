@@ -45,6 +45,16 @@ namespace remidy {
             StatusCode getParameter(uint32_t index, double *value) override;
         };
 
+        class AUUmpInputDispatcher : UmpInputDispatcher {
+            remidy::AudioPluginInstanceAU *owner;
+            MIDIEventList* ump_event_list{};
+        public:
+            AUUmpInputDispatcher(remidy::AudioPluginInstanceAU *owner);
+            ~AUUmpInputDispatcher();
+
+            void process(uint64_t timestamp, remidy::AudioProcessContext &src) override;
+        };
+
         struct BusSearchResult {
             uint32_t numAudioIn{0};
             uint32_t numAudioOut{0};
@@ -75,6 +85,8 @@ namespace remidy {
 
         ParameterSupport* _parameters;
 
+        AUUmpInputDispatcher ump_input_dispatcher{this};
+
     protected:
         PluginFormatAU *format;
         AudioComponent component;
@@ -89,6 +101,8 @@ namespace remidy {
             AUV2 = 2,
             AUV3 = 3
         };
+
+        Logger* logger() { return format->getLogger(); }
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
