@@ -21,6 +21,7 @@ target_link_libraries(remidy-tooling PRIVATE
         cpptrace::cpptrace
         "-framework AudioToolbox"
         "-framework AppKit"
+        "-framework CoreMIDI"
 )
 
 target_sources(remidy-tooling PRIVATE
