@@ -11,13 +11,6 @@ namespace remidy {
         bool runningOnMainThreadImpl() override {
             return choc::messageloop::callerIsOnMessageThread();
         }
-
-        void runTaskOnMainThreadImpl(std::function<void()>&& func) override {
-            if (choc::messageloop::callerIsOnMessageThread())
-                func();
-            else
-                choc::messageloop::postMessage(std::move(func));
-        }
         void enqueueTaskOnMainThreadImpl(std::function<void()>&& func) override {
             choc::messageloop::postMessage(std::move(func));
         }

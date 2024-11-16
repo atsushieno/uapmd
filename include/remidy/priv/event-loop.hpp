@@ -20,7 +20,6 @@ namespace remidy {
     protected:
         virtual void initializeOnUIThreadImpl() = 0;
         virtual bool runningOnMainThreadImpl() = 0;
-        virtual void runTaskOnMainThreadImpl(std::function<void()>&& func) = 0;
         virtual void enqueueTaskOnMainThreadImpl(std::function<void()>&& func) = 0;
         virtual void startImpl() = 0;
         virtual void stopImpl() = 0;
@@ -30,7 +29,12 @@ namespace remidy {
         static void initializeOnUIThread() { instance()->initializeOnUIThreadImpl(); }
         static bool runningOnMainThread() { return instance()->runningOnMainThreadImpl(); }
         // Run task either immediately (if current thread is the main thread) or asynchronously (otherwise).
-        static void runTaskOnMainThread(std::function<void()>&& func) { instance()->runTaskOnMainThreadImpl(std::move(func)); }
+        static void runTaskOnMainThread(std::function<void()>&& func) {
+            if (runningOnMainThread())
+                func();
+            else
+                enqueueTaskOnMainThread(std::move(func));
+        }
         // Enqueue task on the main thread to run asynchronously.
         static void enqueueTaskOnMainThread(std::function<void()>&& func) { instance()->enqueueTaskOnMainThreadImpl(std::move(func)); }
         static void start() { instance()->startImpl(); }
