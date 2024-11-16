@@ -1,8 +1,8 @@
 
 #include <fstream>
 #include <list>
-#include <nlohmann/json.hpp>
 
+#include <choc/text/choc_JSON.h>
 #include "remidy.hpp"
 
 
@@ -44,26 +44,26 @@ void remidy::PluginCatalog::clear() {
 }
 
 
-std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> fromJson(nlohmann::json j) {
+std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> fromJson(const choc::value::ValueView& j) {
     std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> list{};
-    auto jPlugins = j.at("plugins");
-    std::for_each(jPlugins.begin(), jPlugins.end(), [&](nlohmann::ordered_json jPlugin) {
+    auto jPlugins = j["plugins"];
+    for (auto jPlugin : jPlugins) {
         auto entry = std::make_unique<remidy::PluginCatalogEntry>();
-        std::string format = jPlugin.at("format");
+        std::string format = jPlugin["format"].toString();
         entry->format(format);
-        std::string id = jPlugin.at("id");
+        std::string id = jPlugin["id"].toString();
         entry->pluginId(id);
-        std::string bundle = jPlugin.at("bundle");
+        std::string bundle = jPlugin["bundle"].toString();
         entry->bundlePath(bundle);
-        std::string name = jPlugin.at("name");
+        std::string name = jPlugin["name"].toString();
         entry->displayName(name);
-        std::string vendor = jPlugin.at("vendor");
+        std::string vendor = jPlugin["vendor"].toString();
         entry->vendorName(vendor);
-        std::string url = jPlugin.at("url");
+        std::string url = jPlugin["url"].toString();
         entry->productUrl(url);
 
         list.emplace_back(std::move(entry));
-    });
+    }
     return list;
 }
 
@@ -71,36 +71,38 @@ void remidy::PluginCatalog::load(std::filesystem::path& path) {
     if (!std::filesystem::exists(path))
         return;
 
+    std::ostringstream ss;
     std::ifstream ifs{path.string()};
-    nlohmann::ordered_json j;
-    ifs >> j;
-    ifs.close();
+    ss << ifs.rdbuf();
 
-    for (auto& entry : fromJson(j))
+    auto j = choc::json::parse(ss.str());
+
+    for (auto& entry : fromJson(j.getView()))
         entries.emplace_back(std::move(entry));
 }
 
 auto pluginEntriesToJson(std::vector<remidy::PluginCatalogEntry*> list) {
-    std::vector<nlohmann::ordered_json> ret{};
-    for (auto e : list)
-        ret.emplace_back(nlohmann::ordered_json {
-            {"format", e->format()},
-            {"id", e->pluginId()},
-            {"bundle", e->bundlePath()},
-            {"name", e->displayName()},
-            {"vendor", e->vendorName()},
-            {"url", e->productUrl()},
-        });
+    std::vector<choc::value::Value> ret{};
+    for (auto e : list) {
+        ret.emplace_back(choc::value::createObject("PluginCatalogEntry",
+                                                   "format", std::string{e->format()},
+                                                   "id", std::string{e->pluginId()},
+                                                   "bundle", std::string{e->bundlePath()},
+                                                   "name", std::string{e->displayName()},
+                                                   "vendor", std::string{e->vendorName()},
+                                                   "url", std::string{e->productUrl()})
+        );
+    }
     return ret;
 }
 
-nlohmann::json toJson(remidy::PluginCatalog* catalog) {
+choc::value::Value toJson(remidy::PluginCatalog* catalog) {
     auto plugins = pluginEntriesToJson(catalog->getPlugins());
     auto denyList = pluginEntriesToJson(catalog->getDenyList());
-    nlohmann::json j = {
-        {"plugins", std::vector(plugins.begin(), plugins.end()) },
-        {"denyList", std::vector(denyList.begin(), denyList.end()) }
-    };
+    auto j = choc::value::createObject("Catalog",
+        "plugins", choc::value::createArray(plugins),
+        "denyList", choc::value::createArray(denyList)
+    );
     return j;
 }
 
@@ -108,12 +110,13 @@ void remidy::PluginCatalog::save(std::filesystem::path& path) {
     if (!std::filesystem::exists(path.parent_path()))
         std::filesystem::create_directories(path.parent_path());
 
-    nlohmann::ordered_json j = toJson(this);
+    auto j = toJson(this);
 
     if (std::filesystem::exists(path))
         std::filesystem::remove(path);
     std::ofstream ofs{path.string()};
-    ofs << j;
+    // FIXME: this does not generate the expected string output, or I'm using this API in wrong way.
+    ofs << choc::json::toString(j, true);
     ofs.close();
 }
 

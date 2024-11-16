@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.29)
 project(remidy LANGUAGES C CXX OBJC OBJCXX Swift)
 
 #add_subdirectory("../../external/libremidi" "libremidi")
-add_subdirectory("../../external/json" "json")
 include("../../external/LV2Kit.cmake")
 
 include(FetchContent)
@@ -40,7 +39,6 @@ endif ()
 target_include_directories(remidy PRIVATE
         ../../external/travesty
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
-        ../../external/json/include
         ../../external/choc
         ${LV2KIT_INCLUDE_DIRS}
         #../../external/libremidi/include
