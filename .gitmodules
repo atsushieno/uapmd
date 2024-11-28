@@ -16,9 +16,6 @@
 [submodule "external/rtlog-cpp"]
 	path = external/rtlog-cpp
 	url = https://github.com/cjappl/rtlog-cpp
-[submodule "external/json"]
-	path = external/json
-	url = https://github.com/nlohmann/json.git
 [submodule "external/lv2kit"]
 	path = external/lv2kit
 	url = https://github.com/lv2/lv2kit.git

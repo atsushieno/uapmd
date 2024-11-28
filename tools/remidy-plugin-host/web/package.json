@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@colinaut/action-table": "^2.4.19",
+    "@shoelace-style/shoelace": "^2.18.0"
+  }
+}

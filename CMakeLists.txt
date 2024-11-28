@@ -12,5 +12,6 @@ add_subdirectory(src/uapmd)
 
 add_subdirectory(tools/remidy-scan)
 add_subdirectory(tools/remidy-apply)
+add_subdirectory(tools/remidy-plugin-host)
 
 add_subdirectory(tools/uapmd-service)
