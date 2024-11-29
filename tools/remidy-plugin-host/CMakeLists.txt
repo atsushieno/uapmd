@@ -4,6 +4,10 @@ add_executable(remidy-plugin-host
 
 set(CMAKE_CXX_STANDARD 23)
 
+# crashes
+#set(saucer_backend "Qt6")
+set(saucer_modules ON)
+
 include(FetchContent)
 
 FetchContent_Declare(

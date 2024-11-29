@@ -122,7 +122,8 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
     }
 
     async performPluginScanning() {
-        await remidy_performPluginScanning("true");
+        const rescan = this.querySelector("sl-checkbox");
+        await remidy_performPluginScanning(rescan.checked.toString());
     }
 }
 

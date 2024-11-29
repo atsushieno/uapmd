@@ -3,7 +3,7 @@
 #include "impl/WebViewProxySaucer.hpp"
 #include "impl/WebViewProxyChoc.hpp"
 #include "impl/EventLoopSaucer.hpp"
-#include "SaucerWebEmbedded.hpp"
+#include "impl/SaucerWebEmbedded.hpp"
 #include "AudioDeviceSetup.hpp"
 #include "AudioPluginSelectors.hpp"
 #include "AppModel.hpp"
@@ -11,10 +11,16 @@
 int main(int argc, char** argv) {
     std::filesystem::path webDir{"web"};
     std::string appTitle{"remidy-plugin-host"};
-    SaucerWebEmbedded web{webDir, true};
-    uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
-    uapmd::WebViewProxySaucer proxy{config, web.webview()};
+#if 1
+    SaucerWebEmbedded web{webDir};
     EventLoopSaucer event_loop{web.app()};
+    uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
+    uapmd::WebViewProxySaucer proxy{config, web};
+#else
+    remidy::EventLoop& event_loop = *remidy::EventLoop::instance(); // default
+    uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
+    uapmd::WebViewProxyChoc proxy{config};
+#endif
 
     remidy_tooling::PluginScanning scanning{};
     scanning.performPluginScanning();

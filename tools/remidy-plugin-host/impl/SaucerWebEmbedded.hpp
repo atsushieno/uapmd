@@ -1,3 +1,6 @@
+#pragma once
+
+#include <saucer/smartview.hpp>
 #include <choc/network/choc_MIMETypes.h>
 
 class SaucerWebEmbedded {
@@ -27,12 +30,10 @@ public:
         }
     }
 
-    SaucerWebEmbedded(std::filesystem::path& webroot, bool enableDevTools) :
+    SaucerWebEmbedded(std::filesystem::path& webroot) :
             app_(saucer::application::acquire({ .id = "SaucerWebEmbedded" })),
             smartview(saucer::smartview{{ .application = app_ }}),
             webroot(webroot) {
-
-        smartview.set_dev_tools(enableDevTools);
 
         processDirectory(webroot);
 

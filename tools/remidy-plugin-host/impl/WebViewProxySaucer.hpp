@@ -1,9 +1,10 @@
 #pragma once
 #include "../WebViewProxy.hpp"
-#include <saucer/smartview.hpp>
+#include "SaucerWebEmbedded.hpp"
 
 namespace uapmd {
 class WebViewProxySaucer : public WebViewProxy {
+        SaucerWebEmbedded& embedded;
         saucer::smartview<saucer::serializers::glaze::serializer>& webview;
 
         /*
@@ -22,8 +23,10 @@ class WebViewProxySaucer : public WebViewProxy {
         SIMPLE_TYPE_VALUE(StringValue, String, std::string_view, toString);
 */
     public:
-        WebViewProxySaucer(Configuration& config, saucer::smartview<saucer::serializers::glaze::serializer>& webview) :
-            WebViewProxy(config), webview(webview) {
+        WebViewProxySaucer(Configuration& config, SaucerWebEmbedded& embedded) :
+            WebViewProxy(config), embedded(embedded), webview(embedded.webview()) {
+
+            webview.set_dev_tools(config.enableDebugger);
         }
 
         void navigateTo(const std::string &url) override { webview.set_url(url); }

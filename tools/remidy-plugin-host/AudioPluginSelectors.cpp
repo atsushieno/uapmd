@@ -36,6 +36,10 @@ void uapmd::registerPluginViewEntryListFeatures(WebViewProxy& proxy) {
         auto scanning = uapmd::AppModel::instance().pluginScanning;
         if (rescan)
             scanning->catalog.clear();
-        return std::to_string(rescan ? scanning->performPluginScanning(emptyPath) : scanning->performPluginScanning());
+        if (rescan)
+            scanning->performPluginScanning(emptyPath);
+        else
+            scanning->performPluginScanning();
+        return "";
     });
 }
