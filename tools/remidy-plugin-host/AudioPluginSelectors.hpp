@@ -1,6 +1,7 @@
 #pragma once
 
 #include "remidy/remidy.hpp"
+#include "WebViewProxy.hpp"
 
 namespace uapmd {
     class AudioPluginViewEntry {
@@ -40,4 +41,5 @@ namespace uapmd {
 
     // invoked via JS callbacks too.
     AudioPluginViewEntryList getPluginViewEntryList();
+    void registerPluginViewEntryListFeatures(WebViewProxy& webview);
 }

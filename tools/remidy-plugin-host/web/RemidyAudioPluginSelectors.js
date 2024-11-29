@@ -30,7 +30,7 @@ async function remidy_getAudioPluginEntryList_stub() {
     });
 }
 
-async function remidy_performPluginScanning_stub() {
+async function remidy_performPluginScanning_stub(forceRescan/*string*/) {
     plugin_scan_count++;
 }
 
@@ -71,6 +71,8 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
             </sl-details>
             <sl-details summary="DenyList" class="denyList">
             </sl-details>
+            <sl-button onclick="this.parentElement.performPluginScanning()">Perform Plugin Scanning</sl-button>
+            <sl-checkbox id="checkbox-force-rescan"></sl-checkbox> Force Rescan
 `;
 
         await this.loadAudioPluginEntryList();
@@ -118,10 +120,10 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         actionTable.appendChild(table);
         node.appendChild(actionTable);
     }
+
+    async performPluginScanning() {
+        await remidy_performPluginScanning("true");
+    }
 }
 
 customElements.define("remidy-audio-plugin-list", RemidyAudioPluginEntryListElement);
-
-async function performPluginScanning() {
-    await remidy_performPluginScanning();
-}

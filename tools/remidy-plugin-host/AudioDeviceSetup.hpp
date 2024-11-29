@@ -33,4 +33,5 @@ namespace uapmd {
 
     // invoked via JS callbacks too.
     DevicesInterop getDevices();
+    void registerAudioDeviceSetupFeatures(WebViewProxy& webview);
 }

@@ -63,6 +63,7 @@ namespace uapmd {
 
         // functions work asynchronously (in this common layer)
         virtual void registerFunction(const std::string &jsName, std::function<std::string(const std::string_view&)>&& func) = 0;
+        // Ideally this should work, but it would not be available on all backends.
         virtual void registerFunction(const std::string& jsName, ValueType returnType, std::function<Value*(const std::vector<Value*>)>&& func) = 0;
         virtual void evalJS(const std::string& js) = 0;
 

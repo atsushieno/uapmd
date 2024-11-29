@@ -6,8 +6,9 @@
 
 namespace uapmd {
 class WebViewProxyChoc : public WebViewProxy {
-        choc::ui::WebView webview;
-        choc::ui::DesktopWindow window;
+    choc::ui::WebView webview;
+    choc::ui::DesktopWindow window;
+    
     choc::value::Value toChocValue(ValueType type, uapmd::WebViewProxy::Value* src) {
             switch (type) {
                 case ValueType::Double:
