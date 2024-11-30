@@ -3,7 +3,8 @@
 
 // WebView facade stubs.
 
-var plugin_scan_count = 1;
+let plugin_scan_count = 1;
+
 async function remidy_getAudioPluginEntryList_stub() {
     return JSON.stringify({
         "entries": [
@@ -36,9 +37,9 @@ async function remidy_performPluginScanning_stub(forceRescan/*string*/) {
 
 // WebView Facades. They are supposed to be defined by host WebView.
 if (typeof(remidy_getAudioPluginEntryList) === "undefined")
-    remidy_getAudioPluginEntryList = remidy_getAudioPluginEntryList_stub;
+    globalThis.remidy_getAudioPluginEntryList = remidy_getAudioPluginEntryList_stub;
 if (typeof(remidy_performPluginScanning) === "undefined")
-    remidy_performPluginScanning = remidy_performPluginScanning_stub;
+    globalThis.remidy_performPluginScanning = remidy_performPluginScanning_stub;
 
 // Events that are fired by WebView.
 class RemidyAudioPluginListUpdatedListener {

@@ -10,14 +10,13 @@
 
 int main(int argc, char** argv) {
     std::filesystem::path webDir{"web"};
-    std::string appTitle{"remidy-plugin-host"};
 #if 1
     SaucerWebEmbedded web{webDir};
     EventLoopSaucer event_loop{web.app()};
     uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
     uapmd::WebViewProxySaucer proxy{config, web};
+    remidy::EventLoop::instance(event_loop);
 #else
-    remidy::EventLoop& event_loop = *remidy::EventLoop::instance(); // default
     uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
     uapmd::WebViewProxyChoc proxy{config};
 #endif
@@ -26,8 +25,6 @@ int main(int argc, char** argv) {
     scanning.performPluginScanning();
     uapmd::AppModel::instance().pluginScanning = &scanning;
 
-    remidy::EventLoop::instance(event_loop);
-
     remidy::EventLoop::initializeOnUIThread();
 
     // Register UI component callbacks to the WebView.
@@ -35,12 +32,15 @@ int main(int argc, char** argv) {
     uapmd::registerAudioDeviceSetupFeatures(proxy);
 
     proxy.navigateToLocalFile("web/index.html");
-    // Once it is loaded, fire "updated" events for device and plugin list so that
+
+    // Note that they are not ready yet even when a page is completely loaded (DOMContentLoaded).
+    // For example, JS `eval` seem to be asynchronously executed in saucer (probably not just saucer).
+    // Therefore, once it is loaded, fire "updated" events for device and plugin list so that
     //  the UI can reflect these target items correctly.
     proxy.evalJS("window.dispatchEvent(new Event('remidyDevicesUpdated'))");
     proxy.evalJS("window.dispatchEvent(new Event('remidyAudioPluginListUpdated'))");
 
-    proxy.windowTitle(appTitle);
+    proxy.windowTitle("remidy-plugin-host");
     proxy.show();
 
     remidy::EventLoop::start();

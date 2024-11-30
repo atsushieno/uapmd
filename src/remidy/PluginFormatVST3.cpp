@@ -293,10 +293,6 @@ namespace remidy {
         auto savedPath = std::filesystem::current_path();
         std::filesystem::current_path(vst3Dir);
 
-        // FIXME: workaround
-        if (vst3Dir.string().find("Raum") >= 0)
-            return;
-
         auto module = this->library_pool.loadOrAddReference(vst3Dir);
 
         if (module) {

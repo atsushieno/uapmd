@@ -24,7 +24,7 @@ async function remidy_getDevices_stub() {
 
 // WebView Facades. They are supposed to be defined by host WebView.
 if (typeof(remidy_getDevices) === "undefined")
-    remidy_getDevices = remidy_getDevices_stub;
+    globalThis.remidy_getDevices = remidy_getDevices_stub;
 
 // Events that are fired by WebView.
 class RemidyDevicesUpdatedListener {

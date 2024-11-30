@@ -8,7 +8,7 @@ namespace uapmd {
 class WebViewProxyChoc : public WebViewProxy {
     choc::ui::WebView webview;
     choc::ui::DesktopWindow window;
-    
+
     choc::value::Value toChocValue(ValueType type, uapmd::WebViewProxy::Value* src) {
             switch (type) {
                 case ValueType::Double:
@@ -25,7 +25,7 @@ class WebViewProxyChoc : public WebViewProxy {
             }
         }
     public:
-        WebViewProxyChoc(WebViewProxy::Configuration& config) :
+        explicit WebViewProxyChoc(WebViewProxy::Configuration& config) :
                 WebViewProxy(config),
                 window({ 100, 100, 800, 600 }) {
             auto cfg = this->config;
@@ -34,7 +34,6 @@ class WebViewProxyChoc : public WebViewProxy {
                 //.customSchemeURI =
                 //.customUserAgent =
                 .enableDebugMode = cfg.enableDebugger,
-                //.enableDefaultClipboardKeyShortcutsInSafari =
                 .fetchResource = [cfg](const std::string& path) -> std::optional<choc::ui::WebView::Options::Resource> {
                     auto res = cfg.resolvePath(path);
                     if (res)
@@ -42,7 +41,8 @@ class WebViewProxyChoc : public WebViewProxy {
                     else
                         return {};
                 },
-                .transparentBackground = config.transparentBackground
+                .transparentBackground = config.transparentBackground,
+                .enableDefaultClipboardKeyShortcutsInSafari = true
             });
             window.setContent(&webview);
         }
