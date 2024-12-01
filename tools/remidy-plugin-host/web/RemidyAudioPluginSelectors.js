@@ -54,10 +54,20 @@ class RemidyAudioPluginListUpdatedListener {
     }
 }
 
+class RemidyAudioPluginListSelectionChangedEvent extends Event {
+    constructor(index) {
+        super("RemidyAudioPluginListSelectionChanged");
+
+        this.index = index;
+    }
+}
+
 class RemidyAudioPluginEntryListElement extends HTMLElement {
     constructor() {
         super();
     }
+
+    selectedIndex = -1;
 
     // Window events that UI listens to the host state changes.
     remidyAudioPluginListUpdatedListener = new RemidyAudioPluginListUpdatedListener(this);
@@ -80,21 +90,26 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
     }
 
     async loadAudioPluginEntryList() {
+        const self = this;
+
         const pluginListJSON = await remidy_getAudioPluginEntryList();
         const pluginList = JSON.parse(pluginListJSON);
         const node = document.querySelector(".entries");
         node.innerText = "";
-        const actionTable = document.createElement("action-table");
-        actionTable.setAttribute("store", "store");
+        const actionTable = document.createElement("div");
+        actionTable.setAttribute("style", "overflow: auto; height: 500px");
         actionTable.innerHTML = `
+            <action-table store="store"
             <action-table-filters class="flex flex-col">
                 <div>Filter: <input id="name-search" name="action-table" type="search" placeholder="Search" size="30" /></div>
             </action-table-filters>
+            </action-table>
         `;
         const table = document.createElement("table");
         table.innerHTML = `
             <thead>
                 <tr>
+                    <th>Select</th>
                     <th>Format</th>
                     <th>Name</th>
                     <th>Vendor</th>
@@ -107,6 +122,7 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
             const el = document.createElement("tr");
             el.setAttribute("value", i);
             el.innerHTML = `
+                    <td><sl-button value="${i}" class="plugin-list-item-selector">Select</sl-button></td>
                     <td>${d.format}</td>
                     <td>${d.name}</td>
                     <td>${d.vendor}</td>
@@ -118,13 +134,32 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         }
         // It needs to be added after we filled all rows, otherwise action-table validates the table and rejects tr-less tables.
         table.appendChild(tbody);
-        actionTable.appendChild(table);
+        actionTable.querySelector("action-table").appendChild(table);
         node.appendChild(actionTable);
+        document.querySelectorAll(".plugin-list-item-selector").forEach(e => {
+            e.addEventListener("click", () => {
+                const i = e.getAttribute("value");
+                this.selectPlugin(i);
+            });
+        });
     }
 
     async performPluginScanning() {
         const rescan = this.querySelector("sl-checkbox");
         await remidy_performPluginScanning(rescan.checked.toString());
+    }
+
+    selectPlugin(index) {
+        const self = this;
+        this.selectedIndex = index;
+        console.log(`Selected item at ${index}`);
+        this.dispatchEvent(new RemidyAudioPluginListSelectionChangedEvent(index));
+
+        this.querySelectorAll("tr").forEach(e => {
+            e.removeAttribute("class");
+            if (e.getAttribute("value") === self.selectedIndex.toString())
+                e.setAttribute("class", "selected");
+        })
     }
 }
 
