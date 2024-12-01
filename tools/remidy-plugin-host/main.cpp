@@ -4,9 +4,10 @@
 #include "impl/WebViewProxyChoc.hpp"
 #include "impl/EventLoopSaucer.hpp"
 #include "impl/SaucerWebEmbedded.hpp"
+#include "AppModel.hpp"
 #include "AudioDeviceSetup.hpp"
 #include "AudioPluginSelectors.hpp"
-#include "AppModel.hpp"
+#include "AudioPluginInstanceControl.hpp"
 
 int main(int argc, char** argv) {
     std::filesystem::path webDir{"web"};
@@ -30,6 +31,7 @@ int main(int argc, char** argv) {
     // Register UI component callbacks to the WebView.
     uapmd::registerPluginViewEntryListFeatures(proxy);
     uapmd::registerAudioDeviceSetupFeatures(proxy);
+    uapmd::registerPluginInstanceControlFeatures(proxy);
 
     proxy.navigateToLocalFile("web/index.html");
 

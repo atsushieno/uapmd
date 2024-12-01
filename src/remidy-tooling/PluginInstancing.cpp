@@ -38,6 +38,25 @@ void remidy_tooling::PluginInstancing::setupInstance(std::function<void(std::str
     format->createInstance(entry, cb);
 }
 
+remidy::PluginFormat* findFormat(remidy_tooling::PluginScanning& scanner, const std::string_view& format) {
+    for (auto f : scanner.formats)
+        if (f->name() == format)
+            return f;
+    return nullptr;
+}
+remidy::PluginCatalogEntry* findPlugin(remidy_tooling::PluginScanning& scanner, const std::string_view& format, const std::string_view& pluginId) {
+    for (auto e : scanner.catalog.getPlugins())
+        if (e->format() == format && e->pluginId() == pluginId)
+            return e;
+    return nullptr;
+}
+
+remidy_tooling::PluginInstancing::PluginInstancing(remidy_tooling::PluginScanning &scanner,
+                                                   const std::string_view &format, const std::string_view &pluginId) :
+    scanner(scanner), format(findFormat(scanner, format)), entry(findPlugin(scanner, format, pluginId)) {
+        displayName = entry->displayName();
+}
+
 remidy_tooling::PluginInstancing::PluginInstancing(PluginScanning& scanner, PluginFormat* format, PluginCatalogEntry* entry) :
     scanner(scanner), format(format), entry(entry) {
     displayName = entry->displayName();

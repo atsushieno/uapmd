@@ -8,6 +8,7 @@
 
     <script type="module" src="./RemidyAudioDeviceSetupElement.js"></script>
     <script type="module" src="./RemidyAudioPluginSelectors.js"></script>
+    <script type="module" src="./RemidyAudioPluginInstanceControl.js"></script>
     <script type="text/javascript" src="./App.js" defer="true"></script>
     <style>
         body { font-family: var(--sl-font-sans); }
@@ -32,15 +33,22 @@
     </sl-select>
 </sl-details>
 
+<remidy-audio-plugin-instance-control id="instance-control"></remidy-audio-plugin-instance-control>
+
+<sl-button id="plugin-list-launcher"></sl-button>
+
 <remidy-audio-plugin-list></remidy-audio-plugin-list>
 
-<sl-color-picker></sl-color-picker>
-<sl-checkbox></sl-checkbox>
-<script>
-    const checkbox = document.querySelector('sl-checkbox');
-    checkbox.addEventListener('sl-change', event => {
-        console.log(event.target.checked ? 'checked' : 'not checked');
-    });
-</script>
+<script type="text/javascript">//<![CDATA[
+function pluginListLauncherClicked() {
+
+}
+
+document.getElementById("plugin-list-launcher").onclick = pluginListLauncherClicked;
+document.querySelector("remidy-audio-plugin-list").addEventListener("RemidyAudioPluginListSelectionChanged", (evt) => {
+    const control = document.getElementById("instance-control");
+    control.instantiatePlugin(evt.format, evt.pluginId);
+});
+//]]></script>
 </body>
 </html>

@@ -1,6 +1,4 @@
-add_executable(remidy-plugin-host
-        AppModel.cpp
-        AppModel.hpp)
+add_executable(remidy-plugin-host)
 
 set(CMAKE_CXX_STANDARD 23)
 
@@ -27,8 +25,10 @@ target_link_libraries(remidy-plugin-host PRIVATE
         remidy::remidy-tooling
 )
 target_sources(remidy-plugin-host PRIVATE
+        AppModel.cpp
         AudioDeviceSetup.cpp
         AudioPluginSelectors.cpp
+        AudioPluginInstanceControl.cpp
         main.cpp
 )
 file(CREATE_LINK

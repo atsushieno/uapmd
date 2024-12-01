@@ -41,5 +41,5 @@ namespace uapmd {
 
     // invoked via JS callbacks too.
     AudioPluginViewEntryList getPluginViewEntryList();
-    void registerPluginViewEntryListFeatures(WebViewProxy& webview);
+    void registerPluginViewEntryListFeatures(WebViewProxy& proxy);
 }

@@ -55,10 +55,11 @@ class RemidyAudioPluginListUpdatedListener {
 }
 
 class RemidyAudioPluginListSelectionChangedEvent extends Event {
-    constructor(index) {
+    constructor(format, pluginId) {
         super("RemidyAudioPluginListSelectionChanged");
 
-        this.index = index;
+        this.format = format;
+        this.pluginId = pluginId;
     }
 }
 
@@ -67,7 +68,8 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         super();
     }
 
-    selectedIndex = -1;
+    selectedFormat = "";
+    selectedPluginId = "";
 
     // Window events that UI listens to the host state changes.
     remidyAudioPluginListUpdatedListener = new RemidyAudioPluginListUpdatedListener(this);
@@ -120,17 +122,13 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         for (const i in pluginList.entries) {
             const d = pluginList.entries[i];
             const el = document.createElement("tr");
-            el.setAttribute("value", i);
             el.innerHTML = `
-                    <td><sl-button value="${i}" class="plugin-list-item-selector">Select</sl-button></td>
+                    <td><sl-button pluginId="${d.id}" format="${d.format}" class="plugin-list-item-selector">Select</sl-button></td>
                     <td>${d.format}</td>
                     <td>${d.name}</td>
                     <td>${d.vendor}</td>
             `;
             tbody.appendChild(el);
-            if (node.getAttribute("value") == null) {
-                node.setAttribute("value", i);
-            }
         }
         // It needs to be added after we filled all rows, otherwise action-table validates the table and rejects tr-less tables.
         table.appendChild(tbody);
@@ -138,8 +136,10 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         node.appendChild(actionTable);
         document.querySelectorAll(".plugin-list-item-selector").forEach(e => {
             e.addEventListener("click", () => {
-                const i = e.getAttribute("value");
-                this.selectPlugin(i);
+                const format = e.getAttribute("format");
+                const pluginId = e.getAttribute("pluginId");
+                const name = e.getAttribute("name");
+                this.selectPlugin(format, pluginId);
             });
         });
     }
@@ -149,17 +149,22 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         await remidy_performPluginScanning(rescan.checked.toString());
     }
 
-    selectPlugin(index) {
+    selectPlugin(format, pluginId) {
         const self = this;
-        this.selectedIndex = index;
-        console.log(`Selected item at ${index}`);
-        this.dispatchEvent(new RemidyAudioPluginListSelectionChangedEvent(index));
+        this.selectedFormat = format;
+        this.selectedPluginId = pluginId;
+        this.dispatchEvent(new RemidyAudioPluginListSelectionChangedEvent(format, pluginId));
 
         this.querySelectorAll("tr").forEach(e => {
             e.removeAttribute("class");
-            if (e.getAttribute("value") === self.selectedIndex.toString())
+            const td = e.querySelector("td");
+            if (td == null) // header row
+                return;
+            const b = td.querySelector("sl-button");
+            if (b.getAttribute("format") === self.selectedFormat &&
+                b.getAttribute("pluginId") === self.selectedPluginId)
                 e.setAttribute("class", "selected");
-        })
+        });
     }
 }
 

@@ -40,7 +40,12 @@ class WebViewProxySaucer : public WebViewProxy {
         }
 
         void registerFunction(const std::string &jsName, std::function<std::string(const std::string_view&)>&& func) override {
-            webview.expose(jsName, std::move(func),  saucer::launch::async);
+            // Saucer does not handle std::string_view and somehow escapes the string, so convert it to std::string.
+            auto x = std::move(func);
+            auto f = [x](const std::string& arg) {
+                return x(arg);
+            };
+            webview.expose(jsName, std::move(f),  saucer::launch::async);
             evalJS(std::format("{} = saucer.exposed.{}", jsName, jsName));
         }
 #if 1
