@@ -3,16 +3,20 @@
 #include "AudioPluginInstanceControl.hpp"
 #include <choc/text/choc_JSON.h>
 
-void uapmd::instantiatePlugin(const std::string_view& format, const std::string_view& pluginId) {
-    AppModel::instance().instantiatePlugin(format, pluginId);
+void uapmd::instantiatePlugin(int32_t instancingId, const std::string_view& format, const std::string_view& pluginId) {
+    AppModel::instance().instantiatePlugin(instancingId, format, pluginId);
 }
 
 void uapmd::registerPluginInstanceControlFeatures(WebViewProxy& proxy) {
     proxy.registerFunction("remidy_instantiatePlugin", [](const std::string_view& args) -> std::string {
         auto req = choc::json::parse(args);
+        auto instancingId = req["instancingId"].getInt64();
         auto format = req["format"].getString();
         auto pluginId = req["pluginId"].getString();
-        instantiatePlugin(format, pluginId);
+        instantiatePlugin(instancingId, format, pluginId);
         return "";
+    });
+    AppModel::instance().instancingCompleted.emplace_back([&proxy](int32_t instancingId, std::string error) {
+        proxy.evalJS(std::format("var e = new Event('RemidyInstancingCompleted'); e.instancingId = {}; window.dispatchEvent(e)", instancingId));
     });
 }

@@ -3,8 +3,8 @@
 
 // WebView facade stubs.
 
-function remidy_instantiatePlugin_stub(format, pluginId) {
-    console.log(`Instantiated plugin(${format}, ${pluginId})`);
+function remidy_instantiatePlugin_stub(instancingId, format, pluginId) {
+    console.log(`Instantiated plugin(${instancingId}, ${format}, ${pluginId})`);
 }
 
 async function remidy_getPluginParameterList_stub() {
@@ -21,16 +21,11 @@ if (typeof(remidy_instantiatePlugin) === "undefined")
 if (typeof(remidy_getPluginParameterList) === "undefined")
     globalThis.remidy_getPluginParameterList = remidy_getPluginParameterList_stub;
 
-// Events that are fired by WebView.
-class RemidyAudioPluginInstanceControlListener {
-    owner = {};
-
-    constructor(element) {
-        this.owner = element;
-    }
-
-    async handleEvent(evt) {
-        await this.owner.unhandledEvent();
+// Events that are fired by native.
+class RemidyInstancingCompletedEvent extends Event {
+    constructor(instancingId) {
+        super('RemidyInstancingCompleted');
+        this.instancingId = instancingId
     }
 }
 
@@ -39,24 +34,51 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         super();
     }
 
-    // Window events that UI listens to the host state changes.
-    remidyInstanceControlListener = new RemidyAudioPluginInstanceControlListener(this);
-
     // part of WebComponents Standard
     async connectedCallback() {
         // JS event registry
-        window.addEventListener("RemidyInstanceControl", this.remidyInstanceControlListener);
+        window.addEventListener("RemidyInstancingCompleted", (evt) => {
+            console.log(`Instancing ${evt.instancingId} is done.`);
+        });
 
         this.innerHTML = `
-            <sl-details summary="Parameters" class="parameters">
+            <sl-details summary="Instance Control">
+                <sl-dialog label="Select a plugin to instantiate" style="--width: 500px">
+                    <div style="overflow: auto; height: 500px">
+                        <remidy-audio-plugin-list></remidy-audio-plugin-list>
+                        <sl-button slot="footer" variant="primary">Close</sl-button>
+                    </div>
+                </sl-dialog>
+                <sl-button class="plugin-list-launcher">Select a Plugin</sl-button>
+
+                <sl-details summary="Parameters" class="parameters">
+                </sl-details>
             </sl-details>
 `;
+        this.querySelector("sl-button.plugin-list-launcher").addEventListener("click", () => {
+            this.pluginListLauncherClicked();
+        });
+
+        this.querySelector("sl-button[slot='footer']").addEventListener("click", () => {
+            this.querySelector("sl-dialog").hide();
+        });
+
+        let instancingCount = 0;
+
+        this.querySelector("remidy-audio-plugin-list").addEventListener("RemidyAudioPluginListSelectionChanged", (evt) => {
+            this.querySelector("sl-dialog").hide();
+            this.instantiatePlugin(instancingCount++, evt.format, evt.pluginId);
+        });
 
         await this.getPluginParameterList();
     }
 
-    instantiatePlugin(format, pluginId) {
-        const obj = {format: format, pluginId: pluginId};
+    pluginListLauncherClicked() {
+        this.querySelector("sl-dialog").show();
+    }
+
+    instantiatePlugin(instancingId, format, pluginId) {
+        const obj = {instancingId: instancingId, format: format, pluginId: pluginId};
         const json = JSON.stringify(obj);
         console.log(`instantiatePlugin(${json})`);
         remidy_instantiatePlugin(json);

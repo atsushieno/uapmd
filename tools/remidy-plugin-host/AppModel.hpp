@@ -12,12 +12,6 @@ namespace uapmd {
         AudioPluginHostPAL* plugin_host_pal;
         AudioPluginSequencer sequencer;
 
-        std::function<void(std::string)>  onInstantiatedCallback = [](std::string error) {
-            // FIXME: error reporting instead of dumping out here
-            if (!error.empty())
-                remidy::Logger::global()->logError(error.c_str());
-        };
-
     public:
         static AppModel& instance();
 
@@ -34,10 +28,20 @@ namespace uapmd {
             plugin_host_pal->performPluginScanning(rescan);
         }
 
-        void instantiatePlugin(const std::string_view& format, const std::string_view& pluginId) {
+        std::vector<std::function<void(int32_t instancingId, std::string)>> instancingCompleted{};
+
+        void instantiatePlugin(int32_t instancingId, const std::string_view& format, const std::string_view& pluginId) {
             std::string formatString{format};
             std::string pluginidString{pluginId};
-            sequencer.addSimpleTrack(sample_rate, formatString, pluginidString, onInstantiatedCallback);
+            sequencer.addSimpleTrack(sample_rate, formatString, pluginidString, [&](std::string error) {
+                // FIXME: error reporting instead of dumping out here
+                if (!error.empty()) {
+                    std::string msg = std::format("Instancing ID {}: {}", instancingId, error);
+                    remidy::Logger::global()->logError(msg.c_str());
+                }
+                for (auto& f : instancingCompleted)
+                    f(instancingId, error);
+            });
         }
     };
 }

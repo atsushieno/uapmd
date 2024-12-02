@@ -96,7 +96,7 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
 
         const pluginListJSON = await remidy_getAudioPluginEntryList();
         const pluginList = JSON.parse(pluginListJSON);
-        const node = document.querySelector(".entries");
+        const node = self.querySelector(".entries");
         node.innerText = "";
         const actionTable = document.createElement("div");
         actionTable.setAttribute("style", "overflow: auto; height: 500px");
@@ -134,7 +134,7 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         table.appendChild(tbody);
         actionTable.querySelector("action-table").appendChild(table);
         node.appendChild(actionTable);
-        document.querySelectorAll(".plugin-list-item-selector").forEach(e => {
+        self.querySelectorAll(".plugin-list-item-selector").forEach(e => {
             e.addEventListener("click", () => {
                 const format = e.getAttribute("format");
                 const pluginId = e.getAttribute("pluginId");

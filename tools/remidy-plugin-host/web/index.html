@@ -33,22 +33,9 @@
     </sl-select>
 </sl-details>
 
+<remidy-audio-plugin-list id="plugin-list-for-scan"></remidy-audio-plugin-list>
+
 <remidy-audio-plugin-instance-control id="instance-control"></remidy-audio-plugin-instance-control>
 
-<sl-button id="plugin-list-launcher"></sl-button>
-
-<remidy-audio-plugin-list></remidy-audio-plugin-list>
-
-<script type="text/javascript">//<![CDATA[
-function pluginListLauncherClicked() {
-
-}
-
-document.getElementById("plugin-list-launcher").onclick = pluginListLauncherClicked;
-document.querySelector("remidy-audio-plugin-list").addEventListener("RemidyAudioPluginListSelectionChanged", (evt) => {
-    const control = document.getElementById("instance-control");
-    control.instantiatePlugin(evt.format, evt.pluginId);
-});
-//]]></script>
 </body>
 </html>
