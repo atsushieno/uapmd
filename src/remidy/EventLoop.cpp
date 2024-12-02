@@ -24,11 +24,15 @@ namespace remidy {
     };
 
     EventLoopChoc choc{};
-    EventLoop* impl{&choc};
-    EventLoop* EventLoop::instance() {
-        return impl;
+    EventLoop* eventLoop{getEventLoop()};
+    EventLoop* getEventLoop() {
+        if (!eventLoop)
+            eventLoop = &choc;
+        return eventLoop;
     }
-    void EventLoop::instance(EventLoop& newImpl) {
-        impl = &newImpl;
+    void setEventLoop(EventLoop* newImpl) {
+        eventLoop = newImpl;
+        assert(eventLoop);
+        assert(EventLoop::runningOnMainThread());
     }
 }

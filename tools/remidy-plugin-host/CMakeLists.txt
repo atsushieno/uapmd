@@ -23,6 +23,7 @@ target_link_libraries(remidy-plugin-host PRIVATE
         saucer::saucer
         remidy::remidy
         remidy::remidy-tooling
+        uapmd
 )
 target_sources(remidy-plugin-host PRIVATE
         AppModel.cpp

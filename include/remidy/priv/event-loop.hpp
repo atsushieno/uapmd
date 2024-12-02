@@ -3,6 +3,11 @@
 #include <functional>
 
 namespace remidy {
+    class EventLoop;
+
+    EventLoop* getEventLoop();
+    void setEventLoop(EventLoop* eventLoop);
+
     // Provides the way for plugin UI support implementation to get access to UI event loop
     // so that it can appropriately dispatch some function invocation on the UI thread.
     //
@@ -24,10 +29,10 @@ namespace remidy {
         virtual void startImpl() = 0;
         virtual void stopImpl() = 0;
     public:
-        static EventLoop* instance();
-        static void instance(EventLoop& newImpl);
-        static void initializeOnUIThread() { instance()->initializeOnUIThreadImpl(); }
-        static bool runningOnMainThread() { return instance()->runningOnMainThreadImpl(); }
+        virtual ~EventLoop() = default;
+
+        static void initializeOnUIThread() { getEventLoop()->initializeOnUIThreadImpl(); }
+        static bool runningOnMainThread() { return getEventLoop()->runningOnMainThreadImpl(); }
         // Run task either immediately (if current thread is the main thread) or asynchronously (otherwise).
         static void runTaskOnMainThread(std::function<void()>&& func) {
             if (runningOnMainThread())
@@ -36,9 +41,9 @@ namespace remidy {
                 enqueueTaskOnMainThread(std::move(func));
         }
         // Enqueue task on the main thread to run asynchronously.
-        static void enqueueTaskOnMainThread(std::function<void()>&& func) { instance()->enqueueTaskOnMainThreadImpl(std::move(func)); }
-        static void start() { instance()->startImpl(); }
-        static void stop() { instance()->stopImpl(); }
+        static void enqueueTaskOnMainThread(std::function<void()>&& func) { getEventLoop()->enqueueTaskOnMainThreadImpl(std::move(func)); }
+        static void start() { getEventLoop()->startImpl(); }
+        static void stop() { getEventLoop()->stopImpl(); }
     };
 
 }

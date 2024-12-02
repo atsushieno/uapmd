@@ -18,6 +18,20 @@ namespace uapmd {
     };
 }
 
+uapmd::RemidyAudioPluginHostPAL::RemidyAudioPluginHostPAL() {
+    scanning.performPluginScanning();
+}
+
+std::filesystem::path empty_path{""};
+void uapmd::RemidyAudioPluginHostPAL::performPluginScanning(bool rescan) {
+    if (rescan) {
+        catalog().clear();
+        scanning.performPluginScanning(empty_path);
+    }
+    else
+        scanning.performPluginScanning();
+}
+
 void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
     scanning.performPluginScanning();
     auto format = *(scanning.formats | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
@@ -44,8 +58,4 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
 
 uapmd_status_t uapmd::RemidyAudioPluginHostPAL::processAudio(std::vector<remidy::AudioProcessContext *> contexts) {
     return 0;
-}
-
-uapmd::RemidyAudioPluginHostPAL::RemidyAudioPluginHostPAL() {
-    scanning.performPluginScanning();
 }

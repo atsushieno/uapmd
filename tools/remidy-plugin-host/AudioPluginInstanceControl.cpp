@@ -4,11 +4,7 @@
 #include <choc/text/choc_JSON.h>
 
 void uapmd::instantiatePlugin(const std::string_view& format, const std::string_view& pluginId) {
-    auto scanner = AppModel::instance().pluginScanning;
-    AppModel::instance().pluginInstancing = std::make_unique<remidy_tooling::PluginInstancing>(*scanner, format, pluginId);
-    AppModel::instance().pluginInstancing->makeAlive([format,pluginId](std::string){
-        std::cerr << "Instantiated plugin " << format << " : " << pluginId << std::endl;
-    });
+    AppModel::instance().instantiatePlugin(format, pluginId);
 }
 
 void uapmd::registerPluginInstanceControlFeatures(WebViewProxy& proxy) {

@@ -5,7 +5,7 @@
 
 // invoked by JS, via WebView registered function `remidy_getAudioPluginEntryList()`
 uapmd::AudioPluginViewEntryList uapmd::getPluginViewEntryList() {
-    auto& catalog = uapmd::AppModel::instance().pluginScanning->catalog;
+    auto& catalog = uapmd::AppModel::instance().catalog();
     AudioPluginViewEntryList ret{catalog};
     return ret;
 }
@@ -33,13 +33,7 @@ void uapmd::registerPluginViewEntryListFeatures(WebViewProxy& proxy) {
     static std::filesystem::path emptyPath{""};
     proxy.registerFunction("remidy_performPluginScanning", [](const std::string_view& json) -> std::string {
         bool rescan = json == "true";
-        auto scanning = uapmd::AppModel::instance().pluginScanning;
-        if (rescan)
-            scanning->catalog.clear();
-        if (rescan)
-            scanning->performPluginScanning(emptyPath);
-        else
-            scanning->performPluginScanning();
+        uapmd::AppModel::instance().performPluginScanning(rescan);
         return "";
     });
 }

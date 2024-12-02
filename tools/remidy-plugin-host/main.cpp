@@ -9,22 +9,20 @@
 #include "AudioPluginSelectors.hpp"
 #include "AudioPluginInstanceControl.hpp"
 
+std::unique_ptr<remidy::EventLoop> eventLoop{};
+
 int main(int argc, char** argv) {
     std::filesystem::path webDir{"web"};
 #if 1
     SaucerWebEmbedded web{webDir};
-    EventLoopSaucer event_loop{web.app()};
+    eventLoop = std::make_unique<EventLoopSaucer>(web.app());
+    remidy::setEventLoop(eventLoop.get());
     uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
     uapmd::WebViewProxySaucer proxy{config, web};
-    remidy::EventLoop::instance(event_loop);
 #else
     uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
     uapmd::WebViewProxyChoc proxy{config};
 #endif
-
-    remidy_tooling::PluginScanning scanning{};
-    scanning.performPluginScanning();
-    uapmd::AppModel::instance().pluginScanning = &scanning;
 
     remidy::EventLoop::initializeOnUIThread();
 
