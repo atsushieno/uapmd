@@ -3,12 +3,15 @@
 namespace uapmd {
 
     class AudioPluginSequencer::Impl {
+        remidy::MasterContext master_context{};
         std::vector<AudioPluginTrack*> tracks{};
     public:
         explicit Impl(AudioPluginHostPAL* pal);
         ~Impl();
 
         AudioPluginHostPAL* pal;
+
+        remidy::MasterContext& masterContext() { return master_context; }
 
         std::vector<AudioPluginTrack*>& getTracks();
 
@@ -23,6 +26,10 @@ namespace uapmd {
 
     AudioPluginSequencer::~AudioPluginSequencer() {
         delete impl;
+    }
+
+    remidy::MasterContext &AudioPluginSequencer::masterContext() {
+        return impl->masterContext();
     }
 
     std::vector<AudioPluginTrack *> & AudioPluginSequencer::tracks() const {

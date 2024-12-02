@@ -42,14 +42,51 @@ namespace remidy {
         }
     };
 
-    class TrackContext {
+    class MasterContext {
         uint16_t dctpq{480};
-        uint32_t tempo{500000};
+        uint32_t tempo_{500000};
 
     public:
         uint16_t deltaClockstampTicksPerQuarterNotes() { return dctpq; }
         StatusCode deltaClockstampTicksPerQuarterNotes(uint16_t newValue) {
             dctpq = newValue;
+            return StatusCode::OK;
+        }
+
+        uint16_t tempo() {
+            return tempo_;
+        }
+        StatusCode tempo(uint16_t newValue) {
+            tempo_ = newValue;
+            return StatusCode::OK;
+        }
+    };
+
+    class TrackContext {
+        MasterContext& master_context;
+        // in case they are overriden...
+        std::optional<uint16_t> dctpq_override{};
+        std::optional<uint32_t> tempo_override{};
+
+    public:
+        explicit TrackContext(MasterContext& masterContext) :
+            master_context(masterContext) {
+
+        }
+
+        uint16_t deltaClockstampTicksPerQuarterNotes() {
+            return dctpq_override.has_value() ? dctpq_override.value() : master_context.deltaClockstampTicksPerQuarterNotes();
+        }
+        StatusCode deltaClockstampTicksPerQuarterNotes(uint16_t newValue) {
+            dctpq_override = newValue;
+            return StatusCode::OK;
+        }
+
+        uint16_t tempo() {
+            return tempo_override.has_value() ? tempo_override.value() : master_context.tempo();
+        }
+        StatusCode tempo(uint16_t newValue) {
+            tempo_override = newValue;
             return StatusCode::OK;
         }
 

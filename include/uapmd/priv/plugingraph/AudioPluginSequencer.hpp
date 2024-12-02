@@ -16,6 +16,8 @@ namespace uapmd {
         explicit AudioPluginSequencer(AudioPluginHostPAL* pal = AudioPluginHostPAL::instance());
         ~AudioPluginSequencer();
 
+        remidy::MasterContext& masterContext();
+
         std::vector<AudioPluginTrack *> & tracks() const;
 
         void addSimpleTrack(uint32_t sampleRate, std::string& format, std::string& pluginId, std::function<void(std::string error)> callback);

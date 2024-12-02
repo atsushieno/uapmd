@@ -21,7 +21,8 @@ class RemidyApply {
 
         uint32_t numAudioIn = instance->audioInputBuses().size();
         uint32_t numAudioOut = instance->audioOutputBuses().size();
-        remidy::TrackContext trackContext{};
+        remidy::MasterContext masterContext{};
+        remidy::TrackContext trackContext{masterContext};
         remidy::AudioProcessContext ctx{4096, &trackContext};
         for (int32_t i = 0, n = numAudioIn; i < n; ++i)
             ctx.addAudioIn(instance->audioInputBuses()[i]->channelLayout().channels(), 1024);
@@ -124,7 +125,7 @@ class RemidyApply {
             }
             uint32_t round = 0;
             remidy_ump_t umpSequence[512];
-            remidy::TrackContext trackContext;
+            remidy::TrackContext trackContext{sequencer->masterContext()};
             remidy::AudioProcessContext process{UMP_BUFFER_SIZE, &trackContext};
             //process.addAudioIn(2, 1024);
             process.addAudioOut(2, 1024);
