@@ -16,7 +16,7 @@ void uapmd::registerPluginInstanceControlFeatures(WebViewProxy& proxy) {
         instantiatePlugin(instancingId, format, pluginId);
         return "";
     });
-    AppModel::instance().instancingCompleted.emplace_back([&proxy](int32_t instancingId, std::string error) {
-        proxy.evalJS(std::format("var e = new Event('RemidyInstancingCompleted'); e.instancingId = {}; window.dispatchEvent(e)", instancingId));
+    AppModel::instance().instancingCompleted.emplace_back([&proxy](int32_t instancingId, int32_t instanceId, std::string error) {
+        proxy.evalJS(std::format("var e = new Event('RemidyInstancingCompleted'); e.instancingId = {}; e.instanceId = {}; window.dispatchEvent(e)", instancingId, instanceId));
     });
 }

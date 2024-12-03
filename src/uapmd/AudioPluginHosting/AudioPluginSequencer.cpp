@@ -15,7 +15,7 @@ namespace uapmd {
 
         std::vector<AudioPluginTrack*>& getTracks();
 
-        void addSimpleTrack(std::unique_ptr<AudioPluginNode> node);
+        AudioPluginTrack* addSimpleTrack(std::unique_ptr<AudioPluginNode> node);
 
         uapmd_status_t processAudio(SequenceData& data);
     };
@@ -40,13 +40,13 @@ namespace uapmd {
         return impl->processAudio(data);
     }
 
-    void AudioPluginSequencer::addSimpleTrack(uint32_t sampleRate, std::string &format, std::string &pluginId, std::function<void(std::string error)> callback) {
+    void AudioPluginSequencer::addSimpleTrack(uint32_t sampleRate, std::string &format, std::string &pluginId, std::function<void(AudioPluginTrack*, std::string error)> callback) {
         impl->pal->createPluginInstance(sampleRate, format, pluginId, [this,callback](auto node, std::string error) {
             if (!node)
-                callback("Could not create simple track: " + error);
+                callback(nullptr, "Could not create simple track: " + error);
             else {
-                impl->addSimpleTrack(std::move(node));
-                callback("");
+                auto track = impl->addSimpleTrack(std::move(node));
+                callback(track, "");
             }
         });
     }
@@ -74,10 +74,11 @@ namespace uapmd {
         return 0;
     }
 
-    void AudioPluginSequencer::Impl::addSimpleTrack(std::unique_ptr<AudioPluginNode> node) {
+    AudioPluginTrack* AudioPluginSequencer::Impl::addSimpleTrack(std::unique_ptr<AudioPluginNode> node) {
         auto track = new AudioPluginTrack();
         track->graph().appendNodeSimple(std::move(node));
         tracks.emplace_back(track);
+        return track;
     }
 
 }

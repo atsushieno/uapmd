@@ -32,6 +32,8 @@ void uapmd::RemidyAudioPluginHostPAL::performPluginScanning(bool rescan) {
         scanning.performPluginScanning();
 }
 
+int32_t instanceIdSerial{0};
+
 void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
     scanning.performPluginScanning();
     auto format = *(scanning.formats | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
@@ -46,7 +48,7 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
         instancing->makeAlive([instancing,cb](std::string error) {
             if (error.empty())
                 instancing->withInstance([cb](auto instance) {
-                    auto node = std::make_unique<AudioPluginNode>(std::make_unique<RemidyAudioPluginNodePAL>(instance));
+                    auto node = std::make_unique<AudioPluginNode>(std::make_unique<RemidyAudioPluginNodePAL>(instance), instanceIdSerial++);
                     cb(std::move(node), "");
                 });
             else

@@ -20,7 +20,7 @@ namespace uapmd {
 
         std::vector<AudioPluginTrack *> & tracks() const;
 
-        void addSimpleTrack(uint32_t sampleRate, std::string& format, std::string& pluginId, std::function<void(std::string error)> callback);
+        void addSimpleTrack(uint32_t sampleRate, std::string& format, std::string& pluginId, std::function<void(AudioPluginTrack* track, std::string error)> callback);
 
         uapmd_status_t processAudio(SequenceData& data);
     };

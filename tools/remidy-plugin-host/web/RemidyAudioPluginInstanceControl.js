@@ -23,9 +23,10 @@ if (typeof(remidy_getPluginParameterList) === "undefined")
 
 // Events that are fired by native.
 class RemidyInstancingCompletedEvent extends Event {
-    constructor(instancingId) {
+    constructor(instancingId, instanceId) {
         super('RemidyInstancingCompleted');
         this.instancingId = instancingId
+        this.instanceId = instanceId;
     }
 }
 
@@ -40,8 +41,11 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
 
         // JS event registry
         window.addEventListener("RemidyInstancingCompleted", (evt) => {
-            console.log(`Instancing ${evt.instancingId} is done.`);
+            console.log(`InstancingId ${evt.instancingId} is done as instanceId ${evt.instanceId}.`);
+            self.instanceId = evt.instanceId;
             self.waitingForInstancing = false;
+            const list = self.querySelector("remidy-audio-plugin-list");
+            remidy_getPluginParameterList(self.instanceId, list.format, list.pluginId);
         });
 
         this.innerHTML = `
@@ -66,6 +70,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
             this.querySelector("sl-dialog").hide();
         });
 
+        let instanceId = -1;
         let instancingCount = 0;
         let waitingForInstancing = false;
 

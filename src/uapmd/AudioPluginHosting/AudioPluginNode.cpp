@@ -1,5 +1,6 @@
 
 #include "uapmd/uapmd.hpp"
+#include "uapmd/priv/plugingraph/AudioPluginNode.hpp"
 
 
 #include <string>
@@ -9,9 +10,10 @@ namespace uapmd {
     class AudioPluginNode::Impl {
         std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> node;
     public:
-        explicit Impl(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL) : node(std::move(nodePAL)) {
+        bool bypassed{false};
+        int32_t instanceId;
+        explicit Impl(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL, int32_t instanceId) : node(std::move(nodePAL)), instanceId(instanceId) {
         }
-        bool bypassed;
 
         AudioPluginHostPAL::AudioPluginNodePAL* pal() { return node.get(); }
         uapmd_status_t processAudio(AudioProcessContext &process);
@@ -21,8 +23,8 @@ namespace uapmd {
 
     void AudioPluginNode::bypassed(bool value) { impl->bypassed = value;; }
 
-    AudioPluginNode::AudioPluginNode(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL) {
-        impl = new Impl(std::move(nodePAL));
+    AudioPluginNode::AudioPluginNode(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL, int32_t instanceId) {
+        impl = new Impl(std::move(nodePAL), instanceId);
     }
 
     AudioPluginNode::~AudioPluginNode() {
@@ -33,6 +35,10 @@ namespace uapmd {
 
     uapmd_status_t AudioPluginNode::processAudio(AudioProcessContext &process) {
         return impl->processAudio(process);
+    }
+
+    int32_t AudioPluginNode::instanceId() {
+        return impl->instanceId;
     }
 
     uapmd_status_t AudioPluginNode::Impl::processAudio(AudioProcessContext &process) {
