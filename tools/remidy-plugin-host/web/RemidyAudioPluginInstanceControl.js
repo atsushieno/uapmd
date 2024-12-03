@@ -36,14 +36,17 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
 
     // part of WebComponents Standard
     async connectedCallback() {
+        const self = this;
+
         // JS event registry
         window.addEventListener("RemidyInstancingCompleted", (evt) => {
             console.log(`Instancing ${evt.instancingId} is done.`);
+            self.waitingForInstancing = false;
         });
 
         this.innerHTML = `
             <sl-details summary="Instance Control">
-                <sl-dialog label="Select a plugin to instantiate" style="--width: 500px">
+                <sl-dialog label="Select a plugin to instantiate" style="--width: 90vw">
                     <div style="overflow: auto; height: 500px">
                         <remidy-audio-plugin-list></remidy-audio-plugin-list>
                         <sl-button slot="footer" variant="primary">Close</sl-button>
@@ -64,9 +67,16 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         });
 
         let instancingCount = 0;
+        let waitingForInstancing = false;
 
         this.querySelector("remidy-audio-plugin-list").addEventListener("RemidyAudioPluginListSelectionChanged", (evt) => {
+            if (this.waitingForInstancing) {
+                console.log("Another instancing is ongoing.");
+                window.alert("Another instancing is ongoing.");
+                return;
+            }
             this.querySelector("sl-dialog").hide();
+            this.waitingForInstancing = true;
             this.instantiatePlugin(instancingCount++, evt.format, evt.pluginId);
         });
 
