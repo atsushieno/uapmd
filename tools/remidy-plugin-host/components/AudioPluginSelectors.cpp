@@ -1,7 +1,7 @@
 
 #include "AudioPluginSelectors.hpp"
-#include "AppModel.hpp"
-#include <choc/text/choc_JSON.h>
+#include "../AppModel.hpp"
+#include "choc/text/choc_JSON.h"
 
 // invoked by JS, via WebView registered function `remidy_getAudioPluginEntryList()`
 uapmd::AudioPluginViewEntryList uapmd::getPluginViewEntryList() {

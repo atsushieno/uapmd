@@ -8,10 +8,7 @@
 #include <future>
 
 namespace uapmd {
-    // At this state, taking particular WebView implementation as our implementation foundation
-    // seems risky, so I would rather wrap some of those in our WebView usage.
-    // This class provides no better functionality than any of the underlying implementation,
-    // but we do not want to work on higher-level features on top of unstable foundation.
+    // Common interface to various WebView implementations.
     class WebViewProxy {
     public:
         struct Content {

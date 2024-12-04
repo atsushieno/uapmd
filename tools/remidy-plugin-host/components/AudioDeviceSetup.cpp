@@ -1,6 +1,6 @@
 #include <ranges>
 #include "AudioDeviceSetup.hpp"
-#include <choc/text/choc_JSON.h>
+#include "choc/text/choc_JSON.h"
 
 uapmd::DevicesInterop uapmd::getDevices() {
     DevicesInterop ret {

@@ -3,7 +3,7 @@
 #include <vector>
 #include <string>
 
-#include "WebViewProxy.hpp"
+#include "../WebViewProxy.hpp"
 
 namespace uapmd {
     struct AudioInDeviceInterop {

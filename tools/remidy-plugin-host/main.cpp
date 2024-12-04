@@ -5,9 +5,9 @@
 #include "impl/EventLoopSaucer.hpp"
 #include "impl/SaucerWebEmbedded.hpp"
 #include "AppModel.hpp"
-#include "AudioDeviceSetup.hpp"
-#include "AudioPluginSelectors.hpp"
-#include "AudioPluginInstanceControl.hpp"
+#include "components/AudioDeviceSetup.hpp"
+#include "components/AudioPluginSelectors.hpp"
+#include "components/AudioPluginInstanceControl.hpp"
 
 std::unique_ptr<remidy::EventLoop> eventLoop{};
 

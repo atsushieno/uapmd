@@ -1,7 +1,7 @@
 #pragma once
 
 #include "remidy/remidy.hpp"
-#include "WebViewProxy.hpp"
+#include "../WebViewProxy.hpp"
 
 namespace uapmd {
 

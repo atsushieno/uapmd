@@ -11,7 +11,7 @@ include(FetchContent)
 FetchContent_Declare(
         saucer
         GIT_REPOSITORY "https://github.com/saucer/saucer"
-        GIT_TAG v4.0.0
+        GIT_TAG very-experimental
 )
 FetchContent_MakeAvailable(saucer)
 
@@ -27,11 +27,18 @@ target_link_libraries(remidy-plugin-host PRIVATE
 )
 target_sources(remidy-plugin-host PRIVATE
         AppModel.cpp
-        AudioDeviceSetup.cpp
-        AudioPluginSelectors.cpp
-        AudioPluginInstanceControl.cpp
+        components/AudioDeviceSetup.cpp
+        components/AudioPluginSelectors.cpp
+        components/AudioPluginInstanceControl.cpp
         main.cpp
 )
+
+# Prepare web content files
+add_custom_target(build-web-content
+        npm install
+        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/web
+)
+add_dependencies(remidy-plugin-host build-web-content)
 file(CREATE_LINK
         ${CMAKE_CURRENT_SOURCE_DIR}/web
         ${CMAKE_CURRENT_BINARY_DIR}/web
