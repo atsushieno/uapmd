@@ -1,3 +1,9 @@
+
+# remidy-scan
+
+WIP.
+
+<!--
 # What is this?
 
 UAPMD (Universal Audio Plugin MIDI Device) is an audio plugin host that can instantiate arbitrary set of plugins and acts as a virtual MIDI 2.0 UMP device on various platforms.
@@ -39,3 +45,4 @@ Launches the GUI by default.
 ### uapmd-service
 
 `uapmd-service` works as a virtual MIDI device service that can receive platform UMP inputs (and most likely MIDI 1.0 inputs, translated) to control plugins.
+-->
