@@ -374,7 +374,7 @@ namespace remidy {
             enums.emplace_back(pe);
         }
 
-        return std::make_unique<PluginParameter>(label, label, portGroup, defValue, minValue, maxValue, false, enums);
+        return std::make_unique<PluginParameter>(label, label, portGroup, defValue, minValue, maxValue, false, false, enums);
     }
 
     void AudioPluginInstanceLV2::ParameterSupport::inspectParameters() {

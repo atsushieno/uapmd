@@ -43,5 +43,21 @@ namespace uapmd {
                     f(instancingId, track->graph().plugins()[0]->instanceId(), error);
             });
         }
+
+        AudioPluginNode* getInstance(int32_t instanceId) {
+            for (auto& track : sequencer.tracks())
+                for (auto node : track->graph().plugins())
+                    if (node->instanceId() == instanceId)
+                        return node;
+            return nullptr;
+        }
+
+        std::vector<ParameterMetadata> getParameterList(int32_t instanceId) {
+            auto node = getInstance(instanceId);
+            if (node)
+                return node->pal()->parameterMetadataList();
+            else
+                return {};
+        }
     };
 }

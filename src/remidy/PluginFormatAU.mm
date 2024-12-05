@@ -491,7 +491,7 @@ remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioP
         std::string idString = std::format("{}", id);
         std::string name{info.name};
         std::string path{};
-        auto p = new PluginParameter(idString, name, path, info.defaultValue, info.minValue, info.maxValue, true);
+        auto p = new PluginParameter(idString, name, path, info.defaultValue, info.minValue, info.maxValue, true, false);
         parameter_list.emplace_back(p);
     }
 }

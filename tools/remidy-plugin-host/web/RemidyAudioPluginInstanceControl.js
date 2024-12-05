@@ -7,11 +7,11 @@ function remidy_instantiatePlugin_stub(instancingId, format, pluginId) {
     console.log(`Instantiated plugin(${instancingId}, ${format}, ${pluginId})`);
 }
 
-async function remidy_getPluginParameterList_stub() {
+async function remidy_getPluginParameterList_stub(jsonArgs) {
     return JSON.stringify([
-        { "id": "1", "name": "para1" },
-        { "id": "2", "name": "para2" },
-        { "id": "3", "name": "para3" },
+        { "id": "1", "name": "para1", "initialValue": 0 },
+        { "id": "2", "name": "para2", "initialValue": 1 },
+        { "id": "3", "name": "para3", "initialValue": 0.5 },
     ]);
 }
 
@@ -40,12 +40,16 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         const self = this;
 
         // JS event registry
-        window.addEventListener("RemidyInstancingCompleted", (evt) => {
+        window.addEventListener("RemidyInstancingCompleted", async (evt) => {
             console.log(`InstancingId ${evt.instancingId} is done as instanceId ${evt.instanceId}.`);
             self.instanceId = evt.instanceId;
             self.waitingForInstancing = false;
-            const list = self.querySelector("remidy-audio-plugin-list");
-            remidy_getPluginParameterList(self.instanceId, list.format, list.pluginId);
+
+            const list = this.querySelector("remidy-audio-plugin-list");
+            const jsonReq = JSON.stringify({instanceId: this.instanceId, format: list.format, pluginId: list.pluginId})
+            const parameterListJSON = await remidy_getPluginParameterList(jsonReq);
+            this.parameterList = JSON.parse(parameterListJSON);
+            await this.renderPluginParameterList();
         });
 
         this.innerHTML = `
@@ -74,6 +78,8 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         let instancingCount = 0;
         let waitingForInstancing = false;
 
+        this.parameterList = JSON.parse(await remidy_getPluginParameterList_stub(""));
+
         this.querySelector("remidy-audio-plugin-list").addEventListener("RemidyAudioPluginListSelectionChanged", (evt) => {
             if (this.waitingForInstancing) {
                 console.log("Another instancing is ongoing.");
@@ -85,7 +91,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
             this.instantiatePlugin(instancingCount++, evt.format, evt.pluginId);
         });
 
-        await this.getPluginParameterList();
+        await this.renderPluginParameterList();
     }
 
     pluginListLauncherClicked() {
@@ -99,10 +105,10 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         remidy_instantiatePlugin(json);
     }
 
-    async getPluginParameterList() {
-        const parameterListJSON = await remidy_getPluginParameterList();
-        const parameters = JSON.parse(parameterListJSON);
+    async renderPluginParameterList() {
+        const parameters = this.parameterList;
         const node = document.querySelector(".parameters");
+        node.innerHTML = "";
 
         const wrapper = document.createElement("div");
         wrapper.innerHTML = `
@@ -127,20 +133,25 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         `;
 
         const tbody = table.querySelector("tbody");
+        let listHtml = "";
+        // FIXME: it's too slow. Can we make it a lazy list?
         for (const i in parameters) {
             const d = parameters[i];
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
+            if (d.hidden)
+                continue;
+            listHtml += `
+            <tr>
                 <td>
                     <sl-visually-hidden>${d.id}</sl-visually-hidden>
                     <span>${d.name}</span>
                 </td>
                 <td>
-                    <sl-range value="${d.value}"></sl-range>
+                    <sl-range value="${d.initialValue}" min="0.0" max="1.0" step="0.01"></sl-range>
                 </td>
+            </tr>
             `
-            tbody.appendChild(tr);
         }
+        tbody.innerHTML = listHtml;
         let actionTable = wrapper.removeChild(wrapper.querySelector("action-table"));
         actionTable.appendChild(table);
         node.appendChild(actionTable);

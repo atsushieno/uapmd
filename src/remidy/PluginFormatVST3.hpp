@@ -113,7 +113,9 @@ namespace remidy {
         IEditController* controller;
         bool isControllerDistinctFromComponent;
         FUnknown* instance;
+        // the connection point for IComponent, retrieved from the plugin.
         IConnectionPoint* connPointComp{nullptr};
+        // the connection point for IEditController, retrieved from the plugin.
         IConnectionPoint* connPointEdit{nullptr};
 
         v3_process_data processData{};

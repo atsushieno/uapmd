@@ -6,6 +6,14 @@
 
 namespace uapmd {
 
+    struct ParameterMetadata {
+        std::string id;
+        std::string name;
+        std::string path;
+        double initialValue;
+        bool hidden;
+    };
+
     class AudioPluginNode {
         class Impl;
         Impl* impl;
@@ -23,6 +31,8 @@ namespace uapmd {
         void bypassed(bool value);
 
         uapmd_status_t processAudio(AudioProcessContext& process);
+
+        std::vector<ParameterMetadata> parameterMetadataList(int32_t instanceId);
     };
 
 }

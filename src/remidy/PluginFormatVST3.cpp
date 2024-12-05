@@ -193,7 +193,10 @@ namespace remidy {
         }, [&](void *module) {
             // do not unload library here.
         });
-        callback(std::move(ret), error);
+        if (ret)
+            callback(std::move(ret), error);
+        else
+            callback(nullptr, std::format("Specified VST3 plugin {} was not found", entry->displayName()));
     }
 
     void PluginFormatVST3::Impl::unrefLibrary(PluginCatalogEntry *info) {
@@ -363,19 +366,27 @@ namespace remidy {
 
         // From JUCE interconnectComponentAndController():
         // > Some plugins need to be "connected" to intercommunicate between their implemented classes
-        // FIXME: enable this once we sort out why RX-8 Breath Control crashes here.
-        /*
         if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
             std::atomic<bool> waitHandle{false};
             EventLoop::runTaskOnMainThread([&] {
-                connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
-                connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
+                result = connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
+                if (result != V3_OK) {
+                    owner->getLogger()->logWarning(
+                            "%s: IConnectionPoint from IComponent failed to interconnect with its IConnectionPoint from IEditController. Result: %d",
+                            pluginName.c_str(), result);
+                }
+                result = connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
+                if (result != V3_OK) {
+                    owner->getLogger()->logWarning(
+                            "%s: IConnectionPoint from IEditController failed to interconnect with its IConnectionPoint from IComponent. Result: %d",
+                            pluginName.c_str(), result);
+                }
                 waitHandle = true;
-                waitHandle.notify_all();
+                waitHandle.notify_one();
             });
             while (!waitHandle)
                 std::this_thread::yield();
-        }*/
+        }
 
         // not sure if we want to error out here, so no result check.
         processor->vtable->processor.set_processing(processor, false);
@@ -696,7 +707,7 @@ remidy::AudioPluginInstanceVST3::ParameterSupport::ParameterSupport(AudioPluginI
         std::string name = vst3StringToStdString(info.title);
         std::string path{""};
 
-        auto p = new PluginParameter(id, name, path, info.default_normalised_value, 0, 1, false);
+        auto p = new PluginParameter(id, name, path, info.default_normalised_value, 0, 1, true, info.flags & V3_PARAM_IS_HIDDEN);
         parameter_ids[i] = info.param_id;
         parameter_defs.emplace_back(p);
     }
