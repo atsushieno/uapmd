@@ -92,20 +92,19 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
     }
 
     async loadAudioPluginEntryList() {
-        const self = this;
+        const me = this;
 
         const pluginListJSON = await remidy_getAudioPluginEntryList();
         const pluginList = JSON.parse(pluginListJSON);
-        const node = self.querySelector(".entries");
+        const node = me.querySelector(".entries");
         node.innerText = "";
-        const actionTable = document.createElement("div");
-        actionTable.setAttribute("style", "overflow: auto; height: 500px");
+        const actionTable = document.createElement("action-table");
+        actionTable.setAttribute("store", "store");
+        //actionTable.setAttribute("style", "overflow: auto; height: 500px");
         actionTable.innerHTML = `
-            <action-table store="store"
             <action-table-filters class="flex flex-col">
                 <div>Filter: <input id="name-search" name="action-table" type="search" placeholder="Search" size="30" /></div>
             </action-table-filters>
-            </action-table>
         `;
         const table = document.createElement("table");
         table.innerHTML = `
@@ -132,9 +131,9 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         }
         // It needs to be added after we filled all rows, otherwise action-table validates the table and rejects tr-less tables.
         table.appendChild(tbody);
-        actionTable.querySelector("action-table").appendChild(table);
+        actionTable.appendChild(table);
         node.appendChild(actionTable);
-        self.querySelectorAll(".plugin-list-item-selector").forEach(e => {
+        me.querySelectorAll(".plugin-list-item-selector").forEach(e => {
             e.addEventListener("click", () => {
                 const format = e.getAttribute("format");
                 const pluginId = e.getAttribute("pluginId");
@@ -150,7 +149,7 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
     }
 
     selectPlugin(format, pluginId) {
-        const self = this;
+        const me = this;
         this.selectedFormat = format;
         this.selectedPluginId = pluginId;
         this.dispatchEvent(new RemidyAudioPluginListSelectionChangedEvent(format, pluginId));
@@ -161,8 +160,8 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
             if (td == null) // header row
                 return;
             const b = td.querySelector("sl-button");
-            if (b.getAttribute("format") === self.selectedFormat &&
-                b.getAttribute("pluginId") === self.selectedPluginId)
+            if (b.getAttribute("format") === me.selectedFormat &&
+                b.getAttribute("pluginId") === me.selectedPluginId)
                 e.setAttribute("class", "selected");
         });
     }

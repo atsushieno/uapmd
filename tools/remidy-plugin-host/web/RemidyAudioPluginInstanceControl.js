@@ -110,14 +110,13 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         const node = document.querySelector(".parameters");
         node.innerHTML = "";
 
-        const wrapper = document.createElement("div");
-        wrapper.innerHTML = `
-            <action-table store="store" class="parameters-action-table"
-                <action-table-filters class="flex flex-col">
-                    <div>Filter: <input id="name-search" name="action-table" type="search" placeholder="Search" size="30"/>
-                    </div>
-                </action-table-filters>
-            </action-table>
+        const actionTable = document.createElement("action-table");
+        actionTable.setAttribute("store", "store");
+        actionTable.innerHTML = `
+            <action-table-filters class="flex flex-col">
+                <div>Filter: <input id="name-search" name="action-table" type="search" placeholder="Search" size="30"/>
+                </div>
+            </action-table-filters>
         `;
 
         const table = document.createElement("table")
@@ -152,7 +151,6 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
             `
         }
         tbody.innerHTML = listHtml;
-        let actionTable = wrapper.removeChild(wrapper.querySelector("action-table"));
         actionTable.appendChild(table);
         node.appendChild(actionTable);
     }
