@@ -38,6 +38,7 @@ namespace remidy {
 
         public:
             explicit ParameterSupport(AudioPluginInstanceAU* owner);
+            ~ParameterSupport();
 
             bool accessRequiresMainThread() override { return false; }
             std::vector<PluginParameter*> parameters() override;

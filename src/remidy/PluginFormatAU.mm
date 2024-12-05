@@ -482,18 +482,38 @@ remidy::StatusCode remidy::AudioPluginInstanceAUv3::sampleRate(double sampleRate
 
 remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioPluginInstanceAU *owner)
     : owner(owner) {
-    AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &parameter_id_list, &parameter_list_size);
+    auto result = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &parameter_list_size, nil);
+    if (result != noErr) {
+        owner->format->getLogger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
+        return;
+    }
+    parameter_id_list = static_cast<AudioUnitParameterID *>(calloc(parameter_list_size, 1));
+    result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, parameter_id_list, &parameter_list_size);
+    if (result != noErr) {
+        owner->format->getLogger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
+        return;
+    }
+
+    AudioUnitParameterInfo info;
     for (size_t i = 0, n = parameter_list_size / sizeof(AudioUnitParameterID); i < n; i++) {
         auto id = parameter_id_list[i];
-        AudioUnitParameterInfo info;
-        UInt32 size;
-        AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, i, &info, &size);
+        UInt32 size = sizeof(info);
+        result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, id, &info, &size);
+        if (result != noErr) {
+            owner->format->getLogger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter %d (at %d). Status: %d", owner->name.c_str(), id, i, result);
+            continue;
+        }
         std::string idString = std::format("{}", id);
         std::string name{info.name};
         std::string path{};
         auto p = new PluginParameter(idString, name, path, info.defaultValue, info.minValue, info.maxValue, true, false);
         parameter_list.emplace_back(p);
     }
+}
+
+remidy::AudioPluginInstanceAU::ParameterSupport::~ParameterSupport() {
+    if (parameter_id_list)
+        free(parameter_id_list);
 }
 
 std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceAU::ParameterSupport::parameters() {
