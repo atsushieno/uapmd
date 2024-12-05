@@ -17,8 +17,8 @@ FetchContent_MakeAvailable(cpplocate)
 
 # <rtlog>
 FetchContent_Declare(rtlog-cpp
-        GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
-        GIT_TAG 5774ba063ecc25057e0f616d61e50c079e939e82
+        GIT_REPOSITORY https://github.com/atsushieno/rtlog-cpp
+        GIT_TAG mpsc
 )
 FetchContent_MakeAvailable(rtlog-cpp)
 # </rtlog>
