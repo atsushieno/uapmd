@@ -98,9 +98,10 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         const pluginList = JSON.parse(pluginListJSON);
         const node = me.querySelector(".entries");
         node.innerText = "";
+        const wrapper = document.createElement("div");
+        wrapper.setAttribute("style", "overflow: auto; height: 500px");
         const actionTable = document.createElement("action-table");
         actionTable.setAttribute("store", "store");
-        //actionTable.setAttribute("style", "overflow: auto; height: 500px");
         actionTable.innerHTML = `
             <action-table-filters class="flex flex-col">
                 <div>Filter: <input id="name-search" name="action-table" type="search" placeholder="Search" size="30" /></div>
@@ -132,7 +133,8 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
         // It needs to be added after we filled all rows, otherwise action-table validates the table and rejects tr-less tables.
         table.appendChild(tbody);
         actionTable.appendChild(table);
-        node.appendChild(actionTable);
+        wrapper.appendChild(actionTable);
+        node.appendChild(wrapper);
         me.querySelectorAll(".plugin-list-item-selector").forEach(e => {
             e.addEventListener("click", () => {
                 const format = e.getAttribute("format");
