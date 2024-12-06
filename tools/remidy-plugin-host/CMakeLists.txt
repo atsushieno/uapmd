@@ -1,4 +1,6 @@
-add_executable(remidy-plugin-host)
+add_executable(remidy-plugin-host
+        components/AudioPlayerController.cpp
+        components/AudioPlayerController.hpp)
 
 set(CMAKE_CXX_STANDARD 23)
 

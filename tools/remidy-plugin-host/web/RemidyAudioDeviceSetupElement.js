@@ -40,9 +40,6 @@ class RemidyDevicesUpdatedListener {
 }
 
 class RemidyAudioDeviceSetupElement extends HTMLElement {
-    constructor() {
-        super();
-    }
 
     // Window events that UI listens to the host state changes.
     remidyDeviceUpdatedListener = new RemidyDevicesUpdatedListener(this);

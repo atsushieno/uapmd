@@ -8,19 +8,21 @@
 namespace uapmd {
     class AudioPluginHostPAL;
 
+    // A sequencer for audio plugin tracks.
+    // It is independent of DeviceIODispatcher.
     class AudioPluginSequencer {
         class Impl;
         Impl *impl;
 
     public:
-        explicit AudioPluginSequencer(AudioPluginHostPAL* pal = AudioPluginHostPAL::instance());
+        explicit AudioPluginSequencer(int32_t sampleRate, AudioPluginHostPAL* pal = AudioPluginHostPAL::instance());
         ~AudioPluginSequencer();
 
         remidy::MasterContext& masterContext();
 
         std::vector<AudioPluginTrack *> & tracks() const;
 
-        void addSimpleTrack(uint32_t sampleRate, std::string& format, std::string& pluginId, std::function<void(AudioPluginTrack* track, std::string error)> callback);
+        void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginTrack* track, std::string error)> callback);
 
         uapmd_status_t processAudio(SequenceData& data);
     };

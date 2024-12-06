@@ -366,6 +366,7 @@ namespace remidy {
 
         // From JUCE interconnectComponentAndController():
         // > Some plugins need to be "connected" to intercommunicate between their implemented classes
+        /*
         if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
             std::atomic<bool> waitHandle{false};
             EventLoop::runTaskOnMainThread([&] {
@@ -386,7 +387,7 @@ namespace remidy {
             });
             while (!waitHandle)
                 std::this_thread::yield();
-        }
+        }*/
 
         // not sure if we want to error out here, so no result check.
         processor->vtable->processor.set_processing(processor, false);
@@ -427,7 +428,7 @@ namespace remidy {
             }
             releaseRemaining();
             waitHandle = true;
-            waitHandle.notify_all();
+            waitHandle.notify_one();
         });
         std::cerr << "  waiting for cleanup: " << info()->displayName() << std::endl;
         while (!waitHandle)
@@ -537,7 +538,6 @@ namespace remidy {
         // FIXME: adjust audio buses and channels
         int32_t numInputBuses = input_buses.size();
         int32_t numOutputBuses = output_buses.size();
-        int32_t numChannels = 2;
         int32_t symbolicSampleSize = processData.symbolic_sample_size;
         if (symbolicSampleSize == V3_SAMPLE_32) {
             for (int32_t bus = 0; bus < numInputBuses; bus++)

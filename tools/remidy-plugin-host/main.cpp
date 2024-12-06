@@ -1,4 +1,3 @@
-#include <saucer/smartview.hpp>
 #include <remidy/remidy.hpp>
 #include "impl/WebViewProxySaucer.hpp"
 #include "impl/WebViewProxyChoc.hpp"
@@ -8,6 +7,7 @@
 #include "components/AudioDeviceSetup.hpp"
 #include "components/AudioPluginSelectors.hpp"
 #include "components/AudioPluginInstanceControl.hpp"
+#include "components/AudioPlayerController.hpp"
 
 std::unique_ptr<remidy::EventLoop> eventLoop{};
 
@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
     uapmd::registerPluginViewEntryListFeatures(proxy);
     uapmd::registerAudioDeviceSetupFeatures(proxy);
     uapmd::registerPluginInstanceControlFeatures(proxy);
+    uapmd::registerAudioPlayerManagerFeatures(proxy);
 
     proxy.navigateToLocalFile("web/index.html");
 

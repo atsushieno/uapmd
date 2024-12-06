@@ -23,7 +23,9 @@ namespace uapmd {
         }
         void dataCallback(void* output, const void* input, ma_uint32 frameCount);
         double sampleRate() override;
+        uint32_t channels() override;
         uapmd_status_t start() override;
         uapmd_status_t stop() override;
+        bool isPlaying() override;
     };
 }

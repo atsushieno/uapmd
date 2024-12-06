@@ -27,6 +27,8 @@ namespace uapmd {
         // stops the I/O device callbacks.
         uapmd_status_t stop();
 
+        bool isPlaying();
+
         // Manually runs the callbacks that were registered by `addCallback()`.
         // IF you do not start any audio IO callbacks, you can use this to manually invoke the callbacks
         // to perform what could happen if the audio I/O callback happened e.g. for testing purpose.

@@ -28,6 +28,7 @@ namespace uapmd {
         }
         uapmd_status_t start();
         uapmd_status_t stop();
+        bool isPlaying();
 
         uapmd_status_t runCallbacks(AudioProcessContext& data) {
             // FIXME: define status codes
@@ -60,6 +61,10 @@ uapmd_status_t uapmd::DeviceIODispatcher::start() {
 
 uapmd_status_t uapmd::DeviceIODispatcher::stop() {
     return impl->stop();
+}
+
+bool uapmd::DeviceIODispatcher::isPlaying() {
+    return impl->isPlaying();
 }
 
 uapmd_status_t uapmd::DeviceIODispatcher::manuallyRunCallbacks(uapmd::AudioProcessContext &data) {
@@ -95,4 +100,8 @@ uapmd_status_t uapmd::DeviceIODispatcher::Impl::start() {
 
 uapmd_status_t uapmd::DeviceIODispatcher::Impl::stop() {
     return audio->stop() || midi->start();
+}
+
+bool uapmd::DeviceIODispatcher::Impl::isPlaying() {
+    return audio->isPlaying();
 }

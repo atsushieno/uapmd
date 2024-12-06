@@ -45,8 +45,16 @@ uapmd_status_t uapmd::MiniAudioIODevice::stop() {
     return 0;
 }
 
+bool uapmd::MiniAudioIODevice::isPlaying() {
+    return ma_device_get_state(ma_engine_get_device(&engine)) == ma_device_state_started;
+}
+
 double uapmd::MiniAudioIODevice::sampleRate() {
     return engine.pDevice->sampleRate;
+}
+
+uint32_t uapmd::MiniAudioIODevice::channels() {
+    return ma_engine_get_channels(&engine);
 }
 
 void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_uint32 frameCount) {

@@ -7,6 +7,7 @@
     <script type="module" src="./node_modules/@colinaut/action-table/dist/index.js"></script>
 
     <script type="module" src="./RemidyAudioDeviceSetupElement.js"></script>
+    <script type="module" src="./RemidyAudioPlayerManager.js"></script>
     <script type="module" src="./RemidyAudioPluginSelectors.js"></script>
     <script type="module" src="./RemidyAudioPluginInstanceControl.js"></script>
     <script type="text/javascript" src="./App.js" defer="true"></script>
@@ -24,14 +25,7 @@
 
 <remidy-audio-device-setup></remidy-audio-device-setup>
 
-<sl-details summary="Audio Processing Configuration">
-    <sl-select id="sampleRate" value="44100" hoist="true" label="Sample Rate">
-        <sl-option value="11025">11025</sl-option>
-        <sl-option value="22050">22050</sl-option>
-        <sl-option value="44100">44100</sl-option>
-        <sl-option value="48000">48000</sl-option>
-    </sl-select>
-</sl-details>
+<remidy-audio-player-manager></remidy-audio-player-manager>
 
 <remidy-audio-plugin-list id="plugin-list-for-scan"></remidy-audio-plugin-list>
 

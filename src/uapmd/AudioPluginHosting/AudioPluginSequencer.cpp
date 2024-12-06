@@ -6,8 +6,10 @@ namespace uapmd {
         remidy::MasterContext master_context{};
         std::vector<AudioPluginTrack*> tracks{};
     public:
-        explicit Impl(AudioPluginHostPAL* pal);
+        explicit Impl(int32_t sampleRate, AudioPluginHostPAL* pal);
         ~Impl();
+
+        int32_t sampleRate;
 
         AudioPluginHostPAL* pal;
 
@@ -20,8 +22,8 @@ namespace uapmd {
         uapmd_status_t processAudio(SequenceData& data);
     };
 
-    AudioPluginSequencer::AudioPluginSequencer(AudioPluginHostPAL* pal) {
-        impl = new Impl(pal);
+    AudioPluginSequencer::AudioPluginSequencer(int32_t sampleRate, AudioPluginHostPAL* pal) {
+        impl = new Impl(sampleRate, pal);
     }
 
     AudioPluginSequencer::~AudioPluginSequencer() {
@@ -40,8 +42,8 @@ namespace uapmd {
         return impl->processAudio(data);
     }
 
-    void AudioPluginSequencer::addSimpleTrack(uint32_t sampleRate, std::string &format, std::string &pluginId, std::function<void(AudioPluginTrack*, std::string error)> callback) {
-        impl->pal->createPluginInstance(sampleRate, format, pluginId, [this,callback](auto node, std::string error) {
+    void AudioPluginSequencer::addSimpleTrack(std::string &format, std::string &pluginId, std::function<void(AudioPluginTrack*, std::string error)> callback) {
+        impl->pal->createPluginInstance(impl->sampleRate, format, pluginId, [this,callback](auto node, std::string error) {
             if (!node)
                 callback(nullptr, "Could not create simple track: " + error);
             else {
@@ -52,7 +54,9 @@ namespace uapmd {
     }
 
     // Impl
-    AudioPluginSequencer::Impl::Impl(AudioPluginHostPAL* pal) : pal(pal) {}
+    AudioPluginSequencer::Impl::Impl(int32_t sampleRate, AudioPluginHostPAL* pal) :
+        sampleRate(sampleRate), pal(pal) {
+    }
 
     AudioPluginSequencer::Impl::~Impl() {
         for (auto track : tracks)
