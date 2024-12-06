@@ -111,5 +111,8 @@ namespace uapmd {
             sample_rate = newSampleRate;
             return true;
         }
+
+        void sendNoteOn(int32_t instanceId, int32_t note);
+        void sendNoteOff(int32_t instanceId, int32_t note);
     };
 }

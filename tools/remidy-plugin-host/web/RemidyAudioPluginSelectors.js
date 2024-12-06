@@ -85,7 +85,8 @@ class RemidyAudioPluginEntryListElement extends HTMLElement {
             <sl-details summary="DenyList" class="denyList">
             </sl-details>
             <sl-button onclick="this.parentElement.performPluginScanning()">Perform Plugin Scanning</sl-button>
-            <sl-checkbox id="checkbox-force-rescan"></sl-checkbox> Force Rescan
+            <sl-checkbox id="checkbox-force-rescan"></sl-checkbox>
+            <label for="checkbox-force-rescan">Rescan</label>
 `;
 
         await this.loadAudioPluginEntryList();

@@ -46,3 +46,20 @@ Launches the GUI by default.
 
 `uapmd-service` works as a virtual MIDI device service that can receive platform UMP inputs (and most likely MIDI 1.0 inputs, translated) to control plugins.
 -->
+
+## License and Dependencies
+
+Sources in this repository are released under the MIT license.
+
+There are third-party (and first party) dependency libraries:
+
+- travesty
+- choc
+- libremidi
+- cmidi2
+- lv2kit
+- vst3_public_sdk
+- miniaudio
+- cxxopts
+- saucer
+- webaudio-controls

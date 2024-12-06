@@ -14,12 +14,25 @@ async function remidy_getPluginParameterList_stub(jsonArgs) {
         { "id": "3", "name": "para3", "initialValue": 0.5 },
     ]);
 }
+async function remidy_sendNoteOn_stub(jsonArgs) {
+    const args = JSON.parse(jsonArgs)
+    console.log(`note on: instance ${args.instanceId}: note ${args.note}`)
+}
+async function remidy_sendNoteOff_stub(jsonArgs) {
+    const args = JSON.parse(jsonArgs)
+    console.log(`note off: instance ${args.instanceId}: note ${args.note}`)
+}
 
 // WebView Facades. They are supposed to be defined by host WebView.
 if (typeof(remidy_instantiatePlugin) === "undefined")
     globalThis.remidy_instantiatePlugin = remidy_instantiatePlugin_stub;
 if (typeof(remidy_getPluginParameterList) === "undefined")
     globalThis.remidy_getPluginParameterList = remidy_getPluginParameterList_stub;
+if (typeof(remidy_sendNoteOn) === "undefined")
+    globalThis.remidy_sendNoteOn = remidy_sendNoteOn_stub;
+if (typeof(remidy_sendNoteOff) === "undefined")
+    globalThis.remidy_sendNoteOff = remidy_sendNoteOff_stub;
+
 
 // Events that are fired by native.
 class RemidyInstancingCompletedEvent extends Event {
@@ -33,6 +46,17 @@ class RemidyInstancingCompletedEvent extends Event {
 class RemidyAudioPluginInstanceControlElement extends HTMLElement {
     constructor() {
         super();
+    }
+
+    instanceId = -1;
+    instancingCount = 0;
+    waitingForInstancing = false;
+
+    async sendNoteOn(instanceId, note) {
+        await remidy_sendNoteOn(JSON.stringify({instanceId: instanceId, note: note}));
+    }
+    async sendNoteOff(instanceId, note) {
+        await remidy_sendNoteOff(JSON.stringify({instanceId: instanceId, note: note}));
     }
 
     // part of WebComponents Standard
@@ -61,6 +85,10 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
                     </div>
                 </sl-dialog>
                 <sl-button class="plugin-list-launcher">Select a Plugin</sl-button>
+                
+                <div>
+                    <webaudio-keyboard class="plugin-midi-keyboard" width="640" height="80" keys="80"></webaudio-keyboard>
+                </div>
 
                 <sl-details summary="Parameters" class="parameters">
                 </sl-details>
@@ -74,9 +102,13 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
             this.querySelector("sl-dialog").hide();
         });
 
-        let instanceId = -1;
-        let instancingCount = 0;
-        let waitingForInstancing = false;
+        this.querySelector("webaudio-keyboard.plugin-midi-keyboard").addEventListener("change", (e) => {
+            const n = e.note;
+            if (n[0])
+                this.sendNoteOn(this.instanceId, n[1]);
+            else
+                this.sendNoteOff(this.instanceId, n[1]);
+        });
 
         this.parameterList = JSON.parse(await remidy_getPluginParameterList_stub(""));
 
@@ -88,7 +120,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
             }
             this.querySelector("sl-dialog").hide();
             this.waitingForInstancing = true;
-            this.instantiatePlugin(instancingCount++, evt.format, evt.pluginId);
+            this.instantiatePlugin(this.instancingCount++, evt.format, evt.pluginId);
         });
 
         await this.renderPluginParameterList();
