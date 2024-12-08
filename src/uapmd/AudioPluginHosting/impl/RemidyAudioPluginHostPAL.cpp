@@ -17,7 +17,7 @@ namespace uapmd {
             // FIXME: define error codes
             return (uapmd_status_t) instance->process(process);
         }
-        std::vector<uapmd::ParameterMetadata> parameterMetadataList() {
+        std::vector<uapmd::ParameterMetadata> parameterMetadataList() override {
             std::vector<ParameterMetadata> ret{};
             auto pl = instance->parameters();
             for (auto p : pl->parameters())

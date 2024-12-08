@@ -5,11 +5,6 @@
 
 namespace remidy {
 
-    enum class AudioContentType {
-        Float32,
-        Float64
-    };
-
     // [flags]
     enum class PluginUIThreadRequirement : uint32_t {
         // AudioUnit and LV2, by default (probably bad behaved plugins can be explicitly marked as dirty = AllNonAudioOperation)

@@ -3,6 +3,11 @@
 #include "../remidy.hpp"
 
 namespace remidy {
+    enum class AudioContentType {
+        Float32,
+        Float64
+    };
+
     // Represents a list of audio buffers in an audio bus, separate per channel.
     // It is part of `AudioProcessingContext`.
     class AudioBusBufferList {
@@ -29,24 +34,38 @@ namespace remidy {
     // Represents a sample-accurate sequence of UMPs.
     // It is part of `AudioProcessingContext`.
     class MidiSequence {
-        std::vector<remidy_ump_t> messages{};
+        size_t buffer_size_in_ints;
+        remidy_ump_t* messages{};
         size_t size_in_ints{0};
     public:
-        explicit MidiSequence(size_t messageBufferSizeInInt) : messages(messageBufferSizeInInt) {}
-        remidy_ump_t* getMessages() { return messages.data(); }
+        explicit MidiSequence(size_t messageBufferSizeInInts) : buffer_size_in_ints(messageBufferSizeInInts) {
+            messages = (remidy_ump_t*) calloc(messageBufferSizeInInts, sizeof(remidy_ump_t));
+        }
+        ~MidiSequence() {
+            free(messages);
+        }
+        remidy_ump_t* getMessages() { return messages; }
         size_t sizeInInts() const { return size_in_ints; }
         void sizeInInts(size_t n) { size_in_ints = n; }
         size_t sizeInBytes() const { return size_in_ints * sizeof(remidy_ump_t); }
         void copyFrom(MidiSequence& other) {
-            memcpy(messages.data() + size_in_ints, other.messages.data(), other.sizeInBytes());
+            memcpy(messages + size_in_ints, other.messages, other.sizeInBytes());
+            size_in_ints += other.size_in_ints;
         }
     };
 
     class MasterContext {
+        AudioContentType audio_data_type{AudioContentType::Float32};
         uint16_t dctpq{480};
         uint32_t tempo_{500000};
 
     public:
+        AudioContentType audioDataType() { return audio_data_type; }
+        StatusCode audioDataType(AudioContentType newAudioDataType) {
+            audio_data_type = newAudioDataType;
+            return StatusCode::OK;
+        }
+
         uint16_t deltaClockstampTicksPerQuarterNotes() { return dctpq; }
         StatusCode deltaClockstampTicksPerQuarterNotes(uint16_t newValue) {
             dctpq = newValue;
@@ -73,6 +92,8 @@ namespace remidy {
             master_context(masterContext) {
 
         }
+
+        MasterContext& masterContext() { return master_context; }
 
         uint16_t deltaClockstampTicksPerQuarterNotes() {
             return dctpq_override.has_value() ? dctpq_override.value() : master_context.deltaClockstampTicksPerQuarterNotes();
@@ -141,6 +162,17 @@ namespace remidy {
 
         MidiSequence& midiIn() { return midi_in; }
         MidiSequence& midiOut() { return midi_out; }
+
+        // Is this a hack...?
+        void swap() {
+            std::vector<AudioBusBufferList*>& tmpAudio = audio_in;
+            audio_out = audio_in;
+            audio_in = tmpAudio;
+
+            MidiSequence& tmpMidi = midi_in;
+            midi_out = midi_in;
+            midi_in = tmpMidi;
+        }
     };
 
 }

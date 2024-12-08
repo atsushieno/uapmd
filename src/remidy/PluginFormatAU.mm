@@ -550,7 +550,7 @@ remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::~AUUmpInputDispatcher() {
 
 void
 remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::process(uint64_t timestamp, remidy::AudioProcessContext &src) {
-    auto midiIn = src.midiIn();
+    auto& midiIn = src.midiIn();
     auto cur = MIDIEventListInit(ump_event_list, kMIDIProtocol_2_0);
     MIDIEventListAdd(ump_event_list, AU_UMP_INPUT_DISPATCHER_UMP_EVENT_LIST_SIZE,
                      cur, timestamp, midiIn.sizeInInts(), midiIn.getMessages());
