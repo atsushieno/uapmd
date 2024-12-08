@@ -587,7 +587,7 @@ namespace remidy {
 
     void
     updateProcessDataBuffers(v3_process_data &processData, v3_audio_bus_buffers &dstBus, AudioBusBufferList *srcBuf) {
-        int32_t numChannels = srcBuf->channelCount();
+        int32_t numChannels = dstBus.num_channels;
         if (processData.symbolic_sample_size == V3_SAMPLE_32) {
             for (int32_t ch = 0; ch < numChannels; ch++)
                 dstBus.channel_buffers_32[ch] = srcBuf->getFloatBufferForChannel(ch);
@@ -600,8 +600,8 @@ namespace remidy {
     StatusCode AudioPluginInstanceVST3::process(AudioProcessContext &process) {
         // update audio buffer pointers
         const int32_t numFrames = process.frameCount();
-        const int32_t numInputBus = process.audioInBusCount();
-        const int32_t numOutputBus = process.audioOutBusCount();
+        const int32_t numInputBus = processData.num_input_buses;
+        const int32_t numOutputBus = processData.num_output_buses;
         for (int32_t bus = 0; bus < numInputBus; bus++)
             updateProcessDataBuffers(processData, processData.inputs[bus], process.audioIn(bus));
         for (int32_t bus = 0; bus < numOutputBus; bus++)
