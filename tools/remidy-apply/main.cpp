@@ -111,13 +111,12 @@ class RemidyApply {
         if (pluginId.empty())
             return EXIT_FAILURE;
 
-        auto sequencer = std::make_unique<uapmd::AudioPluginSequencer>();
-
         std::atomic playing{true};
 
         static uint32_t UMP_BUFFER_SIZE = 65536;
         auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>(UMP_BUFFER_SIZE);
-        sequencer->addSimpleTrack(dispatcher->audioDriver()->sampleRate(), formatName, pluginId, [&](uapmd::AudioPluginTrack*, std::string error) {
+        auto sequencer = std::make_unique<uapmd::AudioPluginSequencer>(dispatcher->audioDriver()->sampleRate());
+        sequencer->addSimpleTrack(formatName, pluginId, [&](uapmd::AudioPluginTrack*, std::string error) {
             if (!error.empty()) {
                 std::cerr << "addSimpleTrack() failed." << std::endl;
                 playing = false;
