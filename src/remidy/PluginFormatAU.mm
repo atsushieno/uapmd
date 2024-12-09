@@ -338,7 +338,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
     bool useDouble = audio_content_type == AudioContentType::Float64;
     UInt32 sampleSize = useDouble ? sizeof(double) : sizeof(float);
     uint32_t channelBufSize = process.frameCount() * sampleSize;
-    for (int32_t bus = 0, n = process.audioInBusCount(); bus < n; bus++) {
+    for (size_t bus = 0, n = auDataIns.size(); bus < n; bus++) {
         auto auDataIn = auDataIns[bus];
         auDataIn->mNumberBuffers = 0;
         auto busBuf =process.audioIn(0);
@@ -356,7 +356,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
     process_timestamp.mHostTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     process_timestamp.mFlags = kAudioTimeStampSampleTimeValid | kAudioTimeStampHostTimeValid;
 
-    for (int32_t bus = 0, n = process.audioOutBusCount(); bus < n; bus++, bus++) {
+    for (size_t bus = 0, n = auDataOuts.size(); bus < n; bus++, bus++) {
         auto auDataOut = auDataOuts[bus];
         auDataOut->mNumberBuffers = 0;
         auto busBuf =process.audioOut(0);
