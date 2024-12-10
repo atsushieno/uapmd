@@ -127,7 +127,7 @@ void remidy::PluginFormatAU::createInstance(PluginCatalogEntry* info, std::funct
             }
         }
         else
-          callback(nullptr, std::format("Failed to instantiate AudioUnit {}", info->displayName()));
+          cb(nullptr, std::format("Failed to instantiate AudioUnit {}", info->displayName()));
     });
 }
 
@@ -424,6 +424,20 @@ void remidy::AudioPluginInstanceAU::inspectBuses() {
                 // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
                 input_bus_defs.emplace_back(def);
                 input_buses.emplace_back(new AudioBusConfiguration(def));
+            }
+        }
+    }
+    for (auto i = 0; i < ret.numAudioOut; i++) {
+        if (AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, i, &auLayout, &size) == noErr) {
+            CFStringRef cfName{nullptr};
+            if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementName, kAudioUnitScope_Output, i, &cfName, &size) == noErr && cfName != nullptr) {
+                // FIXME: get bus name
+                auto busName = std::string{""};//cfStringToString1024(cfName);
+                AudioBusDefinition def{busName, AudioBusRole::Main}; // FIXME: correct bus type
+                // FIXME: fill channel layouts
+                // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
+                output_bus_defs.emplace_back(def);
+                output_buses.emplace_back(new AudioBusConfiguration(def));
             }
         }
     }
