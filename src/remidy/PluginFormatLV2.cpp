@@ -293,8 +293,8 @@ namespace remidy {
         return ret;
     }
 
-    const std::vector<AudioBusConfiguration*> AudioPluginInstanceLV2::audioInputBuses() const { return input_buses; }
-    const std::vector<AudioBusConfiguration*> AudioPluginInstanceLV2::audioOutputBuses() const { return output_buses; }
+    const std::vector<AudioBusConfiguration*>& AudioPluginInstanceLV2::audioInputBuses() const { return input_buses; }
+    const std::vector<AudioBusConfiguration*>& AudioPluginInstanceLV2::audioOutputBuses() const { return output_buses; }
 
     PluginParameterSupport *AudioPluginInstanceLV2::parameters() {
         if (!_parameters)

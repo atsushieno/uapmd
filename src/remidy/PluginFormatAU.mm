@@ -458,8 +458,8 @@ void remidy::AudioPluginInstanceAU::inspectBuses() {
     buses = ret;
 }
 
-const std::vector<remidy::AudioBusConfiguration*> remidy::AudioPluginInstanceAU::audioInputBuses() const { return input_buses; }
-const std::vector<remidy::AudioBusConfiguration*> remidy::AudioPluginInstanceAU::audioOutputBuses() const { return output_buses; }
+const std::vector<remidy::AudioBusConfiguration*>& remidy::AudioPluginInstanceAU::audioInputBuses() const { return input_buses; }
+const std::vector<remidy::AudioBusConfiguration*>& remidy::AudioPluginInstanceAU::audioOutputBuses() const { return output_buses; }
 
 // AudioPluginInstanceAUv2
 

@@ -188,9 +188,9 @@ namespace remidy {
 
         bool hasEventOutputs() override { return buses.numEventOut > 0; }
 
-        const std::vector<AudioBusConfiguration *> audioInputBuses() const override;
+        const std::vector<AudioBusConfiguration*>& audioInputBuses() const override;
 
-        const std::vector<AudioBusConfiguration *> audioOutputBuses() const override;
+        const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override;
 
         // parameters
         PluginParameterSupport *parameters() override;

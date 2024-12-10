@@ -680,10 +680,9 @@ namespace remidy {
         busesInfo = ret;
     }
 
-    const std::vector<AudioBusConfiguration *> AudioPluginInstanceVST3::audioInputBuses() const { return input_buses; }
+    const std::vector<AudioBusConfiguration*>& AudioPluginInstanceVST3::audioInputBuses() const { return input_buses; }
 
-    const std::vector<AudioBusConfiguration *>
-    AudioPluginInstanceVST3::audioOutputBuses() const { return output_buses; }
+    const std::vector<AudioBusConfiguration*>& AudioPluginInstanceVST3::audioOutputBuses() const { return output_buses; }
 
     PluginParameterSupport* AudioPluginInstanceVST3::parameters() {
         if (!_parameters)

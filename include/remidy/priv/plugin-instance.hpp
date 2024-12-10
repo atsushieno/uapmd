@@ -48,8 +48,8 @@ namespace remidy {
         // In a long term, it should be just a shorthand property for current bus configuration.
         virtual bool hasEventOutputs() = 0;
 
-        virtual const std::vector<AudioBusConfiguration*> audioInputBuses() const = 0;
-        virtual const std::vector<AudioBusConfiguration*> audioOutputBuses() const = 0;
+        virtual const std::vector<AudioBusConfiguration*>& audioInputBuses() const = 0;
+        virtual const std::vector<AudioBusConfiguration*>& audioOutputBuses() const = 0;
         // It can be implemented by each plugin format class so that it can return arbitrary index.
         // The override must ensure that the returned value is either in range or < 0 when there is no input bus.
         virtual int32_t mainInputBusIndex() { return audioInputBuses().size() > 0 ? 0 : -1; }

@@ -120,8 +120,8 @@ namespace remidy {
         bool hasEventInputs() override { return buses.hasMidiIn; }
         bool hasEventOutputs() override { return buses.hasMidiOut; }
 
-        const std::vector<AudioBusConfiguration*> audioInputBuses() const override;
-        const std::vector<AudioBusConfiguration*> audioOutputBuses() const override;
+        const std::vector<AudioBusConfiguration*>& audioInputBuses() const override;
+        const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override;
 
         virtual AUVersion auVersion() = 0;
         virtual StatusCode sampleRate(double sampleRate) = 0;
