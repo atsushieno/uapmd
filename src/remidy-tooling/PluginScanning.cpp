@@ -123,6 +123,11 @@ bool remidy_tooling::PluginScanning::shouldCreateInstanceOnUIThread(PluginFormat
         || format->name() == "AU" && displayName == "Reaktor 6"
         || format->name() == "AU" && displayName == "Reaktor 6 MFX"
         || format->name() == "AU" && displayName == "Reaktor 6 MIDIFX"
+        // Some JUCE plugins are NOT designed to work in thread safe manner (JUCE behaves like VST3).
+        // (Use AddressSanitizer to detect such failing ones.)
+        //
+        // (It may not be everything from Tracktion, but there are too many #T* plugins.)
+        || format->name() == "AU" && vendor == "Tracktion"
     ;
     return forceMainThread || format->requiresUIThreadOn(entry) != PluginUIThreadRequirement::None;
 }
