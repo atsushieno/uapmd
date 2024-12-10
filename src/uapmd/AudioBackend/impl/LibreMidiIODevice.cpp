@@ -8,11 +8,11 @@ void uapmd::LibreMidiIODevice::addCallback(std::function<uapmd_status_t(remidy::
 }
 
 uapmd_status_t uapmd::LibreMidiIODevice::start() {
-    std::cerr << "Not implemented" << std::endl;
+    std::cerr << "uapmd::LibreMidiIODevice::start(): Not implemented" << std::endl;
     return 0;
 }
 
 uapmd_status_t uapmd::LibreMidiIODevice::stop() {
-    std::cerr << "Not implemented" << std::endl;
+    std::cerr << "uapmd::LibreMidiIODevice::stop(): Not implemented" << std::endl;
     return 0;
 }
