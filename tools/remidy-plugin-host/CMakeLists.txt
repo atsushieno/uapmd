@@ -25,6 +25,7 @@ target_link_libraries(remidy-plugin-host PRIVATE
         saucer::saucer
         remidy::remidy
         remidy::remidy-tooling
+        cpptrace::cpptrace
         uapmd
 )
 target_sources(remidy-plugin-host PRIVATE

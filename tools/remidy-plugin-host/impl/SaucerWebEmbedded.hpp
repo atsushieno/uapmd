@@ -31,7 +31,7 @@ public:
     }
 
     SaucerWebEmbedded(std::filesystem::path& webroot) :
-            app_(saucer::application::acquire({ .id = "SaucerWebEmbedded" })),
+            app_(saucer::application::init({ .id = "SaucerWebEmbedded" })),
             smartview(saucer::smartview{{ .application = app_ }}),
             webroot(webroot) {
 

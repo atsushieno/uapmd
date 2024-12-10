@@ -8,10 +8,11 @@
 #include "components/AudioPluginSelectors.hpp"
 #include "components/AudioPluginInstanceControl.hpp"
 #include "components/AudioPlayerController.hpp"
+#include <cpptrace/from_current.hpp>
 
 std::unique_ptr<remidy::EventLoop> eventLoop{};
 
-int main(int argc, char** argv) {
+int runMain(int argc, char** argv) {
     std::filesystem::path webDir{"web"};
 #if 1
     SaucerWebEmbedded web{webDir};
@@ -46,5 +47,15 @@ int main(int argc, char** argv) {
 
     remidy::EventLoop::start();
 
-    return 0;
+    return EXIT_SUCCESS;
+}
+
+int main(int argc, char** argv) {
+    CPPTRACE_TRY {
+        return runMain(argc, argv);
+    } CPPTRACE_CATCH(const std::exception &e) {
+        std::cerr << "Exception in remidy-plugin-host: " << e.what() << std::endl;
+        cpptrace::from_current_exception().print();
+        return EXIT_FAILURE;
+    }
 }
