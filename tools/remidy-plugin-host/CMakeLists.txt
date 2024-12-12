@@ -1,6 +1,4 @@
-add_executable(remidy-plugin-host
-        components/AudioPlayerController.cpp
-        components/AudioPlayerController.hpp)
+add_executable(remidy-plugin-host)
 
 set(CMAKE_CXX_STANDARD 23)
 
@@ -8,14 +6,12 @@ set(CMAKE_CXX_STANDARD 23)
 #set(saucer_backend "Qt6")
 set(saucer_modules ON)
 
-include(FetchContent)
-
-FetchContent_Declare(
-        saucer
+CPMAddPackage(
+        NAME           saucer
+        GIT_TAG        24ec76e09ffe26287d7ac3978dce95446e924625
         GIT_REPOSITORY "https://github.com/saucer/saucer"
-        GIT_TAG 24ec76e09ffe26287d7ac3978dce95446e924625
+        PATCHES        ../../external/saucer-disable-polyfill-expected.patch
 )
-FetchContent_MakeAvailable(saucer)
 
 target_include_directories(remidy-plugin-host PRIVATE
         ../../external/choc
@@ -33,6 +29,7 @@ target_sources(remidy-plugin-host PRIVATE
         components/AudioDeviceSetup.cpp
         components/AudioPluginSelectors.cpp
         components/AudioPluginInstanceControl.cpp
+        components/AudioPlayerController.cpp
         main.cpp
 )
 

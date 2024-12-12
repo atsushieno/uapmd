@@ -1,11 +1,14 @@
 
-add_subdirectory(../../external/libremidi "libremidi")
-
 add_library(uapmd)
+
+CPMAddPackage(
+        NAME           libremidi
+        GIT_TAG        be1a953a4d65dafc31be5d66ccc3f20ad9b791e5
+        GIT_REPOSITORY https://github.com/celtera/libremidi
+)
 
 target_include_directories(uapmd PRIVATE
         ../../external/miniaudio
-        ../../external/libremidi/include
         ../../external/choc
         ../../include
 )

@@ -4,17 +4,20 @@ project(remidy LANGUAGES C CXX OBJC OBJCXX Swift)
 #add_subdirectory("../../external/libremidi" "libremidi")
 include("../../external/LV2Kit.cmake")
 
-include(FetchContent)
-# <cpplocate>
-FetchContent_Declare(cpplocate
+CPMAddPackage(
+        NAME           cpplocate
+        GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
         GIT_REPOSITORY https://github.com/cginternals/cpplocate
-        GIT_TAG b796990d8df747758dbd6217b6315b7bdbb0c27e
         # required to mix CPP and Swift in the same project...
-        PATCH_COMMAND git reset --hard && git apply ${CMAKE_CURRENT_SOURCE_DIR}/../../external/cpplocate-remove-pthread.patch
+        PATCHES        ${CMAKE_CURRENT_SOURCE_DIR}/../../external/cpplocate-remove-pthread.patch
 )
-FetchContent_MakeAvailable(cpplocate)
-# </cpplocate>
+CPMAddPackage(
+        NAME           cmidi2
+        GIT_TAG        0.7
+        GIT_REPOSITORY https://github.com/atsushieno/cmidi2
+)
 
+# FIXME: it would be slightly nicer if we could migrate to CPM (failed to resolve farbot if we actually do so. Also see https://github.com/hogliux/farbot/pull/15 )
 # <rtlog>
 FetchContent_Declare(rtlog-cpp
         GIT_REPOSITORY https://github.com/atsushieno/rtlog-cpp
@@ -24,7 +27,7 @@ FetchContent_MakeAvailable(rtlog-cpp)
 # </rtlog>
 
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
 
@@ -41,8 +44,7 @@ target_include_directories(remidy PRIVATE
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ../../external/choc
         ${LV2KIT_INCLUDE_DIRS}
-        #../../external/libremidi/include
-        ../../external/cmidi2
+        ${cmidi2_SOURCE_DIR}
         ../../include/remidy
         ${CMAKE_BINARY_DIR}/generated/include
 )

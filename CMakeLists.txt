@@ -4,6 +4,8 @@ project(UniversalAudioPluginMidiDevice)
 
 set(CMAKE_CXX_STANDARD 23)
 
+include(cmake/CPM.cmake)
+
 add_subdirectory(src/remidy)
 
 add_subdirectory(src/remidy-tooling)
