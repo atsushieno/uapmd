@@ -8,6 +8,7 @@ namespace uapmd {
 class WebViewProxyChoc : public WebViewProxy {
     choc::ui::WebView webview;
     choc::ui::DesktopWindow window;
+    std::map<std::string,std::string> resources{};
 
     choc::value::Value toChocValue(ValueType type, uapmd::WebViewProxy::Value* src) {
             switch (type) {
@@ -28,28 +29,38 @@ class WebViewProxyChoc : public WebViewProxy {
         explicit WebViewProxyChoc(WebViewProxy::Configuration& config) :
                 WebViewProxy(config),
                 window({ 100, 100, 800, 600 }) {
-            auto cfg = this->config;
             webview = choc::ui::WebView(choc::ui::WebView::Options{
                 //.acceptsFirstMouseClick =
-                //.customSchemeURI =
+                .customSchemeURI = "remidy://app/",
                 //.customUserAgent =
-                .enableDebugMode = cfg.enableDebugger,
-                .fetchResource = [cfg](const std::string& path) -> std::optional<choc::ui::WebView::Options::Resource> {
-                    auto res = cfg.resolvePath(path);
+                .enableDebugMode = config.enableDebugger,
+                .fetchResource = [&](const std::string& path) -> std::optional<choc::ui::WebView::Options::Resource> {
+                    if (resources.contains(path))
+                        return choc::ui::WebView::Options::Resource(resources[path], choc::network::getMIMETypeFromFilename(path));
+
+                    std::string filePath = path.starts_with('/') ? path.substr(1) : path;
+                    auto res = this->config.resolvePath ? this->config.resolvePath.value()(path) : std::optional<Content>{};
                     if (res)
                         return choc::ui::WebView::Options::Resource(res->data, res->mimeType);
-                    else
-                        return {};
+                    std::ifstream is{filePath};
+                    std::ostringstream ss;
+                    ss << is.rdbuf();
+                    std::string s = ss.str();
+                    resources[path] = s;
+                    return choc::ui::WebView::Options::Resource(resources[path], choc::network::getMIMETypeFromFilename(path));
                 },
                 .transparentBackground = config.transparentBackground,
                 .enableDefaultClipboardKeyShortcutsInSafari = true
             });
-            window.setContent(&webview);
+            window.setResizable(true);
+            window.setContent(webview.getViewHandle());
         }
         ~WebViewProxyChoc() override = default;
 
         void navigateTo(const std::string &url) override { webview.navigate(url); }
-        void navigateToLocalFile(const std::string &localFile) override { webview.navigate(localFile); }
+        void navigateToLocalFile(const std::string &localFile) override {
+            webview.navigate("remidy://app/" + localFile);
+        }
         void loadContent(const std::string &data) override { webview.setHTML(data); }
         // The input and the output are JSON string.
         void registerFunction(const std::string &jsName, std::function<std::string(const std::string_view&)>&& func) override {

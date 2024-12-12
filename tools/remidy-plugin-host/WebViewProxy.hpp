@@ -19,7 +19,7 @@ namespace uapmd {
         struct Configuration {
             bool enableDebugger{false};
             bool transparentBackground{false};
-            std::function<std::optional<Content>(const std::string& path)> resolvePath;
+            std::optional<std::function<std::optional<Content>(const std::string& path)>> resolvePath;
         };
 
         enum class ValueType {
