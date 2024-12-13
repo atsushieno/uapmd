@@ -26,9 +26,6 @@ FetchContent_Declare(rtlog-cpp
 FetchContent_MakeAvailable(rtlog-cpp)
 # </rtlog>
 
-
-set(CMAKE_CXX_STANDARD 23)
-
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
 
 add_library(remidy STATIC)

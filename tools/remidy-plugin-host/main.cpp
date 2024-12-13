@@ -21,6 +21,8 @@ int runMain(int argc, char** argv) {
     uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
     uapmd::WebViewProxySaucer proxy{config, web};
 #else
+    // choc does not register custom URI schemes in secure context, so its
+    // JS web components don't work as expected. We will need its own web server.
     uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
     uapmd::WebViewProxyChoc proxy{config};
 #endif

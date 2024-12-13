@@ -29,7 +29,10 @@ I have created a list of required features and how these WebView libraries suppo
 | return | `webview_return()` | `evaluate()` | N/A |
 | serialize | use JSON String | `serializer` + `glaze` backend | `choc::value` API |
 | resolve | N/A | `saucer::embedded_files` | "fetchResource" |
+| - CORS | ? | works | N/A |
 | loop | `webview_run()` | `saucer::application` | `choc::ui::EventLoop` |
+
+Current implementation premises CORS resolved, so only saucer is known to work. If we try to support more, we will have to resort to things like internal HTTP server.
 
 ##  C++/JS Interoperability Regarding Parameters and Returns
 

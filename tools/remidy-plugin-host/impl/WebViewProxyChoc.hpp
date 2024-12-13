@@ -31,8 +31,6 @@ class WebViewProxyChoc : public WebViewProxy {
                 window({ 100, 100, 800, 600 }) {
             webview = choc::ui::WebView(choc::ui::WebView::Options{
                 //.acceptsFirstMouseClick =
-                .customSchemeURI = "remidy://app/",
-                //.customUserAgent =
                 .enableDebugMode = config.enableDebugger,
                 .fetchResource = [&](const std::string& path) -> std::optional<choc::ui::WebView::Options::Resource> {
                     if (resources.contains(path))
@@ -49,11 +47,16 @@ class WebViewProxyChoc : public WebViewProxy {
                     resources[path] = s;
                     return choc::ui::WebView::Options::Resource(resources[path], choc::network::getMIMETypeFromFilename(path));
                 },
+                .customSchemeURI = "remidy://app/",
+                //.customUserAgent =
                 .transparentBackground = config.transparentBackground,
                 .enableDefaultClipboardKeyShortcutsInSafari = true
             });
             window.setResizable(true);
             window.setContent(webview.getViewHandle());
+            window.windowClosed = [&] {
+                remidy::EventLoop::stop();
+            };
         }
         ~WebViewProxyChoc() override = default;
 
