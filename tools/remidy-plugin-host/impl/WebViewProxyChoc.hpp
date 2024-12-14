@@ -8,7 +8,6 @@ namespace uapmd {
 class WebViewProxyChoc : public WebViewProxy {
     choc::ui::WebView webview;
     choc::ui::DesktopWindow window;
-    std::map<std::string,std::string> resources{};
 
     choc::value::Value toChocValue(ValueType type, uapmd::WebViewProxy::Value* src) {
             switch (type) {
@@ -33,8 +32,6 @@ class WebViewProxyChoc : public WebViewProxy {
                 //.acceptsFirstMouseClick =
                 .enableDebugMode = config.enableDebugger,
                 .fetchResource = [&](const std::string& path) -> std::optional<choc::ui::WebView::Options::Resource> {
-                    if (resources.contains(path))
-                        return choc::ui::WebView::Options::Resource(resources[path], choc::network::getMIMETypeFromFilename(path));
 
                     std::string filePath = path.starts_with('/') ? path.substr(1) : path;
                     auto res = this->config.resolvePath ? this->config.resolvePath.value()(path) : std::optional<Content>{};
@@ -44,8 +41,7 @@ class WebViewProxyChoc : public WebViewProxy {
                     std::ostringstream ss;
                     ss << is.rdbuf();
                     std::string s = ss.str();
-                    resources[path] = s;
-                    return choc::ui::WebView::Options::Resource(resources[path], choc::network::getMIMETypeFromFilename(path));
+                    return choc::ui::WebView::Options::Resource(s, choc::network::getMIMETypeFromFilename(path));
                 },
                 .customSchemeURI = "remidy://app/",
                 //.customUserAgent =
