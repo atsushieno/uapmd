@@ -13,6 +13,7 @@ CPMAddPackage(
 
 target_include_directories(remidy-plugin-host PRIVATE
         ../../external/choc
+        ${cmidi2_SOURCE_DIR}
         ../../include
 )
 target_link_libraries(remidy-plugin-host PRIVATE

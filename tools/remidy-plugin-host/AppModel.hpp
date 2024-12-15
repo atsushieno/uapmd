@@ -11,9 +11,20 @@ namespace uapmd {
         DeviceIODispatcher dispatcher;
         AudioPluginHostPAL* plugin_host_pal;
         AudioPluginSequencer sequencer;
-        remidy::MasterContext masterContext{};
-        std::vector<remidy::TrackContext*> trackContexts{};
-        std::vector<remidy::AudioProcessContext*> trackBuffers{};
+        remidy::MasterContext master_context{};
+        std::vector<remidy::TrackContext*> track_contexts{};
+        std::vector<remidy::AudioProcessContext*> track_buffers{};
+        uapmd::SequenceData data{ .tracks = track_buffers };
+
+        int32_t trackIndexForInstanceId(int32_t instance) {
+            for (int32_t i = 0, n = sequencer.tracks().size(); i < n; i++) {
+                auto track = sequencer.tracks()[i];
+                for (auto plugin : track->graph().plugins())
+                    if (plugin->instanceId() == instance)
+                        return i;
+            }
+            return -1;
+        }
 
     public:
         static AppModel& instance();
@@ -25,9 +36,9 @@ namespace uapmd {
             dispatcher(umpBufferSize) {
 
             dispatcher.addCallback([&](uapmd::AudioProcessContext& process) {
-                uapmd::SequenceData data{ .tracks = trackBuffers };
                 for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
-                    auto track = sequencer.tracks()[t];
+                    if (t >= data.tracks.size())
+                        continue; // buffer not ready
                     auto ctx = data.tracks[t];
                     for (int32_t i = 0, n = process.audioInBusCount(); i < n; ++i)
                         ctx->addAudioIn(dispatcher.audioDriver()->channels(), 1024);
@@ -70,9 +81,9 @@ namespace uapmd {
                 }
                 for (auto& f : instancingCompleted)
                     f(instancingId, track->graph().plugins()[0]->instanceId(), error);
-                auto trackCtx = new remidy::TrackContext(masterContext);
-                trackContexts.emplace_back(trackCtx);
-                trackBuffers.emplace_back(new remidy::AudioProcessContext(4096, trackCtx));
+                auto trackCtx = new remidy::TrackContext(master_context);
+                track_contexts.emplace_back(trackCtx);
+                track_buffers.emplace_back(new remidy::AudioProcessContext(4096, trackCtx));
             });
         }
 
