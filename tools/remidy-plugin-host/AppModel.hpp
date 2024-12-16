@@ -6,8 +6,8 @@
 
 namespace uapmd {
     class AppModel {
-        const int32_t buffer_size_in_frames;
-        const int32_t ump_buffer_size_in_ints;
+        const size_t buffer_size_in_frames;
+        const size_t ump_buffer_size_in_ints;
         int32_t sample_rate;
         DeviceIODispatcher dispatcher;
         AudioPluginHostPAL* plugin_host_pal;
@@ -31,48 +31,7 @@ namespace uapmd {
 
     public:
         static AppModel& instance();
-
-        AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, int32_t sampleRate) :
-            buffer_size_in_frames(audioBufferSizeInFrames),
-            ump_buffer_size_in_ints(umpBufferSizeInInts), sample_rate(sampleRate),
-            plugin_host_pal(AudioPluginHostPAL::instance()),
-            sequencer(sampleRate, umpBufferSizeInInts, this->plugin_host_pal),
-            dispatcher(umpBufferSizeInInts) {
-
-            dispatcher.addCallback([&](uapmd::AudioProcessContext& process) {
-                auto& data = sequencer.data();
-                for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
-                    if (t >= data.tracks.size())
-                        continue; // buffer not ready
-                    auto ctx = data.tracks[t];
-                    for (int32_t i = 0, n = process.audioInBusCount(); i < n; ++i)
-                        ctx->addAudioIn(dispatcher.audioDriver()->channels(), 1024);
-                    for (int32_t i = 0, n = process.audioOutBusCount(); i < n; ++i)
-                        ctx->addAudioOut(dispatcher.audioDriver()->channels(), 1024);
-                    ctx->frameCount(512);
-                    for (uint32_t i = 0; i < process.audioInBusCount(); i++) {
-                        auto srcInBus = process.audioIn(i);
-                        auto dstInBus = ctx->audioIn(i);
-                        for (uint32_t ch = 0, nCh = srcInBus->channelCount(); ch < nCh; ch++)
-                            memcpy(dstInBus->getFloatBufferForChannel(ch),
-                                   (void *) srcInBus->getFloatBufferForChannel(ch), process.frameCount());
-                    }
-                }
-                auto ret = sequencer.processAudio();
-                for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
-                    if (t >= data.tracks.size())
-                        continue; // buffer not ready
-                    auto ctx = data.tracks[t];
-                    for (uint32_t i = 0; i < process.audioOutBusCount(); i++) {
-                        auto dstOutBus = process.audioOut(i);
-                        auto srcOutBus = ctx->audioOut(i);
-                        for (uint32_t ch = 0, nCh = srcOutBus->channelCount(); ch < nCh; ch++)
-                            memcpy(dstOutBus->getFloatBufferForChannel(ch), (void*) srcOutBus->getFloatBufferForChannel(ch), process.frameCount());
-                    }
-                }
-                return ret;
-            });
-        }
+        AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, int32_t sampleRate);
 
         remidy::PluginCatalog& catalog() { return plugin_host_pal->catalog(); }
 

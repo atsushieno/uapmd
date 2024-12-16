@@ -35,3 +35,43 @@ void uapmd::AppModel::sendNoteOff(int32_t instanceId, int32_t note) {
 
     std::cerr << std::format("Native note on {}: {}", instanceId, note) << std::endl;
 }
+
+uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, int32_t sampleRate) :
+    buffer_size_in_frames(audioBufferSizeInFrames),
+            ump_buffer_size_in_ints(umpBufferSizeInInts), sample_rate(sampleRate),
+            plugin_host_pal(AudioPluginHostPAL::instance()),
+            sequencer(sampleRate, umpBufferSizeInInts, this->plugin_host_pal),
+            dispatcher(umpBufferSizeInInts) {
+
+    dispatcher.addCallback([&](uapmd::AudioProcessContext& process) {
+        auto& data = sequencer.data();
+
+        for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
+            if (t >= data.tracks.size())
+                continue; // buffer not ready
+            auto ctx = data.tracks[t];
+            ctx->frameCount(process.frameCount());
+            for (uint32_t i = 0; i < process.audioInBusCount(); i++) {
+                auto srcInBus = process.audioIn(i);
+                auto dstInBus = ctx->audioIn(i);
+                for (uint32_t ch = 0, nCh = srcInBus->channelCount(); ch < nCh; ch++)
+                    memcpy(dstInBus->getFloatBufferForChannel(ch),
+                           (void *) srcInBus->getFloatBufferForChannel(ch), process.frameCount() * sizeof(float));
+            }
+        }
+        auto ret = sequencer.processAudio();
+
+        for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
+            if (t >= data.tracks.size())
+                continue; // buffer not ready
+            auto ctx = data.tracks[t];
+            for (uint32_t i = 0; i < process.audioOutBusCount(); i++) {
+                auto dstOutBus = process.audioOut(i);
+                auto srcOutBus = ctx->audioOut(i);
+                for (uint32_t ch = 0, nCh = srcOutBus->channelCount(); ch < nCh; ch++)
+                    memcpy(dstOutBus->getFloatBufferForChannel(ch), (void*) srcOutBus->getFloatBufferForChannel(ch), process.frameCount() * sizeof(float));
+            }
+        }
+        return ret;
+    });
+}
