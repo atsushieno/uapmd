@@ -27,7 +27,7 @@ target_sources(uapmd PRIVATE
         AudioBackend/impl/LibreMidiIODevice.cpp
         AudioPluginHosting/impl/RemidyAudioPluginHostPAL.cpp
         AudioPluginHosting/AudioPluginGraph.cpp
-        AudioPluginHosting/AudioPluginSequencer.cpp
+        AudioPluginHosting/SequenceProcessor.cpp
         AudioPluginHosting/AudioPluginHostPAL.cpp
         AudioPluginHosting/impl/RemidyAudioPluginHostPAL.cpp
         AudioPluginHosting/AudioPluginNode.cpp

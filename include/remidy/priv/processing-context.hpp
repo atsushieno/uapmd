@@ -118,7 +118,7 @@ namespace remidy {
     };
 
     class AudioProcessContext {
-        TrackContext* track_context;
+        TrackContext track_context;
         std::vector<AudioBusBufferList*> audio_in{};
         std::vector<AudioBusBufferList*> audio_out{};
         MidiSequence midi_in;
@@ -127,9 +127,9 @@ namespace remidy {
 
     public:
         AudioProcessContext(
-            const uint32_t umpBufferSizeInInts,
-            TrackContext* trackContext
-        ) : track_context(trackContext),
+            MasterContext& masterContext,
+            const uint32_t umpBufferSizeInInts
+        ) : track_context(masterContext),
             midi_in(umpBufferSizeInInts),
             midi_out(umpBufferSizeInInts) {
         }
@@ -142,7 +142,7 @@ namespace remidy {
                     delete bus;
         }
 
-        TrackContext* trackContext() { return track_context; }
+        TrackContext* trackContext() { return &track_context; }
 
         int32_t frameCount() const { return frame_count; }
         void frameCount(const int32_t newCount) { frame_count = newCount; }

@@ -23,7 +23,7 @@ class RemidyApply {
         uint32_t numAudioOut = instance->audioOutputBuses().size();
         remidy::MasterContext masterContext{};
         remidy::TrackContext trackContext{masterContext};
-        remidy::AudioProcessContext ctx{4096, &trackContext};
+        remidy::AudioProcessContext ctx{masterContext, 4096};
         for (int32_t i = 0, n = numAudioIn; i < n; ++i)
             ctx.addAudioIn(instance->audioInputBuses()[i]->channelLayout().channels(), 1024);
         for (int32_t i = 0, n = numAudioOut; i < n; ++i)
@@ -115,7 +115,7 @@ class RemidyApply {
 
         static uint32_t UMP_BUFFER_SIZE = 65536;
         auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>(UMP_BUFFER_SIZE);
-        auto sequencer = std::make_unique<uapmd::AudioPluginSequencer>(dispatcher->audioDriver()->sampleRate());
+        auto sequencer = std::make_unique<uapmd::SequenceProcessor>(dispatcher->audioDriver()->sampleRate(), UMP_BUFFER_SIZE);
         sequencer->addSimpleTrack(formatName, pluginId, [&](uapmd::AudioPluginTrack*, std::string error) {
             if (!error.empty()) {
                 std::cerr << "addSimpleTrack() failed." << std::endl;
@@ -124,8 +124,7 @@ class RemidyApply {
             }
             uint32_t round = 0;
             remidy_ump_t umpSequence[512];
-            remidy::TrackContext trackContext{sequencer->masterContext()};
-            remidy::AudioProcessContext process{UMP_BUFFER_SIZE, &trackContext};
+            remidy::AudioProcessContext process{sequencer->data().masterContext(), UMP_BUFFER_SIZE};
             //process.addAudioIn(2, 1024);
             process.addAudioOut(2, 1024);
 

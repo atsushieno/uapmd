@@ -16,13 +16,7 @@ uapmd::MiniAudioIODevice::MiniAudioIODevice(const std::string& deviceName) {
         throw std::runtime_error("uapmd: Failed to initialize miniaudio driver.");
     }
     engine.pDevice->pUserData = this;
-}
 
-uapmd::MiniAudioIODevice::~MiniAudioIODevice() {
-    ma_engine_uninit(&engine);
-}
-
-uapmd_status_t uapmd::MiniAudioIODevice::start() {
     auto device = ma_engine_get_device(&engine);
     if (device->capture.channels)
         data.addAudioIn(device->capture.channels, config.periodSizeInFrames);
@@ -31,6 +25,13 @@ uapmd_status_t uapmd::MiniAudioIODevice::start() {
         data.addAudioOut(device->playback.channels, config.periodSizeInFrames);
         dataOutPtrs.resize(data.audioOut(0)->channelCount());
     }
+}
+
+uapmd::MiniAudioIODevice::~MiniAudioIODevice() {
+    ma_engine_uninit(&engine);
+}
+
+uapmd_status_t uapmd::MiniAudioIODevice::start() {
     ma_engine_start(&engine);
 
     // FIXME: maybe switch to remidy::StatusCode?
@@ -39,7 +40,6 @@ uapmd_status_t uapmd::MiniAudioIODevice::start() {
 
 uapmd_status_t uapmd::MiniAudioIODevice::stop() {
     ma_engine_stop(&engine);
-    data = AudioProcessContext{0, data.trackContext()};
 
     // FIXME: maybe switch to remidy::StatusCode?
     return 0;

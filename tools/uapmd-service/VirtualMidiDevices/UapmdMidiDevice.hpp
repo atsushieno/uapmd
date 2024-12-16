@@ -8,7 +8,7 @@ namespace uapmd {
 
     class UapmdMidiDevice {
         std::unique_ptr<PlatformVirtualMidiDevice> platformDevice;
-        std::unique_ptr<AudioPluginSequencer> audioPluginHost;
+        std::unique_ptr<SequenceProcessor> audioPluginHost;
         uapmd_status_t maybeLoadConfiguration(std::string& portId);
         uapmd_status_t preparePlugins();
 

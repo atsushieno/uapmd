@@ -51,7 +51,7 @@ int testInstancing() {
                     uint32_t numAudioOut = instance->audioOutputBuses().size();
                     remidy::MasterContext masterContext;
                     remidy::TrackContext trackContext{masterContext};
-                    remidy::AudioProcessContext ctx{4096, &trackContext};
+                    remidy::AudioProcessContext ctx{masterContext, 4096};
                     for (int32_t i = 0, n = numAudioIn; i < n; ++i)
                         ctx.addAudioIn(instance->audioInputBuses()[i]->channelLayout().channels(), 1024);
                     for (int32_t i = 0, n = numAudioOut; i < n; ++i)

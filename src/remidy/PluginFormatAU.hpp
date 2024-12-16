@@ -84,7 +84,7 @@ namespace remidy {
         bool process_replacing{false};
         AudioContentType audio_content_type{AudioContentType::Float32};
 
-        ParameterSupport* _parameters;
+        ParameterSupport* _parameters{nullptr};
 
         AUUmpInputDispatcher ump_input_dispatcher{this};
 
