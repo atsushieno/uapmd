@@ -53,13 +53,15 @@ Sources in this repository are released under the MIT license.
 
 There are third-party (and first party) dependency libraries:
 
-- travesty
-- choc
-- libremidi
-- cmidi2
-- lv2kit
-- vst3_public_sdk
-- miniaudio
-- cxxopts
-- saucer
-- webaudio-controls
+- lv2kit (serd, sord, sratom, lilv, zix) - ISC license
+- travesty from DPF - ISC license
+- moduleinfo from vst3_public_sdk - VST3 public SDK license (BSD-like)
+- choc - ISC license
+- libremidi - BSD (2-clause), MIT (RtMidi)
+- cmidi2 - MIT
+- miniaudio - MIT (or public domain)
+- cpplocate - MIT
+- cxxopts - MIT
+- rtlog-cpp - MIT, BSD (2-clause, ReaderWriterQueue)
+- saucer - MIT
+- webaudio-controls - Apache V2
