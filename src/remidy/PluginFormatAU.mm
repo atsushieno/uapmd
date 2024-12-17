@@ -564,10 +564,10 @@ remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::~AUUmpInputDispatcher() {
 
 void
 remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::process(uint64_t timestamp, remidy::AudioProcessContext &src) {
-    auto& midiIn = src.midiIn();
+    auto& eventIn = src.eventIn();
     auto cur = MIDIEventListInit(ump_event_list, kMIDIProtocol_2_0);
     MIDIEventListAdd(ump_event_list, AU_UMP_INPUT_DISPATCHER_UMP_EVENT_LIST_SIZE,
-                     cur, timestamp, midiIn.sizeInInts(), midiIn.getMessages());
+                     cur, timestamp, eventIn.position() * sizeof(UInt32), (const UInt32*) eventIn.getMessages());
     auto result = MusicDeviceMIDIEventList((MusicDeviceComponent) owner->instance, timestamp, ump_event_list);
     if (result != noErr) {
         owner->logger()->logError("Failed to add UMP events to AudioUnit: %d", result);

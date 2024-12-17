@@ -77,7 +77,7 @@ namespace uapmd {
         for (auto i = 0; i < sequence.tracks.size(); i++) {
             auto& tp = *sequence.tracks[i];
             tracks_[i]->processAudio(tp);
-            tp.midiIn().sizeInInts(0); // reset
+            tp.eventIn().position(0); // reset
         }
         // FIXME: define status codes
         return 0;

@@ -9,9 +9,9 @@ uapmd::AppModel model{DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAUL
 
 uapmd::AppModel& uapmd::AppModel::instance() { return model; }
 
-void addMessage64(remidy::MidiSequence& midiIn, int64_t ump) {
-    cmidi2_ump_write64(midiIn.getMessages() + midiIn.sizeInInts(), ump);
-    midiIn.sizeInInts(midiIn.sizeInInts() + 2);
+void addMessage64(remidy::EventSequence& eventIn, int64_t ump) {
+    cmidi2_ump_write64((cmidi2_ump*) ((uint8_t*) eventIn.getMessages() + eventIn.position()), ump);
+    eventIn.position(eventIn.position() + 8);
 }
 
 void uapmd::AppModel::sendNoteOn(int32_t instanceId, int32_t note) {
@@ -21,8 +21,8 @@ void uapmd::AppModel::sendNoteOn(int32_t instanceId, int32_t note) {
     auto buffers = sequencer.data().tracks[trackIndex];
 
     auto ump = cmidi2_ump_midi2_note_on(0, 0, note, 0, 0xF800, 0);
-    auto& midiIn = buffers->midiIn();
-    addMessage64(midiIn, ump);
+    auto& eventIn = buffers->eventIn();
+    addMessage64(eventIn, ump);
 
     std::cerr << std::format("Native note on {}: {}", instanceId, note) << std::endl;
 }
@@ -34,18 +34,18 @@ void uapmd::AppModel::sendNoteOff(int32_t instanceId, int32_t note) {
     auto buffers = sequencer.data().tracks[trackIndex];
 
     auto ump = cmidi2_ump_midi2_note_off(0, 0, note, 0, 0xF800, 0);
-    auto& midiIn = buffers->midiIn();
-    addMessage64(midiIn, ump);
+    auto& eventIn = buffers->eventIn();
+    addMessage64(eventIn, ump);
 
     std::cerr << std::format("Native note on {}: {}", instanceId, note) << std::endl;
 }
 
-uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, int32_t sampleRate) :
+uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate) :
     buffer_size_in_frames(audioBufferSizeInFrames),
-            ump_buffer_size_in_ints(umpBufferSizeInInts), sample_rate(sampleRate),
+            ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
             plugin_host_pal(AudioPluginHostPAL::instance()),
-            sequencer(sampleRate, umpBufferSizeInInts, this->plugin_host_pal),
-            dispatcher(umpBufferSizeInInts) {
+            sequencer(sampleRate, umpBufferSizeInBytes, this->plugin_host_pal),
+            dispatcher(umpBufferSizeInBytes) {
 
     dispatcher.addCallback([&](uapmd::AudioProcessContext& process) {
         auto& data = sequencer.data();

@@ -5,8 +5,8 @@ void remidy::TypedUmpInputDispatcher::process(uint64_t newTimestamp, AudioProces
     _timestamp = newTimestamp;
     track_context = src.trackContext();
 
-    auto ptr = src.midiIn().getMessages();
-    auto numBytes = src.midiIn().sizeInBytes();
+    auto ptr = src.eventIn().getMessages();
+    auto numBytes = src.eventIn().position();
     CMIDI2_UMP_SEQUENCE_FOREACH(ptr, numBytes, iter) {
         auto ump = (cmidi2_ump *) iter;
         uint7_t group, channel, note;

@@ -33,25 +33,20 @@ namespace remidy {
 
     // Represents a sample-accurate sequence of UMPs.
     // It is part of `AudioProcessingContext`.
-    class MidiSequence {
-        size_t buffer_size_in_ints;
-        remidy_ump_t* messages{};
-        size_t size_in_ints{0};
+    class EventSequence {
+        size_t allocated_buffer_size_bytes;
+        void* messages{};
+        size_t position_in_bytes{0};
     public:
-        explicit MidiSequence(size_t messageBufferSizeInInts) : buffer_size_in_ints(messageBufferSizeInInts) {
-            messages = (remidy_ump_t*) calloc(messageBufferSizeInInts, sizeof(remidy_ump_t));
+        explicit EventSequence(size_t allocatedBufferSizeBytes) : allocated_buffer_size_bytes(allocatedBufferSizeBytes) {
+            messages = (remidy_ump_t*) calloc(allocatedBufferSizeBytes, sizeof(uint8_t));
         }
-        ~MidiSequence() {
+        ~EventSequence() {
             free(messages);
         }
-        remidy_ump_t* getMessages() { return messages; }
-        size_t sizeInInts() const { return size_in_ints; }
-        void sizeInInts(size_t n) { size_in_ints = n; }
-        size_t sizeInBytes() const { return size_in_ints * sizeof(remidy_ump_t); }
-        void copyFrom(MidiSequence& other) {
-            memcpy(messages + size_in_ints, other.messages, other.sizeInBytes());
-            size_in_ints += other.size_in_ints;
-        }
+        void* getMessages() { return messages; }
+        size_t position() const { return position_in_bytes; }
+        void position(size_t n) { position_in_bytes = n; }
     };
 
     class MasterContext {
@@ -121,17 +116,17 @@ namespace remidy {
         TrackContext track_context;
         std::vector<AudioBusBufferList*> audio_in{};
         std::vector<AudioBusBufferList*> audio_out{};
-        MidiSequence midi_in;
-        MidiSequence midi_out;
+        EventSequence event_in;
+        EventSequence event_out;
         int32_t frame_count{0};
 
     public:
         AudioProcessContext(
             MasterContext& masterContext,
-            const uint32_t umpBufferSizeInInts
+            const uint32_t eventBufferSizeBytes
         ) : track_context(masterContext),
-            midi_in(umpBufferSizeInInts),
-            midi_out(umpBufferSizeInInts) {
+            event_in(eventBufferSizeBytes),
+            event_out(eventBufferSizeBytes) {
         }
         ~AudioProcessContext() {
             for (const auto bus : audio_in)
@@ -160,8 +155,8 @@ namespace remidy {
             audio_out.emplace_back(new AudioBusBufferList(channelCount, bufferSizeInFrames));
         }
 
-        MidiSequence& midiIn() { return midi_in; }
-        MidiSequence& midiOut() { return midi_out; }
+        EventSequence& eventIn() { return event_in; }
+        EventSequence& eventOut() { return event_out; }
 
         // Is this a hack...?
         void swap() {
@@ -169,9 +164,9 @@ namespace remidy {
             audio_out = audio_in;
             audio_in = tmpAudio;
 
-            MidiSequence& tmpMidi = midi_in;
-            midi_out = midi_in;
-            midi_in = tmpMidi;
+            EventSequence& tmpMidi = event_in;
+            event_out = event_in;
+            event_in = tmpMidi;
         }
     };
 

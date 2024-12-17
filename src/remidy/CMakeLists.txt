@@ -88,7 +88,7 @@ target_sources(remidy PRIVATE
 
         Logger.cpp
         AudioBufferList.cpp
-        MidiSequence.cpp
+        EventSequence.cpp
 
         PluginCatalog.cpp
         PluginBundlePool.cpp

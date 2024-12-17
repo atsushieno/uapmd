@@ -10,6 +10,6 @@ typedef void* uapmd_device_t;
 
 namespace uapmd {
     typedef remidy::AudioBusBufferList AudioBufferList;
-    typedef remidy::MidiSequence MidiSequence;
+    typedef remidy::EventSequence EventSequence;
     typedef remidy::AudioProcessContext AudioProcessContext;
 }

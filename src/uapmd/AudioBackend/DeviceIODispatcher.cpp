@@ -82,8 +82,8 @@ uapmd::DeviceIODispatcher::Impl::Impl(size_t umpInputBufferSizeInBytes, DeviceIO
         return ret;
     });
     midiDriver->addCallback([this](AudioProcessContext& data) {
-        auto& input = data.midiIn();
-        size_t size = input.sizeInBytes();
+        auto& input = data.eventIn();
+        size_t size = input.position();
         if (size + next_ump_position >= ump_buffer_size_in_bytes)
             return 1; // FIXME: define error code for insufficient buffer
         // FIXME: define status codes

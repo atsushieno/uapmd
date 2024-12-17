@@ -140,8 +140,8 @@ class RemidyApply {
                                 umpSequence[m * 2] = noteOn >> 32;
                                 umpSequence[m * 2 + 1] = noteOn & UINT32_MAX;
                             }
-                            memcpy(process.midiIn().getMessages(), umpSequence, 8 * numNotes);
-                            process.midiIn().sizeInInts(2 * numNotes);
+                            memcpy(process.eventIn().getMessages(), umpSequence, 8 * numNotes);
+                            process.eventIn().position(8 * numNotes);
                             break;
                         }
                         case 128: {
@@ -150,8 +150,8 @@ class RemidyApply {
                                 umpSequence[m * 2] = noteOff >> 32;
                                 umpSequence[m * 2 + 1] = noteOff & UINT32_MAX;
                             }
-                            memcpy(process.midiIn().getMessages(), umpSequence, 8 * numNotes);
-                            process.midiIn().sizeInInts(2 * numNotes);
+                            memcpy(process.eventIn().getMessages(), umpSequence, 8 * numNotes);
+                            process.eventIn().position(8 * numNotes);
                             break;
                         }
                     }
@@ -169,7 +169,7 @@ class RemidyApply {
                     if (auto ret = track->processAudio(process); ret)
                         return ret;
 
-                    process.midiIn().sizeInInts(0); // reset
+                    process.eventIn().position(0); // reset
 
                     // FIXME: avoid memcpy (audio output)
                     for (auto bus = 0, n = process.audioOutBusCount(); bus < n; bus++) {

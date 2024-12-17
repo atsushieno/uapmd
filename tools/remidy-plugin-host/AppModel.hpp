@@ -7,7 +7,7 @@
 namespace uapmd {
     class AppModel {
         const size_t buffer_size_in_frames;
-        const size_t ump_buffer_size_in_ints;
+        const size_t ump_buffer_size_in_bytes;
         int32_t sample_rate;
         DeviceIODispatcher dispatcher;
         AudioPluginHostPAL* plugin_host_pal;
