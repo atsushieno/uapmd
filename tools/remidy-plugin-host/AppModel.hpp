@@ -12,12 +12,6 @@ namespace uapmd {
         DeviceIODispatcher dispatcher;
         AudioPluginHostPAL* plugin_host_pal;
         SequenceProcessor sequencer;
-        /*
-        remidy::MasterContext master_context{};
-        std::vector<remidy::TrackContext*> track_contexts{};
-        std::vector<remidy::AudioProcessContext*> track_buffers{};
-        uapmd::SequenceProcessContext data{ .tracks = track_buffers };
-         */
 
         int32_t trackIndexForInstanceId(int32_t instance) {
             for (int32_t i = 0, n = sequencer.tracks().size(); i < n; i++) {
@@ -56,13 +50,6 @@ namespace uapmd {
 
                 for (auto& f : instancingCompleted)
                     f(instancingId, track->graph().plugins()[0]->instanceId(), error);
-                /*
-                auto trackCtx = new remidy::TrackContext(master_context);
-                track_contexts.emplace_back(trackCtx);
-                auto ctx = new remidy::AudioProcessContext(4096);
-                ctx.trackContext(trackCtx);
-                track_buffers.emplace_back(ctx);
-                 */
             });
         }
 
