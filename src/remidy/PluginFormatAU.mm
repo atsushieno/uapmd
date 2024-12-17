@@ -496,21 +496,21 @@ remidy::StatusCode remidy::AudioPluginInstanceAUv3::sampleRate(double sampleRate
 
 remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioPluginInstanceAU *owner)
     : owner(owner) {
-    auto result = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &parameter_list_size, nil);
+    auto result = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &au_param_id_list_size, nil);
     if (result != noErr) {
         owner->format->getLogger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
         return;
     }
-    parameter_id_list = static_cast<AudioUnitParameterID *>(calloc(parameter_list_size, 1));
-    result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, parameter_id_list, &parameter_list_size);
+    au_param_id_list = static_cast<AudioUnitParameterID *>(calloc(au_param_id_list_size, 1));
+    result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, au_param_id_list, &au_param_id_list_size);
     if (result != noErr) {
         owner->format->getLogger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
         return;
     }
 
     AudioUnitParameterInfo info;
-    for (size_t i = 0, n = parameter_list_size / sizeof(AudioUnitParameterID); i < n; i++) {
-        auto id = parameter_id_list[i];
+    for (size_t i = 0, n = au_param_id_list_size / sizeof(AudioUnitParameterID); i < n; i++) {
+        auto id = au_param_id_list[i];
         UInt32 size = sizeof(info);
         result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, id, &info, &size);
         if (result != noErr) {
@@ -526,8 +526,8 @@ remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioP
 }
 
 remidy::AudioPluginInstanceAU::ParameterSupport::~ParameterSupport() {
-    if (parameter_id_list)
-        free(parameter_id_list);
+    if (au_param_id_list)
+        free(au_param_id_list);
 }
 
 std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceAU::ParameterSupport::parameters() {
@@ -537,13 +537,13 @@ std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceAU::ParameterSu
 remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
     // FIXME: calculate inBufferOffsetInFrames from timestamp.
     auto inBufferOffsetInFrames = 0;
-    AudioUnitSetParameter(owner->instance, parameter_id_list[index], kAudioUnitScope_Global, 0, value, inBufferOffsetInFrames);
+    AudioUnitSetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Global, 0, value, inBufferOffsetInFrames);
     return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::getParameter(uint32_t index, double* value) {
     AudioUnitParameterValue av;
-    AudioUnitGetParameter(owner->instance, parameter_id_list[index], kAudioUnitScope_Global, 0, &av);
+    AudioUnitGetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Global, 0, &av);
     *value = av;
     return StatusCode::OK;
 }

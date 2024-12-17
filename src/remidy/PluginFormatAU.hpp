@@ -32,8 +32,8 @@ namespace remidy {
 
         class ParameterSupport : public PluginParameterSupport {
             remidy::AudioPluginInstanceAU *owner;
-            AudioUnitParameterID* parameter_id_list{};
-            UInt32 parameter_list_size{};
+            AudioUnitParameterID* au_param_id_list{nullptr};
+            UInt32 au_param_id_list_size{0};
             std::vector<PluginParameter*> parameter_list{};
 
         public:
