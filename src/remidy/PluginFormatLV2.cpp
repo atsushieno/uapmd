@@ -1,4 +1,5 @@
 #include "PluginFormatLV2.hpp"
+#include "cmidi2.h"
 
 namespace remidy {
     PluginFormatLV2::Impl::Impl(PluginFormatLV2* owner) :
@@ -138,10 +139,9 @@ namespace remidy {
         instance = nullptr;
 
         if (plugin) {
-            uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
-            for (auto p : port_buffers)
-                if (p)
-                    free(p);
+            for (auto p : lv2_ports)
+                if (p.port_buffer)
+                    free(p.port_buffer);
         }
     }
 
@@ -163,15 +163,22 @@ namespace remidy {
 
         if (instance)
             // we need to save state delete instance, recreate instance with the
-                // new configuration, and restore the state.
-                    throw std::runtime_error("AudioPluginInstanceLV2::configure() re-configuration is not implemented");
+            // new configuration, and restore the state.
+            // FIXME: implement
+            throw std::runtime_error("AudioPluginInstanceLV2::configure() re-configuration is not implemented");
 
+        sample_rate = configuration.sampleRate;
         instance = instantiate_plugin(formatImpl->worldContext, &implContext, plugin,
             configuration.sampleRate, configuration.offlineMode);
         if (!instance)
             return StatusCode::FAILED_TO_INSTANTIATE;
 
-        // create port mappings
+        for (const auto p : lv2_ports)
+            if (p.port_buffer)
+                free(p.port_buffer);
+        lv2_ports.clear();
+
+        // create port mappings between Remidy and LV2
         uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
         int32_t portToScan = 0;
         auto audioIns = audioInputBuses();
@@ -194,21 +201,32 @@ namespace remidy {
             }
         }
 
-        for (const auto p : port_buffers)
-            if (p)
-                free(p);
-        port_buffers.clear();
+        int32_t nextAtomIn = 0, nextAtomOut = 0;
         for (int i = 0; i < numPorts; i++) {
-            if (const auto port = lilv_plugin_get_port_by_index(plugin, i);
-                !implContext.IS_AUDIO_PORT(plugin, port)) {
+            const auto port = lilv_plugin_get_port_by_index(plugin, i);
+
+            auto lv2Port = LV2PortInfo{};
+            lv2Port.atom_in_index = implContext.IS_ATOM_IN(plugin, port) ? nextAtomIn++ : -1;
+            lv2Port.atom_out_index = implContext.IS_ATOM_OUT(plugin, port) ? nextAtomOut++ : -1;
+
+            if (!implContext.IS_AUDIO_PORT(plugin, port)) {
                 const LilvNode* minSizeNode = lilv_port_get(plugin, port, implContext.statics->resize_port_minimum_size_node);
                 const int minSize = minSizeNode ? lilv_node_as_int(minSizeNode) : 0;
-                auto buffer = calloc(minSize ? minSize : sizeof(float), 1);
-                port_buffers.emplace_back(buffer);
+                // If minSize is not specified, it is interpreted as to contain one single float control value.
+                lv2Port.buffer_size = minSize ? minSize : sizeof(float);
+                auto buffer = calloc(lv2Port.buffer_size, 1);
+                lv2Port.port_buffer = buffer;
                 lilv_instance_connect_port(instance, i, buffer);
+
+                if (implContext.IS_ATOM_PORT(plugin, port)) {
+                    lv2_atom_forge_init(&lv2Port.forge, getLV2UridMapData());
+                    lv2_atom_forge_set_buffer(&lv2Port.forge, (uint8_t*) buffer, lv2Port.buffer_size);
+                }
             }
             else
-                port_buffers.emplace_back(nullptr);
+                lv2Port.buffer_size = configuration.bufferSizeInSamples * sizeof(float);
+
+            lv2_ports.emplace_back(lv2Port);
         }
 
         return StatusCode::OK;
@@ -238,7 +256,11 @@ namespace remidy {
             lilv_instance_connect_port(instance, m.lv2Port, audioOut);
         }
 
-        // FIXME: process Atom inputs
+        // FIXME: pass correct timestamp
+        for (auto & port : lv2_ports)
+            if (port.atom_in_index >= 0 || port.atom_out_index >= 0)
+                lv2_atom_sequence_clear((LV2_Atom_Sequence*) port.port_buffer);
+        ump_input_dispatcher.process(0, process);
 
         lilv_instance_run(instance, process.frameCount());
 
@@ -422,4 +444,125 @@ namespace remidy {
     StatusCode AudioPluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
         return parameter_handlers[index]->setParameter(value, timestamp);
     }
+}
+
+// LV2UmpInputDispatcher
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::enqueueMidi1Event(uint8_t atomInIndex, size_t eventSize) {
+    int32_t lv2PortIndex = owner->portIndexForAtomGroupIndex(false, atomInIndex);
+    auto seq = (LV2_Atom_Sequence*) owner->lv2_ports[lv2PortIndex].port_buffer;
+    auto& forge = owner->lv2_ports[lv2PortIndex].forge;
+
+    auto timestampInSamples = static_cast<int64_t>(timestamp() * 31250 / owner->sample_rate);
+
+    lv2_atom_forge_frame_time(&forge, timestampInSamples);
+    lv2_atom_forge_atom(&forge, eventSize, owner->implContext.statics->urids.urid_midi_event_type);
+    lv2_atom_forge_write(&forge, midi1Bytes, eventSize);
+
+    seq->atom.size = forge.offset - sizeof(LV2_Atom);
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onNoteOn(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
+    // It has to downconvert to MIDI 1.0 note on. Group and attribute fields are ignored.
+    midi1Bytes[0] = CMIDI2_STATUS_NOTE_ON + channel;
+    midi1Bytes[1] = note;
+    midi1Bytes[2] = (uint7_t) (velocity >> 9);
+    enqueueMidi1Event(group, 3);
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onNoteOff(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
+    // It has to downconvert to MIDI 1.0 note on. Group and attribute fields are ignored.
+    // It has to downconvert to MIDI 1.0 note on. Group and attribute fields are ignored.
+    midi1Bytes[0] = CMIDI2_STATUS_NOTE_OFF + channel;
+    midi1Bytes[1] = note;
+    midi1Bytes[2] = (uint7_t) (velocity >> 9);
+    enqueueMidi1Event(group, 3);
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onAC(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) {
+    // parameter change (index = bank * 128 + index)
+    // FIXME: implement
+    // We have to determine whether they run through Atom port or mapped to parameters.
+    // If mapped, it has to go through parameter support to dispatch to appropriate port (controlPort or AtomPort)
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onPNAC(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        remidy::uint7_t note, uint8_t index, uint32_t data) {
+    // LV2 does not support MIDI 2.0, so it cannot be supported
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onCC(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        remidy::uint7_t index, uint32_t data) {
+    // FIXME: implement
+    // We have to determine whether they run through Atom port or mapped to parameters.
+    // If mapped, it has to go through parameter support to dispatch to appropriate port (controlPort or AtomPort)
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onProgramChange(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        remidy::uint7_t flags, remidy::uint7_t program, remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) {
+    if (flags & CMIDI2_PROGRAM_CHANGE_OPTION_BANK_VALID) {
+        midi1Bytes[0] = CMIDI2_STATUS_CC + channel;
+        midi1Bytes[1] = CMIDI2_CC_BANK_SELECT;
+        midi1Bytes[2] = bankMSB;
+        midi1Bytes[3] = CMIDI2_STATUS_CC + channel;
+        midi1Bytes[4] = CMIDI2_CC_BANK_SELECT_LSB;
+        midi1Bytes[5] = bankLSB;
+        midi1Bytes[6] = CMIDI2_STATUS_PROGRAM + channel;
+        midi1Bytes[7] = program;
+        enqueueMidi1Event(group, 8);
+    } else {
+        midi1Bytes[0] = CMIDI2_STATUS_PROGRAM + channel;
+        midi1Bytes[1] = program;
+        enqueueMidi1Event(group, 2);
+    }
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onRC(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) {
+    midi1Bytes[0] = CMIDI2_STATUS_CC + channel;
+    midi1Bytes[1] = index;
+    midi1Bytes[2] = (uint7_t) (data >> 9);
+    enqueueMidi1Event(group, 3);
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onPNRC(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        remidy::uint7_t note, uint8_t index, uint32_t data) {
+    // LV2 does not support MIDI 2.0, so it cannot be supported
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onPitchBend(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        int8_t perNoteOrMinus, uint32_t data) {
+    midi1Bytes[0] = CMIDI2_STATUS_PITCH_BEND + channel;
+    midi1Bytes[1] = (uint7_t) (data >> 25);
+    midi1Bytes[2] = (uint7_t) ((data >> 17) & 0x7F);
+    enqueueMidi1Event(group, 3);
+}
+
+void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onPressure(
+        remidy::uint4_t group, remidy::uint4_t channel,
+        int8_t perNoteOrMinus, uint32_t data) {
+    if (perNoteOrMinus < 0) {
+        midi1Bytes[0] = CMIDI2_STATUS_CAF + channel;
+        midi1Bytes[1] = (uint7_t) (data >> 25);
+        enqueueMidi1Event(group, 2);
+    } else {
+        midi1Bytes[0] = CMIDI2_STATUS_PAF + channel;
+        midi1Bytes[1] = (uint7_t) perNoteOrMinus;
+        midi1Bytes[2] = (uint7_t) (data >> 25);
+        enqueueMidi1Event(group, 3);
+    }
+    // CAf and PAf
+    // FIXME: implement
 }

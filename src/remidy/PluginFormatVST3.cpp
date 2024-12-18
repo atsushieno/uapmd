@@ -612,6 +612,7 @@ namespace remidy {
         processData.nframes = numFrames;
 
         // handle UMP inputs via UmpInputDispatcher.
+        // FIXME: pass correct timestamp
         ump_input_dispatcher.process(0, process);
 
         // invoke plugin process
@@ -796,7 +797,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy
 }
 
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPressure(remidy::uint4_t group, remidy::uint4_t channel,
-                                                                         remidy::uint7_t perNoteOrMinus, uint32_t data) {
+                                                                         int8_t perNoteOrMinus, uint32_t data) {
     // CAf: use parameter kAfterTouch (if available)
     // PAf: use IEventList to add Event (kPolyPressureEvent)
 }

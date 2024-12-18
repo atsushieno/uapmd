@@ -134,7 +134,29 @@ namespace remidy {
             StatusCode getParameter(uint32_t index, double *value) override;
         };
 
+        class LV2UmpInputDispatcher : public TypedUmpInputDispatcher {
+            AudioPluginInstanceLV2* owner;
+            uint8_t midi1Bytes[16];
+
+        public:
+            LV2UmpInputDispatcher(AudioPluginInstanceLV2* owner) : owner(owner) {}
+
+            void enqueueMidi1Event(uint8_t atomInIndex, size_t eventSize);
+
+            void onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) override;
+            void onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index, uint32_t data) override;
+            void onPNAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t index, uint32_t data) override;
+            void onPNRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t index, uint32_t data) override;
+            void onPitchBend(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) override;
+            void onPressure(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) override;
+            void onProgramChange(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t flags, remidy::uint7_t program, remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) override;
+            void onRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) override;
+            void onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
+            void onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
+        };
+
         PluginFormatLV2::Impl *formatImpl;
+        int32_t sample_rate;
         const LilvPlugin *plugin;
         LilvInstance *instance{nullptr};
         remidy_lv2::LV2ImplPluginContext implContext;
@@ -151,7 +173,15 @@ namespace remidy {
         std::vector<AudioBusDefinition> output_bus_defs;
         std::vector<AudioBusConfiguration *> input_buses;
         std::vector<AudioBusConfiguration *> output_buses;
-        std::vector<void *> port_buffers{};
+
+        struct LV2PortInfo {
+            void* port_buffer{nullptr};
+            int32_t atom_in_index{-1};
+            int32_t atom_out_index{-1};
+            size_t buffer_size{0};
+            LV2_Atom_Forge forge{};
+        };
+        std::vector<LV2PortInfo> lv2_ports{};
 
         struct RemidyToLV2PortMapping {
             size_t bus;
@@ -162,6 +192,19 @@ namespace remidy {
         std::vector<RemidyToLV2PortMapping> audio_out_port_mapping{};
 
         ParameterSupport *_parameters{};
+
+        LV2UmpInputDispatcher ump_input_dispatcher{this};
+
+        int32_t portIndexForAtomGroupIndex(bool isInput, uint8_t atomGroup) {
+            for (int i = 0, n = lv2_ports.size(); i < n; i++)
+                if (lv2_ports[i].atom_in_index == atomGroup && !isInput ||
+                    lv2_ports[i].atom_out_index == atomGroup && isInput)
+                    return i;
+            return -1;
+        }
+        LV2_URID_Map* getLV2UridMapData() {
+            return &implContext.statics->features.urid_map_feature_data;
+        }
 
     public:
         explicit AudioPluginInstanceLV2(PluginCatalogEntry *entry, PluginFormatLV2::Impl *formatImpl,

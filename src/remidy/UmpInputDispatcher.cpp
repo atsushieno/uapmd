@@ -5,6 +5,8 @@ void remidy::TypedUmpInputDispatcher::process(uint64_t newTimestamp, AudioProces
     _timestamp = newTimestamp;
     track_context = src.trackContext();
 
+    onProcessStart(src);
+
     auto ptr = src.eventIn().getMessages();
     auto numBytes = src.eventIn().position();
     CMIDI2_UMP_SEQUENCE_FOREACH(ptr, numBytes, iter) {
@@ -107,5 +109,8 @@ void remidy::TypedUmpInputDispatcher::process(uint64_t newTimestamp, AudioProces
                 break;
         }
     }
+
+    onProcessEnd(src);
+
     track_context = nullptr;
 }

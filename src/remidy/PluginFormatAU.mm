@@ -371,6 +371,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
         }
 
         if (buses.hasMidiIn)
+            // FIXME: pass correct timestamp
             ump_input_dispatcher.process(0, process);
 
         auto status = AudioUnitRender(instance, nullptr, &process_timestamp, 0, process.frameCount(), auDataOut);

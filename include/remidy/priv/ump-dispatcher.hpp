@@ -22,7 +22,7 @@ namespace remidy {
         // 90h
         virtual void onNoteOn(uint4_t group, uint4_t channel, uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {}
         // A0h (Poly), D0 (Channel)
-        virtual void onPressure(uint4_t group, uint4_t channel, uint7_t perNoteOrMinus, uint32_t data) {}
+        virtual void onPressure(uint4_t group, uint4_t channel, int8_t perNoteOrMinus, uint32_t data) {}
         // B0h
         virtual void onCC(uint4_t group, uint4_t channel, uint7_t index, uint32_t data) {}
         // C0h
@@ -39,6 +39,9 @@ namespace remidy {
         virtual void onRC(uint4_t group, uint4_t channel, uint7_t bank, uint7_t index, uint32_t data, bool relative) {}
         // 30h, 50h (rel)
         virtual void onAC(uint4_t group, uint4_t channel, uint7_t bank, uint7_t index, uint32_t data, bool relative) {}
+
+        virtual void onProcessStart(AudioProcessContext& src) {}
+        virtual void onProcessEnd(AudioProcessContext& src) {}
     public:
         void process(uint64_t timestamp, AudioProcessContext& src) override;
 
