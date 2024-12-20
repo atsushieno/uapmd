@@ -110,16 +110,16 @@ namespace remidy {
         }
     };
 
-    class AudioPluginInstanceLV2 : public PluginInstance {
+    class PluginInstanceLV2 : public PluginInstance {
         class ParameterSupport : public PluginParameterSupport {
-            AudioPluginInstanceLV2 *owner;
+            PluginInstanceLV2 *owner;
             std::vector<PluginParameter *> parameter_defs{};
             std::vector<LV2ParameterHandler *> parameter_handlers{};
 
             void inspectParameters();
 
         public:
-            explicit ParameterSupport(AudioPluginInstanceLV2 *owner) : owner(owner) {
+            explicit ParameterSupport(PluginInstanceLV2 *owner) : owner(owner) {
                 inspectParameters();
             }
 
@@ -135,11 +135,11 @@ namespace remidy {
         };
 
         class LV2UmpInputDispatcher : public TypedUmpInputDispatcher {
-            AudioPluginInstanceLV2* owner;
+            PluginInstanceLV2* owner;
             uint8_t midi1Bytes[16];
 
         public:
-            LV2UmpInputDispatcher(AudioPluginInstanceLV2* owner) : owner(owner) {}
+            LV2UmpInputDispatcher(PluginInstanceLV2* owner) : owner(owner) {}
 
             void enqueueMidi1Event(uint8_t atomInIndex, size_t eventSize);
 
@@ -157,24 +157,38 @@ namespace remidy {
             void onProcessEnd(remidy::AudioProcessContext &src) override;
         };
 
+        class LV2AudioBuses : public AudioBuses {
+            PluginInstanceLV2* owner;
+
+            struct BusSearchResult {
+                uint32_t numEventIn{0};
+                uint32_t numEventOut{0};
+            };
+            BusSearchResult buses;
+
+            BusSearchResult inspectBuses();
+
+            std::vector<AudioBusDefinition> input_bus_defs;
+            std::vector<AudioBusDefinition> output_bus_defs;
+            std::vector<AudioBusConfiguration *> input_buses;
+            std::vector<AudioBusConfiguration *> output_buses;
+
+        public:
+            explicit LV2AudioBuses(PluginInstanceLV2* owner) : owner(owner) {
+                buses = inspectBuses();
+            }
+            bool hasEventInputs() override { return buses.numEventIn > 0; }
+            bool hasEventOutputs() override { return buses.numEventOut > 0; }
+
+            const std::vector<AudioBusConfiguration*>& audioInputBuses() const override { return input_buses; }
+            const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override { return output_buses; }
+        };
+
         PluginFormatLV2::Impl *formatImpl;
         int32_t sample_rate;
         const LilvPlugin *plugin;
         LilvInstance *instance{nullptr};
         remidy_lv2::LV2ImplPluginContext implContext;
-
-        struct BusSearchResult {
-            uint32_t numEventIn{0};
-            uint32_t numEventOut{0};
-        };
-        BusSearchResult buses;
-
-        BusSearchResult inspectBuses();
-
-        std::vector<AudioBusDefinition> input_bus_defs;
-        std::vector<AudioBusDefinition> output_bus_defs;
-        std::vector<AudioBusConfiguration *> input_buses;
-        std::vector<AudioBusConfiguration *> output_buses;
 
         struct LV2PortInfo {
             void* port_buffer{nullptr};
@@ -194,6 +208,8 @@ namespace remidy {
         std::vector<RemidyToLV2PortMapping> audio_in_port_mapping{};
         std::vector<RemidyToLV2PortMapping> audio_out_port_mapping{};
 
+        LV2AudioBuses* audio_buses{};
+
         ParameterSupport *_parameters{};
 
         LV2UmpInputDispatcher ump_input_dispatcher{this};
@@ -210,10 +226,10 @@ namespace remidy {
         }
 
     public:
-        explicit AudioPluginInstanceLV2(PluginCatalogEntry *entry, PluginFormatLV2::Impl *formatImpl,
-                                        const LilvPlugin *plugin);
+        explicit PluginInstanceLV2(PluginCatalogEntry *entry, PluginFormatLV2::Impl *formatImpl,
+                                   const LilvPlugin *plugin);
 
-        ~AudioPluginInstanceLV2() override;
+        ~PluginInstanceLV2() override;
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
@@ -230,13 +246,7 @@ namespace remidy {
         StatusCode process(AudioProcessContext &process) override;
 
         // port helpers
-        bool hasEventInputs() override { return buses.numEventIn > 0; }
-
-        bool hasEventOutputs() override { return buses.numEventOut > 0; }
-
-        const std::vector<AudioBusConfiguration*>& audioInputBuses() const override;
-
-        const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override;
+        AudioBuses* audioBuses() override { return audio_buses; }
 
         // parameters
         PluginParameterSupport *parameters() override;

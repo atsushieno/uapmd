@@ -46,23 +46,25 @@ int testInstancing() {
                 std::cerr << "  " << format->name() << ": Successfully configured " << displayName << ". Instantiating now..." << std::endl;
 
                 instancing.withInstance([&](auto instance) {
+                    auto inputBuses = instance->audioBuses()->audioInputBuses();
+                    auto outputBuses = instance->audioBuses()->audioOutputBuses();
 
-                    uint32_t numAudioIn = instance->audioInputBuses().size();
-                    uint32_t numAudioOut = instance->audioOutputBuses().size();
+                    size_t numAudioIn = inputBuses.size();
+                    size_t numAudioOut = outputBuses.size();
                     remidy::MasterContext masterContext;
                     remidy::TrackContext trackContext{masterContext};
                     remidy::AudioProcessContext ctx{masterContext, 4096};
-                    for (int32_t i = 0, n = numAudioIn; i < n; ++i)
-                        ctx.addAudioIn(instance->audioInputBuses()[i]->channelLayout().channels(), 1024);
-                    for (int32_t i = 0, n = numAudioOut; i < n; ++i)
-                        ctx.addAudioOut(instance->audioOutputBuses()[i]->channelLayout().channels(), 1024);
+                    for (size_t i = 0, n = numAudioIn; i < n; ++i)
+                        ctx.addAudioIn(inputBuses[i]->channelLayout().channels(), 1024);
+                    for (size_t i = 0, n = numAudioOut; i < n; ++i)
+                        ctx.addAudioOut(outputBuses[i]->channelLayout().channels(), 1024);
                     ctx.frameCount(512);
-                    for (uint32_t i = 0; i < numAudioIn; i++) {
+                    for (size_t i = 0; i < numAudioIn; i++) {
                         // FIXME: channel count is not precise.
                         memcpy(ctx.audioIn(i)->getFloatBufferForChannel(0), (void*) "0123456789ABCDEF", 16);
                         memcpy(ctx.audioIn(i)->getFloatBufferForChannel(1), (void*) "FEDCBA9876543210", 16);
                     }
-                    for (uint32_t i = 0; i < numAudioOut; i++) {
+                    for (size_t i = 0; i < numAudioOut; i++) {
                         // FIXME: channel count is not precise.
                         memcpy(ctx.audioOut(i)->getFloatBufferForChannel(0), (void*) "02468ACE13579BDF", 16);
                         memcpy(ctx.audioOut(i)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);

@@ -56,18 +56,35 @@ namespace remidy {
             void process(uint64_t timestamp, remidy::AudioProcessContext &src) override;
         };
 
-        struct BusSearchResult {
-            uint32_t numAudioIn{0};
-            uint32_t numAudioOut{0};
-            bool hasMidiIn{false};
-            bool hasMidiOut{false};
+        class AUAudioBuses : public AudioBuses {
+            AudioPluginInstanceAU* owner;
+
+            struct BusSearchResult {
+                uint32_t numAudioIn{0};
+                uint32_t numAudioOut{0};
+                bool hasMidiIn{false};
+                bool hasMidiOut{false};
+            };
+            BusSearchResult buses{};
+            void inspectBuses();
+            std::vector<AudioBusDefinition> input_bus_defs{};
+            std::vector<AudioBusDefinition> output_bus_defs{};
+            std::vector<AudioBusConfiguration*> input_buses{};
+            std::vector<AudioBusConfiguration*> output_buses{};
+
+        public:
+            explicit AUAudioBuses(AudioPluginInstanceAU* owner) : owner(owner) {
+                inspectBuses();
+            }
+
+            StatusCode configure(ConfigurationRequest& configuration);
+
+            bool hasEventInputs() override { return buses.hasMidiIn; }
+            bool hasEventOutputs() override { return buses.hasMidiOut; }
+
+            const std::vector<AudioBusConfiguration*>& audioInputBuses() const override { return input_buses; }
+            const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override { return output_buses; }
         };
-        BusSearchResult buses{};
-        void inspectBuses();
-        std::vector<AudioBusDefinition> input_bus_defs{};
-        std::vector<AudioBusDefinition> output_bus_defs{};
-        std::vector<AudioBusConfiguration*> input_buses{};
-        std::vector<AudioBusConfiguration*> output_buses{};
 
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
         static OSStatus audioInputRenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) {
@@ -85,7 +102,7 @@ namespace remidy {
         AudioContentType audio_content_type{AudioContentType::Float32};
 
         ParameterSupport* _parameters{nullptr};
-
+        AUAudioBuses* audio_buses{};
         AUUmpInputDispatcher ump_input_dispatcher{this};
 
     protected:
@@ -117,13 +134,6 @@ namespace remidy {
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
 
-        // port helpers
-        bool hasEventInputs() override { return buses.hasMidiIn; }
-        bool hasEventOutputs() override { return buses.hasMidiOut; }
-
-        const std::vector<AudioBusConfiguration*>& audioInputBuses() const override;
-        const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override;
-
         virtual AUVersion auVersion() = 0;
         virtual StatusCode sampleRate(double sampleRate) = 0;
 
@@ -131,6 +141,8 @@ namespace remidy {
             if (!_parameters) _parameters = new ParameterSupport(this);
             return _parameters;
         }
+
+        AudioBuses* audioBuses() override { return audio_buses; }
     };
 
     class AudioPluginInstanceAUv2 final : public AudioPluginInstanceAU {

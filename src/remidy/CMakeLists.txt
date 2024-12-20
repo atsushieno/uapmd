@@ -92,12 +92,14 @@ target_sources(remidy PRIVATE
         vst3/ClassModuleInfo.cpp
         vst3/PluginFormatVST3.cpp
         vst3/PluginInstanceVST3.cpp
+        vst3/PluginInstanceVST3.Buses.cpp
         vst3/PluginInstanceVST3.Parameters.cpp
         vst3/PluginInstanceVST3.Events.cpp
 
         au/AUv2Helper.cpp
         au/PluginFormatAU.mm
         au/PluginInstanceAU.mm
+        au/PluginInstanceAU.Buses.mm
         au/PluginInstanceAU.Events.mm
         au/PluginInstanceAU.Parameters.mm
 
@@ -105,6 +107,7 @@ target_sources(remidy PRIVATE
         lv2/symap.cpp
         lv2/PluginFormatLV2.cpp
         lv2/PluginInstanceLV2.cpp
+        lv2/PluginInstanceLV2.Buses.cpp
         lv2/PluginInstanceLV2.Events.cpp
         lv2/PluginInstanceLV2.Parameters.cpp
 

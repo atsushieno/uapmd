@@ -56,7 +56,7 @@ namespace remidy {
         auto plugins = lilv_world_get_all_plugins(world);
         auto plugin = lilv_plugins_get_by_uri(plugins, targetUri);
         if (plugin) {
-            auto instance = std::make_unique<AudioPluginInstanceLV2>(info, this, plugin);
+            auto instance = std::make_unique<PluginInstanceLV2>(info, this, plugin);
             callback(std::move(instance), "");
             return;
         }

@@ -2,14 +2,14 @@
 
 using namespace remidy;
 
-remidy::AudioPluginInstanceLV2::ParameterSupport::~ParameterSupport()  {
+remidy::PluginInstanceLV2::ParameterSupport::~ParameterSupport()  {
     for (auto h : parameter_handlers)
         delete h;
     for (auto p : parameter_defs)
         delete p;
 }
 
-std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceLV2::ParameterSupport::parameters() {
+std::vector<remidy::PluginParameter*> remidy::PluginInstanceLV2::ParameterSupport::parameters() {
     return parameter_defs;
 }
 
@@ -75,7 +75,7 @@ std::unique_ptr<PluginParameter> createParameter(const LilvNode* parameter, remi
     return std::make_unique<PluginParameter>(label, label, portGroup, defValue, minValue, maxValue, false, false, enums);
 }
 
-void remidy::AudioPluginInstanceLV2::ParameterSupport::inspectParameters() {
+void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
     auto formatImpl = owner->formatImpl;
     auto& implContext = owner->implContext;
     auto plugin = owner->plugin;
@@ -113,10 +113,10 @@ void remidy::AudioPluginInstanceLV2::ParameterSupport::inspectParameters() {
     }
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceLV2::ParameterSupport::getParameter(uint32_t index, double *value) {
+remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::getParameter(uint32_t index, double *value) {
     return parameter_handlers[index]->getParameter(value);
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
     return parameter_handlers[index]->setParameter(value, timestamp);
 }

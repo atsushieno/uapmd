@@ -6,12 +6,13 @@ remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, Log
         PluginInstance(info), format(format), logger_(logger), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
-    inspectBuses();
+    audio_buses = new AUAudioBuses(this);
 }
 
 remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
-    if (_parameters)
-        delete _parameters;
+    delete audio_buses;
+    delete _parameters;
+
     for (auto auDataIn : auDataIns)
         free(auDataIn);
     for (auto auDataOut : auDataOuts)
@@ -52,76 +53,11 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
 
     sampleRate((double) configuration.sampleRate);
 
-    // FIXME: there seems some misunderstandings on either how we represent channel or
-    // how we should copy audio buffer.
     audio_content_type = configuration.dataType;
-    UInt32 sampleSize = configuration.dataType == AudioContentType::Float64 ? sizeof(double) : sizeof(float);
-    AudioStreamBasicDescription stream{};
-    for (auto i = 0; i < buses.numAudioIn; i++) {
-        result = AudioUnitGetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i,
-                                      &stream, &size);
-        if (result == noErr) { // some plugins do not seem to support this property...
-            stream.mSampleRate = configuration.sampleRate;
-            stream.mFormatID = kAudioFormatLinearPCM;
-            stream.mFormatFlags = kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved;
-            stream.mBitsPerChannel = 8 * sampleSize;
-            stream.mFramesPerPacket = 1;
-            stream.mBytesPerFrame = sampleSize;
-            stream.mBytesPerPacket = sampleSize;
-            // FIXME: retrieve from bus
-            stream.mChannelsPerFrame = 2;
-            result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i,
-                                          &stream, sizeof(AudioStreamBasicDescription));
-            if (result) {
-                logger()->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
-                return StatusCode::FAILED_TO_CONFIGURE;
-            }
-        }
 
-        /*
-        ::AudioChannelLayout auLayout{};
-        // FIXME: retrieve from bus
-        auLayout.mChannelBitmap = kAudioChannelBit_Left | kAudioChannelBit_Right;
-        auLayout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
-        UInt32 size;
-        result = AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, i, &auLayout, &size);
-        //result = AudioUnitSetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, i, &auLayout, sizeof(::AudioChannelLayout));
-        if (result) {
-            format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_AudioChannelLayout: OSStatus %d", name.c_str(), result);
-            return StatusCode::FAILED_TO_CONFIGURE;
-        }*/
-    }
-    for (auto i = 0; i < buses.numAudioOut; i++) {
-        result = AudioUnitGetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i,
-                                      &stream, &size);
-        if (result == noErr) { // some plugins do not seem to support this property...
-            stream.mSampleRate = configuration.sampleRate;
-            stream.mFormatID = kAudioFormatLinearPCM;
-            stream.mFormatFlags = kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved;
-            stream.mBitsPerChannel = 8 * sampleSize;
-            stream.mFramesPerPacket = 1;
-            stream.mBytesPerFrame = sampleSize;
-            stream.mBytesPerPacket = sampleSize;
-            // FIXME: retrieve from bus
-            stream.mChannelsPerFrame = 2;
-            result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i,
-                                          &stream, sizeof(AudioStreamBasicDescription));
-            if (result) {
-                logger()->logError("%s: AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
-                return StatusCode::FAILED_TO_CONFIGURE;
-            }
-        }
-
-        /*
-        ::AudioChannelLayout auLayout{};
-        // FIXME: retrieve from bus
-        auLayout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
-        result = AudioUnitSetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, i, &auLayout, sizeof(::AudioChannelLayout));
-        if (result) {
-            format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_AudioChannelLayout: OSStatus %d", name.c_str(), result);
-            return StatusCode::FAILED_TO_CONFIGURE;
-        }*/
-    }
+    auto ret = audio_buses->configure(configuration);
+    if (ret != StatusCode::OK)
+        return ret;
 
     // it could be an invalid property. maybe just ignore that.
     result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &configuration.offlineMode, sizeof(bool));
@@ -137,7 +73,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     }
 
     // audio input retriever
-    if (!input_buses.empty()) {
+    if (!audio_buses->audioInputBuses().empty()) {
         AURenderCallbackStruct callback;
         callback.inputProc = audioInputRenderCallback;
         callback.inputProcRefCon = this;
@@ -149,7 +85,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     }
 
     // MIDI callback
-    if (buses.hasMidiIn) {
+    if (audio_buses->hasEventInputs()) {
         AUMIDIOutputCallbackStruct callback;
         callback.midiOutputCallback = midiOutputCallback;
         callback.userData = this;
@@ -162,14 +98,14 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
 
     AudioUnitGetProperty(instance, kAudioUnitProperty_InPlaceProcessing, kAudioUnitScope_Global, 0, &process_replacing, &size);
 
-    for (int32_t i = 0; i < buses.numAudioIn; i++) {
+    for (int32_t i = 0, n = audio_buses->audioInputBuses().size(); i < n; i++) {
         // FIXME: get precise channel count
         int numChannels = 2;
         auto b = (AudioBufferList*) calloc(1, sizeof(AudioBufferList) + sizeof(::AudioBuffer) * (numChannels - 1));
         b->mNumberBuffers = numChannels;
         auDataIns.emplace_back(b);
     }
-    for (int32_t i = 0; i < buses.numAudioOut; i++) {
+    for (int32_t i = 0, n = audio_buses->audioOutputBuses().size(); i < n; i++) {
         // FIXME: get precise channel count
         int numChannels = 2;
         auto b = (AudioBufferList*) calloc(1, sizeof(AudioBufferList) + sizeof(::AudioBuffer) * (numChannels - 1));
@@ -235,7 +171,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
             auDataOut->mNumberBuffers++;
         }
 
-        if (buses.hasMidiIn)
+        if (audio_buses->hasEventInputs())
             // FIXME: pass correct timestamp
             ump_input_dispatcher.process(0, process);
 
@@ -249,83 +185,6 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
 
     return StatusCode::OK;
 }
-
-void remidy::AudioPluginInstanceAU::inspectBuses() {
-    OSStatus result;
-    BusSearchResult ret{};
-    ::AudioChannelLayout layout{};
-    UInt32 count{};
-    UInt32 size = sizeof(UInt32);
-    result = AudioUnitGetProperty(instance, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &count, &size);
-    if (result)
-        logger()->logWarning("%s: failed to retrieve input kAudioUnitProperty_ElementCount. Status: %d", name.c_str(), result);
-    else
-        ret.numAudioIn = count;
-    result = AudioUnitGetProperty(instance, kAudioUnitProperty_ElementCount, kAudioUnitScope_Output, 0, &count, &size);
-    if (result)
-        logger()->logWarning("%s: failed to retrieve output kAudioUnitProperty_ElementCount. Status: %d", name.c_str(), result);
-    else
-        ret.numAudioOut = count;
-
-    // FIXME: we need to fill input_buses and output_buses here.
-
-    for (auto bus : input_buses)
-        delete bus;
-    for (auto bus : output_buses)
-        delete bus;
-    input_buses.clear();
-    output_buses.clear();
-    input_bus_defs.clear();
-    output_bus_defs.clear();
-
-    ::AudioChannelLayout auLayout;
-    for (auto i = 0; i < ret.numAudioIn; i++) {
-        if (AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, i, &auLayout, &size) == noErr) {
-            CFStringRef cfName{nullptr};
-            if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementName, kAudioUnitScope_Input, i, &cfName, &size) == noErr && cfName != nullptr) {
-                // FIXME: get bus name
-                auto busName = std::string{""};//cfStringToString1024(cfName);
-                AudioBusDefinition def{busName, AudioBusRole::Main}; // FIXME: correct bus type
-                // FIXME: fill channel layouts
-                // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
-                input_bus_defs.emplace_back(def);
-                input_buses.emplace_back(new AudioBusConfiguration(def));
-            }
-        }
-    }
-    for (auto i = 0; i < ret.numAudioOut; i++) {
-        if (AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, i, &auLayout, &size) == noErr) {
-            CFStringRef cfName{nullptr};
-            if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementName, kAudioUnitScope_Output, i, &cfName, &size) == noErr && cfName != nullptr) {
-                // FIXME: get bus name
-                auto busName = std::string{""};//cfStringToString1024(cfName);
-                AudioBusDefinition def{busName, AudioBusRole::Main}; // FIXME: correct bus type
-                // FIXME: fill channel layouts
-                // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
-                output_bus_defs.emplace_back(def);
-                output_buses.emplace_back(new AudioBusConfiguration(def));
-            }
-        }
-    }
-
-    AudioComponentDescription desc;
-    AudioComponentGetDescription(component, &desc);
-    switch (desc.componentType) {
-        case kAudioUnitType_MusicDevice:
-        case kAudioUnitType_MusicEffect:
-        case kAudioUnitType_MIDIProcessor:
-            ret.hasMidiIn = true;
-    }
-    Boolean writable;
-    auto status = AudioUnitGetPropertyInfo(instance, kAudioUnitProperty_MIDIOutputCallbackInfo, kAudioUnitScope_Global, 0, nullptr, &writable);
-    if (status == noErr && writable)
-        ret.hasMidiOut = true;
-
-    buses = ret;
-}
-
-const std::vector<remidy::AudioBusConfiguration*>& remidy::AudioPluginInstanceAU::audioInputBuses() const { return input_buses; }
-const std::vector<remidy::AudioBusConfiguration*>& remidy::AudioPluginInstanceAU::audioOutputBuses() const { return output_buses; }
 
 // AudioPluginInstanceAUv2
 

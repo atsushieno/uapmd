@@ -18,16 +18,18 @@ class RemidyApply {
 
     int direct_apply(remidy::PluginInstance* instance, std::optional<std::string> audio, std::optional<std::string> smf, std::optional<std::string> smf2) {
         bool successful = false;
+        auto inputBuses = instance->audioBuses()->audioInputBuses();
+        auto outputBuses = instance->audioBuses()->audioOutputBuses();
 
-        uint32_t numAudioIn = instance->audioInputBuses().size();
-        uint32_t numAudioOut = instance->audioOutputBuses().size();
+        uint32_t numAudioIn = inputBuses.size();
+        uint32_t numAudioOut = outputBuses.size();
         remidy::MasterContext masterContext{};
         remidy::TrackContext trackContext{masterContext};
         remidy::AudioProcessContext ctx{masterContext, 4096};
         for (int32_t i = 0, n = numAudioIn; i < n; ++i)
-            ctx.addAudioIn(instance->audioInputBuses()[i]->channelLayout().channels(), 1024);
+            ctx.addAudioIn(inputBuses[i]->channelLayout().channels(), 1024);
         for (int32_t i = 0, n = numAudioOut; i < n; ++i)
-            ctx.addAudioOut(instance->audioOutputBuses()[i]->channelLayout().channels(), 1024);
+            ctx.addAudioOut(outputBuses[i]->channelLayout().channels(), 1024);
         ctx.frameCount(512);
         for (uint32_t i = 0; i < numAudioIn; i++) {
             // FIXME: channel count is not precise.

@@ -104,6 +104,48 @@ namespace remidy {
             void onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
         };
 
+        class VST3AudioBuses : public AudioBuses {
+            AudioPluginInstanceVST3* owner;
+
+            std::vector<AudioBusDefinition> input_bus_defs{};
+            std::vector<AudioBusDefinition> output_bus_defs{};
+            std::vector<AudioBusConfiguration*> input_buses{};
+            std::vector<AudioBusConfiguration*> output_buses{};
+
+            std::vector<v3_audio_bus_buffers> inputAudioBusBuffersList{};
+            std::vector<v3_audio_bus_buffers> outputAudioBusBuffersList{};
+
+            std::vector<v3_speaker_arrangement> getVst3SpeakerConfigs(int32_t direction);
+
+        public:
+            explicit VST3AudioBuses(AudioPluginInstanceVST3* owner) : owner(owner) {
+                inspectBuses();
+            }
+            ~VST3AudioBuses() override {
+                for (const auto bus: input_buses)
+                    delete bus;
+                for (const auto bus: output_buses)
+                    delete bus;
+            }
+
+            void configure(ConfigurationRequest& config);
+            void allocateBuffers();
+            void deallocateBuffers();
+
+            struct BusSearchResult {
+                uint32_t numEventIn{0};
+                uint32_t numEventOut{0};
+            };
+            BusSearchResult busesInfo{};
+            void inspectBuses();
+
+            bool hasEventInputs() override { return busesInfo.numEventIn > 0; }
+            bool hasEventOutputs() override { return busesInfo.numEventOut > 0; }
+
+            const std::vector<AudioBusConfiguration*>& audioInputBuses() const override;
+            const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override;
+        };
+
         PluginFormatVST3::Impl* owner;
         void* module;
         IPluginFactory* factory;
@@ -120,27 +162,14 @@ namespace remidy {
 
         v3_process_data processData{};
         v3_process_context process_context{};
-        std::vector<v3_audio_bus_buffers> inputAudioBusBuffersList{};
-        std::vector<v3_audio_bus_buffers> outputAudioBusBuffersList{};
         HostEventList processDataInputEvents{};
         HostEventList processDataOutputEvents{};
         HostParameterChanges processDataInputParameterChanges{};
         HostParameterChanges processDataOutputParameterChanges{};
 
         void allocateProcessData(v3_process_setup& setup);
-        void deallocateProcessData();
-        std::vector<v3_speaker_arrangement> getVst3SpeakerConfigs(int32_t direction);
 
-        struct BusSearchResult {
-            uint32_t numEventIn{0};
-            uint32_t numEventOut{0};
-        };
-        BusSearchResult busesInfo{};
-        void inspectBuses();
-        std::vector<AudioBusDefinition> input_bus_defs{};
-        std::vector<AudioBusDefinition> output_bus_defs{};
-        std::vector<AudioBusConfiguration*> input_buses{};
-        std::vector<AudioBusConfiguration*> output_buses{};
+        VST3AudioBuses* audio_buses{};
 
         ParameterSupport* _parameters{};
 
@@ -172,11 +201,7 @@ namespace remidy {
         StatusCode process(AudioProcessContext &process) override;
 
         // port helpers
-        bool hasEventInputs() override { return busesInfo.numEventIn > 0; }
-        bool hasEventOutputs() override { return busesInfo.numEventOut > 0; }
-
-        const std::vector<AudioBusConfiguration*>& audioInputBuses() const override;
-        const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override;
+        AudioBuses* audioBuses() override { return audio_buses; }
 
         // parameters
         PluginParameterSupport* parameters() override;

@@ -1,12 +1,12 @@
 #include "PluginFormatLV2.hpp"
 
-remidy::AudioPluginInstanceLV2::AudioPluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
+remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
         PluginInstance(entry), formatImpl(formatImpl), plugin(plugin),
-        implContext(formatImpl->worldContext, formatImpl->world, plugin) {
-    buses = inspectBuses();
+        implContext(formatImpl->worldContext, formatImpl->world, plugin),
+        audio_buses(new LV2AudioBuses(this)) {
 }
 
-remidy::AudioPluginInstanceLV2::~AudioPluginInstanceLV2() {
+remidy::PluginInstanceLV2::~PluginInstanceLV2() {
     if (instance) {
         lilv_instance_deactivate(instance);
         lilv_instance_free(instance);
@@ -18,6 +18,10 @@ remidy::AudioPluginInstanceLV2::~AudioPluginInstanceLV2() {
             if (p.port_buffer)
                 free(p.port_buffer);
     }
+
+    delete audio_buses;
+
+    delete _parameters;
 }
 
 bool getNextAudioPortIndex(remidy_lv2::LV2ImplPluginContext& ctx, const LilvPlugin* plugin, const bool isInput, int32_t& result, int32_t& lv2PortIndex, uint32_t numPorts) {
@@ -33,14 +37,14 @@ bool getNextAudioPortIndex(remidy_lv2::LV2ImplPluginContext& ctx, const LilvPlug
     return false;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceLV2::configure(ConfigurationRequest& configuration) {
+remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& configuration) {
     // Do we have to deal with offlineMode? LV2 only mentions hardRT*Capable*.
 
     if (instance)
         // we need to save state delete instance, recreate instance with the
         // new configuration, and restore the state.
         // FIXME: implement
-        throw std::runtime_error("AudioPluginInstanceLV2::configure() re-configuration is not implemented");
+        throw std::runtime_error("PluginInstanceLV2::configure() re-configuration is not implemented");
 
     sample_rate = configuration.sampleRate;
     instance = instantiate_plugin(formatImpl->worldContext, &implContext, plugin,
@@ -56,7 +60,7 @@ remidy::StatusCode remidy::AudioPluginInstanceLV2::configure(ConfigurationReques
     // create port mappings between Remidy and LV2
     uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
     int32_t portToScan = 0;
-    auto audioIns = audioInputBuses();
+    auto audioIns = audio_buses->audioInputBuses();
     int32_t lv2AudioInIdx = 0;
     for (size_t i = 0, n = audioIns.size(); i < n; i++) {
         auto bus = audioIns[i];
@@ -66,7 +70,7 @@ remidy::StatusCode remidy::AudioPluginInstanceLV2::configure(ConfigurationReques
         }
     }
     portToScan = 0;
-    const auto audioOuts = audioOutputBuses();
+    const auto audioOuts = audio_buses->audioOutputBuses();
     int32_t lv2AudioOutIdx = 0;
     for (size_t i = 0, n = audioOuts.size(); i < n; i++) {
         const auto bus = audioOuts[i];
@@ -112,21 +116,21 @@ remidy::StatusCode remidy::AudioPluginInstanceLV2::configure(ConfigurationReques
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceLV2::startProcessing() {
+remidy::StatusCode remidy::PluginInstanceLV2::startProcessing() {
     if (!instance)
         return StatusCode::ALREADY_INVALID_STATE;
     lilv_instance_activate(instance);
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceLV2::stopProcessing() {
+remidy::StatusCode remidy::PluginInstanceLV2::stopProcessing() {
     if (!instance)
         return StatusCode::ALREADY_INVALID_STATE;
     lilv_instance_deactivate(instance);
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceLV2::process(AudioProcessContext &process) {
+remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &process) {
     for (auto& m : audio_in_port_mapping) {
         auto audioIn = process.audioIn(m.bus)->getFloatBufferForChannel(m.channel);
         lilv_instance_connect_port(instance, m.lv2Port, audioIn);
@@ -153,56 +157,7 @@ remidy::StatusCode remidy::AudioPluginInstanceLV2::process(AudioProcessContext &
     return StatusCode::OK;
 }
 
-remidy::AudioPluginInstanceLV2::BusSearchResult remidy::AudioPluginInstanceLV2::inspectBuses() {
-    BusSearchResult ret{};
-
-    input_bus_defs.clear();
-    output_bus_defs.clear();
-    input_buses.clear();
-    output_buses.clear();
-    for (uint32_t p = 0; p < lilv_plugin_get_num_ports(plugin); p++) {
-        auto port = lilv_plugin_get_port_by_index(plugin, p);
-        if (implContext.IS_AUDIO_PORT(plugin, port)) {
-            bool isInput = implContext.IS_INPUT_PORT(plugin, port);
-            auto groupNode = lilv_port_get(plugin, port, implContext.statics->port_group_uri_node);
-            std::string group = groupNode == nullptr ? "" : lilv_node_as_string(groupNode);
-            auto scNode = lilv_port_get(plugin, port, implContext.statics->is_side_chain_uri_node);
-            bool isSideChain = scNode != nullptr && lilv_node_as_bool(scNode);
-            std::optional<AudioBusDefinition> def{};
-            int32_t index = 0;
-            for (auto d : isInput ? input_bus_defs : output_bus_defs) {
-                if (d.name() == group) {
-                    def = d;
-                    break;
-                }
-                index++;
-            }
-            if (!def.has_value()) {
-                def = AudioBusDefinition(group, isSideChain ? AudioBusRole::Aux : AudioBusRole::Main);
-                (isInput ? input_bus_defs : output_bus_defs).emplace_back(def.value());
-                auto bus = new AudioBusConfiguration(def.value());
-                bus->channelLayout(AudioChannelLayout::mono());
-                (isInput ? input_buses : output_buses).emplace_back(bus);
-            } else {
-                auto bus = (isInput ? input_buses : output_buses)[index];
-                if (bus->channelLayout() != AudioChannelLayout::mono())
-                    bus->channelLayout(AudioChannelLayout::stereo());
-                else
-                    throw std::runtime_error{"Audio ports more than stereo channels are not supported yet."};
-            }
-        }
-        if (implContext.IS_ATOM_IN(plugin, port))
-            ret.numEventIn++;
-        if (implContext.IS_ATOM_OUT(plugin, port))
-            ret.numEventOut++;
-    }
-    return ret;
-}
-
-const std::vector<remidy::AudioBusConfiguration*>& remidy::AudioPluginInstanceLV2::audioInputBuses() const { return input_buses; }
-const std::vector<remidy::AudioBusConfiguration*>& remidy::AudioPluginInstanceLV2::audioOutputBuses() const { return output_buses; }
-
-remidy::PluginParameterSupport *remidy::AudioPluginInstanceLV2::parameters() {
+remidy::PluginParameterSupport *remidy::PluginInstanceLV2::parameters() {
     if (!_parameters)
         _parameters = new ParameterSupport(this);
     return _parameters;
