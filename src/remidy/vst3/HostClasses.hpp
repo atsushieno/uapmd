@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TravestyHelper.hpp"
+#include <iostream>
 
 namespace remidy_vst3 {
 

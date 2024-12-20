@@ -8,8 +8,6 @@
 
 using namespace remidy_vst3;
 
-// AudioPluginInstanceVST3::ParameterSupport
-
 remidy::AudioPluginInstanceVST3::ParameterSupport::ParameterSupport(AudioPluginInstanceVST3* owner) : owner(owner) {
     auto controller = owner->controller;
     auto count = controller->vtable->controller.get_parameter_count(controller);

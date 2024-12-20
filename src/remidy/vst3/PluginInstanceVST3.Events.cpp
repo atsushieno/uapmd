@@ -1,6 +1,3 @@
-
-#include <iostream>
-
 #include "remidy.hpp"
 #include "../utils.hpp"
 
@@ -8,8 +5,6 @@
 
 using namespace remidy_vst3;
 
-
-// TypedUmpInputDispatcherVST3
 
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
                                                                        uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
