@@ -177,6 +177,11 @@ namespace remidy_vst3 {
             std::cerr << "WHY querying over IEventList?" << std::endl;
             return V3_NO_INTERFACE;
         }
+
+        // invoked at process()
+        void clear() {
+            events.clear();
+        }
     };
 
     class HostParamValueQueue : public IParamValueQueue {

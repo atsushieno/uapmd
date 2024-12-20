@@ -612,6 +612,7 @@ namespace remidy {
         processData.nframes = numFrames;
 
         // handle UMP inputs via UmpInputDispatcher.
+        processDataInputEvents.clear();
         // FIXME: pass correct timestamp
         ump_input_dispatcher.process(0, process);
 
@@ -627,6 +628,7 @@ namespace remidy {
         ctx->continuous_time_in_samples += numFrames;
 
         // FiXME: generate UMP outputs here
+        processDataOutputEvents.clear();
 
         return StatusCode::OK;
     }

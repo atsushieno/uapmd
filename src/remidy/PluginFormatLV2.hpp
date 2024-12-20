@@ -153,6 +153,8 @@ namespace remidy {
             void onRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) override;
             void onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
             void onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
+            void onProcessStart(remidy::AudioProcessContext &src) override;
+            void onProcessEnd(remidy::AudioProcessContext &src) override;
         };
 
         PluginFormatLV2::Impl *formatImpl;
@@ -180,6 +182,7 @@ namespace remidy {
             int32_t atom_out_index{-1};
             size_t buffer_size{0};
             LV2_Atom_Forge forge{};
+            LV2_Atom_Forge_Frame frame{};
         };
         std::vector<LV2PortInfo> lv2_ports{};
 

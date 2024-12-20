@@ -130,9 +130,10 @@ class RemidyApply {
 
             dispatcher->addCallback([&](remidy::AudioProcessContext& data) {
                 for (auto track : sequencer->tracks()) {
-                    // Test MIDI input (some notes, one shot)
+                    process.eventIn().position(0);
+                    // demo MIDI input buffers (some notes, one shot)
                     memset(umpSequence, 0, sizeof(remidy_ump_t) * 512);
-                    int numNotes = 1;
+                    int numNotes = 3;
                     switch (round++) {
                         case 64: {
                             for (int m = 0; m < numNotes; m++) {
