@@ -221,6 +221,11 @@ namespace remidy {
                 if (implContext.IS_ATOM_PORT(plugin, port)) {
                     lv2_atom_forge_init(&lv2Port.forge, getLV2UridMapData());
                     lv2_atom_forge_set_buffer(&lv2Port.forge, (uint8_t*) buffer, lv2Port.buffer_size);
+                } else {
+                    // set default value for (most-likely) ControlPorts.
+                    auto defaultValue = lilv_port_get(plugin, port, implContext.statics->default_uri_node);
+                    if (defaultValue)
+                        *((float*) lv2Port.port_buffer) = lilv_node_as_float(defaultValue);
                 }
             }
             else

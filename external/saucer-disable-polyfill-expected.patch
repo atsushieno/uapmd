@@ -1,20 +1,13 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index c59f535..f75310a 100644
+index c59f535..dfd3e03 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -251,6 +251,7 @@ if (saucer_polyfill_functional)
+@@ -251,7 +251,7 @@ if (saucer_polyfill_functional)
    set(saucer_fmt_install OFF)
  endif()
  
-+if (false)
- if (saucer_polyfill_expected)
+-if (saucer_polyfill_expected)
++if (false AND saucer_polyfill_expected)
    message(STATUS "[saucer] Using std::expected polyfill")
  
-@@ -267,6 +268,7 @@ if (saucer_polyfill_expected)
-   
-   set(saucer_fmt_install OFF)
- endif()
-+endif()
- 
- # --------------------------------------------------------------------------------------------------------
- # Setup Dependencies
+   CPMFindPackage(
