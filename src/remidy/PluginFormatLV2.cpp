@@ -256,13 +256,21 @@ namespace remidy {
             lilv_instance_connect_port(instance, m.lv2Port, audioOut);
         }
 
-        // FIXME: pass correct timestamp
         for (auto & port : lv2_ports)
-            if (port.atom_in_index >= 0 || port.atom_out_index >= 0)
+            if (port.atom_in_index >= 0 || port.atom_out_index >= 0) {
+                lv2_atom_forge_init(&port.forge, getLV2UridMapData());
+                lv2_atom_forge_set_buffer(&port.forge, (uint8_t*) port.port_buffer, port.buffer_size);
                 lv2_atom_sequence_clear((LV2_Atom_Sequence*) port.port_buffer);
+            }
+
+        process.eventOut().position(0);
+
+        // FIXME: pass correct timestamp
         ump_input_dispatcher.process(0, process);
 
         lilv_instance_run(instance, process.frameCount());
+
+        process.eventIn().position(0);
 
         // FIXME: process Atom outputs
 
@@ -450,16 +458,16 @@ namespace remidy {
 
 void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::enqueueMidi1Event(uint8_t atomInIndex, size_t eventSize) {
     int32_t lv2PortIndex = owner->portIndexForAtomGroupIndex(false, atomInIndex);
-    auto seq = (LV2_Atom_Sequence*) owner->lv2_ports[lv2PortIndex].port_buffer;
     auto& forge = owner->lv2_ports[lv2PortIndex].forge;
 
     auto timestampInSamples = static_cast<int64_t>(timestamp() * 31250 / owner->sample_rate);
 
+    LV2_Atom_Forge_Frame frame;
+    lv2_atom_forge_sequence_head(&forge, &frame, owner->implContext.statics->urids.urid_time_frame);
     lv2_atom_forge_frame_time(&forge, timestampInSamples);
     lv2_atom_forge_atom(&forge, eventSize, owner->implContext.statics->urids.urid_midi_event_type);
+    lv2_atom_forge_pop(&forge, &frame);
     lv2_atom_forge_write(&forge, midi1Bytes, eventSize);
-
-    seq->atom.size = forge.offset - sizeof(LV2_Atom);
 }
 
 void remidy::AudioPluginInstanceLV2::LV2UmpInputDispatcher::onNoteOn(
