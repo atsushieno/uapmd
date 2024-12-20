@@ -11,10 +11,6 @@ remidy::PluginFormatAU::~PluginFormatAU() {
     delete impl;
 }
 
-remidy::Logger* remidy::PluginFormatAU::getLogger() {
-    return impl->getLogger();
-}
-
 remidy::PluginExtensibility<remidy::PluginFormat> * remidy::PluginFormatAU::getExtensibility() {
     return impl->getExtensibility();
 }
@@ -118,11 +114,14 @@ void remidy::PluginFormatAU::createInstance(PluginCatalogEntry* info, std::funct
     __block auto cb = std::move(callback);
     AudioComponentInstantiate(component, options, ^(AudioComponentInstance instance, OSStatus status) {
         if (status == noErr) {
+            // FIXME: how should we acquire logger instance?
+            auto logger = Logger::global();
+
             if (v3) {
-                auto au = std::make_unique<AudioPluginInstanceAUv3>(this, info, component, instance);
+                auto au = std::make_unique<AudioPluginInstanceAUv3>(this, logger, info, component, instance);
                 cb(std::move(au), "");
             } else {
-                auto au = std::make_unique<AudioPluginInstanceAUv2>(this, info, component, instance);
+                auto au = std::make_unique<AudioPluginInstanceAUv2>(this, logger, info, component, instance);
                 cb(std::move(au), "");
             }
         }
@@ -137,8 +136,8 @@ remidy::PluginFormatAU::Extensibility::Extensibility(PluginFormat &format) : Plu
 
 // AudioPluginInstanceAU
 
-remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
-    PluginInstance(info), format(format), component(component), instance(instance) {
+remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
+    PluginInstance(info), format(format), logger_(logger), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     inspectBuses();
@@ -181,7 +180,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
 
     result = AudioUnitReset(instance, kAudioUnitScope_Global, 0);
     if (result) {
-        format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to reset instance!?: OSStatus %d", name.c_str(), result);
+        logger()->logError("%s AudioPluginInstanceAU::configure failed to reset instance!?: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
@@ -208,7 +207,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
             result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i,
                                           &stream, sizeof(AudioStreamBasicDescription));
             if (result) {
-                format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
+                logger()->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
                 return StatusCode::FAILED_TO_CONFIGURE;
             }
         }
@@ -242,7 +241,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
             result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i,
                                           &stream, sizeof(AudioStreamBasicDescription));
             if (result) {
-                format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
+                logger()->logError("%s: AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
                 return StatusCode::FAILED_TO_CONFIGURE;
             }
         }
@@ -261,13 +260,13 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     // it could be an invalid property. maybe just ignore that.
     result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &configuration.offlineMode, sizeof(bool));
     if (result != noErr) {
-        this->format->getLogger()->logWarning("%s: configure() on AudioPluginInstanceAU failed to set offlineMode. Status: %d", name.c_str(), result);
+        logger()->logWarning("%s: configure() on AudioPluginInstanceAU failed to set offlineMode. Status: %d", name.c_str(), result);
     }
 
     UInt32 frameSize = (UInt32) configuration.bufferSizeInSamples;
     result = AudioUnitSetProperty(instance, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &frameSize, sizeof (frameSize));
     if (result) {
-        format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_MaximumFramesPerSlice: OSStatus %d", name.c_str(), result);
+        logger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_MaximumFramesPerSlice: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
@@ -278,7 +277,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
         callback.inputProcRefCon = this;
         result = AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, sizeof(callback));
         if (result) {
-            format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_SetRenderCallback: OSStatus %d", name.c_str(), result);
+            logger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_SetRenderCallback: OSStatus %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
     }
@@ -290,7 +289,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
         callback.userData = this;
         result = AudioUnitSetProperty (instance, kAudioUnitProperty_MIDIOutputCallback, kAudioUnitScope_Global, 0, &callback, sizeof (callback));
         if (result) {
-            format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_MIDIOutputCallback: OSStatus %d", name.c_str(), result);
+            logger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_MIDIOutputCallback: OSStatus %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
     }
@@ -316,7 +315,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     // Once everything is set, initialize the instance here.
     result = AudioUnitInitialize(instance);
     if (result) {
-        format->getLogger()->logError("%s: AudioPluginInstanceAU::configure failed to initialize AudioUnit: OSStatus %d", name.c_str(), result);
+        logger()->logError("%s: AudioPluginInstanceAU::configure failed to initialize AudioUnit: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
@@ -376,7 +375,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
 
         auto status = AudioUnitRender(instance, nullptr, &process_timestamp, 0, process.frameCount(), auDataOut);
         if (status != noErr) {
-            format->getLogger()->logError("%s: failed to process audio AudioPluginInstanceAU::process(). Status: %d", name.c_str(), status);
+            logger()->logError("%s: failed to process audio AudioPluginInstanceAU::process(). Status: %d", name.c_str(), status);
             return StatusCode::FAILED_TO_PROCESS;
         }
     }
@@ -393,12 +392,12 @@ void remidy::AudioPluginInstanceAU::inspectBuses() {
     UInt32 size = sizeof(UInt32);
     result = AudioUnitGetProperty(instance, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &count, &size);
     if (result)
-        format->getLogger()->logWarning("%s: failed to retrieve input kAudioUnitProperty_ElementCount. Status: %d", name.c_str(), result);
+        logger()->logWarning("%s: failed to retrieve input kAudioUnitProperty_ElementCount. Status: %d", name.c_str(), result);
     else
         ret.numAudioIn = count;
     result = AudioUnitGetProperty(instance, kAudioUnitProperty_ElementCount, kAudioUnitScope_Output, 0, &count, &size);
     if (result)
-        format->getLogger()->logWarning("%s: failed to retrieve output kAudioUnitProperty_ElementCount. Status: %d", name.c_str(), result);
+        logger()->logWarning("%s: failed to retrieve output kAudioUnitProperty_ElementCount. Status: %d", name.c_str(), result);
     else
         ret.numAudioOut = count;
 
@@ -471,14 +470,14 @@ remidy::StatusCode remidy::AudioPluginInstanceAUv2::sampleRate(double sampleRate
     if (audioUnitHasIO(instance, kAudioUnitScope_Input)) {
         auto result = AudioUnitSetProperty(instance, kAudioUnitProperty_SampleRate, kAudioUnitScope_Input, 0, &sampleRate, sizeof(double));
         if (result != noErr) {
-            this->format->getLogger()->logError("%s: configure() on AudioPluginInstanceAUv2 failed to set input sampleRate. Status: %d", name.c_str(), result);
+            logger()->logError("%s: configure() on AudioPluginInstanceAUv2 failed to set input sampleRate. Status: %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
     }
     if (audioUnitHasIO(instance, kAudioUnitScope_Output)) {
         auto result = AudioUnitSetProperty(instance, kAudioUnitProperty_SampleRate, kAudioUnitScope_Output, 0, &sampleRate, sizeof(double));
         if (result != noErr) {
-            this->format->getLogger()->logError("%s: configure() on AudioPluginInstanceAUv2 failed to set output sampleRate. Status: %d", name.c_str(), result);
+            logger()->logError("%s: configure() on AudioPluginInstanceAUv2 failed to set output sampleRate. Status: %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
     }
@@ -489,7 +488,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAUv2::sampleRate(double sampleRate
 
 remidy::StatusCode remidy::AudioPluginInstanceAUv3::sampleRate(double sampleRate) {
     // FIXME: implement
-    format->getLogger()->logWarning("AudioPluginInstanceAUv3::sampleRate() not implemented");
+    logger()->logWarning("AudioPluginInstanceAUv3::sampleRate() not implemented");
     return StatusCode::OK;
 }
 
@@ -499,13 +498,13 @@ remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioP
     : owner(owner) {
     auto result = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &au_param_id_list_size, nil);
     if (result != noErr) {
-        owner->format->getLogger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
+        owner->logger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
         return;
     }
     au_param_id_list = static_cast<AudioUnitParameterID *>(calloc(au_param_id_list_size, 1));
     result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, au_param_id_list, &au_param_id_list_size);
     if (result != noErr) {
-        owner->format->getLogger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
+        owner->logger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
         return;
     }
 
@@ -515,7 +514,7 @@ remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioP
         UInt32 size = sizeof(info);
         result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, id, &info, &size);
         if (result != noErr) {
-            owner->format->getLogger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter %d (at %d). Status: %d", owner->name.c_str(), id, i, result);
+            owner->logger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter %d (at %d). Status: %d", owner->name.c_str(), id, i, result);
             continue;
         }
         std::string idString = std::format("{}", id);

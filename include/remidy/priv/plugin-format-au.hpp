@@ -16,8 +16,6 @@ namespace remidy {
             explicit Extensibility(PluginFormat& format);
         };
 
-        Logger* getLogger();
-
         std::string name() override { return "AU"; }
         PluginExtensibility<PluginFormat>* getExtensibility() override;
         PluginScanner* scanner() override;

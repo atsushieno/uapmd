@@ -13,7 +13,7 @@ struct LogContext {
     const void* logger;
 };
 
-using RealtimeLogger = rtlog::Logger<LogContext, MAX_NUM_LOG_MESSAGES, MAX_LOG_MESSAGE_LENGTH, log_serial>;
+using RealtimeLogger = rtlog::Logger<LogContext, MAX_NUM_LOG_MESSAGES, MAX_LOG_MESSAGE_LENGTH, log_serial, rtlog::QueueConcurrency::Multi_Producer_Single_Consumer>;
 static RealtimeLogger rt_logger;
 
 void remidy::Logger::log(LogLevel level, const char *format, ...) {

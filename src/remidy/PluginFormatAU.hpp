@@ -90,11 +90,12 @@ namespace remidy {
 
     protected:
         PluginFormatAU *format;
+        Logger* logger_;
         AudioComponent component;
         AudioUnit instance;
         std::string name{};
 
-        AudioPluginInstanceAU(PluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
+        AudioPluginInstanceAU(PluginFormatAU* format, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
         ~AudioPluginInstanceAU() override;
 
     public:
@@ -103,7 +104,7 @@ namespace remidy {
             AUV3 = 3
         };
 
-        Logger* logger() { return format->getLogger(); }
+        Logger* logger() { return logger_; }
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
@@ -134,8 +135,8 @@ namespace remidy {
 
     class AudioPluginInstanceAUv2 final : public AudioPluginInstanceAU {
     public:
-        AudioPluginInstanceAUv2(PluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
-        ) : AudioPluginInstanceAU(format, info, component, instance) {
+        AudioPluginInstanceAUv2(PluginFormatAU* format, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
+        ) : AudioPluginInstanceAU(format, logger, info, component, instance) {
         }
 
         ~AudioPluginInstanceAUv2() override = default;
@@ -147,8 +148,8 @@ namespace remidy {
 
     class AudioPluginInstanceAUv3 final : public AudioPluginInstanceAU {
     public:
-        AudioPluginInstanceAUv3(PluginFormatAU* format, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
-        ) : AudioPluginInstanceAU(format, info, component, instance) {
+        AudioPluginInstanceAUv3(PluginFormatAU* format, Logger *logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
+        ) : AudioPluginInstanceAU(format, logger, info, component, instance) {
         }
 
         ~AudioPluginInstanceAUv3() override = default;

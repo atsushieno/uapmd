@@ -21,25 +21,10 @@ CPMAddPackage(
 # <rtlog>
 FetchContent_Declare(rtlog-cpp
         GIT_REPOSITORY https://github.com/atsushieno/rtlog-cpp
-        GIT_TAG mpsc
+        GIT_TAG e6ee502c9308f060f683bf835c745a65c92e7fda
 )
 FetchContent_MakeAvailable(rtlog-cpp)
 # </rtlog>
-
-# and we need farbot directly as well...
-FetchContent_Declare(farbot
-        GIT_REPOSITORY https://github.com/hogliux/farbot
-        GIT_TAG 0416705394720c12f0d02e55c144e4f69bb06912
-)
-if (NOT farbot_POPULATED)
-    FetchContent_Populate(farbot)
-endif ()
-add_library(farbot INTERFACE)
-add_library(farbot::farbot ALIAS farbot)
-target_include_directories(farbot INTERFACE
-        $<BUILD_INTERFACE:${farbot_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-)
 
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
 
