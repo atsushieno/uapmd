@@ -54,7 +54,7 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
             if (t >= data.tracks.size())
                 continue; // buffer not ready
             auto ctx = data.tracks[t];
-            ctx->eventIn().position(0);
+            ctx->eventOut().position(0); // clean up *out* events here.
             ctx->frameCount(process.frameCount());
             for (uint32_t i = 0; i < process.audioInBusCount(); i++) {
                 auto srcInBus = process.audioIn(i);
@@ -70,7 +70,7 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
             if (t >= data.tracks.size())
                 continue; // buffer not ready
             auto ctx = data.tracks[t];
-            ctx->eventOut().position(0);
+            ctx->eventIn().position(0); // clean up *in* events here.
             for (uint32_t i = 0; i < process.audioOutBusCount(); i++) {
                 auto dstOutBus = process.audioOut(i);
                 auto srcOutBus = ctx->audioOut(i);
