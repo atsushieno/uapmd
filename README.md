@@ -1,7 +1,12 @@
 
 # remidy-scan
 
-WIP.
+Remidy aims to provide audio plugin hosting features in cross-platform and
+multi-format manner in liberal licenses (MIT/BSD).
+
+Remidy aims to cover VST3, AudioUnit (on macOS) and LV2 formats.
+
+remidy-scan is a tool to query and enumerate locally installed plugins.
 
 <!--
 # What is this?
@@ -53,15 +58,17 @@ Sources in this repository are released under the MIT license.
 
 There are third-party (and first party) dependency libraries:
 
-- lv2kit (serd, sord, sratom, lilv, zix) - ISC license
-- travesty from DPF - ISC license
-- moduleinfo from vst3_public_sdk - VST3 public SDK license (BSD-like)
-- choc - ISC license
-- libremidi - BSD (2-clause), MIT (RtMidi)
-- cmidi2 - MIT
-- miniaudio - MIT (or public domain)
-- cpplocate - MIT
-- cxxopts - MIT
-- rtlog-cpp - MIT, BSD (2-clause, ReaderWriterQueue)
-- saucer - MIT
-- webaudio-controls - Apache V2
+- [lv2/lv2kit](https://github.com/lv2/lv2kit) (serd, sord, sratom, lilv, zix): the ISC license.
+- [travesty](https://github.com/DISTRHO/DPF/tree/main/distrho/src/travesty), part of DISTRHO/DPF: the ISC license
+- [moduleinfo](https://github.com/steinbergmedia/vst3_public_sdk/tree/master/source/vst/moduleinfo), part of steinbergmedia/vst3_public_sdk: VST 3 SDK public_sdk License (BSD like)
+  (modified to remove dependencies on `vst3_pluginterfaces` which is GPLed)
+- [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.
+- [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
+- [https://github.com/atsushieno/cmidi2](atsushieno/cmidi2) - MIT
+- [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)
+- [cginternals/cpplocate](https://github.com/cginternals/cpplocate): the MIT license.
+- [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): the MIT license.
+- [cjappl/rtlog-cpp](https://github.com/cjappl/rtlog-cpp): the MIT license.
+    - for submodules see their [LICENSE.md](https://github.com/cjappl/rtlog-cpp/blob/main/LICENSE.md) (modified BSD, MIT)
+- [saucer/saucer](https://github.com/saucer/saucer) - MIT
+- [g200kg/webaudio-controls](https://github.com/g200kg/webaudio-controls) - Apache V2
