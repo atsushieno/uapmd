@@ -1,143 +1,9 @@
 #if __APPLE__
 
 #include "PluginFormatAU.hpp"
-#include <cmidi2.h>
-
-remidy::PluginFormatAU::PluginFormatAU() {
-    impl = new Impl(this, Logger::global());
-}
-
-remidy::PluginFormatAU::~PluginFormatAU() {
-    delete impl;
-}
-
-remidy::PluginExtensibility<remidy::PluginFormat> * remidy::PluginFormatAU::getExtensibility() {
-    return impl->getExtensibility();
-}
-
-remidy::PluginScanner* remidy::PluginFormatAU::scanner() {
-    return impl->scanner();
-}
-
-struct AUPluginEntry {
-    AudioComponent component;
-    UInt32 flags;
-    std::string id;
-    std::string name;
-    std::string vendor;
-};
-
-std::string cfStringToString1024(CFStringRef s) {
-    char buf[1024];
-    CFStringGetCString(s, buf, sizeof(buf), kCFStringEncodingUTF8);
-    std::string ret{buf};
-    return ret;
-}
-
-std::string retrieveCFStringRelease(const std::function<void(CFStringRef&)>&& retriever) {
-    CFStringRef cf;
-    retriever(cf);
-    auto ret = cfStringToString1024(cf);
-    CFRelease(cf);
-    return ret;
-}
-
-std::vector<AUPluginEntry> scanAllAvailableAUPlugins() {
-    std::vector<AUPluginEntry> ret{};
-    AudioComponent component{nullptr};
-
-    while(true) {
-        AudioComponentDescription desc{};
-        component = AudioComponentFindNext(component, &desc);
-        if (!component)
-            return ret;
-        AudioComponentGetDescription(component, &desc);
-
-        switch (desc.componentType) {
-            case kAudioUnitType_MusicDevice:
-            case kAudioUnitType_Effect:
-            case kAudioUnitType_Generator:
-            case kAudioUnitType_MusicEffect:
-            case kAudioUnitType_MIDIProcessor:
-                break;
-            default:
-                continue;
-        }
-
-        // LAMESPEC: it is quite hacky and lame expectation that the AudioComponent `name` always has `: ` ...
-        auto name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
-        auto firstColon = name.find_first_of(':');
-        auto vendor = name.substr(0, firstColon);
-        auto pluginName = name.substr(firstColon + 2); // remaining after ": "
-        std::ostringstream id{};
-        id << std::hex << desc.componentManufacturer << " " << desc.componentType << " " << desc.componentSubType;
-
-        ret.emplace_back(AUPluginEntry{component, desc.componentFlags, id.str(),
-            pluginName,
-            vendor
-        });
-    }
-    return ret;
-}
-
-std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::PluginScannerAU::scanAllAvailablePlugins() {
-    std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
-
-    for (auto& plugin : scanAllAvailableAUPlugins()) {
-        auto entry = std::make_unique<PluginCatalogEntry>();
-        static std::string format{"AU"};
-        entry->format(format);
-        entry->pluginId(plugin.id);
-        entry->displayName(plugin.name);
-        entry->vendorName(plugin.vendor);
-        // no product URL in the queryable metadata.
-
-        ret.emplace_back(std::move(entry));
-    }
-    return ret;
-}
-
-void remidy::PluginFormatAU::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) {
-    AudioComponentDescription desc{};
-    std::istringstream id{info->pluginId()};
-    id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;
-
-    auto component = AudioComponentFindNext(nullptr, &desc);
-    if (component == nullptr) {
-        callback(nullptr, "The specified AudioUnit component was not found");
-    }
-
-    AudioComponentGetDescription(component, &desc);
-    bool v3 = (desc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) > 0;
-    AudioComponentInstantiationOptions options = 0;
-
-    __block auto cb = std::move(callback);
-    AudioComponentInstantiate(component, options, ^(AudioComponentInstance instance, OSStatus status) {
-        if (status == noErr) {
-            // FIXME: how should we acquire logger instance?
-            auto logger = Logger::global();
-
-            if (v3) {
-                auto au = std::make_unique<AudioPluginInstanceAUv3>(this, logger, info, component, instance);
-                cb(std::move(au), "");
-            } else {
-                auto au = std::make_unique<AudioPluginInstanceAUv2>(this, logger, info, component, instance);
-                cb(std::move(au), "");
-            }
-        }
-        else
-          cb(nullptr, std::format("Failed to instantiate AudioUnit {}", info->displayName()));
-    });
-}
-
-remidy::PluginFormatAU::Extensibility::Extensibility(PluginFormat &format) : PluginExtensibility(format) {
-}
-
-
-// AudioPluginInstanceAU
 
 remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
-    PluginInstance(info), format(format), logger_(logger), component(component), instance(instance) {
+        PluginInstance(info), format(format), logger_(logger), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     inspectBuses();
@@ -154,11 +20,11 @@ remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
 }
 
 OSStatus remidy::AudioPluginInstanceAU::audioInputRenderCallback(
-    AudioUnitRenderActionFlags *ioActionFlags,
-    const AudioTimeStamp *inTimeStamp,
-    UInt32 inBusNumber,
-    UInt32 inNumberFrames,
-    AudioBufferList *ioData
+        AudioUnitRenderActionFlags *ioActionFlags,
+        const AudioTimeStamp *inTimeStamp,
+        UInt32 inBusNumber,
+        UInt32 inNumberFrames,
+        AudioBufferList *ioData
 ) {
     auto auDataIn = auDataIns[inBusNumber];
     for (uint32_t ch = 0; ch < auDataIn->mNumberBuffers; ch++)
@@ -345,8 +211,8 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
         auDataIn->mBuffers[bus].mNumberChannels = numChannels;
         for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
             auDataIn->mBuffers[ch].mData = useDouble ?
-                (void*) busBuf->getDoubleBufferForChannel(ch) :
-                busBuf->getFloatBufferForChannel(ch);
+                                           (void*) busBuf->getDoubleBufferForChannel(ch) :
+                                           busBuf->getFloatBufferForChannel(ch);
             auDataIn->mBuffers[ch].mDataByteSize = channelBufSize;
             auDataIn->mNumberBuffers++;
         }
@@ -363,8 +229,8 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
         auDataOut->mBuffers[bus].mNumberChannels = numChannels;
         for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
             auDataOut->mBuffers[ch].mData = useDouble ?
-                (void*) busBuf->getDoubleBufferForChannel(ch) :
-                busBuf->getFloatBufferForChannel(ch);
+                                            (void*) busBuf->getDoubleBufferForChannel(ch) :
+                                            busBuf->getFloatBufferForChannel(ch);
             auDataOut->mBuffers[ch].mDataByteSize = channelBufSize;
             auDataOut->mNumberBuffers++;
         }
@@ -404,9 +270,9 @@ void remidy::AudioPluginInstanceAU::inspectBuses() {
     // FIXME: we need to fill input_buses and output_buses here.
 
     for (auto bus : input_buses)
-      delete bus;
+        delete bus;
     for (auto bus : output_buses)
-      delete bus;
+        delete bus;
     input_buses.clear();
     output_buses.clear();
     input_bus_defs.clear();
@@ -448,7 +314,7 @@ void remidy::AudioPluginInstanceAU::inspectBuses() {
         case kAudioUnitType_MusicDevice:
         case kAudioUnitType_MusicEffect:
         case kAudioUnitType_MIDIProcessor:
-          ret.hasMidiIn = true;
+            ret.hasMidiIn = true;
     }
     Boolean writable;
     auto status = AudioUnitGetPropertyInfo(instance, kAudioUnitProperty_MIDIOutputCallbackInfo, kAudioUnitScope_Global, 0, nullptr, &writable);
@@ -492,84 +358,4 @@ remidy::StatusCode remidy::AudioPluginInstanceAUv3::sampleRate(double sampleRate
     return StatusCode::OK;
 }
 
-// AudioPluginInstanceAU::ParameterSupport
-
-remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioPluginInstanceAU *owner)
-    : owner(owner) {
-    auto result = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &au_param_id_list_size, nil);
-    if (result != noErr) {
-        owner->logger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
-        return;
-    }
-    au_param_id_list = static_cast<AudioUnitParameterID *>(calloc(au_param_id_list_size, 1));
-    result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, au_param_id_list, &au_param_id_list_size);
-    if (result != noErr) {
-        owner->logger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
-        return;
-    }
-
-    AudioUnitParameterInfo info;
-    for (size_t i = 0, n = au_param_id_list_size / sizeof(AudioUnitParameterID); i < n; i++) {
-        auto id = au_param_id_list[i];
-        UInt32 size = sizeof(info);
-        result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, id, &info, &size);
-        if (result != noErr) {
-            owner->logger()->logError("%s: AudioPluginInstanceAU failed to retrieve parameter %d (at %d). Status: %d", owner->name.c_str(), id, i, result);
-            continue;
-        }
-        std::string idString = std::format("{}", id);
-        std::string name{info.name};
-        std::string path{};
-        auto p = new PluginParameter(idString, name, path, info.defaultValue, info.minValue, info.maxValue, true, false);
-        parameter_list.emplace_back(p);
-    }
-}
-
-remidy::AudioPluginInstanceAU::ParameterSupport::~ParameterSupport() {
-    if (au_param_id_list)
-        free(au_param_id_list);
-}
-
-std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceAU::ParameterSupport::parameters() {
-    return parameter_list;
-}
-
-remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
-    // FIXME: calculate inBufferOffsetInFrames from timestamp.
-    auto inBufferOffsetInFrames = 0;
-    AudioUnitSetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Global, 0, value, inBufferOffsetInFrames);
-    return StatusCode::OK;
-}
-
-remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::getParameter(uint32_t index, double* value) {
-    AudioUnitParameterValue av;
-    AudioUnitGetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Global, 0, &av);
-    *value = av;
-    return StatusCode::OK;
-}
-
 #endif
-
-remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::AUUmpInputDispatcher(remidy::AudioPluginInstanceAU *owner) :
-    owner(owner)
-{
-    #define AU_UMP_INPUT_DISPATCHER_UMP_EVENT_LIST_SIZE 65536
-    // FIXME: assign MIDI buffer size somewhere
-    ump_event_list = (MIDIEventList*) calloc(AU_UMP_INPUT_DISPATCHER_UMP_EVENT_LIST_SIZE, 1);
-}
-remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::~AUUmpInputDispatcher() {
-    if (ump_event_list)
-        free(ump_event_list);
-}
-
-void
-remidy::AudioPluginInstanceAU::AUUmpInputDispatcher::process(uint64_t timestamp, remidy::AudioProcessContext &src) {
-    auto& eventIn = src.eventIn();
-    auto cur = MIDIEventListInit(ump_event_list, kMIDIProtocol_2_0);
-    MIDIEventListAdd(ump_event_list, AU_UMP_INPUT_DISPATCHER_UMP_EVENT_LIST_SIZE,
-                     cur, timestamp, eventIn.position() * sizeof(UInt32), (const UInt32*) eventIn.getMessages());
-    auto result = MusicDeviceMIDIEventList((MusicDeviceComponent) owner->instance, timestamp, ump_event_list);
-    if (result != noErr) {
-        owner->logger()->logError("Failed to add UMP events to AudioUnit: %d", result);
-    }
-}

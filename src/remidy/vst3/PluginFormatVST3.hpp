@@ -1,7 +1,7 @@
 #pragma once
 
 #include "remidy.hpp"
-#include "vst3/HostClasses.hpp"
+#include "HostClasses.hpp"
 
 using namespace remidy_vst3;
 

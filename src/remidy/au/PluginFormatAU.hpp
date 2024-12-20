@@ -3,7 +3,7 @@
 #include <sstream>
 
 #include "remidy.hpp"
-#include "auv2/AUv2Helper.hpp"
+#include "AUv2Helper.hpp"
 #include <AVFoundation/AVFoundation.h>
 #include <CoreFoundation/CoreFoundation.h>
 

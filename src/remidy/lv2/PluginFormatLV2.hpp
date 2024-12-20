@@ -3,9 +3,9 @@
 #include <atomic>
 
 #include "remidy.hpp"
-#include <lilv/lilv.h>
+#include "lilv/lilv.h"
 
-#include "lv2/LV2Helper.hpp"
+#include "LV2Helper.hpp"
 
 namespace remidy {
     class AudioPluginScannerLV2 : public FileBasedPluginScanner {

@@ -77,14 +77,7 @@ target_sources(remidy PRIVATE
         utils.cpp
         EventLoop.cpp
 
-        vst3/TravestyHelper.cpp
-        vst3/HostClasses.cpp
-        vst3/ClassModuleInfo.cpp
-
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}/moduleinfoparser.cpp
-
-        lv2/LV2Helper.cpp
-        lv2/symap.cpp
 
         Logger.cpp
         AudioBufferList.cpp
@@ -93,9 +86,27 @@ target_sources(remidy PRIVATE
         PluginCatalog.cpp
         PluginBundlePool.cpp
         PluginFormat.cpp
-        PluginFormatVST3.cpp
-        PluginFormatAU.mm
-        PluginFormatLV2.cpp
+
+        vst3/TravestyHelper.cpp
+        vst3/HostClasses.cpp
+        vst3/ClassModuleInfo.cpp
+        vst3/PluginFormatVST3.cpp
+        vst3/PluginInstanceVST3.cpp
+        vst3/PluginInstanceVST3.Parameters.cpp
+        vst3/PluginInstanceVST3.Events.cpp
+
+        au/AUv2Helper.cpp
+        au/PluginFormatAU.mm
+        au/PluginInstanceAU.mm
+        au/PluginInstanceAU.Events.mm
+        au/PluginInstanceAU.Parameters.mm
+
+        lv2/LV2Helper.cpp
+        lv2/symap.cpp
+        lv2/PluginFormatLV2.cpp
+        lv2/PluginInstanceLV2.cpp
+        lv2/PluginInstanceLV2.Events.cpp
+        lv2/PluginInstanceLV2.Parameters.cpp
 
         AudioProcessContext.cpp
         PluginInstance.cpp
