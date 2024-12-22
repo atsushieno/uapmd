@@ -181,27 +181,27 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::stopProcessing() {
     return StatusCode::OK;
 }
 
-void
-updateProcessDataBuffers(v3_process_data &processData, v3_audio_bus_buffers &dstBus, remidy::AudioBusBufferList *srcBuf) {
-    int32_t numChannels = dstBus.num_channels;
-    if (processData.symbolic_sample_size == V3_SAMPLE_32) {
-        for (int32_t ch = 0; ch < numChannels; ch++)
-            dstBus.channel_buffers_32[ch] = srcBuf->getFloatBufferForChannel(ch);
-    } else {
-        for (int32_t ch = 0; ch < numChannels; ch++)
-            dstBus.channel_buffers_64[ch] = srcBuf->getDoubleBufferForChannel(ch);
-    }
-}
-
 remidy::StatusCode remidy::AudioPluginInstanceVST3::process(AudioProcessContext &process) {
     // update audio buffer pointers
     const int32_t numFrames = process.frameCount();
     const int32_t numInputBus = processData.num_input_buses;
     const int32_t numOutputBus = processData.num_output_buses;
-    for (int32_t bus = 0; bus < numInputBus; bus++)
-        updateProcessDataBuffers(processData, processData.inputs[bus], process.audioIn(bus));
-    for (int32_t bus = 0; bus < numOutputBus; bus++)
-        updateProcessDataBuffers(processData, processData.outputs[bus], process.audioOut(bus));
+    for (int32_t bus = 0; bus < numInputBus; bus++) {
+        for (size_t ch = 0, n = process.inputChannelCount(bus); ch < n; ch++) {
+            if (processData.symbolic_sample_size == V3_SAMPLE_32)
+                processData.inputs[bus].channel_buffers_32[ch] = process.getFloatInBuffer(bus, ch);
+            else
+                processData.inputs[bus].channel_buffers_64[ch] = process.getDoubleInBuffer(bus, ch);
+        }
+    }
+    for (int32_t bus = 0; bus < numOutputBus; bus++) {
+        for (size_t ch = 0, n = process.outputChannelCount(bus); ch < n; ch++) {
+            if (processData.symbolic_sample_size == V3_SAMPLE_32)
+                processData.outputs[bus].channel_buffers_32[ch] = process.getFloatOutBuffer(bus, ch);
+            else
+                processData.outputs[bus].channel_buffers_64[ch] = process.getDoubleOutBuffer(bus, ch);
+        }
+    }
 
     const auto &ctx = processData.ctx;
 

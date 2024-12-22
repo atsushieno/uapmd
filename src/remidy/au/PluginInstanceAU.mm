@@ -142,13 +142,11 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
     for (size_t bus = 0, n = auDataIns.size(); bus < n; bus++) {
         auto auDataIn = auDataIns[bus];
         auDataIn->mNumberBuffers = 0;
-        auto busBuf =process.audioIn(0);
-        auto numChannels = busBuf->channelCount();
+        auto numChannels = process.inputChannelCount(bus);
         auDataIn->mBuffers[bus].mNumberChannels = numChannels;
-        for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
-            auDataIn->mBuffers[ch].mData = useDouble ?
-                                           (void*) busBuf->getDoubleBufferForChannel(ch) :
-                                           busBuf->getFloatBufferForChannel(ch);
+        for (int32_t ch = 0; ch < numChannels; ch++) {
+            auDataIn->mBuffers[ch].mData = useDouble ? (void*) process.getDoubleInBuffer(bus, ch) :
+                                           process.getFloatInBuffer(bus, ch);
             auDataIn->mBuffers[ch].mDataByteSize = channelBufSize;
             auDataIn->mNumberBuffers++;
         }
@@ -160,13 +158,12 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
     for (size_t bus = 0, n = auDataOuts.size(); bus < n; bus++, bus++) {
         auto auDataOut = auDataOuts[bus];
         auDataOut->mNumberBuffers = 0;
-        auto busBuf =process.audioOut(0);
-        auto numChannels = busBuf->channelCount();
+        auto numChannels = process.outputChannelCount(bus);
         auDataOut->mBuffers[bus].mNumberChannels = numChannels;
-        for (int32_t ch = 0; ch < busBuf->channelCount(); ch++) {
+        for (int32_t ch = 0; ch < numChannels; ch++) {
             auDataOut->mBuffers[ch].mData = useDouble ?
-                                            (void*) busBuf->getDoubleBufferForChannel(ch) :
-                                            busBuf->getFloatBufferForChannel(ch);
+                                            (void*) process.getDoubleOutBuffer(bus, ch) :
+                                            process.getFloatOutBuffer(bus, ch);
             auDataOut->mBuffers[ch].mDataByteSize = channelBufSize;
             auDataOut->mNumberBuffers++;
         }

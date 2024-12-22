@@ -26,20 +26,24 @@ class RemidyApply {
         remidy::MasterContext masterContext{};
         remidy::TrackContext trackContext{masterContext};
         remidy::AudioProcessContext ctx{masterContext, 4096};
+        ctx.configureMainBus(numAudioIn > 0 ? inputBuses[0]->channelLayout().channels() : 0,
+                numAudioOut > 0 ? outputBuses[0]->channelLayout().channels() : 0,
+                1024);
+        /*
         for (int32_t i = 0, n = numAudioIn; i < n; ++i)
             ctx.addAudioIn(inputBuses[i]->channelLayout().channels(), 1024);
         for (int32_t i = 0, n = numAudioOut; i < n; ++i)
             ctx.addAudioOut(outputBuses[i]->channelLayout().channels(), 1024);
+        */
         ctx.frameCount(512);
-        for (uint32_t i = 0; i < numAudioIn; i++) {
-            // FIXME: channel count is not precise.
-            memcpy(ctx.audioIn(i)->getFloatBufferForChannel(0), (void*) "0123456789ABCDEF", 16);
-            memcpy(ctx.audioIn(i)->getFloatBufferForChannel(1), (void*) "FEDCBA9876543210", 16);
+        for (size_t i = 0; i < numAudioIn; i++) {
+            for (size_t ch = 0, nCh = ctx.inputChannelCount(i); ch < nCh; ch++)
+                memcpy(ctx.getFloatInBuffer(i, ch), (void*) "0123456789ABCDEF", 16);
         }
-        for (uint32_t i = 0; i < numAudioOut; i++) {
-            // FIXME: channel count is not precise.
-            memcpy(ctx.audioOut(i)->getFloatBufferForChannel(0), (void*) "02468ACE13579BDF", 16);
-            memcpy(ctx.audioOut(i)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);
+        for (size_t i = 0; i < numAudioOut; i++) {
+            // should not matter for audio processing though
+            for (size_t ch = 0, nCh = ctx.outputChannelCount(i); ch < nCh; ch++)
+                memcpy(ctx.getFloatOutBuffer(i, ch), (void*) "02468ACE13579BDF", 16);
         }
 
         auto code = instance->process(ctx);
@@ -115,10 +119,11 @@ class RemidyApply {
 
         std::atomic playing{true};
 
+        static uint32_t AUDIO_BUFFER_SIZE = 1024;
         static uint32_t UMP_BUFFER_SIZE = 65536;
         auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>(UMP_BUFFER_SIZE);
-        auto sequencer = std::make_unique<uapmd::SequenceProcessor>(dispatcher->audioDriver()->sampleRate(), UMP_BUFFER_SIZE);
-        sequencer->addSimpleTrack(formatName, pluginId, [&](uapmd::AudioPluginTrack*, std::string error) {
+        auto sequencer = std::make_unique<uapmd::SequenceProcessor>(dispatcher->audioDriver()->sampleRate(), AUDIO_BUFFER_SIZE, UMP_BUFFER_SIZE);
+        sequencer->addSimpleTrack(formatName, pluginId, [&](uapmd::AudioPluginTrack* track, std::string error) {
             if (!error.empty()) {
                 std::cerr << "addSimpleTrack() failed." << std::endl;
                 playing = false;
@@ -127,8 +132,8 @@ class RemidyApply {
             uint32_t round = 0;
             remidy_ump_t umpSequence[512];
             remidy::AudioProcessContext process{sequencer->data().masterContext(), UMP_BUFFER_SIZE};
-            //process.addAudioIn(2, 1024);
-            process.addAudioOut(2, 1024);
+            // FIXME: provide correct channel numbers by main bus
+            process.configureMainBus(dispatcher->audioDriver()->channels(), dispatcher->audioDriver()->channels(), 1024);
 
             dispatcher->addCallback([&](remidy::AudioProcessContext& data) {
                 for (auto track : sequencer->tracks()) {
@@ -161,10 +166,9 @@ class RemidyApply {
 
                     // FIXME: avoid memcpy (audio input)
                     for (auto bus = 0, n = data.audioInBusCount(); bus < n; bus++) {
-                        auto buf = data.audioIn(bus);
-                        for (uint32_t ch = 0, nCh = buf->channelCount(); ch < nCh; ch++)
-                            memcpy(process.audioIn(bus)->getFloatBufferForChannel(ch),
-                                   buf->getFloatBufferForChannel(ch),
+                        for (uint32_t ch = 0, nCh = data.inputChannelCount(bus); ch < nCh; ch++)
+                            memcpy(process.getFloatInBuffer(bus, ch),
+                                   data.getFloatInBuffer(bus, ch),
                                    data.frameCount() * sizeof(float));
                     }
                     process.frameCount(data.frameCount());
@@ -176,10 +180,9 @@ class RemidyApply {
 
                     // FIXME: avoid memcpy (audio output)
                     for (auto bus = 0, n = process.audioOutBusCount(); bus < n; bus++) {
-                        auto buf = process.audioOut(bus);
-                        for (uint32_t ch = 0, nCh = buf->channelCount(); ch < nCh; ch++)
-                            memcpy(data.audioOut(bus)->getFloatBufferForChannel(ch),
-                                   buf->getFloatBufferForChannel(ch),
+                        for (uint32_t ch = 0, nCh = process.outputChannelCount(bus); ch < nCh; ch++)
+                            memcpy(data.getFloatOutBuffer(bus, ch),
+                                   process.getFloatOutBuffer(bus, ch),
                                    data.frameCount() * sizeof(float));
                     }
 

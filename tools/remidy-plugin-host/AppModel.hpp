@@ -45,8 +45,8 @@ namespace uapmd {
                     remidy::Logger::global()->logError(msg.c_str());
                 }
                 auto trackCtx = sequencer.data().tracks[sequencer.tracks().size() - 1];
-                //trackCtx->addAudioIn(dispatcher.audioDriver()->channels(), buffer_size_in_frames);
-                trackCtx->addAudioOut(dispatcher.audioDriver()->channels(), buffer_size_in_frames);
+                auto numChannels = dispatcher.audioDriver()->channels();
+                trackCtx->configureMainBus(numChannels, numChannels, buffer_size_in_frames);
 
                 for (auto& f : instancingCompleted)
                     f(instancingId, track->graph().plugins()[0]->instanceId(), error);

@@ -131,12 +131,13 @@ remidy::StatusCode remidy::PluginInstanceLV2::stopProcessing() {
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &process) {
+    // FIXME: is there 64-bit float audio support?
     for (auto& m : audio_in_port_mapping) {
-        auto audioIn = process.audioIn(m.bus)->getFloatBufferForChannel(m.channel);
+        auto audioIn = process.getFloatInBuffer(m.bus, m.channel);
         lilv_instance_connect_port(instance, m.lv2Port, audioIn);
     }
     for (auto& m : audio_out_port_mapping) {
-        auto audioOut = process.audioOut(m.bus)->getFloatBufferForChannel(m.channel);
+        auto audioOut = process.getFloatOutBuffer(m.bus, m.channel);
         lilv_instance_connect_port(instance, m.lv2Port, audioOut);
     }
 

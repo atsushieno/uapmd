@@ -42,12 +42,6 @@ bool remidy_tooling::PluginScanning::safeToInstantiate(PluginFormat* format, Plu
 
     // FIXME: this should be unblocked
 
-    // > Plugin crashing!!!
-    // > Process finished with exit code 9
-    // although the scanner completes, so it is commented out.
-    // if (displayName.starts_with("BYOD"))
-    //    skip = true;
-
     // EXC_BAD_ACCESS (Massive X used to work though...)
     if (format->name() == "AU" && displayName == "Massive X"
         || format->name() == "AU" && displayName == "BioTek"

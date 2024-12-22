@@ -15,7 +15,7 @@ namespace uapmd {
         Impl *impl;
 
     public:
-        explicit SequenceProcessor(int32_t sampleRate, size_t umpBufferSizeInInts, AudioPluginHostPAL* pal = AudioPluginHostPAL::instance());
+        explicit SequenceProcessor(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostPAL* pal = AudioPluginHostPAL::instance());
         ~SequenceProcessor();
 
         SequenceProcessContext& data();

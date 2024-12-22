@@ -8,29 +8,6 @@ namespace remidy {
         Float64
     };
 
-    // Represents a list of audio buffers in an audio bus, separate per channel.
-    // It is part of `AudioProcessingContext`.
-    class AudioBusBufferList {
-        uint32_t channel_count{};
-        uint32_t frame_capacity{};
-        void* data{nullptr};
-
-    public:
-        AudioBusBufferList(uint32_t channelCount, uint32_t bufferSizeInFrames) :
-            channel_count(channelCount),
-            frame_capacity(bufferSizeInFrames) {
-            data = calloc(sizeof(double) * bufferCapacityInFrames(), channel_count);
-        }
-        ~AudioBusBufferList() {
-            free(data);
-        }
-
-        float* getFloatBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : static_cast<float *>(data) + channel * frame_capacity; }
-        double* getDoubleBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : static_cast<double *>(data) + channel * frame_capacity; };
-        uint32_t channelCount() const { return channel_count; }
-        uint32_t bufferCapacityInFrames() const { return frame_capacity; }
-    };
-
     // Represents a sample-accurate sequence of UMPs.
     // It is part of `AudioProcessingContext`.
     class EventSequence {
@@ -113,12 +90,36 @@ namespace remidy {
     };
 
     class AudioProcessContext {
+
+        // FIXME: remove this class and manage the entire audio buffers in one single array.
+        class AudioBusBufferList {
+            uint32_t channel_count{};
+            uint32_t frame_capacity{};
+            void* data{nullptr};
+
+        public:
+            AudioBusBufferList(uint32_t channelCount, uint32_t bufferSizeInFrames) :
+                    channel_count(channelCount),
+                    frame_capacity(bufferSizeInFrames) {
+                data = calloc(sizeof(double) * bufferCapacityInFrames(), channel_count);
+            }
+            ~AudioBusBufferList() {
+                free(data);
+            }
+
+            float* getFloatBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : static_cast<float *>(data) + channel * frame_capacity; }
+            double* getDoubleBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : static_cast<double *>(data) + channel * frame_capacity; };
+            uint32_t channelCount() const { return channel_count; }
+            uint32_t bufferCapacityInFrames() const { return frame_capacity; }
+        };
+
         TrackContext track_context;
         std::vector<AudioBusBufferList*> audio_in{};
         std::vector<AudioBusBufferList*> audio_out{};
         EventSequence event_in;
         EventSequence event_out;
         int32_t frame_count{0};
+        size_t audio_buffer_capacity_frames;
 
     public:
         AudioProcessContext(
@@ -126,7 +127,8 @@ namespace remidy {
             const uint32_t eventBufferSizeBytes
         ) : track_context(masterContext),
             event_in(eventBufferSizeBytes),
-            event_out(eventBufferSizeBytes) {
+            event_out(eventBufferSizeBytes),
+            audio_buffer_capacity_frames(0) {
         }
         ~AudioProcessContext() {
             for (const auto bus : audio_in)
@@ -137,7 +139,17 @@ namespace remidy {
                     delete bus;
         }
 
+        // FIXME: there should be configure() with full list of bus configurations
+
+        void configureMainBus(int32_t inChannels, int32_t outChannels, size_t audioBufferCapacityInFrames) {
+            audio_buffer_capacity_frames = audioBufferCapacityInFrames;
+            audio_in.emplace_back(new AudioBusBufferList(inChannels, audioBufferCapacityInFrames));
+            audio_out.emplace_back(new AudioBusBufferList(outChannels, audioBufferCapacityInFrames));
+        }
+
         TrackContext* trackContext() { return &track_context; }
+
+        size_t audioBufferCapacityInFrames() { return audio_buffer_capacity_frames; }
 
         int32_t frameCount() const { return frame_count; }
         void frameCount(const int32_t newCount) { frame_count = newCount; }
@@ -145,15 +157,26 @@ namespace remidy {
 
         int32_t audioInBusCount() { return audio_in.size(); }
         int32_t audioOutBusCount() { return audio_out.size(); }
-        AudioBusBufferList* audioIn(int32_t bus) const { return audio_in[bus]; }
-        AudioBusBufferList* audioOut(int32_t bus) const { return audio_out[bus]; }
 
-        void addAudioIn(uint32_t channelCount, uint32_t bufferSizeInFrames) {
-            audio_in.emplace_back(new AudioBusBufferList(channelCount, bufferSizeInFrames));
+        int32_t inputChannelCount(int32_t bus) { return audio_in[bus]->channelCount(); }
+        int32_t outputChannelCount(int32_t bus) { return audio_out[bus]->channelCount(); }
+
+        float* getFloatInBuffer(int32_t bus, uint32_t channel) const {
+            auto b = audio_in[bus];
+            return channel >= b->channelCount() ? nullptr : b->getFloatBufferForChannel(channel);
         }
-        void addAudioOut(uint32_t channelCount, uint32_t bufferSizeInFrames) {
-            audio_out.emplace_back(new AudioBusBufferList(channelCount, bufferSizeInFrames));
+        float* getFloatOutBuffer(int32_t bus, uint32_t channel) const {
+            auto b = audio_out[bus];
+            return channel >= b->channelCount() ? nullptr : b->getFloatBufferForChannel(channel);
         }
+        double* getDoubleInBuffer(int32_t bus, uint32_t channel) const {
+            auto b = audio_in[bus];
+            return channel >= b->channelCount() ? nullptr : b->getDoubleBufferForChannel(channel);
+        };
+        double* getDoubleOutBuffer(int32_t bus, uint32_t channel) const {
+            auto b = audio_out[bus];
+            return channel >= b->channelCount() ? nullptr : b->getDoubleBufferForChannel(channel);
+        };
 
         EventSequence& eventIn() { return event_in; }
         EventSequence& eventOut() { return event_out; }

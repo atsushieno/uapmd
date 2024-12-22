@@ -6,8 +6,9 @@ static void data_callback(ma_device* device, void* output, const void* input, ma
     ((uapmd::MiniAudioIODevice*) device->pUserData)->dataCallback(output, input, frameCount);
 }
 
-uapmd::MiniAudioIODevice::MiniAudioIODevice(const std::string& deviceName) {
-    config = ma_engine_config_init();
+uapmd::MiniAudioIODevice::MiniAudioIODevice(const std::string& deviceName) :
+    config(ma_engine_config_init()),
+    data(master_context, 0) {
     config.dataCallback = data_callback;
     config.periodSizeInFrames = 1024; // FIXME: provide audio buffer size
     // FIXME: support explicit device specification by `deviceName`,
@@ -18,13 +19,10 @@ uapmd::MiniAudioIODevice::MiniAudioIODevice(const std::string& deviceName) {
     engine.pDevice->pUserData = this;
 
     auto device = ma_engine_get_device(&engine);
-    if (device->capture.channels)
-        data.addAudioIn(device->capture.channels, config.periodSizeInFrames);
+    data.configureMainBus(device->capture.channels, device->playback.channels, config.periodSizeInFrames);
     dataOutPtrs.clear();
-    if (device->playback.channels) {
-        data.addAudioOut(device->playback.channels, config.periodSizeInFrames);
-        dataOutPtrs.resize(data.audioOut(0)->channelCount());
-    }
+    if (device->playback.channels)
+        dataOutPtrs.resize(device->playback.channels);
 }
 
 uapmd::MiniAudioIODevice::~MiniAudioIODevice() {
@@ -58,14 +56,16 @@ uint32_t uapmd::MiniAudioIODevice::channels() {
 }
 
 void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_uint32 frameCount) {
+    // audio device only has the main bus
+    int32_t mainBus = 0;
+
     if (data.audioInBusCount() > 0) {
-        // FIXME: get appropriate main bus
-        auto mainBusIn = data.audioIn(0);
         // FIXME: it should be pre-allocated elsewhere
-        auto inputView = choc::buffer::createChannelArrayView((float* const *) input, mainBusIn->channelCount(), frameCount);
+        auto inChannels = data.inputChannelCount(mainBus);
+        auto inputView = choc::buffer::createChannelArrayView((float* const *) input, inChannels, frameCount);
         inputView.data.channels = (float* const *) input;
-        for (size_t i = 0, n = mainBusIn->channelCount(); i < n; i++)
-            memcpy(mainBusIn->getFloatBufferForChannel(i), inputView.getChannel(i).data.data, sizeof(float) * frameCount);
+        for (size_t i = 0, n = inChannels; i < n; i++)
+            memcpy(data.getFloatInBuffer(mainBus, i), inputView.getChannel(i).data.data, sizeof(float) * frameCount);
     }
     data.frameCount(frameCount);
 
@@ -95,13 +95,12 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
     }*/
 
     if (data.audioOutBusCount() > 0) {
-        // FIXME: get appropriate main bus
-        auto mainBusOut = data.audioOut(0);
         // FIXME: it should be pre-allocated elsewhere
-        for (int i = 0, n = mainBusOut->channelCount(); i < n; i++)
-            dataOutPtrs[i] = mainBusOut->getFloatBufferForChannel(i);
-        auto outcomeView = choc::buffer::createChannelArrayView(dataOutPtrs.data(), mainBusOut->channelCount(), frameCount);
-        auto outputView = choc::buffer::createInterleavedView((float*) output, mainBusOut->channelCount(), frameCount);
+        size_t outChannels = data.outputChannelCount(mainBus);
+        for (int i = 0, n = data.outputChannelCount(mainBus); i < n; i++)
+            dataOutPtrs[i] = data.getFloatOutBuffer(mainBus, i);
+        auto outcomeView = choc::buffer::createChannelArrayView(dataOutPtrs.data(), outChannels, frameCount);
+        auto outputView = choc::buffer::createInterleavedView((float*) output, outChannels, frameCount);
         choc::buffer::copyRemappingChannels(outputView, outcomeView);
     }
 }

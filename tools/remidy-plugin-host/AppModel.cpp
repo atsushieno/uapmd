@@ -44,7 +44,7 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     buffer_size_in_frames(audioBufferSizeInFrames),
             ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
             plugin_host_pal(AudioPluginHostPAL::instance()),
-            sequencer(sampleRate, umpBufferSizeInBytes, this->plugin_host_pal),
+            sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, this->plugin_host_pal),
             dispatcher(umpBufferSizeInBytes) {
 
     dispatcher.addCallback([&](uapmd::AudioProcessContext& process) {
@@ -57,11 +57,9 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
             ctx->eventOut().position(0); // clean up *out* events here.
             ctx->frameCount(process.frameCount());
             for (uint32_t i = 0; i < process.audioInBusCount(); i++) {
-                auto srcInBus = process.audioIn(i);
-                auto dstInBus = ctx->audioIn(i);
-                for (uint32_t ch = 0, nCh = srcInBus->channelCount(); ch < nCh; ch++)
-                    memcpy(dstInBus->getFloatBufferForChannel(ch),
-                           (void *) srcInBus->getFloatBufferForChannel(ch), process.frameCount() * sizeof(float));
+                for (uint32_t ch = 0, nCh = process.inputChannelCount(i); ch < nCh; ch++)
+                    memcpy(ctx->getFloatInBuffer(i, ch),
+                           (void *) process.getFloatInBuffer(i, ch), process.frameCount() * sizeof(float));
             }
         }
         auto ret = sequencer.processAudio();
@@ -72,10 +70,8 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
             auto ctx = data.tracks[t];
             ctx->eventIn().position(0); // clean up *in* events here.
             for (uint32_t i = 0; i < process.audioOutBusCount(); i++) {
-                auto dstOutBus = process.audioOut(i);
-                auto srcOutBus = ctx->audioOut(i);
-                for (uint32_t ch = 0, nCh = srcOutBus->channelCount(); ch < nCh; ch++)
-                    memcpy(dstOutBus->getFloatBufferForChannel(ch), (void*) srcOutBus->getFloatBufferForChannel(ch), process.frameCount() * sizeof(float));
+                for (uint32_t ch = 0, nCh = ctx->outputChannelCount(i); ch < nCh; ch++)
+                    memcpy(process.getFloatOutBuffer(i, ch), (void*) ctx->getFloatOutBuffer(i, ch), process.frameCount() * sizeof(float));
             }
         }
         return ret;

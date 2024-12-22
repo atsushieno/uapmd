@@ -54,20 +54,24 @@ int testInstancing() {
                     remidy::MasterContext masterContext;
                     remidy::TrackContext trackContext{masterContext};
                     remidy::AudioProcessContext ctx{masterContext, 4096};
+                    ctx.configureMainBus(numAudioIn > 0 ? inputBuses[0]->channelLayout().channels() : 0,
+                                         numAudioOut > 0 ? outputBuses[0]->channelLayout().channels() : 0,
+                                         1024);
+                    /*
                     for (size_t i = 0, n = numAudioIn; i < n; ++i)
                         ctx.addAudioIn(inputBuses[i]->channelLayout().channels(), 1024);
                     for (size_t i = 0, n = numAudioOut; i < n; ++i)
                         ctx.addAudioOut(outputBuses[i]->channelLayout().channels(), 1024);
+                    */
                     ctx.frameCount(512);
                     for (size_t i = 0; i < numAudioIn; i++) {
-                        // FIXME: channel count is not precise.
-                        memcpy(ctx.audioIn(i)->getFloatBufferForChannel(0), (void*) "0123456789ABCDEF", 16);
-                        memcpy(ctx.audioIn(i)->getFloatBufferForChannel(1), (void*) "FEDCBA9876543210", 16);
+                        for (size_t ch = 0, nCh = ctx.inputChannelCount(i); ch < nCh; ch++)
+                            memcpy(ctx.getFloatInBuffer(i, ch), (void*) "0123456789ABCDEF", 16);
                     }
                     for (size_t i = 0; i < numAudioOut; i++) {
-                        // FIXME: channel count is not precise.
-                        memcpy(ctx.audioOut(i)->getFloatBufferForChannel(0), (void*) "02468ACE13579BDF", 16);
-                        memcpy(ctx.audioOut(i)->getFloatBufferForChannel(1), (void*) "FDB97531ECA86420", 16);
+                        // should not matter for audio processing though
+                        for (size_t ch = 0, nCh = ctx.outputChannelCount(i); ch < nCh; ch++)
+                            memcpy(ctx.getFloatOutBuffer(i, ch), (void*) "02468ACE13579BDF", 16);
                     }
 
                     auto code = instance->process(ctx);

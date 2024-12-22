@@ -6,7 +6,7 @@ namespace uapmd {
         ma_engine_config config{};
         ma_engine engine{};
         remidy::MasterContext master_context{};
-        remidy::AudioProcessContext data{master_context, 0}; // no UMP events handled here.
+        remidy::AudioProcessContext data; // no UMP events handled here.
         std::vector<std::function<uapmd_status_t(remidy::AudioProcessContext& data)>> callbacks{};
         std::vector<const float *> dataOutPtrs{};
 
