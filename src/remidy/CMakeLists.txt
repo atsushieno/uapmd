@@ -20,8 +20,8 @@ CPMAddPackage(
 # FIXME: it would be slightly nicer if we could migrate to CPM (failed to resolve farbot if we actually do so. Also see https://github.com/hogliux/farbot/pull/15 )
 # <rtlog>
 FetchContent_Declare(rtlog-cpp
-        GIT_REPOSITORY https://github.com/atsushieno/rtlog-cpp
-        GIT_TAG e6ee502c9308f060f683bf835c745a65c92e7fda
+        GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
+        GIT_TAG swap_queues
 )
 FetchContent_MakeAvailable(rtlog-cpp)
 # </rtlog>
