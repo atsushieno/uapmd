@@ -11,7 +11,7 @@ uapmd::AudioPluginViewEntryList uapmd::getPluginViewEntryList() {
 }
 
 // Part of WebView C++ backend class for RemidyAudioPluginSelectors.js.
-void uapmd::registerPluginViewEntryListFeatures(WebViewProxy& proxy) {
+void uapmd::registerPluginViewEntryListFeatures(remidy::webui::WebViewProxy& proxy) {
     proxy.registerFunction("remidy_getAudioPluginEntryList", [](const std::string_view&) -> std::string {
         auto pluginList = uapmd::getPluginViewEntryList();
         auto entries = pluginList.entries();

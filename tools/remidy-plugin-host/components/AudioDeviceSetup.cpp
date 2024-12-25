@@ -12,7 +12,7 @@ uapmd::DevicesInterop uapmd::getDevices() {
     return ret;
 }
 
-void uapmd::registerAudioDeviceSetupFeatures(WebViewProxy& proxy) {
+void uapmd::registerAudioDeviceSetupFeatures(remidy::webui::WebViewProxy& proxy) {
 #if 1 // commonized
     proxy.registerFunction("remidy_getDevices", [](const std::string_view&) -> std::string {
         auto devices = uapmd::getDevices();

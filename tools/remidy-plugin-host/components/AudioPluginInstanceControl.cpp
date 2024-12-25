@@ -11,7 +11,7 @@ std::vector<uapmd::ParameterMetadata> uapmd::getParameterList(int32_t instanceId
     return AppModel::instance().getParameterList(instanceId);
 }
 
-void uapmd::registerPluginInstanceControlFeatures(WebViewProxy& proxy) {
+void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& proxy) {
     proxy.registerFunction("remidy_instantiatePlugin", [](const std::string_view& args) -> std::string {
         auto req = choc::json::parse(args);
         auto instancingId = req["instancingId"].getInt64();

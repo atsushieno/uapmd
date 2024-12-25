@@ -15,6 +15,7 @@ target_include_directories(remidy-plugin-host PRIVATE
         ../../external/choc
         ${cmidi2_SOURCE_DIR}
         ../../include
+        remidy::remidy-webui
 )
 target_link_libraries(remidy-plugin-host PRIVATE
         saucer::saucer

@@ -12,7 +12,7 @@ bool uapmd::isAudioPlaying() {
     return AppModel::instance().isAudioPlaying();
 }
 
-void uapmd::registerAudioPlayerManagerFeatures(WebViewProxy& proxy) {
+void uapmd::registerAudioPlayerManagerFeatures(remidy::webui::WebViewProxy& proxy) {
     proxy.registerFunction("remidy_startAudio", [](const std::string_view& args) -> std::string {
         return AppModel::instance().startAudio() ? "true" : "false";
     });

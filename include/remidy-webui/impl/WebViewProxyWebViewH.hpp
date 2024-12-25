@@ -1,12 +1,12 @@
 #pragma once
 
-#include <remidy/remidy.hpp>
+#include "remidy/remidy.hpp"
 //#include <nui/frontend.hpp>
 #include <nui/core.hpp>
 #include <nui/window.hpp>
 //#include <nui/rpc_hub.hpp>
 
-namespace uapmd {
+namespace remidy::webui::webviewh_wrapper {
     class EventLoopWebViewH : public remidy::EventLoop {
         Nui::Window window;
 

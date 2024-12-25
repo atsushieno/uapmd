@@ -1,15 +1,15 @@
 #pragma once
 
-#include "../WebViewProxy.hpp"
-#include <choc/gui/choc_WebView.h>
-#include <choc/gui/choc_DesktopWindow.h>
+#include "remidy-webui/WebViewProxy.hpp"
+#include "choc/gui/choc_WebView.h"
+#include "choc/gui/choc_DesktopWindow.h"
 
-namespace uapmd {
-class WebViewProxyChoc : public WebViewProxy {
-    choc::ui::WebView webview;
-    choc::ui::DesktopWindow window;
+namespace remidy::webui::choc_wrapper {
+    class WebViewProxyChoc : public WebViewProxy {
+        choc::ui::WebView webview;
+        choc::ui::DesktopWindow window;
 
-    choc::value::Value toChocValue(ValueType type, uapmd::WebViewProxy::Value* src) {
+        choc::value::Value toChocValue(ValueType type, remidy::webui::WebViewProxy::Value *src) {
             switch (type) {
                 case ValueType::Double:
                     return choc::value::createFloat64(src->toDouble());
@@ -24,29 +24,32 @@ class WebViewProxyChoc : public WebViewProxy {
                     throw std::runtime_error("Not implemented yet");
             }
         }
-    public:
-        explicit WebViewProxyChoc(WebViewProxy::Configuration& config) :
-                WebViewProxy(config),
-                window({ 100, 100, 800, 600 }) {
-            webview = choc::ui::WebView(choc::ui::WebView::Options{
-                //.acceptsFirstMouseClick =
-                .enableDebugMode = config.enableDebugger,
-                .fetchResource = [&](const std::string& path) -> std::optional<choc::ui::WebView::Options::Resource> {
 
-                    std::string filePath = path.starts_with('/') ? path.substr(1) : path;
-                    auto res = this->config.resolvePath ? this->config.resolvePath.value()(path) : std::optional<Content>{};
-                    if (res)
-                        return choc::ui::WebView::Options::Resource(res->data, res->mimeType);
-                    std::ifstream is{filePath};
-                    std::ostringstream ss;
-                    ss << is.rdbuf();
-                    std::string s = ss.str();
-                    return choc::ui::WebView::Options::Resource(s, choc::network::getMIMETypeFromFilename(path));
-                },
-                .customSchemeURI = "remidy://app/",
-                //.customUserAgent =
-                .transparentBackground = config.transparentBackground,
-                .enableDefaultClipboardKeyShortcutsInSafari = true
+    public:
+        explicit WebViewProxyChoc(WebViewProxy::Configuration &config) :
+                WebViewProxy(config),
+                window({100, 100, 800, 600}) {
+            webview = choc::ui::WebView(choc::ui::WebView::Options{
+                    //.acceptsFirstMouseClick =
+                    .enableDebugMode = config.enableDebugger,
+                    .fetchResource = [&](
+                            const std::string &path) -> std::optional<choc::ui::WebView::Options::Resource> {
+
+                        std::string filePath = path.starts_with('/') ? path.substr(1) : path;
+                        auto res = this->config.resolvePath ? this->config.resolvePath.value()(path)
+                                                            : std::optional<Content>{};
+                        if (res)
+                            return choc::ui::WebView::Options::Resource(res->data, res->mimeType);
+                        std::ifstream is{filePath};
+                        std::ostringstream ss;
+                        ss << is.rdbuf();
+                        std::string s = ss.str();
+                        return choc::ui::WebView::Options::Resource(s, choc::network::getMIMETypeFromFilename(path));
+                    },
+                    .customSchemeURI = "remidy://app/",
+                    //.customUserAgent =
+                    .transparentBackground = config.transparentBackground,
+                    .enableDefaultClipboardKeyShortcutsInSafari = true
             });
             window.setResizable(true);
             window.setContent(webview.getViewHandle());
@@ -54,20 +57,27 @@ class WebViewProxyChoc : public WebViewProxy {
                 remidy::EventLoop::stop();
             };
         }
+
         ~WebViewProxyChoc() override = default;
 
         void navigateTo(const std::string &url) override { webview.navigate(url); }
+
         void navigateToLocalFile(const std::string &localFile) override {
             webview.navigate("remidy://app/" + localFile);
         }
+
         void loadContent(const std::string &data) override { webview.setHTML(data); }
+
         // The input and the output are JSON string.
-        void registerFunction(const std::string &jsName, std::function<std::string(const std::string_view&)>&& func) override {
-            webview.bind(jsName, [&](const choc::value::ValueView& args) -> choc::value::Value {
+        void registerFunction(const std::string &jsName,
+                              std::function<std::string(const std::string_view &)> &&func) override {
+            webview.bind(jsName, [&](const choc::value::ValueView &args) -> choc::value::Value {
                 return choc::value::createString(func(choc::json::toString(args, true)));
             });
         }
-        void registerFunction(const std::string &jsName, ValueType returnType, std::function<Value*(const std::vector<Value*>)> &&func) override {
+
+        void registerFunction(const std::string &jsName, ValueType returnType,
+                              std::function<Value *(const std::vector<Value *>)> &&func) override {
             std::runtime_error("Not implemented");
             /*
                 auto f = [this,returnType,func](const choc::value::ValueView& args) {
@@ -90,6 +100,7 @@ class WebViewProxyChoc : public WebViewProxy {
                 webview.bind(jsName, f);
              */
         }
+
         void evalJS(const std::string &js) override { webview.evaluateJavascript(js); }
 
         // WebView UI functionality
@@ -102,6 +113,7 @@ class WebViewProxyChoc : public WebViewProxy {
             window.setVisible(true);
             window.toFront();
         }
+
         void hide() override { window.setVisible(false); }
     };
 }

@@ -77,7 +77,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         });
 
         this.innerHTML = `
-            <sl-details summary="Instance Control">
+            <sl-details summary="Instance Control" open="open">
                 <sl-dialog label="Select a plugin to instantiate" style="--width: 90vw">
                     <div style="overflow: auto; height: 500px">
                         <remidy-audio-plugin-list></remidy-audio-plugin-list>

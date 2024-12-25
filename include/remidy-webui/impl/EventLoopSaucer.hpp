@@ -1,5 +1,7 @@
-#include <saucer/smartview.hpp>
-#include <remidy/remidy.hpp>
+#include "saucer/smartview.hpp"
+#include "remidy/remidy.hpp"
+
+namespace remidy::webui::saucer_wrapper {
 
 class EventLoopSaucer : public remidy::EventLoop {
     std::shared_ptr<saucer::application> app;
@@ -28,3 +30,5 @@ protected:
 public:
     EventLoopSaucer(std::shared_ptr<saucer::application> app) : app(app) {}
 };
+
+}

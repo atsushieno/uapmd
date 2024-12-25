@@ -3,7 +3,7 @@
 #include <vector>
 #include <string>
 
-#include "../WebViewProxy.hpp"
+#include "remidy-webui/WebViewProxy.hpp"
 
 namespace uapmd {
     struct AudioInDeviceInterop {
@@ -33,5 +33,5 @@ namespace uapmd {
 
     // invoked via JS callbacks too.
     DevicesInterop getDevices();
-    void registerAudioDeviceSetupFeatures(WebViewProxy& proxy);
+    void registerAudioDeviceSetupFeatures(remidy::webui::WebViewProxy& proxy);
 }

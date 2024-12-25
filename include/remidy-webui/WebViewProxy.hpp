@@ -7,7 +7,7 @@
 #include <functional>
 #include <future>
 
-namespace uapmd {
+namespace remidy::webui {
     // Common interface to various WebView implementations.
     class WebViewProxy {
     public:

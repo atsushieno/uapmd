@@ -1,8 +1,8 @@
 #include <remidy/remidy.hpp>
-#include "impl/WebViewProxySaucer.hpp"
-#include "impl/WebViewProxyChoc.hpp"
-#include "impl/EventLoopSaucer.hpp"
-#include "impl/SaucerWebEmbedded.hpp"
+#include "remidy-webui/impl/WebViewProxySaucer.hpp"
+#include "remidy-webui/impl/WebViewProxyChoc.hpp"
+#include "remidy-webui/impl/EventLoopSaucer.hpp"
+#include "remidy-webui/impl/SaucerWebEmbedded.hpp"
 #include "AppModel.hpp"
 #include "components/AudioDeviceSetup.hpp"
 #include "components/AudioPluginSelectors.hpp"
@@ -12,19 +12,21 @@
 
 std::unique_ptr<remidy::EventLoop> eventLoop{};
 
+using namespace remidy::webui::saucer_wrapper;
+
 int runMain(int argc, char** argv) {
     std::filesystem::path webDir{"web"};
 #if 1
     SaucerWebEmbedded web{webDir};
     eventLoop = std::make_unique<EventLoopSaucer>(web.app());
     remidy::setEventLoop(eventLoop.get());
-    uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
-    uapmd::WebViewProxySaucer proxy{config, web};
+    remidy::webui::WebViewProxy::Configuration config{ .enableDebugger = true };
+    WebViewProxySaucer proxy{config, web};
 #else
     // choc does not register custom URI schemes in secure context, so its
     // JS web components don't work as expected. We will need its own web server.
-    uapmd::WebViewProxy::Configuration config{ .enableDebugger = true };
-    uapmd::WebViewProxyChoc proxy{config};
+    remidy::webui::WebViewProxy::Configuration config{ .enableDebugger = true };
+    remidy::webui::choc_wrapper::WebViewProxyChoc proxy{config};
 #endif
 
     remidy::EventLoop::initializeOnUIThread();

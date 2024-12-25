@@ -1,8 +1,8 @@
 #pragma once
-#include "../WebViewProxy.hpp"
+#include "remidy-webui/WebViewProxy.hpp"
 #include "SaucerWebEmbedded.hpp"
 
-namespace uapmd {
+namespace remidy::webui::saucer_wrapper {
 class WebViewProxySaucer : public WebViewProxy {
         SaucerWebEmbedded& embedded;
         saucer::smartview<saucer::serializers::glaze::serializer>& webview;
