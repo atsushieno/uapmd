@@ -1,0 +1,22 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c59f535..2a6fad4 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -221,7 +221,7 @@ include("cmake/polyfill.cmake")
+ check_features()
+ set(saucer_fmt_install ON)
+ 
+-if (saucer_polyfill_thread)
++if (false AND saucer_polyfill_thread)
+   message(STATUS "[saucer] Using std::jthread polyfill")
+ 
+   CPMFindPackage(
+@@ -251,7 +251,7 @@ if (saucer_polyfill_functional)
+   set(saucer_fmt_install OFF)
+ endif()
+ 
+-if (saucer_polyfill_expected)
++if (false AND saucer_polyfill_expected)
+   message(STATUS "[saucer] Using std::expected polyfill")
+ 
+   CPMFindPackage(

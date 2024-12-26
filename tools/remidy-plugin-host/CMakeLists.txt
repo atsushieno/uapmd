@@ -4,7 +4,11 @@ add_executable(remidy-plugin-host)
 #set(saucer_backend "Qt6")
 set(saucer_modules ON)
 
+if (WIN32)
+    cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-expected-msvc.patch")
+else()
 cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-expected.patch")
+endif()
 FetchContent_Declare(saucer
         GIT_TAG        24ec76e09ffe26287d7ac3978dce95446e924625
         GIT_REPOSITORY "https://github.com/saucer/saucer"
