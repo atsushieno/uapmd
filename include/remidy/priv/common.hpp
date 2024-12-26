@@ -71,8 +71,10 @@ namespace remidy {
     };
 
     inline void setCurrentThreadNameIfPossible(std::string const threadName) {
-#if !WIN32
+#if __APPLE__
         pthread_setname_np(threadName.c_str());
+#elif defined(__unix__)
+        pthread_setname_np(pthread_self(), threadName.c_str());
 #endif
     }
 
