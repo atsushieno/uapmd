@@ -4,12 +4,14 @@ add_executable(remidy-plugin-host)
 #set(saucer_backend "Qt6")
 set(saucer_modules ON)
 
-CPMAddPackage(
-        NAME           saucer
+cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-expected.patch")
+FetchContent_Declare(saucer
         GIT_TAG        24ec76e09ffe26287d7ac3978dce95446e924625
         GIT_REPOSITORY "https://github.com/saucer/saucer"
-        PATCHES        ../../external/saucer-disable-polyfill-expected.patch
+        PATCH_COMMAND  git apply "${SAUCER_PATCH_FILE}"
+        UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
 )
+FetchContent_MakeAvailable(saucer)
 
 target_include_directories(remidy-plugin-host PRIVATE
         ../../external/choc
