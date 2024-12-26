@@ -5,9 +5,11 @@
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
 #define DEFAULT_SAMPLE_RATE 48000
-uapmd::AppModel model{DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE};
 
-uapmd::AppModel& uapmd::AppModel::instance() { return model; }
+uapmd::AppModel& uapmd::AppModel::instance() {
+    static AppModel model{DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE};
+    return model;
+}
 
 void addMessage64(remidy::EventSequence& eventIn, int64_t ump) {
     cmidi2_ump_write64((cmidi2_ump*) ((uint8_t*) eventIn.getMessages() + eventIn.position()), ump);
@@ -44,8 +46,14 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     buffer_size_in_frames(audioBufferSizeInFrames),
             ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
             plugin_host_pal(AudioPluginHostPAL::instance()),
-            sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, this->plugin_host_pal),
-            dispatcher(umpBufferSizeInBytes) {
+            sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, this->plugin_host_pal) {
+
+    auto manager = AudioIODeviceManager::instance();
+    auto logger = remidy::Logger::global();
+    AudioIODeviceManager::Configuration audioConfig{ .logger = logger };
+    manager->initialize(audioConfig);
+    // FIXME: enable MIDI devices
+    dispatcher.configure(umpBufferSizeInBytes, manager->open());
 
     dispatcher.addCallback([&](uapmd::AudioProcessContext& process) {
         auto& data = sequencer.data();

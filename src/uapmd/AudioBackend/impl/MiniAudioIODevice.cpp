@@ -4,10 +4,21 @@
 
 // MiniAudioIODeviceManager
 
+remidy::Logger::LogLevel convertFromMALogLevel(uint32_t maLevel) {
+    switch (maLevel) {
+        case MA_LOG_LEVEL_ERROR: return remidy::Logger::LogLevel::ERROR;
+        case MA_LOG_LEVEL_WARNING: return remidy::Logger::LogLevel::WARNING;
+        case MA_LOG_LEVEL_INFO: return remidy::Logger::LogLevel::INFO;
+        case MA_LOG_LEVEL_DEBUG: return remidy::Logger::LogLevel::DIAGNOSTIC;
+    }
+    // default
+    return remidy::Logger::LogLevel::INFO;
+}
+
 void uapmd::MiniAudioIODeviceManager::on_ma_log(void* userData, uint32_t logLevel, const char* message) {
     auto logger = ((uapmd::MiniAudioIODeviceManager*) userData)->remidy_logger;
     if (logger)
-        logger->log((remidy::Logger::LogLevel) logLevel, message);
+        logger->log(convertFromMALogLevel(logLevel), message);
 }
 
 uapmd::MiniAudioIODeviceManager::MiniAudioIODeviceManager(
@@ -15,20 +26,38 @@ uapmd::MiniAudioIODeviceManager::MiniAudioIODeviceManager(
 }
 
 void uapmd::MiniAudioIODeviceManager::initialize(uapmd::AudioIODeviceManager::Configuration &config) {
-    remidy_logger = config.logger;
-
-    size_t backendCount;
-    ma_get_enabled_backends(nullptr, 0, &backendCount);
-    backends.resize(backendCount);
+    remidy_logger = config.logger ? config.logger : remidy::Logger::global();
 
     auto logCallback = ma_log_callback_init(on_ma_log, this);
-    ma_log_init(nullptr, &ma_logger);
-    ma_log_register_callback(&ma_logger, logCallback);
+    static auto allocCB = ma_allocation_callbacks_init_default();
+    auto result = ma_log_init(nullptr, &ma_logger);
+    if (result != MA_SUCCESS)
+        remidy::Logger::global()->logError("Failed at ma_log_init");
+    result = ma_log_register_callback(&ma_logger, logCallback);
+    if (result != MA_SUCCESS)
+        remidy::Logger::global()->logError("Failed at ma_log_register_callback.");
 
-    ma_get_enabled_backends(backends.data(), backendCount, nullptr);
     auto cfg = ma_context_config_init();
     cfg.pLog = &ma_logger;
-    ma_context_init(backends.data(), backendCount, &cfg, &context);
+    ma_context_init(nullptr, 0, &cfg, &context);
+}
+
+const ma_device_id* findDeviceId(ma_context& context, std::string name, uapmd::AudioIODirections directions) {
+    ma_device_info* playback;
+    ma_device_info* capture;
+    ma_uint32 playbackCount, captureCount;
+    ma_context_get_devices(&context, &playback, &playbackCount, &capture, &captureCount);
+    if (directions & uapmd::AudioIODirections::Input) {
+        for (ma_uint32 i = 0; i < captureCount; i++)
+            if (name == capture[i].name)
+                return &capture[i].id;
+    }
+    if (directions & uapmd::AudioIODirections::Output) {
+        for (ma_uint32 i = 0; i < playbackCount; i++)
+            if (name == playback[i].name)
+                return &playback[i].id;
+    }
+    return nullptr;
 }
 
 std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices() {
@@ -39,7 +68,7 @@ std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices
     std::vector<AudioIODeviceInfo> ret{};
     for (ma_uint32 i = 0; i < captureCount; i++)
         ret.emplace_back(AudioIODeviceInfo {
-            .directions = AudioIODeviceInfo::IODirections::Input,
+            .directions = AudioIODirections::Input,
             .name = capture[i].name,
             .sampleRate = capture[i].nativeDataFormats[0].sampleRate,
             .channels = capture[i].nativeDataFormats[0].channels,
@@ -47,7 +76,7 @@ std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices
     // There is no duplex devices in miniaudio land, so do not consider overlaps.
     for (ma_uint32 i = 0; i < playbackCount; i++)
         ret.emplace_back(AudioIODeviceInfo {
-                .directions = AudioIODeviceInfo::IODirections::Output,
+                .directions = AudioIODirections::Output,
                 .name = playback[i].name,
                 .sampleRate = playback[i].nativeDataFormats[0].sampleRate,
                 .channels = playback[i].nativeDataFormats[0].channels,
@@ -56,9 +85,9 @@ std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices
 }
 
 // The entire API is hacky so far...
-uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::activeDefaultDevice() {
-    static MiniAudioIODevice device{""};
-    return &device;
+uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::open() {
+    static uapmd::MiniAudioIODevice audio{this};
+    return &audio;
 }
 
 // MiniAudioIODevice
@@ -68,12 +97,12 @@ static void data_callback(ma_device* device, void* output, const void* input, ma
 }
 
 uapmd::MiniAudioIODevice::MiniAudioIODevice(
-        const std::string& deviceName
+        MiniAudioIODeviceManager* manager
     ) : config(ma_engine_config_init()),
         data(master_context, 0) {
+    config.pContext = &manager->maContext();
     config.dataCallback = data_callback;
     config.periodSizeInFrames = 1024; // FIXME: provide audio buffer size
-    // FIXME: support explicit device specification by `deviceName`,
 
     if (ma_engine_init(&config, &engine) != MA_SUCCESS) {
         throw std::runtime_error("uapmd: Failed to initialize miniaudio driver.");

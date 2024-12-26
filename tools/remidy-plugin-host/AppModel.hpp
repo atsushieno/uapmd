@@ -9,7 +9,7 @@ namespace uapmd {
         const size_t buffer_size_in_frames;
         const size_t ump_buffer_size_in_bytes;
         int32_t sample_rate;
-        DeviceIODispatcher dispatcher;
+        DeviceIODispatcher dispatcher{};
         AudioPluginHostPAL* plugin_host_pal;
         SequenceProcessor sequencer;
 
@@ -26,6 +26,8 @@ namespace uapmd {
     public:
         static AppModel& instance();
         AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, int32_t sampleRate);
+
+        // Audio plugin support
 
         remidy::PluginCatalog& catalog() { return plugin_host_pal->catalog(); }
 
@@ -45,7 +47,7 @@ namespace uapmd {
                     remidy::Logger::global()->logError(msg.c_str());
                 }
                 auto trackCtx = sequencer.data().tracks[sequencer.tracks().size() - 1];
-                auto numChannels = dispatcher.audioDevice()->channels();
+                auto numChannels = dispatcher.audio()->channels();
                 trackCtx->configureMainBus(numChannels, numChannels, buffer_size_in_frames);
 
                 for (auto& f : instancingCompleted)
@@ -69,6 +71,13 @@ namespace uapmd {
                 return {};
         }
 
+        // audio/MIDI player
+
+        void sendNoteOn(int32_t instanceId, int32_t note);
+        void sendNoteOff(int32_t instanceId, int32_t note);
+
+        // Audio controller (WIP, unused yet)
+
         uapmd_status_t startAudio() {
             return dispatcher.start();
         }
@@ -88,8 +97,5 @@ namespace uapmd {
             sample_rate = newSampleRate;
             return true;
         }
-
-        void sendNoteOn(int32_t instanceId, int32_t note);
-        void sendNoteOff(int32_t instanceId, int32_t note);
     };
 }

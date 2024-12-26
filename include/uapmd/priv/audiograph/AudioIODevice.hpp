@@ -3,15 +3,15 @@
 #include <string>
 
 namespace uapmd {
+    enum AudioIODirections {
+        Input = 1,
+        Output = 2,
+        Duplex = 3
+    };
+
     class AudioIODeviceInfo {
     public:
-        enum class IODirections {
-            Input = 1,
-            Output = 2,
-            // Duplex = 3 if any
-        };
-
-        IODirections directions{IODirections::Output};
+        AudioIODirections directions{AudioIODirections::Output};
         std::string name{};
         uint32_t sampleRate{};
         uint32_t channels{};
@@ -25,8 +25,11 @@ namespace uapmd {
     public:
         virtual void addAudioCallback(std::function<uapmd_status_t(AudioProcessContext& data)>&& callback) = 0;
         virtual void clearAudioCallbacks() = 0;
+
+        // FIXME: they should differ at input and output
         virtual double sampleRate() = 0;
         virtual uint32_t channels() = 0;
+
         virtual uapmd_status_t start() = 0;
         virtual uapmd_status_t stop() = 0;
         virtual bool isPlaying() = 0;
@@ -52,8 +55,7 @@ namespace uapmd {
             return onDevices();
         }
 
-        // FIXME: maybe we should split input and output devices
-        virtual AudioIODevice* activeDefaultDevice() = 0;
+        virtual AudioIODevice* open() = 0;
 
     protected:
         bool initialized{false};

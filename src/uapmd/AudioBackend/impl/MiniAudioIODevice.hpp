@@ -3,7 +3,6 @@
 
 namespace uapmd {
     class MiniAudioIODeviceManager : public AudioIODeviceManager {
-        std::vector<ma_backend> backends{};
         ma_context context{};
         ma_log ma_logger{};
         remidy::Logger* remidy_logger{};
@@ -12,7 +11,9 @@ namespace uapmd {
     public:
         MiniAudioIODeviceManager();
         void initialize(Configuration& config) override;
-        AudioIODevice * activeDefaultDevice() override;
+        AudioIODevice * open() override;
+
+        ma_context& maContext() { return context; }
 
     protected:
         std::vector<AudioIODeviceInfo> onDevices() override;
@@ -27,7 +28,7 @@ namespace uapmd {
         std::vector<const float *> dataOutPtrs{};
 
     public:
-        explicit MiniAudioIODevice(const std::string& deviceName);
+        explicit MiniAudioIODevice(MiniAudioIODeviceManager* manager);
         ~MiniAudioIODevice() override;
 
         void addAudioCallback(std::function<uapmd_status_t(remidy::AudioProcessContext& data)>&& callback) override {
