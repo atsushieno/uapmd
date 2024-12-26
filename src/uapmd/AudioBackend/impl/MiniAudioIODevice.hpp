@@ -2,6 +2,22 @@
 #include <miniaudio.h>
 
 namespace uapmd {
+    class MiniAudioIODeviceManager : public AudioIODeviceManager {
+        std::vector<ma_backend> backends{};
+        ma_context context{};
+        ma_log ma_logger{};
+        remidy::Logger* remidy_logger{};
+
+        static void on_ma_log(void* userData, uint32_t logLevel, const char* message);
+    public:
+        MiniAudioIODeviceManager();
+        void initialize(Configuration& config) override;
+        AudioIODevice * activeDefaultDevice() override;
+
+    protected:
+        std::vector<AudioIODeviceInfo> onDevices() override;
+    };
+
     class MiniAudioIODevice : public AudioIODevice {
         ma_engine_config config{};
         ma_engine engine{};

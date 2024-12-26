@@ -1,7 +1,9 @@
 #include "uapmd/uapmd.hpp"
 #include "impl/MiniAudioIODevice.hpp"
 
-uapmd::AudioIODevice* uapmd::AudioIODevice::instance(const std::string& deviceName, const std::string& driverName) {
-    static MiniAudioIODevice impl{deviceName};
+
+uapmd::AudioIODeviceManager* uapmd::AudioIODeviceManager::instance(const std::string &driverName) {
+    // We do not support anything but miniaudio, so driverName is not respected here...
+    static uapmd::MiniAudioIODeviceManager impl{};
     return &impl;
 }

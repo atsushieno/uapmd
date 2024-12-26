@@ -11,11 +11,11 @@ namespace uapmd {
         Impl* impl;
 
     public:
-        explicit DeviceIODispatcher(size_t umpBufferSizeInBytes, AudioIODevice* audioDriver = nullptr, MidiIODevice* midiDriver = nullptr);
+        explicit DeviceIODispatcher(size_t umpBufferSizeInBytes, AudioIODevice* audioDriver = AudioIODeviceManager::instance()->activeDefaultDevice(), MidiIODevice* midiDriver = nullptr);
         ~DeviceIODispatcher();
 
-        AudioIODevice* audioDriver();
-        MidiIODevice* midiDriver();
+        AudioIODevice* audioDevice();
+        MidiIODevice* midiDevice();
 
         // add a user callback that is invoked whenever audio device callback is invoked, or
         // `runCallback()` is manually invoked.
