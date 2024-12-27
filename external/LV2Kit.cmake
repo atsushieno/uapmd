@@ -14,7 +14,6 @@ if(WIN32)
 	)
 else()
 	set(lv2kit_COMPILE_OPTIONS_PLAT
-			-DUSE_COPY_FILE_RANGE=0
 	)
 	set(lv2kit_SOURCES_PLAT
 			${LV2KIT_SRC_DIR}/zix/src/posix/environment_posix.c
@@ -41,6 +40,7 @@ endif()
 target_compile_options(lv2kit PRIVATE
 		-DZIX_STATIC
 		-DZIX_INTERNAL
+		-DZIX_NO_DEFAULT_CONFIG=1
 		# error: call to undeclared function 'posix_fadvise'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
 		-DHAVE_POSIX_FADVISE=0
 		${lv2kit_COMPILE_OPTIONS_PLAT}
