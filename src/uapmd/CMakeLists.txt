@@ -7,6 +7,18 @@ CPMAddPackage(
         GIT_REPOSITORY https://github.com/celtera/libremidi
 )
 
+if(UNIX AND NOT APPLE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GTK4 REQUIRED gtk4)
+endif()
+
+target_compile_options(uapmd PUBLIC
+        ${GTK4_CFLAGS}
+)
+target_link_options(uapmd PUBLIC
+        ${GTK4_LDFLAGS}
+)
+
 target_include_directories(uapmd PRIVATE
         ../../external/miniaudio
         ../../external/choc

@@ -5,7 +5,8 @@ add_executable(remidy-plugin-host)
 set(saucer_modules ON)
 
 if(UNIX AND NOT APPLE)
-    FindPkgConfig()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GTK4 REQUIRED gtk4)
     pkg_check_modules(WEBKITGTK REQUIRED webkitgtk-6.0)
 endif()
 
@@ -23,9 +24,11 @@ FetchContent_Declare(saucer
 FetchContent_MakeAvailable(saucer)
 
 target_compile_options(remidy-plugin-host PRIVATE
+        ${GTK4_CFLAGS}
         ${WEBKITGTK_CFLAGS}
 )
 target_link_options(remidy-plugin-host PRIVATE
+        ${GTK4_LDFLAGS}
         ${WEBKITGTK_LDFLAGS}
 )
 

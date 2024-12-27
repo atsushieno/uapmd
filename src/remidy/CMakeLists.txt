@@ -1,7 +1,10 @@
-cmake_minimum_required(VERSION 3.29)
+cmake_minimum_required(VERSION 3.18)
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
 project(remidy LANGUAGES C CXX OBJC OBJCXX Swift)
+else()
+project(remidy LANGUAGES C CXX)
+endif()
 
-#add_subdirectory("../../external/libremidi" "libremidi")
 include("../../external/LV2Kit.cmake")
 
 CPMAddPackage(
