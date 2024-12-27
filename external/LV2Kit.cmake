@@ -14,7 +14,7 @@ if(WIN32)
 	)
 else()
 	set(lv2kit_COMPILE_OPTIONS_PLAT
-
+			-DUSE_COPY_FILE_RANGE=0
 	)
 	set(lv2kit_SOURCES_PLAT
 			${LV2KIT_SRC_DIR}/zix/src/posix/environment_posix.c
