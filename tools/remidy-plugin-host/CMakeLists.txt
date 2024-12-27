@@ -12,9 +12,9 @@ endif()
 
 if (WIN32)
     cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-expected-msvc.patch")
-elif(APPLE)
+elseif (APPLE)
     cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-expected.patch")
-else()
+else ()
     cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-linux.patch")
 endif()
 FetchContent_Declare(saucer

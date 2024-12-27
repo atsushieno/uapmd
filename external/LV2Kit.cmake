@@ -4,6 +4,10 @@ add_library(lv2kit STATIC)
 set(LV2KIT_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/lv2kit/subprojects")
 
 if(WIN32)
+	set(lv2kit_COMPILE_OPTIONS_PLAT
+			# zix
+			-DWIN32_LEAN_AND_MEAN
+	)
 	set(lv2kit_SOURCES_PLAT
 			${LV2KIT_SRC_DIR}/zix/src/win32/environment_win32.c
 			${LV2KIT_SRC_DIR}/zix/src/win32/filesystem_win32.c
@@ -13,8 +17,6 @@ if(WIN32)
 			${LV2KIT_SRC_DIR}/zix/src/win32/win32_util.c
 	)
 else()
-	set(lv2kit_COMPILE_OPTIONS_PLAT
-	)
 	set(lv2kit_SOURCES_PLAT
 			${LV2KIT_SRC_DIR}/zix/src/posix/environment_posix.c
 			${LV2KIT_SRC_DIR}/zix/src/posix/filesystem_posix.c
@@ -22,6 +24,10 @@ else()
 			${LV2KIT_SRC_DIR}/zix/src/posix/thread_posix.c
 	)
 	if(APPLE)
+		set(lv2kit_COMPILE_OPTIONS_PLAT
+				# zix
+				-D_DARWIN_C_SOURCE
+		)
 		set(lv2kit_SOURCES_PLAT
 				${lv2kit_SOURCES_PLAT}
 				${LV2KIT_SRC_DIR}/zix/src/darwin/sem_darwin.c
@@ -30,6 +36,13 @@ else()
 				-D_DARWIN_C_SOURCE
 		)
 	else()
+		# FIXME: we will have to fix this when we support non-Linux desktops
+		set(lv2kit_COMPILE_OPTIONS_PLAT
+				# zix
+				-D_GNU_SOURCE
+				-D_POSIX_C_SOURCE=200809L
+				-D_XOPEN_SOURCE=600
+		)
 		set(lv2kit_SOURCES_PLAT
 				${lv2kit_SOURCES_PLAT}
 				${LV2KIT_SRC_DIR}/zix/src/posix/sem_posix.c
@@ -40,7 +53,8 @@ endif()
 target_compile_options(lv2kit PRIVATE
 		-DZIX_STATIC
 		-DZIX_INTERNAL
-		-DZIX_NO_DEFAULT_CONFIG=1
+		# it seems to violate something in zix and causes assertion failure
+		#-DZIX_NO_DEFAULT_CONFIG=1
 		# error: call to undeclared function 'posix_fadvise'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
 		-DHAVE_POSIX_FADVISE=0
 		${lv2kit_COMPILE_OPTIONS_PLAT}
