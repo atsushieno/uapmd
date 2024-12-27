@@ -1,5 +1,7 @@
 #pragma once
 
+#if __APPLE__
+
 #include "../remidy.hpp"
 
 namespace remidy {
@@ -25,3 +27,5 @@ namespace remidy {
         void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;
     };
 }
+
+#endif

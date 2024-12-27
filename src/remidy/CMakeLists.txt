@@ -9,7 +9,7 @@ include("../../external/LV2Kit.cmake")
 
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(GTK4 REQUIRED gtk4)
+    pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 endif()
 
 cmake_path(SET CPPLOCATE_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/cpplocate-remove-pthread.patch")
@@ -43,10 +43,10 @@ set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
 add_library(remidy STATIC)
 
 target_compile_options(remidy PUBLIC
-        ${GTK4_CFLAGS}
+        ${GTK3_CFLAGS}
 )
 target_link_options(remidy PUBLIC
-        ${GTK4_LDFLAGS}
+        ${GTK3_LDFLAGS}
 )
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")

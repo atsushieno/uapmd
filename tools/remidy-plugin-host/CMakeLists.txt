@@ -6,14 +6,16 @@ set(saucer_modules ON)
 
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(GTK4 REQUIRED gtk4)
-    pkg_check_modules(WEBKITGTK REQUIRED webkitgtk-6.0)
+    pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+    pkg_check_modules(WEBKITGTK REQUIRED webkit2gtk-4.1)
 endif()
 
 if (WIN32)
     cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-expected-msvc.patch")
+elif(APPLE)
+    cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-expected.patch")
 else()
-cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-expected.patch")
+    cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-linux.patch")
 endif()
 FetchContent_Declare(saucer
         GIT_TAG        24ec76e09ffe26287d7ac3978dce95446e924625
@@ -24,11 +26,11 @@ FetchContent_Declare(saucer
 FetchContent_MakeAvailable(saucer)
 
 target_compile_options(remidy-plugin-host PRIVATE
-        ${GTK4_CFLAGS}
+        ${GTK3_CFLAGS}
         ${WEBKITGTK_CFLAGS}
 )
 target_link_options(remidy-plugin-host PRIVATE
-        ${GTK4_LDFLAGS}
+        ${GTK3_LDFLAGS}
         ${WEBKITGTK_LDFLAGS}
 )
 

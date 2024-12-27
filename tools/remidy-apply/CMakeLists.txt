@@ -13,13 +13,19 @@ target_include_directories(remidy-apply PRIVATE
         ../../external/cxxopts/include
 )
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    set(remidy-apply_LIBS_PLAT
+            "-framework AudioToolbox"
+            "-framework AppKit"
+    )
+endif ()
+
 target_link_libraries(remidy-apply PRIVATE
         remidy-tooling
         uapmd
         cpplocate::cpplocate
         cpptrace::cpptrace
-        "-framework AudioToolbox"
-        "-framework AppKit"
+        ${remidy-apply_LIBS_PLAT}
 )
 
 target_sources(remidy-apply PRIVATE

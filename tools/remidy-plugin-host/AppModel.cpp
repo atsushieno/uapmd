@@ -1,5 +1,6 @@
 
 #include "AppModel.hpp"
+#include <iostream>
 #include <cmidi2.h>
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024

@@ -9,6 +9,7 @@
 #include "components/AudioPluginInstanceControl.hpp"
 #include "components/AudioPlayerController.hpp"
 #include <cpptrace/from_current.hpp>
+#include <iostream>
 
 std::unique_ptr<remidy::EventLoop> eventLoop{};
 

@@ -15,13 +15,19 @@ target_include_directories(remidy-tooling PRIVATE
         .
 )
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    set(remidy-tooling_LIBS_PLAT
+            "-framework AudioToolbox"
+            "-framework AppKit"
+            "-framework CoreMIDI"
+    )
+endif ()
+
 target_link_libraries(remidy-tooling PRIVATE
         remidy::remidy
         cpplocate::cpplocate
         cpptrace::cpptrace
-        "-framework AudioToolbox"
-        "-framework AppKit"
-        "-framework CoreMIDI"
+        ${remidy-tooling_LIBS_PLAT}
 )
 
 target_sources(remidy-tooling PRIVATE

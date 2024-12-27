@@ -12,14 +12,20 @@ namespace remidy_tooling {
         std::vector<std::string> vst3SearchPaths{};
         std::vector<std::string> lv2SearchPaths{};
         PluginFormatVST3 vst3{vst3SearchPaths};
+#if __APPLE__
         PluginFormatAU au{};
+#endif
         PluginFormatLV2 lv2{lv2SearchPaths};
         std::filesystem::path plugin_list_cache_file{};
 
     public:
         PluginScanning();
 
-        std::vector<PluginFormat*> formats{&lv2, &au, &vst3};
+        std::vector<PluginFormat*> formats{&lv2,
+#if __APPLE__
+                                           &au,
+#endif
+                                           &vst3};
         PluginCatalog catalog{};
         auto filterByFormat(std::vector<PluginCatalogEntry*> entries, std::string format) {
             erase_if(entries, [format](PluginCatalogEntry* entry) { return entry->format() != format; });
