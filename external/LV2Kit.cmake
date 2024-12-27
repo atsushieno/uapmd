@@ -5,15 +5,19 @@ set(LV2KIT_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/lv2kit/subprojects")
 
 if(WIN32)
 	set(lv2kit_SOURCES_PLAT
+			${LV2KIT_SRC_DIR}/zix/src/win32/environment_win32.c
 			${LV2KIT_SRC_DIR}/zix/src/win32/filesystem_win32.c
 			${LV2KIT_SRC_DIR}/zix/src/win32/sem_win32.c
 			${LV2KIT_SRC_DIR}/zix/src/win32/system_win32.c
 			${LV2KIT_SRC_DIR}/zix/src/win32/thread_win32.c
+			${LV2KIT_SRC_DIR}/zix/src/win32/win32_util.c
 	)
 else()
 	set(lv2kit_COMPILE_OPTIONS_PLAT
+
 	)
 	set(lv2kit_SOURCES_PLAT
+			${LV2KIT_SRC_DIR}/zix/src/posix/environment_posix.c
 			${LV2KIT_SRC_DIR}/zix/src/posix/filesystem_posix.c
 			${LV2KIT_SRC_DIR}/zix/src/posix/system_posix.c
 			${LV2KIT_SRC_DIR}/zix/src/posix/thread_posix.c
@@ -35,6 +39,8 @@ else()
 endif()
 
 target_compile_options(lv2kit PRIVATE
+		-DZIX_STATIC
+		-DZIX_INTERNAL
 		# error: call to undeclared function 'posix_fadvise'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
 		-DHAVE_POSIX_FADVISE=0
 		${lv2kit_COMPILE_OPTIONS_PLAT}
@@ -54,6 +60,7 @@ target_include_directories(lv2kit PRIVATE ${LV2KIT_INCLUDE_DIRS})
 target_sources(lv2kit PRIVATE
 		${LV2KIT_SRC_DIR}/lilv/src/collections.c
 		${LV2KIT_SRC_DIR}/lilv/src/instance.c
+		${LV2KIT_SRC_DIR}/lilv/src/dylib.c
 		${LV2KIT_SRC_DIR}/lilv/src/lib.c
 		${LV2KIT_SRC_DIR}/lilv/src/node.c
 		${LV2KIT_SRC_DIR}/lilv/src/plugin.c
