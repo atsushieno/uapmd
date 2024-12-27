@@ -1,0 +1,55 @@
+name: build dist
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: 'build on ${{ matrix.os }}'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # FIXME: bring back Windows build once MSVC fixes their bug at 17.13 https://github.com/stephenberry/glaze/issues/1448
+        os: [ubuntu-24.04, macos-15] # , windows-latest]
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: apt update and install
+      if: matrix.os == 'ubuntu-24.04'
+      run: |
+        sudo apt-get update
+        # webkit2gtk for choc, webkitgtk for saucer...
+        sudo apt install gcc-14 ninja-build libgtk-3-dev libwebkit2gtk-4.1-dev libwebkitgtk-6.0-dev libadwaita-1-dev
+    - name: brew install
+      if: ${{ startsWith(matrix.os, 'macos') }}
+      run: |
+        brew install ninja
+
+    - name: setup build on Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        cmake -B build
+    - name: setup build on Darwin
+      if: matrix.os == 'macos-15'
+      run: |
+        cmake -B build -G Ninja
+    - name: setup build on Linux
+      if: matrix.os == 'ubuntu-24.04'
+      run: |
+        cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+
+    - name: build
+      run: cmake --build build
+
+    - name: upload build failure logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-${{ matrix.os }}
+        path: |
+          build
+
