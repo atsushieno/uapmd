@@ -158,6 +158,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::AUAudioBuses::configure(Config
         }*/
     }
 
+    return StatusCode::OK;
 }
 
 #endif
