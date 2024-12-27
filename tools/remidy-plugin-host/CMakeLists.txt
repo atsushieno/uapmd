@@ -4,6 +4,11 @@ add_executable(remidy-plugin-host)
 #set(saucer_backend "Qt6")
 set(saucer_modules ON)
 
+if(UNIX AND NOT APPLE)
+    FindPkgConfig()
+    pkg_check_modules(WEBKITGTK REQUIRED webkitgtk-6.0)
+endif()
+
 if (WIN32)
     cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-expected-msvc.patch")
 else()
@@ -16,6 +21,13 @@ FetchContent_Declare(saucer
         UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
 )
 FetchContent_MakeAvailable(saucer)
+
+target_compile_options(remidy-plugin-host PRIVATE
+        ${WEBKITGTK_CFLAGS}
+)
+target_link_options(remidy-plugin-host PRIVATE
+        ${WEBKITGTK_LDFLAGS}
+)
 
 target_include_directories(remidy-plugin-host PRIVATE
         ../../external/choc
