@@ -1,5 +1,5 @@
 #include "uapmd/uapmd.hpp"
-
+#include <cstring>
 
 namespace uapmd {
     class DeviceIODispatcher::Impl {

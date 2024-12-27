@@ -1,3 +1,5 @@
+#if __APPLE__
+
 #include <AudioToolbox/AudioToolbox.h>
 #include <string>
 #include <functional>
@@ -34,3 +36,5 @@ std::string retrieveCFStringRelease(const std::function<void(CFStringRef&)>&& re
     CFRelease(cf);
     return ret;
 }
+
+#endif

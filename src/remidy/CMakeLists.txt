@@ -7,13 +7,22 @@ endif()
 
 include("../../external/LV2Kit.cmake")
 
-CPMAddPackage(
+if(UNIX AND NOT APPLE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GTK4 REQUIRED gtk4)
+endif()
+
+cmake_path(SET CPPLOCATE_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/cpplocate-remove-pthread.patch")
+FetchContent_Declare(cpplocate
         NAME           cpplocate
         GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
         GIT_REPOSITORY https://github.com/cginternals/cpplocate
         # required to mix CPP and Swift in the same project...
-        PATCHES        ${CMAKE_CURRENT_SOURCE_DIR}/../../external/cpplocate-remove-pthread.patch
+        PATCH_COMMAND        git apply "${CPPLOCATE_PATCH_FILE}"
+        UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
 )
+FetchContent_MakeAvailable(cpplocate)
+
 CPMAddPackage(
         NAME           cmidi2
         GIT_TAG        0.7
@@ -32,6 +41,13 @@ FetchContent_MakeAvailable(rtlog-cpp)
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
 
 add_library(remidy STATIC)
+
+target_compile_options(remidy PUBLIC
+        ${GTK4_CFLAGS}
+)
+target_link_options(remidy PUBLIC
+        ${GTK4_LDFLAGS}
+)
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     target_compile_definitions(remidy PRIVATE
@@ -72,6 +88,16 @@ target_compile_options(remidy PRIVATE
         $<$<COMPILE_LANGUAGE:Swift>:-cxx-interoperability-mode=default -emit-clang-header-path ${CMAKE_BINARY_DIR}/generated/include/swift-interop/remidy-Swift.h>
 )
 
+if (APPLE)
+    set(remidy_OBJC_SOURCES
+            au/PluginFormatAU.mm
+            au/PluginInstanceAU.mm
+            au/PluginInstanceAU.Buses.mm
+            au/PluginInstanceAU.Events.mm
+            au/PluginInstanceAU.Parameters.mm
+    )
+endif ()
+
 target_sources(remidy PRIVATE
 
         # swift sources generate C++ header files in use later, so compile them first.
@@ -100,11 +126,7 @@ target_sources(remidy PRIVATE
         vst3/PluginInstanceVST3.Events.cpp
 
         au/AUv2Helper.cpp
-        au/PluginFormatAU.mm
-        au/PluginInstanceAU.mm
-        au/PluginInstanceAU.Buses.mm
-        au/PluginInstanceAU.Events.mm
-        au/PluginInstanceAU.Parameters.mm
+        ${remidy_OBJC_SOURCES}
 
         lv2/LV2Helper.cpp
         lv2/symap.cpp

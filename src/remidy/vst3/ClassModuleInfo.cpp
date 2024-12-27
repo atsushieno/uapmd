@@ -12,6 +12,8 @@
 
 #if __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
+#elif defined(__linux__)
+#include <dlfcn.h>
 #endif
 
 namespace remidy_vst3 {
@@ -102,6 +104,8 @@ namespace remidy_vst3 {
         return {};
     }
 
+    void* loadLibraryFromBinary(std::filesystem::path& vst3Dir);
+
     // may return nullptr if it failed to load.
     void* loadModuleFromVst3Path(std::filesystem::path vst3Dir) {
 #if __APPLE__
@@ -137,9 +141,9 @@ namespace remidy_vst3 {
         CFRelease(filePath);
         return ret;
 #else
-        const auto libraryFilePath = getPluginCodeFile(vst3Dir);
+        auto libraryFilePath = getPluginCodeFile(vst3Dir);
         if (!libraryFilePath.empty()) {
-            const auto library = loadLibraryFromBinary(libraryFilePath);
+            return loadLibraryFromBinary(libraryFilePath);
         }
         else
             return nullptr;
@@ -154,21 +158,21 @@ namespace remidy_vst3 {
 
     // The returned library (platform dependent) must be released later (in the platform manner)
     // It might fail due to ABI mismatch on macOS. We have to ignore the error and return nullptr.
-    void* loadLibraryFromBinary(std::filesystem::path& vst3Dir) {
+    void* loadLibraryFromBinary(std::filesystem::path& vst3DirOrFile) {
 #if _WIN32
-        auto ret = LoadLibraryA(libraryFile.c_str());
+        auto ret = LoadLibraryA(vst3DirOrFile.c_str());
 #elif __APPLE__
-        auto cfStringRef = createCFString(vst3Dir.string().c_str());
+        auto cfStringRef = createCFString(vst3DirOrFile.string().c_str());
         auto ret = CFBundleCreate(kCFAllocatorDefault,
             CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
                 cfStringRef,
                 kCFURLPOSIXPathStyle,
                 false));
 #else
-        auto ret = dlopen(libraryFile.c_str(), RTLD_LAZY | RTLD_LOCAL);
-#endif
+        auto ret = dlopen(vst3DirOrFile.c_str(), RTLD_LAZY | RTLD_LOCAL);
         //if (errno)
         //    defaultLogError("dlopen resulted in error: %s", dlerror());
+#endif
         return ret;
     }
 
@@ -219,7 +223,7 @@ namespace remidy_vst3 {
             bundleExit();
         CFRelease(bundle);
 #else
-        auto moduleExit = (vst3_module_exit_func) dlsym(library, "ModuleExit");
+        auto moduleExit = (vst3_module_exit_func) dlsym(moduleBundle, "ModuleExit");
         moduleExit(); // no need to check existence, it's done at loading.
         dlclose(moduleBundle);
 #endif

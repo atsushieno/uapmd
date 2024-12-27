@@ -2,6 +2,8 @@
 
 #if __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
+#elif defined(__linux__)
+#include <dlfcn.h>
 #endif
 
 namespace remidy_vst3 {
