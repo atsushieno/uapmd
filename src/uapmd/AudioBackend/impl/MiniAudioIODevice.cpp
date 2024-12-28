@@ -40,6 +40,8 @@ void uapmd::MiniAudioIODeviceManager::initialize(uapmd::AudioIODeviceManager::Co
     auto cfg = ma_context_config_init();
     cfg.pLog = &ma_logger;
     ma_context_init(nullptr, 0, &cfg, &context);
+
+    initialized = true;
 }
 
 const ma_device_id* findDeviceId(ma_context& context, std::string name, uapmd::AudioIODirections directions) {
@@ -66,17 +68,20 @@ std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices
     ma_uint32 playbackCount, captureCount;
     ma_context_get_devices(&context, &playback, &playbackCount, &capture, &captureCount);
     std::vector<AudioIODeviceInfo> ret{};
-    for (ma_uint32 i = 0; i < captureCount; i++)
+    // For device IDs we treat ma_device_id as if it contained char[256]...
+    for (ma_uint32 i = 0; i < captureCount; i++) {
         ret.emplace_back(AudioIODeviceInfo {
-            .directions = AudioIODirections::Input,
-            .name = capture[i].name,
-            .sampleRate = capture[i].nativeDataFormats[0].sampleRate,
-            .channels = capture[i].nativeDataFormats[0].channels,
+                .directions = AudioIODirections::Input,
+                .id = static_cast<int32_t>(std::hash<std::string_view>{}(std::string_view(capture[i].id.custom.s))),
+                .name = capture[i].name,
+                .sampleRate = capture[i].nativeDataFormats[0].sampleRate,
+                .channels = capture[i].nativeDataFormats[0].channels,
         });
-    // There is no duplex devices in miniaudio land, so do not consider overlaps.
+    }
     for (ma_uint32 i = 0; i < playbackCount; i++)
         ret.emplace_back(AudioIODeviceInfo {
                 .directions = AudioIODirections::Output,
+                .id = static_cast<int32_t>(std::hash<std::string_view>{}(std::string_view(playback[i].id.custom.s))),
                 .name = playback[i].name,
                 .sampleRate = playback[i].nativeDataFormats[0].sampleRate,
                 .channels = playback[i].nativeDataFormats[0].channels,

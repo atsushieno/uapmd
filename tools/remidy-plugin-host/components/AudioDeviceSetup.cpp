@@ -1,11 +1,22 @@
 #include <ranges>
 #include "AudioDeviceSetup.hpp"
 #include "choc/text/choc_JSON.h"
+#include "uapmd/uapmd.hpp"
 
 uapmd::DevicesInterop uapmd::getDevices() {
+    std::vector<AudioInDeviceInterop> inList{};
+    std::vector<AudioOutDeviceInterop> outList{};
+    auto manager = uapmd::AudioIODeviceManager::instance();
+    auto devices = manager->devices();
+    for (auto & d : devices) {
+        if (d.directions & AudioIODirections::Input)
+            inList.emplace_back(AudioInDeviceInterop { .id = std::to_string(d.id), .name = d.name });
+        if (d.directions & AudioIODirections::Output)
+            outList.emplace_back(AudioOutDeviceInterop { .id = std::to_string(d.id), .name = d.name });
+    }
     DevicesInterop ret {
-            .audioIn = { AudioInDeviceInterop{ .id = "0_0", .name = "default audio in from C++" } },
-            .audioOut = { AudioOutDeviceInterop{ .id = "0_1", .name = "default audio out from C++" } },
+            .audioIn = inList,
+            .audioOut = outList,
             .midiIn = { MidiInDeviceInterop{ .id = "0_0", .name = "stub midi in from C++" } },
             .midiOut = { MidiOutDeviceInterop{ .id = "0_1", .name = "stub midi out from C++" } }
     };

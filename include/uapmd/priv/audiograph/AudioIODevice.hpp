@@ -12,6 +12,7 @@ namespace uapmd {
     class AudioIODeviceInfo {
     public:
         AudioIODirections directions{AudioIODirections::Output};
+        int32_t id{};
         std::string name{};
         uint32_t sampleRate{};
         uint32_t channels{};

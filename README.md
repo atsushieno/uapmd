@@ -64,7 +64,7 @@ There are third-party (and first party) dependency libraries:
   (modified to remove dependencies on `vst3_pluginterfaces` which is GPLed)
 - [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
-- [https://github.com/atsushieno/cmidi2](atsushieno/cmidi2) - MIT
+- [atsushieno/cmidi2](atsushieno/cmidi2) - MIT
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)
 - [cginternals/cpplocate](https://github.com/cginternals/cpplocate): the MIT license.
 - [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): the MIT license.

@@ -50,6 +50,9 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
             sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, this->plugin_host_pal) {
 
     auto manager = AudioIODeviceManager::instance();
+    AudioIODeviceManager::Configuration config{};
+    manager->initialize(config);
+
     auto logger = remidy::Logger::global();
     AudioIODeviceManager::Configuration audioConfig{ .logger = logger };
     manager->initialize(audioConfig);

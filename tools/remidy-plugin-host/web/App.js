@@ -1,4 +1,3 @@
-
 async function onLoad() {
     await loadPluginList();
 }
