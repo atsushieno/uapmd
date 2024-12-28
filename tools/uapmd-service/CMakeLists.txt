@@ -8,6 +8,13 @@ target_include_directories(uapmd-service PRIVATE
         ../../external/cpplocate/source/cpplocate/include
 )
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    set(uapmd-service_LIBS_PLAT
+            "-framework AudioToolbox"
+            "-framework AppKit"
+    )
+endif ()
+
 target_link_libraries(uapmd-service PRIVATE
         remidy::remidy
         remidy::remidy-tooling
@@ -15,8 +22,8 @@ target_link_libraries(uapmd-service PRIVATE
         cpplocate::cpplocate
         cpptrace::cpptrace
         libremidi::libremidi
-        "-framework AudioToolbox"
-        "-framework AppKit"
+        ${uapmd-service_LIBS_PLAT}
+
 )
 
 target_sources(uapmd-service PRIVATE
