@@ -1,5 +1,5 @@
 
-add_library(uapmd)
+add_library(uapmd STATIC)
 
 CPMAddPackage(
         NAME           libremidi
