@@ -85,7 +85,7 @@ namespace uapmd {
     }
 
     AudioPluginTrack* SequenceProcessor::Impl::addSimpleTrack(std::unique_ptr<AudioPluginNode> node) {
-        auto track = new AudioPluginTrack();
+        auto track = new AudioPluginTrack(ump_buffer_size_in_ints);
         track->graph().appendNodeSimple(std::move(node));
         tracks_.emplace_back(track);
         sequence.tracks.emplace_back(new AudioProcessContext(master_context, ump_buffer_size_in_ints));

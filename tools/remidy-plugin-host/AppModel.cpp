@@ -12,20 +12,19 @@ uapmd::AppModel& uapmd::AppModel::instance() {
     return model;
 }
 
-void addMessage64(remidy::EventSequence& eventIn, int64_t ump) {
-    cmidi2_ump_write64((cmidi2_ump*) ((uint8_t*) eventIn.getMessages() + eventIn.position()), ump);
-    eventIn.position(eventIn.position() + 8);
+void addMessage64(cmidi2_ump* dst, int64_t ump) {
+    cmidi2_ump_write64(dst, ump);
 }
 
 void uapmd::AppModel::sendNoteOn(int32_t instanceId, int32_t note) {
     auto trackIndex = trackIndexForInstanceId(instanceId);
     if (trackIndex < 0) // no instance yet (or no corresponding instance)
         return;
-    auto buffers = sequencer.data().tracks[trackIndex];
-
+    cmidi2_ump umps[2];
     auto ump = cmidi2_ump_midi2_note_on(0, 0, note, 0, 0xF800, 0);
-    auto& eventIn = buffers->eventIn();
-    addMessage64(eventIn, ump);
+    addMessage64(umps, ump);
+    if (!sequencer.tracks()[trackIndex]->scheduleEvents(0, umps, 8))
+        std::cerr << std::format("Failed to enqueue note on event {}: {}", instanceId, note) << std::endl;
 
     std::cerr << std::format("Native note on {}: {}", instanceId, note) << std::endl;
 }
@@ -34,13 +33,13 @@ void uapmd::AppModel::sendNoteOff(int32_t instanceId, int32_t note) {
     auto trackIndex = trackIndexForInstanceId(instanceId);
     if (trackIndex < 0) // no instance yet (or no corresponding instance)
         return;
-    auto buffers = sequencer.data().tracks[trackIndex];
-
+    cmidi2_ump umps[2];
     auto ump = cmidi2_ump_midi2_note_off(0, 0, note, 0, 0xF800, 0);
-    auto& eventIn = buffers->eventIn();
-    addMessage64(eventIn, ump);
+    addMessage64(umps, ump);
+    if (!sequencer.tracks()[trackIndex]->scheduleEvents(0, umps, 8))
+        std::cerr << std::format("Failed to enqueue note off event {}: {}", instanceId, note) << std::endl;
 
-    std::cerr << std::format("Native note on {}: {}", instanceId, note) << std::endl;
+    std::cerr << std::format("Native note off {}: {}", instanceId, note) << std::endl;
 }
 
 uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate) :

@@ -41,7 +41,9 @@ Launches the GUI by default.
 
 ### remidy-tooling
 
-`remidy-tooling` offers higher level API to build audio plugin hosting tools like plugin scanning and instancing in common manner. It is still not much opinionated.
+`remidy-tooling` offers higher level API to build audio plugin hosting tools like plugin scanning and instancing in common manner.
+What this layer introduces in practice is a set of highly product dependent filterings e.g. various existing specific plugin products and vendors are filtered at "safe for multi-threaded plugin API access", "plugin scanning requires UI thread", or "crashes remidy" kind of information.
+Regarding event stream it is still not much opinionated.
 
 ### uapmd
 
@@ -68,6 +70,7 @@ There are third-party (and first party) dependency libraries:
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)
 - [cginternals/cpplocate](https://github.com/cginternals/cpplocate): the MIT license.
 - [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): the MIT license.
+- [jpcima/ring-buffer](https://github.com/jpcima/ring-buffer): BSL-1.0 license
 - [cjappl/rtlog-cpp](https://github.com/cjappl/rtlog-cpp): the MIT license.
     - for submodules see their [LICENSE.md](https://github.com/cjappl/rtlog-cpp/blob/main/LICENSE.md) (modified BSD, MIT)
 - [saucer/saucer](https://github.com/saucer/saucer) - MIT

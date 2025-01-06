@@ -8,7 +8,7 @@ namespace remidy {
         Float64
     };
 
-    // Represents a sample-accurate sequence of UMPs.
+    // Represents a sample-accurate sequence of UMPs and/or alike.
     // It is part of `AudioProcessingContext`.
     class EventSequence {
         size_t allocated_buffer_size_bytes;
@@ -16,11 +16,12 @@ namespace remidy {
         size_t position_in_bytes{0};
     public:
         explicit EventSequence(size_t allocatedBufferSizeBytes) : allocated_buffer_size_bytes(allocatedBufferSizeBytes) {
-            messages = (remidy_ump_t*) calloc(allocatedBufferSizeBytes, sizeof(uint8_t));
+            messages = (remidy_ump_t*) calloc(allocated_buffer_size_bytes, sizeof(uint8_t));
         }
         ~EventSequence() {
             free(messages);
         }
+        size_t maxMessagesInBytes() { return allocated_buffer_size_bytes; }
         void* getMessages() { return messages; }
         size_t position() const { return position_in_bytes; }
         void position(size_t n) { position_in_bytes = n; }
@@ -89,6 +90,8 @@ namespace remidy {
         }
     };
 
+    // Represents a set of realtime-safe input and output of audio processing.
+    // Anything that is NOT RT-safe manipulation has to be done outside of this structure.
     class AudioProcessContext {
 
         // FIXME: remove this class and manage the entire audio buffers in one single array.
