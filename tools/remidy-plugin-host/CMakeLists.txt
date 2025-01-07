@@ -19,8 +19,8 @@ else ()
     set(saucer_no_polyfill_functional ON)
 endif()
 FetchContent_Declare(saucer
-        GIT_TAG        v6.0.1
-        GIT_REPOSITORY "https://github.com/saucer/saucer"
+        GIT_TAG        fine-grained-polyfill-switches
+        GIT_REPOSITORY "https://github.com/atsushieno/saucer"
 )
 FetchContent_MakeAvailable(saucer)
 
