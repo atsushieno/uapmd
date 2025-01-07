@@ -10,16 +10,8 @@ if(UNIX AND NOT APPLE)
     pkg_check_modules(WEBKITGTK REQUIRED webkit2gtk-4.1)
 endif()
 
-if (WIN32)
-    set(saucer_no_polyfill ON)
-elseif (APPLE)
-    set(saucer_no_polyfill_expected ON)
-else ()
-    set(saucer_no_polyfill_thread ON)
-    set(saucer_no_polyfill_functional ON)
-endif()
 FetchContent_Declare(saucer
-        GIT_TAG        fine-grained-polyfill-switches
+        GIT_TAG        polyfill-std-optional
         GIT_REPOSITORY "https://github.com/atsushieno/saucer"
 )
 FetchContent_MakeAvailable(saucer)
