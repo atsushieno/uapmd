@@ -33,7 +33,7 @@ CPMAddPackage(
 # <rtlog>
 FetchContent_Declare(rtlog-cpp
         GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
-        GIT_TAG swap_queues
+        GIT_TAG 36381f9b2d64f7852590dd0c2564dbfdee90e116
 )
 FetchContent_MakeAvailable(rtlog-cpp)
 # </rtlog>
