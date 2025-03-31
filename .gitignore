@@ -1,3 +1,5 @@
 .idea
 cmake-build-*
 apidocs
+.DS_Store
+
