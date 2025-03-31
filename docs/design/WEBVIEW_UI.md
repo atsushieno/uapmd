@@ -3,7 +3,9 @@
 
 ## Using WebView
 
-For remidy-plugin-host, we chose WebView as its primary UI technology. There is no compelling reason, but at least it resolves many problems that native C++ desktop UI frameworks could not e.g. input methods just work fine on Linux (compared to juce_gui_basics, pugl, etc.).
+For remidy-plugin-host, we chose WebView as its primary UI technology. There is no compelling reason, but at least it resolves many problems that native C++ desktop UI frameworks could not e.g. input methods just work fine on Linux (compared to juce_gui_basics, pugl, visage, etc.).
+
+Note that those C++ UI libraries that compiles to Wasm tend to have the same problem. (It is not actually limited to C++ e.g. Kotlin Compose/Wasm has on the same boat.)
 
 ## Interface first
 

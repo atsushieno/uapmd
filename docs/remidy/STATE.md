@@ -10,7 +10,7 @@ A plugin "state" is used for a few purposes with certain requirements:
 - It needs to save and load the song at least on the same machine so that the DAW user can continue composition. This is about DSP and to/from storage.
 - It needs to save and load the plugin UI internals while manipulating DAWs: it saves its internals whenever user closes the UI, and restores it when the UI is reopened (or launched for the first time after the instantiation and loading the *UI* state, if exists). It is primarily in memory, but saving UI states to storage is a plus.
 - It *should* ensure portability, across platforms and plugin formats; DAW users want to have their compositions "portable". They should not be lost when the composers switch to another computer only because its data format is "incompatible" with the same software on the different computers.
-- The state binaries *should* be backward compatible - the new versions of the plugin should be able to rsetore the state binaries from its old versions.
+- The state binaries *should* be backward compatible - the new versions of the plugin should be able to restore the state binaries from its old versions.
 - Simple API: host and plugin developers should be able to use simple load/save functions without boilerplate work.
 
 Achieving "interoperability" is however not easy; we need some agreement from hosts and plugins. No approvals are required from plugin *format* developers though.
