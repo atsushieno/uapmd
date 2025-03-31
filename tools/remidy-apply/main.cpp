@@ -123,7 +123,13 @@ class RemidyApply {
         static uint32_t UMP_BUFFER_SIZE = 65536;
         auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>();
         // FIXME: enable MIDI devices
-        dispatcher->configure(UMP_BUFFER_SIZE);
+        auto manager = uapmd::AudioIODeviceManager::instance();
+        auto logger = remidy::Logger::global();
+        uapmd::AudioIODeviceManager::Configuration audioConfig{ .logger = logger };
+        manager->initialize(audioConfig);
+
+        dispatcher->configure(UMP_BUFFER_SIZE, manager->open());
+
         auto sequencer = std::make_unique<uapmd::SequenceProcessor>(dispatcher->audio()->sampleRate(), AUDIO_BUFFER_SIZE, UMP_BUFFER_SIZE);
         sequencer->addSimpleTrack(formatName, pluginId, [&](uapmd::AudioPluginTrack* track, std::string error) {
             if (!error.empty()) {

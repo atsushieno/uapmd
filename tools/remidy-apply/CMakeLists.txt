@@ -10,7 +10,7 @@ target_include_directories(remidy-apply PRIVATE
         ../../include
         ${cmidi2_SOURCE_DIR}
         ../../external/choc
-        ../../external/cxxopts/include
+        ${cxxopts_SOURCE_DIR}/include
 )
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
