@@ -8,7 +8,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 namespace remidy {
-    class PluginScannerAU : public PluginScanner {
+    class PluginScannerAU : public PluginScanning {
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
@@ -18,12 +18,12 @@ namespace remidy {
         PluginFormatAU* format;
         Logger* logger;
         Extensibility extensibility;
-        PluginScannerAU au_scanner{};
+        PluginScannerAU scanning_{};
     public:
         Impl(PluginFormatAU* format, Logger* logger) : format(format), logger(logger), extensibility(*format) {}
 
         Extensibility* getExtensibility() { return &extensibility; }
-        PluginScanner* scanner() { return &au_scanner; }
+        PluginScanning* scanning() { return &scanning_; }
 
         Logger* getLogger() { return logger; }
     };

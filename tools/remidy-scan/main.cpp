@@ -6,17 +6,17 @@
 
 #include <cpptrace/from_current.hpp>
 #include <remidy/remidy.hpp>
-#include <remidy-tooling/PluginScanning.hpp>
+#include <remidy-tooling/PluginScanTool.hpp>
 #include <remidy-tooling/PluginInstancing.hpp>
 
 // -------- instancing --------
 
-remidy_tooling::PluginScanning scanner{};
+remidy_tooling::PluginScanTool scanner{};
 
 class RemidyScan {
 
 int testInstancing() {
-    for (auto format : scanner.formats) {
+    for (auto format : scanner.formats()) {
         auto plugins = scanner.filterByFormat(scanner.catalog.getPlugins(), format->name());
 
         int i= 0;

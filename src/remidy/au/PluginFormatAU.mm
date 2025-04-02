@@ -14,8 +14,8 @@ remidy::PluginExtensibility<remidy::PluginFormat> * remidy::PluginFormatAU::getE
     return impl->getExtensibility();
 }
 
-remidy::PluginScanner* remidy::PluginFormatAU::scanner() {
-    return impl->scanner();
+remidy::PluginScanning* remidy::PluginFormatAU::scanning() {
+    return impl->scanning();
 }
 
 struct AUPluginEntry {

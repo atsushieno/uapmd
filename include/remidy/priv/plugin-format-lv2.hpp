@@ -17,7 +17,7 @@ namespace remidy {
 
         std::string name() override { return "LV2"; }
         PluginExtensibility<PluginFormat>* getExtensibility() override;
-        PluginScanner* scanner() override;
+        PluginScanning* scanning() override;
         PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry*) override { return PluginUIThreadRequirement::None; }
 
         void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;

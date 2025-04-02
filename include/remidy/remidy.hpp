@@ -3,7 +3,7 @@
 #include "priv/common.hpp"
 
 #include "priv/plugin-catalog.hpp"
-#include "priv/plugin-scanner.hpp"
+#include "priv/plugin-scanning.hpp"
 
 #include "priv/processing-context.hpp"
 #include "priv/plugin-parameter.hpp"

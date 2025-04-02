@@ -54,7 +54,7 @@ int32_t instanceIdSerial{0};
 
 void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
     scanning.performPluginScanning();
-    auto format = *(scanning.formats | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
+    auto format = *(scanning.formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning.catalog.getPlugins();
     auto entry = *(plugins | std::views::filter([formatName,pluginId](auto e) { return e->format() == formatName && e->pluginId() == pluginId; })).begin();
     if (entry == nullptr)

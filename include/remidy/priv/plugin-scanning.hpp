@@ -1,9 +1,9 @@
 #pragma once
 
 namespace remidy {
-    class PluginScanner {
+    class PluginScanning {
     public:
-        virtual ~PluginScanner() = default;
+        PluginScanning() = default;
 
         // Returns true if scanRequiresLoadLibrary() does not return `ScanningStrategyValue::NEVER`.
         // Usually this means that you should resort to plugin list cache.
@@ -27,7 +27,7 @@ namespace remidy {
     };
 
     // Desktop specific plugin format members.
-    class FileBasedPluginScanner : public PluginScanner {
+    class FileBasedPluginScanning : public PluginScanning {
         // Indicates that scanning of the plugins in this format is based on file paths (VST3, LV2, CLAP vs. AU).
         virtual bool usePluginSearchPaths() = 0;
         // Provides the default search paths for the format, if its plugin scanning is file-based.

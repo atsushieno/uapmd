@@ -20,7 +20,7 @@ namespace remidy {
 
         std::string name() override { return "AU"; }
         PluginExtensibility<PluginFormat>* getExtensibility() override;
-        PluginScanner* scanner() override;
+        PluginScanning* scanning() override;
 
         PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry*) override { return PluginUIThreadRequirement::None; }
 

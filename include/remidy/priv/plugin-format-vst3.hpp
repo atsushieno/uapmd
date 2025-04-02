@@ -23,7 +23,7 @@ namespace remidy {
         ~PluginFormatVST3() override;
 
         std::string name() override { return "VST3"; }
-        PluginScanner* scanner() override;
+        PluginScanning* scanning() override;
         PluginExtensibility<PluginFormat>* getExtensibility() override;
         PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return PluginUIThreadRequirement::AllNonAudioOperation; }
 

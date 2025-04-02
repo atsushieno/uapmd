@@ -5,14 +5,14 @@
 
 #include <cpptrace/from_current.hpp>
 #include <remidy/remidy.hpp>
-#include <remidy-tooling/PluginScanning.hpp>
+#include <remidy-tooling/PluginScanTool.hpp>
 #include <remidy-tooling/PluginInstancing.hpp>
 #include <uapmd/uapmd.hpp>
 #include <cxxopts.hpp>
 #include <cmidi2.h>
 
 // -------- instancing --------
-remidy_tooling::PluginScanning scanner{};
+remidy_tooling::PluginScanTool scanner{};
 
 class RemidyApply {
 
@@ -55,7 +55,7 @@ class RemidyApply {
     }
 
     int direct_apply(std::string formatName, std::string pluginName, std::optional<std::string> audio, std::optional<std::string> smf, std::optional<std::string> smf2) {
-        auto format = *(scanner.formats | std::views::filter([&](auto fmt) { return fmt->name() == formatName; })).begin();
+        auto format = *(scanner.formats() | std::views::filter([&](auto fmt) { return fmt->name() == formatName; })).begin();
         if (!format) {
             std::cerr << "format not found: " << formatName << std::endl;
             return EXIT_FAILURE;
@@ -97,7 +97,7 @@ class RemidyApply {
     }
 
     std::string uapmd_apply_get_plugin_id(std::string formatName, std::string pluginName) {
-        auto format = *(scanner.formats | std::views::filter([&](auto fmt) { return fmt->name() == formatName; })).begin();
+        auto format = *(scanner.formats() | std::views::filter([&](auto fmt) { return fmt->name() == formatName; })).begin();
         if (!format) {
             std::cerr << "format not found: " << formatName << std::endl;
             return "";

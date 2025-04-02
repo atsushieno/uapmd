@@ -8,7 +8,7 @@
 #include "LV2Helper.hpp"
 
 namespace remidy {
-    class AudioPluginScannerLV2 : public FileBasedPluginScanner {
+    class AudioPluginScannerLV2 : public FileBasedPluginScanning {
         LilvWorld *world;
     public:
         explicit AudioPluginScannerLV2(LilvWorld *world) : world(world) {}
@@ -28,7 +28,7 @@ namespace remidy {
         PluginFormatLV2 *owner;
         Logger *logger;
         Extensibility extensibility;
-        AudioPluginScannerLV2 lv2_scanner{nullptr};
+        AudioPluginScannerLV2 scanning_{nullptr};
 
     public:
         explicit Impl(PluginFormatLV2 *owner);
@@ -43,7 +43,7 @@ namespace remidy {
 
         PluginExtensibility<PluginFormat> *getExtensibility();
 
-        PluginScanner *scanner() { return &lv2_scanner; }
+        PluginScanning *scanning() { return &scanning_; }
 
         void createInstance(PluginCatalogEntry *info,
                             std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback);

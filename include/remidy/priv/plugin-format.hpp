@@ -32,7 +32,7 @@ namespace remidy {
         // formats behave unstable.
         virtual PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) = 0;
 
-        virtual PluginScanner* scanner() = 0;
+        virtual PluginScanning* scanning() = 0;
 
         // Indicates whether the plugin API requires sample rate at *instantiating*.
         // Only LV2 requires this, among VST3, AUv2/v3, LV2, and CLAP.

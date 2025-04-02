@@ -1,7 +1,7 @@
 #pragma once
 
 #include <uapmd/uapmd.hpp>
-#include <remidy-tooling/PluginScanning.hpp>
+#include <remidy-tooling/PluginScanTool.hpp>
 #include "remidy-tooling/PluginInstancing.hpp"
 
 namespace uapmd {

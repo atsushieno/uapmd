@@ -8,7 +8,7 @@ using namespace remidy_vst3;
 namespace remidy {
     class AudioPluginInstanceVST3;
 
-    class AudioPluginScannerVST3 : public FileBasedPluginScanner {
+    class AudioPluginScannerVST3 : public FileBasedPluginScanning {
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
 
@@ -29,7 +29,7 @@ namespace remidy {
         PluginFormatVST3* owner;
         Logger* logger;
         Extensibility extensibility;
-        AudioPluginScannerVST3 vst3_scanner;
+        AudioPluginScannerVST3 scanning_;
 
         StatusCode doLoad(std::filesystem::path &vst3Dir, void** module) const;
         static StatusCode doUnload(std::filesystem::path &vst3Dir, void* module);
@@ -45,7 +45,7 @@ namespace remidy {
             // FIXME: should be provided by some means
             logger(Logger::global()),
             extensibility(*owner),
-            vst3_scanner(this),
+            scanning_(this),
             loadFunc([&](std::filesystem::path &vst3Dir, void** module)->StatusCode { return doLoad(vst3Dir, module); }),
             unloadFunc([&](std::filesystem::path &vst3Dir, void* module)->StatusCode { return doUnload(vst3Dir, module); }),
             library_pool(loadFunc,unloadFunc),
@@ -58,7 +58,7 @@ namespace remidy {
         PluginBundlePool* libraryPool() { return &library_pool; }
 
         PluginExtensibility<PluginFormat>* getExtensibility();
-        PluginScanner* scanner() { return &vst3_scanner; }
+        PluginScanning* scanning() { return &scanning_; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path& vst3Dir,
             const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,

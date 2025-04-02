@@ -3,13 +3,13 @@
 
 #include "uapmd/priv/plugingraph/AudioPluginNode.hpp"
 #include "uapmd/priv/plugingraph/AudioPluginHostPAL.hpp"
-#include "remidy-tooling/PluginScanning.hpp"
+#include "remidy-tooling/PluginScanTool.hpp"
 #include "remidy-tooling/PluginInstancing.hpp"
 
 namespace uapmd {
 
     class RemidyAudioPluginHostPAL : public AudioPluginHostPAL {
-        remidy_tooling::PluginScanning scanning{};
+        remidy_tooling::PluginScanTool scanning{};
     public:
         RemidyAudioPluginHostPAL();
         ~RemidyAudioPluginHostPAL() override = default;

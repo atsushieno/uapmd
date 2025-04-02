@@ -23,8 +23,8 @@ namespace remidy {
         delete impl;
     }
 
-    PluginScanner *PluginFormatVST3::scanner() {
-        return impl->scanner();
+    PluginScanning *PluginFormatVST3::scanning() {
+        return impl->scanning();
     }
 
     PluginExtensibility<PluginFormat> *PluginFormatVST3::getExtensibility() {
@@ -245,10 +245,10 @@ namespace remidy {
 
     bool AudioPluginScannerVST3::usePluginSearchPaths() { return true; }
 
-    PluginScanner::ScanningStrategyValue
+    PluginScanning::ScanningStrategyValue
     AudioPluginScannerVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
 
-    PluginScanner::ScanningStrategyValue
+    PluginScanning::ScanningStrategyValue
     AudioPluginScannerVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
 
     std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginScannerVST3::scanAllAvailablePlugins() {

@@ -1,30 +1,30 @@
 
-#include "remidy-tooling/PluginScanning.hpp"
+#include "remidy-tooling/PluginScanTool.hpp"
 #include "cpplocate/cpplocate.h"
 
 const char* TOOLING_DIR_NAME= "remidy-tooling";
 
-remidy_tooling::PluginScanning::PluginScanning() {
+remidy_tooling::PluginScanTool::PluginScanTool() {
     auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
     plugin_list_cache_file = dir.empty() ? std::filesystem::path{""} : std::filesystem::path{dir}.append(
             "plugin-list-cache.json");
 }
 
-int remidy_tooling::PluginScanning::performPluginScanning() {
+int remidy_tooling::PluginScanTool::performPluginScanning() {
     return performPluginScanning(plugin_list_cache_file);
 }
 
-int remidy_tooling::PluginScanning::performPluginScanning(std::filesystem::path& pluginListCacheFile) {
+int remidy_tooling::PluginScanTool::performPluginScanning(std::filesystem::path& pluginListCacheFile) {
     if (std::filesystem::exists(pluginListCacheFile)) {
         catalog.load(pluginListCacheFile);
         plugin_list_cache_file = pluginListCacheFile;
     }
 
     // build catalog
-    for (auto& format : formats) {
+    for (auto& format : formats()) {
         auto plugins = filterByFormat(catalog.getPlugins(), format->name());
-        if (!format->scanner()->scanningMayBeSlow() || plugins.empty())
-            for (auto& info : format->scanner()->scanAllAvailablePlugins())
+        if (!format->scanning()->scanningMayBeSlow() || plugins.empty())
+            for (auto& info : format->scanning()->scanAllAvailablePlugins())
                 if (!catalog.contains(info->format(), info->pluginId()))
                     catalog.add(std::move(info));
     }
@@ -33,7 +33,7 @@ int remidy_tooling::PluginScanning::performPluginScanning(std::filesystem::path&
 }
 
 
-bool remidy_tooling::PluginScanning::safeToInstantiate(PluginFormat* format, PluginCatalogEntry *entry) {
+bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, PluginCatalogEntry *entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool skip = false;
@@ -88,7 +88,7 @@ bool remidy_tooling::PluginScanning::safeToInstantiate(PluginFormat* format, Plu
     return !skip;
 }
 
-bool remidy_tooling::PluginScanning::shouldCreateInstanceOnUIThread(PluginFormat *format, PluginCatalogEntry* entry) {
+bool remidy_tooling::PluginScanTool::shouldCreateInstanceOnUIThread(PluginFormat *format, PluginCatalogEntry* entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool forceMainThread =

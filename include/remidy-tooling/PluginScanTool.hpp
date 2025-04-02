@@ -5,7 +5,7 @@
 namespace remidy_tooling {
     using namespace remidy;
 
-    class PluginScanning {
+    class PluginScanTool {
 
         // -------- scanning --------
 
@@ -18,21 +18,23 @@ namespace remidy_tooling {
         PluginFormatLV2 lv2{lv2SearchPaths};
         std::filesystem::path plugin_list_cache_file{};
 
-    public:
-        PluginScanning();
-
-        std::vector<PluginFormat*> formats{&lv2,
+        std::vector<PluginFormat*> formats_{&lv2,
 #if __APPLE__
-                                           &au,
+                                            &au,
 #endif
-                                           &vst3};
+                                            &vst3};
+    public:
+        PluginScanTool();
+
         PluginCatalog catalog{};
+
         auto filterByFormat(std::vector<PluginCatalogEntry*> entries, std::string format) {
             erase_if(entries, [format](PluginCatalogEntry* entry) { return entry->format() != format; });
             return entries;
         }
 
-        ~PluginScanning() = default;
+        std::vector<PluginFormat*> formats() { return formats_; }
+        void addFormat(PluginFormat* item) { formats_.emplace_back(item); }
 
         std::filesystem::path& pluginListCacheFile() { return plugin_list_cache_file; }
         int performPluginScanning();

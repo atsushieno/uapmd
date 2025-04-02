@@ -7,7 +7,7 @@ namespace remidy {
         logger(Logger::global()),
         extensibility(*owner) {
         world = lilv_world_new();
-        lv2_scanner = AudioPluginScannerLV2(world);
+        scanning_ = AudioPluginScannerLV2(world);
         // FIXME: setup paths
         lilv_world_load_all(world);
 
@@ -87,8 +87,8 @@ namespace remidy {
         return impl->getExtensibility();
     }
 
-    PluginScanner * PluginFormatLV2::scanner() {
-        return impl->scanner();
+    PluginScanning * PluginFormatLV2::scanning() {
+        return impl->scanning();
     }
 
     std::vector<std::filesystem::path>& AudioPluginScannerLV2::getDefaultSearchPaths() {

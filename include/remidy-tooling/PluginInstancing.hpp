@@ -2,7 +2,7 @@
 
 #include <cassert>
 #include "remidy/remidy.hpp"
-#include "PluginScanning.hpp"
+#include "PluginScanTool.hpp"
 
 namespace remidy_tooling {
     using namespace remidy;
@@ -17,7 +17,7 @@ namespace remidy_tooling {
     };
 
     class PluginInstancing {
-        PluginScanning& scanner;
+        PluginScanTool& scanner;
         PluginFormat* format{};
         PluginCatalogEntry* entry{};
         PluginInstance::ConfigurationRequest config{};
@@ -28,8 +28,8 @@ namespace remidy_tooling {
         void setupInstance(std::function<void(std::string error)> callback);
 
     public:
-        explicit PluginInstancing(PluginScanning& scanner, const std::string_view& format, const std::string_view& pluginId);
-        explicit PluginInstancing(PluginScanning& scanner, PluginFormat* format, PluginCatalogEntry* entry);
+        explicit PluginInstancing(PluginScanTool& scanner, const std::string_view& format, const std::string_view& pluginId);
+        explicit PluginInstancing(PluginScanTool& scanner, PluginFormat* format, PluginCatalogEntry* entry);
         ~PluginInstancing();
         void makeAlive(std::function<void(std::string error)> callback);
 
