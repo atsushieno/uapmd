@@ -13,6 +13,7 @@ namespace uapmd {
         std::string manufacturer;
         std::string version;
         std::vector<ump_receiver_t> receivers;
+        std::vector<void*> receiver_user_data;
 
         libremidi_observer_configuration obsCfg{};
         libremidi_api_configuration apiCfg{};
@@ -27,7 +28,7 @@ namespace uapmd {
         Impl(std::string& deviceName, std::string& manufacturer, std::string& version);
         virtual ~Impl();
 
-        void addInputHandler(ump_receiver_t receiver);
+        void addInputHandler(ump_receiver_t receiver, void* userData);
         void removeInputHandler(ump_receiver_t receiver);
         void send(uapmd_ump_t* messages, size_t length, uapmd_timestamp_t timestamp);
     };

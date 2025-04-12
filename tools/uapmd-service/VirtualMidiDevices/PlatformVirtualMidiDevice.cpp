@@ -12,8 +12,8 @@ namespace uapmd {
         delete impl;
     }
 
-    void PlatformVirtualMidiDevice::addInputHandler(ump_receiver_t receiver) {
-        impl->addInputHandler(receiver);
+    void PlatformVirtualMidiDevice::addInputHandler(ump_receiver_t receiver, void* userData) {
+        impl->addInputHandler(receiver, userData);
     }
 
     void PlatformVirtualMidiDevice::removeInputHandler(ump_receiver_t receiver) {

@@ -17,7 +17,7 @@ namespace uapmd {
         PlatformVirtualMidiDevice(std::string& deviceName, std::string& manufacturer, std::string& version);
         ~PlatformVirtualMidiDevice();
 
-        void addInputHandler(ump_receiver_t receiver);
+        void addInputHandler(ump_receiver_t receiver, void* userData);
         void removeInputHandler(ump_receiver_t receiver);
         void send(uapmd_ump_t* messages, size_t length, uapmd_timestamp_t timestamp);
     };

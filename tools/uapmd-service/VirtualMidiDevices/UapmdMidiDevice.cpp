@@ -20,7 +20,7 @@ namespace uapmd {
     uapmd_status_t UapmdMidiDevice::start() {
         platformDevice = std::make_unique<PlatformVirtualMidiDevice>(deviceName, manufacturer, version);
 
-        platformDevice->addInputHandler(umpReceived);
+        platformDevice->addInputHandler(umpReceived, this);
 
         return 0;
     }
