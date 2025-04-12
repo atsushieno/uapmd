@@ -1,15 +1,25 @@
 
 #include "UapmdMidiDevice.hpp"
 #include "cmidi2.h"
+#include "remidy-tooling/PluginScanTool.hpp"
 
 #include <memory>
 
 namespace uapmd {
-
     UapmdMidiDevice::UapmdMidiDevice(std::string& deviceName, std::string& manufacturer, std::string& version) :
         deviceName(deviceName), manufacturer(manufacturer), version(version),
         // FIXME: do we need valid sampleRate here?
         audioPluginHost(new SequenceProcessor(44100, 1024, 4096, AudioPluginHostPAL::instance())) {
+        remidy_tooling::PluginScanTool scanner{};
+        scanner.performPluginScanning();
+        for(auto & entry : scanner.catalog.getPlugins()) {
+            if (entry->bundlePath().string().contains(deviceName)) {
+                printf("Found %s\n", entry->bundlePath().c_str());
+                audioPluginHost->addSimpleTrack(entry->format(), entry->pluginId(), [](auto track, auto message) {
+                    printf("addSimpleTrack result: %s\n", message.data());
+                });
+            }
+        }
     }
 
     int32_t UapmdMidiDevice::channelToTrack(int32_t group, int32_t channel) {

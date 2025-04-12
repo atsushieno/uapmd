@@ -5,8 +5,7 @@
 
 namespace uapmd {
 
-    CommandShell::CommandShell(const std::string& configName) {
-
+    CommandShell::CommandShell(std::string configName) : config_name(std::move(configName)) {
     }
 
     std::unique_ptr<CommandShell> CommandShell::create(int32_t argc, const char** argv) {
@@ -15,7 +14,7 @@ namespace uapmd {
 
     int CommandShell::run() {
         controller = std::make_unique<VirtualMidiDeviceController>();
-        const auto deviceName = "UAPMD";
+        const auto& deviceName = config_name.size() ? config_name : "Serum2"; // demo
         std::cerr << "Starting " << deviceName << std::endl;
         device = controller->createDevice(deviceName, "UAPMD Project", "0.1");
 
