@@ -6,6 +6,7 @@ target_include_directories(uapmd-service PRIVATE
         ../../external/choc
         ../../external/libremidi/include
         ../../external/cpplocate/source/cpplocate/include
+        ${cmidi2_SOURCE_DIR}
 )
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")

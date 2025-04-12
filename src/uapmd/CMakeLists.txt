@@ -11,11 +11,6 @@ CPMAddPackage(
         GIT_TAG        e0c7b5ee052ab67cecdf26ca20dda77363506a5d
         GIT_REPOSITORY https://github.com/jpcima/ring-buffer
 )
-CPMAddPackage(
-        NAME           cmidi2
-        GIT_REPOSITORY https://github.com/atsushieno/cmidi2
-        GIT_TAG        v0.7
-)
 
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)

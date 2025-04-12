@@ -23,5 +23,4 @@ namespace uapmd {
     void PlatformVirtualMidiDevice::send(uapmd_ump_t *messages, size_t length, uapmd_timestamp_t timestamp) {
         impl->send(messages, length, timestamp);
     }
-
 }

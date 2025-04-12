@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <libremidi/libremidi-c.h>
 
 #include "uapmd/priv/CommonTypes.hpp"
 

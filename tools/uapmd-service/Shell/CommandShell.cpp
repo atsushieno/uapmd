@@ -19,8 +19,13 @@ namespace uapmd {
         std::cerr << "Starting " << deviceName << std::endl;
         device = controller->createDevice(deviceName, "UAPMD Project", "0.1");
 
+        device->start();
+
         std::cerr << "Type [CR] to quit." << std::endl;
         std::cin.get();
+
+        device->stop();
+
         return 0;
     }
 
