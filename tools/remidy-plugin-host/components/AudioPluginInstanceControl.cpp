@@ -20,7 +20,7 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
         instantiatePlugin(instancingId, format, pluginId);
         return "";
     });
-    AppModel::instance().sequencer().instancingCompleted.emplace_back([&proxy](int32_t instancingId, int32_t instanceId, std::string error) {
+    AppModel::instance().instancingCompleted.emplace_back([&proxy](int32_t instancingId, int32_t instanceId, std::string error) {
         proxy.evalJS(std::format("var e = new Event('RemidyInstancingCompleted'); e.instancingId = {}; e.instanceId = {}; window.dispatchEvent(e)", instancingId, instanceId));
     });
 

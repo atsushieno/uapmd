@@ -67,19 +67,17 @@ std::vector<uapmd::ParameterMetadata> uapmd::AudioPluginSequencer::getParameterL
     return {};
 }
 
-void uapmd::AudioPluginSequencer::instantiatePlugin(int32_t instancingId, std::string& format, std::string& pluginId) {
-    sequencer.addSimpleTrack(format, pluginId, [&,instancingId](AudioPluginTrack* track, std::string error) {
-        // FIXME: error reporting instead of dumping out here
-        if (!error.empty()) {
-            std::string msg = std::format("Instancing ID {}: {}", instancingId, error);
-            remidy::Logger::global()->logError(msg.c_str());
-        }
+void uapmd::AudioPluginSequencer::instantiatePlugin(
+    std::string& format,
+    std::string& pluginId,
+    std::function<void(int32_t instanceId, std::string error)> callback
+) {
+    sequencer.addSimpleTrack(format, pluginId, [&,callback](AudioPluginTrack* track, std::string error) {
         auto trackCtx = sequencer.data().tracks[sequencer.tracks().size() - 1];
         auto numChannels = dispatcher.audio()->channels();
         trackCtx->configureMainBus(numChannels, numChannels, buffer_size_in_frames);
 
-        for (auto& f : instancingCompleted)
-            f(instancingId, track->graph().plugins()[0]->instanceId(), error);
+        callback(track->graph().plugins()[0]->instanceId(), error);
     });
 }
 

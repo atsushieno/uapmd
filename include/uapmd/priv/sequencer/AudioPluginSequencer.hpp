@@ -19,13 +19,12 @@ namespace uapmd {
 
         // Audio plugin support
 
-        std::vector<std::function<void(int32_t instancingId, int32_t instanceId, std::string)>> instancingCompleted{};
-
         void performPluginScanning(bool rescan);
 
         PluginCatalog& catalog();
 
-        void instantiatePlugin(int32_t instancingId, std::string& format, std::string& pluginId);
+        void instantiatePlugin(std::string& format, std::string& pluginId,
+            std::function<void(int32_t instanceId, std::string error)> callback);
 
         std::vector<ParameterMetadata> getParameterList(int32_t instanceId);
 
