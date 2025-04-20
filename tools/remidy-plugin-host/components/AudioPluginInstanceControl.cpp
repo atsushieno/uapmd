@@ -8,7 +8,7 @@ void uapmd::instantiatePlugin(int32_t instancingId, const std::string_view& form
 }
 
 std::vector<uapmd::ParameterMetadata> uapmd::getParameterList(int32_t instanceId) {
-    return AppModel::instance().getParameterList(instanceId);
+    return AppModel::instance().sequencer().getParameterList(instanceId);
 }
 
 void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& proxy) {
@@ -20,7 +20,7 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
         instantiatePlugin(instancingId, format, pluginId);
         return "";
     });
-    AppModel::instance().instancingCompleted.emplace_back([&proxy](int32_t instancingId, int32_t instanceId, std::string error) {
+    AppModel::instance().sequencer().instancingCompleted.emplace_back([&proxy](int32_t instancingId, int32_t instanceId, std::string error) {
         proxy.evalJS(std::format("var e = new Event('RemidyInstancingCompleted'); e.instancingId = {}; e.instanceId = {}; window.dispatchEvent(e)", instancingId, instanceId));
     });
 
@@ -42,13 +42,13 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
 
     proxy.registerFunction("remidy_sendNoteOn", [](const std::string_view& args) -> std::string {
         auto req = choc::json::parse(args);
-        AppModel::instance().sendNoteOn(req["trackIndex"].getInt64(), req["note"].getInt64());
+        AppModel::instance().sequencer().sendNoteOn(req["trackIndex"].getInt64(), req["note"].getInt64());
         return "";
     });
 
     proxy.registerFunction("remidy_sendNoteOff", [](const std::string_view& args) -> std::string {
         auto req = choc::json::parse(args);
-        AppModel::instance().sendNoteOff(req["trackIndex"].getInt64(), req["note"].getInt64());
+        AppModel::instance().sequencer().sendNoteOff(req["trackIndex"].getInt64(), req["note"].getInt64());
         return "";
     });
 }

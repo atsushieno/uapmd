@@ -3,6 +3,8 @@
 namespace remidy {
     class UmpInputDispatcher {
     public:
+        virtual ~UmpInputDispatcher() = default;
+
         // generic processor
         virtual void process(uint64_t timestamp, AudioProcessContext& src) = 0;
     };
