@@ -31,6 +31,7 @@ Rust: There are too many delusive MIDI libraries that only takes name and implem
     - the simplest solution for single track
     - the problem is that it is basically a commercial software (AGPL for library).
     - we will need multi-track hosting and it needs extra work.
+    - attempt to use it as a library without success because of unusual library structure (with JUCE we cannot build uapmd as a normal library, can be only JUCE module)
   - tracktion_engine
     - multi-track ready
     - the licensing situation is not any better than JUCE (we need multiple layers of GPL/AGPL)

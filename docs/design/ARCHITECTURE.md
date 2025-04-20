@@ -51,7 +51,7 @@ Namely, we do not particularly support plugin UI.
 
 ### Multi-format ready plugin state
 
-There are handful concerns around saving and restoring audio plugins:
+There are handful of concerns around saving and restoring audio plugins:
 
 - States should not be bound to local PC
   e.g. my plugin state saved on my work PC should be recoverable on my home PC.
