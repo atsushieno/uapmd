@@ -16,11 +16,11 @@ async function remidy_getPluginParameterList_stub(jsonArgs) {
 }
 async function remidy_sendNoteOn_stub(jsonArgs) {
     const args = JSON.parse(jsonArgs)
-    console.log(`note on: instance ${args.instanceId}: note ${args.note}`)
+    console.log(`note on: instance ${args.trackIndex}: note ${args.note}`)
 }
 async function remidy_sendNoteOff_stub(jsonArgs) {
     const args = JSON.parse(jsonArgs)
-    console.log(`note off: instance ${args.instanceId}: note ${args.note}`)
+    console.log(`note off: instance ${args.trackIndex}: note ${args.note}`)
 }
 
 // WebView Facades. They are supposed to be defined by host WebView.
@@ -52,11 +52,11 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
     instancingCount = 0;
     waitingForInstancing = false;
 
-    async sendNoteOn(instanceId, note) {
-        await remidy_sendNoteOn(JSON.stringify({instanceId: instanceId, note: note}));
+    async sendNoteOn(trackIndex, note) {
+        await remidy_sendNoteOn(JSON.stringify({trackIndex: trackIndex, note: note}));
     }
-    async sendNoteOff(instanceId, note) {
-        await remidy_sendNoteOff(JSON.stringify({instanceId: instanceId, note: note}));
+    async sendNoteOff(trackIndex, note) {
+        await remidy_sendNoteOff(JSON.stringify({trackIndex: trackIndex, note: note}));
     }
 
     // part of WebComponents Standard

@@ -73,8 +73,8 @@ namespace uapmd {
 
         // audio/MIDI player
 
-        void sendNoteOn(int32_t instanceId, int32_t note);
-        void sendNoteOff(int32_t instanceId, int32_t note);
+        void sendNoteOn(int32_t trackIndex, int32_t note);
+        void sendNoteOff(int32_t trackIndex, int32_t note);
 
         // Audio controller (WIP, unused yet)
 

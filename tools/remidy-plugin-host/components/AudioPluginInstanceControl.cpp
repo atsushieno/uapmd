@@ -42,13 +42,13 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
 
     proxy.registerFunction("remidy_sendNoteOn", [](const std::string_view& args) -> std::string {
         auto req = choc::json::parse(args);
-        AppModel::instance().sendNoteOn(req["instanceId"].getInt64(), req["note"].getInt64());
+        AppModel::instance().sendNoteOn(req["trackIndex"].getInt64(), req["note"].getInt64());
         return "";
     });
 
     proxy.registerFunction("remidy_sendNoteOff", [](const std::string_view& args) -> std::string {
         auto req = choc::json::parse(args);
-        AppModel::instance().sendNoteOff(req["instanceId"].getInt64(), req["note"].getInt64());
+        AppModel::instance().sendNoteOff(req["trackIndex"].getInt64(), req["note"].getInt64());
         return "";
     });
 }
