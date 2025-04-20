@@ -73,11 +73,15 @@ void uapmd::AudioPluginSequencer::instantiatePlugin(
     std::function<void(int32_t instanceId, std::string error)> callback
 ) {
     sequencer.addSimpleTrack(format, pluginId, [&,callback](AudioPluginTrack* track, std::string error) {
-        auto trackCtx = sequencer.data().tracks[sequencer.tracks().size() - 1];
-        auto numChannels = dispatcher.audio()->channels();
-        trackCtx->configureMainBus(numChannels, numChannels, buffer_size_in_frames);
+        if (!error.empty()) {
+            callback(-1, error);
+        } else {
+            auto trackCtx = sequencer.data().tracks[sequencer.tracks().size() - 1];
+            auto numChannels = dispatcher.audio()->channels();
+            trackCtx->configureMainBus(numChannels, numChannels, buffer_size_in_frames);
 
-        callback(track->graph().plugins()[0]->instanceId(), error);
+            callback(track->graph().plugins()[0]->instanceId(), error);
+        }
     });
 }
 

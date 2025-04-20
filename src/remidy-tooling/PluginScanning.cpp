@@ -114,6 +114,7 @@ bool remidy_tooling::PluginScanTool::shouldCreateInstanceOnUIThread(PluginFormat
         || format->name() == "AU" && displayName == "Ozone 9"
         || format->name() == "AU" && displayName == "Absynth 5"
         || format->name() == "AU" && displayName == "Absynth 5 MFX"
+        || format->name() == "AU" && displayName == "FM8"
         || format->name() == "AU" && displayName == "Reaktor 6"
         || format->name() == "AU" && displayName == "Reaktor 6 MFX"
         || format->name() == "AU" && displayName == "Reaktor 6 MIDIFX"

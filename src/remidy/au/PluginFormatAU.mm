@@ -86,18 +86,23 @@ void remidy::PluginFormatAU::createInstance(PluginCatalogEntry* info, std::funct
     std::istringstream id{info->pluginId()};
     id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;
 
-    auto component = AudioComponentFindNext(nullptr, &desc);
+    __block auto component = AudioComponentFindNext(nullptr, &desc);
     if (component == nullptr) {
         callback(nullptr, "The specified AudioUnit component was not found");
+        return;
     }
 
-    AudioComponentGetDescription(component, &desc);
+    auto status = AudioComponentGetDescription(component, &desc);
+    if (status) {
+        callback(nullptr, "The specified AudioUnit component was not found");
+        return;
+    }
     bool v3 = (desc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) > 0;
-    AudioComponentInstantiationOptions options = 0;
+    AudioComponentInstantiationOptions options = kAudioComponentInstantiation_LoadInProcess;
 
     __block auto cb = std::move(callback);
-    AudioComponentInstantiate(component, options, ^(AudioComponentInstance instance, OSStatus status) {
-        if (status == noErr) {
+    AudioComponentInstantiate(component, options, ^(AudioComponentInstance instance, OSStatus cbStatus) {
+        if (cbStatus == noErr) {
             // FIXME: how should we acquire logger instance?
             auto logger = Logger::global();
 
