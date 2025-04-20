@@ -1,7 +1,5 @@
 #pragma once
 
-#include "../remidy.hpp"
-
 namespace remidy {
     enum class AudioContentType {
         Float32,

@@ -21,7 +21,7 @@ namespace uapmd {
     public:
         UapmdMidiDevice(std::string& deviceName, std::string& manufacturer, std::string& version);
 
-        // registers itself as a virtual MIDI device service
+        // registers itself as a platform virtual MIDI device service
         uapmd_status_t start();
         // unregisters it from the platform
         uapmd_status_t stop();

@@ -43,14 +43,14 @@ namespace uapmd {
         static AudioIODeviceManager* instance(const std::string& driverName = "");
 
         struct Configuration {
-            remidy::Logger* logger{};
+            Logger* logger{};
         };
 
         virtual void initialize(Configuration& config) = 0;
         std::vector<AudioIODeviceInfo> devices() {
             if (!initialized) {
                 // this means even logger is not initialized, so we resort to the global logger.
-                remidy::Logger::global()->logError("Attempt to use AudioIODeviceManager without initializing.");
+                Logger::global()->logError("Attempt to use AudioIODeviceManager without initializing.");
                 return {};
             }
             return onDevices();

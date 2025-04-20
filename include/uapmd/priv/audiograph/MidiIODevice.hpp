@@ -1,8 +1,6 @@
 #pragma once
 
-#include "remidy/remidy.hpp"
 #include <functional>
-#include <vector>
 
 namespace uapmd {
     class MidiIODevice {
@@ -16,7 +14,7 @@ namespace uapmd {
     public:
         static MidiIODevice* instance(std::string driverName = "");
 
-        virtual void addCallback(std::function<uapmd_status_t(remidy::AudioProcessContext&)>&& data) = 0;
+        virtual void addCallback(std::function<uapmd_status_t(AudioProcessContext&)>&& data) = 0;
         virtual uapmd_status_t start() = 0;
         virtual uapmd_status_t stop() = 0;
     };

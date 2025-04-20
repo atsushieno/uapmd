@@ -3,7 +3,6 @@
 
 #include "AudioPluginNode.hpp"
 #include "uapmd/priv/CommonTypes.hpp"
-#include "remidy/remidy.hpp"
 
 namespace uapmd {
 

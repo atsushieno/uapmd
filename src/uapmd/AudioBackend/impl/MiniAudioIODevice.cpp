@@ -1,18 +1,19 @@
 #define MINIAUDIO_IMPLEMENTATION 1
+#include "uapmd/priv/CommonTypes.hpp"
 #include "MiniAudioIODevice.hpp"
 #include <choc/audio/choc_SampleBuffers.h>
 
 // MiniAudioIODeviceManager
 
-remidy::Logger::LogLevel convertFromMALogLevel(uint32_t maLevel) {
+uapmd::Logger::LogLevel convertFromMALogLevel(uint32_t maLevel) {
     switch (maLevel) {
-        case MA_LOG_LEVEL_ERROR: return remidy::Logger::LogLevel::ERROR;
-        case MA_LOG_LEVEL_WARNING: return remidy::Logger::LogLevel::WARNING;
-        case MA_LOG_LEVEL_INFO: return remidy::Logger::LogLevel::INFO;
-        case MA_LOG_LEVEL_DEBUG: return remidy::Logger::LogLevel::DIAGNOSTIC;
+        case MA_LOG_LEVEL_ERROR: return uapmd::Logger::LogLevel::ERROR;
+        case MA_LOG_LEVEL_WARNING: return uapmd::Logger::LogLevel::WARNING;
+        case MA_LOG_LEVEL_INFO: return uapmd::Logger::LogLevel::INFO;
+        case MA_LOG_LEVEL_DEBUG: return uapmd::Logger::LogLevel::DIAGNOSTIC;
     }
     // default
-    return remidy::Logger::LogLevel::INFO;
+    return uapmd::Logger::LogLevel::INFO;
 }
 
 void uapmd::MiniAudioIODeviceManager::on_ma_log(void* userData, uint32_t logLevel, const char* message) {
@@ -26,16 +27,16 @@ uapmd::MiniAudioIODeviceManager::MiniAudioIODeviceManager(
 }
 
 void uapmd::MiniAudioIODeviceManager::initialize(uapmd::AudioIODeviceManager::Configuration &config) {
-    remidy_logger = config.logger ? config.logger : remidy::Logger::global();
+    remidy_logger = config.logger ? config.logger : Logger::global();
 
     auto logCallback = ma_log_callback_init(on_ma_log, this);
     static auto allocCB = ma_allocation_callbacks_init_default();
     auto result = ma_log_init(nullptr, &ma_logger);
     if (result != MA_SUCCESS)
-        remidy::Logger::global()->logError("Failed at ma_log_init");
+        Logger::global()->logError("Failed at ma_log_init");
     result = ma_log_register_callback(&ma_logger, logCallback);
     if (result != MA_SUCCESS)
-        remidy::Logger::global()->logError("Failed at ma_log_register_callback.");
+        Logger::global()->logError("Failed at ma_log_register_callback.");
 
     auto cfg = ma_context_config_init();
     cfg.pLog = &ma_logger;

@@ -5,7 +5,7 @@ namespace uapmd {
     class SequenceProcessor::Impl {
         size_t audio_buffer_size_in_frames;
         size_t ump_buffer_size_in_ints;
-        remidy::MasterContext master_context{};
+        MasterContext master_context{};
         std::vector<AudioPluginTrack*> tracks_{};
         SequenceProcessContext sequence{};
     public:
