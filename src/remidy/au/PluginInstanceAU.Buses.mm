@@ -3,8 +3,8 @@
 #include "PluginFormatAU.hpp"
 
 void remidy::AudioPluginInstanceAU::AUAudioBuses::inspectBuses() {
-    auto& component = owner->component;
-    auto& instance = owner->instance;
+    auto component = owner->component;
+    auto instance = owner->instance;
     auto logger = owner->logger();
     auto& name = owner->name;
 
@@ -37,32 +37,34 @@ void remidy::AudioPluginInstanceAU::AUAudioBuses::inspectBuses() {
 
     ::AudioChannelLayout auLayout;
     for (auto i = 0; i < ret.numAudioIn; i++) {
+        auto busName = std::string{""};
         if (AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, i, &auLayout, &size) == noErr) {
             CFStringRef cfName{nullptr};
             if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementName, kAudioUnitScope_Input, i, &cfName, &size) == noErr && cfName != nullptr) {
-                // FIXME: get bus name
-                auto busName = std::string{""};//cfStringToString1024(cfName);
-                AudioBusDefinition def{busName, AudioBusRole::Main}; // FIXME: correct bus type
-                // FIXME: fill channel layouts
-                // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
-                input_bus_defs.emplace_back(def);
-                input_buses.emplace_back(new AudioBusConfiguration(def));
+                // FIXME: we need to fix something around here
+                //busName = cfStringToString(cfName);
             }
         }
+        AudioBusDefinition def{busName, AudioBusRole::Main}; // FIXME: correct bus type
+        // FIXME: fill channel layouts
+        // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
+        input_bus_defs.emplace_back(def);
+        input_buses.emplace_back(new AudioBusConfiguration(def));
     }
     for (auto i = 0; i < ret.numAudioOut; i++) {
+        auto busName = std::string{""};
         if (AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, i, &auLayout, &size) == noErr) {
             CFStringRef cfName{nullptr};
             if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementName, kAudioUnitScope_Output, i, &cfName, &size) == noErr && cfName != nullptr) {
-                // FIXME: get bus name
-                auto busName = std::string{""};//cfStringToString1024(cfName);
-                AudioBusDefinition def{busName, AudioBusRole::Main}; // FIXME: correct bus type
-                // FIXME: fill channel layouts
-                // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
-                output_bus_defs.emplace_back(def);
-                output_buses.emplace_back(new AudioBusConfiguration(def));
+                // FIXME: we need to fix something around here
+                //busName = cfStringToString(cfName);
             }
         }
+        AudioBusDefinition def{busName, AudioBusRole::Main}; // FIXME: correct bus type
+        // FIXME: fill channel layouts
+        // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
+        output_bus_defs.emplace_back(def);
+        output_buses.emplace_back(new AudioBusConfiguration(def));
     }
 
     AudioComponentDescription desc;

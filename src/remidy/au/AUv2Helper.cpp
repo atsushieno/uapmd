@@ -22,17 +22,15 @@ bool audioUnitHasIO(AudioUnit audioUnit, AudioUnitScope scope) {
     return false;
 }
 
-std::string cfStringToString1024(CFStringRef s) {
-    char buf[1024];
-    CFStringGetCString(s, buf, sizeof(buf), kCFStringEncodingUTF8);
-    std::string ret{buf};
+std::string cfStringToString(CFStringRef& s) {
+    std::string ret{CFStringGetCStringPtr(s, kCFStringEncodingUTF8)};
     return ret;
 }
 
 std::string retrieveCFStringRelease(const std::function<void(CFStringRef&)>&& retriever) {
     CFStringRef cf;
     retriever(cf);
-    auto ret = cfStringToString1024(cf);
+    auto ret = cfStringToString(cf);
     CFRelease(cf);
     return ret;
 }
