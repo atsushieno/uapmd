@@ -86,6 +86,8 @@ target_compile_options(remidy PRIVATE
         #-fsanitize=address
         $<$<COMPILE_LANGUAGE:ObjCXX>:-framework CoreAudio -framework CoreFoundation>
         $<$<COMPILE_LANGUAGE:Swift>:-cxx-interoperability-mode=default -emit-clang-header-path ${CMAKE_BINARY_DIR}/generated/include/swift-interop/remidy-Swift.h>
+        -DLILV_STATIC
+        -DZIX_STATIC
 )
 
 if (APPLE)
