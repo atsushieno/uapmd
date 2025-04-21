@@ -3,18 +3,12 @@
 #ifndef AAP_LV2_INTERNAL_INCLUDED
 #define AAP_LV2_INTERNAL_INCLUDED 1
 
-#include <unistd.h>
-#include <dlfcn.h>
 #include <cmath>
-#include <ctime>
-#include <cstring>
 #include <cassert>
 #include <iostream>
 
-#include <memory>
 #include <vector>
 #include <map>
-#include <string>
 
 #include "symap.h"
 #include "zix/sem.h"

@@ -32,7 +32,12 @@ public:
     CallbackMessageFunctor& operator=(const CallbackMessageFunctor&) = delete;
     CallbackMessageFunctor& operator=(CallbackMessageFunctor&&) = delete;
 
-    void operator()(const LogContext& data, size_t serial, const char* format, ...) __attribute__ ((format (printf, 4, 5))) {
+#if WIN32
+    void operator()(const LogContext& data, size_t serial, const char* format, ...)
+#else
+    void operator()(const LogContext& data, size_t serial, const char* format, ...) __attribute__ ((format (printf, 4, 5)))
+#endif
+    {
         std::array<char, MAX_LOG_MESSAGE_LENGTH> buffer;
 
         va_list args;

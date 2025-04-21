@@ -1,7 +1,6 @@
 #include <lv2/core/lv2.h>
 
 
-#include <unistd.h>
 #include <memory>
 #include <cstring>
 #include <cassert>

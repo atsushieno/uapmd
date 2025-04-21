@@ -6,6 +6,11 @@
 
 #include "PluginFormatVST3.hpp"
 
+#ifdef _MSC_VER
+#define strncasecmp _strnicmp
+#define strcasecmp _stricmp
+#endif
+
 using namespace remidy_vst3;
 
 namespace remidy {

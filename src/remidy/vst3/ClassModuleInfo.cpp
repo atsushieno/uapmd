@@ -10,7 +10,9 @@
 
 #include "../utils.hpp"
 
-#if __APPLE__
+#if WIN32
+#include <Windows.h>
+#elif __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #elif defined(__linux__)
 #include <dlfcn.h>
