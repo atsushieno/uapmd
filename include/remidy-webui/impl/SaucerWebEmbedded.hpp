@@ -27,7 +27,7 @@ namespace remidy::webui::saucer_wrapper {
                 else {
                     auto file = saucer::embedded_file{
                             .content = saucer::stash<>::lazy([e]() { return getStash(e); }),
-                            .mime = choc::network::getMIMETypeFromFilename(e.path())};
+                            .mime = choc::network::getMIMETypeFromFilename(e.path().string())};
                     files.emplace(e.path(), file);
                 }
             }
