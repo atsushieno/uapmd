@@ -51,9 +51,16 @@ else()
 endif()
 
 target_compile_options(lv2kit PRIVATE
-		-DSORD_INTERNAL
 		-DZIX_STATIC
 		-DZIX_INTERNAL
+		-DSERD_STATIC
+		-DSERD_INTERNAL
+		-DSORD_STATIC
+		-DSORD_INTERNAL
+		-DSRATOM_INTERNAL
+		-DSRATOM_STATIC
+		-DLILV_STATIC
+		-DLILV_INTERNAL
 		# it seems to violate something in zix and causes assertion failure
 		#-DZIX_NO_DEFAULT_CONFIG=1
 		# error: call to undeclared function 'posix_fadvise'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
