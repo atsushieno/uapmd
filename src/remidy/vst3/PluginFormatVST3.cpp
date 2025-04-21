@@ -7,8 +7,7 @@
 #include "PluginFormatVST3.hpp"
 
 #ifdef _MSC_VER
-#define strncasecmp _strnicmp
-#define strcasecmp _stricmp
+#define strcasecmp _wcsicmp
 #endif
 
 using namespace remidy_vst3;
@@ -263,9 +262,12 @@ namespace remidy {
             std::filesystem::path dir{path};
             if (is_directory(dir)) {
                 for (auto &entry: std::filesystem::directory_iterator(dir)) {
-                    if (!strcasecmp(entry.path().extension().c_str(), ".vst3")) {
+#if WIN32
+                    if (!strcasecmp(entry.path().extension().c_str(), L".vst3"))
+#else
+                    if (!strcasecmp(entry.path().extension().c_str(), ".vst3"))
+#endif
                         scanAllAvailablePluginsFromLibrary(entry.path(), infos);
-                    }
                 }
             }
         }
