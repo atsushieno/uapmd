@@ -118,12 +118,12 @@ int run(int argc, const char* argv[]) {
 
     static std::filesystem::path emptyPath{};
 
-    if (performInstantVerification)
+    if (rescan)
         std::cerr << "Full scanning, ignoring existing plugin list cache..." << std::endl;
     else
         std::cerr << "Trying to load plugin list cache from " << scanner.pluginListCacheFile() << std::endl;
 
-    if (performInstantVerification)
+    if (rescan)
         result = scanner.performPluginScanning(emptyPath);
     else
         result = scanner.performPluginScanning();
@@ -132,7 +132,7 @@ int run(int argc, const char* argv[]) {
     std::cerr << "Scanning completed and saved plugin list cache: " << scanner.pluginListCacheFile() << std::endl;
 
     if (!performInstantVerification) {
-        std::cerr << "To perform full instanti scanning, pass `-full` argument." << std::endl;
+        std::cerr << "To perform full instance scanning, pass `-full` argument." << std::endl;
         return EXIT_SUCCESS;
     }
 
