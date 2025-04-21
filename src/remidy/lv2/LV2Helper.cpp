@@ -70,8 +70,8 @@ jalv_worker_respond(LV2_Worker_Respond_Handle handle,
     return LV2_WORKER_SUCCESS;
 }
 
-static void*
-worker_func(void* data)
+static ZixThreadResult
+ZIX_THREAD_FUNC worker_func(void* data)
 {
     JalvWorker* worker = (JalvWorker*)data;
     LV2ImplPluginContext*       jalv   = worker->ctx;
