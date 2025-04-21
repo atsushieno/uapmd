@@ -20,6 +20,7 @@ namespace uapmd {
 
     public:
         UapmdMidiDevice(std::string& deviceName, std::string& manufacturer, std::string& version);
+        void addPluginTrack(std::string& pluginName, std::string& formatName);
 
         // registers itself as a platform virtual MIDI device service
         uapmd_status_t start();

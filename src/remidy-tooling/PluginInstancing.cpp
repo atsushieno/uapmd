@@ -4,7 +4,7 @@
 #include <iostream>
 
 void remidy_tooling::PluginInstancing::setupInstance(std::function<void(std::string error)> callback) {
-    std::cerr << "  instantiating " << format->name() << " " << displayName << std::endl;
+    Logger::global()->logInfo("  instantiating %s %s", format->name().c_str(), displayName.c_str());
     instancing_state = PluginInstancingState::Preparing;
 
     auto cb = [this,callback](std::unique_ptr<PluginInstance> newInstance, std::string error) {
