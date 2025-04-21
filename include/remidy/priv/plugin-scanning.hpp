@@ -28,12 +28,13 @@ namespace remidy {
 
     // Desktop specific plugin format members.
     class FileBasedPluginScanning : public PluginScanning {
+        std::vector<std::string> overrideSearchPaths{};
+
+    public:
         // Indicates that scanning of the plugins in this format is based on file paths (VST3, LV2, CLAP vs. AU).
         virtual bool usePluginSearchPaths() = 0;
         // Provides the default search paths for the format, if its plugin scanning is file-based.
         virtual std::vector<std::filesystem::path>& getDefaultSearchPaths() = 0;
-
-        std::vector<std::string> overrideSearchPaths{};
 
         std::vector<std::string>& getOverrideSearchPaths() { return overrideSearchPaths; }
         void addSearchPath(const std::string& path) { overrideSearchPaths.emplace_back(path); }

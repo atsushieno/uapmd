@@ -255,22 +255,27 @@ namespace remidy {
     PluginScanning::ScanningStrategyValue
     AudioPluginScannerVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginScannerVST3::scanAllAvailablePlugins() {
-        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
-        std::vector<PluginClassInfo> infos;
-        for (auto &path: getDefaultSearchPaths()) {
-            std::filesystem::path dir{path};
-            if (is_directory(dir)) {
-                for (auto &entry: std::filesystem::directory_iterator(dir)) {
+    void AudioPluginScannerVST3::scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos) {
+        std::filesystem::path dir{path};
+        if (is_directory(dir)) {
+            for (auto &entry: std::filesystem::directory_iterator(dir)) {
 #if WIN32
-                    if (!strcasecmp(entry.path().extension().c_str(), L".vst3"))
+                if (!strcasecmp(entry.path().extension().c_str(), L".vst3"))
 #else
-                    if (!strcasecmp(entry.path().extension().c_str(), ".vst3"))
+                if (!strcasecmp(entry.path().extension().c_str(), ".vst3"))
 #endif
-                        scanAllAvailablePluginsFromLibrary(entry.path(), infos);
-                }
+                    scanAllAvailablePluginsFromLibrary(entry.path(), infos);
+                else
+                    scanAllAvailablePluginsInPath(entry.path(), infos);
             }
         }
+    }
+
+    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginScannerVST3::scanAllAvailablePlugins() {
+        std::vector<PluginClassInfo> infos;
+        for (auto &path: getDefaultSearchPaths())
+            scanAllAvailablePluginsInPath(path, infos);
+        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
         for (auto &info: infos)
             ret.emplace_back(createPluginInformation(info));
         return ret;

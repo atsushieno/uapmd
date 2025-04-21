@@ -9,6 +9,7 @@ namespace remidy {
     class AudioPluginInstanceVST3;
 
     class AudioPluginScannerVST3 : public FileBasedPluginScanning {
+        void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos);
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
 
