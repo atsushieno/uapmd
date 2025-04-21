@@ -9,22 +9,18 @@ namespace uapmd {
     UapmdMidiDevice::UapmdMidiDevice(std::string& deviceName, std::string& manufacturer, std::string& version) :
         deviceName(deviceName), manufacturer(manufacturer), version(version),
         // FIXME: do we need valid sampleRate here?
-        audioPluginHost(new SequenceProcessor(44100, 1024, 4096, AudioPluginHostPAL::instance())) {
+        sequencer(new AudioPluginSequencer(44100, 1024, 4096)) {
         remidy_tooling::PluginScanTool scanner{};
         scanner.performPluginScanning();
         for(auto & entry : scanner.catalog.getPlugins()) {
             if (entry->bundlePath().string().contains(deviceName)) {
                 printf("Found %s\n", entry->bundlePath().c_str());
-                audioPluginHost->addSimpleTrack(entry->format(), entry->pluginId(), [](auto track, auto message) {
-                    printf("addSimpleTrack result: %s\n", message.data());
+                sequencer->instantiatePlugin(entry->format(), entry->pluginId(), [](int instanceId, std::string error) {
+                    printf("addSimpleTrack result: %d %s\n", instanceId, error.c_str());
                 });
+                break;
             }
         }
-    }
-
-    int32_t UapmdMidiDevice::channelToTrack(int32_t group, int32_t channel) {
-        // FIXME: implement
-        return 0;
     }
 
     uapmd_status_t UapmdMidiDevice::start() {
@@ -48,7 +44,15 @@ namespace uapmd {
         static_cast<UapmdMidiDevice*>(context)->umpReceived(ump, sizeInBytes, timestamp);
     }
 
+    /*
+    int32_t UapmdMidiDevice::channelToTrack(int32_t group, int32_t channel) {
+        // FIXME: implement
+        return 0;
+    }*/
+
     void UapmdMidiDevice::umpReceived(uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+        sequencer->enqueueUmp(ump, sizeInBytes, timestamp);
+        /*
         auto & tracks = audioPluginHost->tracks();
         CMIDI2_UMP_SEQUENCE_FOREACH(ump, sizeInBytes, iter) {
             auto u = (cmidi2_ump*) iter;
@@ -78,5 +82,6 @@ namespace uapmd {
                     break;
             }
         }
+        */
     }
 }

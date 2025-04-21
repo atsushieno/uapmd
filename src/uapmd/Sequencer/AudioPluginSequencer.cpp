@@ -117,6 +117,13 @@ void uapmd::AudioPluginSequencer::sendNoteOff(int32_t trackIndex, int32_t note) 
     std::cerr << std::format("Native note off {}: {}", trackIndex, note) << std::endl;
 }
 
+void uapmd::AudioPluginSequencer::enqueueUmp(uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    auto trackIndex = 0;
+    auto track = sequencer.tracks()[trackIndex];
+    track->scheduleEvents(timestamp, ump, sizeInBytes);
+
+}
+
 uapmd_status_t uapmd::AudioPluginSequencer::startAudio() {
     return dispatcher.start();
 }

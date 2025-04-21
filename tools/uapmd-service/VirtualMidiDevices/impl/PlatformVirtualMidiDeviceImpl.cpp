@@ -29,8 +29,9 @@ namespace uapmd {
     }
 
     void PlatformVirtualMidiDevice::Impl::inputCallback(libremidi_timestamp timestamp, const libremidi_midi2_symbol *messages, size_t len) {
+        // libremidi passes length in ints. For clarity we explicitly name length in bytes.
         for (size_t i = 0, n = receivers.size(); i < n; i++)
-            receivers[i](receiver_user_data[i], const_cast<uapmd_ump_t *>(messages), len, 0);
+            receivers[i](receiver_user_data[i], const_cast<uapmd_ump_t *>(messages), len * sizeof(int32_t), 0);
     }
 
     void PlatformVirtualMidiDevice::Impl::addInputHandler(ump_receiver_t receiver, void* userData) {

@@ -10,3 +10,4 @@
 #include "uapmd/priv/plugingraph/AudioPluginTrack.hpp"
 #include "uapmd/priv/sequencer/SequenceProcessContext.hpp"
 #include "uapmd/priv/sequencer/SequenceProcessor.hpp"
+#include "uapmd/priv/sequencer/AudioPluginSequencer.hpp"

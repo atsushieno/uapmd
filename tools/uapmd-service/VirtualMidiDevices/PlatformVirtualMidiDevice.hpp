@@ -6,7 +6,7 @@
 
 namespace uapmd {
 
-    typedef void(*ump_receiver_t)(void* context, uapmd_ump_t*, size_t, uapmd_timestamp_t);
+    typedef void(*ump_receiver_t)(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
 
     // A PAL to virtual MIDI device
     class PlatformVirtualMidiDevice {

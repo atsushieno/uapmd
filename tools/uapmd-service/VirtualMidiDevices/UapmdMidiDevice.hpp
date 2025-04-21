@@ -10,7 +10,7 @@ namespace uapmd {
         std::string deviceName{}, manufacturer{}, version{};
 
         std::unique_ptr<PlatformVirtualMidiDevice> platformDevice{};
-        std::unique_ptr<SequenceProcessor> audioPluginHost;
+        std::unique_ptr<AudioPluginSequencer> sequencer{};
         uapmd_status_t maybeLoadConfiguration(std::string& portId);
         uapmd_status_t preparePlugins();
 
