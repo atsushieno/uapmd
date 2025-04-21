@@ -51,6 +51,7 @@ else()
 endif()
 
 target_compile_options(lv2kit PRIVATE
+		-DSORD_INTERNAL
 		-DZIX_STATIC
 		-DZIX_INTERNAL
 		# it seems to violate something in zix and causes assertion failure
