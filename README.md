@@ -1,26 +1,38 @@
-
-# remidy-scan
+# What is this?
 
 Remidy aims to provide audio plugin hosting features in cross-platform and
 multi-format manner in liberal licenses (MIT/BSD).
 
 Remidy aims to cover VST3, AudioUnit (on macOS) and LV2 formats.
 
-remidy-scan is a tool to query and enumerate locally installed plugins.
+UAPMD (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that can instantiate arbitrary set of plugins and acts as a virtual MIDI 2.0 UMP device on various platforms.
 
-<!--
-# What is this?
+UAPMD so far makes it as a console tool `uapmd-service` that instantiates one single audio plugin and translates UMP inputs into event inputs for each plugin API.
 
-UAPMD (Universal Audio Plugin MIDI Device) is an audio plugin host that can instantiate arbitrary set of plugins and acts as a virtual MIDI 2.0 UMP device on various platforms.
+## What's the point of this tool?
+
+You will not have to wait for MIDI 2.0 synthesizers in the market. Existing audio plugins work as a virtual MIDI 2.0 device.
 
 ## Usage
 
 UAPMD consists of two programs:
 
 - uapmd-service: acts as the actual virtual MIDI devices
-- uapmd-setup: acts as a configuration tool
+- (not available yet) uapmd-setup: acts as a configuration tool
+
+There are supplemental tools for diagnosing problems we encounter.
 
 ### uapmd-service
+
+Currently the command line options are hacky:
+
+> $ uapmd-service plugin-name format-name
+
+`plugin-name` is match by `std::string::contains()` within display name, case-sensitive.
+
+`format-name` is one of `VST3` `AU` or `LV2`.
+
+<!--
 
 > $ uapmd-service -audio [audio-config-file] -midi [midi-device-settings-file]
 
@@ -32,6 +44,20 @@ UAPMD consists of two programs:
 > $ uapmd-setup
 
 Launches the GUI by default.
+-->
+
+### remidy-plugin-host
+
+A hacky WIP dogfooding plugin host.
+
+### remidy-plugin-host
+
+A hacky WIP dogfooding plugin host.
+
+### remidy-scan
+
+remidy-scan is a tool to query and enumerate locally installed plugins.
+
 
 ## Code modules
 
@@ -52,7 +78,7 @@ Regarding event stream it is still not much opinionated.
 ### uapmd-service
 
 `uapmd-service` works as a virtual MIDI device service that can receive platform UMP inputs (and most likely MIDI 1.0 inputs, translated) to control plugins.
--->
+
 
 ## License and Dependencies
 
