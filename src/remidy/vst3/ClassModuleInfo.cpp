@@ -82,9 +82,9 @@ namespace remidy_vst3 {
         // https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Format.html
 #if _WIN32
 #if __x86_64__
-        auto abiDirName = "x86_64-win"
+        auto abiDirName = "x86_64-win";
 #elif __x86_32__
-        auto abiDirName = "x86_32-win"
+        auto abiDirName = "x86_32-win";
 #elif __aarch64__
         // FIXME: there are also arm64-win and arm64x-win
         auto abiDirName = "arm64ec-win";
@@ -162,7 +162,7 @@ namespace remidy_vst3 {
     // It might fail due to ABI mismatch on macOS. We have to ignore the error and return nullptr.
     void* loadLibraryFromBinary(std::filesystem::path& vst3DirOrFile) {
 #if _WIN32
-        auto ret = LoadLibraryA(vst3DirOrFile.c_str());
+        auto ret = LoadLibraryW(vst3DirOrFile.c_str());
 #elif __APPLE__
         auto cfStringRef = createCFString(vst3DirOrFile.string().c_str());
         auto ret = CFBundleCreate(kCFAllocatorDefault,
@@ -180,8 +180,7 @@ namespace remidy_vst3 {
 
     int32_t initializeModule(void* module) {
 #if _WIN32
-        auto module = (HMODULE) module;
-        auto initDll = (init_dll_func) GetProcAddress(module, "initDll");
+        auto initDll = (init_dll_func) GetProcAddress((HMODULE) module, "initDll");
         if (initDll) // optional
             initDll();
 #elif __APPLE__

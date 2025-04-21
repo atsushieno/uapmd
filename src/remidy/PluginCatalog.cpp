@@ -87,7 +87,7 @@ auto pluginEntriesToJson(std::vector<remidy::PluginCatalogEntry*> list) {
         ret.emplace_back(choc::value::createObject("PluginCatalogEntry",
                                                    "format", std::string{e->format()},
                                                    "id", std::string{e->pluginId()},
-                                                   "bundle", std::string{e->bundlePath()},
+                                                   "bundle", std::string{e->bundlePath().string()},
                                                    "name", std::string{e->displayName()},
                                                    "vendor", std::string{e->vendorName()},
                                                    "url", std::string{e->productUrl()})

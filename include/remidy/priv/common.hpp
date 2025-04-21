@@ -30,6 +30,7 @@ namespace remidy {
     public:
         class Impl;
 
+#undef ERROR
         enum LogLevel {
             DIAGNOSTIC,
             INFO,
