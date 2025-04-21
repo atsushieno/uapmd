@@ -5,6 +5,8 @@
 
 // MiniAudioIODeviceManager
 
+#undef ERROR
+
 uapmd::Logger::LogLevel convertFromMALogLevel(uint32_t maLevel) {
     switch (maLevel) {
         case MA_LOG_LEVEL_ERROR: return uapmd::Logger::LogLevel::ERROR;
