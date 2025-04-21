@@ -11,8 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # FIXME: bring back Windows build once MSVC fixes their bug at 17.13 https://github.com/stephenberry/glaze/issues/1448
-        os: [ubuntu-24.04, macos-15] # , windows-latest]
+        os: [ubuntu-24.04, macos-15, windows-latest]
     steps:
     - name: checkout
       uses: actions/checkout@v4
