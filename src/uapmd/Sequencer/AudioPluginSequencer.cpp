@@ -98,9 +98,9 @@ void uapmd::AudioPluginSequencer::sendNoteOn(int32_t trackIndex, int32_t note) {
     auto ump = cmidi2_ump_midi2_note_on(0, 0, note, 0, 0xF800, 0);
     addMessage64(umps, ump);
     if (!sequencer.tracks()[trackIndex]->scheduleEvents(0, umps, 8))
-        std::cerr << std::format("Failed to enqueue note on event {}: {}", trackIndex, note) << std::endl;
+        remidy::Logger::global()->logError(std::format("Failed to enqueue note on event {}: {}", trackIndex, note).c_str());
 
-    std::cerr << std::format("Native note on {}: {}", trackIndex, note) << std::endl;
+    remidy::Logger::global()->logError(std::format("Native note on {}: {}", trackIndex, note).c_str());
 }
 
 void uapmd::AudioPluginSequencer::sendNoteOff(int32_t trackIndex, int32_t note) {
@@ -112,16 +112,16 @@ void uapmd::AudioPluginSequencer::sendNoteOff(int32_t trackIndex, int32_t note) 
     auto ump = cmidi2_ump_midi2_note_off(0, 0, note, 0, 0xF800, 0);
     addMessage64(umps, ump);
     if (!sequencer.tracks()[trackIndex]->scheduleEvents(0, umps, 8))
-        std::cerr << std::format("Failed to enqueue note off event {}: {}", trackIndex, note) << std::endl;
+        remidy::Logger::global()->logError(std::format("Failed to enqueue note off event {}: {}", trackIndex, note).c_str());
 
-    std::cerr << std::format("Native note off {}: {}", trackIndex, note) << std::endl;
+    remidy::Logger::global()->logError(std::format("Native note off {}: {}", trackIndex, note).c_str());
 }
 
 void uapmd::AudioPluginSequencer::enqueueUmp(uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
     auto trackIndex = 0;
     auto track = sequencer.tracks()[trackIndex];
-    track->scheduleEvents(timestamp, ump, sizeInBytes);
-
+    if (!track->scheduleEvents(timestamp, ump, sizeInBytes))
+        remidy::Logger::global()->logError(std::format("Failed to enqueue UMP events: size {}", sizeInBytes).c_str());
 }
 
 uapmd_status_t uapmd::AudioPluginSequencer::startAudio() {
