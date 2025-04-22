@@ -33,11 +33,14 @@ namespace uapmd {
             const auto u = static_cast<cmidi2_ump *>(static_cast<void *>(&u128));
             const size_t retrievedSize = cmidi2_ump_get_message_size_bytes(u);
             memcpy(messages + totalBytes, u, retrievedSize);
+            //Logger::global()->logInfo("UMP: %x %x ... %d bytes at %x", u128.p1, u128.p2, retrievedSize, (uint64_t) (void*) messages);
             totalBytes += retrievedSize;
         }
         eventIn.position(totalBytes);
+        //if (totalBytes > 0)
+        //    Logger::global()->logInfo("  total bytes: %d", totalBytes);
         const auto ret = graph.processAudio(process);
-        eventIn.position(0);
+        eventIn.position(eventIn.position() - totalBytes);
         queue_reading.exchange(false);
         return ret;
     }
@@ -47,7 +50,7 @@ namespace uapmd {
             auto u = (cmidi2_ump*) iter;
             auto u32 = (uint32_t*) iter;
             auto uSize = cmidi2_ump_get_message_size_bytes(u);
-            cmidi2_ump128_t u128{u32[0], uSize > 32 ? u32[1] : 0, uSize > 64 ? u32[2] : 0, uSize > 64 ? u32[3] : 0};
+            cmidi2_ump128_t u128{u32[0], uSize > 4 ? u32[1] : 0, uSize > 8 ? u32[2] : 0, uSize > 8 ? u32[3] : 0};
             if (!queue.enqueue(u128))
                 return false;
         }
