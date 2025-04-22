@@ -1,11 +1,5 @@
 add_executable(remidy-apply)
 
-CPMAddPackage(
-        NAME           cpplocate
-        GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
-        GIT_REPOSITORY https://github.com/cginternals/cpplocate/
-)
-
 target_include_directories(remidy-apply PRIVATE
         ../../include
         ${cmidi2_SOURCE_DIR}

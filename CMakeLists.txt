@@ -12,6 +12,17 @@ CPMAddPackage(
         GIT_TAG        0.7
 )
 
+cmake_path(SET CPPLOCATE_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/external/cpplocate-remove-pthread.patch")
+FetchContent_Declare(cpplocate
+        NAME           cpplocate
+        GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
+        GIT_REPOSITORY https://github.com/cginternals/cpplocate
+        # required to mix CPP and Swift in the same project...
+        PATCH_COMMAND        git apply "${CPPLOCATE_PATCH_FILE}"
+        UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
+)
+FetchContent_MakeAvailable(cpplocate)
+
 #add_compile_options("-fsanitize=address")
 #link_libraries("-fsanitize=address")
 #add_link_options(-fPIC)

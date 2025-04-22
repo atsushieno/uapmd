@@ -12,23 +12,6 @@ if(UNIX AND NOT APPLE)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 endif()
 
-cmake_path(SET CPPLOCATE_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/cpplocate-remove-pthread.patch")
-FetchContent_Declare(cpplocate
-        NAME           cpplocate
-        GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
-        GIT_REPOSITORY https://github.com/cginternals/cpplocate
-        # required to mix CPP and Swift in the same project...
-        PATCH_COMMAND        git apply "${CPPLOCATE_PATCH_FILE}"
-        UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
-)
-FetchContent_MakeAvailable(cpplocate)
-
-CPMAddPackage(
-        NAME           cmidi2
-        GIT_TAG        0.7
-        GIT_REPOSITORY https://github.com/atsushieno/cmidi2
-)
-
 # FIXME: it would be slightly nicer if we could migrate to CPM (failed to resolve farbot if we actually do so. Also see https://github.com/hogliux/farbot/pull/15 )
 # <rtlog>
 FetchContent_Declare(rtlog-cpp
