@@ -51,4 +51,15 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
         AppModel::instance().sequencer().sendNoteOff(req["trackIndex"].getInt64(), req["note"].getInt64());
         return "";
     });
+
+    proxy.registerFunction("remidy_setParameterValue", [](const std::string_view& args) -> std::string {
+        auto req = choc::json::parse(args);
+        auto instanceId = req["instanceId"].getInt64();
+        auto index = req["index"].getInt64();
+        // Either the UI treats 0.0 as int64, or choc::value treats 0.0 as int64, or my saucer interceptor does,
+        // and causes "Value is not float64" error...
+        auto value = req["value"].getType().isInt64() ? req["value"].getInt64() : req["value"].getFloat64();
+        AppModel::instance().sequencer().setParameterValue(instanceId, index, value);
+        return "";
+    });
 }

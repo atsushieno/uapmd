@@ -117,6 +117,21 @@ void uapmd::AudioPluginSequencer::sendNoteOff(int32_t trackIndex, int32_t note) 
     remidy::Logger::global()->logError(std::format("Native note off {}: {}", trackIndex, note).c_str());
 }
 
+void uapmd::AudioPluginSequencer::setParameterValue(int32_t instanceId, int32_t index, double value) {
+    cmidi2_ump umps[2];
+    uint32_t vi32 = UINT32_MAX * value;
+    auto ump = cmidi2_ump_midi2_nrpn(0, 0, (uint8_t) (index / 0x100), (uint8_t) (index % 0x100), vi32);
+    addMessage64(umps, ump);
+    for (auto& track : sequencer.tracks())
+        for (auto& node : track->graph().plugins())
+            if (node->instanceId() == instanceId) {
+                if (!sequencer.tracks()[instanceId]->scheduleEvents(0, umps, 8))
+                    remidy::Logger::global()->logError(std::format("Failed to enqueue parameter change event {}: {} = {}", instanceId, index, value).c_str());
+                remidy::Logger::global()->logError(std::format("Native parameter change {}: {} = {}", instanceId, index, value).c_str());
+                break;
+            }
+}
+
 void uapmd::AudioPluginSequencer::enqueueUmp(uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
     auto trackIndex = 0;
     auto track = sequencer.tracks()[trackIndex];

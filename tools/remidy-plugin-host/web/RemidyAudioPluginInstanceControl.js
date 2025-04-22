@@ -16,11 +16,16 @@ async function remidy_getPluginParameterList_stub(jsonArgs) {
 }
 async function remidy_sendNoteOn_stub(jsonArgs) {
     const args = JSON.parse(jsonArgs)
-    console.log(`note on: instance ${args.trackIndex}: note ${args.note}`)
+    console.log(`note on: track ${args.trackIndex}: note ${args.note}`)
 }
 async function remidy_sendNoteOff_stub(jsonArgs) {
     const args = JSON.parse(jsonArgs)
-    console.log(`note off: instance ${args.trackIndex}: note ${args.note}`)
+    console.log(`note off: track ${args.trackIndex}: note ${args.note}`)
+}
+
+async function remidy_setParameterValue_stub(jsonArgs) {
+    const args = JSON.parse(jsonArgs)
+    console.log(`set parameter: instance ${args.instanceId}: index ${args.index} value ${args.value}`)
 }
 
 // WebView Facades. They are supposed to be defined by host WebView.
@@ -32,6 +37,8 @@ if (typeof(remidy_sendNoteOn) === "undefined")
     globalThis.remidy_sendNoteOn = remidy_sendNoteOn_stub;
 if (typeof(remidy_sendNoteOff) === "undefined")
     globalThis.remidy_sendNoteOff = remidy_sendNoteOff_stub;
+if (typeof(remidy_setParameterValue) === "undefined")
+    globalThis.remidy_setParameterValue = remidy_setParameterValue_stub;
 
 
 // Events that are fired by native.
@@ -57,6 +64,9 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
     }
     async sendNoteOff(trackIndex, note) {
         await remidy_sendNoteOff(JSON.stringify({trackIndex: trackIndex, note: note}));
+    }
+    async setParameterValue(instanceId, index, value) {
+        await remidy_setParameterValue(JSON.stringify({instanceId: instanceId, index: index, value: value}));
     }
 
     // part of WebComponents Standard
@@ -177,7 +187,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
                     <span>${d.name}</span>
                 </td>
                 <td>
-                    <sl-range value="${d.initialValue}" min="0.0" max="1.0" step="0.01"></sl-range>
+                    <sl-range class="parameter" remidy-parameter-id="${d.id}" value="${d.initialValue}" min="0.0" max="1.0" step="0.01"></sl-range>
                 </td>
             </tr>
             `
@@ -185,6 +195,14 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         tbody.innerHTML = listHtml;
         actionTable.appendChild(table);
         node.appendChild(actionTable);
+
+        let handler = e => {
+            let id = parseInt(e.target.getAttribute("remidy-parameter-id"));
+            this.setParameterValue(this.instanceId, id, e.target.value);
+        };
+        node.querySelectorAll("sl-range.parameter").forEach(el => {
+            el.addEventListener("sl-change", handler)
+        });
     }
 }
 
