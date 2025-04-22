@@ -31,7 +31,7 @@ target_link_libraries(remidy-tooling PRIVATE
 )
 
 target_sources(remidy-tooling PRIVATE
-        PluginScanning.cpp
+        PluginScanTool.cpp
         PluginInstancing.cpp
 )
 
