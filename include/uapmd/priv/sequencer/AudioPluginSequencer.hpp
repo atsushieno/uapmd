@@ -33,7 +33,7 @@ namespace uapmd {
         void sendNoteOn(int32_t trackIndex, int32_t note);
         void sendNoteOff(int32_t trackIndex, int32_t note);
         void setParameterValue(int32_t instanceId, int32_t index, double value);
-        void enqueueUmp(uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
+        void enqueueUmp(int32_t trackIndex, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
 
         // Audio controller (WIP, unused yet)
 

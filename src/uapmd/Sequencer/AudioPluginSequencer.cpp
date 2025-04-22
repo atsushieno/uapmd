@@ -125,15 +125,15 @@ void uapmd::AudioPluginSequencer::setParameterValue(int32_t instanceId, int32_t 
     for (auto& track : sequencer.tracks())
         for (auto& node : track->graph().plugins())
             if (node->instanceId() == instanceId) {
-                if (!sequencer.tracks()[instanceId]->scheduleEvents(0, umps, 8))
+                // FIXME: we need to indicate plugin to handle it
+                if (!track->scheduleEvents(0, umps, 8))
                     remidy::Logger::global()->logError(std::format("Failed to enqueue parameter change event {}: {} = {}", instanceId, index, value).c_str());
                 remidy::Logger::global()->logError(std::format("Native parameter change {}: {} = {}", instanceId, index, value).c_str());
                 break;
             }
 }
 
-void uapmd::AudioPluginSequencer::enqueueUmp(uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-    auto trackIndex = 0;
+void uapmd::AudioPluginSequencer::enqueueUmp(int32_t trackIndex, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
     auto track = sequencer.tracks()[trackIndex];
     if (!track->scheduleEvents(timestamp, ump, sizeInBytes))
         remidy::Logger::global()->logError(std::format("Failed to enqueue UMP events: size {}", sizeInBytes).c_str());

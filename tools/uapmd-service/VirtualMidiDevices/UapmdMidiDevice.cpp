@@ -49,6 +49,7 @@ namespace uapmd {
     }
 
     void UapmdMidiDevice::umpReceived(uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-        sequencer->enqueueUmp(ump, sizeInBytes, timestamp);
+        // FIXME: we need to design how we deal with multiple tracks.
+        sequencer->enqueueUmp(0, ump, sizeInBytes, timestamp);
     }
 }
