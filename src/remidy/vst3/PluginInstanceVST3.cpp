@@ -156,6 +156,9 @@ void remidy::AudioPluginInstanceVST3::allocateProcessData(v3_process_setup& setu
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceVST3::startProcessing() {
+    // we need to allocate memory where necessary.
+    owner->getHost()->startProcessing();
+
     // activate the instance.
     component->vtable->component.set_active(component, true);
 
@@ -178,6 +181,10 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::stopProcessing() {
     }
 
     component->vtable->component.set_active(component, false);
+
+    // we deallocate memory where necessary.
+    owner->getHost()->stopProcessing();
+
     return StatusCode::OK;
 }
 

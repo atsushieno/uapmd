@@ -64,6 +64,14 @@ namespace remidy_vst3 {
 
     HostApplication::~HostApplication() = default;
 
+    void HostApplication::startProcessing() {
+        parameter_changes.startProcessing();
+    }
+
+    void HostApplication::stopProcessing() {
+        parameter_changes.stopProcessing();
+    }
+
 #define QUERY_HOST_INTERFACE(target, member) \
     if (v3_tuid_match(iid,v3_param_changes_iid)) { \
         add_ref(&(member)); \

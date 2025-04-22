@@ -257,6 +257,7 @@ namespace remidy_vst3 {
                 }
             }
             *idx = queues.size();
+            // FIXME: this should not allocate. Move it elsewhere.
             queues.emplace_back(std::make_unique<HostParamValueQueue>(id));
             return (v3_param_value_queue**) queues[*idx]->asInterface();
         }
@@ -276,6 +277,14 @@ namespace remidy_vst3 {
         v3_result queryInterface(const v3_tuid iid, void **obj) {
             std::cerr << "WHY querying over IParameterChanges?" << std::endl;
             return V3_NO_INTERFACE;
+        }
+
+        void startProcessing() {
+            // we need to allocate memory for IParamValueQueues for all the parameters.
+        }
+
+        void stopProcessing() {
+            // we need to deallocate memory for IParamValueQueues for all the parameters.
         }
     };
 
@@ -356,5 +365,8 @@ namespace remidy_vst3 {
         inline IComponentHandler* getComponentHandler() { return &handler; }
         inline IUnitHandler* getUnitHandler() { return &unit_handler; }
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return &support; }
+
+        void startProcessing();
+        void stopProcessing();
     };
 }
