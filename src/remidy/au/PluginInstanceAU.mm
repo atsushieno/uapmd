@@ -125,6 +125,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceAU::startProcessing() {
+    process_timestamp.mSampleTime = 0;
     return StatusCode::OK;
 }
 
@@ -172,6 +173,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
             // FIXME: pass correct timestamp
             ump_input_dispatcher.process(0, process);
 
+        // FIXME: it is likely that audio effects are not working, blocked here.
         auto status = AudioUnitRender(instance, nullptr, &process_timestamp, 0, process.frameCount(), auDataOut);
         if (status != noErr) {
             logger()->logError("%s: failed to process audio AudioPluginInstanceAU::process(). Status: %d", name.c_str(), status);

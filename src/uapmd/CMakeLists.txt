@@ -7,9 +7,9 @@ CPMAddPackage(
         GIT_REPOSITORY https://github.com/celtera/libremidi
 )
 CPMAddPackage(
-        NAME           ring-buffer
-        GIT_TAG        e0c7b5ee052ab67cecdf26ca20dda77363506a5d
-        GIT_REPOSITORY https://github.com/jpcima/ring-buffer
+        NAME           concurrentqueue
+        GIT_TAG        2f09da73d22a47dc8a89cdd4fc4c3bfae07f4284
+        GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
 )
 
 if(UNIX AND NOT APPLE)
@@ -29,12 +29,11 @@ target_include_directories(uapmd PRIVATE
         ../../external/choc
         ../../include
         ${cmidi2_SOURCE_DIR}
-        ${ring-buffer_SOURCE_DIR}/include
+        ${concurrentqueue_SOURCE_DIR}
 )
 
 target_link_libraries(uapmd PRIVATE
         libremidi::libremidi
-        ring_buffer
         remidy::remidy
         remidy::remidy-tooling
 )
