@@ -6,8 +6,6 @@
 using namespace remidy_vst3;
 
 namespace remidy {
-    class AudioPluginInstanceVST3;
-
     class AudioPluginScannerVST3 : public FileBasedPluginScanning {
         void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos);
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
@@ -82,8 +80,8 @@ namespace remidy {
 
             bool accessRequiresMainThread() override { return true; }
             std::vector<PluginParameter*> parameters() override;
-            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
-            StatusCode getParameter(uint32_t index, double *value) override;
+            StatusCode setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode getParameter(int32_t note, uint32_t index, double *value) override;
         };
 
         class VST3UmpInputDispatcher : public TypedUmpInputDispatcher {
@@ -91,7 +89,7 @@ namespace remidy {
             int32_t note_serial{1};
 
         public:
-            VST3UmpInputDispatcher(AudioPluginInstanceVST3* owner) : owner(owner) {}
+            explicit VST3UmpInputDispatcher(AudioPluginInstanceVST3* owner) : owner(owner) {}
 
             void onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) override;
             void onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index, uint32_t data) override;

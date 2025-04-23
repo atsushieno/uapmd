@@ -42,8 +42,8 @@ namespace remidy {
 
             bool accessRequiresMainThread() override { return false; }
             std::vector<PluginParameter*> parameters() override;
-            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
-            StatusCode getParameter(uint32_t index, double *value) override;
+            StatusCode setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode getParameter(int32_t note, uint32_t index, double *value) override;
         };
 
         class AUUmpInputDispatcher : UmpInputDispatcher {

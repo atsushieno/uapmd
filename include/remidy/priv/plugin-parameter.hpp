@@ -51,9 +51,21 @@ namespace remidy {
 
     class PluginParameterSupport {
     public:
+        // True or false depending on the plugin format.
+        // True for VST3 and CLAP, false for AU and LV2.
         virtual bool accessRequiresMainThread() = 0;
+
+        // Returns the list of parameter metadata.
         virtual std::vector<PluginParameter*> parameters() = 0;
-        virtual StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) = 0;
-        virtual StatusCode getParameter(uint32_t index, double *value) = 0;
+
+        // Sets (schedules) a normalized parameter value by index.
+        // `note` should be < 0 if the request is not for a per-note controller.
+        // covers both parameter changes and per-note parameter changes (controllers).
+        // Note that only some plugin formats support per-note controllers beyond 127.
+        virtual StatusCode setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) = 0;
+
+        // Retrieves current parameter, if possible.
+        // `note` should be < 0 if the request is not for a per-note controller.
+        virtual StatusCode getParameter(int32_t note, uint32_t index, double *value) = 0;
     };
 }

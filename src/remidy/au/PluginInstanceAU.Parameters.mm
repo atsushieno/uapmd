@@ -42,16 +42,16 @@ std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceAU::ParameterSu
     return parameter_list;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) {
     // FIXME: calculate inBufferOffsetInFrames from timestamp.
     auto inBufferOffsetInFrames = 0;
-    AudioUnitSetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Global, 0, value, inBufferOffsetInFrames);
+    AudioUnitSetParameter(owner->instance, au_param_id_list[index], note < 0 ? kAudioUnitScope_Global : kAudioUnitScope_Note, note < 0 ? 0 : note, (float) value, inBufferOffsetInFrames);
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::getParameter(uint32_t index, double* value) {
+remidy::StatusCode remidy::AudioPluginInstanceAU::ParameterSupport::getParameter(int32_t note, uint32_t index, double* value) {
     AudioUnitParameterValue av;
-    AudioUnitGetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Global, 0, &av);
+    AudioUnitGetParameter(owner->instance, au_param_id_list[index], note < 0 ? kAudioUnitScope_Global : kAudioUnitScope_Note, note < 0 ? 0 : note, &av);
     *value = av;
     return StatusCode::OK;
 }

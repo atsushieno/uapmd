@@ -31,13 +31,17 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
                                                                    remidy::uint7_t index, uint32_t data, bool relative) {
     // parameter change (index = bank * 128 + index)
-    Logger::global()->logInfo("VST3 onAC() is not implemented");
+    auto parameterIndex = bank * 0x80 + index;
+    double value = (double) data / UINT32_MAX;
+    owner->parameters()->setParameter(-1, parameterIndex, value, timestamp());
 }
 
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPNAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
                                                                      uint8_t index, uint32_t data) {
     // Per-note controller
     Logger::global()->logInfo("VST3 onPNAC() is not implemented");
+    double value = (double) data / UINT32_MAX;
+    owner->parameters()->setParameter(-1, index, value, timestamp());
 }
 
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index,

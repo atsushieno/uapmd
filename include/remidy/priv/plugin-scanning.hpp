@@ -3,6 +3,8 @@
 namespace remidy {
     class PluginScanning {
     public:
+        virtual ~PluginScanning() = default;
+
         PluginScanning() = default;
 
         // Returns true if scanRequiresLoadLibrary() does not return `ScanningStrategyValue::NEVER`.

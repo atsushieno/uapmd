@@ -37,14 +37,26 @@ std::vector<remidy::PluginParameter*> remidy::AudioPluginInstanceVST3::Parameter
     return parameter_defs;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) {
     // FIXME: use IParamValueChanges for sample-accurate parameter changes
+    // FIXME: support per-note controllers.
+    if (note >= 0) {
+        owner->owner->getLogger()->logError("Per-note setParameter() on VST3 is not implemented.");
+        return StatusCode::OK;
+    }
+
     auto controller = owner->controller;
     controller->vtable->controller.set_parameter_normalised(controller, parameter_ids[index], value);
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::getParameter(uint32_t index, double* value) {
+remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::getParameter(int32_t note, uint32_t index, double* value) {
+    if (note >= 0) {
+        owner->owner->getLogger()->logError("Per-note getParameter() on VST3 is not implemented.");
+        return StatusCode::OK;
+    }
+
+    // FIXME: support per-note controllers.
     if (!value)
         return StatusCode::INVALID_PARAMETER_OPERATION;
     auto controller = owner->controller;

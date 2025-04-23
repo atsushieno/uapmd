@@ -5,13 +5,13 @@ multi-format manner in liberal licenses (MIT/BSD).
 
 Remidy aims to cover VST3, AudioUnit (on macOS) and LV2 formats.
 
-UAPMD (Ubiquitous Audio Plugin MIDI Device) <del>is</del><ins>aims to become</ins> an audio plugin host that can instantiate <del>arbitrary set of plugins</del><ins>a synth plugin</ins> and acts as a virtual MIDI 2.0 UMP device on various platforms.
+UAPMD (Ubiquitous Audio Plugin MIDI Device) <del>is</del> <ins>aims to become</ins> an audio plugin host that can instantiate <del>arbitrary set of plugins</del> <ins>a synth plugin</ins> and acts as a virtual MIDI 2.0 UMP device on various platforms.
 
 UAPMD so far makes it as a console tool `uapmd-service` that instantiates one single audio plugin and translates UMP inputs into event inputs for each plugin API.
 
 ## What's the point of this tool?
 
-You will not have to wait for MIDI 2.0 synthesizers in the market. Existing audio plugins work as a virtual MIDI 2.0 device.
+You will not have to wait for MIDI 2.0 synthesizers in the market. Existing audio plugins work as a virtual MIDI 2.0 device. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take the similar place for MIDI 2.0.
 
 ## Usage
 
@@ -45,10 +45,6 @@ Currently the command line options are hacky:
 
 Launches the GUI by default.
 -->
-
-### remidy-plugin-host
-
-A hacky WIP dogfooding plugin host.
 
 ### remidy-plugin-host
 

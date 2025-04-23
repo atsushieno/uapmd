@@ -35,6 +35,8 @@ namespace remidy {
 
         ~Impl();
 
+        auto getLogger() { return logger; }
+
         auto format() const { return owner; }
 
         LilvWorld *world;
@@ -129,9 +131,9 @@ namespace remidy {
 
             std::vector<PluginParameter *> parameters() override;
 
-            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) override;
 
-            StatusCode getParameter(uint32_t index, double *value) override;
+            StatusCode getParameter(int32_t note, uint32_t index, double *value) override;
         };
 
         class LV2UmpInputDispatcher : public TypedUmpInputDispatcher {

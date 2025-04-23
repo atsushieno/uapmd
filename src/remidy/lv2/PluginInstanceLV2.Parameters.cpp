@@ -113,10 +113,18 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
     }
 }
 
-remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::getParameter(uint32_t index, double *value) {
+remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::getParameter(int32_t note, uint32_t index, double *value) {
+    if (note >= 0) {
+        owner->formatImpl->getLogger()->logError("LV2 does not support per-note parameters.");
+        return StatusCode::OK;
+    }
     return parameter_handlers[index]->getParameter(value);
 }
 
-remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) {
+    if (note >= 0) {
+        owner->formatImpl->getLogger()->logError("LV2 does not support per-note parameters.");
+        return StatusCode::OK;
+    }
     return parameter_handlers[index]->setParameter(value, timestamp);
 }
