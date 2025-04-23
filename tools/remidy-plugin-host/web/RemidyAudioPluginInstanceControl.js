@@ -201,7 +201,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
             this.setParameterValue(this.instanceId, id, e.target.value);
         };
         node.querySelectorAll("sl-range.parameter").forEach(el => {
-            el.addEventListener("sl-change", handler)
+            el.addEventListener("sl-input", handler)
         });
     }
 }
