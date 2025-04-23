@@ -140,19 +140,19 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::configure(ConfigurationReque
 }
 
 void remidy::AudioPluginInstanceVST3::allocateProcessData(v3_process_setup& setup) {
-    // FIXME: retrieve these properties by some means.
     processData.ctx = &process_context;
     process_context.sample_rate = setup.sample_rate;
 
     processData.input_events = (v3_event_list **) processDataInputEvents.asInterface();
     processData.output_events = (v3_event_list **) processDataOutputEvents.asInterface();
+    // FIXME: we should reconsider how we pass it.
     processData.input_params = (v3_param_changes **) processDataInputParameterChanges.asInterface();
     processData.output_params = (v3_param_changes **) processDataOutputParameterChanges.asInterface();
 
     audio_buses->allocateBuffers();
 
-    processData.process_mode = V3_REALTIME; // FIXME: assign specified value
-    processData.symbolic_sample_size = V3_SAMPLE_32; // FIXME: assign specified value
+    processData.process_mode = setup.process_mode;
+    processData.symbolic_sample_size = setup.symbolic_sample_size;
 }
 
 remidy::StatusCode remidy::AudioPluginInstanceVST3::startProcessing() {

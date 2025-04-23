@@ -318,8 +318,6 @@ namespace remidy_vst3 {
         IPlugFrame plug_frame{nullptr};
         IPlugInterfaceSupport support{nullptr};
         HostParameterChanges parameter_changes{};
-        // I'm not sure how this should be implemented without `v3_param_id`.
-        //HostParamValueQueue param_value_queue{};
 
         remidy::Logger* logger;
 
