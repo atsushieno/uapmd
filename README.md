@@ -80,7 +80,7 @@ Regarding event stream it is still not much opinionated.
 
 Sources in this repository are released under the MIT license.
 
-There are third-party (and first party) dependency libraries:
+There are third-party (and first party) dependency libraries (git submodules, CMake FetchContent, or directly included):
 
 - [lv2/lv2kit](https://github.com/lv2/lv2kit) (serd, sord, sratom, lilv, zix): the ISC license.
 - [travesty](https://github.com/DISTRHO/DPF/tree/main/distrho/src/travesty), part of DISTRHO/DPF: the ISC license
@@ -92,8 +92,9 @@ There are third-party (and first party) dependency libraries:
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)
 - [cginternals/cpplocate](https://github.com/cginternals/cpplocate): the MIT license.
 - [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): the MIT license.
-- [jpcima/ring-buffer](https://github.com/jpcima/ring-buffer): BSL-1.0 license
+- [cameron314/concurrentqueue](https://github.com/cameron314/concurrentqueue) - BSD (2-clause)
 - [cjappl/rtlog-cpp](https://github.com/cjappl/rtlog-cpp): the MIT license.
     - for submodules see their [LICENSE.md](https://github.com/cjappl/rtlog-cpp/blob/main/LICENSE.md) (modified BSD, MIT)
 - [saucer/saucer](https://github.com/saucer/saucer) - MIT
 - [g200kg/webaudio-controls](https://github.com/g200kg/webaudio-controls) - Apache V2
+- [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
