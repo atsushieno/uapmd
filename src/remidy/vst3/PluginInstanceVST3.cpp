@@ -72,6 +72,8 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
         note_expression_controller = nullptr; // just to make sure
     if (controller->vtable->unknown.query_interface(controller, v3_unit_information_iid, (void**) &unit_info) != V3_OK)
         unit_info = nullptr; // just to make sure
+    if (controller->vtable->unknown.query_interface(controller, v3_midi_mapping_iid, (void**) &midi_mapping) != V3_OK)
+        midi_mapping = nullptr; // just to make sure
 
     // not sure if we want to error out here, so no result check.
     processor->vtable->processor.set_processing(processor, false);

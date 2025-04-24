@@ -160,6 +160,7 @@ namespace remidy {
         IEditController* controller;
         INoteExpressionController* note_expression_controller{nullptr};
         IUnitInfo* unit_info{nullptr};
+        IMidiMapping* midi_mapping{nullptr};
         bool isControllerDistinctFromComponent;
         FUnknown* instance;
         // the connection point for IComponent, retrieved from the plugin.

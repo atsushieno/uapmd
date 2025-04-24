@@ -17,8 +17,6 @@ namespace remidy {
         TrackContext* track_context{}; // set every time process() is invoked
 
     protected:
-        TrackContext* trackContext() { return track_context; }
-
         // 80h
         virtual void onNoteOff(uint4_t group, uint4_t channel, uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {}
         // 90h
@@ -48,5 +46,6 @@ namespace remidy {
         void process(uint64_t timestamp, AudioProcessContext& src) override;
 
         uint64_t timestamp() { return _timestamp; }
+        TrackContext* trackContext() { return track_context; }
     };
 }

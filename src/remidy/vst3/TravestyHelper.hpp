@@ -27,6 +27,16 @@ namespace remidy_vst3 {
         V3_IO_OFFLINE_PROCESSING
     };
 
+    enum V3_CONTROLLER_NUMBERS {
+        // <snip ... you can use CMIDI2_CC_XXX ... >
+        V3_AFTER_TOUCH = 128,
+        V3_PITCH_BEND = 129,
+        V3_COUNT_CTRL_NUMBER,
+        V3_CTRL_PROGRAM_CHANGE = 130,
+        V3_CTRL_POLY_PRESSURE = 131,
+        V3_CTRL_QUARTER_FRAME = 132,
+    };
+
     typedef int32_t v3_unit_id;
     typedef int32_t v3_program_list_id;
     typedef double v3_note_expression_value;
@@ -162,6 +172,9 @@ namespace remidy_vst3 {
     struct IUnitInfoVTable : FUnknownVTable {
         v3_unit_information unit_info{nullptr};
     };
+    struct IMidiMappingVTable : FUnknownVTable {
+        v3_midi_mapping midi_mapping{nullptr};
+    };
 
     struct FUnknown {
         FUnknownVTable *vtable{};
@@ -232,6 +245,9 @@ namespace remidy_vst3 {
     };
     struct IUnitInfo {
         struct IUnitInfoVTable *vtable{};
+    };
+    struct IMidiMapping {
+        struct IMidiMappingVTable *vtable{};
     };
 
     IPluginFactory* getFactoryFromLibrary(void* module);

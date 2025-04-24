@@ -10,7 +10,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::u
                                                                        uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // use IEventList to add Event (kNoteOnEvent)
     auto& el = owner->processDataInputEvents;
-    int32_t noteId = -1; // FIXME: create one
+    int32_t noteId = -1; // should be alright, UMP has no concept for that
     v3_event_note_on noteOn{channel, note, 0, (float) (velocity / 65535.0), 0, noteId};
     v3_event e{group, static_cast<int32_t>(timestamp()), trackContext()->ppqPosition(), 0,
                v3_event_type::V3_EVENT_NOTE_ON, {.note_on = noteOn}};
@@ -21,7 +21,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::
                                                                         uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // use IEventList to add Event (kNoteOffEvent)
     auto& el = owner->processDataInputEvents;
-    int32_t noteId = -1; // FIXME: create one
+    int32_t noteId = -1; // should be alright, UMP has no concept for that
     v3_event_note_off noteOff{channel, note, (float) (velocity / 65535.0), noteId};
     v3_event e{group, static_cast<int32_t>(timestamp()), trackContext()->ppqPosition(), 0,
                v3_event_type::V3_EVENT_NOTE_ON, {.note_off = noteOff}};
@@ -76,12 +76,38 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPNRC(remidy::uin
 
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) {
     // use parameter kPitchBend (if available)
-    Logger::global()->logInfo("VST3 onPitchBend() is not implemented");
+    if (!owner->midi_mapping)
+        return;
+    v3_param_id id;
+    double value = (double) data / UINT32_MAX;
+    if (owner->midi_mapping->vtable->midi_mapping.get_midi_controller_assignment(owner->midi_mapping, group, channel, V3_PITCH_BEND, &id) != V3_OK)
+        Logger::global()->logInfo("VST3 IMidiMapping on this plugin is not working as expected");
+    if (perNoteOrMinus < 0)
+        owner->parameters()->setParameter(id, value, timestamp());
+    else
+        owner->parameters()->setPerNoteController(
+            {.group = group, .channel = channel, .note = static_cast<uint8_t>(perNoteOrMinus) },
+            id, perNoteOrMinus, timestamp());
 }
 
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPressure(remidy::uint4_t group, remidy::uint4_t channel,
                                                                          int8_t perNoteOrMinus, uint32_t data) {
     // CAf: use parameter kAfterTouch (if available)
     // PAf: use IEventList to add Event (kPolyPressureEvent)
-    Logger::global()->logInfo("VST3 onPressure() is not implemented");
+    if (perNoteOrMinus < 0) {
+        if (!owner->midi_mapping)
+            return;
+        v3_param_id id;
+        double value = (double) data / UINT32_MAX;
+        if (owner->midi_mapping->vtable->midi_mapping.get_midi_controller_assignment(owner->midi_mapping, group, channel, V3_AFTER_TOUCH, &id) != V3_OK)
+            Logger::global()->logInfo("VST3 IMidiMapping on this plugin is not working as expected");
+        owner->parameters()->setParameter(id, value, timestamp());
+    } else {
+        auto& el = owner->processDataInputEvents;
+        int32_t noteId = -1; // should be alright, UMP has no concept for that
+        v3_event_poly_pressure paf{channel, perNoteOrMinus, static_cast<float>(data / UINT32_MAX), noteId};
+        v3_event e{group, static_cast<int32_t>(timestamp()), trackContext()->ppqPosition(), 0,
+                   v3_event_type::V3_EVENT_POLY_PRESSURE, {.poly_pressure = paf}};
+        el.vtable->event_list.add_event(&el, &e);
+    }
 }
