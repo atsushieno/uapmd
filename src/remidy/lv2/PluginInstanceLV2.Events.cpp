@@ -25,8 +25,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onNoteOn(
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onNoteOff(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
-    // It has to downconvert to MIDI 1.0 note on. Group and attribute fields are ignored.
-    // It has to downconvert to MIDI 1.0 note on. Group and attribute fields are ignored.
+    // It has to downconvert to MIDI 1.0 note on. Attribute field is ignored.
     midi1Bytes[0] = CMIDI2_STATUS_NOTE_OFF + channel;
     midi1Bytes[1] = note;
     midi1Bytes[2] = (uint7_t) (velocity >> 9);
@@ -36,10 +35,11 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onNoteOff(
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onAC(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) {
+    // FIXME: should we directly pass NRPN instead? Make it customizible?
     // parameter change (index = bank * 128 + index)
-    // FIXME: implement
-    // We have to determine whether they run through Atom port or mapped to parameters.
-    // If mapped, it has to go through parameter support to dispatch to appropriate port (controlPort or AtomPort)
+    auto parameterId = bank * 0x80 + index;
+    auto value = static_cast<double>(UINT32_MAX) / data;
+    owner->parameters()->setParameter(parameterId, value, timestamp());
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPNAC(
@@ -51,9 +51,11 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPNAC(
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onCC(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t index, uint32_t data) {
-    // FIXME: implement
-    // We have to determine whether they run through Atom port or mapped to parameters.
-    // If mapped, it has to go through parameter support to dispatch to appropriate port (controlPort or AtomPort)
+    // It has to downconvert to MIDI 1.0 CC.
+    midi1Bytes[0] = CMIDI2_STATUS_CC + channel;
+    midi1Bytes[1] = index;
+    midi1Bytes[2] = (uint7_t) (data >> 25);
+    enqueueMidi1Event(group, 3);
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProgramChange(
@@ -113,8 +115,6 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPressure(
         midi1Bytes[2] = (uint7_t) (data >> 25);
         enqueueMidi1Event(group, 3);
     }
-    // CAf and PAf
-    // FIXME: implement
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProcessStart(remidy::AudioProcessContext &src) {

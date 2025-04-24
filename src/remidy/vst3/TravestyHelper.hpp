@@ -74,6 +74,11 @@ namespace remidy_vst3 {
         // should we define something for const TChar* ? For now it is altered by v3_str_128.
         v3_result (V3_API* get_note_expression_value_by_string)(int32_t busIndex, int16_t channel, v3_note_expression_type_id id, const v3_str_128 string, v3_note_expression_value &valueNormalized);
     };
+    struct v3_program_list_data {
+        v3_result (V3_API* program_data_supported)(void* self, v3_program_list_id listId);
+        v3_result (V3_API* get_program_data)(void* self, v3_program_list_id listId, int32_t programIndex, v3_bstream* data);
+        v3_result (V3_API* set_program_data)(void* self, v3_program_list_id listId, int32_t programIndex, v3_bstream* data);
+    };
 
     static constexpr const v3_tuid v3_unit_handler_iid =
         V3_ID(0x4B5147F8, 0x4654486B, 0x8DAB30BA, 0x163A3C56);
@@ -81,6 +86,9 @@ namespace remidy_vst3 {
         V3_ID(0x4FB58B9E, 0x9EAA4E0F, 0xAB361C1C, 0xCCB56FEA);
     static constexpr const v3_tuid v3_note_expression_controller_iid =
         V3_ID(0xB7F8F859, 0x41234872, 0x91169581, 0x4F3721A3);
+    static constexpr const v3_tuid v3_program_list_data_iid =
+        V3_ID(0x8683B01F, 0x7B354F70, 0xA2651DEC, 0x353AF4FF);
+
 
     struct FUnknownVTable {
         v3_funknown unknown{nullptr};
@@ -148,6 +156,12 @@ namespace remidy_vst3 {
     struct INoteExpressionControllerVTable : FUnknownVTable {
         v3_note_expression_controller note_expression_controller{nullptr};
     };
+    struct IProgramListDataVTable : FUnknownVTable {
+        v3_program_list_data program_list_data{nullptr};
+    };
+    struct IUnitInfoVTable : FUnknownVTable {
+        v3_unit_information unit_info{nullptr};
+    };
 
     struct FUnknown {
         FUnknownVTable *vtable{};
@@ -211,6 +225,13 @@ namespace remidy_vst3 {
     };
     struct INoteExpressionController {
         struct INoteExpressionControllerVTable *vtable{};
+    };
+    // Maybe we only use IUnitInfo...?
+    struct IProgramListData {
+        struct IProgramListDataVTable *vtable{};
+    };
+    struct IUnitInfo {
+        struct IUnitInfoVTable *vtable{};
     };
 
     IPluginFactory* getFactoryFromLibrary(void* module);

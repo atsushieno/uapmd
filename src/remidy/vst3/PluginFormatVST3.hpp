@@ -158,7 +158,8 @@ namespace remidy {
         IComponent* component;
         IAudioProcessor* processor;
         IEditController* controller;
-        INoteExpressionController* note_expression_controller;
+        INoteExpressionController* note_expression_controller{nullptr};
+        IUnitInfo* unit_info{nullptr};
         bool isControllerDistinctFromComponent;
         FUnknown* instance;
         // the connection point for IComponent, retrieved from the plugin.

@@ -51,8 +51,17 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4
 
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onProgramChange(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t flags,
                                                                               remidy::uint7_t program, remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) {
-    // use IProgramListData to set program
-    Logger::global()->logInfo("VST3 onProgramChange() is not implemented");
+    // use IUnitInfo to set program
+    if (!owner->unit_info) {
+        Logger::global()->logInfo("This VST3 plugin does not support IUnitInfo interface");
+        return; // program list is not supported in this plugin
+    }
+    int32_t index = (bankMSB << 14) + (bankLSB << 7) + program;
+    auto count = owner->unit_info->vtable->unit_info.get_unit_count(owner->unit_info);
+    if (index < count)
+        owner->unit_info->vtable->unit_info.select_unit(owner->unit_info, index);
+    else
+        Logger::global()->logInfo("This VST3 plugin does not have unit at index %d (count: %d)", index, count);
 }
 
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,

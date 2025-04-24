@@ -70,6 +70,8 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
     // find NoteExpressionController
     if (controller->vtable->unknown.query_interface(controller, v3_note_expression_controller_iid, (void**) &note_expression_controller) != V3_OK)
         note_expression_controller = nullptr; // just to make sure
+    if (controller->vtable->unknown.query_interface(controller, v3_unit_information_iid, (void**) &unit_info) != V3_OK)
+        unit_info = nullptr; // just to make sure
 
     // not sure if we want to error out here, so no result check.
     processor->vtable->processor.set_processing(processor, false);
