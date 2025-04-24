@@ -30,11 +30,9 @@ All VST3, AU, LV2, and CLAP supports sample-accurate parameter changes. Those `s
 
 - VST3: use `IParameterChanges`
 - AU: use `AudioUnitScheduleParameters`
-- LV2: use `Atom_Sequence`
+- LV2: use `Atom_Sequence` (unsupported for ControlPort-based parameters)
 
-(Not implemented yet.)
-
-## Per-Note Parameters (Controllers)
+## Per-Note Controllers (parameters)
 
 VST3, AU, and CLAP supports per-note parameter controllers.
 
@@ -43,4 +41,6 @@ VST3, AU, and CLAP supports per-note parameter controllers.
 - LV2: not supported
 - CLAP: use `clap_event_param_value_t` with `key`.
 
-The way how AU supports per-note parameters brings in some complication that parameter list for Global and per-Note *may* return different set of parameter IDs. This should not be supported in the first place, but things may happen.
+It should be noted that per-note controllers are defined totally differently from normal parameters. VST3, AU, and MIDI 2.0 UMP define them as such. The only exception is CLAP, which defines parameters in unified way. We return the same list of per-note parameters as normal parameters.
+
+The way how VST3 and AU support per-note controllers (parameters) is different from CLAP also in that they may return different set of parameter definitions *for each channel* (also may differ from "global").  AU even goes further and they may return different set of parameter IDs *for each note*. This makes constructing static list of parameters at configuring connections almost impossible.

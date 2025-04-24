@@ -129,11 +129,23 @@ namespace remidy {
 
             bool accessRequiresMainThread() override { return false; }
 
-            std::vector<PluginParameter *> parameters() override;
+            std::vector<PluginParameter *>& parameters() override;
+            std::vector<PluginParameter *>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext note) override {
+                // not supported in LV2
+                static std::vector<PluginParameter *> empty {};
+                return empty;
+            }
 
-            StatusCode setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) override;
-
-            StatusCode getParameter(int32_t note, uint32_t index, double *value) override;
+            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode getParameter(uint32_t index, double *value) override;
+            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override {
+                owner->formatImpl->getLogger()->logError("Per-note controller is not supported in LV2");
+                return StatusCode::INVALID_PARAMETER_OPERATION;
+            }
+            StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override {
+                owner->formatImpl->getLogger()->logError("Per-note controller is not supported in LV2");
+                return StatusCode::INVALID_PARAMETER_OPERATION;
+            }
         };
 
         class LV2UmpInputDispatcher : public TypedUmpInputDispatcher {

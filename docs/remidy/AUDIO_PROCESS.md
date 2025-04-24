@@ -6,9 +6,9 @@ DRAFT DRAFT DRAFT
 ## From SequenceProcessor to AudioPluginNode
 
 - `SequenceProcessor` contains a set of `AudioPluginTrack`s and takes `SequenceProcessContext` when playing a song, in each audio processing cycle.
-- `AudioPluginTrack` contains a `AudioPluginGraph` and takes `AudioProcessContext` in each audio processing cycle.
+- `AudioPluginTrack` contains an `AudioPluginGraph` and takes `AudioProcessContext` in each audio processing cycle.
 - `AudioPluginGraph` connects one or more `AudioPluginNode`s. It is supposed to offer implementation independent `process()`.
-  - So far it only supports only linear audio plugin node chain (`appendNodeSimple()`).
+  - So far it supports only linear audio plugin node chain (`appendNodeSimple()`).
 - `AudioPluginNode` is a plugin node. It is host-implementation-agnostic.
   - The actual hosting API implements whatever the overall plugin abstraction API requires through `AudioPluginHostPAL`.
 

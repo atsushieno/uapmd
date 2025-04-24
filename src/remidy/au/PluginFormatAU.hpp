@@ -35,15 +35,20 @@ namespace remidy {
             AudioUnitParameterID* au_param_id_list{nullptr};
             UInt32 au_param_id_list_size{0};
             std::vector<PluginParameter*> parameter_list{};
+            std::map<uint32_t,std::vector<PluginParameter*>> parameter_lists_per_note{};
 
         public:
             explicit ParameterSupport(AudioPluginInstanceAU* owner);
             ~ParameterSupport();
 
             bool accessRequiresMainThread() override { return false; }
-            std::vector<PluginParameter*> parameters() override;
-            StatusCode setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) override;
-            StatusCode getParameter(int32_t note, uint32_t index, double *value) override;
+            std::vector<PluginParameter*>& parameters() override;
+            std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext note) override;
+
+            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode getParameter(uint32_t index, double *value) override;
+            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
         };
 
         class AUUmpInputDispatcher : UmpInputDispatcher {

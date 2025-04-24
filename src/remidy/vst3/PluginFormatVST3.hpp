@@ -73,15 +73,21 @@ namespace remidy {
         class ParameterSupport : public PluginParameterSupport {
             AudioPluginInstanceVST3* owner;
             std::vector<PluginParameter*> parameter_defs{};
+            // map<PerNoteControllerContext, definition>
+            std::vector<std::pair<PerNoteControllerContext, std::vector<PluginParameter*>>> per_note_controller_defs{};
             v3_param_id *parameter_ids{};
+
         public:
             explicit ParameterSupport(AudioPluginInstanceVST3* owner);
             ~ParameterSupport();
 
             bool accessRequiresMainThread() override { return true; }
-            std::vector<PluginParameter*> parameters() override;
-            StatusCode setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) override;
-            StatusCode getParameter(int32_t note, uint32_t index, double *value) override;
+            std::vector<PluginParameter*>& parameters() override;
+            std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) override;
+            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode getParameter(uint32_t index, double *value) override;
+            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
         };
 
         class VST3UmpInputDispatcher : public TypedUmpInputDispatcher {
@@ -152,6 +158,7 @@ namespace remidy {
         IComponent* component;
         IAudioProcessor* processor;
         IEditController* controller;
+        INoteExpressionController* note_expression_controller;
         bool isControllerDistinctFromComponent;
         FUnknown* instance;
         // the connection point for IComponent, retrieved from the plugin.

@@ -29,6 +29,34 @@ namespace remidy_vst3 {
 
     typedef int32_t v3_unit_id;
     typedef int32_t v3_program_list_id;
+    typedef double v3_note_expression_value;
+
+    typedef uint32_t v3_note_expression_type_id;
+    enum V3_NOTE_EXPRESSION_TYPE_FLAGS {
+        V3_IS_BIPOLAR = 1 << 0,
+        V3_IS_ONE_SHOT = 1 << 1,
+        V3_IS_ABSOLUTE = 1 << 2,
+        V3_ASSOCIATED_PARAMETER_ID_VALID = 1 << 3
+    };
+
+    struct v3_note_expression_value_description {
+        v3_note_expression_value default_value;
+        v3_note_expression_value minimum;
+        v3_note_expression_value maximum;
+        int32_t step_count;
+    };
+
+    struct v3_note_expression_type_info {
+        v3_note_expression_type_id type_id;
+        v3_str_128 title;
+        v3_str_128 short_title;
+        v3_str_128 units;
+        int32_t unit_id;
+        v3_note_expression_value_description value_desc;
+        v3_param_id associated_parameter_id;
+        V3_NOTE_EXPRESSION_TYPE_FLAGS flags;
+    };
+
     struct v3_unit_handler {
 #ifndef __cplusplus
         struct v3_funknown;
@@ -39,11 +67,20 @@ namespace remidy_vst3 {
     struct v3_plug_interface_support {
         v3_result (V3_API* is_plug_interface_supported)(void* self, const v3_tuid iid);
     };
+    struct v3_note_expression_controller {
+        int32_t (V3_API* get_note_expression_count)(void* self, int32_t busIndex, int16_t channel);
+        v3_result (V3_API* get_note_expression_info)(void* self, int32_t busIndex, int16_t channel, int32_t noteExpressionIndex, v3_note_expression_type_info& info);
+        v3_result (V3_API* get_note_expression_string_by_value)(int32_t busIndex, int16_t channel, v3_note_expression_type_id id, v3_note_expression_value valueNormalized, v3_str_128 string);
+        // should we define something for const TChar* ? For now it is altered by v3_str_128.
+        v3_result (V3_API* get_note_expression_value_by_string)(int32_t busIndex, int16_t channel, v3_note_expression_type_id id, const v3_str_128 string, v3_note_expression_value &valueNormalized);
+    };
 
     static constexpr const v3_tuid v3_unit_handler_iid =
         V3_ID(0x4B5147F8, 0x4654486B, 0x8DAB30BA, 0x163A3C56);
     static constexpr const v3_tuid v3_plug_interface_support_iid =
         V3_ID(0x4FB58B9E, 0x9EAA4E0F, 0xAB361C1C, 0xCCB56FEA);
+    static constexpr const v3_tuid v3_note_expression_controller_iid =
+        V3_ID(0xB7F8F859, 0x41234872, 0x91169581, 0x4F3721A3);
 
     struct FUnknownVTable {
         v3_funknown unknown{nullptr};
@@ -108,6 +145,9 @@ namespace remidy_vst3 {
     struct IEventListVTable : FUnknownVTable {
         v3_event_list event_list{nullptr};
     };
+    struct INoteExpressionControllerVTable : FUnknownVTable {
+        v3_note_expression_controller note_expression_controller{nullptr};
+    };
 
     struct FUnknown {
         FUnknownVTable *vtable{};
@@ -168,6 +208,9 @@ namespace remidy_vst3 {
     };
     struct IEventList {
         struct IEventListVTable *vtable;
+    };
+    struct INoteExpressionController {
+        struct INoteExpressionControllerVTable *vtable{};
     };
 
     IPluginFactory* getFactoryFromLibrary(void* module);

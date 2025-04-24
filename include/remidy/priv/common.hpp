@@ -14,6 +14,7 @@ namespace remidy {
 
     enum class StatusCode {
         OK,
+        NOT_IMPLEMENTED,
         BUNDLE_NOT_FOUND,
         FAILED_TO_INSTANTIATE,
         ALREADY_INSTANTIATED,

@@ -36,6 +36,8 @@ namespace remidy {
         }
         ~PluginParameter() = default;
 
+        // Index in a PluginInstance.
+        // Note that it is NOT stable. Next time you load the "same" plugin, the ID may be different.
         const uint32_t index() const { return _index; }
         const std::string& stableId() const { return stable_id; }
         const std::string& name() const { return _name; }
@@ -52,6 +54,32 @@ namespace remidy {
         const std::vector<ParameterEnumeration>& enums() { return _enums; }
     };
 
+    // any combination of these values
+    enum PerNoteControllerContextTypes {
+        // no distinct list of per-note controllers from global parameters
+        PER_NOTE_CONTROLLER_NONE = 0,
+        // distinct list of PNCs per channel
+        PER_NOTE_CONTROLLER_PER_CHANNEL = 1,
+        // distinct list of PNCs per MIDI note
+        PER_NOTE_CONTROLLER_PER_NOTE = 2,
+        // distinct list of PNCs per UMP group, or bus, kind of
+        PER_NOTE_CONTROLLER_PER_GROUP = 4,
+        // distinct list of PNCs per extra field
+        PER_NOTE_CONTROLLER_PER_EXTRA = 8,
+    };
+
+    // Each plugin format has distinct way to provide set of per-note controllers:
+    // - VST3 may return distinct set of controllers per channel
+    // - AU may return distinct set of controllers per note xor per channel
+    // - LV2 does not support per-note controllers.
+    // - CLAP does not have separate set of parameters from global (non-per-note) parameters.
+    struct PerNoteControllerContext {
+        uint32_t note;
+        uint32_t channel;
+        uint32_t group;
+        uint32_t extra; // for any future uses
+    };
+
     class PluginParameterSupport {
     public:
         // True or false depending on the plugin format.
@@ -59,16 +87,28 @@ namespace remidy {
         virtual bool accessRequiresMainThread() = 0;
 
         // Returns the list of parameter metadata.
-        virtual std::vector<PluginParameter*> parameters() = 0;
+        virtual std::vector<PluginParameter*>& parameters() = 0;
+
+        // Returns the list of per-note controller metadata.
+        // They are *different* from `parameters()` in VST3 and AU (also in MIDI 2.0).
+        // In CLAP there is no distinct list of parameters for per-note controllers,
+        // so it should return the same list.
+        //
+        // Usually the `note` argument does not matter (and *should* not), but it might.
+        // See `perNoteControllerDefinitionsMayBeDistinctPerNote()` for details.
+        virtual std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) = 0;
 
         // Sets (schedules) a normalized parameter value by index.
-        // `note` should be < 0 if the request is not for a per-note controller.
+        virtual StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) = 0;
+        // Retrieves current parameter, if possible.
+        virtual StatusCode getParameter(uint32_t index, double *value) = 0;
+
+        // Sets (schedules) a normalized per-note controller value by index.
         // covers both parameter changes and per-note parameter changes (controllers).
         // Note that only some plugin formats support per-note controllers beyond 127.
-        virtual StatusCode setParameter(int32_t note, uint32_t index, double value, uint64_t timestamp) = 0;
+        virtual StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) = 0;
 
-        // Retrieves current parameter, if possible.
-        // `note` should be < 0 if the request is not for a per-note controller.
-        virtual StatusCode getParameter(int32_t note, uint32_t index, double *value) = 0;
+        // Retrieves current per-note controller value, if possible.
+        virtual StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) = 0;
     };
 }
