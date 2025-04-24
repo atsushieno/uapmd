@@ -108,7 +108,7 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
 
     for (auto& p : pl) {
         auto para = p.second.release();
-        parameter_handlers.emplace_back(new LV2AtomParameterHandler(implContext, para));
+        parameter_handlers.emplace_back(new LV2AtomParameterHandler(this, implContext, para));
         parameter_defs.emplace_back(para);
     }
 }

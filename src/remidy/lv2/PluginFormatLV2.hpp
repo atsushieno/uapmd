@@ -79,7 +79,7 @@ namespace remidy {
 
     class LV2AtomParameterHandler : public LV2ParameterHandler {
     public:
-        LV2AtomParameterHandler(remidy_lv2::LV2ImplPluginContext &context, PluginParameter *def)
+        LV2AtomParameterHandler(remidy::PluginParameterSupport* owner, remidy_lv2::LV2ImplPluginContext &context, PluginParameter *def)
                 : LV2ParameterHandler(context, def) {
         }
 

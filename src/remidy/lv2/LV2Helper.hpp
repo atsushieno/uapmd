@@ -1,8 +1,5 @@
 #pragma once
 
-#ifndef AAP_LV2_INTERNAL_INCLUDED
-#define AAP_LV2_INTERNAL_INCLUDED 1
-
 #include <cmath>
 #include <cassert>
 #include <iostream>
@@ -62,8 +59,6 @@ namespace remidy_lv2 {
         LV2_Log_Log logData{nullptr, log_printf, log_vprintf};
 
         const int minBlockLengthValue = 128;
-        // FIXME: this should not be a magic number, but lowering the value causes aap-sfizz crash.
-        //  Needs some investigation.
         const int maxBlockLengthValue = 8192;
 
         LV2_Options_Option options[3] {
@@ -283,23 +278,19 @@ struct JalvWorker {
 void
 jalv_worker_emit_responses(JalvWorker *worker, LilvInstance *instance);
 
-// FIXME: these types named AAP-someghing are what I just copy-pasted from aap-lv2 and not quite ready to use.
-/*
-class AAPLV2PortMappings {
+class RemidyLV2PortMappings {
 public:
-    int32_t aap_midi_in_port{-1};
-    int32_t aap_midi_out_port{-1};
-    std::map<int32_t, int32_t> aap_to_lv2_portmap{};
-    std::map<int32_t, int32_t> lv2_to_aap_portmap{};
+    int32_t remidy_midi_in_port{-1};
+    int32_t remidy_midi_out_port{-1};
+    std::map<int32_t, int32_t> remidy_to_lv2_portmap{};
+    std::map<int32_t, int32_t> lv2_to_remidy_portmap{};
     std::map<uint32_t, int32_t> lv2_index_to_port{};
     std::map<int32_t, int32_t> ump_group_to_atom_in_port{};
     std::map<int32_t, int32_t> atom_out_port_to_ump_group{};
     int32_t lv2_patch_in_port{-1};
     int32_t lv2_patch_out_port{-1};
 };
-*/
 
-// removed sampleRate from aap-lv2 version...
 class LV2ImplPluginContext {
 public:
     LV2ImplPluginContext(LV2ImplWorldContext *statics,
@@ -310,14 +301,15 @@ public:
         worker.threaded = false;
         state_worker.threaded = false;
 
-        //buildParameterList();
+        buildParameterList();
     }
 
     ~LV2ImplPluginContext() {
+        // FIXME: presets?
         /*
         for (auto &p: presets)
             if (p->data)
-                free(p->data);
+                free(p->data);*/
         for (auto p: midi_atom_inputs)
             free(p.second);
         for (auto p: explicitly_allocated_port_buffers)
@@ -325,7 +317,6 @@ public:
         if (control_buffer_pointers)
             free(control_buffer_pointers);
         free(dummy_raw_buffer);
-        */
     }
 
     LV2ImplWorldContext *statics;
@@ -333,9 +324,7 @@ public:
     const LilvPlugin *plugin;
     LilvInstance *instance{nullptr};
 
-    /*
-    std::string aap_plugin_id{};
-    AAPLV2PortMappings mappings;
+    RemidyLV2PortMappings mappings;
 
     void *dummy_raw_buffer{nullptr};
 
@@ -347,9 +336,9 @@ public:
     // FIXME: make it a simple array so that we don't have to iterate over in every `process()`.
     std::map<int32_t, void *> explicitly_allocated_port_buffers{};
     int32_t atom_buffer_size = 0x1000;
-    // They receive the Atom events that were translated from AAP MIDI2 inputs.
+    // They receive the Atom events that were translated from MIDI2 inputs.
     std::map<int32_t, LV2_Atom_Sequence *> midi_atom_inputs{};
-    // Their outputs have to be translated to AAP MIDI2 outputs.
+    // Their outputs have to be translated to MIDI2 outputs.
     std::map<int32_t, LV2_Atom_Sequence *> midi_atom_outputs{};
 
     std::map<int32_t, LV2_Atom_Forge> midi_forges_in{};
@@ -359,16 +348,17 @@ public:
 
     int32_t selected_preset_index{-1};
 
-    std::map<int32_t,int32_t> aapParamIdToEnumIndex{};
+    std::vector<remidy::PluginParameter*> remidyParams{};
+    std::map<const std::string, int32_t> remidyParamIdToEnumIndex{};
+    std::vector<remidy::ParameterEnumeration*> remidyEnums{};
 
-    void registerParameter(const LilvPlugin* plugin, const LilvPort* port) {
-        aap_parameter_info_t info{0, {}, {}, 0, 1, 0, 0};
-        info.path[0] = '\0';
-        info.stable_id = static_cast<int16_t>(lilv_port_get_index(plugin, port));
-        auto nameMax = sizeof(info.display_name);
-        auto nameNode = lilv_port_get_name(plugin, port);
-        const char* paramName = lilv_node_as_string(nameNode);
-        strncpy(info.display_name, paramName, nameMax);
+    void registerPortAsParameter(const LilvPlugin* plugin, const LilvPort* port) {
+        std::string emptyString{};
+        auto index = lilv_port_get_index(plugin, port);
+        std::string idString = std::to_string(index);
+        const char* portName = lilv_node_as_string(lilv_port_get_name(plugin, port));
+        std::string name{portName};
+        double defaultValue{0}, minValue{0}, maxValue{1};
 
         LilvNode *defNode{nullptr}, *minNode{nullptr}, *maxNode{nullptr}, *propertyTypeNode{nullptr};
         lilv_port_get_range(plugin, port, &defNode, &minNode, &maxNode);
@@ -383,56 +373,52 @@ public:
                 isToggled = true;
         }
         if (isToggled) {
-            info.default_value = defNode == nullptr ? 0 : lilv_node_as_float(defNode) > 0.0 ? 1 : 0;
-            info.min_value = 0;
-            info.max_value = 1;
+            defaultValue = defNode == nullptr ? 0 : lilv_node_as_float(defNode) > 0.0 ? 1 : 0;
+            minValue = 0;
+            maxValue = 1;
         } else if (isInteger) {
-            info.default_value = defNode == nullptr ? 0 : lilv_node_as_int(defNode);
-            info.min_value = minNode == nullptr ? 0 : lilv_node_as_int(minNode);
-            info.max_value = maxNode == nullptr ? 1 : lilv_node_as_int(maxNode);
+            defaultValue = defNode == nullptr ? 0 : lilv_node_as_int(defNode);
+            minValue = minNode == nullptr ? 0 : lilv_node_as_int(minNode);
+            maxValue = maxNode == nullptr ? 1 : lilv_node_as_int(maxNode);
         } else {
-            info.default_value = defNode == nullptr ? 0 : lilv_node_as_float(defNode);
-            info.min_value = minNode == nullptr ? 0 : lilv_node_as_float(minNode);
-            info.max_value = maxNode == nullptr ? 1 : lilv_node_as_float(maxNode);
+            defaultValue = defNode == nullptr ? 0 : lilv_node_as_float(defNode);
+            minValue = minNode == nullptr ? 0 : lilv_node_as_float(minNode);
+            maxValue = maxNode == nullptr ? 1 : lilv_node_as_float(maxNode);
         }
+        remidy::PluginParameter info{idString, name, emptyString, defaultValue, minValue, maxValue, true, false};
 
         LilvScalePoints* scalePoints = lilv_port_get_scale_points(plugin, port);
         if (scalePoints != nullptr) {
-            aapParamIdToEnumIndex[info.stable_id] = aapEnums.size();
+            remidyParamIdToEnumIndex[info.id()] = remidyEnums.size();
 
             LILV_FOREACH(scale_points, spi, scalePoints) {
                 auto sp = lilv_scale_points_get(scalePoints, spi);
                 auto labelNode = lilv_scale_point_get_label(sp);
                 auto valueNode = lilv_scale_point_get_value(sp);
-                auto label = lilv_node_as_string(labelNode);
+                std::string label{lilv_node_as_string(labelNode)};
                 auto value = lilv_node_as_float(valueNode);
 
-                aap_parameter_enum_t e;
-                e.value = value;
-                strncpy(e.name, label, sizeof(e.name));
-                aapEnums.emplace_back(new aap_parameter_enum_t(e));
+                remidy::ParameterEnumeration e{label, value};
+                remidyEnums.emplace_back(new remidy::ParameterEnumeration(e));
             }
             lilv_scale_points_free(scalePoints);
         } else if (isToggled) {
-            aapParamIdToEnumIndex[info.stable_id] = aapEnums.size();
-            aap_parameter_enum_t t;
-            t.value = 1;
-            strncpy(t.name, "true", sizeof(t.name));
-            aapEnums.emplace_back(new aap_parameter_enum_t(t));
+            remidyParamIdToEnumIndex[info.id()] = remidyEnums.size();
+            static std::string trueValue{"true"};
+            remidy::ParameterEnumeration t{trueValue, 1};
+            remidyEnums.emplace_back(new remidy::ParameterEnumeration(t));
 
-            aap_parameter_enum_t f;
-            f.value = 0;
-            strncpy(f.name, "false", sizeof(f.name));
-            aapEnums.emplace_back(new aap_parameter_enum_t(f));
+            static std::string falseValue{"false"};
+            remidy::ParameterEnumeration f{falseValue, 0};
+            remidyEnums.emplace_back(new remidy::ParameterEnumeration(f));
         }
-        aapParams.emplace_back(new aap_parameter_info_t(info));
+        remidyParams.emplace_back(new remidy::PluginParameter(info));
 
         if(defNode) lilv_node_free(defNode);
         if(minNode) lilv_node_free(minNode);
         if(maxNode) lilv_node_free(maxNode);
         if(propertyTypeNode) lilv_node_free(propertyTypeNode);
     }
-*/
 
 #define PORTCHECKER_SINGLE(_name_,_type_) inline bool _name_ (const LilvPlugin* plugin, const LilvPort* port) { return lilv_port_is_a (plugin, port, statics->_type_); }
 #define PORTCHECKER_AND(_name_,_cond1_,_cond2_) inline bool _name_ (const LilvPlugin* plugin, const LilvPort* port) { return _cond1_ (plugin, port) && _cond2_ (plugin, port); }
@@ -447,56 +433,32 @@ public:
         PORTCHECKER_AND (IS_ATOM_IN, IS_ATOM_PORT, IS_INPUT_PORT)
         PORTCHECKER_AND (IS_ATOM_OUT, IS_ATOM_PORT, IS_OUTPUT_PORT)
 
-/*
     void buildParameterList() {
-        aapParams.clear();
-        aapParamIdToEnumIndex.clear();
-        aapEnums.clear();
+        remidyParams.clear();
+        remidyParamIdToEnumIndex.clear();
+        remidyEnums.clear();
 
         for (uint32_t p = 0; p < lilv_plugin_get_num_ports(plugin); p++) {
             auto port = lilv_plugin_get_port_by_index(plugin, p);
             if (!IS_CONTROL_PORT(plugin, port))
                 continue;
-            registerParameter(plugin, port);
+            registerPortAsParameter(plugin, port);
         }
     }
 
-    int32_t getAAPParameterCount() { return aapParams.size(); }
-    aap_parameter_info_t getAAPParameterInfo(int index) { return *aapParams[index]; }
-    double getAAPParameterProperty(int32_t parameterId, int32_t propertyId) {
-        for (auto info: aapParams) {
-            if (info->stable_id == parameterId) {
-                switch (propertyId) {
-                    case AAP_PARAMETER_PROPERTY_MIN_VALUE:
-                        return info->min_value;
-                    case AAP_PARAMETER_PROPERTY_MAX_VALUE:
-                        return info->max_value;
-                    case AAP_PARAMETER_PROPERTY_DEFAULT_VALUE:
-                        return info->default_value;
-                    case AAP_PARAMETER_PROPERTY_IS_DISCRETE: {
-                        auto port = lilv_plugin_get_port_by_index(plugin, parameterId);
-                        auto value = lilv_port_get_value(plugin, port, statics->discrete_cv_uri_node);
-                        if (value != nullptr)
-                            return lilv_node_as_float((LilvNode*) value);
-                    }
-                        // LV2 does not have it (yet?)
-                    case AAP_PARAMETER_PROPERTY_PRIORITY:
-                        return 0;
-                }
-            }
-        }
-        return 0;
-    }
-    int32_t getAAPEnumerationCount(int32_t parameterId) {
+    int32_t getRemidyParameterCount() { return remidyParams.size(); }
+    remidy::PluginParameter getRemidyParameterInfo(int index) { return *remidyParams[index]; }
+    int32_t getRemidyEnumerationCount(int32_t parameterId) {
         auto port = lilv_plugin_get_port_by_index(plugin, parameterId);
         LilvScalePoints* scalePoints = lilv_port_get_scale_points(plugin, port);
         return scalePoints != nullptr ? lilv_scale_points_size(scalePoints) : 0;
     }
-    aap_parameter_enum_t getAAPEnumeration(int32_t parameterId, int32_t enumIndex) {
-        int32_t baseIndex = aapParamIdToEnumIndex[parameterId];
-        return *aapEnums[baseIndex + enumIndex];
+    remidy::ParameterEnumeration getRemidyEnumeration(int32_t parameterId, int32_t enumIndex) {
+        // FIXME: should we build something to get around string objects here?
+        std::string idString = std::to_string(parameterId);
+        int32_t baseIndex = remidyParamIdToEnumIndex[idString];
+        return *remidyEnums[baseIndex + enumIndex];
     }
-    */
 
     // from jalv codebase
     JalvWorker worker;         ///< Worker thread implementation
@@ -513,5 +475,3 @@ public:
         int sampleRate,
         bool offlineMode);
 }
-
-#endif // ifndef AAP_LV2_INTERNAL_INCLUDED
