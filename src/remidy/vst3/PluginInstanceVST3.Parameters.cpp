@@ -17,11 +17,11 @@ remidy::AudioPluginInstanceVST3::ParameterSupport::ParameterSupport(AudioPluginI
     for (auto i = 0; i < count; i++) {
         v3_param_info info{};
         controller->vtable->controller.get_parameter_info(controller, i, &info);
-        std::string id = std::format("{}", info.param_id);
+        std::string idString = std::format("{}", info.param_id);
         std::string name = vst3StringToStdString(info.title);
         std::string path{""};
 
-        auto p = new PluginParameter(id, name, path, info.default_normalised_value, 0, 1, true, info.flags & V3_PARAM_IS_HIDDEN);
+        auto p = new PluginParameter(info.param_id, idString, name, path, info.default_normalised_value, 0, 1, true, info.flags & V3_PARAM_IS_HIDDEN);
         parameter_ids[i] = info.param_id;
         parameter_defs.emplace_back(p);
     }

@@ -9,9 +9,9 @@ function remidy_instantiatePlugin_stub(instancingId, format, pluginId) {
 
 async function remidy_getPluginParameterList_stub(jsonArgs) {
     return JSON.stringify([
-        { "id": "1", "name": "para1", "initialValue": 0 },
-        { "id": "2", "name": "para2", "initialValue": 1 },
-        { "id": "3", "name": "para3", "initialValue": 0.5 },
+        { "index": 0, "stableId": "1", "name": "para1", "initialValue": 0 },
+        { "index": 1, "stableId": "2", "name": "para2", "initialValue": 1 },
+        { "index": 2, "stableId": "3", "name": "para3", "initialValue": 0.5 },
     ]);
 }
 async function remidy_sendNoteOn_stub(jsonArgs) {
@@ -183,11 +183,11 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
             listHtml += `
             <tr>
                 <td>
-                    <sl-visually-hidden>${d.id}</sl-visually-hidden>
+                    <sl-visually-hidden>${d.index}</sl-visually-hidden>
                     <span>${d.name}</span>
                 </td>
                 <td>
-                    <sl-range class="parameter" remidy-parameter-id="${d.id}" value="${d.initialValue}" min="0.0" max="1.0" step="0.01"></sl-range>
+                    <sl-range class="parameter" remidy-parameter-index="${d.index}" remidy-parameter-stable-id="${d.stableId}" value="${d.initialValue}" min="0.0" max="1.0" step="0.01"></sl-range>
                 </td>
             </tr>
             `
@@ -197,7 +197,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         node.appendChild(actionTable);
 
         let handler = e => {
-            let id = parseInt(e.target.getAttribute("remidy-parameter-id"));
+            let id = parseInt(e.target.getAttribute("remidy-parameter-index"));
             this.setParameterValue(this.instanceId, id, e.target.value);
         };
         node.querySelectorAll("sl-range.parameter").forEach(el => {

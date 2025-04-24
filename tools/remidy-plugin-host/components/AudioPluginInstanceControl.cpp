@@ -31,11 +31,12 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
         auto arr = choc::value::createArray(pl.size(), [pl](int32_t index) {
             auto p = pl[index];
             return choc::value::createObject("ParameterMetadata",
-                                             "id", p.id,
-                                             "name", p.name,
-                                             "path", p.path,
-                                             "initialValue", p.initialValue,
-                                             "hidden", p.hidden);
+                "index", (double) p.index,
+                "stableId", p.stableId,
+                "name", p.name,
+                "path", p.path,
+                "initialValue", p.initialValue,
+                "hidden", p.hidden);
         });
         return choc::json::toString(arr);
     });

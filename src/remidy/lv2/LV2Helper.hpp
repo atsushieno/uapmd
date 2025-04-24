@@ -385,11 +385,11 @@ public:
             minValue = minNode == nullptr ? 0 : lilv_node_as_float(minNode);
             maxValue = maxNode == nullptr ? 1 : lilv_node_as_float(maxNode);
         }
-        remidy::PluginParameter info{idString, name, emptyString, defaultValue, minValue, maxValue, true, false};
+        remidy::PluginParameter info{index, idString, name, emptyString, defaultValue, minValue, maxValue, true, false};
 
         LilvScalePoints* scalePoints = lilv_port_get_scale_points(plugin, port);
         if (scalePoints != nullptr) {
-            remidyParamIdToEnumIndex[info.id()] = remidyEnums.size();
+            remidyParamIdToEnumIndex[info.stableId()] = remidyEnums.size();
 
             LILV_FOREACH(scale_points, spi, scalePoints) {
                 auto sp = lilv_scale_points_get(scalePoints, spi);
@@ -403,7 +403,7 @@ public:
             }
             lilv_scale_points_free(scalePoints);
         } else if (isToggled) {
-            remidyParamIdToEnumIndex[info.id()] = remidyEnums.size();
+            remidyParamIdToEnumIndex[info.stableId()] = remidyEnums.size();
             static std::string trueValue{"true"};
             remidy::ParameterEnumeration t{trueValue, 1};
             remidyEnums.emplace_back(new remidy::ParameterEnumeration(t));

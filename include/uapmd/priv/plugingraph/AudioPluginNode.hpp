@@ -7,7 +7,8 @@
 namespace uapmd {
 
     struct ParameterMetadata {
-        std::string id;
+        uint32_t index;
+        std::string stableId;
         std::string name;
         std::string path;
         double initialValue;

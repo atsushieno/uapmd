@@ -13,7 +13,7 @@ std::vector<remidy::PluginParameter*> remidy::PluginInstanceLV2::ParameterSuppor
     return parameter_defs;
 }
 
-std::unique_ptr<PluginParameter> createParameter(const LilvNode* parameter, remidy_lv2::LV2ImplPluginContext& implContext, remidy::Logger* logger, std::string& displayName) {
+std::unique_ptr<PluginParameter> createParameter(uint32_t index, const LilvNode* parameter, remidy_lv2::LV2ImplPluginContext& implContext, remidy::Logger* logger, std::string& displayName) {
     auto labelNode = lilv_world_get(implContext.world, parameter, implContext.statics->rdfs_label_node, nullptr);
     if (!labelNode) {
         logger->logError("A patch writable does not specify RDF label.");
@@ -72,7 +72,7 @@ std::unique_ptr<PluginParameter> createParameter(const LilvNode* parameter, remi
         enums.emplace_back(pe);
     }
 
-    return std::make_unique<PluginParameter>(label, label, portGroup, defValue, minValue, maxValue, false, false, enums);
+    return std::make_unique<PluginParameter>(index, label, label, portGroup, defValue, minValue, maxValue, false, false, enums);
 }
 
 void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
@@ -87,11 +87,13 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
     // this is what Ardour does: https://github.com/Ardour/ardour/blob/a76afae0e9ffa8a44311d6f9c1d8dbc613bfc089/libs/ardour/lv2_plugin.cc#L2142
     auto pluginSubject = lilv_plugin_get_uri(plugin);
     auto writables = lilv_world_find_nodes(formatImpl->world, pluginSubject, formatImpl->worldContext->patch_writable_uri_node, nullptr);
+    uint32_t index = 0;
     LILV_FOREACH(nodes, iter, writables) {
         auto writable = lilv_nodes_get(writables, iter);
-        auto parameter = createParameter(writable, implContext, logger, displayName);
+        auto parameter = createParameter(index, writable, implContext, logger, displayName);
         if (parameter)
             pl[writable] = std::move(parameter);
+        index++;
     }
     // iterate through readable patches. If there is a read-only parameter, add to the list.
     auto readables = lilv_world_find_nodes(formatImpl->world, pluginSubject, formatImpl->worldContext->patch_readable_uri_node, nullptr);
@@ -100,9 +102,10 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
         if (pl.contains(readable))
             pl[readable]->readable(true);
         else {
-            auto parameter = createParameter(readable, implContext, logger, displayName);
+            auto parameter = createParameter(index, readable, implContext, logger, displayName);
             if (parameter)
                 pl[readable] = std::move(parameter);
+            index++;
         }
     }
 

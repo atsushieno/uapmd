@@ -16,7 +16,8 @@ namespace remidy {
     };
 
     class PluginParameter {
-        const std::string _id;
+        const uint32_t _index;
+        const std::string stable_id;
         const std::string _name;
         const std::string _path;
         const double default_value, min_value, max_value;
@@ -25,26 +26,28 @@ namespace remidy {
         const std::vector<ParameterEnumeration> _enums;
 
     public:
-        PluginParameter(std::string& id, std::string& name, std::string& path,
+        PluginParameter(uint32_t index, std::string& id, std::string& name, std::string& path,
                         double defaultValue, double minValue, double maxValue,
                         bool readable, bool hidden,
                         std::vector<ParameterEnumeration> enums = {}) :
-            _id(id), _name(name), _path(path),
+            _index(index), stable_id(id), _name(name), _path(path),
             default_value(defaultValue), min_value(minValue), max_value(maxValue),
             is_readable(readable), is_hidden(hidden), _enums(enums) {
         }
         ~PluginParameter() = default;
 
-        const std::string& id() const { return _id; }
+        const uint32_t index() const { return _index; }
+        const std::string& stableId() const { return stable_id; }
         const std::string& name() const { return _name; }
         // If the format only supports "group", then it will be "group".
         // If the format supports parameter path, then it will be "path/to/sub/path"
-        const std::string& path() { return _path; }
+        const std::string& path() const { return _path; }
         const double defaultValue() const { return default_value; }
         const double minValue() const { return min_value; }
         const double maxValue() const { return max_value; }
         bool readable() { return is_readable; }
-        bool hidden() { return is_hidden; }
+        bool hidden() const { return is_hidden; }
+        // FIXME: should we make it const as well?
         void readable(bool newValue) { is_readable = newValue; }
         const std::vector<ParameterEnumeration>& enums() { return _enums; }
     };

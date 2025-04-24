@@ -22,7 +22,8 @@ namespace uapmd {
             auto pl = instance->parameters();
             for (auto p : pl->parameters())
                 ret.emplace_back(ParameterMetadata {
-                    .id = p->id(),
+                    .index = p->index(),
+                    .stableId = p->stableId(),
                     .name = p->name(),
                     .path = p->path(),
                     .initialValue = p->defaultValue(),
