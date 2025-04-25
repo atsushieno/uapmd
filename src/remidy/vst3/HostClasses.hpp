@@ -288,6 +288,10 @@ namespace remidy_vst3 {
         }
     };
 
+    // FIXME: we have to redesign any code that uses this class.
+    // It meant to be a singleton, but apparently it is rather per-instance facade for hosting feature.
+    // For example, HostParameterChanges must be per-instance, but the singleton instance is passed to
+    // every IPluginFactory3.
     class HostApplication :
         // we cannot simply implement them. That will mess vtables.
         //public IAttributeList,

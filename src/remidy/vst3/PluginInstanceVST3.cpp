@@ -44,27 +44,24 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
 
     // From JUCE interconnectComponentAndController():
     // > Some plugins need to be "connected" to intercommunicate between their implemented classes
+#if 0
+    // If we disable this, those JUCE plugins cannot get parameters.
+    // If we enable this, Serum2 crashes.
     if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
-        std::atomic<bool> waitHandle{false};
-        EventLoop::runTaskOnMainThread([&] {
-            result = connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
-            if (result != V3_OK) {
-                owner->getLogger()->logWarning(
-                        "%s: IConnectionPoint from IComponent failed to interconnect with its IConnectionPoint from IEditController. Result: %d",
-                        pluginName.c_str(), result);
-            }
-            result = connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
-            if (result != V3_OK) {
-                owner->getLogger()->logWarning(
-                        "%s: IConnectionPoint from IEditController failed to interconnect with its IConnectionPoint from IComponent. Result: %d",
-                        pluginName.c_str(), result);
-            }
-            waitHandle = true;
-            waitHandle.notify_one();
-        });
-        while (!waitHandle)
-            std::this_thread::yield();
+        result = connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
+        if (result != V3_OK) {
+            owner->getLogger()->logWarning(
+                    "%s: IConnectionPoint from IComponent failed to interconnect with its IConnectionPoint from IEditController. Result: %d",
+                    pluginName.c_str(), result);
+        }
+        result = connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
+        if (result != V3_OK) {
+            owner->getLogger()->logWarning(
+                    "%s: IConnectionPoint from IEditController failed to interconnect with its IConnectionPoint from IComponent. Result: %d",
+                    pluginName.c_str(), result);
+        }
     }
+#endif
 
     // find NoteExpressionController
     if (controller->vtable->unknown.query_interface(controller, v3_note_expression_controller_iid, (void**) &note_expression_controller) != V3_OK)
@@ -80,43 +77,45 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
 }
 
 remidy::AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
+    auto logger = owner->getLogger();
 
-    std::function releaseRemaining = [this] {
-        processor->vtable->processor.set_processing(processor, false);
-        component->vtable->component.set_active(component, false);
+    auto result = processor->vtable->processor.set_processing(processor, false);
+    if (result != V3_OK)
+        logger->logError("Failed to setProcessing(false) at VST3 destructor: %d", result);
+    result = component->vtable->component.set_active(component, false);
+    if (result != V3_OK)
+        logger->logError("Failed to setActive(false) at VST3 destructor: %d", result);
+    audio_buses->deactivateAllBuses();
 
-        audio_buses->deallocateBuffers();
+    if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
+        result = connPointEdit->vtable->connection_point.disconnect(connPointEdit, (v3_connection_point**) connPointComp);
+        if (result != V3_OK)
+            logger->logError("Failed to disconnect from Component ConnectionPoint at VST3 destructor: %d", result);
+        result = connPointComp->vtable->connection_point.disconnect(connPointComp, (v3_connection_point**) connPointEdit);
+        if (result != V3_OK)
+            logger->logError("Failed to disconnect from EditController ConnectionPoint at VST3 destructor: %d", result);
+    }
+    controller->vtable->controller.set_component_handler(controller, nullptr);
 
-        if (connPointEdit)
-            connPointEdit->vtable->unknown.unref(connPointEdit);
-        if (connPointComp)
-            connPointComp->vtable->unknown.unref(connPointComp);
+    if (isControllerDistinctFromComponent) {
+        controller->vtable->base.terminate(controller);
+    }
+    component->vtable->base.terminate(component);
 
-        processor->vtable->unknown.unref(processor);
+    audio_buses->deallocateBuffers();
 
-        component->vtable->base.terminate(component);
-        component->vtable->unknown.unref(component);
+    if (connPointEdit)
+        connPointEdit->vtable->unknown.unref(connPointEdit);
+    if (connPointComp)
+        connPointComp->vtable->unknown.unref(connPointComp);
 
-        instance->vtable->unknown.unref(instance);
+    processor->vtable->unknown.unref(processor);
+    if (isControllerDistinctFromComponent)
+        controller->vtable->unknown.unref(controller);
+    component->vtable->unknown.unref(component);
+    instance->vtable->unknown.unref(instance);
 
-        owner->unrefLibrary(info());
-    };
-
-    std::cerr << "VST3 instance destructor: " << info()->displayName() << std::endl;
-    std::atomic<bool> waitHandle{false};
-    EventLoop::runTaskOnMainThread([&] {
-        if (isControllerDistinctFromComponent) {
-            controller->vtable->base.terminate(controller);
-            controller->vtable->unknown.unref(controller);
-        }
-        releaseRemaining();
-        waitHandle = true;
-        waitHandle.notify_one();
-    });
-    std::cerr << "  waiting for cleanup: " << info()->displayName() << std::endl;
-    while (!waitHandle)
-        std::this_thread::yield();
-    std::cerr << "  cleanup done: " << info()->displayName() << std::endl;
+    owner->unrefLibrary(info());
 
     delete audio_buses;
 

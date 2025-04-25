@@ -94,6 +94,8 @@ namespace remidy_vst3 {
             return V3_OK;
         }
         QUERY_HOST_INTERFACE(v3_component_handler_iid, handler)
+        // This should be actually queries from IComponentHandler, but in this implementation
+        // IComponentHandler is HostApplication itself, so this should be fine.
         QUERY_HOST_INTERFACE(v3_component_handler2_iid, handler2)
         QUERY_HOST_INTERFACE(v3_message_iid, message)
         //QUERY_HOST_INTERFACE(v3_param_value_queue_iid, param_value_queue)
