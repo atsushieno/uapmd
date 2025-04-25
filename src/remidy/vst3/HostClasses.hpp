@@ -304,6 +304,7 @@ namespace remidy_vst3 {
         IAttributeListVTable attribute_list_vtable{};
         IEventHandlerVTable event_handler_vtable{};
         IComponentHandlerVTable handler_vtable{};
+        IComponentHandler2VTable handler2_vtable{};
         IUnitHandlerVTable unit_handler_vtable{};
         IMessageVTable message_vtable{};
         IParamValueQueueVTable param_value_queue_table{};
@@ -313,6 +314,7 @@ namespace remidy_vst3 {
         IAttributeList attribute_list{nullptr};
         IEventHandler event_handler{nullptr};
         IComponentHandler handler{nullptr};
+        IComponentHandler2 handler2{nullptr};
         IUnitHandler unit_handler{nullptr};
         IMessage message{nullptr};
         IPlugFrame plug_frame{nullptr};
@@ -343,6 +345,11 @@ namespace remidy_vst3 {
         static v3_result perform_edit(void *self, v3_param_id, double value_normalised);
         static v3_result restart_component(void *self, int32_t flags);
 
+        static v3_result set_dirty(void* self, v3_bool state);
+        static v3_result request_open_editor(void* self, const char* name);
+        static v3_result start_group_edit(void* self);
+        static v3_result finish_group_edit(void* self);
+
         static v3_result notify_unit_selection(void *self, v3_unit_id unitId);
         static v3_result notify_program_list_change(void *self, v3_program_list_id listId, int32_t programIndex);
 
@@ -361,10 +368,13 @@ namespace remidy_vst3 {
         v3_result queryInterface(const v3_tuid iid, void **obj);
 
         inline IComponentHandler* getComponentHandler() { return &handler; }
+        inline IComponentHandler2* getComponentHandler2() { return &handler2; }
         inline IUnitHandler* getUnitHandler() { return &unit_handler; }
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return &support; }
 
         void startProcessing();
         void stopProcessing();
+
+        uint32_t ref_counter{0};
     };
 }

@@ -134,7 +134,7 @@ namespace remidy_vst3 {
         v3_component_handler handler{nullptr};
     };
     struct IComponentHandler2VTable : FUnknownVTable {
-        v3_component_handler2 handler{nullptr};
+        v3_component_handler2 handler2{nullptr};
     };
     struct IUnitHandlerVTable : FUnknownVTable {
         v3_unit_handler handler{nullptr};
@@ -226,6 +226,12 @@ namespace remidy_vst3 {
     };
     struct IHostApplication {
         struct IHostApplicationVTable *vtable{};
+        v3_result get_name(v3_str_128 name) {
+            return vtable->application.get_name(this, name);
+        }
+        v3_result create_instance(v3_tuid cid, v3_tuid iid, void** obj) {
+            return vtable->application.create_instance(this, cid, iid, obj);
+        }
     };
     struct IConnectionPoint {
         struct IConnectionPointVTable *vtable{};

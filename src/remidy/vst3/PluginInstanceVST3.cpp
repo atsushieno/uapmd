@@ -202,7 +202,8 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::process(AudioProcessContext 
     const int32_t numOutputBus = processData.num_output_buses;
     for (int32_t bus = 0, nBus = process.audioInBusCount(); bus < nBus; bus++) {
         if (bus >= numInputBus) {
-            owner->getLogger()->logError("The process context has more input buses (%d) than the plugin supports (%d). Ignoring them.", nBus, numInputBus);
+            // disabed the log, too noisy.
+            //owner->getLogger()->logError("The process context has more input buses (%d) than the plugin supports (%d). Ignoring them.", nBus, numInputBus);
             continue;
         }
         for (size_t ch = 0, n = process.inputChannelCount(bus); ch < n; ch++) {
@@ -214,7 +215,8 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::process(AudioProcessContext 
     }
     for (int32_t bus = 0, nBus = process.audioOutBusCount(); bus < nBus; bus++) {
         if (bus >= numOutputBus) {
-            owner->getLogger()->logError("The process context has more output buses (%d) than the plugin supports (%d). Ignoring them.", nBus, numOutputBus);
+            // disabed the log, too noisy.
+            //owner->getLogger()->logError("The process context has more output buses (%d) than the plugin supports (%d). Ignoring them.", nBus, numOutputBus);
             continue;
         }
         for (size_t ch = 0, n = process.outputChannelCount(bus); ch < n; ch++) {

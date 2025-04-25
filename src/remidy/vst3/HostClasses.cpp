@@ -41,6 +41,11 @@ namespace remidy_vst3 {
         handler_vtable.handler.perform_edit = perform_edit;
         handler_vtable.handler.restart_component = restart_component;
         handler.vtable = &handler_vtable;
+        handler2_vtable.handler2.set_dirty = set_dirty;
+        handler2_vtable.handler2.request_open_editor = request_open_editor;
+        handler2_vtable.handler2.start_group_edit = start_group_edit;
+        handler2_vtable.handler2.finish_group_edit = finish_group_edit;
+        handler2.vtable = &handler2_vtable;
 
         unit_handler_vtable.unknown = host_vtable.unknown;
         unit_handler_vtable.handler.notify_unit_selection = notify_unit_selection;
@@ -73,7 +78,7 @@ namespace remidy_vst3 {
     }
 
 #define QUERY_HOST_INTERFACE(target, member) \
-    if (v3_tuid_match(iid,v3_param_changes_iid)) { \
+    if (v3_tuid_match(iid,target)) { \
         add_ref(&(member)); \
         *obj = &(member); \
         return V3_OK; \
@@ -89,6 +94,7 @@ namespace remidy_vst3 {
             return V3_OK;
         }
         QUERY_HOST_INTERFACE(v3_component_handler_iid, handler)
+        QUERY_HOST_INTERFACE(v3_component_handler2_iid, handler2)
         QUERY_HOST_INTERFACE(v3_message_iid, message)
         //QUERY_HOST_INTERFACE(v3_param_value_queue_iid, param_value_queue)
         QUERY_HOST_INTERFACE(v3_plugin_frame_iid, plug_frame)
@@ -108,12 +114,12 @@ namespace remidy_vst3 {
 
     uint32_t HostApplication::add_ref(void *self) {
         // it seems to not be managed allocation by these refs.
-        return 1; //++host->ref_counter;
+        return ++((HostApplication*)self)->ref_counter;
     }
 
     uint32_t HostApplication::remove_ref(void *self) {
         // it seems to not be managed allocation by these refs.
-        return 1; //--host->ref_counter;
+        return --((HostApplication*)self)->ref_counter;
     }
 
     v3_result HostApplication::create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj) {
@@ -132,6 +138,7 @@ namespace remidy_vst3 {
         return V3_OK;
     }
 
+    // IAttributeList
     v3_result HostApplication::set_int(void *self, const char *id, int64_t value) {
         // FIXME: implement
         std::cerr << "HostApplication::set_int(" << id << "," << value << ") is not implemented" << std::endl;
@@ -180,6 +187,7 @@ namespace remidy_vst3 {
         return V3_NOT_IMPLEMENTED;
     }
 
+    // IComponentHandler
     v3_result HostApplication::begin_edit(void *self, v3_param_id paramId) {
         std::cerr << "HostApplication::begin_edit(" << std::hex << paramId << std::dec << ") is not implemented" << std::endl;
         // FIXME: implement
@@ -203,6 +211,28 @@ namespace remidy_vst3 {
         std::cerr << "HostApplication::restart_component(" << std::hex << flags << std::dec << ") is not implemented" << std::endl;
         return V3_NOT_IMPLEMENTED;
     }
+
+    // IComponentHandler2
+    v3_result HostApplication::set_dirty(void* self, v3_bool state) {
+        std::cerr << "HostApplication::set_dirty(" << state << ") is not implemented" << std::endl;
+        return V3_NOT_IMPLEMENTED;
+    }
+
+    v3_result HostApplication::request_open_editor(void* self, const char* name) {
+        std::cerr << "HostApplication::request_open_editor(" << name << ") is not implemented" << std::endl;
+        return V3_NOT_IMPLEMENTED;
+    }
+
+    v3_result HostApplication::start_group_edit(void* self) {
+        std::cerr << "HostApplication::start_group_edit() is not implemented" << std::endl;
+        return V3_NOT_IMPLEMENTED;
+    }
+
+    v3_result HostApplication::finish_group_edit(void* self) {
+        std::cerr << "HostApplication::finish_group_edit() is not implemented" << std::endl;
+        return V3_NOT_IMPLEMENTED;
+    }
+
 
     v3_result HostApplication::notify_unit_selection(void *self, v3_unit_id unitId) {
         // FIXME: implement
