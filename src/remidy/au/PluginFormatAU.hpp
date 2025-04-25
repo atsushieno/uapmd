@@ -108,6 +108,7 @@ namespace remidy {
 
         ParameterSupport* _parameters{nullptr};
         AUAudioBuses* audio_buses{};
+        AURenderCallbackStruct audio_render_callback;
         AUUmpInputDispatcher ump_input_dispatcher{this};
 
     protected:

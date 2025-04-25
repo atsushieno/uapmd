@@ -74,10 +74,9 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
 
     // audio input retriever
     if (!audio_buses->audioInputBuses().empty()) {
-        AURenderCallbackStruct callback;
-        callback.inputProc = audioInputRenderCallback;
-        callback.inputProcRefCon = this;
-        result = AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, sizeof(callback));
+        audio_render_callback.inputProc = audioInputRenderCallback;
+        audio_render_callback.inputProcRefCon = this;
+        result = AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &audio_render_callback, sizeof(audio_render_callback));
         if (result) {
             logger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_SetRenderCallback: OSStatus %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
