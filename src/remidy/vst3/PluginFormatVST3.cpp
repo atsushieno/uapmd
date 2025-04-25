@@ -290,6 +290,10 @@ namespace remidy {
                 results.emplace_back(e);
             return;
         }
+
+        if (isBlocklistedAsBundle(vst3Dir))
+            return;
+
         impl->forEachPlugin(vst3Dir, [&](void *module, IPluginFactory *factory, PluginClassInfo &pluginInfo) {
             results.emplace_back(pluginInfo);
         }, [&](void *module) {

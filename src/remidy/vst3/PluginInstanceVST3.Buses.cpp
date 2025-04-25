@@ -90,6 +90,18 @@ void remidy::AudioPluginInstanceVST3::VST3AudioBuses::configure(remidy::PluginIn
         component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, i, output_buses[i]->enabled());
 }
 
+void remidy::AudioPluginInstanceVST3::VST3AudioBuses::deactivateAllBuses() {
+    auto component = owner->component;
+    for (size_t i = 0, n = input_buses.size(); i < n; ++i)
+        component->vtable->component.activate_bus(component, V3_AUDIO, V3_INPUT, i, false);
+    for (size_t i = 0, n = output_buses.size(); i < n; ++i)
+        component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, i, false);
+    for (size_t i = 0, n = busesInfo.numEventIn; i < n; ++i)
+        component->vtable->component.activate_bus(component, V3_EVENT, V3_INPUT, i, false);
+    for (size_t i = 0, n = busesInfo.numEventOut; i < n; ++i)
+        component->vtable->component.activate_bus(component, V3_EVENT, V3_OUTPUT, i, false);
+}
+
 void remidy::AudioPluginInstanceVST3::VST3AudioBuses::allocateBuffers() {
     auto& processData = owner->processData;
 

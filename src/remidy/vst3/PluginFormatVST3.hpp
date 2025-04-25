@@ -22,6 +22,17 @@ namespace remidy {
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         ScanningStrategyValue scanRequiresInstantiation() override;
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
+
+        virtual bool isBlocklistedAsBundle(std::filesystem::path path) {
+            // Vienna Synchron Player causes crash if (and only if) the code runs in debug mode.
+            // It prevents our development, and they cause it intentionally.
+            // It is not acceptable behavior as a plugin developer, so we do not approve their civil rights here.
+            //
+            // You can override this function to unblock it, but do it in your responsibility.
+            if (path.string().contains("Vienna Synchron Player"))
+                return true;
+            return false;
+        }
     };
 
     class PluginFormatVST3::Impl {
@@ -136,6 +147,7 @@ namespace remidy {
             void configure(ConfigurationRequest& config);
             void allocateBuffers();
             void deallocateBuffers();
+            void deactivateAllBuses();
 
             struct BusSearchResult {
                 uint32_t numEventIn{0};
