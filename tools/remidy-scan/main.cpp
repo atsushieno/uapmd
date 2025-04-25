@@ -65,11 +65,15 @@ int testInstancing() {
                         ctx.addAudioOut(outputBuses[i]->channelLayout().channels(), 1024);
                     */
                     ctx.frameCount(512);
-                    for (size_t i = 0; i < numAudioIn; i++) {
+                    for (size_t i = 0; i < ctx.audioInBusCount(); i++) {
+                        if (i >= numAudioIn)
+                            break;
                         for (size_t ch = 0, nCh = ctx.inputChannelCount(i); ch < nCh; ch++)
                             memcpy(ctx.getFloatInBuffer(i, ch), (void*) "0123456789ABCDEF", 16);
                     }
-                    for (size_t i = 0; i < numAudioOut; i++) {
+                    for (size_t i = 0; i < ctx.audioOutBusCount(); i++) {
+                        if (i >= numAudioOut)
+                            break;
                         // should not matter for audio processing though
                         for (size_t ch = 0, nCh = ctx.outputChannelCount(i); ch < nCh; ch++)
                             memcpy(ctx.getFloatOutBuffer(i, ch), (void*) "02468ACE13579BDF", 16);
@@ -82,6 +86,7 @@ int testInstancing() {
                         successful = true;
 
                 });
+                std::cerr << "  " << format->name() << ": " << displayName << " : process() completed." << std::endl;
             }
             if (successful)
                 std::cerr << "  " << format->name() << ": Successfully instantiated and deleted " << displayName << std::endl;
