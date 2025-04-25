@@ -1,6 +1,7 @@
 
 #include "choc/text/choc_JSON.h"
 #include "AudioPlayerController.hpp"
+#include "../AppModel.hpp"
 
 void uapmd::registerAudioPlayerManagerFeatures(remidy::webui::WebViewProxy& proxy) {
     proxy.registerFunction("remidy_startAudio", [](const std::string_view& args) -> std::string {

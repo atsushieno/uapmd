@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../AppModel.hpp"
 #include "remidy-webui/WebViewProxy.hpp"
 
 namespace uapmd {

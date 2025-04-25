@@ -1,7 +1,7 @@
 
 #include <iostream>
 #include <cmidi2.h>
-#include "../../../include/uapmd/priv/sequencer/AudioPluginSequencer.hpp"
+#include "uapmd/uapmd.hpp"
 
 uapmd::AudioPluginSequencer::AudioPluginSequencer(
     size_t audioBufferSizeInFrames,
