@@ -96,7 +96,7 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::setPerNote
     double ppqPosition = owner->ump_input_dispatcher.trackContext()->ppqPosition(); // I guess only either of those time options are needed.
     uint16_t flags = owner->processData.process_mode == V3_REALTIME ? V3_EVENT_IS_LIVE : 0; // am I right?
     v3_event evt{static_cast<int32_t>(context.group), sampleOffset, ppqPosition, flags, V3_EVENT_NOTE_EXP_VALUE};
-    evt.note_exp_value = {.value = value, .type_id = index, .note_id = static_cast<int32_t>(context.note)};
+    evt.note_exp_value = { .type_id = index, .note_id = static_cast<int32_t>(context.note), .value = value };
     auto evtList = owner->processDataOutputEvents.asInterface();
     // This should copy the argument evt, right?
     evtList->vtable->event_list.add_event(evtList, &evt);

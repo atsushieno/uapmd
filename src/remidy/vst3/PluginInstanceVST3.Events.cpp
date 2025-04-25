@@ -96,7 +96,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy
         owner->parameters()->setParameter(id, value, timestamp());
     else
         owner->parameters()->setPerNoteController(
-            {.group = group, .channel = channel, .note = static_cast<uint8_t>(perNoteOrMinus) },
+            { .note = static_cast<uint8_t>(perNoteOrMinus), .channel = channel, .group = group },
             id, perNoteOrMinus, timestamp());
 }
 
