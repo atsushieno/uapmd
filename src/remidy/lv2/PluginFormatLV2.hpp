@@ -69,7 +69,7 @@ namespace remidy {
 
         virtual ~LV2ParameterHandler() = default;
 
-        virtual StatusCode setParameter(double value, uint64_t timestamp) = 0;
+        virtual StatusCode setParameter(double value, remidy_timestamp_t timestamp) = 0;
 
         virtual StatusCode getParameter(double *value) {
             *value = current;
@@ -77,44 +77,8 @@ namespace remidy {
         }
     };
 
-    class LV2AtomParameterHandler : public LV2ParameterHandler {
-    public:
-        LV2AtomParameterHandler(remidy::PluginParameterSupport* owner, remidy_lv2::LV2ImplPluginContext &context, PluginParameter *def)
-                : LV2ParameterHandler(context, def) {
-        }
-
-        ~LV2AtomParameterHandler() override = default;
-
-        StatusCode setParameter(double value, uint64_t timestamp) override {
-            current = value;
-            // FIXME: add LV2 Atom for patch:Set
-            std::cerr << "Not implemented yet" << std::endl;
-            return StatusCode::OK;
-        }
-    };
-
-    class LV2ControlPortParameterProxyPort : public LV2ParameterHandler {
-        LV2_URID port_index;
-
-    public:
-        LV2ControlPortParameterProxyPort(uint32_t portIndex, remidy_lv2::LV2ImplPluginContext &context,
-                                         PluginParameter *def)
-                : LV2ParameterHandler(context, def), port_index(portIndex) {
-        }
-
-        ~LV2ControlPortParameterProxyPort() override = default;
-
-        StatusCode setParameter(double value, uint64_t timestamp) override {
-            current = value;
-            // FIXME: set value on the corresponding ControlPort
-            std::cerr << "Not implemented yet" << std::endl;
-            return StatusCode::OK;
-        }
-    };
-
     class PluginInstanceLV2 : public PluginInstance {
         class ParameterSupport : public PluginParameterSupport {
-            PluginInstanceLV2 *owner;
             std::vector<PluginParameter *> parameter_defs{};
             std::vector<LV2ParameterHandler *> parameter_handlers{};
 
@@ -126,6 +90,8 @@ namespace remidy {
             }
 
             ~ParameterSupport();
+
+            PluginInstanceLV2 *owner;
 
             bool accessRequiresMainThread() override { return false; }
 
@@ -148,6 +114,43 @@ namespace remidy {
             }
         };
 
+        class LV2AtomParameterHandler : public LV2ParameterHandler {
+            ParameterSupport* owner;
+
+        public:
+            LV2AtomParameterHandler(ParameterSupport* owner, remidy_lv2::LV2ImplPluginContext &context, PluginParameter *def)
+                    : LV2ParameterHandler(context, def), owner(owner) {
+            }
+
+            ~LV2AtomParameterHandler() override = default;
+
+            StatusCode setParameter(double value, remidy_timestamp_t timestamp) override {
+                current = value;
+                owner->owner->ump_input_dispatcher.enqueuePatchSetEvent(def->index(), value, timestamp);
+                return StatusCode::OK;
+            }
+        };
+
+        class LV2ControlPortParameterProxyPort : public LV2ParameterHandler {
+            ParameterSupport* owner;
+            LV2_URID port_index;
+
+        public:
+            LV2ControlPortParameterProxyPort(ParameterSupport* owner, uint32_t portIndex, remidy_lv2::LV2ImplPluginContext &context,
+                                             PluginParameter *def)
+                    : LV2ParameterHandler(context, def), owner(owner), port_index(portIndex) {
+            }
+
+            ~LV2ControlPortParameterProxyPort() override = default;
+
+            StatusCode setParameter(double value, remidy_timestamp_t timestamp) override {
+                // timestamp cannot be supported for ControlPort.
+                current = value;
+                owner->owner->implContext.control_buffer_pointers[port_index] = static_cast<float>(value);
+                return StatusCode::OK;
+            }
+        };
+
         class LV2UmpInputDispatcher : public TypedUmpInputDispatcher {
             PluginInstanceLV2* owner;
             uint8_t midi1Bytes[16];
@@ -156,6 +159,8 @@ namespace remidy {
             LV2UmpInputDispatcher(PluginInstanceLV2* owner) : owner(owner) {}
 
             void enqueueMidi1Event(uint8_t atomInIndex, size_t eventSize);
+            void enqueuePatchSetEvent(int32_t index, double value, remidy_timestamp_t timestamp);
+            int32_t atom_context_group; // maybe this should be a setter?
 
             void onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) override;
             void onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index, uint32_t data) override;

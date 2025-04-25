@@ -12,6 +12,27 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::enqueueMidi1Event(uint8_t
     lv2_atom_forge_write(&forge, midi1Bytes, eventSize);
 }
 
+void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::enqueuePatchSetEvent(int32_t index, double value, remidy_timestamp_t timestamp) {
+    int32_t lv2PortIndex = owner->portIndexForAtomGroupIndex(false, atom_context_group);
+    auto& forge = owner->lv2_ports[lv2PortIndex].forge;
+
+    auto timestampInSamples = timestamp * 31250 / owner->sample_rate;
+
+    for (auto& para : owner->parameters()->parameters())
+        if (para->index() == index) {
+            lv2_atom_forge_frame_time(&forge, timestampInSamples);
+            LV2_Atom_Forge_Frame frame;
+            static int32_t id_serial{0};
+            lv2_atom_forge_object(&forge, &frame, id_serial++, owner->implContext.statics->urids.urid_patch_set);
+            lv2_atom_forge_property_head(&forge, owner->implContext.statics->urids.urid_patch_property, 0);
+            lv2_atom_forge_urid(&forge, para->index());
+            lv2_atom_forge_property_head(&forge, owner->implContext.statics->urids.urid_patch_value, 0);
+            lv2_atom_forge_float(&forge, static_cast<float>(value));
+            lv2_atom_forge_pop(&forge, &frame);
+            return;
+        }
+}
+
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onNoteOn(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
@@ -39,6 +60,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onAC(
     // parameter change (index = bank * 128 + index)
     auto parameterId = bank * 0x80 + index;
     auto value = static_cast<double>(UINT32_MAX) / data;
+    atom_context_group = group;
     owner->parameters()->setParameter(parameterId, value, timestamp());
 }
 

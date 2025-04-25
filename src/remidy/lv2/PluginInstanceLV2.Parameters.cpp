@@ -87,25 +87,25 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
     // this is what Ardour does: https://github.com/Ardour/ardour/blob/a76afae0e9ffa8a44311d6f9c1d8dbc613bfc089/libs/ardour/lv2_plugin.cc#L2142
     auto pluginSubject = lilv_plugin_get_uri(plugin);
     auto writables = lilv_world_find_nodes(formatImpl->world, pluginSubject, formatImpl->worldContext->patch_writable_uri_node, nullptr);
-    uint32_t index = 0;
     LILV_FOREACH(nodes, iter, writables) {
-        auto writable = lilv_nodes_get(writables, iter);
-        auto parameter = createParameter(index, writable, implContext, logger, displayName);
+        auto node = lilv_nodes_get(writables, iter);
+        auto index = map_uri(owner->formatImpl->worldContext, lilv_node_as_uri(node));
+        auto parameter = createParameter(index, node, implContext, logger, displayName);
         if (parameter)
-            pl[writable] = std::move(parameter);
-        index++;
+            pl[node] = std::move(parameter);
     }
     // iterate through readable patches. If there is a read-only parameter, add to the list.
     auto readables = lilv_world_find_nodes(formatImpl->world, pluginSubject, formatImpl->worldContext->patch_readable_uri_node, nullptr);
     LILV_FOREACH(nodes, iter, readables) {
-        auto readable = lilv_nodes_get(writables, iter);
-        if (pl.contains(readable))
-            pl[readable]->readable(true);
+        auto node = lilv_nodes_get(writables, iter);
+        //auto symbol = lilv_world_get_symbol(owner->implContext.world, node);
+        auto index = map_uri(owner->formatImpl->worldContext, lilv_node_as_uri(node));
+        if (pl.contains(node))
+            pl[node]->readable(true);
         else {
-            auto parameter = createParameter(index, readable, implContext, logger, displayName);
+            auto parameter = createParameter(index, node, implContext, logger, displayName);
             if (parameter)
-                pl[readable] = std::move(parameter);
-            index++;
+                pl[node] = std::move(parameter);
         }
     }
 
