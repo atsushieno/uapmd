@@ -44,7 +44,6 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
 
     // From JUCE interconnectComponentAndController():
     // > Some plugins need to be "connected" to intercommunicate between their implemented classes
-    /*
     if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
         std::atomic<bool> waitHandle{false};
         EventLoop::runTaskOnMainThread([&] {
@@ -65,7 +64,7 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
         });
         while (!waitHandle)
             std::this_thread::yield();
-    }*/
+    }
 
     // find NoteExpressionController
     if (controller->vtable->unknown.query_interface(controller, v3_note_expression_controller_iid, (void**) &note_expression_controller) != V3_OK)
