@@ -40,7 +40,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPNAC(remidy::uin
                                                                      uint8_t index, uint32_t data) {
     // Per-note controller
     double value = static_cast<double>(data) / UINT32_MAX;
-    owner->parameters()->setPerNoteController({.group = group, .channel = channel, .note = note}, index, value, timestamp());
+    owner->parameters()->setPerNoteController({ .note = note, .channel = channel, .group = group }, index, value, timestamp());
 }
 
 void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index,
