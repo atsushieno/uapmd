@@ -89,10 +89,10 @@ namespace remidy {
                                                                    (void **) &factory3);
             if (result == V3_OK) {
                 result = factory3->vtable->factory_3.set_host_context(factory3, (v3_funknown **) &host);
-                // It seems common that a plugin often "implements IPluginFactory3" and then returns kNotImplemented...
-                // In that case, it is not callable anyway, so treat it as if IPluginFactory3 were not queryable.
-                factory3->vtable->unknown.unref(factory3);
                 if (result != V3_OK) {
+                    // It seems common that a plugin often "implements IPluginFactory3" and then returns kNotImplemented...
+                    // In that case, it is not callable anyway, so treat it as if IPluginFactory3 were not queryable.
+                    factory3->vtable->unknown.unref(factory3);
                     if (((Extensibility *) getExtensibility())->reportNotImplemented())
                         logger->logWarning("Failed to set HostApplication to IPluginFactory3: %s result: %d",
                                            name.c_str(), result);
@@ -144,51 +144,67 @@ namespace remidy {
                 return;
             }
 
-            // Now initialize the component, and optionally initialize the controller.
-            result = component->vtable->base.initialize(component, (v3_funknown **) &host);
-            if (result != V3_OK) {
+            // If we can query IEditController from the component, just use it.
+            // Otherwise, the controller *instance* is different.
+            bool controllerValid = false;
+            bool distinctControllerInstance = false;
+            IEditController *controller{nullptr};
+            result = component->vtable->unknown.query_interface(component, v3_edit_controller_iid,
+                                                                (void **) &controller);
+            if (result == V3_OK)
+                controllerValid = true;
+            else {
+                controller = nullptr; // just to make sure
+
+                // > Steinberg::Vst::IComponent::getControllerClassId can also be called before (See VST 3 Workflow Diagrams).
+                // ... is it another "sole exception" ?
+                v3_tuid controllerClassId{};
+                result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
+                if (result == V3_OK && memcmp(tuid, controllerClassId, sizeof(v3_tuid)) != 0)
+                    distinctControllerInstance = true;
+                else
+                    // result may be V3_NOT_IMPLEMENTED, meaning that the controller IID is the same as component.
+                    memcpy(controllerClassId, tuid, sizeof(v3_tuid));
+
+                // Create instance for IEditController.
+                result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid,
+                                                                  (void **) &controller);
+                if (result == V3_OK)
+                    controllerValid = true;
+            }
+
+            // Now initialize the component and the controller.
+            // (At this state I don't think it is realistic to only instantiate component without controller;
+            // too many operations depend on it e.g. setting parameters)
+            if (controllerValid)
+                result = component->vtable->base.initialize(component, (v3_funknown **) &host);
+            if (!controllerValid || result != V3_OK) {
                 logger->logError("Failed to initialize vst3: %s (status: %d ", name.c_str(), result);
                 error = "Failed to initialize vst3";
                 component->vtable->unknown.unref(component);
                 instance->vtable->unknown.unref(instance);
                 return;
             }
-            // If we can instantiate controller from the component, just use it.
-            bool controllerDistinct = false;
-            IEditController *controller{nullptr};
-            bool controllerValid = false;
-
-            // > Steinberg::Vst::IComponent::getControllerClassId can also be called before (See VST 3 Workflow Diagrams).
-            // ... is it another "sole exception" ?
-            v3_tuid controllerClassId{};
-            result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
-            if (result == V3_OK && memcmp(tuid, controllerClassId, sizeof(v3_tuid)) != 0)
-                controllerDistinct = true;
-            else
-                memcpy(controllerClassId, tuid, sizeof(v3_tuid));
-            result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid,
-                                                              (void **) &controller);
-            if (result == V3_OK) {
+            if (distinctControllerInstance) {
                 result = controller->vtable->base.initialize(controller, (v3_funknown **) &host);
-                if (result == V3_OK)
-                    controllerValid = true;
+                if (result != V3_OK)
+                    controllerValid = false;
             }
-
             if (controllerValid) {
                 auto handler = host.getComponentHandler();
                 result = controller->vtable->controller.set_component_handler(controller,
                                                                               (v3_component_handler **) handler);
                 if (result == V3_OK) {
                     ret = std::make_unique<AudioPluginInstanceVST3>(this, entry, module, factory, component, processor,
-                                                                    controller, controllerDistinct, instance);
+                                                                    controller, distinctControllerInstance, instance);
                     return;
                 }
-                error = "Failed to set vst3 component handler";
+                error = "Failed to set VST3 component handler";
             } else
-                error = "Failed to find valid controller vst3";
+                error = "Failed to find or create valid VST3 controller";
             if (controller)
                 controller->vtable->unknown.unref(controller);
-            error = "Failed to instantiate vst3";
+            error = "Failed to instantiate VST3";
             component->vtable->base.terminate(component);
             // regardless of the result, we go on...
 
@@ -200,7 +216,7 @@ namespace remidy {
         if (ret)
             callback(std::move(ret), error);
         else
-            callback(nullptr, std::format("Specified VST3 plugin {} was not found", entry->displayName()));
+            callback(nullptr, std::format("Specified VST3 plugin {} could not be instantiated: {}", entry->displayName(), error));
     }
 
     void PluginFormatVST3::Impl::unrefLibrary(PluginCatalogEntry *info) {

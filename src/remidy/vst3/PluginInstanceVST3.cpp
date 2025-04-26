@@ -95,6 +95,7 @@ remidy::AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
         if (result != V3_OK)
             logger->logError("Failed to disconnect from EditController ConnectionPoint at VST3 destructor: %d", result);
     }
+    // FIXME: almost all plugins crash here.
     controller->vtable->controller.set_component_handler(controller, nullptr);
 
     if (isControllerDistinctFromComponent) {

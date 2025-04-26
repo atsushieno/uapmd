@@ -324,6 +324,8 @@ namespace remidy_vst3 {
         IPlugFrame plug_frame{nullptr};
         IPlugInterfaceSupport support{nullptr};
         HostParameterChanges parameter_changes{};
+        // FIXME: there are plugins that require the following components as well:
+        // - IMidiLearn (FM8)
 
         remidy::Logger* logger;
 
