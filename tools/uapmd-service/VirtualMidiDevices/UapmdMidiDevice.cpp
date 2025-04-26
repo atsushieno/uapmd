@@ -36,6 +36,8 @@ namespace uapmd {
     }
 
     uapmd_status_t UapmdMidiDevice::stop() {
+        sequencer->stopAudio();
+
         platformDevice->removeInputHandler(umpReceived);
 
         platformDevice.reset(nullptr);
