@@ -111,6 +111,7 @@ uapmd::MiniAudioIODevice::MiniAudioIODevice(
     config.pContext = &manager->maContext();
     config.dataCallback = data_callback;
     config.periodSizeInFrames = 1024; // FIXME: provide audio buffer size
+    config.noAutoStart = true;
 
     if (ma_engine_init(&config, &engine) != MA_SUCCESS) {
         throw std::runtime_error("uapmd: Failed to initialize miniaudio driver.");

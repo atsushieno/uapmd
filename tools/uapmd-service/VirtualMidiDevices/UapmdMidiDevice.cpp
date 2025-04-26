@@ -32,6 +32,8 @@ namespace uapmd {
 
         platformDevice->addInputHandler(umpReceived, this);
 
+        sequencer->startAudio();
+
         return 0;
     }
 

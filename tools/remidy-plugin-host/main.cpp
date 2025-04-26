@@ -50,6 +50,8 @@ int runMain(int argc, char** argv) {
     proxy.windowTitle("remidy-plugin-host");
     proxy.show();
 
+    uapmd::AppModel::instance().sequencer().startAudio();
+
     remidy::EventLoop::start();
 
     return EXIT_SUCCESS;
