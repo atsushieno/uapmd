@@ -23,8 +23,7 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
         FUnknown *instance
 ) : PluginInstance(info), owner(owner), module(module), factory(factory),
     component(component), processor(processor), controller(controller),
-    isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance),
-    audio_buses(new VST3AudioBuses(this)) {
+    isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
 
     pluginName = info->displayName();
 
@@ -62,6 +61,8 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
         }
     }
 #endif
+
+    audio_buses = new VST3AudioBuses(this);
 
     // find NoteExpressionController
     if (controller->vtable->unknown.query_interface(controller, v3_note_expression_controller_iid, (void**) &note_expression_controller) != V3_OK)
@@ -117,8 +118,6 @@ remidy::AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
     instance->vtable->unknown.unref(instance);
 
     owner->unrefLibrary(info());
-
-    delete audio_buses;
 
     delete _parameters;
 }
