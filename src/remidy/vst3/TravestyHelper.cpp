@@ -15,7 +15,7 @@ namespace remidy_vst3 {
         extern CFStringRef createCFString(const char* s); // defined in ClassModuleInfo.cpp
 #endif
 
-        IPluginFactory* getFactoryFromLibrary(void* module) {
+    IPluginFactory* getFactoryFromLibrary(void* module) {
 #if _WIN32
         auto sym = (get_plugin_factory_func) GetProcAddress((HMODULE) module, "GetPluginFactory");
 #elif __APPLE__

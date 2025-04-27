@@ -43,9 +43,9 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
 
     // From JUCE interconnectComponentAndController():
     // > Some plugins need to be "connected" to intercommunicate between their implemented classes
-#if 0
+#if 1
     // If we disable this, those JUCE plugins cannot get parameters.
-    // If we enable this, Serum2 crashes.
+    // If we enable this, Serum2 and Sforzando crashes.
     if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
         result = connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
         if (result != V3_OK) {

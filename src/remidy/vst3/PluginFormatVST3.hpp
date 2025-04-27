@@ -77,7 +77,6 @@ namespace remidy {
         void unrefLibrary(PluginCatalogEntry* info);
 
         void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback);
-        StatusCode configure(int32_t sampleRate);
     };
 
     class AudioPluginInstanceVST3 : public PluginInstance {
