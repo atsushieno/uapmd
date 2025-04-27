@@ -62,9 +62,19 @@ add_custom_target(build-web-content
         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/web
 )
 add_dependencies(remidy-plugin-host build-web-content)
+
+# depending on how heavyweight copying entire web directory (a bunch of node_modules) we may have to resort back to this.
+if (0)
 file(CREATE_LINK
         ${CMAKE_CURRENT_SOURCE_DIR}/web
         ${CMAKE_CURRENT_BINARY_DIR}/web
         COPY_ON_ERROR
         SYMBOLIC
 )
+else ()
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/web)
+    file(COPY
+            ${CMAKE_CURRENT_SOURCE_DIR}/web
+            DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/
+    )
+endif ()
