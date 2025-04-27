@@ -18,7 +18,7 @@ v3_speaker_arrangement toVstSpeakerArrangement(remidy::AudioChannelLayout src) {
     return ret;
 }
 
-void remidy::AudioPluginInstanceVST3::VST3AudioBuses::inspectBuses() {
+void remidy::PluginInstanceVST3::VST3AudioBuses::inspectBuses() {
     auto component = owner->component;
     auto processor = owner->processor;
 
@@ -64,12 +64,12 @@ void remidy::AudioPluginInstanceVST3::VST3AudioBuses::inspectBuses() {
 }
 
 const std::vector<remidy::AudioBusConfiguration*>&
-remidy::AudioPluginInstanceVST3::VST3AudioBuses::audioInputBuses() const { return input_buses; }
+remidy::PluginInstanceVST3::VST3AudioBuses::audioInputBuses() const { return input_buses; }
 
 const std::vector<remidy::AudioBusConfiguration*>&
-remidy::AudioPluginInstanceVST3::VST3AudioBuses::audioOutputBuses() const { return output_buses; }
+remidy::PluginInstanceVST3::VST3AudioBuses::audioOutputBuses() const { return output_buses; }
 
-void remidy::AudioPluginInstanceVST3::VST3AudioBuses::configure(remidy::PluginInstance::ConfigurationRequest &config) {
+void remidy::PluginInstanceVST3::VST3AudioBuses::configure(remidy::PluginInstance::ConfigurationRequest &config) {
     auto component = owner->component;
     auto processor = owner->processor;
 
@@ -90,7 +90,7 @@ void remidy::AudioPluginInstanceVST3::VST3AudioBuses::configure(remidy::PluginIn
         component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, i, output_buses[i]->enabled());
 }
 
-void remidy::AudioPluginInstanceVST3::VST3AudioBuses::deactivateAllBuses() {
+void remidy::PluginInstanceVST3::VST3AudioBuses::deactivateAllBuses() {
     auto component = owner->component;
     for (size_t i = 0, n = input_buses.size(); i < n; ++i)
         component->vtable->component.activate_bus(component, V3_AUDIO, V3_INPUT, i, false);
@@ -102,7 +102,7 @@ void remidy::AudioPluginInstanceVST3::VST3AudioBuses::deactivateAllBuses() {
         component->vtable->component.activate_bus(component, V3_EVENT, V3_OUTPUT, i, false);
 }
 
-void remidy::AudioPluginInstanceVST3::VST3AudioBuses::allocateBuffers() {
+void remidy::PluginInstanceVST3::VST3AudioBuses::allocateBuffers() {
     auto& processData = owner->processData;
 
     // FIXME: adjust audio buses and channels appropriately.
@@ -137,7 +137,7 @@ void remidy::AudioPluginInstanceVST3::VST3AudioBuses::allocateBuffers() {
 // We cannot "free" pointers on processData because they might get updated by the
 // plugin instance (e.g. by "processReplacing").
 // We allocate memory in inputAudioBusBuffersList and outputAudioBusBuffersList.
-void remidy::AudioPluginInstanceVST3::VST3AudioBuses::deallocateBuffers() {
+void remidy::PluginInstanceVST3::VST3AudioBuses::deallocateBuffers() {
     auto& processData = owner->processData;
 
     // FIXME: adjust audio buses and channels

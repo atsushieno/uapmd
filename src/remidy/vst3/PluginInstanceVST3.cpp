@@ -11,7 +11,7 @@ using namespace remidy_vst3;
 // FIXME: we should make edit controller lazily loaded.
 //  Some plugins take long time to instantiate IEditController, and it does not make sense for
 //  non-UI-based audio processing like our virtual MIDI devices.
-remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
+remidy::PluginInstanceVST3::PluginInstanceVST3(
         PluginFormatVST3::Impl *owner,
         PluginCatalogEntry *info,
         void *module,
@@ -77,7 +77,7 @@ remidy::AudioPluginInstanceVST3::AudioPluginInstanceVST3(
     component->vtable->component.set_active(component, false);
 }
 
-remidy::AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
+remidy::PluginInstanceVST3::~PluginInstanceVST3() {
     auto logger = owner->getLogger();
 
     auto result = processor->vtable->processor.set_processing(processor, false);
@@ -122,7 +122,7 @@ remidy::AudioPluginInstanceVST3::~AudioPluginInstanceVST3() {
     delete _parameters;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::configure(ConfigurationRequest &configuration) {
+remidy::StatusCode remidy::PluginInstanceVST3::configure(ConfigurationRequest &configuration) {
     // setupProcessing.
     v3_process_setup setup{};
     setup.sample_rate = configuration.sampleRate;
@@ -145,7 +145,7 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::configure(ConfigurationReque
     return StatusCode::OK;
 }
 
-void remidy::AudioPluginInstanceVST3::allocateProcessData(v3_process_setup& setup) {
+void remidy::PluginInstanceVST3::allocateProcessData(v3_process_setup& setup) {
     processData.ctx = &process_context;
     process_context.sample_rate = setup.sample_rate;
 
@@ -161,7 +161,7 @@ void remidy::AudioPluginInstanceVST3::allocateProcessData(v3_process_setup& setu
     processData.symbolic_sample_size = setup.symbolic_sample_size;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::startProcessing() {
+remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
     // we need to allocate memory where necessary.
     owner->getHost()->startProcessing();
 
@@ -178,7 +178,7 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::startProcessing() {
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::stopProcessing() {
+remidy::StatusCode remidy::PluginInstanceVST3::stopProcessing() {
     auto result = processor->vtable->processor.set_processing(processor, false);
     // regarding V3_NOT_IMPLEMENTED, see startProcessing().
     if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
@@ -194,7 +194,7 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::stopProcessing() {
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::process(AudioProcessContext &process) {
+remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &process) {
     // update audio buffer pointers
     const int32_t numFrames = process.frameCount();
     const int32_t numInputBus = processData.num_input_buses;
@@ -252,7 +252,7 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::process(AudioProcessContext 
     return StatusCode::OK;
 }
 
-remidy::PluginParameterSupport* remidy::AudioPluginInstanceVST3::parameters() {
+remidy::PluginParameterSupport* remidy::PluginInstanceVST3::parameters() {
     if (!_parameters)
         _parameters = new ParameterSupport(this);
     return _parameters;

@@ -6,7 +6,7 @@
 using namespace remidy_vst3;
 
 namespace remidy {
-    class AudioPluginScannerVST3 : public FileBasedPluginScanning {
+    class PluginScannerVST3 : public FileBasedPluginScanning {
         void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos);
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
@@ -14,7 +14,7 @@ namespace remidy {
         PluginFormatVST3::Impl* impl{};
 
     public:
-        explicit AudioPluginScannerVST3(PluginFormatVST3::Impl* impl)
+        explicit PluginScannerVST3(PluginFormatVST3::Impl* impl)
             : impl(impl) {
         }
         bool usePluginSearchPaths() override;
@@ -39,7 +39,7 @@ namespace remidy {
         PluginFormatVST3* owner;
         Logger* logger;
         Extensibility extensibility;
-        AudioPluginScannerVST3 scanning_;
+        PluginScannerVST3 scanning_;
 
         StatusCode doLoad(std::filesystem::path &vst3Dir, void** module) const;
         static StatusCode doUnload(std::filesystem::path &vst3Dir, void* module);
@@ -79,16 +79,16 @@ namespace remidy {
         void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback);
     };
 
-    class AudioPluginInstanceVST3 : public PluginInstance {
+    class PluginInstanceVST3 : public PluginInstance {
         class ParameterSupport : public PluginParameterSupport {
-            AudioPluginInstanceVST3* owner;
+            PluginInstanceVST3* owner;
             std::vector<PluginParameter*> parameter_defs{};
             // map<PerNoteControllerContext, definition>
             std::vector<std::pair<PerNoteControllerContext, std::vector<PluginParameter*>>> per_note_controller_defs{};
             v3_param_id *parameter_ids{};
 
         public:
-            explicit ParameterSupport(AudioPluginInstanceVST3* owner);
+            explicit ParameterSupport(PluginInstanceVST3* owner);
             ~ParameterSupport();
 
             bool accessRequiresMainThread() override { return true; }
@@ -101,11 +101,11 @@ namespace remidy {
         };
 
         class VST3UmpInputDispatcher : public TypedUmpInputDispatcher {
-            AudioPluginInstanceVST3* owner;
+            PluginInstanceVST3* owner;
             int32_t note_serial{1};
 
         public:
-            explicit VST3UmpInputDispatcher(AudioPluginInstanceVST3* owner) : owner(owner) {}
+            explicit VST3UmpInputDispatcher(PluginInstanceVST3* owner) : owner(owner) {}
 
             void onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) override;
             void onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index, uint32_t data) override;
@@ -120,7 +120,7 @@ namespace remidy {
         };
 
         class VST3AudioBuses : public AudioBuses {
-            AudioPluginInstanceVST3* owner;
+            PluginInstanceVST3* owner;
 
             std::vector<AudioBusDefinition> input_bus_defs{};
             std::vector<AudioBusDefinition> output_bus_defs{};
@@ -133,7 +133,7 @@ namespace remidy {
             std::vector<v3_speaker_arrangement> getVst3SpeakerConfigs(int32_t direction);
 
         public:
-            explicit VST3AudioBuses(AudioPluginInstanceVST3* owner) : owner(owner) {
+            explicit VST3AudioBuses(PluginInstanceVST3* owner) : owner(owner) {
                 inspectBuses();
             }
             ~VST3AudioBuses() override {
@@ -195,7 +195,7 @@ namespace remidy {
         VST3UmpInputDispatcher ump_input_dispatcher{this};
 
     public:
-        explicit AudioPluginInstanceVST3(
+        explicit PluginInstanceVST3(
             PluginFormatVST3::Impl* owner,
             PluginCatalogEntry* info,
             void* module,
@@ -206,7 +206,7 @@ namespace remidy {
             bool isControllerDistinctFromComponent,
             FUnknown* instance
             );
-        ~AudioPluginInstanceVST3() override;
+        ~PluginInstanceVST3() override;
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues

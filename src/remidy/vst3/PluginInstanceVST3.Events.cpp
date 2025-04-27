@@ -6,7 +6,7 @@
 using namespace remidy_vst3;
 
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
                                                                        uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // use IEventList to add Event (kNoteOnEvent)
     auto& el = owner->processDataInputEvents;
@@ -17,7 +17,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::u
     el.vtable->event_list.add_event(&el, &e);
 }
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
                                                                         uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // use IEventList to add Event (kNoteOffEvent)
     auto& el = owner->processDataInputEvents;
@@ -28,7 +28,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::
     el.vtable->event_list.add_event(&el, &e);
 }
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
                                                                    remidy::uint7_t index, uint32_t data, bool relative) {
     // parameter change (index = bank * 128 + index)
     auto parameterIndex = bank * 0x80 + index;
@@ -36,14 +36,14 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onAC(remidy::uint4
     owner->parameters()->setParameter(parameterIndex, value, timestamp());
 }
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPNAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
                                                                      uint8_t index, uint32_t data) {
     // Per-note controller
     double value = static_cast<double>(data) / UINT32_MAX;
     owner->parameters()->setPerNoteController({ .note = note, .channel = channel, .group = group }, index, value, timestamp());
 }
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index,
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index,
                                                                    uint32_t data) {
     // parameter change, use IMidiMapping to resolve index, or directly use it as parameter ID.
     v3_param_id id;
@@ -59,7 +59,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4
     owner->parameters()->setParameter(index, value, timestamp());
 }
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onProgramChange(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t flags,
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onProgramChange(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t flags,
                                                                               remidy::uint7_t program, remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) {
     // use IUnitInfo to set program
     if (!owner->unit_info) {
@@ -74,17 +74,17 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onProgramChange(re
         Logger::global()->logInfo("This VST3 plugin does not have unit at index %d (count: %d)", index, count);
 }
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
                                                                    remidy::uint7_t index, uint32_t data, bool relative) {
     // nothing is mapped here
 }
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPNRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
                                                                      uint8_t index, uint32_t data) {
     // nothing is mapped here
 }
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) {
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) {
     // use parameter kPitchBend (if available)
     if (!owner->midi_mapping)
         return;
@@ -100,7 +100,7 @@ void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy
             id, perNoteOrMinus, timestamp());
 }
 
-void remidy::AudioPluginInstanceVST3::VST3UmpInputDispatcher::onPressure(remidy::uint4_t group, remidy::uint4_t channel,
+void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPressure(remidy::uint4_t group, remidy::uint4_t channel,
                                                                          int8_t perNoteOrMinus, uint32_t data) {
     // CAf: use parameter kAfterTouch (if available)
     // PAf: use IEventList to add Event (kPolyPressureEvent)

@@ -72,7 +72,7 @@ namespace remidy {
                                                 std::function<void(std::unique_ptr<PluginInstance> instance,
                                                                    std::string error)> callback) {
         PluginCatalogEntry *entry = pluginInfo;
-        std::unique_ptr<AudioPluginInstanceVST3> ret{nullptr};
+        std::unique_ptr<PluginInstanceVST3> ret{nullptr};
         std::string error{};
         v3_tuid tuid{};
         auto decodedBytes = stringToHexBinary(entry->pluginId());
@@ -195,7 +195,7 @@ namespace remidy {
                 result = controller->vtable->controller.set_component_handler(controller,
                                                                               (v3_component_handler **) handler);
                 if (result == V3_OK) {
-                    ret = std::make_unique<AudioPluginInstanceVST3>(this, entry, module, factory, component, processor,
+                    ret = std::make_unique<PluginInstanceVST3>(this, entry, module, factory, component, processor,
                                                                     controller, distinctControllerInstance, instance);
                     return;
                 }
@@ -225,7 +225,7 @@ namespace remidy {
 
     // PluginScannerVST3
 
-    std::vector<std::filesystem::path> &AudioPluginScannerVST3::getDefaultSearchPaths() {
+    std::vector<std::filesystem::path> &PluginScannerVST3::getDefaultSearchPaths() {
         static std::filesystem::path defaultSearchPathsVST3[] = {
 #if _WIN32
                 std::string(getenv("LOCALAPPDATA")) + "\\Programs\\Common\\VST3",
@@ -250,7 +250,7 @@ namespace remidy {
         return ret;
     }
 
-    std::unique_ptr<PluginCatalogEntry> AudioPluginScannerVST3::createPluginInformation(PluginClassInfo &info) {
+    std::unique_ptr<PluginCatalogEntry> PluginScannerVST3::createPluginInformation(PluginClassInfo &info) {
         auto ret = std::make_unique<PluginCatalogEntry>();
         static std::string format{"VST3"};
         ret->format(format);
@@ -263,15 +263,15 @@ namespace remidy {
         return ret;
     }
 
-    bool AudioPluginScannerVST3::usePluginSearchPaths() { return true; }
+    bool PluginScannerVST3::usePluginSearchPaths() { return true; }
 
     PluginScanning::ScanningStrategyValue
-    AudioPluginScannerVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
+    PluginScannerVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
 
     PluginScanning::ScanningStrategyValue
-    AudioPluginScannerVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
+    PluginScannerVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
 
-    void AudioPluginScannerVST3::scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos) {
+    void PluginScannerVST3::scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos) {
         std::filesystem::path dir{path};
         if (is_directory(dir)) {
             for (auto &entry: std::filesystem::directory_iterator(dir)) {
@@ -287,7 +287,7 @@ namespace remidy {
         }
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginScannerVST3::scanAllAvailablePlugins() {
+    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerVST3::scanAllAvailablePlugins() {
         std::vector<PluginClassInfo> infos;
         for (auto &path: getDefaultSearchPaths())
             scanAllAvailablePluginsInPath(path, infos);
@@ -297,7 +297,7 @@ namespace remidy {
         return ret;
     }
 
-    void AudioPluginScannerVST3::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir,
+    void PluginScannerVST3::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir,
                                                                     std::vector<PluginClassInfo> &results) {
         impl->getLogger()->logInfo("VST3: scanning %s ", vst3Dir.c_str());
         // fast path scanning using moduleinfo.json

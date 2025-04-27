@@ -8,7 +8,7 @@
 
 using namespace remidy_vst3;
 
-remidy::AudioPluginInstanceVST3::ParameterSupport::ParameterSupport(AudioPluginInstanceVST3* owner) : owner(owner) {
+remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST3* owner) : owner(owner) {
     auto controller = owner->controller;
     auto count = controller->vtable->controller.get_parameter_count(controller);
 
@@ -27,7 +27,7 @@ remidy::AudioPluginInstanceVST3::ParameterSupport::ParameterSupport(AudioPluginI
     }
 }
 
-remidy::AudioPluginInstanceVST3::ParameterSupport::~ParameterSupport() {
+remidy::PluginInstanceVST3::ParameterSupport::~ParameterSupport() {
     for (auto p : parameter_defs)
         delete p;
     for (auto pair : per_note_controller_defs)
@@ -36,11 +36,11 @@ remidy::AudioPluginInstanceVST3::ParameterSupport::~ParameterSupport() {
     free(parameter_ids);
 }
 
-std::vector<remidy::PluginParameter*>& remidy::AudioPluginInstanceVST3::ParameterSupport::parameters() {
+std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupport::parameters() {
     return parameter_defs;
 }
 
-std::vector<remidy::PluginParameter*>& remidy::AudioPluginInstanceVST3::ParameterSupport::perNoteControllers(
+std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupport::perNoteControllers(
     PerNoteControllerContextTypes types,
     PerNoteControllerContext context
 ) {
@@ -71,7 +71,7 @@ std::vector<remidy::PluginParameter*>& remidy::AudioPluginInstanceVST3::Paramete
     return perNoteControllers(types, ctx);
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
     // use IParameterChanges.
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
     auto pvc = owner->processDataInputParameterChanges.asInterface();
@@ -91,7 +91,7 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::setParamet
     return StatusCode::INVALID_PARAMETER_OPERATION;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
     double ppqPosition = owner->ump_input_dispatcher.trackContext()->ppqPosition(); // I guess only either of those time options are needed.
     uint16_t flags = owner->processData.process_mode == V3_REALTIME ? V3_EVENT_IS_LIVE : 0; // am I right?
@@ -103,7 +103,7 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::setPerNote
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::getParameter(uint32_t index, double* value) {
+remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::getParameter(uint32_t index, double* value) {
     if (!value)
         return StatusCode::INVALID_PARAMETER_OPERATION;
     auto controller = owner->controller;
@@ -111,6 +111,6 @@ remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::getParamet
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceVST3::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) {
+remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) {
     return StatusCode::NOT_IMPLEMENTED;
 }
