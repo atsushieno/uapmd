@@ -16,6 +16,8 @@ std::unique_ptr<remidy::EventLoop> eventLoop{};
 using namespace remidy::webui::saucer_wrapper;
 
 int runMain(int argc, char** argv) {
+    std::filesystem::path execDir{argv[0]};
+    std::filesystem::current_path(execDir.parent_path());
     std::filesystem::path webDir{"web"};
 #if 1
     SaucerWebEmbedded web{webDir};
