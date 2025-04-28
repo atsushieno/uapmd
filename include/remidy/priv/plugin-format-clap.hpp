@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../remidy.hpp"
-#include "../../../cmake-build-debug/_deps/clap-src/include/clap/host.h"
 
 namespace remidy {
     class PluginFormatCLAP : public PluginFormat {
