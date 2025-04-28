@@ -18,7 +18,7 @@ using namespace remidy::webui::saucer_wrapper;
 int runMain(int argc, char** argv) {
     std::filesystem::path execDir{argv[0]};
     std::filesystem::current_path(execDir.parent_path());
-    std::filesystem::path webDir{"web"};
+    std::filesystem::path webDir{absolute(execDir.parent_path().append("web"))};
 #if 1
     SaucerWebEmbedded web{webDir};
     eventLoop = std::make_unique<EventLoopSaucer>(web.app());
@@ -40,7 +40,7 @@ int runMain(int argc, char** argv) {
     uapmd::registerPluginInstanceControlFeatures(proxy);
     uapmd::registerAudioPlayerManagerFeatures(proxy);
 
-    proxy.navigateToLocalFile("web/index.html");
+    proxy.navigateToLocalFile(webDir.append("index.html"));
 
     // Note that they are not ready yet even when a page is completely loaded (DOMContentLoaded).
     // For example, JS `eval` seem to be asynchronously executed in saucer (probably not just saucer).
