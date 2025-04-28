@@ -1,6 +1,7 @@
 
 #include "PluginFormatCLAP.hpp"
 #include "CLAPHelper.hpp"
+#include "../utils.hpp"
 #include <format>
 
 namespace remidy {
