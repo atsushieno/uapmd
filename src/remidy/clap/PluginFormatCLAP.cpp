@@ -70,11 +70,7 @@ namespace remidy {
         std::filesystem::path dir{path};
         if (is_directory(dir)) {
             for (auto &entry: std::filesystem::directory_iterator(dir)) {
-#if WIN32
-                if (!strcasecmp(entry.path().extension().c_str(), L".clap"))
-#else
-                if (!strcasecmp(entry.path().extension().c_str(), ".clap"))
-#endif
+                if (!strcasecmp(entry.path().extension().string().c_str(), ".clap"))
                     scanAllAvailablePluginsFromLibrary(entry.path(), entries);
                 else
                     scanAllAvailablePluginsInPath(entry.path(), entries);
@@ -201,7 +197,7 @@ namespace remidy {
                     cleanup(module);
                     return;
                 }
-                if (!entrypoint->init(clapDir.c_str())) {
+                if (!entrypoint->init(clapDir.string().c_str())) {
                     getLogger()->logError("clap_entry.init() returned false in: %s", clapDir.c_str());
                     cleanup(module);
                     return;

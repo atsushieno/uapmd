@@ -12,7 +12,9 @@
 #endif
 
 #ifdef _MSC_VER
-#define strcasecmp _wcsicmp
+#define strcasecmp strcmpi
+#else
+#include <strings.h>
 #endif
 
 #if __APPLE__
