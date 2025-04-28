@@ -92,6 +92,7 @@ namespace remidy {
         // FIXME: there may be more than one event ports
         input_events.resize(0x10000);
         output_events.resize(0x10000);
+        transports_events.resize(0x1000);
 
         // alter the input/output audio buffers entries, and start allocation.
         clap_process.audio_inputs_count = audio_buses->audioInputBuses().size();
@@ -110,6 +111,7 @@ namespace remidy {
         clap_process.audio_outputs = audio_out_port_buffers.data();
         applyAudioBuffersToClapProcess(clap_process.audio_inputs, audio_buses, audio_in_port_buffers, useDouble);
         applyAudioBuffersToClapProcess(clap_process.audio_outputs, audio_buses, audio_out_port_buffers, useDouble);
+        clap_process.transport = transports_events.data();
 
         plugin->activate(plugin, configuration.sampleRate, 1, configuration.bufferSizeInSamples);
         return StatusCode::OK;
@@ -156,6 +158,8 @@ namespace remidy {
     StatusCode PluginInstanceCLAP::process(AudioProcessContext &process) {
         // fill clap_process from remidy input
         remidyProcessContextToClapProcess(clap_process, process);
+        clap_process.in_events = input_events.data();
+        clap_process.out_events = output_events.data();
 
         // FIXME: provide valid timestamp?
         ump_input_dispatcher.process(0, process);

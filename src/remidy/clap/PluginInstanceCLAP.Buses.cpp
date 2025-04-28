@@ -1,5 +1,6 @@
 #include "PluginFormatCLAP.hpp"
 #include <clap/ext/audio-ports.h>
+#include <clap/ext/note-ports.h>
 
 namespace remidy {
     void PluginInstanceCLAP::AudioBuses::inspectBuses() {
@@ -13,28 +14,34 @@ namespace remidy {
         BusSearchResult ret{};
 
         auto plugin = owner->plugin;
-        auto ext = (clap_plugin_audio_ports_t*) plugin->get_extension(plugin, CLAP_EXT_AUDIO_PORTS);
-        if (!ext)
-            return;
-        for (bool isInput : {true, false}) {
-            for (size_t i = 0, n = ext->count(plugin, isInput); i < n; i++) {
-                clap_audio_port_info_t info;
-                if (!ext->get(plugin, i, isInput, &info))
-                    continue;
-                std::vector<AudioChannelLayout> layouts{};
-                AudioChannelLayout layout{info.port_type == CLAP_PORT_MONO ? "Mono" : CLAP_PORT_STEREO ? "Stereo" : "", info.channel_count};
-                layouts.emplace_back(layout);
-                AudioBusDefinition def{info.name, info.flags & CLAP_AUDIO_PORT_IS_MAIN ? AudioBusRole::Main : AudioBusRole::Aux, layouts};
-                if (isInput) {
-                    ret.numAudioIn++;
-                    input_bus_defs.emplace_back(def);
-                } else {
-                    ret.numAudioOut++;
-                    output_bus_defs.emplace_back(def);
+        auto audioExt = (clap_plugin_audio_ports_t*) plugin->get_extension(plugin, CLAP_EXT_AUDIO_PORTS);
+        if (audioExt) {
+            for (bool isInput : {true, false}) {
+                for (size_t i = 0, n = audioExt->count(plugin, isInput); i < n; i++) {
+                    clap_audio_port_info_t info;
+                    if (!audioExt->get(plugin, i, isInput, &info))
+                        continue;
+                    std::vector<AudioChannelLayout> layouts{};
+                    AudioChannelLayout layout{info.port_type == CLAP_PORT_MONO ? "Mono" : CLAP_PORT_STEREO ? "Stereo" : "", info.channel_count};
+                    layouts.emplace_back(layout);
+                    AudioBusDefinition def{info.name, info.flags & CLAP_AUDIO_PORT_IS_MAIN ? AudioBusRole::Main : AudioBusRole::Aux, layouts};
+                    if (isInput) {
+                        ret.numAudioIn++;
+                        input_bus_defs.emplace_back(def);
+                    } else {
+                        ret.numAudioOut++;
+                        output_bus_defs.emplace_back(def);
+                    }
                 }
             }
         }
 
+        // FIXME: we need decent support for event buses
+        auto noteExt = (clap_plugin_note_ports_t*) plugin->get_extension(plugin, CLAP_EXT_NOTE_PORTS);
+        if (noteExt) {
+            ret.numEventIn = noteExt->count(plugin, true);
+            ret.numEventOut = noteExt->count(plugin, false);
+        }
         busesInfo = ret;
     }
 

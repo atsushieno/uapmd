@@ -37,7 +37,7 @@ All VST3, AU, LV2, and CLAP supports sample-accurate parameter changes. Those `s
 VST3, AU, and CLAP supports per-note parameter controllers.
 
 - VST3: use `INoteExpressionController`
-- AU: use parameters with note scope
+- AU: use parameters with group, channel, or note scope? It is very unclear from the API documentation.
 - LV2: not supported
 - CLAP: use `clap_event_param_value_t` with `key`.
 

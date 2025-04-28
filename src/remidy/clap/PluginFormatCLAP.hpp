@@ -81,6 +81,7 @@ namespace remidy {
         std::vector<clap_audio_buffer_t> audio_out_port_buffers{};
         std::vector<clap_input_events_t> input_events{};
         std::vector<clap_output_events_t> output_events{};
+        std::vector<clap_event_transport_t> transports_events{};
 
         class ParameterSupport : public PluginParameterSupport {
             PluginInstanceCLAP* owner;
