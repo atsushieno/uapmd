@@ -77,6 +77,11 @@ namespace remidy {
         void* module;
         clap_process_t clap_process;
 
+        std::vector<clap_audio_buffer_t> audio_in_port_buffers{};
+        std::vector<clap_audio_buffer_t> audio_out_port_buffers{};
+        std::vector<clap_input_events_t> input_events{};
+        std::vector<clap_output_events_t> output_events{};
+
         class ParameterSupport : public PluginParameterSupport {
             PluginInstanceCLAP* owner;
             std::vector<PluginParameter*> parameter_defs{};
@@ -122,9 +127,9 @@ namespace remidy {
                 inspectBuses();
             }
             ~AudioBuses() override {
-                for (const auto bus: input_buses)
+                for (const auto bus: audio_in_buses)
                     delete bus;
-                for (const auto bus: output_buses)
+                for (const auto bus: audio_out_buses)
                     delete bus;
             }
 
@@ -142,6 +147,9 @@ namespace remidy {
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
         void clapProcessToRemidyProcessContext(AudioProcessContext& dst, clap_process_t& src);
+        void resizeAudioPortBuffers(size_t newSize, bool isDouble);
+        void resetAudioPortBuffers();
+        void cleanupBuffers();
 
     public:
         explicit PluginInstanceCLAP(

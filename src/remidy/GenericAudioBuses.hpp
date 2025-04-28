@@ -5,8 +5,8 @@ namespace remidy {
     protected:
         std::vector<AudioBusDefinition> input_bus_defs{};
         std::vector<AudioBusDefinition> output_bus_defs{};
-        std::vector<AudioBusConfiguration*> input_buses{};
-        std::vector<AudioBusConfiguration*> output_buses{};
+        std::vector<AudioBusConfiguration*> audio_in_buses{};
+        std::vector<AudioBusConfiguration*> audio_out_buses{};
 
     public:
         struct BusSearchResult {
@@ -21,7 +21,7 @@ namespace remidy {
         bool hasEventInputs() override { return busesInfo.numEventIn > 0; }
         bool hasEventOutputs() override { return busesInfo.numEventOut > 0; }
 
-        const std::vector<AudioBusConfiguration*>& audioInputBuses() const override { return input_buses; }
-        const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override { return output_buses; }
+        const std::vector<AudioBusConfiguration*>& audioInputBuses() const override { return audio_in_buses; }
+        const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override { return audio_out_buses; }
     };
 }

@@ -56,8 +56,11 @@ namespace remidy {
         std::vector<AudioChannelLayout> layouts;
 
     public:
-        AudioBusDefinition(std::string busName, AudioBusRole role) :
-            bus_name(busName), bus_role(role) {
+        AudioBusDefinition(
+            std::string busName,
+            AudioBusRole role,
+            std::vector<AudioChannelLayout> layouts = {}
+        ) : bus_name(busName), bus_role(role), layouts(layouts) {
         }
 
         std::string name() { return bus_name; }

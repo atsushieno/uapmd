@@ -13,11 +13,103 @@ namespace remidy {
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {
+        cleanupBuffers(); // cleanup, optionally stop processing in prior.
+
         plugin->destroy(plugin);
     }
 
-    StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {
+    void resetCLAPAudioBuffers(clap_audio_buffer_t& a) {
+        for (size_t ch = 0, nCh = a.channel_count; ch < nCh; ch++) {
+            if (a.data32[ch])
+                free(a.data32[ch]);
+        }
+        for (size_t ch = 0, nCh = a.channel_count; ch < nCh; ch++) {
+            if (a.data64[ch])
+                free(a.data64[ch]);
+        }
+    }
 
+    void resizeCLAPAudioBuffers(clap_audio_buffer_t& a, size_t newSizeInSamples, bool isDouble) {
+        if (!isDouble && !a.data32)
+            a.data32 = new float*[a.channel_count];
+        if (isDouble && !a.data64)
+            a.data64 = new double*[a.channel_count];
+        if (isDouble) {
+            for (size_t ch = 0, nCh = a.channel_count; ch < nCh; ch++)
+                a.data64[ch] = static_cast<double *>(calloc(newSizeInSamples, sizeof(double)));
+        } else {
+            for (size_t ch = 0, nCh = a.channel_count; ch < nCh; ch++)
+                a.data32[ch] = static_cast<float *>(calloc(newSizeInSamples, sizeof(float)));
+        }
+    }
+
+    void PluginInstanceCLAP::resetAudioPortBuffers() {
+        for (auto &a : audio_in_port_buffers)
+            resetCLAPAudioBuffers(a);
+        for (auto &a : audio_out_port_buffers)
+            resetCLAPAudioBuffers(a);
+    }
+
+    void PluginInstanceCLAP::resizeAudioPortBuffers(size_t newSizeInSamples, bool isDouble) {
+        for (auto &a : audio_in_port_buffers)
+            resizeCLAPAudioBuffers(a, newSizeInSamples, isDouble);
+        for (auto &a : audio_out_port_buffers)
+            resizeCLAPAudioBuffers(a, newSizeInSamples, isDouble);
+    }
+
+    void applyAudioBuffersToClapProcess(const clap_audio_buffer_t* dst, GenericAudioBuses* buses, std::vector<clap_audio_buffer_t>& buffers, bool useDouble) {
+        for (size_t i = 0, n = buses->audioInputBuses().size(); i < n; i++) {
+            if (!buses->audioInputBuses()[i]->enabled())
+                continue;
+            const auto src = buffers[i];
+            for (size_t ch = 0, nCh = src.channel_count; ch < nCh; ch++) {
+                if (useDouble)
+                    dst[i].data64[ch] = src.data64[ch];
+                else
+                    dst[i].data32[ch] = src.data32[ch];
+            }
+        }
+    }
+
+    void PluginInstanceCLAP::cleanupBuffers() {
+        stopProcessing(); // make sure we do not process audio while altering buffers.
+        clap_process = clap_process_t();
+        resizeAudioPortBuffers(0, false);
+        resizeAudioPortBuffers(0, true);
+    }
+
+    StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {
+        bool useDouble = configuration.dataType == AudioContentType::Float64;
+
+        // ensure to clean up old buffer. Note that buses in old configuration may be different,
+        // so handle cleanup and allocation in different steps.
+        cleanupBuffers();
+
+        // setup audio buses
+        audio_buses->configure(configuration);
+
+        // FIXME: provide size via config
+        // FIXME: there may be more than one event ports
+        input_events.resize(0x10000);
+        output_events.resize(0x10000);
+
+        // alter the input/output audio buffers entries, and start allocation.
+        clap_process.audio_inputs_count = audio_buses->audioInputBuses().size();
+        clap_process.audio_outputs_count = audio_buses->audioOutputBuses().size();
+        audio_in_port_buffers.resize(clap_process.audio_inputs_count);
+        audio_out_port_buffers.resize(clap_process.audio_outputs_count);
+        for (size_t i = 0, n = clap_process.audio_inputs_count; i < n; i++)
+            audio_in_port_buffers[i].channel_count = audio_buses->audioInputBuses()[i]->channelLayout().channels();
+        for (size_t i = 0, n = clap_process.audio_outputs_count; i < n; i++)
+            audio_out_port_buffers[i].channel_count = audio_buses->audioOutputBuses()[i]->channelLayout().channels();
+
+        resizeAudioPortBuffers(configuration.bufferSizeInSamples, useDouble);
+
+        // After this, we fix (cannot resize) those audio port buffers.
+        clap_process.audio_inputs = audio_in_port_buffers.data();
+        clap_process.audio_outputs = audio_out_port_buffers.data();
+        applyAudioBuffersToClapProcess(clap_process.audio_inputs, audio_buses, audio_in_port_buffers, useDouble);
+        applyAudioBuffersToClapProcess(clap_process.audio_outputs, audio_buses, audio_out_port_buffers, useDouble);
 
         plugin->activate(plugin, configuration.sampleRate, 1, configuration.bufferSizeInSamples);
         return StatusCode::OK;

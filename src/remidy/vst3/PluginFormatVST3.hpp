@@ -133,9 +133,9 @@ namespace remidy {
                 inspectBuses();
             }
             ~AudioBuses() override {
-                for (const auto bus: input_buses)
+                for (const auto bus: audio_in_buses)
                     delete bus;
-                for (const auto bus: output_buses)
+                for (const auto bus: audio_out_buses)
                     delete bus;
             }
 

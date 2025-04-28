@@ -8,8 +8,8 @@ void remidy::PluginInstanceLV2::AudioBuses::inspectBuses() {
 
     input_bus_defs.clear();
     output_bus_defs.clear();
-    input_buses.clear();
-    output_buses.clear();
+    audio_in_buses.clear();
+    audio_out_buses.clear();
     for (uint32_t p = 0; p < lilv_plugin_get_num_ports(plugin); p++) {
         auto port = lilv_plugin_get_port_by_index(plugin, p);
         if (implContext.IS_AUDIO_PORT(plugin, port)) {
@@ -32,9 +32,9 @@ void remidy::PluginInstanceLV2::AudioBuses::inspectBuses() {
                 (isInput ? input_bus_defs : output_bus_defs).emplace_back(def.value());
                 auto bus = new AudioBusConfiguration(def.value());
                 bus->channelLayout(AudioChannelLayout::mono());
-                (isInput ? input_buses : output_buses).emplace_back(bus);
+                (isInput ? audio_in_buses : audio_out_buses).emplace_back(bus);
             } else {
-                auto bus = (isInput ? input_buses : output_buses)[index];
+                auto bus = (isInput ? audio_in_buses : audio_out_buses)[index];
                 if (bus->channelLayout() != AudioChannelLayout::mono())
                     bus->channelLayout(AudioChannelLayout::stereo());
                 else

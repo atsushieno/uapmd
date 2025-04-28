@@ -26,12 +26,12 @@ void remidy::AudioPluginInstanceAU::AudioBuses::inspectBuses() {
 
     // FIXME: we need to fill input_buses and output_buses here.
 
-    for (auto bus : input_buses)
+    for (auto bus : audio_in_buses)
         delete bus;
-    for (auto bus : output_buses)
+    for (auto bus : audio_out_buses)
         delete bus;
-    input_buses.clear();
-    output_buses.clear();
+    audio_in_buses.clear();
+    audio_out_buses.clear();
     input_bus_defs.clear();
     output_bus_defs.clear();
 
@@ -49,7 +49,7 @@ void remidy::AudioPluginInstanceAU::AudioBuses::inspectBuses() {
         // FIXME: fill channel layouts
         // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
         input_bus_defs.emplace_back(def);
-        input_buses.emplace_back(new AudioBusConfiguration(def));
+        audio_in_buses.emplace_back(new AudioBusConfiguration(def));
     }
     for (auto i = 0; i < ret.numAudioOut; i++) {
         auto busName = std::string{""};
@@ -64,7 +64,7 @@ void remidy::AudioPluginInstanceAU::AudioBuses::inspectBuses() {
         // FIXME: fill channel layouts
         // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
         output_bus_defs.emplace_back(def);
-        output_buses.emplace_back(new AudioBusConfiguration(def));
+        audio_out_buses.emplace_back(new AudioBusConfiguration(def));
     }
 
     AudioComponentDescription desc;

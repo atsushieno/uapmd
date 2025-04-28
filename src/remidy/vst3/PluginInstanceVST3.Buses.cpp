@@ -30,12 +30,12 @@ void remidy::PluginInstanceVST3::AudioBuses::inspectBuses() {
 
     input_bus_defs.clear();
     output_bus_defs.clear();
-    for (auto bus: input_buses)
+    for (auto bus: audio_in_buses)
         delete bus;
-    for (auto bus: output_buses)
+    for (auto bus: audio_out_buses)
         delete bus;
-    input_buses.clear();
-    output_buses.clear();
+    audio_in_buses.clear();
+    audio_out_buses.clear();
     v3_bus_info info;
     for (uint32_t bus = 0; bus < numAudioIn; bus++) {
         component->vtable->component.get_bus_info(component, V3_AUDIO, V3_INPUT, bus, &info);
@@ -46,7 +46,7 @@ void remidy::PluginInstanceVST3::AudioBuses::inspectBuses() {
         v3_speaker_arrangement arr;
         processor->vtable->processor.get_bus_arrangement(processor, V3_INPUT, bus, &arr);
         conf->channelLayout(fromVst3SpeakerArrangement(arr));
-        input_buses.emplace_back(conf);
+        audio_in_buses.emplace_back(conf);
     }
     for (uint32_t bus = 0; bus < numAudioOut; bus++) {
         component->vtable->component.get_bus_info(component, V3_AUDIO, V3_OUTPUT, bus, &info);
@@ -57,7 +57,7 @@ void remidy::PluginInstanceVST3::AudioBuses::inspectBuses() {
         v3_speaker_arrangement arr;
         processor->vtable->processor.get_bus_arrangement(processor, V3_OUTPUT, bus, &arr);
         conf->channelLayout(fromVst3SpeakerArrangement(arr));
-        output_buses.emplace_back(conf);
+        audio_out_buses.emplace_back(conf);
     }
 
     busesInfo = ret;
@@ -67,28 +67,28 @@ void remidy::PluginInstanceVST3::AudioBuses::configure(remidy::PluginInstance::C
     auto component = owner->component;
     auto processor = owner->processor;
 
-    std::vector<v3_speaker_arrangement> inArr{input_buses.size()};
-    for (const auto &input_buse: input_buses)
+    std::vector<v3_speaker_arrangement> inArr{audio_in_buses.size()};
+    for (const auto &input_buse: audio_in_buses)
         inArr.emplace_back(toVstSpeakerArrangement(input_buse->channelLayout()));
-    std::vector<v3_speaker_arrangement> outArr{output_buses.size()};
-    for (const auto &output_buse: output_buses)
+    std::vector<v3_speaker_arrangement> outArr{audio_out_buses.size()};
+    for (const auto &output_buse: audio_out_buses)
         outArr.emplace_back(toVstSpeakerArrangement(output_buse->channelLayout()));
 
     // set audio bus configuration, if explicitly specified.
     processor->vtable->processor.set_bus_arrangements(processor,
                                                       inArr.data(), static_cast<int32_t>(inArr.size()),
                                                       outArr.data(), static_cast<int32_t>(outArr.size()));
-    for (size_t i = 0, n = input_buses.size(); i < n; ++i)
-        component->vtable->component.activate_bus(component, V3_AUDIO, V3_INPUT, i, input_buses[i]->enabled());
-    for (size_t i = 0, n = output_buses.size(); i < n; ++i)
-        component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, i, output_buses[i]->enabled());
+    for (size_t i = 0, n = audio_in_buses.size(); i < n; ++i)
+        component->vtable->component.activate_bus(component, V3_AUDIO, V3_INPUT, i, audio_in_buses[i]->enabled());
+    for (size_t i = 0, n = audio_out_buses.size(); i < n; ++i)
+        component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, i, audio_out_buses[i]->enabled());
 }
 
 void remidy::PluginInstanceVST3::AudioBuses::deactivateAllBuses() {
     auto component = owner->component;
-    for (size_t i = 0, n = input_buses.size(); i < n; ++i)
+    for (size_t i = 0, n = audio_in_buses.size(); i < n; ++i)
         component->vtable->component.activate_bus(component, V3_AUDIO, V3_INPUT, i, false);
-    for (size_t i = 0, n = output_buses.size(); i < n; ++i)
+    for (size_t i = 0, n = audio_out_buses.size(); i < n; ++i)
         component->vtable->component.activate_bus(component, V3_AUDIO, V3_OUTPUT, i, false);
     for (size_t i = 0, n = busesInfo.numEventIn; i < n; ++i)
         component->vtable->component.activate_bus(component, V3_EVENT, V3_INPUT, i, false);
@@ -101,11 +101,11 @@ void remidy::PluginInstanceVST3::AudioBuses::allocateBuffers() {
 
     // FIXME: adjust audio buses and channels appropriately.
 
-    inputAudioBusBuffersList.resize(input_buses.size());
-    outputAudioBusBuffersList.resize(output_buses.size());
+    inputAudioBusBuffersList.resize(audio_in_buses.size());
+    outputAudioBusBuffersList.resize(audio_out_buses.size());
 
-    int32_t numInputBuses = input_buses.size();
-    int32_t numOutputBuses = output_buses.size();
+    int32_t numInputBuses = audio_in_buses.size();
+    int32_t numOutputBuses = audio_out_buses.size();
     processData.num_input_buses = numInputBuses;
     processData.num_output_buses = numOutputBuses;
     processData.inputs = inputAudioBusBuffersList.data();
@@ -135,8 +135,8 @@ void remidy::PluginInstanceVST3::AudioBuses::deallocateBuffers() {
     auto& processData = owner->processData;
 
     // FIXME: adjust audio buses and channels
-    int32_t numInputBuses = input_buses.size();
-    int32_t numOutputBuses = output_buses.size();
+    int32_t numInputBuses = audio_in_buses.size();
+    int32_t numOutputBuses = audio_out_buses.size();
     int32_t symbolicSampleSize = processData.symbolic_sample_size;
     if (symbolicSampleSize == V3_SAMPLE_32) {
         for (int32_t bus = 0; bus < numInputBuses; bus++)
