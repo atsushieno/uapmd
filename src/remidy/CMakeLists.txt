@@ -128,6 +128,7 @@ target_sources(remidy PRIVATE
         lv2/PluginInstanceLV2.Events.cpp
         lv2/PluginInstanceLV2.Parameters.cpp
 
+        clap/HostClasses.cpp
         clap/PluginFormatCLAP.cpp
         clap/PluginInstanceCLAP.cpp
         clap/PluginInstanceCLAP.Buses.cpp

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "remidy.hpp"
+#include "HostClasses.hpp"
 #include "../GenericAudioBuses.hpp"
 #include "clap/factory/plugin-factory.h"
 #include "clap/plugin.h"
@@ -39,7 +40,7 @@ namespace remidy {
 
         PluginBundlePool library_pool;
 
-        clap_host_t host;
+        RemidyCLAPHost host;
 
     public:
         explicit Impl(PluginFormatCLAP* owner) :
@@ -79,8 +80,6 @@ namespace remidy {
 
         std::vector<clap_audio_buffer_t> audio_in_port_buffers{};
         std::vector<clap_audio_buffer_t> audio_out_port_buffers{};
-        std::vector<clap_input_events_t> input_events{};
-        std::vector<clap_output_events_t> output_events{};
         std::vector<clap_event_transport_t> transports_events{};
 
         class ParameterSupport : public PluginParameterSupport {
@@ -142,6 +141,7 @@ namespace remidy {
             void inspectBuses() override;
         };
 
+        RemidyCLAPEventList events{this};
         AudioBuses* audio_buses{};
         ParameterSupport* _parameters{};
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
