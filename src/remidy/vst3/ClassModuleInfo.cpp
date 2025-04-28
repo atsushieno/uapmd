@@ -106,8 +106,6 @@ namespace remidy_vst3 {
         return {};
     }
 
-    void* loadLibraryFromBinary(std::filesystem::path& vst3Dir);
-
     // may return nullptr if it failed to load.
     void* loadModuleFromVst3Path(std::filesystem::path vst3Dir) {
 #if __APPLE__
@@ -150,32 +148,6 @@ namespace remidy_vst3 {
         else
             return nullptr;
 #endif
-    }
-
-#if __APPLE__
-    CFStringRef createCFString(const char* s) {
-        return CFStringCreateWithBytes(kCFAllocatorDefault, (UInt8*) s, strlen(s), CFStringEncoding{}, false);
-    }
-#endif
-
-    // The returned library (platform dependent) must be released later (in the platform manner)
-    // It might fail due to ABI mismatch on macOS. We have to ignore the error and return nullptr.
-    void* loadLibraryFromBinary(std::filesystem::path& vst3DirOrFile) {
-#if _WIN32
-        auto ret = LoadLibraryW(vst3DirOrFile.c_str());
-#elif __APPLE__
-        auto cfStringRef = createCFString(vst3DirOrFile.string().c_str());
-        auto ret = CFBundleCreate(kCFAllocatorDefault,
-            CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
-                cfStringRef,
-                kCFURLPOSIXPathStyle,
-                false));
-#else
-        auto ret = dlopen(vst3DirOrFile.c_str(), RTLD_LAZY | RTLD_LOCAL);
-        //if (errno)
-        //    defaultLogError("dlopen resulted in error: %s", dlerror());
-#endif
-        return ret;
     }
 
     int32_t initializeModule(void* module) {

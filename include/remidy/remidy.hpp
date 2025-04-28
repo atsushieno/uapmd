@@ -17,3 +17,4 @@
 #include "priv/plugin-format-vst3.hpp"
 #include "priv/plugin-format-au.hpp"
 #include "priv/plugin-format-lv2.hpp"
+#include "priv/plugin-format-clap.hpp"

@@ -7,13 +7,10 @@
 #elif defined(__linux__)
 #include <dlfcn.h>
 #endif
+#include "../utils.hpp"
 
 namespace remidy_vst3 {
     typedef IPluginFactory* (*get_plugin_factory_func)();
-
-#if __APPLE__
-        extern CFStringRef createCFString(const char* s); // defined in ClassModuleInfo.cpp
-#endif
 
     IPluginFactory* getFactoryFromLibrary(void* module) {
 #if _WIN32

@@ -22,9 +22,12 @@ void remidy::PluginBundlePool::setRetentionPolicy(RetentionPolicy value) {
     retentionPolicy = value;
 }
 
-void* remidy::PluginBundlePool::loadOrAddReference(std::filesystem::path &moduleBundlePath) {
+void* remidy::PluginBundlePool::loadOrAddReference(std::filesystem::path &moduleBundlePath, bool* loadedAsNew) {
     //std::cerr << "AudioPluginLibraryPool::loadOrAddReference(" << moduleBundlePath.string() << ")" << std::endl;
 
+    if (!loadedAsNew)
+        return nullptr;
+    *loadedAsNew = false;
     auto existing = entries.find(moduleBundlePath);
     if (existing != entries.end()) {
         existing->second.refCount++;
@@ -35,6 +38,7 @@ void* remidy::PluginBundlePool::loadOrAddReference(std::filesystem::path &module
     if (result != StatusCode::OK)
         return nullptr;
     entries.emplace(moduleBundlePath, ModuleEntry{1, moduleBundlePath, module});
+    *loadedAsNew = true;
     return module;
 }
 

@@ -3,7 +3,7 @@
 Remidy aims to provide audio plugin hosting features in cross-platform and
 multi-format manner in liberal licenses (MIT/BSD).
 
-Remidy aims to cover VST3, AudioUnit (on macOS) and LV2 formats.
+Remidy aims to cover VST3, AudioUnit (on macOS), LV2, and CLAP formats.
 
 UAPMD (Ubiquitous Audio Plugin MIDI Device) <del>is</del> <ins>aims to become</ins> an audio plugin host that can instantiate <del>arbitrary set of plugins</del> <ins>a synth plugin</ins> and acts as a virtual MIDI 2.0 UMP device on various platforms.
 
@@ -30,7 +30,7 @@ Currently the command line options are hacky:
 
 `plugin-name` is match by `std::string::contains()` within display name, case-sensitive.
 
-`format-name` is one of `VST3` `AU` or `LV2`.
+`format-name` is one of `VST3` `AU`, `LV2`, or `CLAP`.
 
 <!--
 
@@ -86,6 +86,7 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [travesty](https://github.com/DISTRHO/DPF/tree/main/distrho/src/travesty), part of DISTRHO/DPF: the ISC license
 - [moduleinfo](https://github.com/steinbergmedia/vst3_public_sdk/tree/master/source/vst/moduleinfo), part of steinbergmedia/vst3_public_sdk: VST 3 SDK public_sdk License (BSD like)
   (modified to remove dependencies on `vst3_pluginterfaces` which is GPLed)
+- [free-audio/clap](https://github.com/free-audio/clap): MIT
 - [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
 - [atsushieno/cmidi2](atsushieno/cmidi2) - MIT

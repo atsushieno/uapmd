@@ -328,7 +328,8 @@ namespace remidy {
         auto savedPath = std::filesystem::current_path();
         std::filesystem::current_path(vst3Dir);
 
-        auto module = this->library_pool.loadOrAddReference(vst3Dir);
+        bool loadedAsNew;
+        auto module = this->library_pool.loadOrAddReference(vst3Dir, &loadedAsNew);
 
         if (module) {
             auto factory = getFactoryFromLibrary(module);

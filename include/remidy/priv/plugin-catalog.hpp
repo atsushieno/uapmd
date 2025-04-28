@@ -94,7 +94,7 @@ namespace remidy {
         RetentionPolicy getRetentionPolicy();
         void setRetentionPolicy(RetentionPolicy value);
         // Returns either HMODULE, CFBundle*, or dlopen-ed library.
-        void* loadOrAddReference(std::filesystem::path& moduleBundlePath);
+        void* loadOrAddReference(std::filesystem::path& moduleBundlePath, bool* loadedAsNew);
         StatusCode removeReference(std::filesystem::path& moduleBundlePath);
 
     private:

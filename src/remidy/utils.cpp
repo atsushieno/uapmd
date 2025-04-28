@@ -1,6 +1,11 @@
 
 #include "utils.hpp"
 
+#if __APPLE__
+CFStringRef createCFString(const char* s) {
+    return CFStringCreateWithBytes(kCFAllocatorDefault, (UInt8*) s, strlen(s), CFStringEncoding{}, false);
+}
+#endif
 
 // These functions are mostly based on https://stackoverflow.com/a/35599923/1465645
 std::string hexBinaryToString(const char* s, const size_t size, const bool capital) {
@@ -21,5 +26,25 @@ std::string stringToHexBinary(std::string s) {
         ret[i] = (s[j] & '@' ? s[j] + 9 : s[j]) << 4, j++;
         ret[i] |= (s[j] & '@' ? s[j] + 9 : s[j]) & 0xF;
     }
+    return ret;
+}
+
+// The returned library (platform dependent) must be released later (in the platform manner)
+// It might fail due to ABI mismatch on macOS. We have to ignore the error and return nullptr.
+void* loadLibraryFromBinary(std::filesystem::path& pluginDirOrFile) {
+#if _WIN32
+    auto ret = LoadLibraryW(pluginDirOrFile.c_str());
+#elif __APPLE__
+    auto cfStringRef = createCFString(pluginDirOrFile.string().c_str());
+    auto ret = CFBundleCreate(kCFAllocatorDefault,
+        CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
+            cfStringRef,
+            kCFURLPOSIXPathStyle,
+            false));
+#else
+    auto ret = dlopen(pluginDirOrFile.c_str(), RTLD_LAZY | RTLD_LOCAL);
+    //if (errno)
+    //    defaultLogError("dlopen resulted in error: %s", dlerror());
+#endif
     return ret;
 }

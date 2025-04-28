@@ -21,6 +21,12 @@ FetchContent_Declare(rtlog-cpp
 FetchContent_MakeAvailable(rtlog-cpp)
 # </rtlog>
 
+FetchContent_Declare(clap
+        GIT_REPOSITORY https://github.com/free-audio/clap
+        GIT_TAG 1.2.6
+)
+FetchContent_MakeAvailable(clap)
+
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
 
 add_library(remidy STATIC)
@@ -43,6 +49,7 @@ target_include_directories(remidy PRIVATE
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ../../external/choc
         ${LV2KIT_INCLUDE_DIRS}
+        ${clap_SOURCE_DIR}/include
         ${cmidi2_SOURCE_DIR}
         ../../include/remidy
         ${CMAKE_BINARY_DIR}/generated/include
@@ -120,6 +127,11 @@ target_sources(remidy PRIVATE
         lv2/PluginInstanceLV2.Buses.cpp
         lv2/PluginInstanceLV2.Events.cpp
         lv2/PluginInstanceLV2.Parameters.cpp
+
+        clap/PluginFormatCLAP.cpp
+        clap/PluginInstanceCLAP.cpp
+        clap/PluginInstanceCLAP.Events.cpp
+        clap/PluginInstanceCLAP.Parameters.cpp
 
         AudioProcessContext.cpp
         PluginInstance.cpp
