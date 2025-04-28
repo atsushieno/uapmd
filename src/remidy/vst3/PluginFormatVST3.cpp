@@ -6,10 +6,6 @@
 
 #include "PluginFormatVST3.hpp"
 
-#ifdef _MSC_VER
-#define strcasecmp _wcsicmp
-#endif
-
 using namespace remidy_vst3;
 
 namespace remidy {

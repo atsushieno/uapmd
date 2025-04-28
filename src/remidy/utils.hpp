@@ -11,6 +11,10 @@
 #include <dlfcn.h>
 #endif
 
+#ifdef _MSC_VER
+#define strcasecmp _wcsicmp
+#endif
+
 #if __APPLE__
 CFStringRef createCFString(const char* s);
 #endif
