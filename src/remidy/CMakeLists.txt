@@ -27,6 +27,12 @@ FetchContent_Declare(clap
 )
 FetchContent_MakeAvailable(clap)
 
+FetchContent_Declare(clap-helpers
+        GIT_REPOSITORY https://github.com/free-audio/clap-helpers
+        GIT_TAG 58ab81b1dc8219e859529c1306f364bb3aedf7d5
+)
+FetchContent_MakeAvailable(clap-helpers)
+
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
 
 add_library(remidy STATIC)
@@ -50,6 +56,7 @@ target_include_directories(remidy PRIVATE
         ../../external/choc
         ${LV2KIT_INCLUDE_DIRS}
         ${clap_SOURCE_DIR}/include
+        ${clap-helpers_SOURCE_DIR}/include
         ${cmidi2_SOURCE_DIR}
         ../../include/remidy
         ${CMAKE_BINARY_DIR}/generated/include

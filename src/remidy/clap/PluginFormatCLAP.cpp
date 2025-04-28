@@ -240,7 +240,7 @@ namespace remidy {
             if (info->pluginId() != desc->id)
                 return;
 
-            auto plugin = factory->create_plugin(factory, host.getHost(), desc->id);
+            auto plugin = factory->create_plugin(factory, host.clapHost(), desc->id);
             if (plugin)
                 ret = std::make_unique<PluginInstanceCLAP>(this, info, module, plugin);
         }, [&](void *module) {

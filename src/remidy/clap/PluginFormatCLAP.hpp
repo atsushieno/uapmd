@@ -5,6 +5,7 @@
 #include "../GenericAudioBuses.hpp"
 #include "clap/factory/plugin-factory.h"
 #include "clap/plugin.h"
+#include "clap/helpers/event-list.hh"
 
 namespace remidy {
     class PluginScannerCLAP : public FileBasedPluginScanning {
@@ -141,7 +142,7 @@ namespace remidy {
             void inspectBuses() override;
         };
 
-        RemidyCLAPEventList events{this};
+        clap::helpers::EventList events{};
         AudioBuses* audio_buses{};
         ParameterSupport* _parameters{};
         CLAPUmpInputDispatcher ump_input_dispatcher{this};

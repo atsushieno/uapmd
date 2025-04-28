@@ -87,6 +87,7 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [moduleinfo](https://github.com/steinbergmedia/vst3_public_sdk/tree/master/source/vst/moduleinfo), part of steinbergmedia/vst3_public_sdk: VST 3 SDK public_sdk License (BSD like)
   (modified to remove dependencies on `vst3_pluginterfaces` which is GPLed)
 - [free-audio/clap](https://github.com/free-audio/clap): MIT
+- [free-audio/clap-helpers](https://github.com/free-audio/clap-helpers): MIT
 - [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
 - [atsushieno/cmidi2](atsushieno/cmidi2) - MIT

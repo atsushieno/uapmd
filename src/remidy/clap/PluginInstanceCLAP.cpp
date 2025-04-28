@@ -91,8 +91,8 @@ namespace remidy {
         // FIXME: provide size via config
         // FIXME: there may be more than one event ports
         transports_events.resize(0x1000);
-        clap_process.in_events = events.inEvents();
-        clap_process.out_events = events.outEvents();
+        clap_process.in_events = events.clapInputEvents();
+        clap_process.out_events = events.clapOutputEvents();
 
         // alter the input/output audio buffers entries, and start allocation.
         clap_process.audio_inputs_count = audio_buses->audioInputBuses().size();

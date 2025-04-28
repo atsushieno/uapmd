@@ -1,59 +1,40 @@
 #pragma once
 
-#include <clap/host.h>
+#include <exception>
+#include <clap/helpers/host.hh>
+#include <clap/helpers/host.hxx>
+
 
 #include "clap/events.h"
+
+using CLAPHelperHost = clap::helpers::Host<
+    clap::helpers::MisbehaviourHandler::Ignore,
+    clap::helpers::CheckingLevel::Maximal
+>;
 
 namespace remidy {
     class PluginInstanceCLAP;
 
-    class RemidyCLAPHost {
-        clap_host_t host{};
+    class RemidyCLAPHost : public CLAPHelperHost {
+    protected:
+        void requestRestart() noexcept override;
 
-        static const void* remidy_clap_get_extension(const struct clap_host *host, const char *extension_id) {
-            return ((RemidyCLAPHost*) host)->getExtension(extension_id);
-        }
-        static void remidy_clap_request_callback(const struct clap_host *host) {
-            ((RemidyCLAPHost*) host)->requestCallback();
-        }
-        static void remidy_clap_request_process(const struct clap_host *host) {
-            ((RemidyCLAPHost*) host)->requestProcess();
-        }
-        static void remidy_clap_request_restart(const struct clap_host *host) {
-            ((RemidyCLAPHost*) host)->requestRestart();
-        }
+        void requestProcess() noexcept override;
 
-        const void* getExtension(const char *extensionId) {
-            // FIXME: implement
-            return nullptr;
-        }
-        void requestCallback() {
-            // FIXME: implement
-        }
-        void requestProcess() {
-            // FIXME: implement
-        }
-        void requestRestart() {
-            // FIXME: implement
-        }
+        void requestCallback() noexcept override;
 
     public:
-        RemidyCLAPHost(const char* name = "remidy", const char* url = "", const char* vendor = "", const char* version = "") {
-            host.name = name;
-            host.url = url;
-            host.vendor = vendor;
-            host.version = version;
-
-            host.clap_version = CLAP_VERSION;
-
-            host.get_extension = remidy_clap_get_extension;
-            host.host_data = this;
-            host.request_callback = remidy_clap_request_callback;
-            host.request_process = remidy_clap_request_process;
-            host.request_restart = remidy_clap_request_restart;
+        RemidyCLAPHost(
+            const char* name = "remidy",
+            const char* url = "",
+            const char* vendor = "",
+            const char* version = ""
+        ) : CLAPHelperHost(name, vendor, url, version) {
         }
 
-        clap_host_t* getHost() { return &host; }
+        bool threadCheckIsMainThread() const noexcept override;
+
+        bool threadCheckIsAudioThread() const noexcept override;
     };
 
     class RemidyCLAPEventList {
