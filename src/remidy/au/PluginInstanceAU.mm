@@ -6,7 +6,7 @@ remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, Log
         PluginInstance(info), format(format), logger_(logger), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
-    audio_buses = new AUAudioBuses(this);
+    audio_buses = new AudioBuses(this);
 }
 
 remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {

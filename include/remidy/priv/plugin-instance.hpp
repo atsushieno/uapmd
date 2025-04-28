@@ -15,9 +15,9 @@ namespace remidy {
         AllNonAudioOperation = 0xFFFFFFFF
     };
 
-    class AudioBuses {
+    class PluginAudioBuses {
     public:
-        virtual ~AudioBuses() = default;
+        virtual ~PluginAudioBuses() = default;
 
 
         // Returns true if there is an event input bus that MIDI inputs that the instance received can be mapped to.
@@ -71,7 +71,7 @@ namespace remidy {
 
         virtual StatusCode process(AudioProcessContext& process) = 0;
 
-        virtual AudioBuses* audioBuses() = 0;
+        virtual PluginAudioBuses* audioBuses() = 0;
 
         virtual PluginParameterSupport* parameters() = 0;
     };

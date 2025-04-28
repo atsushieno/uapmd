@@ -2,7 +2,7 @@
 
 #include "PluginFormatAU.hpp"
 
-void remidy::AudioPluginInstanceAU::AUAudioBuses::inspectBuses() {
+void remidy::AudioPluginInstanceAU::AudioBuses::inspectBuses() {
     auto component = owner->component;
     auto instance = owner->instance;
     auto logger = owner->logger();
@@ -73,17 +73,17 @@ void remidy::AudioPluginInstanceAU::AUAudioBuses::inspectBuses() {
         case kAudioUnitType_MusicDevice:
         case kAudioUnitType_MusicEffect:
         case kAudioUnitType_MIDIProcessor:
-            ret.hasMidiIn = true;
+            ret.numEventIn = 1;
     }
     Boolean writable;
     auto status = AudioUnitGetPropertyInfo(instance, kAudioUnitProperty_MIDIOutputCallbackInfo, kAudioUnitScope_Global, 0, nullptr, &writable);
     if (status == noErr && writable)
-        ret.hasMidiOut = true;
+        ret.numEventOut = 1;
 
-    buses = ret;
+    busesInfo = ret;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::AUAudioBuses::configure(ConfigurationRequest& configuration) {
+remidy::StatusCode remidy::AudioPluginInstanceAU::AudioBuses::configure(ConfigurationRequest& configuration) {
     auto& component = owner->component;
     auto& instance = owner->instance;
     auto logger = owner->logger();

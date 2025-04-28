@@ -1,6 +1,6 @@
 #include "PluginFormatLV2.hpp"
 
-remidy::PluginInstanceLV2::LV2AudioBuses::BusSearchResult remidy::PluginInstanceLV2::LV2AudioBuses::inspectBuses() {
+void remidy::PluginInstanceLV2::AudioBuses::inspectBuses() {
     auto plugin = owner->plugin;
     auto& implContext = owner->implContext;
 
@@ -46,6 +46,6 @@ remidy::PluginInstanceLV2::LV2AudioBuses::BusSearchResult remidy::PluginInstance
         if (implContext.IS_ATOM_OUT(plugin, port))
             ret.numEventOut++;
     }
-    return ret;
+    busesInfo = ret;
 }
 

@@ -3,6 +3,7 @@
 #include <sstream>
 
 #include "remidy.hpp"
+#include "../GenericAudioBuses.hpp"
 #include "AUv2Helper.hpp"
 #include <AVFoundation/AVFoundation.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -61,34 +62,17 @@ namespace remidy {
             void process(uint64_t timestamp, remidy::AudioProcessContext &src) override;
         };
 
-        class AUAudioBuses : public AudioBuses {
+        class AudioBuses : public GenericAudioBuses {
             AudioPluginInstanceAU* owner;
 
-            struct BusSearchResult {
-                uint32_t numAudioIn{0};
-                uint32_t numAudioOut{0};
-                bool hasMidiIn{false};
-                bool hasMidiOut{false};
-            };
-            BusSearchResult buses{};
-            void inspectBuses();
-            std::vector<AudioBusDefinition> input_bus_defs{};
-            std::vector<AudioBusDefinition> output_bus_defs{};
-            std::vector<AudioBusConfiguration*> input_buses{};
-            std::vector<AudioBusConfiguration*> output_buses{};
-
         public:
-            explicit AUAudioBuses(AudioPluginInstanceAU* owner) : owner(owner) {
+            explicit AudioBuses(AudioPluginInstanceAU* owner) : owner(owner) {
                 inspectBuses();
             }
 
             StatusCode configure(ConfigurationRequest& configuration);
 
-            bool hasEventInputs() override { return buses.hasMidiIn; }
-            bool hasEventOutputs() override { return buses.hasMidiOut; }
-
-            const std::vector<AudioBusConfiguration*>& audioInputBuses() const override { return input_buses; }
-            const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override { return output_buses; }
+            void inspectBuses() override;
         };
 
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
@@ -107,7 +91,7 @@ namespace remidy {
         AudioContentType audio_content_type{AudioContentType::Float32};
 
         ParameterSupport* _parameters{nullptr};
-        AUAudioBuses* audio_buses{};
+        AudioBuses* audio_buses{};
         AURenderCallbackStruct audio_render_callback;
         AUUmpInputDispatcher ump_input_dispatcher{this};
 

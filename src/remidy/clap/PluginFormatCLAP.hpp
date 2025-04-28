@@ -1,6 +1,7 @@
 #pragma once
 
 #include "remidy.hpp"
+#include "../GenericAudioBuses.hpp"
 #include "clap/factory/plugin-factory.h"
 #include "clap/plugin.h"
 
@@ -71,6 +72,10 @@ namespace remidy {
     };
 
     class PluginInstanceCLAP : public PluginInstance {
+        PluginFormatCLAP::Impl* owner;
+        const clap_plugin_t* plugin;
+        void* module;
+        clap_process_t clap_process;
 
         class ParameterSupport : public PluginParameterSupport {
             PluginInstanceCLAP* owner;
@@ -109,19 +114,14 @@ namespace remidy {
             void onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
         };
 
-        class CLAPAudioBuses : public AudioBuses {
+        class AudioBuses : public GenericAudioBuses {
             PluginInstanceCLAP* owner;
 
-            std::vector<AudioBusDefinition> input_bus_defs{};
-            std::vector<AudioBusDefinition> output_bus_defs{};
-            std::vector<AudioBusConfiguration*> input_buses{};
-            std::vector<AudioBusConfiguration*> output_buses{};
-
         public:
-            explicit CLAPAudioBuses(PluginInstanceCLAP* owner) : owner(owner) {
+            explicit AudioBuses(PluginInstanceCLAP* owner) : owner(owner) {
                 inspectBuses();
             }
-            ~CLAPAudioBuses() override {
+            ~AudioBuses() override {
                 for (const auto bus: input_buses)
                     delete bus;
                 for (const auto bus: output_buses)
@@ -133,26 +133,10 @@ namespace remidy {
             void deallocateBuffers();
             void deactivateAllBuses();
 
-            struct BusSearchResult {
-                uint32_t numEventIn{0};
-                uint32_t numEventOut{0};
-            };
-            BusSearchResult busesInfo{};
-            void inspectBuses();
-
-            bool hasEventInputs() override { return busesInfo.numEventIn > 0; }
-            bool hasEventOutputs() override { return busesInfo.numEventOut > 0; }
-
-            const std::vector<AudioBusConfiguration*>& audioInputBuses() const override;
-            const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override;
+            void inspectBuses() override;
         };
 
-        PluginFormatCLAP::Impl* owner;
-        const clap_plugin_t* plugin;
-        void* module;
-        clap_process_t clap_process;
-
-        CLAPAudioBuses* audio_buses{};
+        AudioBuses* audio_buses{};
         ParameterSupport* _parameters{};
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
 
@@ -180,7 +164,7 @@ namespace remidy {
         StatusCode process(AudioProcessContext &process) override;
 
         // port helpers
-        AudioBuses* audioBuses() override { return audio_buses; }
+        PluginAudioBuses* audioBuses() override { return audio_buses; }
 
         // parameters
         PluginParameterSupport* parameters() override;

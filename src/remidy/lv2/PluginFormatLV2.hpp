@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "remidy.hpp"
+#include "../GenericAudioBuses.hpp"
 #include "lilv/lilv.h"
 
 #include "LV2Helper.hpp"
@@ -176,31 +177,14 @@ namespace remidy {
             void onProcessEnd(remidy::AudioProcessContext &src) override;
         };
 
-        class LV2AudioBuses : public AudioBuses {
+        class AudioBuses : public GenericAudioBuses {
             PluginInstanceLV2* owner;
 
-            struct BusSearchResult {
-                uint32_t numEventIn{0};
-                uint32_t numEventOut{0};
-            };
-            BusSearchResult buses;
-
-            BusSearchResult inspectBuses();
-
-            std::vector<AudioBusDefinition> input_bus_defs;
-            std::vector<AudioBusDefinition> output_bus_defs;
-            std::vector<AudioBusConfiguration *> input_buses;
-            std::vector<AudioBusConfiguration *> output_buses;
-
         public:
-            explicit LV2AudioBuses(PluginInstanceLV2* owner) : owner(owner) {
-                buses = inspectBuses();
+            explicit AudioBuses(PluginInstanceLV2* owner) : owner(owner) {
+                inspectBuses();
             }
-            bool hasEventInputs() override { return buses.numEventIn > 0; }
-            bool hasEventOutputs() override { return buses.numEventOut > 0; }
-
-            const std::vector<AudioBusConfiguration*>& audioInputBuses() const override { return input_buses; }
-            const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override { return output_buses; }
+            void inspectBuses() override;
         };
 
         PluginFormatLV2::Impl *formatImpl;
@@ -227,7 +211,7 @@ namespace remidy {
         std::vector<RemidyToLV2PortMapping> audio_in_port_mapping{};
         std::vector<RemidyToLV2PortMapping> audio_out_port_mapping{};
 
-        LV2AudioBuses* audio_buses{};
+        AudioBuses* audio_buses{};
 
         ParameterSupport *_parameters{};
 
@@ -265,7 +249,7 @@ namespace remidy {
         StatusCode process(AudioProcessContext &process) override;
 
         // port helpers
-        AudioBuses* audioBuses() override { return audio_buses; }
+        PluginAudioBuses* audioBuses() override { return audio_buses; }
 
         // parameters
         PluginParameterSupport *parameters() override;

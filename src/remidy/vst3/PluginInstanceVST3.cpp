@@ -62,7 +62,7 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     }
 #endif
 
-    audio_buses = new VST3AudioBuses(this);
+    audio_buses = new AudioBuses(this);
 
     // find NoteExpressionController
     if (controller->vtable->unknown.query_interface(controller, v3_note_expression_controller_iid, (void**) &note_expression_controller) != V3_OK)

@@ -2,6 +2,7 @@
 
 #include "remidy.hpp"
 #include "HostClasses.hpp"
+#include "../GenericAudioBuses.hpp"
 
 using namespace remidy_vst3;
 
@@ -119,13 +120,8 @@ namespace remidy {
             void onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) override;
         };
 
-        class VST3AudioBuses : public AudioBuses {
+        class AudioBuses : public GenericAudioBuses {
             PluginInstanceVST3* owner;
-
-            std::vector<AudioBusDefinition> input_bus_defs{};
-            std::vector<AudioBusDefinition> output_bus_defs{};
-            std::vector<AudioBusConfiguration*> input_buses{};
-            std::vector<AudioBusConfiguration*> output_buses{};
 
             std::vector<v3_audio_bus_buffers> inputAudioBusBuffersList{};
             std::vector<v3_audio_bus_buffers> outputAudioBusBuffersList{};
@@ -133,10 +129,10 @@ namespace remidy {
             std::vector<v3_speaker_arrangement> getVst3SpeakerConfigs(int32_t direction);
 
         public:
-            explicit VST3AudioBuses(PluginInstanceVST3* owner) : owner(owner) {
+            explicit AudioBuses(PluginInstanceVST3* owner) : owner(owner) {
                 inspectBuses();
             }
-            ~VST3AudioBuses() override {
+            ~AudioBuses() override {
                 for (const auto bus: input_buses)
                     delete bus;
                 for (const auto bus: output_buses)
@@ -148,18 +144,7 @@ namespace remidy {
             void deallocateBuffers();
             void deactivateAllBuses();
 
-            struct BusSearchResult {
-                uint32_t numEventIn{0};
-                uint32_t numEventOut{0};
-            };
-            BusSearchResult busesInfo{};
-            void inspectBuses();
-
-            bool hasEventInputs() override { return busesInfo.numEventIn > 0; }
-            bool hasEventOutputs() override { return busesInfo.numEventOut > 0; }
-
-            const std::vector<AudioBusConfiguration*>& audioInputBuses() const override;
-            const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override;
+            void inspectBuses() override;
         };
 
         PluginFormatVST3::Impl* owner;
@@ -188,7 +173,7 @@ namespace remidy {
 
         void allocateProcessData(v3_process_setup& setup);
 
-        VST3AudioBuses* audio_buses{};
+        AudioBuses* audio_buses{};
 
         ParameterSupport* _parameters{};
 
@@ -220,7 +205,7 @@ namespace remidy {
         StatusCode process(AudioProcessContext &process) override;
 
         // port helpers
-        AudioBuses* audioBuses() override { return audio_buses; }
+        PluginAudioBuses* audioBuses() override { return audio_buses; }
 
         // parameters
         PluginParameterSupport* parameters() override;

@@ -3,7 +3,7 @@
 remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
         PluginInstance(entry), formatImpl(formatImpl), plugin(plugin),
         implContext(formatImpl->worldContext, formatImpl->world, plugin),
-        audio_buses(new LV2AudioBuses(this)) {
+        audio_buses(new AudioBuses(this)) {
 }
 
 remidy::PluginInstanceLV2::~PluginInstanceLV2() {

@@ -130,6 +130,7 @@ target_sources(remidy PRIVATE
 
         clap/PluginFormatCLAP.cpp
         clap/PluginInstanceCLAP.cpp
+        clap/PluginInstanceCLAP.Buses.cpp
         clap/PluginInstanceCLAP.Events.cpp
         clap/PluginInstanceCLAP.Parameters.cpp
 

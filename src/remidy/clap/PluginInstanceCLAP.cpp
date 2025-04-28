@@ -8,6 +8,8 @@ namespace remidy {
         const clap_plugin_t* plugin
     ) : PluginInstance(info), owner(owner), plugin(plugin), module(module) {
         plugin->init(plugin);
+
+        audio_buses = new AudioBuses(this);
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {
