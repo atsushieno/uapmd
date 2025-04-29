@@ -1,3 +1,4 @@
+#include "cmidi2.h"
 #include "remidy.hpp"
 #include "../utils.hpp"
 
@@ -10,8 +11,14 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::uint4_
                                                                        uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // use IEventList to add Event (kNoteOnEvent)
     auto& el = owner->processDataInputEvents;
+
+    float tuning = 0;
+    if (attributeType == CMIDI2_ATTRIBUTE_TYPE_PITCH7_9)
+        tuning = (float) ((uint8_t) (attribute >> 9) + (float) (attribute & 0x1F) / 512.0);
+
     int32_t noteId = -1; // should be alright, UMP has no concept for that
-    v3_event_note_on noteOn{channel, note, 0, (float) (velocity / 65535.0), 0, noteId};
+
+    v3_event_note_on noteOn{channel, note, tuning, (float) (velocity / 65535.0), 0, noteId};
     v3_event e{group, static_cast<int32_t>(timestamp()), trackContext()->ppqPosition(), 0,
                v3_event_type::V3_EVENT_NOTE_ON, {.note_on = noteOn}};
     el.vtable->event_list.add_event(&el, &e);
