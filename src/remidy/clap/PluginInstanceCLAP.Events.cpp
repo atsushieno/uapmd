@@ -26,16 +26,25 @@ namespace remidy {
         // FIXME: implement
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onPNAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t index, uint32_t data) {
-        // FIXME: implement
+        auto paramId = index; // PNAC is not as expressive as AC
+        auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events.tryAllocate(alignof(void *),
+            sizeof(clap_event_param_value_t)));
+        evt->header.type = CLAP_EVENT_PARAM_VALUE;
+        evt->port_index = group;
+        evt->channel = channel;
+        evt->param_id = paramId;
+        evt->key = note;
+        evt->value = (double) data / UINT32_MAX;
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onPNRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t index, uint32_t data) {
         // FIXME: implement
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onPitchBend(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) {
-        // FIXME: implement
+        // FIXME: implement using CLAP_NOTE_EXPRESSION_TUNING https://github.com/free-audio/clap/discussions/203
     }
+
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onPressure(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) {
-        // FIXME: implement
+        // FIXME: implement using CLAP_NOTE_EXPRESSION_PRESSURE for PAf., but how about CAf?
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onProgramChange(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t flags, remidy::uint7_t program, remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) {
         // FIXME: implement
