@@ -87,6 +87,7 @@ namespace remidy {
             PluginInstanceCLAP* owner;
             std::vector<PluginParameter*> parameter_defs{};
             std::vector<clap_id> parameter_ids{};
+            std::vector<void*> parameter_cookies{};
             clap_plugin_params_t* params_ext;
 
         public:

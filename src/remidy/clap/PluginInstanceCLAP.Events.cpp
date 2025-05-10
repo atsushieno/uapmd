@@ -2,31 +2,17 @@
 
 namespace remidy {
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) {
+        auto parameters = owner->parameters();
         // send as param mod or param value event
         auto paramId = bank * 0x80 + index;
         if (relative) {
-            auto a = owner->events.tryAllocate(alignof(void *),
-                sizeof(clap_event_param_mod_t));
-            if (!a)
+            double current;
+            if (parameters->getParameter(index, &current) != StatusCode::OK)
                 return;
-            auto evt = reinterpret_cast<clap_event_param_mod_t *>(a);
-            evt->header.type = CLAP_EVENT_PARAM_MOD;
-            evt->port_index = group;
-            evt->channel = channel;
-            evt->param_id = paramId;
-            evt->amount = (double) (int32_t) data / INT32_MAX;
-        } else {
-            auto a = owner->events.tryAllocate(alignof(void *),
-                sizeof(clap_event_param_value_t));
-            if (!a)
-                return;
-            auto evt = reinterpret_cast<clap_event_param_value_t *>(a);
-            evt->header.type = CLAP_EVENT_PARAM_VALUE;
-            evt->port_index = group;
-            evt->channel = channel;
-            evt->param_id = paramId;
-            evt->value = (double) data / UINT32_MAX;
-        }
+            auto value = (double) data / UINT32_MAX;
+            parameters->setParameter(index, value + current, timestamp());
+        } else
+            parameters->setParameter(index, (double) data / UINT32_MAX, timestamp());
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index, uint32_t data) {
         // FIXME: implement

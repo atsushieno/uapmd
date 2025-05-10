@@ -26,6 +26,7 @@ namespace remidy {
                     info.flags & CLAP_PARAM_IS_HIDDEN,
                     enums));
                 parameter_ids.emplace_back(info.id);
+                parameter_cookies.emplace_back(info.cookie);
             }
         //});
     }
@@ -54,6 +55,11 @@ namespace remidy {
             return StatusCode::INSUFFICIENT_MEMORY;
         const auto evt = reinterpret_cast<clap_event_param_value_t *>(a);
         evt->header.type = CLAP_EVENT_PARAM_VALUE;
+        evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        evt->header.flags = CLAP_EVENT_IS_LIVE;
+        // FIXME: assign timestamp *in samples*
+        //evt->header.time = timestamp;
+        evt->cookie = parameter_cookies[index];
         evt->port_index = 0;
         evt->channel = 0;
         evt->param_id = parameter_ids[index];
