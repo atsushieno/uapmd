@@ -164,7 +164,6 @@ namespace remidy {
         remidyProcessContextToClapProcess(clap_process, process);
 
         // FIXME: provide valid timestamp?
-        events.clear();
         ump_input_dispatcher.process(0, process);
 
         // FIXME: we should report process result somehow
@@ -172,6 +171,8 @@ namespace remidy {
         auto ret = result == CLAP_PROCESS_ERROR ? StatusCode::FAILED_TO_PROCESS : StatusCode::OK;
 
         // FIXME: process eventOut
+
+        events.clear();
 
         return ret;
     }

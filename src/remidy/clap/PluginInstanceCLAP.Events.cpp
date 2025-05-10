@@ -5,16 +5,22 @@ namespace remidy {
         // send as param mod or param value event
         auto paramId = bank * 0x80 + index;
         if (relative) {
-            auto evt = reinterpret_cast<clap_event_param_mod_t *>(owner->events.tryAllocate(alignof(void *),
-                sizeof(clap_event_param_value_t)));
+            auto a = owner->events.tryAllocate(alignof(void *),
+                sizeof(clap_event_param_mod_t));
+            if (!a)
+                return;
+            auto evt = reinterpret_cast<clap_event_param_mod_t *>(a);
             evt->header.type = CLAP_EVENT_PARAM_MOD;
             evt->port_index = group;
             evt->channel = channel;
             evt->param_id = paramId;
             evt->amount = (double) (int32_t) data / INT32_MAX;
         } else {
-            auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events.tryAllocate(alignof(void *),
-                sizeof(clap_event_param_value_t)));
+            auto a = owner->events.tryAllocate(alignof(void *),
+                sizeof(clap_event_param_value_t));
+            if (!a)
+                return;
+            auto evt = reinterpret_cast<clap_event_param_value_t *>(a);
             evt->header.type = CLAP_EVENT_PARAM_VALUE;
             evt->port_index = group;
             evt->channel = channel;
