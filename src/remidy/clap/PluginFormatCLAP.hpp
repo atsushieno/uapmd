@@ -86,7 +86,8 @@ namespace remidy {
         class ParameterSupport : public PluginParameterSupport {
             PluginInstanceCLAP* owner;
             std::vector<PluginParameter*> parameter_defs{};
-            clap_id *parameter_ids{};
+            std::vector<clap_id> parameter_ids{};
+            clap_plugin_params_t* params_ext;
 
         public:
             explicit ParameterSupport(PluginInstanceCLAP* owner);

@@ -2,9 +2,38 @@
 
 namespace remidy {
     PluginInstanceCLAP::ParameterSupport::ParameterSupport(PluginInstanceCLAP* owner) : owner(owner) {
+        // FIXME: we have to query parameters asynchronously (if we do that now, remidy-plugin-host fails to retrieve parameters)
+        //EventLoop::runTaskOnMainThread([&] {
+            const auto plugin = owner->plugin;
+            params_ext = (clap_plugin_params_t*) plugin->get_extension(plugin, CLAP_EXT_PARAMS);
+            for (size_t i = 0, n = params_ext->count(plugin); i < n; i++) {
+                clap_param_info_t info;
+                if (!params_ext->get_info(plugin, i, &info))
+                    continue;
+                std::vector<ParameterEnumeration> enums{};
+                std::string id{std::format("%x", info.id)};
+                std::string name{info.name};
+                std::string module{info.module};
+                parameter_defs.emplace_back(new PluginParameter(
+                    i,
+                    id,
+                    name,
+                    module,
+                    info.default_value,
+                    info.min_value,
+                    info.max_value,
+                    true,
+                    info.flags & CLAP_PARAM_IS_HIDDEN,
+                    enums));
+                parameter_ids.emplace_back(info.id);
+            }
+        //});
     }
 
     PluginInstanceCLAP::ParameterSupport::~ParameterSupport() {
+        for (auto p : parameter_defs)
+            delete p;
+        parameter_defs.clear();
     }
 
     std::vector<PluginParameter*>& PluginInstanceCLAP::ParameterSupport::parameters() {
@@ -20,7 +49,17 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
-        return StatusCode::NOT_IMPLEMENTED;
+        auto a = owner->events.tryAllocate(alignof(void *), sizeof(clap_event_param_value_t));
+        if (!a)
+            return StatusCode::INSUFFICIENT_MEMORY;
+        const auto evt = reinterpret_cast<clap_event_param_value_t *>(a);
+        evt->header.type = CLAP_EVENT_PARAM_VALUE;
+        evt->port_index = 0;
+        evt->channel = 0;
+        evt->param_id = parameter_ids[index];
+        evt->value = value;
+
+        return StatusCode::OK;
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
