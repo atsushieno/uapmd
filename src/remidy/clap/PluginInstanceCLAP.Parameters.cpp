@@ -69,7 +69,21 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
-        return StatusCode::NOT_IMPLEMENTED;
+        auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events.tryAllocate(alignof(void *),
+            sizeof(clap_event_param_value_t)));
+        evt->header.type = CLAP_EVENT_PARAM_VALUE;
+        evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        evt->header.flags |= CLAP_EVENT_IS_LIVE;
+        // FIXME: calculate timestamp (to samples)
+        //evt->header.time = timestamp;
+        evt->cookie = parameter_cookies[index];
+        evt->port_index = context.group;
+        evt->channel = context.channel;
+        evt->param_id = index;
+        evt->key = context.note;
+        evt->value = value;
+
+        return StatusCode::OK;
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::getParameter(uint32_t index, double* value) {

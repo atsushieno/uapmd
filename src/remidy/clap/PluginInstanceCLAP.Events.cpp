@@ -4,29 +4,22 @@ namespace remidy {
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) {
         auto parameters = owner->parameters();
         // send as param mod or param value event
-        auto paramId = bank * 0x80 + index;
+        auto clapIndex = bank * 0x80 + index;
         if (relative) {
             double current;
             if (parameters->getParameter(index, &current) != StatusCode::OK)
                 return;
             auto value = (double) data / UINT32_MAX;
-            parameters->setParameter(index, value + current, timestamp());
+            parameters->setParameter(clapIndex, value + current, timestamp());
         } else
-            parameters->setParameter(index, (double) data / UINT32_MAX, timestamp());
+            parameters->setParameter(clapIndex, (double) data / UINT32_MAX, timestamp());
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index, uint32_t data) {
         // FIXME: implement
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onPNAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t index, uint32_t data) {
-        auto paramId = index; // PNAC is not as expressive as AC
-        auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events.tryAllocate(alignof(void *),
-            sizeof(clap_event_param_value_t)));
-        evt->header.type = CLAP_EVENT_PARAM_VALUE;
-        evt->port_index = group;
-        evt->channel = channel;
-        evt->param_id = paramId;
-        evt->key = note;
-        evt->value = (double) data / UINT32_MAX;
+        PerNoteControllerContext context { .note = note, .channel = channel, .group = group, .extra = 0 };
+        owner->parameters()->setPerNoteController(context, index, (double) data / UINT32_MAX, timestamp());
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onPNRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t index, uint32_t data) {
         // FIXME: implement
