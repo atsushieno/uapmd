@@ -26,11 +26,13 @@ There are supplemental tools for diagnosing problems we encounter.
 
 Currently the command line options are hacky:
 
-> $ uapmd-service plugin-name format-name
+> $ uapmd-service plugin-name (format-name) (api-name)
 
 `plugin-name` is match by `std::string::contains()` within display name, case-sensitive.
 
 `format-name` is one of `VST3` `AU`, `LV2`, or `CLAP`.
+
+`api-name` so far accepts only `PIPEWIRE` (on Linux) to use PipeWire, and uses default available API otherwise.
 
 <!--
 
@@ -59,7 +61,7 @@ remidy-scan is a tool to query and enumerate locally installed plugins.
 
 ### remidy
 
-`remidy` offers plugin API abstraction layer at lower level that only involves application agnostic audio and event processing. Not very opinionated.
+`remidy` offers plugin API abstraction layer at lower level that only involves application agnostic audio and event processing. Apart from parameter API, it adopts UMP for event inputs, including parameter support via NRPN (AC, Assignable Controller) and Per-Note AC. It is an opinionated layer towards MIDI 2.0 i.e. events are parsed into timed parameter changes and other events on the plugins.
 
 ### remidy-tooling
 
@@ -69,11 +71,11 @@ Regarding event stream it is still not much opinionated.
 
 ### uapmd
 
-`uapmd` introduces the UMP adoption layer. It is an opinionated layer towards MIDI 2.0 i.e. events are parsed into timed parameter changes and other events on the plugins, as well as save/load states in MIDI-CI property manner.
+`uapmd` provides reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). It saves and loads states in MIDI-CI property manner [not implemented yet]. It is supposed to manage multiple tracks with multiple plugins [not implemented yet].
 
 ### uapmd-service
 
-`uapmd-service` works as a virtual MIDI device service that can receive platform UMP inputs (and most likely MIDI 1.0 inputs, translated) to control plugins.
+`uapmd-service` works as a virtual MIDI device service that can receive platform UMP inputs (and most likely MIDI 1.0 inputs, translated, depending on the platform) to control plugins.
 
 
 ## License and Dependencies

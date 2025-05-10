@@ -7,7 +7,7 @@
 namespace uapmd {
 
     class UapmdMidiDevice {
-        std::string deviceName{}, manufacturer{}, version{};
+        std::string api_name{}, device_name{}, manufacturer{}, version{};
 
         std::unique_ptr<PlatformVirtualMidiDevice> platformDevice{};
         std::unique_ptr<AudioPluginSequencer> sequencer{};
@@ -19,7 +19,7 @@ namespace uapmd {
         int32_t channelToTrack(int32_t group, int32_t channel);
 
     public:
-        UapmdMidiDevice(std::string& deviceName, std::string& manufacturer, std::string& version);
+        UapmdMidiDevice(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version);
         void addPluginTrack(std::string& pluginName, std::string& formatName);
 
         // registers itself as a platform virtual MIDI device service

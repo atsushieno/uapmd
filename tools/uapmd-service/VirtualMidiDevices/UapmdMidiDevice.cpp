@@ -5,8 +5,8 @@
 #include <memory>
 
 namespace uapmd {
-    UapmdMidiDevice::UapmdMidiDevice(std::string& deviceName, std::string& manufacturer, std::string& version) :
-        deviceName(deviceName), manufacturer(manufacturer), version(version),
+    UapmdMidiDevice::UapmdMidiDevice(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version) :
+        api_name(apiName), device_name(deviceName), manufacturer(manufacturer), version(version),
         // FIXME: do we need valid sampleRate here?
         sequencer(new AudioPluginSequencer(44100, 1024, 4096)) {
     }
@@ -28,7 +28,7 @@ namespace uapmd {
     }
 
     uapmd_status_t UapmdMidiDevice::start() {
-        platformDevice = std::make_unique<PlatformVirtualMidiDevice>(deviceName, manufacturer, version);
+        platformDevice = std::make_unique<PlatformVirtualMidiDevice>(api_name, device_name, manufacturer, version);
 
         platformDevice->addInputHandler(umpReceived, this);
 

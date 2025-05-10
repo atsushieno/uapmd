@@ -3,7 +3,7 @@ add_library(uapmd STATIC)
 
 CPMAddPackage(
         NAME           libremidi
-        GIT_TAG        b18a2fc38a020e0cc4b174c257de182a4328da58
+        GIT_TAG        v5.1.0
         GIT_REPOSITORY https://github.com/celtera/libremidi
 )
 CPMAddPackage(

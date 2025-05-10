@@ -9,7 +9,8 @@ namespace uapmd {
 
     // A PAL to virtual MIDI device
     class PlatformVirtualMidiDevice::Impl {
-        std::string deviceName;
+        std::string api_name;
+        std::string device_name;
         std::string manufacturer;
         std::string version;
         std::vector<ump_receiver_t> receivers;
@@ -25,7 +26,7 @@ namespace uapmd {
         void inputCallback(libremidi_timestamp timestamp, const libremidi_midi2_symbol* messages, size_t len);
 
     public:
-        Impl(std::string& deviceName, std::string& manufacturer, std::string& version);
+        Impl(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version);
         virtual ~Impl();
 
         void addInputHandler(ump_receiver_t receiver, void* userData);

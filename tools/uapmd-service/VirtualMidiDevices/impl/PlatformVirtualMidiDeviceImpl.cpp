@@ -4,12 +4,24 @@
 
 namespace uapmd {
 
-    PlatformVirtualMidiDevice::Impl::Impl(std::string &deviceName, std::string &manufacturer, std::string &version)
-        : deviceName(deviceName), manufacturer(manufacturer), version(version) {
+    PlatformVirtualMidiDevice::Impl::Impl(std::string& apiName, std::string &deviceName, std::string &manufacturer, std::string &version)
+        : api_name(apiName), device_name(deviceName), manufacturer(manufacturer), version(version) {
 
         assert(libremidi_midi_api_configuration_init(&apiCfg) == 0);
         auto apis = libremidi::available_ump_apis();
-        apiCfg.api = apis.empty() ? UNSPECIFIED : apis[0];
+        // Available only on Linux
+        if (strcasecmp(apiName.c_str(), "PIPEWIRE") == 0)
+            apiCfg.api = PIPEWIRE_UMP;
+        else if (strcasecmp(apiName.c_str(), "ALSA") == 0) // if dare to specify (e.g. avoiding PipeWire UMP for some reason)
+            apiCfg.api = ALSA_SEQ_UMP;
+        else {
+            // (on Linux) look for PipeWire and use it if available, otherwise use ALSA.
+            for (auto api : apis)
+                if (api == PIPEWIRE_UMP)
+                    apiCfg.api = api;
+            if (apiCfg.api == UNSPECIFIED)
+                apiCfg.api = apis.empty() ? UNSPECIFIED : apis[0];
+        }
         assert(libremidi_midi_configuration_init(&midiCfg) == 0);
         midiCfg.virtual_port = true;
         midiCfg.version = libremidi_midi_configuration::MIDI2;

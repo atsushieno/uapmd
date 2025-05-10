@@ -4,8 +4,8 @@
 
 namespace uapmd {
 
-    PlatformVirtualMidiDevice::PlatformVirtualMidiDevice(std::string& deviceName, std::string& manufacturer, std::string& version)
-        : impl(new Impl(deviceName, manufacturer, version)) {
+    PlatformVirtualMidiDevice::PlatformVirtualMidiDevice(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version)
+        : impl(new Impl(apiName, deviceName, manufacturer, version)) {
     }
 
     PlatformVirtualMidiDevice::~PlatformVirtualMidiDevice() {

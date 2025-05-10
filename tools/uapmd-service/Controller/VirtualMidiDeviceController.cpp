@@ -4,8 +4,8 @@
 namespace uapmd {
 
     std::unique_ptr<UapmdMidiDevice> VirtualMidiDeviceController::createDevice(
-        std::string deviceName, std::string manufacturer, std::string version) {
-        return std::make_unique<UapmdMidiDevice>(deviceName, manufacturer, version);
+        std::string apiName, std::string deviceName, std::string manufacturer, std::string version) {
+        return std::make_unique<UapmdMidiDevice>(apiName, deviceName, manufacturer, version);
     }
 
     uapmd_status_t VirtualMidiDeviceController::registerPluginChannels(uapmd_device_t*device, std::string pluginID) {

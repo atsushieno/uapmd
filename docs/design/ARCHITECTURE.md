@@ -17,11 +17,11 @@ Saving and loading virtual device settings is done at client side.
 
 UAPMD works with the following API with the target platform so far:
 
-- Linux (kernel 6.5 or later): ALSA 1.2.10 or later
+- Linux (kernel 6.5 or later): PipeWire 1.4 or later if available, or ALSA 1.2.10 or later.
 - MacOS (14.0 or later): CoreMIDI
 - Windows (probably 11): Windows MIDI Service
 
-Other platform APIs do not support MIDI 2.0 UMP ports.
+Other platform APIs do not support MIDI 2.0 UMP ports (on desktop).
 
 The actual platform MIDI interaction is done through libremidi.
 
