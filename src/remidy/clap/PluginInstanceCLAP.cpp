@@ -91,8 +91,6 @@ namespace remidy {
         // FIXME: provide size via config
         // FIXME: there may be more than one event ports
         transports_events.resize(0x1000);
-        clap_process.in_events = events.clapInputEvents();
-        clap_process.out_events = events.clapOutputEvents();
 
         // It seems we have to activate plugin buses first.
         plugin->activate(plugin, configuration.sampleRate, 1, configuration.bufferSizeInSamples);
@@ -155,6 +153,10 @@ namespace remidy {
                 for (size_t ch = 0, nCh = src.inputChannelCount(bus); ch < nCh; ch++)
                     dst.audio_outputs[bus].data64[ch] = src.getDoubleOutBuffer(bus, ch);
         }
+
+        // set event buffers
+        clap_process.in_events = events.clapInputEvents();
+        clap_process.out_events = events.clapOutputEvents();
     }
 
     StatusCode PluginInstanceCLAP::process(AudioProcessContext &process) {
