@@ -94,6 +94,9 @@ namespace remidy {
         clap_process.in_events = events.clapInputEvents();
         clap_process.out_events = events.clapOutputEvents();
 
+        // It seems we have to activate plugin buses first.
+        plugin->activate(plugin, configuration.sampleRate, 1, configuration.bufferSizeInSamples);
+
         // alter the input/output audio buffers entries, and start allocation.
         clap_process.audio_inputs_count = audio_buses->audioInputBuses().size();
         clap_process.audio_outputs_count = audio_buses->audioOutputBuses().size();
@@ -113,7 +116,6 @@ namespace remidy {
         applyAudioBuffersToClapProcess(clap_process.audio_outputs, audio_buses, audio_out_port_buffers, useDouble);
         clap_process.transport = transports_events.data();
 
-        plugin->activate(plugin, configuration.sampleRate, 1, configuration.bufferSizeInSamples);
         return StatusCode::OK;
     }
 
@@ -160,6 +162,7 @@ namespace remidy {
         remidyProcessContextToClapProcess(clap_process, process);
 
         // FIXME: provide valid timestamp?
+        events.clear();
         ump_input_dispatcher.process(0, process);
 
         // FIXME: we should report process result somehow
