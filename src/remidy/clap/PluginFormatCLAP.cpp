@@ -70,7 +70,7 @@ namespace remidy {
         std::filesystem::path dir{path};
         if (is_directory(dir)) {
             for (auto &entry: std::filesystem::directory_iterator(dir)) {
-                if (!strcasecmp(entry.path().extension().string().c_str(), ".clap"))
+                if (!remidy_strcasecmp(entry.path().extension().string().c_str(), ".clap"))
                     scanAllAvailablePluginsFromLibrary(entry.path(), entries);
                 else
                     scanAllAvailablePluginsInPath(entry.path(), entries);
