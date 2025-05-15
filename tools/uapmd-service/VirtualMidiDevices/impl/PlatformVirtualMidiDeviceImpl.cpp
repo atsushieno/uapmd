@@ -10,9 +10,9 @@ namespace uapmd {
         assert(libremidi_midi_api_configuration_init(&apiCfg) == 0);
         auto apis = libremidi::available_ump_apis();
         // Available only on Linux
-        if (strcasecmp(apiName.c_str(), "PIPEWIRE") == 0)
+        if (remidy_strcasecmp(apiName.c_str(), "PIPEWIRE") == 0)
             apiCfg.api = PIPEWIRE_UMP;
-        else if (strcasecmp(apiName.c_str(), "ALSA") == 0) // if dare to specify (e.g. avoiding PipeWire UMP for some reason)
+        else if (remidy_strcasecmp(apiName.c_str(), "ALSA") == 0) // if dare to specify (e.g. avoiding PipeWire UMP for some reason)
             apiCfg.api = ALSA_SEQ_UMP;
         else {
             // (on Linux) look for PipeWire and use it if available, otherwise use ALSA.

@@ -271,7 +271,7 @@ namespace remidy {
         std::filesystem::path dir{path};
         if (is_directory(dir)) {
             for (auto &entry: std::filesystem::directory_iterator(dir)) {
-                if (!strcasecmp(entry.path().extension().string().c_str(), ".vst3"))
+                if (!remidy_strcasecmp(entry.path().extension().string().c_str(), ".vst3"))
                     scanAllAvailablePluginsFromLibrary(entry.path(), infos);
                 else
                     scanAllAvailablePluginsInPath(entry.path(), infos);

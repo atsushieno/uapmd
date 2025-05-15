@@ -10,6 +10,13 @@
 typedef uint32_t remidy_ump_t;
 typedef int64_t remidy_timestamp_t;
 
+#ifdef _MSC_VER
+#define remidy_strcasecmp strcmpi
+#else
+#include <strings.h>
+#define remidy_strcasecmp strcasecmp
+#endif
+
 namespace remidy {
 
     enum class StatusCode {
