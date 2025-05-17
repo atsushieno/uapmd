@@ -41,8 +41,6 @@ The LV2 UI specification states that the UI should be designed to be runnable in
 
 ### CLAP
 
-While we still don't support CLAP, it is good to review what it provides.
-
 CLAP has two-fold extensions for state. One is `state` and another is `state-context`. The `state` extension works just like what VST3 offers. It can just serialize the state into a flat binary stream. The `state-context` extension gives the perspective on in which plugin usage scenarios it wants to save and load the state:
 
 - `CLAP_STATE_CONTEXT_FOR_PRESET` : it is used when user wants to save the state as a preset

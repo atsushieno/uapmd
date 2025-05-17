@@ -8,7 +8,7 @@ namespace uapmd {
     UapmdMidiDevice::UapmdMidiDevice(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version) :
         api_name(apiName), device_name(deviceName), manufacturer(manufacturer), version(version),
         // FIXME: do we need valid sampleRate here?
-        sequencer(new AudioPluginSequencer(44100, 1024, 4096)) {
+        sequencer(new AudioPluginSequencer(4096, 1024, 44100)) {
     }
     
     void UapmdMidiDevice::addPluginTrack(std::string& pluginName, std::string& formatName) {
