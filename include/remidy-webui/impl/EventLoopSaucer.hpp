@@ -4,7 +4,7 @@
 namespace remidy::webui::saucer_wrapper {
 
 class EventLoopSaucer : public remidy::EventLoop {
-    std::shared_ptr<saucer::application> app;
+    std::shared_ptr<saucer::application> app{};
 
 protected:
     void initializeOnUIThreadImpl() override {
@@ -28,7 +28,8 @@ protected:
     }
 
 public:
-    EventLoopSaucer(std::shared_ptr<saucer::application> app) : app(app) {}
+    explicit EventLoopSaucer(std::shared_ptr<saucer::application> app) : app(app) {}
+    ~EventLoopSaucer() override = default;
 };
 
 }

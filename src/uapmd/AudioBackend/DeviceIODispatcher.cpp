@@ -17,9 +17,11 @@ namespace uapmd {
         uapmd_status_t configure(size_t umpInputBufferSizeInBytes, AudioIODevice* audio, MidiIODevice* midiIn, MidiIODevice* midiOut);
 
         ~Impl() {
-            audio_->clearAudioCallbacks();
+            if (audio_)
+                audio_->clearAudioCallbacks();
             callbacks.clear();
-            free(queued_inputs);
+            if (queued_inputs)
+                free(queued_inputs);
         }
 
         AudioIODevice* audio() { return audio_; }

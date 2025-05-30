@@ -11,11 +11,11 @@
 #include <cpptrace/from_current.hpp>
 #include <iostream>
 
-std::unique_ptr<remidy::EventLoop> eventLoop{};
 
 using namespace remidy::webui::saucer_wrapper;
 
 int runMain(int argc, char** argv) {
+    std::unique_ptr<remidy::EventLoop> eventLoop{};
     std::filesystem::path execDir{argv[0]};
     std::filesystem::current_path(execDir.parent_path());
     std::filesystem::path webDir{absolute(execDir.parent_path().append("web"))};
