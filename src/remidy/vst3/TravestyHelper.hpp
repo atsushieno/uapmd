@@ -75,9 +75,15 @@ namespace remidy_vst3 {
         v3_result (V3_API* notify_program_list_change)(void* self, v3_program_list_id listId, int32_t programIndex);
     };
     struct v3_plug_interface_support {
+#ifndef __cplusplus
+        struct v3_funknown;
+#endif
         v3_result (V3_API* is_plug_interface_supported)(void* self, const v3_tuid iid);
     };
     struct v3_note_expression_controller {
+#ifndef __cplusplus
+        struct v3_funknown;
+#endif
         int32_t (V3_API* get_note_expression_count)(void* self, int32_t busIndex, int16_t channel);
         v3_result (V3_API* get_note_expression_info)(void* self, int32_t busIndex, int16_t channel, int32_t noteExpressionIndex, v3_note_expression_type_info& info);
         v3_result (V3_API* get_note_expression_string_by_value)(int32_t busIndex, int16_t channel, v3_note_expression_type_id id, v3_note_expression_value valueNormalized, v3_str_128 string);
@@ -85,6 +91,9 @@ namespace remidy_vst3 {
         v3_result (V3_API* get_note_expression_value_by_string)(int32_t busIndex, int16_t channel, v3_note_expression_type_id id, const v3_str_128 string, v3_note_expression_value &valueNormalized);
     };
     struct v3_program_list_data {
+#ifndef __cplusplus
+        struct v3_funknown;
+#endif
         v3_result (V3_API* program_data_supported)(void* self, v3_program_list_id listId);
         v3_result (V3_API* get_program_data)(void* self, v3_program_list_id listId, int32_t programIndex, v3_bstream* data);
         v3_result (V3_API* set_program_data)(void* self, v3_program_list_id listId, int32_t programIndex, v3_bstream* data);
