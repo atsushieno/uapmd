@@ -5,11 +5,13 @@ CPMAddPackage(
         NAME           libremidi
         GIT_TAG        v5.2.0
         GIT_REPOSITORY https://github.com/celtera/libremidi
+        EXCLUDE_FROM_ALL
 )
 CPMAddPackage(
         NAME           concurrentqueue
         GIT_TAG        2f09da73d22a47dc8a89cdd4fc4c3bfae07f4284
         GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
+        EXCLUDE_FROM_ALL
 )
 
 if(UNIX AND NOT APPLE)

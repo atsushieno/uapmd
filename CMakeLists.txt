@@ -10,6 +10,7 @@ CPMAddPackage(
         NAME           cmidi2
         GIT_REPOSITORY https://github.com/atsushieno/cmidi2
         GIT_TAG        0.7
+        EXCLUDE_FROM_ALL
 )
 
 cmake_path(SET CPPLOCATE_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/external/cpplocate-remove-pthread.patch")
@@ -20,6 +21,7 @@ FetchContent_Declare(cpplocate
         # required to mix CPP and Swift in the same project...
         PATCH_COMMAND        git apply "${CPPLOCATE_PATCH_FILE}"
         UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
+        EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(cpplocate)
 

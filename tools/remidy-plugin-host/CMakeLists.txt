@@ -19,6 +19,7 @@ endif()
 FetchContent_Declare(saucer
         GIT_TAG        41e9ce4914261e8f71cfab960d38d6bc76a0e2ec
         GIT_REPOSITORY "https://github.com/saucer/saucer"
+        EXCLUDE_FROM_ALL
         #PATCH_COMMAND  git apply "${SAUCER_PATCH_FILE}"
         #UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
 )
