@@ -174,9 +174,12 @@ namespace remidy_vst3 {
             return -4;
 #else
         auto moduleEntry = (vst3_module_entry_func) dlsym(module, "ModuleEntry");
-        if (!errno)
+        auto err = dlerror();
+        if (!err) {
             dlsym(module, "ModuleExit"); // check this in prior.
-        if (errno)
+            err = dlerror();
+        }
+        if (err)
             return errno;
         moduleEntry(module);
 #endif
