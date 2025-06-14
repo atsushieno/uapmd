@@ -311,17 +311,18 @@ namespace remidy {
 
     // Loader helpers
 
-    void PluginFormatVST3::Impl::forEachPlugin(std::filesystem::path &vst3Dir,
+    void PluginFormatVST3::Impl::forEachPlugin(std::filesystem::path &vst3Path,
                                                const std::function<void(void *module, IPluginFactory *factory,
                                                                         PluginClassInfo &info)> &func,
                                                const std::function<void(void *module)> &cleanup
     ) {
         // JUCE seems to do this, not sure if it is required (not sure if this point is correct either).
         auto savedPath = std::filesystem::current_path();
-        std::filesystem::current_path(vst3Dir);
+        if (is_directory(vst3Path))
+            std::filesystem::current_path(vst3Path);
 
         bool loadedAsNew;
-        auto module = this->library_pool.loadOrAddReference(vst3Dir, &loadedAsNew);
+        auto module = this->library_pool.loadOrAddReference(vst3Path, &loadedAsNew);
 
         if (module) {
             auto factory = getFactoryFromLibrary(module);
@@ -341,15 +342,15 @@ namespace remidy {
                         std::string name = std::string{cls.name}.substr(0, strlen(cls.name));
                         std::string vendor = std::string{fInfo.vendor}.substr(0, strlen(fInfo.vendor));
                         std::string url = std::string{fInfo.url}.substr(0, strlen(fInfo.url));
-                        PluginClassInfo info(vst3Dir, vendor, url, name, cls.class_id);
+                        PluginClassInfo info(vst3Path, vendor, url, name, cls.class_id);
                         func(module, factory, info);
                     }
                 } else
-                    logger->logError("failed to retrieve class info at %d, in %s", i, vst3Dir.c_str());
+                    logger->logError("failed to retrieve class info at %d, in %s", i, vst3Path.c_str());
             }
             cleanup(module);
         } else
-            logger->logError("Could not load the library from bundle: %s", vst3Dir.c_str());
+            logger->logError("Could not load the library from bundle: %s", vst3Path.c_str());
 
         std::filesystem::current_path(savedPath);
     }

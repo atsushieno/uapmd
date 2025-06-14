@@ -71,7 +71,7 @@ namespace remidy {
         PluginExtensibility<PluginFormat>* getExtensibility();
         PluginScanning* scanning() { return &scanning_; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
-        void forEachPlugin(std::filesystem::path& vst3Dir,
+        void forEachPlugin(std::filesystem::path& vst3Path,
             const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
             const std::function<void(void* module)>& cleanup
         );

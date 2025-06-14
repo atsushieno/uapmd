@@ -76,16 +76,18 @@ namespace remidy_vst3 {
     typedef bool (*vst3_exit_dll_func)();
 
     std::filesystem::path getPluginCodeFile(std::filesystem::path& pluginPath) {
+        if (!is_directory(pluginPath)) // self-contained plugin DLL
+            return pluginPath;
         // The ABI subdirectory name is VST3 specific. Therefore, this function is only usable with VST3.
         // But similar code structure would be usable with other plugin formats.
 
         // https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Format.html
 #if _WIN32
-#if __x86_64__
+#if defined(__x86_64) || defined(__x86_64__) || defined(__amd64) || defined(_M_X64) || defined(__amd64__) || defined(_M_AMD64)
         auto abiDirName = "x86_64-win";
-#elif __x86_32__
+#elif defined(__i386) || defined(__i386__) || defined(_M_IX86) || defined(i386)  || defined(_M_IX86) || defined(_X86_) || defined(__THW_INTEL)
         auto abiDirName = "x86_32-win";
-#elif __aarch64__
+#elif defined(__ARM64_ARCH_8__) || defined(__aarch64__) || defined(__ARMv8__) || defined(__ARMv8_A__) || defined(_M_ARM64)
         // FIXME: there are also arm64-win and arm64x-win
         auto abiDirName = "arm64ec-win";
 #else // at this state we assume the only remaining platform is arm32.

@@ -6,12 +6,12 @@ set(CMAKE_CXX_STANDARD 23)
 
 include(cmake/CPM.cmake)
 
-CPMAddPackage(
-        NAME           cmidi2
+FetchContent_Declare(cmidi2
         GIT_REPOSITORY https://github.com/atsushieno/cmidi2
         GIT_TAG        0.7
         EXCLUDE_FROM_ALL
 )
+FetchContent_MakeAvailable(cmidi2)
 
 cmake_path(SET CPPLOCATE_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/external/cpplocate-remove-pthread.patch")
 FetchContent_Declare(cpplocate
