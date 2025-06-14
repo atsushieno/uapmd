@@ -150,12 +150,12 @@ namespace remidy {
 #endif
     }
 
-    StatusCode PluginFormatCLAP::Impl::doLoad(std::filesystem::path &vst3Dir, void **module) const {
-        *module = loadModuleFromPath(vst3Dir);
+    StatusCode PluginFormatCLAP::Impl::doLoad(std::filesystem::path &clapPath, void **module) const {
+        *module = loadModuleFromPath(clapPath);
         return *module == nullptr ? StatusCode::FAILED_TO_INSTANTIATE : StatusCode::OK;
     };
 
-    StatusCode PluginFormatCLAP::Impl::doUnload(std::filesystem::path &vst3Dir, void *module) {
+    StatusCode PluginFormatCLAP::Impl::doUnload(std::filesystem::path &clapPath, void *module) {
         auto entrypoint = remidy_clap::getFactoryFromLibrary(module);
         if (entrypoint && entrypoint->deinit)
             entrypoint->deinit();
@@ -173,44 +173,45 @@ namespace remidy {
         return &extensibility;
     }
 
-    void PluginFormatCLAP::Impl::forEachPlugin(std::filesystem::path& clapDir,
+    void PluginFormatCLAP::Impl::forEachPlugin(std::filesystem::path& clapPath,
             const std::function<void(void* module, clap_plugin_factory_t* factory, const clap_plugin_descriptor_t* info)>& func,
             const std::function<void(void* module)>& cleanup // it should unload the library only when it is not kept alive e.g. scanning plugins.
         ) {
         // JUCE seems to do this, not sure if it is required (not sure if this point is correct either).
         auto savedPath = std::filesystem::current_path();
-        std::filesystem::current_path(clapDir);
+        if (is_directory(clapPath))
+            std::filesystem::current_path(clapPath);
 
         bool loadedAsNew;
-        auto module = this->library_pool.loadOrAddReference(clapDir, &loadedAsNew);
+        auto module = this->library_pool.loadOrAddReference(clapPath, &loadedAsNew);
 
         if (module) {
             auto entrypoint = remidy_clap::getFactoryFromLibrary(module);
             if (!entrypoint) {
-                getLogger()->logError("clap_entry was not found in: %s", clapDir.c_str());
+                getLogger()->logError("clap_entry was not found in: %s", clapPath.c_str());
                 cleanup(module);
                 return;
             }
             if (loadedAsNew) {
                 if (!entrypoint->init) {
-                    getLogger()->logError("clap_entry.init() was not found in: %s", clapDir.c_str());
+                    getLogger()->logError("clap_entry.init() was not found in: %s", clapPath.c_str());
                     cleanup(module);
                     return;
                 }
-                if (!entrypoint->init(clapDir.string().c_str())) {
-                    getLogger()->logError("clap_entry.init() returned false in: %s", clapDir.c_str());
+                if (!entrypoint->init(clapPath.string().c_str())) {
+                    getLogger()->logError("clap_entry.init() returned false in: %s", clapPath.c_str());
                     cleanup(module);
                     return;
                 }
             }
             if (!entrypoint->get_factory) {
-                getLogger()->logError("clap_entry.get_factory() was not found in: %s", clapDir.c_str());
+                getLogger()->logError("clap_entry.get_factory() was not found in: %s", clapPath.c_str());
                 cleanup(module);
                 return;
             }
             auto factory = (clap_plugin_factory_t*) entrypoint->get_factory(CLAP_PLUGIN_FACTORY_ID);
             if (!factory) {
-                getLogger()->logError("clap_entry.get_factory() returned nothing: %s", clapDir.c_str());
+                getLogger()->logError("clap_entry.get_factory() returned nothing: %s", clapPath.c_str());
                 cleanup(module);
                 return;
             }
@@ -223,7 +224,7 @@ namespace remidy {
             cleanup(module);
         }
         else
-            logger->logError("Could not load the library from bundle: %s", clapDir.c_str());
+            logger->logError("Could not load the library from bundle: %s", clapPath.c_str());
 
         std::filesystem::current_path(savedPath);
     }

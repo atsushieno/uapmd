@@ -45,7 +45,7 @@ class WebViewProxySaucer : public WebViewProxy {
             auto f = [x](const std::string& arg) {
                 return x(arg);
             };
-            webview.expose(jsName, std::move(f),  saucer::launch::async);
+            webview.expose(jsName, std::move(f));
             evalJS(std::format("{} = saucer.exposed.{}", jsName, jsName));
         }
 #if 1

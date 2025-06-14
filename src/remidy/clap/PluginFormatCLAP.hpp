@@ -34,10 +34,10 @@ namespace remidy {
         Extensibility extensibility;
         PluginScannerCLAP scanning_;
 
-        StatusCode doLoad(std::filesystem::path &clapDir, void** module) const;
-        static StatusCode doUnload(std::filesystem::path &clapDir, void* module);
-        std::function<StatusCode(std::filesystem::path &clapDir, void** module)> loadFunc;
-        std::function<StatusCode(std::filesystem::path &clapDir, void* module)> unloadFunc;
+        StatusCode doLoad(std::filesystem::path &clapPath, void** module) const;
+        static StatusCode doUnload(std::filesystem::path &clapPath, void* module);
+        std::function<StatusCode(std::filesystem::path &clapPath, void** module)> loadFunc;
+        std::function<StatusCode(std::filesystem::path &clapPath, void* module)> unloadFunc;
 
         PluginBundlePool library_pool;
 

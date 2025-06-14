@@ -17,10 +17,10 @@ else ()
     cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-linux.patch")
 endif()
 FetchContent_Declare(saucer
-        GIT_TAG        24ec76e09ffe26287d7ac3978dce95446e924625
+        GIT_TAG        41e9ce4914261e8f71cfab960d38d6bc76a0e2ec
         GIT_REPOSITORY "https://github.com/saucer/saucer"
-        PATCH_COMMAND  git apply "${SAUCER_PATCH_FILE}"
-        UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
+        #PATCH_COMMAND  git apply "${SAUCER_PATCH_FILE}"
+        #UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
 )
 FetchContent_MakeAvailable(saucer)
 
