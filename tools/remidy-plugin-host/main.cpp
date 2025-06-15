@@ -40,7 +40,7 @@ int runMain(int argc, char** argv) {
     uapmd::registerPluginInstanceControlFeatures(proxy);
     uapmd::registerAudioPlayerManagerFeatures(proxy);
 
-    proxy.navigateToLocalFile(webDir.append("index.html").string());
+    proxy.navigateToLocalFile("index.html");
 
     // Note that they are not ready yet even when a page is completely loaded (DOMContentLoaded).
     // For example, JS `eval` seem to be asynchronously executed in saucer (probably not just saucer).
