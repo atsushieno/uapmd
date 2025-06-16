@@ -57,9 +57,15 @@ target_sources(remidy-plugin-host PRIVATE
 )
 
 # Prepare web content files
+if (WIN32)
+    set (APP_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${REMIDY_BUILD_CONFIG})
+else ()
+    set (APP_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+endif ()
+
 add_custom_target(build-web-content
         npm install
-        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/web
+        WORKING_DIRECTORY ${APP_BINARY_DIR}/web
 )
 add_dependencies(remidy-plugin-host build-web-content)
 
@@ -67,14 +73,15 @@ add_dependencies(remidy-plugin-host build-web-content)
 if (0)
 file(CREATE_LINK
         ${CMAKE_CURRENT_SOURCE_DIR}/web
-        ${CMAKE_CURRENT_BINARY_DIR}/web
+        ${APP_BINARY_DIR}/web
         COPY_ON_ERROR
         SYMBOLIC
 )
 else ()
-    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/web)
+    message("Copying ${CMAKE_CURRENT_SOURCE_DIR}/web to ${APP_BINARY_DIR}/web ...")
+    file(MAKE_DIRECTORY ${APP_BINARY_DIR}/web)
     file(COPY
             ${CMAKE_CURRENT_SOURCE_DIR}/web
-            DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/
+            DESTINATION ${APP_BINARY_DIR}/
     )
 endif ()
