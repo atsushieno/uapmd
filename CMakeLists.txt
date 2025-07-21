@@ -25,6 +25,13 @@ FetchContent_Declare(cpplocate
 )
 FetchContent_MakeAvailable(cpplocate)
 
+FetchContent_Declare(midicci
+        NAME            midicci
+        GIT_TAG         d85ad19
+        GIT_REPOSITORY  https://github.com/atsushieno/midicci
+)
+FetchContent_MakeAvailable(midicci)
+
 #add_compile_options("-fsanitize=address")
 #link_libraries("-fsanitize=address")
 #add_link_options(-fPIC)

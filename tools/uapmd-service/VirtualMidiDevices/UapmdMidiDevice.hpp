@@ -3,6 +3,7 @@
 
 #include "uapmd/uapmd.hpp"
 #include "PlatformVirtualMidiDevice.hpp"
+#include "midicci/midicci.hpp"
 
 namespace uapmd {
 
@@ -11,6 +12,9 @@ namespace uapmd {
 
         std::unique_ptr<PlatformVirtualMidiDevice> platformDevice{};
         std::unique_ptr<AudioPluginSequencer> sequencer{};
+        std::map<uint32_t, std::unique_ptr<midicci::musicdevice::MidiCISession>> ci_sessions{};
+        std::vector<midicci::musicdevice::MidiInputCallback> ci_input_forwarders{};
+
         uapmd_status_t maybeLoadConfiguration(std::string& portId);
         uapmd_status_t preparePlugins();
 

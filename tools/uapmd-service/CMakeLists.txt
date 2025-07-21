@@ -6,6 +6,7 @@ target_include_directories(uapmd-service PRIVATE
         ../../external/choc
         ../../external/libremidi/include
         ../../external/cpplocate/source/cpplocate/include
+        ${midicci_SOURCE_DIR}/include
         ${cmidi2_SOURCE_DIR}
 )
 
@@ -23,6 +24,7 @@ target_link_libraries(uapmd-service PRIVATE
         cpplocate::cpplocate
         cpptrace::cpptrace
         libremidi::libremidi
+        midicci
         ${uapmd-service_LIBS_PLAT}
 
 )
