@@ -1,6 +1,6 @@
 
 #include "UapmdMidiDevice.hpp"
-#include "remidy-tooling/PluginScanTool.hpp"
+#include <iostream>
 
 using namespace midicci::commonproperties;
 

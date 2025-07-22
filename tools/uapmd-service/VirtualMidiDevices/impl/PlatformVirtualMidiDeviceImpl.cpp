@@ -58,7 +58,11 @@ namespace uapmd {
         receiver_user_data.erase(receiver_user_data.begin() + index);
     }
 
-    void PlatformVirtualMidiDevice::Impl::send(uapmd_ump_t *messages, size_t length, uapmd_timestamp_t timestamp) {
+    // FIXME: It is kind of awkward to receive UMP bytes in native order and send it as is.
+    // We might need to fix this later...
+    void PlatformVirtualMidiDevice::Impl::send(uapmd_ump_t *messages, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+        libremidi_midi_out_schedule_ump(midiOut, timestamp, reinterpret_cast<libremidi_midi2_symbol *>(messages), sizeInBytes);
+        //libremidi_midi_out_schedule_message(midiOut, timestamp, reinterpret_cast<libremidi_midi1_symbol *>(messages), sizeInBytes);
     }
 
 }
