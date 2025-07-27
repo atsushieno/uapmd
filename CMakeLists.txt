@@ -27,7 +27,7 @@ FetchContent_MakeAvailable(cpplocate)
 
 FetchContent_Declare(midicci
         NAME            midicci
-        GIT_TAG         2c6d9b4
+        GIT_TAG         a587483
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
 )
 FetchContent_MakeAvailable(midicci)

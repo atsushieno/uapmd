@@ -23,7 +23,6 @@ namespace uapmd {
                 sequencer->instantiatePlugin(entry->format(), entry->pluginId(), [&](int instanceId, std::string error) {
                     Logger::global()->logInfo("addSimpleTrack result: %d %s", instanceId, error.c_str());
 
-                    // FIXME: we will have to store this somewhere otherwise it will vanish after this function/lambda.
                     midicci::MidiCIDeviceConfiguration ci_config{
                             midicci::DEFAULT_RECEIVABLE_MAX_SYSEX_SIZE,
                             midicci::DEFAULT_MAX_PROPERTY_CHUNK_SIZE,
@@ -40,12 +39,17 @@ namespace uapmd {
                         platformDevice->send((uapmd_ump_t*) (data + offset), length, (uapmd_timestamp_t) timestamp);
                     };
                     midicci::musicdevice::MidiCISessionSource source{midicci::musicdevice::MidiTransportProtocol::UMP, input_listener_adder, sender};
-                    auto ciSession = create_midi_ci_session(source, muid, ci_config, [&](std::string msg, bool wtf) {
-                        std::cerr << "[UAPMD LOG] " << msg << std::endl;
+                    auto ciSession = create_midi_ci_session(source, muid, std::move(ci_config), [&](std::string msg, bool outgoing) {
+                        std::cerr << "[UAPMD LOG " << (outgoing ? "OUT] " : "In] ") << msg << std::endl;
                     });
                     auto& ciDevice = ciSession->get_device();
 
                     // configure parameter list
+                    ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::allCtrlListMetadata));
+                    ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::chCtrlListMetadata));
+                    ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::programListMetadata));
+                    ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateListMetadata));
+                    ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateMetadata));
                     std::vector<commonproperties::MidiCIControl> allCtrlList{};
                     auto parameterList = sequencer->getParameterList(instanceId);
                     for (auto& p : parameterList) {
