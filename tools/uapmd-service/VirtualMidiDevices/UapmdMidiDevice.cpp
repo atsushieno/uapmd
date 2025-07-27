@@ -40,7 +40,9 @@ namespace uapmd {
                         platformDevice->send((uapmd_ump_t*) (data + offset), length, (uapmd_timestamp_t) timestamp);
                     };
                     midicci::musicdevice::MidiCISessionSource source{midicci::musicdevice::MidiTransportProtocol::UMP, input_listener_adder, sender};
-                    auto ciSession = create_midi_ci_session(source, muid, ci_config);
+                    auto ciSession = create_midi_ci_session(source, muid, ci_config, [&](std::string msg, bool wtf) {
+                        std::cerr << "[UAPMD LOG] " << msg << std::endl;
+                    });
                     auto& ciDevice = ciSession->get_device();
 
                     // configure parameter list
