@@ -44,3 +44,9 @@ VST3, AU, and CLAP supports per-note parameter controllers.
 It should be noted that per-note controllers are defined totally differently from normal parameters. VST3, AU, and MIDI 2.0 UMP define them as such. The only exception is CLAP, which defines parameters in unified way. We return the same list of per-note parameters as normal parameters.
 
 The way how VST3 and AU support per-note controllers (parameters) is different from CLAP also in that they may return different set of parameter definitions *for each channel* (also may differ from "global").  AU even goes further and they may return different set of parameter IDs *for each note*. This makes constructing static list of parameters at configuring connections almost impossible.
+
+## Extraneous CC roundtrip to parameters
+
+One of the problem mapping from parameters to Assignable Controllers is that VST3 parameters are often mapped *from* MIDI CCs for each channel, due to fundamental VST3 design problem that does not support MIDI messages.
+
+If we map every single parameter to Assignable Controller, it feels extraneous to further map them again. But CC-to-parameter mappings happen at plugin side, while Assignable Controllers to parameter mappings happen at the host side. We cannot guess which parameter should map to which CC to send (while we can "guess" by parameter names).
