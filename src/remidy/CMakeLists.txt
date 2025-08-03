@@ -141,6 +141,7 @@ target_sources(remidy PRIVATE
         clap/PluginInstanceCLAP.Buses.cpp
         clap/PluginInstanceCLAP.Events.cpp
         clap/PluginInstanceCLAP.Parameters.cpp
+        clap/PluginInstanceCLAP.States.cpp
 
         AudioProcessContext.cpp
         PluginInstance.cpp

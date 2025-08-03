@@ -147,6 +147,16 @@ namespace remidy {
             void inspectBuses() override;
         };
 
+        class PluginStatesVST3 : public PluginStateSupport {
+            PluginInstanceVST3* owner;
+
+        public:
+            explicit PluginStatesVST3(PluginInstanceVST3* owner) : owner(owner) {}
+
+            void getState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+            void setState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+        };
+
         PluginFormatVST3::Impl* owner;
         void* module;
         IPluginFactory* factory;
@@ -176,6 +186,7 @@ namespace remidy {
         AudioBuses* audio_buses{};
 
         ParameterSupport* _parameters{};
+        PluginStatesVST3* _states{};
 
         VST3UmpInputDispatcher ump_input_dispatcher{this};
 
@@ -209,6 +220,9 @@ namespace remidy {
 
         // parameters
         PluginParameterSupport* parameters() override;
+
+        // states
+        PluginStateSupport* states() override;
     };
 
 }

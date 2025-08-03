@@ -32,6 +32,11 @@ namespace remidy {
         // formats behave unstable.
         virtual PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) = 0;
 
+        // AU, LV2, VST3 (save only component state): true, CLAP: false
+        virtual bool canOmitUiState() = 0;
+        // AU, LV2: true, VST3, CLAP: false
+        virtual bool isStateStructured() = 0;
+
         virtual PluginScanning* scanning() = 0;
 
         // Indicates whether the plugin API requires sample rate at *instantiating*.

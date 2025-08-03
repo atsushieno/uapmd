@@ -22,6 +22,7 @@ remidy::PluginInstanceLV2::~PluginInstanceLV2() {
     delete audio_buses;
 
     delete _parameters;
+    delete _states;
 }
 
 bool getNextAudioPortIndex(remidy_lv2::LV2ImplPluginContext& ctx, const LilvPlugin* plugin, const bool isInput, int32_t& result, int32_t& lv2PortIndex, uint32_t numPorts) {
@@ -162,4 +163,10 @@ remidy::PluginParameterSupport *remidy::PluginInstanceLV2::parameters() {
     if (!_parameters)
         _parameters = new ParameterSupport(this);
     return _parameters;
+}
+
+remidy::PluginStateSupport *remidy::PluginInstanceLV2::states() {
+    if (!_states)
+        _states = new PluginStatesLV2(this);
+    return _states;
 }

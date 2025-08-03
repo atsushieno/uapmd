@@ -144,9 +144,21 @@ namespace remidy {
             void inspectBuses() override;
         };
 
+        class PluginStatesCLAP : public PluginStateSupport {
+            PluginInstanceCLAP* owner;
+            clap_plugin_state_context_t* state_context_ext;
+
+        public:
+            explicit PluginStatesCLAP(PluginInstanceCLAP* owner);
+
+            void getState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+            void setState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+        };
+
         clap::helpers::EventList events{};
         AudioBuses* audio_buses{};
         ParameterSupport* _parameters{};
+        PluginStateSupport* _states{};
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
@@ -180,6 +192,9 @@ namespace remidy {
 
         // parameters
         PluginParameterSupport* parameters() override;
+
+        // states
+        PluginStateSupport* states() override;
     };
 }
 

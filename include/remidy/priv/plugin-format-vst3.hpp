@@ -26,6 +26,8 @@ namespace remidy {
         PluginScanning* scanning() override;
         PluginExtensibility<PluginFormat>* getExtensibility() override;
         PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return PluginUIThreadRequirement::AllNonAudioOperation; }
+        bool canOmitUiState() override { return true; }
+        bool isStateStructured() override { return false; }
 
         void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;
 

@@ -182,4 +182,10 @@ namespace remidy {
             _parameters = new ParameterSupport(this);
         return _parameters;
     }
+
+    PluginStateSupport *PluginInstanceCLAP::states() {
+        if (!_states)
+            _states = new PluginStatesCLAP(this);
+        return _states;
+    }
 }

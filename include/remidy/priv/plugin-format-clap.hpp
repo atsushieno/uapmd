@@ -20,6 +20,8 @@ namespace remidy {
         PluginExtensibility<PluginFormat>* getExtensibility() override;
         // FIXME: CLAP is not that strict. We need to check through the entire API and add other flags than `Parameter`.
         PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return PluginUIThreadRequirement::AllNonAudioOperation; }
+        bool canOmitUiState() override { return false; }
+        bool isStateStructured() override { return false; }
 
         void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;
 

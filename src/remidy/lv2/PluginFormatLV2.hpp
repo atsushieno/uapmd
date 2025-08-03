@@ -187,6 +187,16 @@ namespace remidy {
             void inspectBuses() override;
         };
 
+        class PluginStatesLV2 : public PluginStateSupport {
+            PluginInstanceLV2* owner;
+
+        public:
+            explicit PluginStatesLV2(PluginInstanceLV2* owner) : owner(owner) {}
+
+            void getState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+            void setState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+        };
+
         PluginFormatLV2::Impl *formatImpl;
         int32_t sample_rate;
         const LilvPlugin *plugin;
@@ -214,6 +224,7 @@ namespace remidy {
         AudioBuses* audio_buses{};
 
         ParameterSupport *_parameters{};
+        PluginStateSupport *_states{};
 
         LV2UmpInputDispatcher ump_input_dispatcher{this};
 
@@ -253,5 +264,8 @@ namespace remidy {
 
         // parameters
         PluginParameterSupport *parameters() override;
+
+        // states
+        PluginStateSupport *states() override;
     };
 }

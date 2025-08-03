@@ -75,6 +75,16 @@ namespace remidy {
             void inspectBuses() override;
         };
 
+        class PluginStatesAU : public PluginStateSupport {
+            AudioPluginInstanceAU* owner;
+
+        public:
+            explicit PluginStatesAU(AudioPluginInstanceAU* owner) : owner(owner) {}
+
+            void getState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+            void setState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+        };
+
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
         static OSStatus audioInputRenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) {
             return ((AudioPluginInstanceAU *)inRefCon)->audioInputRenderCallback(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, ioData);
@@ -91,6 +101,7 @@ namespace remidy {
         AudioContentType audio_content_type{AudioContentType::Float32};
 
         ParameterSupport* _parameters{nullptr};
+        PluginStatesAU* _states{};
         AudioBuses* audio_buses{};
         AURenderCallbackStruct audio_render_callback;
         AUUmpInputDispatcher ump_input_dispatcher{this};
@@ -130,6 +141,11 @@ namespace remidy {
         PluginParameterSupport* parameters() override {
             if (!_parameters) _parameters = new ParameterSupport(this);
             return _parameters;
+        }
+
+        PluginStatesAU* states() override {
+            if (!_states) _states = new PluginStatesAU(this);
+            return _states;
         }
 
         AudioBuses* audioBuses() override { return audio_buses; }

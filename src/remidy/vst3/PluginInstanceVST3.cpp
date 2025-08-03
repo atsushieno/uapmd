@@ -120,6 +120,7 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
     owner->unrefLibrary(info());
 
     delete _parameters;
+    delete _states;
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::configure(ConfigurationRequest &configuration) {
@@ -256,4 +257,10 @@ remidy::PluginParameterSupport* remidy::PluginInstanceVST3::parameters() {
     if (!_parameters)
         _parameters = new ParameterSupport(this);
     return _parameters;
+}
+
+remidy::PluginStateSupport *remidy::PluginInstanceVST3::states() {
+    if (!_states)
+        _states = new PluginStatesVST3(this);
+    return _states;
 }

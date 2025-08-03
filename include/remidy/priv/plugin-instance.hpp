@@ -10,6 +10,7 @@ namespace remidy {
         None = 0,
         InstanceControl = 1,
         Parameters = 2,
+        State = 4,
         // CLAP and VST3, by default (probably good plugins can be excluded out to switch to None)
         // Strictly speaking, CLAP does not require [main-thread] to everything, but it's close enough to label as everything.
         AllNonAudioOperation = 0xFFFFFFFF
@@ -74,6 +75,8 @@ namespace remidy {
         virtual PluginAudioBuses* audioBuses() = 0;
 
         virtual PluginParameterSupport* parameters() = 0;
+
+        virtual PluginStateSupport* states() = 0;
     };
 
 }

@@ -354,4 +354,16 @@ namespace remidy {
 
         std::filesystem::current_path(savedPath);
     }
+
+    void PluginInstanceVST3::PluginStatesVST3::getState(std::vector<uint8_t> &state, void *statePartId,
+                                                        PluginStateSupport::StateContextType stateContextType,
+                                                        bool includeUiState) {
+        throw std::runtime_error("Not implemented");
+    }
+
+    void PluginInstanceVST3::PluginStatesVST3::setState(std::vector<uint8_t> &state, void *statePartId,
+                                                        PluginStateSupport::StateContextType stateContextType,
+                                                        bool includeUiState) {
+        throw std::runtime_error("Not implemented");
+    }
 }
