@@ -94,6 +94,7 @@ if (APPLE)
             au/PluginInstanceAU.Buses.mm
             au/PluginInstanceAU.Events.mm
             au/PluginInstanceAU.Parameters.mm
+            au/PluginInstanceAU.States.mm
     )
 endif ()
 
