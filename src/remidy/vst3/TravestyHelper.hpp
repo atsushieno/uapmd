@@ -184,6 +184,9 @@ namespace remidy_vst3 {
     struct IMidiMappingVTable : FUnknownVTable {
         v3_midi_mapping midi_mapping{nullptr};
     };
+    struct IBStreamVTable : FUnknownVTable {
+        v3_bstream stream{nullptr};
+    };
 
     struct FUnknown {
         FUnknownVTable *vtable{};
@@ -263,6 +266,9 @@ namespace remidy_vst3 {
     };
     struct IMidiMapping {
         struct IMidiMappingVTable *vtable{};
+    };
+    struct IBStream {
+        struct IBStreamVTable *vtable{};
     };
 
     IPluginFactory* getFactoryFromLibrary(void* module);

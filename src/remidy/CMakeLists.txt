@@ -121,8 +121,9 @@ target_sources(remidy PRIVATE
         vst3/PluginFormatVST3.cpp
         vst3/PluginInstanceVST3.cpp
         vst3/PluginInstanceVST3.Buses.cpp
-        vst3/PluginInstanceVST3.Parameters.cpp
         vst3/PluginInstanceVST3.Events.cpp
+        vst3/PluginInstanceVST3.Parameters.cpp
+        vst3/PluginInstanceVST3.States.cpp
 
         au/AUv2Helper.cpp
         ${remidy_OBJC_SOURCES}

@@ -288,6 +288,78 @@ namespace remidy_vst3 {
         }
     };
 
+    class VectorStream : public IBStream {
+        IBStreamVTable impl;
+        IMPLEMENT_FUNKNOWN_REFS(VectorStream)
+        std::vector<uint8_t>& data;
+        int32_t offset{0};
+
+        static v3_result read(void *self, void* buffer, int32_t num_bytes, int32_t* bytes_read) {
+            auto v = ((VectorStream*) self);
+            auto data = v->data;
+            auto size = std::min(static_cast<int32_t>(data.size() - v->offset), num_bytes);
+            memcpy(buffer, data.data() + v->offset, size);
+            if (bytes_read)
+                *bytes_read = size;
+            return V3_OK;
+        }
+
+        static v3_result write(void *self, void* buffer, int32_t num_bytes, int32_t* bytes_written) {
+            auto v = ((VectorStream*) self);
+            auto data = v->data;
+            auto size = std::min(static_cast<int32_t>(data.size() - v->offset), num_bytes);
+            memcpy(data.data() + v->offset, buffer, size);
+            if (bytes_written)
+                *bytes_written = size;
+            return V3_OK;
+        }
+
+        static v3_result seek(void *self, int64_t pos, int32_t seek_mode, int64_t* result) {
+            auto v = ((VectorStream*) self);
+            switch (seek_mode) {
+                case v3_seek_mode::V3_SEEK_SET:
+                    if (pos >= v->data.size())
+                        return V3_INVALID_ARG;
+                    v->offset = pos;
+                    break;
+                case v3_seek_mode::V3_SEEK_CUR:
+                    if (v->offset + pos >= v->data.size())
+                        return V3_INVALID_ARG;
+                    v->offset += pos;
+                    break;
+                case v3_seek_mode::V3_SEEK_END:
+                    if (pos > v->data.size())
+                        return V3_INVALID_ARG;
+                    v->offset = v->data.size() - pos;
+                    break;
+            }
+            if (result)
+                *result = v->offset;
+            return V3_OK;
+        }
+
+        static v3_result tell(void * self, int64_t *pos) {
+            *pos = ((VectorStream*) self)->offset;
+            return V3_OK;
+        }
+
+    public:
+        explicit VectorStream(std::vector<uint8_t>& data) : data(data) {
+            this->vtable = &impl;
+            auto& vtable = impl;
+            FILL_FUNKNOWN_VTABLE
+            vtable.stream.read = read;
+            vtable.stream.write = write;
+            vtable.stream.seek = seek;
+            vtable.stream.tell = tell;
+        }
+
+        v3_result queryInterface(const v3_tuid iid, void **obj) {
+            std::cerr << "WHY querying over IBStream?" << std::endl;
+            return V3_NO_INTERFACE;
+        }
+    };
+
     // FIXME: we have to redesign any code that uses this class.
     // It meant to be a singleton, but apparently it is rather per-instance facade for hosting feature.
     // For example, HostParameterChanges must be per-instance, but the singleton instance is passed to
