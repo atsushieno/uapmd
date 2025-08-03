@@ -122,17 +122,5 @@ namespace remidy {
     PluginFormatLV2::Extensibility::Extensibility(PluginFormat &format) :
         PluginExtensibility(format) {
     }
-
-    void PluginInstanceLV2::PluginStatesLV2::getState(std::vector<uint8_t> &state,
-                                                      PluginStateSupport::StateContextType stateContextType,
-                                                      bool includeUiState) {
-        throw std::runtime_error("Not implemented");
-    }
-
-    void PluginInstanceLV2::PluginStatesLV2::setState(std::vector<uint8_t> &state,
-                                                      PluginStateSupport::StateContextType stateContextType,
-                                                      bool includeUiState) {
-        throw std::runtime_error("Not implemented");
-    }
 }
 

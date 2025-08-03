@@ -190,6 +190,8 @@ namespace remidy {
         class PluginStatesLV2 : public PluginStateSupport {
             PluginInstanceLV2* owner;
 
+            static const void* get_state_value(const char *port_symbol, void *user_data, uint32_t *size, uint32_t *type);
+
         public:
             explicit PluginStatesLV2(PluginInstanceLV2* owner) : owner(owner) {}
 
@@ -237,6 +239,9 @@ namespace remidy {
         }
         LV2_URID_Map* getLV2UridMapData() {
             return &implContext.statics->features.urid_map_feature_data;
+        }
+        LV2_URID_Unmap* getLV2UridUnmapData() {
+            return &implContext.statics->features.urid_unmap_feature_data;
         }
 
     public:
