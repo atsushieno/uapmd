@@ -8,7 +8,7 @@ namespace remidy {
 
     class PluginStateSupport {
     public:
-        // usable only in LV2 and CLAP. VST3 and AU has no concept for them.
+        // usable only in LV2 and CLAP. VST3 and AU have no concept for them.
         enum class StateContextType {
             Remember, // LV2_STATE_IS_NATIVE
             Copyable, // LV2_STATE_IS_POD
