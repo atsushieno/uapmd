@@ -2,8 +2,19 @@
 
 namespace remidy {
     PluginInstanceCLAP::ParameterSupport::ParameterSupport(PluginInstanceCLAP* owner) : owner(owner) {
-        // FIXME: we have to query parameters asynchronously (if we do that now, remidy-plugin-host fails to retrieve parameters)
-        //EventLoop::runTaskOnMainThread([&] {
+    }
+
+    PluginInstanceCLAP::ParameterSupport::~ParameterSupport() {
+        for (auto p : parameter_defs)
+            delete p;
+        parameter_defs.clear();
+    }
+
+    std::vector<PluginParameter*>& PluginInstanceCLAP::ParameterSupport::parameters() {
+        if (!parameter_defs.empty())
+            return parameter_defs;
+
+        EventLoop::runTaskOnMainThread([&] {
             const auto plugin = owner->plugin;
             params_ext = (clap_plugin_params_t*) plugin->get_extension(plugin, CLAP_EXT_PARAMS);
             for (size_t i = 0, n = params_ext->count(plugin); i < n; i++) {
@@ -15,29 +26,20 @@ namespace remidy {
                 std::string name{info.name};
                 std::string module{info.module};
                 parameter_defs.emplace_back(new PluginParameter(
-                    i,
-                    id,
-                    name,
-                    module,
-                    info.default_value,
-                    info.min_value,
-                    info.max_value,
-                    true,
-                    info.flags & CLAP_PARAM_IS_HIDDEN,
-                    enums));
+                        i,
+                        id,
+                        name,
+                        module,
+                        info.default_value,
+                        info.min_value,
+                        info.max_value,
+                        true,
+                        info.flags & CLAP_PARAM_IS_HIDDEN,
+                        enums));
                 parameter_ids.emplace_back(info.id);
                 parameter_cookies.emplace_back(info.cookie);
             }
-        //});
-    }
-
-    PluginInstanceCLAP::ParameterSupport::~ParameterSupport() {
-        for (auto p : parameter_defs)
-            delete p;
-        parameter_defs.clear();
-    }
-
-    std::vector<PluginParameter*>& PluginInstanceCLAP::ParameterSupport::parameters() {
+        });
         return parameter_defs;
     }
 
