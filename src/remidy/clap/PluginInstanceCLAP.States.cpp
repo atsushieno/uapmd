@@ -35,7 +35,7 @@ namespace remidy {
         }
     }
 
-    void PluginInstanceCLAP::PluginStatesCLAP::getState(std::vector<uint8_t> &state, void *statePartId,
+    void PluginInstanceCLAP::PluginStatesCLAP::getState(std::vector<uint8_t> &state,
                                                         PluginStateSupport::StateContextType stateContextType,
                                                         bool includeUiState) {
         // Note that we cannot support `includeUiState = false` in CLAP...
@@ -47,7 +47,7 @@ namespace remidy {
         });
     }
 
-    void PluginInstanceCLAP::PluginStatesCLAP::setState(std::vector<uint8_t> &state, void *statePartId,
+    void PluginInstanceCLAP::PluginStatesCLAP::setState(std::vector<uint8_t> &state,
                                                         PluginStateSupport::StateContextType stateContextType,
                                                         bool includeUiState) {
         // Note that we cannot support `includeUiState = false` in CLAP...

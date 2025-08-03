@@ -124,13 +124,13 @@ remidy::PluginFormatAU::Extensibility::Extensibility(PluginFormat &format) : Plu
 
 #endif
 
-void remidy::AudioPluginInstanceAU::PluginStatesAU::getState(std::vector<uint8_t> &state, void *statePartId,
+void remidy::AudioPluginInstanceAU::PluginStatesAU::getState(std::vector<uint8_t> &state,
                                                              remidy::PluginStateSupport::StateContextType stateContextType,
                                                              bool includeUiState) {
     throw std::runtime_error("Not implemented");
 }
 
-void remidy::AudioPluginInstanceAU::PluginStatesAU::setState(std::vector<uint8_t> &state, void *statePartId,
+void remidy::AudioPluginInstanceAU::PluginStatesAU::setState(std::vector<uint8_t> &state,
                                                              remidy::PluginStateSupport::StateContextType stateContextType,
                                                              bool includeUiState) {
     throw std::runtime_error("Not implemented");

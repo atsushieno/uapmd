@@ -81,8 +81,8 @@ namespace remidy {
         public:
             explicit PluginStatesAU(AudioPluginInstanceAU* owner) : owner(owner) {}
 
-            void getState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
-            void setState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+            void getState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);

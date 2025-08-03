@@ -193,8 +193,8 @@ namespace remidy {
         public:
             explicit PluginStatesLV2(PluginInstanceLV2* owner) : owner(owner) {}
 
-            void getState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
-            void setState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+            void getState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 
         PluginFormatLV2::Impl *formatImpl;

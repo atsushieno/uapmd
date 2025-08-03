@@ -151,8 +151,8 @@ namespace remidy {
         public:
             explicit PluginStatesCLAP(PluginInstanceCLAP* owner);
 
-            void getState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
-            void setState(std::vector<uint8_t>& state, void* statePartId, StateContextType stateContextType, bool includeUiState) override;
+            void getState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 
         clap::helpers::EventList events{};
