@@ -34,6 +34,8 @@ int runMain(int argc, char** argv) {
 
     remidy::EventLoop::initializeOnUIThread();
 
+    uapmd::AppModel::instantiate();
+
     // Register UI component callbacks to the WebView.
     uapmd::registerPluginViewEntryListFeatures(proxy);
     uapmd::registerAudioDeviceSetupFeatures(proxy);
@@ -55,6 +57,8 @@ int runMain(int argc, char** argv) {
     uapmd::AppModel::instance().sequencer().startAudio();
 
     remidy::EventLoop::start();
+
+    uapmd::AppModel::cleanupInstance();
 
     return EXIT_SUCCESS;
 }

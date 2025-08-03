@@ -9,7 +9,9 @@ namespace uapmd {
         AudioPluginSequencer sequencer_;
 
     public:
+        static void instantiate();
         static AppModel& instance();
+        static void cleanupInstance();
         AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate);
 
         AudioPluginSequencer& sequencer() { return sequencer_; }
