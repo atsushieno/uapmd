@@ -16,6 +16,8 @@ namespace uapmd {
             virtual std::string& pluginId() const = 0;
             virtual uapmd_status_t processAudio(AudioProcessContext &process) = 0;
             virtual std::vector<ParameterMetadata> parameterMetadataList() = 0;
+
+            virtual std::vector<uint8_t> saveState() = 0;
         };
 
         static AudioPluginHostPAL* instance();

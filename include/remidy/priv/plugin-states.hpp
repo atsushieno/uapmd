@@ -18,7 +18,7 @@ namespace remidy {
 
         virtual ~PluginStateSupport() = default;
 
-        virtual void getState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) = 0;
+        virtual std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) = 0;
         virtual void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) = 0;
     };
 

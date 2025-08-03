@@ -190,12 +190,10 @@ namespace remidy {
         class PluginStatesLV2 : public PluginStateSupport {
             PluginInstanceLV2* owner;
 
-            static const void* get_state_value(const char *port_symbol, void *user_data, uint32_t *size, uint32_t *type);
-
         public:
             explicit PluginStatesLV2(PluginInstanceLV2* owner) : owner(owner) {}
 
-            void getState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override;
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 

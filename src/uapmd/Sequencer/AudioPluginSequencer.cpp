@@ -158,3 +158,12 @@ bool uapmd::AudioPluginSequencer::sampleRate(int32_t newSampleRate) {
     sample_rate = newSampleRate;
     return true;
 }
+
+std::vector<uint8_t> uapmd::AudioPluginSequencer::saveState() {
+    std::vector<uint8_t> ret{};
+    for (auto track : this->sequencer.tracks())
+        for (auto plugin : track->graph().plugins())
+            // FIXME: we need some structure
+            ret.append_range(plugin->saveState());
+    return ret;
+}

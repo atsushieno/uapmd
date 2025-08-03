@@ -1,20 +1,18 @@
 #include "PluginFormatAU.hpp"
 
-void remidy::AudioPluginInstanceAU::PluginStatesAU::getState(std::vector<uint8_t> &state,
-                                                             remidy::PluginStateSupport::StateContextType stateContextType,
+std::vector<uint8_t> remidy::AudioPluginInstanceAU::PluginStatesAU::getState(remidy::PluginStateSupport::StateContextType stateContextType,
                                                              bool includeUiState) {
     CFPropertyListRef dict;
     UInt32 size;
     AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &dict, &size);
     CFErrorRef error;
-    CFWriteStreamRef stream = CFWriteStreamCreateWithBuffer(nullptr, state.data(), state.size());
-    if (stream) {
-        CFPropertyListWrite(dict, stream, kCFPropertyListBinaryFormat_v1_0, 0, &error);
-        CFWriteStreamClose(stream);
-    } else {
-        // FIXME: report error
-    }
+    auto data = CFPropertyListCreateData(nullptr, dict, kCFPropertyListBinaryFormat_v1_0, 0, &error);
+    size = CFDataGetLength(data);
+    std::vector<uint8_t> ret{};
+    ret.resize(size);
+    memcpy(ret.data(), CFDataGetBytePtr(data), size);
     CFRelease(dict);
+    return ret;
 }
 
 void remidy::AudioPluginInstanceAU::PluginStatesAU::setState(std::vector<uint8_t> &state,

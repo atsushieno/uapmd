@@ -7,6 +7,7 @@ namespace remidy {
         : owner(owner) {
         const auto plugin = owner->plugin;
         state_context_ext = (clap_plugin_state_context_t*) plugin->get_extension(plugin, CLAP_EXT_STATE_CONTEXT);
+        state_ext = (clap_plugin_state_t*) plugin->get_extension(plugin, CLAP_EXT_STATE);
     }
 
     int64_t remidy_clap_stream_read(const struct clap_istream *stream, void *buffer, uint64_t size) {
@@ -18,9 +19,9 @@ namespace remidy {
 
     int64_t remidy_clap_stream_write(const struct clap_ostream *stream, const void *buffer, uint64_t size) {
         auto src = (std::vector<uint8_t>*) stream->ctx;
-        auto actualSize = std::min((uint64_t) src->size(), size);
-        memcpy(src->data(), buffer, actualSize);
-        return static_cast<int64_t>(actualSize);
+        src->resize(size);
+        memcpy(src->data(), buffer, size);
+        return static_cast<int64_t>(size);
     }
 
     clap_plugin_state_context_type remidyContextTypeToCLAPContextType(PluginStateSupport::StateContextType src) {
@@ -35,16 +36,20 @@ namespace remidy {
         }
     }
 
-    void PluginInstanceCLAP::PluginStatesCLAP::getState(std::vector<uint8_t> &state,
-                                                        PluginStateSupport::StateContextType stateContextType,
-                                                        bool includeUiState) {
+    std::vector<uint8_t> PluginInstanceCLAP::PluginStatesCLAP::getState(
+            PluginStateSupport::StateContextType stateContextType, bool includeUiState) {
+        std::vector<uint8_t> ret{};
         // Note that we cannot support `includeUiState = false` in CLAP...
         EventLoop::runTaskOnMainThread([&] {
             clap_ostream_t stream;
-            stream.ctx = &state;
+            stream.ctx = &ret;
             stream.write = remidy_clap_stream_write;
-            state_context_ext->save(owner->plugin, &stream, remidyContextTypeToCLAPContextType(stateContextType));
+            if (state_context_ext)
+                state_context_ext->save(owner->plugin, &stream, remidyContextTypeToCLAPContextType(stateContextType));
+            else if (state_ext)
+                state_ext->save(owner->plugin, &stream);
         });
+        return ret;
     }
 
     void PluginInstanceCLAP::PluginStatesCLAP::setState(std::vector<uint8_t> &state,
@@ -55,7 +60,10 @@ namespace remidy {
             clap_istream_t stream;
             stream.ctx = &state;
             stream.read = remidy_clap_stream_read;
-            state_context_ext->load(owner->plugin, &stream, remidyContextTypeToCLAPContextType(stateContextType));
+            if (state_context_ext)
+                state_context_ext->load(owner->plugin, &stream, remidyContextTypeToCLAPContextType(stateContextType));
+            else if (state_ext)
+                state_ext->load(owner->plugin, &stream);
         });
     }
 }

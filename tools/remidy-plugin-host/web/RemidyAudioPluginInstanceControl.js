@@ -28,6 +28,16 @@ async function remidy_setParameterValue_stub(jsonArgs) {
     console.log(`set parameter: instance ${args.instanceId}: index ${args.index} value ${args.value}`)
 }
 
+async function remidy_loadPluginState_stub(jsonArgs) {
+    const args = JSON.parse(jsonArgs)
+    console.log(`load plugin state: instance ${args.instanceId}`)
+}
+
+async function remidy_savePluginState_stub(jsonArgs) {
+    const args = JSON.parse(jsonArgs)
+    console.log(`save plugin state: instance ${args.instanceId}`)
+}
+
 // WebView Facades. They are supposed to be defined by host WebView.
 if (typeof(remidy_instantiatePlugin) === "undefined")
     globalThis.remidy_instantiatePlugin = remidy_instantiatePlugin_stub;
@@ -39,6 +49,10 @@ if (typeof(remidy_sendNoteOff) === "undefined")
     globalThis.remidy_sendNoteOff = remidy_sendNoteOff_stub;
 if (typeof(remidy_setParameterValue) === "undefined")
     globalThis.remidy_setParameterValue = remidy_setParameterValue_stub;
+if (typeof(remidy_loadPluginState) === "undefined")
+    globalThis.remidy_loadPluginState = remidy_loadPluginState_stub;
+if (typeof(remidy_savePluginState) === "undefined")
+    globalThis.remidy_savePluginState = remidy_savePluginState_stub;
 
 
 // Events that are fired by native.
@@ -67,6 +81,12 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
     }
     async setParameterValue(instanceId, index, value) {
         await remidy_setParameterValue(JSON.stringify({instanceId: instanceId, index: index, value: value}));
+    }
+    async loadPluginState(instanceId) {
+        await remidy_loadPluginState(JSON.stringify({instanceId: instanceId}));
+    }
+    async savePluginState(instanceId) {
+        await remidy_savePluginState(JSON.stringify({instanceId: instanceId}));
     }
 
     // part of WebComponents Standard
@@ -102,10 +122,19 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
 
                 <sl-details summary="Parameters" class="parameters">
                 </sl-details>
+                
+                <sl-button class="plugin-save-state">Save State</sl-button>
+                <sl-button class="plugin-load-state">Load State</sl-button>
             </sl-details>
 `;
         this.querySelector("sl-button.plugin-list-launcher").addEventListener("click", () => {
             this.pluginListLauncherClicked();
+        });
+        this.querySelector("sl-button.plugin-save-state").addEventListener("click", () => {
+            this.pluginSaveStateClicked();
+        });
+        this.querySelector("sl-button.plugin-load-state").addEventListener("click", () => {
+            this.pluginLoadStateClicked();
         });
 
         this.querySelector("sl-button[slot='footer']").addEventListener("click", () => {
@@ -138,6 +167,14 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
 
     pluginListLauncherClicked() {
         this.querySelector("sl-dialog").show();
+    }
+
+    pluginSaveStateClicked() {
+        this.savePluginState(this.instanceId);
+    }
+
+    pluginLoadStateClicked() {
+        this.loadPluginState(this.instanceId);
     }
 
     instantiatePlugin(instancingId, format, pluginId) {

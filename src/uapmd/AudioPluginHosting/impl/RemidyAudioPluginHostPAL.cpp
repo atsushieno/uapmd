@@ -34,6 +34,10 @@ namespace uapmd {
 
         std::string& formatName() const override { return instance->info()->format(); }
         std::string& pluginId() const override { return instance->info()->pluginId(); }
+
+        std::vector<uint8_t> saveState() override {
+            return instance->states()->getState(remidy::PluginStateSupport::StateContextType::Project, false);
+        }
     };
 }
 

@@ -34,6 +34,8 @@ namespace uapmd {
         uapmd_status_t processAudio(AudioProcessContext& process);
 
         std::vector<ParameterMetadata> parameterMetadataList(int32_t instanceId);
+
+        std::vector<uint8_t> saveState();
     };
 
 }

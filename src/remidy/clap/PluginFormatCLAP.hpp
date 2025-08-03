@@ -147,11 +147,12 @@ namespace remidy {
         class PluginStatesCLAP : public PluginStateSupport {
             PluginInstanceCLAP* owner;
             clap_plugin_state_context_t* state_context_ext;
+            clap_plugin_state_t* state_ext;
 
         public:
             explicit PluginStatesCLAP(PluginInstanceCLAP* owner);
 
-            void getState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override;
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 

@@ -13,9 +13,8 @@ namespace remidy {
         }
     }
 
-    void PluginInstanceLV2::PluginStatesLV2::getState(std::vector<uint8_t> &state,
-                                                      PluginStateSupport::StateContextType stateContextType,
-                                                      bool includeUiState) {
+    std::vector<uint8_t> PluginInstanceLV2::PluginStatesLV2::getState(
+            PluginStateSupport::StateContextType stateContextType, bool includeUiState) {
         auto formatImpl = owner->formatImpl;
         auto& implContext = owner->implContext;
         auto plugin = owner->plugin;
@@ -28,9 +27,11 @@ namespace remidy {
         auto s = lilv_state_to_string(implContext.world, owner->getLV2UridMapData(), owner->getLV2UridUnmapData(),
                                       lilvState, nullptr, nullptr);
         auto size = strlen(s);
-        if (size < state.size())
-            strncpy(reinterpret_cast<char *>(state.data()), s, size);
+        std::vector<uint8_t> ret{};
+        ret.resize(size);
+        memcpy(ret.data(), s, size);
         free(s);
+        return ret;
     }
 
     void PluginInstanceLV2::PluginStatesLV2::setState(std::vector<uint8_t> &state,
