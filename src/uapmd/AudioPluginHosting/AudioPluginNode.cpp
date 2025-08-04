@@ -17,6 +17,7 @@ namespace uapmd {
 
         AudioPluginHostPAL::AudioPluginNodePAL* pal() { return node.get(); }
         uapmd_status_t processAudio(AudioProcessContext &process);
+        void loadState(std::vector<uint8_t>& state);
         std::vector<uint8_t> saveState();
     };
 
@@ -42,12 +43,20 @@ namespace uapmd {
         return impl->instanceId;
     }
 
+    void AudioPluginNode::loadState(std::vector<uint8_t>& state) {
+        impl->loadState(state);
+    }
+
     std::vector<uint8_t> AudioPluginNode::saveState() {
         return impl->saveState();
     }
 
     uapmd_status_t AudioPluginNode::Impl::processAudio(AudioProcessContext &process) {
         return pal()->processAudio(process);
+    }
+
+    void AudioPluginNode::Impl::loadState(std::vector<uint8_t>& state) {
+        pal()->loadState(state);
     }
 
     std::vector<uint8_t> AudioPluginNode::Impl::saveState() {

@@ -295,9 +295,13 @@ namespace remidy_vst3 {
         int32_t offset{0};
 
         static v3_result read(void *self, void* buffer, int32_t num_bytes, int32_t* bytes_read) {
-            auto v = ((VectorStream*) self);
+            auto v = static_cast<VectorStream *>(self);
             auto& data = v->data;
             auto size = std::min(static_cast<int32_t>(data.size() - v->offset), num_bytes);
+            if (size < num_bytes) {
+                // it is impossible for the input stream to complete reading
+                return V3_INVALID_ARG;
+            }
             memcpy(buffer, data.data() + v->offset, size);
             if (bytes_read)
                 *bytes_read = size;
@@ -305,7 +309,7 @@ namespace remidy_vst3 {
         }
 
         static v3_result write(void *self, void* buffer, int32_t num_bytes, int32_t* bytes_written) {
-            auto v = ((VectorStream*) self);
+            auto v = static_cast<VectorStream *>(self);
             auto& data = v->data;
             data.resize(data.size() + num_bytes);
             auto size = std::min(static_cast<int32_t>(data.size() - v->offset), num_bytes);
@@ -356,7 +360,19 @@ namespace remidy_vst3 {
         }
 
         v3_result queryInterface(const v3_tuid iid, void **obj) {
-            std::cerr << "WHY querying over IBStream?" << std::endl;
+            if (v3_tuid_match(iid, v3_bstream_iid)) {
+                *obj = this;
+                return V3_OK;
+            }
+
+            // Maybe check ISizeableStream = [04f9549e, e02f4e6e, 87e86a87, 47f4e17f] too (not implemented here).
+            std::cerr << "WHY querying over IBStream? " << std::hex;
+            for (int i = 0; i < 16; ++i) {
+                std::cerr << std::format("{:02x}", (int32_t) iid[i]);
+                if (i < 15)
+                    std::cerr << ",";
+            }
+            std::cerr << std::dec << std::endl;
             return V3_NO_INTERFACE;
         }
     };

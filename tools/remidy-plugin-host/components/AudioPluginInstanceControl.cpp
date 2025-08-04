@@ -67,11 +67,16 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
     proxy.registerFunction("remidy_savePluginState", [](const std::string_view& args) -> std::string {
         auto req = choc::json::parse(args);
         auto ret = AppModel::instance().sequencer().saveState();
-        std::cerr << "Saved state size " << ret.size() << std::endl;
-        return "";
+        std::cerr << "Saved state. size: " << ret.size() << std::endl;
+        return std::string{reinterpret_cast<char *>(ret.data())};
     });
 
     proxy.registerFunction("remidy_loadPluginState", [](const std::string_view& args) -> std::string {
-        std::cerr << "FIXME: implement " << std::endl;
+        auto req = choc::json::parse(args);
+        auto state = req["state"].getString();
+        std::vector<uint8_t> stateBytes{(uint8_t*) state.begin(), (uint8_t*) state.begin() + state.length()};
+        AppModel::instance().sequencer().loadState(stateBytes);
+        std::cerr << "Loaded state." << std::endl;
+        return "";
     });
 }

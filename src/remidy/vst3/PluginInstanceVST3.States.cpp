@@ -2,7 +2,7 @@
 
 namespace remidy {
 
-    std::vector<uint8_t> PluginInstanceVST3::PluginStatesVST3::getState(PluginStateSupport::StateContextType stateContextType,
+    std::vector<uint8_t> PluginInstanceVST3::PluginStatesVST3::getState(StateContextType stateContextType,
                                                         bool includeUiState) {
         std::vector<uint8_t> ret;
         VectorStream stream{ret};
@@ -12,7 +12,7 @@ namespace remidy {
     }
 
     void PluginInstanceVST3::PluginStatesVST3::setState(std::vector<uint8_t> &state,
-                                                        PluginStateSupport::StateContextType stateContextType,
+                                                        StateContextType stateContextType,
                                                         bool includeUiState) {
         VectorStream stream{state};
         auto component = owner->component;

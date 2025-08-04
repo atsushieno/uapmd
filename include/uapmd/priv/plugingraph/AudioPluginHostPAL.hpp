@@ -18,6 +18,7 @@ namespace uapmd {
             virtual std::vector<ParameterMetadata> parameterMetadataList() = 0;
 
             virtual std::vector<uint8_t> saveState() = 0;
+            virtual void loadState(std::vector<uint8_t>& state) = 0;
         };
 
         static AudioPluginHostPAL* instance();

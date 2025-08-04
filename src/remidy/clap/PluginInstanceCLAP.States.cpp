@@ -10,15 +10,19 @@ namespace remidy {
         state_ext = (clap_plugin_state_t*) plugin->get_extension(plugin, CLAP_EXT_STATE);
     }
 
-    int64_t remidy_clap_stream_read(const struct clap_istream *stream, void *buffer, uint64_t size) {
+    int64_t remidy_clap_stream_read(const clap_istream_t *stream, void *buffer, uint64_t size) {
         auto src = (std::vector<uint8_t>*) stream->ctx;
-        auto actualSize = std::min((uint64_t) src->size(), size);
-        memcpy(buffer, src->data(), actualSize);
-        return static_cast<int64_t>(actualSize);
+        if (src->size() < size) {
+            std::cerr << "remidy_clap_stream_read: truncated read" << std::endl;
+            return 0;
+        }
+        memcpy(buffer, src->data(), size);
+        // there is no way to read further anyway.
+        return static_cast<int64_t>(size);
     }
 
-    int64_t remidy_clap_stream_write(const struct clap_ostream *stream, const void *buffer, uint64_t size) {
-        auto src = (std::vector<uint8_t>*) stream->ctx;
+    int64_t remidy_clap_stream_write(const clap_ostream_t *stream, const void *buffer, uint64_t size) {
+        auto src = static_cast<std::vector<uint8_t> *>(stream->ctx);
         src->resize(size);
         memcpy(src->data(), buffer, size);
         return static_cast<int64_t>(size);
@@ -60,10 +64,14 @@ namespace remidy {
             clap_istream_t stream;
             stream.ctx = &state;
             stream.read = remidy_clap_stream_read;
-            if (state_context_ext)
-                state_context_ext->load(owner->plugin, &stream, remidyContextTypeToCLAPContextType(stateContextType));
-            else if (state_ext)
-                state_ext->load(owner->plugin, &stream);
+            if (state_context_ext) {
+                // should we check error and report it
+                if (!state_context_ext->load(owner->plugin, &stream, remidyContextTypeToCLAPContextType(stateContextType)))
+                    std::cerr << "PluginStatesCLAP::setState(): failed to load state (with context)" << std::endl;
+            } else if (state_ext) {
+                if (state_ext->load(owner->plugin, &stream))
+                    std::cerr << "PluginStatesCLAP::setState(): failed to load state" << std::endl;
+            }
         });
     }
 }

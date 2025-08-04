@@ -45,6 +45,7 @@ namespace uapmd {
         bool sampleRate(int32_t newSampleRate);
 
         std::vector<uint8_t> saveState();
+        void loadState(std::vector<uint8_t>& state);
     };
 }
 

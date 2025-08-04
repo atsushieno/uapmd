@@ -82,8 +82,8 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
     async setParameterValue(instanceId, index, value) {
         await remidy_setParameterValue(JSON.stringify({instanceId: instanceId, index: index, value: value}));
     }
-    async loadPluginState(instanceId) {
-        await remidy_loadPluginState(JSON.stringify({instanceId: instanceId}));
+    async loadPluginState(instanceId, state) {
+        await remidy_loadPluginState(JSON.stringify({instanceId: instanceId, state: state}));
     }
     async savePluginState(instanceId) {
         await remidy_savePluginState(JSON.stringify({instanceId: instanceId}));
@@ -174,7 +174,8 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
     }
 
     pluginLoadStateClicked() {
-        this.loadPluginState(this.instanceId);
+        // FIXME: pass appropriate input
+        this.loadPluginState(this.instanceId, "ZAPZAPZAP");
     }
 
     instantiatePlugin(instancingId, format, pluginId) {
