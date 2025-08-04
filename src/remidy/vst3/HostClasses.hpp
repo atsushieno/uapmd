@@ -296,7 +296,7 @@ namespace remidy_vst3 {
 
         static v3_result read(void *self, void* buffer, int32_t num_bytes, int32_t* bytes_read) {
             auto v = ((VectorStream*) self);
-            auto data = v->data;
+            auto& data = v->data;
             auto size = std::min(static_cast<int32_t>(data.size() - v->offset), num_bytes);
             memcpy(buffer, data.data() + v->offset, size);
             if (bytes_read)
@@ -306,7 +306,7 @@ namespace remidy_vst3 {
 
         static v3_result write(void *self, void* buffer, int32_t num_bytes, int32_t* bytes_written) {
             auto v = ((VectorStream*) self);
-            auto data = v->data;
+            auto& data = v->data;
             data.resize(data.size() + num_bytes);
             auto size = std::min(static_cast<int32_t>(data.size() - v->offset), num_bytes);
             memcpy(data.data() + v->offset, buffer, size);
