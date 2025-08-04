@@ -24,8 +24,10 @@ namespace remidy {
         auto lilvState = lilv_state_new_from_instance(plugin, owner->instance, owner->getLV2UridMapData(),
                                      nullptr, nullptr, nullptr, nullptr,
                                      nullptr, this, flags, formatImpl->features.data());
+        // lilv_state_to_string() uses `uri` parameter as XML element name directly.
+        // That means, we cannot really pass complicated URI that results in XML Well-formedness violation...!
         auto s = lilv_state_to_string(implContext.world, owner->getLV2UridMapData(), owner->getLV2UridUnmapData(),
-                                      lilvState, nullptr, nullptr);
+                                      lilvState, "urn:remidy-lv2-state", nullptr);
         auto size = strlen(s);
         std::vector<uint8_t> ret{};
         ret.resize(size);
