@@ -169,8 +169,10 @@ void uapmd::AudioPluginSequencer::loadState(std::vector<uint8_t>& state) {
 std::vector<uint8_t> uapmd::AudioPluginSequencer::saveState() {
     std::vector<uint8_t> ret{};
     for (auto track : this->sequencer.tracks())
-        for (auto plugin : track->graph().plugins())
+        for (auto plugin : track->graph().plugins()) {
             // FIXME: we need some structure
-                ret.append_range(plugin->saveState());
+            auto target = plugin->saveState();
+            std::copy(target.begin(), target.end(), std::back_inserter(ret));
+        }
     return ret;
 }
