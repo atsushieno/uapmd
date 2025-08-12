@@ -19,15 +19,15 @@ FetchContent_Declare(cpplocate
         GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
         GIT_REPOSITORY https://github.com/cginternals/cpplocate
         # required to mix CPP and Swift in the same project...
-        PATCH_COMMAND        git apply "${CPPLOCATE_PATCH_FILE}"
-        UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
+        #PATCH_COMMAND        git apply "${CPPLOCATE_PATCH_FILE}"
+        #UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
         EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(cpplocate)
 
 FetchContent_Declare(midicci
         NAME            midicci
-        GIT_TAG         0c8342c
+        GIT_TAG         b8e43f5
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
 )
 FetchContent_MakeAvailable(midicci)
