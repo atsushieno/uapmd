@@ -12,6 +12,8 @@ namespace uapmd {
         std::string name;
         std::string path;
         double initialValue;
+        double minValue;
+        double maxValue;
         bool hidden;
     };
 

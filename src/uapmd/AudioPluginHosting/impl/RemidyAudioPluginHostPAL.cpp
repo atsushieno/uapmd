@@ -27,6 +27,8 @@ namespace uapmd {
                     .name = p->name(),
                     .path = p->path(),
                     .initialValue = p->defaultValue(),
+                    .minValue = p->minValue(),
+                    .maxValue = p->maxValue(),
                     .hidden = p->hidden()
                 });
             return ret;

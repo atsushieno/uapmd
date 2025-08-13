@@ -54,8 +54,10 @@ namespace uapmd {
                     auto parameterList = sequencer->getParameterList(instanceId);
                     for (auto& p : parameterList) {
                         commonproperties::MidiCIControl ctrl{p.name, MidiCIControlType::NRPN, "",
-                                                             std::vector<uint8_t>{static_cast<unsigned char>((uint8_t) p.index / 0x80), static_cast<unsigned char>((uint8_t) p.index % 0x80)}
+                                                             std::vector<uint8_t>{static_cast<unsigned char>(p.index / 0x80), static_cast<unsigned char>(p.index % 0x80)}
                         };
+                        ctrl.defaultValue = (uint32_t) (p.initialValue * UINT32_MAX);
+                        ctrl.minMax = {(uint32_t) (p.minValue * UINT32_MAX), (uint32_t) (p.maxValue * UINT32_MAX)};
                         allCtrlList.push_back(ctrl);
                     }
                     StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);
