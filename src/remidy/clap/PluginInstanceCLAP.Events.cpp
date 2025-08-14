@@ -40,6 +40,8 @@ namespace remidy {
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
         auto evt = reinterpret_cast<clap_event_note_t *>(owner->events.tryAllocate(alignof(void *),
             sizeof(clap_event_param_value_t)));
+        if (!evt)
+            return;
         evt->header.type = CLAP_EVENT_NOTE_ON;
         evt->port_index = group;
         evt->channel = channel;
@@ -49,6 +51,8 @@ namespace remidy {
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
         auto evt = reinterpret_cast<clap_event_note_t *>(owner->events.tryAllocate(alignof(void *),
             sizeof(clap_event_param_value_t)));
+        if (!evt)
+            return;
         evt->header.type = CLAP_EVENT_NOTE_OFF;
         evt->port_index = group;
         evt->channel = channel;
