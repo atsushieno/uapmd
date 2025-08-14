@@ -65,6 +65,8 @@ namespace uapmd {
             commonproperties::MidiCIControl ctrl{p.name, MidiCIControlType::NRPN, "",
                                                  std::vector<uint8_t>{static_cast<unsigned char>(p.index / 0x80), static_cast<unsigned char>(p.index % 0x80)}
             };
+            if (!p.namedValues.empty())
+                ctrl.ctrlMapId = p.name; // assuming this does not overlap
             ctrl.paramPath = p.path;
             ctrl.defaultValue = (uint32_t) (p.initialValue * UINT32_MAX);
             ctrl.minMax = {(uint32_t) (p.minValue * UINT32_MAX), (uint32_t) (p.maxValue * UINT32_MAX)};
@@ -72,7 +74,7 @@ namespace uapmd {
 
             auto ctrlMapList = std::vector<MidiCIControlMap>();
             for (auto& m : p.namedValues)
-                ctrlMapList.emplace_back(MidiCIControlMap{(uint32_t) (m.value * UINT32_MAX), m.name});
+                ctrlMapList.emplace_back(std::move(MidiCIControlMap{(uint32_t) (m.value * UINT32_MAX), m.name}));
             StandardPropertiesExtensions::setCtrlMapList(ciDevice, p.name, ctrlMapList);
         }
         StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);

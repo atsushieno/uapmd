@@ -23,16 +23,17 @@ namespace remidy {
         const double default_value, min_value, max_value;
         bool is_readable;
         bool is_hidden;
+        bool is_discrete;
         const std::vector<ParameterEnumeration> _enums;
 
     public:
         PluginParameter(uint32_t index, std::string& id, std::string& name, std::string& path,
                         double defaultValue, double minValue, double maxValue,
-                        bool readable, bool hidden,
+                        bool readable, bool hidden, bool discrete,
                         std::vector<ParameterEnumeration> enums = {}) :
             _index(index), stable_id(id), _name(name), _path(path),
             default_value(defaultValue), min_value(minValue), max_value(maxValue),
-            is_readable(readable), is_hidden(hidden), _enums(enums) {
+            is_readable(readable), is_hidden(hidden), is_discrete(discrete), _enums(std::move(enums)) {
         }
         ~PluginParameter() = default;
 
@@ -49,6 +50,7 @@ namespace remidy {
         const double maxValue() const { return max_value; }
         bool readable() { return is_readable; }
         bool hidden() const { return is_hidden; }
+        bool discrete() const { return is_discrete; }
         // FIXME: should we make it const as well?
         void readable(bool newValue) { is_readable = newValue; }
         const std::vector<ParameterEnumeration>& enums() { return _enums; }

@@ -50,9 +50,11 @@ std::unique_ptr<PluginParameter> createParameter(uint32_t index, const LilvNode*
     auto defValueNode = lilv_world_get(implContext.world, parameter, implContext.statics->default_uri_node, nullptr);
     double defValue = defValueNode ? lilv_node_as_float(defValueNode) : 0;
     auto minValueNode = lilv_world_get(implContext.world, parameter, implContext.statics->minimum_uri_node, nullptr);
-    double minValue = defValueNode ? lilv_node_as_float(minValueNode) : 0;
+    double minValue = minValueNode ? lilv_node_as_float(minValueNode) : 0;
     auto maxValueNode = lilv_world_get(implContext.world, parameter, implContext.statics->maximum_uri_node, nullptr);
-    double maxValue = defValueNode ? lilv_node_as_float(maxValueNode) : 0;
+    double maxValue = maxValueNode ? lilv_node_as_float(maxValueNode) : 0;
+    auto enumerationNode = lilv_world_get(implContext.world, parameter, implContext.statics->enumeration_uri_node, nullptr);
+    bool isDiscreteEnum = enumerationNode != nullptr && lilv_node_as_bool(enumerationNode);
 
     std::vector<ParameterEnumeration> enums{};
     auto scalePoints = lilv_world_find_nodes(implContext.world, parameter, implContext.statics->scale_point_uri_node, nullptr);
@@ -72,7 +74,8 @@ std::unique_ptr<PluginParameter> createParameter(uint32_t index, const LilvNode*
         enums.emplace_back(pe);
     }
 
-    return std::make_unique<PluginParameter>(index, label, label, portGroup, defValue, minValue, maxValue, false, false, enums);
+    return std::make_unique<PluginParameter>(index, label, label, portGroup, defValue, minValue, maxValue, false,
+                                             false, isDiscreteEnum, enums);
 }
 
 void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {

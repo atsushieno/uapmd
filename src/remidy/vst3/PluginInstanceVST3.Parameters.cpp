@@ -21,7 +21,11 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
         std::string name = vst3StringToStdString(info.title);
         std::string path{""};
 
-        auto p = new PluginParameter(info.param_id, idString, name, path, info.default_normalised_value, 0, 1, true, info.flags & V3_PARAM_IS_HIDDEN);
+        auto p = new PluginParameter(info.param_id, idString, name, path, info.default_normalised_value, 0, 1, true,
+                                     info.flags & V3_PARAM_IS_HIDDEN,
+                                     info.flags & V3_PARAM_IS_LIST);
+        // FIXME: fill enums
+
         parameter_ids[i] = info.param_id;
         parameter_defs.emplace_back(p);
     }
@@ -61,7 +65,7 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
                     info.value_desc.default_value,
                     info.value_desc.minimum,
                     info.value_desc.maximum,
-                    true, false);
+                    true, false, false);
                 defs.emplace_back(parameter);
             }
         }

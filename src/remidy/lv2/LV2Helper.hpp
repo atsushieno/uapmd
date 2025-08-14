@@ -135,6 +135,7 @@ namespace remidy_lv2 {
             toggled_uri_node = lilv_new_uri (world, LV2_CORE__toggled);
             integer_uri_node = lilv_new_uri (world, LV2_CORE__integer);
             discrete_cv_uri_node = lilv_new_uri(world, LV2_PORT_PROPS__discreteCV);
+            enumeration_uri_node = lilv_new_uri(world, LV2_CORE__enumeration);
             is_side_chain_uri_node = lilv_new_uri(world, LV2_CORE__isSideChain);
             port_group_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__group);
             scale_point_uri_node = lilv_new_uri(world, LV2_CORE__scalePoint);
@@ -229,6 +230,7 @@ namespace remidy_lv2 {
                 *default_uri_node, *minimum_uri_node, *maximum_uri_node,
                 *toggled_uri_node, *integer_uri_node,
                 *discrete_cv_uri_node,
+                *enumeration_uri_node,
                 *is_side_chain_uri_node,
                 *port_group_uri_node,
                 *scale_point_uri_node,
@@ -362,8 +364,9 @@ public:
         std::string name{portName};
         double defaultValue{0}, minValue{0}, maxValue{1};
 
-        LilvNode *defNode{nullptr}, *minNode{nullptr}, *maxNode{nullptr}, *propertyTypeNode{nullptr};
+        LilvNode *defNode{nullptr}, *minNode{nullptr}, *maxNode{nullptr}, *propertyTypeNode{nullptr}, *enumerationNode{nullptr};
         lilv_port_get_range(plugin, port, &defNode, &minNode, &maxNode);
+        bool isDiscreteEnum = lilv_port_is_a(plugin, port, statics->enumeration_uri_node);
         LilvNodes *portProps = lilv_port_get_properties(plugin, port);
         bool isInteger{false};
         bool isToggled{false};
@@ -387,7 +390,7 @@ public:
             minValue = minNode == nullptr ? 0 : lilv_node_as_float(minNode);
             maxValue = maxNode == nullptr ? 1 : lilv_node_as_float(maxNode);
         }
-        remidy::PluginParameter info{index, idString, name, emptyString, defaultValue, minValue, maxValue, true, false};
+        remidy::PluginParameter info{index, idString, name, emptyString, defaultValue, minValue, maxValue, true, false, isDiscreteEnum};
 
         LilvScalePoints* scalePoints = lilv_port_get_scale_points(plugin, port);
         if (scalePoints != nullptr) {

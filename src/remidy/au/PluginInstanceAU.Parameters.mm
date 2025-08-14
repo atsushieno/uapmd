@@ -28,7 +28,19 @@ remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioP
         std::string idString = std::format("{}", id);
         std::string name{info.name};
         std::string path{};
-        auto p = new PluginParameter(id, idString, name, path, info.defaultValue, info.minValue, info.maxValue, true, false);
+        auto p = new PluginParameter(id, idString, name, path, info.defaultValue, info.minValue, info.maxValue, true,
+                                     false,
+                                     info.unit == kAudioUnitParameterUnit_Indexed
+                                     );
+        CFArrayRef enumArray;
+        std::vector<ParameterEnumeration> enums;
+        AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterValueStrings, kAudioUnitScope_Global, id, &enumArray, &size);
+        for (CFIndex i = 0, n = size; i < n; i++) {
+            auto str = (CFStringRef) CFArrayGetValueAtIndex(enumArray, i);
+            auto label = cfStringToString(str);
+            enums.emplace_back(label, i);
+        }
+        CFRelease(enumArray);
         parameter_list.emplace_back(p);
     }
 

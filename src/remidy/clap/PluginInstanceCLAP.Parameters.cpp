@@ -25,6 +25,17 @@ namespace remidy {
                 std::string id{std::format("%x", info.id)};
                 std::string name{info.name};
                 std::string module{info.module};
+
+                if (info.flags & CLAP_PARAM_IS_ENUM && info.flags & CLAP_PARAM_IS_STEPPED) {
+                    char enumLabel[1024];
+                    for (int i = 0; i < info.max_value; i++) {
+                        if (params_ext->value_to_text(plugin, info.id, i, enumLabel, sizeof(enumLabel))) {
+                            std::string enumLabelString{enumLabel};
+                            enums.emplace_back(enumLabelString, i);
+                        }
+                    }
+                }
+
                 parameter_defs.emplace_back(new PluginParameter(
                         i,
                         id,
@@ -35,6 +46,7 @@ namespace remidy {
                         info.max_value,
                         true,
                         info.flags & CLAP_PARAM_IS_HIDDEN,
+                        info.flags & CLAP_PARAM_IS_ENUM,
                         enums));
                 parameter_ids.emplace_back(info.id);
                 parameter_cookies.emplace_back(info.cookie);
