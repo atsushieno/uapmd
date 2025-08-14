@@ -6,6 +6,11 @@
 
 namespace uapmd {
 
+    struct ParameterNamedValue {
+        double value;
+        std::string name;
+    };
+
     struct ParameterMetadata {
         uint32_t index;
         std::string stableId;
@@ -15,6 +20,7 @@ namespace uapmd {
         double minValue;
         double maxValue;
         bool hidden;
+        std::vector<ParameterNamedValue> namedValues{};
     };
 
     class AudioPluginNode {

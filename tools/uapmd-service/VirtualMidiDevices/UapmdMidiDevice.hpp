@@ -21,6 +21,7 @@ namespace uapmd {
         static void umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         int32_t channelToTrack(int32_t group, int32_t channel);
+        void setupMidiCISession(int32_t instanceId);
 
     public:
         UapmdMidiDevice(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version);

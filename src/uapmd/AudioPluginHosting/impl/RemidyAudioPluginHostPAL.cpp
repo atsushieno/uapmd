@@ -20,17 +20,25 @@ namespace uapmd {
         std::vector<uapmd::ParameterMetadata> parameterMetadataList() override {
             std::vector<ParameterMetadata> ret{};
             auto pl = instance->parameters();
-            for (auto p : pl->parameters())
-                ret.emplace_back(ParameterMetadata {
-                    .index = p->index(),
-                    .stableId = p->stableId(),
-                    .name = p->name(),
-                    .path = p->path(),
-                    .initialValue = p->defaultValue(),
-                    .minValue = p->minValue(),
-                    .maxValue = p->maxValue(),
-                    .hidden = p->hidden()
+            for (auto p : pl->parameters()) {
+                std::vector<ParameterNamedValue> enums{};
+                for (auto e : p->enums())
+                    enums.emplace_back(ParameterNamedValue{
+                        .value = e.value,
+                        .name = e.label
+                    });
+                ret.emplace_back(ParameterMetadata{
+                        .index = p->index(),
+                        .stableId = p->stableId(),
+                        .name = p->name(),
+                        .path = p->path(),
+                        .initialValue = p->defaultValue(),
+                        .minValue = p->minValue(),
+                        .maxValue = p->maxValue(),
+                        .hidden = p->hidden(),
+                        .namedValues = enums
                 });
+            }
             return ret;
         }
 
