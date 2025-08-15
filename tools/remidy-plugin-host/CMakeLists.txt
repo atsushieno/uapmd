@@ -3,7 +3,7 @@ add_executable(remidy-plugin-host)
 set(saucer_modules ON)
 
 if(UNIX AND NOT APPLE)
-    set(saucer_backend "Qt5")
+    set(saucer_backend "Qt6")
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
     pkg_check_modules(WEBKITGTK REQUIRED webkit2gtk-4.1)

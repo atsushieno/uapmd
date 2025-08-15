@@ -2,6 +2,7 @@
 #include "AudioPluginInstanceControl.hpp"
 #include "choc/text/choc_JSON.h"
 #include "../AppModel.hpp"
+#include <iostream>
 
 void uapmd::instantiatePlugin(int32_t instancingId, const std::string_view& format, const std::string_view& pluginId) {
     AppModel::instance().instantiatePlugin(instancingId, format, pluginId);
