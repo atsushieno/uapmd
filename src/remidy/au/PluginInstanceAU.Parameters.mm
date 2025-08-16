@@ -26,9 +26,11 @@ remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioP
             continue;
         }
         std::string idString = std::format("{}", id);
-        std::string name{info.name};
+        char nameBuffer[512];
+        CFStringGetCString(info.cfNameString, nameBuffer, sizeof(nameBuffer), kCFStringEncodingUTF8);
+        std::string pName{nameBuffer};
         std::string path{};
-        auto p = new PluginParameter(id, idString, name, path, info.defaultValue, info.minValue, info.maxValue, true,
+        auto p = new PluginParameter(id, idString, pName, path, info.defaultValue, info.minValue, info.maxValue, true,
                                      false,
                                      info.unit == kAudioUnitParameterUnit_Indexed
                                      );
