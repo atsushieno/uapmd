@@ -2,6 +2,7 @@
 
 #include "TravestyHelper.hpp"
 #include <iostream>
+#include <algorithm>
 
 namespace remidy_vst3 {
 
