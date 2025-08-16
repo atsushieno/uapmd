@@ -16,16 +16,22 @@ namespace uapmd {
     void UapmdMidiDevice::addPluginTrack(std::string& pluginName, std::string& formatName) {
         remidy_tooling::PluginScanTool scanner{};
         scanner.performPluginScanning();
-        for(auto & entry : scanner.catalog.getPlugins()) {
-            if ((pluginName.empty() || entry->displayName().contains(pluginName)) &&
-                (formatName.empty() || entry->format() == formatName)) {
-                Logger::global()->logInfo("Found %s", entry->bundlePath().c_str());
-                sequencer->instantiatePlugin(entry->format(), entry->pluginId(), [&](int instanceId, std::string error) {
-                    Logger::global()->logInfo("addSimpleTrack result: %d %s", instanceId, error.c_str());
+        for (auto exactMatch : {true, false}) {
+            for(auto & entry : scanner.catalog.getPlugins()) {
+                if (!formatName.empty() && entry->format() != formatName)
+                    continue;
+                if (pluginName.empty() ||
+                    exactMatch && entry->displayName() == pluginName ||
+                    !exactMatch && entry->displayName().contains(pluginName)
+                ) {
+                    Logger::global()->logInfo("Found %s", entry->bundlePath().c_str());
+                    sequencer->instantiatePlugin(entry->format(), entry->pluginId(), [&](int instanceId, std::string error) {
+                        Logger::global()->logInfo("addSimpleTrack result: %d %s", instanceId, error.c_str());
 
-                    setupMidiCISession(instanceId);
-                });
-                return;
+                        setupMidiCISession(instanceId);
+                    });
+                    return;
+                }
             }
         }
         Logger::global()->logError("Plugin %s in format %s not found", pluginName.c_str(), formatName.c_str());
@@ -48,8 +54,12 @@ namespace uapmd {
             platformDevice->send((uapmd_ump_t*) (data + offset), length, (uapmd_timestamp_t) timestamp);
         };
         midicci::musicdevice::MidiCISessionSource source{midicci::musicdevice::MidiTransportProtocol::UMP, input_listener_adder, sender};
-        auto ciSession = create_midi_ci_session(source, muid, std::move(ci_config), [&](std::string msg, bool outgoing) {
-            std::cerr << "[UAPMD LOG " << (outgoing ? "OUT] " : "In] ") << msg << std::endl;
+        auto ciSession = create_midi_ci_session(source, muid, std::move(ci_config), [&](const LogData& log) {
+            auto msg = std::get_if<std::reference_wrapper<const Message>>(&log.data);
+            if (msg)
+                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "In] ") << msg->get().get_log_message() << std::endl;
+            else
+                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "In] ") << get_if<std::string>(&log.data) << std::endl;
         });
         auto& ciDevice = ciSession->get_device();
 
