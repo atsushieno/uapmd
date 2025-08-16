@@ -34,13 +34,15 @@ remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioP
                                      );
         CFArrayRef enumArray;
         std::vector<ParameterEnumeration> enums;
-        AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterValueStrings, kAudioUnitScope_Global, id, &enumArray, &size);
-        for (CFIndex i = 0, n = size; i < n; i++) {
-            auto str = (CFStringRef) CFArrayGetValueAtIndex(enumArray, i);
-            auto label = cfStringToString(str);
-            enums.emplace_back(label, i);
+        result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterValueStrings, kAudioUnitScope_Global, id, &enumArray, &size);
+        if (result == noErr) {
+            for (CFIndex i = 0, n = size; i < n; i++) {
+                auto str = (CFStringRef) CFArrayGetValueAtIndex(enumArray, i);
+                auto label = CFStringGetCharactersPtr(str) ? cfStringToString(str) : "FIXME: failed to create string";
+                enums.emplace_back(label, i);
+            }
+            CFRelease(enumArray);
         }
-        CFRelease(enumArray);
         parameter_list.emplace_back(p);
     }
 
