@@ -30,7 +30,7 @@ remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioP
         CFStringGetCString(info.cfNameString, nameBuffer, sizeof(nameBuffer), kCFStringEncodingUTF8);
         std::string pName{nameBuffer};
         std::string path{};
-        auto p = new PluginParameter(id, idString, pName, path, info.defaultValue, info.minValue, info.maxValue, true,
+        auto p = new PluginParameter(i, idString, pName, path, info.defaultValue, info.minValue, info.maxValue, true,
                                      false,
                                      info.unit == kAudioUnitParameterUnit_Indexed
                                      );
