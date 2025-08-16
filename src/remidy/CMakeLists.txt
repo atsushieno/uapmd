@@ -4,6 +4,7 @@ project(remidy LANGUAGES C CXX OBJC OBJCXX Swift)
 else()
 project(remidy LANGUAGES C CXX)
 endif()
+set(CMAKE_CXX_STANDARD 23)
 
 include("../../external/LV2Kit.cmake")
 
