@@ -1,5 +1,9 @@
 #pragma once
 
+#if defined(MSC_VER) // wow, that's stupid... https://stackoverflow.com/questions/5004858/why-is-stdmin-failing-when-windows-h-is-included
+#define NOMINMAX
+#endif
+
 #include "priv/common.hpp"
 
 #include "priv/plugin-catalog.hpp"

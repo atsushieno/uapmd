@@ -1,8 +1,5 @@
 #pragma once
 
-#if defined(MSC_VER) // wow, that's stupid... https://stackoverflow.com/questions/5004858/why-is-stdmin-failing-when-windows-h-is-included
-#define NOMINMAX
-#endif
 #include "TravestyHelper.hpp"
 #include <iostream>
 #include <algorithm>
