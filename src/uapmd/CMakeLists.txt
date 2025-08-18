@@ -3,7 +3,7 @@ add_library(uapmd STATIC)
 
 CPMAddPackage(
         NAME           libremidi
-        GIT_TAG        v5.2.0
+        GIT_TAG        v5.3.1
         GIT_REPOSITORY https://github.com/celtera/libremidi
         EXCLUDE_FROM_ALL
 )
