@@ -22,7 +22,8 @@ remidy::PluginInstanceVST3::PresetsSupport::PresetsSupport(remidy::PluginInstanc
                 continue;
 
             v3_str_128 name;
-            if (unitInfo.get_program_name(owner->unit_info, b, p, name) != V3_OK)
+            auto status = unitInfo.get_program_name(owner->unit_info, list.id, p, name);
+            if (status != V3_OK)
                 continue; // FIXME: should we simply ignore?
             bank.emplace_back(std::move(PresetInfo{std::format("{}_{}", b, p), vst3StringToStdString(name), b, p}));
         }
