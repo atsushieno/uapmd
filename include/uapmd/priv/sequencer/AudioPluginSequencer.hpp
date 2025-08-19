@@ -27,6 +27,7 @@ namespace uapmd {
             std::function<void(int32_t instanceId, std::string error)> callback);
 
         std::vector<ParameterMetadata> getParameterList(int32_t instanceId);
+        std::vector<PresetsMetadata> getPresetList(int32_t instanceId);
 
         // audio/MIDI player
 

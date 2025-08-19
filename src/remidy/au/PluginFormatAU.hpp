@@ -116,6 +116,7 @@ namespace remidy {
 
         ParameterSupport* _parameters{nullptr};
         PluginStatesAU* _states{};
+        PresetsSupport* _presets{};
         AudioBuses* audio_buses{};
         AURenderCallbackStruct audio_render_callback;
         AUUmpInputDispatcher ump_input_dispatcher{this};
@@ -160,6 +161,11 @@ namespace remidy {
         PluginStatesAU* states() override {
             if (!_states) _states = new PluginStatesAU(this);
             return _states;
+        }
+
+        PresetsSupport* presets() override {
+            if (!_presets) _presets = new PresetsSupport(this);
+            return _presets;
         }
 
         AudioBuses* audioBuses() override { return audio_buses; }

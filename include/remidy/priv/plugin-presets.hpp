@@ -23,6 +23,8 @@ namespace remidy {
 
     class PluginPresetsSupport {
     public:
+        virtual ~PluginPresetsSupport() = default;
+
         virtual bool isIndexStable() = 0;
         virtual bool isIndexId() = 0;
         virtual int32_t getPresetIndexForId(std::string& id) = 0;

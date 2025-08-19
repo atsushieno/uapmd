@@ -201,6 +201,7 @@ namespace remidy {
 
         ParameterSupport* _parameters{};
         PluginStatesVST3* _states{};
+        PluginPresetsSupport* _presets{};
 
         VST3UmpInputDispatcher ump_input_dispatcher{this};
 
@@ -237,6 +238,9 @@ namespace remidy {
 
         // states
         PluginStateSupport* states() override;
+
+        // presets
+        PluginPresetsSupport* presets() override;
     };
 
 }

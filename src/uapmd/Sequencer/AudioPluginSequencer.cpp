@@ -63,7 +63,15 @@ std::vector<uapmd::ParameterMetadata> uapmd::AudioPluginSequencer::getParameterL
     for (auto& track : sequencer.tracks())
         for (auto node : track->graph().plugins())
             if (node->instanceId() == instanceId)
-                return node->pal()->parameterMetadataList();;
+                return node->pal()->parameterMetadataList();
+    return {};
+}
+
+std::vector<uapmd::PresetsMetadata> uapmd::AudioPluginSequencer::getPresetList(int32_t instanceId) {
+    for (auto& track : sequencer.tracks())
+        for (auto node : track->graph().plugins())
+            if (node->instanceId() == instanceId)
+                return node->pal()->presetMetadataList();
     return {};
 }
 

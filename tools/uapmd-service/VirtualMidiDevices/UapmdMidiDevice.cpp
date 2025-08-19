@@ -64,11 +64,12 @@ namespace uapmd {
         auto& ciDevice = ciSession->get_device();
 
         // configure parameter list
-        ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::allCtrlListMetadata));
-        ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::chCtrlListMetadata));
-        ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::programListMetadata));
-        ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateListMetadata));
-        ciDevice.get_property_host_facade().addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateMetadata));
+        auto& hostProps = ciDevice.get_property_host_facade();
+        hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::allCtrlListMetadata));
+        hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::chCtrlListMetadata));
+        hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::programListMetadata));
+        hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateListMetadata));
+        hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateMetadata));
         std::vector<commonproperties::MidiCIControl> allCtrlList{};
         auto parameterList = sequencer->getParameterList(instanceId);
         for (auto& p : parameterList) {
@@ -88,6 +89,17 @@ namespace uapmd {
             StandardPropertiesExtensions::setCtrlMapList(ciDevice, p.name, ctrlMapList);
         }
         StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);
+
+        // configure program list
+        auto presetsList = sequencer->getPresetList(instanceId);
+        std::vector<commonproperties::MidiCIProgram> programList{};
+        for (auto & p : presetsList) {
+            commonproperties::MidiCIProgram program{p.name, {p.bank, (uint8_t) p.index}};
+
+            programList.push_back(program);
+        }
+        StandardPropertiesExtensions::setProgramList(ciDevice, programList);
+
         ci_sessions[muid] = std::move(ciSession);
     }
 

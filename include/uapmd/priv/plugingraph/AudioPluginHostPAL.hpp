@@ -5,6 +5,7 @@
 namespace uapmd {
     class AudioPluginNode;
     struct ParameterMetadata;
+    struct PresetsMetadata;
 
     // This PAL is more like a Plugin(-Format) Abstraction Layer rather than Platform Abstraction Layer.
     class AudioPluginHostPAL {
@@ -16,6 +17,7 @@ namespace uapmd {
             virtual std::string& pluginId() const = 0;
             virtual uapmd_status_t processAudio(AudioProcessContext &process) = 0;
             virtual std::vector<ParameterMetadata> parameterMetadataList() = 0;
+            virtual std::vector<PresetsMetadata> presetMetadataList() = 0;
 
             virtual std::vector<uint8_t> saveState() = 0;
             virtual void loadState(std::vector<uint8_t>& state) = 0;

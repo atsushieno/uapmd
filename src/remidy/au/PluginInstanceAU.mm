@@ -13,6 +13,7 @@ remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
     delete audio_buses;
     delete _parameters;
     delete _states;
+    delete _presets;
 
     for (auto auDataIn : auDataIns)
         free(auDataIn);

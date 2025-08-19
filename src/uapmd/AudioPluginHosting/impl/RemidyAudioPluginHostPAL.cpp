@@ -41,6 +41,21 @@ namespace uapmd {
             }
             return ret;
         }
+        std::vector<uapmd::PresetsMetadata> presetMetadataList() override {
+            std::vector<PresetsMetadata> ret{};
+            auto pl = instance->presets();
+            for (int32_t p = 0, n = pl->getPresetCount(); p < n; p++) {
+                auto info = pl->getPresetInfo(p);
+                ret.emplace_back(PresetsMetadata {
+                    .bank = static_cast<uint8_t>(info.bank()),
+                    .index = static_cast<uint32_t>(info.index()),
+                    .stableId = info.id(),
+                    .name = info.name(),
+                    .path = "" // FIXME: implement
+                });
+            }
+            return ret;
+        }
 
         std::string& formatName() const override { return instance->info()->format(); }
         std::string& pluginId() const override { return instance->info()->pluginId(); }

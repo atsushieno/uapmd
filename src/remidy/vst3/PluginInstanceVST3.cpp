@@ -121,6 +121,7 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
 
     delete _parameters;
     delete _states;
+    delete _presets;
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::configure(ConfigurationRequest &configuration) {
@@ -263,4 +264,10 @@ remidy::PluginStateSupport *remidy::PluginInstanceVST3::states() {
     if (!_states)
         _states = new PluginStatesVST3(this);
     return _states;
+}
+
+remidy::PluginPresetsSupport *remidy::PluginInstanceVST3::presets() {
+    if (!_presets)
+        _presets = new PresetsSupport(this);
+    return _presets;
 }

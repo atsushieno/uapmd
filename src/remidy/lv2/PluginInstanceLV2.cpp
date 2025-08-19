@@ -23,6 +23,7 @@ remidy::PluginInstanceLV2::~PluginInstanceLV2() {
 
     delete _parameters;
     delete _states;
+    delete _presets;
 }
 
 bool getNextAudioPortIndex(remidy_lv2::LV2ImplPluginContext& ctx, const LilvPlugin* plugin, const bool isInput, int32_t& result, int32_t& lv2PortIndex, uint32_t numPorts) {
@@ -169,4 +170,10 @@ remidy::PluginStateSupport *remidy::PluginInstanceLV2::states() {
     if (!_states)
         _states = new PluginStatesLV2(this);
     return _states;
+}
+
+remidy::PluginPresetsSupport *remidy::PluginInstanceLV2::presets() {
+    if (!_presets)
+        _presets = new PresetsSupport(this);
+    return _presets;
 }

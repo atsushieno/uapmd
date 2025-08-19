@@ -239,6 +239,7 @@ namespace remidy {
 
         ParameterSupport *_parameters{};
         PluginStateSupport *_states{};
+        PluginPresetsSupport *_presets{};
 
         LV2UmpInputDispatcher ump_input_dispatcher{this};
 
@@ -284,5 +285,8 @@ namespace remidy {
 
         // states
         PluginStateSupport *states() override;
+
+        // presets
+        PluginPresetsSupport *presets() override;
     };
 }

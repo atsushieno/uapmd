@@ -77,6 +77,8 @@ namespace remidy {
         virtual PluginParameterSupport* parameters() = 0;
 
         virtual PluginStateSupport* states() = 0;
+
+        virtual PluginPresetsSupport* presets() = 0;
     };
 
 }

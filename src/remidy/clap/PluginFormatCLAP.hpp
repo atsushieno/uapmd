@@ -174,6 +174,7 @@ namespace remidy {
         AudioBuses* audio_buses{};
         ParameterSupport* _parameters{};
         PluginStateSupport* _states{};
+        PluginPresetsSupport* _presets{};
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
@@ -210,6 +211,9 @@ namespace remidy {
 
         // states
         PluginStateSupport* states() override;
+
+        // presets
+        PluginPresetsSupport* presets() override;
     };
 }
 

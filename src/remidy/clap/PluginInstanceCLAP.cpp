@@ -16,6 +16,10 @@ namespace remidy {
         cleanupBuffers(); // cleanup, optionally stop processing in prior.
 
         plugin->destroy(plugin);
+
+        delete _parameters;
+        delete _states;
+        delete _presets;
     }
 
     void resetCLAPAudioBuffers(clap_audio_buffer_t& a) {
@@ -187,5 +191,11 @@ namespace remidy {
         if (!_states)
             _states = new PluginStatesCLAP(this);
         return _states;
+    }
+
+    remidy::PluginPresetsSupport *remidy::PluginInstanceCLAP::presets() {
+        if (!_presets)
+            _presets = new PresetsSupport(this);
+        return _presets;
     }
 }

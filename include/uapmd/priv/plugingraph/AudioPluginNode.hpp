@@ -23,6 +23,14 @@ namespace uapmd {
         std::vector<ParameterNamedValue> namedValues{};
     };
 
+    struct PresetsMetadata {
+        uint8_t bank;
+        uint32_t index;
+        std::string stableId;
+        std::string name;
+        std::string path;
+    };
+
     class AudioPluginNode {
         class Impl;
         Impl* impl;
