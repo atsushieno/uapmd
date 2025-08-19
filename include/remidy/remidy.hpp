@@ -12,6 +12,7 @@
 #include "priv/processing-context.hpp"
 #include "priv/plugin-parameter.hpp"
 #include "priv/plugin-states.hpp"
+#include "priv/plugin-presets.hpp"
 #include "priv/port-extensibility.hpp"
 #include "priv/event-loop.hpp"
 #include "priv/ump-dispatcher.hpp"

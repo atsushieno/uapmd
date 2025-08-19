@@ -157,6 +157,20 @@ namespace remidy {
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 
+        class PresetsSupport : public PluginPresetsSupport {
+            PluginInstanceVST3 *owner;
+            std::vector<std::vector<PresetInfo>> banks{};
+
+        public:
+            PresetsSupport(PluginInstanceVST3* owner);
+            bool isIndexStable() override { return true; }
+            bool isIndexId() override { return true; }
+            int32_t getPresetIndexForId(std::string &id) override;
+            int32_t getPresetCount() override;
+            PresetInfo getPresetInfo(int32_t index) override;
+            void loadPreset(int32_t index) override;
+        };
+
         PluginFormatVST3::Impl* owner;
         void* module;
         IPluginFactory* factory;

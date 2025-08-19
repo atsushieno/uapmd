@@ -197,6 +197,20 @@ namespace remidy {
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 
+        class PresetsSupport : public PluginPresetsSupport {
+            PluginInstanceLV2 *owner;
+            std::vector<PresetInfo> items{};
+
+        public:
+            PresetsSupport(PluginInstanceLV2* owner);
+            bool isIndexStable() override { return false; }
+            bool isIndexId() override { return false; }
+            int32_t getPresetIndexForId(std::string &id) override;
+            int32_t getPresetCount() override;
+            PresetInfo getPresetInfo(int32_t index) override;
+            void loadPreset(int32_t index) override;
+        };
+
         PluginFormatLV2::Impl *formatImpl;
         int32_t sample_rate;
         const LilvPlugin *plugin;

@@ -95,6 +95,7 @@ if (APPLE)
             au/PluginInstanceAU.Buses.mm
             au/PluginInstanceAU.Events.mm
             au/PluginInstanceAU.Parameters.mm
+            au/PluginInstanceAU.Presets.mm
             au/PluginInstanceAU.States.mm
     )
 endif ()
@@ -125,6 +126,7 @@ target_sources(remidy PRIVATE
         vst3/PluginInstanceVST3.Buses.cpp
         vst3/PluginInstanceVST3.Events.cpp
         vst3/PluginInstanceVST3.Parameters.cpp
+        vst3/PluginInstanceVST3.Presets.cpp
         vst3/PluginInstanceVST3.States.cpp
 
         au/AUv2Helper.cpp
@@ -137,6 +139,7 @@ target_sources(remidy PRIVATE
         lv2/PluginInstanceLV2.Buses.cpp
         lv2/PluginInstanceLV2.Events.cpp
         lv2/PluginInstanceLV2.Parameters.cpp
+        lv2/PluginInstanceLV2.Presets.cpp
         lv2/PluginInstanceLV2.States.cpp
 
         clap/HostClasses.cpp
@@ -145,6 +148,7 @@ target_sources(remidy PRIVATE
         clap/PluginInstanceCLAP.Buses.cpp
         clap/PluginInstanceCLAP.Events.cpp
         clap/PluginInstanceCLAP.Parameters.cpp
+        clap/PluginInstanceCLAP.Presets.cpp
         clap/PluginInstanceCLAP.States.cpp
 
         AudioProcessContext.cpp

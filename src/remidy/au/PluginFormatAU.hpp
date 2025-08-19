@@ -85,6 +85,20 @@ namespace remidy {
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 
+        class PresetsSupport : public PluginPresetsSupport {
+            AudioPluginInstanceAU *owner;
+            std::vector<PresetInfo> items{};
+
+        public:
+            PresetsSupport(AudioPluginInstanceAU* owner);
+            bool isIndexStable() override { return false; }
+            bool isIndexId() override { return false; }
+            int32_t getPresetIndexForId(std::string &id) override;
+            int32_t getPresetCount() override;
+            PresetInfo getPresetInfo(int32_t index) override;
+            void loadPreset(int32_t index) override;
+        };
+
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
         static OSStatus audioInputRenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) {
             return ((AudioPluginInstanceAU *)inRefCon)->audioInputRenderCallback(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, ioData);

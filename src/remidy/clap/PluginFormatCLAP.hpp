@@ -156,6 +156,20 @@ namespace remidy {
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 
+        class PresetsSupport : public PluginPresetsSupport {
+            PluginInstanceCLAP *owner;
+            std::vector<PresetInfo> items{};
+
+        public:
+            PresetsSupport(PluginInstanceCLAP* owner);
+            bool isIndexStable() override { return false; }
+            bool isIndexId() override { return false; }
+            int32_t getPresetIndexForId(std::string &id) override;
+            int32_t getPresetCount() override;
+            PresetInfo getPresetInfo(int32_t index) override;
+            void loadPreset(int32_t index) override;
+        };
+
         clap::helpers::EventList events{};
         AudioBuses* audio_buses{};
         ParameterSupport* _parameters{};
