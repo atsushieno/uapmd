@@ -14,7 +14,8 @@ int32_t AudioPluginInstanceAU::PresetsSupport::getPresetIndexForId(std::string &
 }
 
 int32_t AudioPluginInstanceAU::PresetsSupport::getPresetCount() {
-    throw std::runtime_error("FIXME: not implemented");
+    std::cerr << "FIXME: PresetsSupport::getPresetCount not implemented" << std::endl;
+    return 0;
 }
 
 PresetInfo AudioPluginInstanceAU::PresetsSupport::getPresetInfo(int32_t index) {

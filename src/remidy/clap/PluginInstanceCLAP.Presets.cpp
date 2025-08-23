@@ -10,7 +10,8 @@ int32_t PluginInstanceCLAP::PresetsSupport::getPresetIndexForId(std::string &id)
 }
 
 int32_t PluginInstanceCLAP::PresetsSupport::getPresetCount() {
-    throw std::runtime_error("FIXME: not implemented");
+    std::cerr << "FIXME: PresetsSupport::getPresetCount not implemented" << std::endl;
+    return 0;
 }
 
 PresetInfo PluginInstanceCLAP::PresetsSupport::getPresetInfo(int32_t index) {
