@@ -71,7 +71,7 @@ Regarding event stream it is still not much opinionated.
 
 ### uapmd
 
-`uapmd` provides reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). It saves and loads states in MIDI-CI property manner [not implemented yet]. It is supposed to manage multiple tracks with multiple plugins [not implemented yet].
+`uapmd` provides reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). I serves `AllCtrlList` MIDI-CI property for plugin parameters as Assignable Controllers (NRPNs), and saves and loads states in MIDI-CI property manner. It is supposed to manage multiple tracks with multiple plugins [not implemented yet].
 
 ### uapmd-service
 
