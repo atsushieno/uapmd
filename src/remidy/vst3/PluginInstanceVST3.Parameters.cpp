@@ -118,3 +118,33 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::getParameter(ui
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) {
     return StatusCode::NOT_IMPLEMENTED;
 }
+
+void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint4_t group, remidy::uint4_t channel,
+                                                                    remidy::uint7_t flags, remidy::uint7_t program,
+                                                                    remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) {
+    auto unitInfo = owner->unit_info;
+    auto states = owner->_states;
+
+    int32_t bank = (bankMSB << 7) + bankLSB;
+
+    v3_program_list_info pl;
+    auto result = unitInfo->vtable->unit_info.get_program_list_info(unitInfo, bank, &pl);
+    if (result != V3_OK) {
+        std::cerr << std::format("Could not retrieve program list: result code: {}, bank: {}, program: {}", result, bank, program) << std::endl;
+        return; // could not retrieve program list
+    }
+
+    v3_bstream *stream;
+    result = unitInfo->vtable->unit_info.set_unit_program_data(unitInfo, pl.id, program, &stream);
+    if (result != V3_OK) {
+        std::cerr << std::format("Failed to set unit program data: result code: {}, bank: {}, program: {}", result, bank, program) << std::endl;
+        return;
+    }
+
+    int64_t size;
+    stream->seek(stream, 0, V3_SEEK_END, &size);
+    std::vector<uint8_t> buf(size);
+    int32_t read;
+    stream->read(stream, buf.data(), size, &read);
+    states->setState(buf, remidy::PluginStateSupport::StateContextType::Preset, true);
+}

@@ -99,6 +99,9 @@ namespace remidy {
             StatusCode getParameter(uint32_t index, double *value) override;
             StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
+
+            void setProgramChange(uint4_t group, uint4_t channel, uint7_t flags, uint7_t program, uint7_t bankMSB,
+                                  uint7_t bankLSB);
         };
 
         class VST3UmpInputDispatcher : public TypedUmpInputDispatcher {

@@ -21,7 +21,7 @@ remidy::PluginInstanceVST3::PresetsSupport::PresetsSupport(remidy::PluginInstanc
             if (p >= 128)
                 continue;
 
-            v3_str_128 name;
+            v3_str_128 name{};
             auto status = unitInfo.get_program_name(owner->unit_info, list.id, p, name);
             if (status != V3_OK)
                 continue; // FIXME: should we simply ignore?
@@ -51,6 +51,17 @@ remidy::PresetInfo remidy::PluginInstanceVST3::PresetsSupport::getPresetInfo(int
 }
 
 void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index) {
+    auto unitInfo = owner->unit_info->vtable->unit_info;
+    v3_program_list_info list{};
+    auto bank = index / 0x80;
+    auto prog = index % 0x80;
+    if (unitInfo.get_program_list_info(owner->unit_info, bank, &list) != V3_OK)
+        return; // FIXME: no error reporting?
+    v3_str_128 path{};
+    if (unitInfo.get_program_info(owner->unit_info, list.id, prog, V3_FILE_PATH_STRING_TYPE, path) != V3_OK)
+        return; // FIXME: no error reporting?
 
+    // FIXME: implement the actual preset loading
+    std::cerr << "Loading preset " << index << " from " << vst3StringToStdString(path) << std::endl;
 }
 

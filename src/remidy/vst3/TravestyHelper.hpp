@@ -37,6 +37,16 @@ namespace remidy_vst3 {
         V3_CTRL_QUARTER_FRAME = 132,
     };
 
+    inline const char* V3_PLUGIN_NAME = "PluginName";
+    inline const char* V3_PLUGIN_CATEGORY = "PluginCategory";
+    inline const char* V3_INSTRUMENT = "Instrument";
+    inline const char* V3_STYLE = "MusicalStyle";
+    inline const char* V3_CHARACTER = "MusicalCharacter";
+    inline const char* V3_STATE_TYPE = "StateType";
+    inline const char* V3_FILE_PATH_STRING_TYPE = "FilePathString";
+    inline const char* V3_NAME = "Name";
+    inline const char* V3_FILE_NAME = "FileName";
+
     typedef int32_t v3_unit_id;
     typedef int32_t v3_program_list_id;
     typedef double v3_note_expression_value;

@@ -68,17 +68,9 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4_t gr
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onProgramChange(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t flags,
                                                                               remidy::uint7_t program, remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) {
-    // use IUnitInfo to set program
-    if (!owner->unit_info) {
-        Logger::global()->logInfo("This VST3 plugin does not support IUnitInfo interface");
-        return; // program list is not supported in this plugin
-    }
-    int32_t index = (bankMSB << 14) + (bankLSB << 7) + program;
-    auto count = owner->unit_info->vtable->unit_info.get_unit_count(owner->unit_info);
-    if (index < count)
-        owner->unit_info->vtable->unit_info.select_unit(owner->unit_info, index);
-    else
-        Logger::global()->logInfo("This VST3 plugin does not have unit at index %d (count: %d)", index, count);
+    // we can at best find a VST3 parameter whose channel matches the channel and has kIsProgramChange
+    auto parameters = (PluginInstanceVST3::ParameterSupport*) owner->parameters();
+    parameters->setProgramChange(group, channel, flags, program, bankMSB, bankLSB);
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
