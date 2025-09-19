@@ -12,6 +12,10 @@ std::vector<uapmd::ParameterMetadata> uapmd::getParameterList(int32_t instanceId
     return AppModel::instance().sequencer().getParameterList(instanceId);
 }
 
+std::vector<uapmd::PresetsMetadata> uapmd::getPresetList(int32_t instanceId) {
+    return AppModel::instance().sequencer().getPresetList(instanceId);
+}
+
 void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& proxy) {
     proxy.registerFunction("remidy_instantiatePlugin", [](const std::string_view& args) -> std::string {
         auto req = choc::json::parse(args);
@@ -38,6 +42,22 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
                 "path", p.path,
                 "initialValue", p.initialValue,
                 "hidden", p.hidden);
+        });
+        return choc::json::toString(arr);
+    });
+
+    proxy.registerFunction("remidy_getPluginPresetList", [](const std::string_view& args) -> std::string {
+        auto req = choc::json::parse(args);
+        auto instanceId = req["instanceId"].getInt64();
+        auto pl = getPresetList(instanceId);
+        auto arr = choc::value::createArray(pl.size(), [pl](int32_t index) {
+            auto p = pl[index];
+            return choc::value::createObject("PresetsMetadata",
+                "bank", (double) p.bank,
+                "index", (double) p.index,
+                "stableId", p.stableId,
+                "name", p.name,
+                "path", p.path);
         });
         return choc::json::toString(arr);
     });

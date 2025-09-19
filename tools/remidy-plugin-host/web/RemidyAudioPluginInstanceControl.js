@@ -14,6 +14,14 @@ async function remidy_getPluginParameterList_stub(jsonArgs) {
         { "index": 2, "stableId": "3", "name": "para3", "initialValue": 0.5 },
     ]);
 }
+
+async function remidy_getPluginPresetList_stub(jsonArgs) {
+    return JSON.stringify([
+        { "bank": 0, "index": 0, "stableId": "preset1", "name": "Preset 1", "path": "" },
+        { "bank": 0, "index": 1, "stableId": "preset2", "name": "Preset 2", "path": "" },
+        { "bank": 0, "index": 2, "stableId": "preset3", "name": "Preset 3", "path": "" },
+    ]);
+}
 async function remidy_sendNoteOn_stub(jsonArgs) {
     const args = JSON.parse(jsonArgs)
     console.log(`note on: track ${args.trackIndex}: note ${args.note}`)
@@ -43,6 +51,8 @@ if (typeof(remidy_instantiatePlugin) === "undefined")
     globalThis.remidy_instantiatePlugin = remidy_instantiatePlugin_stub;
 if (typeof(remidy_getPluginParameterList) === "undefined")
     globalThis.remidy_getPluginParameterList = remidy_getPluginParameterList_stub;
+if (typeof(remidy_getPluginPresetList) === "undefined")
+    globalThis.remidy_getPluginPresetList = remidy_getPluginPresetList_stub;
 if (typeof(remidy_sendNoteOn) === "undefined")
     globalThis.remidy_sendNoteOn = remidy_sendNoteOn_stub;
 if (typeof(remidy_sendNoteOff) === "undefined")
@@ -103,7 +113,10 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
             const jsonReq = JSON.stringify({instanceId: this.instanceId, format: list.format, pluginId: list.pluginId})
             const parameterListJSON = await remidy_getPluginParameterList(jsonReq);
             this.parameterList = JSON.parse(parameterListJSON);
+            const presetListJSON = await remidy_getPluginPresetList(jsonReq);
+            this.presetList = JSON.parse(presetListJSON);
             await this.renderPluginParameterList();
+            await this.renderPluginPresetList();
         });
 
         this.innerHTML = `
@@ -121,6 +134,9 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
                 </div>
 
                 <sl-details summary="Parameters" class="parameters">
+                </sl-details>
+
+                <sl-details summary="Presets" class="presets">
                 </sl-details>
                 
                 <sl-button class="plugin-save-state">Save State</sl-button>
@@ -150,6 +166,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         });
 
         this.parameterList = JSON.parse(await remidy_getPluginParameterList_stub(""));
+        this.presetList = JSON.parse(await remidy_getPluginPresetList_stub(""));
 
         this.querySelector("remidy-audio-plugin-list").addEventListener("RemidyAudioPluginListSelectionChanged", (evt) => {
             if (this.waitingForInstancing) {
@@ -163,6 +180,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         });
 
         await this.renderPluginParameterList();
+        await this.renderPluginPresetList();
     }
 
     pluginListLauncherClicked() {
@@ -187,7 +205,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
 
     async renderPluginParameterList() {
         const parameters = this.parameterList;
-        const node = document.querySelector(".parameters");
+        const node = this.querySelector(".parameters");
         node.innerHTML = "";
 
         const actionTable = document.createElement("action-table");
@@ -240,6 +258,62 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         };
         node.querySelectorAll("sl-range.parameter").forEach(el => {
             el.addEventListener("sl-input", handler)
+        });
+    }
+
+    async renderPluginPresetList() {
+        const presets = this.presetList || [];
+        const node = this.querySelector(".presets");
+        node.innerHTML = "";
+
+        const actionTable = document.createElement("action-table");
+        actionTable.setAttribute("store", "store");
+        actionTable.innerHTML = `
+            <action-table-filters class="flex flex-col">
+                <div>Filter: <input id="preset-search" name="action-table" type="search" placeholder="Search" size="30"/>
+                </div>
+            </action-table-filters>
+        `;
+
+        const table = document.createElement("table")
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Bank</th>
+                    <th>Index</th>
+                    <th>Name</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        `;
+
+        const tbody = table.querySelector("tbody");
+        let listHtml = "";
+        for (const i in presets) {
+            const d = presets[i];
+            listHtml += `
+            <tr class="preset-row" data-preset-bank="${d.bank}" data-preset-index="${d.index}" data-preset-stable-id="${d.stableId}">
+                <td>${d.bank}</td>
+                <td>${d.index}</td>
+                <td>${d.name}</td>
+            </tr>
+            `
+        }
+        tbody.innerHTML = listHtml;
+        actionTable.appendChild(table);
+        node.appendChild(actionTable);
+
+        // Add click handlers for preset selection
+        node.querySelectorAll(".preset-row").forEach(el => {
+            el.addEventListener("click", e => {
+                const bank = parseInt(e.currentTarget.getAttribute("data-preset-bank"));
+                const index = parseInt(e.currentTarget.getAttribute("data-preset-index"));
+                const stableId = e.currentTarget.getAttribute("data-preset-stable-id");
+                console.log(`Preset selected: bank ${bank}, index ${index}, id ${stableId}`);
+                // TODO: Implement preset loading when the backend support is ready
+            });
+            el.style.cursor = "pointer";
         });
     }
 }
