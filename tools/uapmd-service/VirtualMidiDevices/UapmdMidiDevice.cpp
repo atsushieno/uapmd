@@ -94,7 +94,11 @@ namespace uapmd {
         auto presetsList = sequencer->getPresetList(instanceId);
         std::vector<commonproperties::MidiCIProgram> programList{};
         for (auto & p : presetsList) {
-            commonproperties::MidiCIProgram program{p.name, {p.bank, (uint8_t) p.index}};
+            commonproperties::MidiCIProgram program{p.name, {
+                (uint8_t) (p.bank / 0x80),
+                (uint8_t) (p.bank % 0x80),
+                (uint8_t) p.index}
+            };
 
             programList.push_back(program);
         }
