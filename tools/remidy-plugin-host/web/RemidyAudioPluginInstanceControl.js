@@ -46,6 +46,11 @@ async function remidy_savePluginState_stub(jsonArgs) {
     console.log(`save plugin state: instance ${args.instanceId}`)
 }
 
+async function remidy_loadPreset_stub(jsonArgs) {
+    const args = JSON.parse(jsonArgs)
+    console.log(`load preset: instance ${args.instanceId}, preset ${args.presetIndex}`)
+}
+
 // WebView Facades. They are supposed to be defined by host WebView.
 if (typeof(remidy_instantiatePlugin) === "undefined")
     globalThis.remidy_instantiatePlugin = remidy_instantiatePlugin_stub;
@@ -63,6 +68,8 @@ if (typeof(remidy_loadPluginState) === "undefined")
     globalThis.remidy_loadPluginState = remidy_loadPluginState_stub;
 if (typeof(remidy_savePluginState) === "undefined")
     globalThis.remidy_savePluginState = remidy_savePluginState_stub;
+if (typeof(remidy_loadPreset) === "undefined")
+    globalThis.remidy_loadPreset = remidy_loadPreset_stub;
 
 
 // Events that are fired by native.
@@ -97,6 +104,9 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
     }
     async savePluginState(instanceId) {
         await remidy_savePluginState(JSON.stringify({instanceId: instanceId}));
+    }
+    async loadPreset(instanceId, presetIndex) {
+        await remidy_loadPreset(JSON.stringify({instanceId: instanceId, presetIndex: presetIndex}));
     }
 
     // part of WebComponents Standard
@@ -282,6 +292,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
                     <th>Bank</th>
                     <th>Index</th>
                     <th>Name</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -297,6 +308,7 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
                 <td>${d.bank}</td>
                 <td>${d.index}</td>
                 <td>${d.name}</td>
+                <td><sl-button class="load-preset-btn" data-preset-index="${i}" variant="primary" size="small">Load</sl-button></td>
             </tr>
             `
         }
@@ -304,16 +316,14 @@ class RemidyAudioPluginInstanceControlElement extends HTMLElement {
         actionTable.appendChild(table);
         node.appendChild(actionTable);
 
-        // Add click handlers for preset selection
-        node.querySelectorAll(".preset-row").forEach(el => {
+        // Add click handlers for Load buttons
+        node.querySelectorAll(".load-preset-btn").forEach(el => {
             el.addEventListener("click", e => {
-                const bank = parseInt(e.currentTarget.getAttribute("data-preset-bank"));
-                const index = parseInt(e.currentTarget.getAttribute("data-preset-index"));
-                const stableId = e.currentTarget.getAttribute("data-preset-stable-id");
-                console.log(`Preset selected: bank ${bank}, index ${index}, id ${stableId}`);
-                // TODO: Implement preset loading when the backend support is ready
+                e.stopPropagation(); // Prevent row click
+                const presetIndex = parseInt(e.currentTarget.getAttribute("data-preset-index"));
+                console.log(`Loading preset at index ${presetIndex}`);
+                this.loadPreset(this.instanceId, presetIndex);
             });
-            el.style.cursor = "pointer";
         });
     }
 }

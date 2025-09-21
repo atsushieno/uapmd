@@ -16,6 +16,10 @@ std::vector<uapmd::PresetsMetadata> uapmd::getPresetList(int32_t instanceId) {
     return AppModel::instance().sequencer().getPresetList(instanceId);
 }
 
+void uapmd::loadPreset(int32_t instanceId, int32_t presetIndex) {
+    AppModel::instance().sequencer().loadPreset(instanceId, presetIndex);
+}
+
 void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& proxy) {
     proxy.registerFunction("remidy_instantiatePlugin", [](const std::string_view& args) -> std::string {
         auto req = choc::json::parse(args);
@@ -98,6 +102,14 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
         std::vector<uint8_t> stateBytes{(uint8_t*) state.begin(), (uint8_t*) state.begin() + state.length()};
         AppModel::instance().sequencer().loadState(stateBytes);
         std::cerr << "Loaded state." << std::endl;
+        return "";
+    });
+
+    proxy.registerFunction("remidy_loadPreset", [](const std::string_view& args) -> std::string {
+        auto req = choc::json::parse(args);
+        auto instanceId = req["instanceId"].getInt64();
+        auto presetIndex = req["presetIndex"].getInt64();
+        loadPreset(instanceId, presetIndex);
         return "";
     });
 }

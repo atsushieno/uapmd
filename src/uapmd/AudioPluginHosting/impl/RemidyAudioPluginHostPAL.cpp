@@ -64,6 +64,10 @@ namespace uapmd {
             instance->states()->setState(state, remidy::PluginStateSupport::StateContextType::Project, false);
         }
 
+        void loadPreset(int32_t presetIndex) override {
+            instance->presets()->loadPreset(presetIndex);
+        }
+
         std::vector<uint8_t> saveState() override {
             return instance->states()->getState(remidy::PluginStateSupport::StateContextType::Project, false);
         }

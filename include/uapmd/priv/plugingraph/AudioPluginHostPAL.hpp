@@ -18,6 +18,7 @@ namespace uapmd {
             virtual uapmd_status_t processAudio(AudioProcessContext &process) = 0;
             virtual std::vector<ParameterMetadata> parameterMetadataList() = 0;
             virtual std::vector<PresetsMetadata> presetMetadataList() = 0;
+            virtual void loadPreset(int32_t presetIndex) = 0;
 
             virtual std::vector<uint8_t> saveState() = 0;
             virtual void loadState(std::vector<uint8_t>& state) = 0;

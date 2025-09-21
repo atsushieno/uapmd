@@ -75,6 +75,17 @@ std::vector<uapmd::PresetsMetadata> uapmd::AudioPluginSequencer::getPresetList(i
     return {};
 }
 
+void uapmd::AudioPluginSequencer::loadPreset(int32_t instanceId, int32_t presetIndex) {
+    for (auto& track : sequencer.tracks())
+        for (auto node : track->graph().plugins())
+            if (node->instanceId() == instanceId) {
+                // Need to access the underlying plugin instance to call presets()->loadPreset()
+                // This requires adding a method to the PAL interface
+                node->pal()->loadPreset(presetIndex);
+                return;
+            }
+}
+
 void uapmd::AudioPluginSequencer::instantiatePlugin(
     std::string& format,
     std::string& pluginId,
