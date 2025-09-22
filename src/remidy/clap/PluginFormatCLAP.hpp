@@ -10,7 +10,7 @@
 namespace remidy {
     class PluginScannerCLAP : public FileBasedPluginScanning {
         void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<std::unique_ptr<PluginCatalogEntry>>& entries);
-        void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<std::unique_ptr<PluginCatalogEntry>>& entries);
+        void scanAllAvailablePluginsFromLibrary(std::filesystem::path clapDir, std::vector<std::unique_ptr<PluginCatalogEntry>>& entries);
 
         PluginFormatCLAP::Impl* impl{};
 

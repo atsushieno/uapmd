@@ -51,17 +51,41 @@ remidy::PresetInfo remidy::PluginInstanceVST3::PresetsSupport::getPresetInfo(int
 }
 
 void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index) {
-    auto unitInfo = owner->unit_info->vtable->unit_info;
+    auto unitInfo = owner->unit_info;
+    auto states = owner->_states;
+
     v3_program_list_info list{};
     auto bank = index / 0x80;
-    auto prog = index % 0x80;
-    if (unitInfo.get_program_list_info(owner->unit_info, bank, &list) != V3_OK)
+    auto program = index % 0x80;
+    auto result = unitInfo->vtable->unit_info.get_program_list_info(unitInfo, bank, &list);
+    if (result != V3_OK) {
+        Logger::global()->logError(std::format("Could not retrieve preset bank {}: {}", bank, result).c_str());
         return; // FIXME: no error reporting?
-    v3_str_128 path{};
-    if (unitInfo.get_program_info(owner->unit_info, list.id, prog, V3_FILE_PATH_STRING_TYPE, path) != V3_OK)
-        return; // FIXME: no error reporting?
+    }
 
-    // FIXME: implement the actual preset loading
+    /*
+    v3_str_128 path{};
+    result = unitInfo->vtable->unit_info.get_program_info(unitInfo, list.id, program, V3_NAME, path);
+    //result = unitInfo.get_program_info(owner->unit_info, list.id, prog, V3_FILE_PATH_STRING_TYPE, path);
+    if (result != V3_OK) {
+        Logger::global()->logError(std::format("Could not retrieve preset bank {}: {}", bank, result).c_str());
+    }
     std::cerr << "Loading preset " << index << " from " << vst3StringToStdString(path) << std::endl;
+    */
+
+    // copied from PluginInstanceVST3::ParameterSupport::setProgramChange()
+    v3_bstream *stream;
+    result = unitInfo->vtable->unit_info.set_unit_program_data(unitInfo, list.id, program, &stream);
+    if (result != V3_OK) {
+        std::cerr << std::format("Failed to set unit program data: result code: {}, bank: {}, program: {}", result, bank, program) << std::endl;
+        return;
+    }
+
+    int64_t size;
+    stream->seek(stream, 0, V3_SEEK_END, &size);
+    std::vector<uint8_t> buf(size);
+    int32_t read;
+    stream->read(stream, buf.data(), size, &read);
+    states->setState(buf, remidy::PluginStateSupport::StateContextType::Preset, true);
 }
 
