@@ -1,11 +1,11 @@
 #pragma once
 
-#include "remidy.hpp"
-#include "HostClasses.hpp"
-#include "../GenericAudioBuses.hpp"
 #include "clap/factory/plugin-factory.h"
 #include "clap/plugin.h"
 #include "clap/helpers/event-list.hh"
+#include "remidy.hpp"
+#include "HostClasses.hpp"
+#include "../GenericAudioBuses.hpp"
 
 namespace remidy {
     class PluginScannerCLAP : public FileBasedPluginScanning {
