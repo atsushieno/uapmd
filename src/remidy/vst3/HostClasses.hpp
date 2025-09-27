@@ -4,9 +4,10 @@
 #include <iostream>
 #include <algorithm>
 
+#define min(v1, v2) (v1 < v2 ? v1 : v2)
+
 namespace remidy_vst3 {
-    static int32_t min(int32_t v1, int32_t v2) { return v1 < v2 ? v1 : v2; }
-    
+
     // Host implementation
 #define IMPLEMENT_FUNKNOWN_REFS(TYPE) \
     uint32_t refCount{1}; \
