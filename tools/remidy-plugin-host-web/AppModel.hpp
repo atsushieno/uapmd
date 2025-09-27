@@ -3,7 +3,6 @@
 #include <uapmd/uapmd.hpp>
 #include <remidy-tooling/PluginScanTool.hpp>
 #include "../../include/uapmd/priv/sequencer/AudioPluginSequencer.hpp"
-#include <format>
 
 namespace uapmd {
     class AppModel {

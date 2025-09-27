@@ -11,5 +11,6 @@ CPMAddPackage(
 add_subdirectory(remidy-scan)
 add_subdirectory(remidy-apply)
 add_subdirectory(remidy-plugin-host)
+#add_subdirectory(remidy-plugin-host-web) // old
 
 add_subdirectory(uapmd-service)

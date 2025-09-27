@@ -1,8 +1,5 @@
-#include <remidy/remidy.hpp>
-#include "AppModel.hpp"
+#include "SimpleAppModel.hpp"
 #include "gui/MainWindow.hpp"
-#include "ImGuiEventLoop.hpp"
-#include <cpptrace/from_current.hpp>
 #include <iostream>
 
 #include <imgui.h>
@@ -12,16 +9,13 @@
 
 #if defined(__APPLE__)
 #define GL_SILENCE_DEPRECATION
-#include <OpenGL/gl3.h>
-#else
-#include <GL/gl3w.h>
 #endif
 
 static void glfw_error_callback(int error, const char* description) {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
 
-int runMain(int argc, char** argv) {
+int main(int argc, char** argv) {
     // Initialize GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
@@ -38,8 +32,8 @@ int runMain(int argc, char** argv) {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    // Create window - narrower main window
-    GLFWwindow* window = glfwCreateWindow(640, 720, "Remidy Plugin Host", nullptr, nullptr);
+    // Create window
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "remidy-plugin-host-imgui", nullptr, nullptr);
     if (window == nullptr) {
         glfwTerminate();
         return EXIT_FAILURE;
@@ -61,28 +55,19 @@ int runMain(int argc, char** argv) {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // Initialize Remidy event loop for ImGui
-    auto eventLoop = std::make_unique<uapmd::gui::ImGuiEventLoop>();
-    auto* eventLoopPtr = eventLoop.get();
-    remidy::setEventLoop(eventLoop.release());
-    remidy::EventLoop::initializeOnUIThread();
-
-    // Initialize application model
-    uapmd::AppModel::instantiate();
+    // Initialize simplified application model
+    uapmd::SimpleAppModel::instantiate();
 
     // Create main window controller
     uapmd::gui::MainWindow mainWindow;
 
-    // Start audio
-    uapmd::AppModel::instance().sequencer().startAudio();
+    // Start audio (simplified)
+    uapmd::SimpleAppModel::instance().startAudio();
 
     // Main loop
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    while (!glfwWindowShouldClose(window) && mainWindow.isOpen()) {
+    while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-
-        // Process queued tasks from remidy
-        eventLoopPtr->processQueuedTasks();
 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
@@ -90,10 +75,7 @@ int runMain(int argc, char** argv) {
         ImGui::NewFrame();
 
         // Render main window
-        mainWindow.render(window);
-
-        // Update (handles dialogs)
-        mainWindow.update();
+        mainWindow.render();
 
         // Rendering
         ImGui::Render();
@@ -116,17 +98,7 @@ int runMain(int argc, char** argv) {
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    uapmd::AppModel::cleanupInstance();
+    uapmd::SimpleAppModel::cleanupInstance();
 
     return EXIT_SUCCESS;
-}
-
-int main(int argc, char** argv) {
-    CPPTRACE_TRY {
-        return runMain(argc, argv);
-    } CPPTRACE_CATCH(const std::exception &e) {
-        std::cerr << "Exception in remidy-plugin-host-imgui: " << e.what() << std::endl;
-        cpptrace::from_current_exception().print();
-        return EXIT_FAILURE;
-    }
 }

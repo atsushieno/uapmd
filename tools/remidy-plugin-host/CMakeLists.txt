@@ -1,87 +1,98 @@
-add_executable(remidy-plugin-host)
+cmake_minimum_required(VERSION 3.18)
+if (APPLE)
+    project(remidy LANGUAGES C CXX OBJC OBJCXX Swift)
+else()
+    project(remidy LANGUAGES C CXX)
+endif()
+set(CMAKE_CXX_STANDARD 23)
 
-set(saucer_modules ON)
+add_executable(remidy-plugin-host-imgui)
 
-if(UNIX AND NOT APPLE)
-    set(saucer_backend "Qt6")
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
-    pkg_check_modules(WEBKITGTK REQUIRED webkit2gtk-4.1)
+# GLFW for windowing (must come before ImGui)
+CPMAddPackage(
+        NAME glfw
+        GIT_TAG 3.4
+        GIT_REPOSITORY https://github.com/glfw/glfw
+        OPTIONS
+        "GLFW_BUILD_DOCS OFF"
+        "GLFW_BUILD_TESTS OFF"
+        "GLFW_BUILD_EXAMPLES OFF"
+        "GLFW_INSTALL OFF"
+)
+
+# ImGui and backend dependencies
+CPMAddPackage(
+        NAME imgui
+        GIT_TAG v1.91.0
+        GIT_REPOSITORY https://github.com/ocornut/imgui
+        DOWNLOAD_ONLY YES
+)
+
+if(imgui_ADDED)
+    add_library(imgui STATIC
+            ${imgui_SOURCE_DIR}/imgui.cpp
+            ${imgui_SOURCE_DIR}/imgui_demo.cpp
+            ${imgui_SOURCE_DIR}/imgui_draw.cpp
+            ${imgui_SOURCE_DIR}/imgui_tables.cpp
+            ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+            ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+            ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+
+    target_include_directories(imgui PUBLIC
+            ${imgui_SOURCE_DIR}
+            ${imgui_SOURCE_DIR}/backends
+    )
+
+    # Link GLFW to ImGui so backends can find headers
+    target_link_libraries(imgui PUBLIC glfw)
+
+    # Platform-specific OpenGL and windowing
+    if(APPLE)
+        find_package(OpenGL REQUIRED)
+        target_link_libraries(imgui PUBLIC OpenGL::GL)
+    elseif(UNIX)
+        find_package(OpenGL REQUIRED)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(GL REQUIRED gl)
+        target_link_libraries(imgui PUBLIC OpenGL::GL ${GL_LIBRARIES})
+    elseif(WIN32)
+        target_link_libraries(imgui PUBLIC opengl32)
+    endif()
 endif()
 
-if (WIN32)
-    cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-msvc.patch")
-elseif (APPLE)
-    cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-apple.patch")
-else ()
-    cmake_path(SET SAUCER_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../../external/saucer-disable-polyfill-linux.patch")
-endif()
-FetchContent_Declare(saucer
-        GIT_TAG        41e9ce4914261e8f71cfab960d38d6bc76a0e2ec
-        GIT_REPOSITORY "https://github.com/saucer/saucer"
-        EXCLUDE_FROM_ALL
-        #PATCH_COMMAND  git apply "${SAUCER_PATCH_FILE}"
-        #UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
-)
-FetchContent_MakeAvailable(saucer)
-
-target_compile_options(remidy-plugin-host PRIVATE
-        ${GTK3_CFLAGS}
-        ${WEBKITGTK_CFLAGS}
-)
-target_link_options(remidy-plugin-host PRIVATE
-        ${GTK3_LDFLAGS}
-        ${WEBKITGTK_LDFLAGS}
-)
-
-target_include_directories(remidy-plugin-host PRIVATE
+target_include_directories(remidy-plugin-host-imgui PRIVATE
         ../../external/choc
         ${cmidi2_SOURCE_DIR}
         ../../include
-        remidy::remidy-webui
 )
-target_link_libraries(remidy-plugin-host PRIVATE
-        saucer::saucer
+
+target_link_libraries(remidy-plugin-host-imgui PRIVATE
+        imgui
         remidy::remidy
         remidy::remidy-tooling
         cpptrace::cpptrace
         uapmd
 )
-target_sources(remidy-plugin-host PRIVATE
-        AppModel.cpp
-        components/AudioDeviceSetup.cpp
-        components/AudioPluginSelectors.cpp
-        components/AudioPluginInstanceControl.cpp
-        components/AudioPlayerController.cpp
+
+target_sources(remidy-plugin-host-imgui PRIVATE
         main.cpp
+        AppModel.cpp
+        gui/MainWindow.cpp
+        gui/MidiKeyboard.cpp
 )
 
-# Prepare web content files
-if (WIN32)
-    set (APP_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${REMIDY_BUILD_CONFIG})
-else ()
-    set (APP_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
-endif ()
+# Use C++23 like the WebView version
+target_compile_features(remidy-plugin-host-imgui PRIVATE cxx_std_23)
 
-add_custom_target(build-web-content
-        npm install
-        WORKING_DIRECTORY ${APP_BINARY_DIR}/web
+# Copy over shared AppModel from WebView version for now
+configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/../remidy-plugin-host/AppModel.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/AppModel.hpp
+        COPYONLY
 )
-add_dependencies(remidy-plugin-host build-web-content)
-
-# depending on how heavyweight copying entire web directory (a bunch of node_modules) we may have to resort back to this.
-if (0)
-file(CREATE_LINK
-        ${CMAKE_CURRENT_SOURCE_DIR}/web
-        ${APP_BINARY_DIR}/web
-        COPY_ON_ERROR
-        SYMBOLIC
+configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/../remidy-plugin-host/AppModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/AppModel.cpp
+        COPYONLY
 )
-else ()
-    message("Copying ${CMAKE_CURRENT_SOURCE_DIR}/web to ${APP_BINARY_DIR}/web ...")
-    file(MAKE_DIRECTORY ${APP_BINARY_DIR}/web)
-    file(COPY
-            ${CMAKE_CURRENT_SOURCE_DIR}/web
-            DESTINATION ${APP_BINARY_DIR}/
-    )
-endif ()

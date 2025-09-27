@@ -86,6 +86,38 @@ void uapmd::AudioPluginSequencer::loadPreset(int32_t instanceId, int32_t presetI
             }
 }
 
+std::vector<int32_t> uapmd::AudioPluginSequencer::getInstanceIds() {
+    std::vector<int32_t> instances;
+    for (auto& track : sequencer.tracks()) {
+        for (auto plugin : track->graph().plugins()) {
+            instances.push_back(plugin->instanceId());
+        }
+    }
+    return instances;
+}
+
+std::string uapmd::AudioPluginSequencer::getPluginName(int32_t instanceId) {
+    for (auto& track : sequencer.tracks()) {
+        for (auto plugin : track->graph().plugins()) {
+            if (plugin->instanceId() == instanceId) {
+                // Get plugin ID and look it up in the catalog
+                std::string pluginId = plugin->pal()->pluginId();
+                std::string format = plugin->pal()->formatName();
+
+                // Search in the catalog for display name
+                auto plugins = plugin_host_pal->catalog().getPlugins();
+                for (auto* catalogPlugin : plugins) {
+                    if (catalogPlugin->pluginId() == pluginId && catalogPlugin->format() == format) {
+                        return catalogPlugin->displayName();
+                    }
+                }
+                return "Plugin " + std::to_string(instanceId);
+            }
+        }
+    }
+    return "Unknown Plugin";
+}
+
 void uapmd::AudioPluginSequencer::instantiatePlugin(
     std::string& format,
     std::string& pluginId,

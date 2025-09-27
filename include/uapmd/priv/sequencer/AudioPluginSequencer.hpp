@@ -29,6 +29,8 @@ namespace uapmd {
         std::vector<ParameterMetadata> getParameterList(int32_t instanceId);
         std::vector<PresetsMetadata> getPresetList(int32_t instanceId);
         void loadPreset(int32_t instanceId, int32_t presetIndex);
+        std::vector<int32_t> getInstanceIds();
+        std::string getPluginName(int32_t instanceId);
 
         // audio/MIDI player
 

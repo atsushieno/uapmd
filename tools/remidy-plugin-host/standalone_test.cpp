@@ -1,48 +1,39 @@
-#include <remidy/remidy.hpp>
-#include "AppModel.hpp"
-#include "gui/MainWindow.hpp"
-#include "ImGuiEventLoop.hpp"
-#include <cpptrace/from_current.hpp>
-#include <iostream>
-
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <GLFW/glfw3.h>
+#include <iostream>
 
 #if defined(__APPLE__)
 #define GL_SILENCE_DEPRECATION
 #include <OpenGL/gl3.h>
-#else
-#include <GL/gl3w.h>
 #endif
 
 static void glfw_error_callback(int error, const char* description) {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
 
-int runMain(int argc, char** argv) {
+int main() {
     // Initialize GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
-        return EXIT_FAILURE;
+        return -1;
     }
 
-    // GL 3.2 + GLSL 150 for macOS compatibility
-    const char* glsl_version = "#version 150";
+    // GL 3.0 + GLSL 130
+    const char* glsl_version = "#version 130";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    // Create window - narrower main window
-    GLFWwindow* window = glfwCreateWindow(640, 720, "Remidy Plugin Host", nullptr, nullptr);
+    // Create window
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "remidy-plugin-host-imgui Test", nullptr, nullptr);
     if (window == nullptr) {
         glfwTerminate();
-        return EXIT_FAILURE;
+        return -1;
     }
 
     glfwMakeContextCurrent(window);
@@ -53,6 +44,7 @@ int runMain(int argc, char** argv) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -61,39 +53,25 @@ int runMain(int argc, char** argv) {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // Initialize Remidy event loop for ImGui
-    auto eventLoop = std::make_unique<uapmd::gui::ImGuiEventLoop>();
-    auto* eventLoopPtr = eventLoop.get();
-    remidy::setEventLoop(eventLoop.release());
-    remidy::EventLoop::initializeOnUIThread();
-
-    // Initialize application model
-    uapmd::AppModel::instantiate();
-
-    // Create main window controller
-    uapmd::gui::MainWindow mainWindow;
-
-    // Start audio
-    uapmd::AppModel::instance().sequencer().startAudio();
-
     // Main loop
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    while (!glfwWindowShouldClose(window) && mainWindow.isOpen()) {
+    while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-
-        // Process queued tasks from remidy
-        eventLoopPtr->processQueuedTasks();
 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // Render main window
-        mainWindow.render(window);
-
-        // Update (handles dialogs)
-        mainWindow.update();
+        // Show a simple window
+        if (ImGui::Begin("Test Window")) {
+            ImGui::Text("Hello, ImGui!");
+            ImGui::Text("remidy-plugin-host-imgui is working!");
+            if (ImGui::Button("Close")) {
+                glfwSetWindowShouldClose(window, true);
+            }
+        }
+        ImGui::End();
 
         // Rendering
         ImGui::Render();
@@ -116,17 +94,5 @@ int runMain(int argc, char** argv) {
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    uapmd::AppModel::cleanupInstance();
-
-    return EXIT_SUCCESS;
-}
-
-int main(int argc, char** argv) {
-    CPPTRACE_TRY {
-        return runMain(argc, argv);
-    } CPPTRACE_CATCH(const std::exception &e) {
-        std::cerr << "Exception in remidy-plugin-host-imgui: " << e.what() << std::endl;
-        cpptrace::from_current_exception().print();
-        return EXIT_FAILURE;
-    }
+    return 0;
 }
