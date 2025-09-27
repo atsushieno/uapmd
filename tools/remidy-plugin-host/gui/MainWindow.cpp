@@ -443,15 +443,27 @@ void MainWindow::loadSelectedPreset() {
 }
 
 void MainWindow::renderParameterControls() {
-    if (ImGui::BeginTable("ParameterTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
-        ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
-        ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+    if (ImGui::BeginTable("ParameterTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed, 30.0f);
+        ImGui::TableSetupColumn("Stable ID", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+        ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthStretch, 0.0f, 0);
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+        ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthFixed, 70.0f);
         ImGui::TableHeadersRow();
 
         for (size_t i = 0; i < parameters_.size(); ++i) {
             auto& param = parameters_[i];
             ImGui::TableNextRow();
+
+            ImGui::TableNextColumn();
+            ImGui::Text("%u", param.index);
+
+            ImGui::TableNextColumn();
+            if (param.stableId.empty()) {
+                ImGui::Text("(empty)");
+            } else {
+                ImGui::Text("%s", param.stableId.c_str());
+            }
 
             ImGui::TableNextColumn();
             ImGui::Text("%s", param.name.c_str());
