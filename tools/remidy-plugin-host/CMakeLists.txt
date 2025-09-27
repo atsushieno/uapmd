@@ -6,7 +6,7 @@ else()
 endif()
 set(CMAKE_CXX_STANDARD 23)
 
-add_executable(remidy-plugin-host-imgui)
+add_executable(remidy-plugin-host)
 
 # GLFW for windowing (must come before ImGui)
 CPMAddPackage(
@@ -61,13 +61,13 @@ if(imgui_ADDED)
     endif()
 endif()
 
-target_include_directories(remidy-plugin-host-imgui PRIVATE
+target_include_directories(remidy-plugin-host PRIVATE
         ../../external/choc
         ${cmidi2_SOURCE_DIR}
         ../../include
 )
 
-target_link_libraries(remidy-plugin-host-imgui PRIVATE
+target_link_libraries(remidy-plugin-host PRIVATE
         imgui
         remidy::remidy
         remidy::remidy-tooling
@@ -76,7 +76,7 @@ target_link_libraries(remidy-plugin-host-imgui PRIVATE
         midicci
 )
 
-target_sources(remidy-plugin-host-imgui PRIVATE
+target_sources(remidy-plugin-host PRIVATE
         main.cpp
         AppModel.cpp
         gui/MainWindow.cpp
@@ -84,7 +84,7 @@ target_sources(remidy-plugin-host-imgui PRIVATE
 )
 
 # Use C++23 like the WebView version
-target_compile_features(remidy-plugin-host-imgui PRIVATE cxx_std_23)
+target_compile_features(remidy-plugin-host PRIVATE cxx_std_23)
 
 # Copy over shared AppModel from WebView version for now
 configure_file(
