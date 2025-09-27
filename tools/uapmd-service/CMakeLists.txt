@@ -22,6 +22,7 @@ target_link_libraries(uapmd-service PRIVATE
         cpplocate::cpplocate
         cpptrace::cpptrace
         libremidi::libremidi
+        midicci
         ${uapmd-service_LIBS_PLAT}
 
 )
