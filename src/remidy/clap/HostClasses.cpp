@@ -1,5 +1,5 @@
-#include "HostClasses.hpp"
 #include "PluginFormatCLAP.hpp"
+#include "HostClasses.hpp"
 
 namespace remidy {
     void RemidyCLAPHost::requestRestart() noexcept {
