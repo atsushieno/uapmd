@@ -34,7 +34,7 @@ target_include_directories(uapmd PRIVATE
         ${concurrentqueue_SOURCE_DIR}
 )
 
-target_link_libraries(uapmd PRIVATE
+target_link_libraries(uapmd PUBLIC
         libremidi::libremidi
         remidy::remidy
         remidy::remidy-tooling
