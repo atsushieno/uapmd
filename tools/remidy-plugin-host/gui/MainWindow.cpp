@@ -70,14 +70,14 @@ void MainWindow::render(GLFWwindow* window) {
 
     if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
         // Device Settings Section
-        if (ImGui::CollapsingHeader("Device Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader("Device Settings", ImGuiTreeNodeFlags_None)) {
             renderDeviceSettings();
         }
 
         ImGui::Separator();
 
         // Player Settings Section
-        if (ImGui::CollapsingHeader("Player Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader("Player Settings", ImGuiTreeNodeFlags_None)) {
             renderPlayerSettings();
         }
 
