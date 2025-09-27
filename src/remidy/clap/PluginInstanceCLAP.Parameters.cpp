@@ -22,7 +22,7 @@ namespace remidy {
                 if (!params_ext->get_info(plugin, i, &info))
                     continue;
                 std::vector<ParameterEnumeration> enums{};
-                std::string id{std::format("%x", info.id)};
+                std::string id{std::format("{}", info.id)};
                 std::string name{info.name};
                 std::string module{info.module};
 
