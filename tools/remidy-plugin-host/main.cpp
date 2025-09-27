@@ -10,13 +10,6 @@
 #include <imgui_impl_opengl3.h>
 #include <GLFW/glfw3.h>
 
-#if defined(__APPLE__)
-#define GL_SILENCE_DEPRECATION
-#include <OpenGL/gl3.h>
-#else
-#include <GL/gl3w.h>
-#endif
-
 static void glfw_error_callback(int error, const char* description) {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
