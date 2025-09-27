@@ -5,7 +5,8 @@
 #include <algorithm>
 
 namespace remidy_vst3 {
-
+    static int32_t min(int32_t v1, int32_t v2) { return v1 < v2 ? v1 : v2; }
+    
     // Host implementation
 #define IMPLEMENT_FUNKNOWN_REFS(TYPE) \
     uint32_t refCount{1}; \
@@ -294,8 +295,6 @@ namespace remidy_vst3 {
         IMPLEMENT_FUNKNOWN_REFS(VectorStream)
         std::vector<uint8_t>& data;
         int32_t offset{0};
-
-        static int32_t min(int32_t v1, int32_t v2) { return v1 < v2 ? v1 : v2; }
 
         static v3_result read(void *self, void* buffer, int32_t num_bytes, int32_t* bytes_read) {
             auto v = static_cast<VectorStream *>(self);

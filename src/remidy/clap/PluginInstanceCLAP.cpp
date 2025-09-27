@@ -138,7 +138,7 @@ namespace remidy {
         dst.steady_time = -1;
 
         // copy audio buffer pointers
-        auto numAudioIn = std::min((int32_t) dst.audio_inputs_count, src.audioInBusCount());
+        auto numAudioIn = min((int32_t) dst.audio_inputs_count, src.audioInBusCount());
         for (size_t bus = 0, nBus = numAudioIn; bus < nBus; bus++) {
             if (src.trackContext()->masterContext().audioDataType() == AudioContentType::Float32)
                 for (size_t ch = 0, nCh = src.inputChannelCount(bus); ch < nCh; ch++)
@@ -148,7 +148,7 @@ namespace remidy {
                     dst.audio_inputs[bus].data64[ch] = src.getDoubleInBuffer(bus, ch);
         }
 
-        auto numAudioOut = std::min((int32_t) dst.audio_outputs_count, src.audioOutBusCount());
+        auto numAudioOut = min((int32_t) dst.audio_outputs_count, src.audioOutBusCount());
         for (size_t bus = 0, nBus = numAudioOut; bus < nBus; bus++) {
             if (src.trackContext()->masterContext().audioDataType() == AudioContentType::Float32)
                 for (size_t ch = 0, nCh = src.outputChannelCount(bus); ch < nCh; ch++)

@@ -15,6 +15,8 @@ using CLAPHelperHost = clap::helpers::Host<
 namespace remidy {
     class PluginInstanceCLAP;
 
+    static int32_t min(int32_t v1, int32_t v2) { return v1 < v2 ? v1 : v2; }
+
     class RemidyCLAPHost : public CLAPHelperHost {
     protected:
         void requestRestart() noexcept override;
