@@ -23,7 +23,7 @@ CPMAddPackage(
 # ImGui and backend dependencies
 CPMAddPackage(
         NAME imgui
-        GIT_TAG v1.91.0
+        GIT_TAG v1.92.3
         GIT_REPOSITORY https://github.com/ocornut/imgui
         DOWNLOAD_ONLY YES
 )
