@@ -69,11 +69,8 @@ target_include_directories(remidy-plugin-host PRIVATE
 
 target_link_libraries(remidy-plugin-host PRIVATE
         imgui
-        remidy::remidy
-        remidy::remidy-tooling
         cpptrace::cpptrace
         uapmd
-        midicci
 )
 
 target_sources(remidy-plugin-host PRIVATE

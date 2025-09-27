@@ -18,13 +18,10 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 endif ()
 
 target_link_libraries(uapmd-service PRIVATE
-        remidy::remidy
-        remidy::remidy-tooling
         uapmd
         cpplocate::cpplocate
         cpptrace::cpptrace
         libremidi::libremidi
-        midicci
         ${uapmd-service_LIBS_PLAT}
 
 )

@@ -15,7 +15,6 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 endif ()
 
 target_link_libraries(remidy-apply PRIVATE
-        remidy-tooling
         uapmd
         cpplocate::cpplocate
         cpptrace::cpptrace
