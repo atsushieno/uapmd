@@ -1,6 +1,7 @@
 #include "MidiKeyboard.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace uapmd::gui {
 
