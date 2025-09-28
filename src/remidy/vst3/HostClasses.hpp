@@ -234,6 +234,9 @@ namespace remidy_vst3 {
             vtable.param_value_queue.get_point_count = get_point_count;
             vtable.param_value_queue.get_point = get_point;
             vtable.param_value_queue.add_point = add_point;
+
+            // FIXME: use some configured value
+            points.reserve(1024);
         }
         auto asInterface() { return this; }
 
@@ -288,10 +291,19 @@ namespace remidy_vst3 {
 
         void startProcessing() {
             // we need to allocate memory for IParamValueQueues for all the parameters.
+            queues.resize(128);
         }
 
         void stopProcessing() {
             // we need to deallocate memory for IParamValueQueues for all the parameters.
+            queues.clear();
+            queues.resize(0);
+        }
+
+        // invoked at process()
+        void clear() {
+            // FIXME: this should not deallocate. Move it elsewhere.
+            queues.clear();
         }
     };
 

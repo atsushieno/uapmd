@@ -237,8 +237,12 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     // FIXME: pass correct timestamp
     ump_input_dispatcher.process(0, process);
 
+    processDataOutputParameterChanges.clear();
+
     // invoke plugin process
     auto result = processor->vtable->processor.process(processor, &processData);
+
+    processDataInputParameterChanges.clear();
 
     if (result != V3_OK) {
         owner->getLogger()->logError("Failed to process vst3 audio. Result: %d", result);

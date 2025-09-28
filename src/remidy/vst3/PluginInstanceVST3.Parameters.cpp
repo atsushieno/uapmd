@@ -21,10 +21,25 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
         std::string name = vst3StringToStdString(info.title);
         std::string path{""};
 
-        auto p = new PluginParameter(info.param_id, idString, name, path, info.default_normalised_value, 0, 1, true,
+        std::vector<ParameterEnumeration> enums{};
+        if (info.step_count > 0)
+            for (int32_t e = 0; e < info.step_count; e++) {
+                v3_str_128 name{};
+                auto normalized = controller->vtable->controller.plain_parameter_to_normalised(controller, info.param_id, e);
+                controller->vtable->controller.get_parameter_string_for_value(controller, info.param_id, normalized, name);
+                auto nameString = vst3StringToStdString(name);
+                ParameterEnumeration p{nameString, normalized};
+                enums.emplace_back(p);
+            }
+
+        auto p = new PluginParameter(i, idString, name, path,
+                                     info.flags & V3_PARAM_IS_LIST ? info.default_normalised_value * info.step_count : info.default_normalised_value,
+                                     0,
+                                     info.flags & V3_PARAM_IS_LIST ? info.step_count : 1,
+                                     true,
                                      info.flags & V3_PARAM_IS_HIDDEN,
-                                     info.flags & V3_PARAM_IS_LIST);
-        // FIXME: fill enums
+                                     info.flags & V3_PARAM_IS_LIST,
+                                     enums);
 
         parameter_ids[i] = info.param_id;
         parameter_defs.emplace_back(p);
@@ -79,17 +94,17 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
     // use IParameterChanges.
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
     auto pvc = owner->processDataInputParameterChanges.asInterface();
-    const v3_param_id dummy = index;
+    const v3_param_id id = parameter_ids[index];
     int32_t i = 0;
     IParamValueQueue* q{nullptr};
     for (int32_t n = pvc->vtable->parameter_changes.get_param_count(pvc); i < n; i++) {
         q = reinterpret_cast<IParamValueQueue *>(pvc->vtable->parameter_changes.get_param_data(pvc, i));
-        if (q->vtable->param_value_queue.get_param_id(q) == index)
+        if (q->vtable->param_value_queue.get_param_id(q) == id)
             break;
     }
     if (!q)
-        // It is RT-safe operation, right?
-        q = reinterpret_cast<IParamValueQueue *>(pvc->vtable->parameter_changes.add_param_data(pvc, &dummy, &i));
+        // It is an RT-safe operation, right?
+        q = reinterpret_cast<IParamValueQueue *>(pvc->vtable->parameter_changes.add_param_data(pvc, &id, &i));
     if (q && q->vtable->param_value_queue.add_point(q, sampleOffset, value, &i) == V3_OK)
         return StatusCode::OK;
     return StatusCode::INVALID_PARAMETER_OPERATION;
