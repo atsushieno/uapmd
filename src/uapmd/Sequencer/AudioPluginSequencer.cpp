@@ -176,9 +176,7 @@ void uapmd::AudioPluginSequencer::setParameterValue(int32_t instanceId, int32_t 
     for (auto& track : sequencer.tracks())
         for (auto& node : track->graph().plugins())
             if (node->instanceId() == instanceId) {
-                // FIXME: we need to indicate plugin to handle it
-                if (!track->scheduleEvents(0, umps, 8))
-                    remidy::Logger::global()->logError(std::format("Failed to enqueue parameter change event {}: {} = {}", instanceId, index, value).c_str());
+                node->pal()->setParameterValue(index, value);
                 remidy::Logger::global()->logError(std::format("Native parameter change {}: {} = {}", instanceId, index, value).c_str());
                 break;
             }

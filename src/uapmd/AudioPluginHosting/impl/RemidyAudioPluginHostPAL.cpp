@@ -71,6 +71,10 @@ namespace uapmd {
         std::vector<uint8_t> saveState() override {
             return instance->states()->getState(remidy::PluginStateSupport::StateContextType::Project, false);
         }
+
+        void setParameterValue(int32_t index, double value) override {
+            instance->parameters()->setParameter(index, value, 0);
+        }
     };
 }
 
