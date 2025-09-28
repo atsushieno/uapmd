@@ -46,7 +46,26 @@ if(NOT BACKEND_FOUND)
         message(STATUS "Using GLFW backend")
         add_compile_definitions(USE_GLFW_BACKEND)
     else()
-        message(FATAL_ERROR "No suitable backend found. Please install SDL3, SDL2, or GLFW.")
+        # Add GLFW via CPM as final fallback
+        message(STATUS "No system GLFW found, adding via CPM")
+        CPMAddPackage(
+            NAME glfw
+            GIT_TAG 3.4
+            GIT_REPOSITORY https://github.com/glfw/glfw
+            OPTIONS
+                "GLFW_BUILD_EXAMPLES OFF"
+                "GLFW_BUILD_TESTS OFF"
+                "GLFW_BUILD_DOCS OFF"
+        )
+        if(glfw_ADDED)
+            set(BACKEND_FOUND TRUE)
+            set(BACKEND_TYPE "GLFW")
+            set(BACKEND_LIBRARIES glfw)
+            message(STATUS "Using GLFW backend (via CPM)")
+            add_compile_definitions(USE_GLFW_BACKEND)
+        else()
+            message(FATAL_ERROR "Failed to add GLFW via CPM")
+        endif()
     endif()
 endif()
 
