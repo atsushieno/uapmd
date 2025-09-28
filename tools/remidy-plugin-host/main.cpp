@@ -2,58 +2,46 @@
 #include "AppModel.hpp"
 #include "gui/MainWindow.hpp"
 #include "ImGuiEventLoop.hpp"
+#include "gui/PlatformBackend.hpp"
 #include <cpptrace/from_current.hpp>
 #include <iostream>
 
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
-#include <GLFW/glfw3.h>
 
-static void glfw_error_callback(int error, const char* description) {
-    std::cerr << "GLFW Error " << error << ": " << description << std::endl;
-}
-
-static void glfw_window_content_scale_callback(GLFWwindow* window, float xscale, float yscale) {
-    // Update DPI scaling for dynamic changes
-    float dpi_scale = xscale; // Use x-scale as primary scale factor
-
-    // std::cout << "DPI scale changed to: " << dpi_scale << std::endl;
-
-    // Note: Style scaling is typically done once at startup
-    // For dynamic changes during runtime, we'll let ImGui handle font scaling automatically
-    // Only major UI elements need rescaling, which would require recreating the UI context
-}
-
-int runMain(int argc, char** argv) {
-    // Initialize GLFW
-    glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit()) {
-        return EXIT_FAILURE;
-    }
-
-    // GL 3.2 + GLSL 150 for macOS compatibility
-    const char* glsl_version = "#version 150";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-#ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#ifdef USE_SDL2_BACKEND
+    #include <SDL_opengl.h>
+#elif defined(USE_SDL3_BACKEND)
+    #include <SDL3/SDL_opengl.h>
+#elif defined(USE_GLFW_BACKEND)
+    #include <GLFW/glfw3.h>
+    #include <GL/gl.h>
 #endif
 
-    // Create window - narrower main window
-    GLFWwindow* window = glfwCreateWindow(640, 720, "Remidy Plugin Host", nullptr, nullptr);
-    if (window == nullptr) {
-        glfwTerminate();
+using namespace uapmd::gui;
+
+int runMain(int argc, char** argv) {
+    // Create windowing backend with priority: SDL3 > SDL2 > GLFW
+    auto windowingBackend = WindowingBackend::create();
+    if (!windowingBackend) {
+        std::cerr << "Error: No suitable windowing backend found" << std::endl;
         return EXIT_FAILURE;
     }
 
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync
+    // Initialize windowing system
+    if (!windowingBackend->initialize()) {
+        std::cerr << "Error: Failed to initialize " << windowingBackend->getName() << " backend" << std::endl;
+        return EXIT_FAILURE;
+    }
 
-    // Set up content scale callback for dynamic DPI changes
-    glfwSetWindowContentScaleCallback(window, glfw_window_content_scale_callback);
+    std::cout << "Successfully initialized " << windowingBackend->getName() << " backend" << std::endl;
+
+    // Create window
+    WindowHandle* window = windowingBackend->createWindow("Remidy Plugin Host", 640, 720);
+    if (!window) {
+        std::cerr << "Error: Failed to create window" << std::endl;
+        windowingBackend->shutdown();
+        return EXIT_FAILURE;
+    }
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -64,33 +52,37 @@ int runMain(int argc, char** argv) {
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 
-    // Get DPI scale factor and apply it to style
-    float xscale, yscale;
-    glfwGetWindowContentScale(window, &xscale, &yscale);
-    float dpi_scale = xscale; // Use x-scale as primary scale factor
+    // Apply DPI scaling (simplified for now)
+    float dpi_scale = 1.0f;
+    // TODO: Add platform-specific DPI detection through backend abstraction
 
-    // Debug: Print the detected scale factor (remove this line for production)
-    // std::cout << "Detected DPI scale factor: " << dpi_scale << std::endl;
-
-    // Only apply scaling if it's significantly different from 1.0 and reasonable
     if (dpi_scale > 1.1f && dpi_scale <= 3.0f) {
         ImGuiStyle& style = ImGui::GetStyle();
-        // Only scale UI elements, not fonts to avoid double-scaling
         style.ScaleAllSizes(dpi_scale);
-
-        // Don't set FontScaleDpi - let ImGui handle font scaling automatically
-        // style.FontScaleDpi = dpi_scale;
-    } else if (dpi_scale > 3.0f) {
-        // Cap excessive scaling
-        ImGuiStyle& style = ImGui::GetStyle();
-        style.ScaleAllSizes(2.0f);
-        // Don't scale fonts separately
-        std::cout << "Capping excessive DPI scale (" << dpi_scale << ") to 2.0x" << std::endl;
     }
 
-    // Setup Platform/Renderer backends
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glsl_version);
+    // Create ImGui platform and renderer backends
+    auto imguiPlatformBackend = ImGuiPlatformBackend::create(window);
+    auto imguiRenderer = ImGuiRenderer::create();
+
+    if (!imguiPlatformBackend || !imguiRenderer) {
+        std::cerr << "Error: Failed to create ImGui backends" << std::endl;
+        ImGui::DestroyContext();
+        windowingBackend->destroyWindow(window);
+        windowingBackend->shutdown();
+        return EXIT_FAILURE;
+    }
+
+    // Initialize ImGui backends
+    if (!imguiPlatformBackend->initialize(window) || !imguiRenderer->initialize(window)) {
+        std::cerr << "Error: Failed to initialize ImGui backends" << std::endl;
+        ImGui::DestroyContext();
+        windowingBackend->destroyWindow(window);
+        windowingBackend->shutdown();
+        return EXIT_FAILURE;
+    }
+
+    std::cout << "Using " << imguiPlatformBackend->getName() << " and " << imguiRenderer->getName() << std::endl;
 
     // Initialize Remidy event loop for ImGui
     auto eventLoop = std::make_unique<uapmd::gui::ImGuiEventLoop>();
@@ -109,19 +101,32 @@ int runMain(int argc, char** argv) {
 
     // Main loop
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    while (!glfwWindowShouldClose(window) && mainWindow.isOpen()) {
-        glfwPollEvents();
+    bool done = false;
+    while (!done && mainWindow.isOpen()) {
+        // Process events and forward to ImGui
+        imguiPlatformBackend->processEvents();
+
+        // Check if window should close
+        if (windowingBackend->shouldClose(window)) {
+            done = true;
+        }
 
         // Process queued tasks from remidy
         eventLoopPtr->processQueuedTasks();
 
         // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
+        imguiRenderer->newFrame();
+        imguiPlatformBackend->newFrame();
         ImGui::NewFrame();
 
-        // Render main window
-        mainWindow.render(window);
+        // Render main window (pass the raw window pointer for DPI calculations)
+        #ifdef USE_SDL2_BACKEND
+            mainWindow.render(window->sdlWindow);
+        #elif defined(USE_SDL3_BACKEND)
+            mainWindow.render(window->sdlWindow);
+        #elif defined(USE_GLFW_BACKEND)
+            mainWindow.render(window->glfwWindow);
+        #endif
 
         // Update (handles dialogs)
         mainWindow.update();
@@ -129,23 +134,23 @@ int runMain(int argc, char** argv) {
         // Rendering
         ImGui::Render();
         int display_w, display_h;
-        glfwGetFramebufferSize(window, &display_w, &display_h);
+        windowingBackend->getDrawableSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
         glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w,
                      clear_color.z * clear_color.w, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        imguiRenderer->renderDrawData();
 
-        glfwSwapBuffers(window);
+        windowingBackend->swapBuffers(window);
     }
 
     // Cleanup
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
+    imguiRenderer->shutdown();
+    imguiPlatformBackend->shutdown();
     ImGui::DestroyContext();
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    windowingBackend->destroyWindow(window);
+    windowingBackend->shutdown();
 
     uapmd::AppModel::cleanupInstance();
 

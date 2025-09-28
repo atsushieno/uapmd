@@ -3,8 +3,11 @@
 #include <vector>
 #include <string>
 #include <uapmd/uapmd.hpp>
-#include <GLFW/glfw3.h>
 #include "MidiKeyboard.hpp"
+
+// Forward declarations for different window types
+struct SDL_Window;
+struct GLFWwindow;
 
 namespace uapmd::gui {
     struct PluginEntry {
@@ -56,7 +59,7 @@ namespace uapmd::gui {
 
     public:
         MainWindow();
-        void render(GLFWwindow* window);
+        void render(void* window);  // Generic window pointer
         void update();
         bool& isOpen() { return isOpen_; }
 

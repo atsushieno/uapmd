@@ -55,7 +55,7 @@ MainWindow::MainWindow() {
     });
 }
 
-void MainWindow::render(GLFWwindow* window) {
+void MainWindow::render(void* window) {
     // Use the entire screen space as the main window (no nested window)
     ImGuiIO& io = ImGui::GetIO();
     ImGui::SetNextWindowPos(ImVec2(0, 0));

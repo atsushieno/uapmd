@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 if (APPLE)
-    project(remidy LANGUAGES C CXX OBJC OBJCXX Swift)
+    project(remidy LANGUAGES C CXX OBJC OBJCXX)
 else()
     project(remidy LANGUAGES C CXX)
 endif()
@@ -8,17 +8,47 @@ set(CMAKE_CXX_STANDARD 23)
 
 add_executable(remidy-plugin-host)
 
-# GLFW for windowing (must come before ImGui)
-CPMAddPackage(
-        NAME glfw
-        GIT_TAG 3.4
-        GIT_REPOSITORY https://github.com/glfw/glfw
-        OPTIONS
-        "GLFW_BUILD_DOCS OFF"
-        "GLFW_BUILD_TESTS OFF"
-        "GLFW_BUILD_EXAMPLES OFF"
-        "GLFW_INSTALL OFF"
-)
+# Backend selection with priority: SDL3 > SDL2 > GLFW
+set(BACKEND_FOUND FALSE)
+set(BACKEND_TYPE "")
+set(BACKEND_LIBRARIES "")
+set(BACKEND_INCLUDE_DIRS "")
+
+# Try SDL3 first
+find_package(SDL3 QUIET)
+if(SDL3_FOUND)
+    set(BACKEND_FOUND TRUE)
+    set(BACKEND_TYPE "SDL3")
+    set(BACKEND_LIBRARIES SDL3::SDL3)
+    message(STATUS "Using SDL3 backend")
+    add_compile_definitions(USE_SDL3_BACKEND)
+endif()
+
+# Try SDL2 if SDL3 not found
+if(NOT BACKEND_FOUND)
+    find_package(SDL2 QUIET)
+    if(SDL2_FOUND)
+        set(BACKEND_FOUND TRUE)
+        set(BACKEND_TYPE "SDL2")
+        set(BACKEND_LIBRARIES SDL2::SDL2)
+        message(STATUS "Using SDL2 backend")
+        add_compile_definitions(USE_SDL2_BACKEND)
+    endif()
+endif()
+
+# Fallback to GLFW if neither SDL3 nor SDL2 found
+if(NOT BACKEND_FOUND)
+    find_package(glfw3 QUIET)
+    if(glfw3_FOUND)
+        set(BACKEND_FOUND TRUE)
+        set(BACKEND_TYPE "GLFW")
+        set(BACKEND_LIBRARIES glfw)
+        message(STATUS "Using GLFW backend")
+        add_compile_definitions(USE_GLFW_BACKEND)
+    else()
+        message(FATAL_ERROR "No suitable backend found. Please install SDL3, SDL2, or GLFW.")
+    endif()
+endif()
 
 # ImGui and backend dependencies
 CPMAddPackage(
@@ -29,23 +59,34 @@ CPMAddPackage(
 )
 
 if(imgui_ADDED)
-    add_library(imgui STATIC
+    # Base ImGui sources
+    set(IMGUI_SOURCES
             ${imgui_SOURCE_DIR}/imgui.cpp
             ${imgui_SOURCE_DIR}/imgui_demo.cpp
             ${imgui_SOURCE_DIR}/imgui_draw.cpp
             ${imgui_SOURCE_DIR}/imgui_tables.cpp
             ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-            ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
             ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
     )
+
+    # Add backend-specific ImGui implementation
+    if(BACKEND_TYPE STREQUAL "SDL3")
+        list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
+    elseif(BACKEND_TYPE STREQUAL "SDL2")
+        list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp)
+    elseif(BACKEND_TYPE STREQUAL "GLFW")
+        list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp)
+    endif()
+
+    add_library(imgui STATIC ${IMGUI_SOURCES})
 
     target_include_directories(imgui PUBLIC
             ${imgui_SOURCE_DIR}
             ${imgui_SOURCE_DIR}/backends
     )
 
-    # Link GLFW to ImGui so backends can find headers
-    target_link_libraries(imgui PUBLIC glfw)
+    # Link backend library to ImGui so backends can find headers
+    target_link_libraries(imgui PUBLIC ${BACKEND_LIBRARIES})
 
     # Platform-specific OpenGL and windowing
     if(APPLE)
@@ -78,6 +119,7 @@ target_sources(remidy-plugin-host PRIVATE
         AppModel.cpp
         gui/MainWindow.cpp
         gui/MidiKeyboard.cpp
+        gui/PlatformBackend.cpp
 )
 
 # Use C++23 like the WebView version
