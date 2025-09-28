@@ -53,6 +53,7 @@ namespace uapmd::gui {
         std::string selectedPluginFormat_;
         std::string selectedPluginId_;
         char searchFilter_[256] = "";
+        char parameterFilter_[256] = "";
 
         // MIDI keyboard
         MidiKeyboard midiKeyboard_;

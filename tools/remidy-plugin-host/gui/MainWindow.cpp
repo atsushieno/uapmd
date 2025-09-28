@@ -443,6 +443,8 @@ void MainWindow::loadSelectedPreset() {
 }
 
 void MainWindow::renderParameterControls() {
+    ImGui::InputText("Filter Parameters", parameterFilter_, sizeof(parameterFilter_));
+
     if (ImGui::BeginTable("ParameterTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed, 30.0f);
         ImGui::TableSetupColumn("Stable ID", ImGuiTableColumnFlags_WidthFixed, 50.0f);
@@ -451,8 +453,23 @@ void MainWindow::renderParameterControls() {
         ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthFixed, 70.0f);
         ImGui::TableHeadersRow();
 
+        std::string filter = parameterFilter_;
+        std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
+
         for (size_t i = 0; i < parameters_.size(); ++i) {
             auto& param = parameters_[i];
+
+            // Filter parameters by name or stable ID
+            if (!filter.empty()) {
+                std::string name = param.name;
+                std::string stableId = param.stableId;
+                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+                std::transform(stableId.begin(), stableId.end(), stableId.begin(), ::tolower);
+                if (name.find(filter) == std::string::npos && stableId.find(filter) == std::string::npos) {
+                    continue;
+                }
+            }
+
             ImGui::TableNextRow();
 
             ImGui::TableNextColumn();
