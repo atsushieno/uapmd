@@ -59,6 +59,7 @@ namespace remidy {
     }
 
     void PluginFormatVST3::createInstance(PluginCatalogEntry *info,
+                                          PluginInstantiationOptions options,
                                           std::function<void(std::unique_ptr<PluginInstance> instance,
                                                              std::string error)> callback) {
         return impl->createInstance(info, callback);

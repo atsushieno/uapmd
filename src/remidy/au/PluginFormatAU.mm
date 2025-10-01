@@ -81,7 +81,11 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::PluginScannerAU
     return ret;
 }
 
-void remidy::PluginFormatAU::createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) {
+void remidy::PluginFormatAU::createInstance(
+        PluginCatalogEntry* info,
+        PluginInstantiationOptions options,
+        std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
+) {
     AudioComponentDescription desc{};
     std::istringstream id{info->pluginId()};
     id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;
@@ -98,19 +102,19 @@ void remidy::PluginFormatAU::createInstance(PluginCatalogEntry* info, std::funct
         return;
     }
     bool v3 = (desc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) > 0;
-    AudioComponentInstantiationOptions options = kAudioComponentInstantiation_LoadInProcess;
+    AudioComponentInstantiationOptions auOptions = kAudioComponentInstantiation_LoadInProcess;
 
     __block auto cb = std::move(callback);
-    AudioComponentInstantiate(component, options, ^(AudioComponentInstance instance, OSStatus cbStatus) {
+    AudioComponentInstantiate(component, auOptions, ^(AudioComponentInstance instance, OSStatus cbStatus) {
         if (cbStatus == noErr) {
             // FIXME: how should we acquire logger instance?
             auto logger = Logger::global();
 
             if (v3) {
-                auto au = std::make_unique<AudioPluginInstanceAUv3>(this, logger, info, component, instance);
+                auto au = std::make_unique<AudioPluginInstanceAUv3>(this, options, logger, info, component, instance);
                 cb(std::move(au), "");
             } else {
-                auto au = std::make_unique<AudioPluginInstanceAUv2>(this, logger, info, component, instance);
+                auto au = std::make_unique<AudioPluginInstanceAUv2>(this, options, logger, info, component, instance);
                 cb(std::move(au), "");
             }
         }

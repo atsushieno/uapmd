@@ -23,7 +23,10 @@ namespace remidy {
         bool canOmitUiState() override { return false; }
         bool isStateStructured() override { return false; }
 
-        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;
+        void createInstance(PluginCatalogEntry* info,
+                            PluginInstantiationOptions options,
+                            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
+                            ) override;
 
         class Impl;
         Impl *impl;

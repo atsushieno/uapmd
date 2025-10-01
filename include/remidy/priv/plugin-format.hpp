@@ -50,7 +50,14 @@ namespace remidy {
             std::string error;
         };
 
+        struct PluginInstantiationOptions {
+            PluginUIThreadRequirement uiThreadRequirement;
+        };
+
         // Asynchronously creates a plugin instance.
-        virtual void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) = 0;
+        virtual void createInstance(PluginCatalogEntry* info,
+                                    PluginInstantiationOptions options,
+                                    std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
+                                    ) = 0;
     };
 }

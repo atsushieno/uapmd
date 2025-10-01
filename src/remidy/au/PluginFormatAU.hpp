@@ -123,12 +123,13 @@ namespace remidy {
 
     protected:
         PluginFormatAU *format;
+        PluginFormat::PluginInstantiationOptions options;
         Logger* logger_;
         AudioComponent component;
         AudioUnit instance;
         std::string name{};
 
-        AudioPluginInstanceAU(PluginFormatAU* format, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
+        AudioPluginInstanceAU(PluginFormatAU* format, PluginFormat::PluginInstantiationOptions options, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
         ~AudioPluginInstanceAU() override;
 
     public:
@@ -173,8 +174,9 @@ namespace remidy {
 
     class AudioPluginInstanceAUv2 final : public AudioPluginInstanceAU {
     public:
-        AudioPluginInstanceAUv2(PluginFormatAU* format, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
-        ) : AudioPluginInstanceAU(format, logger, info, component, instance) {
+        AudioPluginInstanceAUv2(PluginFormatAU* format, PluginFormat::PluginInstantiationOptions options,
+                                Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
+        ) : AudioPluginInstanceAU(format, options, logger, info, component, instance) {
         }
 
         ~AudioPluginInstanceAUv2() override = default;
@@ -186,8 +188,9 @@ namespace remidy {
 
     class AudioPluginInstanceAUv3 final : public AudioPluginInstanceAU {
     public:
-        AudioPluginInstanceAUv3(PluginFormatAU* format, Logger *logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
-        ) : AudioPluginInstanceAU(format, logger, info, component, instance) {
+        AudioPluginInstanceAUv3(PluginFormatAU* format, PluginFormat::PluginInstantiationOptions options,
+                                Logger *logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
+        ) : AudioPluginInstanceAU(format, options, logger, info, component, instance) {
         }
 
         ~AudioPluginInstanceAUv3() override = default;

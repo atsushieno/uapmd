@@ -24,6 +24,7 @@ namespace remidy {
 
     void PluginFormatCLAP::createInstance(
         PluginCatalogEntry* info,
+        PluginInstantiationOptions options,
         std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
     ) {
         impl->createInstance(info, callback);

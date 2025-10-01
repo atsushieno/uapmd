@@ -42,13 +42,6 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
 
     // FIXME: this should be unblocked
 
-    // EXC_BAD_ACCESS (Massive X used to work though...)
-    if (format->name() == "AU" && displayName == "Massive X"
-        || format->name() == "AU" && displayName == "BioTek"
-        || format->name() == "AU" && displayName == "BioTek 2"
-        || format->name() == "AU" && displayName == "Collective"
-        )
-        skip = true;
     // It depends on unimplemented perform_edit() and restart_component(). Results in unresponsiveness.
     if (format->name() == "VST3" && displayName == "Massive X")
         skip = true;
@@ -64,13 +57,19 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
         )
         skip = true;
 
+    // Not sure when it started, but their AU version stalls while instantiating.
+    if (format->name() == "AU" && vendor == "Tracktion")
+        skip = true;
+
     // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
     /*if (format->name() == "VST3" && displayName.starts_with("Battery")
         || format->name() == "VST3" && displayName.starts_with("Kontakt"))
         || format->name() == "VST3" && displayName == "RX 9 Monitor"
         )
         skip = true;*/
-    if (format->name() == "AU" && displayName == "FL Studio")
+
+    // It somehow expects input channels to be always 1.
+    if (format->name() == "AU" && displayName == "Floe")
         skip = true;
 
 #if __APPLE__ || WIN32
@@ -81,9 +80,6 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
     if (format->name() == "LV2" && displayName.starts_with("sfizz"))
         skip = true;
 #endif
-    // causes JUCE leak detector exception (not on OPNplug-AE though)
-    //if (!displayName.starts_with("ADLplug-AE"))
-    //    continue;
 
     return !skip;
 }
@@ -92,11 +88,13 @@ bool remidy_tooling::PluginScanTool::shouldCreateInstanceOnUIThread(PluginFormat
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool forceMainThread =
+        // not sure why
         format->name() == "AU" && displayName == "FL Studio"
+        || format->name() == "AU" && displayName == "SINE Player"
         || format->name() == "AU" && displayName == "AUSpeechSynthesis"
         // QObject::killTimer: Timers cannot be stopped from another thread
         // QObject::~QObject: Timers cannot be stopped from another thread
-        || format->name() == "AU" && displayName == "Massive X"
+        || format->name() == "AU" && displayName.contains("Massive X")
         // [threadmgrsupport] _TSGetMainThread_block_invoke():Main thread potentially initialized incorrectly, cf <rdar://problem/67741850>
         || format->name() == "AU" && displayName == "Bite"
         // WARNING: QApplication was not created in the main() thread
@@ -108,7 +106,11 @@ bool remidy_tooling::PluginScanTool::shouldCreateInstanceOnUIThread(PluginFormat
         || format->name() == "AU" && displayName == "DDSP Effect"
         || format->name() == "AU" && displayName == "DDSP Synth"
         || format->name() == "AU" && displayName == "Plugin Buddy"
+        || format->name() == "AU" && displayName == "Synthesizer V Studio Plugin"
         // EXC_BAD_ACCESS, not sure why
+        || format->name() == "AU" && displayName == "BBC Symphony Orchestra"
+        || format->name() == "AU" && displayName == "LABS"
+        || format->name() == "AU" && displayName == "BFD Player"
         || format->name() == "AU" && displayName == "RX 9 Music Rebalance"
         || format->name() == "AU" && displayName == "RX 9 Spectral Editor"
         || format->name() == "AU" && displayName == "Ozone 9"
@@ -118,6 +120,7 @@ bool remidy_tooling::PluginScanTool::shouldCreateInstanceOnUIThread(PluginFormat
         || format->name() == "AU" && displayName == "Reaktor 6"
         || format->name() == "AU" && displayName == "Reaktor 6 MFX"
         || format->name() == "AU" && displayName == "Reaktor 6 MIDIFX"
+        || format->name() == "AU" && displayName == "Kontakt 8"
         // Some JUCE plugins are NOT designed to work in thread safe manner (JUCE behaves like VST3).
         // (Use AddressSanitizer to detect such failing ones.)
         //

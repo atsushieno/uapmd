@@ -114,8 +114,11 @@ namespace remidy {
         return ret;
     }
 
-    void PluginFormatLV2::createInstance(PluginCatalogEntry* info,
-        std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) {
+    void PluginFormatLV2::createInstance(
+            PluginCatalogEntry* info,
+            PluginInstantiationOptions options,
+            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
+    ) {
         impl->createInstance(info, callback);
     }
 

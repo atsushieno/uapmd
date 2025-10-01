@@ -3,7 +3,7 @@
 #include <cassert>
 #include <iostream>
 
-void remidy_tooling::PluginInstancing::setupInstance(std::function<void(std::string error)> callback) {
+void remidy_tooling::PluginInstancing::setupInstance(remidy::PluginUIThreadRequirement uiThreadRequirement, std::function<void(std::string error)> callback) {
     Logger::global()->logInfo("  instantiating %s %s", format->name().c_str(), displayName.c_str());
     instancing_state = PluginInstancingState::Preparing;
 
@@ -35,7 +35,7 @@ void remidy_tooling::PluginInstancing::setupInstance(std::function<void(std::str
         callback(error);
         instancing_state = PluginInstancingState::Error;
     };
-    format->createInstance(entry, cb);
+    format->createInstance(entry, remidy::PluginFormat::PluginInstantiationOptions{uiThreadRequirement}, cb);
 }
 
 remidy::PluginFormat* findFormat(remidy_tooling::PluginScanTool& scanner, const std::string_view& format) {
@@ -73,15 +73,20 @@ remidy_tooling::PluginInstancing::~PluginInstancing() {
         if (code != StatusCode::OK)
             std::cerr << "  " << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << (int32_t) code << std::endl;
     }
+    auto uiReq = format->requiresUIThreadOn(instance->info());
+    if (uiReq & PluginUIThreadRequirement::InstanceControl)
+        EventLoop::runTaskOnMainThread([&] {
+            instance.reset();
+        });
     instancing_state = PluginInstancingState::Terminated;
 }
 
 void remidy_tooling::PluginInstancing::makeAlive(std::function<void(std::string error)> callback) {
     if (scanner.shouldCreateInstanceOnUIThread(format, entry)) {
         EventLoop::runTaskOnMainThread([this,callback] {
-            setupInstance(callback);
+            setupInstance(remidy::PluginUIThreadRequirement::AllNonAudioOperation, callback);
         });
     }
     else
-        setupInstance(callback);
+        setupInstance(remidy::PluginUIThreadRequirement::None, callback);
 }

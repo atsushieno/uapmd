@@ -20,12 +20,13 @@ namespace remidy_tooling {
         PluginScanTool& scanner;
         PluginFormat* format{};
         PluginCatalogEntry* entry{};
+        PluginFormat::PluginInstantiationOptions options{};
         PluginInstance::ConfigurationRequest config{};
         std::unique_ptr<PluginInstance> instance{nullptr};
         std::string displayName;
         std::atomic<PluginInstancingState> instancing_state{PluginInstancingState::Created};
 
-        void setupInstance(std::function<void(std::string error)> callback);
+        void setupInstance(PluginUIThreadRequirement uiThreadRequirement, std::function<void(std::string error)> callback);
 
     public:
         explicit PluginInstancing(PluginScanTool& scanner, const std::string_view& format, const std::string_view& pluginId);

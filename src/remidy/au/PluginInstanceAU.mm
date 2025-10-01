@@ -2,14 +2,26 @@
 
 #include "PluginFormatAU.hpp"
 
-remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(PluginFormatAU *format, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioComponentInstance instance) :
-        PluginInstance(info), format(format), logger_(logger), component(component), instance(instance) {
+remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(
+        PluginFormatAU *format,
+        PluginFormat::PluginInstantiationOptions options,
+        Logger* logger,
+        PluginCatalogEntry* info,
+        AudioComponent component,
+        AudioComponentInstance instance
+) : PluginInstance(info), format(format), options(options), logger_(logger), component(component), instance(instance) {
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     audio_buses = new AudioBuses(this);
 }
 
 remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
+    if (options.uiThreadRequirement & PluginUIThreadRequirement::InstanceControl)
+        EventLoop::runTaskOnMainThread([&] {
+            AudioComponentInstanceDispose(instance);
+        });
+    else
+        AudioComponentInstanceDispose(instance);
     delete audio_buses;
     delete _parameters;
     delete _states;
@@ -19,7 +31,6 @@ remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
         free(auDataIn);
     for (auto auDataOut : auDataOuts)
         free(auDataOut);
-    AudioComponentInstanceDispose(instance);
 }
 
 OSStatus remidy::AudioPluginInstanceAU::audioInputRenderCallback(
@@ -141,7 +152,10 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
     bool useDouble = audio_content_type == AudioContentType::Float64;
     UInt32 sampleSize = useDouble ? sizeof(double) : sizeof(float);
     uint32_t channelBufSize = process.frameCount() * sampleSize;
-    for (size_t bus = 0, n = auDataIns.size(); bus < n; bus++) {
+    // FIXME: we still don't initialize non-main buses, so only deal with the main bus so far.
+    //for (size_t bus = 0, n = auDataIns.size(); bus < n; bus++) {
+    if (!auDataIns.empty()) {
+        size_t bus = 0;
         auto auDataIn = auDataIns[bus];
         auDataIn->mNumberBuffers = 0;
         auto numChannels = process.inputChannelCount(bus);
@@ -157,7 +171,10 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
     process_timestamp.mHostTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     process_timestamp.mFlags = kAudioTimeStampSampleTimeValid | kAudioTimeStampHostTimeValid;
 
-    for (size_t bus = 0, n = auDataOuts.size(); bus < n; bus++, bus++) {
+    // FIXME: we still don't initialize non-main buses, so only deal with the main bus so far.
+    //for (size_t bus = 0, n = auDataOuts.size(); bus < n; bus++, bus++) {
+    if (!auDataOuts.empty()) {
+        size_t bus = 0;
         auto auDataOut = auDataOuts[bus];
         auDataOut->mNumberBuffers = 0;
         auto numChannels = process.outputChannelCount(bus);
@@ -174,8 +191,10 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
             // FIXME: pass correct timestamp
             ump_input_dispatcher.process(0, process);
 
+        AudioUnitRenderActionFlags flags = 0;
         // FIXME: it is likely that audio effects are not working, blocked here.
-        auto status = AudioUnitRender(instance, nullptr, &process_timestamp, 0, process.frameCount(), auDataOut);
+        //  JUCE refuses to have different sizes of auDataOut[*].mBuffers[*].mDataByteSize vs. process.frameCount().
+        auto status = AudioUnitRender(instance, &flags, &process_timestamp, 0, process.frameCount(), auDataOut);
         if (status != noErr) {
             logger()->logError("%s: failed to process audio AudioPluginInstanceAU::process(). Status: %d", name.c_str(), status);
             return StatusCode::FAILED_TO_PROCESS;

@@ -5,7 +5,7 @@
 namespace remidy {
 
     // [flags]
-    enum class PluginUIThreadRequirement : uint32_t {
+    enum PluginUIThreadRequirement : uint32_t {
         // AudioUnit and LV2, by default (probably bad behaved plugins can be explicitly marked as dirty = AllNonAudioOperation)
         None = 0,
         InstanceControl = 1,
