@@ -55,6 +55,9 @@ namespace uapmd::gui {
         char searchFilter_[256] = "";
         char parameterFilter_[256] = "";
 
+        // Plugin scanning
+        bool forceRescan_ = false;
+
         // MIDI keyboard
         MidiKeyboard midiKeyboard_;
 

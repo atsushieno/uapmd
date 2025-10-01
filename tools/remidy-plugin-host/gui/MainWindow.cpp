@@ -33,6 +33,18 @@ MainWindow::MainWindow() {
             }
         });
 
+    // Register callback for when plugin scanning completes
+    uapmd::AppModel::instance().scanningCompleted.push_back(
+        [this](bool success, std::string error) {
+            if (success) {
+                // Scanning successful, refresh the plugin list
+                refreshPluginList();
+                std::cout << "Plugin list refreshed after scanning" << std::endl;
+            } else {
+                std::cout << "Plugin scanning failed: " << error << std::endl;
+            }
+        });
+
     // Setup MIDI keyboard to show 4 octaves
     midiKeyboard_.setOctaveRange(3, 4); // C3 to C7
 
@@ -575,6 +587,31 @@ void MainWindow::renderPluginSelector() {
         ImGui::EndTable();
     }
 
+    // Plugin scanning controls
+    ImGui::Separator();
+
+    bool isScanning = uapmd::AppModel::instance().isScanning();
+    if (isScanning) {
+        ImGui::BeginDisabled();
+    }
+
+    if (ImGui::Button("Scan Plugins")) {
+        uapmd::AppModel::instance().performPluginScanning(forceRescan_);
+        std::cout << "Starting plugin scanning" << std::endl;
+    }
+
+    if (isScanning) {
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::Text("Scanning...");
+    } else {
+        ImGui::SameLine();
+        ImGui::Checkbox("Force Rescan", &forceRescan_);
+    }
+
+    ImGui::Separator();
+
+    // Plugin instantiation controls
     bool canInstantiate = !selectedPluginFormat_.empty() && !selectedPluginId_.empty();
     if (!canInstantiate) {
         ImGui::BeginDisabled();
