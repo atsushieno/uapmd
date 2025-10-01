@@ -61,9 +61,10 @@ namespace remidy {
             resizeCLAPAudioBuffers(a, newSizeInSamples, isDouble);
     }
 
-    void applyAudioBuffersToClapProcess(const clap_audio_buffer_t* dst, GenericAudioBuses* buses, std::vector<clap_audio_buffer_t>& buffers, bool useDouble) {
-        for (size_t i = 0, n = buses->audioInputBuses().size(); i < n; i++) {
-            if (!buses->audioInputBuses()[i]->enabled())
+    void applyAudioBuffersToClapProcess(bool isOutput, const clap_audio_buffer_t* dst, GenericAudioBuses* buses, std::vector<clap_audio_buffer_t>& buffers, bool useDouble) {
+        auto& bl = isOutput ? buses->audioOutputBuses() : buses->audioInputBuses();
+        for (size_t i = 0, n = bl.size(); i < n; i++) {
+            if (!bl[i]->enabled())
                 continue;
             const auto src = buffers[i];
             for (size_t ch = 0, nCh = src.channel_count; ch < nCh; ch++) {
@@ -97,7 +98,9 @@ namespace remidy {
         transports_events.resize(0x1000);
 
         // It seems we have to activate plugin buses first.
-        plugin->activate(plugin, configuration.sampleRate, 1, configuration.bufferSizeInSamples);
+        EventLoop::runTaskOnMainThread([&] {
+            plugin->activate(plugin, configuration.sampleRate, 1, configuration.bufferSizeInSamples);
+        });
 
         // alter the input/output audio buffers entries, and start allocation.
         clap_process.audio_inputs_count = audio_buses->audioInputBuses().size();
@@ -114,8 +117,8 @@ namespace remidy {
         // After this, we fix (cannot resize) those audio port buffers.
         clap_process.audio_inputs = audio_in_port_buffers.data();
         clap_process.audio_outputs = audio_out_port_buffers.data();
-        applyAudioBuffersToClapProcess(clap_process.audio_inputs, audio_buses, audio_in_port_buffers, useDouble);
-        applyAudioBuffersToClapProcess(clap_process.audio_outputs, audio_buses, audio_out_port_buffers, useDouble);
+        applyAudioBuffersToClapProcess(false, clap_process.audio_inputs, audio_buses, audio_in_port_buffers, useDouble);
+        applyAudioBuffersToClapProcess(true, clap_process.audio_outputs, audio_buses, audio_out_port_buffers, useDouble);
         clap_process.transport = transports_events.data();
 
         return StatusCode::OK;
