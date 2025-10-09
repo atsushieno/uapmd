@@ -1,5 +1,6 @@
 #include "PlatformVirtualMidiDeviceImpl.hpp"
 
+#include <iostream>
 #include <libremidi/libremidi.hpp>
 
 namespace uapmd {
@@ -59,7 +60,17 @@ namespace uapmd {
     }
 
     void PlatformVirtualMidiDevice::Impl::send(uapmd_ump_t *messages, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-        libremidi_midi_out_schedule_ump(midiOut, timestamp, reinterpret_cast<libremidi_midi2_symbol *>(messages), sizeInBytes / sizeof(int32_t));
+        auto total = sizeInBytes / sizeof(int32_t);
+        size_t current = 0;
+        while (current < total) {
+            auto thisChunk = total - current < 128 ? total - current : 128;
+            libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + current, thisChunk);
+            // kind of hack, but platform MIDI API could run out of internal ring buffers and we get our sysex messages corrupt.
+            if (thisChunk > 50)
+                // FIXME: maybe make it configurable?
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            current += thisChunk;
+        }
     }
 
 }
