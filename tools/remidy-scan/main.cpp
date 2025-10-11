@@ -4,6 +4,7 @@
 #include <iostream>
 #include <ostream>
 #include <ranges>
+#include <mutex>
 
 #include <cpptrace/from_current.hpp>
 #include <remidy/remidy.hpp>
@@ -39,42 +40,82 @@ int testInstancing() {
                 // ...
                 // you could adjust configuration here
                 // ...
+                std::atomic<bool> instantiationFinished{false};
+                std::mutex errorMutex;
+                std::string instantiationError;
                 instancing.makeAlive([&](std::string err) {
+                    {
+                        std::lock_guard<std::mutex> lock(errorMutex);
+                        instantiationError = std::move(err);
+                    }
+                    instantiationFinished.store(true);
+                    instantiationFinished.notify_one();
                 });
-                while (instancing.instancingState() == remidy_tooling::PluginInstancingState::Created ||
-                       instancing.instancingState()  == remidy_tooling::PluginInstancingState::Preparing)
-                    std::this_thread::yield();
+                instantiationFinished.wait(false);
+
+                auto state = instancing.instancingState().load();
+                std::string errorCopy;
+                {
+                    std::lock_guard<std::mutex> lock(errorMutex);
+                    errorCopy = instantiationError;
+                }
+                if (!errorCopy.empty() || state != remidy_tooling::PluginInstancingState::Ready) {
+                    if (errorCopy.empty())
+                        errorCopy = "Plugin did not reach ready state.";
+                    std::cerr << "  " << format->name() << ": " << displayName << " : instantiation failed. " << errorCopy << std::endl;
+                    continue;
+                }
 
                 std::cerr << "  " << format->name() << ": Successfully configured " << displayName << ". Instantiating now..." << std::endl;
 
                 instancing.withInstance([&](auto instance) {
-                    auto inputBuses = instance->audioBuses()->audioInputBuses();
-                    auto outputBuses = instance->audioBuses()->audioOutputBuses();
+                    const auto& inputBuses = instance->audioBuses()->audioInputBuses();
+                    const auto& outputBuses = instance->audioBuses()->audioOutputBuses();
 
                     size_t numAudioIn = inputBuses.size();
                     size_t numAudioOut = outputBuses.size();
                     remidy::MasterContext masterContext;
                     remidy::TrackContext trackContext{masterContext};
                     remidy::AudioProcessContext ctx{masterContext, 4096};
-                    ctx.configureMainBus(numAudioIn > 0 ? inputBuses[0]->channelLayout().channels() : 0,
-                                         numAudioOut > 0 ? outputBuses[0]->channelLayout().channels() : 0,
-                                         1024);
-                    /*
-                    for (size_t i = 0, n = numAudioIn; i < n; ++i)
-                        ctx.addAudioIn(inputBuses[i]->channelLayout().channels(), 1024);
-                    for (size_t i = 0, n = numAudioOut; i < n; ++i)
-                        ctx.addAudioOut(outputBuses[i]->channelLayout().channels(), 1024);
-                    */
+                    constexpr size_t bufferCapacityFrames = 1024;
+                    auto audioBuses = instance->audioBuses();
+                    int32_t mainInIndex = audioBuses->mainInputBusIndex();
+                    int32_t mainOutIndex = audioBuses->mainOutputBusIndex();
+                    if (mainInIndex < 0 && numAudioIn > 0)
+                        mainInIndex = 0;
+                    if (mainOutIndex < 0 && numAudioOut > 0)
+                        mainOutIndex = 0;
+
+                    auto mainInChannels = (mainInIndex >= 0 && static_cast<size_t>(mainInIndex) < numAudioIn)
+                                              ? inputBuses[static_cast<size_t>(mainInIndex)]->channelLayout().channels()
+                                              : 0;
+                    auto mainOutChannels = (mainOutIndex >= 0 && static_cast<size_t>(mainOutIndex) < numAudioOut)
+                                               ? outputBuses[static_cast<size_t>(mainOutIndex)]->channelLayout().channels()
+                                               : 0;
+
+                    ctx.configureMainBus(static_cast<int32_t>(mainInChannels),
+                                         static_cast<int32_t>(mainOutChannels),
+                                         bufferCapacityFrames);
+
+                    for (size_t i = 0; i < numAudioIn; ++i) {
+                        if (static_cast<int32_t>(i) == mainInIndex)
+                            continue;
+                        ctx.addAudioIn(static_cast<int32_t>(inputBuses[i]->channelLayout().channels()),
+                                       bufferCapacityFrames);
+                    }
+                    for (size_t i = 0; i < numAudioOut; ++i) {
+                        if (static_cast<int32_t>(i) == mainOutIndex)
+                            continue;
+                        ctx.addAudioOut(static_cast<int32_t>(outputBuses[i]->channelLayout().channels()),
+                                        bufferCapacityFrames);
+                    }
+
                     ctx.frameCount(512);
                     for (size_t i = 0; i < ctx.audioInBusCount(); i++) {
-                        if (i >= numAudioIn)
-                            break;
                         for (size_t ch = 0, nCh = ctx.inputChannelCount(i); ch < nCh; ch++)
                             memcpy(ctx.getFloatInBuffer(i, ch), (void*) "0123456789ABCDEF", 16);
                     }
                     for (size_t i = 0; i < ctx.audioOutBusCount(); i++) {
-                        if (i >= numAudioOut)
-                            break;
                         // should not matter for audio processing though
                         for (size_t ch = 0, nCh = ctx.outputChannelCount(i); ch < nCh; ch++)
                             memcpy(ctx.getFloatOutBuffer(i, ch), (void*) "02468ACE13579BDF", 16);

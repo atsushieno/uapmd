@@ -148,6 +148,18 @@ namespace remidy {
             audio_out.emplace_back(new AudioBusBufferList(outChannels, audioBufferCapacityInFrames));
         }
 
+        void addAudioIn(int32_t channels, size_t audioBufferCapacityInFrames) {
+            if (audioBufferCapacityInFrames > audio_buffer_capacity_frames)
+                audio_buffer_capacity_frames = audioBufferCapacityInFrames;
+            audio_in.emplace_back(new AudioBusBufferList(channels, audioBufferCapacityInFrames));
+        }
+
+        void addAudioOut(int32_t channels, size_t audioBufferCapacityInFrames) {
+            if (audioBufferCapacityInFrames > audio_buffer_capacity_frames)
+                audio_buffer_capacity_frames = audioBufferCapacityInFrames;
+            audio_out.emplace_back(new AudioBusBufferList(channels, audioBufferCapacityInFrames));
+        }
+
         TrackContext* trackContext() { return &track_context; }
 
         size_t audioBufferCapacityInFrames() { return audio_buffer_capacity_frames; }

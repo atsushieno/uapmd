@@ -158,10 +158,12 @@ void remidy::PluginInstanceVST3::allocateProcessData(v3_process_setup& setup) {
     processData.input_params = (v3_param_changes **) processDataInputParameterChanges.asInterface();
     processData.output_params = (v3_param_changes **) processDataOutputParameterChanges.asInterface();
 
-    audio_buses->allocateBuffers();
-
     processData.process_mode = setup.process_mode;
     processData.symbolic_sample_size = setup.symbolic_sample_size;
+
+    audio_buses->allocateBuffers();
+
+    // ensure process data stays in sync with the last setup used during allocation.
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {

@@ -67,12 +67,14 @@ void remidy::PluginInstanceVST3::AudioBuses::configure(remidy::PluginInstance::C
     auto component = owner->component;
     auto processor = owner->processor;
 
-    std::vector<v3_speaker_arrangement> inArr{audio_in_buses.size()};
-    for (const auto &input_buse: audio_in_buses)
-        inArr.emplace_back(toVstSpeakerArrangement(input_buse->channelLayout()));
-    std::vector<v3_speaker_arrangement> outArr{audio_out_buses.size()};
-    for (const auto &output_buse: audio_out_buses)
-        outArr.emplace_back(toVstSpeakerArrangement(output_buse->channelLayout()));
+    std::vector<v3_speaker_arrangement> inArr{};
+    inArr.reserve(audio_in_buses.size());
+    for (const auto &input_bus : audio_in_buses)
+        inArr.emplace_back(toVstSpeakerArrangement(input_bus->channelLayout()));
+    std::vector<v3_speaker_arrangement> outArr{};
+    outArr.reserve(audio_out_buses.size());
+    for (const auto &output_bus : audio_out_buses)
+        outArr.emplace_back(toVstSpeakerArrangement(output_bus->channelLayout()));
 
     // set audio bus configuration, if explicitly specified.
     processor->vtable->processor.set_bus_arrangements(processor,
@@ -110,21 +112,26 @@ void remidy::PluginInstanceVST3::AudioBuses::allocateBuffers() {
     processData.num_output_buses = numOutputBuses;
     processData.inputs = inputAudioBusBuffersList.data();
     processData.outputs = outputAudioBusBuffersList.data();
-    int32_t numChannels = 2;
     int32_t symbolicSampleSize = processData.symbolic_sample_size;
     for (int32_t bus = 0; bus < numInputBuses; bus++) {
+        int32_t numChannels = static_cast<int32_t>(audio_in_buses[bus]->channelLayout().channels());
         inputAudioBusBuffersList[bus].num_channels = numChannels;
+        if (numChannels <= 0)
+            continue;
         if (symbolicSampleSize == V3_SAMPLE_32)
-            inputAudioBusBuffersList[bus].channel_buffers_32 = (float **) calloc(sizeof(float *), numChannels);
+            inputAudioBusBuffersList[bus].channel_buffers_32 = (float **) calloc(static_cast<size_t>(numChannels), sizeof(float *));
         else
-            inputAudioBusBuffersList[bus].channel_buffers_64 = (double **) calloc(sizeof(double *), numChannels);
+            inputAudioBusBuffersList[bus].channel_buffers_64 = (double **) calloc(static_cast<size_t>(numChannels), sizeof(double *));
     }
     for (int32_t bus = 0; bus < numOutputBuses; bus++) {
+        int32_t numChannels = static_cast<int32_t>(audio_out_buses[bus]->channelLayout().channels());
         outputAudioBusBuffersList[bus].num_channels = numChannels;
+        if (numChannels <= 0)
+            continue;
         if (symbolicSampleSize == V3_SAMPLE_32)
-            outputAudioBusBuffersList[bus].channel_buffers_32 = (float **) calloc(sizeof(float *), numChannels);
+            outputAudioBusBuffersList[bus].channel_buffers_32 = (float **) calloc(static_cast<size_t>(numChannels), sizeof(float *));
         else
-            outputAudioBusBuffersList[bus].channel_buffers_64 = (double **) calloc(sizeof(double *), numChannels);
+            outputAudioBusBuffersList[bus].channel_buffers_64 = (double **) calloc(static_cast<size_t>(numChannels), sizeof(double *));
     }
 }
 
@@ -157,4 +164,3 @@ void remidy::PluginInstanceVST3::AudioBuses::deallocateBuffers() {
                 free(outputAudioBusBuffersList[bus].channel_buffers_64);
     }
 }
-
