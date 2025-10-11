@@ -36,7 +36,7 @@ int runMain(int argc, char** argv) {
     std::cout << "Successfully initialized " << windowingBackend->getName() << " backend" << std::endl;
 
     // Create window
-    WindowHandle* window = windowingBackend->createWindow("Remidy Plugin Host", 640, 720);
+    WindowHandle* window = windowingBackend->createWindow("Remidy Plugin Host", 640, 800);
     if (!window) {
         std::cerr << "Error: Failed to create window" << std::endl;
         windowingBackend->shutdown();
