@@ -48,9 +48,15 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
     if (format->name() == "AU" && displayName == "Massive X")
         skip = true;
 
+    /*
     // This prevents IEditController and IAudioProcessor inter-connection.
-    //if (format->name() == "VST3" && displayName.starts_with("RX 8 Breath Control"))
-    //    skip = true;
+    if (format->name() == "VST3" && displayName.starts_with("Serum 2")
+        || format->name() == "VST3" && displayName == "sforzando"
+        )
+        skip = true;
+    if (format->name() == "VST3" && vendor == "iZotope")
+        skip = true;
+    */
 
     // (goes unresponsive, only on debug builds, but still matters)
     if (format->name() == "VST3" && displayName == "Vienna Synchron Player"
@@ -69,8 +75,11 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
         || format->name() == "VST3" && displayName == "RX 9 Monitor"
         )
         skip = true;*/
-    //if (format->name() != "VST3" || displayName != "mda Ambience")
-    //    skip = true;
+
+    // Interrupt signal received!
+    // Process finished with exit code 137 (interrupted by signal 9:SIGKILL)
+    if (format->name() != "VST3" || vendor == "mda")
+        skip = true;
 
     // It somehow expects input channels to be always 1.
     if (format->name() == "AU" && displayName == "Floe")
