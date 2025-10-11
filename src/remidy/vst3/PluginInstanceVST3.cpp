@@ -47,18 +47,20 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     // If we disable this, those JUCE plugins cannot get parameters.
     // If we enable this, Serum2 and Sforzando crashes.
     if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
-        result = connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point**) connPointEdit);
-        if (result != V3_OK) {
-            owner->getLogger()->logWarning(
-                    "%s: IConnectionPoint from IComponent failed to interconnect with its IConnectionPoint from IEditController. Result: %d",
-                    pluginName.c_str(), result);
-        }
-        result = connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point**) connPointComp);
-        if (result != V3_OK) {
-            owner->getLogger()->logWarning(
-                    "%s: IConnectionPoint from IEditController failed to interconnect with its IConnectionPoint from IComponent. Result: %d",
-                    pluginName.c_str(), result);
-        }
+        EventLoop::runTaskOnMainThread([&] {
+            result = connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point **) connPointEdit);
+            if (result != V3_OK) {
+                owner->getLogger()->logWarning(
+                        "%s: IConnectionPoint from IComponent failed to interconnect with its IConnectionPoint from IEditController. Result: %d",
+                        pluginName.c_str(), result);
+            }
+            result = connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point **) connPointComp);
+            if (result != V3_OK) {
+                owner->getLogger()->logWarning(
+                        "%s: IConnectionPoint from IEditController failed to interconnect with its IConnectionPoint from IComponent. Result: %d",
+                        pluginName.c_str(), result);
+            }
+        });
     }
 #endif
 
@@ -83,39 +85,44 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
     auto result = processor->vtable->processor.set_processing(processor, false);
     if (result != V3_OK)
         logger->logError("Failed to setProcessing(false) at VST3 destructor: %d", result);
-    result = component->vtable->component.set_active(component, false);
-    if (result != V3_OK)
-        logger->logError("Failed to setActive(false) at VST3 destructor: %d", result);
-    audio_buses->deactivateAllBuses();
-
-    if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
-        result = connPointEdit->vtable->connection_point.disconnect(connPointEdit, (v3_connection_point**) connPointComp);
+    EventLoop::runTaskOnMainThread([this, &result, logger] {
+        result = component->vtable->component.set_active(component, false);
         if (result != V3_OK)
-            logger->logError("Failed to disconnect from Component ConnectionPoint at VST3 destructor: %d", result);
-        result = connPointComp->vtable->connection_point.disconnect(connPointComp, (v3_connection_point**) connPointEdit);
-        if (result != V3_OK)
-            logger->logError("Failed to disconnect from EditController ConnectionPoint at VST3 destructor: %d", result);
-    }
-    // FIXME: almost all plugins crash here.
-    controller->vtable->controller.set_component_handler(controller, nullptr);
+            logger->logError("Failed to setActive(false) at VST3 destructor: %d", result);
+        audio_buses->deactivateAllBuses();
 
-    if (isControllerDistinctFromComponent) {
-        controller->vtable->base.terminate(controller);
-    }
-    component->vtable->base.terminate(component);
+        if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
+            result = connPointEdit->vtable->connection_point.disconnect(connPointEdit,
+                                                                        (v3_connection_point **) connPointComp);
+            if (result != V3_OK)
+                logger->logError("Failed to disconnect from Component ConnectionPoint at VST3 destructor: %d", result);
+            result = connPointComp->vtable->connection_point.disconnect(connPointComp,
+                                                                        (v3_connection_point **) connPointEdit);
+            if (result != V3_OK)
+                logger->logError("Failed to disconnect from EditController ConnectionPoint at VST3 destructor: %d",
+                                 result);
+        }
 
-    audio_buses->deallocateBuffers();
+        // FIXME: almost all plugins crash here. But it seems optional.
+        controller->vtable->controller.set_component_handler(controller, nullptr);
 
-    if (connPointEdit)
-        connPointEdit->vtable->unknown.unref(connPointEdit);
-    if (connPointComp)
-        connPointComp->vtable->unknown.unref(connPointComp);
+        if (isControllerDistinctFromComponent)
+            controller->vtable->base.terminate(controller);
+        component->vtable->base.terminate(component);
 
-    processor->vtable->unknown.unref(processor);
-    if (isControllerDistinctFromComponent)
-        controller->vtable->unknown.unref(controller);
-    component->vtable->unknown.unref(component);
-    instance->vtable->unknown.unref(instance);
+        audio_buses->deallocateBuffers();
+
+        if (connPointEdit)
+            connPointEdit->vtable->unknown.unref(connPointEdit);
+        if (connPointComp)
+            connPointComp->vtable->unknown.unref(connPointComp);
+
+        processor->vtable->unknown.unref(processor);
+        if (isControllerDistinctFromComponent)
+            controller->vtable->unknown.unref(controller);
+        component->vtable->unknown.unref(component);
+        instance->vtable->unknown.unref(instance);
+    });
 
     owner->unrefLibrary(info());
 

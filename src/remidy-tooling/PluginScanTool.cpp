@@ -67,6 +67,8 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
         || format->name() == "VST3" && displayName == "RX 9 Monitor"
         )
         skip = true;*/
+    //if (format->name() != "VST3" || displayName != "Test Program Change")
+    //    skip = true;
 
     // It somehow expects input channels to be always 1.
     if (format->name() == "AU" && displayName == "Floe")

@@ -37,8 +37,19 @@ namespace remidy {
         static void runTaskOnMainThread(std::function<void()>&& func) {
             if (runningOnMainThread())
                 func();
-            else
-                enqueueTaskOnMainThread(std::move(func));
+            else {
+                std::atomic<bool> done(false);
+                std::function<void()> f = [&done,func]() {
+                    try {
+                        func();
+                    } catch(...) {
+                    }
+                    done = true;
+                    done.notify_one();
+                };
+                enqueueTaskOnMainThread(std::move(f));
+                done.wait(false);
+            }
         }
         // Enqueue task on the main thread to run asynchronously.
         static void enqueueTaskOnMainThread(std::function<void()>&& func) { getEventLoop()->enqueueTaskOnMainThreadImpl(std::move(func)); }
