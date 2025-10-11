@@ -423,14 +423,26 @@ namespace remidy_vst3 {
         IPlugFrameVTable plug_frame_vtable{};
         IPlugInterfaceSupportVTable support_vtable{};
         IHostApplicationVTable host_vtable{};
-        IAttributeList attribute_list{nullptr};
-        IEventHandler event_handler{nullptr};
-        IComponentHandler handler{nullptr};
-        IComponentHandler2 handler2{nullptr};
-        IUnitHandler unit_handler{nullptr};
-        IMessage message{nullptr};
-        IPlugFrame plug_frame{nullptr};
-        IPlugInterfaceSupport support{nullptr};
+        struct AttributeListImpl : IAttributeList { HostApplication* owner{}; };
+        struct EventHandlerImpl : IEventHandler { HostApplication* owner{}; };
+        struct ComponentHandlerImpl : IComponentHandler {
+            HostApplication* owner{};
+        };
+        struct ComponentHandler2Impl : IComponentHandler2 {
+            HostApplication* owner{};
+        };
+        struct UnitHandlerImpl : IUnitHandler { HostApplication* owner{}; };
+        struct MessageImpl : IMessage { HostApplication* owner{}; };
+        struct PlugFrameImpl : IPlugFrame { HostApplication* owner{}; };
+        struct PlugInterfaceSupportImpl : IPlugInterfaceSupport { HostApplication* owner{}; };
+        AttributeListImpl attribute_list{};
+        EventHandlerImpl event_handler{};
+        ComponentHandlerImpl handler{};
+        ComponentHandler2Impl handler2{};
+        UnitHandlerImpl unit_handler{};
+        MessageImpl message{};
+        PlugFrameImpl plug_frame{};
+        PlugInterfaceSupportImpl support{};
         HostParameterChanges parameter_changes{};
         // FIXME: there are plugins that require the following components as well:
         // - IMidiLearn (FM8)
@@ -454,10 +466,32 @@ namespace remidy_vst3 {
         static v3_result set_binary(void *self, const char* id, const void* data, uint32_t sizeInBytes);
         static v3_result get_binary(void *self, const char* id, const void** data, uint32_t *sizeInBytes);
 
+        static v3_result attribute_list_query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t attribute_list_add_ref(void *self);
+        static uint32_t attribute_list_remove_ref(void *self);
+
+        static v3_result event_handler_query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t event_handler_add_ref(void *self);
+        static uint32_t event_handler_remove_ref(void *self);
+
         static v3_result begin_edit(void *self, v3_param_id);
         static v3_result end_edit(void *self, v3_param_id);
         static v3_result perform_edit(void *self, v3_param_id, double value_normalised);
         static v3_result restart_component(void *self, int32_t flags);
+        static v3_result component_handler_query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t component_handler_add_ref(void *self);
+        static uint32_t component_handler_remove_ref(void *self);
+        static v3_result component_handler2_query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t component_handler2_add_ref(void *self);
+        static uint32_t component_handler2_remove_ref(void *self);
+
+        static v3_result unit_handler_query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t unit_handler_add_ref(void *self);
+        static uint32_t unit_handler_remove_ref(void *self);
+
+        static v3_result message_query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t message_add_ref(void *self);
+        static uint32_t message_remove_ref(void *self);
 
         static v3_result set_dirty(void* self, v3_bool state);
         static v3_result request_open_editor(void* self, const char* name);
@@ -471,7 +505,15 @@ namespace remidy_vst3 {
         static void set_message_id(void *self, const char* id);
         static IAttributeList* get_attributes(void *self);
 
+        static v3_result plug_frame_query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t plug_frame_add_ref(void *self);
+        static uint32_t plug_frame_remove_ref(void *self);
+
         static v3_result resize_view(void* self, struct v3_plugin_view**, struct v3_view_rect*);
+
+        static v3_result plug_interface_support_query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t plug_interface_support_add_ref(void *self);
+        static uint32_t plug_interface_support_remove_ref(void *self);
 
         static v3_result is_plug_interface_supported(void* self, const v3_tuid iid);
 

@@ -24,7 +24,10 @@ namespace remidy_vst3 {
         host_vtable.application.get_name = get_name;
         vtable = &host_vtable;
 
-        attribute_list_vtable.unknown = host_vtable.unknown;
+        attribute_list.owner = this;
+        attribute_list_vtable.unknown.query_interface = attribute_list_query_interface;
+        attribute_list_vtable.unknown.ref = attribute_list_add_ref;
+        attribute_list_vtable.unknown.unref = attribute_list_remove_ref;
         attribute_list_vtable.attribute_list.set_int = set_int;
         attribute_list_vtable.attribute_list.get_int = get_int;
         attribute_list_vtable.attribute_list.set_float = set_float;
@@ -35,34 +38,59 @@ namespace remidy_vst3 {
         attribute_list_vtable.attribute_list.get_binary = get_binary;
         attribute_list.vtable = &attribute_list_vtable;
 
-        handler_vtable.unknown = host_vtable.unknown;
+        event_handler.owner = this;
+        event_handler_vtable.unknown.query_interface = event_handler_query_interface;
+        event_handler_vtable.unknown.ref = event_handler_add_ref;
+        event_handler_vtable.unknown.unref = event_handler_remove_ref;
+        event_handler.vtable = &event_handler_vtable;
+
+        handler.owner = this;
+        handler_vtable.unknown.query_interface = component_handler_query_interface;
+        handler_vtable.unknown.ref = component_handler_add_ref;
+        handler_vtable.unknown.unref = component_handler_remove_ref;
         handler_vtable.handler.begin_edit = begin_edit;
         handler_vtable.handler.end_edit = end_edit;
         handler_vtable.handler.perform_edit = perform_edit;
         handler_vtable.handler.restart_component = restart_component;
         handler.vtable = &handler_vtable;
+        handler2.owner = this;
+        handler2_vtable.unknown.query_interface = component_handler2_query_interface;
+        handler2_vtable.unknown.ref = component_handler2_add_ref;
+        handler2_vtable.unknown.unref = component_handler2_remove_ref;
         handler2_vtable.handler2.set_dirty = set_dirty;
         handler2_vtable.handler2.request_open_editor = request_open_editor;
         handler2_vtable.handler2.start_group_edit = start_group_edit;
         handler2_vtable.handler2.finish_group_edit = finish_group_edit;
         handler2.vtable = &handler2_vtable;
 
-        unit_handler_vtable.unknown = host_vtable.unknown;
+        unit_handler.owner = this;
+        unit_handler_vtable.unknown.query_interface = unit_handler_query_interface;
+        unit_handler_vtable.unknown.ref = unit_handler_add_ref;
+        unit_handler_vtable.unknown.unref = unit_handler_remove_ref;
         unit_handler_vtable.handler.notify_unit_selection = notify_unit_selection;
         unit_handler_vtable.handler.notify_program_list_change = notify_program_list_change;
         unit_handler.vtable = &unit_handler_vtable;
 
-        message_vtable.unknown = host_vtable.unknown;
+        message.owner = this;
+        message_vtable.unknown.query_interface = message_query_interface;
+        message_vtable.unknown.ref = message_add_ref;
+        message_vtable.unknown.unref = message_remove_ref;
         message_vtable.message.get_message_id = get_message_id;
         message_vtable.message.set_message_id = set_message_id;
         message_vtable.message.get_attributes = (v3_attribute_list** (V3_API*)(void*)) get_attributes;
         message.vtable = &message_vtable;
 
-        plug_frame_vtable.unknown = host_vtable.unknown;
+        plug_frame.owner = this;
+        plug_frame_vtable.unknown.query_interface = plug_frame_query_interface;
+        plug_frame_vtable.unknown.ref = plug_frame_add_ref;
+        plug_frame_vtable.unknown.unref = plug_frame_remove_ref;
         plug_frame_vtable.plug_frame.resize_view = resize_view;
         plug_frame.vtable = &plug_frame_vtable;
 
-        support_vtable.unknown = host_vtable.unknown;
+        support.owner = this;
+        support_vtable.unknown.query_interface = plug_interface_support_query_interface;
+        support_vtable.unknown.ref = plug_interface_support_add_ref;
+        support_vtable.unknown.unref = plug_interface_support_remove_ref;
         support_vtable.support.is_plug_interface_supported = is_plug_interface_supported;
         support.vtable = &support_vtable;
     }
@@ -79,7 +107,8 @@ namespace remidy_vst3 {
 
 #define QUERY_HOST_INTERFACE(target, member) \
     if (v3_tuid_match(iid,target)) { \
-        add_ref(&(member)); \
+        if ((member).vtable && (member).vtable->unknown.ref) \
+            (member).vtable->unknown.ref(&(member)); \
         *obj = &(member); \
         return V3_OK; \
     }
@@ -189,6 +218,52 @@ namespace remidy_vst3 {
         return V3_NOT_IMPLEMENTED;
     }
 
+    v3_result HostApplication::attribute_list_query_interface(void *self, const v3_tuid iid, void **obj) {
+        auto impl = static_cast<AttributeListImpl*>(self);
+        if (v3_tuid_match(iid, v3_attribute_list_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
+            attribute_list_add_ref(self);
+            *obj = self;
+            return V3_OK;
+        }
+        if (impl->owner)
+            return impl->owner->queryInterface(iid, obj);
+        *obj = nullptr;
+        return V3_NO_INTERFACE;
+    }
+
+    uint32_t HostApplication::attribute_list_add_ref(void *self) {
+        auto impl = static_cast<AttributeListImpl*>(self);
+        return impl->owner ? add_ref(impl->owner) : 0;
+    }
+
+    uint32_t HostApplication::attribute_list_remove_ref(void *self) {
+        auto impl = static_cast<AttributeListImpl*>(self);
+        return impl->owner ? remove_ref(impl->owner) : 0;
+    }
+
+    v3_result HostApplication::event_handler_query_interface(void *self, const v3_tuid iid, void **obj) {
+        auto impl = static_cast<EventHandlerImpl*>(self);
+        if (v3_tuid_match(iid, v3_event_handler_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
+            event_handler_add_ref(self);
+            *obj = self;
+            return V3_OK;
+        }
+        if (impl->owner)
+            return impl->owner->queryInterface(iid, obj);
+        *obj = nullptr;
+        return V3_NO_INTERFACE;
+    }
+
+    uint32_t HostApplication::event_handler_add_ref(void *self) {
+        auto impl = static_cast<EventHandlerImpl*>(self);
+        return impl->owner ? add_ref(impl->owner) : 0;
+    }
+
+    uint32_t HostApplication::event_handler_remove_ref(void *self) {
+        auto impl = static_cast<EventHandlerImpl*>(self);
+        return impl->owner ? remove_ref(impl->owner) : 0;
+    }
+
     // IComponentHandler
     v3_result HostApplication::begin_edit(void *self, v3_param_id paramId) {
         std::cerr << "HostApplication::begin_edit(" << std::hex << paramId << std::dec << ") is not implemented" << std::endl;
@@ -212,6 +287,82 @@ namespace remidy_vst3 {
         // FIXME: implement
         std::cerr << "HostApplication::restart_component(" << std::hex << flags << std::dec << ") is not implemented" << std::endl;
         return V3_NOT_IMPLEMENTED;
+    }
+
+    v3_result HostApplication::component_handler_query_interface(void *self, const v3_tuid iid, void **obj) {
+        auto owner = static_cast<ComponentHandlerImpl*>(self)->owner;
+        return query_interface(owner, iid, obj);
+    }
+
+    uint32_t HostApplication::component_handler_add_ref(void *self) {
+        auto owner = static_cast<ComponentHandlerImpl*>(self)->owner;
+        return add_ref(owner);
+    }
+
+    uint32_t HostApplication::component_handler_remove_ref(void *self) {
+        auto owner = static_cast<ComponentHandlerImpl*>(self)->owner;
+        return remove_ref(owner);
+    }
+
+    v3_result HostApplication::component_handler2_query_interface(void *self, const v3_tuid iid, void **obj) {
+        auto owner = static_cast<ComponentHandler2Impl*>(self)->owner;
+        return query_interface(owner, iid, obj);
+    }
+
+    uint32_t HostApplication::component_handler2_add_ref(void *self) {
+        auto owner = static_cast<ComponentHandler2Impl*>(self)->owner;
+        return add_ref(owner);
+    }
+
+    uint32_t HostApplication::component_handler2_remove_ref(void *self) {
+        auto owner = static_cast<ComponentHandler2Impl*>(self)->owner;
+        return remove_ref(owner);
+    }
+
+    v3_result HostApplication::unit_handler_query_interface(void *self, const v3_tuid iid, void **obj) {
+        auto impl = static_cast<UnitHandlerImpl*>(self);
+        if (v3_tuid_match(iid, v3_unit_handler_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
+            unit_handler_add_ref(self);
+            *obj = self;
+            return V3_OK;
+        }
+        if (impl->owner)
+            return impl->owner->queryInterface(iid, obj);
+        *obj = nullptr;
+        return V3_NO_INTERFACE;
+    }
+
+    uint32_t HostApplication::unit_handler_add_ref(void *self) {
+        auto impl = static_cast<UnitHandlerImpl*>(self);
+        return impl->owner ? add_ref(impl->owner) : 0;
+    }
+
+    uint32_t HostApplication::unit_handler_remove_ref(void *self) {
+        auto impl = static_cast<UnitHandlerImpl*>(self);
+        return impl->owner ? remove_ref(impl->owner) : 0;
+    }
+
+    v3_result HostApplication::message_query_interface(void *self, const v3_tuid iid, void **obj) {
+        auto impl = static_cast<MessageImpl*>(self);
+        if (v3_tuid_match(iid, v3_message_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
+            message_add_ref(self);
+            *obj = self;
+            return V3_OK;
+        }
+        if (impl->owner)
+            return impl->owner->queryInterface(iid, obj);
+        *obj = nullptr;
+        return V3_NO_INTERFACE;
+    }
+
+    uint32_t HostApplication::message_add_ref(void *self) {
+        auto impl = static_cast<MessageImpl*>(self);
+        return impl->owner ? add_ref(impl->owner) : 0;
+    }
+
+    uint32_t HostApplication::message_remove_ref(void *self) {
+        auto impl = static_cast<MessageImpl*>(self);
+        return impl->owner ? remove_ref(impl->owner) : 0;
     }
 
     // IComponentHandler2
@@ -250,23 +401,73 @@ namespace remidy_vst3 {
 
     const char * HostApplication::get_message_id(void *self) {
         // FIXME: implement
+        auto impl = static_cast<MessageImpl*>(self);
         std::cerr << "HostApplication::get_message_id() is not implemented" << std::endl;
         return nullptr;
     }
 
     void HostApplication::set_message_id(void *self, const char *id) {
         // FIXME: implement
+        auto impl = static_cast<MessageImpl*>(self);
+        (void) impl;
         std::cerr << "HostApplication::set_message_id() is not implemented" << std::endl;
     }
 
     IAttributeList * HostApplication::get_attributes(void *self) {
-        return &((HostApplication*) self)->attribute_list;
+        auto impl = static_cast<MessageImpl*>(self);
+        return impl->owner ? static_cast<IAttributeList*>(&impl->owner->attribute_list) : nullptr;
+    }
+
+    v3_result HostApplication::plug_frame_query_interface(void *self, const v3_tuid iid, void **obj) {
+        auto impl = static_cast<PlugFrameImpl*>(self);
+        if (v3_tuid_match(iid, v3_plugin_frame_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
+            plug_frame_add_ref(self);
+            *obj = self;
+            return V3_OK;
+        }
+        if (impl->owner)
+            return impl->owner->queryInterface(iid, obj);
+        *obj = nullptr;
+        return V3_NO_INTERFACE;
+    }
+
+    uint32_t HostApplication::plug_frame_add_ref(void *self) {
+        auto impl = static_cast<PlugFrameImpl*>(self);
+        return impl->owner ? add_ref(impl->owner) : 0;
+    }
+
+    uint32_t HostApplication::plug_frame_remove_ref(void *self) {
+        auto impl = static_cast<PlugFrameImpl*>(self);
+        return impl->owner ? remove_ref(impl->owner) : 0;
     }
 
     v3_result HostApplication::resize_view(void *self, struct v3_plugin_view **, struct v3_view_rect *) {
         // FIXME: implement
         std::cerr << "HostApplication::resize_view() is not implemented" << std::endl;
         return V3_NOT_IMPLEMENTED;
+    }
+
+    v3_result HostApplication::plug_interface_support_query_interface(void *self, const v3_tuid iid, void **obj) {
+        auto impl = static_cast<PlugInterfaceSupportImpl*>(self);
+        if (v3_tuid_match(iid, v3_plug_interface_support_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
+            plug_interface_support_add_ref(self);
+            *obj = self;
+            return V3_OK;
+        }
+        if (impl->owner)
+            return impl->owner->queryInterface(iid, obj);
+        *obj = nullptr;
+        return V3_NO_INTERFACE;
+    }
+
+    uint32_t HostApplication::plug_interface_support_add_ref(void *self) {
+        auto impl = static_cast<PlugInterfaceSupportImpl*>(self);
+        return impl->owner ? add_ref(impl->owner) : 0;
+    }
+
+    uint32_t HostApplication::plug_interface_support_remove_ref(void *self) {
+        auto impl = static_cast<PlugInterfaceSupportImpl*>(self);
+        return impl->owner ? remove_ref(impl->owner) : 0;
     }
 
     v3_result HostApplication::is_plug_interface_supported(void* self, const v3_tuid iid) {

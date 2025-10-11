@@ -197,6 +197,8 @@ namespace remidy {
         HostEventList processDataOutputEvents{};
         HostParameterChanges processDataInputParameterChanges{};
         HostParameterChanges processDataOutputParameterChanges{};
+        v3_process_setup last_process_setup{};
+        bool has_process_setup{false};
 
         void allocateProcessData(v3_process_setup& setup);
 

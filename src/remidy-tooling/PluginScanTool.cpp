@@ -45,6 +45,8 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
     // It depends on unimplemented perform_edit() and restart_component(). Results in unresponsiveness.
     if (format->name() == "VST3" && displayName == "Massive X")
         skip = true;
+    if (format->name() == "AU" && displayName == "Massive X")
+        skip = true;
 
     // This prevents IEditController and IAudioProcessor inter-connection.
     //if (format->name() == "VST3" && displayName.starts_with("RX 8 Breath Control"))
@@ -67,7 +69,7 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
         || format->name() == "VST3" && displayName == "RX 9 Monitor"
         )
         skip = true;*/
-    //if (format->name() != "VST3" || displayName != "Test Program Change")
+    //if (format->name() != "VST3" || displayName != "mda Ambience")
     //    skip = true;
 
     // It somehow expects input channels to be always 1.
@@ -119,6 +121,7 @@ bool remidy_tooling::PluginScanTool::shouldCreateInstanceOnUIThread(PluginFormat
         || format->name() == "AU" && displayName == "Absynth 5"
         || format->name() == "AU" && displayName == "Absynth 5 MFX"
         || format->name() == "AU" && displayName == "FM8"
+        || format->name() == "AU" && displayName == "Massive X"
         || format->name() == "AU" && displayName == "Reaktor 6"
         || format->name() == "AU" && displayName == "Reaktor 6 MFX"
         || format->name() == "AU" && displayName == "Reaktor 6 MIDIFX"

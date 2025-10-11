@@ -74,9 +74,7 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     if (controller->vtable->unknown.query_interface(controller, v3_midi_mapping_iid, (void**) &midi_mapping) != V3_OK)
         midi_mapping = nullptr; // just to make sure
 
-    // not sure if we want to error out here, so no result check.
-    processor->vtable->processor.set_processing(processor, false);
-    component->vtable->component.set_active(component, false);
+    // Leave the component inactive until startProcessing() explicitly activates it.
 }
 
 remidy::PluginInstanceVST3::~PluginInstanceVST3() {
@@ -139,17 +137,13 @@ remidy::StatusCode remidy::PluginInstanceVST3::configure(ConfigurationRequest &c
     setup.symbolic_sample_size = configuration.dataType == AudioContentType::Float64 ? V3_SAMPLE_64 : V3_SAMPLE_32;
     setup.process_mode = configuration.offlineMode ? V3_OFFLINE : V3_REALTIME;
 
-    auto result = processor->vtable->processor.setup_processing(processor, &setup);
-    if (result != V3_OK) {
-        owner->getLogger()->logError("Failed to call vst3 setup_processing() result: %d", result);
-        return StatusCode::FAILED_TO_CONFIGURE;
-    }
-
     // setup audio buses
     audio_buses->configure(configuration);
 
     // setup process_data here.
     allocateProcessData(setup);
+    last_process_setup = setup;
+    has_process_setup = true;
 
     return StatusCode::OK;
 }
@@ -171,19 +165,52 @@ void remidy::PluginInstanceVST3::allocateProcessData(v3_process_setup& setup) {
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
-    // we need to allocate memory where necessary.
-    owner->getHost()->startProcessing();
+    if (!has_process_setup) {
+        owner->getLogger()->logError("%s: startProcessing() called before configure()", pluginName.c_str());
+        return StatusCode::FAILED_TO_START_PROCESSING;
+    }
 
-    // activate the instance.
-    component->vtable->component.set_active(component, true);
+    v3_result setupResult = V3_OK;
+    v3_result activationResult = V3_OK;
+    bool attemptedActivation = false;
+    EventLoop::runTaskOnMainThread([&] {
+        owner->getLogger()->logInfo("%s: setting up processing", pluginName.c_str());
+        setupResult = processor->vtable->processor.setup_processing(processor, &last_process_setup);
+        if (setupResult == V3_OK) {
+            owner->getLogger()->logInfo("%s: activating component", pluginName.c_str());
+            activationResult = component->vtable->component.set_active(component, true);
+            attemptedActivation = true;
+        }
+    });
+
+    if (setupResult != V3_OK) {
+        owner->getLogger()->logError("Failed to setup_processing() for vst3. Result: %d", setupResult);
+        return StatusCode::FAILED_TO_START_PROCESSING;
+    }
+
+    if (!attemptedActivation || activationResult != V3_OK) {
+        owner->getLogger()->logError("Failed to setActive(true) for vst3 processing. Result: %d", activationResult);
+        EventLoop::runTaskOnMainThread([&] {
+            if (component->vtable->component.set_active)
+                component->vtable->component.set_active(component, false);
+        });
+        return StatusCode::FAILED_TO_START_PROCESSING;
+    }
 
     auto result = processor->vtable->processor.set_processing(processor, true);
     // Surprisingly?, some VST3 plugins do not implement this function.
     // We do not prevent them just because of this.
     if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
         owner->getLogger()->logError("Failed to start vst3 processing. Result: %d", result);
+        EventLoop::runTaskOnMainThread([&] {
+            if (component->vtable->component.set_active)
+                component->vtable->component.set_active(component, false);
+        });
         return StatusCode::FAILED_TO_START_PROCESSING;
     }
+
+    owner->getLogger()->logInfo("%s: startProcessing() success", pluginName.c_str());
+    owner->getHost()->startProcessing();
     return StatusCode::OK;
 }
 
@@ -195,7 +222,12 @@ remidy::StatusCode remidy::PluginInstanceVST3::stopProcessing() {
         return StatusCode::FAILED_TO_STOP_PROCESSING;
     }
 
-    component->vtable->component.set_active(component, false);
+    v3_result deactivateResult = V3_OK;
+    EventLoop::runTaskOnMainThread([&] {
+        deactivateResult = component->vtable->component.set_active(component, false);
+    });
+    if (deactivateResult != V3_OK)
+        owner->getLogger()->logWarning("Failed to setActive(false) for vst3 processing. Result: %d", deactivateResult);
 
     // we deallocate memory where necessary.
     owner->getHost()->stopProcessing();

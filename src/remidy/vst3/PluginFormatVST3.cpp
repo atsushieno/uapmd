@@ -104,10 +104,18 @@ namespace remidy {
                 return;
 
             IComponent *component{};
+            if (!instance || !instance->vtable || !instance->vtable->unknown.query_interface) {
+                logger->logError("Invalid component instance returned for %s", name.c_str());
+                if (instance && instance->vtable && instance->vtable->unknown.unref)
+                    instance->vtable->unknown.unref(instance);
+                error = "Invalid component instance";
+                return;
+            }
             result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void **) &component);
-            if (result != V3_OK) {
+            if (result != V3_OK || component == nullptr || component->vtable == nullptr) {
                 logger->logError("Failed to query VST3 component: %s result: %d", name.c_str(), result);
                 instance->vtable->unknown.unref(instance);
+                error = "Failed to query VST3 component";
                 return;
             }
 
@@ -130,9 +138,16 @@ namespace remidy {
 #endif
 
             IAudioProcessor *processor{};
+            if (!component || !component->vtable || !component->vtable->unknown.query_interface) {
+                logger->logError("Invalid component vtable for %s", name.c_str());
+                component->vtable->unknown.unref(component);
+                instance->vtable->unknown.unref(instance);
+                error = "Invalid component vtable";
+                return;
+            }
             result = component->vtable->unknown.query_interface(component, v3_audio_processor_iid,
                                                                 (void **) &processor);
-            if (result != V3_OK) {
+            if (result != V3_OK || processor == nullptr || processor->vtable == nullptr) {
                 logger->logError("Could not query vst3 IAudioProcessor interface: %s (status: %d ", name.c_str(),
                                  result);
                 error = "Could not query vst3 IAudioProcessor interface";
@@ -148,7 +163,7 @@ namespace remidy {
             IEditController *controller{nullptr};
             result = component->vtable->unknown.query_interface(component, v3_edit_controller_iid,
                                                                 (void **) &controller);
-            if (result == V3_OK)
+            if (result == V3_OK && controller && controller->vtable)
                 controllerValid = true;
             else {
                 controller = nullptr; // just to make sure
@@ -167,7 +182,7 @@ namespace remidy {
                 result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid,
                                                                   (void **) &controller);
                 if (result == V3_OK)
-                    controllerValid = true;
+                    controllerValid = controller && controller->vtable;
             }
 
             // Now initialize the component and the controller.
@@ -184,7 +199,7 @@ namespace remidy {
             }
             if (distinctControllerInstance) {
                 result = controller->vtable->base.initialize(controller, (v3_funknown **) &host);
-                if (result != V3_OK)
+                if (result != V3_OK || controller == nullptr || controller->vtable == nullptr)
                     controllerValid = false;
             }
             if (controllerValid) {
