@@ -1,8 +1,11 @@
 #pragma once
 
 #include "TravestyHelper.hpp"
-#include <iostream>
 #include <algorithm>
+#include <iostream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #if defined(_MSC_VER)
 #define min(v1, v2) (v1 < v2 ? v1 : v2)
@@ -28,6 +31,10 @@ namespace remidy_vst3 {
 
     class HostAttributeList : public IAttributeList {
         IAttributeListVTable impl;
+        std::unordered_map<std::string, int64_t> intValues{};
+        std::unordered_map<std::string, double> floatValues{};
+        std::unordered_map<std::string, std::vector<int16_t>> stringValues{};
+        std::unordered_map<std::string, std::vector<uint8_t>> binaryValues{};
 
         IMPLEMENT_FUNKNOWN_REFS(HostAttributeList)
 
@@ -39,57 +46,117 @@ namespace remidy_vst3 {
         }
 
         static v3_result set_int(void *self, const char *id, int64_t value) {
-            // FIXME: remove when we move this to impl. code.
-            printf("WHY HERE?");
-            return V3_NOT_IMPLEMENTED;
+            if (!self || !id)
+                return V3_INVALID_ARG;
+            auto* list = static_cast<HostAttributeList*>(self);
+            list->intValues[id] = value;
+            list->floatValues.erase(id);
+            list->stringValues.erase(id);
+            list->binaryValues.erase(id);
+            return V3_OK;
         }
 
         static v3_result get_int(void *self, const char *id, int64_t *value) {
-            // FIXME: remove when we move this to impl. code.
-            printf("WHY HERE?");
-            return V3_NOT_IMPLEMENTED;
+            if (!self || !id || !value)
+                return V3_INVALID_ARG;
+            auto* list = static_cast<HostAttributeList*>(self);
+            auto it = list->intValues.find(id);
+            if (it == list->intValues.end())
+                return V3_INVALID_ARG;
+            *value = it->second;
+            return V3_OK;
         }
 
         static v3_result set_float(void *self, const char *id, double value) {
-            // FIXME: remove when we move this to impl. code.
-            printf("WHY HERE?");
-            return V3_NOT_IMPLEMENTED;
+            if (!self || !id)
+                return V3_INVALID_ARG;
+            auto* list = static_cast<HostAttributeList*>(self);
+            list->floatValues[id] = value;
+            list->intValues.erase(id);
+            list->stringValues.erase(id);
+            list->binaryValues.erase(id);
+            return V3_OK;
         }
 
         static v3_result get_float(void *self, const char *id, double *value) {
-            // FIXME: remove when we move this to impl. code.
-            printf("WHY HERE?");
-            return V3_NOT_IMPLEMENTED;
+            if (!self || !id || !value)
+                return V3_INVALID_ARG;
+            auto* list = static_cast<HostAttributeList*>(self);
+            auto it = list->floatValues.find(id);
+            if (it == list->floatValues.end())
+                return V3_INVALID_ARG;
+            *value = it->second;
+            return V3_OK;
         }
 
         static v3_result set_string(void *self, const char *id, const int16_t *value) {
-            // FIXME: remove when we move this to impl. code.
-            printf("WHY HERE?");
-            return V3_NOT_IMPLEMENTED;
+            if (!self || !id)
+                return V3_INVALID_ARG;
+            auto* list = static_cast<HostAttributeList*>(self);
+            std::vector<int16_t> data{};
+            if (value) {
+                const int16_t* ptr = value;
+                while (*ptr) {
+                    data.push_back(*ptr++);
+                }
+            }
+            data.push_back(0);
+            list->stringValues[id] = std::move(data);
+            list->intValues.erase(id);
+            list->floatValues.erase(id);
+            list->binaryValues.erase(id);
+            return V3_OK;
         }
 
         static v3_result get_string(void *self, const char *id, int16_t *value, uint32_t sizeInBytes) {
-            // FIXME: remove when we move this to impl. code.
-            printf("WHY HERE?");
-            return V3_NOT_IMPLEMENTED;
+            if (!self || !id || !value || sizeInBytes == 0)
+                return V3_INVALID_ARG;
+            auto* list = static_cast<HostAttributeList*>(self);
+            auto it = list->stringValues.find(id);
+            if (it == list->stringValues.end())
+                return V3_INVALID_ARG;
+            const auto& data = it->second;
+            const auto required = static_cast<uint32_t>(data.size());
+            if (required > sizeInBytes)
+                return V3_INVALID_ARG;
+            std::copy(data.begin(), data.end(), value);
+            if (required < sizeInBytes)
+                value[required] = 0;
+            return V3_OK;
         }
         static v3_result set_binary(void *self, const char *id, const void *data, uint32_t sizeInBytes) {
-            // FIXME: remove when we move this to impl. code.
-            printf("WHY HERE?");
-            return V3_NOT_IMPLEMENTED;
+            if (!self || !id)
+                return V3_INVALID_ARG;
+            auto* list = static_cast<HostAttributeList*>(self);
+            std::vector<uint8_t> buffer{};
+            if (data && sizeInBytes) {
+                const uint8_t* ptr = static_cast<const uint8_t*>(data);
+                buffer.assign(ptr, ptr + sizeInBytes);
+            }
+            list->binaryValues[id] = std::move(buffer);
+            list->intValues.erase(id);
+            list->floatValues.erase(id);
+            list->stringValues.erase(id);
+            return V3_OK;
         }
 
         static v3_result get_binary(void *self, const char *id, const void **data, uint32_t *sizeInBytes) {
-            // FIXME: remove when we move this to impl. code.
-            printf("WHY HERE?");
-            return V3_NOT_IMPLEMENTED;
+            if (!self || !id || !data || !sizeInBytes)
+                return V3_INVALID_ARG;
+            auto* list = static_cast<HostAttributeList*>(self);
+            auto it = list->binaryValues.find(id);
+            if (it == list->binaryValues.end())
+                return V3_INVALID_ARG;
+            const auto& buffer = it->second;
+            *data = buffer.empty() ? nullptr : buffer.data();
+            *sizeInBytes = static_cast<uint32_t>(buffer.size());
+            return V3_OK;
         }
 
         explicit HostAttributeList() {
             this->vtable = &impl;
             auto& vtable = impl;
             FILL_FUNKNOWN_VTABLE
-
             vtable.unknown.unref = remove_ref;
             vtable.attribute_list.set_int = set_int;
             vtable.attribute_list.get_int = get_int;
@@ -154,6 +221,7 @@ namespace remidy_vst3 {
     class HostEventList : public IEventList {
         IEventListVTable impl{};
         IMPLEMENT_FUNKNOWN_REFS(HostEventList)
+        std::vector<v3_event> events{};
 
         static uint32_t get_event_count(void *self) {
             return ((HostEventList*) self)->events.size();
@@ -166,8 +234,6 @@ namespace remidy_vst3 {
             ((HostEventList*) self)->events.emplace_back(*e);
             return V3_OK;
         }
-
-        std::vector<v3_event> events{};
 
     public:
         explicit HostEventList() {
@@ -251,15 +317,21 @@ namespace remidy_vst3 {
         IMPLEMENT_FUNKNOWN_REFS(HostParameterChanges)
         std::vector<std::unique_ptr<HostParamValueQueue>> queues{};
 
-        static int32_t get_param_count(void* self) { return ((HostParameterChanges*) self)->queues.size(); }
+        static int32_t get_param_count(void* self) { return static_cast<int32_t>(((HostParameterChanges*) self)->queues.size()); }
         static struct v3_param_value_queue** get_param_data(void* self, int32_t idx) {
-            return (v3_param_value_queue**) ((HostParameterChanges*) self)->queues[idx]->asInterface();
+            auto* changes = static_cast<HostParameterChanges*>(self);
+            if (idx < 0 || idx >= static_cast<int32_t>(changes->queues.size()))
+                return nullptr;
+            auto& queue = changes->queues[idx];
+            return queue ? (v3_param_value_queue**) queue->asInterface() : nullptr;
         }
         static struct v3_param_value_queue** add_param_data(void* self, const v3_param_id* id, int32_t* idx) {
             return ((HostParameterChanges*) self)->addParamData(id, idx);
         }
         struct v3_param_value_queue** addParamData(const v3_param_id* id, int32_t* idx) {
-            for (int32_t i = 0; i < queues.size(); ++i) {
+            for (int32_t i = 0; i < static_cast<int32_t>(queues.size()); ++i) {
+                if (!queues[i])
+                    continue;
                 auto iface = queues[i]->asInterface();
                 if (iface->vtable->param_value_queue.get_param_id(iface) == *id) {
                     *idx = i;
@@ -291,13 +363,12 @@ namespace remidy_vst3 {
 
         void startProcessing() {
             // we need to allocate memory for IParamValueQueues for all the parameters.
-            queues.resize(128);
+            queues.clear();
         }
 
         void stopProcessing() {
             // we need to deallocate memory for IParamValueQueues for all the parameters.
             queues.clear();
-            queues.resize(0);
         }
 
         // invoked at process()

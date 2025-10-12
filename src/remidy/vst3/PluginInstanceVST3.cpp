@@ -45,9 +45,11 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     // > Some plugins need to be "connected" to intercommunicate between their implemented classes
 #if 1
     // If we disable this, those JUCE plugins cannot get parameters.
-    // If we enable this, Serum2 and Sforzando crashes.
+    // If we enable this, Serum2 and Sforzando crash.
     if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
         EventLoop::runTaskOnMainThread([&] {
+            // You need to understand how those pointer-to-pointer types are used in DPF before attempting to make changes here.
+            // Codex is stupid and does not understand why these pointer-to-pointer types are correct.
             result = connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point **) connPointEdit);
             if (result != V3_OK) {
                 owner->getLogger()->logWarning(
