@@ -2,6 +2,7 @@
 
 #include "TravestyHelper.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <iostream>
 #include <string>
 #include <unordered_map>
@@ -29,26 +30,62 @@ namespace remidy_vst3 {
     vtable.unknown.ref = add_ref; \
     vtable.unknown.unref = remove_ref;
 
-    class HostAttributeList : public IAttributeList {
-        IAttributeListVTable impl;
+    class HostAttributeList {
+        struct AttributeHandle : v3_attribute_list_cpp {
+            HostAttributeList* owner{nullptr};
+        } handle{};
+        v3_attribute_list* stablePtr{nullptr};
+        uint32_t refCount{1};
         std::unordered_map<std::string, int64_t> intValues{};
         std::unordered_map<std::string, double> floatValues{};
         std::unordered_map<std::string, std::vector<int16_t>> stringValues{};
         std::unordered_map<std::string, std::vector<uint8_t>> binaryValues{};
 
-        IMPLEMENT_FUNKNOWN_REFS(HostAttributeList)
+        static auto& registry() {
+            static std::unordered_map<v3_attribute_list*, HostAttributeList*> map;
+            return map;
+        }
 
-    public:
-        auto asInterface() { return &impl; }
+        static HostAttributeList* cast(void* self) {
+            auto attr = static_cast<v3_attribute_list*>(self);
+            auto& map = registry();
+            auto it = map.find(attr);
+            return it != map.end() ? it->second : nullptr;
+        }
 
-        v3_result queryInterface(const v3_tuid iid, void **obj) {
+        static HostAttributeList* fromUnknown(void* self) {
+            return reinterpret_cast<AttributeHandle*>(self)->owner;
+        }
+
+        static v3_result V3_API queryInterfaceThunk(void* self, const v3_tuid iid, void** obj) {
+            auto owner = fromUnknown(self);
+            if (!owner) {
+                *obj = nullptr;
+                return V3_NO_INTERFACE;
+            }
+            if (v3_tuid_match(iid, v3_attribute_list_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
+                owner->addRef();
+                *obj = &owner->handle.attrlist;
+                return V3_OK;
+            }
+            *obj = nullptr;
             return V3_NO_INTERFACE;
         }
 
-        static v3_result set_int(void *self, const char *id, int64_t value) {
-            if (!self || !id)
+        static uint32_t V3_API addRefThunk(void* self) {
+            auto owner = fromUnknown(self);
+            return owner ? owner->addRef() : 0;
+        }
+
+        static uint32_t V3_API releaseThunk(void* self) {
+            auto owner = fromUnknown(self);
+            return owner ? owner->release() : 0;
+        }
+
+        static v3_result V3_API set_int(void *self, const char *id, int64_t value) {
+            auto* list = cast(self);
+            if (!list || !id)
                 return V3_INVALID_ARG;
-            auto* list = static_cast<HostAttributeList*>(self);
             list->intValues[id] = value;
             list->floatValues.erase(id);
             list->stringValues.erase(id);
@@ -56,10 +93,10 @@ namespace remidy_vst3 {
             return V3_OK;
         }
 
-        static v3_result get_int(void *self, const char *id, int64_t *value) {
-            if (!self || !id || !value)
+        static v3_result V3_API get_int(void *self, const char *id, int64_t *value) {
+            auto* list = cast(self);
+            if (!list || !id || !value)
                 return V3_INVALID_ARG;
-            auto* list = static_cast<HostAttributeList*>(self);
             auto it = list->intValues.find(id);
             if (it == list->intValues.end())
                 return V3_INVALID_ARG;
@@ -67,10 +104,10 @@ namespace remidy_vst3 {
             return V3_OK;
         }
 
-        static v3_result set_float(void *self, const char *id, double value) {
-            if (!self || !id)
+        static v3_result V3_API set_float(void *self, const char *id, double value) {
+            auto* list = cast(self);
+            if (!list || !id)
                 return V3_INVALID_ARG;
-            auto* list = static_cast<HostAttributeList*>(self);
             list->floatValues[id] = value;
             list->intValues.erase(id);
             list->stringValues.erase(id);
@@ -78,10 +115,10 @@ namespace remidy_vst3 {
             return V3_OK;
         }
 
-        static v3_result get_float(void *self, const char *id, double *value) {
-            if (!self || !id || !value)
+        static v3_result V3_API get_float(void *self, const char *id, double *value) {
+            auto* list = cast(self);
+            if (!list || !id || !value)
                 return V3_INVALID_ARG;
-            auto* list = static_cast<HostAttributeList*>(self);
             auto it = list->floatValues.find(id);
             if (it == list->floatValues.end())
                 return V3_INVALID_ARG;
@@ -89,10 +126,10 @@ namespace remidy_vst3 {
             return V3_OK;
         }
 
-        static v3_result set_string(void *self, const char *id, const int16_t *value) {
-            if (!self || !id)
+        static v3_result V3_API set_string(void *self, const char *id, const int16_t *value) {
+            auto* list = cast(self);
+            if (!list || !id)
                 return V3_INVALID_ARG;
-            auto* list = static_cast<HostAttributeList*>(self);
             std::vector<int16_t> data{};
             if (value) {
                 const int16_t* ptr = value;
@@ -108,10 +145,10 @@ namespace remidy_vst3 {
             return V3_OK;
         }
 
-        static v3_result get_string(void *self, const char *id, int16_t *value, uint32_t sizeInBytes) {
-            if (!self || !id || !value || sizeInBytes == 0)
+        static v3_result V3_API get_string(void *self, const char *id, int16_t *value, uint32_t sizeInBytes) {
+            auto* list = cast(self);
+            if (!list || !id || !value || sizeInBytes == 0)
                 return V3_INVALID_ARG;
-            auto* list = static_cast<HostAttributeList*>(self);
             auto it = list->stringValues.find(id);
             if (it == list->stringValues.end())
                 return V3_INVALID_ARG;
@@ -124,10 +161,11 @@ namespace remidy_vst3 {
                 value[required] = 0;
             return V3_OK;
         }
-        static v3_result set_binary(void *self, const char *id, const void *data, uint32_t sizeInBytes) {
-            if (!self || !id)
+
+        static v3_result V3_API set_binary(void *self, const char *id, const void *data, uint32_t sizeInBytes) {
+            auto* list = cast(self);
+            if (!list || !id)
                 return V3_INVALID_ARG;
-            auto* list = static_cast<HostAttributeList*>(self);
             std::vector<uint8_t> buffer{};
             if (data && sizeInBytes) {
                 const uint8_t* ptr = static_cast<const uint8_t*>(data);
@@ -140,10 +178,10 @@ namespace remidy_vst3 {
             return V3_OK;
         }
 
-        static v3_result get_binary(void *self, const char *id, const void **data, uint32_t *sizeInBytes) {
-            if (!self || !id || !data || !sizeInBytes)
+        static v3_result V3_API get_binary(void *self, const char *id, const void **data, uint32_t *sizeInBytes) {
+            auto* list = cast(self);
+            if (!list || !id || !data || !sizeInBytes)
                 return V3_INVALID_ARG;
-            auto* list = static_cast<HostAttributeList*>(self);
             auto it = list->binaryValues.find(id);
             if (it == list->binaryValues.end())
                 return V3_INVALID_ARG;
@@ -153,23 +191,35 @@ namespace remidy_vst3 {
             return V3_OK;
         }
 
-        explicit HostAttributeList() {
-            this->vtable = &impl;
-            auto& vtable = impl;
-            FILL_FUNKNOWN_VTABLE
-            vtable.unknown.unref = remove_ref;
-            vtable.attribute_list.set_int = set_int;
-            vtable.attribute_list.get_int = get_int;
-            vtable.attribute_list.set_float= set_float;
-            vtable.attribute_list.get_float= get_float;
-            vtable.attribute_list.set_string= set_string;
-            vtable.attribute_list.get_string = get_string;
-            vtable.attribute_list.set_binary = set_binary;
-            vtable.attribute_list.get_binary = get_binary;
+    public:
+        HostAttributeList() {
+            handle.owner = this;
+            stablePtr = &handle.attrlist;
+            auto unknown = static_cast<v3_funknown*>(&handle);
+            unknown->query_interface = &HostAttributeList::queryInterfaceThunk;
+            unknown->ref = &HostAttributeList::addRefThunk;
+            unknown->unref = &HostAttributeList::releaseThunk;
+            handle.attrlist.set_int = &HostAttributeList::set_int;
+            handle.attrlist.get_int = &HostAttributeList::get_int;
+            handle.attrlist.set_float = &HostAttributeList::set_float;
+            handle.attrlist.get_float = &HostAttributeList::get_float;
+            handle.attrlist.set_string = &HostAttributeList::set_string;
+            handle.attrlist.get_string = &HostAttributeList::get_string;
+            handle.attrlist.set_binary = &HostAttributeList::set_binary;
+            handle.attrlist.get_binary = &HostAttributeList::get_binary;
+            registry()[&handle.attrlist] = this;
         }
-        ~HostAttributeList() = default;
-    };
 
+        ~HostAttributeList() {
+            registry().erase(&handle.attrlist);
+        }
+
+        v3_attribute_list* asInterface() { return &handle.attrlist; }
+        v3_attribute_list** asInterfaceHandle() { return &stablePtr; }
+
+        uint32_t addRef() { return ++refCount; }
+        uint32_t release() { return refCount > 0 ? --refCount : 0; }
+    };
     class HostMessage : public IMessage {
         IMessageVTable impl;
         std::string id;
@@ -188,7 +238,7 @@ namespace remidy_vst3 {
 
         static v3_attribute_list** get_attributes(void *self) {
             auto& list = ((HostMessage*) self)->list;
-            return (v3_attribute_list**) list.asInterface();
+            return list.asInterfaceHandle();
         }
 
     public:
