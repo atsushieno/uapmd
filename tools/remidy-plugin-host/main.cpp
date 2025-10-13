@@ -145,6 +145,7 @@ int runMain(int argc, char** argv) {
     }
 
     // Cleanup
+    uapmd::AppModel::instance().sequencer().stopAudio();
     imguiRenderer->shutdown();
     imguiPlatformBackend->shutdown();
     ImGui::DestroyContext();

@@ -16,6 +16,7 @@ namespace uapmd {
 
     public:
         AudioPluginSequencer(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate);
+        ~AudioPluginSequencer();
 
         // Audio plugin support
 

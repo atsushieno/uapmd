@@ -2,6 +2,8 @@
 #include <iostream>
 #include <cmidi2.h>
 #include "uapmd/uapmd.hpp"
+#include "uapmd/priv/sequencer/AudioPluginSequencer.hpp"
+
 
 uapmd::AudioPluginSequencer::AudioPluginSequencer(
     size_t audioBufferSizeInFrames,
@@ -49,6 +51,10 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
         }
         return ret;
     });
+}
+
+uapmd::AudioPluginSequencer::~AudioPluginSequencer() {
+    stopAudio();
 }
 
 uapmd::PluginCatalog& uapmd::AudioPluginSequencer::catalog() {
