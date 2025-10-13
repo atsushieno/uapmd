@@ -483,6 +483,59 @@ namespace remidy_vst3 {
         }
     };
 
+    class InterceptingConnectionPoint : public IConnectionPoint {
+        IConnectionPointVTable impl{};
+        IMPLEMENT_FUNKNOWN_REFS(InterceptingConnectionPoint)
+        IConnectionPoint* target{nullptr};
+
+        static v3_result connect(void* self, v3_connection_point** other) {
+            auto* obj = static_cast<InterceptingConnectionPoint*>(self);
+            std::cerr << "InterceptingConnectionPoint::connect called with other=" << (void*)other << std::endl;
+            if (!obj->target)
+                return V3_INVALID_ARG;
+            return obj->target->vtable->connection_point.connect(obj->target, other);
+        }
+
+        static v3_result disconnect(void* self, v3_connection_point** other) {
+            auto* obj = static_cast<InterceptingConnectionPoint*>(self);
+            std::cerr << "InterceptingConnectionPoint::disconnect called with other=" << (void*)other << std::endl;
+            if (!obj->target)
+                return V3_INVALID_ARG;
+            return obj->target->vtable->connection_point.disconnect(obj->target, other);
+        }
+
+        static v3_result notify(void* self, v3_message** message) {
+            auto* obj = static_cast<InterceptingConnectionPoint*>(self);
+            std::cerr << "InterceptingConnectionPoint::notify called with message=" << (void*)message << std::endl;
+            if (!obj->target)
+                return V3_INVALID_ARG;
+            return obj->target->vtable->connection_point.notify(obj->target, message);
+        }
+
+    public:
+        explicit InterceptingConnectionPoint(IConnectionPoint* targetConnectionPoint)
+            : target(targetConnectionPoint) {
+            this->vtable = &impl;
+            auto& vtable = impl;
+            FILL_FUNKNOWN_VTABLE
+
+            vtable.connection_point.connect = connect;
+            vtable.connection_point.disconnect = disconnect;
+            vtable.connection_point.notify = notify;
+        }
+
+        ~InterceptingConnectionPoint() = default;
+
+        v3_result queryInterface(const v3_tuid iid, void **obj) {
+            if (v3_tuid_match(iid, v3_connection_point_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
+                add_ref(this);
+                *obj = this;
+                return V3_OK;
+            }
+            return target->vtable->unknown.query_interface(target, iid, obj);
+        }
+    };
+
     // FIXME: we have to redesign any code that uses this class.
     // It meant to be a singleton, but apparently it is rather per-instance facade for hosting feature.
     // For example, HostParameterChanges must be per-instance, but the singleton instance is passed to
