@@ -65,7 +65,7 @@ namespace remidy {
         PluginScanning* scanning() { return &scanning_; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path& clapDir,
-            const std::function<void(void* module, clap_plugin_factory_t* factory, const clap_plugin_descriptor_t* info)>& func,
+            const std::function<void(void* module, clap_plugin_factory_t* factory, clap_preset_discovery_factory* presetDiscoveryFactory, const clap_plugin_descriptor_t* info)>& func,
             const std::function<void(void* module)>& cleanup
         );
         void unrefLibrary(PluginCatalogEntry* info);
@@ -76,6 +76,7 @@ namespace remidy {
     class PluginInstanceCLAP : public PluginInstance {
         PluginFormatCLAP::Impl* owner;
         const clap_plugin_t* plugin;
+        clap_preset_discovery_factory* preset_discovery_factory;
         void* module;
         clap_process_t clap_process;
 
@@ -187,6 +188,7 @@ namespace remidy {
         explicit PluginInstanceCLAP(
             PluginFormatCLAP::Impl* owner,
             PluginCatalogEntry* info,
+            clap_preset_discovery_factory* presetDiscoveryFactory,
             void* module,
             const clap_plugin_t* plugin
             );

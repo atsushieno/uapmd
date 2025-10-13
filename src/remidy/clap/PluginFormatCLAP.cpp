@@ -92,7 +92,7 @@ namespace remidy {
         if (isBlocklistedAsBundle(clapDir))
             return;
 
-        impl->forEachPlugin(clapDir, [&](void *module, clap_plugin_factory_t* factory, const clap_plugin_descriptor_t *descriptor) {
+        impl->forEachPlugin(clapDir, [&](void *module, clap_plugin_factory_t* factory, clap_preset_discovery_factory* presetDiscoveryFactory, const clap_plugin_descriptor_t *descriptor) {
             auto e = std::make_unique<PluginCatalogEntry>();
             auto name = impl->owner->name();
             std::string id{descriptor->id};
@@ -174,7 +174,7 @@ namespace remidy {
     }
 
     void PluginFormatCLAP::Impl::forEachPlugin(std::filesystem::path& clapPath,
-            const std::function<void(void* module, clap_plugin_factory_t* factory, const clap_plugin_descriptor_t* info)>& func,
+            const std::function<void(void* module, clap_plugin_factory_t* factory, clap_preset_discovery_factory* presetDiscoveryFactory, const clap_plugin_descriptor_t* info)>& func,
             const std::function<void(void* module)>& cleanup // it should unload the library only when it is not kept alive e.g. scanning plugins.
         ) {
         // JUCE seems to do this, not sure if it is required (not sure if this point is correct either).
@@ -211,14 +211,16 @@ namespace remidy {
             }
             auto factory = (clap_plugin_factory_t*) entrypoint->get_factory(CLAP_PLUGIN_FACTORY_ID);
             if (!factory) {
-                getLogger()->logError("clap_entry.get_factory() returned nothing: %s", clapPath.c_str());
+                getLogger()->logError("clap_entry.get_factory() returned nothing (plugin): %s", clapPath.c_str());
                 cleanup(module);
                 return;
             }
+            auto presetsDiscoveryFactory = (clap_preset_discovery_factory*) entrypoint->get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID);
+            // it can be empty.
 
             for (size_t i = 0, n = factory->get_plugin_count(factory); i < n; i++) {
                 const auto desc = factory->get_plugin_descriptor(factory, i);
-                func(module, factory, desc);
+                func(module, factory, presetsDiscoveryFactory, desc);
             }
 
             cleanup(module);
@@ -236,14 +238,14 @@ namespace remidy {
         std::unique_ptr<PluginInstanceCLAP> ret{nullptr};
         std::string error{};
         auto bundle = info->bundlePath();
-        forEachPlugin(bundle, [info, this, &ret](void *module, clap_plugin_factory_t *factory,
+        forEachPlugin(bundle, [info, this, &ret](void *module, clap_plugin_factory_t *factory, clap_preset_discovery_factory* presetDiscoveryFactory,
                                                        const clap_plugin_descriptor_t *desc) {
             if (info->pluginId() != desc->id)
                 return;
 
             auto plugin = factory->create_plugin(factory, host.clapHost(), desc->id);
             if (plugin)
-                ret = std::make_unique<PluginInstanceCLAP>(this, info, module, plugin);
+                ret = std::make_unique<PluginInstanceCLAP>(this, info, presetDiscoveryFactory, module, plugin);
         }, [&](void *module) {
             // do not unload library here.
         });

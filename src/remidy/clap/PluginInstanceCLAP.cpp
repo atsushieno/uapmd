@@ -4,9 +4,10 @@ namespace remidy {
     PluginInstanceCLAP::PluginInstanceCLAP(
         PluginFormatCLAP::Impl* owner,
         PluginCatalogEntry* info,
+        clap_preset_discovery_factory* presetDiscoveryFactory,
         void* module,
         const clap_plugin_t* plugin
-    ) : PluginInstance(info), owner(owner), plugin(plugin), module(module) {
+    ) : PluginInstance(info), owner(owner), plugin(plugin), preset_discovery_factory(presetDiscoveryFactory), module(module) {
         plugin->init(plugin);
 
         audio_buses = new AudioBuses(this);
