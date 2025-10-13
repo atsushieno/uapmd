@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <atomic>
 
 namespace remidy {
     class EventLoop;
