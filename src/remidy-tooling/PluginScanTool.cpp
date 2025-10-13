@@ -48,23 +48,9 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
     if (format->name() == "AU" && displayName == "Massive X")
         skip = true;
 
-    // (goes unresponsive, only on debug builds, but still matters)
-    if (format->name() == "VST3" && displayName == "Vienna Synchron Player"
-        || format->name() == "VST3" && displayName == "Vienna Synchron Player Surround"
-        || format->name() == "AU" && displayName == "Vienna Synchron Player"
-        )
-        skip = true;
-
     // Not sure when it started, but their AU version stalls while instantiating.
     if (format->name() == "AU" && vendor == "Tracktion")
         skip = true;
-
-    // They can be instantiated but in the end they cause: Process finished with exit code 134 (interrupted by signal 6:SIGABRT)
-    /*if (format->name() == "VST3" && displayName.starts_with("Battery")
-        || format->name() == "VST3" && displayName.starts_with("Kontakt"))
-        || format->name() == "VST3" && displayName == "RX 9 Monitor"
-        )
-        skip = true;*/
 
     // It somehow expects input channels to be always 1.
     if (format->name() == "AU" && displayName == "Floe")
