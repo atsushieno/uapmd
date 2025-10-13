@@ -9,25 +9,27 @@
 using namespace remidy_vst3;
 
 remidy::PluginInstanceVST3::PresetsSupport::PresetsSupport(remidy::PluginInstanceVST3* owner) : owner(owner) {
-    auto unitInfo = owner->unit_info->vtable->unit_info;
-    auto numBanks = unitInfo.get_program_list_count(owner->unit_info);
-    for (int32_t b = 0; b < numBanks; b++) {
-        std::vector<PresetInfo> bank{};
-        v3_program_list_info list{};
-        if (unitInfo.get_program_list_info(owner->unit_info, b, &list) != V3_OK)
-            continue; // FIXME: should we simply ignore?
-        for (int32_t p = 0; p < list.programCount; p++) {
-            // FIXME: should we support program index >= 128 ?
-            if (p >= 128)
-                continue;
-
-            v3_str_128 name{};
-            auto status = unitInfo.get_program_name(owner->unit_info, list.id, p, name);
-            if (status != V3_OK)
+    auto unitInfo = owner->unit_info ? owner->unit_info->vtable->unit_info : v3_unit_information{};
+    if (unitInfo.get_program_list_count != nullptr) {
+        auto numBanks = unitInfo.get_program_list_count(owner->unit_info);
+        for (int32_t b = 0; b < numBanks; b++) {
+            std::vector<PresetInfo> bank{};
+            v3_program_list_info list{};
+            if (unitInfo.get_program_list_info(owner->unit_info, b, &list) != V3_OK)
                 continue; // FIXME: should we simply ignore?
-            bank.emplace_back(std::move(PresetInfo{std::format("{}_{}", b, p), vst3StringToStdString(name), b, p}));
+            for (int32_t p = 0; p < list.programCount; p++) {
+                // FIXME: should we support program index >= 128 ?
+                if (p >= 128)
+                    continue;
+
+                v3_str_128 name{};
+                auto status = unitInfo.get_program_name(owner->unit_info, list.id, p, name);
+                if (status != V3_OK)
+                    continue; // FIXME: should we simply ignore?
+                bank.emplace_back(std::move(PresetInfo{std::format("{}_{}", b, p), vst3StringToStdString(name), b, p}));
+            }
+            banks.push_back(bank);
         }
-        banks.push_back(bank);
     }
 }
 
