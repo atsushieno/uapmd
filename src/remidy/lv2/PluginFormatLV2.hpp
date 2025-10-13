@@ -200,6 +200,7 @@ namespace remidy {
         class PresetsSupport : public PluginPresetsSupport {
             PluginInstanceLV2 *owner;
             std::vector<PresetInfo> items{};
+            LilvNodes *preset_nodes{};
 
         public:
             PresetsSupport(PluginInstanceLV2* owner);
