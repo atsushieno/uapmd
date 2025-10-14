@@ -1,17 +1,17 @@
 # What is this?
 
-Remidy aims to provide audio plugin hosting features in cross-platform and
+Remidy aims to provide audio plugin hosting features in a cross-platform and
 multi-format manner in liberal licenses (MIT/BSD).
 
-Remidy aims to cover VST3, AudioUnit (on macOS), LV2, and CLAP formats.
+Remidy aims to cover VST3, AudioUnit (on macOS), LV2, and CLAP formats. Currently, it targets only desktop platforms so far, but if you use my [AAP project](https://github.com/atsushieno/aap-core) those synth plugins already work as UMP devices (you need Android 15 or later that supports [`MidiUmpDeviceService`](https://developer.android.com/reference/kotlin/android/media/midi/MidiUmpDeviceService)).
 
-UAPMD (Ubiquitous Audio Plugin MIDI Device) <del>is</del> <ins>aims to become</ins> an audio plugin host that can instantiate <del>arbitrary set of plugins</del> <ins>a synth plugin</ins> and acts as a virtual MIDI 2.0 UMP device on various platforms.
+UAPMD (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that can instantiate <del>arbitrary set of plugins</del> <ins>a synth plugin</ins> and acts as a virtual MIDI 2.0 UMP device on various platforms.
 
-UAPMD so far makes it as a console tool `uapmd-service` that instantiates one single audio plugin and translates UMP inputs into event inputs for each plugin API.
+UAPMD so far makes it as a console tool `uapmd-service` that instantiates one single audio plugin and translates UMP inputs into event inputs to those in each plugin API.
 
 ## What's the point of this tool?
 
-You will not have to wait for MIDI 2.0 synthesizers in the market. Existing audio plugins work as a virtual MIDI 2.0 device. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take the similar place for MIDI 2.0.
+With UAPMD, You do not have to wait for MIDI 2.0 synthesizers in the market; existing audio plugins should work as a virtual MIDI 2.0 device. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take a similar place for MIDI 2.0.
 
 ## Usage
 
@@ -61,17 +61,17 @@ remidy-scan is a tool to query and enumerate locally installed plugins.
 
 ### remidy
 
-`remidy` offers plugin API abstraction layer at lower level that only involves application agnostic audio and event processing. Apart from parameter API, it adopts UMP for event inputs, including parameter support via NRPN (AC, Assignable Controller) and Per-Note AC. It is an opinionated layer towards MIDI 2.0 i.e. events are parsed into timed parameter changes and other events on the plugins.
+`remidy` offers plugin API abstraction layer at lower level that primarily involves application agnostic audio and event processing. Apart from parameter API, it adopts UMP for event inputs, including parameter support via NRPN (AC, Assignable Controller) and Per-Note AC. It is an opinionated layer towards MIDI 2.0 i.e. events are parsed into timed parameter changes and other events on the plugins.
 
 ### remidy-tooling
 
 `remidy-tooling` offers higher level API to build audio plugin hosting tools like plugin scanning and instancing in common manner.
-What this layer introduces in practice is a set of highly product dependent filterings e.g. various existing specific plugin products and vendors are filtered at "safe for multi-threaded plugin API access", "plugin scanning requires UI thread", or "crashes remidy" kind of information.
-Regarding event stream it is still not much opinionated.
+What this layer introduces in practice is a set of filters e.g. various existing specific plugin products and vendors are filtered at "safe for multithreaded access to the plugin API", "plugin scanning requires UI thread", or "crashes remidy" kind of information.
+Regarding event streams, they are still not much opinionated.
 
 ### uapmd
 
-`uapmd` provides reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). I serves `AllCtrlList` MIDI-CI property for plugin parameters as Assignable Controllers (NRPNs), and saves and loads states in MIDI-CI property manner. It is supposed to manage multiple tracks with multiple plugins [not implemented yet].
+`uapmd` provides reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). It serves `AllCtrlList` MIDI-CI standard property for plugin parameters as Assignable Controllers (NRPNs), `ProgramList` MIDI-CI standard property for the indexed presets as Program Change, and saves and loads states in MIDI-CI property manner. It is supposed to manage multiple tracks with multiple plugins [not implemented yet].
 
 ### uapmd-service
 
