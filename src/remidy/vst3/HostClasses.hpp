@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <format>
 
 #if defined(_MSC_VER)
 #define min(v1, v2) (v1 < v2 ? v1 : v2)

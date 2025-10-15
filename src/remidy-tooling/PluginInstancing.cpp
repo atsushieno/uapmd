@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <iostream>
+#include <format>
 
 void remidy_tooling::PluginInstancing::setupInstance(remidy::PluginUIThreadRequirement uiThreadRequirement, std::function<void(std::string error)> callback) {
     Logger::global()->logInfo("  instantiating %s %s", format->name().c_str(), displayName.c_str());

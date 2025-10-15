@@ -37,6 +37,27 @@ namespace uapmd {
         Logger::global()->logError("Plugin %s in format %s not found", pluginName.c_str(), formatName.c_str());
     }
 
+    void UapmdMidiDevice::addPluginTrackById(const std::string& formatName, const std::string& pluginId,
+                                             std::function<void(int32_t instanceId, std::string error)> callback) {
+        auto fmt = formatName;
+        auto id = pluginId;
+        sequencer->performPluginScanning(false);
+        sequencer->instantiatePlugin(fmt, id, [this, cb = std::move(callback), fmt, id](int32_t instanceId, std::string error) mutable {
+            if (!error.empty()) {
+                Logger::global()->logError("Failed to instantiate plugin %s (%s): %s", id.c_str(), fmt.c_str(), error.c_str());
+                if (cb) {
+                    cb(instanceId, error);
+                }
+                return;
+            }
+            Logger::global()->logInfo("Instantiated plugin %s (%s) as instance %d", id.c_str(), fmt.c_str(), instanceId);
+            setupMidiCISession(instanceId);
+            if (cb) {
+                cb(instanceId, "");
+            }
+        });
+    }
+
     void UapmdMidiDevice::setupMidiCISession(int32_t instanceId) {
         midicci::MidiCIDeviceConfiguration ci_config{
                 midicci::DEFAULT_RECEIVABLE_MAX_SYSEX_SIZE,

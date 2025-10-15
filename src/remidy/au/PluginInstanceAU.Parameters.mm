@@ -1,5 +1,6 @@
 #if __APPLE__
 
+#include <format>
 #include "PluginFormatAU.hpp"
 
 remidy::AudioPluginInstanceAU::ParameterSupport::ParameterSupport(remidy::AudioPluginInstanceAU *owner)

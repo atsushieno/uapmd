@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <string>
 
 #include "uapmd/uapmd.hpp"
@@ -26,6 +27,8 @@ namespace uapmd {
     public:
         UapmdMidiDevice(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version);
         void addPluginTrack(std::string& pluginName, std::string& formatName);
+        void addPluginTrackById(const std::string& formatName, const std::string& pluginId,
+                                std::function<void(int32_t instanceId, std::string error)> callback);
 
         // registers itself as a platform virtual MIDI device service
         uapmd_status_t start();
