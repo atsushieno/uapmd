@@ -1,0 +1,107 @@
+#pragma once
+
+#include <atomic>
+#include <array>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include <remidy-tooling/PluginScanTool.hpp>
+
+#include "../Controller/VirtualMidiDeviceController.hpp"
+
+namespace uapmd::service::gui {
+
+struct GuiDefaults {
+    std::string pluginName;
+    std::string formatName;
+    std::string apiName;
+    std::string deviceName;
+};
+
+class MainWindow {
+public:
+    explicit MainWindow(VirtualMidiDeviceController& controller, GuiDefaults defaults);
+    ~MainWindow();
+
+    void render();
+    void update();
+
+    bool isOpen() const { return isOpen_; }
+    void close() { isOpen_ = false; }
+
+    void shutdown();
+
+private:
+    struct PluginEntry {
+        std::string format;
+        std::string pluginId;
+        std::string displayName;
+        std::string vendor;
+    };
+
+    struct DeviceState {
+        std::mutex mutex;
+        std::unique_ptr<UapmdMidiDevice> device;
+        std::string label;
+        std::string pluginName;
+        std::string pluginFormat;
+        std::string pluginId;
+        std::string apiName;
+        std::string statusMessage;
+        bool running = false;
+        bool instantiating = false;
+        bool hasError = false;
+        int32_t instanceId = -1;
+    };
+
+    struct DeviceEntry {
+        int id;
+        std::shared_ptr<DeviceState> state;
+    };
+
+    void startPluginScan(bool forceRescan);
+    void finalizePluginScan(std::vector<PluginEntry>&& entries, int scanResult, const std::string& errorMessage);
+    void renderPluginSelector();
+    void renderDeviceManager();
+    void createDeviceForPlugin(size_t pluginIndex);
+    void removeDevice(size_t index);
+    void attemptDefaultDeviceCreation();
+    void stopAllDevices();
+
+    std::vector<int> filteredPluginIndices(const std::vector<PluginEntry>& plugins) const;
+
+    VirtualMidiDeviceController& controller_;
+    GuiDefaults defaults_;
+
+    bool isOpen_ = true;
+
+    std::atomic<bool> scanning_{false};
+    std::atomic<bool> rescanRequested_{false};
+    std::thread scanningThread_;
+    mutable std::mutex pluginMutex_;
+    std::vector<PluginEntry> plugins_;
+    int selectedPlugin_ = -1;
+    bool pluginScanCompleted_ = false;
+    std::string pluginScanMessage_;
+
+    mutable std::mutex devicesMutex_;
+    std::vector<DeviceEntry> devices_;
+    int nextDeviceId_ = 1;
+
+    bool pendingDefaultDevice_ = false;
+    bool defaultDeviceAttempted_ = false;
+
+        std::array<char, 128> pluginFilter_{};
+        std::array<char, 64> apiInput_{};
+        std::array<char, 128> deviceNameInput_{};
+        std::string selectedPluginFormat_;
+        std::string selectedPluginId_;
+
+        static constexpr const char* defaultManufacturer_ = "UAPMD Project";
+        static constexpr const char* defaultVersion_ = "0.1";
+};
+
+} // namespace uapmd::service::gui
