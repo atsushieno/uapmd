@@ -240,7 +240,7 @@ public:
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_EVENT_QUIT) {
+            if (event.type == SDL_QUIT) {
                 g_serviceSDL2QuitRequested = true;
             }
         }
