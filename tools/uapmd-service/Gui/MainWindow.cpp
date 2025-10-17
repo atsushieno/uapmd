@@ -223,7 +223,9 @@ void MainWindow::renderPluginSelector() {
     auto visible = filteredPluginIndices(pluginsCopy);
 
     const float tableHeight = ImGui::GetTextLineHeightWithSpacing() * 10.0f;
-    if (ImGui::BeginTable("PluginTable", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY,
+    if (ImGui::BeginTable("PluginTable", 4,
+                          ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY |
+                              ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Sortable,
                           ImVec2(-FLT_MIN, tableHeight))) {
         ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 0.45f);
@@ -231,8 +233,40 @@ void MainWindow::renderPluginSelector() {
         ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthStretch, 0.25f);
         ImGui::TableHeadersRow();
 
+        // Sort visible indices according to table sort specs
+        if (!visible.empty()) {
+            if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
+                if (sort_specs->SpecsCount > 0) {
+                    auto cmp = [&](int lhsIdx, int rhsIdx) {
+                        const auto& a = pluginsCopy[static_cast<size_t>(lhsIdx)];
+                        const auto& b = pluginsCopy[static_cast<size_t>(rhsIdx)];
+                        for (int n = 0; n < sort_specs->SpecsCount; n++) {
+                            const ImGuiTableColumnSortSpecs* s = &sort_specs->Specs[n];
+                            int delta = 0;
+                            switch (s->ColumnIndex) {
+                                case 0: delta = a.format.compare(b.format); break;
+                                case 1: delta = a.displayName.compare(b.displayName); break;
+                                case 2: delta = a.vendor.compare(b.vendor); break;
+                                case 3: delta = a.pluginId.compare(b.pluginId); break;
+                                default: break;
+                            }
+                            if (delta != 0) {
+                                return (s->SortDirection == ImGuiSortDirection_Ascending) ? (delta < 0) : (delta > 0);
+                            }
+                        }
+                        // Tiebreaker for deterministic order
+                        if (int t = a.displayName.compare(b.displayName); t != 0) return t < 0;
+                        if (int t = a.vendor.compare(b.vendor); t != 0) return t < 0;
+                        if (int t = a.pluginId.compare(b.pluginId); t != 0) return t < 0;
+                        return a.format < b.format;
+                    };
+                    std::sort(visible.begin(), visible.end(), cmp);
+                }
+            }
+        }
+
         for (int index : visible) {
-            const auto& plugin = pluginsCopy[index];
+            const auto& plugin = pluginsCopy[static_cast<size_t>(index)];
             ImGui::TableNextRow();
 
             ImGui::TableSetColumnIndex(0);

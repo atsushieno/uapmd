@@ -537,7 +537,10 @@ void MainWindow::refreshPluginList() {
 void MainWindow::renderPluginSelector() {
     ImGui::InputText("Search", searchFilter_, sizeof(searchFilter_));
 
-    if (ImGui::BeginTable("PluginTable", 4, ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY, ImVec2(0, 300))) {
+    if (ImGui::BeginTable("PluginTable", 4,
+                          ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY |
+                              ImGuiTableFlags_Sortable,
+                          ImVec2(0, 300))) {
         ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Vendor", ImGuiTableColumnFlags_WidthStretch);
@@ -547,26 +550,64 @@ void MainWindow::renderPluginSelector() {
         std::string filter = searchFilter_;
         std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
 
-        for (size_t i = 0; i < availablePlugins_.size(); i++) {
-            const auto& plugin = availablePlugins_[i];
-
-            // Filter
+        // Build list of visible indices after filtering
+        std::vector<int> indices;
+        indices.reserve(availablePlugins_.size());
+        for (size_t i = 0; i < availablePlugins_.size(); ++i) {
+            const auto& p = availablePlugins_[i];
             if (!filter.empty()) {
-                std::string name = plugin.name;
-                std::string vendor = plugin.vendor;
+                std::string name = p.name;
+                std::string vendor = p.vendor;
                 std::transform(name.begin(), name.end(), name.begin(), ::tolower);
                 std::transform(vendor.begin(), vendor.end(), vendor.begin(), ::tolower);
                 if (name.find(filter) == std::string::npos && vendor.find(filter) == std::string::npos) {
                     continue;
                 }
             }
+            indices.push_back(static_cast<int>(i));
+        }
+
+        // Sort visible indices according to table sort specs
+        if (!indices.empty()) {
+            if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
+                if (sort_specs->SpecsCount > 0) {
+                    auto cmp = [&](int lhsIdx, int rhsIdx) {
+                        const auto& a = availablePlugins_[static_cast<size_t>(lhsIdx)];
+                        const auto& b = availablePlugins_[static_cast<size_t>(rhsIdx)];
+                        for (int n = 0; n < sort_specs->SpecsCount; n++) {
+                            const ImGuiTableColumnSortSpecs* s = &sort_specs->Specs[n];
+                            int delta = 0;
+                            switch (s->ColumnIndex) {
+                                case 0: delta = a.format.compare(b.format); break;
+                                case 1: delta = a.name.compare(b.name); break;
+                                case 2: delta = a.vendor.compare(b.vendor); break;
+                                case 3: delta = a.id.compare(b.id); break;
+                                default: break;
+                            }
+                            if (delta != 0) {
+                                return (s->SortDirection == ImGuiSortDirection_Ascending) ? (delta < 0) : (delta > 0);
+                            }
+                        }
+                        // Tiebreaker to get deterministic order
+                        if (int t = a.name.compare(b.name); t != 0) return t < 0;
+                        if (int t = a.vendor.compare(b.vendor); t != 0) return t < 0;
+                        if (int t = a.id.compare(b.id); t != 0) return t < 0;
+                        return a.format < b.format;
+                    };
+                    std::sort(indices.begin(), indices.end(), cmp);
+                }
+            }
+        }
+
+        for (int sortedIndex : indices) {
+            const auto& plugin = availablePlugins_[static_cast<size_t>(sortedIndex)];
 
             bool isSelected = (selectedPluginFormat_ == plugin.format && selectedPluginId_ == plugin.id);
 
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
 
-            std::string selectableId = plugin.format + "##" + plugin.id + "##" + std::to_string(i);
+            std::string selectableId = plugin.format + "##" + plugin.id + "##" + std::to_string(sortedIndex);
             if (ImGui::Selectable(selectableId.c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns)) {
                 selectedPluginFormat_ = plugin.format;
                 selectedPluginId_ = plugin.id;
