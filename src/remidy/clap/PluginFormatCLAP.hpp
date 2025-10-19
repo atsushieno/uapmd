@@ -159,10 +159,97 @@ namespace remidy {
 
         class PresetsSupport : public PluginPresetsSupport {
             PluginInstanceCLAP *owner;
-            std::vector<PresetInfo> items{};
+            std::vector<const clap_preset_discovery_provider_t*> providers{};
+            struct CLAPPresetInfo {
+                std::string name;
+                std::string load_key;
+                std::string description;
+            };
+            std::vector<CLAPPresetInfo> presets{};
+
+            // indexer
+
+            static bool declare_filetype(const struct clap_preset_discovery_indexer *indexer,
+                                  const clap_preset_discovery_filetype_t     *filetype) {
+                return false;
+            }
+            static bool declare_location(const struct clap_preset_discovery_indexer *indexer,
+                                  const clap_preset_discovery_location_t     *location) {
+                return false;
+            }
+
+            static bool declare_soundpack(const struct clap_preset_discovery_indexer *indexer,
+                                   const clap_preset_discovery_soundpack_t    *soundpack) {
+                return false;
+            }
+
+            static const void* get_extension(const struct clap_preset_discovery_indexer *indexer,
+                                      const char                                 *extension_id) {
+                return nullptr;
+            }
+
+            // receiver
+
+            CLAPPresetInfo context_preset{};
+
+            static void on_error(const struct clap_preset_discovery_metadata_receiver *receiver,
+                          int32_t                                               os_error,
+                          const char                                           *error_message) {
+            }
+
+            static bool begin_preset(const struct clap_preset_discovery_metadata_receiver *receiver,
+                              const char                                           *name,
+                              const char                                           *load_key) {
+                return ((PresetsSupport*) receiver->receiver_data)->begin_preset(name, load_key);
+            }
+            bool begin_preset(const char *name, const char *load_key) {
+                auto &e = presets.emplace_back(context_preset);
+                e.name = name;
+                e.load_key = load_key;
+                return true;
+            }
+
+            std::vector<const clap_universal_plugin_id_t*> plugin_ids{};
+
+            static void add_plugin_id(const struct clap_preset_discovery_metadata_receiver *receiver,
+                               const clap_universal_plugin_id_t                     *plugin_id) {
+                // no room to use it so far.
+            }
+
+            static void set_soundpack_id(const struct clap_preset_discovery_metadata_receiver *receiver,
+                                  const char *soundpack_id) {
+            }
+
+            static void set_flags(const struct clap_preset_discovery_metadata_receiver *receiver,
+                           uint32_t                                              flags) {
+            }
+
+            static void add_creator(const struct clap_preset_discovery_metadata_receiver *receiver,
+                             const char                                           *creator) {
+            }
+
+            static void set_description(const struct clap_preset_discovery_metadata_receiver *receiver,
+                                 const char *description) {
+                ((PresetsSupport*) receiver->receiver_data)->presets.rbegin()->description = description;
+            }
+
+            static void set_timestamps(const struct clap_preset_discovery_metadata_receiver *receiver,
+                                clap_timestamp creation_time,
+                                clap_timestamp modification_time) {
+            }
+
+            static void add_feature(const struct clap_preset_discovery_metadata_receiver *receiver,
+                             const char                                           *feature) {
+            }
+
+            static void add_extra_info(const struct clap_preset_discovery_metadata_receiver *receiver,
+                                const char                                           *key,
+                                const char                                           *value) {
+            }
 
         public:
-            PresetsSupport(PluginInstanceCLAP* owner);
+            explicit PresetsSupport(PluginInstanceCLAP* owner);
+            ~PresetsSupport() override;
             bool isIndexStable() override { return false; }
             bool isIndexId() override { return false; }
             int32_t getPresetIndexForId(std::string &id) override;
