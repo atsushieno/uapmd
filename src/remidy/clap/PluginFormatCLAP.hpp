@@ -171,30 +171,33 @@ namespace remidy {
 
             static bool declare_filetype(const struct clap_preset_discovery_indexer *indexer,
                                   const clap_preset_discovery_filetype_t     *filetype) {
+                std::cerr << "declare_filetype: " << filetype << std::endl;
                 return false;
             }
             static bool declare_location(const struct clap_preset_discovery_indexer *indexer,
                                   const clap_preset_discovery_location_t     *location) {
-                return false;
+                std::cerr << "declare_location: " << location->name << std::endl;
+                return location->kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN;
             }
 
             static bool declare_soundpack(const struct clap_preset_discovery_indexer *indexer,
                                    const clap_preset_discovery_soundpack_t    *soundpack) {
+                std::cerr << "declare_soundpack: " << soundpack->name << std::endl;
                 return false;
             }
 
             static const void* get_extension(const struct clap_preset_discovery_indexer *indexer,
                                       const char                                 *extension_id) {
+                std::cerr << "get_extension: " << extension_id << std::endl;
                 return nullptr;
             }
 
             // receiver
 
-            CLAPPresetInfo context_preset{};
-
             static void on_error(const struct clap_preset_discovery_metadata_receiver *receiver,
                           int32_t                                               os_error,
                           const char                                           *error_message) {
+                std::cerr << "on_error: " << os_error << " " << error_message << std::endl;
             }
 
             static bool begin_preset(const struct clap_preset_discovery_metadata_receiver *receiver,
@@ -203,29 +206,32 @@ namespace remidy {
                 return ((PresetsSupport*) receiver->receiver_data)->begin_preset(name, load_key);
             }
             bool begin_preset(const char *name, const char *load_key) {
-                auto &e = presets.emplace_back(context_preset);
-                e.name = name;
-                e.load_key = load_key;
+                presets.emplace_back(CLAPPresetInfo{
+                    .name = name,
+                    .load_key = load_key,
+                });
                 return true;
             }
-
-            std::vector<const clap_universal_plugin_id_t*> plugin_ids{};
 
             static void add_plugin_id(const struct clap_preset_discovery_metadata_receiver *receiver,
                                const clap_universal_plugin_id_t                     *plugin_id) {
                 // no room to use it so far.
+                std::cerr << "add_plugin_id: " << plugin_id->abi << " " << plugin_id->id << std::endl;
             }
 
             static void set_soundpack_id(const struct clap_preset_discovery_metadata_receiver *receiver,
                                   const char *soundpack_id) {
+                std::cerr << "set_soundpack_id: " << soundpack_id << std::endl;
             }
 
             static void set_flags(const struct clap_preset_discovery_metadata_receiver *receiver,
                            uint32_t                                              flags) {
+                std::cerr << "set_flags: " << flags << std::endl;
             }
 
             static void add_creator(const struct clap_preset_discovery_metadata_receiver *receiver,
                              const char                                           *creator) {
+                std::cerr << "add_creator: " << creator << std::endl;
             }
 
             static void set_description(const struct clap_preset_discovery_metadata_receiver *receiver,
@@ -236,15 +242,18 @@ namespace remidy {
             static void set_timestamps(const struct clap_preset_discovery_metadata_receiver *receiver,
                                 clap_timestamp creation_time,
                                 clap_timestamp modification_time) {
+                std::cerr << "set_timestamps: " << creation_time << " " << modification_time << std::endl;
             }
 
             static void add_feature(const struct clap_preset_discovery_metadata_receiver *receiver,
                              const char                                           *feature) {
+                std::cerr << "add_feature: " << feature << std::endl;
             }
 
             static void add_extra_info(const struct clap_preset_discovery_metadata_receiver *receiver,
                                 const char                                           *key,
                                 const char                                           *value) {
+                std::cerr << "add_extra_info: " << key << " = " << value << std::endl;
             }
 
         public:
