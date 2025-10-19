@@ -177,3 +177,9 @@ remidy::PluginPresetsSupport *remidy::PluginInstanceLV2::presets() {
         _presets = new PresetsSupport(this);
     return _presets;
 }
+
+remidy::PluginUISupport *remidy::PluginInstanceLV2::ui() {
+    if (!_ui)
+        _ui = new UISupport(this);
+    return _ui;
+}

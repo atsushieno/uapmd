@@ -99,6 +99,23 @@ namespace remidy {
             void loadPreset(int32_t index) override;
         };
 
+        class UISupport : public PluginUISupport {
+        public:
+            explicit UISupport(AudioPluginInstanceAU* owner);
+            ~UISupport() override = default;
+            bool create() override;
+            void destroy() override;
+            bool show() override;
+            void hide() override;
+            void setWindowTitle(std::string title) override;
+            bool attachToParent(void *parent) override;
+            bool canResize() override;
+            bool getSize(uint32_t &width, uint32_t &height) override;
+            bool setSize(uint32_t width, uint32_t height) override;
+            bool suggestSize(uint32_t &width, uint32_t &height) override;
+            bool setScale(double scale) override;
+        };
+
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
         static OSStatus audioInputRenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) {
             return ((AudioPluginInstanceAU *)inRefCon)->audioInputRenderCallback(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, ioData);
@@ -117,6 +134,7 @@ namespace remidy {
         ParameterSupport* _parameters{nullptr};
         PluginStatesAU* _states{};
         PresetsSupport* _presets{};
+        PluginUISupport* _ui{};
         AudioBuses* audio_buses{};
         AURenderCallbackStruct audio_render_callback;
         AUUmpInputDispatcher ump_input_dispatcher{this};
@@ -167,6 +185,11 @@ namespace remidy {
         PresetsSupport* presets() override {
             if (!_presets) _presets = new PresetsSupport(this);
             return _presets;
+        }
+
+        PluginUISupport* ui() override {
+            if (_ui) _ui = new UISupport(this);
+            return _ui;
         }
 
         AudioBuses* audioBuses() override { return audio_buses; }

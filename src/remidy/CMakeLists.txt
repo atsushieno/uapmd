@@ -97,6 +97,7 @@ if (APPLE)
             au/PluginInstanceAU.Parameters.mm
             au/PluginInstanceAU.Presets.mm
             au/PluginInstanceAU.States.mm
+            au/PluginInstanceAU.UI.mm
     )
 endif ()
 
@@ -128,6 +129,7 @@ target_sources(remidy PRIVATE
         vst3/PluginInstanceVST3.Parameters.cpp
         vst3/PluginInstanceVST3.Presets.cpp
         vst3/PluginInstanceVST3.States.cpp
+        vst3/PluginInstanceVST3.UI.cpp
 
         au/AUv2Helper.cpp
         ${remidy_OBJC_SOURCES}
@@ -141,6 +143,7 @@ target_sources(remidy PRIVATE
         lv2/PluginInstanceLV2.Parameters.cpp
         lv2/PluginInstanceLV2.Presets.cpp
         lv2/PluginInstanceLV2.States.cpp
+        lv2/PluginInstanceLV2.UI.cpp
 
         clap/HostClasses.cpp
         clap/PluginFormatCLAP.cpp
@@ -150,6 +153,7 @@ target_sources(remidy PRIVATE
         clap/PluginInstanceCLAP.Parameters.cpp
         clap/PluginInstanceCLAP.Presets.cpp
         clap/PluginInstanceCLAP.States.cpp
+        clap/PluginInstanceCLAP.UI.cpp
 
         AudioProcessContext.cpp
         PluginInstance.cpp

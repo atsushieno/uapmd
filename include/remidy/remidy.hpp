@@ -16,6 +16,7 @@
 #include "priv/port-extensibility.hpp"
 #include "priv/event-loop.hpp"
 #include "priv/ump-dispatcher.hpp"
+#include "priv/plugin-ui.hpp"
 
 #include "priv/plugin-instance.hpp"
 

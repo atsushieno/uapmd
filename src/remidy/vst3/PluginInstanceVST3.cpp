@@ -318,3 +318,9 @@ remidy::PluginPresetsSupport *remidy::PluginInstanceVST3::presets() {
         _presets = new PresetsSupport(this);
     return _presets;
 }
+
+remidy::PluginUISupport *remidy::PluginInstanceVST3::ui() {
+    if (!_ui)
+        _ui = new UISupport(this);
+    return _ui;
+}

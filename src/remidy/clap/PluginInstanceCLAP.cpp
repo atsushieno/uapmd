@@ -202,4 +202,10 @@ namespace remidy {
             _presets = new PresetsSupport(this);
         return _presets;
     }
+
+    PluginUISupport* PluginInstanceCLAP::ui() {
+        if (!_ui)
+            _ui = new UISupport(this);
+        return _ui;
+    }
 }

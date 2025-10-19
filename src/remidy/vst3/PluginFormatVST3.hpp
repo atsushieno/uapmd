@@ -174,6 +174,23 @@ namespace remidy {
             void loadPreset(int32_t index) override;
         };
 
+        class UISupport : public PluginUISupport {
+        public:
+            explicit UISupport(PluginInstanceVST3* owner);
+            ~UISupport() override = default;
+            bool create() override;
+            void destroy() override;
+            bool show() override;
+            void hide() override;
+            void setWindowTitle(std::string title) override;
+            bool attachToParent(void *parent) override;
+            bool canResize() override;
+            bool getSize(uint32_t &width, uint32_t &height) override;
+            bool setSize(uint32_t width, uint32_t height) override;
+            bool suggestSize(uint32_t &width, uint32_t &height) override;
+            bool setScale(double scale) override;
+        };
+
         PluginFormatVST3::Impl* owner;
         void* module;
         IPluginFactory* factory;
@@ -207,6 +224,7 @@ namespace remidy {
         ParameterSupport* _parameters{};
         PluginStatesVST3* _states{};
         PluginPresetsSupport* _presets{};
+        PluginUISupport* _ui{};
 
         VST3UmpInputDispatcher ump_input_dispatcher{this};
 
@@ -246,6 +264,9 @@ namespace remidy {
 
         // presets
         PluginPresetsSupport* presets() override;
+
+        // ui
+        PluginUISupport* ui() override;
     };
 
 }
