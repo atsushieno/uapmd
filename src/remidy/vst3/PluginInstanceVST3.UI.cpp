@@ -173,5 +173,7 @@ namespace remidy {
 
     void PluginInstanceVST3::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
         host_resize_handler = std::move(handler);
+        // Also set it on the HostApplication so it can delegate resize_view() calls
+        owner->owner->getHost()->setResizeRequestHandler(host_resize_handler);
     }
 }

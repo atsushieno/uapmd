@@ -441,10 +441,25 @@ namespace remidy_vst3 {
         return impl->owner ? remove_ref(impl->owner) : 0;
     }
 
-    v3_result HostApplication::resize_view(void *self, struct v3_plugin_view **, struct v3_view_rect *) {
-        // FIXME: implement
-        std::cerr << "HostApplication::resize_view() is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
+    v3_result HostApplication::resize_view(void *self, struct v3_plugin_view **view, struct v3_view_rect *rect) {
+        auto impl = static_cast<PlugFrameImpl*>(self);
+        if (!impl || !impl->owner)
+            return V3_NOT_IMPLEMENTED;
+
+        auto& handler = impl->owner->resize_request_handler;
+        if (!handler) {
+            std::cerr << "HostApplication::resize_view() handler is not set" << std::endl;
+            return V3_NOT_IMPLEMENTED;
+        }
+
+        if (!rect)
+            return V3_INVALID_ARG;
+
+        uint32_t width = rect->right - rect->left;
+        uint32_t height = rect->bottom - rect->top;
+
+        bool success = handler(width, height);
+        return success ? V3_OK : V3_NOT_IMPLEMENTED;
     }
 
     v3_result HostApplication::plug_interface_support_query_interface(void *self, const v3_tuid iid, void **obj) {
