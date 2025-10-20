@@ -32,7 +32,19 @@ public:
         ShowWindow(hwnd_, visible ? SW_SHOW : SW_HIDE);
         UpdateWindow(hwnd_);
     }
-    void setResizable(bool) override {}
+    void setResizable(bool resizable) override {
+        if (!hwnd_) return;
+        LONG_PTR style = GetWindowLongPtrW(hwnd_, GWL_STYLE);
+        if (resizable) {
+            style |= (WS_THICKFRAME | WS_MAXIMIZEBOX);
+        } else {
+            style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+        }
+        SetWindowLongPtrW(hwnd_, GWL_STYLE, style);
+        // Force window to redraw with new style
+        SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    }
     void setBounds(const Bounds& b) override {
         if (!hwnd_) return;
         b_ = b;

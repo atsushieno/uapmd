@@ -44,6 +44,7 @@ namespace uapmd {
         void setPluginUIResizeHandler(int32_t instanceId, std::function<bool(uint32_t, uint32_t)> handler);
         bool resizePluginUI(int32_t instanceId, uint32_t width, uint32_t height);
         bool getPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height);
+        bool canPluginUIResize(int32_t instanceId);
 
         // audio/MIDI player
 

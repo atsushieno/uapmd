@@ -46,6 +46,7 @@ namespace remidy {
     }
 
     void RemidyCLAPHost::guiClosed(bool wasDestroyed) noexcept {
+        Logger::global()->logWarning("guiClosed() not implemented");
         (void) wasDestroyed;
     }
 

@@ -27,7 +27,15 @@ public:
         }
     }
     void setResizable(bool resizable) override {
-        (void) resizable;
+        @autoreleasepool {
+            if (!window_) return;
+            NSWindowStyleMask currentStyle = [window_ styleMask];
+            if (resizable) {
+                [window_ setStyleMask:currentStyle | NSWindowStyleMaskResizable];
+            } else {
+                [window_ setStyleMask:currentStyle & ~NSWindowStyleMaskResizable];
+            }
+        }
     }
     void setBounds(const Bounds& b) override {
         @autoreleasepool {

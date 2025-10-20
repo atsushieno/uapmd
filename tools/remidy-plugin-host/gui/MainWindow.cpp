@@ -134,20 +134,21 @@ bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, u
 
     pluginWindowResizeIgnore_.insert(instanceId);
 
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
     bool success = true;
-    remidy::EventLoop::runTaskOnMainThread([window, &bounds, &success]() {
+    bool canResize = sequencer.canPluginUIResize(instanceId);
+    remidy::EventLoop::runTaskOnMainThread([window, &bounds, &success, canResize]() {
         if (!window) {
             success = false;
             return;
         }
-        window->setResizable(true);
+        window->setResizable(canResize);
         window->setBounds(bounds);
     });
 
     if (!success)
         pluginWindowResizeIgnore_.erase(instanceId);
 
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
     if (!sequencer.resizePluginUI(instanceId, width, height)) {
         uint32_t adjustedWidth = width;
         uint32_t adjustedHeight = height;
@@ -405,7 +406,13 @@ void MainWindow::renderInstanceControl() {
                                 pluginWindowBounds_[instanceId].height = static_cast<int>(ph);
                                 pluginWindowResizeIgnore_.insert(instanceId);
                                 auto b = pluginWindowBounds_[instanceId];
-                                remidy::EventLoop::runTaskOnMainThread([cw=container, b]() mutable { if (cw) cw->setBounds(b); });
+                                bool canResize = sequencer.canPluginUIResize(instanceId);
+                                remidy::EventLoop::runTaskOnMainThread([cw=container, b, canResize]() mutable {
+                                    if (cw) {
+                                        cw->setResizable(canResize);
+                                        cw->setBounds(b);
+                                    }
+                                });
                             }
                             shown = true;
                         } else {

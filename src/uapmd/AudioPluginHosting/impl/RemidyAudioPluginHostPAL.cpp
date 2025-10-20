@@ -183,6 +183,13 @@ namespace uapmd {
                 return false;
             return ui->getSize(width, height);
         }
+
+        bool canUIResize() override {
+            auto ui = ensureUISupport();
+            if (!ui || !uiCreated)
+                return false;
+            return ui->canResize();
+        }
     };
 }
 

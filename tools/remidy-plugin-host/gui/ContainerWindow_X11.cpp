@@ -89,7 +89,26 @@ public:
         XFlush(dpy_);
     }
 
-    void setResizable(bool) override {}
+    void setResizable(bool resizable) override {
+        if (!dpy_ || !wnd_) return;
+        XSizeHints hints{};
+        hints.flags = PMinSize | PMaxSize;
+        if (resizable) {
+            // Allow resizing - set very large max size
+            hints.min_width = 1;
+            hints.min_height = 1;
+            hints.max_width = 16384;
+            hints.max_height = 16384;
+        } else {
+            // Fixed size - set min and max to current size
+            hints.min_width = b_.width;
+            hints.min_height = b_.height;
+            hints.max_width = b_.width;
+            hints.max_height = b_.height;
+        }
+        XSetWMNormalHints(dpy_, wnd_, &hints);
+        XFlush(dpy_);
+    }
 
     void setBounds(const Bounds& b) override {
         if (!dpy_ || !wnd_) return;

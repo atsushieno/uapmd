@@ -212,6 +212,13 @@ bool uapmd::AudioPluginSequencer::getPluginUISize(int32_t instanceId, uint32_t &
     return pal->getUISize(width, height);
 }
 
+bool uapmd::AudioPluginSequencer::canPluginUIResize(int32_t instanceId) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return false;
+    return pal->canUIResize();
+}
+
 void uapmd::AudioPluginSequencer::instantiatePlugin(
     std::string& format,
     std::string& pluginId,

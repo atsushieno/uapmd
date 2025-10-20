@@ -57,6 +57,9 @@ namespace remidy {
         bool threadCheckIsAudioThread() const noexcept override;
 
         bool implementsGui() const noexcept override { return true; }
+        void guiResizeHintsChanged() noexcept override {
+            Logger::global()->logWarning("guiResizeHintsChanged not implemented");
+        }
         bool guiRequestShow() noexcept override;
         bool guiRequestHide() noexcept override;
         bool guiRequestResize(uint32_t width, uint32_t height) noexcept override;
