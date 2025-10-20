@@ -232,7 +232,10 @@ namespace remidy {
     void PluginInstanceCLAP::dispatchTimer(clap_id timerId) {
         if (!plugin)
             return;
-        const auto* timerExt = (const clap_plugin_timer_support_t*) plugin->get_extension(plugin, CLAP_EXT_TIMER_SUPPORT);
+        const clap_plugin_timer_support_t* timerExt{nullptr};
+        EventLoop::runTaskOnMainThread([&] {
+            timerExt = (const clap_plugin_timer_support_t*) plugin->get_extension(plugin, CLAP_EXT_TIMER_SUPPORT);
+        });
         if (!timerExt || !timerExt->on_timer)
             return;
         // Ensure timer callback happens on the main/UI thread per CLAP expectations

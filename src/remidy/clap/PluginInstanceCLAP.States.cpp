@@ -6,8 +6,10 @@ namespace remidy {
     PluginInstanceCLAP::PluginStatesCLAP::PluginStatesCLAP(PluginInstanceCLAP *owner)
         : owner(owner) {
         const auto plugin = owner->plugin;
-        state_context_ext = (clap_plugin_state_context_t*) plugin->get_extension(plugin, CLAP_EXT_STATE_CONTEXT);
-        state_ext = (clap_plugin_state_t*) plugin->get_extension(plugin, CLAP_EXT_STATE);
+        EventLoop::runTaskOnMainThread([&] {
+            state_context_ext = (clap_plugin_state_context_t*) plugin->get_extension(plugin, CLAP_EXT_STATE_CONTEXT);
+            state_ext = (clap_plugin_state_t*) plugin->get_extension(plugin, CLAP_EXT_STATE);
+        });
     }
 
     int64_t remidy_clap_stream_read(const clap_istream_t *stream, void *buffer, uint64_t size) {

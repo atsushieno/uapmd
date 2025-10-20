@@ -14,7 +14,12 @@ namespace remidy {
         BusSearchResult ret{};
 
         auto plugin = owner->plugin;
-        auto audioExt = (clap_plugin_audio_ports_t*) plugin->get_extension(plugin, CLAP_EXT_AUDIO_PORTS);
+        clap_plugin_audio_ports_t* audioExt{nullptr};
+        clap_plugin_note_ports_t* noteExt{nullptr};
+        EventLoop::runTaskOnMainThread([&] {
+            audioExt = (clap_plugin_audio_ports_t*) plugin->get_extension(plugin, CLAP_EXT_AUDIO_PORTS);
+            noteExt = (clap_plugin_note_ports_t*) plugin->get_extension(plugin, CLAP_EXT_NOTE_PORTS);
+        });
         if (audioExt) {
             for (bool isInput : {true, false}) {
                 for (size_t i = 0, n = audioExt->count(plugin, isInput); i < n; i++) {
@@ -37,7 +42,6 @@ namespace remidy {
         }
 
         // FIXME: we need decent support for event buses
-        auto noteExt = (clap_plugin_note_ports_t*) plugin->get_extension(plugin, CLAP_EXT_NOTE_PORTS);
         if (noteExt) {
             ret.numEventIn = noteExt->count(plugin, true);
             ret.numEventOut = noteExt->count(plugin, false);
