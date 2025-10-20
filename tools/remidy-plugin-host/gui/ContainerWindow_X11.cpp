@@ -1,6 +1,7 @@
 #if defined(__linux__) && !defined(__APPLE__)
 #include "ContainerWindow.hpp"
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <thread>
 #include <atomic>
