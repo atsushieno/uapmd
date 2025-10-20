@@ -39,7 +39,7 @@ private:
 
 public:
     bool initialize() override {
-        if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        if (!SDL_Init(SDL_INIT_VIDEO)) {
             std::cerr << "SDL3 Error: " << SDL_GetError() << std::endl;
             return false;
         }
