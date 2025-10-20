@@ -26,15 +26,16 @@ namespace uapmd {
 
             virtual void setParameterValue(int32_t index, double value) = 0;
 
-            virtual bool hasUISupport() { return false; }
-            virtual bool createUI(bool isFloating) { return false; }
-            virtual bool attachUI(void* parentHandle) { return false; }
-            virtual bool showUI() { return false; }
-            virtual void hideUI() {}
-            virtual bool isUIVisible() const { return false; }
-            virtual void setUIResizeHandler(std::function<bool(uint32_t, uint32_t)> handler) { (void) handler; }
-            virtual bool setUISize(uint32_t width, uint32_t height) { (void) width; (void) height; return false; }
-            virtual bool getUISize(uint32_t &width, uint32_t &height) { (void) width; (void) height; return false; }
+            virtual bool hasUISupport() = 0;
+            virtual bool createUI(bool isFloating) = 0;
+            virtual bool attachUI(void* parentHandle) = 0;
+            virtual bool showUI() = 0;
+            virtual void hideUI() = 0;
+            virtual bool isUIVisible() const = 0;
+            virtual void setUIResizeHandler(std::function<bool(uint32_t, uint32_t)> handler) = 0;
+            virtual bool setUISize(uint32_t width, uint32_t height) = 0;
+            virtual bool getUISize(uint32_t &width, uint32_t &height) = 0;
+            virtual bool canUIResize() = 0;
         };
 
         static AudioPluginHostPAL* instance();
