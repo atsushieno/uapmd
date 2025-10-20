@@ -200,9 +200,6 @@ namespace remidy_vst3 {
     struct IPlugViewVTable : FUnknownVTable {
         v3_plugin_view view{nullptr};
     };
-    struct IPlugViewContentScaleVTable : FUnknownVTable {
-        v3_plugin_view_content_scale scale{nullptr};
-    };
     struct IPlugViewContentScaleSupportVTable : FUnknownVTable {
         v3_plugin_view_content_scale scale{nullptr};
     };
@@ -297,9 +294,6 @@ namespace remidy_vst3 {
     };
     struct IPlugView {
         struct IPlugViewVTable *vtable{};
-    };
-    struct IPlugViewContentScale {
-        struct IPlugViewContentScaleVTable *vtable{};
     };
     struct IPlugViewContentScaleSupport {
         struct IPlugViewContentScaleSupportVTable *vtable{};
