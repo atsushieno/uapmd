@@ -668,6 +668,7 @@ namespace remidy_vst3 {
         inline IComponentHandler2* getComponentHandler2() { return &handler2; }
         inline IUnitHandler* getUnitHandler() { return &unit_handler; }
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return &support; }
+        inline IPlugFrame* getPlugFrame() { return &plug_frame; }
 
         void startProcessing();
         void stopProcessing();

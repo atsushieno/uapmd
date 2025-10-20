@@ -174,7 +174,24 @@ namespace remidy {
             void loadPreset(int32_t index) override;
         };
 
+        // FIXME: VST3 GUI Challenges:
+        // 1. No Floating Window Support - VST3 doesn't distinguish floating/embedded at create time.
+        //    The isFloating parameter in create() cannot be directly mapped. Treating all as embedded.
+        // 2. No Show/Hide API - VST3 IPlugView has no show/hide methods. We track state internally
+        //    but cannot actually control visibility - that's the host window's responsibility.
+        // 3. No Window Title API - VST3 IPlugView cannot set window titles. The setWindowTitle()
+        //    API is a no-op; host must handle window titling.
+        // 4. IPlugFrame Callback Routing - The HostApplication::resize_view() callback needs to
+        //    route resize requests from the plugin back to the correct UISupport instance.
+        //    Currently no mechanism to map from HostApplication to UISupport instance.
         class UISupport : public PluginUISupport {
+            PluginInstanceVST3* owner;
+            IPlugView* view{nullptr};
+            IPlugViewContentScaleSupport* scale_support{nullptr};
+            bool created{false};
+            bool visible{false};
+            std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
+
         public:
             explicit UISupport(PluginInstanceVST3* owner);
             ~UISupport() override = default;
