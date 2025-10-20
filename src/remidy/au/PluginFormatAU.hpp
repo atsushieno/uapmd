@@ -103,7 +103,7 @@ namespace remidy {
         public:
             explicit UISupport(AudioPluginInstanceAU* owner);
             ~UISupport() override = default;
-            bool create() override;
+            bool create(bool isFloating) override;
             void destroy() override;
             bool show() override;
             void hide() override;
@@ -114,6 +114,7 @@ namespace remidy {
             bool setSize(uint32_t width, uint32_t height) override;
             bool suggestSize(uint32_t &width, uint32_t &height) override;
             bool setScale(double scale) override;
+            void setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) override;
         };
 
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);

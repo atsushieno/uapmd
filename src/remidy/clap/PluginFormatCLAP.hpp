@@ -6,6 +6,8 @@
 #include "remidy.hpp"
 #include "HostClasses.hpp"
 #include "../GenericAudioBuses.hpp"
+#include <functional>
+#include <memory>
 
 namespace remidy {
     class PluginScannerCLAP : public FileBasedPluginScanning {
@@ -40,8 +42,6 @@ namespace remidy {
         std::function<StatusCode(std::filesystem::path &clapPath, void* module)> unloadFunc;
 
         PluginBundlePool library_pool;
-
-        RemidyCLAPHost host;
 
     public:
         explicit Impl(PluginFormatCLAP* owner) :
@@ -271,7 +271,7 @@ namespace remidy {
         public:
             explicit UISupport(PluginInstanceCLAP* owner);
             ~UISupport() override = default;
-            bool create() override;
+            bool create(bool isFloating) override;
             void destroy() override;
             bool show() override;
             void hide() override;
@@ -282,6 +282,20 @@ namespace remidy {
             bool setSize(uint32_t width, uint32_t height) override;
             bool suggestSize(uint32_t &width, uint32_t &height) override;
             bool setScale(double scale) override;
+            void setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) override;
+            bool handleGuiResize(uint32_t width, uint32_t height);
+        private:
+            PluginInstanceCLAP* owner;
+            const clap_plugin_gui_t* gui_ext{nullptr};
+            std::string current_api{};
+            bool created{false};
+            bool visible{false};
+            bool is_floating{true};
+            std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
+
+            bool ensureGuiExtension();
+            bool withGui(std::function<void()>&& func);
+            bool tryCreateWith(const char* api, bool floating);
         };
 
         clap::helpers::EventList events{};
@@ -291,6 +305,7 @@ namespace remidy {
         PluginPresetsSupport* _presets{};
         PluginUISupport* _ui{};
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
+        std::unique_ptr<RemidyCLAPHost> host{};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
         void clapProcessToRemidyProcessContext(AudioProcessContext& dst, clap_process_t& src);
@@ -304,7 +319,8 @@ namespace remidy {
             PluginCatalogEntry* info,
             clap_preset_discovery_factory* presetDiscoveryFactory,
             void* module,
-            const clap_plugin_t* plugin
+            const clap_plugin_t* plugin,
+            std::unique_ptr<RemidyCLAPHost> host
             );
         ~PluginInstanceCLAP() override;
 
@@ -333,6 +349,6 @@ namespace remidy {
 
         // gui
         PluginUISupport* ui() override;
+        bool handleGuiResize(uint32_t width, uint32_t height);
     };
 }
-

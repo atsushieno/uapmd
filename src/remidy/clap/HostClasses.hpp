@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <exception>
 #include <clap/helpers/host.hh>
 #include <clap/helpers/host.hxx>
@@ -22,6 +23,7 @@ namespace remidy {
     class PluginInstanceCLAP;
 
     class RemidyCLAPHost : public CLAPHelperHost {
+        std::atomic<PluginInstanceCLAP*> attached_instance{nullptr};
     protected:
         void requestRestart() noexcept override;
 
@@ -41,6 +43,17 @@ namespace remidy {
         bool threadCheckIsMainThread() const noexcept override;
 
         bool threadCheckIsAudioThread() const noexcept override;
+
+        bool implementsGui() const noexcept override { return true; }
+        bool guiRequestShow() noexcept override;
+        bool guiRequestHide() noexcept override;
+        bool guiRequestResize(uint32_t width, uint32_t height) noexcept override;
+        void guiClosed(bool wasDestroyed) noexcept override;
+
+    public:
+        void attachInstance(PluginInstanceCLAP* instance) noexcept;
+        void detachInstance(PluginInstanceCLAP* instance) noexcept;
+        PluginInstanceCLAP* attachedInstance() const noexcept { return attached_instance.load(); }
     };
 
     class RemidyCLAPEventList {

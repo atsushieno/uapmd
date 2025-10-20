@@ -6,7 +6,8 @@ namespace remidy {
 
     }
 
-    bool PluginInstanceVST3::UISupport::create() {
+    bool PluginInstanceVST3::UISupport::create(bool isFloating) {
+        (void) isFloating;
         return false;
     }
 
@@ -48,5 +49,8 @@ namespace remidy {
 
     bool PluginInstanceVST3::UISupport::setScale(double scale) {
         return false;
+    }
+
+    void PluginInstanceVST3::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
     }
 }

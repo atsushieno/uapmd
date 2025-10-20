@@ -2,8 +2,12 @@
 
 #include <vector>
 #include <string>
+#include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include <uapmd/uapmd.hpp>
 #include "MidiKeyboard.hpp"
+#include <choc/gui/choc_DesktopWindow.h>
 
 // Forward declarations for different window types
 struct SDL_Window;
@@ -61,6 +65,12 @@ namespace uapmd::gui {
         // MIDI keyboard
         MidiKeyboard midiKeyboard_;
 
+        std::unordered_map<int32_t, std::unique_ptr<choc::ui::DesktopWindow>> pluginWindows_;
+        std::unordered_map<int32_t, bool> pluginWindowEmbedded_;
+        std::unordered_map<int32_t, choc::ui::Bounds> pluginWindowBounds_;
+        std::vector<int32_t> pluginWindowsPendingClose_;
+        std::unordered_set<int32_t> pluginWindowResizeIgnore_;
+
     public:
         MainWindow();
         void render(void* window);  // Generic window pointer
@@ -87,6 +97,10 @@ namespace uapmd::gui {
         void refreshPresets();
         void loadSelectedPreset();
         void renderParameterControls();
+        bool handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height);
+        void onPluginWindowResized(int32_t instanceId);
+        bool fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height);
+        static bool getWindowContentBounds(choc::ui::DesktopWindow* window, choc::ui::Bounds &bounds);
 
         // Plugin selection
         void refreshPluginList();

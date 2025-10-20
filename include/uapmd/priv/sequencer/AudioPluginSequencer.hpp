@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include "remidy-tooling/PluginInstancing.hpp"
 #include "uapmd/uapmd.hpp"
 
@@ -33,6 +34,17 @@ namespace uapmd {
         std::vector<int32_t> getInstanceIds();
         std::string getPluginName(int32_t instanceId);
 
+        // We will have to split out these GUI features at some point...
+        bool hasPluginUI(int32_t instanceId);
+        bool showPluginUI(int32_t instanceId, bool isFloating, void* parentHandle);
+        bool createPluginUI(int32_t instanceId, bool isFloating);
+        bool attachPluginUI(int32_t instanceId, void* parentHandle);
+        void hidePluginUI(int32_t instanceId);
+        bool isPluginUIVisible(int32_t instanceId);
+        void setPluginUIResizeHandler(int32_t instanceId, std::function<bool(uint32_t, uint32_t)> handler);
+        bool resizePluginUI(int32_t instanceId, uint32_t width, uint32_t height);
+        bool getPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height);
+
         // audio/MIDI player
 
         void sendNoteOn(int32_t trackIndex, int32_t note);
@@ -53,4 +65,3 @@ namespace uapmd {
         void loadState(std::vector<uint8_t>& state);
     };
 }
-

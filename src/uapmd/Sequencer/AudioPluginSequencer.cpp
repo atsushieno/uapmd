@@ -4,6 +4,22 @@
 #include <cmidi2.h>
 #include "uapmd/uapmd.hpp"
 #include "uapmd/priv/sequencer/AudioPluginSequencer.hpp"
+#include "uapmd/priv/plugingraph/AudioPluginHostPAL.hpp"
+
+namespace {
+    uapmd::AudioPluginHostPAL::AudioPluginNodePAL* findNodePalByInstanceId(
+        uapmd::SequenceProcessor& sequencer,
+        int32_t instanceId
+    ) {
+        for (auto& track : sequencer.tracks()) {
+            for (auto node : track->graph().plugins()) {
+                if (node->instanceId() == instanceId)
+                    return node->pal();
+            }
+        }
+        return nullptr;
+    }
+}
 
 
 uapmd::AudioPluginSequencer::AudioPluginSequencer(
@@ -123,6 +139,77 @@ std::string uapmd::AudioPluginSequencer::getPluginName(int32_t instanceId) {
         }
     }
     return "Unknown Plugin";
+}
+
+bool uapmd::AudioPluginSequencer::hasPluginUI(int32_t instanceId) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return false;
+    return pal->hasUISupport();
+}
+
+bool uapmd::AudioPluginSequencer::createPluginUI(int32_t instanceId, bool isFloating) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return false;
+    return pal->createUI(isFloating);
+}
+
+bool uapmd::AudioPluginSequencer::attachPluginUI(int32_t instanceId, void* parentHandle) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return false;
+    return pal->attachUI(parentHandle);
+}
+
+bool uapmd::AudioPluginSequencer::showPluginUI(int32_t instanceId, bool isFloating, void* parentHandle) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return false;
+    if (!pal->createUI(isFloating))
+        return false;
+    if (!isFloating) {
+        if (!parentHandle)
+            return false;
+        if (!pal->attachUI(parentHandle))
+            return false;
+    }
+    return pal->showUI();
+}
+
+void uapmd::AudioPluginSequencer::hidePluginUI(int32_t instanceId) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return;
+    pal->hideUI();
+}
+
+bool uapmd::AudioPluginSequencer::isPluginUIVisible(int32_t instanceId) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return false;
+    return pal->isUIVisible();
+}
+
+void uapmd::AudioPluginSequencer::setPluginUIResizeHandler(int32_t instanceId, std::function<bool(uint32_t, uint32_t)> handler) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return;
+    pal->setUIResizeHandler(std::move(handler));
+}
+
+bool uapmd::AudioPluginSequencer::resizePluginUI(int32_t instanceId, uint32_t width, uint32_t height) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return false;
+    return pal->setUISize(width, height);
+}
+
+bool uapmd::AudioPluginSequencer::getPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height) {
+    auto pal = findNodePalByInstanceId(sequencer, instanceId);
+    if (!pal)
+        return false;
+    return pal->getUISize(width, height);
 }
 
 void uapmd::AudioPluginSequencer::instantiatePlugin(

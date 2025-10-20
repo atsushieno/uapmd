@@ -6,8 +6,11 @@ namespace remidy {
         PluginCatalogEntry* info,
         clap_preset_discovery_factory* presetDiscoveryFactory,
         void* module,
-        const clap_plugin_t* plugin
-    ) : PluginInstance(info), owner(owner), plugin(plugin), preset_discovery_factory(presetDiscoveryFactory), module(module) {
+        const clap_plugin_t* plugin,
+        std::unique_ptr<RemidyCLAPHost> host
+    ) : PluginInstance(info), owner(owner), plugin(plugin), preset_discovery_factory(presetDiscoveryFactory), module(module), host(std::move(host)) {
+        if (this->host)
+            this->host->attachInstance(this);
         plugin->init(plugin);
 
         audio_buses = new AudioBuses(this);
@@ -16,6 +19,8 @@ namespace remidy {
     PluginInstanceCLAP::~PluginInstanceCLAP() {
         cleanupBuffers(); // cleanup, optionally stop processing in prior.
 
+        if (host)
+            host->detachInstance(this);
         plugin->destroy(plugin);
 
         delete _parameters;
@@ -207,5 +212,14 @@ namespace remidy {
         if (!_ui)
             _ui = new UISupport(this);
         return _ui;
+    }
+
+    bool PluginInstanceCLAP::handleGuiResize(uint32_t width, uint32_t height) {
+        if (!_ui)
+            return false;
+        auto* clapUi = dynamic_cast<UISupport*>(_ui);
+        if (!clapUi)
+            return false;
+        return clapUi->handleGuiResize(width, height);
     }
 }

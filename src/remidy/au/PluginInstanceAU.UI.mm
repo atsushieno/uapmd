@@ -6,7 +6,8 @@ namespace remidy {
 
     }
 
-    bool AudioPluginInstanceAU::UISupport::create() {
+    bool AudioPluginInstanceAU::UISupport::create(bool isFloating) {
+        (void) isFloating;
         return false;
     }
 
@@ -48,5 +49,8 @@ namespace remidy {
 
     bool AudioPluginInstanceAU::UISupport::setScale(double scale) {
         return false;
+    }
+
+    void AudioPluginInstanceAU::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
     }
 }

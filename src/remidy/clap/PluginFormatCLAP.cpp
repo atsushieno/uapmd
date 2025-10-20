@@ -243,9 +243,10 @@ namespace remidy {
             if (info->pluginId() != desc->id)
                 return;
 
-            auto plugin = factory->create_plugin(factory, host.clapHost(), desc->id);
+            auto host = std::make_unique<RemidyCLAPHost>();
+            auto plugin = factory->create_plugin(factory, host->clapHost(), desc->id);
             if (plugin)
-                ret = std::make_unique<PluginInstanceCLAP>(this, info, presetDiscoveryFactory, module, plugin);
+                ret = std::make_unique<PluginInstanceCLAP>(this, info, presetDiscoveryFactory, module, plugin, std::move(host));
         }, [&](void *module) {
             // do not unload library here.
         });

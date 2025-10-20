@@ -6,7 +6,8 @@ namespace remidy {
 
     }
 
-    bool PluginInstanceLV2::UISupport::create() {
+    bool PluginInstanceLV2::UISupport::create(bool isFloating) {
+        (void) isFloating;
         return false;
     }
 
@@ -48,5 +49,8 @@ namespace remidy {
 
     bool PluginInstanceLV2::UISupport::setScale(double scale) {
         return false;
+    }
+
+    void PluginInstanceLV2::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
     }
 }

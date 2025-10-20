@@ -1,15 +1,45 @@
 
 #include "RemidyAudioPluginHostPAL.hpp"
+#include <functional>
 #include <ranges>
 
 namespace uapmd {
     class RemidyAudioPluginNodePAL : public RemidyAudioPluginHostPAL::AudioPluginNodePAL {
         remidy_tooling::PluginInstancing* instancing{};
         remidy::PluginInstance* instance{};
+        remidy::PluginUISupport* ui_support{nullptr};
+        bool uiCreated{false};
+        bool uiVisible{false};
+        bool uiFloating{true};
+        std::function<bool(uint32_t, uint32_t)> resizeHandler{};
+
+        remidy::PluginUISupport* ensureUISupport() {
+            if (!instance)
+                return nullptr;
+            if (!ui_support)
+                ui_support = instance->ui();
+            return ui_support;
+        }
+
+        void applyResizeHandler() {
+            auto ui = ensureUISupport();
+            if (!ui)
+                return;
+            ui->setResizeRequestHandler(resizeHandler);
+        }
     public:
         explicit RemidyAudioPluginNodePAL(remidy_tooling::PluginInstancing* instancing, remidy::PluginInstance* instance) :
             instancing(instancing), instance(instance) {}
         ~RemidyAudioPluginNodePAL() override {
+            if (ui_support) {
+                if (uiVisible)
+                    ui_support->hide();
+                if (uiCreated)
+                    ui_support->destroy();
+                uiVisible = false;
+                uiCreated = false;
+                uiFloating = true;
+            }
             delete instancing;
         }
 
@@ -74,6 +104,84 @@ namespace uapmd {
 
         void setParameterValue(int32_t index, double value) override {
             instance->parameters()->setParameter(index, value, 0);
+        }
+
+        bool hasUISupport() override {
+            return ensureUISupport() != nullptr;
+        }
+
+        bool createUI(bool isFloating) override {
+            auto ui = ensureUISupport();
+            if (!ui)
+                return false;
+            if (uiCreated && uiFloating == isFloating)
+                return true;
+            if (uiCreated) {
+                if (uiVisible)
+                    ui->hide();
+                ui->destroy();
+                uiCreated = false;
+                uiVisible = false;
+            }
+            if (!ui->create(isFloating))
+                return false;
+            uiCreated = true;
+            uiFloating = isFloating;
+            applyResizeHandler();
+            return true;
+        }
+
+        bool attachUI(void* parentHandle) override {
+            auto ui = ensureUISupport();
+            if (!ui || !uiCreated || uiFloating)
+                return false;
+            if (!parentHandle)
+                return false;
+            return ui->attachToParent(parentHandle);
+        }
+
+        bool showUI() override {
+            auto ui = ensureUISupport();
+            if (!ui)
+                return false;
+            if (!uiCreated && !createUI(true))
+                return false;
+            if (uiVisible)
+                return true;
+            if (!ui->show())
+                return false;
+            uiVisible = true;
+            return true;
+        }
+
+        void hideUI() override {
+            if (!ui_support || !uiVisible)
+                return;
+            ui_support->hide();
+            uiVisible = false;
+        }
+
+        bool isUIVisible() const override {
+            return uiVisible;
+        }
+
+        void setUIResizeHandler(std::function<bool(uint32_t, uint32_t)> handler) override {
+            resizeHandler = std::move(handler);
+            applyResizeHandler();
+        }
+
+        bool setUISize(uint32_t width, uint32_t height) override {
+            auto ui = ensureUISupport();
+            if (!ui || !uiCreated)
+                return false;
+            return ui->setSize(width, height);
+        }
+
+        bool getUISize(uint32_t &width, uint32_t &height) override {
+            auto ui = ensureUISupport();
+            if (!ui)
+                return false;
+            return ui->getSize(width, height);
         }
     };
 }

@@ -216,7 +216,7 @@ namespace remidy {
         public:
             explicit UISupport(PluginInstanceLV2* owner);
             ~UISupport() override = default;
-            bool create() override;
+            bool create(bool isFloating) override;
             void destroy() override;
             bool show() override;
             void hide() override;
@@ -227,6 +227,7 @@ namespace remidy {
             bool setSize(uint32_t width, uint32_t height) override;
             bool suggestSize(uint32_t &width, uint32_t &height) override;
             bool setScale(double scale) override;
+            void setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) override;
         };
 
         PluginFormatLV2::Impl *formatImpl;

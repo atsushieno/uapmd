@@ -22,7 +22,7 @@ namespace remidy {
                     if (!audioExt->get(plugin, i, isInput, &info))
                         continue;
                     std::vector<AudioChannelLayout> layouts{};
-                    AudioChannelLayout layout{info.port_type == CLAP_PORT_MONO ? "Mono" : CLAP_PORT_STEREO ? "Stereo" : "", info.channel_count};
+                    AudioChannelLayout layout{info.port_type == CLAP_PORT_MONO ? "Mono" : info.port_type == CLAP_PORT_STEREO ? "Stereo" : "", info.channel_count};
                     layouts.emplace_back(layout);
                     AudioBusDefinition def{info.name, info.flags & CLAP_AUDIO_PORT_IS_MAIN ? AudioBusRole::Main : AudioBusRole::Aux, layouts};
                     if (isInput) {

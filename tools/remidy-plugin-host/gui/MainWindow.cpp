@@ -4,8 +4,65 @@
 #include <iostream>
 #include <algorithm>
 #include <format>
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+#if defined(__linux__) && !defined(__APPLE__)
+#include <gtk/gtk.h>
+#endif
 
 namespace uapmd::gui {
+
+bool MainWindow::getWindowContentBounds(choc::ui::DesktopWindow *window, choc::ui::Bounds &bounds) {
+    if (!window)
+        return false;
+    void* handle = window->getWindowHandle();
+    if (!handle)
+        return false;
+#if defined(__APPLE__)
+    using namespace choc::objc;
+    auto frame = call<CGRect>((id) handle, "frame");
+    auto content = call<CGRect>((id) handle, "contentRectForFrameRect:", frame);
+    bounds.x = static_cast<int>(content.origin.x);
+    bounds.y = static_cast<int>(content.origin.y);
+    bounds.width = static_cast<int>(content.size.width);
+    bounds.height = static_cast<int>(content.size.height);
+    return true;
+#elif defined(_WIN32)
+    RECT rect{};
+    if (!GetClientRect(static_cast<HWND>(handle), &rect))
+        return false;
+    POINT origin{rect.left, rect.top};
+    if (!ClientToScreen(static_cast<HWND>(handle), &origin))
+        origin = POINT{0, 0};
+    bounds.x = static_cast<int>(origin.x);
+    bounds.y = static_cast<int>(origin.y);
+    bounds.width = static_cast<int>(std::max<LONG>(rect.right - rect.left, 0));
+    bounds.height = static_cast<int>(std::max<LONG>(rect.bottom - rect.top, 0));
+    return true;
+#elif defined(__linux__) && !defined(__APPLE__)
+    auto* widget = static_cast<GtkWidget*>(handle);
+    if (!GTK_IS_WIDGET(widget))
+        return false;
+    int x = 0;
+    int y = 0;
+    gtk_window_get_position(GTK_WINDOW(widget), &x, &y);
+    GtkAllocation allocation{};
+    gtk_widget_get_allocation(widget, &allocation);
+    bounds.x = static_cast<int>(x);
+    bounds.y = static_cast<int>(y);
+    bounds.width = static_cast<int>(std::max(allocation.width, 0));
+    bounds.height = static_cast<int>(std::max(allocation.height, 0));
+    return true;
+#else
+    (void) bounds;
+    return false;
+#endif
+}
 
 MainWindow::MainWindow() {
     // Initialize with some example recent files
@@ -116,6 +173,114 @@ void MainWindow::render(void* window) {
 }
 
 void MainWindow::update() {
+}
+
+bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height) {
+    auto windowIt = pluginWindows_.find(instanceId);
+    if (windowIt == pluginWindows_.end())
+        return false;
+
+    auto* window = windowIt->second.get();
+    if (!window)
+        return false;
+
+    auto& bounds = pluginWindowBounds_[instanceId];
+    choc::ui::Bounds currentBounds = bounds;
+    if (!getWindowContentBounds(window, currentBounds)) {
+        if (bounds.width == 0 && bounds.height == 0) {
+            bounds.x = 100;
+            bounds.y = 100;
+        }
+    } else {
+        bounds.x = currentBounds.x;
+        bounds.y = currentBounds.y;
+    }
+    bounds.width = static_cast<int>(width);
+    bounds.height = static_cast<int>(height);
+
+    pluginWindowResizeIgnore_.insert(instanceId);
+
+    bool success = true;
+    remidy::EventLoop::runTaskOnMainThread([window, &bounds, &success]() {
+        if (!window) {
+            success = false;
+            return;
+        }
+        window->setResizable(true);
+        window->setBounds(bounds);
+    });
+
+    if (!success)
+        pluginWindowResizeIgnore_.erase(instanceId);
+
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    if (!sequencer.resizePluginUI(instanceId, width, height)) {
+        uint32_t adjustedWidth = width;
+        uint32_t adjustedHeight = height;
+        if (sequencer.getPluginUISize(instanceId, adjustedWidth, adjustedHeight)) {
+            pluginWindowBounds_[instanceId].width = static_cast<int>(adjustedWidth);
+            pluginWindowBounds_[instanceId].height = static_cast<int>(adjustedHeight);
+            pluginWindowResizeIgnore_.insert(instanceId);
+            remidy::EventLoop::runTaskOnMainThread([window, bounds = pluginWindowBounds_[instanceId]]() mutable {
+                if (!window)
+                    return;
+                window->setBounds(bounds);
+            });
+        }
+    }
+
+    return success;
+}
+
+void MainWindow::onPluginWindowResized(int32_t instanceId) {
+    auto windowIt = pluginWindows_.find(instanceId);
+    if (windowIt == pluginWindows_.end())
+        return;
+
+    if (pluginWindowResizeIgnore_.erase(instanceId) > 0)
+        return;
+
+    auto* window = windowIt->second.get();
+    if (!window)
+        return;
+
+    choc::ui::Bounds currentBounds{};
+    if (!getWindowContentBounds(window, currentBounds))
+        return;
+
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    pluginWindowBounds_[instanceId] = currentBounds;
+
+    const uint32_t currentWidth = static_cast<uint32_t>(std::max(currentBounds.width, 0));
+    const uint32_t currentHeight = static_cast<uint32_t>(std::max(currentBounds.height, 0));
+
+    if (sequencer.resizePluginUI(instanceId, currentWidth, currentHeight))
+        return;
+
+    uint32_t adjustedWidth = currentWidth;
+    uint32_t adjustedHeight = currentHeight;
+    if (!sequencer.getPluginUISize(instanceId, adjustedWidth, adjustedHeight))
+        return;
+
+    if (adjustedWidth == currentWidth && adjustedHeight == currentHeight)
+        return;
+
+    pluginWindowBounds_[instanceId].width = static_cast<int>(adjustedWidth);
+    pluginWindowBounds_[instanceId].height = static_cast<int>(adjustedHeight);
+    pluginWindowResizeIgnore_.insert(instanceId);
+
+    remidy::EventLoop::runTaskOnMainThread([window, bounds = pluginWindowBounds_[instanceId]]() mutable {
+        if (!window)
+            return;
+        window->setBounds(bounds);
+    });
+}
+
+bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    if (!sequencer.hasPluginUI(instanceId))
+        return false;
+    return sequencer.getPluginUISize(instanceId, width, height);
 }
 
 void MainWindow::renderDeviceSettings() {
@@ -229,6 +394,20 @@ void MainWindow::renderPlayerSettings() {
 }
 
 void MainWindow::renderInstanceControl() {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+
+    if (!pluginWindowsPendingClose_.empty()) {
+        for (auto id : pluginWindowsPendingClose_) {
+            sequencer.hidePluginUI(id);
+            sequencer.setPluginUIResizeHandler(id, nullptr);
+            pluginWindows_.erase(id);
+            pluginWindowEmbedded_.erase(id);
+            pluginWindowBounds_.erase(id);
+            pluginWindowResizeIgnore_.erase(id);
+        }
+        pluginWindowsPendingClose_.clear();
+    }
+
     if (ImGui::Button("Refresh Instances")) {
         refreshInstances();
     }
@@ -236,7 +415,6 @@ void MainWindow::renderInstanceControl() {
     // Instance selection
     ImGui::Text("Active Instances:");
     if (ImGui::BeginListBox("##InstanceList", ImVec2(-1, 100))) {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
         for (size_t i = 0; i < instances_.size(); i++) {
             const bool isSelected = (selectedInstance_ == static_cast<int>(i));
             int32_t instanceId = instances_[i];
@@ -262,6 +440,113 @@ void MainWindow::renderInstanceControl() {
 
     if (selectedInstance_ >= 0 && selectedInstance_ < static_cast<int>(instances_.size())) {
         int32_t instanceId = instances_[selectedInstance_];
+
+        if (sequencer.hasPluginUI(instanceId)) {
+            bool isVisible = sequencer.isPluginUIVisible(instanceId);
+            auto windowIt = pluginWindows_.find(instanceId);
+            bool embedded = pluginWindowEmbedded_.count(instanceId) > 0 && pluginWindowEmbedded_[instanceId] && windowIt != pluginWindows_.end();
+            const char* uiButtonText = isVisible ? "Hide UI" : "Show UI";
+            if (ImGui::Button(uiButtonText)) {
+                if (isVisible) {
+                    sequencer.hidePluginUI(instanceId);
+                    if (embedded && windowIt != pluginWindows_.end()) {
+                        windowIt->second->setVisible(false);
+                    }
+                    sequencer.setPluginUIResizeHandler(instanceId, nullptr);
+                    pluginWindowResizeIgnore_.erase(instanceId);
+                } else {
+                    bool embeddedEnabled = pluginWindowEmbedded_.count(instanceId) == 0 || pluginWindowEmbedded_[instanceId];
+                    bool embeddedShown = false;
+                    // FIXME: for now we use choc DesktopWindow, but it seems using Gtk on Linux, which is not acceptable
+                    //  when we use remidy-plugin-host functionality as a plugin.
+                    //  Maybe we need some alternatives like suil (but not limited to LV2).
+                    choc::ui::DesktopWindow* desktopWindow = nullptr;
+
+                    if (embeddedEnabled) {
+                        windowIt = pluginWindows_.find(instanceId);
+                        if (windowIt == pluginWindows_.end()) {
+                            auto window = std::make_unique<choc::ui::DesktopWindow>(choc::ui::Bounds{100, 100, 800, 600});
+                            window->setWindowTitle(sequencer.getPluginName(instanceId));
+                            window->setVisible(false);
+                            window->windowClosed = [this, instanceId]() {
+                                pluginWindowsPendingClose_.push_back(instanceId);
+                            };
+                            window->setResizable(true);
+                            window->windowResized = [this, instanceId]() {
+                                onPluginWindowResized(instanceId);
+                            };
+                            desktopWindow = window.get();
+                            pluginWindows_[instanceId] = std::move(window);
+                            pluginWindowBounds_[instanceId] = choc::ui::Bounds{100, 100, 800, 600};
+                        } else {
+                            desktopWindow = windowIt->second.get();
+                            if (desktopWindow) {
+                                desktopWindow->setResizable(true);
+                                desktopWindow->windowResized = [this, instanceId]() {
+                                    onPluginWindowResized(instanceId);
+                                };
+                            }
+                            if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
+                                pluginWindowBounds_[instanceId] = choc::ui::Bounds{100, 100, 800, 600};
+                        }
+
+                        if (desktopWindow) {
+                            void* parentHandle = desktopWindow->getWindowHandle();
+#if defined(__APPLE__)
+                            if (parentHandle) {
+                                id obj = (id) parentHandle;
+                                auto isKindOfClass = reinterpret_cast<BOOL (*)(id, SEL, Class)>(objc_msgSend);
+                                Class nsWindowClass = objc_getClass("NSWindow");
+                                if (isKindOfClass && nsWindowClass && isKindOfClass(obj, sel_getUid("isKindOfClass:"), nsWindowClass)) {
+                                    auto contentViewSend = reinterpret_cast<id (*)(id, SEL)>(objc_msgSend);
+                                    if (contentViewSend) {
+                                        id contentView = contentViewSend(obj, sel_getUid("contentView"));
+                                        if (contentView)
+                                            parentHandle = (void*) contentView;
+                                    }
+                                }
+                            }
+#endif
+                            if (sequencer.showPluginUI(instanceId, false, parentHandle)) {
+                                desktopWindow->setVisible(true);
+                                desktopWindow->toFront();
+                                pluginWindowEmbedded_[instanceId] = true;
+                                sequencer.setPluginUIResizeHandler(instanceId, [this, instanceId](uint32_t width, uint32_t height) {
+                                    return handlePluginResizeRequest(instanceId, width, height);
+                                });
+                                uint32_t pluginWidth = 0;
+                                uint32_t pluginHeight = 0;
+                                if (fetchPluginUISize(instanceId, pluginWidth, pluginHeight) && pluginWidth > 0 && pluginHeight > 0) {
+                                    pluginWindowBounds_[instanceId].width = static_cast<int>(pluginWidth);
+                                    pluginWindowBounds_[instanceId].height = static_cast<int>(pluginHeight);
+                                    pluginWindowResizeIgnore_.insert(instanceId);
+                                    remidy::EventLoop::runTaskOnMainThread([desktopWindow, bounds = pluginWindowBounds_[instanceId]]() mutable {
+                                        if (desktopWindow)
+                                            desktopWindow->setBounds(bounds);
+                                    });
+                                }
+                                embeddedShown = true;
+                            } else {
+                                desktopWindow->setVisible(false);
+                                pluginWindows_.erase(instanceId);
+                                pluginWindowEmbedded_[instanceId] = false;
+                                sequencer.setPluginUIResizeHandler(instanceId, nullptr);
+                            }
+                        }
+                    }
+
+                    if (!embeddedShown) {
+                        if (sequencer.showPluginUI(instanceId, true, nullptr)) {
+                            pluginWindowEmbedded_[instanceId] = false;
+                            sequencer.setPluginUIResizeHandler(instanceId, nullptr);
+                            pluginWindowResizeIgnore_.erase(instanceId);
+                        } else {
+                            std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
+                        }
+                    }
+                }
+            }
+        }
 
         // Preset management
         ImGui::Text("Presets:");
@@ -396,6 +681,36 @@ void MainWindow::refreshInstances() {
     // Get actual instance list from sequencer
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     instances_ = sequencer.getInstanceIds();
+
+    for (auto it = pluginWindows_.begin(); it != pluginWindows_.end();) {
+        if (std::find(instances_.begin(), instances_.end(), it->first) == instances_.end()) {
+            it = pluginWindows_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = pluginWindowEmbedded_.begin(); it != pluginWindowEmbedded_.end();) {
+        if (std::find(instances_.begin(), instances_.end(), it->first) == instances_.end()) {
+            it = pluginWindowEmbedded_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = pluginWindowBounds_.begin(); it != pluginWindowBounds_.end();) {
+        if (std::find(instances_.begin(), instances_.end(), it->first) == instances_.end()) {
+            it = pluginWindowBounds_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    std::vector<int32_t> resizeIgnoreRemove{};
+    resizeIgnoreRemove.reserve(pluginWindowResizeIgnore_.size());
+    for (auto id : pluginWindowResizeIgnore_) {
+        if (std::find(instances_.begin(), instances_.end(), id) == instances_.end())
+            resizeIgnoreRemove.push_back(id);
+    }
+    for (auto id : resizeIgnoreRemove)
+        pluginWindowResizeIgnore_.erase(id);
 
     // Reset selection if out of bounds
     if (selectedInstance_ >= static_cast<int>(instances_.size())) {
