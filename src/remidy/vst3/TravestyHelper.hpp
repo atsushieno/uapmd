@@ -197,6 +197,21 @@ namespace remidy_vst3 {
     struct IBStreamVTable : FUnknownVTable {
         v3_bstream stream{nullptr};
     };
+    struct IPlugViewVTable : FUnknownVTable {
+        v3_plugin_view view{nullptr};
+    };
+    struct IPlugViewContentScaleVTable : FUnknownVTable {
+        v3_plugin_view_content_scale scale{nullptr};
+    };
+    struct IPlugViewContentScaleSupportVTable : FUnknownVTable {
+        v3_plugin_view_content_scale scale{nullptr};
+    };
+    struct ITimerHandlerVTable : FUnknownVTable {
+        v3_timer_handler timer{nullptr};
+    };
+    struct IRunLoopVTable : FUnknownVTable {
+        v3_run_loop loop{nullptr};
+    };
 
     struct FUnknown {
         FUnknownVTable *vtable{};
@@ -279,6 +294,21 @@ namespace remidy_vst3 {
     };
     struct IBStream {
         struct IBStreamVTable *vtable{};
+    };
+    struct IPlugView {
+        struct IPlugViewVTable *vtable{};
+    };
+    struct IPlugViewContentScale {
+        struct IPlugViewContentScaleVTable *vtable{};
+    };
+    struct IPlugViewContentScaleSupport {
+        struct IPlugViewContentScaleSupportVTable *vtable{};
+    };
+    struct ITimerHandler {
+        struct ITimerHandlerVTable *vtable{};
+    };
+    struct IRunLoop {
+        struct IRunLoopVTable *vtable{};
     };
 
     IPluginFactory* getFactoryFromLibrary(void* module);
