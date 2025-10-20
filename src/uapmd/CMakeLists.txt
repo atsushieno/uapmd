@@ -14,17 +14,7 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 
-if(UNIX AND NOT APPLE)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(GTK4 REQUIRED gtk4)
-endif()
-
-target_compile_options(uapmd PUBLIC
-        ${GTK4_CFLAGS}
-)
-target_link_options(uapmd PUBLIC
-        ${GTK4_LDFLAGS}
-)
+# No direct GTK dependency here; keep this core free of GUI toolkits
 
 target_include_directories(uapmd PRIVATE
         ../../external/miniaudio

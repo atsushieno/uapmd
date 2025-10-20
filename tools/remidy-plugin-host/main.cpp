@@ -33,7 +33,7 @@ int runMain(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    std::cout << "Successfully initialized " << windowingBackend->getName() << " backend" << std::endl;
+    // backend initialized
 
     // Create window
     WindowHandle* window = windowingBackend->createWindow("Remidy Plugin Host", 640, 800);
@@ -82,7 +82,7 @@ int runMain(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    std::cout << "Using " << imguiPlatformBackend->getName() << " and " << imguiRenderer->getName() << std::endl;
+    // backends ready
 
     // Initialize Remidy event loop for ImGui
     auto eventLoop = std::make_unique<uapmd::gui::ImGuiEventLoop>();
@@ -143,6 +143,9 @@ int runMain(int argc, char** argv) {
 
         windowingBackend->swapBuffers(window);
     }
+
+    // Final guard: ensure audio is stopped before teardown
+    uapmd::AppModel::instance().sequencer().stopAudio();
 
     // Cleanup
     uapmd::AppModel::instance().sequencer().stopAudio();

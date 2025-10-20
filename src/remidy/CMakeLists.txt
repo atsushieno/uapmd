@@ -77,6 +77,7 @@ target_link_libraries(remidy PRIVATE
         cpplocate::cpplocate
         lv2kit
         ${remidy_LIBS_PLAT}
+        ${GTK3_LIBRARIES}
         #-fsanitize=address
 )
 

@@ -306,6 +306,7 @@ namespace remidy {
         PluginUISupport* _ui{};
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
         std::unique_ptr<RemidyCLAPHost> host{};
+        bool is_processing_{false};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
         void clapProcessToRemidyProcessContext(AudioProcessContext& dst, clap_process_t& src);
@@ -350,5 +351,8 @@ namespace remidy {
         // gui
         PluginUISupport* ui() override;
         bool handleGuiResize(uint32_t width, uint32_t height);
+
+        // timers (CLAP host timer-support helper)
+        void dispatchTimer(clap_id timerId);
     };
 }

@@ -24,6 +24,17 @@ namespace remidy {
 
     class RemidyCLAPHost : public CLAPHelperHost {
         std::atomic<PluginInstanceCLAP*> attached_instance{nullptr};
+        struct Timer {
+            clap_id id{0};
+            uint32_t periodMs{0};
+            std::atomic<bool> running{false};
+            std::thread worker{};
+            std::mutex cvMutex{};
+            std::condition_variable cv{};
+        };
+        std::mutex timersMutex{};
+        std::unordered_map<clap_id, std::unique_ptr<Timer>> timers_{};
+        std::atomic<clap_id> nextTimerId{1};
     protected:
         void requestRestart() noexcept override;
 
@@ -39,6 +50,7 @@ namespace remidy {
             const char* version = ""
         ) : CLAPHelperHost(name, vendor, url, version) {
         }
+        ~RemidyCLAPHost() override;
 
         bool threadCheckIsMainThread() const noexcept override;
 
@@ -49,6 +61,11 @@ namespace remidy {
         bool guiRequestHide() noexcept override;
         bool guiRequestResize(uint32_t width, uint32_t height) noexcept override;
         void guiClosed(bool wasDestroyed) noexcept override;
+
+        // timer support
+        bool implementsTimerSupport() const noexcept override { return true; }
+        bool timerSupportRegisterTimer(uint32_t periodMs, clap_id *timerId) noexcept override;
+        bool timerSupportUnregisterTimer(clap_id timerId) noexcept override;
 
     public:
         void attachInstance(PluginInstanceCLAP* instance) noexcept;

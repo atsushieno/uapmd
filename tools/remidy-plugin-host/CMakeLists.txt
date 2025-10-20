@@ -24,6 +24,8 @@ if(SDL3_FOUND)
     add_compile_definitions(USE_SDL3_BACKEND)
 endif()
 
+## Native embedding via X11 on Linux (auto, no option)
+
 # Try SDL2 if SDL3 not found
 if(NOT BACKEND_FOUND)
     find_package(SDL2 QUIET)
@@ -133,6 +135,15 @@ target_link_libraries(remidy-plugin-host PRIVATE
         uapmd
 )
 
+# On Linux, CHOC's DesktopWindow uses GTK3; ensure headers and libs are present
+if(UNIX AND NOT APPLE)
+    find_package(X11 REQUIRED)
+    target_link_libraries(remidy-plugin-host PRIVATE X11::X11)
+endif()
+if(APPLE)
+    target_link_libraries(remidy-plugin-host PRIVATE "-framework Cocoa")
+endif()
+
 target_sources(remidy-plugin-host PRIVATE
         main.cpp
         AppModel.cpp
@@ -140,6 +151,16 @@ target_sources(remidy-plugin-host PRIVATE
         gui/MidiKeyboard.cpp
         gui/PlatformBackend.cpp
 )
+
+if (WIN32)
+    target_sources(remidy-plugin-host PRIVATE gui/ContainerWindow_Win32.cpp)
+endif()
+if (APPLE)
+    target_sources(remidy-plugin-host PRIVATE gui/ContainerWindow_Cocoa.mm)
+endif()
+if (UNIX AND NOT APPLE)
+    target_sources(remidy-plugin-host PRIVATE gui/ContainerWindow_X11.cpp)
+endif()
 
 # Use C++23 like the WebView version
 target_compile_features(remidy-plugin-host PRIVATE cxx_std_23)

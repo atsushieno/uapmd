@@ -131,12 +131,18 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::startProcessing() {
+        if (is_processing_)
+            return StatusCode::OK;
         plugin->start_processing(plugin);
+        is_processing_ = true;
         return StatusCode::OK;
     }
 
     StatusCode PluginInstanceCLAP::stopProcessing() {
+        if (!is_processing_)
+            return StatusCode::OK;
         plugin->stop_processing(plugin);
+        is_processing_ = false;
         return StatusCode::OK;
     }
 
@@ -221,5 +227,17 @@ namespace remidy {
         if (!clapUi)
             return false;
         return clapUi->handleGuiResize(width, height);
+    }
+
+    void PluginInstanceCLAP::dispatchTimer(clap_id timerId) {
+        if (!plugin)
+            return;
+        const auto* timerExt = (const clap_plugin_timer_support_t*) plugin->get_extension(plugin, CLAP_EXT_TIMER_SUPPORT);
+        if (!timerExt || !timerExt->on_timer)
+            return;
+        // Ensure timer callback happens on the main/UI thread per CLAP expectations
+        EventLoop::runTaskOnMainThread([this, timerId, timerExt](){
+            timerExt->on_timer(plugin, timerId);
+        });
     }
 }

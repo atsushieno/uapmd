@@ -39,7 +39,7 @@ private:
 
 public:
     bool initialize() override {
-        if (!SDL_Init(SDL_INIT_VIDEO)) {
+        if (SDL_Init(SDL_INIT_VIDEO) != 0) {
             std::cerr << "SDL3 Error: " << SDL_GetError() << std::endl;
             return false;
         }
@@ -132,8 +132,8 @@ public:
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL3_ProcessEvent(&event);
-            // Check for quit events that ImGui doesn't handle
-            if (event.type == SDL_EVENT_QUIT) {
+            // Treat window close requests as quit for single-window app
+            if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
                 g_SDL3_QuitRequested = true;
             }
         }
@@ -262,8 +262,10 @@ public:
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
-            // Check for quit events that ImGui doesn't handle
+            // Treat window close requests as quit for single-window app
             if (event.type == SDL_QUIT) {
+                g_SDL2_QuitRequested = true;
+            } else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE) {
                 g_SDL2_QuitRequested = true;
             }
         }
@@ -289,6 +291,8 @@ public:
 // =============================================================================
 #ifdef USE_GLFW_BACKEND
 
+static bool g_GLFW_QuitRequested = false;
+
 class GLFWWindowingBackend : public WindowingBackend {
 private:
     bool initialized = false;
@@ -296,6 +300,12 @@ private:
 
 public:
     bool initialize() override {
+        // Prefer X11 platform when available (GLFW 3.4+)
+#if defined(__linux__) && !defined(__APPLE__)
+#ifdef GLFW_PLATFORM_X11
+        glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+#endif
+#endif
         if (!glfwInit()) {
             std::cerr << "GLFW Error: Failed to initialize" << std::endl;
             return false;
@@ -342,7 +352,7 @@ public:
         if (!window || window->type != WindowHandle::GLFW || !window->glfwWindow) {
             return true;
         }
-        return glfwWindowShouldClose(window->glfwWindow);
+        return g_GLFW_QuitRequested || glfwWindowShouldClose(window->glfwWindow);
     }
 
     void swapBuffers(WindowHandle* window) override {
@@ -377,7 +387,15 @@ public:
     bool initialize(WindowHandle* win) override {
         if (!win || win->type != WindowHandle::GLFW) return false;
         window = win;
-        return ImGui_ImplGlfw_InitForOpenGL(win->glfwWindow, true);
+        bool ok = ImGui_ImplGlfw_InitForOpenGL(win->glfwWindow, true);
+        if (ok) {
+            // Ensure closing the window requests quit
+            glfwSetWindowCloseCallback(win->glfwWindow, [](GLFWwindow* w){
+                g_GLFW_QuitRequested = true;
+                glfwSetWindowShouldClose(w, GLFW_TRUE);
+            });
+        }
+        return ok;
     }
 
     void processEvents() override {
@@ -433,13 +451,10 @@ public:
 
 std::unique_ptr<WindowingBackend> WindowingBackend::create() {
 #ifdef USE_SDL3_BACKEND
-    std::cout << "Using SDL3 backend" << std::endl;
     return std::make_unique<SDL3WindowingBackend>();
 #elif defined(USE_SDL2_BACKEND)
-    std::cout << "Using SDL2 backend" << std::endl;
     return std::make_unique<SDL2WindowingBackend>();
 #elif defined(USE_GLFW_BACKEND)
-    std::cout << "Using GLFW backend" << std::endl;
     return std::make_unique<GLFWWindowingBackend>();
 #else
     throw std::runtime_error("No windowing backend available");

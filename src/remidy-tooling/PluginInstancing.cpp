@@ -75,10 +75,16 @@ remidy_tooling::PluginInstancing::~PluginInstancing() {
             std::cerr << "  " << format->name() << ": " << displayName << " : stopProcessing() failed. Error code " << (int32_t) code << std::endl;
     }
     auto uiReq = format->requiresUIThreadOn(instance->info());
-    if (uiReq & PluginUIThreadRequirement::InstanceControl)
-        EventLoop::runTaskOnMainThread([&] {
+    if (uiReq & PluginUIThreadRequirement::InstanceControl) {
+        if (EventLoop::runningOnMainThread()) {
             instance.reset();
-        });
+        } else {
+            // At shutdown, the UI loop may be gone; tear down synchronously to avoid dangling threads
+            instance.reset();
+        }
+    } else {
+        instance.reset();
+    }
     instancing_state = PluginInstancingState::Terminated;
 }
 

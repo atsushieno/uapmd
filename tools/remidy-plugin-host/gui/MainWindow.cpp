@@ -4,66 +4,8 @@
 #include <iostream>
 #include <algorithm>
 #include <format>
-#if defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
-#if defined(__linux__) && !defined(__APPLE__)
-#include <gtk/gtk.h>
-#endif
 
 namespace uapmd::gui {
-
-bool MainWindow::getWindowContentBounds(choc::ui::DesktopWindow *window, choc::ui::Bounds &bounds) {
-    if (!window)
-        return false;
-    void* handle = window->getWindowHandle();
-    if (!handle)
-        return false;
-#if defined(__APPLE__)
-    using namespace choc::objc;
-    auto frame = call<CGRect>((id) handle, "frame");
-    auto content = call<CGRect>((id) handle, "contentRectForFrameRect:", frame);
-    bounds.x = static_cast<int>(content.origin.x);
-    bounds.y = static_cast<int>(content.origin.y);
-    bounds.width = static_cast<int>(content.size.width);
-    bounds.height = static_cast<int>(content.size.height);
-    return true;
-#elif defined(_WIN32)
-    RECT rect{};
-    if (!GetClientRect(static_cast<HWND>(handle), &rect))
-        return false;
-    POINT origin{rect.left, rect.top};
-    if (!ClientToScreen(static_cast<HWND>(handle), &origin))
-        origin = POINT{0, 0};
-    bounds.x = static_cast<int>(origin.x);
-    bounds.y = static_cast<int>(origin.y);
-    bounds.width = static_cast<int>(std::max<LONG>(rect.right - rect.left, 0));
-    bounds.height = static_cast<int>(std::max<LONG>(rect.bottom - rect.top, 0));
-    return true;
-#elif defined(__linux__) && !defined(__APPLE__)
-    auto* widget = static_cast<GtkWidget*>(handle);
-    if (!GTK_IS_WIDGET(widget))
-        return false;
-    int x = 0;
-    int y = 0;
-    gtk_window_get_position(GTK_WINDOW(widget), &x, &y);
-    GtkAllocation allocation{};
-    gtk_widget_get_allocation(widget, &allocation);
-    bounds.x = static_cast<int>(x);
-    bounds.y = static_cast<int>(y);
-    bounds.width = static_cast<int>(std::max(allocation.width, 0));
-    bounds.height = static_cast<int>(std::max(allocation.height, 0));
-    return true;
-#else
-    (void) bounds;
-    return false;
-#endif
-}
-
 MainWindow::MainWindow() {
     // Initialize with some example recent files
     recentFiles_.push_back("example1.wav");
@@ -185,16 +127,8 @@ bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, u
         return false;
 
     auto& bounds = pluginWindowBounds_[instanceId];
-    choc::ui::Bounds currentBounds = bounds;
-    if (!getWindowContentBounds(window, currentBounds)) {
-        if (bounds.width == 0 && bounds.height == 0) {
-            bounds.x = 100;
-            bounds.y = 100;
-        }
-    } else {
-        bounds.x = currentBounds.x;
-        bounds.y = currentBounds.y;
-    }
+    Bounds currentBounds = bounds;
+    // Keep existing x/y from stored bounds; containers report size via our own state
     bounds.width = static_cast<int>(width);
     bounds.height = static_cast<int>(height);
 
@@ -244,9 +178,7 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
     if (!window)
         return;
 
-    choc::ui::Bounds currentBounds{};
-    if (!getWindowContentBounds(window, currentBounds))
-        return;
+    Bounds currentBounds = pluginWindowBounds_[instanceId];
 
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     pluginWindowBounds_[instanceId] = currentBounds;
@@ -412,7 +344,6 @@ void MainWindow::renderInstanceControl() {
         refreshInstances();
     }
 
-    // Instance selection
     ImGui::Text("Active Instances:");
     if (ImGui::BeginListBox("##InstanceList", ImVec2(-1, 100))) {
         for (size_t i = 0; i < instances_.size(); i++) {
@@ -425,14 +356,11 @@ void MainWindow::renderInstanceControl() {
                 refreshParameters();
                 refreshPresets();
             }
-            if (isSelected) {
-                ImGui::SetItemDefaultFocus();
-            }
+            if (isSelected) ImGui::SetItemDefaultFocus();
         }
         ImGui::EndListBox();
     }
 
-    // MIDI Keyboard - always visible
     ImGui::Separator();
     ImGui::Text("MIDI Keyboard:");
     midiKeyboard_.render();
@@ -440,102 +368,54 @@ void MainWindow::renderInstanceControl() {
 
     if (selectedInstance_ >= 0 && selectedInstance_ < static_cast<int>(instances_.size())) {
         int32_t instanceId = instances_[selectedInstance_];
-
         if (sequencer.hasPluginUI(instanceId)) {
             bool isVisible = sequencer.isPluginUIVisible(instanceId);
             auto windowIt = pluginWindows_.find(instanceId);
-            bool embedded = pluginWindowEmbedded_.count(instanceId) > 0 && pluginWindowEmbedded_[instanceId] && windowIt != pluginWindows_.end();
             const char* uiButtonText = isVisible ? "Hide UI" : "Show UI";
             if (ImGui::Button(uiButtonText)) {
                 if (isVisible) {
                     sequencer.hidePluginUI(instanceId);
-                    if (embedded && windowIt != pluginWindows_.end()) {
-                        windowIt->second->setVisible(false);
-                    }
+                    if (windowIt != pluginWindows_.end()) windowIt->second->show(false);
                     sequencer.setPluginUIResizeHandler(instanceId, nullptr);
                     pluginWindowResizeIgnore_.erase(instanceId);
                 } else {
-                    bool embeddedEnabled = pluginWindowEmbedded_.count(instanceId) == 0 || pluginWindowEmbedded_[instanceId];
-                    bool embeddedShown = false;
-                    // FIXME: for now we use choc DesktopWindow, but it seems using Gtk on Linux, which is not acceptable
-                    //  when we use remidy-plugin-host functionality as a plugin.
-                    //  Maybe we need some alternatives like suil (but not limited to LV2).
-                    choc::ui::DesktopWindow* desktopWindow = nullptr;
-
-                    if (embeddedEnabled) {
-                        windowIt = pluginWindows_.find(instanceId);
-                        if (windowIt == pluginWindows_.end()) {
-                            auto window = std::make_unique<choc::ui::DesktopWindow>(choc::ui::Bounds{100, 100, 800, 600});
-                            window->setWindowTitle(sequencer.getPluginName(instanceId));
-                            window->setVisible(false);
-                            window->windowClosed = [this, instanceId]() {
-                                pluginWindowsPendingClose_.push_back(instanceId);
-                            };
-                            window->setResizable(true);
-                            window->windowResized = [this, instanceId]() {
-                                onPluginWindowResized(instanceId);
-                            };
-                            desktopWindow = window.get();
-                            pluginWindows_[instanceId] = std::move(window);
-                            pluginWindowBounds_[instanceId] = choc::ui::Bounds{100, 100, 800, 600};
+                    bool shown = false;
+                    ContainerWindow* container = nullptr;
+                    windowIt = pluginWindows_.find(instanceId);
+                    if (windowIt == pluginWindows_.end()) {
+                        auto w = ContainerWindow::create(sequencer.getPluginName(instanceId).c_str(), 800, 600);
+                        container = w.get();
+                        pluginWindows_[instanceId] = std::move(w);
+                        pluginWindowBounds_[instanceId] = Bounds{100, 100, 800, 600};
+                    } else {
+                        container = windowIt->second.get();
+                        if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
+                            pluginWindowBounds_[instanceId] = Bounds{100, 100, 800, 600};
+                    }
+                    if (container) {
+                        // Ensure parent is mapped before attaching plugin UI
+                        container->show(true);
+                        void* parentHandle = container->getHandle();
+                        if (sequencer.showPluginUI(instanceId, false, parentHandle)) {
+                            pluginWindowEmbedded_[instanceId] = true;
+                            sequencer.setPluginUIResizeHandler(instanceId, [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); });
+                            uint32_t pw=0, ph=0;
+                            if (fetchPluginUISize(instanceId, pw, ph) && pw>0 && ph>0) {
+                                pluginWindowBounds_[instanceId].width = static_cast<int>(pw);
+                                pluginWindowBounds_[instanceId].height = static_cast<int>(ph);
+                                pluginWindowResizeIgnore_.insert(instanceId);
+                                auto b = pluginWindowBounds_[instanceId];
+                                remidy::EventLoop::runTaskOnMainThread([cw=container, b]() mutable { if (cw) cw->setBounds(b); });
+                            }
+                            shown = true;
                         } else {
-                            desktopWindow = windowIt->second.get();
-                            if (desktopWindow) {
-                                desktopWindow->setResizable(true);
-                                desktopWindow->windowResized = [this, instanceId]() {
-                                    onPluginWindowResized(instanceId);
-                                };
-                            }
-                            if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
-                                pluginWindowBounds_[instanceId] = choc::ui::Bounds{100, 100, 800, 600};
-                        }
-
-                        if (desktopWindow) {
-                            void* parentHandle = desktopWindow->getWindowHandle();
-#if defined(__APPLE__)
-                            if (parentHandle) {
-                                id obj = (id) parentHandle;
-                                auto isKindOfClass = reinterpret_cast<BOOL (*)(id, SEL, Class)>(objc_msgSend);
-                                Class nsWindowClass = objc_getClass("NSWindow");
-                                if (isKindOfClass && nsWindowClass && isKindOfClass(obj, sel_getUid("isKindOfClass:"), nsWindowClass)) {
-                                    auto contentViewSend = reinterpret_cast<id (*)(id, SEL)>(objc_msgSend);
-                                    if (contentViewSend) {
-                                        id contentView = contentViewSend(obj, sel_getUid("contentView"));
-                                        if (contentView)
-                                            parentHandle = (void*) contentView;
-                                    }
-                                }
-                            }
-#endif
-                            if (sequencer.showPluginUI(instanceId, false, parentHandle)) {
-                                desktopWindow->setVisible(true);
-                                desktopWindow->toFront();
-                                pluginWindowEmbedded_[instanceId] = true;
-                                sequencer.setPluginUIResizeHandler(instanceId, [this, instanceId](uint32_t width, uint32_t height) {
-                                    return handlePluginResizeRequest(instanceId, width, height);
-                                });
-                                uint32_t pluginWidth = 0;
-                                uint32_t pluginHeight = 0;
-                                if (fetchPluginUISize(instanceId, pluginWidth, pluginHeight) && pluginWidth > 0 && pluginHeight > 0) {
-                                    pluginWindowBounds_[instanceId].width = static_cast<int>(pluginWidth);
-                                    pluginWindowBounds_[instanceId].height = static_cast<int>(pluginHeight);
-                                    pluginWindowResizeIgnore_.insert(instanceId);
-                                    remidy::EventLoop::runTaskOnMainThread([desktopWindow, bounds = pluginWindowBounds_[instanceId]]() mutable {
-                                        if (desktopWindow)
-                                            desktopWindow->setBounds(bounds);
-                                    });
-                                }
-                                embeddedShown = true;
-                            } else {
-                                desktopWindow->setVisible(false);
-                                pluginWindows_.erase(instanceId);
-                                pluginWindowEmbedded_[instanceId] = false;
-                                sequencer.setPluginUIResizeHandler(instanceId, nullptr);
-                            }
+                            container->show(false);
+                            pluginWindows_.erase(instanceId);
+                            sequencer.setPluginUIResizeHandler(instanceId, nullptr);
                         }
                     }
-
-                    if (!embeddedShown) {
+                    if (!shown) {
+                        // Fallback: floating
                         if (sequencer.showPluginUI(instanceId, true, nullptr)) {
                             pluginWindowEmbedded_[instanceId] = false;
                             sequencer.setPluginUIResizeHandler(instanceId, nullptr);
@@ -546,44 +426,46 @@ void MainWindow::renderInstanceControl() {
                     }
                 }
             }
+            // Presets/parameters UI continues below
         }
-
-        // Preset management
-        ImGui::Text("Presets:");
-        if (ImGui::BeginCombo("##PresetCombo", selectedPreset_ >= 0 ? presets_[selectedPreset_].name.c_str() : "Select preset...")) {
-            for (size_t i = 0; i < presets_.size(); i++) {
-                const bool isSelected = (selectedPreset_ == static_cast<int>(i));
-                if (ImGui::Selectable(presets_[i].name.c_str(), isSelected)) {
-                    selectedPreset_ = static_cast<int>(i);
-                }
-                if (isSelected) {
-                    ImGui::SetItemDefaultFocus();
-                }
-            }
-            ImGui::EndCombo();
-        }
-
-        ImGui::SameLine();
-        bool canLoadPreset = selectedPreset_ >= 0 && selectedPreset_ < static_cast<int>(presets_.size());
-        if (!canLoadPreset) {
-            ImGui::BeginDisabled();
-        }
-        if (ImGui::Button("Load Preset")) {
-            loadSelectedPreset();
-        }
-        if (!canLoadPreset) {
-            ImGui::EndDisabled();
-        }
-
-        // Parameters - in a scrollable region
-        ImGui::Text("Parameters:");
-        if (ImGui::BeginChild("ParametersChild", ImVec2(0, 200), true, ImGuiWindowFlags_HorizontalScrollbar)) {
-            renderParameterControls();
-        }
-        ImGui::EndChild();
     }
-}
 
+    // Preset management
+    ImGui::Text("Presets:");
+    if (ImGui::BeginCombo("##PresetCombo", selectedPreset_ >= 0 ? presets_[selectedPreset_].name.c_str() : "Select preset...")) {
+        for (size_t i = 0; i < presets_.size(); i++) {
+            const bool isSelected = (selectedPreset_ == static_cast<int>(i));
+            if (ImGui::Selectable(presets_[i].name.c_str(), isSelected)) {
+                selectedPreset_ = static_cast<int>(i);
+            }
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::SameLine();
+    bool canLoadPreset = selectedPreset_ >= 0 && selectedPreset_ < static_cast<int>(presets_.size());
+    if (!canLoadPreset) {
+        ImGui::BeginDisabled();
+    }
+    if (ImGui::Button("Load Preset")) {
+        loadSelectedPreset();
+    }
+    if (!canLoadPreset) {
+        ImGui::EndDisabled();
+    }
+
+    // No embedded panel; container windows are separate native windows
+
+    // Parameters - in a scrollable region
+    ImGui::Text("Parameters:");
+    if (ImGui::BeginChild("ParametersChild", ImVec2(0, 200), true, ImGuiWindowFlags_HorizontalScrollbar)) {
+        renderParameterControls();
+    }
+    ImGui::EndChild();
+}
 
 void MainWindow::refreshDeviceList() {
     inputDevices_.clear();
@@ -755,7 +637,7 @@ void MainWindow::loadSelectedPreset() {
     if (selectedInstance_ < 0 || selectedInstance_ >= static_cast<int>(instances_.size()) ||
         selectedPreset_ < 0 || selectedPreset_ >= static_cast<int>(presets_.size())) {
         return;
-    }
+        }
 
     int32_t instanceId = instances_[selectedInstance_];
     int32_t presetIndex = presets_[selectedPreset_].index;
@@ -941,7 +823,7 @@ void MainWindow::renderPluginSelector() {
             ImGui::Text("%s", plugin.id.c_str());
         }
         ImGui::EndTable();
-    }
+                          }
 
     // Plugin scanning controls
     ImGui::Separator();
@@ -985,6 +867,5 @@ void MainWindow::renderPluginSelector() {
         ImGui::EndDisabled();
     }
 }
-
 
 }
