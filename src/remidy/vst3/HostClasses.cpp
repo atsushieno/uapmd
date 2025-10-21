@@ -446,9 +446,15 @@ namespace remidy_vst3 {
         if (!impl || !impl->owner)
             return V3_NOT_IMPLEMENTED;
 
-        auto& handler = impl->owner->resize_request_handler;
-        if (!handler) {
-            std::cerr << "HostApplication::resize_view() handler is not set" << std::endl;
+        if (!view || !*view) {
+            std::cerr << "HostApplication::resize_view() called with null view" << std::endl;
+            return V3_INVALID_ARG;
+        }
+
+        auto& handlers = impl->owner->resize_request_handlers;
+        auto it = handlers.find(view);
+        if (it == handlers.end()) {
+            std::cerr << "HostApplication::resize_view() handler is not set for view " << view << std::endl;
             return V3_NOT_IMPLEMENTED;
         }
 
@@ -458,7 +464,7 @@ namespace remidy_vst3 {
         uint32_t width = rect->right - rect->left;
         uint32_t height = rect->bottom - rect->top;
 
-        bool success = handler(width, height);
+        bool success = it->second(width, height);
         return success ? V3_OK : V3_NOT_IMPLEMENTED;
     }
 

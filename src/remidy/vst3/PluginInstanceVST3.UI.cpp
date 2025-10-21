@@ -33,6 +33,11 @@ namespace remidy {
 
                     created = true;
                     success = true;
+
+                    // Now that the view is created, register any pending resize handler
+                    if (host_resize_handler) {
+                        owner->owner->getHost()->setResizeRequestHandler(view, host_resize_handler);
+                    }
                 } else {
                     // Platform not supported or invalid view
                     if (view)
@@ -56,6 +61,8 @@ namespace remidy {
             }
 
             if (view) {
+                // Unregister the resize handler before destroying the view
+                owner->owner->getHost()->setResizeRequestHandler(view, nullptr);
                 view->vtable->view.removed(view);
                 view->vtable->unknown.unref(view);
                 view = nullptr;
@@ -174,6 +181,9 @@ namespace remidy {
     void PluginInstanceVST3::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
         host_resize_handler = std::move(handler);
         // Also set it on the HostApplication so it can delegate resize_view() calls
-        owner->owner->getHost()->setResizeRequestHandler(host_resize_handler);
+        // Use the view pointer as the key to identify this specific plugin instance
+        if (view) {
+            owner->owner->getHost()->setResizeRequestHandler(view, host_resize_handler);
+        }
     }
 }

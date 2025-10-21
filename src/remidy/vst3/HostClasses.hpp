@@ -589,7 +589,7 @@ namespace remidy_vst3 {
         // - IMidiLearn (FM8)
 
         remidy::Logger* logger;
-        std::function<bool(uint32_t, uint32_t)> resize_request_handler{};
+        std::unordered_map<void*, std::function<bool(uint32_t, uint32_t)>> resize_request_handlers{};
 
         static const std::basic_string<char16_t> name16t;
 
@@ -674,8 +674,11 @@ namespace remidy_vst3 {
         void startProcessing();
         void stopProcessing();
 
-        void setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
-            resize_request_handler = std::move(handler);
+        void setResizeRequestHandler(void* view, std::function<bool(uint32_t, uint32_t)> handler) {
+            if (handler)
+                resize_request_handlers[view] = std::move(handler);
+            else
+                resize_request_handlers.erase(view);
         }
 
         uint32_t ref_counter{0};

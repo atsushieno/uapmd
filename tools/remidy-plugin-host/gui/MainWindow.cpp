@@ -397,9 +397,10 @@ void MainWindow::renderInstanceControl() {
                         // Ensure parent is mapped before attaching plugin UI
                         container->show(true);
                         void* parentHandle = container->getHandle();
+                        // Set resize handler BEFORE showing UI so it's ready when the plugin tries to resize
+                        sequencer.setPluginUIResizeHandler(instanceId, [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); });
                         if (sequencer.showPluginUI(instanceId, false, parentHandle)) {
                             pluginWindowEmbedded_[instanceId] = true;
-                            sequencer.setPluginUIResizeHandler(instanceId, [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); });
                             uint32_t pw=0, ph=0;
                             if (fetchPluginUISize(instanceId, pw, ph) && pw>0 && ph>0) {
                                 pluginWindowBounds_[instanceId].width = static_cast<int>(pw);
