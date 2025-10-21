@@ -36,6 +36,7 @@ public:
         XSetWMProtocols(dpy_, wnd_, &wmDelete_, 1);
 
         // Create an inner holder window that will act as the XEmbed socket/parent
+        // We don't subscribe to input events on the holder - let the child window handle those directly
         XSetWindowAttributes hwa{};
         hwa.event_mask = StructureNotifyMask | SubstructureNotifyMask;
         hwa.backing_store = NotUseful;
@@ -181,7 +182,11 @@ private:
                         if (holder_ && ev.xmap.event == holder_) {
                             // Child mapped inside our container
                             if (!child_) child_ = ev.xmap.window;
-                            if (child_) sendXEmbed(child_, 1 /*XEMBED_WINDOW_ACTIVATE*/, 0, 0, 0);
+                            if (child_) {
+                                // Ensure child fills the holder window and is positioned at origin
+                                XMoveResizeWindow(dpy_, child_, 0, 0, (unsigned) b_.width, (unsigned) b_.height);
+                                sendXEmbed(child_, 1 /*XEMBED_WINDOW_ACTIVATE*/, 0, 0, 0);
+                            }
                         }
                         break;
                     default:
