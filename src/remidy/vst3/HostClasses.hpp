@@ -590,6 +590,7 @@ namespace remidy_vst3 {
 
         remidy::Logger* logger;
         std::unordered_map<void*, std::function<bool(uint32_t, uint32_t)>> resize_request_handlers{};
+        std::unordered_map<void*, std::function<void(v3_param_id, double)>> parameter_edit_handlers{};
 
         static const std::basic_string<char16_t> name16t;
 
@@ -679,6 +680,13 @@ namespace remidy_vst3 {
                 resize_request_handlers[view] = std::move(handler);
             else
                 resize_request_handlers.erase(view);
+        }
+
+        void setParameterEditHandler(void* controller, std::function<void(v3_param_id, double)> handler) {
+            if (handler)
+                parameter_edit_handlers[controller] = std::move(handler);
+            else
+                parameter_edit_handlers.erase(controller);
         }
 
         uint32_t ref_counter{0};

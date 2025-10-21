@@ -76,11 +76,28 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     if (controller->vtable->unknown.query_interface(controller, v3_midi_mapping_iid, (void**) &midi_mapping) != V3_OK)
         midi_mapping = nullptr; // just to make sure
 
+    // Register parameter edit handler for this plugin instance
+    owner->getHost()->setParameterEditHandler(controller, [this](v3_param_id paramId, double value) {
+        // Queue the parameter change for the next audio process call
+        auto pvc = processDataInputParameterChanges.asInterface();
+        int32_t index = 0;
+        auto queue = reinterpret_cast<IParamValueQueue*>(
+            pvc->vtable->parameter_changes.add_param_data(pvc, &paramId, &index)
+        );
+        if (queue) {
+            int32_t pointIndex = 0;
+            queue->vtable->param_value_queue.add_point(queue, 0, value, &pointIndex);
+        }
+    });
+
     // Leave the component inactive until startProcessing() explicitly activates it.
 }
 
 remidy::PluginInstanceVST3::~PluginInstanceVST3() {
     auto logger = owner->getLogger();
+
+    // Unregister parameter edit handler
+    owner->getHost()->setParameterEditHandler(controller, nullptr);
 
     auto result = processor->vtable->processor.set_processing(processor, false);
     if (result != V3_OK)
