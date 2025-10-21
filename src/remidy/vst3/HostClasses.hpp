@@ -36,7 +36,7 @@ namespace remidy_vst3 {
     vtable.unknown.ref = add_ref; \
     vtable.unknown.unref = remove_ref;
 
-    class HostAttributeList : IAttributeList {
+    class HostAttributeList : public IAttributeList {
         IAttributeListVTable impl;
 
         IMPLEMENT_FUNKNOWN_REFS(HostAttributeList)
@@ -559,7 +559,6 @@ namespace remidy_vst3 {
         //public IPlugInterfaceSupport,
         public IHostApplication
     {
-        IAttributeListVTable attribute_list_vtable{};
         IEventHandlerVTable event_handler_vtable{};
         IComponentHandlerVTable handler_vtable{};
         IComponentHandler2VTable handler2_vtable{};
@@ -570,7 +569,6 @@ namespace remidy_vst3 {
         IPlugInterfaceSupportVTable support_vtable{};
         IRunLoopVTable run_loop_vtable{};
         IHostApplicationVTable host_vtable{};
-        struct AttributeListImpl : IAttributeList { HostApplication* owner{}; };
         struct EventHandlerImpl : IEventHandler { HostApplication* owner{}; };
         struct ComponentHandlerImpl : IComponentHandler {
             HostApplication* owner{};
@@ -579,11 +577,14 @@ namespace remidy_vst3 {
             HostApplication* owner{};
         };
         struct UnitHandlerImpl : IUnitHandler { HostApplication* owner{}; };
-        struct MessageImpl : IMessage { HostApplication* owner{}; };
+        struct MessageImpl : IMessage {
+            HostApplication* owner{};
+            std::string message_id{};
+            HostAttributeList* attributes{nullptr};
+        };
         struct PlugFrameImpl : IPlugFrame { HostApplication* owner{}; };
         struct PlugInterfaceSupportImpl : IPlugInterfaceSupport { HostApplication* owner{}; };
         struct RunLoopImpl : IRunLoop { HostApplication* owner{}; };
-        AttributeListImpl attribute_list{};
         EventHandlerImpl event_handler{};
         ComponentHandlerImpl handler{};
         ComponentHandler2Impl handler2{};
@@ -625,19 +626,6 @@ namespace remidy_vst3 {
         static uint32_t remove_ref(void *self);
         static v3_result create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj);
         static v3_result get_name(void *self, v3_str_128 name);
-
-        static v3_result set_int(void *self, const char* id, int64_t value);
-        static v3_result get_int(void *self, const char* id, int64_t* value);
-        static v3_result set_float(void *self, const char* id, double value);
-        static v3_result get_float(void *self, const char* id, double* value);
-        static v3_result set_string(void *self, const char* id, const int16_t* value);
-        static v3_result get_string(void *self, const char* id, int16_t* value, uint32_t sizeInBytes);
-        static v3_result set_binary(void *self, const char* id, const void* data, uint32_t sizeInBytes);
-        static v3_result get_binary(void *self, const char* id, const void** data, uint32_t *sizeInBytes);
-
-        static v3_result attribute_list_query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t attribute_list_add_ref(void *self);
-        static uint32_t attribute_list_remove_ref(void *self);
 
         static v3_result event_handler_query_interface(void *self, const v3_tuid iid, void **obj);
         static uint32_t event_handler_add_ref(void *self);

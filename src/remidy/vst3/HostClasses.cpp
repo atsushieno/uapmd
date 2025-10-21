@@ -1,5 +1,4 @@
 #include <iostream>
-#include <sys/select.h>
 
 #include "HostClasses.hpp"
 #include "../utils.hpp"
@@ -25,20 +24,6 @@ namespace remidy_vst3 {
         host_vtable.application.create_instance = create_instance;
         host_vtable.application.get_name = get_name;
         vtable = &host_vtable;
-
-        attribute_list.owner = this;
-        attribute_list_vtable.unknown.query_interface = attribute_list_query_interface;
-        attribute_list_vtable.unknown.ref = attribute_list_add_ref;
-        attribute_list_vtable.unknown.unref = attribute_list_remove_ref;
-        attribute_list_vtable.attribute_list.set_int = set_int;
-        attribute_list_vtable.attribute_list.get_int = get_int;
-        attribute_list_vtable.attribute_list.set_float = set_float;
-        attribute_list_vtable.attribute_list.get_float = get_float;
-        attribute_list_vtable.attribute_list.set_string = set_string;
-        attribute_list_vtable.attribute_list.get_string = get_string;
-        attribute_list_vtable.attribute_list.set_binary = set_binary;
-        attribute_list_vtable.attribute_list.get_binary = get_binary;
-        attribute_list.vtable = &attribute_list_vtable;
 
         event_handler.owner = this;
         event_handler_vtable.unknown.query_interface = event_handler_query_interface;
@@ -107,7 +92,13 @@ namespace remidy_vst3 {
         run_loop.vtable = &run_loop_vtable;
     }
 
-    HostApplication::~HostApplication() = default;
+    HostApplication::~HostApplication() {
+        // Clean up HostAttributeList if it was created
+        if (message.attributes) {
+            delete message.attributes;
+            message.attributes = nullptr;
+        }
+    }
 
     void HostApplication::startProcessing() {
         parameter_changes.startProcessing();
@@ -182,77 +173,6 @@ namespace remidy_vst3 {
         return V3_OK;
     }
 
-    // IAttributeList
-    v3_result HostApplication::set_int(void *self, const char *id, int64_t value) {
-        // FIXME: implement
-        std::cerr << "HostApplication::set_int(" << id << "," << value << ") is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::get_int(void *self, const char *id, int64_t *value) {
-        // FIXME: implement
-        std::cerr << "HostApplication::get_int(" << id << ", ..) is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::set_float(void *self, const char *id, double value) {
-        // FIXME: implement
-        std::cerr << "HostApplication::set_float(" << id << "," << value << ") is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::get_float(void *self, const char *id, double *value) {
-        // FIXME: implement
-        std::cerr << "HostApplication::get_float(" << id << ", ..) is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::set_string(void *self, const char *id, const int16_t *value) {
-        // FIXME: implement
-        std::cerr << "HostApplication::set_string(" << id << "," << value << ") is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::get_string(void *self, const char *id, int16_t *value, uint32_t sizeInBytes) {
-        // FIXME: implement
-        std::cerr << "HostApplication::get_string(" << id << ", ..) is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::set_binary(void *self, const char *id, const void *data, uint32_t sizeInBytes) {
-        // FIXME: implement
-        std::cerr << "HostApplication::set_binary(" << id << ", ..) is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::get_binary(void *self, const char *id, const void **data, uint32_t *sizeInBytes) {
-        // FIXME: implement
-        std::cerr << "HostApplication::get_binary(" << id << ", ..) is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::attribute_list_query_interface(void *self, const v3_tuid iid, void **obj) {
-        auto impl = static_cast<AttributeListImpl*>(self);
-        if (v3_tuid_match(iid, v3_attribute_list_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
-            attribute_list_add_ref(self);
-            *obj = self;
-            return V3_OK;
-        }
-        if (impl->owner)
-            return impl->owner->queryInterface(iid, obj);
-        *obj = nullptr;
-        return V3_NO_INTERFACE;
-    }
-
-    uint32_t HostApplication::attribute_list_add_ref(void *self) {
-        auto impl = static_cast<AttributeListImpl*>(self);
-        return impl->owner ? add_ref(impl->owner) : 0;
-    }
-
-    uint32_t HostApplication::attribute_list_remove_ref(void *self) {
-        auto impl = static_cast<AttributeListImpl*>(self);
-        return impl->owner ? remove_ref(impl->owner) : 0;
-    }
 
     v3_result HostApplication::event_handler_query_interface(void *self, const v3_tuid iid, void **obj) {
         auto impl = static_cast<EventHandlerImpl*>(self);
@@ -454,22 +374,21 @@ namespace remidy_vst3 {
     }
 
     const char * HostApplication::get_message_id(void *self) {
-        // FIXME: implement
         auto impl = static_cast<MessageImpl*>(self);
-        std::cerr << "HostApplication::get_message_id() is not implemented" << std::endl;
-        return nullptr;
+        return impl->message_id.empty() ? nullptr : impl->message_id.c_str();
     }
 
     void HostApplication::set_message_id(void *self, const char *id) {
-        // FIXME: implement
         auto impl = static_cast<MessageImpl*>(self);
-        (void) impl;
-        std::cerr << "HostApplication::set_message_id() is not implemented" << std::endl;
+        impl->message_id = id ? id : "";
     }
 
     IAttributeList * HostApplication::get_attributes(void *self) {
         auto impl = static_cast<MessageImpl*>(self);
-        return impl->owner ? static_cast<IAttributeList*>(&impl->owner->attribute_list) : nullptr;
+        if (!impl->attributes) {
+            impl->attributes = new HostAttributeList();
+        }
+        return static_cast<IAttributeList*>(impl->attributes);
     }
 
     v3_result HostApplication::plug_frame_query_interface(void *self, const v3_tuid iid, void **obj) {
