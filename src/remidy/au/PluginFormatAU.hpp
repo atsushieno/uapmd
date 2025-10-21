@@ -117,6 +117,17 @@ namespace remidy {
             bool suggestSize(uint32_t &width, uint32_t &height) override;
             bool setScale(double scale) override;
             void setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) override;
+        private:
+            PluginInstanceAU* owner;
+            void* ns_view{nullptr};            // NSView*
+            void* ns_window{nullptr};          // NSWindow* - only for floating windows
+            void* ns_bundle{nullptr};          // NSBundle* - for AUv2 cleanup
+            void* ns_view_controller{nullptr}; // NSViewController* - for AUv3
+            bool created{false};
+            bool visible{false};
+            bool attached{false};
+            bool is_floating{false};
+            std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
         };
 
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
@@ -191,7 +202,7 @@ namespace remidy {
         }
 
         PluginUISupport* ui() override {
-            if (_ui) _ui = new UISupport(this);
+            if (!_ui) _ui = new UISupport(this);
             return _ui;
         }
 
