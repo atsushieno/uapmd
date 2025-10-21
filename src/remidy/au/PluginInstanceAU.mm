@@ -2,7 +2,7 @@
 
 #include "PluginFormatAU.hpp"
 
-remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(
+remidy::PluginInstanceAU::PluginInstanceAU(
         PluginFormatAU *format,
         PluginFormat::PluginInstantiationOptions options,
         Logger* logger,
@@ -15,7 +15,7 @@ remidy::AudioPluginInstanceAU::AudioPluginInstanceAU(
     audio_buses = new AudioBuses(this);
 }
 
-remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
+remidy::PluginInstanceAU::~PluginInstanceAU() {
     if (options.uiThreadRequirement & PluginUIThreadRequirement::InstanceControl)
         EventLoop::runTaskOnMainThread([&] {
             AudioComponentInstanceDispose(instance);
@@ -33,7 +33,7 @@ remidy::AudioPluginInstanceAU::~AudioPluginInstanceAU() {
         free(auDataOut);
 }
 
-OSStatus remidy::AudioPluginInstanceAU::audioInputRenderCallback(
+OSStatus remidy::PluginInstanceAU::audioInputRenderCallback(
         AudioUnitRenderActionFlags *ioActionFlags,
         const AudioTimeStamp *inTimeStamp,
         UInt32 inBusNumber,
@@ -48,19 +48,19 @@ OSStatus remidy::AudioPluginInstanceAU::audioInputRenderCallback(
     return noErr;
 }
 
-OSStatus remidy::AudioPluginInstanceAU::midiOutputCallback(const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist) {
+OSStatus remidy::PluginInstanceAU::midiOutputCallback(const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist) {
     // FIXME: implement
-    std::cerr << "remidy::AudioPluginInstanceAU::midiOutputCallback() not implemented." << std::endl;
+    std::cerr << "remidy::PluginInstanceAU::midiOutputCallback() not implemented." << std::endl;
     return noErr;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest& configuration) {
+remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& configuration) {
     OSStatus result;
     UInt32 size; // unused field for AudioUnitGetProperty
 
     result = AudioUnitReset(instance, kAudioUnitScope_Global, 0);
     if (result) {
-        logger()->logError("%s AudioPluginInstanceAU::configure failed to reset instance!?: OSStatus %d", name.c_str(), result);
+        logger()->logError("%s PluginInstanceAU::configure failed to reset instance!?: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
@@ -75,13 +75,13 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     // it could be an invalid property. maybe just ignore that.
     result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &configuration.offlineMode, sizeof(bool));
     if (result != noErr) {
-        logger()->logWarning("%s: configure() on AudioPluginInstanceAU failed to set offlineMode. Status: %d", name.c_str(), result);
+        logger()->logWarning("%s: configure() on PluginInstanceAU failed to set offlineMode. Status: %d", name.c_str(), result);
     }
 
     UInt32 frameSize = (UInt32) configuration.bufferSizeInSamples;
     result = AudioUnitSetProperty(instance, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &frameSize, sizeof (frameSize));
     if (result) {
-        logger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_MaximumFramesPerSlice: OSStatus %d", name.c_str(), result);
+        logger()->logError("%s: PluginInstanceAU::configure failed to set kAudioUnitProperty_MaximumFramesPerSlice: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
@@ -91,7 +91,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
         audio_render_callback.inputProcRefCon = this;
         result = AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &audio_render_callback, sizeof(audio_render_callback));
         if (result) {
-            logger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_SetRenderCallback: OSStatus %d", name.c_str(), result);
+            logger()->logError("%s: PluginInstanceAU::configure failed to set kAudioUnitProperty_SetRenderCallback: OSStatus %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
     }
@@ -103,7 +103,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
         callback.userData = this;
         result = AudioUnitSetProperty (instance, kAudioUnitProperty_MIDIOutputCallback, kAudioUnitScope_Global, 0, &callback, sizeof (callback));
         if (result) {
-            logger()->logError("%s: AudioPluginInstanceAU::configure failed to set kAudioUnitProperty_MIDIOutputCallback: OSStatus %d", name.c_str(), result);
+            logger()->logError("%s: PluginInstanceAU::configure failed to set kAudioUnitProperty_MIDIOutputCallback: OSStatus %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
     }
@@ -129,23 +129,23 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::configure(ConfigurationRequest
     // Once everything is set, initialize the instance here.
     result = AudioUnitInitialize(instance);
     if (result) {
-        logger()->logError("%s: AudioPluginInstanceAU::configure failed to initialize AudioUnit: OSStatus %d", name.c_str(), result);
+        logger()->logError("%s: PluginInstanceAU::configure failed to initialize AudioUnit: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::startProcessing() {
+remidy::StatusCode remidy::PluginInstanceAU::startProcessing() {
     process_timestamp.mSampleTime = 0;
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::stopProcessing() {
+remidy::StatusCode remidy::PluginInstanceAU::stopProcessing() {
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &process) {
+remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &process) {
 
     // It seems the AudioUnit framework resets this information every time...
 
@@ -196,7 +196,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
         //  JUCE refuses to have different sizes of auDataOut[*].mBuffers[*].mDataByteSize vs. process.frameCount().
         auto status = AudioUnitRender(instance, &flags, &process_timestamp, 0, process.frameCount(), auDataOut);
         if (status != noErr) {
-            logger()->logError("%s: failed to process audio AudioPluginInstanceAU::process(). Status: %d", name.c_str(), status);
+            logger()->logError("%s: failed to process audio PluginInstanceAU::process(). Status: %d", name.c_str(), status);
             return StatusCode::FAILED_TO_PROCESS;
         }
     }
@@ -207,7 +207,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::process(AudioProcessContext &p
 
 // AudioPluginInstanceAUv2
 
-remidy::StatusCode remidy::AudioPluginInstanceAUv2::sampleRate(double sampleRate) {
+remidy::StatusCode remidy::PluginInstanceAUv2::sampleRate(double sampleRate) {
     UInt32* data;
     UInt32 size;
 
@@ -230,7 +230,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAUv2::sampleRate(double sampleRate
 
 // AudioPluginInstanceAUv3
 
-remidy::StatusCode remidy::AudioPluginInstanceAUv3::sampleRate(double sampleRate) {
+remidy::StatusCode remidy::PluginInstanceAUv3::sampleRate(double sampleRate) {
     // FIXME: implement
     logger()->logWarning("AudioPluginInstanceAUv3::sampleRate() not implemented");
     return StatusCode::OK;

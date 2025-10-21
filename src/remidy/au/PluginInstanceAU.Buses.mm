@@ -2,7 +2,7 @@
 
 #include "PluginFormatAU.hpp"
 
-void remidy::AudioPluginInstanceAU::AudioBuses::inspectBuses() {
+void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
     auto component = owner->component;
     auto instance = owner->instance;
     auto logger = owner->logger();
@@ -83,7 +83,7 @@ void remidy::AudioPluginInstanceAU::AudioBuses::inspectBuses() {
     busesInfo = ret;
 }
 
-remidy::StatusCode remidy::AudioPluginInstanceAU::AudioBuses::configure(ConfigurationRequest& configuration) {
+remidy::StatusCode remidy::PluginInstanceAU::AudioBuses::configure(ConfigurationRequest& configuration) {
     auto& component = owner->component;
     auto& instance = owner->instance;
     auto logger = owner->logger();
@@ -110,7 +110,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::AudioBuses::configure(Configur
             result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i,
                                           &stream, sizeof(AudioStreamBasicDescription));
             if (result) {
-                logger->logError("%s AudioPluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
+                logger->logError("%s PluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
                 return StatusCode::FAILED_TO_CONFIGURE;
             }
         }
@@ -144,7 +144,7 @@ remidy::StatusCode remidy::AudioPluginInstanceAU::AudioBuses::configure(Configur
             result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i,
                                           &stream, sizeof(AudioStreamBasicDescription));
             if (result) {
-                logger->logError("%s: AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
+                logger->logError("%s: PluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
                 return StatusCode::FAILED_TO_CONFIGURE;
             }
         }

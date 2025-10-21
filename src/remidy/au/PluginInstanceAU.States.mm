@@ -1,7 +1,7 @@
 #include "PluginFormatAU.hpp"
 
-std::vector<uint8_t> remidy::AudioPluginInstanceAU::PluginStatesAU::getState(remidy::PluginStateSupport::StateContextType stateContextType,
-                                                             bool includeUiState) {
+std::vector<uint8_t> remidy::PluginInstanceAU::PluginStatesAU::getState(remidy::PluginStateSupport::StateContextType stateContextType,
+                                                                        bool includeUiState) {
     CFPropertyListRef dict;
     UInt32 size;
     AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &dict, &size);
@@ -15,9 +15,9 @@ std::vector<uint8_t> remidy::AudioPluginInstanceAU::PluginStatesAU::getState(rem
     return ret;
 }
 
-void remidy::AudioPluginInstanceAU::PluginStatesAU::setState(std::vector<uint8_t> &state,
-                                                             remidy::PluginStateSupport::StateContextType stateContextType,
-                                                             bool includeUiState) {
+void remidy::PluginInstanceAU::PluginStatesAU::setState(std::vector<uint8_t> &state,
+                                                        remidy::PluginStateSupport::StateContextType stateContextType,
+                                                        bool includeUiState) {
     CFReadStreamRef stream = CFReadStreamCreateWithBytesNoCopy(nullptr, state.data(), state.size(), nullptr);
     CFErrorRef error;
     CFPropertyListFormat propertyListFormat[]{kCFPropertyListBinaryFormat_v1_0};

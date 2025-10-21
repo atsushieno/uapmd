@@ -112,10 +112,10 @@ void remidy::PluginFormatAU::createInstance(
             auto logger = Logger::global();
 
             if (v3) {
-                auto au = std::make_unique<AudioPluginInstanceAUv3>(this, options, logger, info, component, instance);
+                auto au = std::make_unique<PluginInstanceAUv3>(this, options, logger, info, component, instance);
                 cb(std::move(au), "");
             } else {
-                auto au = std::make_unique<AudioPluginInstanceAUv2>(this, options, logger, info, component, instance);
+                auto au = std::make_unique<PluginInstanceAUv2>(this, options, logger, info, component, instance);
                 cb(std::move(au), "");
             }
         }
