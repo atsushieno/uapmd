@@ -565,10 +565,16 @@ namespace remidy_vst3 {
             return V3_INVALID_ARG;
 
         std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
-        for (auto& event_info : owner->event_handlers) {
-            if (event_info->handler == handler) {
-                event_info->active.store(false);
+        auto it = owner->event_handlers.begin();
+        while (it != owner->event_handlers.end()) {
+            if ((*it)->handler == handler) {
+                (*it)->active.store(false);
+                // Remove from vector - the shared_ptr will keep event_info alive
+                // until background thread completes its final iteration
+                it = owner->event_handlers.erase(it);
                 return V3_OK;
+            } else {
+                ++it;
             }
         }
 
@@ -627,10 +633,16 @@ namespace remidy_vst3 {
             return V3_INVALID_ARG;
 
         std::lock_guard<std::mutex> lock(owner->timers_mutex);
-        for (auto& timer : owner->timers) {
-            if (timer->handler == handler) {
-                timer->active.store(false);
+        auto it = owner->timers.begin();
+        while (it != owner->timers.end()) {
+            if ((*it)->handler == handler) {
+                (*it)->active.store(false);
+                // Remove from vector - the shared_ptr will keep timer_info alive
+                // until background thread completes its final iteration
+                it = owner->timers.erase(it);
                 return V3_OK;
+            } else {
+                ++it;
             }
         }
 
