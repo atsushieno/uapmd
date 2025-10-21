@@ -22,8 +22,15 @@ namespace remidy {
             if (result) {
                 view = reinterpret_cast<IPlugView*>(result);
                 if (view && view->vtable->view.is_platform_type_supported(view, V3_VIEW_PLATFORM_TYPE_NATIVE) == V3_OK) {
-                    // Set up IPlugFrame
-                    view->vtable->view.set_frame(view, reinterpret_cast<v3_plugin_frame**>(owner->owner->getHost()->getPlugFrame()));
+                    // Register a placeholder resize handler IMMEDIATELY so it's available during set_frame()
+                    // This will be replaced when setResizeRequestHandler() is called later
+                    owner->owner->getHost()->setResizeRequestHandler(view, [](uint32_t, uint32_t) {
+                        return true;  // Accept the resize for now
+                    });
+
+                    // Set up IPlugFrame - plugin may call resize_view() during this
+                    auto frame = reinterpret_cast<v3_plugin_frame**>(owner->owner->getHost()->getPlugFrame());
+                    view->vtable->view.set_frame(view, frame);
 
                     // Try to get scaling support (optional)
                     void* scale_ptr = nullptr;
@@ -33,11 +40,6 @@ namespace remidy {
 
                     created = true;
                     success = true;
-
-                    // Now that the view is created, register any pending resize handler
-                    if (host_resize_handler) {
-                        owner->owner->getHost()->setResizeRequestHandler(view, host_resize_handler);
-                    }
                 } else {
                     // Platform not supported or invalid view
                     if (view)
@@ -151,7 +153,8 @@ namespace remidy {
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
             v3_view_rect rect{0, 0, static_cast<int32_t>(width), static_cast<int32_t>(height)};
-            success = view->vtable->view.on_size(view, &rect) == V3_OK;
+            auto result = view->vtable->view.on_size(view, &rect);
+            success = result == V3_OK;
         });
 
         return success;
