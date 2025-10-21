@@ -87,8 +87,9 @@ namespace remidy {
                                 if (viewClass) {
                                     // Create factory instance and get the view
                                     id<AUCocoaUIBase> factory = [[viewClass alloc] init];
-                                    NSSize size = NSMakeSize(400, 300); // Default size
-                                    view = [factory uiViewForAudioUnit:au withSize:size];
+                                    // Pass a large size hint - the plugin will use its preferred size
+                                    NSSize sizeHint = NSMakeSize(800, 600);
+                                    view = [factory uiViewForAudioUnit:au withSize:sizeHint];
                                 }
                             }
                         }
@@ -109,16 +110,17 @@ namespace remidy {
 
                     // If floating, create a window
                     if (is_floating) {
+                        // Get the view's preferred size (as set by the plugin)
                         NSRect viewFrame = [view frame];
+                        NSSize viewSize = viewFrame.size;
 
-                        // Ensure we have a reasonable size
-                        if (viewFrame.size.width <= 0 || viewFrame.size.height <= 0) {
-                            viewFrame.size.width = 400;
-                            viewFrame.size.height = 300;
-                            [view setFrame:viewFrame];
+                        // If view has no size set, use a reasonable default
+                        if (viewSize.width <= 0 || viewSize.height <= 0) {
+                            viewSize.width = 400;
+                            viewSize.height = 300;
                         }
 
-                        NSRect windowRect = NSMakeRect(100, 100, viewFrame.size.width, viewFrame.size.height);
+                        NSRect windowRect = NSMakeRect(100, 100, viewSize.width, viewSize.height);
 
                         NSWindow* window = [[NSWindow alloc] initWithContentRect:windowRect
                             styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
@@ -265,8 +267,9 @@ namespace remidy {
                 // Add as subview to the parent
                 [parentView addSubview:view];
 
-                // Set frame to match parent bounds
-                [view setFrame:[parentView bounds]];
+                // Keep the view's preferred size - don't force it to match parent
+                // The host will query getSize() and resize the parent to match
+                // Set autoresizing to allow the view to resize with the parent later
                 [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 
                 success = true;
@@ -295,20 +298,22 @@ namespace remidy {
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
             @autoreleasepool {
-                NSRect frame;
+                NSSize size;
 
                 if (is_floating && ns_window) {
                     NSWindow* window = (__bridge NSWindow*)ns_window;
-                    frame = [window frame];
+                    // Get content size, not frame size (frame includes title bar)
+                    NSRect contentRect = [window contentRectForFrameRect:[window frame]];
+                    size = contentRect.size;
                 } else if (ns_view) {
                     NSView* view = (__bridge NSView*)ns_view;
-                    frame = [view frame];
+                    size = [view frame].size;
                 } else {
                     return;
                 }
 
-                width = (uint32_t)frame.size.width;
-                height = (uint32_t)frame.size.height;
+                width = (uint32_t)size.width;
+                height = (uint32_t)size.height;
                 success = true;
             }
         });
@@ -325,10 +330,9 @@ namespace remidy {
             @autoreleasepool {
                 if (is_floating && ns_window) {
                     NSWindow* window = (__bridge NSWindow*)ns_window;
-                    NSRect frame = [window frame];
-                    frame.size.width = width;
-                    frame.size.height = height;
-                    [window setFrame:frame display:YES animate:NO];
+                    // Set content size, not frame size (frame includes title bar)
+                    NSSize contentSize = NSMakeSize(width, height);
+                    [window setContentSize:contentSize];
                     success = true;
                 } else if (ns_view) {
                     NSView* view = (__bridge NSView*)ns_view;

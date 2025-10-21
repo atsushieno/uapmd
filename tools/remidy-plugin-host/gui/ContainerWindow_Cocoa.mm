@@ -65,9 +65,16 @@ public:
     void setBounds(const Bounds& b) override {
         @autoreleasepool {
             if (!window_) return; b_ = b;
+            // Set content size, not frame size (frame includes title bar)
+            // First set the content size
+            NSSize contentSize = NSMakeSize(b.width, b.height);
+            [window_ setContentSize:contentSize];
+
+            // Then set the position (top-left of frame)
             NSRect frame = [window_ frame];
-            frame.origin.x = b.x; frame.origin.y = b.y; frame.size.width = b.width; frame.size.height = b.height;
-            [window_ setFrame:frame display:YES];
+            frame.origin.x = b.x;
+            frame.origin.y = b.y;
+            [window_ setFrameOrigin:frame.origin];
         }
     }
     Bounds getBounds() const override { return b_; }
