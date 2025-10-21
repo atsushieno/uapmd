@@ -8,6 +8,11 @@
 #include <unordered_map>
 #include <vector>
 #include <format>
+#include <atomic>
+#include <mutex>
+#include <memory>
+#include <thread>
+#include <chrono>
 
 #if defined(_MSC_VER)
 #define min(v1, v2) (v1 < v2 ? v1 : v2)
@@ -563,6 +568,7 @@ namespace remidy_vst3 {
         IParamValueQueueVTable param_value_queue_table{};
         IPlugFrameVTable plug_frame_vtable{};
         IPlugInterfaceSupportVTable support_vtable{};
+        IRunLoopVTable run_loop_vtable{};
         IHostApplicationVTable host_vtable{};
         struct AttributeListImpl : IAttributeList { HostApplication* owner{}; };
         struct EventHandlerImpl : IEventHandler { HostApplication* owner{}; };
@@ -576,6 +582,7 @@ namespace remidy_vst3 {
         struct MessageImpl : IMessage { HostApplication* owner{}; };
         struct PlugFrameImpl : IPlugFrame { HostApplication* owner{}; };
         struct PlugInterfaceSupportImpl : IPlugInterfaceSupport { HostApplication* owner{}; };
+        struct RunLoopImpl : IRunLoop { HostApplication* owner{}; };
         AttributeListImpl attribute_list{};
         EventHandlerImpl event_handler{};
         ComponentHandlerImpl handler{};
@@ -584,6 +591,7 @@ namespace remidy_vst3 {
         MessageImpl message{};
         PlugFrameImpl plug_frame{};
         PlugInterfaceSupportImpl support{};
+        RunLoopImpl run_loop{};
         HostParameterChanges parameter_changes{};
         // FIXME: there are plugins that require the following components as well:
         // - IMidiLearn (FM8)
@@ -591,6 +599,24 @@ namespace remidy_vst3 {
         remidy::Logger* logger;
         std::unordered_map<void*, std::function<bool(uint32_t, uint32_t)>> resize_request_handlers{};
         std::unordered_map<void*, std::function<void(v3_param_id, double)>> parameter_edit_handlers{};
+
+        // IRunLoop timer management
+        struct TimerInfo {
+            v3_timer_handler** handler;
+            uint64_t interval_ms;
+            std::atomic<bool> active{true};
+        };
+        std::vector<std::shared_ptr<TimerInfo>> timers{};
+        std::mutex timers_mutex{};
+
+        // IRunLoop event handler management
+        struct EventHandlerInfo {
+            v3_event_handler** handler;
+            int fd;
+            std::atomic<bool> active{true};
+        };
+        std::vector<std::shared_ptr<EventHandlerInfo>> event_handlers{};
+        std::mutex event_handlers_mutex{};
 
         static const std::basic_string<char16_t> name16t;
 
@@ -660,6 +686,14 @@ namespace remidy_vst3 {
 
         static v3_result is_plug_interface_supported(void* self, const v3_tuid iid);
 
+        static v3_result run_loop_query_interface(void *self, const v3_tuid iid, void **obj);
+        static uint32_t run_loop_add_ref(void *self);
+        static uint32_t run_loop_remove_ref(void *self);
+        static v3_result register_event_handler(void *self, v3_event_handler **handler, int fd);
+        static v3_result unregister_event_handler(void *self, v3_event_handler **handler);
+        static v3_result register_timer(void *self, v3_timer_handler **handler, uint64_t ms);
+        static v3_result unregister_timer(void *self, v3_timer_handler **handler);
+
     public:
         explicit HostApplication(remidy::Logger* logger);
         ~HostApplication();
@@ -670,6 +704,7 @@ namespace remidy_vst3 {
         inline IComponentHandler2* getComponentHandler2() { return &handler2; }
         inline IUnitHandler* getUnitHandler() { return &unit_handler; }
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return &support; }
+        inline IRunLoop* getRunLoop() { return &run_loop; }
         inline IPlugFrame* getPlugFrame() { return &plug_frame; }
 
         void startProcessing();

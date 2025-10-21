@@ -1,7 +1,9 @@
 #include <iostream>
+#include <sys/select.h>
 
 #include "HostClasses.hpp"
 #include "../utils.hpp"
+#include <priv/event-loop.hpp>
 
 namespace remidy_vst3 {
 
@@ -93,6 +95,16 @@ namespace remidy_vst3 {
         support_vtable.unknown.unref = plug_interface_support_remove_ref;
         support_vtable.support.is_plug_interface_supported = is_plug_interface_supported;
         support.vtable = &support_vtable;
+
+        run_loop.owner = this;
+        run_loop_vtable.unknown.query_interface = run_loop_query_interface;
+        run_loop_vtable.unknown.ref = run_loop_add_ref;
+        run_loop_vtable.unknown.unref = run_loop_remove_ref;
+        run_loop_vtable.loop.register_event_handler = register_event_handler;
+        run_loop_vtable.loop.unregister_event_handler = unregister_event_handler;
+        run_loop_vtable.loop.register_timer = register_timer;
+        run_loop_vtable.loop.unregister_timer = unregister_timer;
+        run_loop.vtable = &run_loop_vtable;
     }
 
     HostApplication::~HostApplication() = default;
@@ -131,6 +143,7 @@ namespace remidy_vst3 {
         QUERY_HOST_INTERFACE(v3_plugin_frame_iid, plug_frame)
         QUERY_HOST_INTERFACE(v3_unit_handler_iid, unit_handler)
         QUERY_HOST_INTERFACE(v3_plug_interface_support_iid, support)
+        QUERY_HOST_INTERFACE(v3_run_loop_iid, run_loop)
 
         if (v3_tuid_match(iid,v3_param_changes_iid)) {
             auto iface = parameter_changes.asInterface();
@@ -543,7 +556,165 @@ namespace remidy_vst3 {
             v3_tuid_match(iid, v3_param_changes_iid) ||
             v3_tuid_match(iid, v3_plugin_frame_iid) ||
             v3_tuid_match(iid, v3_plug_interface_support_iid) ||
+            v3_tuid_match(iid, v3_run_loop_iid) ||
             v3_tuid_match(iid, v3_host_application_iid) ?
             V3_TRUE : V3_FALSE;
+    }
+
+    // IRunLoop implementation (stub)
+    v3_result HostApplication::run_loop_query_interface(void *self, const v3_tuid iid, void **obj) {
+        auto impl = static_cast<RunLoopImpl*>(self);
+        if (v3_tuid_match(iid, v3_run_loop_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
+            run_loop_add_ref(self);
+            *obj = self;
+            return V3_OK;
+        }
+        if (impl->owner)
+            return impl->owner->queryInterface(iid, obj);
+        *obj = nullptr;
+        return V3_NO_INTERFACE;
+    }
+
+    uint32_t HostApplication::run_loop_add_ref(void *self) {
+        auto impl = static_cast<RunLoopImpl*>(self);
+        return impl->owner ? add_ref(impl->owner) : 0;
+    }
+
+    uint32_t HostApplication::run_loop_remove_ref(void *self) {
+        auto impl = static_cast<RunLoopImpl*>(self);
+        return impl->owner ? remove_ref(impl->owner) : 0;
+    }
+
+    v3_result HostApplication::register_event_handler(void *self, v3_event_handler **handler, int fd) {
+        auto impl = static_cast<RunLoopImpl*>(self);
+        auto owner = impl->owner;
+
+        if (!handler || fd < 0)
+            return V3_INVALID_ARG;
+
+        // Create event handler info
+        auto event_info = std::make_shared<EventHandlerInfo>();
+        event_info->handler = handler;
+        event_info->fd = fd;
+
+        {
+            std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
+            owner->event_handlers.push_back(event_info);
+        }
+
+        // Start a background thread to monitor this file descriptor
+        std::thread monitor_thread([event_info]() {
+            fd_set readfds;
+            struct timeval tv;
+
+            while (event_info->active.load()) {
+                FD_ZERO(&readfds);
+                FD_SET(event_info->fd, &readfds);
+
+                // Timeout for select so we can check active flag periodically
+                tv.tv_sec = 0;
+                tv.tv_usec = 100000;  // 100ms
+
+                int result = select(event_info->fd + 1, &readfds, nullptr, nullptr, &tv);
+
+                if (result > 0 && FD_ISSET(event_info->fd, &readfds)) {
+                    // File descriptor has data available
+                    remidy::EventLoop::enqueueTaskOnMainThread([event_info]() {
+                        if (!event_info->active.load()) return;
+
+                        auto handler = event_info->handler;
+                        if (!handler) return;
+
+                        auto event_handler = (IEventHandler*) handler;
+                        if (event_handler->vtable->event_handler.on_fd_is_set) {
+                            event_handler->vtable->event_handler.on_fd_is_set(event_handler, event_info->fd);
+                        }
+                    });
+                }
+            }
+        });
+        monitor_thread.detach();
+
+        return V3_OK;
+    }
+
+    v3_result HostApplication::unregister_event_handler(void *self, v3_event_handler **handler) {
+        auto impl = static_cast<RunLoopImpl*>(self);
+        auto owner = impl->owner;
+
+        if (!handler)
+            return V3_INVALID_ARG;
+
+        std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
+        for (auto& event_info : owner->event_handlers) {
+            if (event_info->handler == handler) {
+                event_info->active.store(false);
+                return V3_OK;
+            }
+        }
+
+        return V3_INVALID_ARG;  // Handler not found
+    }
+
+    v3_result HostApplication::register_timer(void *self, v3_timer_handler **handler, uint64_t ms) {
+        auto impl = static_cast<RunLoopImpl*>(self);
+        auto owner = impl->owner;
+
+        if (!handler || !*handler || ms == 0)
+            return V3_INVALID_ARG;
+
+        // Create timer info
+        auto timer_info = std::make_shared<TimerInfo>();
+        timer_info->handler = handler;
+        timer_info->interval_ms = ms;
+
+        {
+            std::lock_guard<std::mutex> lock(owner->timers_mutex);
+            owner->timers.push_back(timer_info);
+        }
+
+        // Start a background thread for this timer
+        std::thread timer_thread([timer_info]() {
+            while (timer_info->active.load()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(timer_info->interval_ms));
+
+                if (!timer_info->active.load()) break;
+
+                // Call the timer callback on the main thread
+                remidy::EventLoop::enqueueTaskOnMainThread([timer_info]() {
+                    if (!timer_info->active.load()) return;
+
+                    auto handler = timer_info->handler;
+                    if (!handler || !*handler) return;
+
+                    auto timer_handler = (ITimerHandler*) handler;
+                    if (timer_handler->vtable->timer.on_timer) {
+                        // Pass *handler (the v3_timer_handler*) as self, following the C API pattern
+                        timer_handler->vtable->timer.on_timer(timer_handler);
+                    }
+                });
+            }
+        });
+        timer_thread.detach();
+
+        return V3_OK;
+    }
+
+    v3_result HostApplication::unregister_timer(void *self, v3_timer_handler **handler) {
+        auto impl = static_cast<RunLoopImpl*>(self);
+        auto owner = impl->owner;
+
+        if (!handler)
+            return V3_INVALID_ARG;
+
+        std::lock_guard<std::mutex> lock(owner->timers_mutex);
+        for (auto& timer : owner->timers) {
+            if (timer->handler == handler) {
+                timer->active.store(false);
+                return V3_OK;
+            }
+        }
+
+        return V3_INVALID_ARG;  // Handler not found
     }
 }
