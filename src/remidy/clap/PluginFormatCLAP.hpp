@@ -291,6 +291,7 @@ namespace remidy {
             bool created{false};
             bool visible{false};
             bool is_floating{true};
+            bool attached{false};
             std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
 
             bool ensureGuiExtension();

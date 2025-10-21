@@ -3,6 +3,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <string>
+#include <functional>
 
 namespace uapmd::gui {
 
@@ -21,11 +22,16 @@ public:
         }
         hwnd_ = CreateWindowExW(0, kClassName, wtitle.c_str(), WS_OVERLAPPEDWINDOW,
                                 CW_USEDEFAULT, CW_USEDEFAULT, w, h, nullptr, nullptr,
-                                GetModuleHandleW(nullptr), nullptr);
+                                GetModuleHandleW(nullptr), this);
+        // Store 'this' pointer for window proc
+        SetWindowLongPtrW(hwnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
         b_.width = w; b_.height = h;
     }
     ~Win32ContainerWindow() override {
-        if (hwnd_) DestroyWindow(hwnd_);
+        if (hwnd_) {
+            SetWindowLongPtrW(hwnd_, GWLP_USERDATA, 0);
+            DestroyWindow(hwnd_);
+        }
     }
     void show(bool visible) override {
         if (!hwnd_) return;
@@ -52,14 +58,34 @@ public:
     }
     Bounds getBounds() const override { return b_; }
     void* getHandle() const override { return hwnd_; }
+    void setCloseCallback(std::function<void()> callback) override {
+        closeCallback_ = std::move(callback);
+    }
 
 private:
+    static LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+        Win32ContainerWindow* window = reinterpret_cast<Win32ContainerWindow*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+
+        if (msg == WM_CLOSE && window) {
+            // Don't actually close/destroy the window - just hide it
+            if (window->closeCallback_) {
+                window->closeCallback_();
+            }
+            ShowWindow(hwnd, SW_HIDE);
+            return 0; // Prevent default close behavior
+        }
+
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
+
     static void registerClass() {
         static bool registered = false; if (registered) return;
-        WNDCLASSW wc{}; wc.lpfnWndProc = DefWindowProcW; wc.hInstance = GetModuleHandleW(nullptr);
+        WNDCLASSW wc{}; wc.lpfnWndProc = windowProc; wc.hInstance = GetModuleHandleW(nullptr);
         wc.lpszClassName = kClassName; RegisterClassW(&wc); registered = true;
     }
-    HWND hwnd_{}; Bounds b_{};
+    HWND hwnd_{};
+    Bounds b_{};
+    std::function<void()> closeCallback_;
 };
 
 std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height) {

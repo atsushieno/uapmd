@@ -126,6 +126,11 @@ public:
         return reinterpret_cast<void*>(static_cast<uintptr_t>(holder_ ? holder_ : wnd_));
     }
 
+    void setCloseCallback(std::function<void()> callback) override {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        closeCallback_ = std::move(callback);
+    }
+
 private:
     Display* dpy_{nullptr};
     Window wnd_{};
@@ -136,6 +141,8 @@ private:
     std::thread pump_{};
     std::atomic<bool> running_{false};
     Window child_{};
+    std::function<void()> closeCallback_;
+    std::mutex callbackMutex_;
 
     void eventPump() {
         // Only handle events targeted to our container window; don't drain the connection-wide queue.
@@ -151,7 +158,16 @@ private:
                     case ClientMessage:
                         if (ev.xclient.message_type == XInternAtom(dpy_, "WM_PROTOCOLS", False)
                             && static_cast<Atom>(ev.xclient.data.l[0]) == wmDelete_) {
+                            // Don't actually close the window - just hide it
+                            {
+                                std::lock_guard<std::mutex> lock(callbackMutex_);
+                                if (closeCallback_) {
+                                    closeCallback_();
+                                }
+                            }
                             XUnmapWindow(dpy_, wnd_);
+                            if (holder_) XUnmapWindow(dpy_, holder_);
+                            XFlush(dpy_);
                         }
                         break;
                     case ReparentNotify:

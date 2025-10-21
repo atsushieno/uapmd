@@ -70,6 +70,7 @@ namespace remidy {
 
             created = false;
             visible = false;
+            attached = false;
         });
     }
 
@@ -99,10 +100,17 @@ namespace remidy {
         if (!created || !view)
             return false;
 
+        // If already attached, just return success - don't call attached() again
+        if (attached)
+            return true;
+
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
             success = view->vtable->view.attached(view, parent, V3_VIEW_PLATFORM_TYPE_NATIVE) == V3_OK;
         });
+
+        if (success)
+            attached = true;
 
         return success;
     }

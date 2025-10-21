@@ -94,20 +94,20 @@ void MainWindow::render(void* window) {
 
         ImGui::Separator();
 
-        // Instance Control Section
-        if (ImGui::CollapsingHeader("Instance Control", ImGuiTreeNodeFlags_DefaultOpen)) {
-            renderInstanceControl();
-        }
-
-        ImGui::Separator();
-
-        // Select a Plugin Button - positioned after instance control, before parameters
+        // Select a Plugin Button - positioned before instance control for better visibility
         if (ImGui::Button(showPluginSelector_ ? "Hide Plugin List" : "Select a Plugin", ImVec2(200, 40))) {
             showPluginSelector_ = !showPluginSelector_;
         }
 
         if (showPluginSelector_) {
             renderPluginSelector();
+        }
+
+        ImGui::Separator();
+
+        // Instance Control Section
+        if (ImGui::CollapsingHeader("Instance Control", ImGuiTreeNodeFlags_DefaultOpen)) {
+            renderInstanceControl();
         }
     }
     ImGui::End();
@@ -207,6 +207,12 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
             return;
         window->setBounds(bounds);
     });
+}
+
+void MainWindow::onPluginWindowClosed(int32_t instanceId) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    // Just update the visible flag in the plugin - don't touch the window or embedded state
+    sequencer.hidePluginUI(instanceId);
 }
 
 bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height) {
@@ -386,6 +392,10 @@ void MainWindow::renderInstanceControl() {
                     if (windowIt == pluginWindows_.end()) {
                         auto w = ContainerWindow::create(sequencer.getPluginName(instanceId).c_str(), 800, 600);
                         container = w.get();
+                        // Set up close callback to handle window close events
+                        w->setCloseCallback([this, instanceId]() {
+                            onPluginWindowClosed(instanceId);
+                        });
                         pluginWindows_[instanceId] = std::move(w);
                         pluginWindowBounds_[instanceId] = Bounds{100, 100, 800, 600};
                     } else {

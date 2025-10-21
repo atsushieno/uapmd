@@ -190,6 +190,7 @@ namespace remidy {
             IPlugViewContentScaleSupport* scale_support{nullptr};
             bool created{false};
             bool visible{false};
+            bool attached{false};
             std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
 
         public:

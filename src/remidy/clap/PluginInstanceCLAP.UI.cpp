@@ -141,6 +141,7 @@ namespace remidy {
 
         created = false;
         visible = false;
+        attached = false;
         current_api.clear();
         is_floating = true;
     }
@@ -181,6 +182,10 @@ namespace remidy {
         if (!parent || !created || is_floating || current_api.empty())
             return false;
 
+        // If already attached, just return success - don't call set_parent again
+        if (attached)
+            return true;
+
         bool success = false;
         withGui([&] {
             if (!gui_ext->set_parent)
@@ -202,6 +207,10 @@ namespace remidy {
             }
             success = gui_ext->set_parent(owner->plugin, &window);
         });
+
+        if (success)
+            attached = true;
+
         return success;
     }
 

@@ -100,6 +100,7 @@ namespace uapmd::gui {
         void renderParameterControls();
         bool handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height);
         void onPluginWindowResized(int32_t instanceId);
+        void onPluginWindowClosed(int32_t instanceId);
         bool fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height);
 
         // Plugin selection
