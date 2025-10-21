@@ -77,6 +77,10 @@ void remidy::PluginCatalog::load(std::filesystem::path& path) {
 
     auto j = choc::json::parse(ss.str());
 
+    // Clear existing entries before loading to avoid duplicates
+    entries.clear();
+    denyList.clear();
+
     for (auto& entry : fromJson(j.getView()))
         entries.emplace_back(std::move(entry));
 }
