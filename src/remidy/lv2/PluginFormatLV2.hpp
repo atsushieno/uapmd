@@ -5,6 +5,7 @@
 #include "remidy.hpp"
 #include "../GenericAudioBuses.hpp"
 #include "lilv/lilv.h"
+#include <lv2/ui/ui.h>
 
 #include "LV2Helper.hpp"
 
@@ -228,6 +229,50 @@ namespace remidy {
             bool suggestSize(uint32_t &width, uint32_t &height) override;
             bool setScale(double scale) override;
             void setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) override;
+        private:
+            PluginInstanceLV2* owner;
+
+            // UI discovery and instance
+            LilvUIs* available_uis{nullptr};
+            const LilvUI* selected_ui{nullptr};
+            void* ui_lib_handle{nullptr};
+            const LV2UI_Descriptor* ui_descriptor{nullptr};
+            LV2UI_Handle ui_handle{nullptr};
+            LV2UI_Widget ui_widget{nullptr};
+
+            // Optional interfaces
+            const LV2UI_Idle_Interface* idle_interface{nullptr};
+            const LV2UI_Show_Interface* show_interface{nullptr};
+            const LV2UI_Resize* ui_resize_interface{nullptr};
+
+            // State
+            bool created{false};
+            bool visible{false};
+            bool is_floating{false};
+            std::string window_title{};
+            void* parent_widget{nullptr};
+
+            // Host features
+            LV2UI_Resize host_resize_feature{};
+            LV2UI_Port_Map port_map_feature{};
+            LV2UI_Port_Subscribe port_subscribe_feature{};
+            std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
+
+            // Idle timer state
+            std::atomic<bool> idle_timer_running{false};
+
+            // Internal helpers
+            bool discoverUI();
+            bool instantiateUI();
+            void startIdleTimer();
+            void stopIdleTimer();
+            void scheduleIdleCallback();
+            std::vector<const LV2_Feature*> buildFeatures();
+            static void writeFunction(LV2UI_Controller controller, uint32_t port_index,
+                                     uint32_t buffer_size, uint32_t port_protocol,
+                                     const void* buffer);
+            static uint32_t portIndex(LV2UI_Feature_Handle handle, const char* symbol);
+            static int resizeUI(LV2UI_Feature_Handle handle, int width, int height);
         };
 
         PluginFormatLV2::Impl *formatImpl;
