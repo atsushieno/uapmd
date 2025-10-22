@@ -10,6 +10,7 @@ include("../../external/LV2Kit.cmake")
 
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
+    find_package(X11 REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 endif()
 
@@ -43,6 +44,9 @@ target_compile_options(remidy PUBLIC
 )
 target_link_options(remidy PUBLIC
         ${GTK3_LDFLAGS}
+)
+target_link_libraries(remidy PUBLIC
+        ${X11_LIBRARIES}
 )
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
