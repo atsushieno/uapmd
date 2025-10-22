@@ -8,7 +8,7 @@
 #ifdef __linux__
 #include <X11/Xlib.h>
 #elif defined(__APPLE__)
-#import <Cocoa/Cocoa.h>
+#include <choc/platform/choc_ObjectiveCHelpers.h>
 #elif defined(_WIN32)
 #include <windows.h>
 #endif
@@ -307,11 +307,11 @@ namespace remidy {
         XCloseDisplay(dpy);
         return true;
 #elif defined(__APPLE__)
-        NSView* child = (__bridge NSView*)ui_widget;
-        NSView* parentView = (__bridge NSView*)parent;
+        id child = (id)ui_widget;
+        id parentView = (id)parent;
         if (!child || !parentView)
             return false;
-        [parentView addSubview:child];
+        choc::objc::call<void>(parentView, "addSubview:", child);
         return true;
 #elif defined(_WIN32)
         HWND child = (HWND)ui_widget;
@@ -354,10 +354,10 @@ namespace remidy {
         XCloseDisplay(dpy);
         return false;
 #elif defined(__APPLE__)
-        NSView* view = (__bridge NSView*)ui_widget;
+        id view = (id)ui_widget;
         if (!view)
             return false;
-        NSRect frame = [view frame];
+        choc::objc::CGRect frame = choc::objc::call<choc::objc::CGRect>(view, "frame");
         width = (uint32_t)frame.size.width;
         height = (uint32_t)frame.size.height;
         return true;
