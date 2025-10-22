@@ -71,6 +71,12 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     )
 endif ()
 
+if (WIN32)
+    # In your CMakeLists.txt for remidy and remidy-scan targets:
+    target_link_libraries(remidy PRIVATE ws2_32)
+    target_link_libraries(remidy-scan PRIVATE ws2_32)
+endif()
+
 target_link_libraries(remidy PRIVATE
         #libremidi::libremidi
         rtlog::rtlog
