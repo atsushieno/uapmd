@@ -357,7 +357,8 @@ void MainWindow::renderInstanceControl() {
             const bool isSelected = (selectedInstance_ == static_cast<int>(i));
             int32_t instanceId = instances_[i];
             std::string pluginName = sequencer.getPluginName(instanceId);
-            std::string label = pluginName + " (ID: " + std::to_string(instanceId) + ")";
+            std::string pluginFormat = sequencer.getPluginFormat(instanceId);
+            std::string label = pluginName + " (" + pluginFormat + ") (ID: " + std::to_string(instanceId) + ")";
             if (ImGui::Selectable(label.c_str(), isSelected)) {
                 selectedInstance_ = static_cast<int>(i);
                 refreshParameters();
@@ -390,7 +391,8 @@ void MainWindow::renderInstanceControl() {
                     ContainerWindow* container = nullptr;
                     windowIt = pluginWindows_.find(instanceId);
                     if (windowIt == pluginWindows_.end()) {
-                        auto w = ContainerWindow::create(sequencer.getPluginName(instanceId).c_str(), 800, 600);
+                        std::string windowTitle = sequencer.getPluginName(instanceId) + " (" + sequencer.getPluginFormat(instanceId) + ")";
+                        auto w = ContainerWindow::create(windowTitle.c_str(), 800, 600);
                         container = w.get();
                         // Set up close callback to handle window close events
                         w->setCloseCallback([this, instanceId]() {
@@ -826,6 +828,8 @@ void MainWindow::renderPluginSelector() {
             if (ImGui::Selectable(selectableId.c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns)) {
                 selectedPluginFormat_ = plugin.format;
                 selectedPluginId_ = plugin.id;
+                std::cout << "[GUI] Selected plugin: format='" << plugin.format << "', id='" << plugin.id
+                          << "', name='" << plugin.name << "'" << std::endl;
             }
 
             ImGui::SameLine();

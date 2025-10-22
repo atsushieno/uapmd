@@ -130,15 +130,25 @@ std::string uapmd::AudioPluginSequencer::getPluginName(int32_t instanceId) {
                 // Search in the catalog for display name
                 auto plugins = plugin_host_pal->catalog().getPlugins();
                 for (auto* catalogPlugin : plugins) {
-                    if (catalogPlugin->pluginId() == pluginId && catalogPlugin->format() == format) {
+                    if (catalogPlugin->pluginId() == pluginId && catalogPlugin->format() == format)
                         return catalogPlugin->displayName();
-                    }
                 }
                 return "Plugin " + std::to_string(instanceId);
             }
         }
     }
     return "Unknown Plugin";
+}
+
+std::string uapmd::AudioPluginSequencer::getPluginFormat(int32_t instanceId) {
+    for (auto& track : sequencer.tracks()) {
+        for (auto plugin : track->graph().plugins()) {
+            if (plugin->instanceId() == instanceId) {
+                return plugin->pal()->formatName();
+            }
+        }
+    }
+    return "";
 }
 
 bool uapmd::AudioPluginSequencer::hasPluginUI(int32_t instanceId) {

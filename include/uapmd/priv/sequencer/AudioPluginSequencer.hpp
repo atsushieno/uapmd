@@ -33,6 +33,7 @@ namespace uapmd {
         void loadPreset(int32_t instanceId, int32_t presetIndex);
         std::vector<int32_t> getInstanceIds();
         std::string getPluginName(int32_t instanceId);
+        std::string getPluginFormat(int32_t instanceId);
 
         // We will have to split out these GUI features at some point...
         bool hasPluginUI(int32_t instanceId);
