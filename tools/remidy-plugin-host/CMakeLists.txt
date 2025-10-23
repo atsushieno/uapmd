@@ -133,6 +133,7 @@ target_link_libraries(remidy-plugin-host PRIVATE
         imgui
         cpptrace::cpptrace
         uapmd
+        remidy-gui
 )
 
 # On Linux, CHOC's DesktopWindow uses GTK3; ensure headers and libs are present
@@ -151,16 +152,6 @@ target_sources(remidy-plugin-host PRIVATE
         gui/MidiKeyboard.cpp
         gui/PlatformBackend.cpp
 )
-
-if (WIN32)
-    target_sources(remidy-plugin-host PRIVATE gui/ContainerWindow_Win32.cpp)
-endif()
-if (APPLE)
-    target_sources(remidy-plugin-host PRIVATE gui/ContainerWindow_Cocoa.mm)
-endif()
-if (UNIX AND NOT APPLE)
-    target_sources(remidy-plugin-host PRIVATE gui/ContainerWindow_X11.cpp)
-endif()
 
 # Use C++23 like the WebView version
 target_compile_features(remidy-plugin-host PRIVATE cxx_std_23)

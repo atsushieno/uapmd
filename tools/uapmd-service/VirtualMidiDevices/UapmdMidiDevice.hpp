@@ -12,7 +12,7 @@ namespace uapmd {
         std::string api_name{}, device_name{}, manufacturer{}, version{};
 
         std::unique_ptr<PlatformVirtualMidiDevice> platformDevice{};
-        std::unique_ptr<AudioPluginSequencer> sequencer{};
+        std::unique_ptr<AudioPluginSequencer> seq{};
         std::map<uint32_t, std::unique_ptr<midicci::musicdevice::MidiCISession>> ci_sessions{};
         std::vector<midicci::musicdevice::MidiInputCallback> ci_input_forwarders{};
 
@@ -26,6 +26,7 @@ namespace uapmd {
 
     public:
         UapmdMidiDevice(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version);
+        AudioPluginSequencer* sequencer() { return seq.get(); }
         void addPluginTrack(std::string& pluginName, std::string& formatName);
         void addPluginTrackById(const std::string& formatName, const std::string& pluginId,
                                 std::function<void(int32_t instanceId, std::string error)> callback);

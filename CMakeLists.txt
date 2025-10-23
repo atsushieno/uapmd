@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(UniversalAudioPluginMidiDevice)
+if (APPLE)
+    project(UniversalAudioPluginMidiDevice LANGUAGES C CXX OBJC OBJCXX)
+else()
+    project(UniversalAudioPluginMidiDevice LANGUAGES C CXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 23)
 
@@ -37,6 +41,8 @@ FetchContent_MakeAvailable(midicci)
 #add_link_options(-fPIC)
 
 add_subdirectory(src/remidy)
+
+add_subdirectory(src/remidy-gui)
 
 add_subdirectory(src/remidy-tooling)
 

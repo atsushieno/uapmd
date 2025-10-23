@@ -1,10 +1,3 @@
-cmake_minimum_required(VERSION 3.18)
-if (APPLE)
-project(remidy LANGUAGES C CXX OBJC OBJCXX)
-else()
-project(remidy LANGUAGES C CXX)
-endif()
-set(CMAKE_CXX_STANDARD 23)
 
 include("../../external/LV2Kit.cmake")
 

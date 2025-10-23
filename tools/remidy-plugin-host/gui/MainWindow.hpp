@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <uapmd/uapmd.hpp>
 #include "MidiKeyboard.hpp"
-#include "ContainerWindow.hpp"
+#include <remidy-gui/ContainerWindow.hpp>
 
 // Forward declarations for different window types
 struct SDL_Window;
@@ -65,9 +65,9 @@ namespace uapmd::gui {
         // MIDI keyboard
         MidiKeyboard midiKeyboard_;
 
-        std::unordered_map<int32_t, std::unique_ptr<ContainerWindow>> pluginWindows_;
+        std::unordered_map<int32_t, std::unique_ptr<remidy::gui::ContainerWindow>> pluginWindows_;
         std::unordered_map<int32_t, bool> pluginWindowEmbedded_;
-        std::unordered_map<int32_t, Bounds> pluginWindowBounds_;
+        std::unordered_map<int32_t, remidy::gui::Bounds> pluginWindowBounds_;
         std::vector<int32_t> pluginWindowsPendingClose_;
         std::unordered_set<int32_t> pluginWindowResizeIgnore_;
 

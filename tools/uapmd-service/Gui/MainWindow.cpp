@@ -9,6 +9,7 @@
 #include <ranges>
 
 #include "../VirtualMidiDevices/UapmdMidiDevice.hpp"
+#include <remidy/priv/event-loop.hpp>
 
 using uapmd::VirtualMidiDeviceController;
 
@@ -373,7 +374,102 @@ void MainWindow::renderDeviceManager() {
             }
 
             ImGui::TableSetColumnIndex(4);
-            if (running) {
+            if (running && !instantiating) {
+                // Show/Hide UI button
+                auto* device = state->device.get();
+                if (device && device->sequencer()) {
+                    auto* sequencer = device->sequencer();
+                    int32_t instanceId = state->instanceId;
+                    if (instanceId >= 0 && sequencer->hasPluginUI(instanceId)) {
+                        bool isVisible = sequencer->isPluginUIVisible(instanceId);
+                        const char* uiText = isVisible ? "Hide UI" : "Show UI";
+                        std::string btnId = std::format("{}##{}", uiText, devicesCopy[i].id);
+
+                        if (ImGui::Button(btnId.c_str())) {
+                            if (isVisible) {
+                                // Hide UI
+                                sequencer->hidePluginUI(instanceId);
+                                if (state->pluginWindow) {
+                                    state->pluginWindow->show(false);
+                                }
+                                sequencer->setPluginUIResizeHandler(instanceId, nullptr);
+                                state->pluginWindowResizeIgnore = false;
+                            } else {
+                                // Show UI
+                                bool shown = false;
+                                remidy::gui::ContainerWindow* container = nullptr;
+
+                                if (!state->pluginWindow) {
+                                    std::string title = std::format("{} ({})",
+                                        state->pluginName, state->pluginFormat);
+                                    auto w = remidy::gui::ContainerWindow::create(
+                                        title.c_str(), 800, 600);
+                                    container = w.get();
+                                    w->setCloseCallback([this, weakState = std::weak_ptr(state)]() {
+                                        if (auto s = weakState.lock()) {
+                                            onPluginWindowClosed(s);
+                                        }
+                                    });
+                                    state->pluginWindow = std::move(w);
+                                    state->pluginWindowBounds = {100, 100, 800, 600};
+                                } else {
+                                    container = state->pluginWindow.get();
+                                }
+
+                                if (container) {
+                                    container->show(true);
+                                    void* parentHandle = container->getHandle();
+
+                                    sequencer->setPluginUIResizeHandler(instanceId,
+                                        [this, weakState = std::weak_ptr(state)](uint32_t w, uint32_t h) {
+                                            if (auto s = weakState.lock()) {
+                                                return handlePluginResizeRequest(s, w, h);
+                                            }
+                                            return false;
+                                        });
+
+                                    if (sequencer->showPluginUI(instanceId, false, parentHandle)) {
+                                        state->pluginWindowEmbedded = true;
+                                        uint32_t pw = 0, ph = 0;
+                                        if (fetchPluginUISize(state, pw, ph) && pw > 0 && ph > 0) {
+                                            state->pluginWindowBounds.width = static_cast<int>(pw);
+                                            state->pluginWindowBounds.height = static_cast<int>(ph);
+                                            state->pluginWindowResizeIgnore = true;
+
+                                            auto bounds = state->pluginWindowBounds;
+                                            bool canResize = sequencer->canPluginUIResize(instanceId);
+                                            remidy::EventLoop::runTaskOnMainThread(
+                                                [cw=container, bounds, canResize]() {
+                                                    if (cw) {
+                                                        cw->setResizable(canResize);
+                                                        cw->setBounds(bounds);
+                                                    }
+                                                });
+                                        }
+                                        shown = true;
+                                    } else {
+                                        // Embedded failed, cleanup
+                                        container->show(false);
+                                        state->pluginWindow.reset();
+                                        sequencer->setPluginUIResizeHandler(instanceId, nullptr);
+                                    }
+                                }
+
+                                if (!shown) {
+                                    // Fallback to floating window
+                                    if (sequencer->showPluginUI(instanceId, true, nullptr)) {
+                                        state->pluginWindowEmbedded = false;
+                                        sequencer->setPluginUIResizeHandler(instanceId, nullptr);
+                                        state->pluginWindowResizeIgnore = false;
+                                    }
+                                }
+                            }
+                        }
+                        ImGui::SameLine();
+                    }
+                }
+
+                // Stop button
                 if (ImGui::Button(std::format("Stop##{}", devicesCopy[i].id).c_str())) {
                     if (auto locked = state) {
                         std::lock_guard guard(state->mutex);
@@ -385,7 +481,7 @@ void MainWindow::renderDeviceManager() {
                     }
                 }
                 ImGui::SameLine();
-            } else {
+            } else if (!running) {
                 if (ImGui::Button(std::format("Start##{}", devicesCopy[i].id).c_str())) {
                     int statusCode = 0;
                     if (auto locked = state) {
@@ -504,6 +600,17 @@ void MainWindow::removeDevice(size_t index) {
 
     if (state) {
         std::lock_guard guard(state->mutex);
+        // Clean up plugin window
+        if (state->pluginWindow) {
+            if (auto* device = state->device.get()) {
+                auto sequencer = device->sequencer();
+                if (sequencer) {
+                    sequencer->hidePluginUI(state->instanceId);
+                    sequencer->setPluginUIResizeHandler(state->instanceId, nullptr);
+                }
+            }
+            state->pluginWindow.reset();
+        }
         if (state->device) {
             state->device->stop();
             state->device.reset();
@@ -594,6 +701,113 @@ void MainWindow::stopAllDevices() {
             state->device.reset();
         }
     }
+}
+
+bool MainWindow::handlePluginResizeRequest(std::shared_ptr<DeviceState> state, uint32_t width, uint32_t height) {
+    std::lock_guard guard(state->mutex);
+    if (!state->pluginWindow) {
+        return false;
+    }
+
+    auto* window = state->pluginWindow.get();
+    if (!window) {
+        return false;
+    }
+
+    auto& bounds = state->pluginWindowBounds;
+    remidy::gui::Bounds currentBounds = bounds;
+
+    // Keep existing x/y from stored bounds
+    bounds.width = static_cast<int>(width);
+    bounds.height = static_cast<int>(height);
+
+    // Don't process if this resize came from user window action
+    if (state->pluginWindowResizeIgnore) {
+        state->pluginWindowResizeIgnore = false;
+        return true;
+    }
+
+    // Try to apply the requested size
+    auto* device = state->device.get();
+    if (!device || !device->sequencer()) {
+        return false;
+    }
+
+    int32_t instanceId = state->instanceId;
+    state->pluginWindowResizeIgnore = true;
+
+    auto sequencer = device->sequencer();
+    bool canResize = sequencer->canPluginUIResize(instanceId);
+    if (!sequencer->resizePluginUI(instanceId, width, height)) {
+        // Plugin rejected size, get what it wants
+        uint32_t adjustedWidth = 0, adjustedHeight = 0;
+        sequencer->getPluginUISize(instanceId, adjustedWidth, adjustedHeight);
+        if (adjustedWidth > 0 && adjustedHeight > 0) {
+            bounds.width = static_cast<int>(adjustedWidth);
+            bounds.height = static_cast<int>(adjustedHeight);
+        }
+    }
+
+    // Apply the bounds on the main thread
+    remidy::EventLoop::runTaskOnMainThread([cw=window, bounds, canResize]() {
+        if (cw) {
+            cw->setResizable(canResize);
+            cw->setBounds(bounds);
+        }
+    });
+
+    return true;
+}
+
+void MainWindow::onPluginWindowResized(std::shared_ptr<DeviceState> state) {
+    std::lock_guard guard(state->mutex);
+    if (!state->pluginWindow || state->pluginWindowResizeIgnore) {
+        return;
+    }
+
+    auto* window = state->pluginWindow.get();
+    if (!window) {
+        return;
+    }
+
+    auto bounds = window->getBounds();
+    state->pluginWindowBounds = bounds;
+
+    auto* device = state->device.get();
+    if (!device || !device->sequencer()) {
+        return;
+    }
+
+    int32_t instanceId = state->instanceId;
+    device->sequencer()->resizePluginUI(instanceId,
+        static_cast<uint32_t>(bounds.width),
+        static_cast<uint32_t>(bounds.height));
+}
+
+void MainWindow::onPluginWindowClosed(std::shared_ptr<DeviceState> state) {
+    std::lock_guard guard(state->mutex);
+    auto* device = state->device.get();
+    if (device && device->sequencer()) {
+        auto sequencer = device->sequencer();
+        int32_t instanceId = state->instanceId;
+        sequencer->hidePluginUI(instanceId);
+        sequencer->setPluginUIResizeHandler(instanceId, nullptr);
+    }
+
+    if (state->pluginWindow) {
+        state->pluginWindow->show(false);
+    }
+    state->pluginWindowResizeIgnore = false;
+}
+
+bool MainWindow::fetchPluginUISize(std::shared_ptr<DeviceState> state, uint32_t& width, uint32_t& height) {
+    std::lock_guard guard(state->mutex);
+    auto* device = state->device.get();
+    if (!device || !device->sequencer()) {
+        return false;
+    }
+
+    return device->sequencer()->getPluginUISize(state->instanceId, width, height);
 }
 
 } // namespace uapmd::service::gui

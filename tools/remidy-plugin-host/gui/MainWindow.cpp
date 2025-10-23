@@ -1,5 +1,6 @@
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
+#include <remidy-gui/ContainerWindow.hpp>
 #include <imgui.h>
 #include <iostream>
 #include <algorithm>
@@ -127,7 +128,7 @@ bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, u
         return false;
 
     auto& bounds = pluginWindowBounds_[instanceId];
-    Bounds currentBounds = bounds;
+    remidy::gui::Bounds currentBounds = bounds;
     // Keep existing x/y from stored bounds; containers report size via our own state
     bounds.width = static_cast<int>(width);
     bounds.height = static_cast<int>(height);
@@ -179,7 +180,7 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
     if (!window)
         return;
 
-    Bounds currentBounds = pluginWindowBounds_[instanceId];
+    remidy::gui::Bounds currentBounds = pluginWindowBounds_[instanceId];
 
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     pluginWindowBounds_[instanceId] = currentBounds;
@@ -388,22 +389,22 @@ void MainWindow::renderInstanceControl() {
                     pluginWindowResizeIgnore_.erase(instanceId);
                 } else {
                     bool shown = false;
-                    ContainerWindow* container = nullptr;
+                    remidy::gui::ContainerWindow* container = nullptr;
                     windowIt = pluginWindows_.find(instanceId);
                     if (windowIt == pluginWindows_.end()) {
                         std::string windowTitle = sequencer.getPluginName(instanceId) + " (" + sequencer.getPluginFormat(instanceId) + ")";
-                        auto w = ContainerWindow::create(windowTitle.c_str(), 800, 600);
+                        auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600);
                         container = w.get();
                         // Set up close callback to handle window close events
                         w->setCloseCallback([this, instanceId]() {
                             onPluginWindowClosed(instanceId);
                         });
                         pluginWindows_[instanceId] = std::move(w);
-                        pluginWindowBounds_[instanceId] = Bounds{100, 100, 800, 600};
+                        pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
                     } else {
                         container = windowIt->second.get();
                         if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
-                            pluginWindowBounds_[instanceId] = Bounds{100, 100, 800, 600};
+                            pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
                     }
                     if (container) {
                         // Ensure parent is mapped before attaching plugin UI

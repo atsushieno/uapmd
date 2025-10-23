@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <remidy-tooling/PluginScanTool.hpp>
+#include <remidy-gui/ContainerWindow.hpp>
 
 #include "../Controller/VirtualMidiDeviceController.hpp"
 
@@ -55,6 +56,12 @@ private:
         bool instantiating = false;
         bool hasError = false;
         int32_t instanceId = -1;
+
+        // Plugin UI window management
+        std::unique_ptr<remidy::gui::ContainerWindow> pluginWindow;
+        bool pluginWindowEmbedded = false;
+        remidy::gui::Bounds pluginWindowBounds{100, 100, 800, 600};
+        bool pluginWindowResizeIgnore = false;
     };
 
     struct DeviceEntry {
@@ -72,6 +79,12 @@ private:
     void stopAllDevices();
 
     std::vector<int> filteredPluginIndices(const std::vector<PluginEntry>& plugins) const;
+
+    // Plugin UI helper methods
+    bool handlePluginResizeRequest(std::shared_ptr<DeviceState> state, uint32_t width, uint32_t height);
+    void onPluginWindowResized(std::shared_ptr<DeviceState> state);
+    void onPluginWindowClosed(std::shared_ptr<DeviceState> state);
+    bool fetchPluginUISize(std::shared_ptr<DeviceState> state, uint32_t& width, uint32_t& height);
 
     VirtualMidiDeviceController& controller_;
     GuiDefaults defaults_;

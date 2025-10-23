@@ -10,7 +10,7 @@ namespace uapmd {
     UapmdMidiDevice::UapmdMidiDevice(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version) :
         api_name(apiName), device_name(deviceName), manufacturer(manufacturer), version(version),
         // FIXME: do we need valid sampleRate here?
-        sequencer(new AudioPluginSequencer(4096, 1024, 44100)) {
+        seq(new AudioPluginSequencer(4096, 1024, 44100)) {
     }
     
     void UapmdMidiDevice::addPluginTrack(std::string& pluginName, std::string& formatName) {
@@ -25,7 +25,7 @@ namespace uapmd {
                     !exactMatch && entry->displayName().contains(pluginName)
                 ) {
                     Logger::global()->logInfo("Found %s", entry->bundlePath().c_str());
-                    sequencer->instantiatePlugin(entry->format(), entry->pluginId(), [&](int instanceId, std::string error) {
+                    seq->instantiatePlugin(entry->format(), entry->pluginId(), [&](int instanceId, std::string error) {
                         Logger::global()->logInfo("addSimpleTrack result: %d %s", instanceId, error.c_str());
 
                         setupMidiCISession(instanceId);
@@ -41,8 +41,8 @@ namespace uapmd {
                                              std::function<void(int32_t instanceId, std::string error)> callback) {
         auto fmt = formatName;
         auto id = pluginId;
-        sequencer->performPluginScanning(false);
-        sequencer->instantiatePlugin(fmt, id, [this, cb = std::move(callback), fmt, id](int32_t instanceId, std::string error) mutable {
+        seq->performPluginScanning(false);
+        seq->instantiatePlugin(fmt, id, [this, cb = std::move(callback), fmt, id](int32_t instanceId, std::string error) mutable {
             if (!error.empty()) {
                 Logger::global()->logError("Failed to instantiate plugin %s (%s): %s", id.c_str(), fmt.c_str(), error.c_str());
                 if (cb) {
@@ -92,7 +92,7 @@ namespace uapmd {
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateMetadata()));
         std::vector<commonproperties::MidiCIControl> allCtrlList{};
-        auto parameterList = sequencer->getParameterList(instanceId);
+        auto parameterList = seq->getParameterList(instanceId);
         for (auto& p : parameterList) {
             commonproperties::MidiCIControl ctrl{p.name, MidiCIControlType::NRPN, "",
                                                  std::vector<uint8_t>{static_cast<unsigned char>(p.index / 0x80), static_cast<unsigned char>(p.index % 0x80)}
@@ -112,7 +112,7 @@ namespace uapmd {
         StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);
 
         // configure program list
-        auto presetsList = sequencer->getPresetList(instanceId);
+        auto presetsList = seq->getPresetList(instanceId);
         std::vector<commonproperties::MidiCIProgram> programList{};
         for (auto & p : presetsList) {
             commonproperties::MidiCIProgram program{p.name, {
@@ -133,13 +133,13 @@ namespace uapmd {
 
         platformDevice->addInputHandler(umpReceived, this);
 
-        sequencer->startAudio();
+        seq->startAudio();
 
         return 0;
     }
 
     uapmd_status_t UapmdMidiDevice::stop() {
-        sequencer->stopAudio();
+        seq->stopAudio();
 
         platformDevice->removeInputHandler(umpReceived);
 
@@ -159,6 +159,6 @@ namespace uapmd {
             fw((uint8_t*) (void*) ump, 0, sizeInBytes, timestamp);
 
         // FIXME: we need to design how we deal with multiple tracks.
-        sequencer->enqueueUmp(0, ump, sizeInBytes, timestamp);
+        seq->enqueueUmp(0, ump, sizeInBytes, timestamp);
     }
 }
