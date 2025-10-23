@@ -53,16 +53,12 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNAC(remidy::uint4_t 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index,
                                                                    uint32_t data) {
     // parameter change, use IMidiMapping to resolve index, or directly use it as parameter ID.
-    v3_param_id id;
+    v3_param_id id = index;
     double value = (double) data / UINT32_MAX;
     if (owner == nullptr)
         Logger::global()->logInfo("VST3 IMidiMapping does not exist in this plugin. Directly using it as a parameter Id.");
     else if (owner->midi_mapping->vtable->midi_mapping.get_midi_controller_assignment(owner->midi_mapping, group, channel, index, &id) != V3_OK)
         Logger::global()->logInfo("VST3 IMidiMapping does not give any mapping to index %d. Directly using it as a parameter Id.", index);
-    else {
-        owner->parameters()->setParameter(id, value, timestamp());
-        return;
-    }
     owner->parameters()->setParameter(index, value, timestamp());
 }
 
