@@ -3,11 +3,17 @@
 Remidy aims to provide audio plugin hosting features in a cross-platform and
 multi-format manner in liberal licenses (MIT/BSD).
 
-Remidy aims to cover VST3, AudioUnit (on macOS), LV2, and CLAP formats. Currently, it targets only desktop platforms so far, but if you use my [AAP project](https://github.com/atsushieno/aap-core) those synth plugins already work as UMP devices (you need Android 15 or later that supports [`MidiUmpDeviceService`](https://developer.android.com/reference/kotlin/android/media/midi/MidiUmpDeviceService)).
+Remidy aims to cover VST3, AudioUnit (on macOS), LV2, and CLAP formats.
 
 UAPMD (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that can instantiate <del>arbitrary set of plugins</del> <ins>a synth plugin</ins> and acts as a virtual MIDI 2.0 UMP device on various platforms.
 
-UAPMD so far makes it as a console tool `uapmd-service` that instantiates one single audio plugin and translates UMP inputs into event inputs to those in each plugin API.
+Currently, both Remidy and UAPMD target only desktop platforms so far, but if you use my [AAP project](https://github.com/atsushieno/aap-core) those synth plugins already work as UMP devices (you need Android 15 or later that supports [`MidiUmpDeviceService`](https://developer.android.com/reference/kotlin/android/media/midi/MidiUmpDeviceService)).
+
+UAPMD makes it as a GUI tool `uapmd-service` that instantiates one single audio plugin for each virtual UMP device, and translates UMP inputs into event inputs to those in each plugin API.
+
+## Screenshots
+
+I put them on the [wiki](https://github.com/atsushieno/uapmd/wiki) pages.
 
 ## What's the point of this tool?
 
