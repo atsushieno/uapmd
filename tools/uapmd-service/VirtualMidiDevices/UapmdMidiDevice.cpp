@@ -141,9 +141,10 @@ namespace uapmd {
     uapmd_status_t UapmdMidiDevice::stop() {
         seq->stopAudio();
 
-        platformDevice->removeInputHandler(umpReceived);
-
-        platformDevice.reset(nullptr);
+        if (platformDevice) {
+            platformDevice->removeInputHandler(umpReceived);
+            platformDevice.reset(nullptr);
+        }
 
         return 0;
     }
