@@ -92,10 +92,9 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 
 - [lv2/lv2kit](https://github.com/lv2/lv2kit) (serd, sord, sratom, lilv, zix): the ISC license.
 - [travesty](https://github.com/DISTRHO/DPF/tree/main/distrho/src/travesty), part of DISTRHO/DPF: the ISC license
-- [moduleinfo](https://github.com/steinbergmedia/vst3_public_sdk/tree/master/source/vst/moduleinfo), part of steinbergmedia/vst3_public_sdk: VST 3 SDK public_sdk License (BSD like)
-  (modified to remove dependencies on `vst3_pluginterfaces` which is GPLed)
-- [free-audio/clap](https://github.com/free-audio/clap): MIT
-- [free-audio/clap-helpers](https://github.com/free-audio/clap-helpers): MIT
+- [free-audio/clap](https://github.com/free-audio/clap) - MIT
+- [free-audio/clap-helpers](https://github.com/free-audio/clap-helpers) - MIT
+- [steinbergmedia/vst3sdk](https://github.com/steinbergmedia/vst3sdk) - MIT
 - [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
 - [atsushieno/cmidi2](atsushieno/cmidi2) - MIT
@@ -106,6 +105,5 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [cameron314/concurrentqueue](https://github.com/cameron314/concurrentqueue) - BSD (2-clause)
 - [cjappl/rtlog-cpp](https://github.com/cjappl/rtlog-cpp): the MIT license.
     - for submodules see their [LICENSE.md](https://github.com/cjappl/rtlog-cpp/blob/main/LICENSE.md) (modified BSD, MIT)
-- [saucer/saucer](https://github.com/saucer/saucer) - MIT
-- [g200kg/webaudio-controls](https://github.com/g200kg/webaudio-controls) - Apache V2
 - [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
+- [ocornut/imgui](https://github.com/ocornut/imgui) - MIT

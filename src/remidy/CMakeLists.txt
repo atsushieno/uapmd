@@ -28,7 +28,19 @@ FetchContent_Declare(clap-helpers
 )
 FetchContent_MakeAvailable(clap-helpers)
 
-set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ../../external/vst3-public-sdk-moduleinfo)
+# it requires gtkmm-3.0 but we don't need it
+set(SMTG_ENABLE_VSTGUI_SUPPORT OFF)
+set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF)
+set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES OFF)
+set(SMTG_ENABLE_WAYLAND_SUPPORT ON)
+
+FetchContent_Declare(vst3sdk
+        GIT_REPOSITORY https://github.com/steinbergmedia/vst3sdk
+        GIT_TAG v3.8.0_build_66
+)
+FetchContent_MakeAvailable(vst3sdk)
+
+set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/moduleinfo)
 
 add_library(remidy STATIC)
 
@@ -50,6 +62,7 @@ endif ()
 
 target_include_directories(remidy PRIVATE
         ../../external/travesty
+        ${vst3sdk_SOURCE_DIR}
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ../../external/choc
         ${LV2KIT_INCLUDE_DIRS}
