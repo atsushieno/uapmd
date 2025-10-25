@@ -1,5 +1,9 @@
 #pragma once
 
+#include <algorithm>
+#include <cstring>
+#include <vector>
+
 namespace remidy {
     enum class AudioContentType {
         Float32,
@@ -108,6 +112,12 @@ namespace remidy {
                 free(data);
             }
 
+            void clear() {
+                if (!data)
+                    return;
+                std::memset(data, 0, channel_count * frame_capacity * sizeof(double));
+            }
+
             float* getFloatBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : static_cast<float *>(data) + channel * frame_capacity; }
             double* getDoubleBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : static_cast<double *>(data) + channel * frame_capacity; };
             uint32_t channelCount() const { return channel_count; }
@@ -194,15 +204,42 @@ namespace remidy {
         EventSequence& eventIn() { return event_in; }
         EventSequence& eventOut() { return event_out; }
 
-        // Is this a hack...?
-        void swap() {
-            std::vector<AudioBusBufferList*>& tmpAudio = audio_in;
-            audio_out = audio_in;
-            audio_in = tmpAudio;
+        void clearAudioOutputs() {
+            for (auto* bus : audio_out)
+                if (bus)
+                    bus->clear();
+            event_out.position(0);
+        }
 
-            EventSequence& tmpMidi = event_in;
-            event_out = event_in;
-            event_in = tmpMidi;
+        void advanceToNextNode() {
+            // Copy audio output to input for the next node
+            for (size_t i = 0; i < std::min(audio_in.size(), audio_out.size()); ++i) {
+                auto* inBus = audio_in[i];
+                auto* outBus = audio_out[i];
+                if (inBus && outBus) {
+                    auto channels = std::min(inBus->channelCount(), outBus->channelCount());
+                    auto frames = std::min(inBus->bufferCapacityInFrames(), outBus->bufferCapacityInFrames());
+                    for (uint32_t ch = 0; ch < channels; ++ch) {
+                        // Copy based on the audio data type
+                        std::memcpy(inBus->getFloatBufferForChannel(ch),
+                                   outBus->getFloatBufferForChannel(ch),
+                                   frames * sizeof(float));
+                    }
+                }
+            }
+
+            // Clear output buffers for the next plugin
+            for (auto* bus : audio_out)
+                if (bus)
+                    bus->clear();
+
+            // Copy events output to input for the next node
+            auto eventBytes = std::min(event_in.maxMessagesInBytes(), event_out.position());
+            if (eventBytes > 0) {
+                std::memcpy(event_in.getMessages(), event_out.getMessages(), eventBytes);
+                event_in.position(eventBytes);
+            }
+            event_out.position(0);
         }
     };
 

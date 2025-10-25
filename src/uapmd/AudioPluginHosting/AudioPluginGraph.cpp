@@ -19,9 +19,17 @@ namespace uapmd {
     };
 
     int32_t AudioPluginGraph::Impl::processAudio(AudioProcessContext& process) {
-        for (auto& node : nodes)
-            node->processAudio(process);
-        // FIXME: define return codes
+        if (nodes.empty())
+            return 0;
+
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            auto status = nodes[i]->processAudio(process);
+            if (status != 0)
+                return status;
+            if (i + 1 < nodes.size()) {
+                process.advanceToNextNode();
+            }
+        }
         return 0;
     }
 

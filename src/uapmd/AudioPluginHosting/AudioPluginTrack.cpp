@@ -39,6 +39,7 @@ namespace uapmd {
         eventIn.position(totalBytes);
         //if (totalBytes > 0)
         //    Logger::global()->logInfo("  total bytes: %d", totalBytes);
+        process.clearAudioOutputs();
         const auto ret = graph.processAudio(process);
         eventIn.position(eventIn.position() - totalBytes);
         queue_reading.exchange(false);
