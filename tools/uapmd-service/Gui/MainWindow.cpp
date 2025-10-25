@@ -297,12 +297,64 @@ void MainWindow::renderPluginSelector() {
     ImGui::InputText("API (optional)", apiInput_.data(), apiInput_.size());
     ImGui::InputText("Device name", deviceNameInput_.data(), deviceNameInput_.size());
 
+    // Build track destination options
+    {
+        std::vector<DeviceEntry> devicesCopy;
+        {
+            std::lock_guard lock(devicesMutex_);
+            devicesCopy = devices_;
+        }
+        trackOptions_.clear();
+        for (const auto& entry : devicesCopy) {
+            auto state = entry.state;
+            std::vector<AudioPluginSequencer::TrackInfo> tracks;
+            std::string label;
+            {
+                std::lock_guard guard(state->mutex);
+                label = state->label;
+                auto* device = state->device.get();
+                auto* sequencer = device ? device->sequencer() : nullptr;
+                if (sequencer) {
+                    tracks = sequencer->getTrackInfos();
+                }
+            }
+            for (const auto& track : tracks) {
+                TrackDestinationOption option{
+                    .deviceEntryId = entry.id,
+                    .trackIndex = track.trackIndex,
+                    .label = std::format("{} — Track {}", label, track.trackIndex + 1)
+                };
+                trackOptions_.push_back(std::move(option));
+            }
+        }
+        if (selectedTrackOption_ < 0 || selectedTrackOption_ > static_cast<int>(trackOptions_.size())) {
+            selectedTrackOption_ = 0;
+        }
+
+        std::vector<std::string> labels;
+        labels.reserve(trackOptions_.size() + 1);
+        labels.emplace_back("New track (new UMP device)");
+        for (const auto& option : trackOptions_) {
+            labels.push_back(option.label);
+        }
+        std::vector<const char*> labelPtrs;
+        labelPtrs.reserve(labels.size());
+        for (auto& label : labels) {
+            labelPtrs.push_back(label.c_str());
+        }
+        ImGui::Combo("Track destination", &selectedTrackOption_, labelPtrs.data(), static_cast<int>(labelPtrs.size()));
+    }
+
     bool canCreate = selectedPlugin_ >= 0 && selectedPlugin_ < static_cast<int>(pluginsCopy.size());
     if (!pluginScanCompleted_) {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Create UMP Device") && canCreate) {
-        createDeviceForPlugin(static_cast<size_t>(selectedPlugin_));
+        if (selectedTrackOption_ > 0 && static_cast<size_t>(selectedTrackOption_ - 1) < trackOptions_.size()) {
+            addPluginToExistingTrack(static_cast<size_t>(selectedPlugin_), trackOptions_[static_cast<size_t>(selectedTrackOption_ - 1)]);
+        } else {
+            createDeviceForPlugin(static_cast<size_t>(selectedPlugin_));
+        }
     }
     if (!pluginScanCompleted_) {
         ImGui::EndDisabled();
@@ -310,7 +362,7 @@ void MainWindow::renderPluginSelector() {
 }
 
 void MainWindow::renderDeviceManager() {
-    ImGui::TextUnformatted("Active UMP devices");
+    ImGui::TextUnformatted("Audio tracks");
     std::vector<DeviceEntry> devicesCopy;
     {
         std::lock_guard lock(devicesMutex_);
@@ -322,49 +374,124 @@ void MainWindow::renderDeviceManager() {
         return;
     }
 
-    if (ImGui::BeginTable("DeviceTable", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
-        ImGui::TableSetupColumn("Name");
-        ImGui::TableSetupColumn("Plugin");
-        ImGui::TableSetupColumn("API", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-        ImGui::TableSetupColumn("Status");
-        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 160.0f);
-        ImGui::TableHeadersRow();
+    size_t removeIndex = static_cast<size_t>(-1);
 
-        size_t removeIndex = static_cast<size_t>(-1);
+    for (size_t deviceIdx = 0; deviceIdx < devicesCopy.size(); ++deviceIdx) {
+        auto entry = devicesCopy[deviceIdx];
+        auto state = entry.state;
 
-        for (size_t i = 0; i < devicesCopy.size(); ++i) {
-            auto state = devicesCopy[i].state;
-            std::string label;
-            std::string pluginInfo;
-            std::string status;
-            std::string apiName;
-            bool running = false;
-            bool instantiating = false;
-            bool hasError = false;
+        std::vector<AudioPluginSequencer::TrackInfo> tracks;
+        std::string label;
+        std::string apiName;
+        std::string status;
+        bool running = false;
+        bool instantiating = false;
+        bool hasError = false;
 
-            {
-                std::lock_guard guard(state->mutex);
-                label = state->label;
-                pluginInfo = std::format("{} ({})", state->pluginName, state->pluginFormat);
-                status = state->statusMessage;
-                apiName = state->apiName;
-                running = state->running;
-                instantiating = state->instantiating;
-                hasError = state->hasError;
+        {
+            std::lock_guard guard(state->mutex);
+            label = state->label;
+            apiName = state->apiName;
+            status = state->statusMessage;
+            running = state->running;
+            instantiating = state->instantiating;
+            hasError = state->hasError;
+            auto* device = state->device.get();
+            auto* sequencer = device ? device->sequencer() : nullptr;
+            if (sequencer) {
+                tracks = sequencer->getTrackInfos();
+            }
+        }
+
+        if (tracks.empty()) {
+            ImGui::PushID(std::format("{}-pending", entry.id).c_str());
+            ImGui::Separator();
+            ImGui::Text("%s — Track pending", label.c_str());
+            ImGui::SameLine();
+            ImGui::TextDisabled("[%s]", apiName.c_str());
+
+            ImGui::SameLine();
+            if (running && !instantiating) {
+                if (ImGui::Button("Stop")) {
+                    std::lock_guard guard(state->mutex);
+                    if (state->device) {
+                        state->device->stop();
+                    }
+                    state->running = false;
+                    state->statusMessage = "Stopped";
+                }
+            } else {
+                if (ImGui::Button("Start")) {
+                    int statusCode = 0;
+                    std::lock_guard guard(state->mutex);
+                    if (state->device) {
+                        statusCode = state->device->start();
+                    }
+                    if (statusCode == 0) {
+                        state->running = true;
+                        state->statusMessage = "Running";
+                        state->hasError = false;
+                    } else {
+                        state->statusMessage = std::format("Start failed (status {})", statusCode);
+                        state->hasError = true;
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Remove")) {
+                removeIndex = deviceIdx;
             }
 
-            ImGui::TableNextRow();
+            if (instantiating) {
+                ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s", status.c_str());
+            } else if (hasError) {
+                ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s", status.c_str());
+            } else {
+                ImGui::TextUnformatted(status.c_str());
+            }
+            ImGui::PopID();
+            continue;
+        }
 
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(label.c_str());
+        for (const auto& track : tracks) {
+            ImGui::PushID(std::format("{}-track{}", entry.id, track.trackIndex).c_str());
+            ImGui::Separator();
+            ImGui::Text("%s — Track %d", label.c_str(), track.trackIndex + 1);
+            ImGui::SameLine();
+            ImGui::TextDisabled("[%s]", apiName.c_str());
 
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextUnformatted(pluginInfo.c_str());
+            ImGui::SameLine();
+            if (running && !instantiating) {
+                if (ImGui::Button("Stop")) {
+                    std::lock_guard guard(state->mutex);
+                    if (state->device) {
+                        state->device->stop();
+                    }
+                    state->running = false;
+                    state->statusMessage = "Stopped";
+                }
+            } else {
+                if (ImGui::Button("Start")) {
+                    int statusCode = 0;
+                    std::lock_guard guard(state->mutex);
+                    if (state->device) {
+                        statusCode = state->device->start();
+                    }
+                    if (statusCode == 0) {
+                        state->running = true;
+                        state->statusMessage = "Running";
+                        state->hasError = false;
+                    } else {
+                        state->statusMessage = std::format("Start failed (status {})", statusCode);
+                        state->hasError = true;
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Remove")) {
+                removeIndex = deviceIdx;
+            }
 
-            ImGui::TableSetColumnIndex(2);
-            ImGui::TextUnformatted(apiName.c_str());
-
-            ImGui::TableSetColumnIndex(3);
             if (instantiating) {
                 ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s", status.c_str());
             } else if (hasError) {
@@ -373,145 +500,112 @@ void MainWindow::renderDeviceManager() {
                 ImGui::TextUnformatted(status.c_str());
             }
 
-            ImGui::TableSetColumnIndex(4);
-            if (running && !instantiating) {
-                // Show/Hide UI button
-                auto* device = state->device.get();
-                if (device && device->sequencer()) {
-                    auto* sequencer = device->sequencer();
-                    int32_t instanceId = state->instanceId;
-                    if (instanceId >= 0 && sequencer->hasPluginUI(instanceId)) {
-                        bool isVisible = sequencer->isPluginUIVisible(instanceId);
-                        const char* uiText = isVisible ? "Hide UI" : "Show UI";
-                        std::string btnId = std::format("{}##{}", uiText, devicesCopy[i].id);
+            if (track.nodes.empty()) {
+                ImGui::TextDisabled("No plugin instances on this track.");
+            } else if (ImGui::BeginTable("TrackPlugins", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
+                ImGui::TableSetupColumn("Plugin");
+                ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                ImGui::TableSetupColumn("Instance", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                ImGui::TableSetupColumn("Status");
+                ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+                ImGui::TableHeadersRow();
 
+                for (const auto& node : track.nodes) {
+                    std::string nodeStatus = "Running";
+                    bool nodeInstantiating = false;
+                    bool nodeHasError = false;
+                    bool uiSupported = false;
+                    bool uiVisible = false;
+                    {
+                        std::lock_guard guard(state->mutex);
+                        auto* pluginState = findPluginInstance(*state, node.instanceId);
+                        if (pluginState) {
+                            pluginState->pluginName = node.displayName;
+                            pluginState->pluginFormat = node.format;
+                            pluginState->pluginId = node.pluginId;
+                            pluginState->trackIndex = track.trackIndex;
+                            nodeStatus = pluginState->statusMessage;
+                            nodeInstantiating = pluginState->instantiating;
+                            nodeHasError = pluginState->hasError;
+                        }
+                        auto* device = state->device.get();
+                        auto* sequencer = device ? device->sequencer() : nullptr;
+                        if (sequencer && node.instanceId >= 0) {
+                            uiSupported = sequencer->hasPluginUI(node.instanceId);
+                            if (uiSupported) {
+                                uiVisible = sequencer->isPluginUIVisible(node.instanceId);
+                            }
+                        }
+                    }
+
+                    ImGui::TableNextRow();
+
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(node.displayName.c_str());
+
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextUnformatted(node.format.c_str());
+
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::Text("%d", node.instanceId);
+
+                    ImGui::TableSetColumnIndex(3);
+                    if (nodeInstantiating) {
+                        ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s", nodeStatus.c_str());
+                    } else if (nodeHasError) {
+                        ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s", nodeStatus.c_str());
+                    } else {
+                        ImGui::TextUnformatted(nodeStatus.c_str());
+                    }
+
+                    ImGui::TableSetColumnIndex(4);
+                    if (running && !instantiating && uiSupported) {
+                        const char* uiText = uiVisible ? "Hide UI" : "Show UI";
+                        std::string btnId = std::format("{}##{}::{}", uiText, entry.id, node.instanceId);
                         if (ImGui::Button(btnId.c_str())) {
-                            if (isVisible) {
-                                // Hide UI
-                                sequencer->hidePluginUI(instanceId);
-                                if (state->pluginWindow) {
-                                    state->pluginWindow->show(false);
-                                }
-                                sequencer->setPluginUIResizeHandler(instanceId, nullptr);
-                                state->pluginWindowResizeIgnore = false;
+                            if (uiVisible) {
+                                hidePluginUIInstance(state, node.instanceId);
                             } else {
-                                // Show UI
-                                bool shown = false;
-                                remidy::gui::ContainerWindow* container = nullptr;
-
-                                if (!state->pluginWindow) {
-                                    std::string title = std::format("{} ({})",
-                                        state->pluginName, state->pluginFormat);
-                                    auto w = remidy::gui::ContainerWindow::create(
-                                        title.c_str(), 800, 600);
-                                    container = w.get();
-                                    w->setCloseCallback([this, weakState = std::weak_ptr(state)]() {
-                                        if (auto s = weakState.lock()) {
-                                            onPluginWindowClosed(s);
-                                        }
-                                    });
-                                    state->pluginWindow = std::move(w);
-                                    state->pluginWindowBounds = {100, 100, 800, 600};
-                                } else {
-                                    container = state->pluginWindow.get();
-                                }
-
-                                if (container) {
-                                    container->show(true);
-                                    void* parentHandle = container->getHandle();
-
-                                    sequencer->setPluginUIResizeHandler(instanceId,
-                                        [this, weakState = std::weak_ptr(state)](uint32_t w, uint32_t h) {
-                                            if (auto s = weakState.lock()) {
-                                                return handlePluginResizeRequest(s, w, h);
-                                            }
-                                            return false;
-                                        });
-
-                                    if (sequencer->showPluginUI(instanceId, false, parentHandle)) {
-                                        state->pluginWindowEmbedded = true;
-                                        uint32_t pw = 0, ph = 0;
-                                        if (fetchPluginUISize(state, pw, ph) && pw > 0 && ph > 0) {
-                                            state->pluginWindowBounds.width = static_cast<int>(pw);
-                                            state->pluginWindowBounds.height = static_cast<int>(ph);
-                                            state->pluginWindowResizeIgnore = true;
-
-                                            auto bounds = state->pluginWindowBounds;
-                                            bool canResize = sequencer->canPluginUIResize(instanceId);
-                                            remidy::EventLoop::runTaskOnMainThread(
-                                                [cw=container, bounds, canResize]() {
-                                                    if (cw) {
-                                                        cw->setResizable(canResize);
-                                                        cw->setBounds(bounds);
-                                                    }
-                                                });
-                                        }
-                                        shown = true;
-                                    } else {
-                                        // Embedded failed, cleanup
-                                        container->show(false);
-                                        state->pluginWindow.reset();
-                                        sequencer->setPluginUIResizeHandler(instanceId, nullptr);
-                                    }
-                                }
-
-                                if (!shown) {
-                                    // Fallback to floating window
-                                    if (sequencer->showPluginUI(instanceId, true, nullptr)) {
-                                        state->pluginWindowEmbedded = false;
-                                        sequencer->setPluginUIResizeHandler(instanceId, nullptr);
-                                        state->pluginWindowResizeIgnore = false;
-                                    }
-                                }
+                                showPluginUIInstance(state, node.instanceId);
                             }
                         }
                         ImGui::SameLine();
                     }
-                }
 
-                // Stop button
-                if (ImGui::Button(std::format("Stop##{}", devicesCopy[i].id).c_str())) {
-                    if (auto locked = state) {
-                        std::lock_guard guard(state->mutex);
-                        if (state->device) {
-                            state->device->stop();
-                        }
-                        state->running = false;
-                        state->statusMessage = "Stopped";
-                    }
-                }
-                ImGui::SameLine();
-            } else if (!running) {
-                if (ImGui::Button(std::format("Start##{}", devicesCopy[i].id).c_str())) {
-                    int statusCode = 0;
-                    if (auto locked = state) {
-                        std::lock_guard guard(state->mutex);
-                        if (state->device) {
-                            statusCode = state->device->start();
-                        }
-                        if (statusCode == 0) {
-                            state->running = true;
-                            state->statusMessage = "Running";
-                            state->hasError = false;
-                        } else {
-                            state->statusMessage = std::format("Start failed (status {})", statusCode);
-                            state->hasError = true;
+                    std::string removeBtnId = std::format("Remove##{}::{}", entry.id, node.instanceId);
+                    if (ImGui::Button(removeBtnId.c_str())) {
+                        hidePluginUIInstance(state, node.instanceId);
+                        bool removed = false;
+                        {
+                            std::lock_guard guard(state->mutex);
+                            if (state->device) {
+                                removed = state->device->removePluginInstance(node.instanceId);
+                            }
+                            if (removed) {
+                                state->pluginInstances.erase(node.instanceId);
+                                state->statusMessage = std::format("Removed {}", node.displayName);
+                                state->hasError = false;
+                            } else {
+                                state->statusMessage = std::format("Failed to remove {}", node.displayName);
+                                state->hasError = true;
+                            }
                         }
                     }
+
+                    if (running && !instantiating) {
+                        // Placeholder for future per-plugin actions
+                    }
                 }
-                ImGui::SameLine();
+
+                ImGui::EndTable();
             }
 
-            if (ImGui::Button(std::format("Remove##{}", devicesCopy[i].id).c_str())) {
-                removeIndex = i;
-            }
+            ImGui::PopID();
         }
+    }
 
-        ImGui::EndTable();
-
-        if (removeIndex != static_cast<size_t>(-1)) {
-            removeDevice(removeIndex);
-        }
+    if (removeIndex != static_cast<size_t>(-1)) {
+        removeDevice(removeIndex);
     }
 }
 
@@ -528,9 +622,6 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex) {
     }
 
     auto state = std::make_shared<DeviceState>();
-    state->pluginName = plugin.displayName;
-    state->pluginFormat = plugin.format;
-    state->pluginId = plugin.pluginId;
     state->apiName = bufferToString(apiInput_);
     if (state->apiName.empty()) {
         state->apiName = defaults_.apiName;
@@ -549,9 +640,10 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex) {
     std::weak_ptr<DeviceState> weakState = state;
     std::string format = plugin.format;
     std::string pluginId = plugin.pluginId;
+    std::string pluginName = plugin.displayName;
 
     devicePtr->addPluginTrackById(format, pluginId,
-        [weakState](int32_t instanceId, std::string error) {
+        [this, weakState, pluginName, format, pluginId](int32_t instanceId, std::string error) {
             if (auto locked = weakState.lock()) {
                 std::lock_guard guard(locked->mutex);
                 if (!error.empty()) {
@@ -559,10 +651,22 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex) {
                     locked->hasError = true;
                     locked->instantiating = false;
                 } else {
-                    locked->statusMessage = std::format("Plugin ready (instance {})", instanceId);
+                    locked->statusMessage = "Running";
                     locked->instantiating = false;
                     locked->hasError = false;
-                    locked->instanceId = instanceId;
+                    auto& node = locked->pluginInstances[instanceId];
+                    node.instanceId = instanceId;
+                    node.pluginName = pluginName;
+                    node.pluginFormat = format;
+                    node.pluginId = pluginId;
+                    node.statusMessage = std::format("Plugin ready (instance {})", instanceId);
+                    node.instantiating = false;
+                    node.hasError = false;
+                    if (locked->device && locked->device->sequencer()) {
+                        node.trackIndex = locked->device->sequencer()->findTrackIndexForInstance(instanceId);
+                    } else {
+                        node.trackIndex = 0;
+                    }
                 }
             }
         });
@@ -587,6 +691,70 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex) {
     }
 }
 
+void MainWindow::addPluginToExistingTrack(size_t pluginIndex, const TrackDestinationOption& destination) {
+    PluginEntry plugin;
+    {
+        std::lock_guard lock(pluginMutex_);
+        if (pluginIndex >= plugins_.size()) {
+            return;
+        }
+        plugin = plugins_[pluginIndex];
+    }
+
+    auto target = findDeviceById(destination.deviceEntryId);
+    if (!target) {
+        return;
+    }
+
+    std::string format = plugin.format;
+    std::string pluginId = plugin.pluginId;
+    std::string pluginName = plugin.displayName;
+    std::weak_ptr<DeviceState> weakState = target;
+
+    UapmdMidiDevice* devicePtr = nullptr;
+    {
+        std::lock_guard guard(target->mutex);
+        devicePtr = target->device.get();
+        if (!devicePtr) {
+            target->statusMessage = "Target device unavailable";
+            target->hasError = true;
+            target->instantiating = false;
+            return;
+        }
+        target->instantiating = true;
+        target->statusMessage = std::format("Adding {} to track {}", plugin.displayName, destination.trackIndex + 1);
+    }
+
+    devicePtr->addPluginToTrackById(destination.trackIndex, format, pluginId,
+        [this, weakState, pluginName, format, pluginId, destination](int32_t instanceId, std::string error) {
+            if (auto locked = weakState.lock()) {
+                std::lock_guard guard(locked->mutex);
+                if (!error.empty()) {
+                    locked->statusMessage = "Plugin append failed: " + error;
+                    locked->hasError = true;
+                    locked->instantiating = false;
+                    return;
+                }
+                locked->instantiating = false;
+                locked->hasError = false;
+                locked->statusMessage = "Running";
+                auto& node = locked->pluginInstances[instanceId];
+                node.instanceId = instanceId;
+                node.pluginName = pluginName;
+                node.pluginFormat = format;
+                node.pluginId = pluginId;
+                node.statusMessage = std::format("Plugin ready (instance {})", instanceId);
+                node.instantiating = false;
+                node.hasError = false;
+                if (locked->device && locked->device->sequencer()) {
+                    node.trackIndex = locked->device->sequencer()->findTrackIndexForInstance(instanceId);
+                } else {
+                    node.trackIndex = destination.trackIndex;
+                }
+            }
+        });
+}
+
 void MainWindow::removeDevice(size_t index) {
     std::shared_ptr<DeviceState> state;
     {
@@ -600,16 +768,17 @@ void MainWindow::removeDevice(size_t index) {
 
     if (state) {
         std::lock_guard guard(state->mutex);
-        // Clean up plugin window
-        if (state->pluginWindow) {
-            if (auto* device = state->device.get()) {
-                auto sequencer = device->sequencer();
-                if (sequencer) {
-                    sequencer->hidePluginUI(state->instanceId);
-                    sequencer->setPluginUIResizeHandler(state->instanceId, nullptr);
-                }
+        auto* device = state->device.get();
+        auto* sequencer = device ? device->sequencer() : nullptr;
+        for (auto& [instanceId, pluginState] : state->pluginInstances) {
+            if (sequencer) {
+                sequencer->hidePluginUI(instanceId);
+                sequencer->setPluginUIResizeHandler(instanceId, nullptr);
             }
-            state->pluginWindow.reset();
+            if (pluginState.pluginWindow) {
+                pluginState.pluginWindow->show(false);
+                pluginState.pluginWindow.reset();
+            }
         }
         if (state->device) {
             state->device->stop();
@@ -696,50 +865,55 @@ void MainWindow::stopAllDevices() {
 
     for (auto& state : states) {
         std::lock_guard guard(state->mutex);
-        if (state->device) {
-            state->device->stop();
+        auto* device = state->device.get();
+        auto* sequencer = device ? device->sequencer() : nullptr;
+        for (auto& [instanceId, pluginState] : state->pluginInstances) {
+            if (sequencer) {
+                sequencer->hidePluginUI(instanceId);
+                sequencer->setPluginUIResizeHandler(instanceId, nullptr);
+            }
+            if (pluginState.pluginWindow) {
+                pluginState.pluginWindow->show(false);
+                pluginState.pluginWindow.reset();
+            }
+        }
+        if (device) {
+            device->stop();
             state->device.reset();
         }
     }
 }
 
-bool MainWindow::handlePluginResizeRequest(std::shared_ptr<DeviceState> state, uint32_t width, uint32_t height) {
+bool MainWindow::handlePluginResizeRequest(std::shared_ptr<DeviceState> state, int32_t instanceId, uint32_t width, uint32_t height) {
     std::lock_guard guard(state->mutex);
-    if (!state->pluginWindow) {
+    auto* nodeState = findPluginInstance(*state, instanceId);
+    if (!nodeState || !nodeState->pluginWindow) {
         return false;
     }
 
-    auto* window = state->pluginWindow.get();
+    auto* window = nodeState->pluginWindow.get();
     if (!window) {
         return false;
     }
 
-    auto& bounds = state->pluginWindowBounds;
-    remidy::gui::Bounds currentBounds = bounds;
-
-    // Keep existing x/y from stored bounds
+    auto& bounds = nodeState->pluginWindowBounds;
     bounds.width = static_cast<int>(width);
     bounds.height = static_cast<int>(height);
 
-    // Don't process if this resize came from user window action
-    if (state->pluginWindowResizeIgnore) {
-        state->pluginWindowResizeIgnore = false;
+    if (nodeState->pluginWindowResizeIgnore) {
+        nodeState->pluginWindowResizeIgnore = false;
         return true;
     }
 
-    // Try to apply the requested size
     auto* device = state->device.get();
     if (!device || !device->sequencer()) {
         return false;
     }
 
-    int32_t instanceId = state->instanceId;
-    state->pluginWindowResizeIgnore = true;
-
+    nodeState->pluginWindowResizeIgnore = true;
     auto sequencer = device->sequencer();
     bool canResize = sequencer->canPluginUIResize(instanceId);
     if (!sequencer->resizePluginUI(instanceId, width, height)) {
-        // Plugin rejected size, get what it wants
         uint32_t adjustedWidth = 0, adjustedHeight = 0;
         sequencer->getPluginUISize(instanceId, adjustedWidth, adjustedHeight);
         if (adjustedWidth > 0 && adjustedHeight > 0) {
@@ -748,7 +922,6 @@ bool MainWindow::handlePluginResizeRequest(std::shared_ptr<DeviceState> state, u
         }
     }
 
-    // Apply the bounds on the main thread
     remidy::EventLoop::runTaskOnMainThread([cw=window, bounds, canResize]() {
         if (cw) {
             cw->setResizable(canResize);
@@ -759,55 +932,204 @@ bool MainWindow::handlePluginResizeRequest(std::shared_ptr<DeviceState> state, u
     return true;
 }
 
-void MainWindow::onPluginWindowResized(std::shared_ptr<DeviceState> state) {
+void MainWindow::onPluginWindowResized(std::shared_ptr<DeviceState> state, int32_t instanceId) {
     std::lock_guard guard(state->mutex);
-    if (!state->pluginWindow || state->pluginWindowResizeIgnore) {
+    auto* nodeState = findPluginInstance(*state, instanceId);
+    if (!nodeState || !nodeState->pluginWindow || nodeState->pluginWindowResizeIgnore) {
         return;
     }
 
-    auto* window = state->pluginWindow.get();
+    auto* window = nodeState->pluginWindow.get();
     if (!window) {
         return;
     }
 
     auto bounds = window->getBounds();
-    state->pluginWindowBounds = bounds;
+    nodeState->pluginWindowBounds = bounds;
 
     auto* device = state->device.get();
     if (!device || !device->sequencer()) {
         return;
     }
 
-    int32_t instanceId = state->instanceId;
     device->sequencer()->resizePluginUI(instanceId,
         static_cast<uint32_t>(bounds.width),
         static_cast<uint32_t>(bounds.height));
 }
 
-void MainWindow::onPluginWindowClosed(std::shared_ptr<DeviceState> state) {
-    std::lock_guard guard(state->mutex);
+void MainWindow::onPluginWindowClosed(std::shared_ptr<DeviceState> state, int32_t instanceId) {
+    hidePluginUIInstance(state, instanceId);
+}
+
+void MainWindow::showPluginUIInstance(std::shared_ptr<DeviceState> state, int32_t instanceId) {
+    auto weakState = std::weak_ptr(state);
+    remidy::gui::ContainerWindow* container = nullptr;
+    bool hasWindowNow = false;
+
+    {
+        std::lock_guard guard(state->mutex);
+        auto* nodeState = findPluginInstance(*state, instanceId);
+        if (!nodeState) {
+            return;
+        }
+        if (!nodeState->pluginWindow) {
+            std::string title = nodeState->pluginName.empty()
+                ? std::format("Plugin {}", instanceId)
+                : std::format("{} ({})", nodeState->pluginName, nodeState->pluginFormat);
+            auto window = remidy::gui::ContainerWindow::create(title.c_str(), 800, 600);
+            if (!window) {
+                return;
+            }
+            container = window.get();
+            window->setCloseCallback([this, weakState, instanceId]() {
+                if (auto locked = weakState.lock()) {
+                    onPluginWindowClosed(locked, instanceId);
+                }
+            });
+            nodeState->pluginWindow = std::move(window);
+            nodeState->pluginWindowBounds = {100, 100, 800, 600};
+            hasWindowNow = true;
+        } else {
+            container = nodeState->pluginWindow.get();
+            if (nodeState->pluginWindowBounds.width == 0 || nodeState->pluginWindowBounds.height == 0) {
+                nodeState->pluginWindowBounds = {100, 100, 800, 600};
+            }
+            hasWindowNow = true;
+        }
+    }
+
+    if (!container || !hasWindowNow) {
+        return;
+    }
+
+    container->show(true);
+    void* parentHandle = container->getHandle();
+
+    AudioPluginSequencer* sequencer = nullptr;
+    {
+        std::lock_guard guard(state->mutex);
+        auto* device = state->device.get();
+        sequencer = device ? device->sequencer() : nullptr;
+    }
+    if (!sequencer) {
+        return;
+    }
+
+    sequencer->setPluginUIResizeHandler(instanceId,
+        [this, weakState, instanceId](uint32_t w, uint32_t h) {
+            if (auto locked = weakState.lock()) {
+                return handlePluginResizeRequest(locked, instanceId, w, h);
+            }
+            return false;
+        });
+
+    if (sequencer->showPluginUI(instanceId, false, parentHandle)) {
+        uint32_t pw = 0, ph = 0;
+        bool hasSize = sequencer->getPluginUISize(instanceId, pw, ph) && pw > 0 && ph > 0;
+        bool canResize = sequencer->canPluginUIResize(instanceId);
+        remidy::gui::Bounds bounds{};
+        bool applyBounds = false;
+        {
+            std::lock_guard guard(state->mutex);
+            auto* nodeState = findPluginInstance(*state, instanceId);
+            if (nodeState) {
+                nodeState->pluginWindowEmbedded = true;
+                if (hasSize) {
+                    nodeState->pluginWindowBounds.width = static_cast<int>(pw);
+                    nodeState->pluginWindowBounds.height = static_cast<int>(ph);
+                    nodeState->pluginWindowResizeIgnore = true;
+                    bounds = nodeState->pluginWindowBounds;
+                    applyBounds = true;
+                }
+            }
+        }
+        if (applyBounds) {
+            remidy::EventLoop::runTaskOnMainThread([cw=container, bounds, canResize]() {
+                if (cw) {
+                    cw->setResizable(canResize);
+                    cw->setBounds(bounds);
+                }
+            });
+        }
+    } else {
+        container->show(false);
+        sequencer->setPluginUIResizeHandler(instanceId, nullptr);
+        bool hadEmbeddedWindow = false;
+        {
+            std::lock_guard guard(state->mutex);
+            auto* nodeState = findPluginInstance(*state, instanceId);
+            if (nodeState) {
+                hadEmbeddedWindow = nodeState->pluginWindowEmbedded;
+                nodeState->pluginWindowEmbedded = false;
+                nodeState->pluginWindowResizeIgnore = false;
+                nodeState->pluginWindow.reset();
+            }
+        }
+        if (sequencer->showPluginUI(instanceId, true, nullptr)) {
+            std::lock_guard guard(state->mutex);
+            auto* nodeState = findPluginInstance(*state, instanceId);
+            if (nodeState) {
+                nodeState->pluginWindowEmbedded = false;
+                nodeState->pluginWindowResizeIgnore = false;
+            }
+        }
+    }
+}
+
+void MainWindow::hidePluginUIInstance(std::shared_ptr<DeviceState> state, int32_t instanceId) {
+    std::unique_lock guard(state->mutex);
     auto* device = state->device.get();
-    if (device && device->sequencer()) {
-        auto sequencer = device->sequencer();
-        int32_t instanceId = state->instanceId;
+    auto* sequencer = device ? device->sequencer() : nullptr;
+    auto* nodeState = findPluginInstance(*state, instanceId);
+
+    if (sequencer) {
         sequencer->hidePluginUI(instanceId);
         sequencer->setPluginUIResizeHandler(instanceId, nullptr);
     }
 
-    if (state->pluginWindow) {
-        state->pluginWindow->show(false);
+    if (nodeState && nodeState->pluginWindow) {
+        nodeState->pluginWindow->show(false);
+        // Keep the window alive for reuse, but ensure it’s hidden before releasing the lock
     }
-    state->pluginWindowResizeIgnore = false;
+    if (nodeState) {
+        nodeState->pluginWindowResizeIgnore = false;
+    }
+}
+MainWindow::PluginInstanceState* MainWindow::findPluginInstance(DeviceState& state, int32_t instanceId) {
+    auto it = state.pluginInstances.find(instanceId);
+    if (it != state.pluginInstances.end()) {
+        return &it->second;
+    }
+
+    auto [insertIt, _] = state.pluginInstances.emplace(instanceId, PluginInstanceState{});
+    auto& pluginState = insertIt->second;
+    pluginState.instanceId = instanceId;
+    pluginState.statusMessage = "Running";
+    pluginState.instantiating = false;
+    pluginState.hasError = false;
+
+    auto* device = state.device.get();
+    if (device && device->sequencer()) {
+        pluginState.pluginName = device->sequencer()->getPluginName(instanceId);
+        pluginState.pluginFormat = device->sequencer()->getPluginFormat(instanceId);
+        pluginState.trackIndex = device->sequencer()->findTrackIndexForInstance(instanceId);
+    } else {
+        pluginState.pluginName = std::format("Instance {}", instanceId);
+        pluginState.pluginFormat.clear();
+        pluginState.trackIndex = -1;
+    }
+    pluginState.pluginId.clear();
+    return &pluginState;
 }
 
-bool MainWindow::fetchPluginUISize(std::shared_ptr<DeviceState> state, uint32_t& width, uint32_t& height) {
-    std::lock_guard guard(state->mutex);
-    auto* device = state->device.get();
-    if (!device || !device->sequencer()) {
-        return false;
+std::shared_ptr<MainWindow::DeviceState> MainWindow::findDeviceById(int deviceEntryId) {
+    std::lock_guard lock(devicesMutex_);
+    for (auto& entry : devices_) {
+        if (entry.id == deviceEntryId) {
+            return entry.state;
+        }
     }
-
-    return device->sequencer()->getPluginUISize(state->instanceId, width, height);
+    return nullptr;
 }
 
 } // namespace uapmd::service::gui

@@ -3,6 +3,7 @@
 #include "uapmd/priv/plugingraph/AudioPluginGraph.hpp"
 
 
+#include <algorithm>
 #include <cassert>
 
 namespace uapmd {
@@ -12,6 +13,7 @@ namespace uapmd {
 
     public:
         uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode);
+        bool removePluginInstance(int32_t instanceId);
         int32_t processAudio(AudioProcessContext& process);
         std::vector<AudioPluginNode *> plugins();
     };
@@ -27,6 +29,17 @@ namespace uapmd {
         nodes.emplace_back(std::move(newNode));
         // FIXME: define return codes
         return 0;
+    }
+
+    bool AudioPluginGraph::Impl::removePluginInstance(int32_t instanceId) {
+        auto it = std::find_if(nodes.begin(), nodes.end(), [instanceId](const std::unique_ptr<AudioPluginNode>& node) {
+            return node && node->instanceId() == instanceId;
+        });
+        if (it == nodes.end()) {
+            return false;
+        }
+        nodes.erase(it);
+        return true;
     }
 
     std::vector<AudioPluginNode *> AudioPluginGraph::Impl::plugins() {
@@ -50,6 +63,10 @@ namespace uapmd {
 
     uapmd_status_t AudioPluginGraph::appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) {
         return impl->appendNodeSimple(std::move(newNode));
+    }
+
+    bool AudioPluginGraph::removePluginInstance(int32_t instanceId) {
+        return impl->removePluginInstance(instanceId);
     }
 
     std::vector<AudioPluginNode *> AudioPluginGraph::plugins() {

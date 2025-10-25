@@ -14,6 +14,7 @@ namespace uapmd {
         ~AudioPluginGraph();
 
         uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode);
+        bool removePluginInstance(int32_t instanceId);
 
         std::vector<AudioPluginNode*> plugins();
 

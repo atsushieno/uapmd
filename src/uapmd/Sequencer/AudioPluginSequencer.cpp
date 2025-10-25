@@ -151,6 +151,48 @@ std::string uapmd::AudioPluginSequencer::getPluginFormat(int32_t instanceId) {
     return "";
 }
 
+std::vector<uapmd::AudioPluginSequencer::TrackInfo> uapmd::AudioPluginSequencer::getTrackInfos() {
+    std::vector<TrackInfo> info;
+    auto catalogPlugins = plugin_host_pal->catalog().getPlugins();
+    auto displayNameFor = [&](const std::string& format, const std::string& pluginId) -> std::string {
+        for (auto* entry : catalogPlugins) {
+            if (entry->format() == format && entry->pluginId() == pluginId) {
+                return entry->displayName();
+            }
+        }
+        return pluginId;
+    };
+
+    auto& tracksRef = sequencer.tracks();
+    info.reserve(tracksRef.size());
+    for (size_t i = 0; i < tracksRef.size(); ++i) {
+        TrackInfo trackInfo;
+        trackInfo.trackIndex = static_cast<int32_t>(i);
+        for (auto* plugin : tracksRef[i]->graph().plugins()) {
+            PluginNodeInfo nodeInfo;
+            nodeInfo.instanceId = plugin->instanceId();
+            nodeInfo.pluginId = plugin->pal()->pluginId();
+            nodeInfo.format = plugin->pal()->formatName();
+            nodeInfo.displayName = displayNameFor(nodeInfo.format, nodeInfo.pluginId);
+            trackInfo.nodes.push_back(std::move(nodeInfo));
+        }
+        info.push_back(std::move(trackInfo));
+    }
+    return info;
+}
+
+int32_t uapmd::AudioPluginSequencer::findTrackIndexForInstance(int32_t instanceId) const {
+    auto& tracksRef = sequencer.tracks();
+    for (size_t i = 0; i < tracksRef.size(); ++i) {
+        for (auto* plugin : tracksRef[i]->graph().plugins()) {
+            if (plugin->instanceId() == instanceId) {
+                return static_cast<int32_t>(i);
+            }
+        }
+    }
+    return -1;
+}
+
 bool uapmd::AudioPluginSequencer::hasPluginUI(int32_t instanceId) {
     auto pal = findNodePalByInstanceId(sequencer, instanceId);
     if (!pal)
@@ -245,6 +287,63 @@ void uapmd::AudioPluginSequencer::instantiatePlugin(
             callback(track->graph().plugins()[0]->instanceId(), error);
         }
     });
+}
+
+void uapmd::AudioPluginSequencer::addPluginToTrack(
+    int32_t trackIndex,
+    std::string& format,
+    std::string& pluginId,
+    std::function<void(int32_t instanceId, std::string error)> callback
+) {
+    if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= sequencer.tracks().size()) {
+        callback(-1, std::format("Invalid track index {}", trackIndex));
+        return;
+    }
+
+    plugin_host_pal->createPluginInstance(sample_rate, format, pluginId,
+        [this, trackIndex, cb = std::move(callback)](auto node, std::string error) mutable {
+            if (!node) {
+                if (cb) {
+                    cb(-1, "Could not create plugin: " + error);
+                }
+                return;
+            }
+
+            auto& tracksRef = sequencer.tracks();
+            if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracksRef.size()) {
+                if (cb) {
+                    cb(-1, std::format("Track {} no longer exists", trackIndex));
+                }
+                return;
+            }
+
+            auto* track = tracksRef[static_cast<size_t>(trackIndex)];
+            auto status = track->graph().appendNodeSimple(std::move(node));
+            if (status != 0) {
+                if (cb) {
+                    cb(-1, std::format("Failed to append plugin to track {} (status {})", trackIndex, status));
+                }
+                return;
+            }
+
+            auto plugins = track->graph().plugins();
+            if (plugins.empty()) {
+                if (cb) {
+                    cb(-1, "Track has no plugins after append");
+                }
+                return;
+            }
+
+            if (cb) {
+                cb(plugins.back()->instanceId(), "");
+            }
+        });
+}
+
+bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
+    hidePluginUI(instanceId);
+    setPluginUIResizeHandler(instanceId, nullptr);
+    return sequencer.removePluginInstance(instanceId);
 }
 
 void addMessage64(cmidi2_ump* dst, int64_t ump) {

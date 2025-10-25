@@ -21,6 +21,8 @@ namespace uapmd {
         std::vector<AudioPluginTrack*>& tracks();
 
         AudioPluginTrack* addSimpleTrack(std::unique_ptr<AudioPluginNode> node);
+        bool removePluginInstance(int32_t instanceId);
+        void removeTrack(size_t index);
 
         uapmd_status_t processAudio();
     };
@@ -56,6 +58,10 @@ namespace uapmd {
         });
     }
 
+    bool SequenceProcessor::removePluginInstance(int32_t instanceId) {
+        return impl->removePluginInstance(instanceId);
+    }
+
     // Impl
     SequenceProcessor::Impl::Impl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostPAL* pal) :
         sampleRate(sampleRate), ump_buffer_size_in_ints(umpBufferSizeInInts), pal(pal) {
@@ -64,6 +70,9 @@ namespace uapmd {
     SequenceProcessor::Impl::~Impl() {
         for (auto track : tracks_)
             delete track;
+        for (auto ctx : sequence.tracks)
+            delete ctx;
+        sequence.tracks.clear();
         pal = nullptr; // do not delete
     }
 
@@ -90,6 +99,34 @@ namespace uapmd {
         tracks_.emplace_back(track);
         sequence.tracks.emplace_back(new AudioProcessContext(master_context, ump_buffer_size_in_ints));
         return track;
+    }
+
+    bool SequenceProcessor::Impl::removePluginInstance(int32_t instanceId) {
+        for (size_t i = 0; i < tracks_.size(); ++i) {
+            auto* track = tracks_[i];
+            if (!track) {
+                continue;
+            }
+            if (track->graph().removePluginInstance(instanceId)) {
+                if (track->graph().plugins().empty()) {
+                    removeTrack(i);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void SequenceProcessor::Impl::removeTrack(size_t index) {
+        if (index >= tracks_.size()) {
+            return;
+        }
+        delete tracks_[index];
+        tracks_.erase(tracks_.begin() + static_cast<long>(index));
+        if (index < sequence.tracks.size()) {
+            delete sequence.tracks[index];
+            sequence.tracks.erase(sequence.tracks.begin() + static_cast<long>(index));
+        }
     }
 
 }

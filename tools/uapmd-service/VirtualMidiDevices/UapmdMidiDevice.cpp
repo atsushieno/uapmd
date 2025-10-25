@@ -58,6 +58,38 @@ namespace uapmd {
         });
     }
 
+    void UapmdMidiDevice::addPluginToTrackById(int32_t trackIndex, const std::string& formatName,
+                                               const std::string& pluginId,
+                                               std::function<void(int32_t instanceId, std::string error)> callback) {
+        auto fmt = formatName;
+        auto id = pluginId;
+        seq->performPluginScanning(false);
+        seq->addPluginToTrack(trackIndex, fmt, id,
+            [this, cb = std::move(callback), fmt, id, trackIndex](int32_t instanceId, std::string error) mutable {
+                if (!error.empty()) {
+                    Logger::global()->logError("Failed to append plugin %s (%s) to track %d: %s",
+                        id.c_str(), fmt.c_str(), trackIndex, error.c_str());
+                    if (cb) {
+                        cb(instanceId, error);
+                    }
+                    return;
+                }
+                Logger::global()->logInfo("Appended plugin %s (%s) as instance %d on track %d",
+                    id.c_str(), fmt.c_str(), instanceId, trackIndex);
+                setupMidiCISession(instanceId);
+                if (cb) {
+                    cb(instanceId, "");
+                }
+            });
+    }
+
+    bool UapmdMidiDevice::removePluginInstance(int32_t instanceId) {
+        if (!seq) {
+            return false;
+        }
+        return seq->removePluginInstance(instanceId);
+    }
+
     void UapmdMidiDevice::setupMidiCISession(int32_t instanceId) {
         midicci::MidiCIDeviceConfiguration ci_config{
                 midicci::DEFAULT_RECEIVABLE_MAX_SYSEX_SIZE,

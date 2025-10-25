@@ -1,6 +1,9 @@
 #pragma once
 
 #include <functional>
+#include <string>
+#include <vector>
+
 #include "remidy-tooling/PluginInstancing.hpp"
 #include "uapmd/uapmd.hpp"
 
@@ -16,6 +19,18 @@ namespace uapmd {
         SequenceProcessor sequencer;
 
     public:
+        struct PluginNodeInfo {
+            int32_t instanceId = -1;
+            std::string pluginId;
+            std::string format;
+            std::string displayName;
+        };
+
+        struct TrackInfo {
+            int32_t trackIndex = -1;
+            std::vector<PluginNodeInfo> nodes;
+        };
+
         AudioPluginSequencer(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate);
         ~AudioPluginSequencer();
 
@@ -27,6 +42,9 @@ namespace uapmd {
 
         void instantiatePlugin(std::string& format, std::string& pluginId,
             std::function<void(int32_t instanceId, std::string error)> callback);
+        void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId,
+            std::function<void(int32_t instanceId, std::string error)> callback);
+        bool removePluginInstance(int32_t instanceId);
 
         std::vector<ParameterMetadata> getParameterList(int32_t instanceId);
         std::vector<PresetsMetadata> getPresetList(int32_t instanceId);
@@ -34,6 +52,8 @@ namespace uapmd {
         std::vector<int32_t> getInstanceIds();
         std::string getPluginName(int32_t instanceId);
         std::string getPluginFormat(int32_t instanceId);
+        std::vector<TrackInfo> getTrackInfos();
+        int32_t findTrackIndexForInstance(int32_t instanceId) const;
 
         // We will have to split out these GUI features at some point...
         bool hasPluginUI(int32_t instanceId);
