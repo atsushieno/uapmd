@@ -142,6 +142,7 @@ target_sources(remidy PRIVATE
         vst3/VST3Helper.cpp
         vst3/HostClasses.cpp
         vst3/ClassModuleInfo.cpp
+        vst3/LinuxRunLoopIIDs.cpp
         vst3/PluginFormatVST3.cpp
         vst3/PluginInstanceVST3.cpp
         vst3/PluginInstanceVST3.Buses.cpp
