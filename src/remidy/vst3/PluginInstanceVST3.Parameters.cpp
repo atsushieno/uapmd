@@ -10,38 +10,38 @@ using namespace remidy_vst3;
 
 remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST3* owner) : owner(owner) {
     auto controller = owner->controller;
-    auto count = controller->vtable->controller.get_parameter_count(controller);
+    auto count = controller->getParameterCount();
 
-    parameter_ids = (v3_param_id*) calloc(sizeof(v3_param_id), count);
+    parameter_ids = (ParamID*) calloc(sizeof(ParamID), count);
 
     for (auto i = 0; i < count; i++) {
-        v3_param_info info{};
-        controller->vtable->controller.get_parameter_info(controller, i, &info);
-        std::string idString = std::format("{}", info.param_id);
+        ParameterInfo info{};
+        controller->getParameterInfo(i, info);
+        std::string idString = std::format("{}", info.id);
         std::string name = vst3StringToStdString(info.title);
         std::string path{""};
 
         std::vector<ParameterEnumeration> enums{};
-        if (info.step_count > 0)
-            for (int32_t e = 0; e < info.step_count; e++) {
-                v3_str_128 name{};
-                auto normalized = controller->vtable->controller.plain_parameter_to_normalised(controller, info.param_id, e);
-                controller->vtable->controller.get_parameter_string_for_value(controller, info.param_id, normalized, name);
-                auto nameString = vst3StringToStdString(name);
+        if (info.stepCount > 0)
+            for (int32_t e = 0; e < info.stepCount; e++) {
+                String128 nameStr{};
+                auto normalized = controller->plainParamToNormalized(info.id, e);
+                controller->getParamStringByValue(info.id, normalized, nameStr);
+                auto nameString = vst3StringToStdString(nameStr);
                 ParameterEnumeration p{nameString, normalized};
                 enums.emplace_back(p);
             }
 
         auto p = new PluginParameter(i, idString, name, path,
-                                     info.flags & V3_PARAM_IS_LIST ? info.default_normalised_value * info.step_count : info.default_normalised_value,
+                                     info.flags & ParameterInfo::kIsList ? info.defaultNormalizedValue * info.stepCount : info.defaultNormalizedValue,
                                      0,
-                                     info.flags & V3_PARAM_IS_LIST ? info.step_count : 1,
+                                     info.flags & ParameterInfo::kIsList ? info.stepCount : 1,
                                      true,
-                                     info.flags & V3_PARAM_IS_HIDDEN,
-                                     info.flags & V3_PARAM_IS_LIST,
+                                     info.flags & ParameterInfo::kIsHidden,
+                                     info.flags & ParameterInfo::kIsList,
                                      enums);
 
-        parameter_ids[i] = info.param_id;
+        parameter_ids[i] = info.id;
         parameter_defs.emplace_back(p);
     }
 }
@@ -70,16 +70,16 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
     // populate the PNC list only if INoteExpressionController is implemented...
     auto nec = owner->note_expression_controller;
     if (nec) {
-        auto count = nec->vtable->note_expression_controller.get_note_expression_count(nec, context.group, context.channel);
+        auto count = nec->getNoteExpressionCount(context.group, context.channel);
         for (auto i = 0; i < count; i++) {
-            v3_note_expression_type_info info{};
-            if (nec->vtable->note_expression_controller.get_note_expression_info(nec, context.group, context.channel, i, info) == V3_OK) {
-                auto name = vst3StringToStdString(info.short_title);
+            NoteExpressionTypeInfo info{};
+            if (nec->getNoteExpressionInfo(context.group, context.channel, i, info) == kResultOk) {
+                auto name = vst3StringToStdString(info.shortTitle);
                 static std::string empty{};
                 auto parameter = new PluginParameter(i, name, name, empty,
-                    info.value_desc.default_value,
-                    info.value_desc.minimum,
-                    info.value_desc.maximum,
+                    info.valueDesc.defaultValue,
+                    info.valueDesc.minimum,
+                    info.valueDesc.maximum,
                     true, false, false);
                 defs.emplace_back(parameter);
             }
@@ -94,18 +94,18 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
     // use IParameterChanges.
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
     auto pvc = owner->processDataInputParameterChanges.asInterface();
-    const v3_param_id id = parameter_ids[index];
+    const ParamID id = parameter_ids[index];
     int32_t i = 0;
     IParamValueQueue* q{nullptr};
-    for (int32_t n = pvc->vtable->parameter_changes.get_param_count(pvc); i < n; i++) {
-        q = reinterpret_cast<IParamValueQueue *>(pvc->vtable->parameter_changes.get_param_data(pvc, i));
-        if (q->vtable->param_value_queue.get_param_id(q) == id)
+    for (int32_t n = pvc->getParameterCount(); i < n; i++) {
+        q = pvc->getParameterData(i);
+        if (q->getParameterId() == id)
             break;
     }
     if (!q)
         // It is an RT-safe operation, right?
-        q = reinterpret_cast<IParamValueQueue *>(pvc->vtable->parameter_changes.add_param_data(pvc, &id, &i));
-    if (q && q->vtable->param_value_queue.add_point(q, sampleOffset, value, &i) == V3_OK)
+        q = pvc->addParameterData(id, i);
+    if (q && q->addPoint(sampleOffset, value, i) == kResultOk)
         return StatusCode::OK;
     return StatusCode::INVALID_PARAMETER_OPERATION;
 }
@@ -113,12 +113,19 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
     double ppqPosition = owner->ump_input_dispatcher.trackContext()->ppqPosition(); // I guess only either of those time options are needed.
-    uint16_t flags = owner->processData.process_mode == V3_REALTIME ? V3_EVENT_IS_LIVE : 0; // am I right?
-    v3_event evt{static_cast<int32_t>(context.group), sampleOffset, ppqPosition, flags, V3_EVENT_NOTE_EXP_VALUE};
-    evt.note_exp_value = { .type_id = index, .note_id = static_cast<int32_t>(context.note), .value = value };
+    uint16_t flags = owner->processData.processMode == kRealtime ? Event::kIsLive : 0; // am I right?
+    Event evt{};
+    evt.busIndex = static_cast<int32_t>(context.group);
+    evt.sampleOffset = sampleOffset;
+    evt.ppqPosition = ppqPosition;
+    evt.flags = flags;
+    evt.type = Event::kNoteExpressionValueEvent;
+    evt.noteExpressionValue.typeId = index;
+    evt.noteExpressionValue.noteId = static_cast<int32_t>(context.note);
+    evt.noteExpressionValue.value = value;
     auto evtList = owner->processDataOutputEvents.asInterface();
     // This should copy the argument evt, right?
-    evtList->vtable->event_list.add_event(evtList, &evt);
+    evtList->addEvent(evt);
     return StatusCode::OK;
 }
 
@@ -126,7 +133,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::getParameter(ui
     if (!value)
         return StatusCode::INVALID_PARAMETER_OPERATION;
     auto controller = owner->controller;
-    *value = controller->vtable->controller.get_parameter_normalised(controller, parameter_ids[index]);
+    *value = controller->getParamNormalized(parameter_ids[index]);
     return StatusCode::OK;
 }
 
@@ -142,24 +149,24 @@ void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint
 
     int32_t bank = (bankMSB << 7) + bankLSB;
 
-    v3_program_list_info pl;
-    auto result = unitInfo->vtable->unit_info.get_program_list_info(unitInfo, bank, &pl);
-    if (result != V3_OK) {
+    ProgramListInfo pl;
+    auto result = unitInfo->getProgramListInfo(bank, pl);
+    if (result != kResultOk) {
         std::cerr << std::format("Could not retrieve program list: result code: {}, bank: {}, program: {}", result, bank, program) << std::endl;
         return; // could not retrieve program list
     }
 
-    v3_bstream *stream;
-    result = unitInfo->vtable->unit_info.set_unit_program_data(unitInfo, pl.id, program, &stream);
-    if (result != V3_OK) {
+    IBStream *stream;
+    result = unitInfo->setUnitProgramData(pl.id, program, stream);
+    if (result != kResultOk) {
         std::cerr << std::format("Failed to set unit program data: result code: {}, bank: {}, program: {}", result, bank, program) << std::endl;
         return;
     }
 
     int64_t size;
-    stream->seek(stream, 0, V3_SEEK_END, &size);
+    stream->seek(0, IBStream::kIBSeekEnd, &size);
     std::vector<uint8_t> buf(size);
     int32_t read;
-    stream->read(stream, buf.data(), size, &read);
+    stream->read(buf.data(), size, &read);
     states->setState(buf, remidy::PluginStateSupport::StateContextType::Preset, true);
 }

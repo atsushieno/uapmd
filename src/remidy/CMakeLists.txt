@@ -61,7 +61,6 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 endif ()
 
 target_include_directories(remidy PRIVATE
-        ../../external/travesty
         ${vst3sdk_SOURCE_DIR}
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ../../external/choc
@@ -125,6 +124,12 @@ target_sources(remidy PRIVATE
         EventLoop.cpp
 
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}/moduleinfoparser.cpp
+        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/funknown.cpp
+        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/coreiids.cpp
+        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/ustring.cpp
+        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/conststringtable.cpp
+        ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/vstinitiids.cpp
+        ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/commoniids.cpp
 
         Logger.cpp
         AudioBufferList.cpp
@@ -134,7 +139,7 @@ target_sources(remidy PRIVATE
         PluginBundlePool.cpp
         PluginFormat.cpp
 
-        vst3/TravestyHelper.cpp
+        vst3/VST3Helper.cpp
         vst3/HostClasses.cpp
         vst3/ClassModuleInfo.cpp
         vst3/PluginFormatVST3.cpp

@@ -2,6 +2,7 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <cstring>
 #include "ClassModuleInfo.hpp"
 
 #include <priv/common.hpp>
@@ -56,7 +57,7 @@ namespace remidy_vst3 {
             if (strcmp(cls.category.c_str(), kVstAudioEffectClass))
                 continue;
             std::string cid = stringToHexBinary(cls.cid);
-            v3_tuid tuid{};
+            Steinberg::TUID tuid{};
             memcpy(tuid, cid.c_str(), cid.length());
             std::string name = cls.name;
             std::string vendor = cls.vendor;

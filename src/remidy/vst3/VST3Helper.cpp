@@ -1,4 +1,4 @@
-#include "TravestyHelper.hpp"
+#include "VST3Helper.hpp"
 
 #if WIN32
 #include <Windows.h>

@@ -7,7 +7,7 @@ namespace remidy {
         std::vector<uint8_t> ret;
         VectorStream stream{ret};
         auto component = owner->component;
-        component->vtable->component.get_state(component, (v3_bstream**) &stream);
+        component->getState((IBStream*) &stream);
         return ret;
     }
 
@@ -16,6 +16,6 @@ namespace remidy {
                                                         bool includeUiState) {
         VectorStream stream{state};
         auto component = owner->component;
-        component->vtable->component.set_state(component, (v3_bstream**) &stream);
+        component->setState((IBStream*) &stream);
     }
 }

@@ -86,7 +86,7 @@ namespace remidy {
             std::vector<PluginParameter*> parameter_defs{};
             // map<PerNoteControllerContext, definition>
             std::vector<std::pair<PerNoteControllerContext, std::vector<PluginParameter*>>> per_note_controller_defs{};
-            v3_param_id *parameter_ids{};
+            ParamID *parameter_ids{};
 
         public:
             explicit ParameterSupport(PluginInstanceVST3* owner);
@@ -126,10 +126,10 @@ namespace remidy {
         class AudioBuses : public GenericAudioBuses {
             PluginInstanceVST3* owner;
 
-            std::vector<v3_audio_bus_buffers> inputAudioBusBuffersList{};
-            std::vector<v3_audio_bus_buffers> outputAudioBusBuffersList{};
+            std::vector<AudioBusBuffers> inputAudioBusBuffersList{};
+            std::vector<AudioBusBuffers> outputAudioBusBuffersList{};
 
-            std::vector<v3_speaker_arrangement> getVst3SpeakerConfigs(int32_t direction);
+            std::vector<SpeakerArrangement> getVst3SpeakerConfigs(int32_t direction);
 
         public:
             explicit AudioBuses(PluginInstanceVST3* owner) : owner(owner) {
@@ -227,16 +227,16 @@ namespace remidy {
         // the connection point for IEditController, retrieved from the plugin.
         IConnectionPoint* connPointEdit{nullptr};
 
-        v3_process_data processData{};
-        v3_process_context process_context{};
+        ProcessData processData{};
+        ProcessContext process_context{};
         HostEventList processDataInputEvents{};
         HostEventList processDataOutputEvents{};
         HostParameterChanges processDataInputParameterChanges{};
         HostParameterChanges processDataOutputParameterChanges{};
-        v3_process_setup last_process_setup{};
+        ProcessSetup last_process_setup{};
         bool has_process_setup{false};
 
-        void allocateProcessData(v3_process_setup& setup);
+        void allocateProcessData(ProcessSetup& setup);
 
         AudioBuses* audio_buses{};
 

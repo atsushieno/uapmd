@@ -1,7 +1,8 @@
 #pragma once
 
 #include <filesystem>
-#include <travesty/base.h>
+#include <cstring>
+#include <pluginterfaces/base/funknown.h>
 
 #define kVstAudioEffectClass "Audio Module Class"
 
@@ -12,16 +13,16 @@ namespace remidy_vst3 {
         std::string vendor;
         std::string url;
         std::string name;
-        v3_tuid tuid{};
+        Steinberg::TUID tuid{};
 
         PluginClassInfo(
             std::filesystem::path& bundlePath,
             std::string& vendor,
             std::string& url,
             std::string& name,
-            v3_tuid tuid
+            const Steinberg::TUID& tuid
         ): bundlePath(bundlePath), vendor(vendor), url(url), name(name) {
-            memcpy(this->tuid, tuid, 16);
+            memcpy(this->tuid, tuid, sizeof(Steinberg::TUID));
         }
     };
 

@@ -71,7 +71,7 @@ namespace remidy {
         PluginCatalogEntry *entry = pluginInfo;
         std::unique_ptr<PluginInstanceVST3> ret{nullptr};
         std::string error{};
-        v3_tuid tuid{};
+        TUID tuid{};
         auto decodedBytes = stringToHexBinary(entry->pluginId());
         memcpy(&tuid, decodedBytes.c_str(), decodedBytes.size());
         std::string name = entry->displayName();
@@ -79,42 +79,41 @@ namespace remidy {
         auto bundle = entry->bundlePath();
         forEachPlugin(bundle, [entry, &ret, tuid, name, &error, this](void *module, IPluginFactory *factory,
                                                                       PluginClassInfo &info) {
-            if (memcmp(info.tuid, tuid, sizeof(v3_tuid)) != 0)
+            if (memcmp(info.tuid, tuid, sizeof(TUID)) != 0)
                 return;
             IPluginFactory3 *factory3{nullptr};
-            auto result = factory->vtable->unknown.query_interface(factory, v3_plugin_factory_3_iid,
-                                                                   (void **) &factory3);
-            if (result == V3_OK) {
-                result = factory3->vtable->factory_3.set_host_context(factory3, (v3_funknown **) &host);
-                if (result != V3_OK) {
+            auto result = factory->queryInterface(IPluginFactory3::iid, (void **) &factory3);
+            if (result == kResultOk) {
+                result = factory3->setHostContext((FUnknown *) &host);
+                if (result != kResultOk) {
                     // It seems common that a plugin often "implements IPluginFactory3" and then returns kNotImplemented...
                     // In that case, it is not callable anyway, so treat it as if IPluginFactory3 were not queryable.
-                    factory3->vtable->unknown.unref(factory3);
+                    factory3->release();
                     if (((Extensibility *) getExtensibility())->reportNotImplemented())
                         logger->logWarning("Failed to set HostApplication to IPluginFactory3: %s result: %d",
                                            name.c_str(), result);
-                    if (result != V3_NOT_IMPLEMENTED)
+                    if (result != kNotImplemented)
                         return;
                 }
             }
 
             FUnknown *instance{};
-            result = factory->vtable->factory.create_instance(factory, tuid, v3_component_iid, (void **) &instance);
+            result = factory->createInstance(tuid, IComponent::iid, (void **) &instance);
             if (result)
                 return;
 
             IComponent *component{};
-            if (!instance || !instance->vtable || !instance->vtable->unknown.query_interface) {
+            if (!instance) {
                 logger->logError("Invalid component instance returned for %s", name.c_str());
-                if (instance && instance->vtable && instance->vtable->unknown.unref)
-                    instance->vtable->unknown.unref(instance);
+                if (instance)
+                    instance->release();
                 error = "Invalid component instance";
                 return;
             }
-            result = instance->vtable->unknown.query_interface(instance, v3_component_iid, (void **) &component);
-            if (result != V3_OK || component == nullptr || component->vtable == nullptr) {
+            result = instance->queryInterface(IComponent::iid, (void **) &component);
+            if (result != kResultOk || component == nullptr) {
                 logger->logError("Failed to query VST3 component: %s result: %d", name.c_str(), result);
-                instance->vtable->unknown.unref(instance);
+                instance->release();
                 error = "Failed to query VST3 component";
                 return;
             }
@@ -128,8 +127,8 @@ namespace remidy {
             // and make it non-updatable, I find this feature a design mistake at Steinberg.
             // So, let's not even try to support this.
 #if 0
-            result = component->vtable->component.set_io_mode(instance, V3_IO_ADVANCED);
-            if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
+            result = component->vtable->component.set_io_mode(instance, IoModes::kAdvanced);
+            if (result != kResultOk && result != kNotImplemented) {
                 logger->logError("Failed to set vst3 I/O mode: %s", name.c_str());
                 component->vtable->unknown.unref(component);
                 instance->vtable->unknown.unref(instance);
@@ -138,21 +137,20 @@ namespace remidy {
 #endif
 
             IAudioProcessor *processor{};
-            if (!component || !component->vtable || !component->vtable->unknown.query_interface) {
-                logger->logError("Invalid component vtable for %s", name.c_str());
-                component->vtable->unknown.unref(component);
-                instance->vtable->unknown.unref(instance);
-                error = "Invalid component vtable";
+            if (!component) {
+                logger->logError("Invalid component for %s", name.c_str());
+                component->release();
+                instance->release();
+                error = "Invalid component";
                 return;
             }
-            result = component->vtable->unknown.query_interface(component, v3_audio_processor_iid,
-                                                                (void **) &processor);
-            if (result != V3_OK || processor == nullptr || processor->vtable == nullptr) {
+            result = component->queryInterface(IAudioProcessor::iid, (void **) &processor);
+            if (result != kResultOk || processor == nullptr) {
                 logger->logError("Could not query vst3 IAudioProcessor interface: %s (status: %d ", name.c_str(),
                                  result);
                 error = "Could not query vst3 IAudioProcessor interface";
-                component->vtable->unknown.unref(component);
-                instance->vtable->unknown.unref(instance);
+                component->release();
+                instance->release();
                 return;
             }
 
@@ -161,52 +159,49 @@ namespace remidy {
             bool controllerValid = false;
             bool distinctControllerInstance = false;
             IEditController *controller{nullptr};
-            result = component->vtable->unknown.query_interface(component, v3_edit_controller_iid,
-                                                                (void **) &controller);
-            if (result == V3_OK && controller && controller->vtable)
+            result = component->queryInterface(IEditController::iid, (void **) &controller);
+            if (result == kResultOk && controller)
                 controllerValid = true;
             else {
                 controller = nullptr; // just to make sure
 
                 // > Steinberg::Vst::IComponent::getControllerClassId can also be called before (See VST 3 Workflow Diagrams).
                 // ... is it another "sole exception" ?
-                v3_tuid controllerClassId{};
-                result = component->vtable->component.get_controller_class_id(instance, controllerClassId);
-                if (result == V3_OK && memcmp(tuid, controllerClassId, sizeof(v3_tuid)) != 0)
+                TUID controllerClassId{};
+                result = component->getControllerClassId(controllerClassId);
+                if (result == kResultOk && memcmp(tuid, controllerClassId, sizeof(TUID)) != 0)
                     distinctControllerInstance = true;
                 else
-                    // result may be V3_NOT_IMPLEMENTED, meaning that the controller IID is the same as component.
-                    memcpy(controllerClassId, tuid, sizeof(v3_tuid));
+                    // result may be kNotImplemented, meaning that the controller IID is the same as component.
+                    memcpy(controllerClassId, tuid, sizeof(TUID));
 
                 // Create instance for IEditController.
-                result = factory->vtable->factory.create_instance(factory, controllerClassId, v3_edit_controller_iid,
-                                                                  (void **) &controller);
-                if (result == V3_OK)
-                    controllerValid = controller && controller->vtable;
+                result = factory->createInstance(controllerClassId, IEditController::iid, (void **) &controller);
+                if (result == kResultOk)
+                    controllerValid = controller != nullptr;
             }
 
             // Now initialize the component and the controller.
             // (At this state I don't think it is realistic to only instantiate component without controller;
             // too many operations depend on it e.g. setting parameters)
             if (controllerValid)
-                result = component->vtable->base.initialize(component, (v3_funknown **) &host);
-            if (!controllerValid || result != V3_OK) {
+                result = component->initialize((FUnknown *) &host);
+            if (!controllerValid || result != kResultOk) {
                 logger->logError("Failed to initialize vst3: %s (status: %d ", name.c_str(), result);
                 error = "Failed to initialize vst3";
-                component->vtable->unknown.unref(component);
-                instance->vtable->unknown.unref(instance);
+                component->release();
+                instance->release();
                 return;
             }
             if (distinctControllerInstance) {
-                result = controller->vtable->base.initialize(controller, (v3_funknown **) &host);
-                if (result != V3_OK || controller == nullptr || controller->vtable == nullptr)
+                result = controller->initialize((FUnknown *) &host);
+                if (result != kResultOk || controller == nullptr)
                     controllerValid = false;
             }
             if (controllerValid) {
                 auto handler = host.getComponentHandler();
-                result = controller->vtable->controller.set_component_handler(controller,
-                                                                              (v3_component_handler **) handler);
-                if (result == V3_OK) {
+                result = controller->setComponentHandler((IComponentHandler *) handler);
+                if (result == kResultOk) {
                     ret = std::make_unique<PluginInstanceVST3>(this, entry, module, factory, component, processor,
                                                                     controller, distinctControllerInstance, instance);
                     return;
@@ -215,13 +210,13 @@ namespace remidy {
             } else
                 error = "Failed to find or create valid VST3 controller";
             if (controller)
-                controller->vtable->unknown.unref(controller);
+                controller->release();
             error = "Failed to instantiate VST3";
-            component->vtable->base.terminate(component);
+            component->terminate();
             // regardless of the result, we go on...
 
-            component->vtable->unknown.unref(component);
-            instance->vtable->unknown.unref(instance);
+            component->release();
+            instance->release();
         }, [&](void *module) {
             // do not unload library here.
         });
@@ -266,7 +261,7 @@ namespace remidy {
         auto ret = std::make_unique<PluginCatalogEntry>();
         static std::string format{"VST3"};
         ret->format(format);
-        auto idString = hexBinaryToString((char *) info.tuid, sizeof(v3_tuid));
+        auto idString = hexBinaryToString((char *) info.tuid, sizeof(TUID));
         ret->bundlePath(info.bundlePath);
         ret->pluginId(idString);
         ret->displayName(info.name);
@@ -348,17 +343,17 @@ namespace remidy {
             }
 
             // FIXME: we need to retrieve classInfo2, classInfo3, ...
-            v3_factory_info fInfo{};
-            factory->vtable->factory.get_factory_info(factory, &fInfo);
-            for (int i = 0, n = factory->vtable->factory.num_classes(factory); i < n; i++) {
-                v3_class_info cls{};
-                auto result = factory->vtable->factory.get_class_info(factory, i, &cls);
+            PFactoryInfo fInfo{};
+            factory->getFactoryInfo(&fInfo);
+            for (int i = 0, n = factory->countClasses(); i < n; i++) {
+                PClassInfo cls{};
+                auto result = factory->getClassInfo(i, &cls);
                 if (result == 0) {
                     if (!strcmp(cls.category, kVstAudioEffectClass)) {
                         std::string name = std::string{cls.name}.substr(0, strlen(cls.name));
                         std::string vendor = std::string{fInfo.vendor}.substr(0, strlen(fInfo.vendor));
                         std::string url = std::string{fInfo.url}.substr(0, strlen(fInfo.url));
-                        PluginClassInfo info(vst3Path, vendor, url, name, cls.class_id);
+                        PluginClassInfo info(vst3Path, vendor, url, name, cls.cid);
                         func(module, factory, info);
                     }
                 } else

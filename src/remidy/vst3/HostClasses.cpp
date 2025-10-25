@@ -1,4 +1,6 @@
 #include <iostream>
+#include <thread>
+#include <sys/select.h>
 
 #include "HostClasses.hpp"
 #include "../utils.hpp"
@@ -7,97 +9,34 @@
 namespace remidy_vst3 {
 
     std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> u16conv;
-    std::string vst3StringToStdString(v3_str_128& src) {
+    std::string vst3StringToStdString(String128& src) {
         return u16conv.to_bytes((char16_t *) src);
     }
 
     const std::basic_string<char16_t> HostApplication::name16t{std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.from_bytes("remidy")};
 
-    v3_result HostApplication::query_interface(void *self, const v3_tuid iid, void **obj) {
-        return ((HostApplication*) self)->queryInterface(iid, obj);
-    }
-
-    HostApplication::HostApplication(remidy::Logger* logger): IHostApplication(), logger(logger) {
-        host_vtable.unknown.query_interface = query_interface;
-        host_vtable.unknown.ref = add_ref;
-        host_vtable.unknown.unref = remove_ref;
-        host_vtable.application.create_instance = create_instance;
-        host_vtable.application.get_name = get_name;
-        vtable = &host_vtable;
-
-        event_handler.owner = this;
-        event_handler_vtable.unknown.query_interface = event_handler_query_interface;
-        event_handler_vtable.unknown.ref = event_handler_add_ref;
-        event_handler_vtable.unknown.unref = event_handler_remove_ref;
-        event_handler.vtable = &event_handler_vtable;
-
-        handler.owner = this;
-        handler_vtable.unknown.query_interface = component_handler_query_interface;
-        handler_vtable.unknown.ref = component_handler_add_ref;
-        handler_vtable.unknown.unref = component_handler_remove_ref;
-        handler_vtable.handler.begin_edit = begin_edit;
-        handler_vtable.handler.end_edit = end_edit;
-        handler_vtable.handler.perform_edit = perform_edit;
-        handler_vtable.handler.restart_component = restart_component;
-        handler.vtable = &handler_vtable;
-        handler2.owner = this;
-        handler2_vtable.unknown.query_interface = component_handler2_query_interface;
-        handler2_vtable.unknown.ref = component_handler2_add_ref;
-        handler2_vtable.unknown.unref = component_handler2_remove_ref;
-        handler2_vtable.handler2.set_dirty = set_dirty;
-        handler2_vtable.handler2.request_open_editor = request_open_editor;
-        handler2_vtable.handler2.start_group_edit = start_group_edit;
-        handler2_vtable.handler2.finish_group_edit = finish_group_edit;
-        handler2.vtable = &handler2_vtable;
-
-        unit_handler.owner = this;
-        unit_handler_vtable.unknown.query_interface = unit_handler_query_interface;
-        unit_handler_vtable.unknown.ref = unit_handler_add_ref;
-        unit_handler_vtable.unknown.unref = unit_handler_remove_ref;
-        unit_handler_vtable.handler.notify_unit_selection = notify_unit_selection;
-        unit_handler_vtable.handler.notify_program_list_change = notify_program_list_change;
-        unit_handler.vtable = &unit_handler_vtable;
-
-        message.owner = this;
-        message_vtable.unknown.query_interface = message_query_interface;
-        message_vtable.unknown.ref = message_add_ref;
-        message_vtable.unknown.unref = message_remove_ref;
-        message_vtable.message.get_message_id = get_message_id;
-        message_vtable.message.set_message_id = set_message_id;
-        message_vtable.message.get_attributes = (v3_attribute_list** (V3_API*)(void*)) get_attributes;
-        message.vtable = &message_vtable;
-
-        plug_frame.owner = this;
-        plug_frame_vtable.unknown.query_interface = plug_frame_query_interface;
-        plug_frame_vtable.unknown.ref = plug_frame_add_ref;
-        plug_frame_vtable.unknown.unref = plug_frame_remove_ref;
-        plug_frame_vtable.plug_frame.resize_view = resize_view;
-        plug_frame.vtable = &plug_frame_vtable;
-
-        support.owner = this;
-        support_vtable.unknown.query_interface = plug_interface_support_query_interface;
-        support_vtable.unknown.ref = plug_interface_support_add_ref;
-        support_vtable.unknown.unref = plug_interface_support_remove_ref;
-        support_vtable.support.is_plug_interface_supported = is_plug_interface_supported;
-        support.vtable = &support_vtable;
-
-        run_loop.owner = this;
-        run_loop_vtable.unknown.query_interface = run_loop_query_interface;
-        run_loop_vtable.unknown.ref = run_loop_add_ref;
-        run_loop_vtable.unknown.unref = run_loop_remove_ref;
-        run_loop_vtable.loop.register_event_handler = register_event_handler;
-        run_loop_vtable.loop.unregister_event_handler = unregister_event_handler;
-        run_loop_vtable.loop.register_timer = register_timer;
-        run_loop_vtable.loop.unregister_timer = unregister_timer;
-        run_loop.vtable = &run_loop_vtable;
+    HostApplication::HostApplication(remidy::Logger* logger): logger(logger) {
+        // Instantiate nested implementation classes
+        event_handler = new EventHandlerImpl(this);
+        handler = new ComponentHandlerImpl(this);
+        handler2 = new ComponentHandler2Impl(this);
+        unit_handler = new UnitHandlerImpl(this);
+        message = new MessageImpl(this);
+        plug_frame = new PlugFrameImpl(this);
+        support = new PlugInterfaceSupportImpl(this);
+        run_loop = new RunLoopImpl(this);
     }
 
     HostApplication::~HostApplication() {
-        // Clean up HostAttributeList if it was created
-        if (message.attributes) {
-            delete message.attributes;
-            message.attributes = nullptr;
-        }
+        // Clean up nested implementation classes
+        if (event_handler) event_handler->release();
+        if (handler) handler->release();
+        if (handler2) handler2->release();
+        if (unit_handler) unit_handler->release();
+        if (message) message->release();
+        if (plug_frame) plug_frame->release();
+        if (support) support->release();
+        if (run_loop) run_loop->release();
     }
 
     void HostApplication::startProcessing() {
@@ -108,445 +47,294 @@ namespace remidy_vst3 {
         parameter_changes.stopProcessing();
     }
 
-#define QUERY_HOST_INTERFACE(target, member) \
-    if (v3_tuid_match(iid,target)) { \
-        if ((member).vtable && (member).vtable->unknown.ref) \
-            (member).vtable->unknown.ref(&(member)); \
-        *obj = &(member); \
-        return V3_OK; \
-    }
+    tresult PLUGIN_API HostApplication::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IHostApplication)
+        QUERY_INTERFACE(_iid, obj, IHostApplication::iid, IHostApplication)
 
-    v3_result HostApplication::queryInterface(const v3_tuid iid, void **obj) {
-        if (
-            v3_tuid_match(iid,v3_funknown_iid) ||
-            v3_tuid_match(iid,v3_host_application_iid)
-        ) {
-            add_ref(this);
-            *obj = this;
-            return V3_OK;
+        // Return nested interface implementations
+        if (FUnknownPrivate::iidEqual(_iid, IComponentHandler::iid)) {
+            if (handler) handler->addRef();
+            *obj = handler;
+            return kResultOk;
         }
-        QUERY_HOST_INTERFACE(v3_component_handler_iid, handler)
-        // This should be actually queries from IComponentHandler, but in this implementation
-        // IComponentHandler is HostApplication itself, so this should be fine.
-        QUERY_HOST_INTERFACE(v3_component_handler2_iid, handler2)
-        QUERY_HOST_INTERFACE(v3_message_iid, message)
-        //QUERY_HOST_INTERFACE(v3_param_value_queue_iid, param_value_queue)
-        QUERY_HOST_INTERFACE(v3_plugin_frame_iid, plug_frame)
-        QUERY_HOST_INTERFACE(v3_unit_handler_iid, unit_handler)
-        QUERY_HOST_INTERFACE(v3_plug_interface_support_iid, support)
-        QUERY_HOST_INTERFACE(v3_run_loop_iid, run_loop)
-
-        if (v3_tuid_match(iid,v3_param_changes_iid)) {
+        if (FUnknownPrivate::iidEqual(_iid, IComponentHandler2::iid)) {
+            if (handler2) handler2->addRef();
+            *obj = handler2;
+            return kResultOk;
+        }
+        if (FUnknownPrivate::iidEqual(_iid, IMessage::iid)) {
+            if (message) message->addRef();
+            *obj = message;
+            return kResultOk;
+        }
+        if (FUnknownPrivate::iidEqual(_iid, IPlugFrame::iid)) {
+            if (plug_frame) plug_frame->addRef();
+            *obj = plug_frame;
+            return kResultOk;
+        }
+        if (FUnknownPrivate::iidEqual(_iid, IUnitHandler::iid)) {
+            if (unit_handler) unit_handler->addRef();
+            *obj = unit_handler;
+            return kResultOk;
+        }
+        if (FUnknownPrivate::iidEqual(_iid, IPlugInterfaceSupport::iid)) {
+            if (support) support->addRef();
+            *obj = support;
+            return kResultOk;
+        }
+        if (FUnknownPrivate::iidEqual(_iid, IRunLoop::iid)) {
+            if (run_loop) run_loop->addRef();
+            *obj = run_loop;
+            return kResultOk;
+        }
+        if (FUnknownPrivate::iidEqual(_iid, IParameterChanges::iid)) {
             auto iface = parameter_changes.asInterface();
-            iface->vtable->unknown.ref(iface);
-            *obj = &parameter_changes;
-            return V3_OK;
+            iface->addRef();
+            *obj = iface;
+            return kResultOk;
         }
 
         *obj = nullptr;
-        return V3_NO_INTERFACE;
+        return kNoInterface;
     }
 
-    uint32_t HostApplication::add_ref(void *self) {
-        // it seems to not be managed allocation by these refs.
-        return ++((HostApplication*)self)->ref_counter;
+    tresult PLUGIN_API HostApplication::getName(String128 name) {
+        name16t.copy((char16_t*) name, name16t.length());
+        name[name16t.length()] = 0;
+        return kResultOk;
     }
 
-    uint32_t HostApplication::remove_ref(void *self) {
-        // it seems to not be managed allocation by these refs.
-        return --((HostApplication*)self)->ref_counter;
-    }
-
-    v3_result HostApplication::create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj) {
+    tresult PLUGIN_API HostApplication::createInstance(TUID cid, TUID _iid, void** obj) {
         *obj = nullptr;
-        if (v3_tuid_match(cid, v3_attribute_list_iid))
+        if (FUnknownPrivate::iidEqual(cid, IAttributeList::iid))
             *obj = new HostAttributeList();
-        else if (v3_tuid_match(cid, v3_message_iid))
+        else if (FUnknownPrivate::iidEqual(cid, IMessage::iid))
             *obj = new HostMessage();
         else
-            return V3_NO_INTERFACE;
-        return V3_OK;
+            return kNoInterface;
+        return kResultOk;
     }
 
-    v3_result HostApplication::get_name(void *self, v3_str_128 name) {
-        name16t.copy((char16_t*) name, name16t.length());
-        return V3_OK;
-    }
-
-
-    v3_result HostApplication::event_handler_query_interface(void *self, const v3_tuid iid, void **obj) {
-        auto impl = static_cast<EventHandlerImpl*>(self);
-        if (v3_tuid_match(iid, v3_event_handler_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
-            event_handler_add_ref(self);
-            *obj = self;
-            return V3_OK;
-        }
-        if (impl->owner)
-            return impl->owner->queryInterface(iid, obj);
+    // EventHandlerImpl
+    tresult PLUGIN_API HostApplication::EventHandlerImpl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IEventHandler)
+        QUERY_INTERFACE(_iid, obj, IEventHandler::iid, IEventHandler)
+        // Forward to owner
+        if (owner)
+            return owner->queryInterface(_iid, obj);
         *obj = nullptr;
-        return V3_NO_INTERFACE;
+        return kNoInterface;
     }
 
-    uint32_t HostApplication::event_handler_add_ref(void *self) {
-        auto impl = static_cast<EventHandlerImpl*>(self);
-        return impl->owner ? add_ref(impl->owner) : 0;
+    void PLUGIN_API HostApplication::EventHandlerImpl::onFDIsSet(int fd) {
+        // Event handler implementation - currently not used
     }
 
-    uint32_t HostApplication::event_handler_remove_ref(void *self) {
-        auto impl = static_cast<EventHandlerImpl*>(self);
-        return impl->owner ? remove_ref(impl->owner) : 0;
-    }
-
-    // IComponentHandler
-    v3_result HostApplication::begin_edit(void *self, v3_param_id paramId) {
-        // Called when user starts editing a parameter (mouse down, touch start, etc.)
-        // Host should begin automation recording if applicable
-        // std::cerr << "HostApplication::begin_edit(param=0x" << std::hex << paramId << std::dec << ")" << std::endl;
-        return V3_OK;
-    }
-
-    v3_result HostApplication::end_edit(void *self, v3_param_id paramId) {
-        // Called when user finishes editing a parameter (mouse up, touch end, etc.)
-        // Host should end automation recording if applicable
-        // std::cerr << "HostApplication::end_edit(param=0x" << std::hex << paramId << std::dec << ")" << std::endl;
-        return V3_OK;
-    }
-
-    v3_result HostApplication::perform_edit(void *self, v3_param_id paramId, double value_normalised) {
-        auto* handler = static_cast<ComponentHandlerImpl*>(self);
-        auto* owner = handler->owner;
-
-        // Find and call the registered parameter edit handler
-        // We iterate through all handlers since we don't know which controller is calling
-        // In practice, there's typically only one or a few active plugins
-        bool handled = false;
-        for (auto& [controller, callback] : owner->parameter_edit_handlers) {
-            if (callback) {
-                callback(paramId, value_normalised);
-                handled = true;
-                // Note: We call ALL registered handlers since we can't determine the caller
-                // This shouldn't be a problem in practice as each plugin only affects its own state
-            }
-        }
-
-        if (!handled) {
-            std::cerr << "HostApplication::perform_edit(" << std::hex << paramId << ", " << value_normalised << std::dec << ") - no handler registered" << std::endl;
-        }
-
-        return V3_OK;
-    }
-
-    v3_result HostApplication::restart_component(void *self, int32_t flags) {
-        // Plugins call this to notify the host about changes
-        // Common flags:
-        // kReloadComponent = 1 << 0,          // The whole component should be reloaded
-        // kIoChanged = 1 << 1,                 // Input/Output bus configuration changed
-        // kParamValuesChanged = 1 << 2,        // Multiple parameter values changed
-        // kLatencyChanged = 1 << 3,            // Latency changed
-        // kParamTitlesChanged = 1 << 4,        // Parameter titles changed
-        // kMidiCCAssignmentChanged = 1 << 5,   // MIDI CC assignment changed
-        // kNoteExpressionChanged = 1 << 6,     // Note expression changed
-        // kIoTitlesChanged = 1 << 7,           // I/O titles changed
-        // kPrefetchableSupportChanged = 1 << 8,// Prefetchable support changed
-        // kRoutingInfoChanged = 1 << 9         // Routing info changed
-
-        std::cerr << "HostApplication::restart_component(flags=0x" << std::hex << flags << std::dec << ")" << std::endl;
-
-        // For now, acknowledge the restart request
-        // A full implementation would handle each flag appropriately
-        return V3_OK;
-    }
-
-    v3_result HostApplication::component_handler_query_interface(void *self, const v3_tuid iid, void **obj) {
-        auto owner = static_cast<ComponentHandlerImpl*>(self)->owner;
-        return query_interface(owner, iid, obj);
-    }
-
-    uint32_t HostApplication::component_handler_add_ref(void *self) {
-        auto owner = static_cast<ComponentHandlerImpl*>(self)->owner;
-        return add_ref(owner);
-    }
-
-    uint32_t HostApplication::component_handler_remove_ref(void *self) {
-        auto owner = static_cast<ComponentHandlerImpl*>(self)->owner;
-        return remove_ref(owner);
-    }
-
-    v3_result HostApplication::component_handler2_query_interface(void *self, const v3_tuid iid, void **obj) {
-        auto owner = static_cast<ComponentHandler2Impl*>(self)->owner;
-        return query_interface(owner, iid, obj);
-    }
-
-    uint32_t HostApplication::component_handler2_add_ref(void *self) {
-        auto owner = static_cast<ComponentHandler2Impl*>(self)->owner;
-        return add_ref(owner);
-    }
-
-    uint32_t HostApplication::component_handler2_remove_ref(void *self) {
-        auto owner = static_cast<ComponentHandler2Impl*>(self)->owner;
-        return remove_ref(owner);
-    }
-
-    v3_result HostApplication::unit_handler_query_interface(void *self, const v3_tuid iid, void **obj) {
-        auto impl = static_cast<UnitHandlerImpl*>(self);
-        if (v3_tuid_match(iid, v3_unit_handler_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
-            unit_handler_add_ref(self);
-            *obj = self;
-            return V3_OK;
-        }
-        if (impl->owner)
-            return impl->owner->queryInterface(iid, obj);
+    // ComponentHandlerImpl
+    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IComponentHandler)
+        QUERY_INTERFACE(_iid, obj, IComponentHandler::iid, IComponentHandler)
+        if (owner)
+            return owner->queryInterface(_iid, obj);
         *obj = nullptr;
-        return V3_NO_INTERFACE;
+        return kNoInterface;
     }
 
-    uint32_t HostApplication::unit_handler_add_ref(void *self) {
-        auto impl = static_cast<UnitHandlerImpl*>(self);
-        return impl->owner ? add_ref(impl->owner) : 0;
+    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::beginEdit(ParamID id) {
+        // Begin parameter edit - currently not implemented
+        return kResultOk;
     }
 
-    uint32_t HostApplication::unit_handler_remove_ref(void *self) {
-        auto impl = static_cast<UnitHandlerImpl*>(self);
-        return impl->owner ? remove_ref(impl->owner) : 0;
-    }
-
-    v3_result HostApplication::message_query_interface(void *self, const v3_tuid iid, void **obj) {
-        auto impl = static_cast<MessageImpl*>(self);
-        if (v3_tuid_match(iid, v3_message_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
-            message_add_ref(self);
-            *obj = self;
-            return V3_OK;
+    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::performEdit(ParamID id, ParamValue valueNormalized) {
+        if (!owner)
+            return kInvalidArgument;
+        
+        // Find and invoke parameter edit handler if registered
+        for (auto& pair : owner->parameter_edit_handlers) {
+            if (pair.second)
+                pair.second(id, valueNormalized);
         }
-        if (impl->owner)
-            return impl->owner->queryInterface(iid, obj);
+        return kResultOk;
+    }
+
+    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::endEdit(ParamID id) {
+        // End parameter edit - currently not implemented
+        return kResultOk;
+    }
+
+    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::restartComponent(int32 flags) {
+        // Restart component - currently not implemented
+        return kResultOk;
+    }
+
+    // ComponentHandler2Impl
+    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IComponentHandler2)
+        QUERY_INTERFACE(_iid, obj, IComponentHandler::iid, IComponentHandler2)
+        QUERY_INTERFACE(_iid, obj, IComponentHandler2::iid, IComponentHandler2)
+        if (owner)
+            return owner->queryInterface(_iid, obj);
         *obj = nullptr;
-        return V3_NO_INTERFACE;
+        return kNoInterface;
     }
 
-    uint32_t HostApplication::message_add_ref(void *self) {
-        auto impl = static_cast<MessageImpl*>(self);
-        return impl->owner ? add_ref(impl->owner) : 0;
+    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::setDirty(TBool state) {
+        // Set dirty state - currently not implemented
+        return kResultOk;
     }
 
-    uint32_t HostApplication::message_remove_ref(void *self) {
-        auto impl = static_cast<MessageImpl*>(self);
-        return impl->owner ? remove_ref(impl->owner) : 0;
+    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::requestOpenEditor(FIDString name) {
+        // Request open editor - currently not implemented
+        return kResultOk;
     }
 
-    // IComponentHandler2
-    v3_result HostApplication::set_dirty(void* self, v3_bool state) {
-        // Plugin notifies host that its state is dirty (has unsaved changes)
-        // std::cerr << "HostApplication::set_dirty(" << (state ? "true" : "false") << ")" << std::endl;
-        // Acknowledge but don't need to do anything for now
-        return V3_OK;
+    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::startGroupEdit() {
+        // Start group edit - currently not implemented
+        return kResultOk;
     }
 
-    v3_result HostApplication::request_open_editor(void* self, const char* name) {
-        // Plugin requests host to open a specific editor (e.g., "Generic Editor")
-        std::cerr << "HostApplication::request_open_editor(" << (name ? name : "null") << ")" << std::endl;
-        // We don't support this yet, but acknowledge the request
-        return V3_OK;
+    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::finishGroupEdit() {
+        // Finish group edit - currently not implemented
+        return kResultOk;
     }
 
-    v3_result HostApplication::start_group_edit(void* self) {
-        // Begin a group of parameter changes (for undo/redo)
-        // std::cerr << "HostApplication::start_group_edit()" << std::endl;
-        return V3_OK;
-    }
-
-    v3_result HostApplication::finish_group_edit(void* self) {
-        // End a group of parameter changes (for undo/redo)
-        // std::cerr << "HostApplication::finish_group_edit()" << std::endl;
-        return V3_OK;
-    }
-
-
-    v3_result HostApplication::notify_unit_selection(void *self, v3_unit_id unitId) {
-        // FIXME: implement
-        std::cerr << "HostApplication::notify_unit_selection(" << unitId << ") is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::notify_program_list_change(void *self, v3_program_list_id listId, int32_t programIndex) {
-        // FIXME: implement
-        std::cerr << "HostApplication::notify_program_list_change(" << listId << ", " << programIndex << ") is not implemented" << std::endl;
-        return V3_NOT_IMPLEMENTED;
-    }
-
-    const char * HostApplication::get_message_id(void *self) {
-        auto impl = static_cast<MessageImpl*>(self);
-        return impl->message_id.empty() ? nullptr : impl->message_id.c_str();
-    }
-
-    void HostApplication::set_message_id(void *self, const char *id) {
-        auto impl = static_cast<MessageImpl*>(self);
-        impl->message_id = id ? id : "";
-    }
-
-    IAttributeList * HostApplication::get_attributes(void *self) {
-        auto impl = static_cast<MessageImpl*>(self);
-        if (!impl->attributes) {
-            impl->attributes = new HostAttributeList();
-        }
-        return static_cast<IAttributeList*>(impl->attributes);
-    }
-
-    v3_result HostApplication::plug_frame_query_interface(void *self, const v3_tuid iid, void **obj) {
-        auto impl = static_cast<PlugFrameImpl*>(self);
-        if (v3_tuid_match(iid, v3_plugin_frame_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
-            plug_frame_add_ref(self);
-            *obj = self;
-            return V3_OK;
-        }
-        if (impl->owner)
-            return impl->owner->queryInterface(iid, obj);
+    // UnitHandlerImpl
+    tresult PLUGIN_API HostApplication::UnitHandlerImpl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IUnitHandler)
+        QUERY_INTERFACE(_iid, obj, IUnitHandler::iid, IUnitHandler)
+        if (owner)
+            return owner->queryInterface(_iid, obj);
         *obj = nullptr;
-        return V3_NO_INTERFACE;
+        return kNoInterface;
     }
 
-    uint32_t HostApplication::plug_frame_add_ref(void *self) {
-        auto impl = static_cast<PlugFrameImpl*>(self);
-        return impl->owner ? add_ref(impl->owner) : 0;
+    tresult PLUGIN_API HostApplication::UnitHandlerImpl::notifyUnitSelection(UnitID unitId) {
+        // Notify unit selection - currently not implemented
+        return kResultOk;
     }
 
-    uint32_t HostApplication::plug_frame_remove_ref(void *self) {
-        auto impl = static_cast<PlugFrameImpl*>(self);
-        return impl->owner ? remove_ref(impl->owner) : 0;
+    tresult PLUGIN_API HostApplication::UnitHandlerImpl::notifyProgramListChange(ProgramListID listId, int32 programIndex) {
+        // Notify program list change - currently not implemented
+        return kResultOk;
     }
 
-    v3_result HostApplication::resize_view(void *self, struct v3_plugin_view **view, struct v3_view_rect *rect) {
-        auto impl = static_cast<PlugFrameImpl*>(self);
-        if (!impl || !impl->owner)
-            return V3_NOT_IMPLEMENTED;
-
-        if (!view || !*view) {
-            std::cerr << "HostApplication::resize_view() called with null view" << std::endl;
-            return V3_INVALID_ARG;
-        }
-
-        auto& handlers = impl->owner->resize_request_handlers;
-        auto it = handlers.find(view);
-        if (it == handlers.end()) {
-            std::cerr << "HostApplication::resize_view() handler is not set for view " << view << std::endl;
-            return V3_NOT_IMPLEMENTED;
-        }
-
-        if (!rect)
-            return V3_INVALID_ARG;
-
-        uint32_t width = rect->right - rect->left;
-        uint32_t height = rect->bottom - rect->top;
-
-        bool success = it->second(width, height);
-        return success ? V3_OK : V3_NOT_IMPLEMENTED;
-    }
-
-    v3_result HostApplication::plug_interface_support_query_interface(void *self, const v3_tuid iid, void **obj) {
-        auto impl = static_cast<PlugInterfaceSupportImpl*>(self);
-        if (v3_tuid_match(iid, v3_plug_interface_support_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
-            plug_interface_support_add_ref(self);
-            *obj = self;
-            return V3_OK;
-        }
-        if (impl->owner)
-            return impl->owner->queryInterface(iid, obj);
+    // MessageImpl
+    tresult PLUGIN_API HostApplication::MessageImpl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IMessage)
+        QUERY_INTERFACE(_iid, obj, IMessage::iid, IMessage)
+        if (owner)
+            return owner->queryInterface(_iid, obj);
         *obj = nullptr;
-        return V3_NO_INTERFACE;
+        return kNoInterface;
     }
 
-    uint32_t HostApplication::plug_interface_support_add_ref(void *self) {
-        auto impl = static_cast<PlugInterfaceSupportImpl*>(self);
-        return impl->owner ? add_ref(impl->owner) : 0;
+    FIDString PLUGIN_API HostApplication::MessageImpl::getMessageID() {
+        return message_id.empty() ? nullptr : message_id.c_str();
     }
 
-    uint32_t HostApplication::plug_interface_support_remove_ref(void *self) {
-        auto impl = static_cast<PlugInterfaceSupportImpl*>(self);
-        return impl->owner ? remove_ref(impl->owner) : 0;
+    void PLUGIN_API HostApplication::MessageImpl::setMessageID(FIDString id) {
+        message_id = id ? id : "";
     }
 
-    v3_result HostApplication::is_plug_interface_supported(void* self, const v3_tuid iid) {
-        return
-            v3_tuid_match(iid, v3_attribute_list_iid) ||
-            v3_tuid_match(iid, v3_event_handler_iid) ||
-            v3_tuid_match(iid, v3_component_handler_iid) ||
-            v3_tuid_match(iid, v3_unit_handler_iid) ||
-            v3_tuid_match(iid, v3_message_iid) ||
-            v3_tuid_match(iid, v3_param_value_queue_iid) ||
-            v3_tuid_match(iid, v3_param_changes_iid) ||
-            v3_tuid_match(iid, v3_plugin_frame_iid) ||
-            v3_tuid_match(iid, v3_plug_interface_support_iid) ||
-            v3_tuid_match(iid, v3_run_loop_iid) ||
-            v3_tuid_match(iid, v3_host_application_iid) ?
-            V3_TRUE : V3_FALSE;
+    IAttributeList* PLUGIN_API HostApplication::MessageImpl::getAttributes() {
+        return attributes;
     }
 
-    // IRunLoop implementation (stub)
-    v3_result HostApplication::run_loop_query_interface(void *self, const v3_tuid iid, void **obj) {
-        auto impl = static_cast<RunLoopImpl*>(self);
-        if (v3_tuid_match(iid, v3_run_loop_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
-            run_loop_add_ref(self);
-            *obj = self;
-            return V3_OK;
-        }
-        if (impl->owner)
-            return impl->owner->queryInterface(iid, obj);
+    // PlugFrameImpl
+    tresult PLUGIN_API HostApplication::PlugFrameImpl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IPlugFrame)
+        QUERY_INTERFACE(_iid, obj, IPlugFrame::iid, IPlugFrame)
+        if (owner)
+            return owner->queryInterface(_iid, obj);
         *obj = nullptr;
-        return V3_NO_INTERFACE;
+        return kNoInterface;
     }
 
-    uint32_t HostApplication::run_loop_add_ref(void *self) {
-        auto impl = static_cast<RunLoopImpl*>(self);
-        return impl->owner ? add_ref(impl->owner) : 0;
-    }
+    tresult PLUGIN_API HostApplication::PlugFrameImpl::resizeView(IPlugView* view, ViewRect* newSize) {
+        if (!owner || !view || !newSize)
+            return kInvalidArgument;
 
-    uint32_t HostApplication::run_loop_remove_ref(void *self) {
-        auto impl = static_cast<RunLoopImpl*>(self);
-        return impl->owner ? remove_ref(impl->owner) : 0;
-    }
-
-    v3_result HostApplication::register_event_handler(void *self, v3_event_handler **handler, int fd) {
-        auto impl = static_cast<RunLoopImpl*>(self);
-        auto owner = impl->owner;
-
-        if (!handler || fd < 0)
-            return V3_INVALID_ARG;
-
-        // Create event handler info
-        auto event_info = std::make_shared<EventHandlerInfo>();
-        event_info->handler = handler;
-        event_info->fd = fd;
-
-        {
-            std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
-            owner->event_handlers.push_back(event_info);
+        // Check if there's a resize handler registered for this view
+        auto it = owner->resize_request_handlers.find(view);
+        if (it != owner->resize_request_handlers.end() && it->second) {
+            uint32_t width = newSize->right - newSize->left;
+            uint32_t height = newSize->bottom - newSize->top;
+            if (it->second(width, height))
+                return kResultOk;
+            return kResultFalse;
         }
+
+        return kResultFalse;
+    }
+
+    // PlugInterfaceSupportImpl
+    tresult PLUGIN_API HostApplication::PlugInterfaceSupportImpl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IPlugInterfaceSupport)
+        QUERY_INTERFACE(_iid, obj, IPlugInterfaceSupport::iid, IPlugInterfaceSupport)
+        if (owner)
+            return owner->queryInterface(_iid, obj);
+        *obj = nullptr;
+        return kNoInterface;
+    }
+
+    tresult PLUGIN_API HostApplication::PlugInterfaceSupportImpl::isPlugInterfaceSupported(const TUID _iid) {
+        // Check if we support the requested interface
+        if (FUnknownPrivate::iidEqual(_iid, IComponentHandler::iid)) return kResultOk;
+        if (FUnknownPrivate::iidEqual(_iid, IComponentHandler2::iid)) return kResultOk;
+        if (FUnknownPrivate::iidEqual(_iid, IUnitHandler::iid)) return kResultOk;
+        if (FUnknownPrivate::iidEqual(_iid, IPlugFrame::iid)) return kResultOk;
+        if (FUnknownPrivate::iidEqual(_iid, IMessage::iid)) return kResultOk;
+        if (FUnknownPrivate::iidEqual(_iid, IAttributeList::iid)) return kResultOk;
+        if (FUnknownPrivate::iidEqual(_iid, IRunLoop::iid)) return kResultOk;
+        return kResultFalse;
+    }
+
+    // RunLoopImpl
+    tresult PLUGIN_API HostApplication::RunLoopImpl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IRunLoop)
+        QUERY_INTERFACE(_iid, obj, IRunLoop::iid, IRunLoop)
+        if (owner)
+            return owner->queryInterface(_iid, obj);
+        *obj = nullptr;
+        return kNoInterface;
+    }
+
+    tresult PLUGIN_API HostApplication::RunLoopImpl::registerEventHandler(IEventHandler* handler, FileDescriptor fd) {
+        if (!owner || !handler)
+            return kInvalidArgument;
+
+        std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
+
+        auto info = std::make_shared<HostApplication::EventHandlerInfo>();
+        info->handler = handler;
+        info->fd = fd;
+        info->active.store(true);
+
+        owner->event_handlers.push_back(info);
 
         // Start a background thread to monitor this file descriptor
-        std::thread monitor_thread([event_info]() {
+        std::thread monitor_thread([info]() {
             fd_set readfds;
             struct timeval tv;
 
-            while (event_info->active.load()) {
+            while (info->active.load()) {
                 FD_ZERO(&readfds);
-                FD_SET(event_info->fd, &readfds);
+                FD_SET(info->fd, &readfds);
 
                 // Timeout for select so we can check active flag periodically
                 tv.tv_sec = 0;
                 tv.tv_usec = 100000;  // 100ms
 
-                int result = select(event_info->fd + 1, &readfds, nullptr, nullptr, &tv);
+                int result = select(info->fd + 1, &readfds, nullptr, nullptr, &tv);
 
-                if (result > 0 && FD_ISSET(event_info->fd, &readfds)) {
+                if (result > 0 && FD_ISSET(info->fd, &readfds)) {
                     // File descriptor has data available
-                    remidy::EventLoop::enqueueTaskOnMainThread([event_info]() {
-                        if (!event_info->active.load()) return;
+                    remidy::EventLoop::runTaskOnMainThread([info]() {
+                        if (!info->active.load()) return;
 
-                        auto handler = event_info->handler;
-                        if (!handler) return;
-
-                        auto event_handler = (IEventHandler*) handler;
-                        if (event_handler->vtable->event_handler.on_fd_is_set) {
-                            event_handler->vtable->event_handler.on_fd_is_set(event_handler, event_info->fd);
+                        auto handler = info->handler;
+                        if (handler) {
+                            handler->onFDIsSet(info->fd);
                         }
                     });
                 }
@@ -554,98 +342,79 @@ namespace remidy_vst3 {
         });
         monitor_thread.detach();
 
-        return V3_OK;
+        return kResultOk;
     }
 
-    v3_result HostApplication::unregister_event_handler(void *self, v3_event_handler **handler) {
-        auto impl = static_cast<RunLoopImpl*>(self);
-        auto owner = impl->owner;
-
-        if (!handler)
-            return V3_INVALID_ARG;
+    tresult PLUGIN_API HostApplication::RunLoopImpl::unregisterEventHandler(IEventHandler* handler) {
+        if (!owner || !handler)
+            return kInvalidArgument;
 
         std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
+        
         auto it = owner->event_handlers.begin();
         while (it != owner->event_handlers.end()) {
             if ((*it)->handler == handler) {
                 (*it)->active.store(false);
-                // Remove from vector - the shared_ptr will keep event_info alive
-                // until background thread completes its final iteration
                 it = owner->event_handlers.erase(it);
-                return V3_OK;
+                return kResultOk;
             } else {
                 ++it;
             }
         }
 
-        return V3_INVALID_ARG;  // Handler not found
+        return kInvalidArgument;
     }
 
-    v3_result HostApplication::register_timer(void *self, v3_timer_handler **handler, uint64_t ms) {
-        auto impl = static_cast<RunLoopImpl*>(self);
-        auto owner = impl->owner;
+    tresult PLUGIN_API HostApplication::RunLoopImpl::registerTimer(ITimerHandler* handler, TimerInterval milliseconds) {
+        if (!owner || !handler)
+            return kInvalidArgument;
 
-        if (!handler || !*handler || ms == 0)
-            return V3_INVALID_ARG;
-
-        // Create timer info
-        auto timer_info = std::make_shared<TimerInfo>();
+        std::lock_guard<std::mutex> lock(owner->timers_mutex);
+        
+        auto timer_info = std::make_shared<HostApplication::TimerInfo>();
         timer_info->handler = handler;
-        timer_info->interval_ms = ms;
+        timer_info->interval_ms = milliseconds;
+        timer_info->active.store(true);
+        
+        owner->timers.push_back(timer_info);
 
-        {
-            std::lock_guard<std::mutex> lock(owner->timers_mutex);
-            owner->timers.push_back(timer_info);
-        }
-
-        // Start a background thread for this timer
+        // Start timer thread
         std::thread timer_thread([timer_info]() {
             while (timer_info->active.load()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(timer_info->interval_ms));
-
-                if (!timer_info->active.load()) break;
-
-                // Call the timer callback on the main thread
-                remidy::EventLoop::enqueueTaskOnMainThread([timer_info]() {
+                
+                remidy::EventLoop::runTaskOnMainThread([timer_info]() {
                     if (!timer_info->active.load()) return;
 
                     auto handler = timer_info->handler;
-                    if (!handler || !*handler) return;
-
-                    auto timer_handler = (ITimerHandler*) handler;
-                    if (timer_handler->vtable->timer.on_timer) {
-                        // Pass *handler (the v3_timer_handler*) as self, following the C API pattern
-                        timer_handler->vtable->timer.on_timer(timer_handler);
+                    if (handler) {
+                        handler->onTimer();
                     }
                 });
             }
         });
         timer_thread.detach();
 
-        return V3_OK;
+        return kResultOk;
     }
 
-    v3_result HostApplication::unregister_timer(void *self, v3_timer_handler **handler) {
-        auto impl = static_cast<RunLoopImpl*>(self);
-        auto owner = impl->owner;
-
-        if (!handler)
-            return V3_INVALID_ARG;
+    tresult PLUGIN_API HostApplication::RunLoopImpl::unregisterTimer(ITimerHandler* handler) {
+        if (!owner || !handler)
+            return kInvalidArgument;
 
         std::lock_guard<std::mutex> lock(owner->timers_mutex);
+        
         auto it = owner->timers.begin();
         while (it != owner->timers.end()) {
             if ((*it)->handler == handler) {
                 (*it)->active.store(false);
-                // Remove from vector - the shared_ptr will keep timer_info alive
-                // until background thread completes its final iteration
                 it = owner->timers.erase(it);
-                return V3_OK;
+                return kResultOk;
             } else {
                 ++it;
             }
         }
 
-        return V3_INVALID_ARG;  // Handler not found
+        return kInvalidArgument;
     }
 }

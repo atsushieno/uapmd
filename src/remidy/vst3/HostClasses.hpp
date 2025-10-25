@@ -1,6 +1,6 @@
 #pragma once
 
-#include "TravestyHelper.hpp"
+#include "VST3Helper.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
@@ -21,258 +21,244 @@
 #endif
 
 namespace remidy_vst3 {
+    using namespace Steinberg::Vst;
+    using namespace Steinberg::Linux;
 
     // Host implementation
-#define IMPLEMENT_FUNKNOWN_REFS(TYPE) \
-    uint32_t refCount{1}; \
-    static uint32_t add_ref(void *self) { return ++((TYPE *)self)->refCount; } \
-    static uint32_t remove_ref(void *self) { return --((TYPE *)self)->refCount; } \
-    static v3_result query_interface(void *self, const v3_tuid iid, void **obj) { \
-        return ((TYPE*) self)->queryInterface(iid, obj); \
-    }
-#define FILL_FUNKNOWN_VTABLE \
-    refCount = 1; \
-    vtable.unknown.query_interface = query_interface; \
-    vtable.unknown.ref = add_ref; \
-    vtable.unknown.unref = remove_ref;
-
     class HostAttributeList : public IAttributeList {
-        IAttributeListVTable impl;
-
-        IMPLEMENT_FUNKNOWN_REFS(HostAttributeList)
-
+    private:
+        std::atomic<uint32_t> refCount{1};
         std::unordered_map<std::string, int64_t> intValues{};
         std::unordered_map<std::string, double> floatValues{};
         std::unordered_map<std::string, std::vector<int16_t>> stringValues{};
         std::unordered_map<std::string, std::vector<uint8_t>> binaryValues{};
 
-        v3_result queryInterface(const v3_tuid iid, void **obj) {
-            if (!memcmp(iid, v3_attribute_list_iid, sizeof(v3_tuid)) ||
-                !memcmp(iid, v3_funknown_iid, sizeof(v3_tuid))) {
-                add_ref(this);
-                *obj = this;
-                return V3_OK;
-            }
+    public:
+        HostAttributeList() = default;
+        virtual ~HostAttributeList() = default;
+
+        // FUnknown interface
+        tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE {
+            QUERY_INTERFACE(_iid, obj, FUnknown::iid, IAttributeList)
+            QUERY_INTERFACE(_iid, obj, IAttributeList::iid, IAttributeList)
             *obj = nullptr;
-            return V3_NO_INTERFACE;
+            return kNoInterface;
         }
 
-        static v3_result V3_API set_int(void *self, const char *id, int64_t value) {
-            auto* list = (HostAttributeList*) self;
-            if (!list || !id)
-                return V3_INVALID_ARG;
-            list->intValues[id] = value;
-            list->floatValues.erase(id);
-            list->stringValues.erase(id);
-            list->binaryValues.erase(id);
-            return V3_OK;
+        uint32 PLUGIN_API addRef() SMTG_OVERRIDE {
+            return ++refCount;
         }
 
-        static v3_result V3_API get_int(void *self, const char *id, int64_t *value) {
-            auto* list = (HostAttributeList*) self;
-            if (!list || !id || !value)
-                return V3_INVALID_ARG;
-            auto it = list->intValues.find(id);
-            if (it == list->intValues.end())
-                return V3_INVALID_ARG;
-            *value = it->second;
-            return V3_OK;
+        uint32 PLUGIN_API release() SMTG_OVERRIDE {
+            uint32 newCount = --refCount;
+            if (newCount == 0) {
+                delete this;
+            }
+            return newCount;
         }
 
-        static v3_result V3_API set_float(void *self, const char *id, double value) {
-            auto* list = (HostAttributeList*) self;
-            if (!list || !id)
-                return V3_INVALID_ARG;
-            list->floatValues[id] = value;
-            list->intValues.erase(id);
-            list->stringValues.erase(id);
-            list->binaryValues.erase(id);
-            return V3_OK;
+        // IAttributeList interface
+        tresult PLUGIN_API setInt(AttrID id, int64 value) SMTG_OVERRIDE {
+            if (!id)
+                return kInvalidArgument;
+            intValues[id] = value;
+            floatValues.erase(id);
+            stringValues.erase(id);
+            binaryValues.erase(id);
+            return kResultOk;
         }
 
-        static v3_result V3_API get_float(void *self, const char *id, double *value) {
-            auto* list = (HostAttributeList*) self;
-            if (!list || !id || !value)
-                return V3_INVALID_ARG;
-            auto it = list->floatValues.find(id);
-            if (it == list->floatValues.end())
-                return V3_INVALID_ARG;
-            *value = it->second;
-            return V3_OK;
+        tresult PLUGIN_API getInt(AttrID id, int64& value) SMTG_OVERRIDE {
+            if (!id)
+                return kInvalidArgument;
+            auto it = intValues.find(id);
+            if (it == intValues.end())
+                return kResultFalse;
+            value = it->second;
+            return kResultOk;
         }
 
-        static v3_result V3_API set_string(void *self, const char *id, const int16_t *value) {
-            auto* list = (HostAttributeList*) self;
-            if (!list || !id)
-                return V3_INVALID_ARG;
+        tresult PLUGIN_API setFloat(AttrID id, double value) SMTG_OVERRIDE {
+            if (!id)
+                return kInvalidArgument;
+            floatValues[id] = value;
+            intValues.erase(id);
+            stringValues.erase(id);
+            binaryValues.erase(id);
+            return kResultOk;
+        }
+
+        tresult PLUGIN_API getFloat(AttrID id, double& value) SMTG_OVERRIDE {
+            if (!id)
+                return kInvalidArgument;
+            auto it = floatValues.find(id);
+            if (it == floatValues.end())
+                return kResultFalse;
+            value = it->second;
+            return kResultOk;
+        }
+
+        tresult PLUGIN_API setString(AttrID id, const TChar* string) SMTG_OVERRIDE {
+            if (!id)
+                return kInvalidArgument;
             std::vector<int16_t> data{};
-            if (value) {
-                const int16_t* ptr = value;
+            if (string) {
+                const TChar* ptr = string;
                 while (*ptr) {
                     data.push_back(*ptr++);
                 }
             }
             data.push_back(0);
-            list->stringValues[id] = std::move(data);
-            list->intValues.erase(id);
-            list->floatValues.erase(id);
-            list->binaryValues.erase(id);
-            return V3_OK;
+            stringValues[id] = std::move(data);
+            intValues.erase(id);
+            floatValues.erase(id);
+            binaryValues.erase(id);
+            return kResultOk;
         }
 
-        static v3_result V3_API get_string(void *self, const char *id, int16_t *value, uint32_t sizeInBytes) {
-            auto* list = (HostAttributeList*) self;
-            if (!list || !id || !value || sizeInBytes == 0)
-                return V3_INVALID_ARG;
-            auto it = list->stringValues.find(id);
-            if (it == list->stringValues.end())
-                return V3_INVALID_ARG;
+        tresult PLUGIN_API getString(AttrID id, TChar* string, uint32 sizeInBytes) SMTG_OVERRIDE {
+            if (!id || !string || sizeInBytes == 0)
+                return kInvalidArgument;
+            auto it = stringValues.find(id);
+            if (it == stringValues.end())
+                return kResultFalse;
             const auto& data = it->second;
-            const auto required = static_cast<uint32_t>(data.size());
+            const auto required = static_cast<uint32>(data.size() * sizeof(TChar));
             if (required > sizeInBytes)
-                return V3_INVALID_ARG;
-            std::copy(data.begin(), data.end(), value);
+                return kResultFalse;
+            std::copy(data.begin(), data.end(), string);
             if (required < sizeInBytes)
-                value[required] = 0;
-            return V3_OK;
+                string[data.size()] = 0;
+            return kResultOk;
         }
 
-        static v3_result V3_API set_binary(void *self, const char *id, const void *data, uint32_t sizeInBytes) {
-            auto* list = (HostAttributeList*) self;
-            if (!list || !id)
-                return V3_INVALID_ARG;
+        tresult PLUGIN_API setBinary(AttrID id, const void* data, uint32 sizeInBytes) SMTG_OVERRIDE {
+            if (!id)
+                return kInvalidArgument;
             std::vector<uint8_t> buffer{};
             if (data && sizeInBytes) {
                 const uint8_t* ptr = static_cast<const uint8_t*>(data);
                 buffer.assign(ptr, ptr + sizeInBytes);
             }
-            list->binaryValues[id] = std::move(buffer);
-            list->intValues.erase(id);
-            list->floatValues.erase(id);
-            list->stringValues.erase(id);
-            return V3_OK;
+            binaryValues[id] = std::move(buffer);
+            intValues.erase(id);
+            floatValues.erase(id);
+            stringValues.erase(id);
+            return kResultOk;
         }
 
-        static v3_result V3_API get_binary(void *self, const char *id, const void **data, uint32_t *sizeInBytes) {
-            auto* list = (HostAttributeList*) self;
-            if (!list || !id || !data || !sizeInBytes)
-                return V3_INVALID_ARG;
-            auto it = list->binaryValues.find(id);
-            if (it == list->binaryValues.end())
-                return V3_INVALID_ARG;
+        tresult PLUGIN_API getBinary(AttrID id, const void*& data, uint32& sizeInBytes) SMTG_OVERRIDE {
+            if (!id)
+                return kInvalidArgument;
+            auto it = binaryValues.find(id);
+            if (it == binaryValues.end())
+                return kResultFalse;
             const auto& buffer = it->second;
-            *data = buffer.empty() ? nullptr : buffer.data();
-            *sizeInBytes = static_cast<uint32_t>(buffer.size());
-            return V3_OK;
+            data = buffer.empty() ? nullptr : buffer.data();
+            sizeInBytes = static_cast<uint32>(buffer.size());
+            return kResultOk;
         }
-
-    public:
-        HostAttributeList() {
-            this->vtable = &impl;
-            auto& vtable = impl;
-            FILL_FUNKNOWN_VTABLE
-            vtable.attribute_list.set_int = &HostAttributeList::set_int;
-            vtable.attribute_list.get_int = &HostAttributeList::get_int;
-            vtable.attribute_list.set_float = &HostAttributeList::set_float;
-            vtable.attribute_list.get_float = &HostAttributeList::get_float;
-            vtable.attribute_list.set_string = &HostAttributeList::set_string;
-            vtable.attribute_list.get_string = &HostAttributeList::get_string;
-            vtable.attribute_list.set_binary = &HostAttributeList::set_binary;
-            vtable.attribute_list.get_binary = &HostAttributeList::get_binary;
-        }
-
-        ~HostAttributeList() = default;
 
         auto asInterface() { return this; }
-
-        uint32_t addRef() { return ++refCount; }
-        uint32_t release() { return refCount > 0 ? --refCount : 0; }
     };
 
     class HostMessage : public IMessage {
-        IMessageVTable impl;
-        std::string id;
-        HostAttributeList* list{};
-
-        IMPLEMENT_FUNKNOWN_REFS(HostMessage)
-
-        static const char* get_message_id(void *self) {
-            auto& i = ((HostMessage*) self)->id;
-            return i.empty() ? nullptr : i.c_str();
-        }
-
-        static void set_message_id(void *self, const char *id) {
-            ((HostMessage*) self)->id = id;
-        }
-
-        static v3_attribute_list** get_attributes(void *self) {
-            auto list = ((HostMessage*) self)->list;
-            return (v3_attribute_list**) list;
-        }
+    private:
+        std::atomic<uint32_t> refCount{1};
+        std::string messageId;
+        HostAttributeList* attributeList{};
 
     public:
         explicit HostMessage() {
-            this->vtable = &impl;
-            auto& vtable = impl;
-            FILL_FUNKNOWN_VTABLE
-
-            vtable.message.get_message_id = get_message_id;
-            vtable.message.set_message_id = set_message_id;
-            vtable.message.get_attributes = get_attributes;
-
-            list = new HostAttributeList();
-        }
-        ~HostMessage() {
-            list->release();
+            attributeList = new HostAttributeList();
         }
 
-        v3_result queryInterface(const v3_tuid iid, void **obj) {
-            if (
-                !memcmp(iid, v3_message_iid, sizeof(v3_tuid)) ||
-                !memcmp(iid, v3_funknown_iid, sizeof(v3_tuid))
-            ) {
-                add_ref(this);
-                *obj = this;
-                return V3_OK;
-            }
+        virtual ~HostMessage() {
+            if (attributeList)
+                attributeList->release();
+        }
+
+        // FUnknown interface
+        tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE {
+            QUERY_INTERFACE(_iid, obj, FUnknown::iid, IMessage)
+            QUERY_INTERFACE(_iid, obj, IMessage::iid, IMessage)
             *obj = nullptr;
-            return V3_NO_INTERFACE;
+            return kNoInterface;
+        }
+
+        uint32 PLUGIN_API addRef() SMTG_OVERRIDE {
+            return ++refCount;
+        }
+
+        uint32 PLUGIN_API release() SMTG_OVERRIDE {
+            uint32 newCount = --refCount;
+            if (newCount == 0) {
+                delete this;
+            }
+            return newCount;
+        }
+
+        // IMessage interface
+        FIDString PLUGIN_API getMessageID() SMTG_OVERRIDE {
+            return messageId.empty() ? nullptr : messageId.c_str();
+        }
+
+        void PLUGIN_API setMessageID(FIDString id) SMTG_OVERRIDE {
+            messageId = id ? id : "";
+        }
+
+        IAttributeList* PLUGIN_API getAttributes() SMTG_OVERRIDE {
+            return attributeList;
         }
     };
 
     class HostEventList : public IEventList {
-        IEventListVTable impl{};
-        IMPLEMENT_FUNKNOWN_REFS(HostEventList)
-        std::vector<v3_event> events{};
-
-        static uint32_t get_event_count(void *self) {
-            return ((HostEventList*) self)->events.size();
-        }
-        static v3_result get_event(void *self, int32_t index, struct v3_event* e) {
-            *e = ((HostEventList*) self)->events[index];
-            return V3_OK;
-        }
-        static v3_result add_event(void *self, struct v3_event *e) {
-            ((HostEventList*) self)->events.emplace_back(*e);
-            return V3_OK;
-        }
+    private:
+        std::atomic<uint32_t> refCount{1};
+        std::vector<Event> events{};
 
     public:
-        explicit HostEventList() {
-            this->vtable = &impl;
-            auto& vtable = impl;
-            FILL_FUNKNOWN_VTABLE
+        explicit HostEventList() = default;
+        virtual ~HostEventList() = default;
 
-            vtable.event_list.get_event_count = get_event_count;
-            vtable.event_list.get_event = get_event;
-            vtable.event_list.add_event = add_event;
+        // FUnknown interface
+        tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE {
+            QUERY_INTERFACE(_iid, obj, FUnknown::iid, IEventList)
+            QUERY_INTERFACE(_iid, obj, IEventList::iid, IEventList)
+            *obj = nullptr;
+            return kNoInterface;
         }
+
+        uint32 PLUGIN_API addRef() SMTG_OVERRIDE {
+            return ++refCount;
+        }
+
+        uint32 PLUGIN_API release() SMTG_OVERRIDE {
+            uint32 newCount = --refCount;
+            if (newCount == 0) {
+                delete this;
+            }
+            return newCount;
+        }
+
+        // IEventList interface
+        int32 PLUGIN_API getEventCount() SMTG_OVERRIDE {
+            return static_cast<int32>(events.size());
+        }
+
+        tresult PLUGIN_API getEvent(int32 index, Event& e) SMTG_OVERRIDE {
+            if (index < 0 || index >= static_cast<int32>(events.size()))
+                return kInvalidArgument;
+            e = events[index];
+            return kResultOk;
+        }
+
+        tresult PLUGIN_API addEvent(Event& e) SMTG_OVERRIDE {
+            events.emplace_back(e);
+            return kResultOk;
+        }
+
         auto asInterface() { return this; }
-
-        v3_result queryInterface(const v3_tuid iid, void **obj) {
-            std::cerr << "WHY querying over IEventList?" << std::endl;
-            return V3_NO_INTERFACE;
-        }
 
         // invoked at process()
         void clear() {
@@ -281,107 +267,129 @@ namespace remidy_vst3 {
     };
 
     class HostParamValueQueue : public IParamValueQueue {
-        IParamValueQueueVTable impl{};
-        IMPLEMENT_FUNKNOWN_REFS(HostParamValueQueue)
-
+    private:
+        std::atomic<uint32_t> refCount{1};
         struct Point {
-            int32_t offset;
-            double value;
+            int32 offset;
+            ParamValue value;
         };
-        const v3_param_id id;
+        const ParamID paramId;
         std::vector<Point> points{};
 
-        static v3_param_id get_param_id(void* self) { return ((HostParamValueQueue*) self)->id; }
-        static int32_t get_point_count(void* self) { return ((HostParamValueQueue*) self)->points.size(); }
-        static v3_result get_point(void* self, int32_t idx, int32_t* sample_offset, double* value) {
-            return ((HostParamValueQueue*) self)->getPoint(idx, sample_offset, value);
-        }
-        v3_result getPoint(int32_t idx, int32_t* sample_offset, double* value) {
-            auto& p = points[idx];
-            *sample_offset = p.offset;
-            *value = p.value;
-            return V3_OK;
-        }
-        static v3_result add_point(void* self, int32_t sample_offset, double value, int32_t* idx) {
-            return ((HostParamValueQueue*) self)->addPoint(sample_offset, value, idx);
-        }
-        v3_result addPoint(int32_t sample_offset, double value, int32_t* idx) {
-            *idx = points.size();
-            Point pt{sample_offset, value};
-            points.emplace_back(pt);
-            return V3_OK;
-        }
-
     public:
-        explicit HostParamValueQueue(const v3_param_id* id) : id{*id} {
-            this->vtable = &impl;
-            auto& vtable = impl;
-            FILL_FUNKNOWN_VTABLE
-
-            vtable.param_value_queue.get_param_id = get_param_id;
-            vtable.param_value_queue.get_point_count = get_point_count;
-            vtable.param_value_queue.get_point = get_point;
-            vtable.param_value_queue.add_point = add_point;
-
+        explicit HostParamValueQueue(ParamID id) : paramId{id} {
             // FIXME: use some configured value
             points.reserve(1024);
         }
-        auto asInterface() { return this; }
 
-        v3_result queryInterface(const v3_tuid iid, void **obj) {
-            std::cerr << "WHY querying over IParamValueQueue?" << std::endl;
-            return V3_NO_INTERFACE;
+        virtual ~HostParamValueQueue() = default;
+
+        // FUnknown interface
+        tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE {
+            QUERY_INTERFACE(_iid, obj, FUnknown::iid, IParamValueQueue)
+            QUERY_INTERFACE(_iid, obj, IParamValueQueue::iid, IParamValueQueue)
+            *obj = nullptr;
+            return kNoInterface;
         }
+
+        uint32 PLUGIN_API addRef() SMTG_OVERRIDE {
+            return ++refCount;
+        }
+
+        uint32 PLUGIN_API release() SMTG_OVERRIDE {
+            uint32 newCount = --refCount;
+            if (newCount == 0) {
+                delete this;
+            }
+            return newCount;
+        }
+
+        // IParamValueQueue interface
+        ParamID PLUGIN_API getParameterId() SMTG_OVERRIDE {
+            return paramId;
+        }
+
+        int32 PLUGIN_API getPointCount() SMTG_OVERRIDE {
+            return static_cast<int32>(points.size());
+        }
+
+        tresult PLUGIN_API getPoint(int32 index, int32& sampleOffset, ParamValue& value) SMTG_OVERRIDE {
+            if (index < 0 || index >= static_cast<int32>(points.size()))
+                return kInvalidArgument;
+            auto& p = points[index];
+            sampleOffset = p.offset;
+            value = p.value;
+            return kResultOk;
+        }
+
+        tresult PLUGIN_API addPoint(int32 sampleOffset, ParamValue value, int32& index) SMTG_OVERRIDE {
+            index = static_cast<int32>(points.size());
+            Point pt{sampleOffset, value};
+            points.emplace_back(pt);
+            return kResultOk;
+        }
+
+        auto asInterface() { return this; }
     };
 
     class HostParameterChanges : public IParameterChanges {
-        IParameterChangesVTable impl{};
-        IMPLEMENT_FUNKNOWN_REFS(HostParameterChanges)
+    private:
+        std::atomic<uint32_t> refCount{1};
         std::vector<std::unique_ptr<HostParamValueQueue>> queues{};
 
-        static int32_t get_param_count(void* self) { return static_cast<int32_t>(((HostParameterChanges*) self)->queues.size()); }
-        static struct v3_param_value_queue** get_param_data(void* self, int32_t idx) {
-            auto* changes = static_cast<HostParameterChanges*>(self);
-            if (idx < 0 || idx >= static_cast<int32_t>(changes->queues.size()))
+    public:
+        explicit HostParameterChanges() = default;
+        virtual ~HostParameterChanges() = default;
+
+        // FUnknown interface
+        tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE {
+            QUERY_INTERFACE(_iid, obj, FUnknown::iid, IParameterChanges)
+            QUERY_INTERFACE(_iid, obj, IParameterChanges::iid, IParameterChanges)
+            *obj = nullptr;
+            return kNoInterface;
+        }
+
+        uint32 PLUGIN_API addRef() SMTG_OVERRIDE {
+            return ++refCount;
+        }
+
+        uint32 PLUGIN_API release() SMTG_OVERRIDE {
+            uint32 newCount = --refCount;
+            if (newCount == 0) {
+                delete this;
+            }
+            return newCount;
+        }
+
+        // IParameterChanges interface
+        int32 PLUGIN_API getParameterCount() SMTG_OVERRIDE {
+            return static_cast<int32>(queues.size());
+        }
+
+        IParamValueQueue* PLUGIN_API getParameterData(int32 index) SMTG_OVERRIDE {
+            if (index < 0 || index >= static_cast<int32>(queues.size()))
                 return nullptr;
-            auto& queue = changes->queues[idx];
-            return queue ? (v3_param_value_queue**) queue->asInterface() : nullptr;
+            auto& queue = queues[index];
+            return queue ? queue->asInterface() : nullptr;
         }
-        static struct v3_param_value_queue** add_param_data(void* self, const v3_param_id* id, int32_t* idx) {
-            return ((HostParameterChanges*) self)->addParamData(id, idx);
-        }
-        struct v3_param_value_queue** addParamData(const v3_param_id* id, int32_t* idx) {
-            for (int32_t i = 0; i < static_cast<int32_t>(queues.size()); ++i) {
+
+        IParamValueQueue* PLUGIN_API addParameterData(const ParamID& id, int32& index) SMTG_OVERRIDE {
+            for (int32 i = 0; i < static_cast<int32>(queues.size()); ++i) {
                 if (!queues[i])
                     continue;
                 auto iface = queues[i]->asInterface();
-                if (iface->vtable->param_value_queue.get_param_id(iface) == *id) {
-                    *idx = i;
-                    return (v3_param_value_queue**) iface;
+                if (iface->getParameterId() == id) {
+                    index = i;
+                    return iface;
                 }
             }
-            *idx = queues.size();
+            index = static_cast<int32>(queues.size());
             // FIXME: this should not allocate. Move it elsewhere.
             queues.emplace_back(std::make_unique<HostParamValueQueue>(id));
-            return (v3_param_value_queue**) queues[*idx]->asInterface();
+            return queues[index]->asInterface();
         }
 
-    public:
-        explicit HostParameterChanges() {
-            this->vtable = &impl;
-            auto& vtable = impl;
-            FILL_FUNKNOWN_VTABLE
-
-            vtable.parameter_changes.get_param_count = get_param_count;
-            vtable.parameter_changes.get_param_data = get_param_data;
-            vtable.parameter_changes.add_param_data = add_param_data;
-        }
         IParameterChanges* asInterface() { return this; }
-
-        v3_result queryInterface(const v3_tuid iid, void **obj) {
-            std::cerr << "WHY querying over IParameterChanges?" << std::endl;
-            return V3_NO_INTERFACE;
-        }
 
         void startProcessing() {
             // we need to allocate memory for IParamValueQueues for all the parameters.
@@ -401,209 +409,158 @@ namespace remidy_vst3 {
     };
 
     class VectorStream : public IBStream {
-        IBStreamVTable impl;
-        IMPLEMENT_FUNKNOWN_REFS(VectorStream)
+    private:
+        std::atomic<uint32_t> refCount{1};
         std::vector<uint8_t>& data;
-        int32_t offset{0};
+        int64 offset{0};
 
-        static v3_result read(void *self, void* buffer, int32_t num_bytes, int32_t* bytes_read) {
-            auto v = static_cast<VectorStream *>(self);
-            auto& data = v->data;
-            auto size = min(static_cast<int32_t>(data.size() - v->offset), num_bytes);
-            if (size < num_bytes) {
-                // it is impossible for the input stream to complete reading
-                return V3_INVALID_ARG;
+    public:
+        explicit VectorStream(std::vector<uint8_t>& data) : data(data) {}
+        virtual ~VectorStream() = default;
+
+        // FUnknown interface
+        tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE {
+            QUERY_INTERFACE(_iid, obj, FUnknown::iid, IBStream)
+            QUERY_INTERFACE(_iid, obj, IBStream::iid, IBStream)
+            *obj = nullptr;
+            return kNoInterface;
+        }
+
+        uint32 PLUGIN_API addRef() SMTG_OVERRIDE {
+            return ++refCount;
+        }
+
+        uint32 PLUGIN_API release() SMTG_OVERRIDE {
+            uint32 newCount = --refCount;
+            if (newCount == 0) {
+                delete this;
             }
-            memcpy(buffer, data.data() + v->offset, size);
-            if (bytes_read)
-                *bytes_read = size;
-            return V3_OK;
+            return newCount;
         }
 
-        static v3_result write(void *self, void* buffer, int32_t num_bytes, int32_t* bytes_written) {
-            auto v = static_cast<VectorStream *>(self);
-            auto& data = v->data;
-            data.resize(data.size() + num_bytes);
-            auto size = min(static_cast<int32_t>(data.size() - v->offset), num_bytes);
-            memcpy(data.data() + v->offset, buffer, size);
-            if (bytes_written)
-                *bytes_written = size;
-            return V3_OK;
+        // IBStream interface
+        tresult PLUGIN_API read(void* buffer, int32 numBytes, int32* numBytesRead = nullptr) SMTG_OVERRIDE {
+            auto size = min(static_cast<int32>(data.size() - offset), numBytes);
+            if (size < numBytes) {
+                // it is impossible for the input stream to complete reading
+                return kInvalidArgument;
+            }
+            memcpy(buffer, data.data() + offset, size);
+            offset += size;
+            if (numBytesRead)
+                *numBytesRead = size;
+            return kResultOk;
         }
 
-        static v3_result seek(void *self, int64_t pos, int32_t seek_mode, int64_t* result) {
-            auto v = ((VectorStream*) self);
-            switch (seek_mode) {
-                case v3_seek_mode::V3_SEEK_SET:
-                    if (pos >= v->data.size())
-                        return V3_INVALID_ARG;
-                    v->offset = pos;
+        tresult PLUGIN_API write(void* buffer, int32 numBytes, int32* numBytesWritten = nullptr) SMTG_OVERRIDE {
+            data.resize(data.size() + numBytes);
+            auto size = min(static_cast<int32>(data.size() - offset), numBytes);
+            memcpy(data.data() + offset, buffer, size);
+            offset += size;
+            if (numBytesWritten)
+                *numBytesWritten = size;
+            return kResultOk;
+        }
+
+        tresult PLUGIN_API seek(int64 pos, int32 mode, int64* result = nullptr) SMTG_OVERRIDE {
+            switch (mode) {
+                case IBStream::kIBSeekSet:
+                    if (pos >= static_cast<int64>(data.size()))
+                        return kInvalidArgument;
+                    offset = pos;
                     break;
-                case v3_seek_mode::V3_SEEK_CUR:
-                    if (v->offset + pos >= v->data.size())
-                        return V3_INVALID_ARG;
-                    v->offset += pos;
+                case IBStream::kIBSeekCur:
+                    if (offset + pos >= static_cast<int64>(data.size()))
+                        return kInvalidArgument;
+                    offset += pos;
                     break;
-                case v3_seek_mode::V3_SEEK_END:
-                    if (pos > v->data.size())
-                        return V3_INVALID_ARG;
-                    v->offset = v->data.size() - pos;
+                case IBStream::kIBSeekEnd:
+                    if (pos > static_cast<int64>(data.size()))
+                        return kInvalidArgument;
+                    offset = data.size() - pos;
                     break;
             }
             if (result)
-                *result = v->offset;
-            return V3_OK;
+                *result = offset;
+            return kResultOk;
         }
 
-        static v3_result tell(void * self, int64_t *pos) {
-            *pos = ((VectorStream*) self)->offset;
-            return V3_OK;
-        }
-
-    public:
-        explicit VectorStream(std::vector<uint8_t>& data) : data(data) {
-            this->vtable = &impl;
-            auto& vtable = impl;
-            FILL_FUNKNOWN_VTABLE
-            vtable.stream.read = read;
-            vtable.stream.write = write;
-            vtable.stream.seek = seek;
-            vtable.stream.tell = tell;
-        }
-
-        v3_result queryInterface(const v3_tuid iid, void **obj) {
-            if (v3_tuid_match(iid, v3_bstream_iid)) {
-                *obj = this;
-                return V3_OK;
-            }
-
-            // Maybe check ISizeableStream = [04f9549e, e02f4e6e, 87e86a87, 47f4e17f] too (not implemented here).
-            std::cerr << "WHY querying over IBStream? " << std::hex;
-            for (int i = 0; i < 16; ++i) {
-                std::cerr << std::format("{:02x}", (int32_t) iid[i]);
-                if (i < 15)
-                    std::cerr << ",";
-            }
-            std::cerr << std::dec << std::endl;
-            return V3_NO_INTERFACE;
+        tresult PLUGIN_API tell(int64* pos) SMTG_OVERRIDE {
+            if (pos)
+                *pos = offset;
+            return kResultOk;
         }
     };
 
     class InterceptingConnectionPoint : public IConnectionPoint {
-        IConnectionPointVTable impl{};
-        IMPLEMENT_FUNKNOWN_REFS(InterceptingConnectionPoint)
+    private:
+        std::atomic<uint32_t> refCount{1};
         IConnectionPoint* target{nullptr};
-
-        static v3_result connect(void* self, v3_connection_point** other) {
-            auto* obj = static_cast<InterceptingConnectionPoint*>(self);
-            std::cerr << "InterceptingConnectionPoint::connect called with other=" << (void*)other << std::endl;
-            if (!obj->target)
-                return V3_INVALID_ARG;
-            return obj->target->vtable->connection_point.connect(obj->target, other);
-        }
-
-        static v3_result disconnect(void* self, v3_connection_point** other) {
-            auto* obj = static_cast<InterceptingConnectionPoint*>(self);
-            std::cerr << "InterceptingConnectionPoint::disconnect called with other=" << (void*)other << std::endl;
-            if (!obj->target)
-                return V3_INVALID_ARG;
-            return obj->target->vtable->connection_point.disconnect(obj->target, other);
-        }
-
-        static v3_result notify(void* self, v3_message** message) {
-            auto* obj = static_cast<InterceptingConnectionPoint*>(self);
-            std::cerr << "InterceptingConnectionPoint::notify called with message=" << (void*)message << std::endl;
-            if (!obj->target)
-                return V3_INVALID_ARG;
-            return obj->target->vtable->connection_point.notify(obj->target, message);
-        }
 
     public:
         explicit InterceptingConnectionPoint(IConnectionPoint* targetConnectionPoint)
-            : target(targetConnectionPoint) {
-            this->vtable = &impl;
-            auto& vtable = impl;
-            FILL_FUNKNOWN_VTABLE
+            : target(targetConnectionPoint) {}
 
-            vtable.connection_point.connect = connect;
-            vtable.connection_point.disconnect = disconnect;
-            vtable.connection_point.notify = notify;
+        virtual ~InterceptingConnectionPoint() = default;
+
+        // FUnknown interface
+        tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE {
+            QUERY_INTERFACE(_iid, obj, FUnknown::iid, IConnectionPoint)
+            QUERY_INTERFACE(_iid, obj, IConnectionPoint::iid, IConnectionPoint)
+            // Forward to target if we don't support the interface
+            if (target)
+                return target->queryInterface(_iid, obj);
+            *obj = nullptr;
+            return kNoInterface;
         }
 
-        ~InterceptingConnectionPoint() = default;
+        uint32 PLUGIN_API addRef() SMTG_OVERRIDE {
+            return ++refCount;
+        }
 
-        v3_result queryInterface(const v3_tuid iid, void **obj) {
-            if (v3_tuid_match(iid, v3_connection_point_iid) || v3_tuid_match(iid, v3_funknown_iid)) {
-                add_ref(this);
-                *obj = this;
-                return V3_OK;
+        uint32 PLUGIN_API release() SMTG_OVERRIDE {
+            uint32 newCount = --refCount;
+            if (newCount == 0) {
+                delete this;
             }
-            return target->vtable->unknown.query_interface(target, iid, obj);
+            return newCount;
+        }
+
+        // IConnectionPoint interface
+        tresult PLUGIN_API connect(IConnectionPoint* other) SMTG_OVERRIDE {
+            std::cerr << "InterceptingConnectionPoint::connect called with other=" << (void*)other << std::endl;
+            if (!target)
+                return kInvalidArgument;
+            return target->connect(other);
+        }
+
+        tresult PLUGIN_API disconnect(IConnectionPoint* other) SMTG_OVERRIDE {
+            std::cerr << "InterceptingConnectionPoint::disconnect called with other=" << (void*)other << std::endl;
+            if (!target)
+                return kInvalidArgument;
+            return target->disconnect(other);
+        }
+
+        tresult PLUGIN_API notify(IMessage* message) SMTG_OVERRIDE {
+            std::cerr << "InterceptingConnectionPoint::notify called with message=" << (void*)message << std::endl;
+            if (!target)
+                return kInvalidArgument;
+            return target->notify(message);
         }
     };
 
-    // FIXME: we have to redesign any code that uses this class.
-    // It meant to be a singleton, but apparently it is rather per-instance facade for hosting feature.
-    // For example, HostParameterChanges must be per-instance, but the singleton instance is passed to
-    // every IPluginFactory3.
-    class HostApplication :
-        // we cannot simply implement them. That will mess vtables.
-        //public IAttributeList,
-        //public IEventHandler,
-        //public IComponentHandler,
-        //public IMessage,
-        //public IParamValueQueue,
-        //public IParameterChanges,
-        //public IPlugFrame,
-        //public IUnitHandler,
-        //public IPlugInterfaceSupport,
-        public IHostApplication
-    {
-        IEventHandlerVTable event_handler_vtable{};
-        IComponentHandlerVTable handler_vtable{};
-        IComponentHandler2VTable handler2_vtable{};
-        IUnitHandlerVTable unit_handler_vtable{};
-        IMessageVTable message_vtable{};
-        IParamValueQueueVTable param_value_queue_table{};
-        IPlugFrameVTable plug_frame_vtable{};
-        IPlugInterfaceSupportVTable support_vtable{};
-        IRunLoopVTable run_loop_vtable{};
-        IHostApplicationVTable host_vtable{};
-        struct EventHandlerImpl : IEventHandler { HostApplication* owner{}; };
-        struct ComponentHandlerImpl : IComponentHandler {
-            HostApplication* owner{};
-        };
-        struct ComponentHandler2Impl : IComponentHandler2 {
-            HostApplication* owner{};
-        };
-        struct UnitHandlerImpl : IUnitHandler { HostApplication* owner{}; };
-        struct MessageImpl : IMessage {
-            HostApplication* owner{};
-            std::string message_id{};
-            HostAttributeList* attributes{nullptr};
-        };
-        struct PlugFrameImpl : IPlugFrame { HostApplication* owner{}; };
-        struct PlugInterfaceSupportImpl : IPlugInterfaceSupport { HostApplication* owner{}; };
-        struct RunLoopImpl : IRunLoop { HostApplication* owner{}; };
-        EventHandlerImpl event_handler{};
-        ComponentHandlerImpl handler{};
-        ComponentHandler2Impl handler2{};
-        UnitHandlerImpl unit_handler{};
-        MessageImpl message{};
-        PlugFrameImpl plug_frame{};
-        PlugInterfaceSupportImpl support{};
-        RunLoopImpl run_loop{};
-        HostParameterChanges parameter_changes{};
-        // FIXME: there are plugins that require the following components as well:
-        // - IMidiLearn (FM8)
-
+    // HostApplication class implements IHostApplication and provides access to various
+    // host-side interface implementations through nested classes
+    class HostApplication : public IHostApplication {
+    private:
+        std::atomic<uint32_t> refCount{1};
         remidy::Logger* logger;
         std::unordered_map<void*, std::function<bool(uint32_t, uint32_t)>> resize_request_handlers{};
-        std::unordered_map<void*, std::function<void(v3_param_id, double)>> parameter_edit_handlers{};
+        std::unordered_map<void*, std::function<void(ParamID, double)>> parameter_edit_handlers{};
 
         // IRunLoop timer management
         struct TimerInfo {
-            v3_timer_handler** handler;
+            ITimerHandler* handler;
             uint64_t interval_ms;
             std::atomic<bool> active{true};
         };
@@ -612,7 +569,7 @@ namespace remidy_vst3 {
 
         // IRunLoop event handler management
         struct EventHandlerInfo {
-            v3_event_handler** handler;
+            IEventHandler* handler;
             int fd;
             std::atomic<bool> active{true};
         };
@@ -621,97 +578,217 @@ namespace remidy_vst3 {
 
         static const std::basic_string<char16_t> name16t;
 
-        static v3_result query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t add_ref(void *self);
-        static uint32_t remove_ref(void *self);
-        static v3_result create_instance(void *self, v3_tuid cid, v3_tuid iid, void **obj);
-        static v3_result get_name(void *self, v3_str_128 name);
+        // Nested interface implementation classes
+        struct EventHandlerImpl : public IEventHandler {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
 
-        static v3_result event_handler_query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t event_handler_add_ref(void *self);
-        static uint32_t event_handler_remove_ref(void *self);
+            explicit EventHandlerImpl(HostApplication* owner) : owner(owner) {}
+            virtual ~EventHandlerImpl() = default;
 
-        static v3_result begin_edit(void *self, v3_param_id);
-        static v3_result end_edit(void *self, v3_param_id);
-        static v3_result perform_edit(void *self, v3_param_id, double value_normalised);
-        static v3_result restart_component(void *self, int32_t flags);
-        static v3_result component_handler_query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t component_handler_add_ref(void *self);
-        static uint32_t component_handler_remove_ref(void *self);
-        static v3_result component_handler2_query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t component_handler2_add_ref(void *self);
-        static uint32_t component_handler2_remove_ref(void *self);
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            void PLUGIN_API onFDIsSet(int fd) SMTG_OVERRIDE;
+        };
 
-        static v3_result unit_handler_query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t unit_handler_add_ref(void *self);
-        static uint32_t unit_handler_remove_ref(void *self);
+        struct ComponentHandlerImpl : public IComponentHandler {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
 
-        static v3_result message_query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t message_add_ref(void *self);
-        static uint32_t message_remove_ref(void *self);
+            explicit ComponentHandlerImpl(HostApplication* owner) : owner(owner) {}
+            virtual ~ComponentHandlerImpl() = default;
 
-        static v3_result set_dirty(void* self, v3_bool state);
-        static v3_result request_open_editor(void* self, const char* name);
-        static v3_result start_group_edit(void* self);
-        static v3_result finish_group_edit(void* self);
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            tresult PLUGIN_API beginEdit(ParamID id) SMTG_OVERRIDE;
+            tresult PLUGIN_API performEdit(ParamID id, ParamValue valueNormalized) SMTG_OVERRIDE;
+            tresult PLUGIN_API endEdit(ParamID id) SMTG_OVERRIDE;
+            tresult PLUGIN_API restartComponent(int32 flags) SMTG_OVERRIDE;
+        };
 
-        static v3_result notify_unit_selection(void *self, v3_unit_id unitId);
-        static v3_result notify_program_list_change(void *self, v3_program_list_id listId, int32_t programIndex);
+        struct ComponentHandler2Impl : public IComponentHandler2 {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
 
-        static const char* get_message_id(void *self);
-        static void set_message_id(void *self, const char* id);
-        static IAttributeList* get_attributes(void *self);
+            explicit ComponentHandler2Impl(HostApplication* owner) : owner(owner) {}
+            virtual ~ComponentHandler2Impl() = default;
 
-        static v3_result plug_frame_query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t plug_frame_add_ref(void *self);
-        static uint32_t plug_frame_remove_ref(void *self);
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            // IComponentHandler methods (inherited from IComponentHandler2's base)
+            tresult PLUGIN_API beginEdit(ParamID id) { return owner->handler->beginEdit(id); }
+            tresult PLUGIN_API performEdit(ParamID id, ParamValue valueNormalized) { return owner->handler->performEdit(id, valueNormalized); }
+            tresult PLUGIN_API endEdit(ParamID id) { return owner->handler->endEdit(id); }
+            tresult PLUGIN_API restartComponent(int32 flags) { return owner->handler->restartComponent(flags); }
+            // IComponentHandler2-specific methods
+            tresult PLUGIN_API setDirty(TBool state) SMTG_OVERRIDE;
+            tresult PLUGIN_API requestOpenEditor(FIDString name = ViewType::kEditor) SMTG_OVERRIDE;
+            tresult PLUGIN_API startGroupEdit() SMTG_OVERRIDE;
+            tresult PLUGIN_API finishGroupEdit() SMTG_OVERRIDE;
+        };
 
-        static v3_result resize_view(void* self, struct v3_plugin_view**, struct v3_view_rect*);
+        struct UnitHandlerImpl : public IUnitHandler {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
 
-        static v3_result plug_interface_support_query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t plug_interface_support_add_ref(void *self);
-        static uint32_t plug_interface_support_remove_ref(void *self);
+            explicit UnitHandlerImpl(HostApplication* owner) : owner(owner) {}
+            virtual ~UnitHandlerImpl() = default;
 
-        static v3_result is_plug_interface_supported(void* self, const v3_tuid iid);
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            tresult PLUGIN_API notifyUnitSelection(UnitID unitId) SMTG_OVERRIDE;
+            tresult PLUGIN_API notifyProgramListChange(ProgramListID listId, int32 programIndex) SMTG_OVERRIDE;
+        };
 
-        static v3_result run_loop_query_interface(void *self, const v3_tuid iid, void **obj);
-        static uint32_t run_loop_add_ref(void *self);
-        static uint32_t run_loop_remove_ref(void *self);
-        static v3_result register_event_handler(void *self, v3_event_handler **handler, int fd);
-        static v3_result unregister_event_handler(void *self, v3_event_handler **handler);
-        static v3_result register_timer(void *self, v3_timer_handler **handler, uint64_t ms);
-        static v3_result unregister_timer(void *self, v3_timer_handler **handler);
+        struct MessageImpl : public IMessage {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
+            std::string message_id{};
+            IAttributeList* attributes{nullptr};
+
+            explicit MessageImpl(HostApplication* owner) : owner(owner) {
+                attributes = new HostAttributeList();
+            }
+            virtual ~MessageImpl() {
+                if (attributes) attributes->release();
+            }
+
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            FIDString PLUGIN_API getMessageID() SMTG_OVERRIDE;
+            void PLUGIN_API setMessageID(FIDString id) SMTG_OVERRIDE;
+            IAttributeList* PLUGIN_API getAttributes() SMTG_OVERRIDE;
+        };
+
+        struct PlugFrameImpl : public IPlugFrame {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
+
+            explicit PlugFrameImpl(HostApplication* owner) : owner(owner) {}
+            virtual ~PlugFrameImpl() = default;
+
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            tresult PLUGIN_API resizeView(IPlugView* view, ViewRect* newSize) SMTG_OVERRIDE;
+        };
+
+        struct PlugInterfaceSupportImpl : public IPlugInterfaceSupport {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
+
+            explicit PlugInterfaceSupportImpl(HostApplication* owner) : owner(owner) {}
+            virtual ~PlugInterfaceSupportImpl() = default;
+
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            tresult PLUGIN_API isPlugInterfaceSupported(const TUID _iid) SMTG_OVERRIDE;
+        };
+
+        struct RunLoopImpl : public IRunLoop {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
+
+            explicit RunLoopImpl(HostApplication* owner) : owner(owner) {}
+            virtual ~RunLoopImpl() = default;
+
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            tresult PLUGIN_API registerEventHandler(IEventHandler* handler, FileDescriptor fd) SMTG_OVERRIDE;
+            tresult PLUGIN_API unregisterEventHandler(IEventHandler* handler) SMTG_OVERRIDE;
+            tresult PLUGIN_API registerTimer(ITimerHandler* handler, TimerInterval milliseconds) SMTG_OVERRIDE;
+            tresult PLUGIN_API unregisterTimer(ITimerHandler* handler) SMTG_OVERRIDE;
+        };
+
+        EventHandlerImpl* event_handler{nullptr};
+        ComponentHandlerImpl* handler{nullptr};
+        ComponentHandler2Impl* handler2{nullptr};
+        UnitHandlerImpl* unit_handler{nullptr};
+        MessageImpl* message{nullptr};
+        PlugFrameImpl* plug_frame{nullptr};
+        PlugInterfaceSupportImpl* support{nullptr};
+        RunLoopImpl* run_loop{nullptr};
+        HostParameterChanges parameter_changes{};
 
     public:
         explicit HostApplication(remidy::Logger* logger);
-        ~HostApplication();
+        virtual ~HostApplication();
 
-        v3_result queryInterface(const v3_tuid iid, void **obj);
+        // FUnknown interface
+        tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+        uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+        uint32 PLUGIN_API release() SMTG_OVERRIDE {
+            uint32 newCount = --refCount;
+            if (newCount == 0) delete this;
+            return newCount;
+        }
 
-        inline IComponentHandler* getComponentHandler() { return &handler; }
-        inline IComponentHandler2* getComponentHandler2() { return &handler2; }
-        inline IUnitHandler* getUnitHandler() { return &unit_handler; }
-        inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return &support; }
-        inline IRunLoop* getRunLoop() { return &run_loop; }
-        inline IPlugFrame* getPlugFrame() { return &plug_frame; }
+        // IHostApplication interface
+        tresult PLUGIN_API getName(String128 name) SMTG_OVERRIDE;
+        tresult PLUGIN_API createInstance(TUID cid, TUID _iid, void** obj) SMTG_OVERRIDE;
+
+        inline IComponentHandler* getComponentHandler() { return handler; }
+        inline IComponentHandler2* getComponentHandler2() { return handler2; }
+        inline IUnitHandler* getUnitHandler() { return unit_handler; }
+        inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return support; }
+        inline IRunLoop* getRunLoop() { return run_loop; }
+        inline IPlugFrame* getPlugFrame() { return plug_frame; }
 
         void startProcessing();
         void stopProcessing();
 
-        void setResizeRequestHandler(void* view, std::function<bool(uint32_t, uint32_t)> handler) {
-            if (handler)
-                resize_request_handlers[view] = std::move(handler);
+        void setResizeRequestHandler(void* view, std::function<bool(uint32_t, uint32_t)> handler_func) {
+            if (handler_func)
+                resize_request_handlers[view] = std::move(handler_func);
             else
                 resize_request_handlers.erase(view);
         }
 
-        void setParameterEditHandler(void* controller, std::function<void(v3_param_id, double)> handler) {
-            if (handler)
-                parameter_edit_handlers[controller] = std::move(handler);
+        void setParameterEditHandler(void* controller, std::function<void(ParamID, double)> handler_func) {
+            if (handler_func)
+                parameter_edit_handlers[controller] = std::move(handler_func);
             else
                 parameter_edit_handlers.erase(controller);
         }
 
-        uint32_t ref_counter{0};
     };
 }

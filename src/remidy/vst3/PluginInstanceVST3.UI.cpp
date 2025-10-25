@@ -1,6 +1,5 @@
 #include "PluginFormatVST3.hpp"
 #include <priv/event-loop.hpp>
-#include <travesty/view.h>
 
 namespace remidy {
 
@@ -18,23 +17,22 @@ namespace remidy {
             if (!owner->controller)
                 return;
 
-            auto result = owner->controller->vtable->controller.create_view(owner->controller, "editor");
-            if (result) {
-                view = reinterpret_cast<IPlugView*>(result);
-                if (view && view->vtable->view.is_platform_type_supported(view, V3_VIEW_PLATFORM_TYPE_NATIVE) == V3_OK) {
-                    // Register a placeholder resize handler IMMEDIATELY so it's available during set_frame()
+            view = owner->controller->createView("editor");
+            if (view) {
+                if (view->isPlatformTypeSupported(kPlatformTypeX11EmbedWindowID) == kResultOk) {
+                    // Register a placeholder resize handler IMMEDIATELY so it's available during setFrame()
                     // This will be replaced when setResizeRequestHandler() is called later
                     owner->owner->getHost()->setResizeRequestHandler(view, [](uint32_t, uint32_t) {
                         return true;  // Accept the resize for now
                     });
 
-                    // Set up IPlugFrame - plugin may call resize_view() during this
-                    auto frame = reinterpret_cast<v3_plugin_frame**>(owner->owner->getHost()->getPlugFrame());
-                    view->vtable->view.set_frame(view, frame);
+                    // Set up IPlugFrame - plugin may call resizeView() during this
+                    auto frame = owner->owner->getHost()->getPlugFrame();
+                    view->setFrame(frame);
 
                     // Try to get scaling support (optional)
                     void* scale_ptr = nullptr;
-                    if (view->vtable->unknown.query_interface(view, v3_plugin_view_content_scale_iid, &scale_ptr) == V3_OK && scale_ptr) {
+                    if (view->queryInterface(IPlugViewContentScaleSupport::iid, &scale_ptr) == kResultOk && scale_ptr) {
                         scale_support = reinterpret_cast<IPlugViewContentScaleSupport*>(scale_ptr);
                     }
 
@@ -43,7 +41,7 @@ namespace remidy {
                 } else {
                     // Platform not supported or invalid view
                     if (view)
-                        view->vtable->unknown.unref(view);
+                        view->release();
                     view = nullptr;
                 }
             }
@@ -58,15 +56,15 @@ namespace remidy {
 
         EventLoop::runTaskOnMainThread([&] {
             if (scale_support) {
-                scale_support->vtable->unknown.unref(scale_support);
+                scale_support->release();
                 scale_support = nullptr;
             }
 
             if (view) {
                 // Unregister the resize handler before destroying the view
                 owner->owner->getHost()->setResizeRequestHandler(view, nullptr);
-                view->vtable->view.removed(view);
-                view->vtable->unknown.unref(view);
+                view->removed();
+                view->release();
                 view = nullptr;
             }
 
@@ -108,7 +106,7 @@ namespace remidy {
 
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
-            success = view->vtable->view.attached(view, parent, V3_VIEW_PLATFORM_TYPE_NATIVE) == V3_OK;
+            success = view->attached(parent, kPlatformTypeX11EmbedWindowID) == kResultOk;
         });
 
         if (success)
@@ -123,7 +121,7 @@ namespace remidy {
 
         bool can_resize = false;
         EventLoop::runTaskOnMainThread([&] {
-            can_resize = view->vtable->view.can_resize(view) == V3_TRUE;
+            can_resize = view->canResize() == kResultTrue;
         });
 
         return can_resize;
@@ -135,8 +133,8 @@ namespace remidy {
 
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
-            v3_view_rect rect{};
-            if (view->vtable->view.get_size(view, &rect) == V3_OK) {
+            ViewRect rect{};
+            if (view->getSize(&rect) == kResultOk) {
                 width = rect.right - rect.left;
                 height = rect.bottom - rect.top;
                 success = true;
@@ -152,9 +150,9 @@ namespace remidy {
 
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
-            v3_view_rect rect{0, 0, static_cast<int32_t>(width), static_cast<int32_t>(height)};
-            auto result = view->vtable->view.on_size(view, &rect);
-            success = result == V3_OK;
+            ViewRect rect{0, 0, static_cast<int32_t>(width), static_cast<int32_t>(height)};
+            auto result = view->onSize(&rect);
+            success = result == kResultOk;
         });
 
         return success;
@@ -166,8 +164,8 @@ namespace remidy {
 
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
-            v3_view_rect rect{0, 0, static_cast<int32_t>(width), static_cast<int32_t>(height)};
-            if (view->vtable->view.check_size_constraint(view, &rect) == V3_OK) {
+            ViewRect rect{0, 0, static_cast<int32_t>(width), static_cast<int32_t>(height)};
+            if (view->checkSizeConstraint(&rect) == kResultOk) {
                 width = rect.right - rect.left;
                 height = rect.bottom - rect.top;
                 success = true;
@@ -183,7 +181,7 @@ namespace remidy {
 
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
-            success = scale_support->vtable->scale.set_content_scale_factor(scale_support, scale) == V3_OK;
+            success = scale_support->setContentScaleFactor(scale) == kResultOk;
         });
 
         return success;
@@ -191,7 +189,7 @@ namespace remidy {
 
     void PluginInstanceVST3::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
         host_resize_handler = std::move(handler);
-        // Also set it on the HostApplication so it can delegate resize_view() calls
+        // Also set it on the HostApplication so it can delegate resizeView() calls
         // Use the view pointer as the key to identify this specific plugin instance
         if (view) {
             owner->owner->getHost()->setResizeRequestHandler(view, host_resize_handler);

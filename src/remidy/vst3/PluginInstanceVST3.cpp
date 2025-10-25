@@ -28,15 +28,13 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     pluginName = info->displayName();
 
     // set up IConnectionPoints
-    auto result = component->vtable->unknown.query_interface(component, v3_connection_point_iid,
-                                                             (void **) &connPointComp);
-    if (result != V3_OK && result != V3_NO_INTERFACE)
+    auto result = component->queryInterface(IConnectionPoint::iid, (void **) &connPointComp);
+    if (result != kResultOk && result != kNoInterface)
         owner->getLogger()->logError(
                 "%s: IComponent failed to return query for IConnectionPoint as expected. Result: %d",
                 pluginName.c_str(), result);
-    result = controller->vtable->unknown.query_interface(controller, v3_connection_point_iid,
-                                                         (void **) &connPointEdit);
-    if (result != V3_OK && result != V3_NO_INTERFACE)
+    result = controller->queryInterface(IConnectionPoint::iid, (void **) &connPointEdit);
+    if (result != kResultOk && result != kNoInterface)
         owner->getLogger()->logError(
                 "%s: IEditController failed to return query for IConnectionPoint as expected. Result: %d",
                 pluginName.c_str(), result);
@@ -46,18 +44,18 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
 #if 1
     // If we disable this, those JUCE plugins cannot get parameters.
     // If we enable this, Serum2 and Sforzando crash.
-    if (isControllerDistinctFromComponent && connPointComp && connPointComp->vtable && connPointEdit && connPointEdit->vtable) {
+    if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
         EventLoop::runTaskOnMainThread([&] {
             // You need to understand how those pointer-to-pointer types are used in DPF before attempting to make changes here.
             // Codex is stupid and does not understand why these pointer-to-pointer types are correct.
-            result = connPointComp->vtable->connection_point.connect(connPointComp, (v3_connection_point **) connPointEdit);
-            if (result != V3_OK) {
+            result = connPointComp->connect((IConnectionPoint*) connPointEdit);
+            if (result != kResultOk) {
                 owner->getLogger()->logWarning(
                         "%s: IConnectionPoint from IComponent failed to interconnect with its IConnectionPoint from IEditController. Result: %d",
                         pluginName.c_str(), result);
             }
-            result = connPointEdit->vtable->connection_point.connect(connPointEdit, (v3_connection_point **) connPointComp);
-            if (result != V3_OK) {
+            result = connPointEdit->connect((IConnectionPoint*) connPointComp);
+            if (result != kResultOk) {
                 owner->getLogger()->logWarning(
                         "%s: IConnectionPoint from IEditController failed to interconnect with its IConnectionPoint from IComponent. Result: %d",
                         pluginName.c_str(), result);
@@ -69,24 +67,22 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     audio_buses = new AudioBuses(this);
 
     // find NoteExpressionController
-    if (controller->vtable->unknown.query_interface(controller, v3_note_expression_controller_iid, (void**) &note_expression_controller) != V3_OK)
+    if (controller->queryInterface(INoteExpressionController::iid, (void**) &note_expression_controller) != kResultOk)
         note_expression_controller = nullptr; // just to make sure
-    if (controller->vtable->unknown.query_interface(controller, v3_unit_information_iid, (void**) &unit_info) != V3_OK)
+    if (controller->queryInterface(IUnitInfo::iid, (void**) &unit_info) != kResultOk)
         unit_info = nullptr; // just to make sure
-    if (controller->vtable->unknown.query_interface(controller, v3_midi_mapping_iid, (void**) &midi_mapping) != V3_OK)
+    if (controller->queryInterface(IMidiMapping::iid, (void**) &midi_mapping) != kResultOk)
         midi_mapping = nullptr; // just to make sure
 
     // Register parameter edit handler for this plugin instance
-    owner->getHost()->setParameterEditHandler(controller, [this](v3_param_id paramId, double value) {
+    owner->getHost()->setParameterEditHandler(controller, [this](ParamID paramId, double value) {
         // Queue the parameter change for the next audio process call
         auto pvc = processDataInputParameterChanges.asInterface();
         int32_t index = 0;
-        auto queue = reinterpret_cast<IParamValueQueue*>(
-            pvc->vtable->parameter_changes.add_param_data(pvc, &paramId, &index)
-        );
+        auto queue = pvc->addParameterData(paramId, index);
         if (queue) {
             int32_t pointIndex = 0;
-            queue->vtable->param_value_queue.add_point(queue, 0, value, &pointIndex);
+            queue->addPoint(0, value, pointIndex);
         }
     });
 
@@ -99,46 +95,44 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
     // Unregister parameter edit handler
     owner->getHost()->setParameterEditHandler(controller, nullptr);
 
-    auto result = processor->vtable->processor.set_processing(processor, false);
-    if (result != V3_OK)
+    auto result = processor->setProcessing(false);
+    if (result != kResultOk)
         logger->logError("Failed to setProcessing(false) at VST3 destructor: %d", result);
     EventLoop::runTaskOnMainThread([this, &result, logger] {
-        result = component->vtable->component.set_active(component, false);
-        if (result != V3_OK)
+        result = component->setActive(false);
+        if (result != kResultOk)
             logger->logError("Failed to setActive(false) at VST3 destructor: %d", result);
         audio_buses->deactivateAllBuses();
 
         if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
-            result = connPointEdit->vtable->connection_point.disconnect(connPointEdit,
-                                                                        (v3_connection_point **) connPointComp);
-            if (result != V3_OK)
+            result = connPointEdit->disconnect((IConnectionPoint*) connPointComp);
+            if (result != kResultOk)
                 logger->logError("Failed to disconnect from Component ConnectionPoint at VST3 destructor: %d", result);
-            result = connPointComp->vtable->connection_point.disconnect(connPointComp,
-                                                                        (v3_connection_point **) connPointEdit);
-            if (result != V3_OK)
+            result = connPointComp->disconnect((IConnectionPoint*) connPointEdit);
+            if (result != kResultOk)
                 logger->logError("Failed to disconnect from EditController ConnectionPoint at VST3 destructor: %d",
                                  result);
         }
 
         // FIXME: almost all plugins crash here. But it seems optional.
-        controller->vtable->controller.set_component_handler(controller, nullptr);
+        controller->setComponentHandler(nullptr);
 
         if (isControllerDistinctFromComponent)
-            controller->vtable->base.terminate(controller);
-        component->vtable->base.terminate(component);
+            controller->terminate();
+        component->terminate();
 
         audio_buses->deallocateBuffers();
 
         if (connPointEdit)
-            connPointEdit->vtable->unknown.unref(connPointEdit);
+            connPointEdit->release();
         if (connPointComp)
-            connPointComp->vtable->unknown.unref(connPointComp);
+            connPointComp->release();
 
-        processor->vtable->unknown.unref(processor);
+        processor->release();
         if (isControllerDistinctFromComponent)
-            controller->vtable->unknown.unref(controller);
-        component->vtable->unknown.unref(component);
-        instance->vtable->unknown.unref(instance);
+            controller->release();
+        component->release();
+        instance->release();
     });
 
     owner->unrefLibrary(info());
@@ -150,11 +144,11 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
 
 remidy::StatusCode remidy::PluginInstanceVST3::configure(ConfigurationRequest &configuration) {
     // setupProcessing.
-    v3_process_setup setup{};
-    setup.sample_rate = configuration.sampleRate;
-    setup.max_block_size = static_cast<int32_t>(configuration.bufferSizeInSamples);
-    setup.symbolic_sample_size = configuration.dataType == AudioContentType::Float64 ? V3_SAMPLE_64 : V3_SAMPLE_32;
-    setup.process_mode = configuration.offlineMode ? V3_OFFLINE : V3_REALTIME;
+    ProcessSetup setup{};
+    setup.sampleRate = configuration.sampleRate;
+    setup.maxSamplesPerBlock = static_cast<int32_t>(configuration.bufferSizeInSamples);
+    setup.symbolicSampleSize = configuration.dataType == AudioContentType::Float64 ? kSample64 : kSample32;
+    setup.processMode = configuration.offlineMode ? kOffline : kRealtime;
 
     // setup audio buses
     audio_buses->configure(configuration);
@@ -167,18 +161,18 @@ remidy::StatusCode remidy::PluginInstanceVST3::configure(ConfigurationRequest &c
     return StatusCode::OK;
 }
 
-void remidy::PluginInstanceVST3::allocateProcessData(v3_process_setup& setup) {
-    processData.ctx = &process_context;
-    process_context.sample_rate = setup.sample_rate;
+void remidy::PluginInstanceVST3::allocateProcessData(ProcessSetup& setup) {
+    processData.processContext = &process_context;
+    process_context.sampleRate = setup.sampleRate;
 
-    processData.input_events = (v3_event_list **) processDataInputEvents.asInterface();
-    processData.output_events = (v3_event_list **) processDataOutputEvents.asInterface();
+    processData.inputEvents = processDataInputEvents.asInterface();
+    processData.outputEvents = processDataOutputEvents.asInterface();
     // FIXME: we should reconsider how we pass it.
-    processData.input_params = (v3_param_changes **) processDataInputParameterChanges.asInterface();
-    processData.output_params = (v3_param_changes **) processDataOutputParameterChanges.asInterface();
+    processData.inputParameterChanges = processDataInputParameterChanges.asInterface();
+    processData.outputParameterChanges = processDataOutputParameterChanges.asInterface();
 
-    processData.process_mode = setup.process_mode;
-    processData.symbolic_sample_size = setup.symbolic_sample_size;
+    processData.processMode = setup.processMode;
+    processData.symbolicSampleSize = setup.symbolicSampleSize;
 
     audio_buses->allocateBuffers();
 
@@ -191,41 +185,39 @@ remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
         return StatusCode::FAILED_TO_START_PROCESSING;
     }
 
-    v3_result setupResult = V3_OK;
-    v3_result activationResult = V3_OK;
+    tresult setupResult = kResultOk;
+    tresult activationResult = kResultOk;
     bool attemptedActivation = false;
     EventLoop::runTaskOnMainThread([&] {
         owner->getLogger()->logInfo("%s: setting up processing", pluginName.c_str());
-        setupResult = processor->vtable->processor.setup_processing(processor, &last_process_setup);
-        if (setupResult == V3_OK) {
+        setupResult = processor->setupProcessing(last_process_setup);
+        if (setupResult == kResultOk) {
             owner->getLogger()->logInfo("%s: activating component", pluginName.c_str());
-            activationResult = component->vtable->component.set_active(component, true);
+            activationResult = component->setActive(true);
             attemptedActivation = true;
         }
     });
 
-    if (setupResult != V3_OK) {
-        owner->getLogger()->logError("Failed to setup_processing() for vst3. Result: %d", setupResult);
+    if (setupResult != kResultOk) {
+        owner->getLogger()->logError("Failed to setupProcessing() for vst3. Result: %d", setupResult);
         return StatusCode::FAILED_TO_START_PROCESSING;
     }
 
-    if (!attemptedActivation || activationResult != V3_OK) {
+    if (!attemptedActivation || activationResult != kResultOk) {
         owner->getLogger()->logError("Failed to setActive(true) for vst3 processing. Result: %d", activationResult);
         EventLoop::runTaskOnMainThread([&] {
-            if (component->vtable->component.set_active)
-                component->vtable->component.set_active(component, false);
+            component->setActive(false);
         });
         return StatusCode::FAILED_TO_START_PROCESSING;
     }
 
-    auto result = processor->vtable->processor.set_processing(processor, true);
+    auto result = processor->setProcessing(true);
     // Surprisingly?, some VST3 plugins do not implement this function.
     // We do not prevent them just because of this.
-    if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
+    if (result != kResultOk && result != kNotImplemented) {
         owner->getLogger()->logError("Failed to start vst3 processing. Result: %d", result);
         EventLoop::runTaskOnMainThread([&] {
-            if (component->vtable->component.set_active)
-                component->vtable->component.set_active(component, false);
+            component->setActive(false);
         });
         return StatusCode::FAILED_TO_START_PROCESSING;
     }
@@ -236,18 +228,18 @@ remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::stopProcessing() {
-    auto result = processor->vtable->processor.set_processing(processor, false);
-    // regarding V3_NOT_IMPLEMENTED, see startProcessing().
-    if (result != V3_OK && result != V3_NOT_IMPLEMENTED) {
+    auto result = processor->setProcessing(false);
+    // regarding kNotImplemented, see startProcessing().
+    if (result != kResultOk && result != kNotImplemented) {
         owner->getLogger()->logError("Failed to stop vst3 processing. Result: %d", result);
         return StatusCode::FAILED_TO_STOP_PROCESSING;
     }
 
-    v3_result deactivateResult = V3_OK;
+    tresult deactivateResult = kResultOk;
     EventLoop::runTaskOnMainThread([&] {
-        deactivateResult = component->vtable->component.set_active(component, false);
+        deactivateResult = component->setActive(false);
     });
-    if (deactivateResult != V3_OK)
+    if (deactivateResult != kResultOk)
         owner->getLogger()->logWarning("Failed to setActive(false) for vst3 processing. Result: %d", deactivateResult);
 
     // we deallocate memory where necessary.
@@ -259,8 +251,8 @@ remidy::StatusCode remidy::PluginInstanceVST3::stopProcessing() {
 remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &process) {
     // update audio buffer pointers
     const int32_t numFrames = process.frameCount();
-    const int32_t numInputBus = processData.num_input_buses;
-    const int32_t numOutputBus = processData.num_output_buses;
+    const int32_t numInputBus = processData.numInputs;
+    const int32_t numOutputBus = processData.numOutputs;
     for (int32_t bus = 0, nBus = process.audioInBusCount(); bus < nBus; bus++) {
         if (bus >= numInputBus) {
             // disabed the log, too noisy.
@@ -268,10 +260,10 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
             continue;
         }
         for (size_t ch = 0, n = process.inputChannelCount(bus); ch < n; ch++) {
-            if (processData.symbolic_sample_size == V3_SAMPLE_32)
-                processData.inputs[bus].channel_buffers_32[ch] = process.getFloatInBuffer(bus, ch);
+            if (processData.symbolicSampleSize == kSample32)
+                processData.inputs[bus].channelBuffers32[ch] = process.getFloatInBuffer(bus, ch);
             else
-                processData.inputs[bus].channel_buffers_64[ch] = process.getDoubleInBuffer(bus, ch);
+                processData.inputs[bus].channelBuffers64[ch] = process.getDoubleInBuffer(bus, ch);
         }
     }
     for (int32_t bus = 0, nBus = process.audioOutBusCount(); bus < nBus; bus++) {
@@ -281,16 +273,16 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
             continue;
         }
         for (size_t ch = 0, n = process.outputChannelCount(bus); ch < n; ch++) {
-            if (processData.symbolic_sample_size == V3_SAMPLE_32)
-                processData.outputs[bus].channel_buffers_32[ch] = process.getFloatOutBuffer(bus, ch);
+            if (processData.symbolicSampleSize == kSample32)
+                processData.outputs[bus].channelBuffers32[ch] = process.getFloatOutBuffer(bus, ch);
             else
-                processData.outputs[bus].channel_buffers_64[ch] = process.getDoubleOutBuffer(bus, ch);
+                processData.outputs[bus].channelBuffers64[ch] = process.getDoubleOutBuffer(bus, ch);
         }
     }
 
-    const auto &ctx = processData.ctx;
+    const auto &ctx = processData.processContext;
 
-    processData.nframes = numFrames;
+    processData.numSamples = numFrames;
 
     // handle UMP inputs via UmpInputDispatcher.
     processDataInputEvents.clear();
@@ -300,17 +292,17 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     processDataOutputParameterChanges.clear();
 
     // invoke plugin process
-    auto result = processor->vtable->processor.process(processor, &processData);
+    auto result = processor->process(processData);
 
     processDataInputParameterChanges.clear();
 
-    if (result != V3_OK) {
+    if (result != kResultOk) {
         owner->getLogger()->logError("Failed to process vst3 audio. Result: %d", result);
         return StatusCode::FAILED_TO_PROCESS;
     }
 
     // post-processing
-    ctx->continuous_time_in_samples += numFrames;
+    ctx->continousTimeSamples += numFrames;
 
     // FiXME: generate UMP outputs here
     processDataOutputEvents.clear();
