@@ -1,11 +1,14 @@
 #pragma once
-#if defined(_MSC_VER) // wow, that's stupid... https://stackoverflow.com/questions/5004858/why-is-stdmin-failing-when-windows-h-is-included
-#define NOMINMAX
-#endif
 
 #include <algorithm>
 #include <cstring>
 #include <vector>
+
+#if defined(_MSC_VER)
+#define min(v1, v2) (v1 < v2 ? v1 : v2)
+#else
+#define min(v1, v2) std::min(v1, v2)
+#endif
 
 namespace remidy {
     enum class AudioContentType {
@@ -216,12 +219,12 @@ namespace remidy {
 
         void advanceToNextNode() {
             // Copy audio output to input for the next node
-            for (size_t i = 0; i < std::min(audio_in.size(), audio_out.size()); ++i) {
+            for (size_t i = 0; i < min(audio_in.size(), audio_out.size()); ++i) {
                 auto* inBus = audio_in[i];
                 auto* outBus = audio_out[i];
                 if (inBus && outBus) {
-                    auto channels = std::min(inBus->channelCount(), outBus->channelCount());
-                    auto frames = std::min(inBus->bufferCapacityInFrames(), outBus->bufferCapacityInFrames());
+                    auto channels = min(inBus->channelCount(), outBus->channelCount());
+                    auto frames = min(inBus->bufferCapacityInFrames(), outBus->bufferCapacityInFrames());
                     for (uint32_t ch = 0; ch < channels; ++ch) {
                         // Copy based on the audio data type
                         std::memcpy(inBus->getFloatBufferForChannel(ch),
@@ -237,7 +240,7 @@ namespace remidy {
                     bus->clear();
 
             // Copy events output to input for the next node
-            auto eventBytes = std::min(event_in.maxMessagesInBytes(), event_out.position());
+            auto eventBytes = min(event_in.maxMessagesInBytes(), event_out.position());
             if (eventBytes > 0) {
                 std::memcpy(event_in.getMessages(), event_out.getMessages(), eventBytes);
                 event_in.position(eventBytes);
