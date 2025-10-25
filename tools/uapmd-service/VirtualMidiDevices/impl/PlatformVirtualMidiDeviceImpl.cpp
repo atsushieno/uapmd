@@ -5,8 +5,8 @@
 
 namespace uapmd {
 
-    PlatformVirtualMidiDevice::Impl::Impl(std::string& apiName, std::string &deviceName, std::string &manufacturer, std::string &version)
-        : api_name(apiName), device_name(deviceName), manufacturer(manufacturer), version(version) {
+    PlatformVirtualMidiDevice::Impl::Impl(std::string& apiName, std::string &deviceName, std::string &manufacturer, std::string &version, uint64_t sysexDelayInMicroseconds)
+        : api_name(apiName), device_name(deviceName), manufacturer(manufacturer), version(version), sysex_delay_in_microseconds(sysexDelayInMicroseconds) {
 
         assert(libremidi_midi_api_configuration_init(&apiCfg) == 0);
         auto apis = libremidi::available_ump_apis();
@@ -66,9 +66,13 @@ namespace uapmd {
             auto thisChunk = total - current < 128 ? total - current : 128;
             libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + current, thisChunk);
             // kind of hack, but platform MIDI API could run out of internal ring buffers and we get our sysex messages corrupt.
-            if (thisChunk > 50)
-                // FIXME: maybe make it configurable?
-                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            switch (messages[current] & 0xF0000000) {
+                case 0x30000000:
+                case 0x50000000:
+                    // FIXME: maybe make it configurable?
+                    std::this_thread::sleep_for(std::chrono::microseconds(sysex_delay_in_microseconds));
+                    break;
+            }
             current += thisChunk;
         }
     }

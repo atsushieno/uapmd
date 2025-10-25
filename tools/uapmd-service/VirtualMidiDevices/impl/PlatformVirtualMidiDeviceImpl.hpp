@@ -13,6 +13,7 @@ namespace uapmd {
         std::string device_name;
         std::string manufacturer;
         std::string version;
+        uint64_t sysex_delay_in_microseconds;
         std::vector<ump_receiver_t> receivers;
         std::vector<void*> receiver_user_data;
 
@@ -26,7 +27,7 @@ namespace uapmd {
         void inputCallback(libremidi_timestamp timestamp, const libremidi_midi2_symbol* messages, size_t len);
 
     public:
-        Impl(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version);
+        Impl(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version, uint64_t sysExDelayInMicroseconds);
         virtual ~Impl();
 
         void addInputHandler(ump_receiver_t receiver, void* userData);
