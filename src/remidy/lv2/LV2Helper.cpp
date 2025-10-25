@@ -1,3 +1,7 @@
+#if defined(MSC_VER) // wow, that's stupid... https://stackoverflow.com/questions/5004858/why-is-stdmin-failing-when-windows-h-is-included
+#define NOMINMAX
+#endif
+
 #include <lv2/core/lv2.h>
 
 
