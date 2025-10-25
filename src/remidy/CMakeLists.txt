@@ -37,6 +37,8 @@ set(SMTG_ENABLE_WAYLAND_SUPPORT ON)
 FetchContent_Declare(vst3sdk
         GIT_REPOSITORY https://github.com/steinbergmedia/vst3sdk
         GIT_TAG v3.8.0_build_66
+        PATCH_COMMAND git apply ${CMAKE_CURRENT_LIST_DIR}/../cmake/vst3sdk-mac-terminate.patch
+        UPDATE_DISCONNECTED 1
 )
 FetchContent_MakeAvailable(vst3sdk)
 
