@@ -192,6 +192,7 @@ namespace remidy {
             bool visible{false};
             bool attached{false};
             std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
+            FIDString target_ui_string{};
 
         public:
             explicit UISupport(PluginInstanceVST3* owner);

@@ -4,6 +4,13 @@
 namespace remidy {
 
     PluginInstanceVST3::UISupport::UISupport(PluginInstanceVST3* owner) : owner(owner) {
+#if SMTG_OS_LINUX
+        target_ui_string = kPlatformTypeX11EmbedWindowID;
+#elif SMTG_OS_MACOS
+        target_ui_string = kPlatformTypeNSView;
+#else
+        target_ui_string = kPlatformTypeHWND;
+#endif
     }
 
     bool PluginInstanceVST3::UISupport::create(bool isFloating) {
@@ -19,7 +26,7 @@ namespace remidy {
 
             view = owner->controller->createView("editor");
             if (view) {
-                if (view->isPlatformTypeSupported(kPlatformTypeX11EmbedWindowID) == kResultOk) {
+                if (view->isPlatformTypeSupported(target_ui_string) == kResultOk) {
                     // Register a placeholder resize handler IMMEDIATELY so it's available during setFrame()
                     // This will be replaced when setResizeRequestHandler() is called later
                     owner->owner->getHost()->setResizeRequestHandler(view, [](uint32_t, uint32_t) {
@@ -106,7 +113,7 @@ namespace remidy {
 
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
-            success = view->attached(parent, kPlatformTypeX11EmbedWindowID) == kResultOk;
+            success = view->attached(parent, target_ui_string) == kResultOk;
         });
 
         if (success)
