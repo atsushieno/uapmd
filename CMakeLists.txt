@@ -8,6 +8,11 @@ endif()
 
 set(CMAKE_CXX_STANDARD 23)
 
+# wow, that's stupid... https://stackoverflow.com/questions/5004858/why-is-stdmin-failing-when-windows-h-is-included
+if (MSVC OR WIN32)
+add_compile_definitions(NOMINMAX)
+endif()
+
 include(cmake/CPM.cmake)
 
 FetchContent_Declare(cmidi2

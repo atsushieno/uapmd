@@ -1,7 +1,4 @@
 #pragma once
-#if defined(_MSC_VER) // wow, that's stupid... https://stackoverflow.com/questions/5004858/why-is-stdmin-failing-when-windows-h-is-included
-#define NOMINMAX
-#endif
 
 #include <algorithm>
 #include <cstring>
