@@ -91,6 +91,7 @@ target_link_libraries(remidy PRIVATE
         rtlog::rtlog
         cpplocate::cpplocate
         lv2kit
+        sdk # pretty bad naming from vst3sdk (shrug)
         ${remidy_LIBS_PLAT}
         ${GTK3_LIBRARIES}
         #-fsanitize=address

@@ -7,6 +7,7 @@
 
 #include <priv/common.hpp>
 
+#include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include "moduleinfoparser.h"
 
 #include "../utils.hpp"

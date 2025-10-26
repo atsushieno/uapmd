@@ -4,8 +4,6 @@
 #include <cstring>
 #include <pluginterfaces/base/funknown.h>
 
-#define kVstAudioEffectClass "Audio Module Class"
-
 namespace remidy_vst3 {
 
     struct PluginClassInfo {

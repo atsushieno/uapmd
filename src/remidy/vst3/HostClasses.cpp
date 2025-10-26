@@ -1,21 +1,19 @@
-#include <iostream>
 #include <thread>
 
 #include "HostClasses.hpp"
 #if !SMTG_OS_WINDOWS
 #include <sys/select.h>
 #endif
-#include "../utils.hpp"
 #include <priv/event-loop.hpp>
+#include <public.sdk/source/vst/utility/stringconvert.h>
 
 namespace remidy_vst3 {
 
-    std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> u16conv;
     std::string vst3StringToStdString(String128& src) {
-        return u16conv.to_bytes((char16_t *) src);
+        return Steinberg::Vst::StringConvert::convert(src);
     }
 
-    const std::basic_string<char16_t> HostApplication::name16t{std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>{}.from_bytes("remidy")};
+    const std::basic_string<char16_t> HostApplication::name16t{Steinberg::Vst::StringConvert::convert("remidy")};
 
     HostApplication::HostApplication(remidy::Logger* logger): logger(logger) {
         // Instantiate nested implementation classes
