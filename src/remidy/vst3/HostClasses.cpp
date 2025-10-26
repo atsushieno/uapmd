@@ -1,8 +1,10 @@
 #include <iostream>
 #include <thread>
-#include <sys/select.h>
 
 #include "HostClasses.hpp"
+#if !SMTG_OS_WINDOWS
+#include <sys/select.h>
+#endif
 #include "../utils.hpp"
 #include <priv/event-loop.hpp>
 
