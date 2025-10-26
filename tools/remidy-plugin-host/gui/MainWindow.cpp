@@ -137,14 +137,12 @@ bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, u
 
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     bool success = true;
-    bool canResize = sequencer.canPluginUIResize(instanceId);
-    remidy::EventLoop::runTaskOnMainThread([window, &bounds, &success, canResize]() {
+    remidy::EventLoop::runTaskOnMainThread([window, &bounds, &success]() {
         if (!window) {
             success = false;
             return;
         }
-        window->setResizable(canResize);
-        window->setBounds(bounds);
+        window->resize(bounds.width, bounds.height);
     });
 
     if (!success)
@@ -157,10 +155,10 @@ bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, u
             pluginWindowBounds_[instanceId].width = static_cast<int>(adjustedWidth);
             pluginWindowBounds_[instanceId].height = static_cast<int>(adjustedHeight);
             pluginWindowResizeIgnore_.insert(instanceId);
-            remidy::EventLoop::runTaskOnMainThread([window, bounds = pluginWindowBounds_[instanceId]]() mutable {
+            remidy::EventLoop::runTaskOnMainThread([window, w = static_cast<int>(adjustedWidth), h = static_cast<int>(adjustedHeight)]() {
                 if (!window)
                     return;
-                window->setBounds(bounds);
+                window->resize(w, h);
             });
         }
     }
@@ -203,10 +201,10 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
     pluginWindowBounds_[instanceId].height = static_cast<int>(adjustedHeight);
     pluginWindowResizeIgnore_.insert(instanceId);
 
-    remidy::EventLoop::runTaskOnMainThread([window, bounds = pluginWindowBounds_[instanceId]]() mutable {
+    remidy::EventLoop::runTaskOnMainThread([window, w = static_cast<int>(adjustedWidth), h = static_cast<int>(adjustedHeight)]() {
         if (!window)
             return;
-        window->setBounds(bounds);
+        window->resize(w, h);
     });
 }
 
@@ -414,20 +412,7 @@ void MainWindow::renderInstanceControl() {
                         sequencer.setPluginUIResizeHandler(instanceId, [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); });
                         if (sequencer.showPluginUI(instanceId, false, parentHandle)) {
                             pluginWindowEmbedded_[instanceId] = true;
-                            uint32_t pw=0, ph=0;
-                            if (fetchPluginUISize(instanceId, pw, ph) && pw>0 && ph>0) {
-                                pluginWindowBounds_[instanceId].width = static_cast<int>(pw);
-                                pluginWindowBounds_[instanceId].height = static_cast<int>(ph);
-                                pluginWindowResizeIgnore_.insert(instanceId);
-                                auto b = pluginWindowBounds_[instanceId];
-                                bool canResize = sequencer.canPluginUIResize(instanceId);
-                                remidy::EventLoop::runTaskOnMainThread([cw=container, b, canResize]() mutable {
-                                    if (cw) {
-                                        cw->setResizable(canResize);
-                                        cw->setBounds(b);
-                                    }
-                                });
-                            }
+                            // Plugin format implementation handles resizing and setResizable
                             shown = true;
                         } else {
                             container->show(false);

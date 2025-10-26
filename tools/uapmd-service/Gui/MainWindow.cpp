@@ -912,7 +912,6 @@ bool MainWindow::handlePluginResizeRequest(std::shared_ptr<DeviceState> state, i
 
     nodeState->pluginWindowResizeIgnore = true;
     auto sequencer = device->sequencer();
-    bool canResize = sequencer->canPluginUIResize(instanceId);
     if (!sequencer->resizePluginUI(instanceId, width, height)) {
         uint32_t adjustedWidth = 0, adjustedHeight = 0;
         sequencer->getPluginUISize(instanceId, adjustedWidth, adjustedHeight);
@@ -922,10 +921,9 @@ bool MainWindow::handlePluginResizeRequest(std::shared_ptr<DeviceState> state, i
         }
     }
 
-    remidy::EventLoop::runTaskOnMainThread([cw=window, bounds, canResize]() {
+    remidy::EventLoop::runTaskOnMainThread([cw=window, w=bounds.width, h=bounds.height]() {
         if (cw) {
-            cw->setResizable(canResize);
-            cw->setBounds(bounds);
+            cw->resize(w, h);
         }
     });
 
@@ -1024,32 +1022,13 @@ void MainWindow::showPluginUIInstance(std::shared_ptr<DeviceState> state, int32_
         });
 
     if (sequencer->showPluginUI(instanceId, false, parentHandle)) {
-        uint32_t pw = 0, ph = 0;
-        bool hasSize = sequencer->getPluginUISize(instanceId, pw, ph) && pw > 0 && ph > 0;
-        bool canResize = sequencer->canPluginUIResize(instanceId);
-        remidy::gui::Bounds bounds{};
-        bool applyBounds = false;
         {
             std::lock_guard guard(state->mutex);
             auto* nodeState = findPluginInstance(*state, instanceId);
             if (nodeState) {
                 nodeState->pluginWindowEmbedded = true;
-                if (hasSize) {
-                    nodeState->pluginWindowBounds.width = static_cast<int>(pw);
-                    nodeState->pluginWindowBounds.height = static_cast<int>(ph);
-                    nodeState->pluginWindowResizeIgnore = true;
-                    bounds = nodeState->pluginWindowBounds;
-                    applyBounds = true;
-                }
+                // Plugin format implementation handles resizing and setResizable
             }
-        }
-        if (applyBounds) {
-            remidy::EventLoop::runTaskOnMainThread([cw=container, bounds, canResize]() {
-                if (cw) {
-                    cw->setResizable(canResize);
-                    cw->setBounds(bounds);
-                }
-            });
         }
     } else {
         container->show(false);

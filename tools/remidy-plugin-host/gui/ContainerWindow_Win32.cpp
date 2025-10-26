@@ -38,7 +38,21 @@ public:
         ShowWindow(hwnd_, visible ? SW_SHOW : SW_HIDE);
         UpdateWindow(hwnd_);
     }
-    void setResizable(bool resizable) override {
+    void resize(int width, int height) override {
+        if (!hwnd_) return;
+        b_.width = width;
+        b_.height = height;
+        SetWindowPos(hwnd_, nullptr, 0, 0, width, height,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    Bounds getBounds() const override { return b_; }
+    void* getHandle() const override { return hwnd_; }
+    void setCloseCallback(std::function<void()> callback) override {
+        closeCallback_ = std::move(callback);
+    }
+
+private:
+    void setResizable(bool resizable) {
         if (!hwnd_) return;
         LONG_PTR style = GetWindowLongPtrW(hwnd_, GWL_STYLE);
         if (resizable) {
@@ -51,18 +65,7 @@ public:
         SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     }
-    void setBounds(const Bounds& b) override {
-        if (!hwnd_) return;
-        b_ = b;
-        MoveWindow(hwnd_, b.x, b.y, b.width, b.height, TRUE);
-    }
-    Bounds getBounds() const override { return b_; }
-    void* getHandle() const override { return hwnd_; }
-    void setCloseCallback(std::function<void()> callback) override {
-        closeCallback_ = std::move(callback);
-    }
 
-private:
     static LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         Win32ContainerWindow* window = reinterpret_cast<Win32ContainerWindow*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 

@@ -91,7 +91,29 @@ public:
         XFlush(dpy_);
     }
 
-    void setResizable(bool resizable) override {
+    void resize(int width, int height) override {
+        if (!dpy_ || !wnd_) return;
+        b_.width = width;
+        b_.height = height;
+        XResizeWindow(dpy_, wnd_, (unsigned)width, (unsigned)height);
+        if (holder_) XResizeWindow(dpy_, holder_, (unsigned)width, (unsigned)height);
+        XFlush(dpy_);
+    }
+
+    Bounds getBounds() const override { return b_; }
+
+    void* getHandle() const override {
+        // Pass the holder (socket) XID to plugins
+        return reinterpret_cast<void*>(static_cast<uintptr_t>(holder_ ? holder_ : wnd_));
+    }
+
+    void setCloseCallback(std::function<void()> callback) override {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        closeCallback_ = std::move(callback);
+    }
+
+private:
+    void setResizable(bool resizable) {
         if (!dpy_ || !wnd_) return;
         XSizeHints hints{};
         hints.flags = PMinSize | PMaxSize;
@@ -112,27 +134,6 @@ public:
         XFlush(dpy_);
     }
 
-    void setBounds(const Bounds& b) override {
-        if (!dpy_ || !wnd_) return;
-        b_ = b;
-        XMoveResizeWindow(dpy_, wnd_, b.x, b.y, (unsigned) b.width, (unsigned) b.height);
-        if (holder_) XMoveResizeWindow(dpy_, holder_, 0, 0, (unsigned) b.width, (unsigned) b.height);
-        XFlush(dpy_);
-    }
-
-    Bounds getBounds() const override { return b_; }
-
-    void* getHandle() const override {
-        // Pass the holder (socket) XID to plugins
-        return reinterpret_cast<void*>(static_cast<uintptr_t>(holder_ ? holder_ : wnd_));
-    }
-
-    void setCloseCallback(std::function<void()> callback) override {
-        std::lock_guard<std::mutex> lock(callbackMutex_);
-        closeCallback_ = std::move(callback);
-    }
-
-private:
     Display* dpy_{nullptr};
     Window wnd_{};
     Bounds b_{};

@@ -51,30 +51,13 @@ public:
             if (visible) [window_ makeKeyAndOrderFront:nil]; else [window_ orderOut:nil];
         }
     }
-    void setResizable(bool resizable) override {
+    void resize(int width, int height) override {
         @autoreleasepool {
             if (!window_) return;
-            NSWindowStyleMask currentStyle = [window_ styleMask];
-            if (resizable) {
-                [window_ setStyleMask:currentStyle | NSWindowStyleMaskResizable];
-            } else {
-                [window_ setStyleMask:currentStyle & ~NSWindowStyleMaskResizable];
-            }
-        }
-    }
-    void setBounds(const Bounds& b) override {
-        @autoreleasepool {
-            if (!window_) return; b_ = b;
-            // Set content size, not frame size (frame includes title bar)
-            // First set the content size
-            NSSize contentSize = NSMakeSize(b.width, b.height);
+            b_.width = width;
+            b_.height = height;
+            NSSize contentSize = NSMakeSize(width, height);
             [window_ setContentSize:contentSize];
-
-            // Then set the position (top-left of frame)
-            NSRect frame = [window_ frame];
-            frame.origin.x = b.x;
-            frame.origin.y = b.y;
-            [window_ setFrameOrigin:frame.origin];
         }
     }
     Bounds getBounds() const override { return b_; }
@@ -96,6 +79,18 @@ public:
         }
     }
 private:
+    void setResizable(bool resizable) {
+        @autoreleasepool {
+            if (!window_) return;
+            NSWindowStyleMask currentStyle = [window_ styleMask];
+            if (resizable) {
+                [window_ setStyleMask:currentStyle | NSWindowStyleMaskResizable];
+            } else {
+                [window_ setStyleMask:currentStyle & ~NSWindowStyleMaskResizable];
+            }
+        }
+    }
+
     NSWindow* window_{nil};
     ContainerWindowDelegate* delegate_{nil};
     Bounds b_{};
