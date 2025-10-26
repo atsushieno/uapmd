@@ -22,7 +22,7 @@ namespace uapmd::gui {
 
 class CocoaContainerWindow : public ContainerWindow {
 public:
-    CocoaContainerWindow(const char* title, int w, int h) {
+    CocoaContainerWindow(const char* title, int w, int h, std::function<void()> closeCallback) : closeCallback_(std::move(closeCallback)) {
         @autoreleasepool {
             NSRect rect = NSMakeRect(100, 100, w, h);
             window_ = [[NSWindow alloc] initWithContentRect:rect
@@ -35,6 +35,13 @@ public:
             // Create and set the delegate
             delegate_ = [[ContainerWindowDelegate alloc] init];
             [window_ setDelegate:delegate_];
+
+            // Set close callback
+            if (closeCallback_) {
+                delegate_.closeCallback = ^{
+                    closeCallback_();
+                };
+            }
         }
     }
     ~CocoaContainerWindow() override {
@@ -65,19 +72,6 @@ public:
         // CLAP expects NSView* for cocoa
         return (__bridge void*)[window_ contentView];
     }
-    void setCloseCallback(std::function<void()> callback) override {
-        @autoreleasepool {
-            if (!delegate_) return;
-            if (callback) {
-                // Capture the callback in a block
-                delegate_.closeCallback = ^{
-                    callback();
-                };
-            } else {
-                delegate_.closeCallback = nil;
-            }
-        }
-    }
 private:
     void setResizable(bool resizable) {
         @autoreleasepool {
@@ -94,10 +88,11 @@ private:
     NSWindow* window_{nil};
     ContainerWindowDelegate* delegate_{nil};
     Bounds b_{};
+    std::function<void()> closeCallback_;
 };
 
-std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height) {
-    return std::make_unique<CocoaContainerWindow>(title, width, height);
+std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height, std::function<void()> closeCallback) {
+    return std::make_unique<CocoaContainerWindow>(title, width, height, std::move(closeCallback));
 }
 
 } // namespace uapmd::gui

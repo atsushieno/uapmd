@@ -11,7 +11,8 @@ static const wchar_t* kClassName = L"RemidyContainerWindow";
 
 class Win32ContainerWindow : public ContainerWindow {
 public:
-    explicit Win32ContainerWindow(const char* title, int w, int h) {
+    explicit Win32ContainerWindow(const char* title, int w, int h, std::function<void()> closeCallback)
+        : closeCallback_(std::move(closeCallback)) {
         registerClass();
         std::wstring wtitle;
         if (title) {
@@ -47,9 +48,6 @@ public:
     }
     Bounds getBounds() const override { return b_; }
     void* getHandle() const override { return hwnd_; }
-    void setCloseCallback(std::function<void()> callback) override {
-        closeCallback_ = std::move(callback);
-    }
 
 private:
     void setResizable(bool resizable) {
@@ -91,8 +89,8 @@ private:
     std::function<void()> closeCallback_;
 };
 
-std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height) {
-    return std::make_unique<Win32ContainerWindow>(title, width, height);
+std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height, std::function<void()> closeCallback) {
+    return std::make_unique<Win32ContainerWindow>(title, width, height, std::move(closeCallback));
 }
 
 } // namespace remidy::gui

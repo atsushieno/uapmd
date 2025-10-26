@@ -974,16 +974,15 @@ void MainWindow::showPluginUIInstance(std::shared_ptr<DeviceState> state, int32_
             std::string title = nodeState->pluginName.empty()
                 ? std::format("Plugin {}", instanceId)
                 : std::format("{} ({})", nodeState->pluginName, nodeState->pluginFormat);
-            auto window = remidy::gui::ContainerWindow::create(title.c_str(), 800, 600);
-            if (!window) {
-                return;
-            }
-            container = window.get();
-            window->setCloseCallback([this, weakState, instanceId]() {
+            auto window = remidy::gui::ContainerWindow::create(title.c_str(), 800, 600, [this, weakState, instanceId]() {
                 if (auto locked = weakState.lock()) {
                     onPluginWindowClosed(locked, instanceId);
                 }
             });
+            if (!window) {
+                return;
+            }
+            container = window.get();
             nodeState->pluginWindow = std::move(window);
             nodeState->pluginWindowBounds = {100, 100, 800, 600};
             hasWindowNow = true;

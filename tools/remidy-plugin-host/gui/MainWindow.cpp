@@ -391,12 +391,10 @@ void MainWindow::renderInstanceControl() {
                     windowIt = pluginWindows_.find(instanceId);
                     if (windowIt == pluginWindows_.end()) {
                         std::string windowTitle = sequencer.getPluginName(instanceId) + " (" + sequencer.getPluginFormat(instanceId) + ")";
-                        auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600);
-                        container = w.get();
-                        // Set up close callback to handle window close events
-                        w->setCloseCallback([this, instanceId]() {
+                        auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600, [this, instanceId]() {
                             onPluginWindowClosed(instanceId);
                         });
+                        container = w.get();
                         pluginWindows_[instanceId] = std::move(w);
                         pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
                     } else {
