@@ -60,7 +60,26 @@ namespace remidy {
             id parentView = (id)parent_widget;
             if (!child || !parentView)
                 return false;
+
+            // Get child's preferred size before modifying frame
+            auto childFrame = choc::objc::call<choc::objc::CGRect>(child, "frame");
+            uint32_t preferredWidth = (uint32_t)childFrame.size.width;
+            uint32_t preferredHeight = (uint32_t)childFrame.size.height;
+
+            // Add as subview
             choc::objc::call<void>(parentView, "addSubview:", child);
+
+            // Set frame to fill parent (origin at 0,0)
+            auto parentBounds = choc::objc::call<choc::objc::CGRect>(parentView, "bounds");
+            choc::objc::call<void>(child, "setFrame:", parentBounds);
+
+            // Enable autoresizing
+            choc::objc::call<void>(child, "setAutoresizingMask:", (uint64_t)(1 << 1 | 1 << 4));
+
+            // Notify host of plugin's preferred UI size
+            if (host_resize_handler && preferredWidth > 0 && preferredHeight > 0) {
+                host_resize_handler(preferredWidth, preferredHeight);
+            }
 #elif defined(_WIN32)
             HWND child = (HWND)ui_widget;
             HWND parentWnd = (HWND)parent_widget;
@@ -68,15 +87,23 @@ namespace remidy {
                 return false;
             SetParent(child, parentWnd);
             ShowWindow(child, SW_SHOW);
-#else
-            return false;
-#endif
 
             // Notify host of initial UI size
             uint32_t width = 0, height = 0;
             if (host_resize_handler && getSize(width, height) && width > 0 && height > 0) {
                 host_resize_handler(width, height);
             }
+#else
+            return false;
+#endif
+
+#ifdef __linux__
+            // Notify host of initial UI size (for X11)
+            uint32_t width = 0, height = 0;
+            if (host_resize_handler && getSize(width, height) && width > 0 && height > 0) {
+                host_resize_handler(width, height);
+            }
+#endif
         }
 
         created = true;
@@ -365,7 +392,7 @@ namespace remidy {
         id view = (id)ui_widget;
         if (!view)
             return false;
-        choc::objc::CGRect frame = choc::objc::call<choc::objc::CGRect>(view, "frame");
+        auto frame = choc::objc::call<choc::objc::CGRect>(view, "frame");
         width = (uint32_t)frame.size.width;
         height = (uint32_t)frame.size.height;
         return true;
@@ -386,10 +413,43 @@ namespace remidy {
     }
 
     bool PluginInstanceLV2::UISupport::setSize(uint32_t width, uint32_t height) {
-        if (!created || !ui_resize_interface)
+        if (!created)
             return false;
 
-        return ui_resize_interface->ui_resize(ui_resize_interface->handle, width, height) == 0;
+        // If UI has resize interface, tell the plugin to resize
+        if (ui_resize_interface) {
+            if (ui_resize_interface->ui_resize(ui_resize_interface->handle, width, height) != 0)
+                return false;
+        }
+
+        // Also update the native widget frame
+        if (ui_widget) {
+#ifdef __APPLE__
+            id view = (id)ui_widget;
+            if (view) {
+                auto frame = choc::objc::CGRect{{0.0, 0.0}, {(double)width, (double)height}};
+                choc::objc::call<void>(view, "setFrame:", frame);
+                return true;
+            }
+#elif defined(_WIN32)
+            HWND hwnd = (HWND)ui_widget;
+            if (hwnd) {
+                SetWindowPos(hwnd, NULL, 0, 0, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+                return true;
+            }
+#elif defined(__linux__)
+            Display* dpy = XOpenDisplay(nullptr);
+            if (dpy) {
+                Window window = (Window)(uintptr_t)ui_widget;
+                XResizeWindow(dpy, window, width, height);
+                XFlush(dpy);
+                XCloseDisplay(dpy);
+                return true;
+            }
+#endif
+        }
+
+        return ui_resize_interface != nullptr;
     }
 
     bool PluginInstanceLV2::UISupport::suggestSize(uint32_t &width, uint32_t &height) {
