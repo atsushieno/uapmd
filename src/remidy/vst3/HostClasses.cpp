@@ -300,6 +300,13 @@ namespace remidy_vst3 {
     }
 
     tresult PLUGIN_API HostApplication::RunLoopImpl::registerEventHandler(IEventHandler* handler, FileDescriptor fd) {
+#if SMTG_OS_WINDOWS
+        // File descriptor event handling not supported on Windows
+        // Windows plugins should use timers instead
+        (void)handler;
+        (void)fd;
+        return kNotImplemented;
+#else
         if (!owner || !handler)
             return kInvalidArgument;
 
@@ -343,6 +350,7 @@ namespace remidy_vst3 {
         monitor_thread.detach();
 
         return kResultOk;
+#endif
     }
 
     tresult PLUGIN_API HostApplication::RunLoopImpl::unregisterEventHandler(IEventHandler* handler) {
