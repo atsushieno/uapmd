@@ -54,15 +54,15 @@ namespace remidy {
         return success;
     }
 
-    bool PluginInstanceCLAP::UISupport::create(bool requestFloating) {
+    bool PluginInstanceCLAP::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
         if (!ensureGuiExtension())
             return false;
 
-        if (created) {
-            if (is_floating == requestFloating)
-                return true;
-            destroy();
-        }
+        if (created)
+            return false; // Already created
+
+        host_resize_handler = resizeHandler;
+        bool requestFloating = isFloating;
 
         auto tryFloating = [&]() -> bool {
             if (gui_ext->get_preferred_api) {
@@ -124,10 +124,54 @@ namespace remidy {
             return false;
         };
 
-        if (requestFloating)
-            return tryFloating();
-        else
-            return tryEmbedded();
+        bool success = false;
+        if (requestFloating) {
+            success = tryFloating();
+        } else {
+            success = tryEmbedded();
+            // Attach to parent if embedded and creation succeeded
+            if (success && parentHandle && !current_api.empty()) {
+                bool attached_success = false;
+                withGui([&] {
+                    if (!gui_ext->set_parent)
+                        return;
+                    clap_window_t window{};
+                    window.api = current_api.c_str();
+                    if (current_api == CLAP_WINDOW_API_COCOA) {
+                        window.cocoa = parentHandle;
+                    }
+#if defined(_WIN32)
+                    else if (current_api == CLAP_WINDOW_API_WIN32) {
+                        window.win32 = parentHandle;
+                    }
+#endif
+                    else if (current_api == CLAP_WINDOW_API_X11) {
+                        window.x11 = static_cast<clap_xwnd>(reinterpret_cast<uintptr_t>(parentHandle));
+                    } else {
+                        window.ptr = parentHandle;
+                    }
+                    attached_success = gui_ext->set_parent(owner->plugin, &window);
+                });
+
+                if (attached_success) {
+                    attached = true;
+
+                    // Notify host of initial UI size
+                    if (host_resize_handler) {
+                        uint32_t width = 0, height = 0;
+                        if (getSize(width, height) && width > 0 && height > 0) {
+                            host_resize_handler(width, height);
+                        }
+                    }
+                } else {
+                    // Failed to attach - destroy and fail
+                    destroy();
+                    return false;
+                }
+            }
+        }
+
+        return success;
     }
 
     void PluginInstanceCLAP::UISupport::destroy() {
@@ -176,42 +220,6 @@ namespace remidy {
             if (gui_ext->suggest_title)
                 gui_ext->suggest_title(owner->plugin, title.c_str());
         });
-    }
-
-    bool PluginInstanceCLAP::UISupport::attachToParent(void *parent) {
-        if (!parent || !created || is_floating || current_api.empty())
-            return false;
-
-        // If already attached, just return success - don't call set_parent again
-        if (attached)
-            return true;
-
-        bool success = false;
-        withGui([&] {
-            if (!gui_ext->set_parent)
-                return;
-            clap_window_t window{};
-            window.api = current_api.c_str();
-            if (current_api == CLAP_WINDOW_API_COCOA) {
-                window.cocoa = parent;
-            }
-#if defined(_WIN32)
-            else if (current_api == CLAP_WINDOW_API_WIN32) {
-                window.win32 = parent;
-            }
-#endif
-            else if (current_api == CLAP_WINDOW_API_X11) {
-                window.x11 = static_cast<clap_xwnd>(reinterpret_cast<uintptr_t>(parent));
-            } else {
-                window.ptr = parent;
-            }
-            success = gui_ext->set_parent(owner->plugin, &window);
-        });
-
-        if (success)
-            attached = true;
-
-        return success;
     }
 
     bool PluginInstanceCLAP::UISupport::canResize() {
@@ -267,10 +275,6 @@ namespace remidy {
                 success = gui_ext->set_scale(owner->plugin, scale);
         });
         return success;
-    }
-
-    void PluginInstanceCLAP::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
-        host_resize_handler = std::move(handler);
     }
 
     bool PluginInstanceCLAP::UISupport::handleGuiResize(uint32_t width, uint32_t height) {

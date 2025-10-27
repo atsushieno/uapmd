@@ -5,6 +5,7 @@
 #include <cstring>
 #include <format>
 #include <imgui.h>
+#include <iostream>
 #include <optional>
 #include <ranges>
 
@@ -772,8 +773,7 @@ void MainWindow::removeDevice(size_t index) {
         auto* sequencer = device ? device->sequencer() : nullptr;
         for (auto& [instanceId, pluginState] : state->pluginInstances) {
             if (sequencer) {
-                sequencer->hidePluginUI(instanceId);
-                sequencer->setPluginUIResizeHandler(instanceId, nullptr);
+                sequencer->destroyPluginUI(instanceId);
             }
             if (pluginState.pluginWindow) {
                 pluginState.pluginWindow->show(false);
@@ -869,8 +869,7 @@ void MainWindow::stopAllDevices() {
         auto* sequencer = device ? device->sequencer() : nullptr;
         for (auto& [instanceId, pluginState] : state->pluginInstances) {
             if (sequencer) {
-                sequencer->hidePluginUI(instanceId);
-                sequencer->setPluginUIResizeHandler(instanceId, nullptr);
+                sequencer->destroyPluginUI(instanceId);
             }
             if (pluginState.pluginWindow) {
                 pluginState.pluginWindow->show(false);
@@ -1003,54 +1002,48 @@ void MainWindow::showPluginUIInstance(std::shared_ptr<DeviceState> state, int32_
     void* parentHandle = container->getHandle();
 
     AudioPluginSequencer* sequencer = nullptr;
+    bool pluginUIExists = false;
     {
         std::lock_guard guard(state->mutex);
         auto* device = state->device.get();
         sequencer = device ? device->sequencer() : nullptr;
+        auto* nodeState = findPluginInstance(*state, instanceId);
+        if (nodeState) {
+            pluginUIExists = nodeState->pluginWindowEmbedded;
+        }
     }
     if (!sequencer) {
         return;
     }
 
-    sequencer->setPluginUIResizeHandler(instanceId,
-        [this, weakState, instanceId](uint32_t w, uint32_t h) {
-            if (auto locked = weakState.lock()) {
-                return handlePluginResizeRequest(locked, instanceId, w, h);
-            }
-            return false;
-        });
-
-    if (sequencer->showPluginUI(instanceId, false, parentHandle)) {
-        {
+    if (!pluginUIExists) {
+        // First time: create plugin UI with resize handler
+        if (!sequencer->createPluginUI(instanceId, false, parentHandle,
+            [this, weakState, instanceId](uint32_t w, uint32_t h) {
+                if (auto locked = weakState.lock()) {
+                    return handlePluginResizeRequest(locked, instanceId, w, h);
+                }
+                return false;
+            })) {
+            container->show(false);
             std::lock_guard guard(state->mutex);
             auto* nodeState = findPluginInstance(*state, instanceId);
             if (nodeState) {
-                nodeState->pluginWindowEmbedded = true;
-                // Plugin format implementation handles resizing and setResizable
-            }
-        }
-    } else {
-        container->show(false);
-        sequencer->setPluginUIResizeHandler(instanceId, nullptr);
-        bool hadEmbeddedWindow = false;
-        {
-            std::lock_guard guard(state->mutex);
-            auto* nodeState = findPluginInstance(*state, instanceId);
-            if (nodeState) {
-                hadEmbeddedWindow = nodeState->pluginWindowEmbedded;
-                nodeState->pluginWindowEmbedded = false;
-                nodeState->pluginWindowResizeIgnore = false;
                 nodeState->pluginWindow.reset();
             }
+            return;
         }
-        if (sequencer->showPluginUI(instanceId, true, nullptr)) {
-            std::lock_guard guard(state->mutex);
-            auto* nodeState = findPluginInstance(*state, instanceId);
-            if (nodeState) {
-                nodeState->pluginWindowEmbedded = false;
-                nodeState->pluginWindowResizeIgnore = false;
-            }
+
+        std::lock_guard guard(state->mutex);
+        auto* nodeState = findPluginInstance(*state, instanceId);
+        if (nodeState) {
+            nodeState->pluginWindowEmbedded = true;
         }
+    }
+
+    // Show the plugin UI (whether just created or already exists)
+    if (!sequencer->showPluginUI(instanceId, false, parentHandle)) {
+        std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
     }
 }
 
@@ -1062,15 +1055,11 @@ void MainWindow::hidePluginUIInstance(std::shared_ptr<DeviceState> state, int32_
 
     if (sequencer) {
         sequencer->hidePluginUI(instanceId);
-        sequencer->setPluginUIResizeHandler(instanceId, nullptr);
     }
 
     if (nodeState && nodeState->pluginWindow) {
         nodeState->pluginWindow->show(false);
-        // Keep the window alive for reuse, but ensure it’s hidden before releasing the lock
-    }
-    if (nodeState) {
-        nodeState->pluginWindowResizeIgnore = false;
+        // Keep the window alive for reuse, but ensure it's hidden before releasing the lock
     }
 }
 MainWindow::PluginInstanceState* MainWindow::findPluginInstance(DeviceState& state, int32_t instanceId) {

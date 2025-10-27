@@ -13,11 +13,12 @@ namespace remidy {
     PluginInstanceAU::UISupport::UISupport(PluginInstanceAU* owner) : owner(owner) {
     }
 
-    bool PluginInstanceAU::UISupport::create(bool isFloating) {
+    bool PluginInstanceAU::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
         if (created)
-            return true;
+            return false; // Already created
 
         is_floating = isFloating;
+        host_resize_handler = resizeHandler;
         bool success = false;
 
         EventLoop::runTaskOnMainThread([&] {
@@ -129,6 +130,42 @@ namespace remidy {
 
                         [window setContentView:view];
                         ns_window = (__bridge void*)[window retain];
+                    } else if (parentHandle) {
+                        // Attach to parent if embedded
+                        NSView* parentView = (__bridge NSView*)parentHandle;
+                        if (!parentView) {
+                            // Failed - no valid parent
+                            [view release];
+                            ns_view = nullptr;
+                            return;
+                        }
+
+                        // Remove from current superview if any
+                        if ([view superview]) {
+                            [view removeFromSuperview];
+                        }
+
+                        // Add as subview to the parent
+                        [parentView addSubview:view];
+
+                        // Get the plugin view's preferred size before we modify its frame
+                        NSSize preferredSize = [view frame].size;
+
+                        // Set the view's frame to fill the parent view
+                        // This ensures correct positioning and allows the parent to control sizing
+                        [view setFrame:[parentView bounds]];
+
+                        // Set autoresizing to allow the view to resize with the parent
+                        [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+
+                        attached = true;
+
+                        // Notify host of plugin's preferred UI size so it can resize the container
+                        if (host_resize_handler && preferredSize.width > 0 && preferredSize.height > 0) {
+                            uint32_t width = (uint32_t)preferredSize.width;
+                            uint32_t height = (uint32_t)preferredSize.height;
+                            host_resize_handler(width, height);
+                        }
                     }
 
                     created = true;
@@ -242,46 +279,6 @@ namespace remidy {
         });
     }
 
-    bool PluginInstanceAU::UISupport::attachToParent(void *parent) {
-        if (!parent || !created || is_floating || !ns_view)
-            return false;
-
-        // If already attached, just return success
-        if (attached)
-            return true;
-
-        bool success = false;
-        EventLoop::runTaskOnMainThread([&] {
-            @autoreleasepool {
-                NSView* view = (__bridge NSView*)ns_view;
-                NSView* parentView = (__bridge NSView*)parent;
-
-                if (!view || !parentView)
-                    return;
-
-                // Remove from current superview if any
-                if ([view superview]) {
-                    [view removeFromSuperview];
-                }
-
-                // Add as subview to the parent
-                [parentView addSubview:view];
-
-                // Keep the view's preferred size - don't force it to match parent
-                // The host will query getSize() and resize the parent to match
-                // Set autoresizing to allow the view to resize with the parent later
-                [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-
-                success = true;
-            }
-        });
-
-        if (success)
-            attached = true;
-
-        return success;
-    }
-
     bool PluginInstanceAU::UISupport::canResize() {
         if (!created)
             return false;
@@ -336,9 +333,8 @@ namespace remidy {
                     success = true;
                 } else if (ns_view) {
                     NSView* view = (__bridge NSView*)ns_view;
-                    NSRect frame = [view frame];
-                    frame.size.width = width;
-                    frame.size.height = height;
+                    // Always position at origin (0,0) relative to parent
+                    NSRect frame = NSMakeRect(0, 0, width, height);
                     [view setFrame:frame];
                     success = true;
                 }
@@ -368,9 +364,5 @@ namespace remidy {
         // but there's no reliable cross-plugin way to set this
         // Return false to indicate this is not supported
         return false;
-    }
-
-    void PluginInstanceAU::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
-        host_resize_handler = std::move(handler);
     }
 }

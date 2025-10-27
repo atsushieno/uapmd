@@ -336,8 +336,7 @@ void MainWindow::renderInstanceControl() {
 
     if (!pluginWindowsPendingClose_.empty()) {
         for (auto id : pluginWindowsPendingClose_) {
-            sequencer.hidePluginUI(id);
-            sequencer.setPluginUIResizeHandler(id, nullptr);
+            sequencer.destroyPluginUI(id);
             pluginWindows_.erase(id);
             pluginWindowEmbedded_.erase(id);
             pluginWindowBounds_.erase(id);
@@ -383,12 +382,10 @@ void MainWindow::renderInstanceControl() {
                 if (isVisible) {
                     sequencer.hidePluginUI(instanceId);
                     if (windowIt != pluginWindows_.end()) windowIt->second->show(false);
-                    sequencer.setPluginUIResizeHandler(instanceId, nullptr);
-                    pluginWindowResizeIgnore_.erase(instanceId);
                 } else {
-                    bool shown = false;
-                    remidy::gui::ContainerWindow* container = nullptr;
+                    // Create container window if needed
                     windowIt = pluginWindows_.find(instanceId);
+                    remidy::gui::ContainerWindow* container = nullptr;
                     if (windowIt == pluginWindows_.end()) {
                         std::string windowTitle = sequencer.getPluginName(instanceId) + " (" + sequencer.getPluginFormat(instanceId) + ")";
                         auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600, [this, instanceId]() {
@@ -402,31 +399,33 @@ void MainWindow::renderInstanceControl() {
                         if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
                             pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
                     }
-                    if (container) {
-                        // Ensure parent is mapped before attaching plugin UI
-                        container->show(true);
-                        void* parentHandle = container->getHandle();
-                        // Set resize handler BEFORE showing UI so it's ready when the plugin tries to resize
-                        sequencer.setPluginUIResizeHandler(instanceId, [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); });
-                        if (sequencer.showPluginUI(instanceId, false, parentHandle)) {
-                            pluginWindowEmbedded_[instanceId] = true;
-                            // Plugin format implementation handles resizing and setResizable
-                            shown = true;
-                        } else {
+
+                    if (!container) {
+                        std::cout << "Failed to create container window for instance " << instanceId << std::endl;
+                        return;
+                    }
+
+                    container->show(true);
+                    void* parentHandle = container->getHandle();
+
+                    // Check if plugin UI has been created (pluginWindowEmbedded_ tracks this)
+                    bool pluginUIExists = (pluginWindowEmbedded_.find(instanceId) != pluginWindowEmbedded_.end());
+
+                    if (!pluginUIExists) {
+                        // First time: create plugin UI with resize handler
+                        if (!sequencer.createPluginUI(instanceId, false, parentHandle,
+                            [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
                             container->show(false);
                             pluginWindows_.erase(instanceId);
-                            sequencer.setPluginUIResizeHandler(instanceId, nullptr);
+                            std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
+                            return;
                         }
+                        pluginWindowEmbedded_[instanceId] = true;
                     }
-                    if (!shown) {
-                        // Fallback: floating
-                        if (sequencer.showPluginUI(instanceId, true, nullptr)) {
-                            pluginWindowEmbedded_[instanceId] = false;
-                            sequencer.setPluginUIResizeHandler(instanceId, nullptr);
-                            pluginWindowResizeIgnore_.erase(instanceId);
-                        } else {
-                            std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
-                        }
+
+                    // Show the plugin UI (whether just created or already exists)
+                    if (!sequencer.showPluginUI(instanceId, false, parentHandle)) {
+                        std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
                     }
                 }
             }
@@ -671,6 +670,9 @@ void MainWindow::renderParameterControls() {
 
         for (size_t i = 0; i < parameters_.size(); ++i) {
             auto& param = parameters_[i];
+
+            if (param.hidden)
+                continue;
 
             // Filter parameters by name or stable ID
             if (!filter.empty()) {

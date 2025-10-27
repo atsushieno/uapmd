@@ -11,7 +11,6 @@ namespace uapmd {
         bool uiCreated{false};
         bool uiVisible{false};
         bool uiFloating{true};
-        std::function<bool(uint32_t, uint32_t)> resizeHandler{};
 
         remidy::PluginUISupport* ensureUISupport() {
             if (!instance)
@@ -21,12 +20,6 @@ namespace uapmd {
             return ui_support;
         }
 
-        void applyResizeHandler() {
-            auto ui = ensureUISupport();
-            if (!ui)
-                return;
-            ui->setResizeRequestHandler(resizeHandler);
-        }
     public:
         explicit RemidyAudioPluginNodePAL(remidy_tooling::PluginInstancing* instancing, remidy::PluginInstance* instance) :
             instancing(instancing), instance(instance) {}
@@ -110,41 +103,45 @@ namespace uapmd {
             return ensureUISupport() != nullptr;
         }
 
-        bool createUI(bool isFloating) override {
+        bool createUI(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) override {
             auto ui = ensureUISupport();
             if (!ui)
                 return false;
-            if (uiCreated && uiFloating == isFloating)
-                return true;
-            if (uiCreated) {
-                if (uiVisible)
-                    ui->hide();
-                ui->destroy();
-                uiCreated = false;
-                uiVisible = false;
-            }
-            if (!ui->create(isFloating))
+
+            // UI must not be created twice - call destroyUI() first
+            if (uiCreated)
                 return false;
+
+            // Pass parent and resize handler to create() - they're immutable
+            if (!ui->create(isFloating, parentHandle, resizeHandler))
+                return false;
+
             uiCreated = true;
             uiFloating = isFloating;
-            applyResizeHandler();
             return true;
         }
 
-        bool attachUI(void* parentHandle) override {
+        void destroyUI() override {
+            if (!uiCreated)
+                return;
+
             auto ui = ensureUISupport();
-            if (!ui || !uiCreated || uiFloating)
-                return false;
-            if (!parentHandle)
-                return false;
-            return ui->attachToParent(parentHandle);
+            if (!ui)
+                return;
+
+            if (uiVisible)
+                ui->hide();
+            ui->destroy();
+            uiCreated = false;
+            uiVisible = false;
         }
 
         bool showUI() override {
             auto ui = ensureUISupport();
             if (!ui)
                 return false;
-            if (!uiCreated && !createUI(true))
+            // UI must be created first via createUI() - don't create here
+            if (!uiCreated)
                 return false;
             if (uiVisible)
                 return true;
@@ -163,11 +160,6 @@ namespace uapmd {
 
         bool isUIVisible() const override {
             return uiVisible;
-        }
-
-        void setUIResizeHandler(std::function<bool(uint32_t, uint32_t)> handler) override {
-            resizeHandler = std::move(handler);
-            applyResizeHandler();
         }
 
         bool setUISize(uint32_t width, uint32_t height) override {

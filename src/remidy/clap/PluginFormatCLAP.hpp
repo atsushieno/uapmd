@@ -271,18 +271,16 @@ namespace remidy {
         public:
             explicit UISupport(PluginInstanceCLAP* owner);
             ~UISupport() override = default;
-            bool create(bool isFloating) override;
+            bool create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) override;
             void destroy() override;
             bool show() override;
             void hide() override;
             void setWindowTitle(std::string title) override;
-            bool attachToParent(void *parent) override;
             bool canResize() override;
             bool getSize(uint32_t &width, uint32_t &height) override;
             bool setSize(uint32_t width, uint32_t height) override;
             bool suggestSize(uint32_t &width, uint32_t &height) override;
             bool setScale(double scale) override;
-            void setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) override;
             bool handleGuiResize(uint32_t width, uint32_t height);
         private:
             PluginInstanceCLAP* owner;

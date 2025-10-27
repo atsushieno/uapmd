@@ -200,32 +200,25 @@ bool uapmd::AudioPluginSequencer::hasPluginUI(int32_t instanceId) {
     return pal->hasUISupport();
 }
 
-bool uapmd::AudioPluginSequencer::createPluginUI(int32_t instanceId, bool isFloating) {
+bool uapmd::AudioPluginSequencer::createPluginUI(int32_t instanceId, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
     auto pal = findNodePalByInstanceId(sequencer, instanceId);
     if (!pal)
         return false;
-    return pal->createUI(isFloating);
+    return pal->createUI(isFloating, parentHandle, resizeHandler);
 }
 
-bool uapmd::AudioPluginSequencer::attachPluginUI(int32_t instanceId, void* parentHandle) {
+void uapmd::AudioPluginSequencer::destroyPluginUI(int32_t instanceId) {
     auto pal = findNodePalByInstanceId(sequencer, instanceId);
     if (!pal)
-        return false;
-    return pal->attachUI(parentHandle);
+        return;
+    pal->destroyUI();
 }
 
 bool uapmd::AudioPluginSequencer::showPluginUI(int32_t instanceId, bool isFloating, void* parentHandle) {
     auto pal = findNodePalByInstanceId(sequencer, instanceId);
     if (!pal)
         return false;
-    if (!pal->createUI(isFloating))
-        return false;
-    if (!isFloating) {
-        if (!parentHandle)
-            return false;
-        if (!pal->attachUI(parentHandle))
-            return false;
-    }
+    // UI must be created via createPluginUI() first - just show it here
     return pal->showUI();
 }
 
@@ -241,13 +234,6 @@ bool uapmd::AudioPluginSequencer::isPluginUIVisible(int32_t instanceId) {
     if (!pal)
         return false;
     return pal->isUIVisible();
-}
-
-void uapmd::AudioPluginSequencer::setPluginUIResizeHandler(int32_t instanceId, std::function<bool(uint32_t, uint32_t)> handler) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return;
-    pal->setUIResizeHandler(std::move(handler));
 }
 
 bool uapmd::AudioPluginSequencer::resizePluginUI(int32_t instanceId, uint32_t width, uint32_t height) {
@@ -341,8 +327,7 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
 }
 
 bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
-    hidePluginUI(instanceId);
-    setPluginUIResizeHandler(instanceId, nullptr);
+    destroyPluginUI(instanceId);
     return sequencer.removePluginInstance(instanceId);
 }
 

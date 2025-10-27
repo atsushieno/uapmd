@@ -13,11 +13,11 @@ namespace remidy {
 #endif
     }
 
-    bool PluginInstanceVST3::UISupport::create(bool isFloating) {
-        (void) isFloating; // VST3 doesn't distinguish floating/embedded at create time
-
+    bool PluginInstanceVST3::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
         if (created)
-            return true;
+            return false; // Already created
+
+        host_resize_handler = resizeHandler;
 
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
@@ -27,11 +27,10 @@ namespace remidy {
             view = owner->controller->createView("editor");
             if (view) {
                 if (view->isPlatformTypeSupported(target_ui_string) == kResultOk) {
-                    // Register a placeholder resize handler IMMEDIATELY so it's available during setFrame()
-                    // This will be replaced when setResizeRequestHandler() is called later
-                    owner->owner->getHost()->setResizeRequestHandler(view, [](uint32_t, uint32_t) {
-                        return true;  // Accept the resize for now
-                    });
+                    // Register resize handler
+                    if (host_resize_handler) {
+                        owner->owner->getHost()->setResizeRequestHandler(view, host_resize_handler);
+                    }
 
                     // Set up IPlugFrame - plugin may call resizeView() during this
                     auto frame = owner->owner->getHost()->getPlugFrame();
@@ -41,6 +40,34 @@ namespace remidy {
                     void* scale_ptr = nullptr;
                     if (view->queryInterface(IPlugViewContentScaleSupport::iid, &scale_ptr) == kResultOk && scale_ptr) {
                         scale_support = reinterpret_cast<IPlugViewContentScaleSupport*>(scale_ptr);
+                    }
+
+                    // Attach to parent if embedded
+                    if (!isFloating && parentHandle) {
+                        if (view->attached(parentHandle, target_ui_string) == kResultOk) {
+                            attached = true;
+
+                            // Notify host of initial UI size
+                            if (host_resize_handler) {
+                                ViewRect rect{};
+                                if (view->getSize(&rect) == kResultOk) {
+                                    uint32_t width = rect.right - rect.left;
+                                    uint32_t height = rect.bottom - rect.top;
+                                    if (width > 0 && height > 0) {
+                                        host_resize_handler(width, height);
+                                    }
+                                }
+                            }
+                        } else {
+                            // Failed to attach
+                            view->release();
+                            view = nullptr;
+                            if (scale_support) {
+                                scale_support->release();
+                                scale_support = nullptr;
+                            }
+                            return;
+                        }
                     }
 
                     created = true;
@@ -101,25 +128,6 @@ namespace remidy {
     void PluginInstanceVST3::UISupport::setWindowTitle(std::string title) {
         (void) title;
         // VST3 IPlugView has no setWindowTitle API - host's responsibility
-    }
-
-    bool PluginInstanceVST3::UISupport::attachToParent(void *parent) {
-        if (!created || !view)
-            return false;
-
-        // If already attached, just return success - don't call attached() again
-        if (attached)
-            return true;
-
-        bool success = false;
-        EventLoop::runTaskOnMainThread([&] {
-            success = view->attached(parent, target_ui_string) == kResultOk;
-        });
-
-        if (success)
-            attached = true;
-
-        return success;
     }
 
     bool PluginInstanceVST3::UISupport::canResize() {
@@ -192,14 +200,5 @@ namespace remidy {
         });
 
         return success;
-    }
-
-    void PluginInstanceVST3::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
-        host_resize_handler = std::move(handler);
-        // Also set it on the HostApplication so it can delegate resizeView() calls
-        // Use the view pointer as the key to identify this specific plugin instance
-        if (view) {
-            owner->owner->getHost()->setResizeRequestHandler(view, host_resize_handler);
-        }
     }
 }

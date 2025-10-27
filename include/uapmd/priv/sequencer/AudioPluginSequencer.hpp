@@ -58,11 +58,10 @@ namespace uapmd {
         // We will have to split out these GUI features at some point...
         bool hasPluginUI(int32_t instanceId);
         bool showPluginUI(int32_t instanceId, bool isFloating, void* parentHandle);
-        bool createPluginUI(int32_t instanceId, bool isFloating);
-        bool attachPluginUI(int32_t instanceId, void* parentHandle);
+        bool createPluginUI(int32_t instanceId, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler);
+        void destroyPluginUI(int32_t instanceId);
         void hidePluginUI(int32_t instanceId);
         bool isPluginUIVisible(int32_t instanceId);
-        void setPluginUIResizeHandler(int32_t instanceId, std::function<bool(uint32_t, uint32_t)> handler);
         bool resizePluginUI(int32_t instanceId, uint32_t width, uint32_t height);
         bool getPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height);
         bool canPluginUIResize(int32_t instanceId);

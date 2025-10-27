@@ -22,15 +22,62 @@ namespace remidy {
     PluginInstanceLV2::UISupport::UISupport(PluginInstanceLV2* owner) : owner(owner) {
     }
 
-    bool PluginInstanceLV2::UISupport::create(bool isFloating) {
+    bool PluginInstanceLV2::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
         if (created)
-            return true;
+            return false; // Already created - must call destroy() first
 
         is_floating = isFloating;
+        parent_widget = parentHandle;
+        host_resize_handler = resizeHandler;
 
         // Discover suitable UI for the platform
         if (!discoverUI())
             return false;
+
+        // Instantiate the UI
+        if (!instantiateUI())
+            return false;
+
+        // Attach to parent if not floating and parent provided
+        if (!is_floating && parent_widget) {
+            if (!ui_widget)
+                return false;
+
+            // Platform-specific embedding
+#ifdef __linux__
+            Display* dpy = XOpenDisplay(nullptr);
+            if (!dpy)
+                return false;
+
+            Window child = (Window)(uintptr_t)ui_widget;
+            Window parent_window = (Window)(uintptr_t)parent_widget;
+            XReparentWindow(dpy, child, parent_window, 0, 0);
+            XMapWindow(dpy, child);
+            XFlush(dpy);
+            XCloseDisplay(dpy);
+#elif defined(__APPLE__)
+            id child = (id)ui_widget;
+            id parentView = (id)parent_widget;
+            if (!child || !parentView)
+                return false;
+            choc::objc::call<void>(parentView, "addSubview:", child);
+#elif defined(_WIN32)
+            HWND child = (HWND)ui_widget;
+            HWND parentWnd = (HWND)parent_widget;
+            if (!child || !parentWnd)
+                return false;
+            SetParent(child, parentWnd);
+            ShowWindow(child, SW_SHOW);
+#else
+            return false;
+#endif
+
+            // Notify host of initial UI size
+            uint32_t width = 0, height = 0;
+            if (host_resize_handler && getSize(width, height) && width > 0 && height > 0) {
+                host_resize_handler(width, height);
+            }
+        }
 
         created = true;
         return true;
@@ -152,6 +199,14 @@ namespace remidy {
             parent_feature.data = parent_widget;
             ui_feature_structs.push_back(parent_feature);
         }
+
+        // Add resize feature (allows UI to request size changes from host)
+        host_resize_feature.handle = this;
+        host_resize_feature.ui_resize = resizeUI;
+        LV2_Feature resize_feature;
+        resize_feature.URI = LV2_UI__resize;
+        resize_feature.data = &host_resize_feature;
+        ui_feature_structs.push_back(resize_feature);
 
         // Now build the pointer array (after all structs are in place to avoid reallocation issues)
         std::vector<const LV2_Feature*> ui_features;
@@ -279,53 +334,6 @@ namespace remidy {
         // Changing it after instantiation is not standardized
     }
 
-    bool PluginInstanceLV2::UISupport::attachToParent(void *parent) {
-        if (!created || is_floating || !parent)
-            return false;
-
-        // Store parent for UI instantiation
-        parent_widget = parent;
-
-        // Instantiate UI if not already done (with parent)
-        if (!ui_handle && !instantiateUI())
-            return false;
-
-        if (!ui_widget)
-            return false;
-
-        // Platform-specific embedding
-#ifdef __linux__
-        Display* dpy = XOpenDisplay(nullptr);
-        if (!dpy)
-            return false;
-
-        Window child = (Window)(uintptr_t)ui_widget;
-        Window parent_window = (Window)(uintptr_t)parent;
-        XReparentWindow(dpy, child, parent_window, 0, 0);
-        XMapWindow(dpy, child);
-        XFlush(dpy);
-        XCloseDisplay(dpy);
-        return true;
-#elif defined(__APPLE__)
-        id child = (id)ui_widget;
-        id parentView = (id)parent;
-        if (!child || !parentView)
-            return false;
-        choc::objc::call<void>(parentView, "addSubview:", child);
-        return true;
-#elif defined(_WIN32)
-        HWND child = (HWND)ui_widget;
-        HWND parentWnd = (HWND)parent;
-        if (!child || !parentWnd)
-            return false;
-        SetParent(child, parentWnd);
-        ShowWindow(child, SW_SHOW);
-        return true;
-#else
-        return false;
-#endif
-    }
-
     bool PluginInstanceLV2::UISupport::canResize() {
         if (!created || !ui_handle)
             return false;
@@ -397,10 +405,6 @@ namespace remidy {
         // Not implementing for now
         (void)scale;
         return false;
-    }
-
-    void PluginInstanceLV2::UISupport::setResizeRequestHandler(std::function<bool(uint32_t, uint32_t)> handler) {
-        host_resize_handler = std::move(handler);
     }
 
     // Static callbacks

@@ -27,12 +27,11 @@ namespace uapmd {
             virtual void setParameterValue(int32_t index, double value) = 0;
 
             virtual bool hasUISupport() = 0;
-            virtual bool createUI(bool isFloating) = 0;
-            virtual bool attachUI(void* parentHandle) = 0;
+            virtual bool createUI(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) = 0;
+            virtual void destroyUI() = 0;
             virtual bool showUI() = 0;
             virtual void hideUI() = 0;
             virtual bool isUIVisible() const = 0;
-            virtual void setUIResizeHandler(std::function<bool(uint32_t, uint32_t)> handler) = 0;
             virtual bool setUISize(uint32_t width, uint32_t height) = 0;
             virtual bool getUISize(uint32_t &width, uint32_t &height) = 0;
             virtual bool canUIResize() = 0;

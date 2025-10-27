@@ -65,6 +65,13 @@ public:
             b_.height = height;
             NSSize contentSize = NSMakeSize(width, height);
             [window_ setContentSize:contentSize];
+
+            // Update all subviews to fill the content view
+            // This ensures plugin views are properly positioned and sized
+            NSView* contentView = [window_ contentView];
+            for (NSView* subview in [contentView subviews]) {
+                [subview setFrame:[contentView bounds]];
+            }
         }
     }
     Bounds getBounds() const override { return b_; }
