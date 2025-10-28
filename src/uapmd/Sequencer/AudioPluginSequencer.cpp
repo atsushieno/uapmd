@@ -1,6 +1,10 @@
 
-#include <iostream>
+#include <atomic>
+#include <cstring>
 #include <format>
+#include <iostream>
+#include <optional>
+#include <utility>
 #include <cmidi2.h>
 #include "uapmd/uapmd.hpp"
 #include "uapmd/priv/sequencer/AudioPluginSequencer.hpp"
@@ -21,6 +25,163 @@ namespace {
     }
 }
 
+void uapmd::AudioPluginSequencer::configureTrackRouting(AudioPluginTrack* track) {
+    if (!track)
+        return;
+    track->setGroupResolver([this](int32_t instanceId) {
+        auto group = groupForInstanceOptional(instanceId);
+        return group.has_value() ? group.value() : static_cast<uint8_t>(0xFF);
+    });
+    track->setEventOutputCallback([this](int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
+        dispatchPluginOutput(instanceId, data, bytes);
+    });
+}
+
+uint8_t uapmd::AudioPluginSequencer::assignGroup(int32_t instanceId) {
+    auto it = plugin_groups_.find(instanceId);
+    if (it != plugin_groups_.end())
+        return it->second;
+
+    uint8_t group = 0xFF;
+    if (!free_groups_.empty()) {
+        group = free_groups_.back();
+        free_groups_.pop_back();
+    } else {
+        if (next_group_ <= 0x0F) {
+            group = next_group_;
+            ++next_group_;
+        } else {
+            remidy::Logger::global()->logError("No available UMP groups for plugin instance {}", instanceId);
+            group = 0xFF;
+        }
+    }
+    if (group != 0xFF) {
+        plugin_groups_[instanceId] = group;
+        group_to_instance_[group] = instanceId;
+    }
+    return group;
+}
+
+void uapmd::AudioPluginSequencer::releaseGroup(int32_t instanceId) {
+    auto it = plugin_groups_.find(instanceId);
+    if (it == plugin_groups_.end())
+        return;
+    auto group = it->second;
+    plugin_groups_.erase(it);
+    if (group != 0xFF) {
+        group_to_instance_.erase(group);
+        if (group <= 0x0F)
+            free_groups_.push_back(group);
+    }
+}
+
+std::optional<uint8_t> uapmd::AudioPluginSequencer::groupForInstanceOptional(int32_t instanceId) const {
+    auto it = plugin_groups_.find(instanceId);
+    if (it == plugin_groups_.end())
+        return std::nullopt;
+    return it->second;
+}
+
+std::optional<int32_t> uapmd::AudioPluginSequencer::instanceForGroupOptional(uint8_t group) const {
+    auto it = group_to_instance_.find(group);
+    if (it == group_to_instance_.end())
+        return std::nullopt;
+    return it->second;
+}
+
+void uapmd::AudioPluginSequencer::dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
+    if (!data || bytes == 0)
+        return;
+
+    auto groupOpt = groupForInstanceOptional(instanceId);
+    if (!groupOpt.has_value())
+        return;
+    auto group = groupOpt.value();
+
+    auto handlers = std::atomic_load_explicit(&plugin_output_handlers_, std::memory_order_acquire);
+    if (!handlers)
+        return;
+    auto it = handlers->find(instanceId);
+    if (it == handlers->end() || !it->second)
+        return;
+
+    if (bytes > plugin_output_scratch_.size() * sizeof(uapmd_ump_t))
+        return;
+
+    auto* scratch = plugin_output_scratch_.data();
+    std::memcpy(scratch, data, bytes);
+
+    size_t offset = 0;
+    auto* byteView = reinterpret_cast<uint8_t*>(scratch);
+    while (offset < bytes) {
+        auto* msg = reinterpret_cast<cmidi2_ump*>(byteView + offset);
+        auto size = cmidi2_ump_get_message_size_bytes(msg);
+        auto* words = reinterpret_cast<uint32_t*>(byteView + offset);
+        words[0] = (words[0] & 0x0FFFFFFF) | (static_cast<uint32_t>(group) << 28);
+        offset += size;
+    }
+
+    it->second(reinterpret_cast<uapmd_ump_t*>(scratch), bytes);
+}
+
+void uapmd::AudioPluginSequencer::refreshFunctionBlockMappings() {
+    plugin_function_blocks_.clear();
+    auto& tracks = sequencer.tracks();
+    for (size_t trackIndex = 0; trackIndex < tracks.size(); ++trackIndex) {
+        auto* track = tracks[trackIndex];
+        if (!track)
+            continue;
+        configureTrackRouting(track);
+        auto plugins = track->graph().plugins();
+        for (auto* plugin : plugins) {
+            if (!plugin)
+                continue;
+            auto instanceId = plugin->instanceId();
+            plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, static_cast<int32_t>(trackIndex)};
+            assignGroup(instanceId);
+        }
+    }
+}
+
+std::optional<uapmd::AudioPluginSequencer::RouteResolution> uapmd::AudioPluginSequencer::resolveTarget(int32_t trackOrInstanceId) {
+    auto instanceIt = plugin_function_blocks_.find(trackOrInstanceId);
+    if (instanceIt != plugin_function_blocks_.end()) {
+        return RouteResolution{instanceIt->second.track, instanceIt->second.trackIndex, trackOrInstanceId};
+    }
+
+    if (auto instFromGroup = instanceForGroupOptional(static_cast<uint8_t>(trackOrInstanceId)); instFromGroup.has_value()) {
+        auto mapping = plugin_function_blocks_.find(instFromGroup.value());
+        if (mapping != plugin_function_blocks_.end()) {
+            return RouteResolution{mapping->second.track, mapping->second.trackIndex, instFromGroup.value()};
+        }
+    }
+
+    if (trackOrInstanceId < 0)
+        return std::nullopt;
+
+    auto& tracks = sequencer.tracks();
+    if (static_cast<size_t>(trackOrInstanceId) >= tracks.size())
+        return std::nullopt;
+
+    auto* track = tracks[static_cast<size_t>(trackOrInstanceId)];
+    if (!track)
+        return std::nullopt;
+
+    configureTrackRouting(track);
+    auto plugins = track->graph().plugins();
+    if (plugins.empty())
+        return std::nullopt;
+
+    auto* first = plugins.front();
+    if (!first)
+        return std::nullopt;
+
+    auto instanceId = first->instanceId();
+    plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, static_cast<int32_t>(trackOrInstanceId)};
+    assignGroup(instanceId);
+    return RouteResolution{track, static_cast<int32_t>(trackOrInstanceId), instanceId};
+}
+
 
 uapmd::AudioPluginSequencer::AudioPluginSequencer(
     size_t audioBufferSizeInFrames,
@@ -29,8 +190,9 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
 ) : buffer_size_in_frames(audioBufferSizeInFrames),
     ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
     plugin_host_pal(AudioPluginHostPAL::instance()),
-    sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal
-) {
+    sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal),
+    plugin_output_handlers_(std::make_shared<HandlerMap>()),
+    plugin_output_scratch_(umpBufferSizeInBytes / sizeof(uapmd_ump_t), 0) {
     auto manager = AudioIODeviceManager::instance();
     auto logger = remidy::Logger::global();
     AudioIODeviceManager::Configuration audioConfig{ .logger = logger };
@@ -257,7 +419,7 @@ bool uapmd::AudioPluginSequencer::canPluginUIResize(int32_t instanceId) {
     return pal->canUIResize();
 }
 
-void uapmd::AudioPluginSequencer::instantiatePlugin(
+void uapmd::AudioPluginSequencer::addSimplePluginTrack(
     std::string& format,
     std::string& pluginId,
     std::function<void(int32_t instanceId, std::string error)> callback
@@ -267,10 +429,24 @@ void uapmd::AudioPluginSequencer::instantiatePlugin(
             callback(-1, error);
         } else {
             auto trackCtx = sequencer.data().tracks[sequencer.tracks().size() - 1];
-            auto numChannels = dispatcher.audio()->channels();
+            auto audioDevice = dispatcher.audio();
+            auto numChannels = audioDevice ? audioDevice->channels() : 0;
             trackCtx->configureMainBus(numChannels, numChannels, buffer_size_in_frames);
 
-            callback(track->graph().plugins()[0]->instanceId(), error);
+            configureTrackRouting(track);
+            auto trackIndex = static_cast<int32_t>(sequencer.tracks().size() - 1);
+            auto plugins = track->graph().plugins();
+            if (plugins.empty()) {
+                callback(-1, "Track has no plugins after instantiation");
+                return;
+            }
+            auto* plugin = plugins.front();
+            auto instanceId = plugin->instanceId();
+            plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
+            assignGroup(instanceId);
+
+            refreshFunctionBlockMappings();
+            callback(instanceId, error);
         }
     });
 }
@@ -320,47 +496,65 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
                 return;
             }
 
-            if (cb) {
-                cb(plugins.back()->instanceId(), "");
+            configureTrackRouting(track);
+            auto* appended = plugins.back();
+            if (appended) {
+                auto instanceId = appended->instanceId();
+                plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
+                assignGroup(instanceId);
+                refreshFunctionBlockMappings();
+                if (cb) {
+                    cb(instanceId, "");
+                }
+            } else if (cb) {
+                cb(-1, "Appended plugin could not be resolved");
             }
         });
 }
 
 bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
     destroyPluginUI(instanceId);
-    return sequencer.removePluginInstance(instanceId);
+    plugin_function_blocks_.erase(instanceId);
+    releaseGroup(instanceId);
+    setPluginOutputHandler(instanceId, nullptr);
+    const auto removed = sequencer.removePluginInstance(instanceId);
+    if (removed) {
+        refreshFunctionBlockMappings();
+    }
+    return removed;
 }
 
 void addMessage64(cmidi2_ump* dst, int64_t ump) {
     cmidi2_ump_write64(dst, ump);
 }
 
-void uapmd::AudioPluginSequencer::sendNoteOn(int32_t trackIndex, int32_t note) {
-    if (trackIndex < 0 || trackIndex >= sequencer.tracks().size()) {
-        remidy::Logger::global()->logError("trackIndex is out of range: {}", trackIndex);
+void uapmd::AudioPluginSequencer::sendNoteOn(int32_t targetId, int32_t note) {
+    auto route = resolveTarget(targetId);
+    if (!route || !route->track) {
+        remidy::Logger::global()->logError(std::format("sendNoteOn unresolved target {}", targetId).c_str());
         return;
     }
-    cmidi2_ump umps[2];
-    auto ump = cmidi2_ump_midi2_note_on(0, 0, note, 0, 0xF800, 0);
-    addMessage64(umps, ump);
-    if (!sequencer.tracks()[trackIndex]->scheduleEvents(0, umps, 8))
-        remidy::Logger::global()->logError(std::format("Failed to enqueue note on event {}: {}", trackIndex, note).c_str());
 
-    remidy::Logger::global()->logError(std::format("Native note on {}: {}", trackIndex, note).c_str());
+    auto group = groupForInstanceOptional(route->instanceId).value_or(0);
+    cmidi2_ump umps[2];
+    auto ump = cmidi2_ump_midi2_note_on(group, 0, note, 0, 0xF800, 0);
+    addMessage64(umps, ump);
+    if (!route->track->scheduleEvents(0, umps, 8))
+        remidy::Logger::global()->logError(std::format("Failed to enqueue note on event for target {}: {}", targetId, note).c_str());
 }
 
-void uapmd::AudioPluginSequencer::sendNoteOff(int32_t trackIndex, int32_t note) {
-    if (trackIndex < 0 || trackIndex >= sequencer.tracks().size()) {
-        remidy::Logger::global()->logError("trackIndex is out of range: {}", trackIndex);
+void uapmd::AudioPluginSequencer::sendNoteOff(int32_t targetId, int32_t note) {
+    auto route = resolveTarget(targetId);
+    if (!route || !route->track) {
+        remidy::Logger::global()->logError(std::format("sendNoteOff unresolved target {}", targetId).c_str());
         return;
     }
+    auto group = groupForInstanceOptional(route->instanceId).value_or(0);
     cmidi2_ump umps[2];
-    auto ump = cmidi2_ump_midi2_note_off(0, 0, note, 0, 0xF800, 0);
+    auto ump = cmidi2_ump_midi2_note_off(group, 0, note, 0, 0xF800, 0);
     addMessage64(umps, ump);
-    if (!sequencer.tracks()[trackIndex]->scheduleEvents(0, umps, 8))
-        remidy::Logger::global()->logError(std::format("Failed to enqueue note off event {}: {}", trackIndex, note).c_str());
-
-    remidy::Logger::global()->logError(std::format("Native note off {}: {}", trackIndex, note).c_str());
+    if (!route->track->scheduleEvents(0, umps, 8))
+        remidy::Logger::global()->logError(std::format("Failed to enqueue note off event for target {}: {}", targetId, note).c_str());
 }
 
 void uapmd::AudioPluginSequencer::setParameterValue(int32_t instanceId, int32_t index, double value) {
@@ -377,10 +571,68 @@ void uapmd::AudioPluginSequencer::setParameterValue(int32_t instanceId, int32_t 
             }
 }
 
-void uapmd::AudioPluginSequencer::enqueueUmp(int32_t trackIndex, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-    auto track = sequencer.tracks()[trackIndex];
-    if (!track->scheduleEvents(timestamp, ump, sizeInBytes))
-        remidy::Logger::global()->logError(std::format("Failed to enqueue UMP events: size {}", sizeInBytes).c_str());
+void uapmd::AudioPluginSequencer::enqueueUmp(int32_t targetId, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    auto route = resolveTarget(targetId);
+    if (!route || !route->track) {
+        remidy::Logger::global()->logError(std::format("Failed to enqueue UMP events: unresolved target {}", targetId).c_str());
+        return;
+    }
+    if (route->instanceId >= 0) {
+        if (auto group = groupForInstanceOptional(route->instanceId); group.has_value()) {
+            auto* bytes = reinterpret_cast<uint8_t*>(ump);
+            size_t offset = 0;
+            while (offset < sizeInBytes) {
+                auto* msg = reinterpret_cast<cmidi2_ump*>(bytes + offset);
+                auto sz = cmidi2_ump_get_message_size_bytes(msg);
+                auto* words = reinterpret_cast<uint32_t*>(bytes + offset);
+                words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group.value()) << 24);
+                offset += sz;
+            }
+        }
+    }
+    if (!route->track->scheduleEvents(timestamp, ump, sizeInBytes))
+        remidy::Logger::global()->logError(std::format("Failed to enqueue UMP events for target {}: size {}", targetId, sizeInBytes).c_str());
+}
+
+void uapmd::AudioPluginSequencer::enqueueUmpForInstance(int32_t instanceId, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    auto mapping = plugin_function_blocks_.find(instanceId);
+    if (mapping == plugin_function_blocks_.end() || !mapping->second.track)
+        return;
+
+    if (auto group = groupForInstanceOptional(instanceId); group.has_value()) {
+        auto* bytes = reinterpret_cast<uint8_t*>(ump);
+        size_t offset = 0;
+        while (offset < sizeInBytes) {
+            auto* msg = reinterpret_cast<cmidi2_ump*>(bytes + offset);
+            auto sz = cmidi2_ump_get_message_size_bytes(msg);
+            auto* words = reinterpret_cast<uint32_t*>(bytes + offset);
+            words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group.value()) << 24);
+            offset += sz;
+        }
+    }
+
+    mapping->second.track->scheduleEvents(timestamp, ump, sizeInBytes);
+}
+
+void uapmd::AudioPluginSequencer::setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) {
+    auto current = std::atomic_load_explicit(&plugin_output_handlers_, std::memory_order_acquire);
+    auto next = std::make_shared<HandlerMap>();
+    if (current)
+        *next = *current;
+    if (handler) {
+        (*next)[instanceId] = std::move(handler);
+    } else {
+        next->erase(instanceId);
+    }
+    std::atomic_store_explicit(&plugin_output_handlers_, next, std::memory_order_release);
+}
+
+std::optional<uint8_t> uapmd::AudioPluginSequencer::pluginGroup(int32_t instanceId) const {
+    return groupForInstanceOptional(instanceId);
+}
+
+std::optional<int32_t> uapmd::AudioPluginSequencer::instanceForGroup(uint8_t group) const {
+    return instanceForGroupOptional(group);
 }
 
 uapmd_status_t uapmd::AudioPluginSequencer::startAudio() {

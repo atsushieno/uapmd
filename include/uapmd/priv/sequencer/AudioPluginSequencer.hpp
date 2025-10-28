@@ -1,7 +1,11 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "remidy-tooling/PluginInstancing.hpp"
@@ -17,6 +21,37 @@ namespace uapmd {
         DeviceIODispatcher dispatcher{};
         AudioPluginHostPAL* plugin_host_pal;
         SequenceProcessor sequencer;
+
+        struct FunctionBlockRoute {
+            AudioPluginTrack* track{nullptr};
+            int32_t trackIndex{-1};
+        };
+
+        std::unordered_map<int32_t, FunctionBlockRoute> plugin_function_blocks_;
+        mutable std::unordered_map<int32_t, uint8_t> plugin_groups_;
+        mutable std::unordered_map<uint8_t, int32_t> group_to_instance_;
+        std::vector<uint8_t> free_groups_;
+        uint8_t next_group_{0};
+
+        using PluginOutputHandler = std::function<void(const uapmd_ump_t*, size_t)>;
+        using HandlerMap = std::unordered_map<int32_t, PluginOutputHandler>;
+        std::shared_ptr<HandlerMap> plugin_output_handlers_;
+        std::vector<uapmd_ump_t> plugin_output_scratch_;
+
+        struct RouteResolution {
+            AudioPluginTrack* track{nullptr};
+            int32_t trackIndex{-1};
+            int32_t instanceId{-1};
+        };
+
+        std::optional<RouteResolution> resolveTarget(int32_t trackOrInstanceId);
+        void refreshFunctionBlockMappings();
+        void configureTrackRouting(AudioPluginTrack* track);
+        void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
+        uint8_t assignGroup(int32_t instanceId);
+        void releaseGroup(int32_t instanceId);
+        std::optional<uint8_t> groupForInstanceOptional(int32_t instanceId) const;
+        std::optional<int32_t> instanceForGroupOptional(uint8_t group) const;
 
     public:
         struct PluginNodeInfo {
@@ -40,8 +75,8 @@ namespace uapmd {
 
         PluginCatalog& catalog();
 
-        void instantiatePlugin(std::string& format, std::string& pluginId,
-            std::function<void(int32_t instanceId, std::string error)> callback);
+        void addSimplePluginTrack(std::string& format, std::string& pluginId,
+                                  std::function<void(int32_t instanceId, std::string error)> callback);
         void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId,
             std::function<void(int32_t instanceId, std::string error)> callback);
         bool removePluginInstance(int32_t instanceId);
@@ -68,10 +103,14 @@ namespace uapmd {
 
         // audio/MIDI player
 
-        void sendNoteOn(int32_t trackIndex, int32_t note);
-        void sendNoteOff(int32_t trackIndex, int32_t note);
+        void sendNoteOn(int32_t targetId, int32_t note);
+        void sendNoteOff(int32_t targetId, int32_t note);
         void setParameterValue(int32_t instanceId, int32_t index, double value);
-        void enqueueUmp(int32_t trackIndex, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
+        void enqueueUmp(int32_t targetId, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
+        void enqueueUmpForInstance(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
+        void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler);
+        std::optional<uint8_t> pluginGroup(int32_t instanceId) const;
+        std::optional<int32_t> instanceForGroup(uint8_t group) const;
 
         // Audio controller (WIP, unused yet)
 

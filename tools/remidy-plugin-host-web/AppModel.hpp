@@ -18,10 +18,10 @@ namespace uapmd {
 
         std::vector<std::function<void(int32_t instancingId, int32_t instanceId, std::string)>> instancingCompleted{};
 
-        void instantiatePlugin(int32_t instancingId, const std::string_view& format, const std::string_view& pluginId) {
+        void addSimplePluginTrack(int32_t instancingId, const std::string_view& format, const std::string_view& pluginId) {
             std::string formatString{format};
             std::string pluginIdString{pluginId};
-            sequencer_.instantiatePlugin(formatString, pluginIdString, [this, instancingId](int32_t instanceId, std::string error) {
+            sequencer_.addSimplePluginTrack(formatString, pluginIdString, [this, instancingId](int32_t instanceId, std::string error) {
                 // FIXME: error reporting instead of dumping out here
                 if (!error.empty()) {
                     std::string msg = std::format("Instancing ID {}: {}", instancingId, error);

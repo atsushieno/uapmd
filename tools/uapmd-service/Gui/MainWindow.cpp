@@ -1,6 +1,7 @@
 #include "MainWindow.hpp"
 
 #include <algorithm>
+#include <map>
 #include <cctype>
 #include <cstring>
 #include <format>
@@ -8,6 +9,8 @@
 #include <iostream>
 #include <optional>
 #include <ranges>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "../VirtualMidiDevices/UapmdMidiDevice.hpp"
 #include <remidy/priv/event-loop.hpp>
@@ -300,30 +303,14 @@ void MainWindow::renderPluginSelector() {
 
     // Build track destination options
     {
-        std::vector<DeviceEntry> devicesCopy;
-        {
-            std::lock_guard lock(devicesMutex_);
-            devicesCopy = devices_;
-        }
         trackOptions_.clear();
-        for (const auto& entry : devicesCopy) {
-            auto state = entry.state;
-            std::vector<AudioPluginSequencer::TrackInfo> tracks;
-            std::string label;
-            {
-                std::lock_guard guard(state->mutex);
-                label = state->label;
-                auto* device = state->device.get();
-                auto* sequencer = device ? device->sequencer() : nullptr;
-                if (sequencer) {
-                    tracks = sequencer->getTrackInfos();
-                }
-            }
+        if (auto* sequencer = controller_.sequencer()) {
+            auto tracks = sequencer->getTrackInfos();
             for (const auto& track : tracks) {
                 TrackDestinationOption option{
-                    .deviceEntryId = entry.id,
+                    .deviceEntryId = -1,
                     .trackIndex = track.trackIndex,
-                    .label = std::format("{} — Track {}", label, track.trackIndex + 1)
+                    .label = std::format("Track {}", track.trackIndex + 1)
                 };
                 trackOptions_.push_back(std::move(option));
             }
@@ -351,11 +338,11 @@ void MainWindow::renderPluginSelector() {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Create UMP Device") && canCreate) {
+        const TrackDestinationOption* destination = nullptr;
         if (selectedTrackOption_ > 0 && static_cast<size_t>(selectedTrackOption_ - 1) < trackOptions_.size()) {
-            addPluginToExistingTrack(static_cast<size_t>(selectedPlugin_), trackOptions_[static_cast<size_t>(selectedTrackOption_ - 1)]);
-        } else {
-            createDeviceForPlugin(static_cast<size_t>(selectedPlugin_));
+            destination = &trackOptions_[static_cast<size_t>(selectedTrackOption_ - 1)];
         }
+        createDeviceForPlugin(static_cast<size_t>(selectedPlugin_), destination);
     }
     if (!pluginScanCompleted_) {
         ImGui::EndDisabled();
@@ -377,231 +364,296 @@ void MainWindow::renderDeviceManager() {
 
     size_t removeIndex = static_cast<size_t>(-1);
 
+    struct PluginRow {
+        int32_t instanceId{-1};
+        std::string pluginName{};
+        std::string pluginFormat{};
+        std::string pluginId{};
+        std::string status{};
+        bool pluginInstantiating{false};
+        bool pluginHasError{false};
+        int32_t trackIndex{-1};
+        std::shared_ptr<DeviceState> deviceState{};
+        size_t deviceIndex{static_cast<size_t>(-1)};
+        std::string deviceLabel{};
+        bool deviceRunning{false};
+        bool deviceInstantiating{false};
+        bool deviceHasError{false};
+    };
+
+    std::map<int32_t, std::vector<PluginRow>> rowsByTrack;
+    std::vector<PluginRow> pendingRows;
+
     for (size_t deviceIdx = 0; deviceIdx < devicesCopy.size(); ++deviceIdx) {
         auto entry = devicesCopy[deviceIdx];
         auto state = entry.state;
 
-        std::vector<AudioPluginSequencer::TrackInfo> tracks;
-        std::string label;
-        std::string apiName;
-        std::string status;
-        bool running = false;
-        bool instantiating = false;
-        bool hasError = false;
+        std::lock_guard guard(state->mutex);
+        auto* sequencer = controller_.sequencer();
+        const std::string deviceLabel = state->label.empty() ? std::format("Device {}", deviceIdx + 1) : state->label;
 
-        {
-            std::lock_guard guard(state->mutex);
-            label = state->label;
-            apiName = state->apiName;
-            status = state->statusMessage;
-            running = state->running;
-            instantiating = state->instantiating;
-            hasError = state->hasError;
-            auto* device = state->device.get();
-            auto* sequencer = device ? device->sequencer() : nullptr;
-            if (sequencer) {
-                tracks = sequencer->getTrackInfos();
-            }
-        }
-
-        if (tracks.empty()) {
-            ImGui::PushID(std::format("{}-pending", entry.id).c_str());
-            ImGui::Separator();
-            ImGui::Text("%s — Track pending", label.c_str());
-            ImGui::SameLine();
-            ImGui::TextDisabled("[%s]", apiName.c_str());
-
-            ImGui::SameLine();
-            if (running && !instantiating) {
-                if (ImGui::Button("Stop")) {
-                    std::lock_guard guard(state->mutex);
-                    if (state->device) {
-                        state->device->stop();
-                    }
-                    state->running = false;
-                    state->statusMessage = "Stopped";
-                }
-            } else {
-                if (ImGui::Button("Start")) {
-                    int statusCode = 0;
-                    std::lock_guard guard(state->mutex);
-                    if (state->device) {
-                        statusCode = state->device->start();
-                    }
-                    if (statusCode == 0) {
-                        state->running = true;
-                        state->statusMessage = "Running";
-                        state->hasError = false;
-                    } else {
-                        state->statusMessage = std::format("Start failed (status {})", statusCode);
-                        state->hasError = true;
-                    }
-                }
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Remove")) {
-                removeIndex = deviceIdx;
-            }
-
-            if (instantiating) {
-                ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s", status.c_str());
-            } else if (hasError) {
-                ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s", status.c_str());
-            } else {
-                ImGui::TextUnformatted(status.c_str());
-            }
-            ImGui::PopID();
+        if (state->pluginInstances.empty()) {
+            pendingRows.push_back(PluginRow{
+                -1,
+                deviceLabel,
+                "",
+                "",
+                state->statusMessage,
+                state->instantiating,
+                state->hasError,
+                -1,
+                state,
+                deviceIdx,
+                deviceLabel,
+                state->running,
+                state->instantiating,
+                state->hasError
+            });
             continue;
         }
 
-        for (const auto& track : tracks) {
-            ImGui::PushID(std::format("{}-track{}", entry.id, track.trackIndex).c_str());
-            ImGui::Separator();
-            ImGui::Text("%s — Track %d", label.c_str(), track.trackIndex + 1);
-            ImGui::SameLine();
-            ImGui::TextDisabled("[%s]", apiName.c_str());
+        for (auto& [instanceId, pluginState] : state->pluginInstances) {
+            PluginRow row{};
+            row.instanceId = instanceId;
+            row.pluginName = pluginState.pluginName;
+            row.pluginFormat = pluginState.pluginFormat;
+            row.pluginId = pluginState.pluginId;
+            row.status = pluginState.statusMessage;
+            row.pluginInstantiating = pluginState.instantiating;
+            row.pluginHasError = pluginState.hasError;
+            row.trackIndex = pluginState.trackIndex;
+            row.deviceState = state;
+            row.deviceIndex = deviceIdx;
+            row.deviceLabel = deviceLabel;
+            row.deviceRunning = state->running;
+            row.deviceInstantiating = state->instantiating;
+            row.deviceHasError = state->hasError;
 
-            ImGui::SameLine();
-            if (running && !instantiating) {
-                if (ImGui::Button("Stop")) {
-                    std::lock_guard guard(state->mutex);
-                    if (state->device) {
-                        state->device->stop();
-                    }
-                    state->running = false;
-                    state->statusMessage = "Stopped";
+            if (sequencer) {
+                const auto trackIndex = sequencer->findTrackIndexForInstance(instanceId);
+                if (trackIndex >= 0) {
+                    pluginState.trackIndex = trackIndex;
                 }
+                row.trackIndex = pluginState.trackIndex;
+            }
+
+            if (row.trackIndex >= 0) {
+                rowsByTrack[row.trackIndex].push_back(std::move(row));
             } else {
-                if (ImGui::Button("Start")) {
-                    int statusCode = 0;
-                    std::lock_guard guard(state->mutex);
-                    if (state->device) {
-                        statusCode = state->device->start();
-                    }
-                    if (statusCode == 0) {
-                        state->running = true;
-                        state->statusMessage = "Running";
-                        state->hasError = false;
-                    } else {
-                        state->statusMessage = std::format("Start failed (status {})", statusCode);
-                        state->hasError = true;
-                    }
+                pendingRows.push_back(std::move(row));
+            }
+        }
+    }
+
+    auto renderRow = [&](PluginRow& row) -> bool {
+        ImGui::TableNextRow();
+
+        auto deviceState = row.deviceState;
+        bool deviceRunning = row.deviceRunning;
+        bool deviceInstantiating = row.deviceInstantiating;
+        bool deviceHasError = row.deviceHasError;
+        std::string pluginStatus = row.status;
+        bool pluginInstantiating = row.pluginInstantiating;
+        bool pluginHasError = row.pluginHasError;
+
+        if (deviceState) {
+            std::lock_guard guard(deviceState->mutex);
+            deviceRunning = deviceState->running;
+            deviceInstantiating = deviceState->instantiating;
+            deviceHasError = deviceState->hasError;
+            if (row.instanceId >= 0) {
+                if (auto* pluginPtr = findPluginInstance(*deviceState, row.instanceId)) {
+                    pluginStatus = pluginPtr->statusMessage;
+                    pluginInstantiating = pluginPtr->instantiating;
+                    pluginHasError = pluginPtr->hasError;
+                }
+            }
+        }
+
+        auto* sequencerForRow = controller_.sequencer();
+        const bool uiSupported = sequencerForRow && row.instanceId >= 0 && sequencerForRow->hasPluginUI(row.instanceId);
+        const bool uiVisible = uiSupported && sequencerForRow->isPluginUIVisible(row.instanceId);
+
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(row.deviceLabel.c_str());
+
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextUnformatted(row.pluginName.empty() ? "(pending)" : row.pluginName.c_str());
+
+        ImGui::TableSetColumnIndex(2);
+        ImGui::TextUnformatted(row.pluginFormat.c_str());
+
+        ImGui::TableSetColumnIndex(3);
+        if (pluginInstantiating) {
+            ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s", pluginStatus.c_str());
+        } else if (pluginHasError || deviceHasError) {
+            ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s", pluginStatus.c_str());
+        } else {
+            ImGui::TextUnformatted(pluginStatus.c_str());
+        }
+
+        ImGui::TableSetColumnIndex(4);
+        bool removeTriggered = false;
+        if (uiSupported) {
+            const char* uiText = uiVisible ? "Hide UI" : "Show UI";
+            std::string btnId = std::format("{}##{}::{}", uiText, row.deviceIndex, row.instanceId);
+            if (ImGui::Button(btnId.c_str())) {
+                if (uiVisible) {
+                    hidePluginUIInstance(row.deviceState, row.instanceId);
+                } else {
+                    showPluginUIInstance(row.deviceState, row.instanceId);
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button("Remove")) {
-                removeIndex = deviceIdx;
+        }
+
+        if (deviceState && row.instanceId >= 0) {
+            std::string runBtnId = std::format("{}##{}::{}::run", deviceRunning ? "Stop" : "Start", row.deviceIndex, row.instanceId);
+            if (deviceInstantiating) {
+                ImGui::BeginDisabled();
             }
-
-            if (instantiating) {
-                ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s", status.c_str());
-            } else if (hasError) {
-                ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s", status.c_str());
-            } else {
-                ImGui::TextUnformatted(status.c_str());
-            }
-
-            if (track.nodes.empty()) {
-                ImGui::TextDisabled("No plugin instances on this track.");
-            } else if (ImGui::BeginTable("TrackPlugins", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
-                ImGui::TableSetupColumn("Plugin");
-                ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-                ImGui::TableSetupColumn("Instance", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-                ImGui::TableSetupColumn("Status");
-                ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 180.0f);
-                ImGui::TableHeadersRow();
-
-                for (const auto& node : track.nodes) {
-                    std::string nodeStatus = "Running";
-                    bool nodeInstantiating = false;
-                    bool nodeHasError = false;
-                    bool uiSupported = false;
-                    bool uiVisible = false;
-                    {
-                        std::lock_guard guard(state->mutex);
-                        auto* pluginState = findPluginInstance(*state, node.instanceId);
-                        if (pluginState) {
-                            pluginState->pluginName = node.displayName;
-                            pluginState->pluginFormat = node.format;
-                            pluginState->pluginId = node.pluginId;
-                            pluginState->trackIndex = track.trackIndex;
-                            nodeStatus = pluginState->statusMessage;
-                            nodeInstantiating = pluginState->instantiating;
-                            nodeHasError = pluginState->hasError;
-                        }
-                        auto* device = state->device.get();
-                        auto* sequencer = device ? device->sequencer() : nullptr;
-                        if (sequencer && node.instanceId >= 0) {
-                            uiSupported = sequencer->hasPluginUI(node.instanceId);
-                            if (uiSupported) {
-                                uiVisible = sequencer->isPluginUIVisible(node.instanceId);
-                            }
-                        }
-                    }
-
-                    ImGui::TableNextRow();
-
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::TextUnformatted(node.displayName.c_str());
-
-                    ImGui::TableSetColumnIndex(1);
-                    ImGui::TextUnformatted(node.format.c_str());
-
-                    ImGui::TableSetColumnIndex(2);
-                    ImGui::Text("%d", node.instanceId);
-
-                    ImGui::TableSetColumnIndex(3);
-                    if (nodeInstantiating) {
-                        ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s", nodeStatus.c_str());
-                    } else if (nodeHasError) {
-                        ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s", nodeStatus.c_str());
+            if (ImGui::Button(runBtnId.c_str())) {
+                std::lock_guard guard(deviceState->mutex);
+                auto device = deviceState->device;
+                if (device) {
+                    if (deviceState->running) {
+                        device->stop();
+                        deviceState->running = false;
+                        deviceState->statusMessage = "Stopped";
                     } else {
-                        ImGui::TextUnformatted(nodeStatus.c_str());
-                    }
-
-                    ImGui::TableSetColumnIndex(4);
-                    if (running && !instantiating && uiSupported) {
-                        const char* uiText = uiVisible ? "Hide UI" : "Show UI";
-                        std::string btnId = std::format("{}##{}::{}", uiText, entry.id, node.instanceId);
-                        if (ImGui::Button(btnId.c_str())) {
-                            if (uiVisible) {
-                                hidePluginUIInstance(state, node.instanceId);
-                            } else {
-                                showPluginUIInstance(state, node.instanceId);
-                            }
+                        auto statusCode = device->start();
+                        if (statusCode == 0) {
+                            deviceState->running = true;
+                            deviceState->statusMessage = "Running";
+                            deviceState->hasError = false;
+                        } else {
+                            deviceState->statusMessage = std::format("Start failed (status {})", statusCode);
+                            deviceState->hasError = true;
                         }
-                        ImGui::SameLine();
-                    }
-
-                    std::string removeBtnId = std::format("Remove##{}::{}", entry.id, node.instanceId);
-                    if (ImGui::Button(removeBtnId.c_str())) {
-                        hidePluginUIInstance(state, node.instanceId);
-                        bool removed = false;
-                        {
-                            std::lock_guard guard(state->mutex);
-                            if (state->device) {
-                                removed = state->device->removePluginInstance(node.instanceId);
-                            }
-                            if (removed) {
-                                state->pluginInstances.erase(node.instanceId);
-                                state->statusMessage = std::format("Removed {}", node.displayName);
-                                state->hasError = false;
-                            } else {
-                                state->statusMessage = std::format("Failed to remove {}", node.displayName);
-                                state->hasError = true;
-                            }
-                        }
-                    }
-
-                    if (running && !instantiating) {
-                        // Placeholder for future per-plugin actions
                     }
                 }
+            }
+            if (deviceInstantiating) {
+                ImGui::EndDisabled();
+            }
+            ImGui::SameLine();
+        }
 
+        std::string removeBtnId = std::format("Remove##{}::{}::rm", row.deviceIndex, row.instanceId);
+        if (ImGui::Button(removeBtnId.c_str())) {
+            if (row.deviceState && row.instanceId >= 0) {
+                hidePluginUIInstance(row.deviceState, row.instanceId);
+            }
+            removeIndex = row.deviceIndex;
+            removeTriggered = true;
+        }
+
+        return removeTriggered;
+    };
+
+    auto* sequencer = controller_.sequencer();
+    if (sequencer) {
+        auto trackInfos = sequencer->getTrackInfos();
+        bool exitLoops = false;
+        for (const auto& track : trackInfos) {
+            auto it = rowsByTrack.find(track.trackIndex);
+            if (it == rowsByTrack.end()) {
+                continue;
+            }
+
+            auto& rows = it->second;
+            if (rows.empty()) {
+                rowsByTrack.erase(it);
+                continue;
+            }
+
+            std::unordered_map<int32_t, size_t> indexByInstance;
+            indexByInstance.reserve(rows.size());
+            for (size_t i = 0; i < rows.size(); ++i) {
+                indexByInstance[rows[i].instanceId] = i;
+            }
+            std::vector<bool> displayed(rows.size(), false);
+
+            bool tableOpen = false;
+
+            auto beginTableIfNeeded = [&]() {
+                if (!tableOpen) {
+                    ImGui::Separator();
+                    ImGui::Text("Track %d", track.trackIndex + 1);
+                    ImGui::BeginTable(std::format("TrackPlugins-{}-{}", track.trackIndex, track.trackIndex).c_str(), 5,
+                                      ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame);
+                    ImGui::TableSetupColumn("Device");
+                    ImGui::TableSetupColumn("Plugin");
+                    ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                    ImGui::TableSetupColumn("Status");
+                    ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 240.0f);
+                    ImGui::TableHeadersRow();
+                    tableOpen = true;
+                }
+            };
+
+            for (const auto& node : track.nodes) {
+                auto idxIt = indexByInstance.find(node.instanceId);
+                if (idxIt == indexByInstance.end()) {
+                    continue;
+                }
+                beginTableIfNeeded();
+                auto& row = rows[idxIt->second];
+                displayed[idxIt->second] = true;
+                if (renderRow(row)) {
+                    exitLoops = true;
+                    break;
+                }
+            }
+
+            if (!exitLoops) {
+                for (size_t i = 0; i < rows.size(); ++i) {
+                    if (displayed[i]) {
+                        continue;
+                    }
+                    beginTableIfNeeded();
+                    if (renderRow(rows[i])) {
+                        exitLoops = true;
+                        break;
+                    }
+                }
+            }
+
+            if (tableOpen) {
                 ImGui::EndTable();
             }
 
-            ImGui::PopID();
+            rowsByTrack.erase(it);
+
+            if (exitLoops) {
+                break;
+            }
+        }
+    }
+
+    for (auto& [_, rows] : rowsByTrack) {
+        pendingRows.insert(pendingRows.end(), rows.begin(), rows.end());
+    }
+    rowsByTrack.clear();
+
+    if (!pendingRows.empty() && removeIndex == static_cast<size_t>(-1)) {
+        ImGui::Separator();
+        ImGui::TextUnformatted("Pending plugins");
+        if (ImGui::BeginTable("PendingPlugins", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
+            ImGui::TableSetupColumn("Device");
+            ImGui::TableSetupColumn("Plugin");
+            ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+            ImGui::TableSetupColumn("Status");
+            ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 240.0f);
+            ImGui::TableHeadersRow();
+
+            for (auto& row : pendingRows) {
+                if (renderRow(row)) {
+                    break;
+                }
+            }
+
+            ImGui::EndTable();
         }
     }
 
@@ -610,7 +662,7 @@ void MainWindow::renderDeviceManager() {
     }
 }
 
-void MainWindow::createDeviceForPlugin(size_t pluginIndex) {
+void MainWindow::createDeviceForPlugin(size_t pluginIndex, const TrackDestinationOption* destination) {
     PluginEntry plugin;
     {
         std::lock_guard lock(pluginMutex_);
@@ -631,48 +683,26 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex) {
     if (state->label.empty()) {
         state->label = std::format("{} [{}]", plugin.displayName, plugin.format);
     }
-    state->statusMessage = "Instantiating plugin...";
+    state->statusMessage = destination ? std::format("Adding to track {}...", destination->trackIndex + 1)
+                                       : "Instantiating plugin...";
     state->instantiating = true;
 
-    auto device = controller_.createDevice(state->apiName, state->label, defaultManufacturer_, defaultVersion_);
-    auto* devicePtr = device.get();
-    state->device = std::move(device);
+    std::string errorMessage;
+    int32_t targetTrackIndex = destination ? destination->trackIndex : -1;
+    auto device = controller_.createDevice(state->apiName, state->label, defaultManufacturer_, defaultVersion_,
+                                           targetTrackIndex, plugin.format, plugin.pluginId, errorMessage);
 
-    std::weak_ptr<DeviceState> weakState = state;
-    std::string format = plugin.format;
-    std::string pluginId = plugin.pluginId;
-    std::string pluginName = plugin.displayName;
+    if (!device) {
+        std::lock_guard guard(state->mutex);
+        state->statusMessage = "Plugin instantiation failed: " + errorMessage;
+        state->hasError = true;
+        state->instantiating = false;
+        return;
+    }
 
-    devicePtr->addPluginTrackById(format, pluginId,
-        [this, weakState, pluginName, format, pluginId](int32_t instanceId, std::string error) {
-            if (auto locked = weakState.lock()) {
-                std::lock_guard guard(locked->mutex);
-                if (!error.empty()) {
-                    locked->statusMessage = "Plugin instantiation failed: " + error;
-                    locked->hasError = true;
-                    locked->instantiating = false;
-                } else {
-                    locked->statusMessage = "Running";
-                    locked->instantiating = false;
-                    locked->hasError = false;
-                    auto& node = locked->pluginInstances[instanceId];
-                    node.instanceId = instanceId;
-                    node.pluginName = pluginName;
-                    node.pluginFormat = format;
-                    node.pluginId = pluginId;
-                    node.statusMessage = std::format("Plugin ready (instance {})", instanceId);
-                    node.instantiating = false;
-                    node.hasError = false;
-                    if (locked->device && locked->device->sequencer()) {
-                        node.trackIndex = locked->device->sequencer()->findTrackIndexForInstance(instanceId);
-                    } else {
-                        node.trackIndex = 0;
-                    }
-                }
-            }
-        });
+    state->device = device;
 
-    int startStatus = devicePtr->start();
+    int startStatus = device->start();
     {
         std::lock_guard guard(state->mutex);
         if (startStatus == 0) {
@@ -681,8 +711,23 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex) {
         } else {
             state->running = false;
             state->hasError = true;
-            state->instantiating = false;
             state->statusMessage = std::format("Failed to start device (status {})", startStatus);
+            controller_.removeDevice(device->instanceId());
+            state->device.reset();
+            state->pluginInstances.erase(device->instanceId());
+        }
+        state->instantiating = false;
+
+        if (startStatus == 0) {
+            auto& node = state->pluginInstances[device->instanceId()];
+            node.instanceId = device->instanceId();
+            node.pluginName = plugin.displayName;
+            node.pluginFormat = plugin.format;
+            node.pluginId = plugin.pluginId;
+            node.statusMessage = std::format("Plugin ready (instance {})", node.instanceId);
+            node.instantiating = false;
+            node.hasError = false;
+            node.trackIndex = device->trackIndex();
         }
     }
 
@@ -690,70 +735,6 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex) {
         std::lock_guard lock(devicesMutex_);
         devices_.push_back(DeviceEntry{nextDeviceId_++, state});
     }
-}
-
-void MainWindow::addPluginToExistingTrack(size_t pluginIndex, const TrackDestinationOption& destination) {
-    PluginEntry plugin;
-    {
-        std::lock_guard lock(pluginMutex_);
-        if (pluginIndex >= plugins_.size()) {
-            return;
-        }
-        plugin = plugins_[pluginIndex];
-    }
-
-    auto target = findDeviceById(destination.deviceEntryId);
-    if (!target) {
-        return;
-    }
-
-    std::string format = plugin.format;
-    std::string pluginId = plugin.pluginId;
-    std::string pluginName = plugin.displayName;
-    std::weak_ptr<DeviceState> weakState = target;
-
-    UapmdMidiDevice* devicePtr = nullptr;
-    {
-        std::lock_guard guard(target->mutex);
-        devicePtr = target->device.get();
-        if (!devicePtr) {
-            target->statusMessage = "Target device unavailable";
-            target->hasError = true;
-            target->instantiating = false;
-            return;
-        }
-        target->instantiating = true;
-        target->statusMessage = std::format("Adding {} to track {}", plugin.displayName, destination.trackIndex + 1);
-    }
-
-    devicePtr->addPluginToTrackById(destination.trackIndex, format, pluginId,
-        [this, weakState, pluginName, format, pluginId, destination](int32_t instanceId, std::string error) {
-            if (auto locked = weakState.lock()) {
-                std::lock_guard guard(locked->mutex);
-                if (!error.empty()) {
-                    locked->statusMessage = "Plugin append failed: " + error;
-                    locked->hasError = true;
-                    locked->instantiating = false;
-                    return;
-                }
-                locked->instantiating = false;
-                locked->hasError = false;
-                locked->statusMessage = "Running";
-                auto& node = locked->pluginInstances[instanceId];
-                node.instanceId = instanceId;
-                node.pluginName = pluginName;
-                node.pluginFormat = format;
-                node.pluginId = pluginId;
-                node.statusMessage = std::format("Plugin ready (instance {})", instanceId);
-                node.instantiating = false;
-                node.hasError = false;
-                if (locked->device && locked->device->sequencer()) {
-                    node.trackIndex = locked->device->sequencer()->findTrackIndexForInstance(instanceId);
-                } else {
-                    node.trackIndex = destination.trackIndex;
-                }
-            }
-        });
 }
 
 void MainWindow::removeDevice(size_t index) {
@@ -769,8 +750,8 @@ void MainWindow::removeDevice(size_t index) {
 
     if (state) {
         std::lock_guard guard(state->mutex);
-        auto* device = state->device.get();
-        auto* sequencer = device ? device->sequencer() : nullptr;
+        auto device = state->device;
+        auto* sequencer = controller_.sequencer();
         for (auto& [instanceId, pluginState] : state->pluginInstances) {
             if (sequencer) {
                 sequencer->destroyPluginUI(instanceId);
@@ -780,8 +761,9 @@ void MainWindow::removeDevice(size_t index) {
                 pluginState.pluginWindow.reset();
             }
         }
-        if (state->device) {
-            state->device->stop();
+        if (device) {
+            device->stop();
+            controller_.removeDevice(device->instanceId());
             state->device.reset();
         }
     }
@@ -839,7 +821,7 @@ void MainWindow::attemptDefaultDeviceCreation() {
         selectedPlugin_ = static_cast<int>(*match);
         selectedPluginFormat_ = pluginsCopy[*match].format;
         selectedPluginId_ = pluginsCopy[*match].pluginId;
-        createDeviceForPlugin(*match);
+        createDeviceForPlugin(*match, nullptr);
         {
             std::lock_guard lock(pluginMutex_);
             pluginScanMessage_ = std::format("Auto-instantiated {}", pluginsCopy[*match].displayName);
@@ -865,8 +847,8 @@ void MainWindow::stopAllDevices() {
 
     for (auto& state : states) {
         std::lock_guard guard(state->mutex);
-        auto* device = state->device.get();
-        auto* sequencer = device ? device->sequencer() : nullptr;
+        auto device = state->device;
+        auto* sequencer = controller_.sequencer();
         for (auto& [instanceId, pluginState] : state->pluginInstances) {
             if (sequencer) {
                 sequencer->destroyPluginUI(instanceId);
@@ -878,6 +860,7 @@ void MainWindow::stopAllDevices() {
         }
         if (device) {
             device->stop();
+            controller_.removeDevice(device->instanceId());
             state->device.reset();
         }
     }
@@ -904,13 +887,12 @@ bool MainWindow::handlePluginResizeRequest(std::shared_ptr<DeviceState> state, i
         return true;
     }
 
-    auto* device = state->device.get();
-    if (!device || !device->sequencer()) {
+    auto* sequencer = controller_.sequencer();
+    if (!sequencer) {
         return false;
     }
 
     nodeState->pluginWindowResizeIgnore = true;
-    auto sequencer = device->sequencer();
     if (!sequencer->resizePluginUI(instanceId, width, height)) {
         uint32_t adjustedWidth = 0, adjustedHeight = 0;
         sequencer->getPluginUISize(instanceId, adjustedWidth, adjustedHeight);
@@ -944,12 +926,12 @@ void MainWindow::onPluginWindowResized(std::shared_ptr<DeviceState> state, int32
     auto bounds = window->getBounds();
     nodeState->pluginWindowBounds = bounds;
 
-    auto* device = state->device.get();
-    if (!device || !device->sequencer()) {
+    auto* sequencer = controller_.sequencer();
+    if (!sequencer) {
         return;
     }
 
-    device->sequencer()->resizePluginUI(instanceId,
+    sequencer->resizePluginUI(instanceId,
         static_cast<uint32_t>(bounds.width),
         static_cast<uint32_t>(bounds.height));
 }
@@ -1005,8 +987,7 @@ void MainWindow::showPluginUIInstance(std::shared_ptr<DeviceState> state, int32_
     bool pluginUIExists = false;
     {
         std::lock_guard guard(state->mutex);
-        auto* device = state->device.get();
-        sequencer = device ? device->sequencer() : nullptr;
+        sequencer = controller_.sequencer();
         auto* nodeState = findPluginInstance(*state, instanceId);
         if (nodeState) {
             pluginUIExists = nodeState->pluginWindowEmbedded;
@@ -1049,8 +1030,7 @@ void MainWindow::showPluginUIInstance(std::shared_ptr<DeviceState> state, int32_
 
 void MainWindow::hidePluginUIInstance(std::shared_ptr<DeviceState> state, int32_t instanceId) {
     std::unique_lock guard(state->mutex);
-    auto* device = state->device.get();
-    auto* sequencer = device ? device->sequencer() : nullptr;
+    auto* sequencer = controller_.sequencer();
     auto* nodeState = findPluginInstance(*state, instanceId);
 
     if (sequencer) {
@@ -1075,11 +1055,10 @@ MainWindow::PluginInstanceState* MainWindow::findPluginInstance(DeviceState& sta
     pluginState.instantiating = false;
     pluginState.hasError = false;
 
-    auto* device = state.device.get();
-    if (device && device->sequencer()) {
-        pluginState.pluginName = device->sequencer()->getPluginName(instanceId);
-        pluginState.pluginFormat = device->sequencer()->getPluginFormat(instanceId);
-        pluginState.trackIndex = device->sequencer()->findTrackIndexForInstance(instanceId);
+    if (auto* sequencer = controller_.sequencer()) {
+        pluginState.pluginName = sequencer->getPluginName(instanceId);
+        pluginState.pluginFormat = sequencer->getPluginFormat(instanceId);
+        pluginState.trackIndex = sequencer->findTrackIndexForInstance(instanceId);
     } else {
         pluginState.pluginName = std::format("Instance {}", instanceId);
         pluginState.pluginFormat.clear();

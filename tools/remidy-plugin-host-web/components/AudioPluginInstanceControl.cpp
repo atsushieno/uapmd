@@ -4,8 +4,8 @@
 #include "../AppModel.hpp"
 #include <iostream>
 
-void uapmd::instantiatePlugin(int32_t instancingId, const std::string_view& format, const std::string_view& pluginId) {
-    AppModel::instance().instantiatePlugin(instancingId, format, pluginId);
+void uapmd::addSimplePluginTrack(int32_t instancingId, const std::string_view& format, const std::string_view& pluginId) {
+    AppModel::instance().addSimplePluginTrack(instancingId, format, pluginId);
 }
 
 std::vector<uapmd::ParameterMetadata> uapmd::getParameterList(int32_t instanceId) {
@@ -26,7 +26,7 @@ void uapmd::registerPluginInstanceControlFeatures(remidy::webui::WebViewProxy& p
         auto instancingId = req["instancingId"].getInt64();
         auto format = req["format"].getString();
         auto pluginId = req["pluginId"].getString();
-        instantiatePlugin(instancingId, format, pluginId);
+        addSimplePluginTrack(instancingId, format, pluginId);
         return "";
     });
     AppModel::instance().instancingCompleted.emplace_back([&proxy](int32_t instancingId, int32_t instanceId, std::string error) {

@@ -11,7 +11,7 @@ namespace uapmd {
 
     class CommandShell {
         std::unique_ptr<VirtualMidiDeviceController> controller;
-        std::unique_ptr<UapmdMidiDevice> device;
+        std::shared_ptr<UapmdMidiDevice> device;
         std::string api_name{}, plugin_name{}, format_name{};
 
     public:

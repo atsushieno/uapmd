@@ -28,10 +28,29 @@ namespace uapmd {
         // FIXME: run in realtime audio (priority) thread
         std::thread t([&] {
             controller = std::make_unique<VirtualMidiDeviceController>();
-            device = controller->createDevice(api_name, deviceName, "UAPMD Project", "0.1");
-            device->addPluginTrack(plugin_name, format_name);
+            std::string errorMessage;
+            device = controller->createDevice(api_name,
+                                              deviceName,
+                                              "UAPMD Project",
+                                              "0.1",
+                                              -1,
+                                              format_name,
+                                              plugin_name,
+                                              errorMessage);
+            if (!device) {
+                Logger::global()->logError("Failed to instantiate plugin %s (%s): %s",
+                    plugin_name.c_str(), format_name.c_str(), errorMessage.c_str());
+                remidy::EventLoop::stop();
+                return;
+            }
 
-            device->start();
+            if (auto status = device->start(); status != 0) {
+                Logger::global()->logError("Failed to start device (status %d)", status);
+                controller->removeDevice(device->instanceId());
+                device.reset();
+                remidy::EventLoop::stop();
+                return;
+            }
         });
 
         std::thread t2([&] {
@@ -44,7 +63,11 @@ namespace uapmd {
 
         t2.join();
         t.join();
-        device->stop();
+        if (device) {
+            device->stop();
+            controller->removeDevice(device->instanceId());
+            device.reset();
+        }
 
         return 0;
     }

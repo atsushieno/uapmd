@@ -1,197 +1,184 @@
-
 #include "UapmdMidiDevice.hpp"
+
+#include <algorithm>
+#include <cstdlib>
+#include <format>
 #include <iostream>
+#include <memory>
 
 using namespace midicci::commonproperties;
 
-#include <memory>
-
 namespace uapmd {
-    UapmdMidiDevice::UapmdMidiDevice(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version) :
-        api_name(apiName), device_name(deviceName), manufacturer(manufacturer), version(version),
-        // FIXME: do we need valid sampleRate here?
-        seq(new AudioPluginSequencer(4096, 1024, 44100)) {
-    }
-    
-    void UapmdMidiDevice::addPluginTrack(std::string& pluginName, std::string& formatName) {
-        remidy_tooling::PluginScanTool scanner{};
-        scanner.performPluginScanning();
-        for (auto exactMatch : {true, false}) {
-            for(auto & entry : scanner.catalog.getPlugins()) {
-                if (!formatName.empty() && entry->format() != formatName)
-                    continue;
-                if (pluginName.empty() ||
-                    exactMatch && entry->displayName() == pluginName ||
-                    !exactMatch && entry->displayName().contains(pluginName)
-                ) {
-                    Logger::global()->logInfo("Found %s", entry->bundlePath().c_str());
-                    seq->instantiatePlugin(entry->format(), entry->pluginId(), [&](int instanceId, std::string error) {
-                        Logger::global()->logInfo("addSimpleTrack result: %d %s", instanceId, error.c_str());
 
-                        setupMidiCISession(instanceId);
-                    });
-                    return;
-                }
-            }
+    UapmdMidiDevice::UapmdMidiDevice(AudioPluginSequencer* sharedSequencer,
+                                     int32_t instanceId,
+                                     int32_t trackIndex,
+                                     std::string apiName,
+                                     std::string deviceName,
+                                     std::string manufacturerName,
+                                     std::string versionString)
+        : api_name(std::move(apiName)),
+          device_name(std::move(deviceName)),
+          manufacturer(std::move(manufacturerName)),
+          version(std::move(versionString)),
+          sequencer(sharedSequencer),
+          instance_id(instanceId),
+          track_index(trackIndex) {
+    }
+
+    UapmdMidiDevice::~UapmdMidiDevice() {
+        stop();
+        teardownOutputHandler();
+    }
+
+    void UapmdMidiDevice::teardownOutputHandler() {
+        if (!sequencer || instance_id < 0)
+            return;
+        if (output_handler_registered) {
+            sequencer->setPluginOutputHandler(instance_id, nullptr);
+            output_handler_registered = false;
         }
-        Logger::global()->logError("Plugin %s in format %s not found", pluginName.c_str(), formatName.c_str());
     }
 
-    void UapmdMidiDevice::addPluginTrackById(const std::string& formatName, const std::string& pluginId,
-                                             std::function<void(int32_t instanceId, std::string error)> callback) {
-        auto fmt = formatName;
-        auto id = pluginId;
-        seq->performPluginScanning(false);
-        seq->instantiatePlugin(fmt, id, [this, cb = std::move(callback), fmt, id](int32_t instanceId, std::string error) mutable {
-            if (!error.empty()) {
-                Logger::global()->logError("Failed to instantiate plugin %s (%s): %s", id.c_str(), fmt.c_str(), error.c_str());
-                if (cb) {
-                    cb(instanceId, error);
-                }
-                return;
-            }
-            Logger::global()->logInfo("Instantiated plugin %s (%s) as instance %d", id.c_str(), fmt.c_str(), instanceId);
-            setupMidiCISession(instanceId);
-            if (cb) {
-                cb(instanceId, "");
-            }
-        });
-    }
+    void UapmdMidiDevice::setupMidiCISession() {
+        if (!sequencer)
+            return;
 
-    void UapmdMidiDevice::addPluginToTrackById(int32_t trackIndex, const std::string& formatName,
-                                               const std::string& pluginId,
-                                               std::function<void(int32_t instanceId, std::string error)> callback) {
-        auto fmt = formatName;
-        auto id = pluginId;
-        seq->performPluginScanning(false);
-        seq->addPluginToTrack(trackIndex, fmt, id,
-            [this, cb = std::move(callback), fmt, id, trackIndex](int32_t instanceId, std::string error) mutable {
-                if (!error.empty()) {
-                    Logger::global()->logError("Failed to append plugin %s (%s) to track %d: %s",
-                        id.c_str(), fmt.c_str(), trackIndex, error.c_str());
-                    if (cb) {
-                        cb(instanceId, error);
-                    }
-                    return;
-                }
-                Logger::global()->logInfo("Appended plugin %s (%s) as instance %d on track %d",
-                    id.c_str(), fmt.c_str(), instanceId, trackIndex);
-                setupMidiCISession(instanceId);
-                if (cb) {
-                    cb(instanceId, "");
-                }
-            });
-    }
-
-    bool UapmdMidiDevice::removePluginInstance(int32_t instanceId) {
-        if (!seq) {
-            return false;
-        }
-        return seq->removePluginInstance(instanceId);
-    }
-
-    void UapmdMidiDevice::setupMidiCISession(int32_t instanceId) {
         midicci::MidiCIDeviceConfiguration ci_config{
-                midicci::DEFAULT_RECEIVABLE_MAX_SYSEX_SIZE,
-                midicci::DEFAULT_MAX_PROPERTY_CHUNK_SIZE,
-                std::format("uapmd-service {}", instanceId),
-                0
+            midicci::DEFAULT_RECEIVABLE_MAX_SYSEX_SIZE,
+            midicci::DEFAULT_MAX_PROPERTY_CHUNK_SIZE,
+            std::format("uapmd-service {}", instance_id),
+            0
         };
+
         uint32_t muid{static_cast<uint32_t>(rand() & 0x7F7F7F7F)};
 
-        // UmpReceived() -> ci_input_forwarders ->
         auto input_listener_adder = [&](midicci::musicdevice::MidiInputCallback callback) {
             ci_input_forwarders.push_back(std::move(callback));
         };
         auto sender = [&](const uint8_t* data, size_t offset, size_t length, uint64_t timestamp) {
-            platformDevice->send((uapmd_ump_t*) (data + offset), length, (uapmd_timestamp_t) timestamp);
+            if (!platformDevice)
+                return;
+            platformDevice->send(const_cast<uapmd_ump_t*>(reinterpret_cast<const uapmd_ump_t*>(data + offset)),
+                                 length,
+                                 static_cast<uapmd_timestamp_t>(timestamp));
         };
-        midicci::musicdevice::MidiCISessionSource source{midicci::musicdevice::MidiTransportProtocol::UMP, input_listener_adder, sender};
+
+        midicci::musicdevice::MidiCISessionSource source{
+            midicci::musicdevice::MidiTransportProtocol::UMP,
+            input_listener_adder,
+            sender
+        };
+
         auto ciSession = create_midi_ci_session(source, muid, std::move(ci_config), [&](const LogData& log) {
             auto msg = std::get_if<std::reference_wrapper<const Message>>(&log.data);
             if (msg)
-                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "In] ") << msg->get().get_log_message() << std::endl;
+                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "IN] ") << msg->get().get_log_message() << std::endl;
             else
-                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "In] ") << get_if<std::string>(&log.data) << std::endl;
+                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "IN] ") << std::get<std::string>(log.data) << std::endl;
         });
+
         auto& ciDevice = ciSession->get_device();
 
-        // configure parameter list
         auto& hostProps = ciDevice.get_property_host_facade();
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::allCtrlListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::chCtrlListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::programListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateMetadata()));
+
+        auto parameterList = sequencer->getParameterList(instance_id);
         std::vector<commonproperties::MidiCIControl> allCtrlList{};
-        auto parameterList = seq->getParameterList(instanceId);
+        allCtrlList.reserve(parameterList.size());
         for (auto& p : parameterList) {
             commonproperties::MidiCIControl ctrl{p.name, MidiCIControlType::NRPN, "",
-                                                 std::vector<uint8_t>{static_cast<unsigned char>(p.index / 0x80), static_cast<unsigned char>(p.index % 0x80)}
-            };
+                                                 std::vector<uint8_t>{static_cast<uint8_t>(p.index / 0x80), static_cast<uint8_t>(p.index % 0x80)}};
             if (!p.namedValues.empty())
-                ctrl.ctrlMapId = p.name; // assuming this does not overlap
+                ctrl.ctrlMapId = p.name;
             ctrl.paramPath = p.path;
-            ctrl.defaultValue = (uint32_t) (p.initialValue * UINT32_MAX);
-            ctrl.minMax = {(uint32_t) (p.minValue * UINT32_MAX), (uint32_t) (p.maxValue * UINT32_MAX)};
+            ctrl.defaultValue = static_cast<uint32_t>(p.initialValue * UINT32_MAX);
+            ctrl.minMax = {static_cast<uint32_t>(p.minValue * UINT32_MAX), static_cast<uint32_t>(p.maxValue * UINT32_MAX)};
             allCtrlList.push_back(ctrl);
 
-            auto ctrlMapList = std::vector<MidiCIControlMap>();
+            std::vector<MidiCIControlMap> ctrlMapList{};
+            ctrlMapList.reserve(p.namedValues.size());
             for (auto& m : p.namedValues)
-                ctrlMapList.emplace_back(std::move(MidiCIControlMap{(uint32_t) (m.value * UINT32_MAX), m.name}));
+                ctrlMapList.emplace_back(MidiCIControlMap{static_cast<uint32_t>(m.value * UINT32_MAX), m.name});
             StandardPropertiesExtensions::setCtrlMapList(ciDevice, p.name, ctrlMapList);
         }
         StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);
 
-        // configure program list
-        auto presetsList = seq->getPresetList(instanceId);
+        auto presetsList = sequencer->getPresetList(instance_id);
         std::vector<commonproperties::MidiCIProgram> programList{};
-        for (auto & p : presetsList) {
-            commonproperties::MidiCIProgram program{p.name, {
-                (uint8_t) (p.bank / 0x80),
-                (uint8_t) (p.bank % 0x80),
-                (uint8_t) p.index}
-            };
-
+        programList.reserve(presetsList.size());
+        for (auto& p : presetsList) {
+            commonproperties::MidiCIProgram program{p.name,
+                {static_cast<uint8_t>(p.bank / 0x80), static_cast<uint8_t>(p.bank % 0x80), static_cast<uint8_t>(p.index)}};
             programList.push_back(program);
         }
         StandardPropertiesExtensions::setProgramList(ciDevice, programList);
 
         ci_sessions[muid] = std::move(ciSession);
+
+        if (!output_handler_registered && sequencer) {
+            sequencer->setPluginOutputHandler(instance_id, [this](const uapmd_ump_t* data, size_t bytes) {
+                if (!platformDevice)
+                    return;
+                platformDevice->send(const_cast<uapmd_ump_t*>(data), bytes, 0);
+            });
+            output_handler_registered = true;
+        }
+    }
+
+    void UapmdMidiDevice::initialize() {
+        if (sequencer) {
+            if (auto groupOpt = sequencer->pluginGroup(instance_id); groupOpt.has_value()) {
+                ump_group = groupOpt.value();
+            }
+        }
+        setupMidiCISession();
     }
 
     uapmd_status_t UapmdMidiDevice::start() {
+        if (!sequencer)
+            return -1;
+
         platformDevice = std::make_unique<PlatformVirtualMidiDevice>(api_name, device_name, manufacturer, version);
-
-        platformDevice->addInputHandler(umpReceived, this);
-
-        seq->startAudio();
+        platformDevice->addInputHandler(&UapmdMidiDevice::umpReceivedTrampoline, this);
 
         return 0;
     }
 
     uapmd_status_t UapmdMidiDevice::stop() {
-        seq->stopAudio();
-
         if (platformDevice) {
-            platformDevice->removeInputHandler(umpReceived);
+            platformDevice->removeInputHandler(&UapmdMidiDevice::umpReceivedTrampoline);
             platformDevice.reset(nullptr);
         }
-
         return 0;
     }
 
-    void
-    UapmdMidiDevice::umpReceived(void *context, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    void UapmdMidiDevice::umpReceivedTrampoline(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
         static_cast<UapmdMidiDevice*>(context)->umpReceived(ump, sizeInBytes, timestamp);
     }
 
-    void UapmdMidiDevice::umpReceived(uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    void UapmdMidiDevice::umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+        if (!sequencer)
+            return;
 
-        for (auto& fw : ci_input_forwarders)
-            fw((uint8_t*) (void*) ump, 0, sizeInBytes, timestamp);
+        for (auto& forwarder : ci_input_forwarders)
+            forwarder(reinterpret_cast<uint8_t*>(static_cast<void*>(ump)), 0, sizeInBytes, timestamp);
 
-        // FIXME: we need to design how we deal with multiple tracks.
-        seq->enqueueUmp(0, ump, sizeInBytes, timestamp);
+        if (instance_id >= 0) {
+            sequencer->enqueueUmpForInstance(instance_id, ump, sizeInBytes, timestamp);
+            return;
+        }
+
+        auto groupId = static_cast<uint8_t>((ump[0] >> 28) & 0x0F);
+        if (auto instance = sequencer->instanceForGroup(groupId); instance.has_value()) {
+            sequencer->enqueueUmpForInstance(instance.value(), ump, sizeInBytes, timestamp);
+        } else {
+            sequencer->enqueueUmp(groupId, ump, sizeInBytes, timestamp);
+        }
     }
+
 }

@@ -62,7 +62,7 @@ private:
 
     struct DeviceState {
         std::mutex mutex;
-        std::unique_ptr<UapmdMidiDevice> device;
+        std::shared_ptr<UapmdMidiDevice> device;
         std::string label;
         std::string apiName;
         std::string statusMessage;
@@ -88,8 +88,7 @@ private:
     void finalizePluginScan(std::vector<PluginEntry>&& entries, int scanResult, const std::string& errorMessage);
     void renderPluginSelector();
     void renderDeviceManager();
-    void createDeviceForPlugin(size_t pluginIndex);
-    void addPluginToExistingTrack(size_t pluginIndex, const TrackDestinationOption& destination);
+    void createDeviceForPlugin(size_t pluginIndex, const TrackDestinationOption* destination);
     void removeDevice(size_t index);
     void attemptDefaultDeviceCreation();
     void stopAllDevices();
