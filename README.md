@@ -1,15 +1,15 @@
 # What is this?
 
-Remidy aims to provide audio plugin hosting features in a cross-platform and
-multi-format manner in liberal licenses (MIT/BSD).
+There are two components on theis repository:
 
-Remidy aims to cover VST3, AudioUnit (on macOS), LV2, and CLAP formats.
+- `remidy` aims to provide audio plugin hosting features in a cross-platform and multi-format manner in liberal licenses (MIT/BSD). It supports VST3, AudioUnit (on macOS), LV2, and CLAP formats.
+- `uapmd` (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that can instantiate an arbitrary set of plugins and acts as a virtual MIDI 2.0 UMP device on various platforms (multiple tracks do not mean they work in parallel yet).
 
-UAPMD (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that can instantiate <del>arbitrary set of plugins</del> <ins>a synth plugin</ins> and acts as a virtual MIDI 2.0 UMP device on various platforms.
+`uapmd-service` instantiates one single audio plugin for each virtual UMP device, and translates UMP inputs into event inputs to those in each plugin API. An audio track has an audio graph and can contain one or more plugins.
 
-Currently, both Remidy and UAPMD target only desktop platforms so far, but if you use my [AAP project](https://github.com/atsushieno/aap-core) those synth plugins already work as UMP devices (you need Android 15 or later that supports [`MidiUmpDeviceService`](https://developer.android.com/reference/kotlin/android/media/midi/MidiUmpDeviceService)).
+## Documentation
 
-UAPMD makes it as a GUI tool `uapmd-service` that instantiates one single audio plugin for each virtual UMP device, and translates UMP inputs into event inputs to those in each plugin API.
+ALL docs including under [`docs`](docs) only describe thoughts and past analyses, neither reflect current state of union, nor describe our plans correctly.
 
 ## Screenshots
 
@@ -19,12 +19,14 @@ I put them on the [wiki](https://github.com/atsushieno/uapmd/wiki) pages.
 
 With UAPMD, You do not have to wait for MIDI 2.0 synthesizers in the market; existing audio plugins should work as a virtual MIDI 2.0 device. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take a similar place for MIDI 2.0.
 
+Currently, both Remidy and UAPMD target only desktop platforms so far, but if you use my [AAP project](https://github.com/atsushieno/aap-core) those synth plugins already work as UMP devices (you need Android 15 or later that supports [`MidiUmpDeviceService`](https://developer.android.com/reference/kotlin/android/media/midi/MidiUmpDeviceService)).
+
 ## Usage
 
-UAPMD consists of two programs:
+This repository consists of two primary executables:
 
-- uapmd-service: acts as the actual virtual MIDI devices
-- (not available yet) uapmd-setup: acts as a configuration tool
+- `remidy-plugin-host` is an audio plugin host
+- `uapmd-service` is a plugin host that maps plugin instances to platform virtual MIDI 2.0 devices
 
 There are supplemental tools for diagnosing problems we encounter.
 
@@ -32,7 +34,9 @@ There are supplemental tools for diagnosing problems we encounter.
 
 Currently the command line options are hacky:
 
-> $ uapmd-service plugin-name (format-name) (api-name)
+> $ uapmd-service (--no-gui) (plugin-name) (format-name) (api-name)
+
+`--no-gui` runs the service configured with the following arguments, without showing the UI.
 
 `plugin-name` is match by `std::string::contains()` within display name, case-sensitive.
 
@@ -40,27 +44,13 @@ Currently the command line options are hacky:
 
 `api-name` so far accepts only `PIPEWIRE` (on Linux) to use PipeWire, and uses default available API otherwise.
 
-<!--
-
-> $ uapmd-service -audio [audio-config-file] -midi [midi-device-settings-file]
-
-- `-audio`: optional. Specifies audio configuration file that can be created by `uapmd-setup`.
-- `-midi`: required. Specifies MIDI device configuration file that can be created by `uapmd-setup`.
-
-### uapmd-setup
-
-> $ uapmd-setup
-
-Launches the GUI by default.
--->
-
 ### remidy-plugin-host
 
 A hacky WIP dogfooding plugin host.
 
 ### remidy-scan
 
-remidy-scan is a tool to query and enumerate locally installed plugins.
+remidy-scan is a tool to query and enumerate locally installed plugins, and stores the results to `(local app data)/remidy-tooling/plugin-list-cache.json` (`local app data` depends on the platform).
 
 
 ## Code modules
@@ -91,7 +81,6 @@ Sources in this repository are released under the MIT license.
 There are third-party (and first party) dependency libraries (git submodules, CMake FetchContent, or directly included):
 
 - [lv2/lv2kit](https://github.com/lv2/lv2kit) (serd, sord, sratom, lilv, zix): the ISC license.
-- [travesty](https://github.com/DISTRHO/DPF/tree/main/distrho/src/travesty), part of DISTRHO/DPF: the ISC license
 - [free-audio/clap](https://github.com/free-audio/clap) - MIT
 - [free-audio/clap-helpers](https://github.com/free-audio/clap-helpers) - MIT
 - [steinbergmedia/vst3sdk](https://github.com/steinbergmedia/vst3sdk) - MIT

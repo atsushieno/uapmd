@@ -11,21 +11,19 @@ Rust: There are too many delusive MIDI libraries that only takes name and implem
 
 ## Audio I/O
 
-- probably we use miniaudio. It is cross-platform ready, has its own audio graph.
+- We use miniaudio. It is cross-platform ready, has its own audio graph if we want to use (we don't for now though).
 - choc might be an option too, but I'm unsure if its complicated buffer converters achieve good performance.
   - Their audio block dispatcher would have been usable if they were not against MIDI 2.0.
     There is no way to dispatch UMPs in their API.
 
 ## Audio plugin hosting
 
-- We hope to have our own multi-format hosting abstraction layer, as no one built such one in a liberal license.
-  - it is so far located at `external/remidy`.
-  - We use travesty for VST3.
+- We have our own multi-format hosting library `remidy`, as no one built such one in a liberal license.
+  - We use vst3sdk for VST3.
+    - We used to use Travesty from DPF, but we have no reason to avoid vst3sdk anymore since it is relicensed to MIT at v3.8.0.
   - We use lv2kit (lilv, serd, sord, sratom, zix) for LV2.
     - LVTK3 might bring in benefits, I just did not make decision to depend on "under heavily development" status of the library (also no desire to migrate from its meson to our CMake, I'm tired of doing that at lv2kit).
-  - We hope to use clap-wrapper for CLAP to load them as VST3.
-    - There is no official hosting library (there won't be, as it will compete against Bitwig Studio)
-    - It's okay to limit CLAP ability down to what VST3 offers, it's their problem.
+  - We use the API headers and clap-helpers for CLAP.
 - Other options (and reason to not choose):
   - juce_audio_plugin_client
     - the simplest solution for single track
@@ -38,10 +36,8 @@ Rust: There are too many delusive MIDI libraries that only takes name and implem
     - not a safe option as the developers and the community are quite negative against MIDI 2.0.
   - Carla
     - simple solution for single track
-    - the licenses are unclear, and the core part falls into the same problem as JUCE (GPL2? 3?)
+    - When I was investigating it contained JUCE and it is still unclear if we can use it in liberal licenses.
 
-## Setup Client
+## GUI
 
-- We could use saucer
-  - webview.h is good enough too, though we do not have to go with C API. We might also want to use native stream requests.
-  - we could use choc::WebView, but embedding non-Evergreen Microsoft WebView2 is a security risk.
+- We use ImGui for now

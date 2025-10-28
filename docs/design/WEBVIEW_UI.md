@@ -1,6 +1,8 @@
 
 # WebView UI
 
+NOTE: WebView UI is not in use at this moment (we switched to ImGui).
+
 ## Using WebView
 
 For remidy-plugin-host, we chose WebView as its primary UI technology. There is no compelling reason, but at least it resolves many problems that native C++ desktop UI frameworks could not e.g. input methods just work fine on Linux (compared to juce_gui_basics, pugl, visage, etc.).

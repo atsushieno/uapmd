@@ -1,5 +1,7 @@
 # UAPMD Data Format
 
+Not implemented. No immediate plan to work on.
+
 ## UAPMD configuration file
 
 ```

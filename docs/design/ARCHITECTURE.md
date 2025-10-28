@@ -1,11 +1,6 @@
 # The App Architecture
 
-UniversalAudioPluginMidiDevice consists of two parts:
-
-- `uapmd-setup`: GUI controller that manages audio plugin graph setup. It may support more features. It could be launched in tray at startup, instantiating the "active" (or "resident") setup.
-- `uapmd-service`: instantiates the actual virtual MIDI devices.
-
-One UniversalAudioPlugin MIDI device instantiates a set of audio plugin graphs that can be mapped to one or more channels in a group.
+One audio plugin track instantiates a set of audio plugin graphs that can be mapped to one or more channels in a group.
 
 [Enhancement] A mapping extension is considered for MPE-enabled synths, where we could map MIDI 2.0 inputs to MPE-based MIDI 1.0 messages and send them to the plugin, therefore no need for multi-channel spans.
 
