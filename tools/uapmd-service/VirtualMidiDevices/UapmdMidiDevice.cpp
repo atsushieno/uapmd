@@ -92,6 +92,9 @@ namespace uapmd {
         std::vector<commonproperties::MidiCIControl> allCtrlList{};
         allCtrlList.reserve(parameterList.size());
         for (auto& p : parameterList) {
+            if (p.hidden)
+                continue;
+
             commonproperties::MidiCIControl ctrl{p.name, MidiCIControlType::NRPN, "",
                                                  std::vector<uint8_t>{static_cast<uint8_t>(p.index / 0x80), static_cast<uint8_t>(p.index % 0x80)}};
             ctrl.paramPath = p.path;
