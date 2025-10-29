@@ -83,6 +83,7 @@ namespace uapmd {
         auto& hostProps = ciDevice.get_property_host_facade();
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::allCtrlListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::chCtrlListMetadata()));
+        hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::ctrlMapListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::programListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateMetadata()));
@@ -93,18 +94,20 @@ namespace uapmd {
         for (auto& p : parameterList) {
             commonproperties::MidiCIControl ctrl{p.name, MidiCIControlType::NRPN, "",
                                                  std::vector<uint8_t>{static_cast<uint8_t>(p.index / 0x80), static_cast<uint8_t>(p.index % 0x80)}};
-            if (!p.namedValues.empty())
-                ctrl.ctrlMapId = p.name;
             ctrl.paramPath = p.path;
             ctrl.defaultValue = static_cast<uint32_t>(p.initialValue * UINT32_MAX);
             ctrl.minMax = {static_cast<uint32_t>(p.minValue * UINT32_MAX), static_cast<uint32_t>(p.maxValue * UINT32_MAX)};
-            allCtrlList.push_back(ctrl);
 
-            std::vector<MidiCIControlMap> ctrlMapList{};
-            ctrlMapList.reserve(p.namedValues.size());
-            for (auto& m : p.namedValues)
-                ctrlMapList.emplace_back(MidiCIControlMap{static_cast<uint32_t>(m.value * UINT32_MAX), m.name});
-            StandardPropertiesExtensions::setCtrlMapList(ciDevice, p.name, ctrlMapList);
+            if (!p.namedValues.empty()) {
+                ctrl.ctrlMapId = p.name;
+
+                std::vector<MidiCIControlMap> ctrlMapList{};
+                ctrlMapList.reserve(p.namedValues.size());
+                for (auto &m: p.namedValues)
+                    ctrlMapList.emplace_back(MidiCIControlMap{static_cast<uint32_t>(m.value * UINT32_MAX), m.name});
+                StandardPropertiesExtensions::setCtrlMapList(ciDevice, p.name, ctrlMapList);
+            }
+            allCtrlList.push_back(ctrl);
         }
         StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);
 
