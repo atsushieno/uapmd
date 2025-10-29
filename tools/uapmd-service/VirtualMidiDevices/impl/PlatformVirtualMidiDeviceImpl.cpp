@@ -62,18 +62,26 @@ namespace uapmd {
     void PlatformVirtualMidiDevice::Impl::send(uapmd_ump_t *messages, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
         auto total = sizeInBytes / sizeof(int32_t);
         size_t current = 0;
+        size_t chunk = 0;
         while (current < total) {
-            auto thisChunk = total - current < 128 ? total - current : 128;
-            libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + current, thisChunk);
-            // kind of hack, but platform MIDI API could run out of internal ring buffers and we get our sysex messages corrupt.
-            switch (messages[current] & 0xF0000000) {
-                case 0x30000000:
-                case 0x50000000:
-                    // FIXME: maybe make it configurable?
-                    std::this_thread::sleep_for(std::chrono::microseconds(sysex_delay_in_microseconds));
-                    break;
+            uint8_t size = 1;
+            switch (((uint32_t) messages[current]) >> 28) {
+                case 3:
+                case 4:
+                    size = 2; break;
+                case 5:
+                case 0xD:
+                case 0xF:
+                    size = 4; break;
             }
-            current += thisChunk;
+            libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + current, size);
+            current += size;
+            chunk += size;
+            if (chunk > 3072) {
+                // we limit speed only when sizeInBytes exceeds our threshold (near 31250 / 10 bytes)
+                std::this_thread::sleep_for(std::chrono::microseconds(sysex_delay_in_microseconds));
+                chunk -= 3072;
+            }
         }
     }
 
