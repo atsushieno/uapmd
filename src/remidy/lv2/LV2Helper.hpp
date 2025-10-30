@@ -391,7 +391,9 @@ public:
             minValue = minNode == nullptr ? 0 : lilv_node_as_float(minNode);
             maxValue = maxNode == nullptr ? 1 : lilv_node_as_float(maxNode);
         }
-        remidy::PluginParameter info{index, idString, name, emptyString, defaultValue, minValue, maxValue, true, false, isDiscreteEnum};
+        remidy::PluginParameter info{index, idString, name, emptyString, defaultValue, minValue, maxValue,
+                                     // should we determine automatability based on some properties such as `expensive` ... ?
+                                     true, true, false, isDiscreteEnum};
 
         LilvScalePoints* scalePoints = lilv_port_get_scale_points(plugin, port);
         if (scalePoints != nullptr) {

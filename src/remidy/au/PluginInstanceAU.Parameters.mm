@@ -31,8 +31,10 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
         CFStringGetCString(info.cfNameString, nameBuffer, sizeof(nameBuffer), kCFStringEncodingUTF8);
         std::string pName{nameBuffer};
         std::string path{};
-        auto p = new PluginParameter(i, idString, pName, path, info.defaultValue, info.minValue, info.maxValue, true,
-                                     false,
+        auto p = new PluginParameter(i, idString, pName, path, info.defaultValue, info.minValue, info.maxValue,
+                                     (info.flags & kAudioUnitParameterFlag_NonRealTime) == 0,
+                                     info.flags & kAudioUnitParameterFlag_IsReadable,
+                                     false, // I don't see `hidden` flag for AU parameters
                                      info.unit == kAudioUnitParameterUnit_Indexed
                                      );
         CFArrayRef enumArray;

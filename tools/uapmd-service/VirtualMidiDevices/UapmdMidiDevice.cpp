@@ -92,7 +92,11 @@ namespace uapmd {
         std::vector<commonproperties::MidiCIControl> allCtrlList{};
         allCtrlList.reserve(parameterList.size());
         for (auto& p : parameterList) {
+<<<<<<< HEAD
             if (p.hidden)
+=======
+            if (p.hidden || !p.automatable)
+>>>>>>> d4d9055 (Add `automatable` field/function to plugin parameters.)
                 continue;
 
             commonproperties::MidiCIControl ctrl{p.name, MidiCIControlType::NRPN, "",

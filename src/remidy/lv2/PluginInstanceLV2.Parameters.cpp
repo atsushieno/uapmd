@@ -74,8 +74,9 @@ std::unique_ptr<PluginParameter> createParameter(uint32_t index, const LilvNode*
         enums.emplace_back(pe);
     }
 
-    return std::make_unique<PluginParameter>(index, label, label, portGroup, defValue, minValue, maxValue, false,
-                                             false, isDiscreteEnum, enums);
+    return std::make_unique<PluginParameter>(index, label, label, portGroup, defValue, minValue, maxValue,
+                                             // do we need more checks for automatability?
+                                             true, true, false, isDiscreteEnum, enums);
 }
 
 void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {

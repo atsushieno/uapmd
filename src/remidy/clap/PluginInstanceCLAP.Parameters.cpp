@@ -46,6 +46,7 @@ namespace remidy {
                         info.min_value,
                         info.max_value,
                         true,
+                        info.flags & CLAP_PARAM_IS_AUTOMATABLE,
                         info.flags & CLAP_PARAM_IS_HIDDEN,
                         info.flags & CLAP_PARAM_IS_ENUM,
                         enums));

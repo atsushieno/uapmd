@@ -36,7 +36,8 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
                                      info.flags & ParameterInfo::kIsList ? info.defaultNormalizedValue * info.stepCount : info.defaultNormalizedValue,
                                      0,
                                      info.flags & ParameterInfo::kIsList ? info.stepCount : 1,
-                                     true,
+                                     info.flags & ParameterInfo::kCanAutomate,
+                                     true, // I don't see any flags for `readable`
                                      info.flags & ParameterInfo::kIsHidden,
                                      info.flags & ParameterInfo::kIsList,
                                      enums);
@@ -80,7 +81,7 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
                     info.valueDesc.defaultValue,
                     info.valueDesc.minimum,
                     info.valueDesc.maximum,
-                    true, false, false);
+                    true, true, false, false);
                 defs.emplace_back(parameter);
             }
         }

@@ -58,6 +58,7 @@ namespace uapmd {
                         .initialValue = p->defaultValue(),
                         .minValue = p->minValue(),
                         .maxValue = p->maxValue(),
+                        .automatable = p->automatable(),
                         .hidden = p->hidden(),
                         .namedValues = enums
                 });

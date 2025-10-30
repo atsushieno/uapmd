@@ -21,6 +21,7 @@ namespace remidy {
         const std::string _name;
         const std::string _path;
         const double default_value, min_value, max_value;
+        bool is_automatable;
         bool is_readable;
         bool is_hidden;
         bool is_discrete;
@@ -29,11 +30,11 @@ namespace remidy {
     public:
         PluginParameter(uint32_t index, std::string& id, std::string& name, std::string& path,
                         double defaultValue, double minValue, double maxValue,
-                        bool readable, bool hidden, bool discrete,
+                        bool automatable, bool readable, bool hidden, bool discrete,
                         std::vector<ParameterEnumeration> enums = {}) :
             _index(index), stable_id(id), _name(name), _path(path),
             default_value(defaultValue), min_value(minValue), max_value(maxValue),
-            is_readable(readable), is_hidden(hidden), is_discrete(discrete), _enums(std::move(enums)) {
+            is_automatable(automatable), is_readable(readable), is_hidden(hidden), is_discrete(discrete), _enums(std::move(enums)) {
         }
         ~PluginParameter() = default;
 
@@ -48,6 +49,7 @@ namespace remidy {
         const double defaultValue() const { return default_value; }
         const double minValue() const { return min_value; }
         const double maxValue() const { return max_value; }
+        bool automatable() const { return is_automatable; }
         bool readable() { return is_readable; }
         bool hidden() const { return is_hidden; }
         bool discrete() const { return is_discrete; }

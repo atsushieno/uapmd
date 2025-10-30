@@ -19,6 +19,7 @@ namespace uapmd {
         double initialValue;
         double minValue;
         double maxValue;
+        bool automatable;
         bool hidden;
         std::vector<ParameterNamedValue> namedValues{};
     };
