@@ -62,6 +62,7 @@ namespace uapmd {
     void PlatformVirtualMidiDevice::Impl::send(uapmd_ump_t *messages, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
         auto total = sizeInBytes / sizeof(int32_t);
         size_t current = 0;
+        size_t written = 0;
         size_t chunk = 0;
         while (current < total) {
             uint8_t size = 1;
@@ -74,15 +75,17 @@ namespace uapmd {
                 case 0xF:
                     size = 4; break;
             }
-            libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + current, size);
-            current += size;
             chunk += size;
-            if (chunk > 3072) {
-                // we limit speed only when sizeInBytes exceeds our threshold (near 31250 / 10 bytes)
+            if (chunk >= 256) { // 2048 bytes
+                libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + written, chunk);
                 std::this_thread::sleep_for(std::chrono::microseconds(sysex_delay_in_microseconds));
-                chunk -= 3072;
+                written += chunk;
+                chunk = 0;
             }
+            current += size;
         }
+        if (written < total)
+            libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + written, total - written);
     }
 
 }
