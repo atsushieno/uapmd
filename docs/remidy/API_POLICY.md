@@ -1,5 +1,7 @@
 # API Design Policy
 
+NOTE: we are still not at the stage where API stability matters.
+
 ## API compatibility
 
 - We will follow semantic versioning.

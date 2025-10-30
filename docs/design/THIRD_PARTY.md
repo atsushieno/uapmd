@@ -9,6 +9,16 @@ We use libremidi because none of others offers the same feature set.
 
 Rust: There are too many delusive MIDI libraries that only takes name and implements nothing.
 
+## MIDI 2.0 UMP / MIDI-CI message processing
+
+We ended up porting ktmidi to C++. ktmidi supports all of Profile Configuration, Property Exchange, and Process Inquiry messages, as well as session communication.
+
+[midi2-dev/ni-midi2](https://github.com/midi2-dev/ni-midi2) is left quite incomplete state and they don't work on it anymore.
+
+juce_midi_ci does good job too, but feature wise it's still incomplete compared to ktmidi. Also licensing matters.
+
+When we need complicated UMP processing maybe we use cmidi2 (ni-midi2 does not even process SysEx8 messages).
+
 ## Audio I/O
 
 - We use miniaudio. It is cross-platform ready, has its own audio graph if we want to use (we don't for now though).

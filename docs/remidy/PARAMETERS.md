@@ -4,9 +4,7 @@ Plugin parameter support is achieved through `remidy::PluginParameterSupport` cl
 
 ## Parameter API Differences Between Formats
 
-- VST3 and CLAP: parameter values are stored as `double`.
-  - AU parameters are `float`.
-  - LV2 parameters are practically `float` (lilv Atom does not support `double` values).
+- VST3 and CLAP: parameter values are stored as `double`. AU parameters are `float`. LV2 parameters are practically `float` (lilv Atom does not support `double` values).
 - AU: nominally they have stable parameter ID integer, but an infamous fact around AudioUnit is that Apple Logic Pro and GarageBand fail to handle parameter stability by assuming "index" in the parameter list as stable. JUCE team and their plugin developers try hard to workaround this issue by introducing `versionHint`. We should not fail like Logic Pro and GarageBand and always identify parameters by ID, not index.
 - LV2: there are multiple different ways to define "parameters" and we will have to support both...
   - Traditional approach: define `lv2:ControlPort`s within the `lv2:Plugin`. They have `lv2:index`, `lv2:name`, and `lv2:symbol`.
@@ -23,6 +21,17 @@ VST3 and CLAP brings in the following design principles:
 
 - Since VST3 parameter access is achieved via `IEditController` API which involves GUI thread, `PluginParameterSupport` has a `bool accessRequiresMainThread()` property getter function. VST3 returns `true`.
 - The same goes for CLAP where `count()` and `get_info()` in `clap_plugin_params` are marked as `[main-thread]`.
+
+## Automatable
+
+We support only "automatable" parameters in some use cases. Namely, non-automatable parameters are not displayed on remidy-plugin-host and not mapped to MIDI-CI AllCtrlList property.
+
+- AU parameters can be `kAudioUnitParameterFlag_NonRealTime`
+- VST3 parameters can be `kCanAutomate`
+- CLAP parameters can be `CLAP_PARAM_IS_AUTOMATABLE`
+- LV2: still wondering, maybe "expensive" parameters had better be excluded...
+
+For example, Tracktion "Collective" contains a lot of NonRealTime parameters that I have no idea what they are for (they are unnamed).
 
 ## Sample-accurate Parameter Changes
 
