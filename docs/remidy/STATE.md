@@ -73,12 +73,6 @@ Saving UI state in the state API brings in a major drawback: restriction with th
 
 VST3 and CLAP specifications are clearly source of problem. We should impose further restrictions on how they should be used. No UI thread dependents. Period.
 
-### MIDI-CI Get and Set Device State Property as the common binary format
-
-Defining our own binary data format ("defined by Remidy") is not a preferred option if there is already another standardized specification for that. And there is, MIDI-CI Get and Set Device State Property specification as part of MIDI 2.0 specification.
-
-It should be noted that both LV2 and CLAP provides the use cases where portability is not required. If portability comes without cost then we do not have to worry about use cases i.e. they could have been always portable. Implementing portable state is probably annoying e.g. always having to follow endianness-agnostic states is cumbersome.
-
 ### Dependencies on external files
 
 Basically we do not claim perfectly portable regarding external file dependencies; the resources in the saved state should be freely distributable without extra copyright concern, and as long as the song file consumer (the author who wants to use it on another machine, or those listeners who downloaded the song file) can prepare the same set of dependent resources, it should be fine.

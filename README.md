@@ -1,21 +1,33 @@
 # What is this?
 
-There are two components on theis repository:
+There are two primary components on this repository:
 
 - `remidy` aims to provide audio plugin hosting features in a cross-platform and multi-format manner in liberal licenses (MIT/BSD). It supports VST3, AudioUnit (on macOS), LV2, and CLAP formats.
 - `uapmd` (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that can instantiate an arbitrary set of plugins and acts as a virtual MIDI 2.0 UMP device on various platforms (multiple tracks do not mean they work in parallel yet).
 
-`uapmd-service` instantiates one single audio plugin for each virtual UMP device, and translates UMP inputs into event inputs to those in each plugin API. An audio track has an audio graph and can contain one or more plugins.
+At user developers perspective, there are two primary GUI tools:
 
-## Documentation
-
-ALL docs including under [`docs`](docs) only describe thoughts and past analyses, neither reflect current state of union, nor describe our plans correctly.
+- `remidy-plugin-host` is a simple plugin host that you can list the installed plugins, instantiate, and process audio with simple MIDI 2.0 keyboard.
+- `uapmd-service` instantiates one single audio plugin for each virtual MIDI 2.0 device, and translates UMP inputs into event inputs to those in each plugin API, as well as exposing some plugin features using MIDI-CI property exchange.
 
 ## Screenshots
 
 I put them on the [wiki](https://github.com/atsushieno/uapmd/wiki) pages.
 
-## What's the point of this tool?
+## Documentation
+
+ALL docs under [`docs`](docs) are supposed to describe design investigation and thoughts.
+
+We are moving quick and may not reflect current state of union, or describe our plans correctly.
+
+There are some notable docs:
+
+- [Plugin catalog (listing) and instantiation](docs/remidy/PLUGIN_ID_AND_CATALOG.md STATE.md)
+- [GUI support and main thread constraints](docs/remidy/GUI_SUPPORT.md)
+- [Parameters](docs/remidy/PARAMETERS.md)
+- [Presets](docs/remidy/PRESETS.md)
+
+## What's the point of these tools?
 
 With UAPMD, You do not have to wait for MIDI 2.0 synthesizers in the market; existing audio plugins should work as a virtual MIDI 2.0 device. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take a similar place for MIDI 2.0.
 
@@ -32,11 +44,11 @@ There are supplemental tools for diagnosing problems we encounter.
 
 ### uapmd-service
 
-Currently the command line options are hacky:
+The virtual MIDI 2.0 device service controller. Currently the command line options are hacky:
 
 > $ uapmd-service (--no-gui) (plugin-name) (format-name) (api-name)
 
-`--no-gui` runs the service configured with the following arguments, without showing the UI.
+`--no-gui` runs the service configured with the following arguments, without showing the UI. Not verified very often. 
 
 `plugin-name` is match by `std::string::contains()` within display name, case-sensitive.
 
@@ -46,11 +58,11 @@ Currently the command line options are hacky:
 
 ### remidy-plugin-host
 
-A hacky WIP dogfooding plugin host.
+The plugin host. No particular command line options exist.
 
 ### remidy-scan
 
-remidy-scan is a tool to query and enumerate locally installed plugins, and stores the results to `(local app data)/remidy-tooling/plugin-list-cache.json` (`local app data` depends on the platform).
+`remidy-scan` is a tool to query and enumerate locally installed plugins, and stores the results to `(local app data)/remidy-tooling/plugin-list-cache.json` (`local app data` depends on the platform).
 
 
 ## Code modules
@@ -63,7 +75,6 @@ remidy-scan is a tool to query and enumerate locally installed plugins, and stor
 
 `remidy-tooling` offers higher level API to build audio plugin hosting tools like plugin scanning and instancing in common manner.
 What this layer introduces in practice is a set of filters e.g. various existing specific plugin products and vendors are filtered at "safe for multithreaded access to the plugin API", "plugin scanning requires UI thread", or "crashes remidy" kind of information.
-Regarding event streams, they are still not much opinionated.
 
 ### uapmd
 

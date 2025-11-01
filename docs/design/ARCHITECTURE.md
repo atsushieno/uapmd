@@ -1,6 +1,8 @@
 # The App Architecture
 
-One audio plugin track instantiates a set of audio plugin graphs that can be mapped to one or more channels in a group.
+There is an audio plugin "sequencer", which is the audio engine in both remidy-plugin-host and uapmd-service.
+
+A sequencer consists of sequencers. One audio plugin track instantiates an audio plugin graph that can be mapped to one or more channels in a group.
 
 [Enhancement] A mapping extension is considered for MPE-enabled synths, where we could map MIDI 2.0 inputs to MPE-based MIDI 1.0 messages and send them to the plugin, therefore no need for multi-channel spans.
 
