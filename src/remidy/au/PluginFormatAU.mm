@@ -87,6 +87,7 @@ void remidy::PluginFormatAU::createInstance(
         PluginInstantiationOptions options,
         std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
 ) {
+    auto impl = [&] {
     AudioComponentDescription desc{};
     std::istringstream id{info->pluginId()};
     id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;
@@ -122,6 +123,12 @@ void remidy::PluginFormatAU::createInstance(
         else
           cb(nullptr, std::format("Failed to instantiate AudioUnit {}", info->displayName()));
     });
+
+    };
+    if (requiresUIThreadOn(info) & PluginUIThreadRequirement::InstanceControl)
+        EventLoop::runTaskOnMainThread(impl);
+    else
+        impl();
 }
 
 remidy::PluginFormatAU::Extensibility::Extensibility(PluginFormat &format) : PluginExtensibility(format) {
