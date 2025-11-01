@@ -22,7 +22,8 @@ We are moving quick and may not reflect current state of union, or describe our 
 
 There are some notable docs:
 
-- [Plugin catalog (listing) and instantiation](docs/remidy/PLUGIN_ID_AND_CATALOG.md STATE.md)
+- [Plugin catalog (listing) and instantiation](docs/remidy/PLUGIN_ID_AND_CATALOG.md)
+- [State](docs/remidy/STATE.md)
 - [GUI support and main thread constraints](docs/remidy/GUI_SUPPORT.md)
 - [Parameters](docs/remidy/PARAMETERS.md)
 - [Presets](docs/remidy/PRESETS.md)
