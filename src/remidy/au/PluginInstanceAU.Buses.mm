@@ -3,6 +3,7 @@
 #include "PluginFormatAU.hpp"
 
 void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
+    auto impl = [&] {
     auto component = owner->component;
     auto instance = owner->instance;
     auto logger = owner->logger();
@@ -81,9 +82,17 @@ void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
         ret.numEventOut = 1;
 
     busesInfo = ret;
+
+    };
+    if (owner->requiresUIThreadOn() & PluginUIThreadRequirement::InstanceControl)
+        EventLoop::runTaskOnMainThread(impl);
+    else
+        impl();
 }
 
 remidy::StatusCode remidy::PluginInstanceAU::AudioBuses::configure(ConfigurationRequest& configuration) {
+    remidy::StatusCode ret;
+    auto impl = [&] {
     auto& component = owner->component;
     auto& instance = owner->instance;
     auto logger = owner->logger();
@@ -111,7 +120,8 @@ remidy::StatusCode remidy::PluginInstanceAU::AudioBuses::configure(Configuration
                                           &stream, sizeof(AudioStreamBasicDescription));
             if (result) {
                 logger->logError("%s PluginInstanceAU::configure failed to set input kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
-                return StatusCode::FAILED_TO_CONFIGURE;
+                ret = StatusCode::FAILED_TO_CONFIGURE;
+                return;
             }
         }
 
@@ -145,7 +155,8 @@ remidy::StatusCode remidy::PluginInstanceAU::AudioBuses::configure(Configuration
                                           &stream, sizeof(AudioStreamBasicDescription));
             if (result) {
                 logger->logError("%s: PluginInstanceAU::configure failed to set output kAudioUnitProperty_StreamFormat: OSStatus %d", name.c_str(), result);
-                return StatusCode::FAILED_TO_CONFIGURE;
+                ret = StatusCode::FAILED_TO_CONFIGURE;
+                return;
             }
         }
 
@@ -156,11 +167,20 @@ remidy::StatusCode remidy::PluginInstanceAU::AudioBuses::configure(Configuration
         result = AudioUnitSetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, i, &auLayout, sizeof(::AudioChannelLayout));
         if (result) {
             format->getLogger()->logError("%s AudioPluginInstanceAU::configure failed to set output kAudioUnitProperty_AudioChannelLayout: OSStatus %d", name.c_str(), result);
-            return StatusCode::FAILED_TO_CONFIGURE;
+            ret = StatusCode::FAILED_TO_CONFIGURE;
+            return ret;
         }*/
     }
 
-    return StatusCode::OK;
+    ret = StatusCode::OK;
+
+    };
+    if (owner->requiresUIThreadOn() & PluginUIThreadRequirement::State)
+        EventLoop::runTaskOnMainThread(impl);
+    else
+        impl();
+
+    return ret;
 }
 
 #endif

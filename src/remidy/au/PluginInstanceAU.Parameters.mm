@@ -5,6 +5,7 @@
 
 remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInstanceAU *owner)
         : owner(owner) {
+    auto impl = [&] {
     auto result = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &au_param_id_list_size, nil);
     if (result != noErr) {
         owner->logger()->logError("%s: PluginInstanceAU failed to retrieve parameter list. Status: %d", owner->name.c_str(), result);
@@ -53,6 +54,12 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
     }
 
     // FIXME: collect parameter_lists_per_note i.e. per-note parameter controllers, *per note* !
+
+    };
+    if (owner->requiresUIThreadOn() & PluginUIThreadRequirement::Parameters)
+        EventLoop::runTaskOnMainThread(impl);
+    else
+        impl();
 }
 
 remidy::PluginInstanceAU::ParameterSupport::~ParameterSupport() {

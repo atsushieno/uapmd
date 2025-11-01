@@ -7,6 +7,7 @@
 using namespace remidy;
 
 PluginInstanceAU::PresetsSupport::PresetsSupport(PluginInstanceAU* owner) : owner(owner) {
+    auto impl = [&] {
     CFArrayRef presets = nullptr;
     UInt32 size = sizeof(CFArrayRef);
     auto err = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_FactoryPresets, kAudioUnitScope_Global, 0, &presets, &size);
@@ -22,6 +23,11 @@ PluginInstanceAU::PresetsSupport::PresetsSupport(PluginInstanceAU* owner) : owne
         std::string id = std::to_string(preset->presetNumber);
         items.emplace_back(id, presetName, 0, preset->presetNumber);
     }
+    };
+    if (owner->requiresUIThreadOn() & PluginUIThreadRequirement::State)
+        EventLoop::runTaskOnMainThread(impl);
+    else
+        impl();
 }
 
 int32_t PluginInstanceAU::PresetsSupport::getPresetIndexForId(std::string &id) {
@@ -41,6 +47,7 @@ PresetInfo PluginInstanceAU::PresetsSupport::getPresetInfo(int32_t index) {
 }
 
 void PluginInstanceAU::PresetsSupport::loadPreset(int32_t index) {
+    auto impl = [&] {
     auto& preset = items[(size_t) index];
     AUPreset auPreset{};
     auPreset.presetNumber = preset.index();
@@ -54,6 +61,11 @@ void PluginInstanceAU::PresetsSupport::loadPreset(int32_t index) {
 
     if (auPreset.presetName)
         CFRelease(auPreset.presetName);
+    };
+    if (owner->requiresUIThreadOn() & PluginUIThreadRequirement::State)
+        EventLoop::runTaskOnMainThread(impl);
+    else
+        impl();
 }
 
 #endif
