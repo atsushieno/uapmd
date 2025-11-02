@@ -47,7 +47,7 @@ using uapmd::VirtualMidiDeviceController;
 int GuiApp::run(int argc, const char** /*argv*/, GuiDefaults defaults) {
     (void) argc;
 
-    auto windowingBackend = WindowingBackend::create();
+    auto windowingBackend = uapmd::gui::WindowingBackend::create();
     if (!windowingBackend) {
         std::cerr << "uapmd-service: no windowing backend available" << std::endl;
         return EXIT_FAILURE;
@@ -58,7 +58,7 @@ int GuiApp::run(int argc, const char** /*argv*/, GuiDefaults defaults) {
         return EXIT_FAILURE;
     }
 
-    auto* window = windowingBackend->createWindow("uapmd-service", 960, 720);
+    uapmd::gui::WindowHandle* window = windowingBackend->createWindow("uapmd-service", 960, 720);
     if (!window) {
         std::cerr << "uapmd-service: failed to create window" << std::endl;
         windowingBackend->shutdown();
@@ -71,8 +71,8 @@ int GuiApp::run(int argc, const char** /*argv*/, GuiDefaults defaults) {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ImGui::StyleColorsDark();
 
-    auto imguiPlatformBackend = ImGuiPlatformBackend::create(window);
-    auto imguiRenderer = ImGuiRenderer::create();
+    auto imguiPlatformBackend = uapmd::gui::ImGuiPlatformBackend::create(window);
+    auto imguiRenderer = uapmd::gui::ImGuiRenderer::create();
     if (!imguiPlatformBackend || !imguiRenderer) {
         std::cerr << "uapmd-service: failed to create ImGui backends" << std::endl;
         ImGui::DestroyContext();

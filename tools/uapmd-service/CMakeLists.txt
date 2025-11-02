@@ -103,6 +103,12 @@ if(UAPMD_SERVICE_GUI_ENABLED)
             target_link_libraries(imgui_uapmd PUBLIC opengl32)
         endif()
     endif()
+
+    # Add shared ImGui platform backend library
+    if(NOT TARGET remidy-imgui-shared)
+        add_subdirectory(../remidy-imgui-shared ${CMAKE_CURRENT_BINARY_DIR}/remidy-imgui-shared)
+    endif()
+    target_link_libraries(remidy-imgui-shared PUBLIC imgui_uapmd ${UAPMD_GUI_BACKEND_LIBRARIES})
 endif()
 
 target_include_directories(uapmd-service PRIVATE
@@ -139,7 +145,6 @@ if(UAPMD_SERVICE_GUI_ENABLED)
     target_sources(uapmd-service PRIVATE
             Gui/GuiApp.cpp
             Gui/MainWindow.cpp
-            Gui/PlatformBackend.cpp
     )
 endif()
 
@@ -153,7 +158,7 @@ set(UAPMD_SERVICE_LIBRARIES
 )
 
 if(UAPMD_SERVICE_GUI_ENABLED)
-    list(APPEND UAPMD_SERVICE_LIBRARIES imgui_uapmd ${UAPMD_GUI_BACKEND_LIBRARIES} remidy-gui)
+    list(APPEND UAPMD_SERVICE_LIBRARIES imgui_uapmd ${UAPMD_GUI_BACKEND_LIBRARIES} remidy-gui remidy-imgui-shared)
 endif()
 
 target_link_libraries(uapmd-service PRIVATE ${UAPMD_SERVICE_LIBRARIES})

@@ -2,7 +2,7 @@
 #include "AppModel.hpp"
 #include "gui/MainWindow.hpp"
 #include "ImGuiEventLoop.hpp"
-#include "gui/PlatformBackend.hpp"
+#include "PlatformBackend.hpp"
 #include <cpptrace/from_current.hpp>
 #include <iostream>
 
@@ -46,11 +46,9 @@
 #define REMIDY_SKIP_GL_FRAMEBUFFER_BIND 1
 #endif
 
-using namespace uapmd::gui;
-
 int runMain(int argc, char** argv) {
     // Create windowing backend with priority: SDL3 > SDL2 > GLFW
-    auto windowingBackend = WindowingBackend::create();
+    auto windowingBackend = uapmd::gui::WindowingBackend::create();
     if (!windowingBackend) {
         std::cerr << "Error: No suitable windowing backend found" << std::endl;
         return EXIT_FAILURE;
@@ -65,7 +63,7 @@ int runMain(int argc, char** argv) {
     // backend initialized
 
     // Create window
-    WindowHandle* window = windowingBackend->createWindow("Remidy Plugin Host", 640, 800);
+    uapmd::gui::WindowHandle* window = windowingBackend->createWindow("Remidy Plugin Host", 640, 800);
     if (!window) {
         std::cerr << "Error: Failed to create window" << std::endl;
         windowingBackend->shutdown();
@@ -91,8 +89,8 @@ int runMain(int argc, char** argv) {
     }
 
     // Create ImGui platform and renderer backends
-    auto imguiPlatformBackend = ImGuiPlatformBackend::create(window);
-    auto imguiRenderer = ImGuiRenderer::create();
+    auto imguiPlatformBackend = uapmd::gui::ImGuiPlatformBackend::create(window);
+    auto imguiRenderer = uapmd::gui::ImGuiRenderer::create();
 
     if (!imguiPlatformBackend || !imguiRenderer) {
         std::cerr << "Error: Failed to create ImGui backends" << std::endl;

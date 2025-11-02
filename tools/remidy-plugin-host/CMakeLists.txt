@@ -121,6 +121,12 @@ if(imgui_ADDED)
     endif()
 endif()
 
+# Add shared ImGui platform backend library
+if(NOT TARGET remidy-imgui-shared)
+    add_subdirectory(../remidy-imgui-shared ${CMAKE_CURRENT_BINARY_DIR}/remidy-imgui-shared)
+endif()
+target_link_libraries(remidy-imgui-shared PUBLIC imgui ${BACKEND_LIBRARIES})
+
 target_include_directories(remidy-plugin-host PRIVATE
         ../../external/choc
         ${cmidi2_SOURCE_DIR}
@@ -132,6 +138,7 @@ target_link_libraries(remidy-plugin-host PRIVATE
         cpptrace::cpptrace
         uapmd
         remidy-gui
+        remidy-imgui-shared
 )
 
 # On Linux, CHOC's DesktopWindow uses GTK3; ensure headers and libs are present
@@ -148,7 +155,6 @@ target_sources(remidy-plugin-host PRIVATE
         AppModel.cpp
         gui/MainWindow.cpp
         gui/MidiKeyboard.cpp
-        gui/PlatformBackend.cpp
 )
 
 # Use C++23 like the WebView version
