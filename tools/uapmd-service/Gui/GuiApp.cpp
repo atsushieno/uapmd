@@ -9,22 +9,40 @@
 #include "ImGuiEventLoop.hpp"
 #include "PlatformBackend.hpp"
 
-#ifdef USE_SDL2_BACKEND
-#include <SDL_opengl.h>
-#elif defined(USE_SDL3_BACKEND)
-#if defined(__APPLE__)
-#include <OpenGL/gl3.h>
-#else
-#include <SDL3/SDL_opengl.h>
+#ifdef USE_GLFW_BACKEND
+    #include <GLFW/glfw3.h>
 #endif
-#elif defined(USE_GLFW_BACKEND)
-#include <GLFW/glfw3.h>
-#include <GL/gl.h>
+
+#if defined(__APPLE__)
+    #include <OpenGL/gl3.h>
+#else
+    #if defined(__has_include)
+        #if __has_include(<GL/gl3.h>)
+            #include <GL/gl3.h>
+        #else
+            #ifndef GL_GLEXT_PROTOTYPES
+            #define GL_GLEXT_PROTOTYPES 1
+            #endif
+            #include <GL/gl.h>
+            #include <GL/glext.h>
+        #endif
+    #else
+        #ifndef GL_GLEXT_PROTOTYPES
+        #define GL_GLEXT_PROTOTYPES 1
+        #endif
+        #include <GL/gl.h>
+        #include <GL/glext.h>
+    #endif
 #endif
 
 namespace uapmd::service::gui {
 
 using uapmd::VirtualMidiDeviceController;
+
+// On Linux without a GL loader, some GL3 prototypes may be absent
+#if defined(__linux__)
+#define REMIDY_SKIP_GL_FRAMEBUFFER_BIND 1
+#endif
 
 int GuiApp::run(int argc, const char** /*argv*/, GuiDefaults defaults) {
     (void) argc;
@@ -95,12 +113,18 @@ int GuiApp::run(int argc, const char** /*argv*/, GuiDefaults defaults) {
         // CRITICAL: Make our GL context current BEFORE any ImGui/GL operations
         // Plugins may have grabbed the context during event processing or callbacks
         windowingBackend->makeContextCurrent(window);
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        #endif
 #ifdef GL_DRAW_FRAMEBUFFER
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        #endif
 #endif
 #ifdef GL_READ_FRAMEBUFFER
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        #endif
 #endif
 #ifdef GL_BACK
         glDrawBuffer(GL_BACK);
@@ -118,12 +142,18 @@ int GuiApp::run(int argc, const char** /*argv*/, GuiDefaults defaults) {
 
         // Reassert before executing GL commands; some plugins grab it again mid-frame
         windowingBackend->makeContextCurrent(window);
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        #endif
 #ifdef GL_DRAW_FRAMEBUFFER
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        #endif
 #endif
 #ifdef GL_READ_FRAMEBUFFER
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        #endif
 #endif
 #ifdef GL_BACK
         glDrawBuffer(GL_BACK);

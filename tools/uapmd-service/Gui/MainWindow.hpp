@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <midicci/midicci.hpp>
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <remidy-gui/remidy-gui.hpp>
 

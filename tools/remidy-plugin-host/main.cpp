@@ -8,17 +8,36 @@
 
 #include <imgui.h>
 
-#ifdef USE_SDL2_BACKEND
-    #include <SDL_opengl.h>
-#elif defined(USE_SDL3_BACKEND)
-    #if defined(__APPLE__)
-        #include <OpenGL/gl3.h>
-    #else
-        #include <SDL3/SDL_opengl.h>
-    #endif
-#elif defined(USE_GLFW_BACKEND)
+#ifdef USE_GLFW_BACKEND
     #include <GLFW/glfw3.h>
-    #include <GL/gl.h>
+#endif
+
+// Ensure GL prototypes for framebuffer functions on Linux
+#if defined(__APPLE__)
+    #include <OpenGL/gl3.h>
+#else
+    #if defined(__has_include)
+        #if __has_include(<GL/gl3.h>)
+            #include <GL/gl3.h>
+        #else
+            #ifndef GL_GLEXT_PROTOTYPES
+            #define GL_GLEXT_PROTOTYPES 1
+            #endif
+            #include <GL/gl.h>
+            #include <GL/glext.h>
+        #endif
+    #else
+        #ifndef GL_GLEXT_PROTOTYPES
+        #define GL_GLEXT_PROTOTYPES 1
+        #endif
+        #include <GL/gl.h>
+        #include <GL/glext.h>
+    #endif
+#endif
+
+// On Linux without a GL loader, some GL3 prototypes may be absent
+#if defined(__linux__)
+#define REMIDY_SKIP_GL_FRAMEBUFFER_BIND 1
 #endif
 
 using namespace uapmd::gui;
@@ -121,12 +140,18 @@ int runMain(int argc, char** argv) {
         // CRITICAL: Make our GL context current BEFORE any ImGui/GL operations
         // Plugins may have grabbed the context during event processing or callbacks
         windowingBackend->makeContextCurrent(window);
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        #endif
 #ifdef GL_DRAW_FRAMEBUFFER
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        #endif
 #endif
 #ifdef GL_READ_FRAMEBUFFER
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        #endif
 #endif
 #ifdef GL_BACK
         glDrawBuffer(GL_BACK);
@@ -155,12 +180,18 @@ int runMain(int argc, char** argv) {
 
         // Reassert before we execute GL commands in case a plugin reclaimed it mid-frame
         windowingBackend->makeContextCurrent(window);
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        #endif
 #ifdef GL_DRAW_FRAMEBUFFER
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        #endif
 #endif
 #ifdef GL_READ_FRAMEBUFFER
+        #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        #endif
 #endif
 #ifdef GL_BACK
         glDrawBuffer(GL_BACK);
