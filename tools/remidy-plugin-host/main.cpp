@@ -35,8 +35,9 @@
     #endif
 #endif
 
-// On Linux without a GL loader, some GL3 prototypes may be absent
-#if defined(__linux__)
+// On Linux/Windows without a GL loader, some GL3 prototypes may be absent
+// Windows <GL/gl.h> only provides OpenGL 1.1, needs GLEW/GLAD for modern functions
+#if defined(__linux__) || defined(_WIN32)
 #define REMIDY_SKIP_GL_FRAMEBUFFER_BIND 1
 #endif
 
