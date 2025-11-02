@@ -40,15 +40,15 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
 
     // FIXME: implement blocklist
 
-    // FIXME: this should be unblocked
-
-    // It depends on unimplemented perform_edit() and restart_component(). Results in unresponsiveness.
-    if (format->name() == "VST3" && displayName == "Massive X")
+    // crashes for some unknown reason nowadays...
+    if (format->name() == "VST3" && displayName == "FM8 MFX")
         skip = true;
-    if (format->name() == "AU" && displayName == "Massive X")
+    if (format->name() == "AU" && displayName == "FM8 MFX")
         skip = true;
 
     // Not sure when it started, but their AU version stalls while instantiating.
+    // Their individual plugin could be instantiated on remidy-plugin-host except for #TCrossOver,
+    // but the scanner stalls at anything. So we have to mark them as blocked.
     if (format->name() == "AU" && vendor == "Tracktion")
         skip = true;
 

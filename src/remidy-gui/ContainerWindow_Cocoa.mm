@@ -1,5 +1,5 @@
 #if defined(__APPLE__)
-#include <remidy-gui/ContainerWindow.hpp>
+#include <remidy-gui/remidy-gui.hpp>
 #import <Cocoa/Cocoa.h>
 
 // Window delegate to handle close events

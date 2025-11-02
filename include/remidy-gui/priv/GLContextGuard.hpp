@@ -13,7 +13,7 @@
     #include <GL/glx.h>
 #endif
 
-namespace remidy {
+namespace remidy::gui {
 
     #if defined(__APPLE__)
         class GLContextGuard {
@@ -78,4 +78,4 @@ namespace remidy {
         };
     #endif
 
-} // namespace remidy
+} // namespace remidy::gui

@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <uapmd/uapmd.hpp>
 #include "MidiKeyboard.hpp"
-#include <remidy-gui/ContainerWindow.hpp>
+#include <remidy-gui/remidy-gui.hpp>
 
 // Forward declarations for different window types
 struct SDL_Window;

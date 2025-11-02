@@ -1,5 +1,5 @@
 #if defined(__linux__) && !defined(__APPLE__)
-#include <remidy-gui/ContainerWindow.hpp>
+#include <remidy-gui/remidy-gui.hpp>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>

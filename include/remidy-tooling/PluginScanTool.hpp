@@ -49,6 +49,9 @@ namespace remidy_tooling {
             catalog.save(fileToSave);
         }
 
+        // We have some plugins that cause either freezes or runtime crashes that prevents our business logic.
+        // That does not necessarily mean that the plugin cannot be instantiated in general. It's a scan-time-only thing.
+        // We enumerate catalog entries but skip instancing validation.
         bool safeToInstantiate(PluginFormat* format, PluginCatalogEntry* entry);
 
         bool shouldCreateInstanceOnUIThread(PluginFormat* format, PluginCatalogEntry* entry);

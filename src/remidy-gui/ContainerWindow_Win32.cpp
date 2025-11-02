@@ -1,5 +1,5 @@
 #if defined(_WIN32)
-#include <remidy-gui/ContainerWindow.hpp>
+#include <remidy-gui/remidy-gui.hpp>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <string>

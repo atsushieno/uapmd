@@ -10,7 +10,7 @@
 #include <vector>
 
 #include <remidy-tooling/PluginScanTool.hpp>
-#include <remidy-gui/ContainerWindow.hpp>
+#include <remidy-gui/remidy-gui.hpp>
 
 #include "../Controller/VirtualMidiDeviceController.hpp"
 

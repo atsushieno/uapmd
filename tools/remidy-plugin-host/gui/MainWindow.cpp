@@ -1,6 +1,6 @@
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
-#include <remidy-gui/ContainerWindow.hpp>
+#include <remidy-gui/remidy-gui.hpp>
 #include <imgui.h>
 #include <iostream>
 #include <algorithm>

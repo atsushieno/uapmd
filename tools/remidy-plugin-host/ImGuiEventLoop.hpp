@@ -1,7 +1,7 @@
 #pragma once
 
 #include <remidy/priv/event-loop.hpp>
-#include <remidy/priv/gl-context-guard.hpp>
+#include <remidy-gui/remidy-gui.hpp>
 #include <queue>
 #include <mutex>
 #include <functional>
@@ -47,7 +47,7 @@ namespace uapmd::gui {
             while (!taskQueue_.empty()) {
                 auto task = std::move(taskQueue_.front());
                 taskQueue_.pop();
-                remidy::GLContextGuard glGuard;
+                remidy::gui::GLContextGuard glGuard;
                 task();
             }
         }
