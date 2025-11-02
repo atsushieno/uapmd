@@ -128,6 +128,24 @@ namespace remidy {
             std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
         };
 
+        struct HostTransportInfo {
+            double currentBeat{0.0};
+            double currentTempo{120.0};
+            double currentSample{0.0};
+            double cycleStart{0.0};
+            double cycleEnd{0.0};
+            uint32_t timeSigNumerator{4};
+            uint32_t timeSigDenominator{4};
+            bool isPlaying{false};
+            bool transportStateChanged{false};
+            double sampleRate{44100.0};
+        };
+
+        void initializeHostCallbacks();
+        static OSStatus hostCallbackGetBeatAndTempo(void* inHostUserData, Float64* outCurrentBeat, Float64* outCurrentTempo);
+        static OSStatus hostCallbackGetMusicalTimeLocation(void* inHostUserData, UInt32* outDeltaSampleOffsetToNextBeat, Float32* outTimeSigNumerator, UInt32* outTimeSigDenominator, Float64* outCurrentMeasureDownBeat);
+        static OSStatus hostCallbackGetTransportState(void* inHostUserData, Boolean* outIsPlaying, Boolean* outTransportStateChanged, Float64* outCurrentSampleInTimeline, Boolean* outIsCycling, Float64* outCycleStartBeat, Float64* outCycleEndBeat);
+
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
         static OSStatus audioInputRenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) {
             return ((PluginInstanceAU *)inRefCon)->audioInputRenderCallback(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, ioData);
@@ -150,6 +168,8 @@ namespace remidy {
         AudioBuses* audio_buses{};
         AURenderCallbackStruct audio_render_callback{};
         AUUmpInputDispatcher ump_input_dispatcher{this};
+        HostTransportInfo host_transport_info{};
+        HostCallbackInfo host_callback_info{};
 
     protected:
         PluginFormatAU *format;

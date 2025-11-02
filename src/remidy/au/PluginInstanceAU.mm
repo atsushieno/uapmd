@@ -1,6 +1,7 @@
 #if __APPLE__
 
 #include "PluginFormatAU.hpp"
+#include <cmath>
 
 remidy::PluginInstanceAU::PluginInstanceAU(
         PluginFormatAU *format,
@@ -13,6 +14,7 @@ remidy::PluginInstanceAU::PluginInstanceAU(
     name = retrieveCFStringRelease([&](CFStringRef& cfName) -> void { AudioComponentCopyName(component, &cfName); });
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     audio_buses = new AudioBuses(this);
+    initializeHostCallbacks();
 }
 
 remidy::PluginInstanceAU::~PluginInstanceAU() {
@@ -31,6 +33,27 @@ remidy::PluginInstanceAU::~PluginInstanceAU() {
         free(auDataIn);
     for (auto auDataOut : auDataOuts)
         free(auDataOut);
+}
+
+void remidy::PluginInstanceAU::initializeHostCallbacks() {
+    host_transport_info = HostTransportInfo{};
+    host_callback_info = HostCallbackInfo{};
+    host_callback_info.hostUserData = this;
+    host_callback_info.beatAndTempoProc = &PluginInstanceAU::hostCallbackGetBeatAndTempo;
+    host_callback_info.musicalTimeLocationProc = &PluginInstanceAU::hostCallbackGetMusicalTimeLocation;
+    host_callback_info.transportStateProc = &PluginInstanceAU::hostCallbackGetTransportState;
+    host_callback_info.transportStateProc2 = nullptr;
+
+    auto status = AudioUnitSetProperty(instance,
+        kAudioUnitProperty_HostCallbacks,
+        kAudioUnitScope_Global,
+        0,
+        &host_callback_info,
+        sizeof(host_callback_info));
+
+    if (status != noErr) {
+        logger()->logWarning("%s: failed to set kAudioUnitProperty_HostCallbacks. Status: %d", name.c_str(), status);
+    }
 }
 
 OSStatus remidy::PluginInstanceAU::audioInputRenderCallback(
@@ -65,6 +88,7 @@ remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& con
     }
 
     sampleRate((double) configuration.sampleRate);
+    host_transport_info.sampleRate = static_cast<double>(configuration.sampleRate);
 
     audio_content_type = configuration.dataType;
 
@@ -138,10 +162,15 @@ remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& con
 
 remidy::StatusCode remidy::PluginInstanceAU::startProcessing() {
     process_timestamp.mSampleTime = 0;
+    host_transport_info.currentSample = 0.0;
+    host_transport_info.currentBeat = 0.0;
+    host_transport_info.transportStateChanged = true;
     return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::PluginInstanceAU::stopProcessing() {
+    host_transport_info.isPlaying = false;
+    host_transport_info.transportStateChanged = true;
     return StatusCode::OK;
 }
 
@@ -170,6 +199,16 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
 
     process_timestamp.mHostTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     process_timestamp.mFlags = kAudioTimeStampSampleTimeValid | kAudioTimeStampHostTimeValid;
+
+    host_transport_info.isPlaying = true;
+    host_transport_info.transportStateChanged = false;
+    host_transport_info.currentSample = process_timestamp.mSampleTime;
+    if (host_transport_info.currentTempo > 0.0 && host_transport_info.sampleRate > 0.0) {
+        double seconds = process_timestamp.mSampleTime / host_transport_info.sampleRate;
+        host_transport_info.currentBeat = seconds * (host_transport_info.currentTempo / 60.0);
+    } else {
+        host_transport_info.currentBeat = 0.0;
+    }
 
     // FIXME: we still don't initialize non-main buses, so only deal with the main bus so far.
     //for (size_t bus = 0, n = auDataOuts.size(); bus < n; bus++, bus++) {
@@ -201,6 +240,11 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
         }
     }
     process_timestamp.mSampleTime += process.frameCount();
+    host_transport_info.currentSample = process_timestamp.mSampleTime;
+    if (host_transport_info.currentTempo > 0.0 && host_transport_info.sampleRate > 0.0) {
+        double seconds = process_timestamp.mSampleTime / host_transport_info.sampleRate;
+        host_transport_info.currentBeat = seconds * (host_transport_info.currentTempo / 60.0);
+    }
 
     return StatusCode::OK;
 }
@@ -234,6 +278,89 @@ remidy::StatusCode remidy::PluginInstanceAUv3::sampleRate(double sampleRate) {
     // FIXME: implement
     logger()->logWarning("AudioPluginInstanceAUv3::sampleRate() not implemented");
     return StatusCode::OK;
+}
+
+OSStatus remidy::PluginInstanceAU::hostCallbackGetBeatAndTempo(void* inHostUserData, Float64* outCurrentBeat, Float64* outCurrentTempo) {
+    auto* instance = static_cast<PluginInstanceAU*>(inHostUserData);
+    if (!instance)
+        return kAudio_ParamError;
+
+    if (outCurrentBeat)
+        *outCurrentBeat = instance->host_transport_info.currentBeat;
+    if (outCurrentTempo)
+        *outCurrentTempo = instance->host_transport_info.currentTempo;
+
+    return noErr;
+}
+
+OSStatus remidy::PluginInstanceAU::hostCallbackGetMusicalTimeLocation(
+    void* inHostUserData,
+    UInt32* outDeltaSampleOffsetToNextBeat,
+    Float32* outTimeSigNumerator,
+    UInt32* outTimeSigDenominator,
+    Float64* outCurrentMeasureDownBeat) {
+
+    auto* instance = static_cast<PluginInstanceAU*>(inHostUserData);
+    if (!instance)
+        return kAudio_ParamError;
+
+    auto& info = instance->host_transport_info;
+
+    if (outDeltaSampleOffsetToNextBeat) {
+        if (info.currentTempo > 0.0 && info.sampleRate > 0.0) {
+            double samplesPerBeat = info.sampleRate * 60.0 / info.currentTempo;
+            double beatFraction = std::fmod(info.currentBeat, 1.0);
+            double remainingBeats = (beatFraction > 0.0) ? (1.0 - beatFraction) : 0.0;
+            *outDeltaSampleOffsetToNextBeat = static_cast<UInt32>(remainingBeats * samplesPerBeat);
+        } else {
+            *outDeltaSampleOffsetToNextBeat = 0;
+        }
+    }
+    if (outTimeSigNumerator)
+        *outTimeSigNumerator = static_cast<Float32>(info.timeSigNumerator);
+    if (outTimeSigDenominator)
+        *outTimeSigDenominator = info.timeSigDenominator;
+    if (outCurrentMeasureDownBeat) {
+        if (info.timeSigNumerator > 0) {
+            double measureIndex = std::floor(info.currentBeat / static_cast<double>(info.timeSigNumerator));
+            *outCurrentMeasureDownBeat = measureIndex * static_cast<double>(info.timeSigNumerator);
+        } else {
+            *outCurrentMeasureDownBeat = 0.0;
+        }
+    }
+
+    return noErr;
+}
+
+OSStatus remidy::PluginInstanceAU::hostCallbackGetTransportState(
+    void* inHostUserData,
+    Boolean* outIsPlaying,
+    Boolean* outTransportStateChanged,
+    Float64* outCurrentSampleInTimeline,
+    Boolean* outIsCycling,
+    Float64* outCycleStartBeat,
+    Float64* outCycleEndBeat) {
+
+    auto* instance = static_cast<PluginInstanceAU*>(inHostUserData);
+    if (!instance)
+        return kAudio_ParamError;
+
+    auto& info = instance->host_transport_info;
+
+    if (outIsPlaying)
+        *outIsPlaying = info.isPlaying ? 1 : 0;
+    if (outTransportStateChanged)
+        *outTransportStateChanged = info.transportStateChanged ? 1 : 0;
+    if (outCurrentSampleInTimeline)
+        *outCurrentSampleInTimeline = info.currentSample;
+    if (outIsCycling)
+        *outIsCycling = 0;
+    if (outCycleStartBeat)
+        *outCycleStartBeat = info.cycleStart;
+    if (outCycleEndBeat)
+        *outCycleEndBeat = info.cycleEnd;
+
+    return noErr;
 }
 
 #endif
