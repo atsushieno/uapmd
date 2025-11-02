@@ -15,7 +15,12 @@
 // Ensure GL prototypes for framebuffer functions on Linux
 #if defined(__APPLE__)
     #include <OpenGL/gl3.h>
+#elif defined(_WIN32)
+    // Windows: only include basic OpenGL 1.1 headers
+    // Modern GL functions would need GLEW/GLAD, but we skip those on Windows
+    #include <GL/gl.h>
 #else
+    // Linux: try to get GL3 headers with extensions
     #if defined(__has_include)
         #if __has_include(<GL/gl3.h>)
             #include <GL/gl3.h>
