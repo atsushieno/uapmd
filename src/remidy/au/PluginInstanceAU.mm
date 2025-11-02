@@ -42,7 +42,7 @@ void remidy::PluginInstanceAU::initializeHostCallbacks() {
     host_callback_info.beatAndTempoProc = &PluginInstanceAU::hostCallbackGetBeatAndTempo;
     host_callback_info.musicalTimeLocationProc = &PluginInstanceAU::hostCallbackGetMusicalTimeLocation;
     host_callback_info.transportStateProc = &PluginInstanceAU::hostCallbackGetTransportState;
-    host_callback_info.transportStateProc2 = nullptr;
+    host_callback_info.transportStateProc2 = &PluginInstanceAU::hostCallbackGetTransportState2;
 
     auto status = AudioUnitSetProperty(instance,
         kAudioUnitProperty_HostCallbacks,
@@ -349,6 +349,40 @@ OSStatus remidy::PluginInstanceAU::hostCallbackGetTransportState(
 
     if (outIsPlaying)
         *outIsPlaying = info.isPlaying ? 1 : 0;
+    if (outTransportStateChanged)
+        *outTransportStateChanged = info.transportStateChanged ? 1 : 0;
+    if (outCurrentSampleInTimeline)
+        *outCurrentSampleInTimeline = info.currentSample;
+    if (outIsCycling)
+        *outIsCycling = 0;
+    if (outCycleStartBeat)
+        *outCycleStartBeat = info.cycleStart;
+    if (outCycleEndBeat)
+        *outCycleEndBeat = info.cycleEnd;
+
+    return noErr;
+}
+
+OSStatus remidy::PluginInstanceAU::hostCallbackGetTransportState2(
+    void* inHostUserData,
+    Boolean* outIsPlaying,
+    Boolean* outIsRecording,
+    Boolean* outTransportStateChanged,
+    Float64* outCurrentSampleInTimeline,
+    Boolean* outIsCycling,
+    Float64* outCycleStartBeat,
+    Float64* outCycleEndBeat) {
+
+    auto* instance = static_cast<PluginInstanceAU*>(inHostUserData);
+    if (!instance)
+        return kAudio_ParamError;
+
+    auto& info = instance->host_transport_info;
+
+    if (outIsPlaying)
+        *outIsPlaying = info.isPlaying ? 1 : 0;
+    if (outIsRecording)
+        *outIsRecording = info.isRecording ? 1 : 0;
     if (outTransportStateChanged)
         *outTransportStateChanged = info.transportStateChanged ? 1 : 0;
     if (outCurrentSampleInTimeline)

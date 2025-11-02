@@ -137,6 +137,7 @@ namespace remidy {
             uint32_t timeSigNumerator{4};
             uint32_t timeSigDenominator{4};
             bool isPlaying{false};
+            bool isRecording{false};
             bool transportStateChanged{false};
             double sampleRate{44100.0};
         };
@@ -145,6 +146,7 @@ namespace remidy {
         static OSStatus hostCallbackGetBeatAndTempo(void* inHostUserData, Float64* outCurrentBeat, Float64* outCurrentTempo);
         static OSStatus hostCallbackGetMusicalTimeLocation(void* inHostUserData, UInt32* outDeltaSampleOffsetToNextBeat, Float32* outTimeSigNumerator, UInt32* outTimeSigDenominator, Float64* outCurrentMeasureDownBeat);
         static OSStatus hostCallbackGetTransportState(void* inHostUserData, Boolean* outIsPlaying, Boolean* outTransportStateChanged, Float64* outCurrentSampleInTimeline, Boolean* outIsCycling, Float64* outCycleStartBeat, Float64* outCycleEndBeat);
+        static OSStatus hostCallbackGetTransportState2(void* inHostUserData, Boolean* outIsPlaying, Boolean* outIsRecording, Boolean* outTransportStateChanged, Float64* outCurrentSampleInTimeline, Boolean* outIsCycling, Float64* outCycleStartBeat, Float64* outCycleEndBeat);
 
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
         static OSStatus audioInputRenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) {
