@@ -12,6 +12,7 @@
 #include <midicci/midicci.hpp>
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <remidy-gui/remidy-gui.hpp>
+#include <PluginUIHelpers.hpp>
 
 #include "../Controller/VirtualMidiDeviceController.hpp"
 
@@ -38,12 +39,7 @@ public:
     void shutdown();
 
 private:
-    struct PluginEntry {
-        std::string format;
-        std::string pluginId;
-        std::string displayName;
-        std::string vendor;
-    };
+    using PluginEntry = uapmd::gui::PluginEntry;
 
     struct PluginInstanceState {
         std::string pluginName;

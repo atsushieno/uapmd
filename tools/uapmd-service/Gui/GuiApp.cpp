@@ -6,8 +6,8 @@
 #include <imgui.h>
 #include <remidy/remidy.hpp>
 
-#include "ImGuiEventLoop.hpp"
-#include "PlatformBackend.hpp"
+#include <ImGuiEventLoop.hpp>
+#include <PlatformBackend.hpp>
 
 #ifdef USE_GLFW_BACKEND
     #include <GLFW/glfw3.h>
@@ -91,7 +91,7 @@ int GuiApp::run(int argc, const char** /*argv*/, GuiDefaults defaults) {
         return EXIT_FAILURE;
     }
 
-    auto eventLoop = std::make_unique<ImGuiEventLoop>();
+    auto eventLoop = std::make_unique<uapmd::gui::ImGuiEventLoop>();
     auto* eventLoopPtr = eventLoop.get();
     remidy::setEventLoop(eventLoop.release());
     remidy::EventLoop::initializeOnUIThread();

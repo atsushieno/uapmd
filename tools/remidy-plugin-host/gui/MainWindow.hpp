@@ -8,19 +8,11 @@
 #include <uapmd/uapmd.hpp>
 #include "MidiKeyboard.hpp"
 #include <remidy-gui/remidy-gui.hpp>
+#include <PluginUIHelpers.hpp>
 
 // Forward declarations for different window types
 struct SDL_Window;
 struct GLFWwindow;
-
-namespace uapmd::gui {
-    struct PluginEntry {
-        std::string format;
-        std::string id;
-        std::string name;
-        std::string vendor;
-    };
-}
 
 namespace uapmd::gui {
     class MainWindow {
@@ -53,7 +45,7 @@ namespace uapmd::gui {
 
         // Plugin selection
         bool showPluginSelector_ = false;
-        std::vector<uapmd::gui::PluginEntry> availablePlugins_;
+        std::vector<PluginEntry> availablePlugins_;
         std::string selectedPluginFormat_;
         std::string selectedPluginId_;
         char searchFilter_[256] = "";

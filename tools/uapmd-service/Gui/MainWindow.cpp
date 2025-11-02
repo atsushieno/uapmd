@@ -153,14 +153,14 @@ void MainWindow::startPluginScan(bool forceRescan) {
             for (auto* entry : plugins) {
                 PluginEntry item{
                     .format = entry->format(),
-                    .pluginId = entry->pluginId(),
-                    .displayName = entry->displayName(),
+                    .id = entry->pluginId(),
+                    .name = entry->displayName(),
                     .vendor = entry->vendorName()
                 };
                 collected.push_back(std::move(item));
             }
             std::sort(collected.begin(), collected.end(),
-                      [](const PluginEntry& a, const PluginEntry& b) { return a.displayName < b.displayName; });
+                      [](const PluginEntry& a, const PluginEntry& b) { return a.name < b.name; });
         }
 
         finalizePluginScan(std::move(collected), scanResult, errorMessage);
@@ -181,7 +181,7 @@ void MainWindow::finalizePluginScan(std::vector<PluginEntry>&& entries, int scan
         }
         if (selectedPlugin_ >= 0 && selectedPlugin_ < static_cast<int>(plugins_.size())) {
             selectedPluginFormat_ = plugins_[static_cast<size_t>(selectedPlugin_)].format;
-            selectedPluginId_ = plugins_[static_cast<size_t>(selectedPlugin_)].pluginId;
+            selectedPluginId_ = plugins_[static_cast<size_t>(selectedPlugin_)].id;
         } else {
             selectedPluginFormat_.clear();
             selectedPluginId_.clear();
@@ -199,9 +199,9 @@ std::vector<int> MainWindow::filteredPluginIndices(const std::vector<PluginEntry
             indices.push_back(static_cast<int>(i));
             continue;
         }
-        auto name = toLower(plugins[i].displayName);
+        auto name = toLower(plugins[i].name);
         auto vendor = toLower(plugins[i].vendor);
-        auto pluginId = toLower(plugins[i].pluginId);
+        auto pluginId = toLower(plugins[i].id);
         if (name.find(filter) != std::string::npos || vendor.find(filter) != std::string::npos ||
             pluginId.find(filter) != std::string::npos) {
             indices.push_back(static_cast<int>(i));
@@ -250,9 +250,9 @@ void MainWindow::renderPluginSelector() {
                             int delta = 0;
                             switch (s->ColumnIndex) {
                                 case 0: delta = a.format.compare(b.format); break;
-                                case 1: delta = a.displayName.compare(b.displayName); break;
+                                case 1: delta = a.name.compare(b.name); break;
                                 case 2: delta = a.vendor.compare(b.vendor); break;
-                                case 3: delta = a.pluginId.compare(b.pluginId); break;
+                                case 3: delta = a.id.compare(b.id); break;
                                 default: break;
                             }
                             if (delta != 0) {
@@ -260,9 +260,9 @@ void MainWindow::renderPluginSelector() {
                             }
                         }
                         // Tiebreaker for deterministic order
-                        if (int t = a.displayName.compare(b.displayName); t != 0) return t < 0;
+                        if (int t = a.name.compare(b.name); t != 0) return t < 0;
                         if (int t = a.vendor.compare(b.vendor); t != 0) return t < 0;
-                        if (int t = a.pluginId.compare(b.pluginId); t != 0) return t < 0;
+                        if (int t = a.id.compare(b.id); t != 0) return t < 0;
                         return a.format < b.format;
                     };
                     std::sort(visible.begin(), visible.end(), cmp);
@@ -275,24 +275,24 @@ void MainWindow::renderPluginSelector() {
             ImGui::TableNextRow();
 
             ImGui::TableSetColumnIndex(0);
-            bool selected = (selectedPluginFormat_ == plugin.format && selectedPluginId_ == plugin.pluginId);
-            std::string selectableId = std::format("##{}::{}::{}", plugin.format, plugin.pluginId, index);
+            bool selected = (selectedPluginFormat_ == plugin.format && selectedPluginId_ == plugin.id);
+            std::string selectableId = std::format("##{}::{}::{}", plugin.format, plugin.id, index);
             if (ImGui::Selectable(selectableId.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns)) {
                 selectedPlugin_ = index;
                 selectedPluginFormat_ = plugin.format;
-                selectedPluginId_ = plugin.pluginId;
+                selectedPluginId_ = plugin.id;
             }
             ImGui::SameLine();
             ImGui::TextUnformatted(plugin.format.c_str());
 
             ImGui::TableSetColumnIndex(1);
-            ImGui::TextUnformatted(plugin.displayName.c_str());
+            ImGui::TextUnformatted(plugin.name.c_str());
 
             ImGui::TableSetColumnIndex(2);
             ImGui::TextUnformatted(plugin.vendor.c_str());
 
             ImGui::TableSetColumnIndex(3);
-            ImGui::TextUnformatted(plugin.pluginId.c_str());
+            ImGui::TextUnformatted(plugin.id.c_str());
         }
 
         ImGui::EndTable();
@@ -671,7 +671,7 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex, const TrackDestinatio
         }
         plugin = plugins_[pluginIndex];
         selectedPluginFormat_ = plugin.format;
-        selectedPluginId_ = plugin.pluginId;
+        selectedPluginId_ = plugin.id;
     }
 
     auto state = std::make_shared<DeviceState>();
@@ -681,7 +681,7 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex, const TrackDestinatio
     }
     state->label = bufferToString(deviceNameInput_);
     if (state->label.empty()) {
-        state->label = std::format("{} [{}]", plugin.displayName, plugin.format);
+        state->label = std::format("{} [{}]", plugin.name, plugin.format);
     }
     state->statusMessage = destination ? std::format("Adding to track {}...", destination->trackIndex + 1)
                                        : "Instantiating plugin...";
@@ -690,7 +690,7 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex, const TrackDestinatio
     std::string errorMessage;
     int32_t targetTrackIndex = destination ? destination->trackIndex : -1;
     auto device = controller_.createDevice(state->apiName, state->label, defaultManufacturer_, defaultVersion_,
-                                           targetTrackIndex, plugin.format, plugin.pluginId, errorMessage);
+                                           targetTrackIndex, plugin.format, plugin.id, errorMessage);
 
     if (!device) {
         std::lock_guard guard(state->mutex);
@@ -721,9 +721,9 @@ void MainWindow::createDeviceForPlugin(size_t pluginIndex, const TrackDestinatio
         if (startStatus == 0) {
             auto& node = state->pluginInstances[device->instanceId()];
             node.instanceId = device->instanceId();
-            node.pluginName = plugin.displayName;
+            node.pluginName = plugin.name;
             node.pluginFormat = plugin.format;
-            node.pluginId = plugin.pluginId;
+            node.pluginId = plugin.id;
             node.statusMessage = std::format("Plugin ready (instance {})", node.instanceId);
             node.instantiating = false;
             node.hasError = false;
@@ -789,8 +789,8 @@ void MainWindow::attemptDefaultDeviceCreation() {
     auto format = toLower(defaults_.formatName);
 
     auto matches = [&](const PluginEntry& entry, bool exact) {
-        auto entryName = toLower(entry.displayName);
-        auto entryId = toLower(entry.pluginId);
+        auto entryName = toLower(entry.name);
+        auto entryId = toLower(entry.id);
         if (!format.empty() && toLower(entry.format) != format) {
             return false;
         }
@@ -820,11 +820,11 @@ void MainWindow::attemptDefaultDeviceCreation() {
     if (match) {
         selectedPlugin_ = static_cast<int>(*match);
         selectedPluginFormat_ = pluginsCopy[*match].format;
-        selectedPluginId_ = pluginsCopy[*match].pluginId;
+        selectedPluginId_ = pluginsCopy[*match].id;
         createDeviceForPlugin(*match, nullptr);
         {
             std::lock_guard lock(pluginMutex_);
-            pluginScanMessage_ = std::format("Auto-instantiated {}", pluginsCopy[*match].displayName);
+            pluginScanMessage_ = std::format("Auto-instantiated {}", pluginsCopy[*match].name);
         }
     } else {
         if (!defaults_.pluginName.empty()) {

@@ -8,18 +8,23 @@
 #include <remidy/priv/event-loop.hpp>
 #include <remidy-gui/remidy-gui.hpp>
 
-namespace uapmd::service::gui {
+namespace uapmd::gui {
 
+/**
+ * ImGui-compatible event loop for Remidy.
+ * Processes tasks queued from audio threads safely on the UI thread.
+ * Shared between remidy-plugin-host and uapmd-service.
+ */
 class ImGuiEventLoop : public remidy::EventLoop {
 private:
     std::queue<std::function<void()>> taskQueue_;
     std::mutex queueMutex_;
-    std::thread::id mainThreadId_{std::this_thread::get_id()};
+    std::thread::id mainThreadId_;
     bool running_ = false;
 
 protected:
     void initializeOnUIThreadImpl() override {
-        // nothing extra for ImGui loop
+        // ImGui loop is already initialized on main thread
     }
 
     bool runningOnMainThreadImpl() override {
@@ -40,6 +45,12 @@ protected:
     }
 
 public:
+    ImGuiEventLoop() : mainThreadId_(std::this_thread::get_id()) {}
+
+    /**
+     * Process all queued tasks. Call this in the main render loop.
+     * This swaps the queue before processing to minimize lock contention.
+     */
     void processQueuedTasks() {
         std::queue<std::function<void()>> localQueue;
         {
@@ -54,9 +65,9 @@ public:
         }
     }
 
-    bool running() const {
+    bool isRunning() const {
         return running_;
     }
 };
 
-} // namespace uapmd::service::gui
+} // namespace uapmd::gui
