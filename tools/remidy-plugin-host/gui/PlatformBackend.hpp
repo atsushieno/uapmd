@@ -68,6 +68,12 @@ public:
     virtual void getDrawableSize(WindowHandle* window, int* width, int* height) = 0;
 
     /**
+     * Make the GL context current for this window
+     * Call this before any GL operations to ensure correct context
+     */
+    virtual void makeContextCurrent(WindowHandle* window) = 0;
+
+    /**
      * Shutdown the windowing system
      */
     virtual void shutdown() = 0;

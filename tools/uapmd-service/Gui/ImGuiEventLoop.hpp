@@ -6,6 +6,7 @@
 #include <thread>
 
 #include <remidy/priv/event-loop.hpp>
+#include <remidy/priv/gl-context-guard.hpp>
 
 namespace uapmd::service::gui {
 
@@ -48,6 +49,7 @@ public:
         while (!localQueue.empty()) {
             auto task = std::move(localQueue.front());
             localQueue.pop();
+            remidy::GLContextGuard glGuard;
             task();
         }
     }

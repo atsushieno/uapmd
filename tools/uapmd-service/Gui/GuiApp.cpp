@@ -12,7 +12,11 @@
 #ifdef USE_SDL2_BACKEND
 #include <SDL_opengl.h>
 #elif defined(USE_SDL3_BACKEND)
+#if defined(__APPLE__)
+#include <OpenGL/gl3.h>
+#else
 #include <SDL3/SDL_opengl.h>
+#endif
 #elif defined(USE_GLFW_BACKEND)
 #include <GLFW/glfw3.h>
 #include <GL/gl.h>
@@ -88,6 +92,21 @@ int GuiApp::run(int argc, const char** /*argv*/, GuiDefaults defaults) {
 
         eventLoopPtr->processQueuedTasks();
 
+        // CRITICAL: Make our GL context current BEFORE any ImGui/GL operations
+        // Plugins may have grabbed the context during event processing or callbacks
+        windowingBackend->makeContextCurrent(window);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#ifdef GL_DRAW_FRAMEBUFFER
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+#endif
+#ifdef GL_READ_FRAMEBUFFER
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+#endif
+#ifdef GL_BACK
+        glDrawBuffer(GL_BACK);
+        glReadBuffer(GL_BACK);
+#endif
+
         imguiRenderer->newFrame();
         imguiPlatformBackend->newFrame();
         ImGui::NewFrame();
@@ -96,6 +115,21 @@ int GuiApp::run(int argc, const char** /*argv*/, GuiDefaults defaults) {
         mainWindow.update();
 
         ImGui::Render();
+
+        // Reassert before executing GL commands; some plugins grab it again mid-frame
+        windowingBackend->makeContextCurrent(window);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#ifdef GL_DRAW_FRAMEBUFFER
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+#endif
+#ifdef GL_READ_FRAMEBUFFER
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+#endif
+#ifdef GL_BACK
+        glDrawBuffer(GL_BACK);
+        glReadBuffer(GL_BACK);
+#endif
+
         int displayW = 0;
         int displayH = 0;
         windowingBackend->getDrawableSize(window, &displayW, &displayH);

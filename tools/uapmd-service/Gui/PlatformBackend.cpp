@@ -3,6 +3,10 @@
 #include <iostream>
 #include <stdexcept>
 
+#ifdef __APPLE__
+#include <choc/platform/choc_ObjectiveCHelpers.h>
+#endif
+
 #ifdef USE_SDL3_BACKEND
 #include <SDL3/SDL.h>
 #include <imgui_impl_sdl3.h>
@@ -30,6 +34,10 @@ class SDL3WindowingBackend : public WindowingBackend {
 private:
     bool initialized = false;
     WindowHandle* currentWindow = nullptr;
+    SDL_GLContext glContext = nullptr;
+#ifdef __APPLE__
+    id originalView = nil;
+#endif
 
 public:
     bool initialize() override {
@@ -58,15 +66,29 @@ public:
             return nullptr;
         }
 
-        SDL_GLContext context = SDL_GL_CreateContext(window);
-        if (!context) {
+        glContext = SDL_GL_CreateContext(window);
+        if (!glContext) {
             std::cerr << "SDL3 GL Context Error: " << SDL_GetError() << std::endl;
             SDL_DestroyWindow(window);
             return nullptr;
         }
 
-        SDL_GL_MakeCurrent(window, context);
+        SDL_GL_MakeCurrent(window, glContext);
         SDL_GL_SetSwapInterval(1);
+
+#ifdef __APPLE__
+        if (originalView) {
+            choc::objc::call<void>(originalView, "release");
+            originalView = nil;
+        }
+        id nsContext = (id)glContext;
+        if (nsContext) {
+            id currentView = choc::objc::call<id>(nsContext, "view");
+            if (currentView) {
+                originalView = choc::objc::call<id>(currentView, "retain");
+            }
+        }
+#endif
 
         currentWindow = new WindowHandle(window, WindowHandle::SDL3);
         return currentWindow;
@@ -78,6 +100,12 @@ public:
             delete window;
             if (window == currentWindow) currentWindow = nullptr;
         }
+#ifdef __APPLE__
+        if (originalView) {
+            choc::objc::call<void>(originalView, "release");
+            originalView = nil;
+        }
+#endif
     }
 
     bool shouldClose(WindowHandle* window) override {
@@ -96,11 +124,37 @@ public:
         }
     }
 
+    void makeContextCurrent(WindowHandle* window) override {
+        if (window && window->type == WindowHandle::SDL3 && glContext) {
+            SDL_GL_MakeCurrent(window->sdlWindow, glContext);
+#ifdef __APPLE__
+            id nsContext = (id)glContext;
+            if (nsContext) {
+                choc::objc::call<void>(nsContext, "makeCurrentContext");
+                if (originalView) {
+                    choc::objc::call<void>(nsContext, "setView:", originalView);
+                    choc::objc::call<void>(nsContext, "update");
+                }
+            }
+#endif
+        }
+    }
+
     void shutdown() override {
         if (initialized) {
+            if (glContext) {
+                SDL_GL_DestroyContext(glContext);
+                glContext = nullptr;
+            }
             SDL_Quit();
             initialized = false;
         }
+#ifdef __APPLE__
+        if (originalView) {
+            choc::objc::call<void>(originalView, "release");
+            originalView = nil;
+        }
+#endif
     }
 
     const char* getName() const override {
@@ -150,6 +204,10 @@ class SDL2WindowingBackend : public WindowingBackend {
 private:
     bool initialized = false;
     WindowHandle* currentWindow = nullptr;
+    SDL_GLContext glContext = nullptr;
+#ifdef __APPLE__
+    id originalView = nil;
+#endif
 
 public:
     bool initialize() override {
@@ -179,15 +237,29 @@ public:
             return nullptr;
         }
 
-        SDL_GLContext context = SDL_GL_CreateContext(window);
-        if (!context) {
+        glContext = SDL_GL_CreateContext(window);
+        if (!glContext) {
             std::cerr << "SDL2 GL Context Error: " << SDL_GetError() << std::endl;
             SDL_DestroyWindow(window);
             return nullptr;
         }
 
-        SDL_GL_MakeCurrent(window, context);
+        SDL_GL_MakeCurrent(window, glContext);
         SDL_GL_SetSwapInterval(1);
+
+#ifdef __APPLE__
+        if (originalView) {
+            choc::objc::call<void>(originalView, "release");
+            originalView = nil;
+        }
+        id nsContext = (id)glContext;
+        if (nsContext) {
+            id currentView = choc::objc::call<id>(nsContext, "view");
+            if (currentView) {
+                originalView = choc::objc::call<id>(currentView, "retain");
+            }
+        }
+#endif
 
         currentWindow = new WindowHandle(window, WindowHandle::SDL2);
         return currentWindow;
@@ -199,6 +271,12 @@ public:
             delete window;
             if (window == currentWindow) currentWindow = nullptr;
         }
+#ifdef __APPLE__
+        if (originalView) {
+            choc::objc::call<void>(originalView, "release");
+            originalView = nil;
+        }
+#endif
     }
 
     bool shouldClose(WindowHandle* window) override {
@@ -217,11 +295,37 @@ public:
         }
     }
 
+    void makeContextCurrent(WindowHandle* window) override {
+        if (window && window->type == WindowHandle::SDL2 && glContext) {
+            SDL_GL_MakeCurrent(window->sdlWindow, glContext);
+#ifdef __APPLE__
+            id nsContext = (id)glContext;
+            if (nsContext) {
+                choc::objc::call<void>(nsContext, "makeCurrentContext");
+                if (originalView) {
+                    choc::objc::call<void>(nsContext, "setView:", originalView);
+                    choc::objc::call<void>(nsContext, "update");
+                }
+            }
+#endif
+        }
+    }
+
     void shutdown() override {
         if (initialized) {
+            if (glContext) {
+                SDL_GL_DeleteContext(glContext);
+                glContext = nullptr;
+            }
             SDL_Quit();
             initialized = false;
         }
+#ifdef __APPLE__
+        if (originalView) {
+            choc::objc::call<void>(originalView, "release");
+            originalView = nil;
+        }
+#endif
     }
 
     const char* getName() const override {
@@ -314,6 +418,12 @@ public:
     void getDrawableSize(WindowHandle* window, int* width, int* height) override {
         if (window && window->type == WindowHandle::GLFW) {
             glfwGetFramebufferSize(window->glfwWindow, width, height);
+        }
+    }
+
+    void makeContextCurrent(WindowHandle* window) override {
+        if (window && window->type == WindowHandle::GLFW && contextWindow) {
+            glfwMakeContextCurrent(contextWindow);
         }
     }
 

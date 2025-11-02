@@ -29,6 +29,7 @@ public:
     virtual bool shouldClose(WindowHandle* window) = 0;
     virtual void swapBuffers(WindowHandle* window) = 0;
     virtual void getDrawableSize(WindowHandle* window, int* width, int* height) = 0;
+    virtual void makeContextCurrent(WindowHandle* window) = 0;
     virtual void shutdown() = 0;
     virtual const char* getName() const = 0;
 
