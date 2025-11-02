@@ -6,8 +6,12 @@
 #include <algorithm>
 #include <format>
 
+#include "SharedTheme.hpp"
+
 namespace uapmd::gui {
 MainWindow::MainWindow() {
+    SetupImGuiStyle();
+
     // Initialize with some example recent files
     recentFiles_.push_back("example1.wav");
     recentFiles_.push_back("example2.mid");

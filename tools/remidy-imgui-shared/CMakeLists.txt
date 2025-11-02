@@ -6,6 +6,7 @@ cmake_minimum_required(VERSION 3.18)
 
 add_library(remidy-imgui-shared STATIC
     PlatformBackend.cpp
+    SharedTheme.hpp
 )
 
 target_include_directories(remidy-imgui-shared PUBLIC

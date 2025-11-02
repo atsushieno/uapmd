@@ -15,6 +15,8 @@
 #include "../VirtualMidiDevices/UapmdMidiDevice.hpp"
 #include <remidy/priv/event-loop.hpp>
 
+#include "SharedTheme.hpp"
+
 using uapmd::VirtualMidiDeviceController;
 
 namespace uapmd::service::gui {
@@ -47,6 +49,8 @@ void copyToBuffer(std::string_view value, std::array<char, 64>& buffer) {
 
 MainWindow::MainWindow(VirtualMidiDeviceController& controller, GuiDefaults defaults)
     : controller_(controller), defaults_(std::move(defaults)) {
+    uapmd::gui::SetupImGuiStyle();
+
     copyToBuffer(defaults_.apiName, apiInput_);
     copyToBuffer(defaults_.deviceName, deviceNameInput_);
     pluginScanMessage_ = "Scanning plugins...";
