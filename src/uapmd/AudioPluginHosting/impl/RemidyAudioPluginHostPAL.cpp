@@ -202,7 +202,7 @@ void uapmd::RemidyAudioPluginHostPAL::performPluginScanning(bool rescan) {
 
 int32_t instanceIdSerial{0};
 
-void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
+void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
     scanning.performPluginScanning();
     auto format = *(scanning.formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning.catalog.getPlugins();
@@ -211,7 +211,16 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
         callback(nullptr, "Plugin not found");
     else {
         auto instancing = new remidy_tooling::PluginInstancing(scanning, format, entry);
-        instancing->configurationRequest().sampleRate = (uint32_t) sampleRate;
+        auto& request = instancing->configurationRequest();
+        request.sampleRate = static_cast<uint32_t>(sampleRate);
+        if (inputChannels > 0)
+            request.mainInputChannels = inputChannels;
+        else
+            request.mainInputChannels.reset();
+        if (outputChannels > 0)
+            request.mainOutputChannels = outputChannels;
+        else
+            request.mainOutputChannels.reset();
         auto cb = std::move(callback);
         instancing->makeAlive([instancing,cb](std::string error) {
             if (error.empty())

@@ -119,6 +119,8 @@ uapmd::MiniAudioIODevice::MiniAudioIODevice(
     engine.pDevice->pUserData = this;
 
     auto device = ma_engine_get_device(&engine);
+    input_channels = device->capture.channels;
+    output_channels = device->playback.channels;
     data.configureMainBus(device->capture.channels, device->playback.channels, config.periodSizeInFrames);
     dataOutPtrs.clear();
     if (device->playback.channels)
@@ -152,7 +154,15 @@ double uapmd::MiniAudioIODevice::sampleRate() {
 }
 
 uint32_t uapmd::MiniAudioIODevice::channels() {
-    return ma_engine_get_channels(&engine);
+    return output_channels;
+}
+
+uint32_t uapmd::MiniAudioIODevice::inputChannels() {
+    return input_channels;
+}
+
+uint32_t uapmd::MiniAudioIODevice::outputChannels() {
+    return output_channels;
 }
 
 void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_uint32 frameCount) {

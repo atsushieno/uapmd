@@ -30,6 +30,8 @@ namespace uapmd {
         // FIXME: they should differ at input and output
         virtual double sampleRate() = 0;
         virtual uint32_t channels() = 0;
+        virtual uint32_t inputChannels() { return channels(); }
+        virtual uint32_t outputChannels() { return channels(); }
 
         virtual uapmd_status_t start() = 0;
         virtual uapmd_status_t stop() = 0;

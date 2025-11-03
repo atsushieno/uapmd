@@ -1,4 +1,6 @@
 #include "PluginFormatLV2.hpp"
+#include <algorithm>
+#include <vector>
 
 remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
         PluginInstance(entry), formatImpl(formatImpl), plugin(plugin),
@@ -48,6 +50,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
         // FIXME: implement
         throw std::runtime_error("PluginInstanceLV2::configure() re-configuration is not implemented");
 
+    audio_buses->configure(configuration);
     sample_rate = configuration.sampleRate;
     instance = instantiate_plugin(formatImpl->worldContext, &implContext, plugin,
                                   configuration.sampleRate, configuration.offlineMode);
@@ -63,21 +66,31 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
     uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
     int32_t portToScan = 0;
     auto audioIns = audio_buses->audioInputBuses();
+    audio_in_port_mapping.clear();
+    audio_in_fallback_buffers.clear();
     int32_t lv2AudioInIdx = 0;
     for (size_t i = 0, n = audioIns.size(); i < n; i++) {
         auto bus = audioIns[i];
         for (uint32_t ch = 0, nCh = bus->channelLayout().channels(); ch < nCh; ch++) {
-            getNextAudioPortIndex(implContext, plugin, true, lv2AudioInIdx, portToScan, numPorts);
+            if (!getNextAudioPortIndex(implContext, plugin, true, lv2AudioInIdx, portToScan, numPorts)) {
+                formatImpl->getLogger()->logWarning("LV2 plugin %s has fewer input ports than expected", info()->displayName().c_str());
+                continue;
+            }
             audio_in_port_mapping.emplace_back(RemidyToLV2PortMapping{.bus = i, .channel = ch, .lv2Port = lv2AudioInIdx});
         }
     }
     portToScan = 0;
     const auto audioOuts = audio_buses->audioOutputBuses();
+    audio_out_port_mapping.clear();
+    audio_out_fallback_buffers.clear();
     int32_t lv2AudioOutIdx = 0;
     for (size_t i = 0, n = audioOuts.size(); i < n; i++) {
         const auto bus = audioOuts[i];
         for (uint32_t ch = 0, nCh = bus->channelLayout().channels(); ch < nCh; ch++) {
-            getNextAudioPortIndex(implContext, plugin, false, lv2AudioOutIdx, portToScan, numPorts);
+            if (!getNextAudioPortIndex(implContext, plugin, false, lv2AudioOutIdx, portToScan, numPorts)) {
+                formatImpl->getLogger()->logWarning("LV2 plugin %s has fewer output ports than expected", info()->displayName().c_str());
+                continue;
+            }
             audio_out_port_mapping.emplace_back(RemidyToLV2PortMapping{.bus = i, .channel = ch, .lv2Port = lv2AudioOutIdx});
         }
     }
@@ -115,6 +128,14 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
         lv2_ports.emplace_back(lv2Port);
     }
 
+    auto ensureFallbackSize = [&](std::vector<std::vector<float>>& buffers, size_t count) {
+        buffers.resize(count);
+        for (auto& buf : buffers)
+            buf.assign(configuration.bufferSizeInSamples, 0.0f);
+    };
+    ensureFallbackSize(audio_in_fallback_buffers, audio_in_port_mapping.size());
+    ensureFallbackSize(audio_out_fallback_buffers, audio_out_port_mapping.size());
+
     return StatusCode::OK;
 }
 
@@ -134,12 +155,24 @@ remidy::StatusCode remidy::PluginInstanceLV2::stopProcessing() {
 
 remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &process) {
     // FIXME: is there 64-bit float audio support?
-    for (auto& m : audio_in_port_mapping) {
+    for (size_t i = 0; i < audio_in_port_mapping.size(); ++i) {
+        auto& m = audio_in_port_mapping[i];
         auto audioIn = process.getFloatInBuffer(m.bus, m.channel);
+        if (!audioIn) {
+            auto& fallback = audio_in_fallback_buffers[i];
+            std::fill(fallback.begin(), fallback.begin() + process.frameCount(), 0.0f);
+            audioIn = fallback.data();
+        }
         lilv_instance_connect_port(instance, m.lv2Port, audioIn);
     }
-    for (auto& m : audio_out_port_mapping) {
+    for (size_t i = 0; i < audio_out_port_mapping.size(); ++i) {
+        auto& m = audio_out_port_mapping[i];
         auto audioOut = process.getFloatOutBuffer(m.bus, m.channel);
+        if (!audioOut) {
+            auto& fallback = audio_out_fallback_buffers[i];
+            std::fill(fallback.begin(), fallback.begin() + process.frameCount(), 0.0f);
+            audioOut = fallback.data();
+        }
         lilv_instance_connect_port(instance, m.lv2Port, audioOut);
     }
 

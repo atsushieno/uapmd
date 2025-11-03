@@ -26,6 +26,8 @@ namespace uapmd {
         AudioProcessContext data; // no UMP events handled here.
         std::vector<std::function<uapmd_status_t(AudioProcessContext& data)>> callbacks{};
         std::vector<const float *> dataOutPtrs{};
+        uint32_t input_channels{0};
+        uint32_t output_channels{0};
 
     public:
         explicit MiniAudioIODevice(MiniAudioIODeviceManager* manager);
@@ -40,6 +42,8 @@ namespace uapmd {
         void dataCallback(void* output, const void* input, ma_uint32 frameCount);
         double sampleRate() override;
         uint32_t channels() override;
+        uint32_t inputChannels() override;
+        uint32_t outputChannels() override;
         uapmd_status_t start() override;
         uapmd_status_t stop() override;
         bool isPlaying() override;

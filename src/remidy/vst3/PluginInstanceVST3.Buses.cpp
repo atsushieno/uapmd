@@ -1,4 +1,20 @@
 #include "PluginFormatVST3.hpp"
+#include <optional>
+
+namespace {
+    remidy::AudioChannelLayout layoutForChannels(uint32_t channels) {
+        switch (channels) {
+            case 0:
+                return remidy::AudioChannelLayout{"", 0};
+            case 1:
+                return remidy::AudioChannelLayout{"Mono", 1};
+            case 2:
+                return remidy::AudioChannelLayout{"Stereo", 2};
+            default:
+                return remidy::AudioChannelLayout{"", channels};
+        }
+    }
+}
 
 remidy::AudioChannelLayout fromVst3SpeakerArrangement(SpeakerArrangement src) {
     uint32_t channels = 0;
@@ -10,7 +26,9 @@ remidy::AudioChannelLayout fromVst3SpeakerArrangement(SpeakerArrangement src) {
 
 SpeakerArrangement toVstSpeakerArrangement(remidy::AudioChannelLayout src) {
     SpeakerArrangement ret{0};
-    if (src == remidy::AudioChannelLayout::mono())
+    if (src.channels() == 0)
+        ret = SpeakerArr::kEmpty;
+    else if (src == remidy::AudioChannelLayout::mono())
         ret = kSpeakerC;
     else if (src == remidy::AudioChannelLayout::stereo())
         ret = kSpeakerL | kSpeakerR;
@@ -25,6 +43,8 @@ void remidy::PluginInstanceVST3::AudioBuses::inspectBuses() {
     BusSearchResult ret{};
     auto numAudioIn = component->getBusCount(kAudio, kInput);
     auto numAudioOut = component->getBusCount(kAudio, kOutput);
+    ret.numAudioIn = static_cast<uint32_t>(numAudioIn);
+    ret.numAudioOut = static_cast<uint32_t>(numAudioOut);
     ret.numEventIn = component->getBusCount(kEvent, kInput);
     ret.numEventOut = component->getBusCount(kEvent, kOutput);
 
@@ -66,6 +86,29 @@ void remidy::PluginInstanceVST3::AudioBuses::inspectBuses() {
 void remidy::PluginInstanceVST3::AudioBuses::configure(remidy::PluginInstance::ConfigurationRequest &config) {
     auto component = owner->component;
     auto processor = owner->processor;
+    auto logger = owner->owner->getLogger();
+
+    auto applyRequestedChannels = [&](std::vector<AudioBusConfiguration*>& buses, int32_t busIndex, const std::optional<uint32_t>& requested, const char* label) {
+        if (!requested.has_value())
+            return;
+        if (busIndex < 0 || static_cast<size_t>(busIndex) >= buses.size())
+            return;
+        auto bus = buses[static_cast<size_t>(busIndex)];
+        auto channels = requested.value();
+        bus->enabled(channels > 0);
+        if (channels == 0)
+            return;
+        if (channels > 2) {
+            logger->logWarning("%s: Requested %u channels on %s bus; keeping plugin-provided configuration", owner->pluginName.c_str(), channels, label);
+            return;
+        }
+        auto layout = layoutForChannels(channels);
+        if (bus->channelLayout(layout) != StatusCode::OK)
+            bus->channelLayout() = layout;
+    };
+
+    applyRequestedChannels(audio_in_buses, mainInputBusIndex(), config.mainInputChannels, "input");
+    applyRequestedChannels(audio_out_buses, mainOutputBusIndex(), config.mainOutputChannels, "output");
 
     std::vector<SpeakerArrangement> inArr{};
     inArr.reserve(audio_in_buses.size());
@@ -77,12 +120,20 @@ void remidy::PluginInstanceVST3::AudioBuses::configure(remidy::PluginInstance::C
         outArr.emplace_back(toVstSpeakerArrangement(output_bus->channelLayout()));
 
     // set audio bus configuration, if explicitly specified.
-    processor->setBusArrangements(inArr.data(), static_cast<int32_t>(inArr.size()),
-                                  outArr.data(), static_cast<int32_t>(outArr.size()));
-    for (size_t i = 0, n = audio_in_buses.size(); i < n; ++i)
-        component->activateBus(kAudio, kInput, i, audio_in_buses[i]->enabled());
-    for (size_t i = 0, n = audio_out_buses.size(); i < n; ++i)
-        component->activateBus(kAudio, kOutput, i, audio_out_buses[i]->enabled());
+    auto result = processor->setBusArrangements(inArr.data(), static_cast<int32_t>(inArr.size()),
+                                                outArr.data(), static_cast<int32_t>(outArr.size()));
+    if (result != kResultOk) {
+        logger->logWarning("%s: setBusArrangements returned %d; falling back to plugin defaults", owner->pluginName.c_str(), result);
+        inspectBuses();
+    }
+    for (size_t i = 0, n = audio_in_buses.size(); i < n; ++i) {
+        const bool active = audio_in_buses[i]->enabled() && audio_in_buses[i]->channelLayout().channels() > 0;
+        component->activateBus(kAudio, kInput, static_cast<int32_t>(i), active);
+    }
+    for (size_t i = 0, n = audio_out_buses.size(); i < n; ++i) {
+        const bool active = audio_out_buses[i]->enabled() && audio_out_buses[i]->channelLayout().channels() > 0;
+        component->activateBus(kAudio, kOutput, static_cast<int32_t>(i), active);
+    }
 }
 
 void remidy::PluginInstanceVST3::AudioBuses::deactivateAllBuses() {

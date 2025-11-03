@@ -47,8 +47,8 @@ namespace uapmd {
         return impl->processAudio();
     }
 
-    void SequenceProcessor::addSimpleTrack(std::string &format, std::string &pluginId, std::function<void(AudioPluginTrack*, std::string error)> callback) {
-        impl->pal->createPluginInstance(impl->sampleRate, format, pluginId, [this,callback](auto node, std::string error) {
+    void SequenceProcessor::addSimpleTrack(std::string &format, std::string &pluginId, uint32_t inputChannels, uint32_t outputChannels, std::function<void(AudioPluginTrack*, std::string error)> callback) {
+        impl->pal->createPluginInstance(impl->sampleRate, inputChannels, outputChannels, format, pluginId, [this,callback](auto node, std::string error) {
             if (!node)
                 callback(nullptr, "Could not create simple track: " + error);
             else {
@@ -64,7 +64,10 @@ namespace uapmd {
 
     // Impl
     SequenceProcessor::Impl::Impl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostPAL* pal) :
-        sampleRate(sampleRate), ump_buffer_size_in_ints(umpBufferSizeInInts), pal(pal) {
+        audio_buffer_size_in_frames(audioBufferSizeInFrames),
+        sampleRate(sampleRate),
+        ump_buffer_size_in_ints(umpBufferSizeInInts),
+        pal(pal) {
     }
 
     SequenceProcessor::Impl::~Impl() {

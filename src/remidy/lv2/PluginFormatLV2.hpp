@@ -186,6 +186,7 @@ namespace remidy {
                 inspectBuses();
             }
             void inspectBuses() override;
+            void configure(ConfigurationRequest& config);
         };
 
         class PluginStatesLV2 : public PluginStateSupport {
@@ -296,6 +297,8 @@ namespace remidy {
         };
         std::vector<RemidyToLV2PortMapping> audio_in_port_mapping{};
         std::vector<RemidyToLV2PortMapping> audio_out_port_mapping{};
+        std::vector<std::vector<float>> audio_in_fallback_buffers{};
+        std::vector<std::vector<float>> audio_out_fallback_buffers{};
 
         AudioBuses* audio_buses{};
 

@@ -129,10 +129,13 @@ class RemidyApply {
         uapmd::AudioIODeviceManager::Configuration audioConfig{ .logger = logger };
         manager->initialize(audioConfig);
 
-        dispatcher->configure(UMP_BUFFER_SIZE, manager->open());
+        auto audioDevice = manager->open();
+        dispatcher->configure(UMP_BUFFER_SIZE, audioDevice);
 
-        auto sequencer = std::make_unique<uapmd::SequenceProcessor>(dispatcher->audio()->sampleRate(), AUDIO_BUFFER_SIZE, UMP_BUFFER_SIZE);
-        sequencer->addSimpleTrack(formatName, pluginId, [&](uapmd::AudioPluginTrack* track, std::string error) {
+        auto inputChannels = audioDevice ? audioDevice->inputChannels() : 0;
+        auto outputChannels = audioDevice ? audioDevice->outputChannels() : 0;
+        auto sequencer = std::make_unique<uapmd::SequenceProcessor>(audioDevice ? static_cast<int32_t>(audioDevice->sampleRate()) : 0, AUDIO_BUFFER_SIZE, UMP_BUFFER_SIZE);
+        sequencer->addSimpleTrack(formatName, pluginId, inputChannels, outputChannels, [&](uapmd::AudioPluginTrack* track, std::string error) {
             if (!error.empty()) {
                 std::cerr << "addSimpleTrack() failed." << std::endl;
                 playing = false;
@@ -141,8 +144,7 @@ class RemidyApply {
             uint32_t round = 0;
             remidy_ump_t umpSequence[512];
             remidy::AudioProcessContext process{sequencer->data().masterContext(), UMP_BUFFER_SIZE};
-            // FIXME: provide correct channel numbers by main bus
-            process.configureMainBus(dispatcher->audio()->channels(), dispatcher->audio()->channels(), 1024);
+            process.configureMainBus(inputChannels, outputChannels, 1024);
 
             dispatcher->addCallback([&](remidy::AudioProcessContext& data) {
                 for (auto track : sequencer->tracks()) {

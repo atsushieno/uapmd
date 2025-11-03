@@ -41,7 +41,7 @@ namespace uapmd {
         virtual ~AudioPluginHostPAL() = default;
         virtual PluginCatalog& catalog() = 0;
         virtual void performPluginScanning(bool rescan) = 0;
-        virtual void createPluginInstance(uint32_t sampleRate, std::string &format, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode>, std::string)>&& callback) = 0;
+        virtual void createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, std::string &format, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode>, std::string)>&& callback) = 0;
         virtual uapmd_status_t processAudio(std::vector<AudioProcessContext*> contexts) = 0;
     };
 

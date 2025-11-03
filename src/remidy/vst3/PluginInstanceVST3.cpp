@@ -1,5 +1,7 @@
 
 #include <iostream>
+#include <algorithm>
+#include <vector>
 
 #include "remidy.hpp"
 #include "../utils.hpp"
@@ -253,17 +255,53 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     const int32_t numFrames = process.frameCount();
     const int32_t numInputBus = processData.numInputs;
     const int32_t numOutputBus = processData.numOutputs;
+    thread_local std::vector<float> fallbackInput32;
+    thread_local std::vector<double> fallbackInput64;
+    thread_local std::vector<float> fallbackOutput32;
+    thread_local std::vector<double> fallbackOutput64;
+
+    auto ensureFloatBuffer = [&](std::vector<float>& buffer) -> float* {
+        if (buffer.size() < static_cast<size_t>(numFrames))
+            buffer.resize(static_cast<size_t>(numFrames), 0.0f);
+        else
+            std::fill(buffer.begin(), buffer.begin() + numFrames, 0.0f);
+        return buffer.data();
+    };
+    auto ensureDoubleBuffer = [&](std::vector<double>& buffer) -> double* {
+        if (buffer.size() < static_cast<size_t>(numFrames))
+            buffer.resize(static_cast<size_t>(numFrames), 0.0);
+        else
+            std::fill(buffer.begin(), buffer.begin() + numFrames, 0.0);
+        return buffer.data();
+    };
     for (int32_t bus = 0, nBus = process.audioInBusCount(); bus < nBus; bus++) {
         if (bus >= numInputBus) {
             // disabed the log, too noisy.
             //owner->getLogger()->logError("The process context has more input buses (%d) than the plugin supports (%d). Ignoring them.", nBus, numInputBus);
             continue;
         }
-        for (size_t ch = 0, n = process.inputChannelCount(bus); ch < n; ch++) {
-            if (processData.symbolicSampleSize == kSample32)
-                processData.inputs[bus].channelBuffers32[ch] = process.getFloatInBuffer(bus, ch);
-            else
-                processData.inputs[bus].channelBuffers64[ch] = process.getDoubleInBuffer(bus, ch);
+        auto available = process.inputChannelCount(bus);
+        auto pluginChannels = processData.inputs[bus].numChannels;
+        for (int32_t ch = 0; ch < pluginChannels; ch++) {
+            if (processData.symbolicSampleSize == kSample32) {
+                float* ptr = nullptr;
+                if (ch < static_cast<int32_t>(available))
+                    ptr = process.getFloatInBuffer(bus, static_cast<uint32_t>(ch));
+                else if (available > 0)
+                    ptr = process.getFloatInBuffer(bus, static_cast<uint32_t>(0));
+                if (!ptr)
+                    ptr = ensureFloatBuffer(fallbackInput32);
+                processData.inputs[bus].channelBuffers32[ch] = ptr;
+            } else {
+                double* ptr = nullptr;
+                if (ch < static_cast<int32_t>(available))
+                    ptr = process.getDoubleInBuffer(bus, static_cast<uint32_t>(ch));
+                else if (available > 0)
+                    ptr = process.getDoubleInBuffer(bus, static_cast<uint32_t>(0));
+                if (!ptr)
+                    ptr = ensureDoubleBuffer(fallbackInput64);
+                processData.inputs[bus].channelBuffers64[ch] = ptr;
+            }
         }
     }
     for (int32_t bus = 0, nBus = process.audioOutBusCount(); bus < nBus; bus++) {
@@ -272,11 +310,24 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
             //owner->getLogger()->logError("The process context has more output buses (%d) than the plugin supports (%d). Ignoring them.", nBus, numOutputBus);
             continue;
         }
-        for (size_t ch = 0, n = process.outputChannelCount(bus); ch < n; ch++) {
-            if (processData.symbolicSampleSize == kSample32)
-                processData.outputs[bus].channelBuffers32[ch] = process.getFloatOutBuffer(bus, ch);
-            else
-                processData.outputs[bus].channelBuffers64[ch] = process.getDoubleOutBuffer(bus, ch);
+        auto available = process.outputChannelCount(bus);
+        auto pluginChannels = processData.outputs[bus].numChannels;
+        for (int32_t ch = 0; ch < pluginChannels; ch++) {
+            if (processData.symbolicSampleSize == kSample32) {
+                float* ptr = nullptr;
+                if (ch < static_cast<int32_t>(available))
+                    ptr = process.getFloatOutBuffer(bus, static_cast<uint32_t>(ch));
+                if (!ptr)
+                    ptr = ensureFloatBuffer(fallbackOutput32);
+                processData.outputs[bus].channelBuffers32[ch] = ptr;
+            } else {
+                double* ptr = nullptr;
+                if (ch < static_cast<int32_t>(available))
+                    ptr = process.getDoubleOutBuffer(bus, static_cast<uint32_t>(ch));
+                if (!ptr)
+                    ptr = ensureDoubleBuffer(fallbackOutput64);
+                processData.outputs[bus].channelBuffers64[ch] = ptr;
+            }
         }
     }
 

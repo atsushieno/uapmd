@@ -22,7 +22,7 @@ namespace uapmd {
 
         std::vector<AudioPluginTrack *> & tracks() const;
 
-        void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginTrack* track, std::string error)> callback);
+        void addSimpleTrack(std::string& format, std::string& pluginId, uint32_t inputChannels, uint32_t outputChannels, std::function<void(AudioPluginTrack* track, std::string error)> callback);
         bool removePluginInstance(int32_t instanceId);
 
         uapmd_status_t processAudio();

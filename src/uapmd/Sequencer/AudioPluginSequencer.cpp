@@ -424,14 +424,15 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
     std::string& pluginId,
     std::function<void(int32_t instanceId, std::string error)> callback
 ) {
-    sequencer.addSimpleTrack(format, pluginId, [&,callback](AudioPluginTrack* track, std::string error) {
+    auto audioDevice = dispatcher.audio();
+    const auto inputChannels = audioDevice ? audioDevice->inputChannels() : 0;
+    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 0;
+    sequencer.addSimpleTrack(format, pluginId, inputChannels, outputChannels, [&,callback,inputChannels,outputChannels](AudioPluginTrack* track, std::string error) {
         if (!error.empty()) {
             callback(-1, error);
         } else {
             auto trackCtx = sequencer.data().tracks[sequencer.tracks().size() - 1];
-            auto audioDevice = dispatcher.audio();
-            auto numChannels = audioDevice ? audioDevice->channels() : 0;
-            trackCtx->configureMainBus(numChannels, numChannels, buffer_size_in_frames);
+            trackCtx->configureMainBus(inputChannels, outputChannels, buffer_size_in_frames);
 
             configureTrackRouting(track);
             auto trackIndex = static_cast<int32_t>(sequencer.tracks().size() - 1);
@@ -462,7 +463,11 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
         return;
     }
 
-    plugin_host_pal->createPluginInstance(sample_rate, format, pluginId,
+    auto audioDevice = dispatcher.audio();
+    const auto inputChannels = audioDevice ? audioDevice->inputChannels() : 0;
+    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 0;
+
+    plugin_host_pal->createPluginInstance(sample_rate, inputChannels, outputChannels, format, pluginId,
         [this, trackIndex, cb = std::move(callback)](auto node, std::string error) mutable {
             if (!node) {
                 if (cb) {

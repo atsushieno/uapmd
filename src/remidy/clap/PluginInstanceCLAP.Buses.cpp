@@ -1,6 +1,7 @@
 #include "PluginFormatCLAP.hpp"
 #include <clap/ext/audio-ports.h>
 #include <clap/ext/note-ports.h>
+#include <optional>
 
 namespace remidy {
     void PluginInstanceCLAP::AudioBuses::inspectBuses() {
@@ -62,5 +63,27 @@ namespace remidy {
             audio_in_buses.emplace_back(new AudioBusConfiguration(bus));
         for (auto bus: output_bus_defs)
             audio_out_buses.emplace_back(new AudioBusConfiguration(bus));
+
+        auto applyRequestedChannels = [](std::vector<AudioBusConfiguration*>& buses, int32_t busIndex, const std::optional<uint32_t>& requested) {
+            if (!requested.has_value())
+                return;
+            if (busIndex < 0 || static_cast<size_t>(busIndex) >= buses.size())
+                return;
+            auto bus = buses[static_cast<size_t>(busIndex)];
+            uint32_t channels = requested.value();
+            bus->enabled(channels > 0);
+            if (channels == 0)
+                return;
+            remidy::AudioChannelLayout layout{"", channels};
+            if (channels == 1)
+                layout = remidy::AudioChannelLayout{"Mono", 1};
+            else if (channels == 2)
+                layout = remidy::AudioChannelLayout{"Stereo", 2};
+            if (bus->channelLayout(layout) != remidy::StatusCode::OK)
+                bus->channelLayout() = layout;
+        };
+
+        applyRequestedChannels(audio_in_buses, mainInputBusIndex(), configuration.mainInputChannels);
+        applyRequestedChannels(audio_out_buses, mainOutputBusIndex(), configuration.mainOutputChannels);
     }
 }

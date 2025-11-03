@@ -1,6 +1,7 @@
 #if __APPLE__
 
 #include "PluginFormatAU.hpp"
+#include <optional>
 
 void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
     auto impl = [&] {
@@ -98,6 +99,28 @@ remidy::StatusCode remidy::PluginInstanceAU::AudioBuses::configure(Configuration
     auto logger = owner->logger();
     auto& name = owner->name;
 
+    auto applyRequestedChannels = [](std::vector<remidy::AudioBusConfiguration*>& buses, int32_t busIndex, const std::optional<uint32_t>& requested) {
+        if (!requested.has_value())
+            return;
+        if (busIndex < 0 || static_cast<size_t>(busIndex) >= buses.size())
+            return;
+        auto bus = buses[static_cast<size_t>(busIndex)];
+        auto channels = requested.value();
+        bus->enabled(channels > 0);
+        if (channels == 0)
+            return;
+        remidy::AudioChannelLayout layout{"", channels};
+        if (channels == 1)
+            layout = remidy::AudioChannelLayout{"Mono", 1};
+        else if (channels == 2)
+            layout = remidy::AudioChannelLayout{"Stereo", 2};
+        if (bus->channelLayout(layout) != remidy::StatusCode::OK)
+            bus->channelLayout() = layout;
+    };
+
+    applyRequestedChannels(audio_in_buses, mainInputBusIndex(), configuration.mainInputChannels);
+    applyRequestedChannels(audio_out_buses, mainOutputBusIndex(), configuration.mainOutputChannels);
+
     OSStatus result;
     UInt32 size; // unused field for AudioUnitGetProperty
 
@@ -114,8 +137,8 @@ remidy::StatusCode remidy::PluginInstanceAU::AudioBuses::configure(Configuration
             stream.mFramesPerPacket = 1;
             stream.mBytesPerFrame = sampleSize;
             stream.mBytesPerPacket = sampleSize;
-            // FIXME: retrieve from bus
-            stream.mChannelsPerFrame = 2;
+            auto channels = audioInputBuses()[i]->channelLayout().channels();
+            stream.mChannelsPerFrame = channels;
             result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i,
                                           &stream, sizeof(AudioStreamBasicDescription));
             if (result) {
@@ -149,8 +172,8 @@ remidy::StatusCode remidy::PluginInstanceAU::AudioBuses::configure(Configuration
             stream.mFramesPerPacket = 1;
             stream.mBytesPerFrame = sampleSize;
             stream.mBytesPerPacket = sampleSize;
-            // FIXME: retrieve from bus
-            stream.mChannelsPerFrame = 2;
+            auto channels = audioOutputBuses()[i]->channelLayout().channels();
+            stream.mChannelsPerFrame = channels;
             result = AudioUnitSetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i,
                                           &stream, sizeof(AudioStreamBasicDescription));
             if (result) {

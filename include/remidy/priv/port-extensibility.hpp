@@ -93,7 +93,7 @@ namespace remidy {
         AudioChannelLayout& channelLayout() { return channel_layout; }
         StatusCode channelLayout(const AudioChannelLayout& newValue) {
             if (auto& layouts = def.supportedChannelLayouts();
-                std::find(layouts.begin(), layouts.end(), newValue) == layouts.end())
+                !layouts.empty() && std::find(layouts.begin(), layouts.end(), newValue) == layouts.end())
                 return StatusCode::UNSUPPORTED_CHANNEL_LAYOUT_REQUESTED;
             channel_layout = newValue;
             return StatusCode::OK;
