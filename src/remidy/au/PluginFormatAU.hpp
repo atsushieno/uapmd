@@ -42,7 +42,6 @@ namespace remidy {
             explicit ParameterSupport(PluginInstanceAU* owner);
             ~ParameterSupport() override;
 
-            bool accessRequiresMainThread() override { return false; }
             std::vector<PluginParameter*>& parameters() override;
             std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext note) override;
 

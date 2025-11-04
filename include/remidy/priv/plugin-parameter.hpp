@@ -88,10 +88,6 @@ namespace remidy {
     public:
         virtual ~PluginParameterSupport() = default;
 
-        // True or false depending on the plugin format.
-        // True for VST3 and CLAP, false for AU and LV2.
-        virtual bool accessRequiresMainThread() = 0;
-
         // Returns the list of parameter metadata.
         virtual std::vector<PluginParameter*>& parameters() = 0;
 

@@ -96,7 +96,6 @@ namespace remidy {
             explicit ParameterSupport(PluginInstanceCLAP* owner);
             ~ParameterSupport();
 
-            bool accessRequiresMainThread() override { return true; }
             std::vector<PluginParameter*>& parameters() override;
             std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) override;
             StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;

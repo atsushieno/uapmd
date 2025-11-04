@@ -95,8 +95,6 @@ namespace remidy {
 
             PluginInstanceLV2 *owner;
 
-            bool accessRequiresMainThread() override { return false; }
-
             std::vector<PluginParameter *>& parameters() override;
             std::vector<PluginParameter *>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext note) override {
                 // not supported in LV2
