@@ -11,7 +11,7 @@ add_library(remidy-imgui-shared STATIC
 
 target_include_directories(remidy-imgui-shared PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ../../external/choc
+    ${choc_SOURCE_DIR}
 )
 
 # This library requires imgui and a windowing backend (SDL3/SDL2/GLFW)

@@ -18,7 +18,7 @@ CPMAddPackage(
 
 target_include_directories(uapmd PRIVATE
         ../../external/miniaudio
-        ../../external/choc
+        ${choc_SOURCE_DIR}
         ../../include
         ${cmidi2_SOURCE_DIR}
         ${concurrentqueue_SOURCE_DIR}

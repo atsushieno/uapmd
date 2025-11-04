@@ -128,7 +128,7 @@ endif()
 target_link_libraries(remidy-imgui-shared PUBLIC imgui ${BACKEND_LIBRARIES})
 
 target_include_directories(remidy-plugin-host PRIVATE
-        ../../external/choc
+        ${choc_SOURCE_DIR}
         ${cmidi2_SOURCE_DIR}
         ../../include
 )

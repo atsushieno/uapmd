@@ -15,6 +15,13 @@ endif()
 
 include(cmake/CPM.cmake)
 
+FetchContent_Declare(choc
+        NAME            choc
+        GIT_TAG         68a63dd
+        GIT_REPOSITORY  https://github.com/Tracktion/choc
+)
+FetchContent_MakeAvailable(choc)
+
 FetchContent_Declare(cmidi2
         GIT_REPOSITORY https://github.com/atsushieno/cmidi2
         GIT_TAG        55fc50a

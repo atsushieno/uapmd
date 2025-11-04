@@ -114,7 +114,7 @@ endif()
 target_include_directories(uapmd-service PRIVATE
         ../../include
         ../../src/remidy-tooling
-        ../../external/choc
+        ${choc_SOURCE_DIR}
         ../../external/libremidi/include
         ../../external/cpplocate/source/cpplocate/include
         ${midicci_SOURCE_DIR}/include

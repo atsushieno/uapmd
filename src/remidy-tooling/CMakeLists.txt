@@ -11,7 +11,7 @@ FetchContent_MakeAvailable(cpptrace)
 
 target_include_directories(remidy-tooling PRIVATE
         ../../include
-        ../../../../external/choc
+        ${choc_SOURCE_DIR}
         ../../../../external/cpplocate/source/cpplocate/include
         .
 )
