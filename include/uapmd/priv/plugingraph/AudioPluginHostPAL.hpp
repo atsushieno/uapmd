@@ -25,6 +25,7 @@ namespace uapmd {
             virtual void loadState(std::vector<uint8_t>& state) = 0;
 
             virtual void setParameterValue(int32_t index, double value) = 0;
+            virtual std::string getParameterValueString(int32_t index, double value) = 0;
 
             virtual bool hasUISupport() = 0;
             virtual bool createUI(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) = 0;

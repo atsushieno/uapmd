@@ -27,9 +27,13 @@ namespace remidy {
                 std::string name{info.name};
                 std::string module{info.module};
 
-                if (info.flags & CLAP_PARAM_IS_ENUM && info.flags & CLAP_PARAM_IS_STEPPED) {
+                // Some plugins only have CLAP_PARAM_IS_STEPPED == true (e.g. those from clap-juce-extensions), but
+                // so far we do not support secret text label that cannot be retrieved beforehand.
+                bool isEnum = info.flags & CLAP_PARAM_IS_ENUM;
+                if (isEnum) {
                     char enumLabel[1024];
-                    for (int i = 0; i < info.max_value; i++) {
+                    // CLAP enum parameters must have value_to_text for all values from min to max
+                    for (int i = static_cast<int>(info.min_value); i <= static_cast<int>(info.max_value); i++) {
                         if (params_ext->value_to_text(plugin, info.id, i, enumLabel, sizeof(enumLabel))) {
                             std::string enumLabelString{enumLabel};
                             enums.emplace_back(enumLabelString, i);
@@ -48,7 +52,7 @@ namespace remidy {
                         true,
                         info.flags & CLAP_PARAM_IS_AUTOMATABLE,
                         info.flags & CLAP_PARAM_IS_HIDDEN,
-                        info.flags & CLAP_PARAM_IS_ENUM,
+                        isEnum,
                         enums));
                 parameter_ids.emplace_back(info.id);
                 parameter_cookies.emplace_back(info.cookie);
@@ -111,5 +115,10 @@ namespace remidy {
 
     StatusCode PluginInstanceCLAP::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) {
         return StatusCode::NOT_IMPLEMENTED;
+    }
+
+    std::string PluginInstanceCLAP::ParameterSupport::valueToString(uint32_t index, double value) {
+        char s[1024];
+        return params_ext->value_to_text(owner->plugin, parameter_ids[index], value, s, sizeof(s)) ? s : "";
     }
 }

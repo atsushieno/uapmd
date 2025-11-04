@@ -114,6 +114,7 @@ namespace remidy {
                 owner->formatImpl->getLogger()->logError("Per-note controller is not supported in LV2");
                 return StatusCode::INVALID_PARAMETER_OPERATION;
             }
+            std::string valueToString(uint32_t index, double value) override;
         };
 
         class LV2AtomParameterHandler : public LV2ParameterHandler {

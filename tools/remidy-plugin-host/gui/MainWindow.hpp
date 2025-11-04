@@ -40,6 +40,7 @@ namespace uapmd::gui {
         std::vector<int32_t> instances_;
         std::vector<uapmd::ParameterMetadata> parameters_;
         std::vector<float> parameterValues_; // Store current parameter values
+        std::vector<std::string> parameterValueStrings_; // Cache value strings to avoid calling valueToString() every frame
         std::vector<uapmd::PresetsMetadata> presets_;
         int selectedPreset_ = -1;
 
@@ -90,6 +91,7 @@ namespace uapmd::gui {
         void refreshPresets();
         void loadSelectedPreset();
         void renderParameterControls();
+        void updateParameterValueString(size_t parameterIndex);
         bool handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height);
         void onPluginWindowResized(int32_t instanceId);
         void onPluginWindowClosed(int32_t instanceId);

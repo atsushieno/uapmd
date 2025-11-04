@@ -21,6 +21,7 @@ namespace uapmd {
         double maxValue;
         bool automatable;
         bool hidden;
+        bool discrete;
         std::vector<ParameterNamedValue> namedValues{};
     };
 

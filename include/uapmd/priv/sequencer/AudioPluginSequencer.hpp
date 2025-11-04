@@ -82,6 +82,7 @@ namespace uapmd {
         bool removePluginInstance(int32_t instanceId);
 
         std::vector<ParameterMetadata> getParameterList(int32_t instanceId);
+        std::string getParameterValueString(int32_t instanceId, int32_t parameterIndex, double value);
         std::vector<PresetsMetadata> getPresetList(int32_t instanceId);
         void loadPreset(int32_t instanceId, int32_t presetIndex);
         std::vector<int32_t> getInstanceIds();

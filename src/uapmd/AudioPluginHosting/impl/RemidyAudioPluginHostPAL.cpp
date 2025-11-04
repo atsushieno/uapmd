@@ -60,6 +60,7 @@ namespace uapmd {
                         .maxValue = p->maxValue(),
                         .automatable = p->automatable(),
                         .hidden = p->hidden(),
+                        .discrete = p->discrete(),
                         .namedValues = enums
                 });
             }
@@ -98,6 +99,10 @@ namespace uapmd {
 
         void setParameterValue(int32_t index, double value) override {
             instance->parameters()->setParameter(index, value, 0);
+        }
+
+        std::string getParameterValueString(int32_t index, double value) override {
+            return instance->parameters()->valueToString(index, value);
         }
 
         bool hasUISupport() override {

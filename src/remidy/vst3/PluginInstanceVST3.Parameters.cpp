@@ -22,10 +22,11 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
         std::string path{""};
 
         std::vector<ParameterEnumeration> enums{};
+        // VST3 stepCount is the maximum value, so stepCount+1 discrete values exist (0 to stepCount)
         if (info.stepCount > 0)
-            for (int32_t e = 0; e < info.stepCount; e++) {
+            for (int32_t e = 0; e <= info.stepCount; e++) {
                 String128 nameStr{};
-                auto normalized = controller->plainParamToNormalized(info.id, e);
+                auto normalized = e / (double) info.stepCount;
                 controller->getParamStringByValue(info.id, normalized, nameStr);
                 auto nameString = vst3StringToStdString(nameStr);
                 ParameterEnumeration p{nameString, normalized};
@@ -33,10 +34,10 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
             }
 
         auto p = new PluginParameter(i, idString, name, path,
-                                     info.flags & ParameterInfo::kIsList ? info.defaultNormalizedValue * info.stepCount : info.defaultNormalizedValue,
-                                     0,
-                                     info.flags & ParameterInfo::kIsList ? info.stepCount : 1,
-                                     info.flags & ParameterInfo::kCanAutomate,
+                                     info.defaultNormalizedValue,
+                                     0.0,
+                                     1.0,
+                                     info.stepCount > 0 || (info.flags & ParameterInfo::kCanAutomate),
                                      true, // I don't see any flags for `readable`
                                      info.flags & ParameterInfo::kIsHidden,
                                      info.flags & ParameterInfo::kIsList,
@@ -170,4 +171,13 @@ void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint
     int32_t read;
     stream->read(buf.data(), size, &read);
     states->setState(buf, remidy::PluginStateSupport::StateContextType::Preset, true);
+}
+
+std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t index, double value) {
+    auto enums = parameter_defs[index]->enums();
+    if (enums.empty())
+        return "";
+    if (value == 1.0)
+        return enums[enums.size() - 1].label;
+    return enums[(int32_t) (value * enums.size())].label;
 }

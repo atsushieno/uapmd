@@ -32,12 +32,8 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
         CFStringGetCString(info.cfNameString, nameBuffer, sizeof(nameBuffer), kCFStringEncodingUTF8);
         std::string pName{nameBuffer};
         std::string path{};
-        auto p = new PluginParameter(i, idString, pName, path, info.defaultValue, info.minValue, info.maxValue,
-                                     (info.flags & kAudioUnitParameterFlag_NonRealTime) == 0,
-                                     info.flags & kAudioUnitParameterFlag_IsReadable,
-                                     false, // I don't see `hidden` flag for AU parameters
-                                     info.unit == kAudioUnitParameterUnit_Indexed
-                                     );
+
+        // Retrieve enumeration strings before creating parameter
         CFArrayRef enumArray;
         std::vector<ParameterEnumeration> enums;
         UInt32 enumSize = 0;
@@ -50,6 +46,14 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
             }
             CFRelease(enumArray);
         }
+
+        auto p = new PluginParameter(i, idString, pName, path, info.defaultValue, info.minValue, info.maxValue,
+                                     (info.flags & kAudioUnitParameterFlag_NonRealTime) == 0,
+                                     info.flags & kAudioUnitParameterFlag_IsReadable,
+                                     false, // I don't see `hidden` flag for AU parameters
+                                     info.unit == kAudioUnitParameterUnit_Indexed,
+                                     enums
+                                     );
         parameter_list.emplace_back(p);
     }
 
@@ -110,4 +114,10 @@ remidy::StatusCode remidy::PluginInstanceAU::ParameterSupport::getPerNoteControl
     *value = 0;
     return StatusCode::NOT_IMPLEMENTED;
 }
+
+std::string remidy::PluginInstanceAU::ParameterSupport::valueToString(uint32_t index, double value) {
+    auto& enums = parameter_list[index]->enums();
+    return enums.empty() ? "" : enums[(int32_t) value].label;
+}
+
 #endif

@@ -127,3 +127,10 @@ remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::getParameter(uin
 remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
     return parameter_handlers[index]->setParameter(value, timestamp);
 }
+
+std::string PluginInstanceLV2::ParameterSupport::valueToString(uint32_t index, double value) {
+    auto enums = parameter_defs[index]->enums();
+    if (enums.empty())
+        return "";
+    return enums[(int32_t) value].label;
+}

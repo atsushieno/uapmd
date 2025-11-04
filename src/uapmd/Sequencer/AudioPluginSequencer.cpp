@@ -252,6 +252,14 @@ std::vector<uapmd::ParameterMetadata> uapmd::AudioPluginSequencer::getParameterL
     return {};
 }
 
+std::string uapmd::AudioPluginSequencer::getParameterValueString(int32_t instanceId, int32_t parameterIndex, double value) {
+    for (auto& track : sequencer.tracks())
+        for (auto node : track->graph().plugins())
+            if (node->instanceId() == instanceId)
+                return node->pal()->getParameterValueString(parameterIndex, value);
+    return "";
+}
+
 std::vector<uapmd::PresetsMetadata> uapmd::AudioPluginSequencer::getPresetList(int32_t instanceId) {
     for (auto& track : sequencer.tracks())
         for (auto node : track->graph().plugins())

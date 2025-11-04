@@ -645,6 +645,7 @@ void MainWindow::refreshInstances() {
         selectedInstance_ = -1;
         parameters_.clear();
         parameterValues_.clear();
+        parameterValueStrings_.clear();
         presets_.clear();
     }
 }
@@ -652,6 +653,7 @@ void MainWindow::refreshInstances() {
 void MainWindow::refreshParameters() {
     parameters_.clear();
     parameterValues_.clear();
+    parameterValueStrings_.clear();
 
     if (selectedInstance_ < 0 || selectedInstance_ >= static_cast<int>(instances_.size())) {
         return;
@@ -662,8 +664,10 @@ void MainWindow::refreshParameters() {
 
     // Initialize parameter values with their initial values
     parameterValues_.resize(parameters_.size());
+    parameterValueStrings_.resize(parameters_.size());
     for (size_t i = 0; i < parameters_.size(); ++i) {
         parameterValues_[i] = static_cast<float>(parameters_[i].initialValue);
+        updateParameterValueString(i);
     }
 }
 
@@ -695,6 +699,19 @@ void MainWindow::loadSelectedPreset() {
 
     // Refresh parameters after preset load
     refreshParameters();
+}
+
+void MainWindow::updateParameterValueString(size_t parameterIndex) {
+    if (parameterIndex >= parameters_.size() ||
+        selectedInstance_ < 0 || selectedInstance_ >= static_cast<int>(instances_.size())) {
+        return;
+    }
+
+    int32_t instanceId = instances_[selectedInstance_];
+    auto& param = parameters_[parameterIndex];
+    parameterValueStrings_[parameterIndex] =
+        uapmd::AppModel::instance().sequencer().getParameterValueString(
+            instanceId, param.index, parameterValues_[parameterIndex]);
 }
 
 void MainWindow::renderParameterControls() {
@@ -746,24 +763,42 @@ void MainWindow::renderParameterControls() {
             ImGui::TableNextColumn();
             std::string controlId = "##" + std::to_string(param.index);
 
-            // Find enum label if parameter has named values
-            std::string valueLabel;
-            if (!param.namedValues.empty()) {
-                double closestDist = std::numeric_limits<double>::max();
-                for (const auto& namedValue : param.namedValues) {
-                    double dist = std::abs(namedValue.value - parameterValues_[i]);
-                    if (dist < closestDist) {
-                        closestDist = dist;
-                        valueLabel = namedValue.name;
+            bool parameterChanged = false;
+            int32_t instanceId = instances_[selectedInstance_];
+
+            // Use combobox for discrete parameters with named values
+            if (param.discrete && !param.namedValues.empty()) {
+                // Use cached value label
+                const std::string& currentLabel = parameterValueStrings_[i].empty()
+                    ? std::to_string(parameterValues_[i])
+                    : parameterValueStrings_[i];
+
+                if (ImGui::BeginCombo(controlId.c_str(), currentLabel.c_str())) {
+                    for (const auto& namedValue : param.namedValues) {
+                        bool isSelected = (std::abs(namedValue.value - parameterValues_[i]) < 0.0001);
+                        if (ImGui::Selectable(namedValue.name.c_str(), isSelected)) {
+                            parameterValues_[i] = static_cast<float>(namedValue.value);
+                            parameterChanged = true;
+                        }
+                        if (isSelected) {
+                            ImGui::SetItemDefaultFocus();
+                        }
                     }
+                    ImGui::EndCombo();
+                }
+            } else {
+                // Use slider for continuous parameters
+                // Use cached value label
+                const char* format = parameterValueStrings_[i].empty() ? "%.3f" : parameterValueStrings_[i].c_str();
+                if (ImGui::SliderFloat(controlId.c_str(), &parameterValues_[i], static_cast<float>(param.minValue), static_cast<float>(param.maxValue), format)) {
+                    parameterChanged = true;
                 }
             }
 
-            // Use custom format for enumerated parameters to show label instead of float
-            const char* format = valueLabel.empty() ? "%.3f" : valueLabel.c_str();
-            if (ImGui::SliderFloat(controlId.c_str(), &parameterValues_[i], static_cast<float>(param.minValue), static_cast<float>(param.maxValue), format)) {
-                int32_t instanceId = instances_[selectedInstance_];
+            if (parameterChanged) {
                 uapmd::AppModel::instance().sequencer().setParameterValue(instanceId, param.index, parameterValues_[i]);
+                // Update cached string after value change
+                updateParameterValueString(i);
                 std::cout << "Parameter " << param.name << " changed to " << parameterValues_[i] << std::endl;
             }
 
@@ -773,6 +808,8 @@ void MainWindow::renderParameterControls() {
                 parameterValues_[i] = static_cast<float>(param.initialValue);
                 int32_t instanceId = instances_[selectedInstance_];
                 uapmd::AppModel::instance().sequencer().setParameterValue(instanceId, param.index, parameterValues_[i]);
+                // Update cached string after reset
+                updateParameterValueString(i);
             }
         }
 

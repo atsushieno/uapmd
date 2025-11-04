@@ -116,5 +116,12 @@ namespace remidy {
 
         // Retrieves current per-note controller value, if possible.
         virtual StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) = 0;
+
+        // Gets string representation of a parameter value, which might be enumerated or specially labeled.
+        //
+        // In some plugin formats, enumerated values might not be exposed as enumerations.
+        // Those plugins make it impossible to query defined values in prior and do not give the best user experience,
+        // but that's not our fault...
+        virtual std::string valueToString(uint32_t index, double value) = 0;
     };
 }
