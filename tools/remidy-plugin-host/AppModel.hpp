@@ -41,6 +41,10 @@ namespace uapmd {
                                             });
         }
 
+        void removePluginInstance(int32_t instanceId) {
+            sequencer_.removePluginInstance(instanceId);
+        }
+
         void performPluginScanning(bool forceRescan = false);
     };
 }

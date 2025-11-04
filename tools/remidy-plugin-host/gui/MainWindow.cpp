@@ -353,6 +353,44 @@ void MainWindow::renderInstanceControl() {
         refreshInstances();
     }
 
+    ImGui::SameLine();
+
+    // Remove instance button - only enabled if an instance is selected
+    bool canRemove = selectedInstance_ >= 0 && selectedInstance_ < static_cast<int>(instances_.size());
+    if (!canRemove) {
+        ImGui::BeginDisabled();
+    }
+    if (ImGui::Button("Remove Instance")) {
+        int32_t instanceId = instances_[selectedInstance_];
+
+        // Hide and cleanup UI if it's open
+        if (sequencer.hasPluginUI(instanceId) && sequencer.isPluginUIVisible(instanceId)) {
+            sequencer.hidePluginUI(instanceId);
+            auto windowIt = pluginWindows_.find(instanceId);
+            if (windowIt != pluginWindows_.end()) {
+                windowIt->second->show(false);
+            }
+        }
+
+        // Cleanup plugin UI resources
+        sequencer.destroyPluginUI(instanceId);
+        pluginWindows_.erase(instanceId);
+        pluginWindowEmbedded_.erase(instanceId);
+        pluginWindowBounds_.erase(instanceId);
+        pluginWindowResizeIgnore_.erase(instanceId);
+
+        // Remove the plugin instance
+        uapmd::AppModel::instance().removePluginInstance(instanceId);
+
+        // Refresh the instance list
+        refreshInstances();
+
+        std::cout << "Removed plugin instance: " << instanceId << std::endl;
+    }
+    if (!canRemove) {
+        ImGui::EndDisabled();
+    }
+
     ImGui::Text("Active Instances:");
     if (ImGui::BeginListBox("##InstanceList", ImVec2(-1, 100))) {
         for (size_t i = 0; i < instances_.size(); i++) {
