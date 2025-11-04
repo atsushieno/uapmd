@@ -5,6 +5,7 @@
 #include <iostream>
 #include <algorithm>
 #include <format>
+#include <limits>
 
 #include "SharedTheme.hpp"
 
@@ -743,8 +744,24 @@ void MainWindow::renderParameterControls() {
             ImGui::Text("%s", param.name.c_str());
 
             ImGui::TableNextColumn();
-            std::string sliderId = "##" + std::to_string(param.index);
-            if (ImGui::SliderFloat(sliderId.c_str(), &parameterValues_[i], static_cast<float>(param.minValue), static_cast<float>(param.maxValue))) {
+            std::string controlId = "##" + std::to_string(param.index);
+
+            // Find enum label if parameter has named values
+            std::string valueLabel;
+            if (!param.namedValues.empty()) {
+                double closestDist = std::numeric_limits<double>::max();
+                for (const auto& namedValue : param.namedValues) {
+                    double dist = std::abs(namedValue.value - parameterValues_[i]);
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        valueLabel = namedValue.name;
+                    }
+                }
+            }
+
+            // Use custom format for enumerated parameters to show label instead of float
+            const char* format = valueLabel.empty() ? "%.3f" : valueLabel.c_str();
+            if (ImGui::SliderFloat(controlId.c_str(), &parameterValues_[i], static_cast<float>(param.minValue), static_cast<float>(param.maxValue), format)) {
                 int32_t instanceId = instances_[selectedInstance_];
                 uapmd::AppModel::instance().sequencer().setParameterValue(instanceId, param.index, parameterValues_[i]);
                 std::cout << "Parameter " << param.name << " changed to " << parameterValues_[i] << std::endl;
