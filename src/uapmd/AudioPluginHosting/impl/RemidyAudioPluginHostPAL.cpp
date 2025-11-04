@@ -197,8 +197,8 @@ uapmd::RemidyAudioPluginHostPAL::RemidyAudioPluginHostPAL() {
 
 std::filesystem::path empty_path{""};
 void uapmd::RemidyAudioPluginHostPAL::performPluginScanning(bool rescan) {
+    catalog().clear();
     if (rescan) {
-        catalog().clear();
         scanning.performPluginScanning(empty_path);
     }
     else
