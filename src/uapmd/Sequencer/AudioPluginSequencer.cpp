@@ -1,5 +1,7 @@
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <format>
 #include <iostream>
@@ -228,14 +230,42 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
 
         auto ret = sequencer.processAudio();
 
+        // Clear main output bus (bus 0) before mixing
+        if (process.audioOutBusCount() > 0) {
+            for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++) {
+                memset(process.getFloatOutBuffer(0, ch), 0, process.frameCount() * sizeof(float));
+            }
+        }
+
+        // Mix all tracks into main output bus with additive mixing
         for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
             if (t >= data.tracks.size())
                 continue; // buffer not ready
             auto ctx = data.tracks[t];
             ctx->eventIn().position(0); // clean up *in* events here.
-            for (uint32_t i = 0; i < process.audioOutBusCount(); i++) {
-                for (uint32_t ch = 0, nCh = ctx->outputChannelCount(i); ch < nCh; ch++)
-                    memcpy(process.getFloatOutBuffer(i, ch), (void*) ctx->getFloatOutBuffer(i, ch), process.frameCount() * sizeof(float));
+
+            // Mix only main bus (bus 0)
+            if (process.audioOutBusCount() > 0 && ctx->audioOutBusCount() > 0) {
+                // Mix matching channels only
+                uint32_t numChannels = std::min(ctx->outputChannelCount(0), process.outputChannelCount(0));
+                for (uint32_t ch = 0; ch < numChannels; ch++) {
+                    float* dst = process.getFloatOutBuffer(0, ch);
+                    const float* src = ctx->getFloatOutBuffer(0, ch);
+                    // Additive mixing
+                    for (uint32_t frame = 0; frame < process.frameCount(); frame++) {
+                        dst[frame] += src[frame];
+                    }
+                }
+            }
+        }
+
+        // Apply soft clipping to prevent harsh distortion
+        if (process.audioOutBusCount() > 0) {
+            for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++) {
+                float* buffer = process.getFloatOutBuffer(0, ch);
+                for (uint32_t frame = 0; frame < process.frameCount(); frame++) {
+                    buffer[frame] = std::tanh(buffer[frame]);
+                }
             }
         }
 
