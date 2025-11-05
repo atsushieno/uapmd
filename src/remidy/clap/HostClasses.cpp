@@ -31,10 +31,19 @@ namespace remidy {
     }
 
     bool RemidyCLAPHost::guiRequestShow() noexcept {
-        return true;
+        auto i = attached_instance.load();
+        if (!i)
+            return false;
+        bool result;
+        EventLoop::runTaskOnMainThread([&] { result = i->ui()->show(); });
+        return result;
     }
 
     bool RemidyCLAPHost::guiRequestHide() noexcept {
+        auto i = attached_instance.load();
+        if (!i)
+            return false;
+        EventLoop::runTaskOnMainThread([&] { i->ui()->hide(); });
         return true;
     }
 
