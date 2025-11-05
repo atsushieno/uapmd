@@ -37,7 +37,13 @@ namespace remidy_clap {
 
         // indexer
         std::vector<clap_preset_discovery_filetype_t> filetypes{};
-        std::vector<clap_preset_discovery_location_t> locations{};
+        struct PresetLocation {
+            uint32_t flags;
+            const std::string name;
+            uint32_t kind;
+            const std::string location;
+        };
+        std::vector<PresetLocation> locations{};
 
         static bool declare_filetype(const struct clap_preset_discovery_indexer *indexer,
                                      const clap_preset_discovery_filetype_t     *filetype) {
@@ -52,7 +58,12 @@ namespace remidy_clap {
             if (!location)
                 return false;
             remidy::Logger::global()->logInfo(std::format("CLAP preset declare_location: (kind: {}) (flags: {}) {}", location->kind, location->flags, location->name).c_str());
-            ((PresetLoader*) indexer->indexer_data)->locations.push_back(*location);
+            ((PresetLoader*) indexer->indexer_data)->locations.push_back(PresetLocation{
+                .flags = location->flags,
+                .name = location->name,
+                .kind = location->kind,
+                .location = location->location
+            });
             return true;
         }
 
@@ -170,8 +181,8 @@ namespace remidy_clap {
                 providers.emplace_back(provider);
                 provider->init(provider);
 
-                for (auto location : locations)
-                    if (!provider->get_metadata(provider, location.kind, location.location, &receiver))
+                for (auto& location : locations)
+                    if (!provider->get_metadata(provider, location.kind, location.location.c_str(), &receiver))
                         remidy::Logger::global()->logWarning(std::format("Failed to get preset metadata from provider: {} location: ({}) {}", desc->name, location.kind, location.location).c_str());
             }
             
