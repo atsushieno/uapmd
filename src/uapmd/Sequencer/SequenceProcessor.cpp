@@ -5,7 +5,6 @@ namespace uapmd {
     class SequenceProcessor::Impl {
         size_t audio_buffer_size_in_frames;
         size_t ump_buffer_size_in_ints;
-        MasterContext master_context{};
         std::vector<AudioPluginTrack*> tracks_{};
         SequenceProcessContext sequence{};
     public:
@@ -100,7 +99,7 @@ namespace uapmd {
         auto track = new AudioPluginTrack(ump_buffer_size_in_ints);
         track->graph().appendNodeSimple(std::move(node));
         tracks_.emplace_back(track);
-        sequence.tracks.emplace_back(new AudioProcessContext(master_context, ump_buffer_size_in_ints));
+        sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
         return track;
     }
 

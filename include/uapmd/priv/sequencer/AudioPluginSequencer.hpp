@@ -22,6 +22,10 @@ namespace uapmd {
         AudioPluginHostPAL* plugin_host_pal;
         SequenceProcessor sequencer;
 
+        // Playback control
+        std::atomic<bool> is_playback_active_{false};
+        std::atomic<int64_t> playback_position_samples_{0};
+
         struct FunctionBlockRoute {
             AudioPluginTrack* track{nullptr};
             int32_t trackIndex{-1};
@@ -118,6 +122,13 @@ namespace uapmd {
         uapmd_status_t startAudio();
         uapmd_status_t stopAudio();
         uapmd_status_t isAudioPlaying();
+
+        // Transport control
+        void startPlayback();
+        void stopPlayback();
+        void pausePlayback();
+        void resumePlayback();
+        int64_t playbackPositionSamples() const;
 
         int32_t sampleRate();
         bool sampleRate(int32_t newSampleRate);

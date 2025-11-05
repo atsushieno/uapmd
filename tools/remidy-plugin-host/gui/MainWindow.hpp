@@ -30,6 +30,7 @@ namespace uapmd::gui {
         std::string currentFile_;
         std::vector<std::string> recentFiles_;
         bool isPlaying_ = false;
+        bool isPaused_ = false;
         bool isRecording_ = false;
         float playbackPosition_ = 0.0f;
         float playbackLength_ = 0.0f;
@@ -79,8 +80,10 @@ namespace uapmd::gui {
 
         // Player settings
         void renderPlayerSettings();
-        void playPause();
+        void play();
         void stop();
+        void pause();
+        void resume();
         void record();
         void loadFile();
 

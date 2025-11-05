@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <vector>
+#include <format>
 
 namespace remidy {
     enum class AudioContentType {
@@ -33,6 +34,9 @@ namespace remidy {
         AudioContentType audio_data_type{AudioContentType::Float32};
         uint16_t dctpq{480};
         uint32_t tempo_{500000};
+        int64_t playback_position_samples_{0};
+        int32_t sample_rate_{44100};
+        bool is_playing_{false};
 
     public:
         AudioContentType audioDataType() { return audio_data_type; }
@@ -54,6 +58,14 @@ namespace remidy {
             tempo_ = newValue;
             return StatusCode::OK;
         }
+        int64_t playbackPositionSamples() const { return playback_position_samples_; }
+        void playbackPositionSamples(int64_t newValue) { playback_position_samples_ = newValue; }
+
+        int32_t sampleRate() const { return sample_rate_; }
+        void sampleRate(int32_t newValue) { sample_rate_ = newValue; }
+
+        bool isPlaying() const { return is_playing_; }
+        void isPlaying(bool newValue) { is_playing_ = newValue; }
     };
 
     class TrackContext {

@@ -152,6 +152,43 @@ namespace remidy {
         // FIXME: should we calculate something based on DCTPQ i.e. src.trackContext()->deltaClockstampTicksPerQuarterNotes() ?
         dst.steady_time = -1;
 
+        // Update transport information from MasterContext
+        auto* trackContext = src.trackContext();
+        auto& masterContext = trackContext->masterContext();
+
+        if (!transports_events.empty()) {
+            auto& transport = transports_events[0];
+            transport.header.size = sizeof(clap_event_transport_t);
+            transport.header.time = 0;
+            transport.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            transport.header.type = CLAP_EVENT_TRANSPORT;
+            transport.header.flags = 0;
+
+            // Set transport state flags
+            transport.flags = 0;
+            if (masterContext.isPlaying()) {
+                transport.flags |= CLAP_TRANSPORT_IS_PLAYING;
+            }
+            transport.flags |= CLAP_TRANSPORT_HAS_TEMPO;
+            transport.flags |= CLAP_TRANSPORT_HAS_TIME_SIGNATURE;
+
+            // Set position in samples
+            transport.song_pos_seconds = static_cast<double>(masterContext.playbackPositionSamples()) / masterContext.sampleRate();
+            transport.song_pos_beats = -1; // Will be calculated from tempo
+
+            // tempo in masterContext is in microseconds per quarter note, convert to BPM
+            double tempoBPM = 60000000.0 / masterContext.tempo();
+            transport.tempo = tempoBPM;
+
+            // Calculate beat position
+            double seconds = static_cast<double>(masterContext.playbackPositionSamples()) / masterContext.sampleRate();
+            transport.song_pos_beats = (seconds * tempoBPM) / 60.0;
+
+            // Time signature (default 4/4)
+            transport.tsig_num = 4;
+            transport.tsig_denom = 4;
+        }
+
         // copy audio buffer pointers
         auto numAudioIn = min((int32_t) dst.audio_inputs_count, src.audioInBusCount());
         for (size_t bus = 0, nBus = numAudioIn; bus < nBus; bus++) {

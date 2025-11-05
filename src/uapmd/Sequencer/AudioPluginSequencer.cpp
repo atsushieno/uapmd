@@ -203,6 +203,15 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
 
     dispatcher.addCallback([&](uapmd::AudioProcessContext& process) {
         auto& data = sequencer.data();
+        auto& masterContext = data.masterContext();
+
+        // Update playback position if playback is active
+        bool isPlaybackActive = is_playback_active_.load(std::memory_order_acquire);
+
+        // Update MasterContext with current playback state
+        masterContext.playbackPositionSamples(playback_position_samples_.load(std::memory_order_acquire));
+        masterContext.isPlaying(isPlaybackActive);
+        masterContext.sampleRate(sample_rate);
 
         for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
             if (t >= data.tracks.size())
@@ -216,6 +225,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
                            (void *) process.getFloatInBuffer(i, ch), process.frameCount() * sizeof(float));
             }
         }
+
         auto ret = sequencer.processAudio();
 
         for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
@@ -228,6 +238,10 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
                     memcpy(process.getFloatOutBuffer(i, ch), (void*) ctx->getFloatOutBuffer(i, ch), process.frameCount() * sizeof(float));
             }
         }
+
+        if (isPlaybackActive)
+            playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
+
         return ret;
     });
 }
@@ -658,6 +672,28 @@ uapmd_status_t uapmd::AudioPluginSequencer::stopAudio() {
 
 uapmd_status_t uapmd::AudioPluginSequencer::isAudioPlaying() {
     return dispatcher.isPlaying();
+}
+
+void uapmd::AudioPluginSequencer::startPlayback() {
+    playback_position_samples_.store(0, std::memory_order_release);
+    is_playback_active_.store(true, std::memory_order_release);
+}
+
+void uapmd::AudioPluginSequencer::stopPlayback() {
+    is_playback_active_.store(false, std::memory_order_release);
+    playback_position_samples_.store(0, std::memory_order_release);
+}
+
+void uapmd::AudioPluginSequencer::pausePlayback() {
+    is_playback_active_.store(false, std::memory_order_release);
+}
+
+void uapmd::AudioPluginSequencer::resumePlayback() {
+    is_playback_active_.store(true, std::memory_order_release);
+}
+
+int64_t uapmd::AudioPluginSequencer::playbackPositionSamples() const {
+    return playback_position_samples_.load(std::memory_order_acquire);
 }
 
 int32_t uapmd::AudioPluginSequencer::sampleRate() { return sample_rate; }

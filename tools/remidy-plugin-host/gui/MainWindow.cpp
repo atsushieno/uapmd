@@ -293,15 +293,32 @@ void MainWindow::renderPlayerSettings() {
 
     ImGui::Text("Transport Controls:");
 
-    // Play/Pause button
-    const char* playButtonText = isPlaying_ ? "Pause" : "Play";
-    if (ImGui::Button(playButtonText)) {
-        playPause();
+    // Play/Stop button
+    const char* playStopButtonText = isPlaying_ ? "Stop" : "Play";
+    if (ImGui::Button(playStopButtonText)) {
+        if (isPlaying_) {
+            stop();
+        } else {
+            play();
+        }
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Stop")) {
-        stop();
+
+    // Pause/Resume button - only enabled when playing
+    if (!isPlaying_) {
+        ImGui::BeginDisabled();
+    }
+    const char* pauseResumeButtonText = isPaused_ ? "Resume" : "Pause";
+    if (ImGui::Button(pauseResumeButtonText)) {
+        if (isPaused_) {
+            resume();
+        } else {
+            pause();
+        }
+    }
+    if (!isPlaying_) {
+        ImGui::EndDisabled();
     }
 
     ImGui::SameLine();
@@ -552,28 +569,37 @@ void MainWindow::applyDeviceSettings() {
                             inputDevice, outputDevice, sampleRate_, bufferSize_) << std::endl;
 }
 
-void MainWindow::playPause() {
+void MainWindow::play() {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
 
-    if (isPlaying_) {
-        sequencer.stopAudio();
-        isPlaying_ = false;
-        std::cout << "Stopping playback" << std::endl;
-    } else {
-        sequencer.startAudio();
-        isPlaying_ = true;
-        std::cout << "Starting playback" << std::endl;
-    }
+    sequencer.startAudio();
+    sequencer.startPlayback();
+    isPlaying_ = true;
+    isPaused_ = false;
 }
 
 void MainWindow::stop() {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     sequencer.stopAudio();
+    sequencer.stopPlayback();
 
     isPlaying_ = false;
+    isPaused_ = false;
     playbackPosition_ = 0.0f;
+}
 
-    std::cout << "Stopping playback" << std::endl;
+void MainWindow::pause() {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    sequencer.pausePlayback();
+
+    isPaused_ = true;
+}
+
+void MainWindow::resume() {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    sequencer.resumePlayback();
+
+    isPaused_ = false;
 }
 
 void MainWindow::record() {

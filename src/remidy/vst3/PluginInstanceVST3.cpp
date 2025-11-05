@@ -333,6 +333,29 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
 
     const auto &ctx = processData.processContext;
 
+    // Update ProcessContext with transport info from MasterContext
+    auto* trackContext = process.trackContext();
+    auto& masterContext = trackContext->masterContext();
+
+    process_context.projectTimeSamples = masterContext.playbackPositionSamples();
+    process_context.continousTimeSamples = masterContext.playbackPositionSamples();
+    process_context.sampleRate = masterContext.sampleRate();
+
+    // Update state flags
+    uint32_t state = 0;
+    if (masterContext.isPlaying()) {
+        state |= ProcessContext::kPlaying;
+    }
+    process_context.state = state;
+
+    // Calculate PPQ position from samples
+    // PPQ = (samples / sampleRate) * (tempo_bpm / 60)
+    // tempo in VST3 is in BPM (beats per minute), masterContext.tempo() is in microseconds per quarter note
+    double tempoBPM = 60000000.0 / masterContext.tempo();
+    double seconds = static_cast<double>(masterContext.playbackPositionSamples()) / masterContext.sampleRate();
+    process_context.projectTimeMusic = (seconds * tempoBPM) / 60.0;
+    process_context.tempo = tempoBPM;
+
     processData.numSamples = numFrames;
 
     // handle UMP inputs via UmpInputDispatcher.

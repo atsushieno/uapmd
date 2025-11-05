@@ -197,14 +197,25 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
         }
     }
 
+    // Update transport info from MasterContext
+    auto* trackContext = process.trackContext();
+    auto& masterContext = trackContext->masterContext();
+
+    process_timestamp.mSampleTime = static_cast<Float64>(masterContext.playbackPositionSamples());
     process_timestamp.mHostTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     process_timestamp.mFlags = kAudioTimeStampSampleTimeValid | kAudioTimeStampHostTimeValid;
 
-    host_transport_info.isPlaying = true;
+    host_transport_info.isPlaying = masterContext.isPlaying();
     host_transport_info.transportStateChanged = false;
-    host_transport_info.currentSample = process_timestamp.mSampleTime;
+    host_transport_info.currentSample = static_cast<Float64>(masterContext.playbackPositionSamples());
+    host_transport_info.sampleRate = masterContext.sampleRate();
+
+    // tempo in masterContext is in microseconds per quarter note, convert to BPM
+    double tempoBPM = 60000000.0 / masterContext.tempo();
+    host_transport_info.currentTempo = tempoBPM;
+
     if (host_transport_info.currentTempo > 0.0 && host_transport_info.sampleRate > 0.0) {
-        double seconds = process_timestamp.mSampleTime / host_transport_info.sampleRate;
+        double seconds = static_cast<double>(masterContext.playbackPositionSamples()) / host_transport_info.sampleRate;
         host_transport_info.currentBeat = seconds * (host_transport_info.currentTempo / 60.0);
     } else {
         host_transport_info.currentBeat = 0.0;
@@ -231,19 +242,11 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
             ump_input_dispatcher.process(0, process);
 
         AudioUnitRenderActionFlags flags = 0;
-        // FIXME: it is likely that audio effects are not working, blocked here.
-        //  JUCE refuses to have different sizes of auDataOut[*].mBuffers[*].mDataByteSize vs. process.frameCount().
         auto status = AudioUnitRender(instance, &flags, &process_timestamp, 0, process.frameCount(), auDataOut);
         if (status != noErr) {
             logger()->logError("%s: failed to process audio PluginInstanceAU::process(). Status: %d", name.c_str(), status);
             return StatusCode::FAILED_TO_PROCESS;
         }
-    }
-    process_timestamp.mSampleTime += process.frameCount();
-    host_transport_info.currentSample = process_timestamp.mSampleTime;
-    if (host_transport_info.currentTempo > 0.0 && host_transport_info.sampleRate > 0.0) {
-        double seconds = process_timestamp.mSampleTime / host_transport_info.sampleRate;
-        host_transport_info.currentBeat = seconds * (host_transport_info.currentTempo / 60.0);
     }
 
     return StatusCode::OK;
