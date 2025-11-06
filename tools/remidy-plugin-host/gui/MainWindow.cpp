@@ -272,6 +272,8 @@ void MainWindow::renderDeviceSettings() {
 }
 
 void MainWindow::renderPlayerSettings() {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+
     ImGui::Text("Current File: %s", currentFile_.empty() ? "None" : currentFile_.c_str());
 
     if (ImGui::Button("Load File...")) {
@@ -325,6 +327,12 @@ void MainWindow::renderPlayerSettings() {
     const char* recordButtonText = isRecording_ ? "Stop Recording" : "Record";
     if (ImGui::Button(recordButtonText)) {
         record();
+    }
+
+    ImGui::SameLine();
+    bool offlineRendering = sequencer.offlineRendering();
+    if (ImGui::Checkbox("Offline Rendering", &offlineRendering)) {
+        sequencer.setOfflineRendering(offlineRendering);
     }
 
     // Position slider

@@ -3,6 +3,7 @@
 #include "clap/factory/plugin-factory.h"
 #include "clap/plugin.h"
 #include "clap/helpers/event-list.hh"
+#include "clap/ext/render.h"
 #include "remidy.hpp"
 #include "HostClasses.hpp"
 #include "../GenericAudioBuses.hpp"
@@ -212,12 +213,15 @@ namespace remidy {
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
         std::unique_ptr<RemidyCLAPHost> host{};
         bool is_processing_{false};
+        bool is_offline_{false};
+        const clap_plugin_render_t* render_ext{nullptr};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
         void clapProcessToRemidyProcessContext(AudioProcessContext& dst, clap_process_t& src);
         void resizeAudioPortBuffers(size_t newSize, bool isDouble);
         void resetAudioPortBuffers();
         void cleanupBuffers();
+        void applyOfflineRenderingMode();
 
     public:
         explicit PluginInstanceCLAP(
@@ -240,6 +244,7 @@ namespace remidy {
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
         StatusCode process(AudioProcessContext &process) override;
+        void setOfflineMode(bool offlineMode) override;
 
         // port helpers
         PluginAudioBuses* audioBuses() override { return audio_buses; }

@@ -188,6 +188,12 @@ namespace uapmd {
                 return false;
             return ui->canResize();
         }
+
+        void setOfflineMode(bool offlineMode) override {
+            if (!instance)
+                return;
+            instance->setOfflineMode(offlineMode);
+        }
     };
 }
 
@@ -226,6 +232,7 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
             request.mainOutputChannels = outputChannels;
         else
             request.mainOutputChannels.reset();
+        request.offlineMode = offline_mode_.load(std::memory_order_acquire);
         auto cb = std::move(callback);
         instancing->makeAlive([instancing,cb](std::string error) {
             if (error.empty())
@@ -239,6 +246,10 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
             }
         });
     }
+}
+
+void uapmd::RemidyAudioPluginHostPAL::setOfflineMode(bool offlineMode) {
+    offline_mode_.store(offlineMode, std::memory_order_release);
 }
 
 uapmd_status_t uapmd::RemidyAudioPluginHostPAL::processAudio(std::vector<remidy::AudioProcessContext *> contexts) {

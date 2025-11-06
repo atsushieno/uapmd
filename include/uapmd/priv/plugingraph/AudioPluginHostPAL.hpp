@@ -36,6 +36,7 @@ namespace uapmd {
             virtual bool setUISize(uint32_t width, uint32_t height) = 0;
             virtual bool getUISize(uint32_t &width, uint32_t &height) = 0;
             virtual bool canUIResize() = 0;
+            virtual void setOfflineMode(bool offlineMode) { (void) offlineMode; }
         };
 
         static AudioPluginHostPAL* instance();
@@ -43,6 +44,7 @@ namespace uapmd {
         virtual PluginCatalog& catalog() = 0;
         virtual void performPluginScanning(bool rescan) = 0;
         virtual void createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, std::string &format, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode>, std::string)>&& callback) = 0;
+        virtual void setOfflineMode(bool offlineMode) { (void) offlineMode; }
         virtual uapmd_status_t processAudio(std::vector<AudioProcessContext*> contexts) = 0;
     };
 

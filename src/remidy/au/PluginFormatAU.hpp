@@ -206,6 +206,7 @@ namespace remidy {
         StatusCode process(AudioProcessContext &process) override;
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
+        void setOfflineMode(bool offlineMode) override;
 
         virtual AUVersion auVersion() = 0;
         virtual StatusCode sampleRate(double sampleRate) = 0;

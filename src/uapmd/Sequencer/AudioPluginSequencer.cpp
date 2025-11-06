@@ -215,6 +215,8 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
     sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal),
     plugin_output_handlers_(std::make_shared<HandlerMap>()),
     plugin_output_scratch_(umpBufferSizeInBytes / sizeof(uapmd_ump_t), 0) {
+    if (plugin_host_pal)
+        plugin_host_pal->setOfflineMode(offline_rendering_.load(std::memory_order_relaxed));
     auto manager = AudioIODeviceManager::instance();
     auto logger = remidy::Logger::global();
     AudioIODeviceManager::Configuration audioConfig{ .logger = logger };
@@ -306,6 +308,30 @@ uapmd::PluginCatalog& uapmd::AudioPluginSequencer::catalog() {
 
 void uapmd::AudioPluginSequencer::performPluginScanning(bool rescan) {
     plugin_host_pal->performPluginScanning(rescan);
+}
+
+bool uapmd::AudioPluginSequencer::offlineRendering() const {
+    return offline_rendering_.load(std::memory_order_acquire);
+}
+
+void uapmd::AudioPluginSequencer::setOfflineRendering(bool enabled) {
+    bool previous = offline_rendering_.exchange(enabled, std::memory_order_acq_rel);
+    if (plugin_host_pal && previous != enabled)
+        plugin_host_pal->setOfflineMode(enabled);
+
+    if (previous == enabled)
+        return;
+
+    auto& tracks = sequencer.tracks();
+    for (auto* track : tracks) {
+        if (!track)
+            continue;
+        auto nodes = track->graph().plugins();
+        for (auto* node : nodes) {
+            if (node)
+                node->setOfflineMode(enabled);
+        }
+    }
 }
 
 std::vector<uapmd::ParameterMetadata> uapmd::AudioPluginSequencer::getParameterList(int32_t instanceId) {

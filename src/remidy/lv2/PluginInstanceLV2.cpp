@@ -270,6 +270,27 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
     return StatusCode::OK;
 }
 
+void remidy::PluginInstanceLV2::setOfflineMode(bool offlineMode) {
+    if (!instance)
+        return;
+
+    auto iface = (const LV2_Options_Interface*) lilv_instance_get_extension_data(instance, LV2_OPTIONS__options);
+    if (!iface) {
+        if (offlineMode)
+            formatImpl->getLogger()->logWarning("%s: LV2 plugin lacks LV2_OPTIONS__options for offline mode", info()->displayName().c_str());
+        return;
+    }
+
+    bool offlineFlag = offlineMode;
+    LV2_Options_Option opts[] = {
+        {LV2_OPTIONS_INSTANCE, 0, implContext.statics->urids.urid_core_free_wheeling, sizeof(bool), implContext.statics->urids.urid_atom_bool_type, &offlineFlag},
+        {LV2_OPTIONS_INSTANCE, 0, 0, 0, 0}
+    };
+    auto result = iface->set(instance, opts);
+    if (result != LV2_OPTIONS_SUCCESS)
+        formatImpl->getLogger()->logWarning("%s: LV2 setOfflineMode() failed. Result: %d", info()->displayName().c_str(), result);
+}
+
 remidy::PluginParameterSupport *remidy::PluginInstanceLV2::parameters() {
     if (!_parameters)
         _parameters = new ParameterSupport(this);

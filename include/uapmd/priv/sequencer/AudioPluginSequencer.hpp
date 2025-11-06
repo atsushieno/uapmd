@@ -25,6 +25,7 @@ namespace uapmd {
         // Playback control
         std::atomic<bool> is_playback_active_{false};
         std::atomic<int64_t> playback_position_samples_{0};
+        std::atomic<bool> offline_rendering_{false};
 
         struct FunctionBlockRoute {
             AudioPluginTrack* track{nullptr};
@@ -142,5 +143,8 @@ namespace uapmd {
 
         std::vector<uint8_t> saveState();
         void loadState(std::vector<uint8_t>& state);
+
+        bool offlineRendering() const;
+        void setOfflineRendering(bool enabled);
     };
 }

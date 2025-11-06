@@ -92,6 +92,7 @@ namespace remidy {
 
     StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {
         bool useDouble = configuration.dataType == AudioContentType::Float64;
+        is_offline_ = configuration.offlineMode;
 
         // ensure to clean up old buffer. Note that buses in old configuration may be different,
         // so handle cleanup and allocation in different steps.
@@ -108,6 +109,7 @@ namespace remidy {
         EventLoop::runTaskOnMainThread([&] {
             plugin->activate(plugin, configuration.sampleRate, 1, configuration.bufferSizeInSamples);
         });
+        applyOfflineRenderingMode();
 
         // alter the input/output audio buffers entries, and start allocation.
         clap_process.audio_inputs_count = audio_buses->audioInputBuses().size();
@@ -129,6 +131,44 @@ namespace remidy {
         clap_process.transport = transports_events.data();
 
         return StatusCode::OK;
+    }
+
+    void PluginInstanceCLAP::applyOfflineRenderingMode() {
+        EventLoop::runTaskOnMainThread([&] {
+            render_ext = (const clap_plugin_render_t *) plugin->get_extension(plugin, CLAP_EXT_RENDER);
+            if (!render_ext) {
+                if (is_offline_)
+                    owner->getLogger()->logWarning("%s: offlineMode requested but plugin lacks CLAP_EXT_RENDER",
+                                                   info()->displayName().c_str());
+                return;
+            }
+
+            if (is_offline_ && render_ext->has_hard_realtime_requirement &&
+                render_ext->has_hard_realtime_requirement(plugin)) {
+                owner->getLogger()->logWarning("%s: plugin requires realtime rendering, cannot switch to offline",
+                                               info()->displayName().c_str());
+                return;
+            }
+
+            if (!render_ext->set) {
+                owner->getLogger()->logWarning("%s: CLAP_EXT_RENDER missing set() implementation",
+                                               info()->displayName().c_str());
+                return;
+            }
+
+            auto mode = is_offline_ ? CLAP_RENDER_OFFLINE : CLAP_RENDER_REALTIME;
+            if (!render_ext->set(plugin, mode)) {
+                owner->getLogger()->logWarning("%s: failed to set render mode to %s", info()->displayName().c_str(),
+                                               is_offline_ ? "offline" : "realtime");
+            }
+        });
+    }
+
+    void PluginInstanceCLAP::setOfflineMode(bool offlineMode) {
+        if (is_offline_ == offlineMode)
+            return;
+        is_offline_ = offlineMode;
+        applyOfflineRenderingMode();
     }
 
     StatusCode PluginInstanceCLAP::startProcessing() {
