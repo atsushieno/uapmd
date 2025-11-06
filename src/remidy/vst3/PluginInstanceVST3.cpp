@@ -5,6 +5,7 @@
 
 #include "remidy.hpp"
 #include "../utils.hpp"
+#include "cmidi2.h"
 
 #include "PluginFormatVST3.hpp"
 
@@ -378,7 +379,111 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     // post-processing
     ctx->continousTimeSamples += numFrames;
 
-    // FiXME: generate UMP outputs here
+    // Convert VST3 output events to UMP
+    auto& eventOut = process.eventOut();
+    auto* umpBuffer = static_cast<uint64_t*>(eventOut.getMessages());
+    size_t umpPosition = eventOut.position() / sizeof(uint64_t); // position in uint64_t units
+    size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint64_t);
+
+    // Process output events (notes, poly pressure, etc.)
+    int32_t eventCount = processDataOutputEvents.getEventCount();
+    for (int32_t i = 0; i < eventCount && umpPosition < umpCapacity; ++i) {
+        Event e;
+        if (processDataOutputEvents.getEvent(i, e) == kResultOk) {
+            uint8_t group = static_cast<uint8_t>(e.busIndex);
+
+            switch (e.type) {
+                case Event::kNoteOnEvent: {
+                    uint16_t velocity = static_cast<uint16_t>(e.noteOn.velocity * 65535.0f);
+                    uint16_t attributeData = 0; // VST3 doesn't provide attribute data
+                    uint8_t attributeType = 0;
+                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_on(
+                        group, e.noteOn.channel, e.noteOn.pitch,
+                        attributeType, velocity, attributeData);
+                    break;
+                }
+                case Event::kNoteOffEvent: {
+                    uint16_t velocity = static_cast<uint16_t>(e.noteOff.velocity * 65535.0f);
+                    uint16_t attributeData = 0;
+                    uint8_t attributeType = 0;
+                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_off(
+                        group, e.noteOff.channel, e.noteOff.pitch,
+                        attributeType, velocity, attributeData);
+                    break;
+                }
+                case Event::kPolyPressureEvent: {
+                    uint32_t pressure = static_cast<uint32_t>(e.polyPressure.pressure * 4294967295.0f);
+                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_paf(
+                        group, e.polyPressure.channel, e.polyPressure.pitch, pressure);
+                    break;
+                }
+                case Event::kLegacyMIDICCOutEvent: {
+                    uint8_t channel = e.midiCCOut.channel >= 0 ? static_cast<uint8_t>(e.midiCCOut.channel) : 0;
+                    uint8_t cc = e.midiCCOut.controlNumber;
+                    uint32_t value = static_cast<uint32_t>(e.midiCCOut.value) << 25; // 7-bit to 32-bit
+
+                    // Special handling for pitch bend and poly pressure
+                    if (cc == 128) { // kPitchBend
+                        uint32_t pitchValue = (static_cast<uint32_t>(e.midiCCOut.value2) << 7) | e.midiCCOut.value;
+                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_pitch_bend_direct(
+                            group, channel, pitchValue << 18);
+                    } else if (cc == 129) { // kCtrlPolyPressure
+                        uint32_t pressure = static_cast<uint32_t>(e.midiCCOut.value2) << 25;
+                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_paf(
+                            group, channel, e.midiCCOut.value, pressure);
+                    } else {
+                        // Regular CC
+                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_cc(
+                            group, channel, cc, value);
+                    }
+                    break;
+                }
+                default:
+                    // Other event types not yet supported
+                    break;
+            }
+        }
+    }
+
+    // Process output parameter changes
+    int32_t paramCount = processDataOutputParameterChanges.getParameterCount();
+    for (int32_t i = 0; i < paramCount && umpPosition < umpCapacity; ++i) {
+        auto* queue = processDataOutputParameterChanges.getParameterData(i);
+        if (queue) {
+            ParamID paramId = queue->getParameterId();
+            int32_t pointCount = queue->getPointCount();
+
+            // For now, just take the last value in the queue
+            if (pointCount > 0) {
+                int32_t sampleOffset;
+                ParamValue value;
+                if (queue->getPoint(pointCount - 1, sampleOffset, value) == kResultOk) {
+                    // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
+                    // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
+                    uint8_t bank = static_cast<uint8_t>((paramId >> 7) & 0x7F);
+                    uint8_t index = static_cast<uint8_t>(paramId & 0x7F);
+                    uint32_t data = static_cast<uint32_t>(value * 4294967295.0);
+
+                    // Use NRPN for channel-wide assignable controllers
+                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_nrpn(
+                        0, 0, bank, index, data); // group 0, channel 0
+                }
+            }
+        }
+    }
+
+    // Update eventOut position
+    eventOut.position(umpPosition * sizeof(uint64_t));
+
+    // Log output events for debugging
+    if (umpPosition > 0) {
+        owner->getLogger()->logInfo("VST3 output events: %zu UMP messages", umpPosition);
+        for (size_t i = 0; i < umpPosition; ++i) {
+            uint32_t* ump32 = reinterpret_cast<uint32_t*>(&umpBuffer[i]);
+            owner->getLogger()->logInfo("  UMP[%zu]: %08X %08X", i, ump32[0], ump32[1]);
+        }
+    }
+
     processDataOutputEvents.clear();
 
     return StatusCode::OK;

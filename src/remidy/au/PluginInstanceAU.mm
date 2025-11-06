@@ -1,6 +1,7 @@
 #if __APPLE__
 
 #include "PluginFormatAU.hpp"
+#include "cmidi2.h"
 #include <cmath>
 
 remidy::PluginInstanceAU::PluginInstanceAU(
@@ -72,8 +73,60 @@ OSStatus remidy::PluginInstanceAU::audioInputRenderCallback(
 }
 
 OSStatus remidy::PluginInstanceAU::midiOutputCallback(const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist) {
-    // FIXME: implement
-    std::cerr << "remidy::PluginInstanceAU::midiOutputCallback() not implemented." << std::endl;
+    if (!pktlist || pktlist->numPackets == 0)
+        return noErr;
+
+    // Ensure buffer has enough capacity (estimate 1 UMP per packet)
+    if (midi_output_buffer.size() < midi_output_count + pktlist->numPackets) {
+        midi_output_buffer.resize(midi_output_count + pktlist->numPackets + 128);
+    }
+
+    const MIDIPacket* packet = &pktlist->packet[0];
+    for (UInt32 i = 0; i < pktlist->numPackets; ++i) {
+        if (packet->length > 0 && midi_output_count < midi_output_buffer.size()) {
+            const Byte* data = packet->data;
+            uint8_t status = data[0] & 0xF0;
+            uint8_t channel = data[0] & 0x0F;
+            uint8_t data1 = packet->length > 1 ? data[1] : 0;
+            uint8_t data2 = packet->length > 2 ? data[2] : 0;
+
+            // Convert MIDI1 to MIDI2 UMP
+            switch (status) {
+                case 0x80: // Note Off
+                    midi_output_buffer[midi_output_count++] = cmidi2_ump_midi2_note_off(
+                        0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
+                    break;
+                case 0x90: // Note On
+                    midi_output_buffer[midi_output_count++] = cmidi2_ump_midi2_note_on(
+                        0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
+                    break;
+                case 0xA0: // Poly Pressure
+                    midi_output_buffer[midi_output_count++] = cmidi2_ump_midi2_paf(
+                        0, channel, data1, static_cast<uint32_t>(data2) << 25);
+                    break;
+                case 0xB0: // Control Change
+                    midi_output_buffer[midi_output_count++] = cmidi2_ump_midi2_cc(
+                        0, channel, data1, static_cast<uint32_t>(data2) << 25);
+                    break;
+                case 0xC0: // Program Change
+                    midi_output_buffer[midi_output_count++] = cmidi2_ump_midi2_program(
+                        0, channel, 0, data1, 0, 0);
+                    break;
+                case 0xD0: // Channel Pressure
+                    midi_output_buffer[midi_output_count++] = cmidi2_ump_midi2_caf(
+                        0, channel, static_cast<uint32_t>(data1) << 25);
+                    break;
+                case 0xE0: { // Pitch Bend
+                    uint32_t value = (static_cast<uint32_t>(data2) << 7) | data1;
+                    midi_output_buffer[midi_output_count++] = cmidi2_ump_midi2_pitch_bend_direct(
+                        0, channel, value << 18);
+                    break;
+                }
+            }
+        }
+        packet = MIDIPacketNext(packet);
+    }
+
     return noErr;
 }
 
@@ -241,11 +294,38 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
             // FIXME: pass correct timestamp
             ump_input_dispatcher.process(0, process);
 
+        // Clear output buffer before processing
+        midi_output_count = 0;
+
         AudioUnitRenderActionFlags flags = 0;
         auto status = AudioUnitRender(instance, &flags, &process_timestamp, 0, process.frameCount(), auDataOut);
         if (status != noErr) {
             logger()->logError("%s: failed to process audio PluginInstanceAU::process(). Status: %d", name.c_str(), status);
             return StatusCode::FAILED_TO_PROCESS;
+        }
+
+        // Copy MIDI output events from temporary buffer to process context
+        if (midi_output_count > 0) {
+            auto& eventOut = process.eventOut();
+            auto* umpBuffer = static_cast<uint64_t*>(eventOut.getMessages());
+            size_t umpPosition = eventOut.position() / sizeof(uint64_t);
+            size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint64_t);
+
+            size_t copyCount = std::min(midi_output_count, umpCapacity - umpPosition);
+            if (copyCount > 0) {
+                std::memcpy(&umpBuffer[umpPosition], midi_output_buffer.data(), copyCount * sizeof(uint64_t));
+                eventOut.position((umpPosition + copyCount) * sizeof(uint64_t));
+
+                // Log output events for debugging
+                logger()->logInfo("AU output events: %zu UMP messages", copyCount);
+                for (size_t i = 0; i < copyCount; ++i) {
+                    uint32_t* ump32 = reinterpret_cast<uint32_t*>(&umpBuffer[umpPosition + i]);
+                    logger()->logInfo("  UMP[%zu]: %08X %08X", i, ump32[0], ump32[1]);
+                }
+            }
+
+            // Clear temporary buffer
+            midi_output_count = 0;
         }
     }
 

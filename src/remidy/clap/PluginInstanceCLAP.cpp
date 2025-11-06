@@ -1,4 +1,5 @@
 #include "PluginFormatCLAP.hpp"
+#include "cmidi2.h"
 
 namespace remidy {
     PluginInstanceCLAP::PluginInstanceCLAP(
@@ -226,7 +227,136 @@ namespace remidy {
         auto result = plugin->process(plugin, &clap_process);
         auto ret = result == CLAP_PROCESS_ERROR ? StatusCode::FAILED_TO_PROCESS : StatusCode::OK;
 
-        // FIXME: process eventOut
+        // Convert CLAP output events to UMP
+        auto& eventOut = process.eventOut();
+        auto* umpBuffer = static_cast<uint64_t*>(eventOut.getMessages());
+        size_t umpPosition = eventOut.position() / sizeof(uint64_t); // position in uint64_t units
+        size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint64_t);
+
+        // Process CLAP output events
+        size_t eventCount = events.size();
+        for (size_t i = 0; i < eventCount && umpPosition < umpCapacity; ++i) {
+            auto* hdr = events.get(static_cast<uint32_t>(i));
+            // FIXME: this should not ignore MIDI events
+
+            if (!hdr || hdr->space_id != CLAP_CORE_EVENT_SPACE_ID)
+                continue;
+
+            switch (hdr->type) {
+                case CLAP_EVENT_NOTE_ON: {
+                    auto* ev = reinterpret_cast<const clap_event_note_t*>(hdr);
+                    uint8_t group = 0; // CLAP doesn't have groups
+                    uint8_t channel = ev->channel >= 0 ? static_cast<uint8_t>(ev->channel) : 0;
+                    uint8_t note = ev->key >= 0 ? static_cast<uint8_t>(ev->key) : 0;
+                    uint16_t velocity = static_cast<uint16_t>(ev->velocity * UINT16_MAX);
+                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_on(
+                        group, channel, note, 0, velocity, 0);
+                    break;
+                }
+                case CLAP_EVENT_NOTE_OFF: {
+                    auto* ev = reinterpret_cast<const clap_event_note_t*>(hdr);
+                    uint8_t group = 0;
+                    uint8_t channel = ev->channel >= 0 ? static_cast<uint8_t>(ev->channel) : 0;
+                    uint8_t note = ev->key >= 0 ? static_cast<uint8_t>(ev->key) : 0;
+                    uint16_t velocity = static_cast<uint16_t>(ev->velocity * UINT16_MAX);
+                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_off(
+                        group, channel, note, 0, velocity, 0);
+                    break;
+                }
+                case CLAP_EVENT_PARAM_VALUE: {
+                    auto* ev = reinterpret_cast<const clap_event_param_value_t*>(hdr);
+                    // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
+                    // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
+                    uint8_t bank = static_cast<uint8_t>((ev->param_id >> 7) & 0x7F);
+                    uint8_t index = static_cast<uint8_t>(ev->param_id & 0x7F);
+                    uint32_t data = static_cast<uint32_t>(ev->value * UINT32_MAX);
+
+                    // Use NRPN for channel-wide assignable controllers
+                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_nrpn(
+                        0, 0, bank, index, data); // group 0, channel 0
+                    break;
+                }
+                case CLAP_EVENT_MIDI: {
+                    // Convert MIDI1 to MIDI2 UMP
+                    auto* ev = reinterpret_cast<const clap_event_midi_t*>(hdr);
+                    uint8_t status = ev->data[0] & 0xF0;
+                    uint8_t channel = ev->data[0] & 0x0F;
+                    uint8_t data1 = ev->data[1];
+                    uint8_t data2 = ev->data[2];
+
+                    switch (status) {
+                        case 0x80: // Note Off
+                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_off(
+                                0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
+                            break;
+                        case 0x90: // Note On
+                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_on(
+                                0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
+                            break;
+                        case 0xA0: // Poly Pressure
+                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_paf(
+                                0, channel, data1, static_cast<uint32_t>(data2) << 25);
+                            break;
+                        case 0xB0: // Control Change
+                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_cc(
+                                0, channel, data1, static_cast<uint32_t>(data2) << 25);
+                            break;
+                        case 0xC0: // Program Change
+                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_program(
+                                0, channel, 0, data1, 0, 0);
+                            break;
+                        case 0xD0: // Channel Pressure
+                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_caf(
+                                0, channel, static_cast<uint32_t>(data1) << 25);
+                            break;
+                        case 0xE0: { // Pitch Bend
+                            uint32_t value = (static_cast<uint32_t>(data2) << 7) | data1;
+                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_pitch_bend_direct(
+                                0, channel, value << 18);
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case CLAP_EVENT_MIDI2: {
+                    // MIDI2 UMP - copy directly
+                    auto* ev = reinterpret_cast<const clap_event_midi2_t*>(hdr);
+                    // Check UMP size and copy
+                    uint8_t messageType = (ev->data[0] >> 28) & 0xF;
+                    if (messageType <= 3) {
+                        // 32-bit message (1 uint32_t = half of uint64_t)
+                        umpBuffer[umpPosition] = static_cast<uint64_t>(ev->data[0]) << 32;
+                        umpPosition++;
+                    } else if (messageType == 4 || messageType == 5) {
+                        // 64-bit message (2 uint32_t = 1 uint64_t)
+                        umpBuffer[umpPosition] = (static_cast<uint64_t>(ev->data[0]) << 32) | ev->data[1];
+                        umpPosition++;
+                    } else if (messageType >= 0xD) {
+                        // 128-bit message (4 uint32_t = 2 uint64_t)
+                        if (umpPosition + 1 < umpCapacity) {
+                            umpBuffer[umpPosition++] = (static_cast<uint64_t>(ev->data[0]) << 32) | ev->data[1];
+                            umpBuffer[umpPosition++] = (static_cast<uint64_t>(ev->data[2]) << 32) | ev->data[3];
+                        }
+                    }
+                    break;
+                }
+                default:
+                    // Other event types not yet supported
+                    break;
+            }
+        }
+
+        // Update eventOut position
+        eventOut.position(umpPosition * sizeof(uint64_t));
+
+        // Log output events for debugging
+        if (umpPosition > 0) {
+            owner->getLogger()->logInfo("CLAP output events: %zu UMP messages", umpPosition);
+            for (size_t i = 0; i < umpPosition; ++i) {
+                uint32_t* ump32 = reinterpret_cast<uint32_t*>(&umpBuffer[i]);
+                owner->getLogger()->logInfo("  UMP[%zu]: %08X %08X", i, ump32[0], ump32[1]);
+            }
+        }
 
         events.clear();
 
