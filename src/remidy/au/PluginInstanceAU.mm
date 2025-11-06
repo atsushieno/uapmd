@@ -254,10 +254,13 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
     auto* trackContext = process.trackContext();
     auto& masterContext = trackContext->masterContext();
 
-    process_timestamp.mSampleTime = static_cast<Float64>(masterContext.playbackPositionSamples());
+    // process_timestamp.mSampleTime is maintained locally and advances continuously
+    // This is critical: AU plugins need to see time advancing to process MIDI events,
+    // even when the DAW transport is stopped
     process_timestamp.mHostTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     process_timestamp.mFlags = kAudioTimeStampSampleTimeValid | kAudioTimeStampHostTimeValid;
 
+    // Report transport state - use actual playback position for transport callbacks
     host_transport_info.isPlaying = masterContext.isPlaying();
     host_transport_info.transportStateChanged = false;
     host_transport_info.currentSample = static_cast<Float64>(masterContext.playbackPositionSamples());
@@ -303,6 +306,9 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
             logger()->logError("%s: failed to process audio PluginInstanceAU::process(). Status: %d", name.c_str(), status);
             return StatusCode::FAILED_TO_PROCESS;
         }
+
+        // Advance timestamp for next process() call - audio is flowing even when transport is stopped
+        process_timestamp.mSampleTime += process.frameCount();
 
         // Copy MIDI output events from temporary buffer to process context
         if (midi_output_count > 0) {

@@ -571,8 +571,6 @@ void MainWindow::applyDeviceSettings() {
 
 void MainWindow::play() {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-
-    sequencer.startAudio();
     sequencer.startPlayback();
     isPlaying_ = true;
     isPaused_ = false;
@@ -580,9 +578,7 @@ void MainWindow::play() {
 
 void MainWindow::stop() {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    sequencer.stopAudio();
     sequencer.stopPlayback();
-
     isPlaying_ = false;
     isPaused_ = false;
     playbackPosition_ = 0.0f;
