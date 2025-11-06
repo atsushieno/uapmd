@@ -113,12 +113,32 @@ void uapmd::AudioPluginSequencer::dispatchPluginOutput(int32_t instanceId, const
     auto* scratch = plugin_output_scratch_.data();
     std::memcpy(scratch, data, bytes);
 
+    // Process UMP messages and extract parameter changes
     size_t offset = 0;
     auto* byteView = reinterpret_cast<uint8_t*>(scratch);
     while (offset < bytes) {
         auto* msg = reinterpret_cast<cmidi2_ump*>(byteView + offset);
         auto size = cmidi2_ump_get_message_size_bytes(msg);
         auto* words = reinterpret_cast<uint32_t*>(byteView + offset);
+
+        // Check for NRPN messages (parameter changes)
+        uint8_t messageType = (words[0] >> 28) & 0xF;
+        if (messageType == 4) { // MIDI 2.0 Channel Voice Message (64-bit)
+            uint8_t status = (words[0] >> 16) & 0xF0;
+            if (status == 0x30) { // NRPN
+                uint8_t bank = (words[0] >> 8) & 0x7F;
+                uint8_t index = words[0] & 0x7F;
+                uint32_t value32 = words[1];
+
+                // Reconstruct parameter ID: bank * 128 + index
+                int32_t paramId = (bank * 128) + index;
+                double value = static_cast<double>(value32) / 4294967295.0;
+
+                // Store parameter update
+                pending_parameter_updates_[instanceId].push_back({paramId, value});
+            }
+        }
+
         words[0] = (words[0] & 0x0FFFFFFF) | (static_cast<uint32_t>(group) << 28);
         offset += size;
     }
@@ -302,6 +322,18 @@ std::string uapmd::AudioPluginSequencer::getParameterValueString(int32_t instanc
             if (node->instanceId() == instanceId)
                 return node->pal()->getParameterValueString(parameterIndex, value);
     return "";
+}
+
+std::vector<uapmd::AudioPluginSequencer::ParameterUpdate> uapmd::AudioPluginSequencer::getParameterUpdates(int32_t instanceId) {
+    auto it = pending_parameter_updates_.find(instanceId);
+    if (it == pending_parameter_updates_.end()) {
+        return {};
+    }
+
+    // Get and clear the updates
+    auto updates = std::move(it->second);
+    pending_parameter_updates_.erase(it);
+    return updates;
 }
 
 std::vector<uapmd::PresetsMetadata> uapmd::AudioPluginSequencer::getPresetList(int32_t instanceId) {

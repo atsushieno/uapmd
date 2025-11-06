@@ -741,6 +741,32 @@ void MainWindow::updateParameterValueString(size_t parameterIndex) {
 }
 
 void MainWindow::renderParameterControls() {
+    // Reflect Event Out toggle
+    ImGui::Checkbox("Reflect Event Out", &reflectEventOut_);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("When enabled, parameter changes from plugin output events\nwill be reflected in the UI controls");
+    }
+
+    // Check for parameter updates from plugin output
+    if (reflectEventOut_ && selectedInstance_ >= 0 && selectedInstance_ < static_cast<int>(instances_.size())) {
+        int32_t instanceId = instances_[selectedInstance_];
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto updates = sequencer.getParameterUpdates(instanceId);
+
+        for (const auto& update : updates) {
+            // Find the parameter by index and update its value
+            for (size_t i = 0; i < parameters_.size(); ++i) {
+                if (parameters_[i].index == update.parameterIndex) {
+                    parameterValues_[i] = static_cast<float>(update.value);
+                    updateParameterValueString(i);
+                    break;
+                }
+            }
+        }
+    }
+
     ImGui::InputText("Filter Parameters", parameterFilter_, sizeof(parameterFilter_));
 
     if (ImGui::BeginTable("ParameterTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {

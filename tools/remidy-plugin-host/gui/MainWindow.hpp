@@ -44,6 +44,7 @@ namespace uapmd::gui {
         std::vector<std::string> parameterValueStrings_; // Cache value strings to avoid calling valueToString() every frame
         std::vector<uapmd::PresetsMetadata> presets_;
         int selectedPreset_ = -1;
+        bool reflectEventOut_ = true; // Toggle for reflecting plugin output events to UI
 
         // Plugin selection
         bool showPluginSelector_ = false;

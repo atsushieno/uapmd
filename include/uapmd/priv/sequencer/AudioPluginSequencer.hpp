@@ -42,6 +42,12 @@ namespace uapmd {
         std::shared_ptr<HandlerMap> plugin_output_handlers_;
         std::vector<uapmd_ump_t> plugin_output_scratch_;
 
+        struct ParameterUpdate {
+            int32_t parameterIndex;
+            double value;
+        };
+        std::unordered_map<int32_t, std::vector<ParameterUpdate>> pending_parameter_updates_;
+
         struct RouteResolution {
             AudioPluginTrack* track{nullptr};
             int32_t trackIndex{-1};
@@ -88,6 +94,7 @@ namespace uapmd {
         std::vector<ParameterMetadata> getParameterList(int32_t instanceId);
         std::string getParameterValueString(int32_t instanceId, int32_t parameterIndex, double value);
         std::vector<PresetsMetadata> getPresetList(int32_t instanceId);
+        std::vector<ParameterUpdate> getParameterUpdates(int32_t instanceId);
         void loadPreset(int32_t instanceId, int32_t presetIndex);
         std::vector<int32_t> getInstanceIds();
         std::string getPluginName(int32_t instanceId);
