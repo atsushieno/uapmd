@@ -47,9 +47,7 @@ There are supplemental tools for diagnosing problems we encounter.
 
 The virtual MIDI 2.0 device service controller. Currently the command line options are hacky:
 
-> $ uapmd-service (--no-gui) (plugin-name) (format-name) (api-name)
-
-`--no-gui` runs the service configured with the following arguments, without showing the UI. Not verified very often. 
+> $ uapmd-service (plugin-name) (format-name) (api-name)
 
 `plugin-name` is match by `std::string::contains()` within display name, case-sensitive.
 

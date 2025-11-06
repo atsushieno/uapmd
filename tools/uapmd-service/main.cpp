@@ -28,14 +28,14 @@ int main(int argc, const char** argv) {
         std::vector<std::string> positional;
         positional.reserve(args.size());
         for (const auto& arg : args) {
-            if (arg == "--shell" || arg == "--cli" || arg == "--no-gui" || arg == "--headless") {
+            /*if (arg == "--shell" || arg == "--cli" || arg == "--no-gui" || arg == "--headless") {
                 requestedMode = Mode::Headless;
                 continue;
             }
             if (arg == "--gui") {
                 requestedMode = Mode::Gui;
                 continue;
-            }
+            }*/
             positional.push_back(arg);
         }
 
