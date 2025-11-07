@@ -31,9 +31,9 @@ Every channel can be mapped to a plugin graph. A plugin graph consists of one or
 We plan to work with these audio plugin formats:
 
 - LV2
-- VST3 (Travesty)
+- VST3
 - AudioUnit (V2 and V3)
-- CLAP (if there is good hosting library like LV2 lilv)
+- CLAP
 
 Our hosting support is limited to the following features:
 

@@ -11,6 +11,13 @@ At the same time, remidy itself is (should be) UI-framework-agnostic, it has to 
 
 Our GUI support is commonized in `PluginUISupport` API. It is basically designed after what CLAP GUI extension does.
 
-CLAP is very different from other plugin formats in that it does not expose the pointer to the (platform-specific) plugin UI handle. Instead, it expects platform-specific UI handle for the containing parent window or view.
+GUI extensibility on each plugin format differs each other:
+
+| format | exposed native handle | exposing API |
+|-|-|-|
+| VST3 | parent | `void*`, `IPlugView::attached()` |
+| AU | plugin UI | `NSView`, `AudioUnitCocoaViewInfo` |
+| LV2 | plugin UI | `LV2UI_Widget`, `LV2UI_Descriptor.instantiate` |
+| CLAP | parent | `clap_window_t*`, `clap_gui_plugin_t.set_parent()` |
 
 In current sources, the GUI support is implemented mostly by AI agents (Claude Code and Codex).

@@ -14,20 +14,6 @@ At user developers perspective, there are two primary GUI tools:
 
 I put them on the [wiki](https://github.com/atsushieno/uapmd/wiki) pages.
 
-## Documentation
-
-ALL docs under [`docs`](docs) are supposed to describe design investigation and thoughts.
-
-We are moving quick and may not reflect current state of union, or describe our plans correctly.
-
-There are some notable docs:
-
-- [Plugin catalog (listing) and instantiation](docs/remidy/PLUGIN_ID_AND_CATALOG.md)
-- [State](docs/remidy/STATE.md)
-- [GUI support and main thread constraints](docs/remidy/GUI_SUPPORT.md)
-- [Parameters](docs/remidy/PARAMETERS.md)
-- [Presets](docs/remidy/PRESETS.md)
-
 ## What's the point of these tools?
 
 With UAPMD, You do not have to wait for MIDI 2.0 synthesizers in the market; existing audio plugins should work as a virtual MIDI 2.0 device. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take a similar place for MIDI 2.0.
@@ -63,6 +49,19 @@ The plugin host. No particular command line options exist.
 
 `remidy-scan` is a tool to query and enumerate locally installed plugins, and stores the results to `(local app data)/remidy-tooling/plugin-list-cache.json` (`local app data` depends on the platform).
 
+## Documentation
+
+ALL docs under [`docs`](docs) are supposed to describe design investigation and thoughts.
+
+We are moving quick and may not reflect current state of union, or describe our plans correctly.
+
+There are some notable docs:
+
+- [Plugin catalog (listing) and instantiation](docs/remidy/PLUGIN_ID_AND_CATALOG.md)
+- [State](docs/remidy/STATE.md)
+- [GUI support and main thread constraints](docs/remidy/GUI_SUPPORT.md)
+- [Parameters](docs/remidy/PARAMETERS.md)
+- [Presets](docs/remidy/PRESETS.md)
 
 ## Code modules
 
