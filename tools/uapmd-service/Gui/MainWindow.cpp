@@ -302,10 +302,8 @@ void MainWindow::renderPluginSelector() {
         ImGui::EndTable();
     }
 
-    ImGui::InputText("API (optional)", apiInput_.data(), apiInput_.size());
-    ImGui::InputText("Device name", deviceNameInput_.data(), deviceNameInput_.size());
-
     // Build track destination options
+    std::vector<std::string> labels;
     {
         trackOptions_.clear();
         if (auto* sequencer = controller_.sequencer()) {
@@ -323,18 +321,17 @@ void MainWindow::renderPluginSelector() {
             selectedTrackOption_ = 0;
         }
 
-        std::vector<std::string> labels;
         labels.reserve(trackOptions_.size() + 1);
         labels.emplace_back("New track (new UMP device)");
         for (const auto& option : trackOptions_) {
             labels.push_back(option.label);
         }
-        std::vector<const char*> labelPtrs;
-        labelPtrs.reserve(labels.size());
-        for (auto& label : labels) {
-            labelPtrs.push_back(label.c_str());
-        }
-        ImGui::Combo("Track destination", &selectedTrackOption_, labelPtrs.data(), static_cast<int>(labelPtrs.size()));
+    }
+
+    std::vector<const char*> labelPtrs;
+    labelPtrs.reserve(labels.size());
+    for (auto& label : labels) {
+        labelPtrs.push_back(label.c_str());
     }
 
     bool canCreate = selectedPlugin_ >= 0 && selectedPlugin_ < static_cast<int>(pluginsCopy.size());
@@ -351,6 +348,22 @@ void MainWindow::renderPluginSelector() {
     if (!pluginScanCompleted_) {
         ImGui::EndDisabled();
     }
+    ImGui::SameLine();
+    ImGui::TextUnformatted("on");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(250.0f);
+    ImGui::Combo("##track_dest", &selectedTrackOption_, labelPtrs.data(), static_cast<int>(labelPtrs.size()));
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Named as:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(200.0f);
+    ImGui::InputText("##device_name", deviceNameInput_.data(), deviceNameInput_.size());
+    ImGui::SameLine();
+    ImGui::TextUnformatted("API:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputText("##api", apiInput_.data(), apiInput_.size());
 }
 
 void MainWindow::renderDeviceManager() {
