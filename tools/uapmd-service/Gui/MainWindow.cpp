@@ -89,7 +89,7 @@ void MainWindow::render() {
             ImGui::TextWrapped("%s", pluginScanMessage_.c_str());
         }
         ImGui::SameLine();
-        if (ImGui::Button("Rescan##plugins") && !scanning_) {
+        if (ImGui::Button("Scan Plugins##plugins") && !scanning_) {
             startPluginScan(true);
         }
         ImGui::Separator();
