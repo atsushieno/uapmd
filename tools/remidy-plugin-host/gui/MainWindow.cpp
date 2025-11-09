@@ -787,7 +787,7 @@ void MainWindow::renderParameterControls() {
         for (size_t i = 0; i < parameters_.size(); ++i) {
             auto& param = parameters_[i];
 
-            if (param.hidden || !param.automatable)
+            if (param.hidden || (!param.automatable && !param.discrete))
                 continue;
 
             // Filter parameters by name or stable ID
