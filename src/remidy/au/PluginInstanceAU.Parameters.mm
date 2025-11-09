@@ -117,7 +117,47 @@ remidy::StatusCode remidy::PluginInstanceAU::ParameterSupport::getPerNoteControl
 
 std::string remidy::PluginInstanceAU::ParameterSupport::valueToString(uint32_t index, double value) {
     auto& enums = parameter_list[index]->enums();
-    return enums.empty() ? "" : enums[(int32_t) value].label;
+
+    // For enumerated/indexed parameters, search for matching value
+    if (!enums.empty()) {
+        for (const auto& e : enums) {
+            if (std::abs(e.value - value) < 0.0001) {
+                return e.label;
+            }
+        }
+        // If no exact match found, return first/last based on proximity
+        if (value <= enums.front().value)
+            return enums.front().label;
+        if (value >= enums.back().value)
+            return enums.back().label;
+    }
+
+    // For continuous parameters, try to get formatted string from AU
+    AudioUnitParameterID paramId = au_param_id_list[index];
+    UInt32 dataSize = sizeof(AudioUnitParameterValueName);
+
+    Float32 floatValue = (Float32)value;
+    AudioUnitParameterValueName valueName;
+    valueName.inParamID = paramId;
+    valueName.inValue = &floatValue;
+    valueName.outName = nullptr;
+
+    OSStatus result = AudioUnitGetProperty(owner->instance,
+                                          kAudioUnitProperty_ParameterValueName,
+                                          kAudioUnitScope_Global,
+                                          paramId,
+                                          &valueName,
+                                          &dataSize);
+
+    if (result == noErr && valueName.outName != nullptr) {
+        char buffer[256];
+        CFStringGetCString(valueName.outName, buffer, sizeof(buffer), kCFStringEncodingUTF8);
+        CFRelease(valueName.outName);
+        return std::string(buffer);
+    }
+
+    // Fallback: format as number
+    return std::format("{:.3f}", value);
 }
 
 #endif

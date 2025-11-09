@@ -21,22 +21,28 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
         std::string name = vst3StringToStdString(info.title);
         std::string path{""};
 
+        // Query plain (denormalized) value ranges from VST3
+        double plainMin = controller->normalizedParamToPlain(info.id, 0.0);
+        double plainMax = controller->normalizedParamToPlain(info.id, 1.0);
+        double plainDefault = controller->normalizedParamToPlain(info.id, info.defaultNormalizedValue);
+
         std::vector<ParameterEnumeration> enums{};
         // VST3 stepCount is the maximum value, so stepCount+1 discrete values exist (0 to stepCount)
         if (info.stepCount > 0)
             for (int32_t e = 0; e <= info.stepCount; e++) {
                 String128 nameStr{};
                 auto normalized = e / (double) info.stepCount;
+                auto plainValue = controller->normalizedParamToPlain(info.id, normalized);
                 controller->getParamStringByValue(info.id, normalized, nameStr);
                 auto nameString = vst3StringToStdString(nameStr);
-                ParameterEnumeration p{nameString, normalized};
+                ParameterEnumeration p{nameString, plainValue};
                 enums.emplace_back(p);
             }
 
         auto p = new PluginParameter(i, idString, name, path,
-                                     info.defaultNormalizedValue,
-                                     0.0,
-                                     1.0,
+                                     plainDefault,
+                                     plainMin,
+                                     plainMax,
                                      info.stepCount > 0 || (info.flags & ParameterInfo::kCanAutomate),
                                      true, // I don't see any flags for `readable`
                                      info.flags & ParameterInfo::kIsHidden,
@@ -97,6 +103,10 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
     auto pvc = owner->processDataInputParameterChanges.asInterface();
     const ParamID id = parameter_ids[index];
+
+    // Convert plain value to normalized for VST3
+    auto normalized = owner->controller->plainParamToNormalized(id, value);
+
     int32_t i = 0;
     IParamValueQueue* q{nullptr};
     for (int32_t n = pvc->getParameterCount(); i < n; i++) {
@@ -107,7 +117,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
     if (!q)
         // It is an RT-safe operation, right?
         q = pvc->addParameterData(id, i);
-    if (q && q->addPoint(sampleOffset, value, i) == kResultOk)
+    if (q && q->addPoint(sampleOffset, normalized, i) == kResultOk)
         return StatusCode::OK;
     return StatusCode::INVALID_PARAMETER_OPERATION;
 }
@@ -135,7 +145,11 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::getParameter(ui
     if (!value)
         return StatusCode::INVALID_PARAMETER_OPERATION;
     auto controller = owner->controller;
-    *value = controller->getParamNormalized(parameter_ids[index]);
+    const ParamID id = parameter_ids[index];
+
+    // Get normalized value from VST3 and convert to plain
+    auto normalized = controller->getParamNormalized(id);
+    *value = controller->normalizedParamToPlain(id, normalized);
     return StatusCode::OK;
 }
 
@@ -174,10 +188,18 @@ void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint
 }
 
 std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t index, double value) {
-    auto enums = parameter_defs[index]->enums();
-    if (enums.empty())
-        return "";
-    if (value == 1.0)
-        return enums[enums.size() - 1].label;
-    return enums[(int32_t) (value * enums.size())].label;
+    auto controller = owner->controller;
+    const ParamID id = parameter_ids[index];
+
+    // Convert plain value to normalized for VST3 API
+    auto normalized = controller->plainParamToNormalized(id, value);
+
+    // Use VST3's getParamStringByValue for formatted output
+    String128 stringBuffer{};
+    if (controller->getParamStringByValue(id, normalized, stringBuffer) == kResultOk) {
+        return vst3StringToStdString(stringBuffer);
+    }
+
+    // Fallback to empty string if conversion fails
+    return "";
 }
