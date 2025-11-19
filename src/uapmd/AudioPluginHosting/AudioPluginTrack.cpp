@@ -121,7 +121,6 @@ namespace uapmd {
 
                 auto& eventOut = process.eventOut();
                 if (eventOut.position() > 0) {
-                    appendEventOutToPending(eventOut);
                     if (event_output_callback) {
                         event_output_callback(
                             instanceId,

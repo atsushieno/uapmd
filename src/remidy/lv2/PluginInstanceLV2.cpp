@@ -191,9 +191,9 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
 
     // Process Atom outputs and convert to UMP
     auto& eventOut = process.eventOut();
-    auto* umpBuffer = static_cast<uint64_t*>(eventOut.getMessages());
-    size_t umpPosition = eventOut.position() / sizeof(uint64_t);
-    size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint64_t);
+    auto* umpBuffer = static_cast<uint32_t*>(eventOut.getMessages());
+    size_t umpPosition = eventOut.position() / sizeof(uint32_t);
+    size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint32_t);
 
     for (auto& port : lv2_ports) {
         if (port.atom_out_index < 0)
@@ -220,34 +220,54 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
                 uint8_t data2 = atom->size > 2 ? midi[2] : 0;
 
                 switch (status) {
-                    case 0x80: // Note Off
-                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_off(
+                    case 0x80: { // Note Off
+                        uint64_t ump = cmidi2_ump_midi2_note_off(
                             0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                         break;
-                    case 0x90: // Note On
-                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_on(
+                    }
+                    case 0x90: { // Note On
+                        uint64_t ump = cmidi2_ump_midi2_note_on(
                             0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                         break;
-                    case 0xA0: // Poly Pressure
-                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_paf(
+                    }
+                    case 0xA0: { // Poly Pressure
+                        uint64_t ump = cmidi2_ump_midi2_paf(
                             0, channel, data1, static_cast<uint32_t>(data2) << 25);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                         break;
-                    case 0xB0: // Control Change
-                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_cc(
+                    }
+                    case 0xB0: { // Control Change
+                        uint64_t ump = cmidi2_ump_midi2_cc(
                             0, channel, data1, static_cast<uint32_t>(data2) << 25);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                         break;
-                    case 0xC0: // Program Change
-                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_program(
+                    }
+                    case 0xC0: { // Program Change
+                        uint64_t ump = cmidi2_ump_midi2_program(
                             0, channel, 0, data1, 0, 0);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                         break;
-                    case 0xD0: // Channel Pressure
-                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_caf(
+                    }
+                    case 0xD0: { // Channel Pressure
+                        uint64_t ump = cmidi2_ump_midi2_caf(
                             0, channel, static_cast<uint32_t>(data1) << 25);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                         break;
+                    }
                     case 0xE0: { // Pitch Bend
                         uint32_t value = (static_cast<uint32_t>(data2) << 7) | data1;
-                        umpBuffer[umpPosition++] = cmidi2_ump_midi2_pitch_bend_direct(
+                        uint64_t ump = cmidi2_ump_midi2_pitch_bend_direct(
                             0, channel, value << 18);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                        umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                         break;
                     }
                 }
@@ -256,16 +276,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
     }
 
     // Update eventOut position
-    eventOut.position(umpPosition * sizeof(uint64_t));
-
-    // Log output events for debugging
-    if (umpPosition > 0) {
-        formatImpl->getLogger()->logInfo("LV2 output events: %zu UMP messages", umpPosition);
-        for (size_t i = 0; i < umpPosition; ++i) {
-            uint32_t* ump32 = reinterpret_cast<uint32_t*>(&umpBuffer[i]);
-            formatImpl->getLogger()->logInfo("  UMP[%zu]: %08X %08X", i, ump32[0], ump32[1]);
-        }
-    }
+    eventOut.position(umpPosition * sizeof(uint32_t));
 
     return StatusCode::OK;
 }

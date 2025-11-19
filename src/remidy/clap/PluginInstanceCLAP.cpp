@@ -247,7 +247,7 @@ namespace remidy {
                 for (size_t ch = 0, nCh = src.outputChannelCount(bus); ch < nCh; ch++)
                     dst.audio_outputs[bus].data32[ch] = src.getFloatOutBuffer(bus, ch);
             else
-                for (size_t ch = 0, nCh = src.inputChannelCount(bus); ch < nCh; ch++)
+                for (size_t ch = 0, nCh = src.outputChannelCount(bus); ch < nCh; ch++)
                     dst.audio_outputs[bus].data64[ch] = src.getDoubleOutBuffer(bus, ch);
         }
 
@@ -269,15 +269,14 @@ namespace remidy {
 
         // Convert CLAP output events to UMP
         auto& eventOut = process.eventOut();
-        auto* umpBuffer = static_cast<uint64_t*>(eventOut.getMessages());
-        size_t umpPosition = eventOut.position() / sizeof(uint64_t); // position in uint64_t units
-        size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint64_t);
+        auto* umpBuffer = static_cast<uint32_t*>(eventOut.getMessages());
+        size_t umpPosition = eventOut.position() / sizeof(uint32_t); // position in uint32_t units
+        size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint32_t);
 
         // Process CLAP output events
         size_t eventCount = events.size();
         for (size_t i = 0; i < eventCount && umpPosition < umpCapacity; ++i) {
             auto* hdr = events.get(static_cast<uint32_t>(i));
-            // FIXME: this should not ignore MIDI events
 
             if (!hdr || hdr->space_id != CLAP_CORE_EVENT_SPACE_ID)
                 continue;
@@ -289,8 +288,9 @@ namespace remidy {
                     uint8_t channel = ev->channel >= 0 ? static_cast<uint8_t>(ev->channel) : 0;
                     uint8_t note = ev->key >= 0 ? static_cast<uint8_t>(ev->key) : 0;
                     uint16_t velocity = static_cast<uint16_t>(ev->velocity * UINT16_MAX);
-                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_on(
-                        group, channel, note, 0, velocity, 0);
+                    uint64_t ump = cmidi2_ump_midi2_note_on(group, channel, note, 0, velocity, 0);
+                    umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                    umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                     break;
                 }
                 case CLAP_EVENT_NOTE_OFF: {
@@ -299,8 +299,9 @@ namespace remidy {
                     uint8_t channel = ev->channel >= 0 ? static_cast<uint8_t>(ev->channel) : 0;
                     uint8_t note = ev->key >= 0 ? static_cast<uint8_t>(ev->key) : 0;
                     uint16_t velocity = static_cast<uint16_t>(ev->velocity * UINT16_MAX);
-                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_off(
-                        group, channel, note, 0, velocity, 0);
+                    uint64_t ump = cmidi2_ump_midi2_note_off(group, channel, note, 0, velocity, 0);
+                    umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                    umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                     break;
                 }
                 case CLAP_EVENT_PARAM_VALUE: {
@@ -312,8 +313,9 @@ namespace remidy {
                     uint32_t data = static_cast<uint32_t>(ev->value * UINT32_MAX);
 
                     // Use NRPN for channel-wide assignable controllers
-                    umpBuffer[umpPosition++] = cmidi2_ump_midi2_nrpn(
-                        0, 0, bank, index, data); // group 0, channel 0
+                    uint64_t ump = cmidi2_ump_midi2_nrpn(0, 0, bank, index, data); // group 0, channel 0
+                    umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                    umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                     break;
                 }
                 case CLAP_EVENT_MIDI: {
@@ -325,34 +327,54 @@ namespace remidy {
                     uint8_t data2 = ev->data[2];
 
                     switch (status) {
-                        case 0x80: // Note Off
-                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_off(
+                        case 0x80: { // Note Off
+                            uint64_t ump = cmidi2_ump_midi2_note_off(
                                 0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
-                        case 0x90: // Note On
-                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_note_on(
+                        }
+                        case 0x90: { // Note On
+                            uint64_t ump = cmidi2_ump_midi2_note_on(
                                 0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
-                        case 0xA0: // Poly Pressure
-                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_paf(
+                        }
+                        case 0xA0: { // Poly Pressure
+                            uint64_t ump = cmidi2_ump_midi2_paf(
                                 0, channel, data1, static_cast<uint32_t>(data2) << 25);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
-                        case 0xB0: // Control Change
-                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_cc(
+                        }
+                        case 0xB0: { // Control Change
+                            uint64_t ump = cmidi2_ump_midi2_cc(
                                 0, channel, data1, static_cast<uint32_t>(data2) << 25);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
-                        case 0xC0: // Program Change
-                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_program(
+                        }
+                        case 0xC0: { // Program Change
+                            uint64_t ump = cmidi2_ump_midi2_program(
                                 0, channel, 0, data1, 0, 0);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
-                        case 0xD0: // Channel Pressure
-                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_caf(
+                        }
+                        case 0xD0: { // Channel Pressure
+                            uint64_t ump = cmidi2_ump_midi2_caf(
                                 0, channel, static_cast<uint32_t>(data1) << 25);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
+                        }
                         case 0xE0: { // Pitch Bend
                             uint32_t value = (static_cast<uint32_t>(data2) << 7) | data1;
-                            umpBuffer[umpPosition++] = cmidi2_ump_midi2_pitch_bend_direct(
+                            uint64_t ump = cmidi2_ump_midi2_pitch_bend_direct(
                                 0, channel, value << 18);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
+                            umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
                         }
                     }
@@ -364,18 +386,23 @@ namespace remidy {
                     // Check UMP size and copy
                     uint8_t messageType = (ev->data[0] >> 28) & 0xF;
                     if (messageType <= 3) {
-                        // 32-bit message (1 uint32_t = half of uint64_t)
-                        umpBuffer[umpPosition] = static_cast<uint64_t>(ev->data[0]) << 32;
-                        umpPosition++;
+                        // 32-bit message (1 uint32_t)
+                        if (umpPosition < umpCapacity) {
+                            umpBuffer[umpPosition++] = ev->data[0];
+                        }
                     } else if (messageType == 4 || messageType == 5) {
-                        // 64-bit message (2 uint32_t = 1 uint64_t)
-                        umpBuffer[umpPosition] = (static_cast<uint64_t>(ev->data[0]) << 32) | ev->data[1];
-                        umpPosition++;
-                    } else if (messageType >= 0xD) {
-                        // 128-bit message (4 uint32_t = 2 uint64_t)
+                        // 64-bit message (2 uint32_t)
                         if (umpPosition + 1 < umpCapacity) {
-                            umpBuffer[umpPosition++] = (static_cast<uint64_t>(ev->data[0]) << 32) | ev->data[1];
-                            umpBuffer[umpPosition++] = (static_cast<uint64_t>(ev->data[2]) << 32) | ev->data[3];
+                            umpBuffer[umpPosition++] = ev->data[0];
+                            umpBuffer[umpPosition++] = ev->data[1];
+                        }
+                    } else if (messageType >= 0xD) {
+                        // 128-bit message (4 uint32_t)
+                        if (umpPosition + 3 < umpCapacity) {
+                            umpBuffer[umpPosition++] = ev->data[0];
+                            umpBuffer[umpPosition++] = ev->data[1];
+                            umpBuffer[umpPosition++] = ev->data[2];
+                            umpBuffer[umpPosition++] = ev->data[3];
                         }
                     }
                     break;
@@ -387,17 +414,7 @@ namespace remidy {
         }
 
         // Update eventOut position
-        eventOut.position(umpPosition * sizeof(uint64_t));
-
-        // Log output events for debugging
-        if (umpPosition > 0) {
-            owner->getLogger()->logInfo("CLAP output events: %zu UMP messages", umpPosition);
-            for (size_t i = 0; i < umpPosition; ++i) {
-                uint32_t* ump32 = reinterpret_cast<uint32_t*>(&umpBuffer[i]);
-                owner->getLogger()->logInfo("  UMP[%zu]: %08X %08X", i, ump32[0], ump32[1]);
-            }
-        }
-
+        eventOut.position(umpPosition * sizeof(uint32_t));
         events.clear();
 
         return ret;

@@ -173,8 +173,8 @@ namespace remidy {
         HostTransportInfo host_transport_info{};
         HostCallbackInfo host_callback_info{};
 
-        // Temporary buffer for MIDI output events during processing
-        std::vector<uint64_t> midi_output_buffer{};
+        // Temporary buffer for MIDI output events during processing (as uint32_t words)
+        std::vector<uint32_t> midi_output_buffer{};
         size_t midi_output_count{0};
 
     protected:
