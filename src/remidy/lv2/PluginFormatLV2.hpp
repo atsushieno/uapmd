@@ -65,7 +65,7 @@ namespace remidy {
 
     public:
         LV2ParameterHandler(remidy_lv2::LV2ImplPluginContext &context, PluginParameter *def)
-                : context(context), def(def), current(def->defaultValue()) {
+                : context(context), def(def), current(def->defaultPlainValue()) {
 
         }
 

@@ -20,7 +20,7 @@ namespace remidy {
         const std::string stable_id;
         const std::string _name;
         const std::string _path;
-        const double default_value, min_value, max_value;
+        const double default_plain_value, min_plain_value, max_plain_value;
         bool is_automatable;
         bool is_readable;
         bool is_hidden;
@@ -29,12 +29,12 @@ namespace remidy {
 
     public:
         PluginParameter(uint32_t index, std::string& id, std::string& name, std::string& path,
-                        double defaultValue, double minValue, double maxValue,
+                        double defaultPlainValue, double minPlainValue, double maxPlainValue,
                         bool automatable, bool readable, bool hidden, bool discrete,
                         std::vector<ParameterEnumeration> enums = {}) :
-            _index(index), stable_id(id), _name(name), _path(path),
-            default_value(defaultValue), min_value(minValue), max_value(maxValue),
-            is_automatable(automatable), is_readable(readable), is_hidden(hidden), is_discrete(discrete), _enums(std::move(enums)) {
+                _index(index), stable_id(id), _name(name), _path(path),
+                default_plain_value(defaultPlainValue), min_plain_value(minPlainValue), max_plain_value(maxPlainValue),
+                is_automatable(automatable), is_readable(readable), is_hidden(hidden), is_discrete(discrete), _enums(std::move(enums)) {
         }
         ~PluginParameter() = default;
 
@@ -46,9 +46,10 @@ namespace remidy {
         // If the format only supports "group", then it will be "group".
         // If the format supports parameter path, then it will be "path/to/sub/path"
         const std::string& path() const { return _path; }
-        const double defaultValue() const { return default_value; }
-        const double minValue() const { return min_value; }
-        const double maxValue() const { return max_value; }
+        const double defaultPlainValue() const { return default_plain_value; }
+        const double minPlainValue() const { return min_plain_value; }
+        const double maxPlainValue() const { return max_plain_value; }
+        double normalizedValue(double plainValue) const { return (plainValue - min_plain_value) / (max_plain_value - min_plain_value); }
         bool automatable() const { return is_automatable; }
         bool readable() { return is_readable; }
         bool hidden() const { return is_hidden; }
@@ -101,9 +102,9 @@ namespace remidy {
         virtual std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) = 0;
 
         // Sets (schedules) a normalized parameter value by index.
-        virtual StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) = 0;
+        virtual StatusCode setParameter(uint32_t index, double plainValue, uint64_t timestamp) = 0;
         // Retrieves current parameter, if possible.
-        virtual StatusCode getParameter(uint32_t index, double *value) = 0;
+        virtual StatusCode getParameter(uint32_t index, double *plainValue) = 0;
 
         // Sets (schedules) a normalized per-note controller value by index.
         // covers both parameter changes and per-note parameter changes (controllers).

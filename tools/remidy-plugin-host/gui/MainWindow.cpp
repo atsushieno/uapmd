@@ -713,7 +713,7 @@ void MainWindow::refreshParameters() {
     parameterValues_.resize(parameters_.size());
     parameterValueStrings_.resize(parameters_.size());
     for (size_t i = 0; i < parameters_.size(); ++i) {
-        parameterValues_[i] = static_cast<float>(parameters_[i].initialValue);
+        parameterValues_[i] = static_cast<float>(parameters_[i].defaultPlainValue);
         updateParameterValueString(i);
     }
 }
@@ -865,7 +865,7 @@ void MainWindow::renderParameterControls() {
                 // Use slider for continuous parameters
                 // Use cached value label
                 const char* format = parameterValueStrings_[i].empty() ? "%.3f" : parameterValueStrings_[i].c_str();
-                if (ImGui::SliderFloat(controlId.c_str(), &parameterValues_[i], static_cast<float>(param.minValue), static_cast<float>(param.maxValue), format)) {
+                if (ImGui::SliderFloat(controlId.c_str(), &parameterValues_[i], static_cast<float>(param.minPlainValue), static_cast<float>(param.maxPlainValue), format)) {
                     parameterChanged = true;
                 }
             }
@@ -880,7 +880,7 @@ void MainWindow::renderParameterControls() {
             ImGui::TableNextColumn();
             std::string resetId = "Reset##" + std::to_string(param.index);
             if (ImGui::Button(resetId.c_str())) {
-                parameterValues_[i] = static_cast<float>(param.initialValue);
+                parameterValues_[i] = static_cast<float>(param.defaultPlainValue);
                 int32_t instanceId = instances_[selectedInstance_];
                 uapmd::AppModel::instance().sequencer().setParameterValue(instanceId, param.index, parameterValues_[i]);
                 // Update cached string after reset

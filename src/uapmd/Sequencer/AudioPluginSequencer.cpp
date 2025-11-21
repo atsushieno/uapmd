@@ -586,10 +586,6 @@ void uapmd::AudioPluginSequencer::sendNoteOff(int32_t targetId, int32_t note) {
 }
 
 void uapmd::AudioPluginSequencer::setParameterValue(int32_t instanceId, int32_t index, double value) {
-    cmidi2_ump umps[2];
-    uint32_t vi32 = UINT32_MAX * value;
-    auto ump = cmidi2_ump_midi2_nrpn(0, 0, (uint8_t) (index / 0x100), (uint8_t) (index % 0x100), vi32);
-    addMessage64(umps, ump);
     auto* instance = getPluginInstance(instanceId);
     instance->setParameterValue(index, value);
     remidy::Logger::global()->logError(std::format("Native parameter change {}: {} = {}", instanceId, index, value).c_str());

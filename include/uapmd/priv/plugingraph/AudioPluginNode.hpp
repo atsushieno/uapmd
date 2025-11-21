@@ -16,9 +16,9 @@ namespace uapmd {
         std::string stableId;
         std::string name;
         std::string path;
-        double initialValue;
-        double minValue;
-        double maxValue;
+        double defaultPlainValue;
+        double minPlainValue;
+        double maxPlainValue;
         bool automatable;
         bool hidden;
         bool discrete;

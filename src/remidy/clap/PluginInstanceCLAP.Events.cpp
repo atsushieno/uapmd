@@ -9,10 +9,10 @@ namespace remidy {
             double current;
             if (parameters->getParameter(index, &current) != StatusCode::OK)
                 return;
-            auto value = (double) data / UINT32_MAX;
-            parameters->setParameter(clapIndex, value + current, timestamp());
+            auto value = (double) (data + current) / UINT32_MAX;
+            parameters->setParameter(clapIndex, value, timestamp());
         } else
-            parameters->setParameter(clapIndex, (double) data / UINT32_MAX, timestamp());
+            parameters->setParameter(clapIndex, ((double) data) / UINT32_MAX, timestamp());
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index, uint32_t data) {
         // FIXME: implement
