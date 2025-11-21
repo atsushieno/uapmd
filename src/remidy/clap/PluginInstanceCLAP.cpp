@@ -7,28 +7,45 @@ namespace remidy {
         PluginCatalogEntry* info,
         clap_preset_discovery_factory* presetDiscoveryFactory,
         void* module,
-        const clap_plugin_t* plugin,
+        const clap_plugin_t* rawPlugin,
         std::unique_ptr<RemidyCLAPHost> host
-    ) : PluginInstance(info), owner(owner), plugin(plugin), preset_discovery_factory(presetDiscoveryFactory), module(module), host(std::move(host)) {
+    ) : PluginInstance(info), owner(owner), preset_discovery_factory(presetDiscoveryFactory), module(module), host(std::move(host)) {
         if (this->host)
             this->host->attachInstance(this);
-        plugin->init(plugin);
+
+        // Create the plugin proxy wrapper
+        plugin = std::make_unique<CLAPPluginProxy>(*rawPlugin, *this->host);
+
+        // Initialize the plugin via the proxy
+        if (!plugin->init()) {
+            throw std::runtime_error("Failed to initialize CLAP plugin");
+        }
 
         audio_buses = new AudioBuses(this);
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {
-        EventLoop::runTaskOnMainThread([&] {
-            plugin->deactivate(plugin);
-        });
+        // Destroy UI first to ensure GUI timers are stopped before plugin destruction
+        if (_ui) {
+            EventLoop::runTaskOnMainThread([&] {
+                _ui->destroy();
+            });
+            delete _ui;
+        }
 
+        // Stop processing first
         cleanupBuffers(); // cleanup, optionally stop processing in prior.
+
+        // Deactivate and destroy via proxy (handles thread safety and state checking)
+        EventLoop::runTaskOnMainThread([&] {
+            if (plugin) {
+                plugin->deactivate();
+                plugin->destroy();
+            }
+        });
 
         if (host)
             host->detachInstance(this);
-        EventLoop::runTaskOnMainThread([&] {
-            plugin->destroy(plugin);
-        });
 
         delete _parameters;
         delete _states;
@@ -113,7 +130,7 @@ namespace remidy {
 
         // It seems we have to activate plugin buses first.
         EventLoop::runTaskOnMainThread([&] {
-            plugin->activate(plugin, configuration.sampleRate, 1, configuration.bufferSizeInSamples);
+            plugin->activate(configuration.sampleRate, 1, configuration.bufferSizeInSamples);
         });
         applyOfflineRenderingMode();
 
@@ -141,29 +158,21 @@ namespace remidy {
 
     void PluginInstanceCLAP::applyOfflineRenderingMode() {
         EventLoop::runTaskOnMainThread([&] {
-            render_ext = (const clap_plugin_render_t *) plugin->get_extension(plugin, CLAP_EXT_RENDER);
-            if (!render_ext) {
+            if (!plugin->canUseRender()) {
                 if (is_offline_)
                     owner->getLogger()->logWarning("%s: offlineMode requested but plugin lacks CLAP_EXT_RENDER",
                                                    info()->displayName().c_str());
                 return;
             }
 
-            if (is_offline_ && render_ext->has_hard_realtime_requirement &&
-                render_ext->has_hard_realtime_requirement(plugin)) {
+            if (is_offline_ && plugin->renderHasHardRealtimeRequirement()) {
                 owner->getLogger()->logWarning("%s: plugin requires realtime rendering, cannot switch to offline",
                                                info()->displayName().c_str());
                 return;
             }
 
-            if (!render_ext->set) {
-                owner->getLogger()->logWarning("%s: CLAP_EXT_RENDER missing set() implementation",
-                                               info()->displayName().c_str());
-                return;
-            }
-
             auto mode = is_offline_ ? CLAP_RENDER_OFFLINE : CLAP_RENDER_REALTIME;
-            if (!render_ext->set(plugin, mode)) {
+            if (!plugin->renderSet(mode)) {
                 owner->getLogger()->logWarning("%s: failed to set render mode to %s", info()->displayName().c_str(),
                                                is_offline_ ? "offline" : "realtime");
             }
@@ -178,18 +187,13 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::startProcessing() {
-        if (is_processing_)
-            return StatusCode::OK;
-        plugin->start_processing(plugin);
-        is_processing_ = true;
+        if (!plugin->startProcessing())
+            return StatusCode::FAILED_TO_PROCESS;
         return StatusCode::OK;
     }
 
     StatusCode PluginInstanceCLAP::stopProcessing() {
-        if (!is_processing_)
-            return StatusCode::OK;
-        plugin->stop_processing(plugin);
-        is_processing_ = false;
+        plugin->stopProcessing();
         return StatusCode::OK;
     }
 
@@ -270,7 +274,7 @@ namespace remidy {
         ump_input_dispatcher.process(0, process);
 
         // FIXME: we should report process result somehow
-        auto result = plugin->process(plugin, &clap_process);
+        auto result = plugin->process(&clap_process);
         auto ret = result == CLAP_PROCESS_ERROR ? StatusCode::FAILED_TO_PROCESS : StatusCode::OK;
 
         // Convert CLAP output events to UMP
@@ -460,17 +464,11 @@ namespace remidy {
     }
 
     void PluginInstanceCLAP::dispatchTimer(clap_id timerId) {
-        if (!plugin)
-            return;
-        const clap_plugin_timer_support_t* timerExt{nullptr};
-        EventLoop::runTaskOnMainThread([&] {
-            timerExt = (const clap_plugin_timer_support_t*) plugin->get_extension(plugin, CLAP_EXT_TIMER_SUPPORT);
-        });
-        if (!timerExt || !timerExt->on_timer)
+        if (!plugin || !plugin->canUseTimerSupport())
             return;
         // Ensure timer callback happens on the main/UI thread per CLAP expectations
-        EventLoop::runTaskOnMainThread([this, timerId, timerExt](){
-            timerExt->on_timer(plugin, timerId);
+        EventLoop::runTaskOnMainThread([this, timerId](){
+            plugin->timerSupportOnTimer(timerId);
         });
     }
 }

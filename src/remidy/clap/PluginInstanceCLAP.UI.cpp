@@ -14,27 +14,11 @@ namespace remidy {
         if (!owner || !owner->plugin)
             return false;
 
-        // Check if the plugin supports the GUI extension
-        const clap_plugin_gui_t* gui = (const clap_plugin_gui_t*)
-            owner->plugin->get_extension(owner->plugin, CLAP_EXT_GUI);
-
-        return gui != nullptr;
-    }
-
-    bool PluginInstanceCLAP::UISupport::ensureGuiExtension() {
-        if (gui_ext)
-            return true;
-        if (!owner || !owner->plugin)
-            return false;
-
-        EventLoop::runTaskOnMainThread([&] {
-            gui_ext = (const clap_plugin_gui_t*) owner->plugin->get_extension(owner->plugin, CLAP_EXT_GUI);
-        });
-        return gui_ext != nullptr;
+        return owner->plugin->canUseGui();
     }
 
     bool PluginInstanceCLAP::UISupport::withGui(std::function<void()>&& func) {
-        if (!created || !ensureGuiExtension())
+        if (!created || !owner || !owner->plugin || !owner->plugin->canUseGui())
             return false;
 
         EventLoop::runTaskOnMainThread(std::move(func));
@@ -42,15 +26,14 @@ namespace remidy {
     }
 
     bool PluginInstanceCLAP::UISupport::tryCreateWith(const char* api, bool floating) {
-        if (created || !ensureGuiExtension())
+        if (created || !owner || !owner->plugin || !owner->plugin->canUseGui())
             return false;
 
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
-            auto plugin = owner->plugin;
-            if (gui_ext->is_api_supported && !gui_ext->is_api_supported(plugin, api, floating))
+            if (api && !owner->plugin->guiIsApiSupported(api, floating))
                 return;
-            if (!gui_ext->create || !gui_ext->create(plugin, api, floating))
+            if (!owner->plugin->guiCreate(api, floating))
                 return;
             success = true;
         });
@@ -66,7 +49,7 @@ namespace remidy {
     }
 
     bool PluginInstanceCLAP::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
-        if (!ensureGuiExtension())
+        if (!owner || !owner->plugin || !owner->plugin->canUseGui())
             return false;
 
         if (created)
@@ -76,17 +59,15 @@ namespace remidy {
         bool requestFloating = isFloating;
 
         auto tryFloating = [&]() -> bool {
-            if (gui_ext->get_preferred_api) {
-                const char* preferredApi{nullptr};
-                bool preferredFloating{false};
-                bool hasPreference = false;
-                EventLoop::runTaskOnMainThread([&] {
-                    hasPreference = gui_ext->get_preferred_api(owner->plugin, &preferredApi, &preferredFloating);
-                });
-                if (hasPreference && preferredFloating) {
-                    if (tryCreateWith(preferredApi, true))
-                        return true;
-                }
+            const char* preferredApi{nullptr};
+            bool preferredFloating{false};
+            bool hasPreference = false;
+            EventLoop::runTaskOnMainThread([&] {
+                hasPreference = owner->plugin->guiGetPreferredApi(&preferredApi, &preferredFloating);
+            });
+            if (hasPreference && preferredFloating) {
+                if (tryCreateWith(preferredApi, true))
+                    return true;
             }
             if (tryCreateWith(nullptr, true))
                 return true;
@@ -110,11 +91,9 @@ namespace remidy {
             const char* preferredApi{nullptr};
             bool preferredFloating{false};
             bool hasPreference = false;
-            if (gui_ext->get_preferred_api) {
-                EventLoop::runTaskOnMainThread([&] {
-                    hasPreference = gui_ext->get_preferred_api(owner->plugin, &preferredApi, &preferredFloating);
-                });
-            }
+            EventLoop::runTaskOnMainThread([&] {
+                hasPreference = owner->plugin->guiGetPreferredApi(&preferredApi, &preferredFloating);
+            });
             if (hasPreference && !preferredFloating && preferredApi) {
                 if (tryCreateWith(preferredApi, false))
                     return true;
@@ -144,8 +123,6 @@ namespace remidy {
             if (success && parentHandle && !current_api.empty()) {
                 bool attached_success = false;
                 withGui([&] {
-                    if (!gui_ext->set_parent)
-                        return;
                     clap_window_t window{};
                     window.api = current_api.c_str();
                     if (current_api == CLAP_WINDOW_API_COCOA) {
@@ -161,7 +138,7 @@ namespace remidy {
                     } else {
                         window.ptr = parentHandle;
                     }
-                    attached_success = gui_ext->set_parent(owner->plugin, &window);
+                    attached_success = owner->plugin->guiSetParent(&window);
                 });
 
                 if (attached_success) {
@@ -186,12 +163,11 @@ namespace remidy {
     }
 
     void PluginInstanceCLAP::UISupport::destroy() {
-        if (!created || !ensureGuiExtension())
+        if (!created || !owner || !owner->plugin)
             return;
 
         withGui([&] {
-            if (gui_ext->destroy)
-                gui_ext->destroy(owner->plugin);
+            owner->plugin->guiDestroy();
         });
 
         created = false;
@@ -206,8 +182,7 @@ namespace remidy {
             return false;
         bool success = false;
         withGui([&] {
-            if (gui_ext->show)
-                success = gui_ext->show(owner->plugin);
+            success = owner->plugin->guiShow();
         });
         if (success)
             visible = true;
@@ -218,8 +193,7 @@ namespace remidy {
         if (!created)
             return;
         withGui([&] {
-            if (gui_ext->hide)
-                gui_ext->hide(owner->plugin);
+            owner->plugin->guiHide();
         });
         visible = false;
     }
@@ -228,62 +202,56 @@ namespace remidy {
         if (!created || !is_floating)
             return;
         withGui([&] {
-            if (gui_ext->suggest_title)
-                gui_ext->suggest_title(owner->plugin, title.c_str());
+            owner->plugin->guiSuggestTitle(title.c_str());
         });
     }
 
     bool PluginInstanceCLAP::UISupport::canResize() {
-        if (!created || !ensureGuiExtension())
+        if (!created || !owner || !owner->plugin)
             return false;
         bool result = false;
         withGui([&] {
-            if (gui_ext->can_resize)
-                result = gui_ext->can_resize(owner->plugin);
+            result = owner->plugin->guiCanResize();
         });
         return result;
     }
 
     bool PluginInstanceCLAP::UISupport::getSize(uint32_t &width, uint32_t &height) {
-        if (!created || !ensureGuiExtension())
+        if (!created || !owner || !owner->plugin)
             return false;
         bool success = false;
         withGui([&] {
-            if (gui_ext->get_size)
-                success = gui_ext->get_size(owner->plugin, &width, &height);
+            success = owner->plugin->guiGetSize(&width, &height);
         });
         return success;
     }
 
     bool PluginInstanceCLAP::UISupport::setSize(uint32_t width, uint32_t height) {
-        if (!created || !ensureGuiExtension())
+        if (!created || !owner || !owner->plugin)
             return false;
         bool success = false;
         withGui([&] {
-            if (gui_ext->set_size)
-                success = gui_ext->set_size(owner->plugin, width, height);
+            success = owner->plugin->guiSetSize(width, height);
         });
         return success;
     }
 
     bool PluginInstanceCLAP::UISupport::suggestSize(uint32_t &width, uint32_t &height) {
-        if (!created || !ensureGuiExtension())
+        if (!created || !owner || !owner->plugin)
             return false;
         bool success = false;
         withGui([&] {
-            if (gui_ext->adjust_size)
-                success = gui_ext->adjust_size(owner->plugin, &width, &height);
+            success = owner->plugin->guiAdjustSize(&width, &height);
         });
         return success;
     }
 
     bool PluginInstanceCLAP::UISupport::setScale(double scale) {
-        if (!created || !ensureGuiExtension())
+        if (!created || !owner || !owner->plugin)
             return false;
         bool success = false;
         withGui([&] {
-            if (gui_ext->set_scale)
-                success = gui_ext->set_scale(owner->plugin, scale);
+            success = owner->plugin->guiSetScale(scale);
         });
         return success;
     }

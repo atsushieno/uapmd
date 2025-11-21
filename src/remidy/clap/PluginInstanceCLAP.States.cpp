@@ -5,10 +5,12 @@ namespace remidy {
 
     PluginInstanceCLAP::PluginStatesCLAP::PluginStatesCLAP(PluginInstanceCLAP *owner)
         : owner(owner) {
-        const auto plugin = owner->plugin;
+        if (!owner->plugin)
+            return;
         EventLoop::runTaskOnMainThread([&] {
-            state_context_ext = (clap_plugin_state_context_t*) plugin->get_extension(plugin, CLAP_EXT_STATE_CONTEXT);
-            state_ext = (clap_plugin_state_t*) plugin->get_extension(plugin, CLAP_EXT_STATE);
+            const auto rawPlugin = owner->plugin->clapPlugin();
+            state_context_ext = (clap_plugin_state_context_t*) rawPlugin->get_extension(rawPlugin, CLAP_EXT_STATE_CONTEXT);
+            // Note: state_ext is handled by PluginProxy canUseState/stateSave/stateLoad
         });
     }
 
@@ -45,15 +47,19 @@ namespace remidy {
     std::vector<uint8_t> PluginInstanceCLAP::PluginStatesCLAP::getState(
             PluginStateSupport::StateContextType stateContextType, bool includeUiState) {
         std::vector<uint8_t> ret{};
+        if (!owner->plugin)
+            return ret;
         // Note that we cannot support `includeUiState = false` in CLAP...
         EventLoop::runTaskOnMainThread([&] {
             clap_ostream_t stream;
             stream.ctx = &ret;
             stream.write = remidy_clap_stream_write;
-            if (state_context_ext)
-                state_context_ext->save(owner->plugin, &stream, remidyContextTypeToCLAPContextType(stateContextType));
-            else if (state_ext)
-                state_ext->save(owner->plugin, &stream);
+            if (state_context_ext) {
+                const auto rawPlugin = owner->plugin->clapPlugin();
+                state_context_ext->save(rawPlugin, &stream, remidyContextTypeToCLAPContextType(stateContextType));
+            } else if (owner->plugin->canUseState()) {
+                owner->plugin->stateSave(&stream);
+            }
         });
         return ret;
     }
@@ -61,17 +67,20 @@ namespace remidy {
     void PluginInstanceCLAP::PluginStatesCLAP::setState(std::vector<uint8_t> &state,
                                                         PluginStateSupport::StateContextType stateContextType,
                                                         bool includeUiState) {
+        if (!owner->plugin)
+            return;
         // Note that we cannot support `includeUiState = false` in CLAP...
         EventLoop::runTaskOnMainThread([&] {
             clap_istream_t stream;
             stream.ctx = &state;
             stream.read = remidy_clap_stream_read;
             if (state_context_ext) {
+                const auto rawPlugin = owner->plugin->clapPlugin();
                 // should we check error and report it
-                if (!state_context_ext->load(owner->plugin, &stream, remidyContextTypeToCLAPContextType(stateContextType)))
+                if (!state_context_ext->load(rawPlugin, &stream, remidyContextTypeToCLAPContextType(stateContextType)))
                     std::cerr << "PluginStatesCLAP::setState(): failed to load state (with context)" << std::endl;
-            } else if (state_ext) {
-                if (state_ext->load(owner->plugin, &stream))
+            } else if (owner->plugin->canUseState()) {
+                if (!owner->plugin->stateLoad(&stream))
                     std::cerr << "PluginStatesCLAP::setState(): failed to load state" << std::endl;
             }
         });

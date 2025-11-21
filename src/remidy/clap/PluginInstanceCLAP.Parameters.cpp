@@ -16,11 +16,12 @@ namespace remidy {
             return parameter_defs;
 
         EventLoop::runTaskOnMainThread([&] {
-            const auto plugin = owner->plugin;
-            params_ext = (clap_plugin_params_t*) plugin->get_extension(plugin, CLAP_EXT_PARAMS);
-            for (size_t i = 0, n = params_ext->count(plugin); i < n; i++) {
+            if (!owner->plugin || !owner->plugin->canUseParams())
+                return;
+
+            for (size_t i = 0, n = owner->plugin->paramsCount(); i < n; i++) {
                 clap_param_info_t info;
-                if (!params_ext->get_info(plugin, i, &info))
+                if (!owner->plugin->paramsGetInfo(i, &info))
                     continue;
                 std::vector<ParameterEnumeration> enums{};
                 std::string id{std::format("{}", info.id)};
@@ -34,7 +35,7 @@ namespace remidy {
                     char enumLabel[1024];
                     // CLAP enum parameters must have value_to_text for all values from min to max
                     for (int i = static_cast<int>(info.min_value); i <= static_cast<int>(info.max_value); i++) {
-                        if (params_ext->value_to_text(plugin, info.id, i, enumLabel, sizeof(enumLabel))) {
+                        if (owner->plugin->paramsValueToText(info.id, i, enumLabel, sizeof(enumLabel))) {
                             std::string enumLabelString{enumLabel};
                             enums.emplace_back(enumLabelString, i);
                         }
@@ -118,7 +119,9 @@ namespace remidy {
     }
 
     std::string PluginInstanceCLAP::ParameterSupport::valueToString(uint32_t index, double value) {
+        if (!owner->plugin || !owner->plugin->canUseParams())
+            return "";
         char s[1024];
-        return params_ext->value_to_text(owner->plugin, parameter_ids[index], value, s, sizeof(s)) ? s : "";
+        return owner->plugin->paramsValueToText(parameter_ids[index], value, s, sizeof(s)) ? s : "";
     }
 }

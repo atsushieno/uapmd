@@ -3,6 +3,8 @@
 #include "clap/factory/plugin-factory.h"
 #include "clap/plugin.h"
 #include "clap/helpers/event-list.hh"
+#include "clap/helpers/plugin-proxy.hh"
+#include "clap/helpers/plugin-proxy.hxx"
 #include "clap/ext/render.h"
 #include "remidy.hpp"
 #include "HostClasses.hpp"
@@ -12,6 +14,12 @@
 #include "CLAPHelper.hpp"
 
 namespace remidy {
+    // Type alias for CLAP plugin proxy with same settings as host
+    using CLAPPluginProxy = clap::helpers::PluginProxy<
+        clap::helpers::MisbehaviourHandler::Ignore,
+        clap::helpers::CheckingLevel::Maximal
+    >;
+
     class PluginScannerCLAP : public FileBasedPluginScanning {
         void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<std::unique_ptr<PluginCatalogEntry>>& entries);
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path clapDir, std::vector<std::unique_ptr<PluginCatalogEntry>>& entries);
@@ -77,7 +85,7 @@ namespace remidy {
 
     class PluginInstanceCLAP : public PluginInstance {
         PluginFormatCLAP::Impl* owner;
-        const clap_plugin_t* plugin;
+        std::unique_ptr<CLAPPluginProxy> plugin;
         clap_preset_discovery_factory* preset_discovery_factory;
         void* module;
         clap_process_t clap_process;
@@ -91,7 +99,6 @@ namespace remidy {
             std::vector<PluginParameter*> parameter_defs{};
             std::vector<clap_id> parameter_ids{};
             std::vector<void*> parameter_cookies{};
-            clap_plugin_params_t* params_ext;
 
         public:
             explicit ParameterSupport(PluginInstanceCLAP* owner);
@@ -150,7 +157,6 @@ namespace remidy {
         class PluginStatesCLAP : public PluginStateSupport {
             PluginInstanceCLAP* owner;
             clap_plugin_state_context_t* state_context_ext;
-            clap_plugin_state_t* state_ext;
 
         public:
             explicit PluginStatesCLAP(PluginInstanceCLAP* owner);
@@ -192,7 +198,6 @@ namespace remidy {
             bool handleGuiResize(uint32_t width, uint32_t height);
         private:
             PluginInstanceCLAP* owner;
-            const clap_plugin_gui_t* gui_ext{nullptr};
             std::string current_api{};
             bool created{false};
             bool visible{false};
@@ -200,7 +205,6 @@ namespace remidy {
             bool attached{false};
             std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
 
-            bool ensureGuiExtension();
             bool withGui(std::function<void()>&& func);
             bool tryCreateWith(const char* api, bool floating);
         };
@@ -213,9 +217,7 @@ namespace remidy {
         PluginUISupport* _ui{};
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
         std::unique_ptr<RemidyCLAPHost> host{};
-        bool is_processing_{false};
         bool is_offline_{false};
-        const clap_plugin_render_t* render_ext{nullptr};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
         void clapProcessToRemidyProcessContext(AudioProcessContext& dst, clap_process_t& src);
@@ -230,7 +232,7 @@ namespace remidy {
             PluginCatalogEntry* info,
             clap_preset_discovery_factory* presetDiscoveryFactory,
             void* module,
-            const clap_plugin_t* plugin,
+            const clap_plugin_t* rawPlugin,
             std::unique_ptr<RemidyCLAPHost> host
             );
         ~PluginInstanceCLAP() override;
