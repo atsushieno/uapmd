@@ -511,18 +511,29 @@ void MainWindow::renderDeviceManager() {
 
         ImGui::TableSetColumnIndex(4);
         bool removeTriggered = false;
-        if (uiSupported) {
-            const char* uiText = uiVisible ? "Hide UI" : "Show UI";
-            std::string btnId = std::format("{}##{}::{}", uiText, row.deviceIndex, row.instanceId);
-            if (ImGui::Button(btnId.c_str())) {
+        const char* uiText = uiVisible ? "Hide UI" : "Show UI";
+        std::string btnId = std::format("{}##{}::{}", uiText, row.deviceIndex, row.instanceId);
+
+        // Disable button if plugin doesn't support UI
+        if (!uiSupported) {
+            ImGui::BeginDisabled();
+        }
+
+        if (ImGui::Button(btnId.c_str())) {
+            if (uiSupported) {
                 if (uiVisible) {
                     hidePluginUIInstance(row.deviceState, row.instanceId);
                 } else {
                     showPluginUIInstance(row.deviceState, row.instanceId);
                 }
             }
-            ImGui::SameLine();
         }
+
+        if (!uiSupported) {
+            ImGui::EndDisabled();
+        }
+
+        ImGui::SameLine();
 
         if (deviceState && row.instanceId >= 0) {
             std::string runBtnId = std::format("{}##{}::{}::run", deviceRunning ? "Stop" : "Start", row.deviceIndex, row.instanceId);

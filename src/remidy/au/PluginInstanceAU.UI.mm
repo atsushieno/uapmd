@@ -13,6 +13,24 @@ namespace remidy {
     PluginInstanceAU::UISupport::UISupport(PluginInstanceAU* owner) : owner(owner) {
     }
 
+    bool PluginInstanceAU::UISupport::hasUI() {
+        AudioUnit au = owner->instance;
+        if (!au)
+            return false;
+
+        // Check if the plugin has the CocoaUI property
+        UInt32 dataSize = 0;
+        Boolean writable = false;
+        OSStatus result = AudioUnitGetPropertyInfo(au,
+            kAudioUnitProperty_CocoaUI,
+            kAudioUnitScope_Global,
+            0,
+            &dataSize,
+            &writable);
+
+        return (result == noErr && dataSize > 0);
+    }
+
     bool PluginInstanceAU::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
         if (created)
             return false; // Already created

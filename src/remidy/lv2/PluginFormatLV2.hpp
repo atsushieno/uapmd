@@ -217,6 +217,7 @@ namespace remidy {
         public:
             explicit UISupport(PluginInstanceLV2* owner);
             ~UISupport() override = default;
+            bool hasUI() override;
             bool create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) override;
             void destroy() override;
             bool show() override;

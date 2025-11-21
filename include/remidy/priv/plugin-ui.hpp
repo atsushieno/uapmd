@@ -9,6 +9,8 @@ namespace remidy {
         PluginUISupport() = default;
         virtual ~PluginUISupport() = default;
 
+        virtual bool hasUI() = 0;
+
         virtual bool create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) = 0;
         virtual void destroy() = 0;
 

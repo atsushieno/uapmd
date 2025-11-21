@@ -442,11 +442,18 @@ void MainWindow::renderInstanceControl() {
 
     if (selectedInstance_ >= 0 && selectedInstance_ < static_cast<int>(instances_.size())) {
         int32_t instanceId = instances_[selectedInstance_];
-        if (sequencer.hasPluginUI(instanceId)) {
-            bool isVisible = sequencer.isPluginUIVisible(instanceId);
-            auto windowIt = pluginWindows_.find(instanceId);
-            const char* uiButtonText = isVisible ? "Hide UI" : "Show UI";
-            if (ImGui::Button(uiButtonText)) {
+        bool hasUI = sequencer.hasPluginUI(instanceId);
+        bool isVisible = hasUI && sequencer.isPluginUIVisible(instanceId);
+        auto windowIt = pluginWindows_.find(instanceId);
+        const char* uiButtonText = isVisible ? "Hide UI" : "Show UI";
+
+        // Disable button if plugin doesn't support UI
+        if (!hasUI) {
+            ImGui::BeginDisabled();
+        }
+
+        if (ImGui::Button(uiButtonText)) {
+            if (hasUI) {
                 if (isVisible) {
                     sequencer.hidePluginUI(instanceId);
                     if (windowIt != pluginWindows_.end()) windowIt->second->show(false);
@@ -497,8 +504,12 @@ void MainWindow::renderInstanceControl() {
                     }
                 }
             }
-            // Presets/parameters UI continues below
         }
+
+        if (!hasUI) {
+            ImGui::EndDisabled();
+        }
+        // Presets/parameters UI continues below
     }
 
     // Preset management

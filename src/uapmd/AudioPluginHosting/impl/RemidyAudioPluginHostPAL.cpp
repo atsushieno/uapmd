@@ -106,7 +106,10 @@ namespace uapmd {
         }
 
         bool hasUISupport() override {
-            return ensureUISupport() != nullptr;
+            auto ui = ensureUISupport();
+            if (!ui)
+                return false;
+            return ui->hasUI();
         }
 
         bool createUI(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) override {

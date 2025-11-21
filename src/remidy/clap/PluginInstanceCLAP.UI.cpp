@@ -10,6 +10,17 @@ namespace remidy {
     PluginInstanceCLAP::UISupport::UISupport(PluginInstanceCLAP* owner)
         : owner(owner) {}
 
+    bool PluginInstanceCLAP::UISupport::hasUI() {
+        if (!owner || !owner->plugin)
+            return false;
+
+        // Check if the plugin supports the GUI extension
+        const clap_plugin_gui_t* gui = (const clap_plugin_gui_t*)
+            owner->plugin->get_extension(owner->plugin, CLAP_EXT_GUI);
+
+        return gui != nullptr;
+    }
+
     bool PluginInstanceCLAP::UISupport::ensureGuiExtension() {
         if (gui_ext)
             return true;

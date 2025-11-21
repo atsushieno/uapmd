@@ -22,6 +22,17 @@ namespace remidy {
     PluginInstanceLV2::UISupport::UISupport(PluginInstanceLV2* owner) : owner(owner) {
     }
 
+    bool PluginInstanceLV2::UISupport::hasUI() {
+        // Check if the plugin has any UIs available for this platform
+        LilvUIs* uis = lilv_plugin_get_uis(owner->plugin);
+        if (!uis)
+            return false;
+
+        bool has_ui = lilv_uis_size(uis) > 0;
+        lilv_uis_free(uis);
+        return has_ui;
+    }
+
     bool PluginInstanceLV2::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
         if (created)
             return false; // Already created - must call destroy() first

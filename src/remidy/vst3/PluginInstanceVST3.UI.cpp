@@ -13,6 +13,20 @@ namespace remidy {
 #endif
     }
 
+    bool PluginInstanceVST3::UISupport::hasUI() {
+        if (!owner->controller)
+            return false;
+
+        // Query the controller for IPlugView support using VST-MA interface querying
+        void* plugView = nullptr;
+        tresult result = owner->controller->queryInterface(IPlugView::iid, &plugView);
+        if (result == kResultOk && plugView) {
+            ((IPlugView*)plugView)->release();
+            return true;
+        }
+        return false;
+    }
+
     bool PluginInstanceVST3::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
         if (created)
             return false; // Already created
