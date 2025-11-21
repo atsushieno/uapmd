@@ -3,6 +3,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -49,6 +50,11 @@ namespace uapmd {
         };
         std::unordered_map<int32_t, std::vector<ParameterUpdate>> pending_parameter_updates_;
 
+        // Plugin instance management
+        std::unordered_map<int32_t, AudioPluginHostPAL::AudioPluginNodePAL*> plugin_instances_;
+        std::unordered_map<int32_t, bool> plugin_bypassed_;
+        mutable std::mutex instance_map_mutex_;
+
         struct RouteResolution {
             AudioPluginTrack* track{nullptr};
             int32_t trackIndex{-1};
@@ -92,27 +98,18 @@ namespace uapmd {
             std::function<void(int32_t instanceId, std::string error)> callback);
         bool removePluginInstance(int32_t instanceId);
 
-        std::vector<ParameterMetadata> getParameterList(int32_t instanceId);
-        std::string getParameterValueString(int32_t instanceId, int32_t parameterIndex, double value);
-        std::vector<PresetsMetadata> getPresetList(int32_t instanceId);
+        // Direct plugin instance access
+        AudioPluginHostPAL::AudioPluginNodePAL* getPluginInstance(int32_t instanceId);
+        bool isPluginBypassed(int32_t instanceId);
+        void setPluginBypassed(int32_t instanceId, bool bypassed);
+
+        // Sequencer-level queries
         std::vector<ParameterUpdate> getParameterUpdates(int32_t instanceId);
-        void loadPreset(int32_t instanceId, int32_t presetIndex);
         std::vector<int32_t> getInstanceIds();
         std::string getPluginName(int32_t instanceId);
         std::string getPluginFormat(int32_t instanceId);
         std::vector<TrackInfo> getTrackInfos();
         int32_t findTrackIndexForInstance(int32_t instanceId) const;
-
-        // We will have to split out these GUI features at some point...
-        bool hasPluginUI(int32_t instanceId);
-        bool showPluginUI(int32_t instanceId, bool isFloating, void* parentHandle);
-        bool createPluginUI(int32_t instanceId, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler);
-        void destroyPluginUI(int32_t instanceId);
-        void hidePluginUI(int32_t instanceId);
-        bool isPluginUIVisible(int32_t instanceId);
-        bool resizePluginUI(int32_t instanceId, uint32_t width, uint32_t height);
-        bool getPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height);
-        bool canPluginUIResize(int32_t instanceId);
 
         // audio/MIDI player
 

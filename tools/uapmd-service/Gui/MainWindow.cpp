@@ -488,8 +488,8 @@ void MainWindow::renderDeviceManager() {
         }
 
         auto* sequencerForRow = controller_.sequencer();
-        const bool uiSupported = sequencerForRow && row.instanceId >= 0 && sequencerForRow->hasPluginUI(row.instanceId);
-        const bool uiVisible = uiSupported && sequencerForRow->isPluginUIVisible(row.instanceId);
+        const bool uiSupported = sequencerForRow && sequencerForRow->getPluginInstance(row.instanceId)->hasUISupport();
+        const bool uiVisible = sequencerForRow && sequencerForRow->getPluginInstance(row.instanceId)->isUIVisible();
 
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted(row.deviceLabel.c_str());
@@ -782,7 +782,7 @@ void MainWindow::removeDevice(size_t index) {
         auto* sequencer = controller_.sequencer();
         for (auto& [instanceId, pluginState] : state->pluginInstances) {
             if (sequencer) {
-                sequencer->destroyPluginUI(instanceId);
+                sequencer->getPluginInstance(instanceId)->destroyUI();
             }
             if (pluginState.pluginWindow) {
                 pluginState.pluginWindow->show(false);
@@ -879,7 +879,7 @@ void MainWindow::stopAllDevices() {
         auto* sequencer = controller_.sequencer();
         for (auto& [instanceId, pluginState] : state->pluginInstances) {
             if (sequencer) {
-                sequencer->destroyPluginUI(instanceId);
+                sequencer->getPluginInstance(instanceId)->destroyUI();
             }
             if (pluginState.pluginWindow) {
                 pluginState.pluginWindow->show(false);
@@ -920,10 +920,12 @@ bool MainWindow::handlePluginResizeRequest(std::shared_ptr<DeviceState> state, i
         return false;
     }
 
+    auto* instance = sequencer->getPluginInstance(instanceId);
+
     nodeState->pluginWindowResizeIgnore = true;
-    if (!sequencer->resizePluginUI(instanceId, width, height)) {
+    if (!instance->setUISize(width, height)) {
         uint32_t adjustedWidth = 0, adjustedHeight = 0;
-        sequencer->getPluginUISize(instanceId, adjustedWidth, adjustedHeight);
+        instance->getUISize(adjustedWidth, adjustedHeight);
         if (adjustedWidth > 0 && adjustedHeight > 0) {
             bounds.width = static_cast<int>(adjustedWidth);
             bounds.height = static_cast<int>(adjustedHeight);
@@ -959,7 +961,7 @@ void MainWindow::onPluginWindowResized(std::shared_ptr<DeviceState> state, int32
         return;
     }
 
-    sequencer->resizePluginUI(instanceId,
+    sequencer->getPluginInstance(instanceId)->setUISize(
         static_cast<uint32_t>(bounds.width),
         static_cast<uint32_t>(bounds.height));
 }
@@ -1025,9 +1027,11 @@ void MainWindow::showPluginUIInstance(std::shared_ptr<DeviceState> state, int32_
         return;
     }
 
+    auto* instance = sequencer->getPluginInstance(instanceId);
+
     if (!pluginUIExists) {
         // First time: create plugin UI with resize handler
-        if (!sequencer->createPluginUI(instanceId, false, parentHandle,
+        if (!instance->createUI(false, parentHandle,
             [this, weakState, instanceId](uint32_t w, uint32_t h) {
                 if (auto locked = weakState.lock()) {
                     return handlePluginResizeRequest(locked, instanceId, w, h);
@@ -1051,7 +1055,7 @@ void MainWindow::showPluginUIInstance(std::shared_ptr<DeviceState> state, int32_
     }
 
     // Show the plugin UI (whether just created or already exists)
-    if (!sequencer->showPluginUI(instanceId, false, parentHandle)) {
+    if (!instance->showUI()) {
         std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
     }
 }
@@ -1062,7 +1066,7 @@ void MainWindow::hidePluginUIInstance(std::shared_ptr<DeviceState> state, int32_
     auto* nodeState = findPluginInstance(*state, instanceId);
 
     if (sequencer) {
-        sequencer->hidePluginUI(instanceId);
+        sequencer->getPluginInstance(instanceId)->hideUI();
     }
 
     if (nodeState && nodeState->pluginWindow) {

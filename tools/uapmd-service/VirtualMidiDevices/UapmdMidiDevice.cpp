@@ -88,7 +88,8 @@ namespace uapmd {
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateMetadata()));
 
-        auto parameterList = sequencer->getParameterList(instance_id);
+        auto* instance = sequencer->getPluginInstance(instance_id);
+        std::vector<uapmd::ParameterMetadata> parameterList = instance->parameterMetadataList();
         std::vector<commonproperties::MidiCIControl> allCtrlList{};
         allCtrlList.reserve(parameterList.size());
         for (auto& p : parameterList) {
@@ -114,7 +115,7 @@ namespace uapmd {
         }
         StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);
 
-        auto presetsList = sequencer->getPresetList(instance_id);
+        std::vector<uapmd::PresetsMetadata> presetsList = instance->presetMetadataList();
         std::vector<commonproperties::MidiCIProgram> programList{};
         programList.reserve(presetsList.size());
         for (auto& p : presetsList) {

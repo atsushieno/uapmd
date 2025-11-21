@@ -153,10 +153,11 @@ bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, u
     if (!success)
         pluginWindowResizeIgnore_.erase(instanceId);
 
-    if (!sequencer.resizePluginUI(instanceId, width, height)) {
+    auto* instance = sequencer.getPluginInstance(instanceId);
+    if (!instance->setUISize(width, height)) {
         uint32_t adjustedWidth = width;
         uint32_t adjustedHeight = height;
-        if (sequencer.getPluginUISize(instanceId, adjustedWidth, adjustedHeight)) {
+        if (instance->getUISize(adjustedWidth, adjustedHeight)) {
             pluginWindowBounds_[instanceId].width = static_cast<int>(adjustedWidth);
             pluginWindowBounds_[instanceId].height = static_cast<int>(adjustedHeight);
             pluginWindowResizeIgnore_.insert(instanceId);
@@ -191,12 +192,13 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
     const uint32_t currentWidth = static_cast<uint32_t>(std::max(currentBounds.width, 0));
     const uint32_t currentHeight = static_cast<uint32_t>(std::max(currentBounds.height, 0));
 
-    if (sequencer.resizePluginUI(instanceId, currentWidth, currentHeight))
+    auto* instance = sequencer.getPluginInstance(instanceId);
+    if (instance->setUISize(currentWidth, currentHeight))
         return;
 
     uint32_t adjustedWidth = currentWidth;
     uint32_t adjustedHeight = currentHeight;
-    if (!sequencer.getPluginUISize(instanceId, adjustedWidth, adjustedHeight))
+    if (!instance->getUISize(adjustedWidth, adjustedHeight))
         return;
 
     if (adjustedWidth == currentWidth && adjustedHeight == currentHeight)
@@ -216,14 +218,15 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
 void MainWindow::onPluginWindowClosed(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     // Just update the visible flag in the plugin - don't touch the window or embedded state
-    sequencer.hidePluginUI(instanceId);
+    sequencer.getPluginInstance(instanceId)->hideUI();
 }
 
 bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    if (!sequencer.hasPluginUI(instanceId))
+    auto* instance = sequencer.getPluginInstance(instanceId);
+    if (!instance->hasUISupport())
         return false;
-    return sequencer.getPluginUISize(instanceId, width, height);
+    return instance->getUISize(width, height);
 }
 
 void MainWindow::renderDeviceSettings() {
@@ -366,7 +369,7 @@ void MainWindow::renderInstanceControl() {
 
     if (!pluginWindowsPendingClose_.empty()) {
         for (auto id : pluginWindowsPendingClose_) {
-            sequencer.destroyPluginUI(id);
+            sequencer.getPluginInstance(id)->destroyUI();
             pluginWindows_.erase(id);
             pluginWindowEmbedded_.erase(id);
             pluginWindowBounds_.erase(id);
@@ -390,8 +393,9 @@ void MainWindow::renderInstanceControl() {
         int32_t instanceId = instances_[selectedInstance_];
 
         // Hide and cleanup UI if it's open
-        if (sequencer.hasPluginUI(instanceId) && sequencer.isPluginUIVisible(instanceId)) {
-            sequencer.hidePluginUI(instanceId);
+        auto* instance = sequencer.getPluginInstance(instanceId);
+        if (instance->hasUISupport() && instance->isUIVisible()) {
+            instance->hideUI();
             auto windowIt = pluginWindows_.find(instanceId);
             if (windowIt != pluginWindows_.end()) {
                 windowIt->second->show(false);
@@ -399,7 +403,7 @@ void MainWindow::renderInstanceControl() {
         }
 
         // Cleanup plugin UI resources
-        sequencer.destroyPluginUI(instanceId);
+        instance->destroyUI();
         pluginWindows_.erase(instanceId);
         pluginWindowEmbedded_.erase(instanceId);
         pluginWindowBounds_.erase(instanceId);
@@ -442,8 +446,9 @@ void MainWindow::renderInstanceControl() {
 
     if (selectedInstance_ >= 0 && selectedInstance_ < static_cast<int>(instances_.size())) {
         int32_t instanceId = instances_[selectedInstance_];
-        bool hasUI = sequencer.hasPluginUI(instanceId);
-        bool isVisible = hasUI && sequencer.isPluginUIVisible(instanceId);
+        auto* instance = sequencer.getPluginInstance(instanceId);
+        bool hasUI = instance->hasUISupport();
+        bool isVisible = instance->isUIVisible();
         auto windowIt = pluginWindows_.find(instanceId);
         const char* uiButtonText = isVisible ? "Hide UI" : "Show UI";
 
@@ -455,7 +460,7 @@ void MainWindow::renderInstanceControl() {
         if (ImGui::Button(uiButtonText)) {
             if (hasUI) {
                 if (isVisible) {
-                    sequencer.hidePluginUI(instanceId);
+                    instance->hideUI();
                     if (windowIt != pluginWindows_.end()) windowIt->second->show(false);
                 } else {
                     // Create container window if needed
@@ -488,7 +493,7 @@ void MainWindow::renderInstanceControl() {
 
                     if (!pluginUIExists) {
                         // First time: create plugin UI with resize handler
-                        if (!sequencer.createPluginUI(instanceId, false, parentHandle,
+                        if (!instance->createUI(false, parentHandle,
                             [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
                             container->show(false);
                             pluginWindows_.erase(instanceId);
@@ -499,7 +504,7 @@ void MainWindow::renderInstanceControl() {
                     }
 
                     // Show the plugin UI (whether just created or already exists)
-                    if (!sequencer.showPluginUI(instanceId, false, parentHandle)) {
+                    if (!instance->showUI()) {
                         std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
                     }
                 }
@@ -701,7 +706,8 @@ void MainWindow::refreshParameters() {
     }
 
     int32_t instanceId = instances_[selectedInstance_];
-    parameters_ = uapmd::AppModel::instance().sequencer().getParameterList(instanceId);
+    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    parameters_ = pal->parameterMetadataList();
 
     // Initialize parameter values with their initial values
     parameterValues_.resize(parameters_.size());
@@ -720,7 +726,8 @@ void MainWindow::refreshPresets() {
     }
 
     int32_t instanceId = instances_[selectedInstance_];
-    presets_ = uapmd::AppModel::instance().sequencer().getPresetList(instanceId);
+    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    presets_ = pal->presetMetadataList();
     selectedPreset_ = -1;
 }
 
@@ -733,7 +740,8 @@ void MainWindow::loadSelectedPreset() {
     int32_t instanceId = instances_[selectedInstance_];
     int32_t presetIndex = presets_[selectedPreset_].index;
 
-    uapmd::AppModel::instance().sequencer().loadPreset(instanceId, presetIndex);
+    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    pal->loadPreset(presetIndex);
 
     std::cout << "Loading preset " << presets_[selectedPreset_].name
               << " for instance " << instanceId << std::endl;
@@ -750,9 +758,9 @@ void MainWindow::updateParameterValueString(size_t parameterIndex) {
 
     int32_t instanceId = instances_[selectedInstance_];
     auto& param = parameters_[parameterIndex];
-    parameterValueStrings_[parameterIndex] =
-        uapmd::AppModel::instance().sequencer().getParameterValueString(
-            instanceId, param.index, parameterValues_[parameterIndex]);
+    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    parameterValueStrings_[parameterIndex] = pal->getParameterValueString(
+        param.index, parameterValues_[parameterIndex]);
 }
 
 void MainWindow::renderParameterControls() {

@@ -12,21 +12,6 @@
 #include "uapmd/priv/sequencer/AudioPluginSequencer.hpp"
 #include "uapmd/priv/plugingraph/AudioPluginHostPAL.hpp"
 
-namespace {
-    uapmd::AudioPluginHostPAL::AudioPluginNodePAL* findNodePalByInstanceId(
-        uapmd::SequenceProcessor& sequencer,
-        int32_t instanceId
-    ) {
-        for (auto& track : sequencer.tracks()) {
-            for (auto node : track->graph().plugins()) {
-                if (node->instanceId() == instanceId)
-                    return node->pal();
-            }
-        }
-        return nullptr;
-    }
-}
-
 void uapmd::AudioPluginSequencer::configureTrackRouting(AudioPluginTrack* track) {
     if (!track)
         return;
@@ -334,22 +319,6 @@ void uapmd::AudioPluginSequencer::setOfflineRendering(bool enabled) {
     }
 }
 
-std::vector<uapmd::ParameterMetadata> uapmd::AudioPluginSequencer::getParameterList(int32_t instanceId) {
-    for (auto& track : sequencer.tracks())
-        for (auto node : track->graph().plugins())
-            if (node->instanceId() == instanceId)
-                return node->pal()->parameterMetadataList();
-    return {};
-}
-
-std::string uapmd::AudioPluginSequencer::getParameterValueString(int32_t instanceId, int32_t parameterIndex, double value) {
-    for (auto& track : sequencer.tracks())
-        for (auto node : track->graph().plugins())
-            if (node->instanceId() == instanceId)
-                return node->pal()->getParameterValueString(parameterIndex, value);
-    return "";
-}
-
 std::vector<uapmd::AudioPluginSequencer::ParameterUpdate> uapmd::AudioPluginSequencer::getParameterUpdates(int32_t instanceId) {
     auto it = pending_parameter_updates_.find(instanceId);
     if (it == pending_parameter_updates_.end()) {
@@ -360,25 +329,6 @@ std::vector<uapmd::AudioPluginSequencer::ParameterUpdate> uapmd::AudioPluginSequ
     auto updates = std::move(it->second);
     pending_parameter_updates_.erase(it);
     return updates;
-}
-
-std::vector<uapmd::PresetsMetadata> uapmd::AudioPluginSequencer::getPresetList(int32_t instanceId) {
-    for (auto& track : sequencer.tracks())
-        for (auto node : track->graph().plugins())
-            if (node->instanceId() == instanceId)
-                return node->pal()->presetMetadataList();
-    return {};
-}
-
-void uapmd::AudioPluginSequencer::loadPreset(int32_t instanceId, int32_t presetIndex) {
-    for (auto& track : sequencer.tracks())
-        for (auto node : track->graph().plugins())
-            if (node->instanceId() == instanceId) {
-                // Need to access the underlying plugin instance to call presets()->loadPreset()
-                // This requires adding a method to the PAL interface
-                node->pal()->loadPreset(presetIndex);
-                return;
-            }
 }
 
 std::vector<int32_t> uapmd::AudioPluginSequencer::getInstanceIds() {
@@ -392,35 +342,23 @@ std::vector<int32_t> uapmd::AudioPluginSequencer::getInstanceIds() {
 }
 
 std::string uapmd::AudioPluginSequencer::getPluginName(int32_t instanceId) {
-    for (auto& track : sequencer.tracks()) {
-        for (auto plugin : track->graph().plugins()) {
-            if (plugin->instanceId() == instanceId) {
-                // Get plugin ID and look it up in the catalog
-                std::string pluginId = plugin->pal()->pluginId();
-                std::string format = plugin->pal()->formatName();
+    auto* instance = getPluginInstance(instanceId);
+    // Get plugin ID and look it up in the catalog
+    std::string pluginId = instance->pluginId();
+    std::string format = instance->formatName();
 
-                // Search in the catalog for display name
-                auto plugins = plugin_host_pal->catalog().getPlugins();
-                for (auto* catalogPlugin : plugins) {
-                    if (catalogPlugin->pluginId() == pluginId && catalogPlugin->format() == format)
-                        return catalogPlugin->displayName();
-                }
-                return "Plugin " + std::to_string(instanceId);
-            }
-        }
+    // Search in the catalog for display name
+    auto plugins = plugin_host_pal->catalog().getPlugins();
+    for (auto* catalogPlugin : plugins) {
+        if (catalogPlugin->pluginId() == pluginId && catalogPlugin->format() == format)
+            return catalogPlugin->displayName();
     }
-    return "Unknown Plugin";
+    return "Plugin " + std::to_string(instanceId);
 }
 
 std::string uapmd::AudioPluginSequencer::getPluginFormat(int32_t instanceId) {
-    for (auto& track : sequencer.tracks()) {
-        for (auto plugin : track->graph().plugins()) {
-            if (plugin->instanceId() == instanceId) {
-                return plugin->pal()->formatName();
-            }
-        }
-    }
-    return "";
+    auto* instance = getPluginInstance(instanceId);
+    return instance->formatName();
 }
 
 std::vector<uapmd::AudioPluginSequencer::TrackInfo> uapmd::AudioPluginSequencer::getTrackInfos() {
@@ -465,70 +403,6 @@ int32_t uapmd::AudioPluginSequencer::findTrackIndexForInstance(int32_t instanceI
     return -1;
 }
 
-bool uapmd::AudioPluginSequencer::hasPluginUI(int32_t instanceId) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return false;
-    return pal->hasUISupport();
-}
-
-bool uapmd::AudioPluginSequencer::createPluginUI(int32_t instanceId, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return false;
-    return pal->createUI(isFloating, parentHandle, resizeHandler);
-}
-
-void uapmd::AudioPluginSequencer::destroyPluginUI(int32_t instanceId) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return;
-    pal->destroyUI();
-}
-
-bool uapmd::AudioPluginSequencer::showPluginUI(int32_t instanceId, bool isFloating, void* parentHandle) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return false;
-    // UI must be created via createPluginUI() first - just show it here
-    return pal->showUI();
-}
-
-void uapmd::AudioPluginSequencer::hidePluginUI(int32_t instanceId) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return;
-    pal->hideUI();
-}
-
-bool uapmd::AudioPluginSequencer::isPluginUIVisible(int32_t instanceId) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return false;
-    return pal->isUIVisible();
-}
-
-bool uapmd::AudioPluginSequencer::resizePluginUI(int32_t instanceId, uint32_t width, uint32_t height) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return false;
-    return pal->setUISize(width, height);
-}
-
-bool uapmd::AudioPluginSequencer::getPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return false;
-    return pal->getUISize(width, height);
-}
-
-bool uapmd::AudioPluginSequencer::canPluginUIResize(int32_t instanceId) {
-    auto pal = findNodePalByInstanceId(sequencer, instanceId);
-    if (!pal)
-        return false;
-    return pal->canUIResize();
-}
-
 void uapmd::AudioPluginSequencer::addSimplePluginTrack(
     std::string& format,
     std::string& pluginId,
@@ -555,6 +429,11 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
             auto instanceId = plugin->instanceId();
             plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
             assignGroup(instanceId);
+            {
+                std::lock_guard<std::mutex> lock(instance_map_mutex_);
+                plugin_instances_[instanceId] = plugin->pal();
+                plugin_bypassed_[instanceId] = false;
+            }
 
             refreshFunctionBlockMappings();
             callback(instanceId, error);
@@ -617,6 +496,11 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
                 auto instanceId = appended->instanceId();
                 plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
                 assignGroup(instanceId);
+                {
+                    std::lock_guard<std::mutex> lock(instance_map_mutex_);
+                    plugin_instances_[instanceId] = appended->pal();
+                    plugin_bypassed_[instanceId] = false;
+                }
                 refreshFunctionBlockMappings();
                 if (cb) {
                     cb(instanceId, "");
@@ -628,15 +512,44 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
 }
 
 bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
-    destroyPluginUI(instanceId);
+    // Destroy UI before removing the instance
+    auto* instance = getPluginInstance(instanceId);
+    instance->destroyUI();
+
     plugin_function_blocks_.erase(instanceId);
     releaseGroup(instanceId);
     setPluginOutputHandler(instanceId, nullptr);
+    {
+        std::lock_guard<std::mutex> lock(instance_map_mutex_);
+        plugin_instances_.erase(instanceId);
+        plugin_bypassed_.erase(instanceId);
+    }
     const auto removed = sequencer.removePluginInstance(instanceId);
     if (removed) {
         refreshFunctionBlockMappings();
     }
     return removed;
+}
+
+uapmd::AudioPluginHostPAL::AudioPluginNodePAL* uapmd::AudioPluginSequencer::getPluginInstance(int32_t instanceId) {
+    std::lock_guard<std::mutex> lock(instance_map_mutex_);
+    auto it = plugin_instances_.find(instanceId);
+    if (it != plugin_instances_.end())
+        return it->second;
+    return nullptr;
+}
+
+bool uapmd::AudioPluginSequencer::isPluginBypassed(int32_t instanceId) {
+    std::lock_guard<std::mutex> lock(instance_map_mutex_);
+    auto it = plugin_bypassed_.find(instanceId);
+    if (it != plugin_bypassed_.end())
+        return it->second;
+    return false;
+}
+
+void uapmd::AudioPluginSequencer::setPluginBypassed(int32_t instanceId, bool bypassed) {
+    std::lock_guard<std::mutex> lock(instance_map_mutex_);
+    plugin_bypassed_[instanceId] = bypassed;
 }
 
 void addMessage64(cmidi2_ump* dst, int64_t ump) {
@@ -677,13 +590,9 @@ void uapmd::AudioPluginSequencer::setParameterValue(int32_t instanceId, int32_t 
     uint32_t vi32 = UINT32_MAX * value;
     auto ump = cmidi2_ump_midi2_nrpn(0, 0, (uint8_t) (index / 0x100), (uint8_t) (index % 0x100), vi32);
     addMessage64(umps, ump);
-    for (auto& track : sequencer.tracks())
-        for (auto& node : track->graph().plugins())
-            if (node->instanceId() == instanceId) {
-                node->pal()->setParameterValue(index, value);
-                remidy::Logger::global()->logError(std::format("Native parameter change {}: {} = {}", instanceId, index, value).c_str());
-                break;
-            }
+    auto* instance = getPluginInstance(instanceId);
+    instance->setParameterValue(index, value);
+    remidy::Logger::global()->logError(std::format("Native parameter change {}: {} = {}", instanceId, index, value).c_str());
 }
 
 void uapmd::AudioPluginSequencer::enqueueUmp(int32_t targetId, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
