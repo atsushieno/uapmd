@@ -18,11 +18,17 @@ namespace remidy {
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {
+        EventLoop::runTaskOnMainThread([&] {
+            plugin->deactivate(plugin);
+        });
+
         cleanupBuffers(); // cleanup, optionally stop processing in prior.
 
         if (host)
             host->detachInstance(this);
-        plugin->destroy(plugin);
+        EventLoop::runTaskOnMainThread([&] {
+            plugin->destroy(plugin);
+        });
 
         delete _parameters;
         delete _states;
