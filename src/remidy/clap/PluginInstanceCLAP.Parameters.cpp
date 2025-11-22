@@ -78,8 +78,8 @@ namespace remidy {
         evt->header.type = CLAP_EVENT_PARAM_VALUE;
         evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         evt->header.flags = CLAP_EVENT_IS_LIVE;
-        // FIXME: assign timestamp *in samples*
-        //evt->header.time = timestamp;
+        // Convert timestamp from nanoseconds to samples
+        evt->header.time = static_cast<uint32_t>((timestamp * owner->sample_rate_) / 1000000000.0);
         evt->cookie = parameter_cookies[index];
         evt->port_index = 0;
         evt->channel = 0;
@@ -95,8 +95,8 @@ namespace remidy {
         evt->header.type = CLAP_EVENT_PARAM_VALUE;
         evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         evt->header.flags |= CLAP_EVENT_IS_LIVE;
-        // FIXME: calculate timestamp (to samples)
-        //evt->header.time = timestamp;
+        // Convert timestamp from nanoseconds to samples
+        evt->header.time = static_cast<uint32_t>((timestamp * owner->sample_rate_) / 1000000000.0);
         evt->cookie = parameter_cookies[index];
         evt->port_index = context.group;
         evt->channel = context.channel;

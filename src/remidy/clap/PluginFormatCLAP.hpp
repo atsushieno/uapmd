@@ -94,6 +94,10 @@ namespace remidy {
         std::vector<clap_audio_buffer_t> audio_out_port_buffers{};
         std::vector<clap_event_transport_t> transports_events{};
 
+        // Store port infos for in-place processing detection and 64-bit support
+        std::vector<clap_audio_port_info_t> inputPortInfos{};
+        std::vector<clap_audio_port_info_t> outputPortInfos{};
+
         class ParameterSupport : public PluginParameterSupport {
             PluginInstanceCLAP* owner;
             std::vector<PluginParameter*> parameter_defs{};
@@ -218,6 +222,7 @@ namespace remidy {
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
         std::unique_ptr<RemidyCLAPHost> host{};
         bool is_offline_{false};
+        double sample_rate_{44100.0};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
         void clapProcessToRemidyProcessContext(AudioProcessContext& dst, clap_process_t& src);
