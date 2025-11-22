@@ -2,6 +2,7 @@
 #include <clap/ext/audio-ports.h>
 #include <clap/ext/note-ports.h>
 #include <optional>
+#include <map>
 
 namespace remidy {
     void PluginInstanceCLAP::AudioBuses::inspectBuses() {
@@ -16,23 +17,48 @@ namespace remidy {
 
         auto plugin = owner->plugin.get();
         if (plugin && plugin->canUseAudioPorts()) {
+            // First pass: collect all port info
+            std::map<clap_id, size_t> inputPortIdToIndex;
+            std::map<clap_id, size_t> outputPortIdToIndex;
+            std::vector<clap_audio_port_info_t> inputPortInfos;
+            std::vector<clap_audio_port_info_t> outputPortInfos;
+
             for (bool isInput : {true, false}) {
+                auto& portInfos = isInput ? inputPortInfos : outputPortInfos;
+                auto& portIdMap = isInput ? inputPortIdToIndex : outputPortIdToIndex;
+
                 for (size_t i = 0, n = plugin->audioPortsCount(isInput); i < n; i++) {
                     clap_audio_port_info_t info;
                     if (!plugin->audioPortsGet(i, isInput, &info))
                         continue;
-                    std::vector<AudioChannelLayout> layouts{};
-                    AudioChannelLayout layout{info.port_type == CLAP_PORT_MONO ? "Mono" : info.port_type == CLAP_PORT_STEREO ? "Stereo" : "", info.channel_count};
-                    layouts.emplace_back(layout);
-                    AudioBusDefinition def{info.name, info.flags & CLAP_AUDIO_PORT_IS_MAIN ? AudioBusRole::Main : AudioBusRole::Aux, layouts};
-                    if (isInput) {
-                        ret.numAudioIn++;
-                        input_bus_defs.emplace_back(def);
-                    } else {
-                        ret.numAudioOut++;
-                        output_bus_defs.emplace_back(def);
-                    }
+                    portInfos.push_back(info);
+                    portIdMap[info.id] = i;
                 }
+            }
+
+            // Store port infos for later use (in-place processing detection)
+            owner->inputPortInfos = inputPortInfos;
+            owner->outputPortInfos = outputPortInfos;
+
+            // Second pass: build bus definitions
+            for (size_t i = 0; i < inputPortInfos.size(); i++) {
+                const auto& info = inputPortInfos[i];
+                std::vector<AudioChannelLayout> layouts{};
+                AudioChannelLayout layout{info.port_type == CLAP_PORT_MONO ? "Mono" : info.port_type == CLAP_PORT_STEREO ? "Stereo" : "", info.channel_count};
+                layouts.emplace_back(layout);
+                AudioBusDefinition def{info.name, info.flags & CLAP_AUDIO_PORT_IS_MAIN ? AudioBusRole::Main : AudioBusRole::Aux, layouts};
+                ret.numAudioIn++;
+                input_bus_defs.emplace_back(def);
+            }
+
+            for (size_t i = 0; i < outputPortInfos.size(); i++) {
+                const auto& info = outputPortInfos[i];
+                std::vector<AudioChannelLayout> layouts{};
+                AudioChannelLayout layout{info.port_type == CLAP_PORT_MONO ? "Mono" : info.port_type == CLAP_PORT_STEREO ? "Stereo" : "", info.channel_count};
+                layouts.emplace_back(layout);
+                AudioBusDefinition def{info.name, info.flags & CLAP_AUDIO_PORT_IS_MAIN ? AudioBusRole::Main : AudioBusRole::Aux, layouts};
+                ret.numAudioOut++;
+                output_bus_defs.emplace_back(def);
             }
         }
 

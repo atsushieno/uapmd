@@ -116,6 +116,40 @@ namespace remidy {
     StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {
         bool useDouble = configuration.dataType == AudioContentType::Float64;
         is_offline_ = configuration.offlineMode;
+        sample_rate_ = configuration.sampleRate;
+
+        // Check if any port requires 64-bit processing
+        bool pluginRequires64Bit = false;
+        bool pluginPrefers64Bit = false;
+        for (const auto& portInfo : inputPortInfos) {
+            if (portInfo.flags & CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE) {
+                if (portInfo.flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS) {
+                    pluginPrefers64Bit = true;
+                    if (portInfo.flags & CLAP_AUDIO_PORT_PREFERS_64BITS)
+                        pluginRequires64Bit = true;
+                }
+            }
+        }
+        for (const auto& portInfo : outputPortInfos) {
+            if (portInfo.flags & CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE) {
+                if (portInfo.flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS) {
+                    pluginPrefers64Bit = true;
+                    if (portInfo.flags & CLAP_AUDIO_PORT_PREFERS_64BITS)
+                        pluginRequires64Bit = true;
+                }
+            }
+        }
+
+        // If plugin requires 64-bit but host requested 32-bit, log warning and use 64-bit
+        if (pluginRequires64Bit && !useDouble) {
+            owner->getLogger()->logWarning("%s: Plugin requires 64-bit processing, overriding host configuration",
+                                          info()->displayName().c_str());
+            useDouble = true;
+        }
+        // If plugin prefers 64-bit and host supports it, use 64-bit
+        else if (pluginPrefers64Bit && configuration.dataType == AudioContentType::Float64) {
+            useDouble = true;
+        }
 
         // ensure to clean up old buffer. Note that buses in old configuration may be different,
         // so handle cleanup and allocation in different steps.
@@ -139,12 +173,44 @@ namespace remidy {
         clap_process.audio_outputs_count = audio_buses->audioOutputBuses().size();
         audio_in_port_buffers.resize(clap_process.audio_inputs_count);
         audio_out_port_buffers.resize(clap_process.audio_outputs_count);
+
+        // Detect in-place processing opportunities
+        std::map<size_t, size_t> inPlaceOutputToInput;  // output index -> input index
+        for (size_t outIdx = 0; outIdx < outputPortInfos.size(); ++outIdx) {
+            const auto& outInfo = outputPortInfos[outIdx];
+            if (outInfo.in_place_pair != CLAP_INVALID_ID) {
+                // Find corresponding input port
+                for (size_t inIdx = 0; inIdx < inputPortInfos.size(); ++inIdx) {
+                    if (inputPortInfos[inIdx].id == outInfo.in_place_pair) {
+                        // Check channel counts match
+                        auto inChannels = audio_buses->audioInputBuses()[inIdx]->channelLayout().channels();
+                        auto outChannels = audio_buses->audioOutputBuses()[outIdx]->channelLayout().channels();
+                        if (inChannels == outChannels) {
+                            inPlaceOutputToInput[outIdx] = inIdx;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         for (size_t i = 0, n = clap_process.audio_inputs_count; i < n; i++)
             audio_in_port_buffers[i].channel_count = audio_buses->audioInputBuses()[i]->channelLayout().channels();
         for (size_t i = 0, n = clap_process.audio_outputs_count; i < n; i++)
             audio_out_port_buffers[i].channel_count = audio_buses->audioOutputBuses()[i]->channelLayout().channels();
 
+        // Allocate input buffers
         resizeAudioPortBuffers(configuration.bufferSizeInSamples, useDouble);
+
+        // Share buffers for in-place processing
+        for (const auto& [outIdx, inIdx] : inPlaceOutputToInput) {
+            // Point output buffer to input buffer for in-place processing
+            if (useDouble) {
+                audio_out_port_buffers[outIdx].data64 = audio_in_port_buffers[inIdx].data64;
+            } else {
+                audio_out_port_buffers[outIdx].data32 = audio_in_port_buffers[inIdx].data32;
+            }
+        }
 
         // After this, we fix (cannot resize) those audio port buffers.
         clap_process.audio_inputs = audio_in_port_buffers.data();
