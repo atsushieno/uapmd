@@ -2,6 +2,51 @@
 
 #include "PluginFormatAU.hpp"
 #include <optional>
+#include <choc/platform/choc_ObjectiveCHelpers.h>
+
+namespace {
+    // Helper to convert AudioChannelLayoutTag to channel count
+    uint32_t getChannelCountFromLayoutTag(AudioChannelLayoutTag tag) {
+        return AudioChannelLayoutTag_GetNumberOfChannels(tag);
+    }
+
+    // Helper to convert channel count to AudioChannelLayout
+    remidy::AudioChannelLayout channelLayoutFromTag(AudioChannelLayoutTag tag) {
+        uint32_t channelCount = getChannelCountFromLayoutTag(tag);
+
+        // Map common tags to named layouts
+        switch (tag) {
+            case kAudioChannelLayoutTag_Mono:
+                return remidy::AudioChannelLayout::mono();
+            case kAudioChannelLayoutTag_Stereo:
+            case kAudioChannelLayoutTag_StereoHeadphones:
+            case kAudioChannelLayoutTag_MatrixStereo:
+            case kAudioChannelLayoutTag_Binaural:
+                return remidy::AudioChannelLayout::stereo();
+            default:
+                // For other layouts, use generic name based on channel count
+                return remidy::AudioChannelLayout{
+                    std::to_string(channelCount) + " channels",
+                    channelCount
+                };
+        }
+    }
+
+    // Helper to convert AudioChannelLayout to AudioChannelLayoutTag
+    AudioChannelLayoutTag channelLayoutToTag(const remidy::AudioChannelLayout& layout) {
+        uint32_t channels = layout.channels();
+
+        // Map common configurations to specific tags
+        if (channels == 1) {
+            return kAudioChannelLayoutTag_Mono;
+        } else if (channels == 2) {
+            return kAudioChannelLayoutTag_Stereo;
+        } else {
+            // Use DiscreteInOrder for arbitrary channel counts
+            return kAudioChannelLayoutTag_DiscreteInOrder | static_cast<AudioChannelLayoutTag>(channels);
+        }
+    }
+}
 
 void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
     auto impl = [&] {
@@ -37,36 +82,65 @@ void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
     input_bus_defs.clear();
     output_bus_defs.clear();
 
-    ::AudioChannelLayout auLayout;
+    // Query input buses with actual channel information from StreamFormat
+    AudioStreamBasicDescription streamFormat{};
     for (auto i = 0; i < ret.numAudioIn; i++) {
         auto busName = std::string{""};
-        if (AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Input, i, &auLayout, &size) == noErr) {
-            CFStringRef cfName{nullptr};
-            if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementName, kAudioUnitScope_Input, i, &cfName, &size) == noErr && cfName != nullptr) {
-                // FIXME: we need to fix something around here
-                //busName = cfStringToString(cfName);
-            }
+        UInt32 streamFormatSize = sizeof(AudioStreamBasicDescription);
+
+        // Get actual channel count from StreamFormat (more reliable than AudioChannelLayout)
+        AudioChannelLayout currentLayout = AudioChannelLayout::stereo();
+        if (AudioUnitGetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, i, &streamFormat, &streamFormatSize) == noErr) {
+            currentLayout = channelLayoutFromTag(
+                kAudioChannelLayoutTag_DiscreteInOrder | static_cast<AudioChannelLayoutTag>(streamFormat.mChannelsPerFrame)
+            );
         }
-        AudioBusDefinition def{busName, AudioBusRole::Main}; // FIXME: correct bus type
-        // FIXME: fill channel layouts
-        // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
+
+        // Try to get bus name using choc helpers
+        CFStringRef cfName{nullptr};
+        UInt32 nameSize = sizeof(CFStringRef);
+        if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementName, kAudioUnitScope_Input, i, &cfName, &nameSize) == noErr && cfName != nullptr) {
+            busName = choc::objc::getString((__bridge id) cfName);
+            CFRelease(cfName);
+        }
+
+        // AudioUnit has no concept of Main/Aux roles, treat first bus as Main
+        AudioBusRole role = (i == 0) ? AudioBusRole::Main : AudioBusRole::Aux;
+        AudioBusDefinition def{busName, role, {currentLayout}};
         input_bus_defs.emplace_back(def);
-        audio_in_buses.emplace_back(new AudioBusConfiguration(def));
+        auto* busConfig = new AudioBusConfiguration(def);
+        busConfig->channelLayout(currentLayout);
+        audio_in_buses.emplace_back(busConfig);
     }
+
+    // Query output buses with actual channel information from StreamFormat
     for (auto i = 0; i < ret.numAudioOut; i++) {
         auto busName = std::string{""};
-        if (AudioUnitGetProperty(instance, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, i, &auLayout, &size) == noErr) {
-            CFStringRef cfName{nullptr};
-            if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementName, kAudioUnitScope_Output, i, &cfName, &size) == noErr && cfName != nullptr) {
-                // FIXME: we need to fix something around here
-                //busName = cfStringToString(cfName);
-            }
+        UInt32 streamFormatSize = sizeof(AudioStreamBasicDescription);
+
+        // Get actual channel count from StreamFormat (more reliable than AudioChannelLayout)
+        AudioChannelLayout currentLayout = AudioChannelLayout::stereo();
+        if (AudioUnitGetProperty(instance, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, i, &streamFormat, &streamFormatSize) == noErr) {
+            currentLayout = channelLayoutFromTag(
+                kAudioChannelLayoutTag_DiscreteInOrder | static_cast<AudioChannelLayoutTag>(streamFormat.mChannelsPerFrame)
+            );
         }
-        AudioBusDefinition def{busName, AudioBusRole::Main}; // FIXME: correct bus type
-        // FIXME: fill channel layouts
-        // also use AudioChannelLayoutTag_GetNumberOfChannels(auLayout)
+
+        // Try to get bus name using choc helpers
+        CFStringRef cfName{nullptr};
+        UInt32 nameSize = sizeof(CFStringRef);
+        if (AudioUnitGetProperty(instance, kAudioUnitProperty_ElementName, kAudioUnitScope_Output, i, &cfName, &nameSize) == noErr && cfName != nullptr) {
+            busName = choc::objc::getString((__bridge id) cfName);
+            CFRelease(cfName);
+        }
+
+        // AudioUnit has no concept of Main/Aux roles, treat first bus as Main
+        AudioBusRole role = (i == 0) ? AudioBusRole::Main : AudioBusRole::Aux;
+        AudioBusDefinition def{busName, role, {currentLayout}};
         output_bus_defs.emplace_back(def);
-        audio_out_buses.emplace_back(new AudioBusConfiguration(def));
+        auto* busConfig = new AudioBusConfiguration(def);
+        busConfig->channelLayout(currentLayout);
+        audio_out_buses.emplace_back(busConfig);
     }
 
     AudioComponentDescription desc;
