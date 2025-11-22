@@ -255,14 +255,13 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
     if (!auDataIns.empty()) {
         size_t bus = 0;
         auto auDataIn = auDataIns[bus];
-        auDataIn->mNumberBuffers = 0;
         auto numChannels = process.inputChannelCount(bus);
-        auDataIn->mBuffers[bus].mNumberChannels = numChannels;
+        auDataIn->mNumberBuffers = numChannels;
         for (int32_t ch = 0; ch < numChannels; ch++) {
+            auDataIn->mBuffers[ch].mNumberChannels = 1;
             auDataIn->mBuffers[ch].mData = useDouble ? (void*) process.getDoubleInBuffer(bus, ch) :
                                            process.getFloatInBuffer(bus, ch);
             auDataIn->mBuffers[ch].mDataByteSize = channelBufSize;
-            auDataIn->mNumberBuffers++;
         }
     }
 
@@ -298,15 +297,14 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
     if (!auDataOuts.empty()) {
         size_t bus = 0;
         auto auDataOut = auDataOuts[bus];
-        auDataOut->mNumberBuffers = 0;
         auto numChannels = process.outputChannelCount(bus);
-        auDataOut->mBuffers[bus].mNumberChannels = numChannels;
+        auDataOut->mNumberBuffers = numChannels;
         for (int32_t ch = 0; ch < numChannels; ch++) {
+            auDataOut->mBuffers[ch].mNumberChannels = 1;
             auDataOut->mBuffers[ch].mData = useDouble ?
                                             (void*) process.getDoubleOutBuffer(bus, ch) :
                                             process.getFloatOutBuffer(bus, ch);
             auDataOut->mBuffers[ch].mDataByteSize = channelBufSize;
-            auDataOut->mNumberBuffers++;
         }
 
         if (audio_buses->hasEventInputs())
