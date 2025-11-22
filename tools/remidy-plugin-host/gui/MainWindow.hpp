@@ -57,14 +57,18 @@ namespace uapmd::gui {
         // Plugin scanning
         bool forceRescan_ = false;
 
-        // MIDI keyboard
-        MidiKeyboard midiKeyboard_;
-
         std::unordered_map<int32_t, std::unique_ptr<remidy::gui::ContainerWindow>> pluginWindows_;
         std::unordered_map<int32_t, bool> pluginWindowEmbedded_;
         std::unordered_map<int32_t, remidy::gui::Bounds> pluginWindowBounds_;
         std::vector<int32_t> pluginWindowsPendingClose_;
         std::unordered_set<int32_t> pluginWindowResizeIgnore_;
+
+        struct DetailsWindowState {
+            MidiKeyboard midiKeyboard;
+            bool visible = false;
+        };
+
+        std::unordered_map<int32_t, DetailsWindowState> detailsWindows_;
 
     public:
         MainWindow();
@@ -100,6 +104,12 @@ namespace uapmd::gui {
         void onPluginWindowResized(int32_t instanceId);
         void onPluginWindowClosed(int32_t instanceId);
         bool fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height);
+
+        // Details window management
+        void showDetailsWindow(int32_t instanceId);
+        void hideDetailsWindow(int32_t instanceId);
+        void onDetailsWindowClosed(int32_t instanceId);
+        void renderDetailsWindows();
 
         // Plugin selection
         void refreshPluginList();

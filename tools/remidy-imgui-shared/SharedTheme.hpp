@@ -11,7 +11,7 @@ void SetupImGuiStyle()
 	style.DisabledAlpha = 0.5f;
 	style.WindowPadding = ImVec2(11.7f, 6.0f);
 	style.WindowRounding = 3.3f;
-	style.WindowBorderSize = 0.0f;
+	style.WindowBorderSize = 1.0f; // modified; make it visible
 	style.WindowMinSize = ImVec2(20.0f, 20.0f);
 	style.WindowTitleAlign = ImVec2(0.0f, 0.5f);
 	style.WindowMenuButtonPosition = ImGuiDir_Left;
@@ -21,7 +21,7 @@ void SetupImGuiStyle()
 	style.PopupBorderSize = 1.0f;
 	style.FramePadding = ImVec2(20.0f, 9.9f);
 	style.FrameRounding = 0.0f;
-	style.FrameBorderSize = 0.0f;
+	style.FrameBorderSize = 1.0f;
 	style.ItemSpacing = ImVec2(8.0f, 4.0f);
 	style.ItemInnerSpacing = ImVec2(4.0f, 4.0f);
 	style.CellPadding = ImVec2(4.0f, 2.0f);
@@ -49,9 +49,9 @@ void SetupImGuiStyle()
 	style.Colors[ImGuiCol_FrameBg] = ImVec4(0.0627451f, 0.06666667f, 0.08627451f, 1.0f);
 	style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.05882353f, 0.5294118f, 0.9764706f, 1.0f);
 	style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.05882353f, 0.5294118f, 0.9764706f, 0.0f);
-	style.Colors[ImGuiCol_TitleBg] = ImVec4(0.047058824f, 0.050980393f, 0.0627451f, 1.0f);
-	style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.043137256f, 0.047058824f, 0.05882353f, 1.0f);
-	style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.043137256f, 0.047058824f, 0.05882353f, 1.0f);
+	style.Colors[ImGuiCol_TitleBg] = ImVec4(0.15f, 0.15f, 0.18f, 1.0f); // modified; make it visible
+	style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.22745098f, 0.44313726f, 0.75686276f, 1.0f); // modified; make it visible
+	style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.15f, 0.15f, 0.18f, 1.0f); // modified; make it visible
 	style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.043137256f, 0.047058824f, 0.05882353f, 1.0f);
 	style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.043137256f, 0.047058824f, 0.05882353f, 1.0f);
 	style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.10980392f, 0.11372549f, 0.13333334f, 1.0f);

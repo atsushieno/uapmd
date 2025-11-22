@@ -63,7 +63,7 @@ int runMain(int argc, char** argv) {
     // backend initialized
 
     // Create window
-    uapmd::gui::WindowHandle* window = windowingBackend->createWindow("Remidy Plugin Host", 640, 800);
+    uapmd::gui::WindowHandle* window = windowingBackend->createWindow("Remidy Plugin Host", 800, 800);
     if (!window) {
         std::cerr << "Error: Failed to create window" << std::endl;
         windowingBackend->shutdown();
