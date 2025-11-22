@@ -21,7 +21,7 @@ void SetupImGuiStyle()
 	style.PopupBorderSize = 1.0f;
 	style.FramePadding = ImVec2(20.0f, 9.9f);
 	style.FrameRounding = 0.0f;
-	style.FrameBorderSize = 1.0f;
+	style.FrameBorderSize = 1.0f; // modified; make it visible
 	style.ItemSpacing = ImVec2(8.0f, 4.0f);
 	style.ItemInnerSpacing = ImVec2(4.0f, 4.0f);
 	style.CellPadding = ImVec2(4.0f, 2.0f);
