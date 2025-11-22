@@ -22,6 +22,14 @@ VST3 and CLAP brings in the following design principles:
 - Since VST3 parameter access is achieved via `IEditController` API which involves GUI thread, `PluginParameterSupport` has a `bool accessRequiresMainThread()` property getter function. VST3 returns `true`.
 - The same goes for CLAP where `count()` and `get_info()` in `clap_plugin_params` are marked as `[main-thread]`.
 
+## Plain vs. Normalized
+
+In VST3 every parameter operation is expected to be within 0.0–1.0, with conversion to and from normalized values. AU, LV2, and CLAP expect plain values.
+
+The public API in `PluginParameterSupport` expects plain `double` values. They are explicitly named as such.
+
+UAPMD needs to convert the values betwee `double` and `uint32_t`.
+
 ## Automatable
 
 We support only "automatable" parameters in some use cases. Namely, non-automatable parameters are not displayed on remidy-plugin-host and not mapped to MIDI-CI AllCtrlList property.
