@@ -10,6 +10,7 @@
 #include "priv/plugin-states.hpp"
 #include "priv/plugin-presets.hpp"
 #include "priv/port-extensibility.hpp"
+#include "priv/plugin-audio-buses.hpp"
 #include "priv/event-loop.hpp"
 #include "priv/ump-dispatcher.hpp"
 #include "priv/plugin-ui.hpp"
