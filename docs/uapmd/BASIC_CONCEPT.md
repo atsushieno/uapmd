@@ -1,11 +1,11 @@
 
 # Basic Concept
 
-UAPMD is based on a hypothesis that a set of MIDI 2.0 devices and sequence data (such as MIDI 2.0 Container Format which does not exist yet) can be used to achieve what modern DAWs (namely their audio engine and song data) achieve today.
+UAPMD is based on a hypothesis that a set of MIDI 2.0 devices and sequence data can be used to achieve what modern DAWs (namely their audio engine and song data) achieve today. Ideally, MIDI 2.0 Container Format (which does not exist yet) should be usable to represent any sequence data.
 
-It is particularly because most DAWs support multiple audio plugin formats, and to commonize their diverse features they already have some audio playback engine that features what MIDI 2.0 features.
+Most DAWs support multiple audio plugin formats. And to commonize their diverse features, they have some audio playback engine whose features resemble what MIDI 2.0 features.
 
-They are mostly based off of MIDI 1.0, with higher data resolution, more instructions such as per-note controllers, then some features like states, factory/user presets, parameter metadata retrieval, etc. that very few people though they could be implemented using MIDI 1.0.
+They are mostly based off of MIDI 1.0, with higher data resolution, more instructions such as per-note controllers, then some features like states, factory/user presets, parameter metadata retrieval, etc.
 
 MIDI 2.0 is not for audio samples. It is only an Instrument Digital Interface. Though typical audio tracks on a DAW are set of positioned audio clips, where each clip consists of audio sample file with some adjustment (time stretch etc.). They can be regarded as "instruments" and thus still subject to instructions by MIDI controllers. It is actually how audio effect plugins (directly) control audio tracks.
 

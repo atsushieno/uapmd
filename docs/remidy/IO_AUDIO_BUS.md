@@ -15,14 +15,14 @@ Adjusting audio I/O ports, or buses, as well as event I/O ports/buses is a signi
   - LV2, likewise. It just has a flipped `isSideChain` port property.
   - AudioUnit does not have the concept of "main bus". What is DAW users experience without default main connection? Do their DAW users have to choose the main bus every time?
 - User determines which buses are enabled and which channel layout is used for each.
-- User app build audio node graphs, and connect node `X`'s outlet index `a` to node `Y`'s inlet `b`, based on user's operations that connect graphs.
-- An audio channel layout is not simply described in numerical way other than enumerating known ones or without external predefined namings.
+- User app builds audio node graphs, and connects node `X`'s outlet index `a` to node `Y`'s inlet `b`, based on user's operations that connect graphs.
+- An audio channel layout is not simply described numerically other than enumerated known ones or without external predefined namings.
 
 Therefore, there will be those types:
 
 - `AudioPluginInstance` exposes list of `AudioBusConfiguration` as `inputBuses` and `outputBuses`.
 - `AudioPluginInstance` confirms audio buses setup at `configure()`.
-- `AudioChannelLayout` : a named channel layout definition. It needs to provide the channel count. It needs to be referencible and most likely have to be persistable in portable way as we will have to save it into a music project file. Therefore it cannot be a simple integer (including an enum value).
+- `AudioChannelLayout` : a named channel layout definition. It needs to provide the channel count. It needs to be referencible and most likely have to be persistable in a portable way as we will have to save it into a music project file. Therefore, it cannot be a simple integer (including an enum value).
 - `AudioBusConfiguration` : an audio bus is user-customizable input-or-output port. An audio plugin can have zero or more audio input ports and zero or more audio output ports. One can be the "main" bus on each direction.
   - Each audio bus is named by the plugin developer and assigned its index for each.
   - User customizes its audio channel layout (or the DAW passes its audio input channel layout settings) and either enable or disable each of them (maybe except for the main bus).
