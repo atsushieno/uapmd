@@ -104,9 +104,28 @@ void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
             CFRelease(cfName);
         }
 
+        // Query supported channel layouts for this bus
+        std::vector<AudioChannelLayout> supportedLayouts;
+        UInt32 layoutSize = 0;
+        result = AudioUnitGetPropertyInfo(instance, kAudioUnitProperty_SupportedChannelLayoutTags, kAudioUnitScope_Input, i, &layoutSize, nullptr);
+        if (result == noErr && layoutSize > 0) {
+            auto numTags = layoutSize / sizeof(AudioChannelLayoutTag);
+            std::vector<AudioChannelLayoutTag> tags(numTags);
+            result = AudioUnitGetProperty(instance, kAudioUnitProperty_SupportedChannelLayoutTags, kAudioUnitScope_Input, i, tags.data(), &layoutSize);
+            if (result == noErr) {
+                for (const auto& tag : tags) {
+                    supportedLayouts.push_back(channelLayoutFromTag(tag));
+                }
+            }
+        }
+        // If no supported layouts were found, use the current layout as the only supported one
+        if (supportedLayouts.empty()) {
+            supportedLayouts.push_back(currentLayout);
+        }
+
         // AudioUnit has no concept of Main/Aux roles, treat first bus as Main
         AudioBusRole role = (i == 0) ? AudioBusRole::Main : AudioBusRole::Aux;
-        AudioBusDefinition def{busName, role, {currentLayout}};
+        AudioBusDefinition def{busName, role, supportedLayouts};
         input_bus_defs.emplace_back(def);
         auto* busConfig = new AudioBusConfiguration(def);
         busConfig->channelLayout(currentLayout);
@@ -134,9 +153,28 @@ void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
             CFRelease(cfName);
         }
 
+        // Query supported channel layouts for this bus
+        std::vector<AudioChannelLayout> supportedLayouts;
+        UInt32 layoutSize = 0;
+        result = AudioUnitGetPropertyInfo(instance, kAudioUnitProperty_SupportedChannelLayoutTags, kAudioUnitScope_Output, i, &layoutSize, nullptr);
+        if (result == noErr && layoutSize > 0) {
+            auto numTags = layoutSize / sizeof(AudioChannelLayoutTag);
+            std::vector<AudioChannelLayoutTag> tags(numTags);
+            result = AudioUnitGetProperty(instance, kAudioUnitProperty_SupportedChannelLayoutTags, kAudioUnitScope_Output, i, tags.data(), &layoutSize);
+            if (result == noErr) {
+                for (const auto& tag : tags) {
+                    supportedLayouts.push_back(channelLayoutFromTag(tag));
+                }
+            }
+        }
+        // If no supported layouts were found, use the current layout as the only supported one
+        if (supportedLayouts.empty()) {
+            supportedLayouts.push_back(currentLayout);
+        }
+
         // AudioUnit has no concept of Main/Aux roles, treat first bus as Main
         AudioBusRole role = (i == 0) ? AudioBusRole::Main : AudioBusRole::Aux;
-        AudioBusDefinition def{busName, role, {currentLayout}};
+        AudioBusDefinition def{busName, role, supportedLayouts};
         output_bus_defs.emplace_back(def);
         auto* busConfig = new AudioBusConfiguration(def);
         busConfig->channelLayout(currentLayout);
