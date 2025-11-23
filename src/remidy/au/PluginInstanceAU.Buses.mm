@@ -10,40 +10,160 @@ namespace {
         return AudioChannelLayoutTag_GetNumberOfChannels(tag);
     }
 
-    // Helper to convert channel count to AudioChannelLayout
-    remidy::AudioChannelLayout channelLayoutFromTag(AudioChannelLayoutTag tag) {
-        uint32_t channelCount = getChannelCountFromLayoutTag(tag);
+    // Comprehensive mapping table from AudioChannelLayoutTag to named layouts
+    struct AULayoutMapping {
+        AudioChannelLayoutTag tag;
+        const char* name;
+        uint32_t channels;
+    };
 
-        // Map common tags to named layouts
-        switch (tag) {
-            case kAudioChannelLayoutTag_Mono:
-                return remidy::AudioChannelLayout::mono();
-            case kAudioChannelLayoutTag_Stereo:
-            case kAudioChannelLayoutTag_StereoHeadphones:
-            case kAudioChannelLayoutTag_MatrixStereo:
-            case kAudioChannelLayoutTag_Binaural:
-                return remidy::AudioChannelLayout::stereo();
+    // Based on CoreAudioTypes.h AudioChannelLayoutTag definitions
+    constexpr AULayoutMapping auLayoutMappings[] = {
+        // Standard layouts
+        { kAudioChannelLayoutTag_Mono,                  "Mono",                 1 },
+        { kAudioChannelLayoutTag_Stereo,                "Stereo",               2 },
+        { kAudioChannelLayoutTag_StereoHeadphones,      "Stereo Headphones",    2 },
+        { kAudioChannelLayoutTag_MatrixStereo,          "Matrix Stereo",        2 },
+        { kAudioChannelLayoutTag_MidSide,               "Mid/Side",             2 },
+        { kAudioChannelLayoutTag_XY,                    "XY",                   2 },
+        { kAudioChannelLayoutTag_Binaural,              "Binaural",             2 },
+
+        // Ambisonics
+        { kAudioChannelLayoutTag_Ambisonic_B_Format,    "Ambisonic B-Format",   4 },
+
+        // Surround - Quadraphonic and up
+        { kAudioChannelLayoutTag_Quadraphonic,          "Quadraphonic",         4 },
+        { kAudioChannelLayoutTag_Pentagonal,            "Pentagonal",           5 },
+        { kAudioChannelLayoutTag_Hexagonal,             "Hexagonal",            6 },
+        { kAudioChannelLayoutTag_Octagonal,             "Octagonal",            8 },
+        { kAudioChannelLayoutTag_Cube,                  "Cube",                 8 },
+
+        // MPEG/ITU formats
+        { kAudioChannelLayoutTag_MPEG_3_0_A,            "3.0 (L R C)",          3 },
+        { kAudioChannelLayoutTag_MPEG_3_0_B,            "3.0 (C L R)",          3 },
+        { kAudioChannelLayoutTag_MPEG_4_0_A,            "4.0 (L R C Cs)",       4 },
+        { kAudioChannelLayoutTag_MPEG_4_0_B,            "4.0 (C L R Cs)",       4 },
+        { kAudioChannelLayoutTag_MPEG_5_0_A,            "5.0 (L R C Ls Rs)",    5 },
+        { kAudioChannelLayoutTag_MPEG_5_0_B,            "5.0 (L R Ls Rs C)",    5 },
+        { kAudioChannelLayoutTag_MPEG_5_0_C,            "5.0 (L C R Ls Rs)",    5 },
+        { kAudioChannelLayoutTag_MPEG_5_0_D,            "5.0 (C L R Ls Rs)",    5 },
+        { kAudioChannelLayoutTag_MPEG_5_1_A,            "5.1 (L R C LFE Ls Rs)", 6 },
+        { kAudioChannelLayoutTag_MPEG_5_1_B,            "5.1 (L R Ls Rs C LFE)", 6 },
+        { kAudioChannelLayoutTag_MPEG_5_1_C,            "5.1 (L C R Ls Rs LFE)", 6 },
+        { kAudioChannelLayoutTag_MPEG_5_1_D,            "5.1 (C L R Ls Rs LFE)", 6 },
+        { kAudioChannelLayoutTag_MPEG_6_1_A,            "6.1",                  7 },
+        { kAudioChannelLayoutTag_MPEG_7_1_A,            "7.1 (SDDS A)",         8 },
+        { kAudioChannelLayoutTag_MPEG_7_1_B,            "7.1 (SDDS B)",         8 },
+        { kAudioChannelLayoutTag_MPEG_7_1_C,            "7.1",                  8 },
+        { kAudioChannelLayoutTag_Emagic_Default_7_1,    "7.1 (Emagic)",         8 },
+        { kAudioChannelLayoutTag_SMPTE_DTV,             "SMPTE DTV",            8 },
+
+        // ITU variants
+        { kAudioChannelLayoutTag_ITU_2_1,               "ITU 2.1",              3 },
+        { kAudioChannelLayoutTag_ITU_2_2,               "ITU 2.2",              4 },
+
+        // DVD formats
+        { kAudioChannelLayoutTag_DVD_4,                 "DVD 4 (L R LFE)",      3 },
+        { kAudioChannelLayoutTag_DVD_5,                 "DVD 5 (L R LFE Cs)",   4 },
+        { kAudioChannelLayoutTag_DVD_6,                 "DVD 6 (L R LFE Ls Rs)", 5 },
+        { kAudioChannelLayoutTag_DVD_10,                "DVD 10",               4 },
+        { kAudioChannelLayoutTag_DVD_11,                "DVD 11",               5 },
+        { kAudioChannelLayoutTag_DVD_18,                "DVD 18",               5 },
+
+        // AudioUnit specific
+        { kAudioChannelLayoutTag_AudioUnit_6_0,         "AU 6.0",               6 },
+        { kAudioChannelLayoutTag_AudioUnit_7_0,         "AU 7.0",               7 },
+        { kAudioChannelLayoutTag_AudioUnit_7_0_Front,   "AU 7.0 Front",         7 },
+
+        // AAC formats
+        { kAudioChannelLayoutTag_AAC_6_0,               "AAC 6.0",              6 },
+        { kAudioChannelLayoutTag_AAC_6_1,               "AAC 6.1",              7 },
+        { kAudioChannelLayoutTag_AAC_7_0,               "AAC 7.0",              7 },
+        { kAudioChannelLayoutTag_AAC_7_1_B,             "AAC 7.1 B",            8 },
+        { kAudioChannelLayoutTag_AAC_7_1_C,             "AAC 7.1 C",            8 },
+        { kAudioChannelLayoutTag_AAC_Octagonal,         "AAC Octagonal",        8 },
+
+        // TMH (22.2)
+        { kAudioChannelLayoutTag_TMH_10_2_std,          "TMH 10.2",             16 },
+        { kAudioChannelLayoutTag_TMH_10_2_full,         "TMH 10.2 Full",        21 },
+
+        // AC3/EAC3
+        { kAudioChannelLayoutTag_AC3_1_0_1,             "AC3 1.0.1",            2 },
+        { kAudioChannelLayoutTag_AC3_3_0,               "AC3 3.0",              3 },
+        { kAudioChannelLayoutTag_AC3_3_1,               "AC3 3.1",              4 },
+        { kAudioChannelLayoutTag_AC3_3_0_1,             "AC3 3.0.1",            4 },
+        { kAudioChannelLayoutTag_AC3_2_1_1,             "AC3 2.1.1",            4 },
+        { kAudioChannelLayoutTag_AC3_3_1_1,             "AC3 3.1.1",            5 },
+        { kAudioChannelLayoutTag_EAC_6_0_A,             "EAC 6.0",              6 },
+        { kAudioChannelLayoutTag_EAC_7_0_A,             "EAC 7.0",              7 },
+        { kAudioChannelLayoutTag_EAC3_6_1_A,            "EAC3 6.1",             7 },
+
+        // Atmos formats
+        { kAudioChannelLayoutTag_Atmos_5_1_2,           "Atmos 5.1.2",          8 },
+        { kAudioChannelLayoutTag_Atmos_5_1_4,           "Atmos 5.1.4",          10 },
+        { kAudioChannelLayoutTag_Atmos_7_1_2,           "Atmos 7.1.2",          10 },
+        { kAudioChannelLayoutTag_Atmos_7_1_4,           "Atmos 7.1.4",          12 },
+        { kAudioChannelLayoutTag_Atmos_9_1_6,           "Atmos 9.1.6",          16 },
+    };
+
+    remidy::AudioChannelLayout layoutForChannels(uint32_t channels) {
+        switch (channels) {
+            case 0:
+                return remidy::AudioChannelLayout{"", 0};
+            case 1:
+                return remidy::AudioChannelLayout{"Mono", 1};
+            case 2:
+                return remidy::AudioChannelLayout{"Stereo", 2};
             default:
-                // For other layouts, use generic name based on channel count
-                return remidy::AudioChannelLayout{
-                    std::to_string(channelCount) + " channels",
-                    channelCount
-                };
+                return remidy::AudioChannelLayout{"", channels};
         }
     }
 
-    // Helper to convert AudioChannelLayout to AudioChannelLayoutTag
+    // Helper to convert AudioChannelLayoutTag to AudioChannelLayout with comprehensive mapping
+    remidy::AudioChannelLayout channelLayoutFromTag(AudioChannelLayoutTag tag) {
+        // Try to find exact match in mapping table
+        for (const auto& mapping : auLayoutMappings) {
+            if (mapping.tag == tag) {
+                return remidy::AudioChannelLayout{mapping.name, mapping.channels};
+            }
+        }
+
+        // Fallback: get channel count and return generic layout
+        uint32_t channelCount = getChannelCountFromLayoutTag(tag);
+        return layoutForChannels(channelCount);
+    }
+
+    // Helper to convert AudioChannelLayout to AudioChannelLayoutTag with comprehensive mapping
     AudioChannelLayoutTag channelLayoutToTag(const remidy::AudioChannelLayout& layout) {
         uint32_t channels = layout.channels();
 
-        // Map common configurations to specific tags
-        if (channels == 1) {
-            return kAudioChannelLayoutTag_Mono;
-        } else if (channels == 2) {
-            return kAudioChannelLayoutTag_Stereo;
-        } else {
-            // Use DiscreteInOrder for arbitrary channel counts
-            return kAudioChannelLayoutTag_DiscreteInOrder | static_cast<AudioChannelLayoutTag>(channels);
+        // Handle empty layout
+        if (channels == 0)
+            return kAudioChannelLayoutTag_Unknown;
+
+        // Try to find matching tag by name first (if name is specified)
+        const auto& srcName = const_cast<remidy::AudioChannelLayout&>(layout).name();
+        if (!srcName.empty()) {
+            for (const auto& mapping : auLayoutMappings) {
+                if (mapping.channels == channels && srcName == mapping.name) {
+                    return mapping.tag;
+                }
+            }
+        }
+
+        // Fallback to standard layouts based on channel count
+        switch (channels) {
+            case 1: return kAudioChannelLayoutTag_Mono;
+            case 2: return kAudioChannelLayoutTag_Stereo;
+            case 3: return kAudioChannelLayoutTag_MPEG_3_0_A;     // L R C
+            case 4: return kAudioChannelLayoutTag_Quadraphonic;   // L R Ls Rs
+            case 5: return kAudioChannelLayoutTag_MPEG_5_0_A;     // L R C Ls Rs
+            case 6: return kAudioChannelLayoutTag_MPEG_5_1_A;     // L R C LFE Ls Rs
+            case 7: return kAudioChannelLayoutTag_AudioUnit_7_0;  // L R Ls Rs C Rls Rrs
+            case 8: return kAudioChannelLayoutTag_MPEG_7_1_C;     // L R C LFE Ls Rs Rls Rrs
+            default:
+                // Use DiscreteInOrder for arbitrary channel counts
+                return kAudioChannelLayoutTag_DiscreteInOrder | static_cast<AudioChannelLayoutTag>(channels);
         }
     }
 }
