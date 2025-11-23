@@ -860,32 +860,82 @@ void MainWindow::renderParameterControls() {
             bool parameterChanged = false;
             int32_t instanceId = instances_[selectedInstance_];
 
-            // Use combobox for discrete parameters with named values
-            if (param.discrete && !param.namedValues.empty()) {
-                // Use cached value label
-                const std::string& currentLabel = parameterValueStrings_[i].empty()
-                    ? std::to_string(parameterValues_[i])
-                    : parameterValueStrings_[i];
+            const bool hasDiscreteCombo = !param.namedValues.empty();
+            const char* format = parameterValueStrings_[i].empty() ? "%.3f" : parameterValueStrings_[i].c_str();
 
-                if (ImGui::BeginCombo(controlId.c_str(), currentLabel.c_str())) {
-                    for (const auto& namedValue : param.namedValues) {
-                        bool isSelected = (std::abs(namedValue.value - parameterValues_[i]) < 0.0001);
-                        if (ImGui::Selectable(namedValue.name.c_str(), isSelected)) {
-                            parameterValues_[i] = static_cast<float>(namedValue.value);
-                            parameterChanged = true;
+            // Draw the slider first
+            float sliderWidth = ImGui::GetContentRegionAvail().x;
+            float comboButtonWidth = 0.0f;
+            float comboSpacing = 0.0f;
+            if (hasDiscreteCombo) {
+                comboButtonWidth = ImGui::GetFrameHeight();
+                comboSpacing = ImGui::GetStyle().ItemInnerSpacing.x;
+                sliderWidth = std::max(20.0f, sliderWidth - (comboButtonWidth + comboSpacing));
+            }
+
+            ImGui::SetNextItemWidth(sliderWidth);
+            if (ImGui::SliderFloat(controlId.c_str(), &parameterValues_[i], static_cast<float>(param.minPlainValue),
+                                   static_cast<float>(param.maxPlainValue), format)) {
+                parameterChanged = true;
+            }
+
+            ImVec2 sliderMin = ImGui::GetItemRectMin();
+            ImVec2 sliderMax = ImGui::GetItemRectMax();
+
+            // Optional discrete value selector overlay
+            if (hasDiscreteCombo) {
+                ImGui::SameLine(0.0f, comboSpacing);
+                std::string comboButtonId = controlId + "_combo";
+                std::string comboPopupId = controlId + "_popup";
+                const bool popupOpen = ImGui::IsPopupOpen(comboPopupId.c_str(), ImGuiPopupFlags_None);
+                bool requestPopupClose = false;
+
+                if (popupOpen) {
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
+                }
+
+                if (ImGui::ArrowButton(comboButtonId.c_str(), ImGuiDir_Down)) {
+                    if (popupOpen) {
+                        requestPopupClose = true;
+                    } else {
+                        ImGui::OpenPopup(comboPopupId.c_str());
+                    }
+                }
+
+                if (popupOpen) {
+                    ImGui::PopStyleColor(2);
+                }
+
+                ImGui::SetNextWindowPos(sliderMin);
+                ImGui::SetNextWindowSize(ImVec2(sliderMax.x - sliderMin.x, 0.0f));
+                if (ImGui::BeginPopup(comboPopupId.c_str())) {
+                    if (requestPopupClose) {
+                        ImGui::CloseCurrentPopup();
+                    } else {
+                        // Use cached value label
+                        const std::string& currentLabel = parameterValueStrings_[i].empty()
+                            ? std::to_string(parameterValues_[i])
+                            : parameterValueStrings_[i];
+
+                        if (!currentLabel.empty()) {
+                            ImGui::TextUnformatted(currentLabel.c_str());
+                            ImGui::Separator();
                         }
-                        if (isSelected) {
-                            ImGui::SetItemDefaultFocus();
+
+                        for (const auto& namedValue : param.namedValues) {
+                            bool isSelected = (std::abs(namedValue.value - parameterValues_[i]) < 0.0001);
+                            if (ImGui::Selectable(namedValue.name.c_str(), isSelected)) {
+                                parameterValues_[i] = static_cast<float>(namedValue.value);
+                                parameterChanged = true;
+                                ImGui::CloseCurrentPopup();
+                            }
+                            if (isSelected) {
+                                ImGui::SetItemDefaultFocus();
+                            }
                         }
                     }
-                    ImGui::EndCombo();
-                }
-            } else {
-                // Use slider for continuous parameters
-                // Use cached value label
-                const char* format = parameterValueStrings_[i].empty() ? "%.3f" : parameterValueStrings_[i].c_str();
-                if (ImGui::SliderFloat(controlId.c_str(), &parameterValues_[i], static_cast<float>(param.minPlainValue), static_cast<float>(param.maxPlainValue), format)) {
-                    parameterChanged = true;
+                    ImGui::EndPopup();
                 }
             }
 
