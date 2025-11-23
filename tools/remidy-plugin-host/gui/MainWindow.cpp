@@ -32,8 +32,6 @@ MainWindow::MainWindow() {
                 // If we just instantiated the first plugin, select it
                 if (instances_.size() == 1) {
                     selectedInstance_ = 0;
-                    refreshParameters();
-                    refreshPresets();
                 }
             }
         });
@@ -431,8 +429,6 @@ void MainWindow::renderInstanceControl() {
             const bool isSelected = (selectedInstance_ == static_cast<int>(i));
             if (ImGui::Selectable(pluginName.c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) {
                 selectedInstance_ = static_cast<int>(i);
-                refreshParameters();
-                refreshPresets();
             }
 
             // Format column
@@ -708,108 +704,104 @@ void MainWindow::refreshInstances() {
     // Reset selection if out of bounds
     if (selectedInstance_ >= static_cast<int>(instances_.size())) {
         selectedInstance_ = -1;
-        parameters_.clear();
-        parameterValues_.clear();
-        parameterValueStrings_.clear();
-        presets_.clear();
     }
 }
 
-void MainWindow::refreshParameters() {
-    parameters_.clear();
-    parameterValues_.clear();
-    parameterValueStrings_.clear();
+void MainWindow::refreshParameters(int32_t instanceId, DetailsWindowState& state) {
+    state.parameters.clear();
+    state.parameterValues.clear();
+    state.parameterValueStrings.clear();
 
-    if (selectedInstance_ < 0 || selectedInstance_ >= static_cast<int>(instances_.size())) {
+    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    if (!pal) {
         return;
     }
 
-    int32_t instanceId = instances_[selectedInstance_];
-    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
-    parameters_ = pal->parameterMetadataList();
-
-    // Initialize parameter values with their initial values
-    parameterValues_.resize(parameters_.size());
-    parameterValueStrings_.resize(parameters_.size());
-    for (size_t i = 0; i < parameters_.size(); ++i) {
-        parameterValues_[i] = static_cast<float>(parameters_[i].defaultPlainValue);
-        updateParameterValueString(i);
+    state.parameters = pal->parameterMetadataList();
+    state.parameterValues.resize(state.parameters.size());
+    state.parameterValueStrings.resize(state.parameters.size());
+    for (size_t i = 0; i < state.parameters.size(); ++i) {
+        state.parameterValues[i] = static_cast<float>(state.parameters[i].defaultPlainValue);
+        updateParameterValueString(i, instanceId, state);
     }
 }
 
-void MainWindow::refreshPresets() {
-    presets_.clear();
+void MainWindow::refreshPresets(int32_t instanceId, DetailsWindowState& state) {
+    state.presets.clear();
+    state.selectedPreset = -1;
 
-    if (selectedInstance_ < 0 || selectedInstance_ >= static_cast<int>(instances_.size())) {
+    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    if (!pal) {
         return;
     }
 
-    int32_t instanceId = instances_[selectedInstance_];
-    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
-    presets_ = pal->presetMetadataList();
-    selectedPreset_ = -1;
+    state.presets = pal->presetMetadataList();
 }
 
-void MainWindow::loadSelectedPreset() {
-    if (selectedInstance_ < 0 || selectedInstance_ >= static_cast<int>(instances_.size()) ||
-        selectedPreset_ < 0 || selectedPreset_ >= static_cast<int>(presets_.size())) {
-        return;
-        }
-
-    int32_t instanceId = instances_[selectedInstance_];
-    int32_t presetIndex = presets_[selectedPreset_].index;
-
-    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
-    pal->loadPreset(presetIndex);
-
-    std::cout << "Loading preset " << presets_[selectedPreset_].name
-              << " for instance " << instanceId << std::endl;
-
-    // Refresh parameters after preset load
-    refreshParameters();
-}
-
-void MainWindow::updateParameterValueString(size_t parameterIndex) {
-    if (parameterIndex >= parameters_.size() ||
-        selectedInstance_ < 0 || selectedInstance_ >= static_cast<int>(instances_.size())) {
+void MainWindow::loadSelectedPreset(int32_t instanceId, DetailsWindowState& state) {
+    if (state.selectedPreset < 0 || state.selectedPreset >= static_cast<int>(state.presets.size())) {
         return;
     }
 
-    int32_t instanceId = instances_[selectedInstance_];
-    auto& param = parameters_[parameterIndex];
     auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
-    parameterValueStrings_[parameterIndex] = pal->getParameterValueString(
-        param.index, parameterValues_[parameterIndex]);
+    if (!pal) {
+        return;
+    }
+
+    const auto& preset = state.presets[state.selectedPreset];
+    pal->loadPreset(preset.index);
+    std::cout << "Loading preset " << preset.name << " for instance " << instanceId << std::endl;
+
+    refreshParameters(instanceId, state);
 }
 
-void MainWindow::renderParameterControls() {
-    // Reflect Event Out toggle
-    ImGui::Checkbox("Reflect Event Out", &reflectEventOut_);
+void MainWindow::updateParameterValueString(size_t parameterIndex, int32_t instanceId, DetailsWindowState& state) {
+    if (parameterIndex >= state.parameters.size()) {
+        return;
+    }
+
+    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    if (!pal) {
+        return;
+    }
+
+    auto& param = state.parameters[parameterIndex];
+    if (state.parameterValueStrings.size() <= parameterIndex) {
+        state.parameterValueStrings.resize(parameterIndex + 1);
+    }
+
+    state.parameterValueStrings[parameterIndex] = pal->getParameterValueString(
+        param.index, state.parameterValues[parameterIndex]);
+}
+
+void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState& state) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto* pal = sequencer.getPluginInstance(instanceId);
+    if (!pal) {
+        return;
+    }
+
+    ImGui::Checkbox("Reflect Event Out", &state.reflectEventOut);
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("When enabled, parameter changes from plugin output events\nwill be reflected in the UI controls");
     }
 
-    // Check for parameter updates from plugin output
-    if (reflectEventOut_ && selectedInstance_ >= 0 && selectedInstance_ < static_cast<int>(instances_.size())) {
-        int32_t instanceId = instances_[selectedInstance_];
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
+    if (state.reflectEventOut) {
         auto updates = sequencer.getParameterUpdates(instanceId);
-
         for (const auto& update : updates) {
-            // Find the parameter by index and update its value
-            for (size_t i = 0; i < parameters_.size(); ++i) {
-                if (parameters_[i].index == update.parameterIndex) {
-                    parameterValues_[i] = static_cast<float>(update.value);
-                    updateParameterValueString(i);
+            for (size_t i = 0; i < state.parameters.size(); ++i) {
+                if (state.parameters[i].index == update.parameterIndex) {
+                    state.parameterValues[i] = static_cast<float>(update.value);
+                    updateParameterValueString(i, instanceId, state);
                     break;
                 }
             }
         }
     }
 
-    ImGui::InputText("Filter Parameters", parameterFilter_, sizeof(parameterFilter_));
+    ImGui::InputText("Filter Parameters", state.parameterFilter, sizeof(state.parameterFilter));
 
     if (ImGui::BeginTable("ParameterTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed, 30.0f);
@@ -819,16 +811,15 @@ void MainWindow::renderParameterControls() {
         ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthFixed, 70.0f);
         ImGui::TableHeadersRow();
 
-        std::string filter = parameterFilter_;
+        std::string filter = state.parameterFilter;
         std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
 
-        for (size_t i = 0; i < parameters_.size(); ++i) {
-            auto& param = parameters_[i];
+        for (size_t i = 0; i < state.parameters.size(); ++i) {
+            auto& param = state.parameters[i];
 
             if (param.hidden || (!param.automatable && !param.discrete))
                 continue;
 
-            // Filter parameters by name or stable ID
             if (!filter.empty()) {
                 std::string name = param.name;
                 std::string stableId = param.stableId;
@@ -858,12 +849,11 @@ void MainWindow::renderParameterControls() {
             std::string controlId = "##" + std::to_string(param.index);
 
             bool parameterChanged = false;
-            int32_t instanceId = instances_[selectedInstance_];
-
             const bool hasDiscreteCombo = !param.namedValues.empty();
-            const char* format = parameterValueStrings_[i].empty() ? "%.3f" : parameterValueStrings_[i].c_str();
+            const char* format = state.parameterValueStrings[i].empty()
+                                     ? "%.3f"
+                                     : state.parameterValueStrings[i].c_str();
 
-            // Draw the slider first
             float sliderWidth = ImGui::GetContentRegionAvail().x;
             float comboButtonWidth = 0.0f;
             float comboSpacing = 0.0f;
@@ -874,7 +864,8 @@ void MainWindow::renderParameterControls() {
             }
 
             ImGui::SetNextItemWidth(sliderWidth);
-            if (ImGui::SliderFloat(controlId.c_str(), &parameterValues_[i], static_cast<float>(param.minPlainValue),
+            if (ImGui::SliderFloat(controlId.c_str(), &state.parameterValues[i],
+                                   static_cast<float>(param.minPlainValue),
                                    static_cast<float>(param.maxPlainValue), format)) {
                 parameterChanged = true;
             }
@@ -882,7 +873,6 @@ void MainWindow::renderParameterControls() {
             ImVec2 sliderMin = ImGui::GetItemRectMin();
             ImVec2 sliderMax = ImGui::GetItemRectMax();
 
-            // Optional discrete value selector overlay
             if (hasDiscreteCombo) {
                 ImGui::SameLine(0.0f, comboSpacing);
                 std::string comboButtonId = controlId + "_combo";
@@ -913,10 +903,9 @@ void MainWindow::renderParameterControls() {
                     if (requestPopupClose) {
                         ImGui::CloseCurrentPopup();
                     } else {
-                        // Use cached value label
-                        const std::string& currentLabel = parameterValueStrings_[i].empty()
-                            ? std::to_string(parameterValues_[i])
-                            : parameterValueStrings_[i];
+                        const std::string& currentLabel = state.parameterValueStrings[i].empty()
+                                                               ? std::to_string(state.parameterValues[i])
+                                                               : state.parameterValueStrings[i];
 
                         if (!currentLabel.empty()) {
                             ImGui::TextUnformatted(currentLabel.c_str());
@@ -924,9 +913,9 @@ void MainWindow::renderParameterControls() {
                         }
 
                         for (const auto& namedValue : param.namedValues) {
-                            bool isSelected = (std::abs(namedValue.value - parameterValues_[i]) < 0.0001);
+                            bool isSelected = (std::abs(namedValue.value - state.parameterValues[i]) < 0.0001);
                             if (ImGui::Selectable(namedValue.name.c_str(), isSelected)) {
-                                parameterValues_[i] = static_cast<float>(namedValue.value);
+                                state.parameterValues[i] = static_cast<float>(namedValue.value);
                                 parameterChanged = true;
                                 ImGui::CloseCurrentPopup();
                             }
@@ -940,20 +929,17 @@ void MainWindow::renderParameterControls() {
             }
 
             if (parameterChanged) {
-                uapmd::AppModel::instance().sequencer().setParameterValue(instanceId, param.index, parameterValues_[i]);
-                // Update cached string after value change
-                updateParameterValueString(i);
-                std::cout << "Parameter " << param.name << " changed to " << parameterValues_[i] << std::endl;
+                sequencer.setParameterValue(instanceId, param.index, state.parameterValues[i]);
+                updateParameterValueString(i, instanceId, state);
+                std::cout << "Parameter " << param.name << " changed to " << state.parameterValues[i] << std::endl;
             }
 
             ImGui::TableNextColumn();
             std::string resetId = "Reset##" + std::to_string(param.index);
             if (ImGui::Button(resetId.c_str())) {
-                parameterValues_[i] = static_cast<float>(param.defaultPlainValue);
-                int32_t instanceId = instances_[selectedInstance_];
-                uapmd::AppModel::instance().sequencer().setParameterValue(instanceId, param.index, parameterValues_[i]);
-                // Update cached string after reset
-                updateParameterValueString(i);
+                state.parameterValues[i] = static_cast<float>(param.defaultPlainValue);
+                sequencer.setParameterValue(instanceId, param.index, state.parameterValues[i]);
+                updateParameterValueString(i, instanceId, state);
             }
         }
 
@@ -1140,6 +1126,8 @@ void MainWindow::showDetailsWindow(int32_t instanceId) {
         });
 
         state.visible = true;
+        refreshParameters(instanceId, state);
+        refreshPresets(instanceId, state);
         detailsWindows_[instanceId] = std::move(state);
     } else {
         // Window already exists, just show it
@@ -1177,32 +1165,32 @@ void MainWindow::renderDetailsWindows() {
         bool windowOpen = detailsState.visible;
         ImGui::SetNextWindowSize(ImVec2(600, 500), ImGuiCond_FirstUseEver);
         if (ImGui::Begin(windowTitle.c_str(), &windowOpen)) {
-            // Find this instance in the instances list
-            auto instanceIt = std::find(instances_.begin(), instances_.end(), instanceId);
-            if (instanceIt != instances_.end()) {
-                int instanceIndex = static_cast<int>(instanceIt - instances_.begin());
-
-                // Store previous selection to restore later
-                int prevSelected = selectedInstance_;
-                bool needsRestore = (selectedInstance_ != instanceIndex);
-
-                // Temporarily switch to this instance if needed
-                if (needsRestore) {
-                    selectedInstance_ = instanceIndex;
+            auto* instance = sequencer.getPluginInstance(instanceId);
+            if (!instance) {
+                ImGui::TextUnformatted("Instance is no longer available.");
+            } else {
+                if (detailsState.parameters.empty() && detailsState.parameterValues.empty()) {
+                    refreshParameters(instanceId, detailsState);
+                }
+                if (detailsState.presets.empty()) {
+                    refreshPresets(instanceId, detailsState);
                 }
 
-                // MIDI Keyboard section
                 ImGui::Text("MIDI Keyboard:");
                 detailsState.midiKeyboard.render();
                 ImGui::Separator();
 
-                // Presets section (moved before parameters)
                 ImGui::Text("Presets:");
-                if (ImGui::BeginCombo("##PresetCombo", selectedPreset_ >= 0 && selectedPreset_ < static_cast<int>(presets_.size()) ? presets_[selectedPreset_].name.c_str() : "Select preset...")) {
-                    for (size_t i = 0; i < presets_.size(); i++) {
-                        const bool isSelected = (selectedPreset_ == static_cast<int>(i));
-                        if (ImGui::Selectable(presets_[i].name.c_str(), isSelected)) {
-                            selectedPreset_ = static_cast<int>(i);
+                const char* presetPreview =
+                    (detailsState.selectedPreset >= 0 &&
+                     detailsState.selectedPreset < static_cast<int>(detailsState.presets.size()))
+                        ? detailsState.presets[detailsState.selectedPreset].name.c_str()
+                        : "Select preset...";
+                if (ImGui::BeginCombo("##PresetCombo", presetPreview)) {
+                    for (size_t i = 0; i < detailsState.presets.size(); i++) {
+                        const bool isSelected = (detailsState.selectedPreset == static_cast<int>(i));
+                        if (ImGui::Selectable(detailsState.presets[i].name.c_str(), isSelected)) {
+                            detailsState.selectedPreset = static_cast<int>(i);
                         }
                         if (isSelected) {
                             ImGui::SetItemDefaultFocus();
@@ -1212,12 +1200,13 @@ void MainWindow::renderDetailsWindows() {
                 }
 
                 ImGui::SameLine();
-                bool canLoadPreset = selectedPreset_ >= 0 && selectedPreset_ < static_cast<int>(presets_.size());
+                bool canLoadPreset = detailsState.selectedPreset >= 0 &&
+                                     detailsState.selectedPreset < static_cast<int>(detailsState.presets.size());
                 if (!canLoadPreset) {
                     ImGui::BeginDisabled();
                 }
                 if (ImGui::Button("Load Preset")) {
-                    loadSelectedPreset();
+                    loadSelectedPreset(instanceId, detailsState);
                 }
                 if (!canLoadPreset) {
                     ImGui::EndDisabled();
@@ -1225,17 +1214,11 @@ void MainWindow::renderDetailsWindows() {
 
                 ImGui::Separator();
 
-                // Parameters section - expands to fill remaining space
                 ImGui::Text("Parameters:");
                 if (ImGui::BeginChild("ParametersChild", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar)) {
-                    renderParameterControls();
+                    renderParameterControls(instanceId, detailsState);
                 }
                 ImGui::EndChild();
-
-                // Restore previous selection
-                if (needsRestore) {
-                    selectedInstance_ = prevSelected;
-                }
             }
         }
         ImGui::End();

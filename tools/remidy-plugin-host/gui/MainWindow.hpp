@@ -39,12 +39,6 @@ namespace uapmd::gui {
         // Instance control
         int selectedInstance_ = -1;
         std::vector<int32_t> instances_;
-        std::vector<uapmd::ParameterMetadata> parameters_;
-        std::vector<float> parameterValues_; // Store current parameter values
-        std::vector<std::string> parameterValueStrings_; // Cache value strings to avoid calling valueToString() every frame
-        std::vector<uapmd::PresetsMetadata> presets_;
-        int selectedPreset_ = -1;
-        bool reflectEventOut_ = true; // Toggle for reflecting plugin output events to UI
 
         // Plugin selection
         bool showPluginSelector_ = false;
@@ -52,7 +46,6 @@ namespace uapmd::gui {
         std::string selectedPluginFormat_;
         std::string selectedPluginId_;
         char searchFilter_[256] = "";
-        char parameterFilter_[256] = "";
 
         // Plugin scanning
         bool forceRescan_ = false;
@@ -66,6 +59,13 @@ namespace uapmd::gui {
         struct DetailsWindowState {
             MidiKeyboard midiKeyboard;
             bool visible = false;
+            bool reflectEventOut = true;
+            char parameterFilter[256] = "";
+            std::vector<uapmd::ParameterMetadata> parameters;
+            std::vector<float> parameterValues;
+            std::vector<std::string> parameterValueStrings;
+            std::vector<uapmd::PresetsMetadata> presets;
+            int selectedPreset = -1;
         };
 
         std::unordered_map<int32_t, DetailsWindowState> detailsWindows_;
@@ -95,11 +95,11 @@ namespace uapmd::gui {
         // Instance control
         void renderInstanceControl();
         void refreshInstances();
-        void refreshParameters();
-        void refreshPresets();
-        void loadSelectedPreset();
-        void renderParameterControls();
-        void updateParameterValueString(size_t parameterIndex);
+        void refreshParameters(int32_t instanceId, DetailsWindowState& state);
+        void refreshPresets(int32_t instanceId, DetailsWindowState& state);
+        void loadSelectedPreset(int32_t instanceId, DetailsWindowState& state);
+        void renderParameterControls(int32_t instanceId, DetailsWindowState& state);
+        void updateParameterValueString(size_t parameterIndex, int32_t instanceId, DetailsWindowState& state);
         bool handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height);
         void onPluginWindowResized(int32_t instanceId);
         void onPluginWindowClosed(int32_t instanceId);
