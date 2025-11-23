@@ -142,6 +142,7 @@ namespace remidy_vst3 {
 
     tresult PLUGIN_API HostApplication::ComponentHandlerImpl::beginEdit(ParamID id) {
         // Begin parameter edit - currently not implemented
+        remidy::Logger::global()->logWarning("ComponentHandler::beginEdit invoked (not implemented in this host)");
         return kResultOk;
     }
 
@@ -159,11 +160,13 @@ namespace remidy_vst3 {
 
     tresult PLUGIN_API HostApplication::ComponentHandlerImpl::endEdit(ParamID id) {
         // End parameter edit - currently not implemented
+        remidy::Logger::global()->logWarning("ComponentHandler::endEdit invoked (not implemented in this host)");
         return kResultOk;
     }
 
     tresult PLUGIN_API HostApplication::ComponentHandlerImpl::restartComponent(int32 flags) {
         // Restart component - currently not implemented
+        remidy::Logger::global()->logWarning("ComponentHandler::restartComponent invoked (not implemented in this host)");
         return kResultOk;
     }
 
@@ -179,22 +182,26 @@ namespace remidy_vst3 {
     }
 
     tresult PLUGIN_API HostApplication::ComponentHandler2Impl::setDirty(TBool state) {
+        remidy::Logger::global()->logWarning("ComponentHandler2::setDirty invoked (not implemented in this host)");
         // Set dirty state - currently not implemented
         return kResultOk;
     }
 
     tresult PLUGIN_API HostApplication::ComponentHandler2Impl::requestOpenEditor(FIDString name) {
         // Request open editor - currently not implemented
+        remidy::Logger::global()->logWarning("ComponentHandler2::requestOpenEditor invoked (not implemented in this host)");
         return kResultOk;
     }
 
     tresult PLUGIN_API HostApplication::ComponentHandler2Impl::startGroupEdit() {
         // Start group edit - currently not implemented
+        remidy::Logger::global()->logWarning("ComponentHandler2::startGroupEdit invoked (not implemented in this host)");
         return kResultOk;
     }
 
     tresult PLUGIN_API HostApplication::ComponentHandler2Impl::finishGroupEdit() {
         // Finish group edit - currently not implemented
+        remidy::Logger::global()->logWarning("ComponentHandler2::finishGroupEdit invoked (not implemented in this host)");
         return kResultOk;
     }
 
@@ -210,11 +217,13 @@ namespace remidy_vst3 {
 
     tresult PLUGIN_API HostApplication::UnitHandlerImpl::notifyUnitSelection(UnitID unitId) {
         // Notify unit selection - currently not implemented
+        remidy::Logger::global()->logWarning("ComponentHandler2::notifyUnitSelection invoked (not implemented in this host)");
         return kResultOk;
     }
 
     tresult PLUGIN_API HostApplication::UnitHandlerImpl::notifyProgramListChange(ProgramListID listId, int32 programIndex) {
         // Notify program list change - currently not implemented
+        remidy::Logger::global()->logWarning("ComponentHandler2::notifyProgramListChange invoked (not implemented in this host)");
         return kResultOk;
     }
 
