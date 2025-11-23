@@ -99,8 +99,16 @@ namespace uapmd {
             commonproperties::MidiCIControl ctrl{p.name, MidiCIControlType::NRPN, "",
                                                  std::vector<uint8_t>{static_cast<uint8_t>(p.index / 0x80), static_cast<uint8_t>(p.index % 0x80)}};
             ctrl.paramPath = p.path;
-            ctrl.defaultValue = static_cast<uint32_t>(p.defaultPlainValue * UINT32_MAX);
-            ctrl.minMax = {static_cast<uint32_t>(p.minPlainValue * UINT32_MAX), static_cast<uint32_t>(p.maxPlainValue * UINT32_MAX)};
+            const double range = p.maxPlainValue - p.minPlainValue;
+            auto plainToUint32 = [&](double plainValue) -> uint32_t {
+                if (!(range > 0.0))
+                    return 0;
+                double normalized = (plainValue - p.minPlainValue) / range;
+                normalized = std::clamp(normalized, 0.0, 1.0);
+                return static_cast<uint32_t>(normalized * static_cast<double>(UINT32_MAX));
+            };
+            ctrl.defaultValue = plainToUint32(p.defaultPlainValue);
+            ctrl.minMax = {plainToUint32(p.minPlainValue), plainToUint32(p.maxPlainValue)};
 
             if (!p.namedValues.empty()) {
                 ctrl.ctrlMapId = p.name;
@@ -108,7 +116,7 @@ namespace uapmd {
                 std::vector<MidiCIControlMap> ctrlMapList{};
                 ctrlMapList.reserve(p.namedValues.size());
                 for (auto &m: p.namedValues)
-                    ctrlMapList.emplace_back(MidiCIControlMap{static_cast<uint32_t>(m.value * UINT32_MAX), m.name});
+                    ctrlMapList.emplace_back(MidiCIControlMap{plainToUint32(m.value), m.name});
                 StandardPropertiesExtensions::setCtrlMapList(ciDevice, p.name, ctrlMapList);
             }
             allCtrlList.push_back(ctrl);
