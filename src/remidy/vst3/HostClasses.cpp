@@ -165,8 +165,12 @@ namespace remidy_vst3 {
     }
 
     tresult PLUGIN_API HostApplication::ComponentHandlerImpl::restartComponent(int32 flags) {
-        // Restart component - currently not implemented
-        remidy::Logger::global()->logWarning("ComponentHandler::restartComponent invoked (not implemented in this host)");
+        if (flags == 0)
+            return kResultOk; // Nothing to do
+        owner->logger->logInfo("ComponentHandler::restartComponent invoked with flags: 0x%x", flags);
+        for (auto& pair : owner->restart_component_handlers)
+            if (pair.second)
+                pair.second(flags);
         return kResultOk;
     }
 

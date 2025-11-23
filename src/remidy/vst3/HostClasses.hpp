@@ -557,6 +557,7 @@ namespace remidy_vst3 {
         remidy::Logger* logger;
         std::unordered_map<void*, std::function<bool(uint32_t, uint32_t)>> resize_request_handlers{};
         std::unordered_map<void*, std::function<void(ParamID, double)>> parameter_edit_handlers{};
+        std::unordered_map<void*, std::function<void(int32)>> restart_component_handlers{};
 
         // IRunLoop timer management
         struct TimerInfo {
@@ -788,6 +789,13 @@ namespace remidy_vst3 {
                 parameter_edit_handlers[controller] = std::move(handler_func);
             else
                 parameter_edit_handlers.erase(controller);
+        }
+
+        void setRestartComponentHandler(void* controller, std::function<void(int32)> handler_func) {
+            if (handler_func)
+                restart_component_handlers[controller] = std::move(handler_func);
+            else
+                restart_component_handlers.erase(controller);
         }
 
     };

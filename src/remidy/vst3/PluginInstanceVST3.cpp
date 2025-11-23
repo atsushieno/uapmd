@@ -89,6 +89,10 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         }
     });
 
+    owner->getHost()->setRestartComponentHandler(controller, [this](int32 flags) {
+        handleRestartComponent(flags);
+    });
+
     // Leave the component inactive until startProcessing() explicitly activates it.
 }
 
@@ -97,6 +101,9 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
 
     // Unregister parameter edit handler
     owner->getHost()->setParameterEditHandler(controller, nullptr);
+
+    // Unregister restart component handler
+    owner->getHost()->setRestartComponentHandler(controller, nullptr);
 
     auto result = processor->setProcessing(false);
     if (result != kResultOk)
@@ -552,4 +559,121 @@ remidy::PluginUISupport *remidy::PluginInstanceVST3::ui() {
     if (!_ui)
         _ui = new UISupport(this);
     return _ui;
+}
+
+void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
+    auto logger = owner->getLogger();
+
+    remidy::EventLoop::runTaskOnMainThread([this, flags, logger] {
+        if (flags & Vst::RestartFlags::kReloadComponent) {
+            // Full component reload - reset the plugin state
+            logger->logInfo("%s: Handling kReloadComponent - resetting plugin (not fully implemented)", pluginName.c_str());
+            // Note: We don't fully reload/unload the plugin, just reset it
+            // A full reload would require recreating the plugin instance
+            if (component) {
+                // Reset the component state
+                auto result = component->setActive(false);
+                if (result == kResultOk) {
+                    result = component->setActive(true);
+                    if (result != kResultOk) {
+                        logger->logError("%s: Failed to reactivate component after reset: %d",
+                                       pluginName.c_str(), result);
+                    }
+                } else {
+                    logger->logError("%s: Failed to deactivate component for reset: %d",
+                                   pluginName.c_str(), result);
+                }
+            }
+        }
+
+        if (flags & Vst::RestartFlags::kIoChanged) {
+            // Bus configuration changed - need to deactivate and reactivate
+            logger->logInfo("%s: Handling kIoChanged - reconfiguring I/O", pluginName.c_str());
+
+            if (has_process_setup) {
+                // Deactivate
+                auto deactivateResult = component->setActive(false);
+                if (deactivateResult != kResultOk) {
+                    logger->logWarning("%s: Failed to deactivate for I/O change: %d",
+                                     pluginName.c_str(), deactivateResult);
+                }
+
+                // Re-inspect buses to pick up new configuration
+                audio_buses->inspectBuses();
+
+                // Reactivate with current setup
+                auto setupResult = processor->setupProcessing(last_process_setup);
+                if (setupResult == kResultOk) {
+                    auto activateResult = component->setActive(true);
+                    if (activateResult != kResultOk) {
+                        logger->logError("%s: Failed to reactivate after I/O change: %d",
+                                       pluginName.c_str(), activateResult);
+                    }
+                } else {
+                    logger->logError("%s: Failed to setup processing after I/O change: %d",
+                                   pluginName.c_str(), setupResult);
+                }
+            }
+        }
+
+        if (flags & Vst::RestartFlags::kLatencyChanged) {
+            // Latency changed - query new latency
+            logger->logInfo("%s: Handling kLatencyChanged - querying new latency (not implemented)", pluginName.c_str());
+            if (processor) {
+                uint32 newLatency = processor->getLatencySamples();
+                logger->logInfo("%s: New latency: %u samples", pluginName.c_str(), newLatency);
+                // TODO: Update host's delay compensation if needed
+            }
+        }
+
+        if (flags & Vst::RestartFlags::kMidiCCAssignmentChanged) {
+            // MIDI CC mapping changed
+            logger->logInfo("%s: Handling kMidiCCAssignmentChanged - MIDI mapping updated (not implemented)", pluginName.c_str());
+            // TODO: Re-query MIDI mappings if we use them
+        }
+
+        if (flags & Vst::RestartFlags::kParamValuesChanged) {
+            // Parameter values changed - re-read all parameter values
+            logger->logInfo("%s: Handling kParamValuesChanged - refreshing parameter values (not fully implemented)", pluginName.c_str());
+            if (_parameters) {
+                // Re-query all parameter values from the controller
+                auto& params = _parameters->parameters();
+                for (size_t i = 0; i < params.size(); i++) {
+                    double value;
+                    if (_parameters->getParameter(i, &value) == StatusCode::OK) {
+                        // Value has been updated internally
+                    }
+                }
+            }
+        }
+
+        if (flags & Vst::RestartFlags::kParamTitlesChanged) {
+            // Parameter metadata changed - re-read parameter info
+            logger->logInfo("%s: Handling kParamTitlesChanged - refreshing parameter info", pluginName.c_str());
+            // The ParameterSupport would need to be re-initialized to pick up new parameter info
+            // For now, just log it. A full implementation would recreate the parameter support.
+            logger->logWarning("%s: kParamTitlesChanged requires recreating parameter support (not fully implemented)",
+                             pluginName.c_str());
+        }
+
+        // Log warnings for unhandled flags
+        if (flags & Vst::RestartFlags::kNoteExpressionChanged) {
+            logger->logWarning("%s: kNoteExpressionChanged not yet implemented", pluginName.c_str());
+        }
+        if (flags & Vst::RestartFlags::kIoTitlesChanged) {
+            logger->logWarning("%s: kIoTitlesChanged not yet implemented", pluginName.c_str());
+        }
+        if (flags & Vst::RestartFlags::kPrefetchableSupportChanged) {
+            logger->logWarning("%s: kPrefetchableSupportChanged not yet implemented", pluginName.c_str());
+        }
+        if (flags & Vst::RestartFlags::kRoutingInfoChanged) {
+            logger->logWarning("%s: kRoutingInfoChanged not yet implemented", pluginName.c_str());
+        }
+        if (flags & Vst::RestartFlags::kKeyswitchChanged) {
+            logger->logWarning("%s: kKeyswitchChanged not yet implemented", pluginName.c_str());
+        }
+        if (flags & Vst::RestartFlags::kParamIDMappingChanged) {
+            logger->logWarning("%s: kParamIDMappingChanged not yet implemented", pluginName.c_str());
+        }
+    });
 }

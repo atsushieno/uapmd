@@ -288,6 +288,9 @@ namespace remidy {
 
         // ui
         PluginUISupport* ui() override;
+
+    private:
+        void handleRestartComponent(int32 flags);
     };
 
 }
