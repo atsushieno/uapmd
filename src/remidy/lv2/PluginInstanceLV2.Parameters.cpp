@@ -1,4 +1,6 @@
 #include "PluginFormatLV2.hpp"
+#include <cmath>
+#include <limits>
 
 using namespace remidy;
 
@@ -129,8 +131,32 @@ remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(uin
 }
 
 std::string PluginInstanceLV2::ParameterSupport::valueToString(uint32_t index, double value) {
-    auto enums = parameter_defs[index]->enums();
+    const auto& enums = parameter_defs[index]->enums();
     if (enums.empty())
         return "";
-    return enums[(int32_t) value].label;
+
+    const double tolerance = 1e-6;
+    const ParameterEnumeration* bestMatch = nullptr;
+    double bestDiff = std::numeric_limits<double>::max();
+
+    for (const auto& e : enums) {
+        double diff = std::abs(e.value - value);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            bestMatch = &e;
+        }
+    }
+
+    if (bestMatch == nullptr)
+        return "";
+
+    if (bestDiff <= tolerance)
+        return bestMatch->label;
+
+    if (value <= enums.front().value)
+        return enums.front().label;
+    if (value >= enums.back().value)
+        return enums.back().label;
+
+    return bestMatch->label;
 }
