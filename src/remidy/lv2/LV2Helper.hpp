@@ -144,6 +144,19 @@ namespace remidy_lv2 {
             rdfs_label_node = lilv_new_uri(world, LILV_NS_RDFS "label");
             rdfs_range_node = lilv_new_uri(world, LILV_NS_RDFS "range");
 
+            // Port Groups channel designations
+            designation_uri_node = lilv_new_uri(world, LV2_CORE__designation);
+            pg_left_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__left);
+            pg_right_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__right);
+            pg_center_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__center);
+            pg_side_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__side);
+            pg_center_left_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__centerLeft);
+            pg_center_right_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__centerRight);
+            pg_rear_left_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__rearLeft);
+            pg_rear_right_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__rearRight);
+            pg_rear_center_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__rearCenter);
+            pg_lfe_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__lowFrequencyEffects);
+
             features.urid_map_feature_data.handle = this;
             features.urid_map_feature_data.map = map_uri;
             features.urid_unmap_feature_data.handle = this;
@@ -204,6 +217,19 @@ namespace remidy_lv2 {
             lilv_node_free(rdf_value_node);
             lilv_node_free(rdfs_label_node);
             lilv_node_free(rdfs_range_node);
+
+            // Port Groups designations
+            lilv_node_free(designation_uri_node);
+            lilv_node_free(pg_left_uri_node);
+            lilv_node_free(pg_right_uri_node);
+            lilv_node_free(pg_center_uri_node);
+            lilv_node_free(pg_side_uri_node);
+            lilv_node_free(pg_center_left_uri_node);
+            lilv_node_free(pg_center_right_uri_node);
+            lilv_node_free(pg_rear_left_uri_node);
+            lilv_node_free(pg_rear_right_uri_node);
+            lilv_node_free(pg_rear_center_uri_node);
+            lilv_node_free(pg_lfe_uri_node);
         }
 
         // formerly stateFeaturesList()
@@ -238,7 +264,12 @@ namespace remidy_lv2 {
                 *midi_event_uri_node,
                 *patch_message_uri_node, *patch_readable_uri_node, *patch_writable_uri_node,
                 *resize_port_minimum_size_node, *presets_preset_node,
-                *work_interface_uri_node, *rdf_value_node, *rdfs_label_node, *rdfs_range_node;
+                *work_interface_uri_node, *rdf_value_node, *rdfs_label_node, *rdfs_range_node,
+                *designation_uri_node,
+                *pg_left_uri_node, *pg_right_uri_node, *pg_center_uri_node, *pg_side_uri_node,
+                *pg_center_left_uri_node, *pg_center_right_uri_node,
+                *pg_rear_left_uri_node, *pg_rear_right_uri_node, *pg_rear_center_uri_node,
+                *pg_lfe_uri_node;
         URIDs urids;
 
         Symap *symap{nullptr};          ///< URI map
