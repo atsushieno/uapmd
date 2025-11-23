@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <format>
 #include <limits>
+#include <fstream>
+#include <portable-file-dialogs.h>
 
 #include "SharedTheme.hpp"
 
@@ -28,11 +30,6 @@ MainWindow::MainWindow() {
             if (error.empty()) {
                 // Instantiation successful, refresh the instance list
                 refreshInstances();
-
-                // If we just instantiated the first plugin, select it
-                if (instances_.size() == 1) {
-                    selectedInstance_ = 0;
-                }
             }
         });
 
@@ -315,7 +312,7 @@ void MainWindow::renderPlayerSettings() {
     ImGui::SameLine();
     bool offlineRendering = sequencer.offlineRendering();
     if (ImGui::Checkbox("Offline Rendering", &offlineRendering)) {
-        sequencer.setOfflineRendering(offlineRendering);
+        sequencer.offlineRendering(offlineRendering);
     }
 
     // Position slider
@@ -362,58 +359,11 @@ void MainWindow::renderInstanceControl() {
         refreshInstances();
     }
 
-    ImGui::SameLine();
-
-    // Remove instance button - only enabled if an instance is selected
-    bool canRemove = selectedInstance_ >= 0 && selectedInstance_ < static_cast<int>(instances_.size());
-    if (!canRemove) {
-        ImGui::BeginDisabled();
-    }
-    if (ImGui::Button("Remove Instance")) {
-        int32_t instanceId = instances_[selectedInstance_];
-
-        // Hide and cleanup UI if it's open
-        auto* instance = sequencer.getPluginInstance(instanceId);
-        if (instance->hasUISupport() && instance->isUIVisible()) {
-            instance->hideUI();
-            auto windowIt = pluginWindows_.find(instanceId);
-            if (windowIt != pluginWindows_.end()) {
-                windowIt->second->show(false);
-            }
-        }
-
-        // Cleanup plugin UI resources
-        instance->destroyUI();
-        pluginWindows_.erase(instanceId);
-        pluginWindowEmbedded_.erase(instanceId);
-        pluginWindowBounds_.erase(instanceId);
-        pluginWindowResizeIgnore_.erase(instanceId);
-
-        // Cleanup details window if open
-        auto detailsIt = detailsWindows_.find(instanceId);
-        if (detailsIt != detailsWindows_.end()) {
-            detailsWindows_.erase(detailsIt);
-        }
-
-        // Remove the plugin instance
-        uapmd::AppModel::instance().removePluginInstance(instanceId);
-
-        // Refresh the instance list
-        refreshInstances();
-
-        std::cout << "Removed plugin instance: " << instanceId << std::endl;
-    }
-    if (!canRemove) {
-        ImGui::EndDisabled();
-    }
-
     ImGui::Text("Active Instances:");
-    if (ImGui::BeginTable("##InstanceTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame)) {
+    if (ImGui::BeginTable("##InstanceTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableSetupColumn("Plugin", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-        ImGui::TableSetupColumn("Plugin UI", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-        ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 300.0f);
         ImGui::TableHeadersRow();
 
         for (size_t i = 0; i < instances_.size(); i++) {
@@ -424,12 +374,9 @@ void MainWindow::renderInstanceControl() {
 
             ImGui::TableNextRow();
 
-            // Plugin name column (selectable)
+            // Plugin name column
             ImGui::TableSetColumnIndex(0);
-            const bool isSelected = (selectedInstance_ == static_cast<int>(i));
-            if (ImGui::Selectable(pluginName.c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) {
-                selectedInstance_ = static_cast<int>(i);
-            }
+            ImGui::Text("%s", pluginName.c_str());
 
             // Format column
             ImGui::TableSetColumnIndex(1);
@@ -505,13 +452,13 @@ void MainWindow::renderInstanceControl() {
             if (!hasUI) {
                 ImGui::EndDisabled();
             }
+            ImGui::SameLine();
 
-            // Details button column
-            ImGui::TableSetColumnIndex(3);
+            // Details button
             auto detailsIt = detailsWindows_.find(instanceId);
             bool detailsVisible = (detailsIt != detailsWindows_.end() && detailsIt->second.visible);
             const char* detailsButtonText = detailsVisible ? "Hide Details" : "Show Details";
-            std::string detailsButtonId = std::string(detailsButtonText) + "##det" + std::to_string(instanceId);
+            std::string detailsButtonId = std::string(detailsButtonText) + "##details" + std::to_string(instanceId);
 
             if (ImGui::Button(detailsButtonId.c_str())) {
                 if (detailsVisible) {
@@ -521,9 +468,24 @@ void MainWindow::renderInstanceControl() {
                 }
             }
 
-            // Remove button column
-            ImGui::TableSetColumnIndex(4);
-            std::string removeButtonId = "Remove##" + std::to_string(instanceId);
+            // line break
+
+            // Save button
+            std::string saveButtonId = "Save##save" + std::to_string(instanceId);
+            if (ImGui::Button(saveButtonId.c_str())) {
+                savePluginState(instanceId);
+            }
+            ImGui::SameLine();
+
+            // Load button
+            std::string loadButtonId = "Load##load" + std::to_string(instanceId);
+            if (ImGui::Button(loadButtonId.c_str())) {
+                loadPluginState(instanceId);
+            }
+            ImGui::SameLine();
+
+            // Remove button
+            std::string removeButtonId = "Remove##remove" + std::to_string(instanceId);
             if (ImGui::Button(removeButtonId.c_str())) {
                 // Hide and cleanup UI if it's open
                 if (instance->hasUISupport() && instance->isUIVisible()) {
@@ -701,10 +663,6 @@ void MainWindow::refreshInstances() {
     for (auto id : resizeIgnoreRemove)
         pluginWindowResizeIgnore_.erase(id);
 
-    // Reset selection if out of bounds
-    if (selectedInstance_ >= static_cast<int>(instances_.size())) {
-        selectedInstance_ = -1;
-    }
 }
 
 void MainWindow::refreshParameters(int32_t instanceId, DetailsWindowState& state) {
@@ -1227,6 +1185,127 @@ void MainWindow::renderDetailsWindows() {
         if (!windowOpen) {
             hideDetailsWindow(instanceId);
         }
+    }
+}
+
+void MainWindow::savePluginState(int32_t instanceId) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+
+    std::string defaultFilename = std::format("{}.{}.state",
+                                              sequencer.getPluginName(instanceId),
+                                              sequencer.getPluginFormat(instanceId));
+    std::ranges::replace(defaultFilename, ' ', '_');
+
+    auto save = pfd::save_file(
+        "Save Plugin State",
+        defaultFilename,
+        {"Plugin State Files", "*.state", "All Files", "*"}
+    );
+
+    std::string filepath = save.result();
+    if (filepath.empty()) {
+        return; // User cancelled
+    }
+
+    // Get plugin state directly from plugin instance
+    auto* instance = sequencer.getPluginInstance(instanceId);
+    if (!instance) {
+        std::cerr << "Failed to get plugin instance" << std::endl;
+        pfd::message("Save Failed",
+            "Failed to get plugin instance",
+            pfd::choice::ok,
+            pfd::icon::error);
+        return;
+    }
+
+    auto stateData = instance->saveState();
+    if (stateData.empty()) {
+        std::cerr << "Failed to retrieve plugin state" << std::endl;
+        pfd::message("Save Failed",
+            "Failed to retrieve plugin state",
+            pfd::choice::ok,
+            pfd::icon::error);
+        return;
+    }
+
+    // Save to file as binary blob
+    try {
+        std::ofstream file(filepath, std::ios::binary);
+        if (!file.is_open()) {
+            throw std::runtime_error("Failed to open file for writing");
+        }
+        file.write(reinterpret_cast<const char*>(stateData.data()), stateData.size());
+        file.close();
+
+        std::cout << "Plugin state saved to: " << filepath << std::endl;
+    } catch (const std::exception& ex) {
+        std::cerr << "Failed to save plugin state: " << ex.what() << std::endl;
+        pfd::message("Save Failed",
+            std::format("Failed to save plugin state:\n{}", ex.what()),
+            pfd::choice::ok,
+            pfd::icon::error);
+    }
+}
+
+void MainWindow::loadPluginState(int32_t instanceId) {
+    // Show open file dialog
+    auto open = pfd::open_file(
+        "Load Plugin State",
+        "",
+        {"Plugin State Files", "*.state", "All Files", "*"}
+    );
+
+    auto filepaths = open.result();
+    if (filepaths.empty()) {
+        return; // User cancelled
+    }
+
+    std::string filepath = filepaths[0];
+
+    // Load from file
+    std::vector<uint8_t> stateData;
+    try {
+        std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) {
+            throw std::runtime_error("Failed to open file for reading");
+        }
+
+        auto fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        stateData.resize(static_cast<size_t>(fileSize));
+        file.read(reinterpret_cast<char*>(stateData.data()), fileSize);
+        file.close();
+    } catch (const std::exception& ex) {
+        std::cerr << "Failed to load plugin state: " << ex.what() << std::endl;
+        pfd::message("Load Failed",
+            std::format("Failed to load plugin state:\n{}", ex.what()),
+            pfd::choice::ok,
+            pfd::icon::error);
+        return;
+    }
+
+    // Set plugin state directly on plugin instance
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto* instance = sequencer.getPluginInstance(instanceId);
+    if (!instance) {
+        std::cerr << "Failed to get plugin instance" << std::endl;
+        pfd::message("Load Failed",
+            "Failed to get plugin instance",
+            pfd::choice::ok,
+            pfd::icon::error);
+        return;
+    }
+
+    instance->loadState(stateData);
+    // Note: loadState doesn't return a status, so we assume success
+
+    std::cout << "Plugin state loaded from: " << filepath << std::endl;
+
+    // Refresh parameters to reflect the loaded state if details window is open
+    auto detailsIt = detailsWindows_.find(instanceId);
+    if (detailsIt != detailsWindows_.end()) {
+        refreshParameters(instanceId, detailsIt->second);
     }
 }
 

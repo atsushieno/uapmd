@@ -111,6 +111,10 @@ namespace uapmd::gui {
         void onDetailsWindowClosed(int32_t instanceId);
         void renderDetailsWindows();
 
+        // State save/load
+        void savePluginState(int32_t instanceId);
+        void loadPluginState(int32_t instanceId);
+
         // Plugin selection
         void refreshPluginList();
         void renderPluginSelector();

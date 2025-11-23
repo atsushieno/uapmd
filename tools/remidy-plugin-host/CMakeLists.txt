@@ -130,6 +130,7 @@ target_link_libraries(remidy-imgui-shared PUBLIC imgui ${BACKEND_LIBRARIES})
 target_include_directories(remidy-plugin-host PRIVATE
         ${choc_SOURCE_DIR}
         ${cmidi2_SOURCE_DIR}
+        ${portable-file-dialogs_SOURCE_DIR}
         ../../include
 )
 

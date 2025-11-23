@@ -43,10 +43,17 @@ FetchContent_MakeAvailable(cpplocate)
 
 FetchContent_Declare(midicci
         NAME            midicci
-        GIT_TAG         85d7852
+        GIT_TAG         5c184fe
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
 )
 FetchContent_MakeAvailable(midicci)
+
+CPMAddPackage(
+        NAME portable-file-dialogs
+        GIT_TAG c12ea8c
+        GIT_REPOSITORY https://github.com/samhocevar/portable-file-dialogs
+        DOWNLOAD_ONLY YES
+)
 
 #add_compile_options("-fsanitize=address")
 #link_libraries("-fsanitize=address")

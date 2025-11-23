@@ -299,7 +299,7 @@ bool uapmd::AudioPluginSequencer::offlineRendering() const {
     return offline_rendering_.load(std::memory_order_acquire);
 }
 
-void uapmd::AudioPluginSequencer::setOfflineRendering(bool enabled) {
+void uapmd::AudioPluginSequencer::offlineRendering(bool enabled) {
     bool previous = offline_rendering_.exchange(enabled, std::memory_order_acq_rel);
     if (plugin_host_pal && previous != enabled)
         plugin_host_pal->setOfflineMode(enabled);
@@ -695,22 +695,4 @@ bool uapmd::AudioPluginSequencer::sampleRate(int32_t newSampleRate) {
         return false;
     sample_rate = newSampleRate;
     return true;
-}
-
-void uapmd::AudioPluginSequencer::loadState(std::vector<uint8_t>& state) {
-    // FIXME: we need some un-structure
-    for (auto track : this->sequencer.tracks())
-        for (auto plugin : track->graph().plugins())
-            plugin->loadState(state);
-}
-
-std::vector<uint8_t> uapmd::AudioPluginSequencer::saveState() {
-    std::vector<uint8_t> ret{};
-    for (auto track : this->sequencer.tracks())
-        for (auto plugin : track->graph().plugins()) {
-            // FIXME: we need some structure
-            auto target = plugin->saveState();
-            std::copy(target.begin(), target.end(), std::back_inserter(ret));
-        }
-    return ret;
 }

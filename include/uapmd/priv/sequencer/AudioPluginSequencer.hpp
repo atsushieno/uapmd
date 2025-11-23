@@ -138,10 +138,7 @@ namespace uapmd {
         int32_t sampleRate();
         bool sampleRate(int32_t newSampleRate);
 
-        std::vector<uint8_t> saveState();
-        void loadState(std::vector<uint8_t>& state);
-
         bool offlineRendering() const;
-        void setOfflineRendering(bool enabled);
+        void offlineRendering(bool enabled);
     };
 }

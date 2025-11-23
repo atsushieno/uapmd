@@ -7,7 +7,11 @@ std::vector<uint8_t> remidy::PluginInstanceAU::PluginStatesAU::getState(remidy::
 
     CFPropertyListRef dict;
     UInt32 size;
-    AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &dict, &size);
+    auto status = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &dict, &size);
+    if (status != noErr) {
+        Logger::global()->logError("PluginStatesAU::getState(): failed to get state: %d", status);
+        return ret;
+    }
     CFErrorRef error;
     auto data = CFPropertyListCreateData(nullptr, dict, kCFPropertyListBinaryFormat_v1_0, 0, &error);
     size = CFDataGetLength(data);
