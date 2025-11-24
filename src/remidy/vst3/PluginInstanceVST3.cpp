@@ -106,10 +106,14 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
     owner->getHost()->setRestartComponentHandler(controller, nullptr);
 
     auto result = processor->setProcessing(false);
+    if (result == kResultOk)
+        processingActive = false;
     if (result != kResultOk)
         logger->logError("Failed to setProcessing(false) at VST3 destructor: %d", result);
     EventLoop::runTaskOnMainThread([this, &result, logger] {
         result = component->setActive(false);
+        if (result == kResultOk)
+            componentActive = false;
         if (result != kResultOk)
             logger->logError("Failed to setActive(false) at VST3 destructor: %d", result);
         audio_buses->deactivateAllBuses();
@@ -205,6 +209,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
             owner->getLogger()->logInfo("%s: activating component", pluginName.c_str());
             activationResult = component->setActive(true);
             attemptedActivation = true;
+            componentActive = activationResult == kResultOk;
         }
     });
 
@@ -217,6 +222,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
         owner->getLogger()->logError("Failed to setActive(true) for vst3 processing. Result: %d", activationResult);
         EventLoop::runTaskOnMainThread([&] {
             component->setActive(false);
+            componentActive = false;
         });
         return StatusCode::FAILED_TO_START_PROCESSING;
     }
@@ -228,9 +234,11 @@ remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
         owner->getLogger()->logError("Failed to start vst3 processing. Result: %d", result);
         EventLoop::runTaskOnMainThread([&] {
             component->setActive(false);
+            componentActive = false;
         });
         return StatusCode::FAILED_TO_START_PROCESSING;
     }
+    processingActive = result == kResultOk;
 
     owner->getLogger()->logInfo("%s: startProcessing() success", pluginName.c_str());
     owner->getHost()->startProcessing();
@@ -239,6 +247,8 @@ remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
 
 remidy::StatusCode remidy::PluginInstanceVST3::stopProcessing() {
     auto result = processor->setProcessing(false);
+    if (result == kResultOk)
+        processingActive = false;
     // regarding kNotImplemented, see startProcessing().
     if (result != kResultOk && result != kNotImplemented) {
         owner->getLogger()->logError("Failed to stop vst3 processing. Result: %d", result);
@@ -248,6 +258,8 @@ remidy::StatusCode remidy::PluginInstanceVST3::stopProcessing() {
     tresult deactivateResult = kResultOk;
     EventLoop::runTaskOnMainThread([&] {
         deactivateResult = component->setActive(false);
+        if (deactivateResult == kResultOk)
+            componentActive = false;
     });
     if (deactivateResult != kResultOk)
         owner->getLogger()->logWarning("Failed to setActive(false) for vst3 processing. Result: %d", deactivateResult);
@@ -507,12 +519,16 @@ void remidy::PluginInstanceVST3::setOfflineMode(bool offlineMode) {
 
     auto logger = owner->getLogger();
     auto result = processor->setProcessing(false);
+    if (result == kResultOk)
+        processingActive = false;
     if (result != kResultOk && result != kNotImplemented)
         logger->logWarning("%s: setOfflineMode() could not stop processing. Result: %d", pluginName.c_str(), result);
 
     tresult deactivateResult = kResultOk;
     EventLoop::runTaskOnMainThread([&] {
         deactivateResult = component->setActive(false);
+        if (deactivateResult == kResultOk)
+            componentActive = false;
     });
     if (deactivateResult != kResultOk)
         logger->logWarning("%s: setOfflineMode() could not deactivate component. Result: %d", pluginName.c_str(), deactivateResult);
@@ -528,6 +544,8 @@ void remidy::PluginInstanceVST3::setOfflineMode(bool offlineMode) {
     tresult activateResult = kResultOk;
     EventLoop::runTaskOnMainThread([&] {
         activateResult = component->setActive(true);
+        if (activateResult == kResultOk)
+            componentActive = true;
     });
     if (activateResult != kResultOk)
         logger->logWarning("%s: setOfflineMode() could not activate component. Result: %d", pluginName.c_str(), activateResult);
@@ -535,6 +553,8 @@ void remidy::PluginInstanceVST3::setOfflineMode(bool offlineMode) {
     result = processor->setProcessing(true);
     if (result != kResultOk && result != kNotImplemented)
         logger->logWarning("%s: setOfflineMode() could not restart processing. Result: %d", pluginName.c_str(), result);
+    else if (result == kResultOk)
+        processingActive = true;
 }
 
 remidy::PluginParameterSupport* remidy::PluginInstanceVST3::parameters() {
@@ -574,10 +594,13 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
                 // Reset the component state
                 auto result = component->setActive(false);
                 if (result == kResultOk) {
+                    componentActive = false;
                     result = component->setActive(true);
                     if (result != kResultOk) {
                         logger->logError("%s: Failed to reactivate component after reset: %d",
                                        pluginName.c_str(), result);
+                    } else {
+                        componentActive = true;
                     }
                 } else {
                     logger->logError("%s: Failed to deactivate component for reset: %d",
@@ -596,6 +619,8 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
                 if (deactivateResult != kResultOk) {
                     logger->logWarning("%s: Failed to deactivate for I/O change: %d",
                                      pluginName.c_str(), deactivateResult);
+                } else {
+                    componentActive = false;
                 }
 
                 // Re-inspect buses to pick up new configuration
@@ -608,6 +633,8 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
                     if (activateResult != kResultOk) {
                         logger->logError("%s: Failed to reactivate after I/O change: %d",
                                        pluginName.c_str(), activateResult);
+                    } else {
+                        componentActive = true;
                     }
                 } else {
                     logger->logError("%s: Failed to setup processing after I/O change: %d",

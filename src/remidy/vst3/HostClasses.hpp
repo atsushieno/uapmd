@@ -443,7 +443,7 @@ namespace remidy_vst3 {
             if (!buffer || numBytes < 0)
                 return kInvalidArgument;
             auto remaining = static_cast<int32>(data.size() - offset);
-            if (remaining <= 0) {
+            if (remaining <= 0 || numBytes == 0) {
                 if (numBytesRead)
                     *numBytesRead = 0;
                 return kResultFalse;
@@ -453,7 +453,7 @@ namespace remidy_vst3 {
             offset += toCopy;
             if (numBytesRead)
                 *numBytesRead = toCopy;
-            return toCopy == numBytes ? kResultOk : kResultFalse;
+            return kResultOk;
         }
 
         tresult PLUGIN_API write(void* buffer, int32 numBytes, int32* numBytesWritten = nullptr) SMTG_OVERRIDE {

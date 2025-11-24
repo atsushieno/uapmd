@@ -247,6 +247,8 @@ namespace remidy {
         PluginUISupport* _ui{};
 
         VST3UmpInputDispatcher ump_input_dispatcher{this};
+        bool componentActive{false};
+        bool processingActive{false};
 
     public:
         explicit PluginInstanceVST3(
