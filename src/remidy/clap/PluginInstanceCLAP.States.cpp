@@ -1,4 +1,5 @@
 #include "PluginFormatCLAP.hpp"
+#include <algorithm>
 #include <vector>
 
 namespace remidy {
@@ -14,21 +15,38 @@ namespace remidy {
         });
     }
 
+    struct ClapStreamReadContext {
+        std::vector<uint8_t> *buffer;
+        size_t offset{0};
+    };
+
+    struct ClapStreamWriteContext {
+        std::vector<uint8_t> *buffer;
+        size_t offset{0};
+    };
+
     int64_t remidy_clap_stream_read(const clap_istream_t *stream, void *buffer, uint64_t size) {
-        auto src = (std::vector<uint8_t>*) stream->ctx;
-        if (src->size() < size) {
-            std::cerr << "remidy_clap_stream_read: truncated read" << std::endl;
+        auto *ctx = static_cast<ClapStreamReadContext *>(stream->ctx);
+        if (!ctx || !ctx->buffer)
             return 0;
-        }
-        memcpy(buffer, src->data(), size);
-        // there is no way to read further anyway.
-        return static_cast<int64_t>(size);
+        if (ctx->offset >= ctx->buffer->size())
+            return 0;
+        const auto remaining = ctx->buffer->size() - ctx->offset;
+        const auto bytesToCopy = static_cast<size_t>(std::min<uint64_t>(size, remaining));
+        memcpy(buffer, ctx->buffer->data() + ctx->offset, bytesToCopy);
+        ctx->offset += bytesToCopy;
+        return static_cast<int64_t>(bytesToCopy);
     }
 
     int64_t remidy_clap_stream_write(const clap_ostream_t *stream, const void *buffer, uint64_t size) {
-        auto src = static_cast<std::vector<uint8_t> *>(stream->ctx);
-        src->resize(size);
-        memcpy(src->data(), buffer, size);
+        auto *ctx = static_cast<ClapStreamWriteContext *>(stream->ctx);
+        if (!ctx || !ctx->buffer)
+            return 0;
+        const auto requiredSize = ctx->offset + size;
+        if (ctx->buffer->size() < requiredSize)
+            ctx->buffer->resize(requiredSize);
+        memcpy(ctx->buffer->data() + ctx->offset, buffer, size);
+        ctx->offset += size;
         return static_cast<int64_t>(size);
     }
 
@@ -51,8 +69,9 @@ namespace remidy {
             return ret;
         // Note that we cannot support `includeUiState = false` in CLAP...
         EventLoop::runTaskOnMainThread([&] {
+            ClapStreamWriteContext context{&ret, 0};
             clap_ostream_t stream;
-            stream.ctx = &ret;
+            stream.ctx = &context;
             stream.write = remidy_clap_stream_write;
             if (state_context_ext) {
                 const auto rawPlugin = owner->plugin->clapPlugin();
@@ -71,8 +90,9 @@ namespace remidy {
             return;
         // Note that we cannot support `includeUiState = false` in CLAP...
         EventLoop::runTaskOnMainThread([&] {
+            ClapStreamReadContext context{&state, 0};
             clap_istream_t stream;
-            stream.ctx = &state;
+            stream.ctx = &context;
             stream.read = remidy_clap_stream_read;
             if (state_context_ext) {
                 const auto rawPlugin = owner->plugin->clapPlugin();
