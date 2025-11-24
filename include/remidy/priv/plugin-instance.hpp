@@ -31,9 +31,6 @@ namespace remidy {
             AudioContentType dataType{AudioContentType::Float32};
             std::optional<uint32_t> mainInputChannels{};
             std::optional<uint32_t> mainOutputChannels{};
-            // In the future we should be able to configure audio buses.
-            //std::optional<std::vector<BusConfiguration>> inputBuses{};
-            //std::optional<std::vector<BusConfiguration>> outputBuses{};
         };
 
         virtual ~PluginInstance() = default;
