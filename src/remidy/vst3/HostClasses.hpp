@@ -440,46 +440,53 @@ namespace remidy_vst3 {
 
         // IBStream interface
         tresult PLUGIN_API read(void* buffer, int32 numBytes, int32* numBytesRead = nullptr) SMTG_OVERRIDE {
-            auto size = min(static_cast<int32>(data.size() - offset), numBytes);
-            if (size < numBytes) {
-                // it is impossible for the input stream to complete reading
+            if (!buffer || numBytes < 0)
                 return kInvalidArgument;
+            auto remaining = static_cast<int32>(data.size() - offset);
+            if (remaining <= 0) {
+                if (numBytesRead)
+                    *numBytesRead = 0;
+                return kResultFalse;
             }
-            memcpy(buffer, data.data() + offset, size);
-            offset += size;
+            auto toCopy = min(remaining, numBytes);
+            memcpy(buffer, data.data() + offset, static_cast<size_t>(toCopy));
+            offset += toCopy;
             if (numBytesRead)
-                *numBytesRead = size;
-            return kResultOk;
+                *numBytesRead = toCopy;
+            return toCopy == numBytes ? kResultOk : kResultFalse;
         }
 
         tresult PLUGIN_API write(void* buffer, int32 numBytes, int32* numBytesWritten = nullptr) SMTG_OVERRIDE {
-            data.resize(data.size() + numBytes);
-            auto size = min(static_cast<int32>(data.size() - offset), numBytes);
-            memcpy(data.data() + offset, buffer, size);
-            offset += size;
+            if (!buffer || numBytes < 0)
+                return kInvalidArgument;
+            auto required = offset + static_cast<int64>(numBytes);
+            if (required > static_cast<int64>(data.size()))
+                data.resize(static_cast<size_t>(required));
+            memcpy(data.data() + offset, buffer, static_cast<size_t>(numBytes));
+            offset += numBytes;
             if (numBytesWritten)
-                *numBytesWritten = size;
+                *numBytesWritten = numBytes;
             return kResultOk;
         }
 
         tresult PLUGIN_API seek(int64 pos, int32 mode, int64* result = nullptr) SMTG_OVERRIDE {
+            int64 newOffset = offset;
             switch (mode) {
                 case IBStream::kIBSeekSet:
-                    if (pos >= static_cast<int64>(data.size()))
-                        return kInvalidArgument;
-                    offset = pos;
+                    newOffset = pos;
                     break;
                 case IBStream::kIBSeekCur:
-                    if (offset + pos >= static_cast<int64>(data.size()))
-                        return kInvalidArgument;
-                    offset += pos;
+                    newOffset = offset + pos;
                     break;
                 case IBStream::kIBSeekEnd:
-                    if (pos > static_cast<int64>(data.size()))
-                        return kInvalidArgument;
-                    offset = data.size() - pos;
+                    newOffset = static_cast<int64>(data.size()) + pos;
                     break;
+                default:
+                    return kInvalidArgument;
             }
+            if (newOffset < 0 || newOffset > static_cast<int64>(data.size()))
+                return kInvalidArgument;
+            offset = newOffset;
             if (result)
                 *result = offset;
             return kResultOk;
