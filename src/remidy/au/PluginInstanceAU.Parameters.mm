@@ -34,14 +34,18 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
         std::string path{};
 
         // Retrieve enumeration strings before creating parameter
-        CFArrayRef enumArray;
+        CFArrayRef enumArray{nullptr};
         std::vector<ParameterEnumeration> enums;
-        UInt32 enumSize = 0;
+        UInt32 enumSize = sizeof(enumArray);
         result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterValueStrings, kAudioUnitScope_Global, id, &enumArray, &enumSize);
-        if (result == noErr) {
-            for (CFIndex e = 0, en = enumSize / sizeof(CFStringRef); e < en; e++) {
-                auto str = (CFStringRef) CFArrayGetValueAtIndex(enumArray, e);
-                auto label = CFStringGetCharactersPtr(str) ? cfStringToString(str) : "FIXME: failed to create string";
+        if (result == noErr && enumArray) {
+            auto count = CFArrayGetCount(enumArray);
+            enums.reserve(static_cast<size_t>(count));
+            for (CFIndex e = 0; e < count; e++) {
+                auto str = static_cast<CFStringRef>(CFArrayGetValueAtIndex(enumArray, e));
+                auto label = cfStringToString(str);
+                if (label.empty())
+                    label = std::format("#{}", e);
                 enums.emplace_back(label, e);
             }
             CFRelease(enumArray);
