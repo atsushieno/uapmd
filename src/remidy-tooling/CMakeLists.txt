@@ -32,8 +32,12 @@ target_link_libraries(remidy-tooling PRIVATE
 )
 
 target_sources(remidy-tooling PRIVATE
-        PluginScanTool.cpp
-        PluginInstancing.cpp
+        src/PluginScanTool.cpp
+        src/PluginInstancing.cpp
 )
 
 add_library(remidy::remidy-tooling ALIAS remidy-tooling)
+
+if (BUILD_TESTING)
+    add_subdirectory(tests)
+endif ()

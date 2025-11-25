@@ -23,6 +23,22 @@ jobs:
         sudo apt-get update
         # There is no libsdl3-dev on 24.04...
         sudo apt install gcc-14 ninja-build libgtk-3-dev libwebkit2gtk-4.1-dev libadwaita-1-dev libsdl2-dev
+    - name: Setup Node.js on Windows
+      if: matrix.os == 'windows-latest'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'  # Use a current stable version
+    - name: Cleanup plugin install cache
+      if: matrix.os != 'windows-latest' # Windows does not support sudo
+      run: rm -rf /home/runner/.local/share/open-audio-stack
+    - name: Install audio plugins
+      uses: atsushieno/setup-audio-plugins-action@main
+      if: matrix.os != 'windows-latest' # Windows does not support sudo
+      with:
+        cache: true
+        plugins: |
+          sfztools/sfizz
+          baconpaul/six-sines
     - name: brew install
       if: ${{ startsWith(matrix.os, 'macos') }}
       run: |
@@ -64,6 +80,9 @@ jobs:
     - name: build
       run: cmake --build build
 
+    - name: test
+      run: ctest --test-dir build --output-on-failure
+
     - name: upload build failure logs
       if: failure()
       uses: actions/upload-artifact@v4
@@ -71,4 +90,3 @@ jobs:
         name: build-${{ matrix.os }}
         path: |
           build
-
