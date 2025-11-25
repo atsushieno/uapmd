@@ -1,6 +1,8 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
+#include <unordered_map>
 
 #include "remidy.hpp"
 #include "../GenericAudioBuses.hpp"
@@ -83,6 +85,7 @@ namespace remidy {
         class ParameterSupport : public PluginParameterSupport {
             std::vector<PluginParameter *> parameter_defs{};
             std::vector<LV2ParameterHandler *> parameter_handlers{};
+            std::unordered_map<LV2_URID, uint32_t> property_urid_to_index{};
 
             void inspectParameters();
 
@@ -113,6 +116,8 @@ namespace remidy {
                 return StatusCode::INVALID_PARAMETER_OPERATION;
             }
             std::string valueToString(uint32_t index, double value) override;
+            std::optional<uint32_t> indexForProperty(LV2_URID propertyUrid) const;
+            void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
         };
 
         class LV2AtomParameterHandler : public LV2ParameterHandler {

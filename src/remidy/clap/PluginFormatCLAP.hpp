@@ -5,6 +5,9 @@
 #include "clap/helpers/event-list.hh"
 #include "clap/helpers/plugin-proxy.hh"
 #include "clap/helpers/plugin-proxy.hxx"
+#include <optional>
+#include <unordered_map>
+
 #include "clap/ext/render.h"
 #include "remidy.hpp"
 #include "HostClasses.hpp"
@@ -103,6 +106,7 @@ namespace remidy {
             std::vector<PluginParameter*> parameter_defs{};
             std::vector<clap_id> parameter_ids{};
             std::vector<void*> parameter_cookies{};
+            std::unordered_map<clap_id, uint32_t> param_id_to_index{};
 
         public:
             explicit ParameterSupport(PluginInstanceCLAP* owner);
@@ -115,6 +119,8 @@ namespace remidy {
             StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
             std::string valueToString(uint32_t index, double value) override;
+            std::optional<uint32_t> indexForParamId(clap_id id) const;
+            void notifyParameterValue(clap_id id, double plainValue);
         };
 
         class CLAPUmpInputDispatcher : public TypedUmpInputDispatcher {

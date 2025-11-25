@@ -1,5 +1,8 @@
 #pragma once
 
+#include <optional>
+#include <unordered_map>
+
 #include "remidy.hpp"
 #include "HostClasses.hpp"
 #include "../GenericAudioBuses.hpp"
@@ -84,6 +87,7 @@ namespace remidy {
         class ParameterSupport : public PluginParameterSupport {
             PluginInstanceVST3* owner;
             std::vector<PluginParameter*> parameter_defs{};
+            std::unordered_map<ParamID, uint32_t> param_id_to_index{};
             // map<PerNoteControllerContext, definition>
             std::vector<std::pair<PerNoteControllerContext, std::vector<PluginParameter*>>> per_note_controller_defs{};
             ParamID *parameter_ids{};
@@ -100,6 +104,8 @@ namespace remidy {
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
 
             std::string valueToString(uint32_t index, double value) override;
+            std::optional<uint32_t> indexForParamId(ParamID id) const;
+            void notifyParameterValue(ParamID id, double plainValue);
 
             void setProgramChange(uint4_t group, uint4_t channel, uint7_t flags, uint7_t program, uint7_t bankMSB,
                                   uint7_t bankLSB);

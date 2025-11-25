@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include "remidy/priv/plugin-parameter.hpp"
 #include "uapmd/priv/CommonTypes.hpp"
 
 namespace uapmd {
@@ -37,6 +38,18 @@ namespace uapmd {
             virtual bool getUISize(uint32_t &width, uint32_t &height) = 0;
             virtual bool canUIResize() = 0;
             virtual void setOfflineMode(bool offlineMode) { (void) offlineMode; }
+            virtual remidy::PluginParameterSupport* parameterSupport() { return nullptr; }
+            virtual remidy::PluginParameterSupport::ParameterChangeListenerId addParameterChangeListener(
+                remidy::PluginParameterSupport::ParameterChangeListener listener) {
+                auto* support = parameterSupport();
+                if (!support)
+                    return 0;
+                return support->addParameterChangeListener(std::move(listener));
+            }
+            virtual void removeParameterChangeListener(remidy::PluginParameterSupport::ParameterChangeListenerId id) {
+                if (auto* support = parameterSupport())
+                    support->removeParameterChangeListener(id);
+            }
         };
 
         static AudioPluginHostPAL* instance();

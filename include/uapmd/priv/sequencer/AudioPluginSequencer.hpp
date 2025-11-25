@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "remidy-tooling/PluginInstancing.hpp"
+#include "remidy/priv/plugin-parameter.hpp"
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
@@ -54,6 +55,9 @@ namespace uapmd {
         std::unordered_map<int32_t, AudioPluginHostPAL::AudioPluginNodePAL*> plugin_instances_;
         std::unordered_map<int32_t, bool> plugin_bypassed_;
         mutable std::mutex instance_map_mutex_;
+        std::unordered_map<int32_t, remidy::PluginParameterSupport::ParameterChangeListenerId> parameter_listener_tokens_;
+        std::mutex parameter_listener_mutex_;
+        std::mutex pending_parameter_mutex_;
 
         struct RouteResolution {
             AudioPluginTrack* track{nullptr};
@@ -69,6 +73,8 @@ namespace uapmd {
         void releaseGroup(int32_t instanceId);
         std::optional<uint8_t> groupForInstanceOptional(int32_t instanceId) const;
         std::optional<int32_t> instanceForGroupOptional(uint8_t group) const;
+        void registerParameterListener(int32_t instanceId, AudioPluginHostPAL::AudioPluginNodePAL* node);
+        void unregisterParameterListener(int32_t instanceId);
 
     public:
         struct PluginNodeInfo {

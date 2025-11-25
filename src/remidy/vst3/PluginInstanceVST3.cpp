@@ -78,7 +78,7 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         midi_mapping = nullptr; // just to make sure
 
     // Register parameter edit handler for this plugin instance
-    owner->getHost()->setParameterEditHandler(controller, [this](ParamID paramId, double value) {
+    owner->getHost()->setParameterEditHandler(controller, [this, controller](ParamID paramId, double value) {
         // Queue the parameter change for the next audio process call
         auto pvc = processDataInputParameterChanges.asInterface();
         int32_t index = 0;
@@ -86,6 +86,11 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         if (queue) {
             int32_t pointIndex = 0;
             queue->addPoint(0, value, pointIndex);
+        }
+
+        if (_parameters) {
+            double plainValue = controller->normalizedParamToPlain(paramId, value);
+            _parameters->notifyParameterValue(paramId, plainValue);
         }
     });
 
@@ -483,6 +488,9 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
                 int32_t sampleOffset;
                 ParamValue value;
                 if (queue->getPoint(pointCount - 1, sampleOffset, value) == kResultOk) {
+                    double plainValue = controller->normalizedParamToPlain(paramId, value);
+                    if (_parameters)
+                        _parameters->notifyParameterValue(paramId, plainValue);
                     // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
                     // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
                     uint8_t bank = static_cast<uint8_t>((paramId >> 7) & 0x7F);

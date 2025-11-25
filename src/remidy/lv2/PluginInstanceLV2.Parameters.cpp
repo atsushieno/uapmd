@@ -90,6 +90,19 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
     auto logger = formatImpl->worldContext->logger;
 
     std::vector<std::pair<const LilvNode*,std::unique_ptr<PluginParameter>>> pl{};
+    auto mapFeature = &owner->implContext.statics->features.urid_map_feature_data;
+    auto mapNodeToUrid = [&](const LilvNode* node, PluginParameter* parameter) {
+        if (!node || !parameter || !lilv_node_is_uri(node))
+            return;
+        if (!mapFeature->map || !mapFeature->handle)
+            return;
+        const char* uri = lilv_node_as_uri(node);
+        if (!uri)
+            return;
+        auto urid = mapFeature->map(mapFeature->handle, uri);
+        if (urid != 0)
+            property_urid_to_index[urid] = parameter->index();
+    };
     // this is what Ardour does: https://github.com/Ardour/ardour/blob/a76afae0e9ffa8a44311d6f9c1d8dbc613bfc089/libs/ardour/lv2_plugin.cc#L2142
     auto pluginSubject = lilv_plugin_get_uri(plugin);
     auto writables = lilv_world_find_nodes(formatImpl->world, pluginSubject, formatImpl->worldContext->patch_writable_uri_node, nullptr);
@@ -119,6 +132,7 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
         auto para = p.second.release();
         parameter_handlers.emplace_back(new LV2AtomParameterHandler(this, implContext, para));
         parameter_defs.emplace_back(para);
+        mapNodeToUrid(p.first, para);
     }
 }
 
@@ -127,7 +141,10 @@ remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::getParameter(uin
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
-    return parameter_handlers[index]->setParameter(value, timestamp);
+    auto status = parameter_handlers[index]->setParameter(value, timestamp);
+    if (status == StatusCode::OK)
+        notifyParameterValue(static_cast<uint32_t>(index), value);
+    return status;
 }
 
 std::string PluginInstanceLV2::ParameterSupport::valueToString(uint32_t index, double value) {
@@ -159,4 +176,11 @@ std::string PluginInstanceLV2::ParameterSupport::valueToString(uint32_t index, d
         return enums.back().label;
 
     return bestMatch->label;
+}
+
+std::optional<uint32_t> remidy::PluginInstanceLV2::ParameterSupport::indexForProperty(LV2_URID propertyUrid) const {
+    auto it = property_urid_to_index.find(propertyUrid);
+    if (it == property_urid_to_index.end())
+        return std::nullopt;
+    return it->second;
 }

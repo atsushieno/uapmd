@@ -76,6 +76,37 @@ std::optional<int32_t> uapmd::AudioPluginSequencer::instanceForGroupOptional(uin
     return it->second;
 }
 
+void uapmd::AudioPluginSequencer::registerParameterListener(int32_t instanceId, AudioPluginHostPAL::AudioPluginNodePAL* node) {
+    if (!node)
+        return;
+    auto token = node->addParameterChangeListener(
+        [this, instanceId](uint32_t paramIndex, double plainValue) {
+            std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
+            pending_parameter_updates_[instanceId].push_back({static_cast<int32_t>(paramIndex), plainValue});
+        });
+    if (token == 0)
+        return;
+    std::lock_guard<std::mutex> lock(parameter_listener_mutex_);
+    parameter_listener_tokens_[instanceId] = token;
+}
+
+void uapmd::AudioPluginSequencer::unregisterParameterListener(int32_t instanceId) {
+    remidy::PluginParameterSupport::ParameterChangeListenerId token{0};
+    {
+        std::lock_guard<std::mutex> lock(parameter_listener_mutex_);
+        auto it = parameter_listener_tokens_.find(instanceId);
+        if (it == parameter_listener_tokens_.end())
+            return;
+        token = it->second;
+        parameter_listener_tokens_.erase(it);
+    }
+    if (token == 0)
+        return;
+    auto* node = getPluginInstance(instanceId);
+    if (node)
+        node->removeParameterChangeListener(token);
+}
+
 void uapmd::AudioPluginSequencer::dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
     if (!data || bytes == 0)
         return;
@@ -120,7 +151,10 @@ void uapmd::AudioPluginSequencer::dispatchPluginOutput(int32_t instanceId, const
                 double value = static_cast<double>(value32) / 4294967295.0;
 
                 // Store parameter update
-                pending_parameter_updates_[instanceId].push_back({paramId, value});
+                {
+                    std::lock_guard<std::mutex> parameterLock(pending_parameter_mutex_);
+                    pending_parameter_updates_[instanceId].push_back({paramId, value});
+                }
             }
         }
 
@@ -320,12 +354,10 @@ void uapmd::AudioPluginSequencer::offlineRendering(bool enabled) {
 }
 
 std::vector<uapmd::AudioPluginSequencer::ParameterUpdate> uapmd::AudioPluginSequencer::getParameterUpdates(int32_t instanceId) {
+    std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
     auto it = pending_parameter_updates_.find(instanceId);
-    if (it == pending_parameter_updates_.end()) {
+    if (it == pending_parameter_updates_.end())
         return {};
-    }
-
-    // Get and clear the updates
     auto updates = std::move(it->second);
     pending_parameter_updates_.erase(it);
     return updates;
@@ -429,11 +461,15 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
             auto instanceId = plugin->instanceId();
             plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
             assignGroup(instanceId);
+            AudioPluginHostPAL::AudioPluginNodePAL* palPtr = nullptr;
             {
                 std::lock_guard<std::mutex> lock(instance_map_mutex_);
-                plugin_instances_[instanceId] = plugin->pal();
+                palPtr = plugin->pal();
+                plugin_instances_[instanceId] = palPtr;
                 plugin_bypassed_[instanceId] = false;
             }
+
+            registerParameterListener(instanceId, palPtr);
 
             refreshFunctionBlockMappings();
             callback(instanceId, error);
@@ -496,11 +532,14 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
                 auto instanceId = appended->instanceId();
                 plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
                 assignGroup(instanceId);
+                AudioPluginHostPAL::AudioPluginNodePAL* palPtr = nullptr;
                 {
                     std::lock_guard<std::mutex> lock(instance_map_mutex_);
-                    plugin_instances_[instanceId] = appended->pal();
+                    palPtr = appended->pal();
+                    plugin_instances_[instanceId] = palPtr;
                     plugin_bypassed_[instanceId] = false;
                 }
+                registerParameterListener(instanceId, palPtr);
                 refreshFunctionBlockMappings();
                 if (cb) {
                     cb(instanceId, "");
@@ -515,6 +554,7 @@ bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
     // Destroy UI before removing the instance
     auto* instance = getPluginInstance(instanceId);
     instance->destroyUI();
+    unregisterParameterListener(instanceId);
 
     plugin_function_blocks_.erase(instanceId);
     releaseGroup(instanceId);

@@ -2,6 +2,7 @@
 #include "cmidi2.h"
 #include <algorithm>
 #include <vector>
+#include <lv2/atom/util.h>
 
 remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
         PluginInstance(entry), formatImpl(formatImpl), plugin(plugin),
@@ -209,6 +210,54 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
                 break;
 
             const LV2_Atom* atom = &ev->body;
+
+            if (atom->type == implContext.statics->urids.urid_atom_object) {
+                const auto* object = reinterpret_cast<const LV2_Atom_Object*>(atom);
+                if (object->body.otype == implContext.statics->urids.urid_patch_set) {
+                    const LV2_Atom* propertyAtom = nullptr;
+                    const LV2_Atom* valueAtom = nullptr;
+                    lv2_atom_object_get(object,
+                        implContext.statics->urids.urid_patch_property, &propertyAtom,
+                        implContext.statics->urids.urid_patch_value, &valueAtom,
+                        0);
+                    if (!propertyAtom || !valueAtom || propertyAtom->type != implContext.statics->urids.urid_atom_urid_type)
+                        continue;
+                    auto propertyUrid = reinterpret_cast<const LV2_Atom_URID*>(propertyAtom)->body;
+                    double plainValue = 0.0;
+                    if (valueAtom->type == implContext.statics->urids.urid_atom_float_type)
+                        plainValue = reinterpret_cast<const LV2_Atom_Float*>(valueAtom)->body;
+                    else if (valueAtom->type == implContext.statics->urids.urid_atom_int_type)
+                        plainValue = static_cast<double>(reinterpret_cast<const LV2_Atom_Int*>(valueAtom)->body);
+                    else if (valueAtom->type == implContext.statics->urids.urid_atom_bool_type)
+                        plainValue = reinterpret_cast<const LV2_Atom_Bool*>(valueAtom)->body ? 1.0 : 0.0;
+                    else
+                        continue;
+                    if (_parameters) {
+                        auto* lv2Parameters = static_cast<PluginInstanceLV2::ParameterSupport*>(_parameters);
+                        if (auto index = lv2Parameters->indexForProperty(propertyUrid); index.has_value()) {
+                            lv2Parameters->notifyParameterValue(index.value(), plainValue);
+                            const auto& params = lv2Parameters->parameters();
+                            if (index.value() < params.size()) {
+                                auto* param = params[index.value()];
+                                double range = param->maxPlainValue() - param->minPlainValue();
+                                double normalized = range != 0.0
+                                    ? (plainValue - param->minPlainValue()) / range
+                                    : 0.0;
+                                normalized = std::clamp(normalized, 0.0, 1.0);
+                                uint8_t bank = static_cast<uint8_t>((index.value() >> 7) & 0x7F);
+                                uint8_t idx = static_cast<uint8_t>(index.value() & 0x7F);
+                                uint32_t data = static_cast<uint32_t>(normalized * 4294967295.0);
+                                uint64_t ump = cmidi2_ump_midi2_nrpn(0, 0, bank, idx, data);
+                                if (umpPosition + 1 < umpCapacity) {
+                                    umpBuffer[umpPosition++] = static_cast<uint32_t>(ump >> 32);
+                                    umpBuffer[umpPosition++] = static_cast<uint32_t>(ump & 0xFFFFFFFF);
+                                }
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
 
             // Check if this is a MIDI event
             if (atom->type == implContext.statics->urids.urid_midi_event_type) {

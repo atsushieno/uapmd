@@ -106,6 +106,8 @@ namespace remidy_lv2 {
                     urid_atom_float_type{0},
                     urid_atom_bool_type{0},
                     urid_atom_int_type{0},
+                    urid_atom_object{0},
+                    urid_atom_urid_type{0},
                     urid_patch_set{0},
                     urid_patch_property{0},
                     urid_patch_value{0},
@@ -173,6 +175,8 @@ namespace remidy_lv2 {
             urids.urid_atom_float_type = map->map(map->handle, LV2_ATOM__Float);
             urids.urid_atom_bool_type = map->map(map->handle, LV2_ATOM__Bool);
             urids.urid_atom_int_type = map->map(map->handle, LV2_ATOM__Int);
+            urids.urid_atom_object = map->map(map->handle, LV2_ATOM__Object);
+            urids.urid_atom_urid_type = map->map(map->handle, LV2_ATOM__URID);
             urids.urid_patch_set = map->map(map->handle, LV2_PATCH__Set);
             urids.urid_patch_property = map->map(map->handle, LV2_PATCH__property);
             urids.urid_patch_value = map->map(map->handle, LV2_PATCH__value);

@@ -382,6 +382,8 @@ namespace remidy {
                 }
                 case CLAP_EVENT_PARAM_VALUE: {
                     auto* ev = reinterpret_cast<const clap_event_param_value_t*>(hdr);
+                    if (_parameters)
+                        _parameters->notifyParameterValue(ev->param_id, ev->value);
                     // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
                     // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
                     uint8_t bank = static_cast<uint8_t>((ev->param_id >> 7) & 0x7F);

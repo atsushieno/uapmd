@@ -57,6 +57,7 @@ namespace remidy {
                         enums));
                 parameter_ids.emplace_back(info.id);
                 parameter_cookies.emplace_back(info.cookie);
+                param_id_to_index[info.id] = static_cast<uint32_t>(i);
             }
         });
         return parameter_defs;
@@ -123,5 +124,17 @@ namespace remidy {
             return "";
         char s[1024];
         return owner->plugin->paramsValueToText(parameter_ids[index], value, s, sizeof(s)) ? s : "";
+    }
+
+    std::optional<uint32_t> PluginInstanceCLAP::ParameterSupport::indexForParamId(clap_id id) const {
+        auto it = param_id_to_index.find(id);
+        if (it == param_id_to_index.end())
+            return std::nullopt;
+        return it->second;
+    }
+
+    void PluginInstanceCLAP::ParameterSupport::notifyParameterValue(clap_id id, double plainValue) {
+        if (auto index = indexForParamId(id); index.has_value())
+            notifyParameterChangeListeners(index.value(), plainValue);
     }
 }

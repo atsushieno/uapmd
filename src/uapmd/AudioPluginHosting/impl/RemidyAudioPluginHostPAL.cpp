@@ -197,6 +197,12 @@ namespace uapmd {
                 return;
             instance->setOfflineMode(offlineMode);
         }
+
+        remidy::PluginParameterSupport* parameterSupport() override {
+            if (!instance)
+                return nullptr;
+            return instance->parameters();
+        }
     };
 }
 

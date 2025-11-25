@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <optional>
 
 #include "remidy.hpp"
 #include "../utils.hpp"
@@ -51,6 +52,7 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
 
         parameter_ids[i] = info.id;
         parameter_defs.emplace_back(p);
+        param_id_to_index[info.id] = i;
     }
 }
 
@@ -202,4 +204,16 @@ std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t
 
     // Fallback to empty string if conversion fails
     return "";
+}
+
+std::optional<uint32_t> remidy::PluginInstanceVST3::ParameterSupport::indexForParamId(ParamID id) const {
+    auto it = param_id_to_index.find(id);
+    if (it == param_id_to_index.end())
+        return std::nullopt;
+    return it->second;
+}
+
+void remidy::PluginInstanceVST3::ParameterSupport::notifyParameterValue(ParamID id, double plainValue) {
+    if (auto index = indexForParamId(id); index.has_value())
+        notifyParameterChangeListeners(index.value(), plainValue);
 }
