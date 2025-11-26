@@ -119,8 +119,10 @@ namespace remidy {
             StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
             std::string valueToString(uint32_t index, double value) override;
+            void refreshParameterMetadata(uint32_t index) override;
             std::optional<uint32_t> indexForParamId(clap_id id) const;
             void notifyParameterValue(clap_id id, double plainValue);
+            clap_id getParameterId(uint32_t index) const { return index < parameter_ids.size() ? parameter_ids[index] : 0; }
         };
 
         class CLAPUmpInputDispatcher : public TypedUmpInputDispatcher {

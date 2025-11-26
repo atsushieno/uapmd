@@ -206,6 +206,23 @@ std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t
     return "";
 }
 
+void remidy::PluginInstanceVST3::ParameterSupport::refreshParameterMetadata(uint32_t index) {
+    if (index >= parameter_defs.size())
+        return;
+
+    auto paramId = parameter_ids[index];
+    auto controller = owner->controller;
+
+    double plainMin = controller->normalizedParamToPlain(paramId, 0.0);
+    double plainMax = controller->normalizedParamToPlain(paramId, 1.0);
+
+    ParameterInfo info{};
+    controller->getParameterInfo(index, info);
+    double plainDefault = controller->normalizedParamToPlain(paramId, info.defaultNormalizedValue);
+
+    parameter_defs[index]->updateRange(plainMin, plainMax, plainDefault);
+}
+
 std::optional<uint32_t> remidy::PluginInstanceVST3::ParameterSupport::indexForParamId(ParamID id) const {
     auto it = param_id_to_index.find(id);
     if (it == param_id_to_index.end())

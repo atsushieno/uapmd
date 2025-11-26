@@ -34,4 +34,17 @@ void PluginInstanceLV2::PresetsSupport::loadPreset(int32_t index) {
                                            &owner->formatImpl->worldContext->features.urid_map_feature_data,
                                            uri);
     lilv_state_restore(state, owner->instance, nullptr, nullptr, 0, owner->formatImpl->features.data());
+
+    // Refresh parameter metadata and poll values after preset load
+    // This handles plugins that may change parameter ranges or not emit proper change notifications
+    auto params = dynamic_cast<PluginInstanceLV2::ParameterSupport*>(owner->parameters());
+    if (params) {
+        params->refreshAllParameterMetadata();
+        auto& paramList = params->parameters();
+        for (size_t i = 0; i < paramList.size(); i++) {
+            double value;
+            if (params->getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK)
+                params->notifyParameterValue(static_cast<uint32_t>(i), value);
+        }
+    }
 }

@@ -178,6 +178,38 @@ std::string PluginInstanceLV2::ParameterSupport::valueToString(uint32_t index, d
     return bestMatch->label;
 }
 
+void remidy::PluginInstanceLV2::ParameterSupport::refreshParameterMetadata(uint32_t index) {
+    if (index >= parameter_defs.size())
+        return;
+
+    auto& implContext = owner->implContext;
+    auto param = parameter_defs[index];
+
+    // Find the LilvNode for this parameter by iterating through patch:writable
+    auto pluginSubject = lilv_plugin_get_uri(owner->plugin);
+    auto writables = lilv_world_find_nodes(implContext.world, pluginSubject, owner->formatImpl->worldContext->patch_writable_uri_node, nullptr);
+
+    uint32_t currentIndex = 0;
+    LILV_FOREACH(nodes, iter, writables) {
+        if (currentIndex == index) {
+            auto node = lilv_nodes_get(writables, iter);
+
+            // Re-query min/max/default values
+            auto defValueNode = lilv_world_get(implContext.world, node, implContext.statics->default_uri_node, nullptr);
+            double defValue = defValueNode ? lilv_node_as_float(defValueNode) : param->defaultPlainValue();
+            auto minValueNode = lilv_world_get(implContext.world, node, implContext.statics->minimum_uri_node, nullptr);
+            double minValue = minValueNode ? lilv_node_as_float(minValueNode) : param->minPlainValue();
+            auto maxValueNode = lilv_world_get(implContext.world, node, implContext.statics->maximum_uri_node, nullptr);
+            double maxValue = maxValueNode ? lilv_node_as_float(maxValueNode) : param->maxPlainValue();
+
+            param->updateRange(minValue, maxValue, defValue);
+            break;
+        }
+        currentIndex++;
+    }
+    lilv_nodes_free(writables);
+}
+
 std::optional<uint32_t> remidy::PluginInstanceLV2::ParameterSupport::indexForProperty(LV2_URID propertyUrid) const {
     auto it = property_urid_to_index.find(propertyUrid);
     if (it == property_urid_to_index.end())

@@ -126,6 +126,16 @@ namespace remidy {
         return owner->plugin->paramsValueToText(parameter_ids[index], value, s, sizeof(s)) ? s : "";
     }
 
+    void PluginInstanceCLAP::ParameterSupport::refreshParameterMetadata(uint32_t index) {
+        if (index >= parameter_defs.size() || !owner->plugin || !owner->plugin->canUseParams())
+            return;
+
+        clap_param_info_t info;
+        if (owner->plugin->paramsGetInfo(index, &info)) {
+            parameter_defs[index]->updateRange(info.min_value, info.max_value, info.default_value);
+        }
+    }
+
     std::optional<uint32_t> PluginInstanceCLAP::ParameterSupport::indexForParamId(clap_id id) const {
         auto it = param_id_to_index.find(id);
         if (it == param_id_to_index.end())

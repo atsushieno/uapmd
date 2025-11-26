@@ -168,6 +168,20 @@ std::string remidy::PluginInstanceAU::ParameterSupport::valueToString(uint32_t i
     return std::format("{:.3f}", value);
 }
 
+void remidy::PluginInstanceAU::ParameterSupport::refreshParameterMetadata(uint32_t index) {
+    if (index >= parameter_list.size())
+        return;
+
+    auto id = au_param_id_list[index];
+    AudioUnitParameterInfo info;
+    UInt32 size = sizeof(info);
+    auto result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterInfo,
+                                       kAudioUnitScope_Global, id, &info, &size);
+    if (result == noErr) {
+        parameter_list[index]->updateRange(info.minValue, info.maxValue, info.defaultValue);
+    }
+}
+
 void remidy::PluginInstanceAU::ParameterSupport::installParameterListener() {
     if (parameter_listener)
         return;

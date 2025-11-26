@@ -89,5 +89,20 @@ void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index) {
     int32_t read;
     stream->read(buf.data(), size, &read);
     states->setState(buf, remidy::PluginStateSupport::StateContextType::Preset, true);
+
+    // Refresh parameter metadata and poll values after preset load
+    // This handles plugins like Dexed that may change parameter ranges or not emit proper change notifications
+    auto params = dynamic_cast<remidy::PluginInstanceVST3::ParameterSupport*>(owner->parameters());
+    if (params) {
+        params->refreshAllParameterMetadata();
+        auto& paramList = params->parameters();
+        for (size_t i = 0; i < paramList.size(); i++) {
+            double value;
+            if (params->getParameter(static_cast<uint32_t>(i), &value) == remidy::StatusCode::OK) {
+                auto paramId = params->getParameterId(static_cast<uint32_t>(i));
+                params->notifyParameterValue(paramId, value);
+            }
+        }
+    }
 }
 

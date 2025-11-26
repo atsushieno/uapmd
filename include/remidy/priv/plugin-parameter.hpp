@@ -24,7 +24,7 @@ namespace remidy {
         const std::string stable_id;
         const std::string _name;
         const std::string _path;
-        const double default_plain_value, min_plain_value, max_plain_value;
+        double default_plain_value, min_plain_value, max_plain_value;
         bool is_automatable;
         bool is_readable;
         bool is_hidden;
@@ -61,6 +61,13 @@ namespace remidy {
         // FIXME: should we make it const as well?
         void readable(bool newValue) { is_readable = newValue; }
         const std::vector<ParameterEnumeration>& enums() { return _enums; }
+
+        // Update parameter range (for plugins that change min/max dynamically)
+        void updateRange(double newMin, double newMax, double newDefault) {
+            min_plain_value = newMin;
+            max_plain_value = newMax;
+            default_plain_value = newDefault;
+        }
     };
 
     // any combination of these values
@@ -163,5 +170,16 @@ namespace remidy {
         // Those plugins make it impossible to query defined values in prior and do not give the best user experience,
         // but that's not our fault...
         virtual std::string valueToString(uint32_t index, double value) = 0;
+
+        // Refresh parameter metadata (min/max/default values) from the plugin.
+        // This is needed for plugins that may change parameter ranges dynamically.
+        virtual void refreshParameterMetadata(uint32_t index) {}
+
+        // Refresh all parameter metadata.
+        virtual void refreshAllParameterMetadata() {
+            auto& params = parameters();
+            for (size_t i = 0; i < params.size(); i++)
+                refreshParameterMetadata(static_cast<uint32_t>(i));
+        }
     };
 }

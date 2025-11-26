@@ -659,23 +659,33 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
 
         if (flags & Vst::RestartFlags::kParamValuesChanged) {
             // Parameter values changed - re-read all parameter values
-            logger->logInfo("%s: Handling kParamValuesChanged - refreshing parameter values (not fully implemented)", pluginName.c_str());
-            // Re-query all parameter values from the controller
-            auto& params = parameters()->parameters();
-            for (size_t i = 0; i < params.size(); i++) {
-                double value;
-                if (parameters()->getParameter(i, &value) == StatusCode::OK) {
-                    // Value has been updated internally
+            logger->logInfo("%s: Handling kParamValuesChanged - refreshing parameter values", pluginName.c_str());
+            // Re-query all parameter values from the controller and notify listeners
+            auto paramSupport = dynamic_cast<PluginInstanceVST3::ParameterSupport*>(parameters());
+            if (paramSupport) {
+                auto& params = paramSupport->parameters();
+                for (size_t i = 0; i < params.size(); i++) {
+                    double value;
+                    if (paramSupport->getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK) {
+                        // Notify listeners about the parameter value change
+                        auto paramId = paramSupport->getParameterId(static_cast<uint32_t>(i));
+                        paramSupport->notifyParameterValue(paramId, value);
+                    }
                 }
             }
         }
 
         if (flags & Vst::RestartFlags::kParamTitlesChanged) {
             // Parameter metadata changed - re-read parameter info
-            logger->logInfo("%s: Handling kParamTitlesChanged - refreshing parameter info", pluginName.c_str());
-            // The ParameterSupport would need to be re-initialized to pick up new parameter info
-            // For now, just log it. A full implementation would recreate the parameter support.
-            logger->logWarning("%s: kParamTitlesChanged requires recreating parameter support (not fully implemented)",
+            logger->logInfo("%s: Handling kParamTitlesChanged - refreshing parameter metadata", pluginName.c_str());
+            // At minimum, refresh parameter metadata (min/max/default values)
+            auto paramSupport = dynamic_cast<PluginInstanceVST3::ParameterSupport*>(parameters());
+            if (paramSupport) {
+                paramSupport->refreshAllParameterMetadata();
+            }
+            // NOTE: Parameter names/titles are stored as const strings, so a full implementation
+            // would require recreating the parameter support to pick up new names.
+            logger->logWarning("%s: kParamTitlesChanged - parameter names may not be updated (requires recreation)",
                              pluginName.c_str());
         }
 

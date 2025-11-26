@@ -116,6 +116,7 @@ namespace remidy {
                 return StatusCode::INVALID_PARAMETER_OPERATION;
             }
             std::string valueToString(uint32_t index, double value) override;
+            void refreshParameterMetadata(uint32_t index) override;
             std::optional<uint32_t> indexForProperty(LV2_URID propertyUrid) const;
             void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
         };

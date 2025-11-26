@@ -104,8 +104,10 @@ namespace remidy {
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
 
             std::string valueToString(uint32_t index, double value) override;
+            void refreshParameterMetadata(uint32_t index) override;
             std::optional<uint32_t> indexForParamId(ParamID id) const;
             void notifyParameterValue(ParamID id, double plainValue);
+            ParamID getParameterId(uint32_t index) const { return index < parameter_defs.size() ? parameter_ids[index] : 0; }
 
             void setProgramChange(uint4_t group, uint4_t channel, uint7_t flags, uint7_t program, uint7_t bankMSB,
                                   uint7_t bankLSB);
