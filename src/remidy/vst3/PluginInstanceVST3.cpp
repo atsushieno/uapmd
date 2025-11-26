@@ -42,11 +42,6 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
                 "%s: IEditController failed to return query for IConnectionPoint as expected. Result: %d",
                 pluginName.c_str(), result);
 
-    // From JUCE interconnectComponentAndController():
-    // > Some plugins need to be "connected" to intercommunicate between their implemented classes
-#if 1
-    // If we disable this, those JUCE plugins cannot get parameters.
-    // If we enable this, Serum2 and Sforzando crash.
     if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
         EventLoop::runTaskOnMainThread([&] {
             // You need to understand how those pointer-to-pointer types are used in DPF before attempting to make changes here.
@@ -65,7 +60,6 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
             }
         });
     }
-#endif
 
     audio_buses = new AudioBuses(this);
 
@@ -133,7 +127,6 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
                                  result);
         }
 
-        // FIXME: almost all plugins crash here. But it seems optional.
         controller->setComponentHandler(nullptr);
 
         if (isControllerDistinctFromComponent)
