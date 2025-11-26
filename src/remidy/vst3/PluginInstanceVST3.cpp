@@ -82,10 +82,8 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
             queue->addPoint(0, value, pointIndex);
         }
 
-        if (_parameters) {
-            double plainValue = controller->normalizedParamToPlain(paramId, value);
-            _parameters->notifyParameterValue(paramId, plainValue);
-        }
+        double plainValue = controller->normalizedParamToPlain(paramId, value);
+        _parameters->notifyParameterValue(paramId, plainValue);
     });
 
     owner->getHost()->setRestartComponentHandler(controller, [this](int32 flags) {
@@ -482,8 +480,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
                 ParamValue value;
                 if (queue->getPoint(pointCount - 1, sampleOffset, value) == kResultOk) {
                     double plainValue = controller->normalizedParamToPlain(paramId, value);
-                    if (_parameters)
-                        _parameters->notifyParameterValue(paramId, plainValue);
+                    _parameters->notifyParameterValue(paramId, plainValue);
                     // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
                     // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
                     uint8_t bank = static_cast<uint8_t>((paramId >> 7) & 0x7F);
@@ -663,14 +660,12 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
         if (flags & Vst::RestartFlags::kParamValuesChanged) {
             // Parameter values changed - re-read all parameter values
             logger->logInfo("%s: Handling kParamValuesChanged - refreshing parameter values (not fully implemented)", pluginName.c_str());
-            if (_parameters) {
-                // Re-query all parameter values from the controller
-                auto& params = _parameters->parameters();
-                for (size_t i = 0; i < params.size(); i++) {
-                    double value;
-                    if (_parameters->getParameter(i, &value) == StatusCode::OK) {
-                        // Value has been updated internally
-                    }
+            // Re-query all parameter values from the controller
+            auto& params = _parameters->parameters();
+            for (size_t i = 0; i < params.size(); i++) {
+                double value;
+                if (_parameters->getParameter(i, &value) == StatusCode::OK) {
+                    // Value has been updated internally
                 }
             }
         }
