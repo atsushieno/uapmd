@@ -233,6 +233,7 @@ namespace remidy {
         std::unique_ptr<RemidyCLAPHost> host{};
         bool is_offline_{false};
         double sample_rate_{44100.0};
+        std::atomic<bool> flush_requested_{false};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
         void clapProcessToRemidyProcessContext(AudioProcessContext& dst, clap_process_t& src);
@@ -240,6 +241,7 @@ namespace remidy {
         void resetAudioPortBuffers();
         void cleanupBuffers();
         void applyOfflineRenderingMode();
+        void processParamsFlush();
 
     public:
         explicit PluginInstanceCLAP(

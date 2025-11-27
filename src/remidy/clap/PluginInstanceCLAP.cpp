@@ -334,6 +334,12 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::process(AudioProcessContext &process) {
+        // Check if parameter flush was requested and process it on audio thread
+        if (flush_requested_.load(std::memory_order_acquire)) {
+            flush_requested_.store(false, std::memory_order_release);
+            processParamsFlush();
+        }
+
         // fill clap_process from remidy input
         remidyProcessContextToClapProcess(clap_process, process);
 
@@ -542,5 +548,35 @@ namespace remidy {
         EventLoop::runTaskOnMainThread([this, timerId](){
             plugin->timerSupportOnTimer(timerId);
         });
+    }
+
+    void PluginInstanceCLAP::processParamsFlush() {
+        if (!plugin || !plugin->canUseParams())
+            return;
+
+        // Use the instance's event list for both input and output
+        events->clear();
+        plugin->paramsFlush(
+            events->clapInputEvents(),
+            events->clapOutputEvents()
+        );
+
+        // Process any output events from the flush
+        size_t eventCount = events->size();
+        for (size_t i = 0; i < eventCount; ++i) {
+            auto* hdr = events->get(static_cast<uint32_t>(i));
+
+            if (!hdr || hdr->space_id != CLAP_CORE_EVENT_SPACE_ID)
+                continue;
+
+            if (hdr->type == CLAP_EVENT_PARAM_VALUE) {
+                auto* ev = reinterpret_cast<const clap_event_param_value_t*>(hdr);
+                auto* params = dynamic_cast<ParameterSupport*>(_parameters);
+                if (params)
+                    params->notifyParameterValue(ev->param_id, ev->value);
+            }
+        }
+
+        events->clear();
     }
 }

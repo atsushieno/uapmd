@@ -21,8 +21,11 @@ namespace remidy {
     }
 
     void RemidyCLAPHost::requestCallback() noexcept {
-        // FIXME: implement
-        Logger::global()->logInfo("RemidyCLAPHost::requestCallback() is not implemented");
+        EventLoop::runTaskOnMainThread([&]{
+            auto* instance = attached_instance.load();
+            if (instance)
+                instance->plugin->onMainThread();
+        });
     }
 
     void RemidyCLAPHost::paramsRescan(clap_param_rescan_flags flags) noexcept {
@@ -37,7 +40,7 @@ namespace remidy {
 
         if (flags & CLAP_PARAM_RESCAN_VALUES) {
             // Parameter values changed - refresh all parameter values
-            //Logger::global()->logInfo("CLAP: Parameter values changed, refreshing");
+            Logger::global()->logDiagnostic("CLAP: Parameter values changed, refreshing");
             auto& paramDefs = params->parameters();
             for (size_t i = 0; i < paramDefs.size(); ++i) {
                 double value = 0.0;
@@ -49,7 +52,7 @@ namespace remidy {
         }
         if (flags & CLAP_PARAM_RESCAN_INFO) {
             // Parameter info (names, ranges) changed - refresh metadata
-            //Logger::global()->logInfo("CLAP: Parameter info changed, refreshing metadata");
+            Logger::global()->logDiagnostic("CLAP: Parameter info changed, refreshing metadata");
             auto& paramDefs = params->parameters();
             for (size_t i = 0; i < paramDefs.size(); ++i) {
                 params->refreshParameterMetadata(static_cast<uint32_t>(i));
@@ -57,19 +60,19 @@ namespace remidy {
         }
         if (flags & CLAP_PARAM_RESCAN_TEXT) {
             // Parameter text representations changed
-            Logger::global()->logInfo("CLAP: Parameter text changed");
+            Logger::global()->logDiagnostic("CLAP: Parameter text changed");
             // Text changes don't require action - they're fetched on demand via valueToString
         }
         if (flags & CLAP_PARAM_RESCAN_ALL) {
             // Full rescan needed - parameter list structure has changed
-            //Logger::global()->logWarning("CLAP: Full parameter rescan requested - this requires rebuilding the parameter list");
+            Logger::global()->logDiagnostic("CLAP: Full parameter rescan requested - this requires rebuilding the parameter list");
             params->refreshAllParameterMetadata();
         }
     }
 
     void RemidyCLAPHost::paramsClear(clap_id paramId, clap_param_clear_flags flags) noexcept {
         // FIXME: implement
-        Logger::global()->logInfo("RemidyCLAPHost::paramsClear() is not implemented");
+        Logger::global()->logWarning("RemidyCLAPHost::paramsClear() is not implemented");
     }
 
     void RemidyCLAPHost::paramsRequestFlush() noexcept {
@@ -77,52 +80,12 @@ namespace remidy {
         if (!instance)
             return;
 
-        // CLAP spec: This method must not be called on the audio thread
-        // If called from audio thread, we should not process it
         if (threadCheckIsAudioThread()) {
             Logger::global()->logWarning("paramsRequestFlush() called from audio thread, ignoring");
             return;
         }
 
-        // Plugin is requesting a parameter flush
-        // We need to call plugin->paramsFlush() with input/output event lists
-        auto flushParams = [instance]() {
-            if (!instance->plugin || !instance->plugin->canUseParams())
-                return;
-
-            // Use the instance's event list for both input and output
-            instance->events->clear();
-            instance->plugin->paramsFlush(
-                instance->events->clapInputEvents(),
-                instance->events->clapOutputEvents()
-            );
-
-            // Process any output events from the flush
-            size_t eventCount = instance->events->size();
-            for (size_t i = 0; i < eventCount; ++i) {
-                auto* hdr = instance->events->get(static_cast<uint32_t>(i));
-
-                if (!hdr || hdr->space_id != CLAP_CORE_EVENT_SPACE_ID)
-                    continue;
-
-                if (hdr->type == CLAP_EVENT_PARAM_VALUE) {
-                    auto* ev = reinterpret_cast<const clap_event_param_value_t*>(hdr);
-                    auto* params = dynamic_cast<PluginInstanceCLAP::ParameterSupport*>(instance->_parameters);
-                    if (params)
-                        params->notifyParameterValue(ev->param_id, ev->value);
-                }
-            }
-
-            instance->events->clear();
-        };
-
-        // If we're already on the main thread, execute immediately
-        // Otherwise, schedule on main thread
-        if (threadCheckIsMainThread()) {
-            flushParams();
-        } else {
-            EventLoop::runTaskOnMainThread(flushParams);
-        }
+        instance->flush_requested_.store(true, std::memory_order_release);
     }
 
     bool RemidyCLAPHost::threadCheckIsMainThread() const noexcept {
