@@ -45,8 +45,12 @@ void PluginInstanceCLAP::PresetsSupport::loadPreset(int32_t index) {
                 if (params->getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK) {
                     auto paramId = params->getParameterId(static_cast<uint32_t>(i));
                     params->notifyParameterValue(paramId, value);
+                } else {
+                    Logger::global()->logWarning("CLAP: Failed to get parameter %zu after preset load", i);
                 }
             }
+        } else {
+            Logger::global()->logWarning("CLAP: ParameterSupport not available for preset refresh");
         }
     });
 }

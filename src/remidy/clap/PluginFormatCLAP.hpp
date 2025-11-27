@@ -221,7 +221,7 @@ namespace remidy {
             bool tryCreateWith(const char* api, bool floating);
         };
 
-        clap::helpers::EventList events{};
+        std::unique_ptr<clap::helpers::EventList> events{};
         AudioBuses* audio_buses{};
         ParameterSupport* _parameters{};
         PluginStateSupport* _states{};

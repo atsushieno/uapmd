@@ -9,6 +9,7 @@
 #include <condition_variable>
 
 namespace remidy {
+
     void RemidyCLAPHost::requestRestart() noexcept {
         // FIXME: implement
     }

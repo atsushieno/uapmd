@@ -22,6 +22,7 @@ namespace remidy {
         }
 
         audio_buses = new AudioBuses(this);
+        events = std::make_unique<clap::helpers::EventList>();
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {
@@ -328,8 +329,8 @@ namespace remidy {
         }
 
         // set event buffers
-        clap_process.in_events = events.clapInputEvents();
-        clap_process.out_events = events.clapOutputEvents();
+        clap_process.in_events = events->clapInputEvents();
+        clap_process.out_events = events->clapOutputEvents();
     }
 
     StatusCode PluginInstanceCLAP::process(AudioProcessContext &process) {
@@ -350,9 +351,9 @@ namespace remidy {
         size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint32_t);
 
         // Process CLAP output events
-        size_t eventCount = events.size();
+        size_t eventCount = events->size();
         for (size_t i = 0; i < eventCount && umpPosition < umpCapacity; ++i) {
-            auto* hdr = events.get(static_cast<uint32_t>(i));
+            auto* hdr = events->get(static_cast<uint32_t>(i));
 
             if (!hdr || hdr->space_id != CLAP_CORE_EVENT_SPACE_ID)
                 continue;
@@ -382,8 +383,11 @@ namespace remidy {
                 }
                 case CLAP_EVENT_PARAM_VALUE: {
                     auto* ev = reinterpret_cast<const clap_event_param_value_t*>(hdr);
-                    if (_parameters)
-                        _parameters->notifyParameterValue(ev->param_id, ev->value);
+                    if (_parameters) {
+                        auto* params = dynamic_cast<ParameterSupport*>(_parameters);
+                        if (params)
+                            params->notifyParameterValue(ev->param_id, ev->value);
+                    }
                     // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
                     // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
                     uint8_t bank = static_cast<uint8_t>((ev->param_id >> 7) & 0x7F);
@@ -493,7 +497,7 @@ namespace remidy {
 
         // Update eventOut position
         eventOut.position(umpPosition * sizeof(uint32_t));
-        events.clear();
+        events->clear();
 
         return ret;
     }
