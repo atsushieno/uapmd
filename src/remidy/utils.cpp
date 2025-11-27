@@ -1,5 +1,7 @@
 
 #include "utils.hpp"
+#include <thread>
+#include <vector>
 
 #if __APPLE__
 CFStringRef createCFString(const char* s) {
@@ -47,4 +49,14 @@ void* loadLibraryFromBinary(std::filesystem::path& pluginDirOrFile) {
     //    defaultLogError("dlopen resulted in error: %s", dlerror());
 #endif
     return ret;
+}
+
+namespace remidy {
+    std::vector<std::thread::id> instance{};
+
+    std::vector<std::thread::id>& audioThreadIds() {
+        if (instance.empty())
+            instance.resize(std::thread::hardware_concurrency());
+        return instance;
+    }
 }
