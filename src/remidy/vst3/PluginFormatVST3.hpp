@@ -91,6 +91,8 @@ namespace remidy {
             // map<PerNoteControllerContext, definition>
             std::vector<std::pair<PerNoteControllerContext, std::vector<PluginParameter*>>> per_note_controller_defs{};
             ParamID *parameter_ids{};
+            ParamID program_change_parameter_id{static_cast<ParamID>(-1)};
+            int32_t program_change_parameter_index{-1};
 
         public:
             explicit ParameterSupport(PluginInstanceVST3* owner);
@@ -108,6 +110,9 @@ namespace remidy {
             std::optional<uint32_t> indexForParamId(ParamID id) const;
             void notifyParameterValue(ParamID id, double plainValue);
             ParamID getParameterId(uint32_t index) const { return index < parameter_defs.size() ? parameter_ids[index] : 0; }
+
+            ParamID getProgramChangeParameterId() const { return program_change_parameter_id; }
+            int32_t getProgramChangeParameterIndex() const { return program_change_parameter_index; }
 
             void setProgramChange(uint4_t group, uint4_t channel, uint7_t flags, uint7_t program, uint7_t bankMSB,
                                   uint7_t bankLSB);
@@ -228,6 +233,7 @@ namespace remidy {
         IEditController* controller;
         INoteExpressionController* note_expression_controller{nullptr};
         IUnitInfo* unit_info{nullptr};
+        IProgramListData* program_list_data{nullptr};
         IMidiMapping* midi_mapping{nullptr};
         bool isControllerDistinctFromComponent;
         FUnknown* instance;

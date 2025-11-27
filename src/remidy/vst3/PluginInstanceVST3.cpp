@@ -68,6 +68,8 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         note_expression_controller = nullptr; // just to make sure
     if (controller->queryInterface(IUnitInfo::iid, (void**) &unit_info) != kResultOk)
         unit_info = nullptr; // just to make sure
+    if (component->queryInterface(IProgramListData::iid, (void**) &program_list_data) != kResultOk)
+        program_list_data = nullptr; // just to make sure
     if (controller->queryInterface(IMidiMapping::iid, (void**) &midi_mapping) != kResultOk)
         midi_mapping = nullptr; // just to make sure
 

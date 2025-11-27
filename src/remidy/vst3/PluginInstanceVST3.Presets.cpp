@@ -53,55 +53,60 @@ remidy::PresetInfo remidy::PluginInstanceVST3::PresetsSupport::getPresetInfo(int
 }
 
 void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index) {
-    auto unitInfo = owner->unit_info;
-    auto states = owner->_states;
-
-    ProgramListInfo list{};
-    auto bank = index / 0x80;
-    auto program = index % 0x80;
-    auto result = unitInfo->getProgramListInfo(bank, list);
-    if (result != kResultOk) {
-        Logger::global()->logError(std::format("Could not retrieve preset bank {}: {}", bank, result).c_str());
-        return; // FIXME: no error reporting?
-    }
-
-    /*
-    String128 path{};
-    result = unitInfo->getProgramInfo(list.id, program, PresetAttributes::kName, path);
-    //result = unitInfo->getProgramInfo(list.id, prog, PresetAttributes::kFilePathStringType, path);
-    if (result != kResultOk) {
-        Logger::global()->logError(std::format("Could not retrieve preset bank {}: {}", bank, result).c_str());
-    }
-    std::cerr << "Loading preset " << index << " from " << vst3StringToStdString(path) << std::endl;
-    */
-
-    // copied from PluginInstanceVST3::ParameterSupport::setProgramChange()
-    IBStream *stream;
-    result = unitInfo->setUnitProgramData(list.id, program, stream);
-    if (result != kResultOk) {
-        std::cerr << std::format("Failed to set unit program data: result code: {}, bank: {}, program: {}", result, bank, program) << std::endl;
+    auto params = dynamic_cast<remidy::PluginInstanceVST3::ParameterSupport*>(owner->parameters());
+    if (!params) {
+        Logger::global()->logError("ParameterSupport is not available");
         return;
     }
 
-    int64_t size;
-    stream->seek(0, IBStream::kIBSeekEnd, &size);
-    std::vector<uint8_t> buf(size);
-    int32_t read;
-    stream->read(buf.data(), size, &read);
-    states->setState(buf, remidy::PluginStateSupport::StateContextType::Preset, true);
+    auto programParamId = params->getProgramChangeParameterId();
+    auto programParamIndex = params->getProgramChangeParameterIndex();
+
+    if (programParamId == static_cast<ParamID>(-1) || programParamIndex == -1) {
+        Logger::global()->logError("No program change parameter found - plugin may not support program lists correctly");
+        return;
+    }
+
+    // Calculate the normalized value for the program parameter
+    // The program parameter is typically normalized to [0.0, 1.0] across all available programs
+    auto presetCount = getPresetCount();
+    if (presetCount <= 0) {
+        Logger::global()->logError("No presets available");
+        return;
+    }
+
+    // Normalize index to [0.0, 1.0] range
+    // JUCE does: value = program / max(1, programCount - 1)
+    double normalizedValue = static_cast<double>(index) / static_cast<double>(std::max(1, presetCount - 1));
+
+    // Set the parameter value through the controller
+    // This is the normative VST3 way - the plugin handles the actual preset loading
+    auto controller = owner->controller;
+    auto result = controller->setParamNormalized(programParamId, normalizedValue);
+    if (result != kResultOk) {
+        Logger::global()->logError(std::format("Failed to set program parameter: result code: {}, index: {}, normalized: {}",
+            result, index, normalizedValue).c_str());
+        return;
+    }
+
+    // Queue the parameter change for the audio processor
+    auto pvc = owner->processDataInputParameterChanges.asInterface();
+    int32_t queueIndex = 0;
+    auto queue = pvc->addParameterData(programParamId, queueIndex);
+    if (queue) {
+        int32_t pointIndex = 0;
+        queue->addPoint(0, normalizedValue, pointIndex);
+    }
 
     // Refresh parameter metadata and poll values after preset load
     // This handles plugins like Dexed that may change parameter ranges or not emit proper change notifications
-    auto params = dynamic_cast<remidy::PluginInstanceVST3::ParameterSupport*>(owner->parameters());
-    if (params) {
-        params->refreshAllParameterMetadata();
-        auto& paramList = params->parameters();
-        for (size_t i = 0; i < paramList.size(); i++) {
-            double value;
-            if (params->getParameter(static_cast<uint32_t>(i), &value) == remidy::StatusCode::OK) {
-                auto paramId = params->getParameterId(static_cast<uint32_t>(i));
-                params->notifyParameterValue(paramId, value);
-            }
+    params->refreshAllParameterMetadata();
+    auto& paramList = params->parameters();
+    for (size_t i = 0; i < paramList.size(); i++) {
+        double value;
+        if (params->getParameter(static_cast<uint32_t>(i), &value) == remidy::StatusCode::OK) {
+            auto paramId = params->getParameterId(static_cast<uint32_t>(i));
+            params->notifyParameterValue(paramId, value);
         }
     }
 }

@@ -53,6 +53,12 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
         parameter_ids[i] = info.id;
         parameter_defs.emplace_back(p);
         param_id_to_index[info.id] = i;
+
+        // Detect program change parameter (marked with kIsProgramChange flag)
+        if (info.flags & ParameterInfo::kIsProgramChange) {
+            program_change_parameter_id = info.id;
+            program_change_parameter_index = i;
+        }
     }
 }
 
