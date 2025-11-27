@@ -202,6 +202,14 @@ void remidy::PluginInstanceAU::ParameterSupport::installParameterListener() {
         event.mArgument.mParameter.mParameterID = au_param_id_list[i];
         AUEventListenerAddEventType(parameter_listener, this, &event);
     }
+
+    AudioUnitEvent presetEvent{};
+    presetEvent.mEventType = kAudioUnitEvent_PropertyChange;
+    presetEvent.mArgument.mProperty.mAudioUnit = owner->instance;
+    presetEvent.mArgument.mProperty.mScope = kAudioUnitScope_Global;
+    presetEvent.mArgument.mProperty.mElement = 0;
+    presetEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_PresentPreset;
+    AUEventListenerAddEventType(parameter_listener, this, &presetEvent);
 }
 
 void remidy::PluginInstanceAU::ParameterSupport::uninstallParameterListener() {
@@ -220,12 +228,26 @@ void remidy::PluginInstanceAU::ParameterSupport::parameterEventCallback(void* re
 }
 
 void remidy::PluginInstanceAU::ParameterSupport::handleParameterEvent(const AudioUnitEvent* event, Float32 value) {
-    if (!event || event->mEventType != kAudioUnitEvent_ParameterValueChange)
+    if (!event)
         return;
-    auto index = indexForParameterId(event->mArgument.mParameter.mParameterID);
-    if (!index.has_value())
+
+    if (event->mEventType == kAudioUnitEvent_ParameterValueChange) {
+        auto index = indexForParameterId(event->mArgument.mParameter.mParameterID);
+        if (!index.has_value())
+            return;
+        notifyParameterChangeListeners(index.value(), static_cast<double>(value));
         return;
-    notifyParameterChangeListeners(index.value(), static_cast<double>(value));
+    }
+
+    if (event->mEventType == kAudioUnitEvent_PropertyChange &&
+        event->mArgument.mProperty.mPropertyID == kAudioUnitProperty_PresentPreset) {
+        refreshAllParameterMetadata();
+        for (size_t i = 0; i < parameter_list.size(); ++i) {
+            double currentValue;
+            if (getParameter(static_cast<uint32_t>(i), &currentValue) == StatusCode::OK)
+                notifyParameterChangeListeners(static_cast<uint32_t>(i), currentValue);
+        }
+    }
 }
 
 std::optional<uint32_t> remidy::PluginInstanceAU::ParameterSupport::indexForParameterId(AudioUnitParameterID id) const {
