@@ -98,16 +98,9 @@ void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index) {
         queue->addPoint(0, normalizedValue, pointIndex);
     }
 
-    // Refresh parameter metadata and poll values after preset load
-    // This handles plugins like Dexed that may change parameter ranges or not emit proper change notifications
-    params->refreshAllParameterMetadata();
-    auto& paramList = params->parameters();
-    for (size_t i = 0; i < paramList.size(); i++) {
-        double value;
-        if (params->getParameter(static_cast<uint32_t>(i), &value) == remidy::StatusCode::OK) {
-            auto paramId = params->getParameterId(static_cast<uint32_t>(i));
-            params->notifyParameterValue(paramId, value);
-        }
-    }
+    // Manually trigger parameter values refresh
+    // The plugin should ideally call restartComponent(kParamValuesChanged) when loading a preset,
+    // but some plugins don't, so we trigger it manually to ensure parameter values are refreshed
+    owner->handleRestartComponent(Vst::RestartFlags::kParamValuesChanged);
 }
 
