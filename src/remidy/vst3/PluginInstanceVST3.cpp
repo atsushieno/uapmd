@@ -91,6 +91,8 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     });
 
     // Leave the component inactive until startProcessing() explicitly activates it.
+
+    synchronizeControllerState();
 }
 
 remidy::PluginInstanceVST3::~PluginInstanceVST3() {
@@ -708,5 +710,21 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
         if (flags & Vst::RestartFlags::kParamIDMappingChanged) {
             logger->logWarning("%s: kParamIDMappingChanged not yet implemented", pluginName.c_str());
         }
+    });
+}
+
+void remidy::PluginInstanceVST3::synchronizeControllerState() {
+    if (!component || !controller)
+        return;
+
+    EventLoop::runTaskOnMainThread([&] {
+        std::vector<uint8_t> componentState;
+        VectorStream componentStream(componentState);
+        auto result = component->getState((IBStream*) &componentStream);
+        if (result != kResultOk)
+            return;
+
+        VectorStream controllerStream(componentState);
+        controller->setComponentState((IBStream*) &controllerStream);
     });
 }

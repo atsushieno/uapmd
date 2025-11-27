@@ -111,8 +111,17 @@ namespace remidy {
     StatusCode PluginInstanceCLAP::ParameterSupport::getParameter(uint32_t index, double* value) {
         if (!value)
             return StatusCode::INVALID_PARAMETER_OPERATION;
+        if (!owner->plugin || !owner->plugin->canUseParams())
+            return StatusCode::NOT_IMPLEMENTED;
+        if (index >= parameter_ids.size())
+            return StatusCode::INVALID_PARAMETER_OPERATION;
 
-        return StatusCode::NOT_IMPLEMENTED;
+        double queriedValue = 0.0;
+        if (!owner->plugin->paramsGetValue(parameter_ids[index], &queriedValue))
+            return StatusCode::INVALID_PARAMETER_OPERATION;
+
+        *value = queriedValue;
+        return StatusCode::OK;
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) {

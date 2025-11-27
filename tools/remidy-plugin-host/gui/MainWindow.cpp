@@ -1,6 +1,8 @@
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
 #include <remidy-gui/remidy-gui.hpp>
+#include <remidy/priv/common.hpp>
+#include <remidy/priv/plugin-parameter.hpp>
 #include <imgui.h>
 #include <iostream>
 #include <algorithm>
@@ -10,6 +12,12 @@
 #include <portable-file-dialogs.h>
 
 #include "SharedTheme.hpp"
+
+namespace {
+std::string formatPlainValueLabel(double value) {
+    return std::format("{:.7g}", value);
+}
+}
 
 namespace uapmd::gui {
 MainWindow::MainWindow() {
@@ -678,10 +686,21 @@ void MainWindow::refreshParameters(int32_t instanceId, DetailsWindowState& state
     state.parameters = pal->parameterMetadataList();
     state.parameterValues.resize(state.parameters.size());
     state.parameterValueStrings.resize(state.parameters.size());
+    auto* parameterSupport = pal->parameterSupport();
     for (size_t i = 0; i < state.parameters.size(); ++i) {
-        state.parameterValues[i] = static_cast<float>(state.parameters[i].defaultPlainValue);
+        double initialValue = state.parameters[i].defaultPlainValue;
+        if (parameterSupport) {
+            double queriedValue = initialValue;
+            auto status = parameterSupport->getParameter(state.parameters[i].index, &queriedValue);
+            if (status == remidy::StatusCode::OK) {
+                initialValue = queriedValue;
+            }
+        }
+        state.parameterValues[i] = static_cast<float>(initialValue);
         updateParameterValueString(i, instanceId, state);
     }
+
+    applyParameterUpdates(instanceId, state);
 }
 
 void MainWindow::refreshPresets(int32_t instanceId, DetailsWindowState& state) {
@@ -732,6 +751,20 @@ void MainWindow::updateParameterValueString(size_t parameterIndex, int32_t insta
         param.index, state.parameterValues[parameterIndex]);
 }
 
+void MainWindow::applyParameterUpdates(int32_t instanceId, DetailsWindowState& state) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto updates = sequencer.getParameterUpdates(instanceId);
+    for (const auto& update : updates) {
+        for (size_t i = 0; i < state.parameters.size(); ++i) {
+            if (state.parameters[i].index == update.parameterIndex) {
+                state.parameterValues[i] = static_cast<float>(update.value);
+                updateParameterValueString(i, instanceId, state);
+                break;
+            }
+        }
+    }
+}
+
 void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState& state) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     auto* pal = sequencer.getPluginInstance(instanceId);
@@ -747,16 +780,7 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
     }
 
     if (state.reflectEventOut) {
-        auto updates = sequencer.getParameterUpdates(instanceId);
-        for (const auto& update : updates) {
-            for (size_t i = 0; i < state.parameters.size(); ++i) {
-                if (state.parameters[i].index == update.parameterIndex) {
-                    state.parameterValues[i] = static_cast<float>(update.value);
-                    updateParameterValueString(i, instanceId, state);
-                    break;
-                }
-            }
-        }
+        applyParameterUpdates(instanceId, state);
     }
 
     ImGui::InputText("Filter Parameters", state.parameterFilter, sizeof(state.parameterFilter));

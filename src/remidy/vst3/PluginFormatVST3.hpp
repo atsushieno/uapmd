@@ -301,6 +301,7 @@ namespace remidy {
 
     private:
         void handleRestartComponent(int32 flags);
+        void synchronizeControllerState();
     };
 
 }
