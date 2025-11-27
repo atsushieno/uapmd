@@ -87,6 +87,8 @@ namespace remidy {
     };
 
     class PluginInstanceCLAP : public PluginInstance {
+        friend class RemidyCLAPHost;
+
         PluginFormatCLAP::Impl* owner;
         std::unique_ptr<CLAPPluginProxy> plugin;
         clap_preset_discovery_factory* preset_discovery_factory;

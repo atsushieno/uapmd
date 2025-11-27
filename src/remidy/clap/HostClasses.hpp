@@ -42,6 +42,12 @@ namespace remidy {
 
         void requestCallback() noexcept override;
 
+        // clap_host_params
+        bool implementsParams() const noexcept override { return true; }
+        void paramsRescan(clap_param_rescan_flags flags) noexcept override;
+        void paramsClear(clap_id paramId, clap_param_clear_flags flags) noexcept override;
+        void paramsRequestFlush() noexcept override;
+
     public:
         RemidyCLAPHost(
             const char* name = "remidy",
