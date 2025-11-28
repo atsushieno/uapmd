@@ -63,6 +63,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
         if (p.port_buffer)
             free(p.port_buffer);
     lv2_ports.clear();
+    control_atom_port_index = -1;
 
     // create port mappings between Remidy and LV2
     uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
@@ -104,6 +105,12 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
         auto lv2Port = LV2PortInfo{};
         lv2Port.atom_in_index = implContext.IS_ATOM_IN(plugin, port) ? nextAtomIn++ : -1;
         lv2Port.atom_out_index = implContext.IS_ATOM_OUT(plugin, port) ? nextAtomOut++ : -1;
+        if (lv2Port.atom_in_index >= 0) {
+            auto designationNode = lilv_port_get(plugin, port, implContext.statics->designation_uri_node);
+            if (designationNode && implContext.statics->control_designation_uri_node &&
+                lilv_node_equals(designationNode, implContext.statics->control_designation_uri_node))
+                control_atom_port_index = i;
+        }
 
         if (!implContext.IS_AUDIO_PORT(plugin, port)) {
             const LilvNode* minSizeNode = lilv_port_get(plugin, port, implContext.statics->resize_port_minimum_size_node);
@@ -157,6 +164,8 @@ remidy::StatusCode remidy::PluginInstanceLV2::stopProcessing() {
 
 remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &process) {
     // FIXME: is there 64-bit float audio support?
+    in_audio_process.store(true, std::memory_order_release);
+
     for (size_t i = 0; i < audio_in_port_mapping.size(); ++i) {
         auto& m = audio_in_port_mapping[i];
         auto audioIn = process.getFloatInBuffer(m.bus, m.channel);
@@ -232,10 +241,16 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
                         plainValue = reinterpret_cast<const LV2_Atom_Bool*>(valueAtom)->body ? 1.0 : 0.0;
                     else
                         continue;
-                    if (_parameters) {
-                        auto* lv2Parameters = static_cast<PluginInstanceLV2::ParameterSupport*>(_parameters);
+                    auto* lv2Parameters = dynamic_cast<PluginInstanceLV2::ParameterSupport*>(parameters());
+                    if (lv2Parameters) {
                         if (auto index = lv2Parameters->indexForProperty(propertyUrid); index.has_value()) {
                             lv2Parameters->notifyParameterValue(index.value(), plainValue);
+
+                            // Notify UI of parameter change
+                            auto* lv2UI = dynamic_cast<PluginInstanceLV2::UISupport*>(ui());
+                            if (lv2UI)
+                                lv2UI->notifyParameterChange(propertyUrid, plainValue);
+
                             const auto& params = lv2Parameters->parameters();
                             if (index.value() < params.size()) {
                                 auto* param = params[index.value()];
@@ -327,6 +342,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
     // Update eventOut position
     eventOut.position(umpPosition * sizeof(uint32_t));
 
+    in_audio_process.store(false, std::memory_order_release);
     return StatusCode::OK;
 }
 
@@ -373,4 +389,18 @@ remidy::PluginUISupport *remidy::PluginInstanceLV2::ui() {
     if (!_ui)
         _ui = new UISupport(this);
     return _ui;
+}
+
+void remidy::PluginInstanceLV2::enqueueParameterChange(uint32_t index, double value, remidy_timestamp_t timestamp) {
+    if (in_audio_process.load(std::memory_order_acquire)) {
+        ump_input_dispatcher.enqueuePatchSetEvent(static_cast<int32_t>(index), value, timestamp);
+    } else {
+        pending_parameter_changes.enqueue(PendingParameterChange{index, value, timestamp});
+    }
+}
+
+void remidy::PluginInstanceLV2::flushPendingParameterChanges() {
+    PendingParameterChange change{};
+    while (pending_parameter_changes.try_dequeue(change))
+        ump_input_dispatcher.enqueuePatchSetEvent(static_cast<int32_t>(change.index), change.value, change.timestamp);
 }

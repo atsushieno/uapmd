@@ -13,24 +13,34 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::enqueueMidi1Event(uint8_t
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::enqueuePatchSetEvent(int32_t index, double value, remidy_timestamp_t timestamp) {
-    int32_t lv2PortIndex = owner->portIndexForAtomGroupIndex(false, atom_context_group);
+    int32_t lv2PortIndex = owner->control_atom_port_index;
+    if (lv2PortIndex < 0)
+        lv2PortIndex = owner->portIndexForAtomGroupIndex(false, atom_context_group);
+    if (lv2PortIndex < 0)
+        lv2PortIndex = owner->portIndexForAtomGroupIndex(false, 0);
+    if (lv2PortIndex < 0)
+        return;
+
     auto& forge = owner->lv2_ports[lv2PortIndex].forge;
 
     auto timestampInSamples = timestamp * 31250 / owner->sample_rate;
 
-    for (auto& para : owner->parameters()->parameters())
-        if (para->index() == index) {
-            lv2_atom_forge_frame_time(&forge, timestampInSamples);
-            LV2_Atom_Forge_Frame frame;
-            static int32_t id_serial{0};
-            lv2_atom_forge_object(&forge, &frame, id_serial++, owner->implContext.statics->urids.urid_patch_set);
-            lv2_atom_forge_property_head(&forge, owner->implContext.statics->urids.urid_patch_property, 0);
-            lv2_atom_forge_urid(&forge, para->index());
-            lv2_atom_forge_property_head(&forge, owner->implContext.statics->urids.urid_patch_value, 0);
-            lv2_atom_forge_float(&forge, static_cast<float>(value));
-            lv2_atom_forge_pop(&forge, &frame);
-            return;
-        }
+    auto* params = dynamic_cast<PluginInstanceLV2::ParameterSupport*>(owner->parameters());
+    if (!params)
+        return;
+    auto propertyUrid = params->propertyUridForIndex(static_cast<uint32_t>(index));
+    if (!propertyUrid.has_value())
+        return;
+
+    lv2_atom_forge_frame_time(&forge, timestampInSamples);
+    LV2_Atom_Forge_Frame frame;
+    static int32_t id_serial{0};
+    lv2_atom_forge_object(&forge, &frame, id_serial++, owner->implContext.statics->urids.urid_patch_set);
+    lv2_atom_forge_key(&forge, owner->implContext.statics->urids.urid_patch_property);
+    lv2_atom_forge_urid(&forge, propertyUrid.value());
+    lv2_atom_forge_key(&forge, owner->implContext.statics->urids.urid_patch_value);
+    lv2_atom_forge_float(&forge, static_cast<float>(value));
+    lv2_atom_forge_pop(&forge, &frame);
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onNoteOn(
@@ -144,6 +154,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProcessStart(remidy::Au
         auto& port = owner->lv2_ports[i];
         lv2_atom_forge_sequence_head(&port.forge, &port.frame, owner->implContext.statics->urids.urid_time_frame);
     }
+    owner->flushPendingParameterChanges();
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProcessEnd(remidy::AudioProcessContext &src) {

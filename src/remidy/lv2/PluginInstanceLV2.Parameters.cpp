@@ -92,16 +92,25 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
     std::vector<std::pair<const LilvNode*,std::unique_ptr<PluginParameter>>> pl{};
     auto mapFeature = &owner->implContext.statics->features.urid_map_feature_data;
     auto mapNodeToUrid = [&](const LilvNode* node, PluginParameter* parameter) {
-        if (!node || !parameter || !lilv_node_is_uri(node))
+        if (!node || !parameter)
+            return;
+        const LilvNode* propertyNode = nullptr;
+        auto propertyKey = owner->formatImpl->worldContext->patch_property_uri_node;
+        if (propertyKey)
+            propertyNode = lilv_world_get(implContext.world, node, propertyKey, nullptr);
+        const LilvNode* uriNode = propertyNode ? propertyNode : node;
+        if (!uriNode || !lilv_node_is_uri(uriNode))
             return;
         if (!mapFeature->map || !mapFeature->handle)
             return;
-        const char* uri = lilv_node_as_uri(node);
+        const char* uri = lilv_node_as_uri(uriNode);
         if (!uri)
             return;
         auto urid = mapFeature->map(mapFeature->handle, uri);
-        if (urid != 0)
+        if (urid != 0) {
             property_urid_to_index[urid] = parameter->index();
+            index_to_property_urid[parameter->index()] = urid;
+        }
     };
     // this is what Ardour does: https://github.com/Ardour/ardour/blob/a76afae0e9ffa8a44311d6f9c1d8dbc613bfc089/libs/ardour/lv2_plugin.cc#L2142
     auto pluginSubject = lilv_plugin_get_uri(plugin);
@@ -141,9 +150,23 @@ remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::getParameter(uin
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+    // Public API - called from host, should notify UI
+    return setParameterInternal(index, value, timestamp, true);
+}
+
+remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameterInternal(uint32_t index, double value, uint64_t timestamp, bool notifyUI) {
     auto status = parameter_handlers[index]->setParameter(value, timestamp);
-    if (status == StatusCode::OK)
+    if (status == StatusCode::OK) {
         notifyParameterValue(static_cast<uint32_t>(index), value);
+
+        if (notifyUI) {
+            auto* lv2UI = dynamic_cast<PluginInstanceLV2::UISupport*>(owner->ui());
+            if (lv2UI) {
+                if (auto propertyUrid = propertyUridForIndex(static_cast<uint32_t>(index)); propertyUrid.has_value())
+                    lv2UI->notifyParameterChange(propertyUrid.value(), value);
+            }
+        }
+    }
     return status;
 }
 
@@ -215,4 +238,17 @@ std::optional<uint32_t> remidy::PluginInstanceLV2::ParameterSupport::indexForPro
     if (it == property_urid_to_index.end())
         return std::nullopt;
     return it->second;
+}
+
+std::optional<LV2_URID> remidy::PluginInstanceLV2::ParameterSupport::propertyUridForIndex(uint32_t index) const {
+    auto it = index_to_property_urid.find(index);
+    if (it == index_to_property_urid.end())
+        return std::nullopt;
+    return it->second;
+}
+
+void remidy::PluginInstanceLV2::ParameterSupport::updateCachedParameterValue(uint32_t index, double plainValue) {
+    if (index >= parameter_handlers.size())
+        return;
+    parameter_handlers[index]->updateCachedValue(plainValue);
 }

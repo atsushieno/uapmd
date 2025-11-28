@@ -2,6 +2,10 @@
 #include <priv/event-loop.hpp>
 #include <lv2/ui/ui.h>
 #include <lv2/instance-access/instance-access.h>
+#include <lv2/atom/atom.h>
+#include <lv2/atom/forge.h>
+#include <lv2/atom/util.h>
+#include <lv2/patch/patch.h>
 #include <thread>
 #include <chrono>
 
@@ -486,13 +490,98 @@ namespace remidy {
                                                       uint32_t port_protocol,
                                                       const void* buffer) {
         auto* instance = (PluginInstanceLV2*)controller;
+        auto& uridMap = instance->implContext.statics->features.urid_map_feature_data;
+
+        Logger::global()->logDiagnostic("LV2 UI writeFunction: port_index=%u, buffer_size=%u, port_protocol=%u",
+                                         port_index, buffer_size, port_protocol);
 
         // Handle float protocol (control ports)
         if (port_protocol == 0 && buffer_size == sizeof(float)) {
             float value = *(const float*)buffer;
-            instance->_parameters->setParameter(port_index, value, 0);
+            Logger::global()->logDiagnostic("LV2 UI control port change: port %u = %f", port_index, value);
+            // UI sent this change, don't echo back to UI
+            auto params = dynamic_cast<PluginInstanceLV2::ParameterSupport*>(instance->_parameters);
+            if (params)
+                params->setParameterInternal(port_index, value, 0, false);
+            return;
         }
-        // TODO: Handle atom protocol for other port types
+
+        // Handle atom protocol (for patch properties / parameters)
+        if (port_protocol == uridMap.map(uridMap.handle, LV2_ATOM__eventTransfer)) {
+            const LV2_Atom* atom = (const LV2_Atom*)buffer;
+
+            // Check if it's an object/blank atom
+            if (atom->type == uridMap.map(uridMap.handle, LV2_ATOM__Object) ||
+                atom->type == uridMap.map(uridMap.handle, LV2_ATOM__Blank)) {
+
+                const LV2_Atom_Object* obj = (const LV2_Atom_Object*)atom;
+
+                // Check if it's a patch:Set message
+                LV2_URID patchSet = uridMap.map(uridMap.handle, LV2_PATCH__Set);
+                if (obj->body.otype == patchSet) {
+                    // Extract property and value from patch:Set
+                    LV2_URID patchProperty = uridMap.map(uridMap.handle, LV2_PATCH__property);
+                    LV2_URID patchValue = uridMap.map(uridMap.handle, LV2_PATCH__value);
+
+                    const LV2_Atom* property = nullptr;
+                    const LV2_Atom* value = nullptr;
+
+                    // Iterate through object properties to find property and value
+                    LV2_ATOM_OBJECT_FOREACH(obj, prop) {
+                        if (prop->key == patchProperty) {
+                            property = &prop->value;
+                        } else if (prop->key == patchValue) {
+                            value = &prop->value;
+                        }
+                    }
+
+                    // If we found both property and value
+                    if (property && value && property->type == uridMap.map(uridMap.handle, LV2_ATOM__URID)) {
+                        LV2_URID propertyUrid = ((const LV2_Atom_URID*)property)->body;
+
+                        // Find parameter index for this property
+                        auto params = dynamic_cast<PluginInstanceLV2::ParameterSupport*>(instance->_parameters);
+                        if (params) {
+                            auto index = params->indexForProperty(propertyUrid);
+                            if (index.has_value()) {
+                                // Extract the value based on type
+                                double doubleValue = 0.0;
+                                LV2_URID floatType = uridMap.map(uridMap.handle, LV2_ATOM__Float);
+                                LV2_URID doubleType = uridMap.map(uridMap.handle, LV2_ATOM__Double);
+                                LV2_URID intType = uridMap.map(uridMap.handle, LV2_ATOM__Int);
+                                LV2_URID longType = uridMap.map(uridMap.handle, LV2_ATOM__Long);
+                                LV2_URID boolType = uridMap.map(uridMap.handle, LV2_ATOM__Bool);
+
+                                if (value->type == floatType) {
+                                    doubleValue = ((const LV2_Atom_Float*)value)->body;
+                                } else if (value->type == doubleType) {
+                                    doubleValue = ((const LV2_Atom_Double*)value)->body;
+                                } else if (value->type == intType) {
+                                    doubleValue = ((const LV2_Atom_Int*)value)->body;
+                                } else if (value->type == longType) {
+                                    doubleValue = ((const LV2_Atom_Long*)value)->body;
+                                } else if (value->type == boolType) {
+                                    doubleValue = ((const LV2_Atom_Bool*)value)->body ? 1.0 : 0.0;
+                                } else {
+                                    return; // Unsupported value type
+                                }
+
+                                // Update DSP plugin and notify host listeners
+                                // Note: Pass false for notifyUI to prevent feedback loop - UI already knows the value
+                                Logger::global()->logDiagnostic("LV2 UI patch:Set: property URID=%u, index=%u, value=%f",
+                                                                 propertyUrid, index.value(), doubleValue);
+                                params->setParameterInternal(index.value(), doubleValue, 0, false);
+                            } else {
+                                Logger::global()->logWarning("LV2 UI patch:Set: property URID=%u not found in parameter list",
+                                                              propertyUrid);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Logger::global()->logDiagnostic("LV2 UI writeFunction: unhandled protocol %u", port_protocol);
+        }
     }
 
     uint32_t PluginInstanceLV2::UISupport::portIndex(LV2UI_Feature_Handle handle, const char* symbol) {
@@ -566,6 +655,55 @@ namespace remidy {
 
     void PluginInstanceLV2::UISupport::scheduleIdleCallback() {
         // No longer used - keeping for compatibility
+    }
+
+    void PluginInstanceLV2::UISupport::notifyParameterChange(LV2_URID propertyUrid, double value) {
+        if (!ui_handle || !ui_descriptor || !ui_descriptor->port_event)
+            return;
+
+        auto& uridMap = owner->implContext.statics->features.urid_map_feature_data;
+
+        // Create a patch:Set atom to send to the UI via port_event
+        uint8_t atomBuf[256];
+        LV2_Atom_Forge forge;
+        lv2_atom_forge_init(&forge, &uridMap);
+        lv2_atom_forge_set_buffer(&forge, atomBuf, sizeof(atomBuf));
+
+        LV2_Atom_Forge_Frame frame;
+        LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_object(
+            &forge, &frame, 0,
+            uridMap.map(uridMap.handle, LV2_PATCH__Set));
+
+        lv2_atom_forge_key(&forge, uridMap.map(uridMap.handle, LV2_PATCH__property));
+        lv2_atom_forge_urid(&forge, propertyUrid);
+
+        lv2_atom_forge_key(&forge, uridMap.map(uridMap.handle, LV2_PATCH__value));
+        lv2_atom_forge_float(&forge, static_cast<float>(value));
+
+        lv2_atom_forge_pop(&forge, &frame);
+
+        // Find the control port (atom output port from plugin perspective, input to UI)
+        // This is typically the first atom port
+        uint32_t controlPortIndex = 0;
+        for (uint32_t i = 0; i < lilv_plugin_get_num_ports(owner->plugin); i++) {
+            auto port = lilv_plugin_get_port_by_index(owner->plugin, i);
+            if (owner->implContext.IS_ATOM_OUT(owner->plugin, port)) {
+                controlPortIndex = i;
+                break;
+            }
+        }
+
+        // Call port_event to notify the UI
+        ui_descriptor->port_event(
+            ui_handle,
+            controlPortIndex,
+            lv2_atom_total_size(msg),
+            uridMap.map(uridMap.handle, LV2_ATOM__eventTransfer),
+            msg
+        );
+
+        Logger::global()->logDiagnostic("LV2: Notified UI via port_event - port=%u, property URID=%u, value=%f",
+                                         controlPortIndex, propertyUrid, value);
     }
 
 }
