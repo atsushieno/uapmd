@@ -1163,35 +1163,53 @@ void MainWindow::renderDetailsWindows() {
                 ImGui::Separator();
 
                 ImGui::Text("Presets:");
-                const char* presetPreview =
-                    (detailsState.selectedPreset >= 0 &&
-                     detailsState.selectedPreset < static_cast<int>(detailsState.presets.size()))
-                        ? detailsState.presets[detailsState.selectedPreset].name.c_str()
-                        : "Select preset...";
-                if (ImGui::BeginCombo("##PresetCombo", presetPreview)) {
-                    for (size_t i = 0; i < detailsState.presets.size(); i++) {
-                        const bool isSelected = (detailsState.selectedPreset == static_cast<int>(i));
-                        if (ImGui::Selectable(detailsState.presets[i].name.c_str(), isSelected)) {
-                            detailsState.selectedPreset = static_cast<int>(i);
-                        }
-                        if (isSelected) {
-                            ImGui::SetItemDefaultFocus();
+                if (detailsState.presets.empty()) {
+                    ImGui::TextDisabled("No presets available for this plugin.");
+                    ImGui::BeginDisabled();
+                    ImGui::Button("Load Preset");
+                    ImGui::EndDisabled();
+                } else {
+                    std::string presetPreviewLabel = "Select preset...";
+                    if (detailsState.selectedPreset >= 0 &&
+                        detailsState.selectedPreset < static_cast<int>(detailsState.presets.size())) {
+                        presetPreviewLabel = detailsState.presets[detailsState.selectedPreset].name;
+                        if (presetPreviewLabel.empty()) {
+                            presetPreviewLabel = "(Unnamed preset)";
                         }
                     }
-                    ImGui::EndCombo();
-                }
 
-                ImGui::SameLine();
-                bool canLoadPreset = detailsState.selectedPreset >= 0 &&
-                                     detailsState.selectedPreset < static_cast<int>(detailsState.presets.size());
-                if (!canLoadPreset) {
-                    ImGui::BeginDisabled();
-                }
-                if (ImGui::Button("Load Preset")) {
-                    loadSelectedPreset(instanceId, detailsState);
-                }
-                if (!canLoadPreset) {
-                    ImGui::EndDisabled();
+                    if (ImGui::BeginCombo("##PresetCombo", presetPreviewLabel.c_str())) {
+                        for (size_t i = 0; i < detailsState.presets.size(); i++) {
+                            const bool isSelected = (detailsState.selectedPreset == static_cast<int>(i));
+                            std::string displayName = detailsState.presets[i].name;
+                            if (displayName.empty()) {
+                                displayName = "(Unnamed preset)";
+                            }
+                            // Ensure ImGui receives a stable ID even if the preset has no label.
+                            std::string selectableLabel =
+                                displayName + "##Preset" + std::to_string(i);
+                            if (ImGui::Selectable(selectableLabel.c_str(), isSelected)) {
+                                detailsState.selectedPreset = static_cast<int>(i);
+                            }
+                            if (isSelected) {
+                                ImGui::SetItemDefaultFocus();
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    ImGui::SameLine();
+                    bool canLoadPreset = detailsState.selectedPreset >= 0 &&
+                                         detailsState.selectedPreset < static_cast<int>(detailsState.presets.size());
+                    if (!canLoadPreset) {
+                        ImGui::BeginDisabled();
+                    }
+                    if (ImGui::Button("Load Preset")) {
+                        loadSelectedPreset(instanceId, detailsState);
+                    }
+                    if (!canLoadPreset) {
+                        ImGui::EndDisabled();
+                    }
                 }
 
                 ImGui::Separator();
