@@ -40,15 +40,11 @@ namespace remidy {
                 func();
             else {
                 std::atomic<bool> done(false);
-                std::function<void()> f = [&done,func]() {
-                    try {
-                        func();
-                    } catch(...) {
-                    }
-                    done = true;
+                enqueueTaskOnMainThread([&done,func]() {
+                    func();
+                    done.store(true);
                     done.notify_one();
-                };
-                enqueueTaskOnMainThread(std::move(f));
+                });
                 done.wait(false);
             }
         }
