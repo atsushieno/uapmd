@@ -187,12 +187,24 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
         lilv_instance_connect_port(instance, m.lv2Port, audioOut);
     }
 
-    for (auto & port : lv2_ports)
+    for (auto & port : lv2_ports) {
         if (port.atom_in_index >= 0 || port.atom_out_index >= 0) {
             lv2_atom_forge_init(&port.forge, getLV2UridMapData());
             lv2_atom_forge_set_buffer(&port.forge, (uint8_t*) port.port_buffer, port.buffer_size);
-            lv2_atom_sequence_clear((LV2_Atom_Sequence*) port.port_buffer);
+
+            if (port.atom_in_index >= 0) {
+                // For input ports, clear to empty sequence
+                auto* seq = (LV2_Atom_Sequence*) port.port_buffer;
+                lv2_atom_sequence_clear(seq);
+            } else if (port.atom_out_index >= 0) {
+                // For output ports, initialize with buffer capacity in atom.size (in case it is overwritten by the plugin)
+                auto* seq = (LV2_Atom_Sequence*) port.port_buffer;
+                seq->atom.size = port.buffer_size;
+                seq->atom.type = implContext.statics->urids.urid_atom_sequence_type;
+                seq->body.unit = implContext.statics->urids.urid_time_frame;
+            }
         }
+    }
 
     // FIXME: pass correct timestamp
     ump_input_dispatcher.process(0, process);

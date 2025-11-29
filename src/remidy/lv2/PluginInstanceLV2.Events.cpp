@@ -152,7 +152,8 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPressure(
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProcessStart(remidy::AudioProcessContext &src) {
     for (size_t i = 0, n = owner->lv2_ports.size(); i < n; i++) {
         auto& port = owner->lv2_ports[i];
-        lv2_atom_forge_sequence_head(&port.forge, &port.frame, owner->implContext.statics->urids.urid_time_frame);
+        if (port.atom_in_index >= 0)
+            lv2_atom_forge_sequence_head(&port.forge, &port.frame, owner->implContext.statics->urids.urid_time_frame);
     }
     owner->flushPendingParameterChanges();
 }
@@ -160,6 +161,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProcessStart(remidy::Au
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProcessEnd(remidy::AudioProcessContext &src) {
     for (size_t i = 0, n = owner->lv2_ports.size(); i < n; i++) {
         auto& port = owner->lv2_ports[i];
-        lv2_atom_forge_pop(&port.forge, &port.frame);
+        if (port.atom_in_index >= 0)
+            lv2_atom_forge_pop(&port.forge, &port.frame);
     }
 }
