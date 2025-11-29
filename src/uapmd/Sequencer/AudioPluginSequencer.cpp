@@ -158,7 +158,7 @@ void uapmd::AudioPluginSequencer::dispatchPluginOutput(int32_t instanceId, const
             }
         }
 
-        words[0] = (words[0] & 0x0FFFFFFF) | (static_cast<uint32_t>(group) << 28);
+        words[0] = (words[0] & 0xF0FFFFFF) | (static_cast<uint32_t>(group) << 24);
         offset += size;
     }
 
