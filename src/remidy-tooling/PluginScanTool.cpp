@@ -40,10 +40,33 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
 
     // FIXME: implement blocklist
 
+    if (format->name() == "CLAP" && displayName == "ZebraHZ")
+        skip = true;
+    if (format->name() == "CLAP" && displayName == "ZRev")
+        skip = true;
+    if (format->name() == "CLAP" && displayName == "Zebra2")
+        skip = true;
+    if (format->name() == "CLAP" && displayName == "Zebralette")
+        skip = true;
+    if (format->name() == "CLAP" && displayName == "Zebrify")
+        skip = true;
+    if (format->name() == "CLAP" && displayName == "Floe")
+        skip = true;
+    if (format->name() == "CLAP" && displayName == "ysfx-s instrument")
+        skip = true;
+    if (format->name() == "CLAP" && displayName == "ysfx-s FX")
+        skip = true;
+
     // crashes for some unknown reason nowadays...
     if (format->name() == "VST3" && displayName == "FM8 MFX")
         skip = true;
     if (format->name() == "AU" && displayName == "FM8 MFX")
+        skip = true;
+
+    // FIXME: figure out why it blocks
+    if (format->name() == "AU" && displayName == "Massive X")
+        skip = true;
+    if (format->name() == "AU" && displayName == "RX 9 Monitor")
         skip = true;
 
     // Not sure when it started, but their AU version stalls while instantiating.

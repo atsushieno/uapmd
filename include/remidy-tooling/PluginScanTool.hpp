@@ -26,7 +26,8 @@ namespace remidy_tooling {
 #if __APPLE__
             &au,
 #endif
-            &vst3};
+            &vst3
+        };
     public:
         PluginScanTool();
 
