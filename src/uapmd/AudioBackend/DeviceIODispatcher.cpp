@@ -11,6 +11,7 @@ namespace uapmd {
         uapmd_ump_t* queued_inputs{};
         std::atomic<size_t> next_ump_position{0};
         size_t ump_buffer_size_in_bytes{0};
+        std::optional<std::thread::id> audio_thread_id{};
 
     public:
         explicit Impl(DeviceIODispatcher* owner);
@@ -36,6 +37,10 @@ namespace uapmd {
         bool isPlaying();
 
         uapmd_status_t runCallbacks(AudioProcessContext& data) {
+            if (!audio_thread_id.has_value()) {
+                audio_thread_id = std::this_thread::get_id();
+                remidy::audioThreadIds().push_back(audio_thread_id.value());
+            }
             // FIXME: define status codes
             for (auto& callback : callbacks)
                 if (auto status = callback(data); status != 0)
@@ -134,6 +139,8 @@ uapmd_status_t uapmd::DeviceIODispatcher::Impl::stop() {
     // FIXME: define status codes (0 == success)
     if (!audio_)
         return 0; // ok; stop at uninitialized state
+
+    audio_thread_id.reset();
 
     auto ret = audio_->stop();
     ret |= (midi_in ? midi_in->stop() : 0);

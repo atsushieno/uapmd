@@ -66,6 +66,7 @@ target_include_directories(remidy PRIVATE
         ${vst3sdk_SOURCE_DIR}
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ${choc_SOURCE_DIR}
+        ${concurrentqueue_SOURCE_DIR}
         ${LV2KIT_INCLUDE_DIRS}
         ${clap_SOURCE_DIR}/include
         ${clap-helpers_SOURCE_DIR}/include

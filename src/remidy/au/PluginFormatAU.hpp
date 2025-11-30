@@ -1,6 +1,8 @@
 #pragma once
 #include <iostream>
+#include <optional>
 #include <sstream>
+#include <unordered_map>
 
 #include "remidy.hpp"
 #include "../GenericAudioBuses.hpp"
@@ -37,6 +39,8 @@ namespace remidy {
             UInt32 au_param_id_list_size{0};
             std::vector<PluginParameter*> parameter_list{};
             std::map<uint32_t,std::vector<PluginParameter*>> parameter_lists_per_note{};
+            AUEventListenerRef parameter_listener{nullptr};
+            std::unordered_map<AudioUnitParameterID, uint32_t> parameter_id_to_index{};
 
         public:
             explicit ParameterSupport(PluginInstanceAU* owner);
@@ -50,6 +54,14 @@ namespace remidy {
             StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
             std::string valueToString(uint32_t index, double value) override;
+            void refreshParameterMetadata(uint32_t index) override;
+            void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
+        private:
+            void installParameterListener();
+            void uninstallParameterListener();
+            static void parameterEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value);
+            void handleParameterEvent(const AudioUnitEvent* event, Float32 value);
+            std::optional<uint32_t> indexForParameterId(AudioUnitParameterID id) const;
         };
 
         class AUUmpInputDispatcher : UmpInputDispatcher {

@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <optional>
 
 #include "remidy.hpp"
 #include "../utils.hpp"
@@ -51,6 +52,13 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
 
         parameter_ids[i] = info.id;
         parameter_defs.emplace_back(p);
+        param_id_to_index[info.id] = i;
+
+        // Detect program change parameter (marked with kIsProgramChange flag)
+        if (info.flags & ParameterInfo::kIsProgramChange) {
+            program_change_parameter_id = info.id;
+            program_change_parameter_index = i;
+        }
     }
 }
 
@@ -202,4 +210,33 @@ std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t
 
     // Fallback to empty string if conversion fails
     return "";
+}
+
+void remidy::PluginInstanceVST3::ParameterSupport::refreshParameterMetadata(uint32_t index) {
+    if (index >= parameter_defs.size())
+        return;
+
+    auto paramId = parameter_ids[index];
+    auto controller = owner->controller;
+
+    double plainMin = controller->normalizedParamToPlain(paramId, 0.0);
+    double plainMax = controller->normalizedParamToPlain(paramId, 1.0);
+
+    ParameterInfo info{};
+    controller->getParameterInfo(index, info);
+    double plainDefault = controller->normalizedParamToPlain(paramId, info.defaultNormalizedValue);
+
+    parameter_defs[index]->updateRange(plainMin, plainMax, plainDefault);
+}
+
+std::optional<uint32_t> remidy::PluginInstanceVST3::ParameterSupport::indexForParamId(ParamID id) const {
+    auto it = param_id_to_index.find(id);
+    if (it == param_id_to_index.end())
+        return std::nullopt;
+    return it->second;
+}
+
+void remidy::PluginInstanceVST3::ParameterSupport::notifyParameterValue(ParamID id, double plainValue) {
+    if (auto index = indexForParamId(id); index.has_value())
+        notifyParameterChangeListeners(index.value(), plainValue);
 }

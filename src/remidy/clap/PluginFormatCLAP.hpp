@@ -5,6 +5,9 @@
 #include "clap/helpers/event-list.hh"
 #include "clap/helpers/plugin-proxy.hh"
 #include "clap/helpers/plugin-proxy.hxx"
+#include <optional>
+#include <unordered_map>
+
 #include "clap/ext/render.h"
 #include "remidy.hpp"
 #include "HostClasses.hpp"
@@ -84,6 +87,8 @@ namespace remidy {
     };
 
     class PluginInstanceCLAP : public PluginInstance {
+        friend class RemidyCLAPHost;
+
         PluginFormatCLAP::Impl* owner;
         std::unique_ptr<CLAPPluginProxy> plugin;
         clap_preset_discovery_factory* preset_discovery_factory;
@@ -103,6 +108,7 @@ namespace remidy {
             std::vector<PluginParameter*> parameter_defs{};
             std::vector<clap_id> parameter_ids{};
             std::vector<void*> parameter_cookies{};
+            std::unordered_map<clap_id, uint32_t> param_id_to_index{};
 
         public:
             explicit ParameterSupport(PluginInstanceCLAP* owner);
@@ -115,6 +121,10 @@ namespace remidy {
             StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
             std::string valueToString(uint32_t index, double value) override;
+            void refreshParameterMetadata(uint32_t index) override;
+            std::optional<uint32_t> indexForParamId(clap_id id) const;
+            void notifyParameterValue(clap_id id, double plainValue);
+            clap_id getParameterId(uint32_t index) const { return index < parameter_ids.size() ? parameter_ids[index] : 0; }
         };
 
         class CLAPUmpInputDispatcher : public TypedUmpInputDispatcher {
@@ -213,7 +223,7 @@ namespace remidy {
             bool tryCreateWith(const char* api, bool floating);
         };
 
-        clap::helpers::EventList events{};
+        std::unique_ptr<clap::helpers::EventList> events{};
         AudioBuses* audio_buses{};
         ParameterSupport* _parameters{};
         PluginStateSupport* _states{};
@@ -223,6 +233,7 @@ namespace remidy {
         std::unique_ptr<RemidyCLAPHost> host{};
         bool is_offline_{false};
         double sample_rate_{44100.0};
+        std::atomic<bool> flush_requested_{false};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
         void clapProcessToRemidyProcessContext(AudioProcessContext& dst, clap_process_t& src);
@@ -230,6 +241,7 @@ namespace remidy {
         void resetAudioPortBuffers();
         void cleanupBuffers();
         void applyOfflineRenderingMode();
+        void processParamsFlush();
 
     public:
         explicit PluginInstanceCLAP(

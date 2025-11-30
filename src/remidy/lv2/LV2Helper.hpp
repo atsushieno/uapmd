@@ -106,6 +106,8 @@ namespace remidy_lv2 {
                     urid_atom_float_type{0},
                     urid_atom_bool_type{0},
                     urid_atom_int_type{0},
+                    urid_atom_object{0},
+                    urid_atom_urid_type{0},
                     urid_patch_set{0},
                     urid_patch_property{0},
                     urid_patch_value{0},
@@ -130,6 +132,8 @@ namespace remidy_lv2 {
             patch_message_uri_node = lilv_new_uri(world, LV2_PATCH__Message);
             patch_readable_uri_node = lilv_new_uri(world, LV2_PATCH__readable);
             patch_writable_uri_node = lilv_new_uri(world, LV2_PATCH__writable);
+            patch_property_uri_node = lilv_new_uri(world, LV2_PATCH__property);
+            state_state_uri_node = lilv_new_uri(world, LV2_STATE__state);
             work_interface_uri_node = lilv_new_uri(world, LV2_WORKER__interface);
             resize_port_minimum_size_node = lilv_new_uri(world, LV2_RESIZE_PORT__minimumSize);
             presets_preset_node = lilv_new_uri(world, LV2_PRESETS__Preset);
@@ -146,6 +150,7 @@ namespace remidy_lv2 {
 
             // Port Groups channel designations
             designation_uri_node = lilv_new_uri(world, LV2_CORE__designation);
+            control_designation_uri_node = lilv_new_uri(world, LV2_CORE__control);
             pg_left_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__left);
             pg_right_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__right);
             pg_center_uri_node = lilv_new_uri(world, LV2_PORT_GROUPS__center);
@@ -173,6 +178,8 @@ namespace remidy_lv2 {
             urids.urid_atom_float_type = map->map(map->handle, LV2_ATOM__Float);
             urids.urid_atom_bool_type = map->map(map->handle, LV2_ATOM__Bool);
             urids.urid_atom_int_type = map->map(map->handle, LV2_ATOM__Int);
+            urids.urid_atom_object = map->map(map->handle, LV2_ATOM__Object);
+            urids.urid_atom_urid_type = map->map(map->handle, LV2_ATOM__URID);
             urids.urid_patch_set = map->map(map->handle, LV2_PATCH__Set);
             urids.urid_patch_property = map->map(map->handle, LV2_PATCH__property);
             urids.urid_patch_value = map->map(map->handle, LV2_PATCH__value);
@@ -211,6 +218,8 @@ namespace remidy_lv2 {
             lilv_node_free(patch_message_uri_node);
             lilv_node_free(patch_readable_uri_node);
             lilv_node_free(patch_writable_uri_node);
+            lilv_node_free(patch_property_uri_node);
+            lilv_node_free(state_state_uri_node);
             lilv_node_free(work_interface_uri_node);
             lilv_node_free(resize_port_minimum_size_node);
             lilv_node_free(presets_preset_node);
@@ -220,6 +229,7 @@ namespace remidy_lv2 {
 
             // Port Groups designations
             lilv_node_free(designation_uri_node);
+            lilv_node_free(control_designation_uri_node);
             lilv_node_free(pg_left_uri_node);
             lilv_node_free(pg_right_uri_node);
             lilv_node_free(pg_center_uri_node);
@@ -263,9 +273,11 @@ namespace remidy_lv2 {
                 *scale_point_uri_node,
                 *midi_event_uri_node,
                 *patch_message_uri_node, *patch_readable_uri_node, *patch_writable_uri_node,
+                *patch_property_uri_node, *state_state_uri_node,
                 *resize_port_minimum_size_node, *presets_preset_node,
                 *work_interface_uri_node, *rdf_value_node, *rdfs_label_node, *rdfs_range_node,
                 *designation_uri_node,
+                *control_designation_uri_node,
                 *pg_left_uri_node, *pg_right_uri_node, *pg_center_uri_node, *pg_side_uri_node,
                 *pg_center_left_uri_node, *pg_center_right_uri_node,
                 *pg_rear_left_uri_node, *pg_rear_right_uri_node, *pg_rear_center_uri_node,

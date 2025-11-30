@@ -30,6 +30,12 @@ The public API in `PluginParameterSupport` expects plain `double` values. They a
 
 UAPMD needs to convert the values betwee `double` and `uint32_t`.
 
+### Normalized-to-Plain conversion is not always available
+
+Whereas VST3 IEditController provides `normalizedParamToPlain()`, it is not always implemented correctly. VST3SDK `EditController` implements this function as to just return the source value by default.
+
+Plugins like Dexed does not implement these functions while it converts parameters in 0.0..1.0 to the plain value when it is converted to string.
+
 ## Automatable
 
 We support only "automatable" parameters in some use cases. Namely, non-automatable parameters are not displayed on remidy-plugin-host and not mapped to MIDI-CI AllCtrlList property.

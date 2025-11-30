@@ -59,6 +59,7 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
                                      enums
                                      );
         parameter_list.emplace_back(p);
+        parameter_id_to_index[id] = static_cast<uint32_t>(i);
     }
 
     // FIXME: collect parameter_lists_per_note i.e. per-note parameter controllers, *per note* !
@@ -68,9 +69,12 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
         EventLoop::runTaskOnMainThread(impl);
     else
         impl();
+
+    installParameterListener();
 }
 
 remidy::PluginInstanceAU::ParameterSupport::~ParameterSupport() {
+    uninstallParameterListener();
     if (au_param_id_list)
         free(au_param_id_list);
 }
@@ -162,6 +166,95 @@ std::string remidy::PluginInstanceAU::ParameterSupport::valueToString(uint32_t i
 
     // Fallback: format as number
     return std::format("{:.3f}", value);
+}
+
+void remidy::PluginInstanceAU::ParameterSupport::refreshParameterMetadata(uint32_t index) {
+    if (index >= parameter_list.size())
+        return;
+
+    auto id = au_param_id_list[index];
+    AudioUnitParameterInfo info;
+    UInt32 size = sizeof(info);
+    auto result = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterInfo,
+                                       kAudioUnitScope_Global, id, &info, &size);
+    if (result == noErr) {
+        parameter_list[index]->updateRange(info.minValue, info.maxValue, info.defaultValue);
+    }
+}
+
+void remidy::PluginInstanceAU::ParameterSupport::installParameterListener() {
+    if (parameter_listener)
+        return;
+
+    if (AUEventListenerCreate(parameterEventCallback, this, CFRunLoopGetMain(), kCFRunLoopDefaultMode, 0.1f, 0.1f, &parameter_listener) != noErr)
+        parameter_listener = nullptr;
+
+    if (!parameter_listener)
+        return;
+
+    size_t parameterCount = au_param_id_list_size / sizeof(AudioUnitParameterID);
+    for (size_t i = 0; i < parameterCount; ++i) {
+        AudioUnitEvent event{};
+        event.mEventType = kAudioUnitEvent_ParameterValueChange;
+        event.mArgument.mParameter.mAudioUnit = owner->instance;
+        event.mArgument.mParameter.mScope = kAudioUnitScope_Global;
+        event.mArgument.mParameter.mElement = 0;
+        event.mArgument.mParameter.mParameterID = au_param_id_list[i];
+        AUEventListenerAddEventType(parameter_listener, this, &event);
+    }
+
+    AudioUnitEvent presetEvent{};
+    presetEvent.mEventType = kAudioUnitEvent_PropertyChange;
+    presetEvent.mArgument.mProperty.mAudioUnit = owner->instance;
+    presetEvent.mArgument.mProperty.mScope = kAudioUnitScope_Global;
+    presetEvent.mArgument.mProperty.mElement = 0;
+    presetEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_PresentPreset;
+    AUEventListenerAddEventType(parameter_listener, this, &presetEvent);
+}
+
+void remidy::PluginInstanceAU::ParameterSupport::uninstallParameterListener() {
+    if (!parameter_listener)
+        return;
+    AUListenerDispose(parameter_listener);
+    parameter_listener = nullptr;
+}
+
+void remidy::PluginInstanceAU::ParameterSupport::parameterEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value) {
+    (void)object;
+    (void)hostTime;
+    auto* support = static_cast<ParameterSupport*>(refCon);
+    if (support)
+        support->handleParameterEvent(event, value);
+}
+
+void remidy::PluginInstanceAU::ParameterSupport::handleParameterEvent(const AudioUnitEvent* event, Float32 value) {
+    if (!event)
+        return;
+
+    if (event->mEventType == kAudioUnitEvent_ParameterValueChange) {
+        auto index = indexForParameterId(event->mArgument.mParameter.mParameterID);
+        if (!index.has_value())
+            return;
+        notifyParameterChangeListeners(index.value(), static_cast<double>(value));
+        return;
+    }
+
+    if (event->mEventType == kAudioUnitEvent_PropertyChange &&
+        event->mArgument.mProperty.mPropertyID == kAudioUnitProperty_PresentPreset) {
+        refreshAllParameterMetadata();
+        for (size_t i = 0; i < parameter_list.size(); ++i) {
+            double currentValue;
+            if (getParameter(static_cast<uint32_t>(i), &currentValue) == StatusCode::OK)
+                notifyParameterChangeListeners(static_cast<uint32_t>(i), currentValue);
+        }
+    }
+}
+
+std::optional<uint32_t> remidy::PluginInstanceAU::ParameterSupport::indexForParameterId(AudioUnitParameterID id) const {
+    auto it = parameter_id_to_index.find(id);
+    if (it == parameter_id_to_index.end())
+        return std::nullopt;
+    return it->second;
 }
 
 #endif

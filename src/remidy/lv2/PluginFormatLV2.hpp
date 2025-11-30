@@ -1,6 +1,8 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
+#include <unordered_map>
 
 #include "remidy.hpp"
 #include "../GenericAudioBuses.hpp"
@@ -8,6 +10,7 @@
 #include <lv2/ui/ui.h>
 
 #include "LV2Helper.hpp"
+#include "concurrentqueue.h"
 
 namespace remidy {
     class AudioPluginScannerLV2 : public FileBasedPluginScanning {
@@ -77,12 +80,16 @@ namespace remidy {
             *value = current;
             return StatusCode::OK;
         }
+
+        void updateCachedValue(double value) { current = value; }
     };
 
     class PluginInstanceLV2 : public PluginInstance {
         class ParameterSupport : public PluginParameterSupport {
             std::vector<PluginParameter *> parameter_defs{};
             std::vector<LV2ParameterHandler *> parameter_handlers{};
+            std::unordered_map<LV2_URID, uint32_t> property_urid_to_index{};
+            std::unordered_map<uint32_t, LV2_URID> index_to_property_urid{};
 
             void inspectParameters();
 
@@ -113,6 +120,14 @@ namespace remidy {
                 return StatusCode::INVALID_PARAMETER_OPERATION;
             }
             std::string valueToString(uint32_t index, double value) override;
+            void refreshParameterMetadata(uint32_t index) override;
+            std::optional<uint32_t> indexForProperty(LV2_URID propertyUrid) const;
+            std::optional<LV2_URID> propertyUridForIndex(uint32_t index) const;
+            void updateCachedParameterValue(uint32_t index, double plainValue);
+            void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
+
+            // Internal method for setting parameters with control over UI notification
+            StatusCode setParameterInternal(uint32_t index, double value, uint64_t timestamp, bool notifyUI);
         };
 
         class LV2AtomParameterHandler : public LV2ParameterHandler {
@@ -125,11 +140,7 @@ namespace remidy {
 
             ~LV2AtomParameterHandler() override = default;
 
-            StatusCode setParameter(double value, remidy_timestamp_t timestamp) override {
-                current = value;
-                owner->owner->ump_input_dispatcher.enqueuePatchSetEvent(def->index(), value, timestamp);
-                return StatusCode::OK;
-            }
+            StatusCode setParameter(double value, remidy_timestamp_t timestamp) override;
         };
 
         class LV2ControlPortParameterProxyPort : public LV2ParameterHandler {
@@ -157,7 +168,7 @@ namespace remidy {
             uint8_t midi1Bytes[16];
 
         public:
-            LV2UmpInputDispatcher(PluginInstanceLV2* owner) : owner(owner) {}
+            LV2UmpInputDispatcher(PluginInstanceLV2* owner) : owner(owner), atom_context_group(0) {}
 
             void enqueueMidi1Event(uint8_t atomInIndex, size_t eventSize);
             void enqueuePatchSetEvent(int32_t index, double value, remidy_timestamp_t timestamp);
@@ -228,6 +239,10 @@ namespace remidy {
             bool setSize(uint32_t width, uint32_t height) override;
             bool suggestSize(uint32_t &width, uint32_t &height) override;
             bool setScale(double scale) override;
+
+            // Notify UI of parameter changes
+            void notifyParameterChange(LV2_URID propertyUrid, double value);
+
         private:
             PluginInstanceLV2* owner;
 
@@ -289,6 +304,14 @@ namespace remidy {
             LV2_Atom_Forge_Frame frame{};
         };
         std::vector<LV2PortInfo> lv2_ports{};
+        int32_t control_atom_port_index{-1};
+        struct PendingParameterChange {
+            uint32_t index;
+            double value;
+            remidy_timestamp_t timestamp;
+        };
+        moodycamel::ConcurrentQueue<PendingParameterChange> pending_parameter_changes{};
+        std::atomic<bool> in_audio_process{false};
 
         struct RemidyToLV2PortMapping {
             size_t bus;
@@ -308,6 +331,8 @@ namespace remidy {
         PluginUISupport *_ui{};
 
         LV2UmpInputDispatcher ump_input_dispatcher{this};
+        void enqueueParameterChange(uint32_t index, double value, remidy_timestamp_t timestamp);
+        void flushPendingParameterChanges();
 
         int32_t portIndexForAtomGroupIndex(bool isInput, uint8_t atomGroup) {
             for (int i = 0, n = lv2_ports.size(); i < n; i++)
@@ -359,4 +384,10 @@ namespace remidy {
         // ui
         PluginUISupport *ui() override;
     };
+
+    inline StatusCode PluginInstanceLV2::LV2AtomParameterHandler::setParameter(double value, remidy_timestamp_t timestamp) {
+        current = value;
+        owner->owner->enqueueParameterChange(def->index(), value, timestamp);
+        return StatusCode::OK;
+    }
 }

@@ -22,6 +22,7 @@ namespace remidy {
         }
 
         audio_buses = new AudioBuses(this);
+        events = std::make_unique<clap::helpers::EventList>();
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {
@@ -328,11 +329,17 @@ namespace remidy {
         }
 
         // set event buffers
-        clap_process.in_events = events.clapInputEvents();
-        clap_process.out_events = events.clapOutputEvents();
+        clap_process.in_events = events->clapInputEvents();
+        clap_process.out_events = events->clapOutputEvents();
     }
 
     StatusCode PluginInstanceCLAP::process(AudioProcessContext &process) {
+        // Check if parameter flush was requested and process it on audio thread
+        if (flush_requested_.load(std::memory_order_acquire)) {
+            flush_requested_.store(false, std::memory_order_release);
+            processParamsFlush();
+        }
+
         // fill clap_process from remidy input
         remidyProcessContextToClapProcess(clap_process, process);
 
@@ -350,9 +357,9 @@ namespace remidy {
         size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint32_t);
 
         // Process CLAP output events
-        size_t eventCount = events.size();
+        size_t eventCount = events->size();
         for (size_t i = 0; i < eventCount && umpPosition < umpCapacity; ++i) {
-            auto* hdr = events.get(static_cast<uint32_t>(i));
+            auto* hdr = events->get(static_cast<uint32_t>(i));
 
             if (!hdr || hdr->space_id != CLAP_CORE_EVENT_SPACE_ID)
                 continue;
@@ -382,6 +389,11 @@ namespace remidy {
                 }
                 case CLAP_EVENT_PARAM_VALUE: {
                     auto* ev = reinterpret_cast<const clap_event_param_value_t*>(hdr);
+                    if (_parameters) {
+                        auto* params = dynamic_cast<ParameterSupport*>(_parameters);
+                        if (params)
+                            params->notifyParameterValue(ev->param_id, ev->value);
+                    }
                     // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
                     // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
                     uint8_t bank = static_cast<uint8_t>((ev->param_id >> 7) & 0x7F);
@@ -491,7 +503,7 @@ namespace remidy {
 
         // Update eventOut position
         eventOut.position(umpPosition * sizeof(uint32_t));
-        events.clear();
+        events->clear();
 
         return ret;
     }
@@ -536,5 +548,35 @@ namespace remidy {
         EventLoop::runTaskOnMainThread([this, timerId](){
             plugin->timerSupportOnTimer(timerId);
         });
+    }
+
+    void PluginInstanceCLAP::processParamsFlush() {
+        if (!plugin || !plugin->canUseParams())
+            return;
+
+        // Use the instance's event list for both input and output
+        events->clear();
+        plugin->paramsFlush(
+            events->clapInputEvents(),
+            events->clapOutputEvents()
+        );
+
+        // Process any output events from the flush
+        size_t eventCount = events->size();
+        for (size_t i = 0; i < eventCount; ++i) {
+            auto* hdr = events->get(static_cast<uint32_t>(i));
+
+            if (!hdr || hdr->space_id != CLAP_CORE_EVENT_SPACE_ID)
+                continue;
+
+            if (hdr->type == CLAP_EVENT_PARAM_VALUE) {
+                auto* ev = reinterpret_cast<const clap_event_param_value_t*>(hdr);
+                auto* params = dynamic_cast<ParameterSupport*>(_parameters);
+                if (params)
+                    params->notifyParameterValue(ev->param_id, ev->value);
+            }
+        }
+
+        events->clear();
     }
 }

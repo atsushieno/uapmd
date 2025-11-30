@@ -57,6 +57,7 @@ namespace remidy {
                         enums));
                 parameter_ids.emplace_back(info.id);
                 parameter_cookies.emplace_back(info.cookie);
+                param_id_to_index[info.id] = static_cast<uint32_t>(i);
             }
         });
         return parameter_defs;
@@ -71,7 +72,7 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
-        auto a = owner->events.tryAllocate(alignof(void *), sizeof(clap_event_param_value_t));
+        auto a = owner->events->tryAllocate(alignof(void *), sizeof(clap_event_param_value_t));
         if (!a)
             return StatusCode::INSUFFICIENT_MEMORY;
         const auto evt = reinterpret_cast<clap_event_param_value_t *>(a);
@@ -90,7 +91,7 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
-        auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events.tryAllocate(alignof(void *),
+        auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events->tryAllocate(alignof(void *),
             sizeof(clap_event_param_value_t)));
         evt->header.type = CLAP_EVENT_PARAM_VALUE;
         evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
@@ -110,8 +111,17 @@ namespace remidy {
     StatusCode PluginInstanceCLAP::ParameterSupport::getParameter(uint32_t index, double* value) {
         if (!value)
             return StatusCode::INVALID_PARAMETER_OPERATION;
+        if (!owner->plugin || !owner->plugin->canUseParams())
+            return StatusCode::NOT_IMPLEMENTED;
+        if (index >= parameter_ids.size())
+            return StatusCode::INVALID_PARAMETER_OPERATION;
 
-        return StatusCode::NOT_IMPLEMENTED;
+        double queriedValue = 0.0;
+        if (!owner->plugin->paramsGetValue(parameter_ids[index], &queriedValue))
+            return StatusCode::INVALID_PARAMETER_OPERATION;
+
+        *value = queriedValue;
+        return StatusCode::OK;
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) {
@@ -123,5 +133,27 @@ namespace remidy {
             return "";
         char s[1024];
         return owner->plugin->paramsValueToText(parameter_ids[index], value, s, sizeof(s)) ? s : "";
+    }
+
+    void PluginInstanceCLAP::ParameterSupport::refreshParameterMetadata(uint32_t index) {
+        if (index >= parameter_defs.size() || !owner->plugin || !owner->plugin->canUseParams())
+            return;
+
+        clap_param_info_t info;
+        if (owner->plugin->paramsGetInfo(index, &info)) {
+            parameter_defs[index]->updateRange(info.min_value, info.max_value, info.default_value);
+        }
+    }
+
+    std::optional<uint32_t> PluginInstanceCLAP::ParameterSupport::indexForParamId(clap_id id) const {
+        auto it = param_id_to_index.find(id);
+        if (it == param_id_to_index.end())
+            return std::nullopt;
+        return it->second;
+    }
+
+    void PluginInstanceCLAP::ParameterSupport::notifyParameterValue(clap_id id, double plainValue) {
+        if (auto index = indexForParamId(id); index.has_value())
+            notifyParameterChangeListeners(index.value(), plainValue);
     }
 }

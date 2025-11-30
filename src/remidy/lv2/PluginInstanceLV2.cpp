@@ -2,6 +2,7 @@
 #include "cmidi2.h"
 #include <algorithm>
 #include <vector>
+#include <lv2/atom/util.h>
 
 remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
         PluginInstance(entry), formatImpl(formatImpl), plugin(plugin),
@@ -62,6 +63,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
         if (p.port_buffer)
             free(p.port_buffer);
     lv2_ports.clear();
+    control_atom_port_index = -1;
 
     // create port mappings between Remidy and LV2
     uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
@@ -103,6 +105,12 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
         auto lv2Port = LV2PortInfo{};
         lv2Port.atom_in_index = implContext.IS_ATOM_IN(plugin, port) ? nextAtomIn++ : -1;
         lv2Port.atom_out_index = implContext.IS_ATOM_OUT(plugin, port) ? nextAtomOut++ : -1;
+        if (lv2Port.atom_in_index >= 0) {
+            auto designationNode = lilv_port_get(plugin, port, implContext.statics->designation_uri_node);
+            if (designationNode && implContext.statics->control_designation_uri_node &&
+                lilv_node_equals(designationNode, implContext.statics->control_designation_uri_node))
+                control_atom_port_index = i;
+        }
 
         if (!implContext.IS_AUDIO_PORT(plugin, port)) {
             const LilvNode* minSizeNode = lilv_port_get(plugin, port, implContext.statics->resize_port_minimum_size_node);
@@ -156,6 +164,8 @@ remidy::StatusCode remidy::PluginInstanceLV2::stopProcessing() {
 
 remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &process) {
     // FIXME: is there 64-bit float audio support?
+    in_audio_process.store(true, std::memory_order_release);
+
     for (size_t i = 0; i < audio_in_port_mapping.size(); ++i) {
         auto& m = audio_in_port_mapping[i];
         auto audioIn = process.getFloatInBuffer(m.bus, m.channel);
@@ -177,12 +187,24 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
         lilv_instance_connect_port(instance, m.lv2Port, audioOut);
     }
 
-    for (auto & port : lv2_ports)
+    for (auto & port : lv2_ports) {
         if (port.atom_in_index >= 0 || port.atom_out_index >= 0) {
             lv2_atom_forge_init(&port.forge, getLV2UridMapData());
             lv2_atom_forge_set_buffer(&port.forge, (uint8_t*) port.port_buffer, port.buffer_size);
-            lv2_atom_sequence_clear((LV2_Atom_Sequence*) port.port_buffer);
+
+            if (port.atom_in_index >= 0) {
+                // For input ports, clear to empty sequence
+                auto* seq = (LV2_Atom_Sequence*) port.port_buffer;
+                lv2_atom_sequence_clear(seq);
+            } else if (port.atom_out_index >= 0) {
+                // For output ports, initialize with buffer capacity in atom.size (in case it is overwritten by the plugin)
+                auto* seq = (LV2_Atom_Sequence*) port.port_buffer;
+                seq->atom.size = port.buffer_size;
+                seq->atom.type = implContext.statics->urids.urid_atom_sequence_type;
+                seq->body.unit = implContext.statics->urids.urid_time_frame;
+            }
         }
+    }
 
     // FIXME: pass correct timestamp
     ump_input_dispatcher.process(0, process);
@@ -209,6 +231,60 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
                 break;
 
             const LV2_Atom* atom = &ev->body;
+
+            if (atom->type == implContext.statics->urids.urid_atom_object) {
+                const auto* object = reinterpret_cast<const LV2_Atom_Object*>(atom);
+                if (object->body.otype == implContext.statics->urids.urid_patch_set) {
+                    const LV2_Atom* propertyAtom = nullptr;
+                    const LV2_Atom* valueAtom = nullptr;
+                    lv2_atom_object_get(object,
+                        implContext.statics->urids.urid_patch_property, &propertyAtom,
+                        implContext.statics->urids.urid_patch_value, &valueAtom,
+                        0);
+                    if (!propertyAtom || !valueAtom || propertyAtom->type != implContext.statics->urids.urid_atom_urid_type)
+                        continue;
+                    auto propertyUrid = reinterpret_cast<const LV2_Atom_URID*>(propertyAtom)->body;
+                    double plainValue = 0.0;
+                    if (valueAtom->type == implContext.statics->urids.urid_atom_float_type)
+                        plainValue = reinterpret_cast<const LV2_Atom_Float*>(valueAtom)->body;
+                    else if (valueAtom->type == implContext.statics->urids.urid_atom_int_type)
+                        plainValue = static_cast<double>(reinterpret_cast<const LV2_Atom_Int*>(valueAtom)->body);
+                    else if (valueAtom->type == implContext.statics->urids.urid_atom_bool_type)
+                        plainValue = reinterpret_cast<const LV2_Atom_Bool*>(valueAtom)->body ? 1.0 : 0.0;
+                    else
+                        continue;
+                    auto* lv2Parameters = dynamic_cast<PluginInstanceLV2::ParameterSupport*>(parameters());
+                    if (lv2Parameters) {
+                        if (auto index = lv2Parameters->indexForProperty(propertyUrid); index.has_value()) {
+                            lv2Parameters->notifyParameterValue(index.value(), plainValue);
+
+                            // Notify UI of parameter change
+                            auto* lv2UI = dynamic_cast<PluginInstanceLV2::UISupport*>(ui());
+                            if (lv2UI)
+                                lv2UI->notifyParameterChange(propertyUrid, plainValue);
+
+                            const auto& params = lv2Parameters->parameters();
+                            if (index.value() < params.size()) {
+                                auto* param = params[index.value()];
+                                double range = param->maxPlainValue() - param->minPlainValue();
+                                double normalized = range != 0.0
+                                    ? (plainValue - param->minPlainValue()) / range
+                                    : 0.0;
+                                normalized = std::clamp(normalized, 0.0, 1.0);
+                                uint8_t bank = static_cast<uint8_t>((index.value() >> 7) & 0x7F);
+                                uint8_t idx = static_cast<uint8_t>(index.value() & 0x7F);
+                                uint32_t data = static_cast<uint32_t>(normalized * 4294967295.0);
+                                uint64_t ump = cmidi2_ump_midi2_nrpn(0, 0, bank, idx, data);
+                                if (umpPosition + 1 < umpCapacity) {
+                                    umpBuffer[umpPosition++] = static_cast<uint32_t>(ump >> 32);
+                                    umpBuffer[umpPosition++] = static_cast<uint32_t>(ump & 0xFFFFFFFF);
+                                }
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
 
             // Check if this is a MIDI event
             if (atom->type == implContext.statics->urids.urid_midi_event_type) {
@@ -278,6 +354,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
     // Update eventOut position
     eventOut.position(umpPosition * sizeof(uint32_t));
 
+    in_audio_process.store(false, std::memory_order_release);
     return StatusCode::OK;
 }
 
@@ -324,4 +401,18 @@ remidy::PluginUISupport *remidy::PluginInstanceLV2::ui() {
     if (!_ui)
         _ui = new UISupport(this);
     return _ui;
+}
+
+void remidy::PluginInstanceLV2::enqueueParameterChange(uint32_t index, double value, remidy_timestamp_t timestamp) {
+    if (in_audio_process.load(std::memory_order_acquire)) {
+        ump_input_dispatcher.enqueuePatchSetEvent(static_cast<int32_t>(index), value, timestamp);
+    } else {
+        pending_parameter_changes.enqueue(PendingParameterChange{index, value, timestamp});
+    }
+}
+
+void remidy::PluginInstanceLV2::flushPendingParameterChanges() {
+    PendingParameterChange change{};
+    while (pending_parameter_changes.try_dequeue(change))
+        ump_input_dispatcher.enqueuePatchSetEvent(static_cast<int32_t>(change.index), change.value, change.timestamp);
 }

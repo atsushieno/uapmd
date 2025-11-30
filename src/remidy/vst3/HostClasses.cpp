@@ -147,9 +147,6 @@ namespace remidy_vst3 {
     }
 
     tresult PLUGIN_API HostApplication::ComponentHandlerImpl::performEdit(ParamID id, ParamValue valueNormalized) {
-        if (!owner)
-            return kInvalidArgument;
-        
         // Find and invoke parameter edit handler if registered
         for (auto& pair : owner->parameter_edit_handlers) {
             if (pair.second)
@@ -264,7 +261,7 @@ namespace remidy_vst3 {
     }
 
     tresult PLUGIN_API HostApplication::PlugFrameImpl::resizeView(IPlugView* view, ViewRect* newSize) {
-        if (!owner || !view || !newSize)
+        if (!view || !newSize)
             return kInvalidArgument;
 
         // Check if there's a resize handler registered for this view
@@ -320,7 +317,7 @@ namespace remidy_vst3 {
         (void)fd;
         return kNotImplemented;
 #else
-        if (!owner || !handler)
+        if (!handler)
             return kInvalidArgument;
 
         std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
@@ -367,7 +364,7 @@ namespace remidy_vst3 {
     }
 
     tresult PLUGIN_API HostApplication::RunLoopImpl::unregisterEventHandler(IEventHandler* handler) {
-        if (!owner || !handler)
+        if (!handler)
             return kInvalidArgument;
 
         std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
@@ -387,7 +384,7 @@ namespace remidy_vst3 {
     }
 
     tresult PLUGIN_API HostApplication::RunLoopImpl::registerTimer(ITimerHandler* handler, TimerInterval milliseconds) {
-        if (!owner || !handler)
+        if (!handler)
             return kInvalidArgument;
 
         std::lock_guard<std::mutex> lock(owner->timers_mutex);
@@ -420,7 +417,7 @@ namespace remidy_vst3 {
     }
 
     tresult PLUGIN_API HostApplication::RunLoopImpl::unregisterTimer(ITimerHandler* handler) {
-        if (!owner || !handler)
+        if (!handler)
             return kInvalidArgument;
 
         std::lock_guard<std::mutex> lock(owner->timers_mutex);

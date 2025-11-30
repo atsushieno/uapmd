@@ -1,8 +1,12 @@
 #pragma once
 
-#include <string>
-#include <vector>
+#include <atomic>
+#include <functional>
+#include <mutex>
 #include <ranges>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace remidy {
 
@@ -20,7 +24,7 @@ namespace remidy {
         const std::string stable_id;
         const std::string _name;
         const std::string _path;
-        const double default_plain_value, min_plain_value, max_plain_value;
+        double default_plain_value, min_plain_value, max_plain_value;
         bool is_automatable;
         bool is_readable;
         bool is_hidden;
@@ -57,6 +61,13 @@ namespace remidy {
         // FIXME: should we make it const as well?
         void readable(bool newValue) { is_readable = newValue; }
         const std::vector<ParameterEnumeration>& enums() { return _enums; }
+
+        // Update parameter range (for plugins that change min/max dynamically)
+        void updateRange(double newMin, double newMax, double newDefault) {
+            min_plain_value = newMin;
+            max_plain_value = newMax;
+            default_plain_value = newDefault;
+        }
     };
 
     // any combination of these values
@@ -87,7 +98,46 @@ namespace remidy {
 
     class PluginParameterSupport {
     public:
+        using ParameterChangeListener = std::function<void(uint32_t, double)>;
+        using ParameterChangeListenerId = uint64_t;
+
+    private:
+        std::atomic<ParameterChangeListenerId> listenerIdCounter{1};
+        std::unordered_map<ParameterChangeListenerId, ParameterChangeListener> listeners{};
+        std::mutex listenerMutex{};
+
+    protected:
+        void notifyParameterChangeListeners(uint32_t index, double plainValue) {
+            std::vector<ParameterChangeListener> callbacks;
+            {
+                std::lock_guard<std::mutex> lock(listenerMutex);
+                callbacks.reserve(listeners.size());
+                for (auto& kv : listeners)
+                    callbacks.emplace_back(kv.second);
+            }
+            for (auto& cb : callbacks)
+                if (cb)
+                    cb(index, plainValue);
+        }
+
+    public:
         virtual ~PluginParameterSupport() = default;
+
+        ParameterChangeListenerId addParameterChangeListener(ParameterChangeListener listener) {
+            if (!listener)
+                return 0;
+            std::lock_guard<std::mutex> lock(listenerMutex);
+            auto id = listenerIdCounter++;
+            listeners.emplace(id, std::move(listener));
+            return id;
+        }
+
+        void removeParameterChangeListener(ParameterChangeListenerId id) {
+            if (id == 0)
+                return;
+            std::lock_guard<std::mutex> lock(listenerMutex);
+            listeners.erase(id);
+        }
 
         // Returns the list of parameter metadata.
         virtual std::vector<PluginParameter*>& parameters() = 0;
@@ -120,5 +170,16 @@ namespace remidy {
         // Those plugins make it impossible to query defined values in prior and do not give the best user experience,
         // but that's not our fault...
         virtual std::string valueToString(uint32_t index, double value) = 0;
+
+        // Refresh parameter metadata (min/max/default values) from the plugin.
+        // This is needed for plugins that may change parameter ranges dynamically.
+        virtual void refreshParameterMetadata(uint32_t index) {}
+
+        // Refresh all parameter metadata.
+        virtual void refreshAllParameterMetadata() {
+            auto& params = parameters();
+            for (size_t i = 0; i < params.size(); i++)
+                refreshParameterMetadata(static_cast<uint32_t>(i));
+        }
     };
 }

@@ -38,22 +38,32 @@ namespace remidy {
         // FIXME: implement
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
-        auto evt = reinterpret_cast<clap_event_note_t *>(owner->events.tryAllocate(alignof(void *),
-            sizeof(clap_event_param_value_t)));
+        auto evt = reinterpret_cast<clap_event_note_t *>(owner->events->tryAllocate(alignof(void *),
+            sizeof(clap_event_note_t)));
         if (!evt)
             return;
+        evt->header.size = sizeof(clap_event_note_t);
+        evt->header.time = timestamp();
+        evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         evt->header.type = CLAP_EVENT_NOTE_ON;
+        evt->header.flags = 0;
+        evt->note_id = -1;
         evt->port_index = group;
         evt->channel = channel;
         evt->key = note;
         evt->velocity = (double) velocity / UINT16_MAX;
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
-        auto evt = reinterpret_cast<clap_event_note_t *>(owner->events.tryAllocate(alignof(void *),
-            sizeof(clap_event_param_value_t)));
+        auto evt = reinterpret_cast<clap_event_note_t *>(owner->events->tryAllocate(alignof(void *),
+            sizeof(clap_event_note_t)));
         if (!evt)
             return;
+        evt->header.size = sizeof(clap_event_note_t);
+        evt->header.time = timestamp();
+        evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         evt->header.type = CLAP_EVENT_NOTE_OFF;
+        evt->header.flags = 0;
+        evt->note_id = -1;
         evt->port_index = group;
         evt->channel = channel;
         evt->key = note;

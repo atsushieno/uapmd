@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 #include <functional>
+#include <thread>
+#include <vector>
 #if !WIN32
 #include <pthread.h>
 #endif
@@ -88,4 +90,5 @@ namespace remidy {
 #endif
     }
 
+    std::vector<std::thread::id>& audioThreadIds();
 }

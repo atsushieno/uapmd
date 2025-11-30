@@ -96,6 +96,7 @@ namespace uapmd::gui {
         void renderInstanceControl();
         void refreshInstances();
         void refreshParameters(int32_t instanceId, DetailsWindowState& state);
+        void applyParameterUpdates(int32_t instanceId, DetailsWindowState& state);
         void refreshPresets(int32_t instanceId, DetailsWindowState& state);
         void loadSelectedPreset(int32_t instanceId, DetailsWindowState& state);
         void renderParameterControls(int32_t instanceId, DetailsWindowState& state);

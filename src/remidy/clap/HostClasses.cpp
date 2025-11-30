@@ -9,16 +9,83 @@
 #include <condition_variable>
 
 namespace remidy {
+
     void RemidyCLAPHost::requestRestart() noexcept {
         // FIXME: implement
+        Logger::global()->logInfo("RemidyCLAPHost::requestRestart() is not implemented");
     }
 
     void RemidyCLAPHost::requestProcess() noexcept {
         // FIXME: implement
+        Logger::global()->logInfo("RemidyCLAPHost::requestProcess() is not implemented");
     }
 
     void RemidyCLAPHost::requestCallback() noexcept {
+        EventLoop::runTaskOnMainThread([&]{
+            auto* instance = attached_instance.load();
+            if (instance)
+                instance->plugin->onMainThread();
+        });
+    }
+
+    void RemidyCLAPHost::paramsRescan(clap_param_rescan_flags flags) noexcept {
+        auto* instance = attached_instance.load();
+        if (!instance)
+            return;
+
+        // Parameter list has changed, need to rescan
+        auto* params = dynamic_cast<PluginInstanceCLAP::ParameterSupport*>(instance->_parameters);
+        if (!params)
+            return;
+
+        if (flags & CLAP_PARAM_RESCAN_VALUES) {
+            // Parameter values changed - refresh all parameter values
+            Logger::global()->logDiagnostic("CLAP: Parameter values changed, refreshing");
+            auto& paramDefs = params->parameters();
+            for (size_t i = 0; i < paramDefs.size(); ++i) {
+                double value = 0.0;
+                if (params->getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK) {
+                    auto paramId = params->getParameterId(static_cast<uint32_t>(i));
+                    params->notifyParameterValue(paramId, value);
+                }
+            }
+        }
+        if (flags & CLAP_PARAM_RESCAN_INFO) {
+            // Parameter info (names, ranges) changed - refresh metadata
+            Logger::global()->logDiagnostic("CLAP: Parameter info changed, refreshing metadata");
+            auto& paramDefs = params->parameters();
+            for (size_t i = 0; i < paramDefs.size(); ++i) {
+                params->refreshParameterMetadata(static_cast<uint32_t>(i));
+            }
+        }
+        if (flags & CLAP_PARAM_RESCAN_TEXT) {
+            // Parameter text representations changed
+            Logger::global()->logDiagnostic("CLAP: Parameter text changed");
+            // Text changes don't require action - they're fetched on demand via valueToString
+        }
+        if (flags & CLAP_PARAM_RESCAN_ALL) {
+            // Full rescan needed - parameter list structure has changed
+            Logger::global()->logDiagnostic("CLAP: Full parameter rescan requested - this requires rebuilding the parameter list");
+            params->refreshAllParameterMetadata();
+        }
+    }
+
+    void RemidyCLAPHost::paramsClear(clap_id paramId, clap_param_clear_flags flags) noexcept {
         // FIXME: implement
+        Logger::global()->logWarning("RemidyCLAPHost::paramsClear() is not implemented");
+    }
+
+    void RemidyCLAPHost::paramsRequestFlush() noexcept {
+        auto* instance = attached_instance.load();
+        if (!instance)
+            return;
+
+        if (threadCheckIsAudioThread()) {
+            Logger::global()->logWarning("paramsRequestFlush() called from audio thread, ignoring");
+            return;
+        }
+
+        instance->flush_requested_.store(true, std::memory_order_release);
     }
 
     bool RemidyCLAPHost::threadCheckIsMainThread() const noexcept {
@@ -26,8 +93,8 @@ namespace remidy {
     }
 
     bool RemidyCLAPHost::threadCheckIsAudioThread() const noexcept {
-        // FIXME: implement
-        return true;
+        auto thisId = std::this_thread::get_id();
+        return std::ranges::any_of(audioThreadIds(), [&](auto tid) { return tid == thisId; });
     }
 
     bool RemidyCLAPHost::guiRequestShow() noexcept {

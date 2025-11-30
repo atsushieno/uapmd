@@ -42,11 +42,6 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
                 "%s: IEditController failed to return query for IConnectionPoint as expected. Result: %d",
                 pluginName.c_str(), result);
 
-    // From JUCE interconnectComponentAndController():
-    // > Some plugins need to be "connected" to intercommunicate between their implemented classes
-#if 1
-    // If we disable this, those JUCE plugins cannot get parameters.
-    // If we enable this, Serum2 and Sforzando crash.
     if (isControllerDistinctFromComponent && connPointComp && connPointEdit) {
         EventLoop::runTaskOnMainThread([&] {
             // You need to understand how those pointer-to-pointer types are used in DPF before attempting to make changes here.
@@ -65,7 +60,6 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
             }
         });
     }
-#endif
 
     audio_buses = new AudioBuses(this);
 
@@ -74,11 +68,13 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         note_expression_controller = nullptr; // just to make sure
     if (controller->queryInterface(IUnitInfo::iid, (void**) &unit_info) != kResultOk)
         unit_info = nullptr; // just to make sure
+    if (component->queryInterface(IProgramListData::iid, (void**) &program_list_data) != kResultOk)
+        program_list_data = nullptr; // just to make sure
     if (controller->queryInterface(IMidiMapping::iid, (void**) &midi_mapping) != kResultOk)
         midi_mapping = nullptr; // just to make sure
 
     // Register parameter edit handler for this plugin instance
-    owner->getHost()->setParameterEditHandler(controller, [this](ParamID paramId, double value) {
+    owner->getHost()->setParameterEditHandler(controller, [this, controller](ParamID paramId, double value) {
         // Queue the parameter change for the next audio process call
         auto pvc = processDataInputParameterChanges.asInterface();
         int32_t index = 0;
@@ -87,6 +83,9 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
             int32_t pointIndex = 0;
             queue->addPoint(0, value, pointIndex);
         }
+
+        double plainValue = controller->normalizedParamToPlain(paramId, value);
+        dynamic_cast<PluginInstanceVST3::ParameterSupport*>(parameters())->notifyParameterValue(paramId, plainValue);
     });
 
     owner->getHost()->setRestartComponentHandler(controller, [this](int32 flags) {
@@ -94,6 +93,8 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     });
 
     // Leave the component inactive until startProcessing() explicitly activates it.
+
+    synchronizeControllerState();
 }
 
 remidy::PluginInstanceVST3::~PluginInstanceVST3() {
@@ -128,7 +129,6 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
                                  result);
         }
 
-        // FIXME: almost all plugins crash here. But it seems optional.
         controller->setComponentHandler(nullptr);
 
         if (isControllerDistinctFromComponent)
@@ -483,6 +483,8 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
                 int32_t sampleOffset;
                 ParamValue value;
                 if (queue->getPoint(pointCount - 1, sampleOffset, value) == kResultOk) {
+                    double plainValue = controller->normalizedParamToPlain(paramId, value);
+                    dynamic_cast<PluginInstanceVST3::ParameterSupport*>(parameters())->notifyParameterValue(paramId, plainValue);
                     // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
                     // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
                     uint8_t bank = static_cast<uint8_t>((paramId >> 7) & 0x7F);
@@ -661,14 +663,17 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
 
         if (flags & Vst::RestartFlags::kParamValuesChanged) {
             // Parameter values changed - re-read all parameter values
-            logger->logInfo("%s: Handling kParamValuesChanged - refreshing parameter values (not fully implemented)", pluginName.c_str());
-            if (_parameters) {
-                // Re-query all parameter values from the controller
-                auto& params = _parameters->parameters();
+            logger->logInfo("%s: Handling kParamValuesChanged - refreshing parameter values", pluginName.c_str());
+            // Re-query all parameter values from the controller and notify listeners
+            auto paramSupport = dynamic_cast<PluginInstanceVST3::ParameterSupport*>(parameters());
+            if (paramSupport) {
+                auto& params = paramSupport->parameters();
                 for (size_t i = 0; i < params.size(); i++) {
                     double value;
-                    if (_parameters->getParameter(i, &value) == StatusCode::OK) {
-                        // Value has been updated internally
+                    if (paramSupport->getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK) {
+                        // Notify listeners about the parameter value change
+                        auto paramId = paramSupport->getParameterId(static_cast<uint32_t>(i));
+                        paramSupport->notifyParameterValue(paramId, value);
                     }
                 }
             }
@@ -676,10 +681,15 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
 
         if (flags & Vst::RestartFlags::kParamTitlesChanged) {
             // Parameter metadata changed - re-read parameter info
-            logger->logInfo("%s: Handling kParamTitlesChanged - refreshing parameter info", pluginName.c_str());
-            // The ParameterSupport would need to be re-initialized to pick up new parameter info
-            // For now, just log it. A full implementation would recreate the parameter support.
-            logger->logWarning("%s: kParamTitlesChanged requires recreating parameter support (not fully implemented)",
+            logger->logInfo("%s: Handling kParamTitlesChanged - refreshing parameter metadata", pluginName.c_str());
+            // At minimum, refresh parameter metadata (min/max/default values)
+            auto paramSupport = dynamic_cast<PluginInstanceVST3::ParameterSupport*>(parameters());
+            if (paramSupport) {
+                paramSupport->refreshAllParameterMetadata();
+            }
+            // NOTE: Parameter names/titles are stored as const strings, so a full implementation
+            // would require recreating the parameter support to pick up new names.
+            logger->logWarning("%s: kParamTitlesChanged - parameter names may not be updated (requires recreation)",
                              pluginName.c_str());
         }
 
@@ -702,5 +712,21 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
         if (flags & Vst::RestartFlags::kParamIDMappingChanged) {
             logger->logWarning("%s: kParamIDMappingChanged not yet implemented", pluginName.c_str());
         }
+    });
+}
+
+void remidy::PluginInstanceVST3::synchronizeControllerState() {
+    if (!component || !controller)
+        return;
+
+    EventLoop::runTaskOnMainThread([&] {
+        std::vector<uint8_t> componentState;
+        VectorStream componentStream(componentState);
+        auto result = component->getState((IBStream*) &componentStream);
+        if (result != kResultOk)
+            return;
+
+        VectorStream controllerStream(componentState);
+        controller->setComponentState((IBStream*) &controllerStream);
     });
 }
