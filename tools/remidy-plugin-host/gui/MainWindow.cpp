@@ -785,8 +785,12 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
 
     ImGui::InputText("Filter Parameters", state.parameterFilter, sizeof(state.parameterFilter));
 
-    if (ImGui::BeginTable("ParameterTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
-        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed, 30.0f);
+    const ImGuiTableFlags parameterTableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
+                                                ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate;
+    if (ImGui::BeginTable("ParameterTable", 5, parameterTableFlags)) {
+        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort |
+                                               ImGuiTableColumnFlags_PreferSortAscending,
+                                30.0f);
         ImGui::TableSetupColumn("Stable ID", ImGuiTableColumnFlags_WidthFixed, 50.0f);
         ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthStretch, 0.0f, 0);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 180.0f);
@@ -795,6 +799,9 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
 
         std::string filter = state.parameterFilter;
         std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
+
+        std::vector<size_t> visibleParameterIndices;
+        visibleParameterIndices.reserve(state.parameters.size());
 
         for (size_t i = 0; i < state.parameters.size(); ++i) {
             auto& param = state.parameters[i];
@@ -811,6 +818,69 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
                     continue;
                 }
             }
+
+            visibleParameterIndices.push_back(i);
+        }
+
+        auto compareByColumn = [&](size_t lhs, size_t rhs, int columnIndex) {
+            const auto& leftParam = state.parameters[lhs];
+            const auto& rightParam = state.parameters[rhs];
+            switch (columnIndex) {
+            case 0:
+                if (leftParam.index < rightParam.index)
+                    return -1;
+                if (leftParam.index > rightParam.index)
+                    return 1;
+                return 0;
+            case 1:
+                if (leftParam.stableId < rightParam.stableId)
+                    return -1;
+                if (leftParam.stableId > rightParam.stableId)
+                    return 1;
+                return 0;
+            case 2:
+                if (leftParam.name < rightParam.name)
+                    return -1;
+                if (leftParam.name > rightParam.name)
+                    return 1;
+                return 0;
+            case 3:
+                if (state.parameterValues[lhs] < state.parameterValues[rhs])
+                    return -1;
+                if (state.parameterValues[lhs] > state.parameterValues[rhs])
+                    return 1;
+                return 0;
+            case 4:
+                if (leftParam.defaultPlainValue < rightParam.defaultPlainValue)
+                    return -1;
+                if (leftParam.defaultPlainValue > rightParam.defaultPlainValue)
+                    return 1;
+                return 0;
+            default:
+                return 0;
+            }
+        };
+
+        if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs()) {
+            if (!visibleParameterIndices.empty() && sortSpecs->SpecsCount > 0) {
+                std::stable_sort(visibleParameterIndices.begin(), visibleParameterIndices.end(),
+                                 [&](size_t lhs, size_t rhs) {
+                                     for (int n = 0; n < sortSpecs->SpecsCount; ++n) {
+                                         const ImGuiTableColumnSortSpecs& spec = sortSpecs->Specs[n];
+                                         int delta = compareByColumn(lhs, rhs, spec.ColumnIndex);
+                                         if (delta != 0) {
+                                             return spec.SortDirection == ImGuiSortDirection_Ascending ? (delta < 0)
+                                                                                                       : (delta > 0);
+                                         }
+                                     }
+                                     return lhs < rhs;
+                                 });
+            }
+            sortSpecs->SpecsDirty = false;
+        }
+
+        for (size_t paramIndex : visibleParameterIndices) {
+            auto& param = state.parameters[paramIndex];
 
             ImGui::TableNextRow();
 
@@ -832,9 +902,9 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
 
             bool parameterChanged = false;
             const bool hasDiscreteCombo = !param.namedValues.empty();
-            const char* format = state.parameterValueStrings[i].empty()
+            const char* format = state.parameterValueStrings[paramIndex].empty()
                                      ? "%.3f"
-                                     : state.parameterValueStrings[i].c_str();
+                                     : state.parameterValueStrings[paramIndex].c_str();
 
             float sliderWidth = ImGui::GetContentRegionAvail().x;
             float comboButtonWidth = 0.0f;
@@ -846,7 +916,7 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
             }
 
             ImGui::SetNextItemWidth(sliderWidth);
-            if (ImGui::SliderFloat(controlId.c_str(), &state.parameterValues[i],
+            if (ImGui::SliderFloat(controlId.c_str(), &state.parameterValues[paramIndex],
                                    static_cast<float>(param.minPlainValue),
                                    static_cast<float>(param.maxPlainValue), format)) {
                 parameterChanged = true;
@@ -885,9 +955,9 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
                     if (requestPopupClose) {
                         ImGui::CloseCurrentPopup();
                     } else {
-                        const std::string& currentLabel = state.parameterValueStrings[i].empty()
-                                                               ? std::to_string(state.parameterValues[i])
-                                                               : state.parameterValueStrings[i];
+                        const std::string& currentLabel = state.parameterValueStrings[paramIndex].empty()
+                                                               ? std::to_string(state.parameterValues[paramIndex])
+                                                               : state.parameterValueStrings[paramIndex];
 
                         if (!currentLabel.empty()) {
                             ImGui::TextUnformatted(currentLabel.c_str());
@@ -895,9 +965,9 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
                         }
 
                         for (const auto& namedValue : param.namedValues) {
-                            bool isSelected = (std::abs(namedValue.value - state.parameterValues[i]) < 0.0001);
+                            bool isSelected = (std::abs(namedValue.value - state.parameterValues[paramIndex]) < 0.0001);
                             if (ImGui::Selectable(namedValue.name.c_str(), isSelected)) {
-                                state.parameterValues[i] = static_cast<float>(namedValue.value);
+                                state.parameterValues[paramIndex] = static_cast<float>(namedValue.value);
                                 parameterChanged = true;
                                 ImGui::CloseCurrentPopup();
                             }
@@ -911,17 +981,17 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
             }
 
             if (parameterChanged) {
-                sequencer.setParameterValue(instanceId, param.index, state.parameterValues[i]);
-                updateParameterValueString(i, instanceId, state);
-                std::cout << "Parameter " << param.name << " changed to " << state.parameterValues[i] << std::endl;
+                sequencer.setParameterValue(instanceId, param.index, state.parameterValues[paramIndex]);
+                updateParameterValueString(paramIndex, instanceId, state);
+                std::cout << "Parameter " << param.name << " changed to " << state.parameterValues[paramIndex] << std::endl;
             }
 
             ImGui::TableNextColumn();
             std::string resetId = "Reset##" + std::to_string(param.index);
             if (ImGui::Button(resetId.c_str())) {
-                state.parameterValues[i] = static_cast<float>(param.defaultPlainValue);
-                sequencer.setParameterValue(instanceId, param.index, state.parameterValues[i]);
-                updateParameterValueString(i, instanceId, state);
+                state.parameterValues[paramIndex] = static_cast<float>(param.defaultPlainValue);
+                sequencer.setParameterValue(instanceId, param.index, state.parameterValues[paramIndex]);
+                updateParameterValueString(paramIndex, instanceId, state);
             }
         }
 
