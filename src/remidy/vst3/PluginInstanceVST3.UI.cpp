@@ -1,11 +1,20 @@
 #include "PluginFormatVST3.hpp"
 #include <priv/event-loop.hpp>
+#if defined(__linux__) || defined(__unix__)
+#include "remidy/priv/event-loop-linux.hpp"
+#endif
 
 namespace remidy {
 
     PluginInstanceVST3::UISupport::UISupport(PluginInstanceVST3* owner) : owner(owner) {
 #if SMTG_OS_LINUX
-        target_ui_string = kPlatformTypeX11EmbedWindowID;
+        // Auto-detect Wayland vs X11 on Linux
+        auto* loop = dynamic_cast<EventLoopLinux*>(getEventLoop());
+        if (loop && loop->getDisplayServerType() == DisplayServerType::Wayland) {
+            target_ui_string = kPlatformTypeWaylandSurfaceID;
+        } else {
+            target_ui_string = kPlatformTypeX11EmbedWindowID;
+        }
 #elif SMTG_OS_MACOS
         target_ui_string = kPlatformTypeNSView;
 #else

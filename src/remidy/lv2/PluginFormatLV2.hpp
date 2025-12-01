@@ -249,6 +249,7 @@ namespace remidy {
             // UI discovery and instance
             LilvUIs* available_uis{nullptr};
             const LilvUI* selected_ui{nullptr};
+            const char* selected_ui_type{nullptr};
             void* ui_lib_handle{nullptr};
             const LV2UI_Descriptor* ui_descriptor{nullptr};
             LV2UI_Handle ui_handle{nullptr};
@@ -271,6 +272,11 @@ namespace remidy {
             LV2UI_Port_Map port_map_feature{};
             LV2UI_Port_Subscribe port_subscribe_feature{};
             std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
+
+#ifdef HAVE_WAYLAND
+            // Wayland-specific state
+            wl_surface* wayland_parent_surface{nullptr};
+#endif
 
             // Idle timer state
             std::atomic<bool> idle_timer_running{false};

@@ -1,7 +1,11 @@
 #include "remidy.hpp"
 #include <choc/gui/choc_MessageLoop.h>
 
-// FIXME: maybe we will not use choc on Linux as it depends on Gtk which is in principle unacceptable.
+#if defined(__linux__) || defined(__unix__)
+#include "remidy/priv/event-loop-linux.hpp"
+#include "remidy/priv/event-loop-linux.hpp"  // The bare FD version still exists
+#endif
+
 namespace remidy {
     class EventLoopChoc : public EventLoop {
     protected:
@@ -24,12 +28,27 @@ namespace remidy {
     };
 
     EventLoopChoc choc{};
+
+#if defined(__linux__) || defined(__unix__)
+    // On Linux, use unified EventLoop with X11 + Wayland support (no GTK dependency)
+    EventLoopLinux linuxEventLoop{};
+
+    EventLoop* eventLoop{getEventLoop()};
+    EventLoop* getEventLoop() {
+        if (!eventLoop)
+            eventLoop = &linuxEventLoop;
+        return eventLoop;
+    }
+#else
+    // On macOS/Windows, use choc by default
     EventLoop* eventLoop{getEventLoop()};
     EventLoop* getEventLoop() {
         if (!eventLoop)
             eventLoop = &choc;
         return eventLoop;
     }
+#endif
+
     void setEventLoop(EventLoop* newImpl) {
         eventLoop = newImpl;
         assert(eventLoop);

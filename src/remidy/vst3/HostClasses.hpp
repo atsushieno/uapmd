@@ -14,6 +14,13 @@
 #include <thread>
 #include <chrono>
 
+#if defined(__linux__) || defined(__unix__)
+#include "remidy/priv/event-loop-linux.hpp"
+#ifdef HAVE_WAYLAND
+#include <pluginterfaces/gui/iwaylandframe.h>
+#endif
+#endif
+
 #if defined(_MSC_VER)
 #define min(v1, v2) (v1 < v2 ? v1 : v2)
 #else
@@ -693,9 +700,19 @@ namespace remidy_vst3 {
             IAttributeList* PLUGIN_API getAttributes() SMTG_OVERRIDE;
         };
 
-        struct PlugFrameImpl : public IPlugFrame {
+        struct PlugFrameImpl : public IPlugFrame
+#ifdef HAVE_WAYLAND
+            , public IWaylandFrame
+#endif
+        {
             std::atomic<uint32_t> refCount{1};
             HostApplication* owner;
+
+#ifdef HAVE_WAYLAND
+            wl_surface* parent_surface{nullptr};
+            xdg_surface* parent_xdg_surface{nullptr};
+            xdg_toplevel* parent_xdg_toplevel{nullptr};
+#endif
 
             explicit PlugFrameImpl(HostApplication* owner) : owner(owner) {}
             virtual ~PlugFrameImpl() = default;
@@ -708,6 +725,19 @@ namespace remidy_vst3 {
                 return newCount;
             }
             tresult PLUGIN_API resizeView(IPlugView* view, ViewRect* newSize) SMTG_OVERRIDE;
+
+#ifdef HAVE_WAYLAND
+            // IWaylandFrame interface
+            wl_surface* PLUGIN_API getWaylandSurface(wl_display* display) SMTG_OVERRIDE;
+            xdg_surface* PLUGIN_API getParentSurface(ViewRect& parentSize, wl_display* display) SMTG_OVERRIDE;
+            xdg_toplevel* PLUGIN_API getParentToplevel(wl_display* display) SMTG_OVERRIDE;
+
+            void setWaylandParent(wl_surface* surface, xdg_surface* xdg_surf, xdg_toplevel* toplevel) {
+                parent_surface = surface;
+                parent_xdg_surface = xdg_surf;
+                parent_xdg_toplevel = toplevel;
+            }
+#endif
         };
 
         struct PlugInterfaceSupportImpl : public IPlugInterfaceSupport {
@@ -726,6 +756,27 @@ namespace remidy_vst3 {
             }
             tresult PLUGIN_API isPlugInterfaceSupported(const TUID _iid) SMTG_OVERRIDE;
         };
+
+#ifdef HAVE_WAYLAND
+        struct WaylandHostImpl : public IWaylandHost {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
+
+            explicit WaylandHostImpl(HostApplication* owner) : owner(owner) {}
+            virtual ~WaylandHostImpl() = default;
+
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+
+            wl_display* PLUGIN_API openWaylandConnection() SMTG_OVERRIDE;
+            tresult PLUGIN_API closeWaylandConnection(wl_display* display) SMTG_OVERRIDE;
+        };
+#endif
 
         struct RunLoopImpl : public IRunLoop {
             std::atomic<uint32_t> refCount{1};
@@ -755,6 +806,9 @@ namespace remidy_vst3 {
         PlugFrameImpl* plug_frame{nullptr};
         PlugInterfaceSupportImpl* support{nullptr};
         RunLoopImpl* run_loop{nullptr};
+#ifdef HAVE_WAYLAND
+        WaylandHostImpl* wayland_host{nullptr};
+#endif
         HostParameterChanges parameter_changes{};
 
     public:
@@ -780,6 +834,9 @@ namespace remidy_vst3 {
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return support; }
         inline IRunLoop* getRunLoop() { return run_loop; }
         inline IPlugFrame* getPlugFrame() { return plug_frame; }
+#ifdef HAVE_WAYLAND
+        inline IWaylandHost* getWaylandHost() { return wayland_host; }
+#endif
 
         void startProcessing();
         void stopProcessing();
