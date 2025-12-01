@@ -9,6 +9,10 @@
 #include "lilv/lilv.h"
 #include <lv2/ui/ui.h>
 
+#ifdef HAVE_WAYLAND
+#include <wayland-client.h>
+#endif
+
 #include "LV2Helper.hpp"
 #include "concurrentqueue.h"
 

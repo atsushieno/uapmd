@@ -7,6 +7,12 @@
 #include <priv/event-loop.hpp>
 #include <public.sdk/source/vst/utility/stringconvert.h>
 
+// Define Wayland interface IIDs
+#ifdef HAVE_WAYLAND
+DEF_CLASS_IID (Steinberg::IWaylandHost)
+DEF_CLASS_IID (Steinberg::IWaylandFrame)
+#endif
+
 namespace remidy_vst3 {
 
     std::string vst3StringToStdString(String128& src) {
