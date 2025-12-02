@@ -64,8 +64,8 @@ protected:
     }
 };
 
-TEST_F(PluginScanToolCatalogTest, ScansSfizzPlugin) {
-    EXPECT_TRUE(hasPluginMatching({"sfizz"})) << "sfizz should be reported by the scanner";
+TEST_F(PluginScanToolCatalogTest, ScansSurgePlugin) {
+    EXPECT_TRUE(hasPluginMatching({"surge"})) << "surge should be reported by the scanner";
 }
 
 TEST_F(PluginScanToolCatalogTest, ScansSixSinesPlugin) {
