@@ -21,7 +21,7 @@ namespace remidy {
     }
 
     void RemidyCLAPHost::requestCallback() noexcept {
-        EventLoop::runTaskOnMainThread([&]{
+        EventLoop::enqueueTaskOnMainThread([&]{
             auto* instance = attached_instance.load();
             if (instance)
                 instance->plugin->onMainThread();
