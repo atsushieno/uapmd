@@ -11,8 +11,12 @@ remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFo
 }
 
 remidy::PluginInstanceLV2::~PluginInstanceLV2() {
+    processing_requested_.store(false, std::memory_order_release);
     if (instance) {
-        lilv_instance_deactivate(instance);
+        if (processing_active_) {
+            lilv_instance_deactivate(instance);
+            processing_active_ = false;
+        }
         lilv_instance_free(instance);
     }
     instance = nullptr;
@@ -151,18 +155,33 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
 remidy::StatusCode remidy::PluginInstanceLV2::startProcessing() {
     if (!instance)
         return StatusCode::ALREADY_INVALID_STATE;
-    lilv_instance_activate(instance);
+    processing_requested_.store(true, std::memory_order_release);
     return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::stopProcessing() {
     if (!instance)
         return StatusCode::ALREADY_INVALID_STATE;
-    lilv_instance_deactivate(instance);
+    processing_requested_.store(false, std::memory_order_release);
     return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &process) {
+    if (!instance)
+        return StatusCode::ALREADY_INVALID_STATE;
+
+    auto shouldProcess = processing_requested_.load(std::memory_order_acquire);
+    if (shouldProcess && !processing_active_) {
+        lilv_instance_activate(instance);
+        processing_active_ = true;
+    } else if (!shouldProcess && processing_active_) {
+        lilv_instance_deactivate(instance);
+        processing_active_ = false;
+    }
+
+    if (!shouldProcess)
+        return StatusCode::OK;
+
     // FIXME: is there 64-bit float audio support?
     in_audio_process.store(true, std::memory_order_release);
 
