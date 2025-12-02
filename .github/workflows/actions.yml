@@ -31,6 +31,10 @@ jobs:
     - name: Cleanup plugin install cache
       if: matrix.os != 'windows-latest' # Windows does not support sudo
       run: rm -rf /home/runner/.local/share/open-audio-stack
+    - name: Install audio plugin deps (Ubuntu)
+      if: matrix.os == 'ubuntu-24.04'
+      run: |
+        sudo apt-get install -y libstdc++-11-pic libjack-jackd2-0 libx11-6 libxcb-cursor0 libxcb-xkb1 libxkbcommon-x11-0 xclip
     - name: Install audio plugins
       uses: atsushieno/setup-audio-plugins-action@main
       if: matrix.os != 'windows-latest' # Windows does not support sudo
