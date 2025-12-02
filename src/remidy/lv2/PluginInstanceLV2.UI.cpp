@@ -11,6 +11,8 @@
 
 #ifdef __linux__
 #include <X11/Xlib.h>
+#include "remidy/priv/event-loop-linux.hpp"
+#include "remidy/lv2/wayland-ui.h"
 #elif defined(__APPLE__)
 #include <choc/platform/choc_ObjectiveCHelpers.h>
 #elif defined(_WIN32)
@@ -60,16 +62,29 @@ namespace remidy {
 
             // Platform-specific embedding
 #ifdef __linux__
-            Display* dpy = XOpenDisplay(nullptr);
-            if (!dpy)
-                return false;
+#ifdef HAVE_WAYLAND
+            // Check if we're using Wayland UI
+            if (selected_ui_type && std::strcmp(selected_ui_type, LV2_UI__WaylandSurfaceUI) == 0) {
+                // For WaylandSurfaceUI, the ui_widget returned by the plugin is a wl_subsurface*
+                // The plugin handles subsurface creation using the parent wl_surface* passed via LV2_UI__parent
+                // We don't need to do additional embedding - the plugin manages it
+                // Just store the reference
+                wayland_parent_surface = static_cast<wl_surface*>(parent_widget);
+            } else
+#endif
+            {
+                // X11 embedding (or XWayland)
+                Display* dpy = XOpenDisplay(nullptr);
+                if (!dpy)
+                    return false;
 
-            Window child = (Window)(uintptr_t)ui_widget;
-            Window parent_window = (Window)(uintptr_t)parent_widget;
-            XReparentWindow(dpy, child, parent_window, 0, 0);
-            XMapWindow(dpy, child);
-            XFlush(dpy);
-            XCloseDisplay(dpy);
+                Window child = (Window)(uintptr_t)ui_widget;
+                Window parent_window = (Window)(uintptr_t)parent_widget;
+                XReparentWindow(dpy, child, parent_window, 0, 0);
+                XMapWindow(dpy, child);
+                XFlush(dpy);
+                XCloseDisplay(dpy);
+            }
 #elif defined(__APPLE__)
             id child = (id)ui_widget;
             id parentView = (id)parent_widget;
@@ -113,7 +128,7 @@ namespace remidy {
 #endif
 
 #ifdef __linux__
-            // Notify host of initial UI size (for X11)
+            // Notify host of initial UI size (for X11 and Wayland)
             uint32_t width = 0, height = 0;
             if (host_resize_handler && getSize(width, height) && width > 0 && height > 0) {
                 host_resize_handler(width, height);
@@ -131,24 +146,36 @@ namespace remidy {
             return false;
 
         // Platform-specific UI type preferences
-        const char* preferred_types[] = {
+        const char* preferred_types[10];
+        int type_count = 0;
+
 #ifdef __linux__
-            LV2_UI__X11UI,
+        // On Linux, auto-detect Wayland vs X11 and prefer accordingly
+        auto* loop = dynamic_cast<EventLoopLinux*>(getEventLoop());
+        if (loop && loop->getDisplayServerType() == DisplayServerType::Wayland) {
+            // Prefer Wayland native UI
+            preferred_types[type_count++] = LV2_UI__WaylandSurfaceUI;
+            // Fallback to X11 via XWayland if available
+            preferred_types[type_count++] = LV2_UI__X11UI;
+        } else {
+            // On X11, prefer X11 UI
+            preferred_types[type_count++] = LV2_UI__X11UI;
+        }
 #elif defined(__APPLE__)
-            LV2_UI__CocoaUI,
+        preferred_types[type_count++] = LV2_UI__CocoaUI;
 #elif defined(_WIN32)
-            LV2_UI__WindowsUI,
+        preferred_types[type_count++] = LV2_UI__WindowsUI;
 #endif
-            nullptr
-        };
+        preferred_types[type_count] = nullptr;
 
         // Find first supported UI type
-        for (const char** type = preferred_types; *type; ++type) {
-            LilvNode* type_node = lilv_new_uri(owner->formatImpl->world, *type);
-            LILV_FOREACH(uis, i, available_uis) {
-                const LilvUI* ui = lilv_uis_get(available_uis, i);
+        for (int i = 0; preferred_types[i] != nullptr; ++i) {
+            LilvNode* type_node = lilv_new_uri(owner->formatImpl->world, preferred_types[i]);
+            LILV_FOREACH(uis, j, available_uis) {
+                const LilvUI* ui = lilv_uis_get(available_uis, j);
                 if (lilv_ui_is_a(ui, type_node)) {
                     selected_ui = ui;
+                    selected_ui_type = preferred_types[i];
                     lilv_node_free(type_node);
                     return true;
                 }
@@ -173,6 +200,20 @@ namespace remidy {
         port_map_feature.port_index = portIndex;
         static LV2_Feature port_map_feature_struct = { LV2_UI__portMap, &port_map_feature };
         features.push_back(&port_map_feature_struct);
+
+#ifdef HAVE_WAYLAND
+        // Add Wayland display feature if using WaylandSurfaceUI
+        if (selected_ui_type && std::strcmp(selected_ui_type, LV2_UI__WaylandSurfaceUI) == 0) {
+            auto* loop = dynamic_cast<EventLoopLinux*>(getEventLoop());
+            if (loop && loop->getDisplayServerType() == DisplayServerType::Wayland) {
+                wl_display* display = loop->getWaylandDisplay();
+
+                // Provide the Wayland display connection via "urn:wayland:display" feature
+                static LV2_Feature wayland_display_feature = { LV2_WAYLAND_DISPLAY_URI, display };
+                features.push_back(&wayland_display_feature);
+            }
+        }
+#endif
 
         features.push_back(nullptr); // Null-terminate
         return features;

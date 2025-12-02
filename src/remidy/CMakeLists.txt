@@ -5,6 +5,15 @@ if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
     find_package(X11 REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+
+    # Wayland support (optional)
+    pkg_check_modules(WAYLAND_CLIENT wayland-client)
+    if(WAYLAND_CLIENT_FOUND)
+        message(STATUS "Wayland client found - enabling Wayland support")
+        target_compile_definitions(remidy PRIVATE HAVE_WAYLAND=1)
+    else()
+        message(WARNING "Wayland client not found - Wayland support disabled")
+    endif()
 endif()
 
 # FIXME: it would be slightly nicer if we could migrate to CPM (failed to resolve farbot if we actually do so. Also see https://github.com/hogliux/farbot/pull/15 )
@@ -54,6 +63,7 @@ target_link_options(remidy PUBLIC
 )
 target_link_libraries(remidy PUBLIC
         ${X11_LIBRARIES}
+        ${WAYLAND_CLIENT_LIBRARIES}
 )
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")

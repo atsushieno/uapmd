@@ -25,6 +25,9 @@ namespace remidy_vst3 {
         plug_frame = new PlugFrameImpl(this);
         support = new PlugInterfaceSupportImpl(this);
         run_loop = new RunLoopImpl(this);
+#ifdef HAVE_WAYLAND
+        wayland_host = new WaylandHostImpl(this);
+#endif
     }
 
     HostApplication::~HostApplication() {
@@ -37,6 +40,9 @@ namespace remidy_vst3 {
         if (plug_frame) plug_frame->release();
         if (support) support->release();
         if (run_loop) run_loop->release();
+#ifdef HAVE_WAYLAND
+        if (wayland_host) wayland_host->release();
+#endif
     }
 
     void HostApplication::startProcessing() {
@@ -93,6 +99,13 @@ namespace remidy_vst3 {
             *obj = iface;
             return kResultOk;
         }
+#ifdef HAVE_WAYLAND
+        if (FUnknownPrivate::iidEqual(_iid, IWaylandHost::iid)) {
+            if (wayland_host) wayland_host->addRef();
+            *obj = wayland_host;
+            return kResultOk;
+        }
+#endif
 
         *obj = nullptr;
         return kNoInterface;
@@ -254,6 +267,9 @@ namespace remidy_vst3 {
     tresult PLUGIN_API HostApplication::PlugFrameImpl::queryInterface(const TUID _iid, void** obj) {
         QUERY_INTERFACE(_iid, obj, FUnknown::iid, IPlugFrame)
         QUERY_INTERFACE(_iid, obj, IPlugFrame::iid, IPlugFrame)
+#ifdef HAVE_WAYLAND
+        QUERY_INTERFACE(_iid, obj, IWaylandFrame::iid, IWaylandFrame)
+#endif
         if (owner)
             return owner->queryInterface(_iid, obj);
         *obj = nullptr;
@@ -296,6 +312,10 @@ namespace remidy_vst3 {
         if (FUnknownPrivate::iidEqual(_iid, IMessage::iid)) return kResultOk;
         if (FUnknownPrivate::iidEqual(_iid, IAttributeList::iid)) return kResultOk;
         if (FUnknownPrivate::iidEqual(_iid, IRunLoop::iid)) return kResultOk;
+#ifdef HAVE_WAYLAND
+        if (FUnknownPrivate::iidEqual(_iid, IWaylandHost::iid)) return kResultOk;
+        if (FUnknownPrivate::iidEqual(_iid, IWaylandFrame::iid)) return kResultOk;
+#endif
         return kResultFalse;
     }
 
@@ -435,4 +455,77 @@ namespace remidy_vst3 {
 
         return kInvalidArgument;
     }
+
+#ifdef HAVE_WAYLAND
+    // WaylandHostImpl
+    tresult PLUGIN_API HostApplication::WaylandHostImpl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IWaylandHost)
+        QUERY_INTERFACE(_iid, obj, IWaylandHost::iid, IWaylandHost)
+        if (owner)
+            return owner->queryInterface(_iid, obj);
+        *obj = nullptr;
+        return kNoInterface;
+    }
+
+    wl_display* PLUGIN_API HostApplication::WaylandHostImpl::openWaylandConnection() {
+        // Get the Wayland display from EventLoopLinux
+        auto* loop = dynamic_cast<remidy::EventLoopLinux*>(remidy::getEventLoop());
+        if (!loop) {
+            owner->logger->logWarning("WaylandHost::openWaylandConnection: EventLoop is not EventLoopLinux");
+            return nullptr;
+        }
+
+        if (loop->getDisplayServerType() != remidy::DisplayServerType::Wayland) {
+            owner->logger->logWarning("WaylandHost::openWaylandConnection: Not running on Wayland (detected %s)",
+                loop->getDisplayServerType() == remidy::DisplayServerType::X11 ? "X11" : "Unknown");
+            return nullptr;
+        }
+
+        wl_display* display = loop->getWaylandDisplay();
+        if (!display) {
+            owner->logger->logWarning("WaylandHost::openWaylandConnection: Wayland display not available");
+        }
+        return display;
+    }
+
+    tresult PLUGIN_API HostApplication::WaylandHostImpl::closeWaylandConnection(wl_display* display) {
+        // We don't actually close the display as it's managed by EventLoopLinux
+        // Just validate that it matches what we expect
+        auto* loop = dynamic_cast<remidy::EventLoopLinux*>(remidy::getEventLoop());
+        if (!loop) {
+            return kResultFalse;
+        }
+
+        if (loop->getWaylandDisplay() != display) {
+            owner->logger->logWarning("WaylandHost::closeWaylandConnection: Display pointer mismatch");
+            return kResultFalse;
+        }
+
+        return kResultOk;
+    }
+
+    // PlugFrameImpl - IWaylandFrame methods
+    wl_surface* PLUGIN_API HostApplication::PlugFrameImpl::getWaylandSurface(wl_display* display) {
+        // Return the parent surface that the plugin should use as parent
+        // For now, we don't create a surface - the plugin creates its own top-level surface
+        // In a real implementation, you'd create and return a wl_surface here
+        (void)display;
+        return parent_surface;
+    }
+
+    xdg_surface* PLUGIN_API HostApplication::PlugFrameImpl::getParentSurface(ViewRect& parentSize, wl_display* display) {
+        // Return the parent XDG surface for the plugin to attach to
+        // parentSize would be filled with the parent window dimensions
+        // For now, return what we have (likely nullptr in headless mode)
+        (void)parentSize;
+        (void)display;
+        return parent_xdg_surface;
+    }
+
+    xdg_toplevel* PLUGIN_API HostApplication::PlugFrameImpl::getParentToplevel(wl_display* display) {
+        // Return the parent XDG toplevel for dialogs/transient windows
+        (void)display;
+        return parent_xdg_toplevel;
+    }
+#endif
 }
