@@ -72,7 +72,7 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
-        auto a = owner->events->tryAllocate(alignof(void *), sizeof(clap_event_param_value_t));
+        auto a = owner->events_in->tryAllocate(alignof(void *), sizeof(clap_event_param_value_t));
         if (!a)
             return StatusCode::INSUFFICIENT_MEMORY;
         const auto evt = reinterpret_cast<clap_event_param_value_t *>(a);
@@ -91,8 +91,8 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
-        auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events->tryAllocate(alignof(void *),
-            sizeof(clap_event_param_value_t)));
+        auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events_in->tryAllocate(alignof(void *),
+                                                                                              sizeof(clap_event_param_value_t)));
         evt->header.type = CLAP_EVENT_PARAM_VALUE;
         evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         evt->header.flags |= CLAP_EVENT_IS_LIVE;

@@ -22,7 +22,8 @@ namespace remidy {
         }
 
         audio_buses = new AudioBuses(this);
-        events = std::make_unique<clap::helpers::EventList>();
+        events_in = std::make_unique<clap::helpers::EventList>();
+        events_out = std::make_unique<clap::helpers::EventList>();
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {
@@ -330,8 +331,8 @@ namespace remidy {
         }
 
         // set event buffers
-        clap_process.in_events = events->clapInputEvents();
-        clap_process.out_events = events->clapOutputEvents();
+        clap_process.in_events = events_in->clapInputEvents();
+        clap_process.out_events = events_out->clapOutputEvents();
     }
 
     StatusCode PluginInstanceCLAP::process(AudioProcessContext &process) {
@@ -362,6 +363,9 @@ namespace remidy {
         // fill clap_process from remidy input
         remidyProcessContextToClapProcess(clap_process, process);
 
+        // Prepare output event list for this audio block
+        events_out->clear();
+
         // FIXME: provide valid timestamp?
         ump_input_dispatcher.process(0, process);
 
@@ -376,9 +380,9 @@ namespace remidy {
         size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint32_t);
 
         // Process CLAP output events
-        size_t eventCount = events->size();
+        size_t eventCount = events_out->size();
         for (size_t i = 0; i < eventCount && umpPosition < umpCapacity; ++i) {
-            auto* hdr = events->get(static_cast<uint32_t>(i));
+            auto* hdr = events_out->get(static_cast<uint32_t>(i));
 
             if (!hdr || hdr->space_id != CLAP_CORE_EVENT_SPACE_ID)
                 continue;
@@ -522,7 +526,8 @@ namespace remidy {
 
         // Update eventOut position
         eventOut.position(umpPosition * sizeof(uint32_t));
-        events->clear();
+        events_out->clear();
+        events_in->clear();
 
         return ret;
     }
@@ -573,17 +578,18 @@ namespace remidy {
         if (!plugin || !plugin->canUseParams())
             return;
 
-        // Use the instance's event list for both input and output
-        events->clear();
+        // Use dedicated event lists for parameter flush exchanges
+        events_out->clear();
+        clap::helpers::EventList flushInputEvents;
         plugin->paramsFlush(
-            events->clapInputEvents(),
-            events->clapOutputEvents()
+                flushInputEvents.clapInputEvents(),
+                events_out->clapOutputEvents()
         );
 
         // Process any output events from the flush
-        size_t eventCount = events->size();
+        size_t eventCount = events_out->size();
         for (size_t i = 0; i < eventCount; ++i) {
-            auto* hdr = events->get(static_cast<uint32_t>(i));
+            auto* hdr = events_out->get(static_cast<uint32_t>(i));
 
             if (!hdr || hdr->space_id != CLAP_CORE_EVENT_SPACE_ID)
                 continue;
@@ -596,6 +602,6 @@ namespace remidy {
             }
         }
 
-        events->clear();
+        events_out->clear();
     }
 }

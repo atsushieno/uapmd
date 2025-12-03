@@ -38,8 +38,8 @@ namespace remidy {
         // FIXME: implement
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onNoteOn(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
-        auto evt = reinterpret_cast<clap_event_note_t *>(owner->events->tryAllocate(alignof(void *),
-            sizeof(clap_event_note_t)));
+        auto evt = reinterpret_cast<clap_event_note_t *>(owner->events_in->tryAllocate(alignof(void *),
+                                                                                       sizeof(clap_event_note_t)));
         if (!evt)
             return;
         evt->header.size = sizeof(clap_event_note_t);
@@ -54,8 +54,8 @@ namespace remidy {
         evt->velocity = (double) velocity / UINT16_MAX;
     }
     void PluginInstanceCLAP::CLAPUmpInputDispatcher::onNoteOff(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
-        auto evt = reinterpret_cast<clap_event_note_t *>(owner->events->tryAllocate(alignof(void *),
-            sizeof(clap_event_note_t)));
+        auto evt = reinterpret_cast<clap_event_note_t *>(owner->events_in->tryAllocate(alignof(void *),
+                                                                                       sizeof(clap_event_note_t)));
         if (!evt)
             return;
         evt->header.size = sizeof(clap_event_note_t);
