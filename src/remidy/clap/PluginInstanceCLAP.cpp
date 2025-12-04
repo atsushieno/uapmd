@@ -249,12 +249,6 @@ namespace remidy {
         });
     }
 
-    void PluginInstanceCLAP::setOfflineMode(bool offlineMode) {
-        if (is_offline_ == offlineMode)
-            return;
-        is_offline_ = offlineMode;
-        applyOfflineRenderingMode();
-    }
 
     StatusCode PluginInstanceCLAP::startProcessing() {
         is_processing.store(true, std::memory_order_release);

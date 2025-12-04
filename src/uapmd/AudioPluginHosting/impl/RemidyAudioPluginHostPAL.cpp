@@ -192,11 +192,6 @@ namespace uapmd {
             return ui->canResize();
         }
 
-        void setOfflineMode(bool offlineMode) override {
-            if (!instance)
-                return;
-            instance->setOfflineMode(offlineMode);
-        }
 
         remidy::PluginParameterSupport* parameterSupport() override {
             if (!instance)
@@ -222,7 +217,7 @@ void uapmd::RemidyAudioPluginHostPAL::performPluginScanning(bool rescan) {
 
 int32_t instanceIdSerial{0};
 
-void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
+void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
     scanning.performPluginScanning();
     auto format = *(scanning.formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning.catalog.getPlugins();
@@ -241,7 +236,7 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
             request.mainOutputChannels = outputChannels;
         else
             request.mainOutputChannels.reset();
-        request.offlineMode = offline_mode_.load(std::memory_order_acquire);
+        request.offlineMode = offlineMode;
         auto cb = std::move(callback);
         instancing->makeAlive([instancing,cb](std::string error) {
             if (error.empty())
@@ -257,9 +252,6 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
     }
 }
 
-void uapmd::RemidyAudioPluginHostPAL::setOfflineMode(bool offlineMode) {
-    offline_mode_.store(offlineMode, std::memory_order_release);
-}
 
 uapmd_status_t uapmd::RemidyAudioPluginHostPAL::processAudio(std::vector<remidy::AudioProcessContext *> contexts) {
     return 0;

@@ -508,56 +508,6 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     return StatusCode::OK;
 }
 
-void remidy::PluginInstanceVST3::setOfflineMode(bool offlineMode) {
-    auto desiredMode = offlineMode ? kOffline : kRealtime;
-    if (last_process_setup.processMode == desiredMode && processData.processMode == desiredMode)
-        return;
-
-    last_process_setup.processMode = desiredMode;
-    processData.processMode = desiredMode;
-
-    if (!has_process_setup || !processor || !component)
-        return;
-
-    auto logger = owner->getLogger();
-    auto result = processor->setProcessing(false);
-    if (result == kResultOk)
-        processingActive = false;
-    if (result != kResultOk && result != kNotImplemented)
-        logger->logWarning("%s: setOfflineMode() could not stop processing. Result: %d", pluginName.c_str(), result);
-
-    tresult deactivateResult = kResultOk;
-    EventLoop::runTaskOnMainThread([&] {
-        deactivateResult = component->setActive(false);
-        if (deactivateResult == kResultOk)
-            componentActive = false;
-    });
-    if (deactivateResult != kResultOk)
-        logger->logWarning("%s: setOfflineMode() could not deactivate component. Result: %d", pluginName.c_str(), deactivateResult);
-
-    tresult setupResult = kResultOk;
-    EventLoop::runTaskOnMainThread([&] {
-        setupResult = processor->setupProcessing(last_process_setup);
-    });
-    if (setupResult != kResultOk) {
-        logger->logError("%s: setOfflineMode() failed to setup processing. Result: %d", pluginName.c_str(), setupResult);
-    }
-
-    tresult activateResult = kResultOk;
-    EventLoop::runTaskOnMainThread([&] {
-        activateResult = component->setActive(true);
-        if (activateResult == kResultOk)
-            componentActive = true;
-    });
-    if (activateResult != kResultOk)
-        logger->logWarning("%s: setOfflineMode() could not activate component. Result: %d", pluginName.c_str(), activateResult);
-
-    result = processor->setProcessing(true);
-    if (result != kResultOk && result != kNotImplemented)
-        logger->logWarning("%s: setOfflineMode() could not restart processing. Result: %d", pluginName.c_str(), result);
-    else if (result == kResultOk)
-        processingActive = true;
-}
 
 remidy::PluginParameterSupport* remidy::PluginInstanceVST3::parameters() {
     if (!_parameters)

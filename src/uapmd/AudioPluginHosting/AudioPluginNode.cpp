@@ -51,12 +51,6 @@ namespace uapmd {
         return impl->saveState();
     }
 
-    void AudioPluginNode::setOfflineMode(bool offlineMode) {
-        auto* palPtr = impl->pal();
-        if (palPtr)
-            palPtr->setOfflineMode(offlineMode);
-    }
-
     uapmd_status_t AudioPluginNode::Impl::processAudio(AudioProcessContext &process) {
         return pal()->processAudio(process);
     }

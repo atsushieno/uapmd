@@ -49,8 +49,6 @@ namespace remidy {
 
         virtual StatusCode process(AudioProcessContext& process) = 0;
 
-        virtual void setOfflineMode(bool offlineMode) { (void) offlineMode; }
-
         virtual PluginAudioBuses* audioBuses() = 0;
 
         virtual PluginParameterSupport* parameters() = 0;

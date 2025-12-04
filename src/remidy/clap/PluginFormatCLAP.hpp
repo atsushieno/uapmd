@@ -267,7 +267,6 @@ namespace remidy {
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
         StatusCode process(AudioProcessContext &process) override;
-        void setOfflineMode(bool offlineMode) override;
 
         // port helpers
         PluginAudioBuses* audioBuses() override { return audio_buses; }

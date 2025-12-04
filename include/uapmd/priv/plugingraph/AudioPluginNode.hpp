@@ -53,8 +53,6 @@ namespace uapmd {
 
         void loadState(std::vector<uint8_t>& state);
         std::vector<uint8_t> saveState();
-
-        void setOfflineMode(bool offlineMode);
     };
 
 }

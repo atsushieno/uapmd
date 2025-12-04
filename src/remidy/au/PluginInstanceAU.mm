@@ -221,13 +221,6 @@ remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& con
     return StatusCode::OK;
 }
 
-void remidy::PluginInstanceAU::setOfflineMode(bool offlineMode) {
-    if (!instance)
-        return;
-    auto result = AudioUnitSetProperty(instance, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &offlineMode, sizeof(bool));
-    if (result != noErr)
-        logger()->logWarning("%s: setOfflineMode() failed. Status: %d", name.c_str(), result);
-}
 
 remidy::StatusCode remidy::PluginInstanceAU::startProcessing() {
     process_timestamp.mSampleTime = 0;

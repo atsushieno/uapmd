@@ -47,7 +47,7 @@ namespace uapmd {
     }
 
     void SequenceProcessor::addSimpleTrack(std::string &format, std::string &pluginId, uint32_t inputChannels, uint32_t outputChannels, std::function<void(AudioPluginTrack*, std::string error)> callback) {
-        impl->pal->createPluginInstance(impl->sampleRate, inputChannels, outputChannels, format, pluginId, [this,callback](auto node, std::string error) {
+        impl->pal->createPluginInstance(impl->sampleRate, inputChannels, outputChannels, false, format, pluginId, [this,callback](auto node, std::string error) {
             if (!node)
                 callback(nullptr, "Could not create simple track: " + error);
             else {
