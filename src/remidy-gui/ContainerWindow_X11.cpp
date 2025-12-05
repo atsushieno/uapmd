@@ -94,6 +94,11 @@ public:
 
     void resize(int width, int height) override {
         if (!dpy_ || !wnd_) return;
+        // X11 doesn't allow 0 dimensions - reject invalid resize requests
+        if (width <= 0 || height <= 0) {
+            fprintf(stderr, "ContainerWindow: Rejected invalid resize request: %dx%d\n", width, height);
+            return;
+        }
         b_.width = width;
         b_.height = height;
         XResizeWindow(dpy_, wnd_, (unsigned)width, (unsigned)height);
