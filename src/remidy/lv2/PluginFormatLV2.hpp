@@ -159,11 +159,30 @@ namespace remidy {
 
             ~LV2ControlPortParameterProxyPort() override = default;
 
+            StatusCode getParameter(double *value) override {
+                // Read the actual value from the port buffer
+                if (!value)
+                    return StatusCode::INVALID_PARAMETER_OPERATION;
+                if (port_index < owner->owner->lv2_ports.size()) {
+                    auto buffer = static_cast<float*>(owner->owner->lv2_ports[port_index].port_buffer);
+                    if (buffer) {
+                        *value = static_cast<double>(*buffer);
+                        return StatusCode::OK;
+                    }
+                }
+                return StatusCode::INVALID_PARAMETER_OPERATION;
+            }
+
             StatusCode setParameter(double value, remidy_timestamp_t timestamp) override {
                 // timestamp cannot be supported for ControlPort.
-                current = value;
-                owner->owner->implContext.control_buffer_pointers[port_index] = static_cast<float>(value);
-                return StatusCode::OK;
+                if (port_index < owner->owner->lv2_ports.size()) {
+                    auto buffer = static_cast<float*>(owner->owner->lv2_ports[port_index].port_buffer);
+                    if (buffer) {
+                        *buffer = static_cast<float>(value);
+                        return StatusCode::OK;
+                    }
+                }
+                return StatusCode::INVALID_PARAMETER_OPERATION;
             }
         };
 

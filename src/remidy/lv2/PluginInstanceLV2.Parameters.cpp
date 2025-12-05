@@ -153,11 +153,117 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
         }
     }
 
+    // First, add all patch:writable/readable parameters
     for (auto& p : pl) {
         auto para = p.second.release();
         parameter_handlers.emplace_back(new LV2AtomParameterHandler(this, implContext, para));
         parameter_defs.emplace_back(para);
         mapNodeToUrid(p.first, para);
+    }
+
+    // Then enumerate control ports from the LV2 plugin manifest
+    uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
+    for (uint32_t portIndex = 0; portIndex < numPorts; portIndex++) {
+        auto port = lilv_plugin_get_port_by_index(plugin, portIndex);
+
+        // Only process input control ports
+        if (!implContext.IS_CONTROL_PORT(plugin, port))
+            continue;
+        if (!implContext.IS_INPUT_PORT(plugin, port))
+            continue;
+
+        // Get port name
+        auto nameNode = lilv_port_get_name(plugin, port);
+        if (!nameNode) {
+            logger->logWarning("%s: Control port at index %u has no name. Skipping.", displayName.c_str(), portIndex);
+            continue;
+        }
+        auto portName = std::string{lilv_node_as_string(nameNode)};
+        lilv_node_free(nameNode);
+
+        // Get port symbol for the stable ID
+        auto symbolNode = lilv_port_get_symbol(plugin, port);
+        auto portSymbol = symbolNode ? std::string{lilv_node_as_string(symbolNode)} : std::to_string(portIndex);
+
+        // Get port group
+        auto portGroupNode = lilv_port_get(plugin, port, implContext.statics->port_group_uri_node);
+        auto portGroup = portGroupNode ? std::string{lilv_node_as_uri(portGroupNode)} : "";
+
+        // Get port range (default, min, max)
+        LilvNode *defNode = nullptr, *minNode = nullptr, *maxNode = nullptr;
+        lilv_port_get_range(plugin, port, &defNode, &minNode, &maxNode);
+
+        // Check for special port properties
+        auto portProps = lilv_port_get_properties(plugin, port);
+        bool isInteger = false;
+        bool isToggled = false;
+        bool isEnumeration = false;
+        LILV_FOREACH(nodes, pp, portProps) {
+            auto portProp = lilv_nodes_get(portProps, pp);
+            if (lilv_node_equals(portProp, implContext.statics->integer_uri_node))
+                isInteger = true;
+            if (lilv_node_equals(portProp, implContext.statics->toggled_uri_node))
+                isToggled = true;
+            if (lilv_node_equals(portProp, implContext.statics->enumeration_uri_node))
+                isEnumeration = true;
+        }
+        lilv_nodes_free(portProps);
+
+        // Determine default, min, max values based on port type
+        double defaultValue, minValue, maxValue;
+        if (isToggled) {
+            defaultValue = (defNode && lilv_node_as_float(defNode) > 0.0) ? 1.0 : 0.0;
+            minValue = 0.0;
+            maxValue = 1.0;
+        } else if (isInteger) {
+            defaultValue = defNode ? static_cast<double>(lilv_node_as_int(defNode)) : 0.0;
+            minValue = minNode ? static_cast<double>(lilv_node_as_int(minNode)) : 0.0;
+            maxValue = maxNode ? static_cast<double>(lilv_node_as_int(maxNode)) : 1.0;
+        } else {
+            defaultValue = defNode ? lilv_node_as_float(defNode) : 0.0;
+            minValue = minNode ? lilv_node_as_float(minNode) : 0.0;
+            maxValue = maxNode ? lilv_node_as_float(maxNode) : 1.0;
+        }
+
+        // Get scale points (enumerations)
+        std::vector<ParameterEnumeration> enums{};
+        auto scalePoints = lilv_port_get_scale_points(plugin, port);
+        if (scalePoints) {
+            LILV_FOREACH(scale_points, spi, scalePoints) {
+                auto sp = lilv_scale_points_get(scalePoints, spi);
+                auto labelNode = lilv_scale_point_get_label(sp);
+                auto valueNode = lilv_scale_point_get_value(sp);
+                if (labelNode && valueNode) {
+                    auto label = std::string{lilv_node_as_string(labelNode)};
+                    auto value = lilv_node_as_float(valueNode);
+                    enums.emplace_back(ParameterEnumeration{label, value});
+                }
+            }
+            lilv_nodes_free(scalePoints);
+        } else if (isToggled) {
+            // Add default true/false enumerations for toggle parameters
+            std::string falseLabel = "false";
+            std::string trueLabel = "true";
+            enums.emplace_back(ParameterEnumeration{falseLabel, 0.0});
+            enums.emplace_back(ParameterEnumeration{trueLabel, 1.0});
+        }
+
+        // Clean up range nodes
+        if (defNode) lilv_node_free(defNode);
+        if (minNode) lilv_node_free(minNode);
+        if (maxNode) lilv_node_free(maxNode);
+
+        // Create parameter
+        auto parameter = std::make_unique<PluginParameter>(
+            index, portSymbol, portName, portGroup,
+            defaultValue, minValue, maxValue,
+            true, true, false, isEnumeration || isToggled, enums
+        );
+
+        auto para = parameter.release();
+        parameter_handlers.emplace_back(new LV2ControlPortParameterProxyPort(this, portIndex, implContext, para));
+        parameter_defs.emplace_back(para);
+        index++;
     }
 }
 
