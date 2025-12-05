@@ -11,12 +11,12 @@
 - `cmake/`: Build helpers; `CMakeLists.txt` orchestrates all modules.
 
 ## Build, Test, and Development Commands
-- Configure (Ninja on Linux/macOS): `cmake -B build -G Ninja`
+- Configure (Ninja on Linux/macOS): `cmake -B cmake-build-debug -G Ninja`
 - Configure (Windows/MSVC): `cmake -B build -G "Visual Studio 17 2022" -DBUILD_SHARED_LIBS=OFF`
-- Build: `cmake --build build`
+- Build: `cmake --build cmake-build-debug`
 - Example runs (after build):
-  - Scan plugins: `build/tools/remidy-scan/remidy-scan`
-  - Start service: `build/tools/uapmd-service/uapmd-service "MySynth" VST3 PIPEWIRE`
+  - Scan plugins: `cmake-build-debug/tools/remidy-scan/remidy-scan`
+  - Start service: `cmake-build-debug/tools/uapmd-service/uapmd-service "MySynth" VST3 PIPEWIRE`
 - CI builds on Ubuntu, macOS, and Windows (see `.github/workflows/actions.yml`).
 
 ## Coding Style & Naming Conventions
@@ -33,7 +33,7 @@
 
 ## Commit & Pull Request Guidelines
 - Commits: concise, imperative mood (e.g., "Fix VST3 parameter mapping"). Group related changes; avoid noisy reformatting.
-- PRs: include a clear summary, reproduction steps, platform notes (Linux/macOS/Windows), and linked issues. Ensure `cmake --build build` succeeds on all OSes.
+- PRs: include a clear summary, reproduction steps, platform notes (Linux/macOS/Windows), and linked issues. Ensure `cmake --build cmake-build-debug` succeeds on all OSes.
 - Keep changes modular: headers in `include/`, sources in `src/`, tools in `tools/`, and update `CMakeLists.txt` as needed.
 
 ## Security & Configuration Tips
