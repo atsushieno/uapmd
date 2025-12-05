@@ -185,7 +185,7 @@ namespace remidy_lv2 {
             urids.urid_patch_value = map->map(map->handle, LV2_PATCH__value);
             urids.urid_core_free_wheeling = map->map(map->handle, LV2_CORE__freeWheeling);
 
-            features.logFeature.data = logger;
+            features.logData.handle = logger;
 
             *features.minBlockLengthOption = {LV2_OPTIONS_INSTANCE,
                                                   0,
