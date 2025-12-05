@@ -39,11 +39,11 @@ std::unique_ptr<PluginParameter> createParameter(uint32_t index, const LilvNode*
         else if (type == LV2_ATOM__String ||
                  type == LV2_ATOM__Path ||
                  type == LV2_ATOM__URI) {
-            logger->logInfo("%s: ATOM String, Path, and URI are ignored.", displayName.c_str());
+            logger->logInfo("%s: Parameter \"%s\": ATOM String, Path, and URI are ignored.", displayName.c_str(), label.c_str());
             return nullptr;
         }
         else {
-            logger->logError("%s: Unexpected ATOM type `%s`. Ignored.", displayName.c_str(), type.c_str());
+            logger->logError("%s: Parameter \"%s\": Unexpected ATOM type `%s`. Ignored.", displayName.c_str(), label.c_str(), type.c_str());
             return nullptr;
         }
     }
@@ -118,22 +118,38 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
     int32_t index = 0;
     LILV_FOREACH(nodes, iter, writables) {
         auto node = lilv_nodes_get(writables, iter);
-        auto parameter = createParameter(index++, node, implContext, logger, displayName);
-        if (parameter)
-            pl.emplace_back(std::pair{node, std::move(parameter)});
+        auto parameter = createParameter(index, node, implContext, logger, displayName);
+        if (!parameter) {
+            // Create hidden placeholder for unsupported parameter types to maintain index consistency
+            auto uri = std::string{lilv_node_as_uri(node)};
+            auto placeholderName = std::string{"<unsupported:"} + std::to_string(index) + ">";
+            auto emptyPath = std::string{};
+            parameter = std::make_unique<PluginParameter>(index, uri, placeholderName, emptyPath,
+                                                          0.0, 0.0, 1.0, false, false, true, false);
+        }
+        pl.emplace_back(std::pair{node, std::move(parameter)});
+        index++;
     }
     // iterate through readable patches. If there is a read-only parameter, add to the list.
     auto readables = lilv_world_find_nodes(formatImpl->world, pluginSubject, formatImpl->worldContext->patch_readable_uri_node, nullptr);
     LILV_FOREACH(nodes, iter, readables) {
-        auto node = lilv_nodes_get(writables, iter);
+        auto node = lilv_nodes_get(readables, iter);
         //auto symbol = lilv_world_get_symbol(owner->implContext.world, node);
         auto w = std::find_if(pl.begin(), pl.end(), [&](const auto &item) { return lilv_node_as_string(item.first) == lilv_node_as_string(node); });
         if (w != pl.end())
             w->second->readable(true);
         else {
-            auto parameter = createParameter(index++, node, implContext, logger, displayName);
-            if (parameter)
-                pl.emplace_back(std::pair{node, std::move(parameter)});
+            auto parameter = createParameter(index, node, implContext, logger, displayName);
+            if (!parameter) {
+                // Create hidden placeholder for unsupported parameter types to maintain index consistency
+                auto uri = std::string{lilv_node_as_uri(node)};
+                auto placeholderName = std::string{"<unsupported:"} + std::to_string(index) + ">";
+                auto emptyPath = std::string{};
+                parameter = std::make_unique<PluginParameter>(index, uri, placeholderName, emptyPath,
+                                                              0.0, 0.0, 1.0, false, false, true, false);
+            }
+            pl.emplace_back(std::pair{node, std::move(parameter)});
+            index++;
         }
     }
 
