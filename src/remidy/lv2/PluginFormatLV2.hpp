@@ -340,6 +340,15 @@ namespace remidy {
             remidy_timestamp_t timestamp;
         };
         moodycamel::ConcurrentQueue<PendingParameterChange> pending_parameter_changes{};
+
+        struct PendingAtomEvent {
+            uint32_t port_index;
+            uint32_t buffer_size;
+            uint32_t port_protocol;
+            std::vector<uint8_t> buffer;
+        };
+        moodycamel::ConcurrentQueue<PendingAtomEvent> pending_atom_events{};
+
         std::atomic<bool> in_audio_process{false};
         std::atomic<bool> processing_requested_{false};
         bool processing_active_{false};
@@ -364,6 +373,8 @@ namespace remidy {
         LV2UmpInputDispatcher ump_input_dispatcher{this};
         void enqueueParameterChange(uint32_t index, double value, remidy_timestamp_t timestamp);
         void flushPendingParameterChanges();
+        void enqueueAtomEvent(uint32_t port_index, uint32_t buffer_size, uint32_t port_protocol, const void* buffer);
+        void flushPendingAtomEvents();
 
         int32_t portIndexForAtomGroupIndex(bool isInput, uint8_t atomGroup) {
             for (int i = 0, n = lv2_ports.size(); i < n; i++)

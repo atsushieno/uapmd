@@ -2,6 +2,7 @@
 #include "cmidi2.h"
 #include <algorithm>
 #include <vector>
+#include <cstring>
 #include <lv2/atom/util.h>
 
 remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFormatLV2::Impl* formatImpl, const LilvPlugin* plugin) :
@@ -414,4 +415,50 @@ void remidy::PluginInstanceLV2::flushPendingParameterChanges() {
     PendingParameterChange change{};
     while (pending_parameter_changes.try_dequeue(change))
         ump_input_dispatcher.enqueuePatchSetEvent(static_cast<int32_t>(change.index), change.value, change.timestamp);
+}
+
+void remidy::PluginInstanceLV2::enqueueAtomEvent(uint32_t port_index, uint32_t buffer_size, uint32_t port_protocol, const void* buffer) {
+    PendingAtomEvent event;
+    event.port_index = port_index;
+    event.buffer_size = buffer_size;
+    event.port_protocol = port_protocol;
+    event.buffer.resize(buffer_size);
+    std::memcpy(event.buffer.data(), buffer, buffer_size);
+    pending_atom_events.enqueue(std::move(event));
+}
+
+void remidy::PluginInstanceLV2::flushPendingAtomEvents() {
+    PendingAtomEvent event;
+    while (pending_atom_events.try_dequeue(event)) {
+        // Find the appropriate atom input port
+        // The port_index from the UI might not directly correspond to our internal port indices
+        // We need to write to the control atom port (or the first atom input port if no control port)
+        int32_t targetPortIndex = control_atom_port_index;
+        if (targetPortIndex < 0) {
+            // Find first atom input port
+            for (size_t i = 0; i < lv2_ports.size(); i++) {
+                if (lv2_ports[i].atom_in_index >= 0) {
+                    targetPortIndex = static_cast<int32_t>(i);
+                    break;
+                }
+            }
+        }
+
+        if (targetPortIndex < 0 || targetPortIndex >= static_cast<int32_t>(lv2_ports.size())) {
+            Logger::global()->logWarning("LV2: Cannot flush atom event - no suitable atom input port found");
+            continue;
+        }
+
+        auto& port = lv2_ports[targetPortIndex];
+        auto& forge = port.forge;
+
+        // Write the atom event into the forge
+        const LV2_Atom* atom = reinterpret_cast<const LV2_Atom*>(event.buffer.data());
+
+        // Add frame time (0 for immediate)
+        lv2_atom_forge_frame_time(&forge, 0);
+
+        // Write the atom directly
+        lv2_atom_forge_write(&forge, atom, lv2_atom_total_size(atom));
+    }
 }

@@ -156,6 +156,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProcessStart(remidy::Au
             lv2_atom_forge_sequence_head(&port.forge, &port.frame, owner->implContext.statics->urids.urid_time_frame);
     }
     owner->flushPendingParameterChanges();
+    owner->flushPendingAtomEvents();
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProcessEnd(remidy::AudioProcessContext &src) {

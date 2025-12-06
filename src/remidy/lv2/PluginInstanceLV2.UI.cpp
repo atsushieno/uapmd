@@ -547,7 +547,7 @@ namespace remidy {
             return;
         }
 
-        // Handle atom protocol (for patch properties / parameters)
+        // Handle atom protocol (for patch properties / parameters and other atom events)
         if (port_protocol == uridMap.map(uridMap.handle, LV2_ATOM__eventTransfer)) {
             const LV2_Atom* atom = (const LV2_Atom*)buffer;
 
@@ -557,7 +557,7 @@ namespace remidy {
 
                 const LV2_Atom_Object* obj = (const LV2_Atom_Object*)atom;
 
-                // Check if it's a patch:Set message
+                // Check if it's a patch:Set message for a known parameter
                 LV2_URID patchSet = uridMap.map(uridMap.handle, LV2_PATCH__Set);
                 if (obj->body.otype == patchSet) {
                     // Extract property and value from patch:Set
@@ -604,7 +604,11 @@ namespace remidy {
                                 } else if (value->type == boolType) {
                                     doubleValue = ((const LV2_Atom_Bool*)value)->body ? 1.0 : 0.0;
                                 } else {
-                                    return; // Unsupported value type
+                                    // Not a numeric value - fall through to forward entire atom to plugin
+                                    Logger::global()->logDiagnostic("LV2 UI patch:Set with non-numeric value type %u, forwarding to plugin",
+                                                                     value->type);
+                                    instance->enqueueAtomEvent(port_index, buffer_size, port_protocol, buffer);
+                                    return;
                                 }
 
                                 // Update DSP plugin and notify host listeners
@@ -612,14 +616,22 @@ namespace remidy {
                                 Logger::global()->logDiagnostic("LV2 UI patch:Set: property URID=%u, index=%u, value=%f",
                                                                  propertyUrid, index.value(), doubleValue);
                                 params->setParameterInternal(index.value(), doubleValue, 0, false);
+                                return;
                             } else {
-                                Logger::global()->logWarning("LV2 UI patch:Set: property URID=%u not found in parameter list",
-                                                              propertyUrid);
+                                // Not a known parameter property - forward to plugin
+                                Logger::global()->logDiagnostic("LV2 UI patch:Set: property URID=%u not found in parameter list, forwarding to plugin",
+                                                                 propertyUrid);
                             }
                         }
                     }
                 }
             }
+
+            // For all atom events that aren't handled above (including MIDI, file paths, etc.),
+            // forward them to the plugin's atom input port
+            Logger::global()->logDiagnostic("LV2 UI atom event: port_index=%u, buffer_size=%u, protocol=%u, forwarding to plugin",
+                                             port_index, buffer_size, port_protocol);
+            instance->enqueueAtomEvent(port_index, buffer_size, port_protocol, buffer);
         } else {
             Logger::global()->logDiagnostic("LV2 UI writeFunction: unhandled protocol %u", port_protocol);
         }
