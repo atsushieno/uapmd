@@ -3,8 +3,8 @@ DRAFT DRAFT DRAFT
 
 # Presets API
 
-Presets are not supported well in plugin hosting API in general. Most of JUCE plugins return empty presets, and they work rather like program changes.
-LV2 supports presets fairly well, but they are unordered and comes without stable numeric IDs.
+Presets are not supported well in plugin hosting API in general. Most JUCE plugins return empty presets, and they work rather like program changes.
+LV2 supports presets fairly well, but they are unordered and come without stable numeric IDs.
 
 ## Preset types
 

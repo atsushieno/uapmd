@@ -133,6 +133,48 @@ namespace uapmd {
         }
         StandardPropertiesExtensions::setProgramList(ciDevice, programList);
 
+        // Set up custom property getter/setter for dynamic state management
+        // Retrieve the original getter before setting the new one
+        auto originalGetter = hostProps.get_property_binary_getter();
+
+        // Create custom property getter that uses AudioPluginNode::saveState() for State/fullState
+        auto customGetter = [this, originalGetter](const std::string& property_id, const std::string& res_id) -> std::vector<uint8_t> {
+            if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
+                if (sequencer && instance_id >= 0) {
+                    auto* instance = sequencer->getPluginInstance(instance_id);
+                    if (instance) {
+                        return instance->saveState();
+                    }
+                }
+                return {};
+            }
+            // Fall back to the original delegate
+            return originalGetter(property_id, res_id);
+        };
+        hostProps.set_property_binary_getter(customGetter);
+
+        // Retrieve the original setter before setting the new one
+        auto originalSetter = hostProps.get_property_binary_setter();
+
+        // Create custom property setter that uses AudioPluginNode::loadState() for State/fullState
+        auto customSetter = [this, originalSetter](const std::string& property_id, const std::string& res_id,
+                                                     const std::string& media_type, const std::vector<uint8_t>& body) -> bool {
+            if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
+                if (sequencer && instance_id >= 0) {
+                    auto* instance = sequencer->getPluginInstance(instance_id);
+                    if (instance) {
+                        std::vector<uint8_t> state = body;
+                        instance->loadState(state);
+                        return true;
+                    }
+                }
+                return false;
+            }
+            // Fall back to the original delegate
+            return originalSetter(property_id, res_id, media_type, body);
+        };
+        hostProps.set_property_binary_setter(customSetter);
+
         ci_sessions[muid] = std::move(ciSession);
 
         if (!output_handler_registered && sequencer) {
