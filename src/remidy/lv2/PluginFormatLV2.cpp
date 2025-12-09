@@ -41,8 +41,10 @@ namespace remidy {
             auto authorUrlNode = lilv_plugin_get_author_homepage(plugin);
             auto authorUrl = lilv_node_as_string(authorUrlNode);
             entry->displayName(name);
-            entry->vendorName(authorName);
-            entry->productUrl(authorUrl);
+            if (authorName)
+                entry->vendorName(authorName);
+            if (authorUrl)
+                entry->productUrl(authorUrl);
             ret.emplace_back(std::move(entry));
         }
         return ret;
