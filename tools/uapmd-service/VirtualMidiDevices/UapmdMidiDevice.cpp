@@ -47,9 +47,12 @@ namespace uapmd {
         midicci::MidiCIDeviceConfiguration ci_config{
             midicci::DEFAULT_RECEIVABLE_MAX_SYSEX_SIZE,
             midicci::DEFAULT_MAX_PROPERTY_CHUNK_SIZE,
-            std::format("uapmd-service {}", instance_id),
+            device_name,
             0
         };
+        ci_config.device_info.manufacturer = manufacturer;
+        ci_config.device_info.model = device_name;
+        ci_config.device_info.version = version;
 
         uint32_t muid{static_cast<uint32_t>(rand() & 0x7F7F7F7F)};
 
@@ -87,6 +90,8 @@ namespace uapmd {
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::programListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateMetadata()));
+
+        hostProps.updateCommonRulesDeviceInfo(ci_config.device_info);
 
         auto* instance = sequencer->getPluginInstance(instance_id);
         std::vector<uapmd::ParameterMetadata> parameterList = instance->parameterMetadataList();
