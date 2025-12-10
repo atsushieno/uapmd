@@ -97,6 +97,7 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
 - [atsushieno/cmidi2](atsushieno/cmidi2) - MIT
 - [atsushieno/midicci](atsushieno/midicci) - MIT
+  - [zlib-ng/zlib-ng] - Zlib license.
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)
 - [cginternals/cpplocate](https://github.com/cginternals/cpplocate): the MIT license.
 - [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): the MIT license.
