@@ -24,7 +24,7 @@ FetchContent_MakeAvailable(choc)
 
 FetchContent_Declare(cmidi2
         GIT_REPOSITORY https://github.com/atsushieno/cmidi2
-        GIT_TAG        c232860
+        GIT_TAG        280bb44
         EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(cmidi2)
@@ -43,7 +43,7 @@ FetchContent_MakeAvailable(cpplocate)
 
 FetchContent_Declare(midicci
         NAME            midicci
-        GIT_TAG         06c5c69
+        GIT_TAG         8dafe3c
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
 )
 FetchContent_MakeAvailable(midicci)
