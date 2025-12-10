@@ -54,6 +54,8 @@ namespace uapmd {
         ci_config.device_info.model = device_name;
         ci_config.device_info.version = version;
 
+        auto device_info = ci_config.device_info;
+
         uint32_t muid{static_cast<uint32_t>(rand() & 0x7F7F7F7F)};
 
         auto input_listener_adder = [&](midicci::musicdevice::MidiInputCallback callback) {
@@ -91,7 +93,7 @@ namespace uapmd {
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::stateMetadata()));
 
-        hostProps.updateCommonRulesDeviceInfo(ci_config.device_info);
+        hostProps.updateCommonRulesDeviceInfo(device_info);
 
         auto* instance = sequencer->getPluginInstance(instance_id);
         std::vector<uapmd::ParameterMetadata> parameterList = instance->parameterMetadataList();
