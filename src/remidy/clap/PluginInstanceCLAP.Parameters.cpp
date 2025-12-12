@@ -28,16 +28,16 @@ namespace remidy {
                 std::string name{info.name};
                 std::string module{info.module};
 
-                // Some plugins only have CLAP_PARAM_IS_STEPPED == true (e.g. those from clap-juce-extensions), but
-                // so far we do not support secret text label that cannot be retrieved beforehand.
-                bool isEnum = info.flags & CLAP_PARAM_IS_ENUM;
+                // Some plugins only have CLAP_PARAM_IS_STEPPED == true instead of CLAP_PARAM_IS_ENUM == true (e.g. those from clap-juce-extensions)...
+                bool isEnum = (info.flags & CLAP_PARAM_IS_ENUM) || (info.flags & CLAP_PARAM_IS_STEPPED);
                 if (isEnum) {
                     char enumLabel[1024];
                     // CLAP enum parameters must have value_to_text for all values from min to max
                     for (int i = static_cast<int>(info.min_value); i <= static_cast<int>(info.max_value); i++) {
                         if (owner->plugin->paramsValueToText(info.id, i, enumLabel, sizeof(enumLabel))) {
                             std::string enumLabelString{enumLabel};
-                            enums.emplace_back(enumLabelString, i);
+                            if (!enumLabelString.empty())
+                                enums.emplace_back(enumLabelString, i);
                         }
                     }
                 }
