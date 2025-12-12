@@ -1,14 +1,14 @@
 # The App Architecture
 
-There is an audio plugin "sequencer", which is the audio engine in both remidy-plugin-host and uapmd-service.
+There is an audio plugin "sequencer" which is the audio engine in both remidy-plugin-host and uapmd-service.
 
-A sequencer consists of sequencers. One audio plugin track instantiates an audio plugin graph that can be mapped to one or more channels in a group.
+A sequencer consists of sequences. One audio plugin track instantiates an audio plugin graph that can be mapped to one or more channels in a group.
 
 [Enhancement] A mapping extension is considered for MPE-enabled synths, where we could map MIDI 2.0 inputs to MPE-based MIDI 1.0 messages and send them to the plugin, therefore no need for multi-channel spans.
 
 The channel details could be provided through MIDI-CI Property Exchange ProgramList Resource (M2-108-UM) etc. We can expose which audio plugins are used through those properties.
 
-Saving and loading virtual device settings is done at client side.
+Saving and loading virtual device settings is done at the client side.
 
 ## MIDI API
 
@@ -16,11 +16,11 @@ UAPMD works with the following API with the target platform so far:
 
 - Linux (kernel 6.5 or later): PipeWire 1.4 or later if available, or ALSA 1.2.10 or later.
 - MacOS (14.0 or later): CoreMIDI
-- Windows (probably 11): Windows MIDI Service
+- Windows (probably 11): Windows MIDI Services
 
 Other platform APIs do not support MIDI 2.0 UMP ports (on desktop).
 
-The actual platform MIDI interaction is done through libremidi.
+Regarding all those platform APIs above, the actual platform MIDI interaction is done through `libremidi`.
 
 ## Audio Plugin Graph Configuration
 
@@ -84,11 +84,13 @@ By default, we use platform's default audio I/O device settings.
 
 ## Audio Plugin Hosting
 
-We need to support up to 256 audio plugin "tracks" where each of them maps to an audio plugin graph.
+The audio plugin sequencer engine needs to support multiple audio plugin "tracks" where each of them maps to an audio plugin graph.
 
 For this purpose we need a realtime sequencer-like audio engine.
 
-an audio plugin track contains an audio plugin graph, and an audio plugin graph (in practice) contains an instrument, optionally followed by effect plugins. In the simplest version, the audio plugin graph is just a sequential list of audio plugins. MIDI input port to the instrument, and stereo connections on primary audio bus between the rest of the plugins are assumed.
+An audio plugin track contains an audio plugin graph, and an audio plugin graph (in practice) contains an instrument, optionally followed by effect plugins. In the simplest version, the audio plugin graph is just a sequential list of audio plugins. MIDI input port to the instrument, and stereo connections on primary audio bus between the rest of the plugins are assumed.
+
+We can register as many audio plugins as possible, but one "device" would not be able to support more than 128 plugins because each plugin needs at least one input group and one output group.
 
 [Enhancement] we can have a fully-featured audio plugin graph.
 
