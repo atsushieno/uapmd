@@ -61,7 +61,7 @@ namespace uapmd {
                         .automatable = p->automatable(),
                         .hidden = p->hidden(),
                         .discrete = p->discrete(),
-                        .namedValues = enums
+                        .namedValues = std::vector(enums)
                 });
             }
             return ret;
