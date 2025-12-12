@@ -291,6 +291,14 @@ namespace remidy {
         resize_feature.data = &host_resize_feature;
         ui_feature_structs.push_back(resize_feature);
 
+        // Add port map feature (allows UI to map port symbols to indices)
+        port_map_feature.handle = this;
+        port_map_feature.port_index = portIndex;
+        LV2_Feature port_map_feature_wrapper;
+        port_map_feature_wrapper.URI = LV2_UI__portMap;
+        port_map_feature_wrapper.data = &port_map_feature;
+        ui_feature_structs.push_back(port_map_feature_wrapper);
+
         // Now build the pointer array (after all structs are in place to avoid reallocation issues)
         std::vector<const LV2_Feature*> ui_features;
 
@@ -760,4 +768,3 @@ namespace remidy {
     }
 
 }
-

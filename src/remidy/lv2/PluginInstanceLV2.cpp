@@ -231,6 +231,12 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
 
     lilv_instance_run(instance, process.frameCount());
 
+    // Deliver any LV2 worker responses generated during this cycle
+    remidy_lv2::jalv_worker_emit_responses(&implContext.worker, instance);
+    if (implContext.safe_restore) {
+        remidy_lv2::jalv_worker_emit_responses(&implContext.state_worker, instance);
+    }
+
     // Process Atom outputs and convert to UMP
     auto& eventOut = process.eventOut();
     auto* umpBuffer = static_cast<uint32_t*>(eventOut.getMessages());
@@ -430,16 +436,18 @@ void remidy::PluginInstanceLV2::enqueueAtomEvent(uint32_t port_index, uint32_t b
 void remidy::PluginInstanceLV2::flushPendingAtomEvents() {
     PendingAtomEvent event;
     while (pending_atom_events.try_dequeue(event)) {
-        // Find the appropriate atom input port
-        // The port_index from the UI might not directly correspond to our internal port indices
-        // We need to write to the control atom port (or the first atom input port if no control port)
-        int32_t targetPortIndex = control_atom_port_index;
-        if (targetPortIndex < 0) {
-            // Find first atom input port
-            for (size_t i = 0; i < lv2_ports.size(); i++) {
-                if (lv2_ports[i].atom_in_index >= 0) {
-                    targetPortIndex = static_cast<int32_t>(i);
-                    break;
+        // Prefer the exact port the UI wrote to if it's a valid atom input
+        int32_t targetPortIndex = static_cast<int32_t>(event.port_index);
+        if (targetPortIndex < 0 || targetPortIndex >= static_cast<int32_t>(lv2_ports.size()) ||
+            lv2_ports[targetPortIndex].atom_in_index < 0) {
+            // Fallback: control atom port, else first atom input
+            targetPortIndex = control_atom_port_index;
+            if (targetPortIndex < 0) {
+                for (size_t i = 0; i < lv2_ports.size(); i++) {
+                    if (lv2_ports[i].atom_in_index >= 0) {
+                        targetPortIndex = static_cast<int32_t>(i);
+                        break;
+                    }
                 }
             }
         }
@@ -452,13 +460,14 @@ void remidy::PluginInstanceLV2::flushPendingAtomEvents() {
         auto& port = lv2_ports[targetPortIndex];
         auto& forge = port.forge;
 
-        // Write the atom event into the forge
+        // Write the atom event into the forge as a sequence event
         const LV2_Atom* atom = reinterpret_cast<const LV2_Atom*>(event.buffer.data());
 
         // Add frame time (0 for immediate)
         lv2_atom_forge_frame_time(&forge, 0);
 
-        // Write the atom directly
-        lv2_atom_forge_write(&forge, atom, lv2_atom_total_size(atom));
+        // Recreate the atom header and write the body
+        lv2_atom_forge_atom(&forge, atom->size, atom->type);
+        lv2_atom_forge_write(&forge, LV2_ATOM_BODY_CONST(atom), atom->size);
     }
 }

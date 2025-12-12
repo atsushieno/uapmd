@@ -87,8 +87,9 @@ namespace remidy_lv2 {
             &logFeature,
             &bufSizeFeature,
             &optionsFeature,
-            &workerFeature,
+            // Order matters for plugins like sfizz which pick the last LV2_WORKER__schedule
             &stateWorkerFeature,
+            &workerFeature,
             &threadSafeRestoreFeature,
             &boundedBlockLengthFeature,
             nullptr
@@ -317,6 +318,7 @@ struct JalvWorker {
     ZixRing *requests{nullptr};   ///< Requests to the worker
     ZixRing *responses{nullptr};  ///< Responses from the worker
     void *response{};   ///< Worker response buffer
+    size_t response_capacity{0};
     ZixSem sem{};        ///< Worker semaphore
     ZixThread thread{};     ///< Worker thread
     const LV2_Worker_Interface *iface{nullptr};      ///< Plugin worker interface

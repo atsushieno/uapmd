@@ -110,14 +110,26 @@ jalv_worker_init(LV2ImplWorldContext*                       ZIX_UNUSED(jalv),
                  bool                        threaded)
 {
     worker->iface = iface;
+    // If the plugin does not expose a worker interface yet, keep scheduler inert
+    if (iface == nullptr) {
+        worker->threaded = false;
+        worker->requests = nullptr;
+        worker->responses = nullptr;
+        worker->response = nullptr;
+        worker->response_capacity = 0;
+        return;
+    }
     worker->threaded = threaded;
+    // Use a reasonably large ring to avoid truncation for typical payloads (e.g., file paths)
+    const size_t ring_capacity = 262144; // 256 KB
     if (threaded) {
         zix_thread_create(&worker->thread, 4096, worker_func, worker);
-        worker->requests = zix_ring_new(zix_default_allocator(), 4096);
+        worker->requests = zix_ring_new(zix_default_allocator(), ring_capacity);
         zix_ring_mlock(worker->requests);
     }
-    worker->responses = zix_ring_new(zix_default_allocator(), 4096);
-    worker->response  = malloc(4096);
+    worker->responses = zix_ring_new(zix_default_allocator(), ring_capacity);
+    worker->response_capacity = 4096;
+    worker->response  = malloc(worker->response_capacity);
     zix_ring_mlock(worker->responses);
 }
 
@@ -137,8 +149,16 @@ jalv_worker_destroy(JalvWorker* worker)
         if (worker->threaded) {
             zix_ring_free(worker->requests);
         }
+        worker->requests = nullptr;
+    }
+    if (worker->responses) {
         zix_ring_free(worker->responses);
+        worker->responses = nullptr;
+    }
+    if (worker->response) {
         free(worker->response);
+        worker->response = nullptr;
+        worker->response_capacity = 0;
     }
 }
 
@@ -167,11 +187,26 @@ jalv_worker_schedule(LV2_Worker_Schedule_Handle handle,
 void
 jalv_worker_emit_responses(JalvWorker* worker, LilvInstance* instance)
 {
-    if (worker->responses) {
+    if (worker && worker->responses && worker->iface && instance) {
         uint32_t read_space = zix_ring_read_space(worker->responses);
         while (read_space) {
             uint32_t size = 0;
             zix_ring_read(worker->responses, (char*)&size, sizeof(size));
+
+            // Ensure response buffer can hold the payload
+            if (worker->response_capacity < size) {
+                void* bigger = realloc(worker->response, size);
+                if (bigger) {
+                    worker->response = bigger;
+                    worker->response_capacity = size;
+                } else {
+                    // Drop this response if we cannot allocate
+                    std::vector<char> tmp(size);
+                    zix_ring_read(worker->responses, tmp.data(), size);
+                    read_space -= sizeof(size) + size;
+                    continue;
+                }
+            }
 
             zix_ring_read(worker->responses, (char*)worker->response, size);
 
@@ -459,10 +494,9 @@ LilvInstance* instantiate_plugin(
         const auto* iface = (const LV2_Worker_Interface*)
                 lilv_instance_get_extension_data(ctx->instance, LV2_WORKER__interface);
 
+        // Initialize both worker handles so either schedule feature is valid
         jalv_worker_init(worldContext, &ctx->worker, iface, true);
-        if (ctx->safe_restore) {
-            jalv_worker_init(worldContext, &ctx->state_worker, iface, false);
-        }
+        jalv_worker_init(worldContext, &ctx->state_worker, iface, false);
     }
 
     // set offline mode
