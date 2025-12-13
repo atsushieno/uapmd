@@ -23,6 +23,13 @@ export interface ParameterInfo {
 export class PluginInstance {
     private handle: ffi.PluginInstanceHandle;
 
+    /**
+     * Create a plugin instance synchronously (not recommended).
+     * WARNING: This may deadlock if the plugin requires main thread initialization.
+     * Use PluginInstance.createAsync() instead for proper main thread instantiation.
+     *
+     * @deprecated Use PluginInstance.createAsync() instead
+     */
     constructor(format: PluginFormat, entry: PluginCatalogEntry) {
         const handle = ffi.remidy_instance_create(
             format._getHandle(),
@@ -34,6 +41,49 @@ export class PluginInstance {
         }
 
         this.handle = handle;
+    }
+
+    /**
+     * Internal factory method to create instance from handle
+     */
+    private static fromHandle(handle: ffi.PluginInstanceHandle): PluginInstance {
+        const instance = Object.create(PluginInstance.prototype);
+        instance.handle = handle;
+        return instance;
+    }
+
+    /**
+     * Create a plugin instance asynchronously (recommended).
+     * This ensures the plugin is instantiated on the main thread,
+     * which is required by many plugin formats.
+     */
+    static async createAsync(format: PluginFormat, entry: PluginCatalogEntry): Promise<PluginInstance> {
+        return new Promise((resolve, reject) => {
+            // Use setImmediate to ensure we're on the main event loop
+            setImmediate(() => {
+                try {
+                    const callback = (instance: ffi.PluginInstanceHandle | null, error: string | null, _userData: any) => {
+                        if (error) {
+                            reject(new Error(`Failed to create plugin instance: ${error}`));
+                        } else if (!instance) {
+                            reject(new Error('Failed to create plugin instance: unknown error'));
+                        } else {
+                            resolve(PluginInstance.fromHandle(instance));
+                        }
+                    };
+
+                    // Call the async create function
+                    ffi.remidy_instance_create_async(
+                        format._getHandle(),
+                        entry._getHandle(),
+                        callback,
+                        null
+                    );
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        });
     }
 
     dispose(): void {
@@ -119,14 +169,14 @@ export class PluginInstance {
     }
 
     getParameterValue(paramId: number): number | null {
-        const value: any = { value: 0 };
+        const value = [0.0];  // koffi expects an array for out parameters
         const result = ffi.remidy_instance_get_parameter_value(this.handle, paramId, value);
 
         if (result !== ffi.StatusCode.OK) {
             return null;
         }
 
-        return value.value;
+        return value[0];
     }
 
     setParameterValue(paramId: number, value: number): void {

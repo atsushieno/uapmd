@@ -7,10 +7,25 @@ function getLibraryPath(): string {
     const platform = os.platform();
     const ext = platform === 'darwin' ? 'dylib' : platform === 'win32' ? 'dll' : 'so';
 
+    // Find the package root by looking for where src/ directory is
+    // When running from dist/src/ffi.js, __dirname is dist/src
+    // When running from dist/examples/*.js, __dirname is dist/examples
+    let packageRoot = __dirname;
+
+    // Navigate up to find the package root (where package.json is)
+    while (packageRoot !== path.dirname(packageRoot)) {
+        const srcPath = path.join(packageRoot, 'src');
+        const pkgPath = path.join(packageRoot, 'package.json');
+        if (require('fs').existsSync(pkgPath)) {
+            break;
+        }
+        packageRoot = path.dirname(packageRoot);
+    }
+
     // Try different possible locations
     const possiblePaths = [
-        path.join(__dirname, '..', 'dist', 'native', `libremidy_c.${ext}`),
-        path.join(__dirname, '..', 'native', 'build', `libremidy_c.${ext}`),
+        path.join(packageRoot, 'dist', 'native', `libremidy_c.${ext}`),
+        path.join(packageRoot, 'native', 'build', `libremidy_c.${ext}`),
         `libremidy_c.${ext}`, // System path
     ];
 
@@ -37,11 +52,11 @@ export enum StatusCode {
 }
 
 // Opaque pointer types
-export type PluginCatalogHandle = koffi.IKoffiRegisteredType;
-export type PluginCatalogEntryHandle = koffi.IKoffiRegisteredType;
-export type PluginFormatHandle = koffi.IKoffiRegisteredType;
-export type PluginInstanceHandle = koffi.IKoffiRegisteredType;
-export type PluginScanToolHandle = koffi.IKoffiRegisteredType;
+export type PluginCatalogHandle = koffi.IKoffiCType;
+export type PluginCatalogEntryHandle = koffi.IKoffiCType;
+export type PluginFormatHandle = koffi.IKoffiCType;
+export type PluginInstanceHandle = koffi.IKoffiCType;
+export type PluginScanToolHandle = koffi.IKoffiCType;
 
 // Define opaque pointer types
 const RemidyPluginCatalog = koffi.opaque('RemidyPluginCatalog');
@@ -132,9 +147,25 @@ export const remidy_scan_tool_get_format_at = lib.func('remidy_scan_tool_get_for
 
 // ========== PluginInstance API ==========
 
+// Callback type for async instance creation
+export type InstanceCreateCallback = (
+    instance: PluginInstanceHandle | null,
+    error: string | null,
+    userData: any
+) => void;
+
+// Define the callback signature for koffi
+const RemidyInstanceCreateCallback = koffi.proto('void RemidyInstanceCreateCallback(void* instance, const char* error, void* user_data)');
+
 export const remidy_instance_create = lib.func('remidy_instance_create',
     koffi.pointer(RemidyPluginInstance),
     [koffi.pointer(RemidyPluginFormat), koffi.pointer(RemidyPluginCatalogEntry)]);
+
+export const remidy_instance_create_async = lib.func('remidy_instance_create_async',
+    'void',
+    [koffi.pointer(RemidyPluginFormat), koffi.pointer(RemidyPluginCatalogEntry),
+     koffi.pointer(RemidyInstanceCreateCallback), koffi.pointer('void')]);
+
 export const remidy_instance_destroy = lib.func('remidy_instance_destroy',
     'void', [koffi.pointer(RemidyPluginInstance)]);
 export const remidy_instance_configure = lib.func('remidy_instance_configure',
@@ -154,5 +185,16 @@ export const remidy_instance_get_parameter_value = lib.func('remidy_instance_get
     'int', [koffi.pointer(RemidyPluginInstance), 'uint32_t', koffi.out(koffi.pointer('double'))]);
 export const remidy_instance_set_parameter_value = lib.func('remidy_instance_set_parameter_value',
     'int', [koffi.pointer(RemidyPluginInstance), 'uint32_t', 'double']);
+
+// ========== EventLoop API ==========
+
+// Callback type for main thread tasks
+const RemidyMainThreadTask = koffi.proto('void RemidyMainThreadTask(void* user_data)');
+
+// Callback type for enqueuing tasks
+const RemidyEnqueueCallback = koffi.proto('void RemidyEnqueueCallback(void* task, void* user_data, void* context)');
+
+export const remidy_eventloop_init_nodejs = lib.func('remidy_eventloop_init_nodejs',
+    'void', [koffi.pointer(RemidyEnqueueCallback), koffi.pointer('void')]);
 
 export { RemidyConfigurationRequest, RemidyParameterInfo, RemidyPluginFormatInfo };

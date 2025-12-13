@@ -58,9 +58,9 @@ async function main() {
             return;
         }
 
-        // Create instance
+        // Create instance asynchronously (ensures main thread instantiation)
         console.log('Creating plugin instance...');
-        const instance = new PluginInstance(format, plugin);
+        const instance = await PluginInstance.createAsync(format, plugin);
 
         // Configure the plugin
         console.log('Configuring plugin...');

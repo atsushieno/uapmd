@@ -73,10 +73,27 @@ typedef struct {
     bool has_main_output_channels;
 } RemidyConfigurationRequest;
 
+// Callback type for async instance creation
+typedef void (*RemidyInstanceCreateCallback)(
+    RemidyPluginInstance* instance,
+    const char* error,
+    void* user_data
+);
+
+// Synchronous instance creation (may deadlock if plugin requires main thread)
 RemidyPluginInstance* remidy_instance_create(
     RemidyPluginFormat* format,
     RemidyPluginCatalogEntry* entry
 );
+
+// Asynchronous instance creation with callback
+void remidy_instance_create_async(
+    RemidyPluginFormat* format,
+    RemidyPluginCatalogEntry* entry,
+    RemidyInstanceCreateCallback callback,
+    void* user_data
+);
+
 void remidy_instance_destroy(RemidyPluginInstance* instance);
 RemidyStatusCode remidy_instance_configure(
     RemidyPluginInstance* instance,
@@ -112,6 +129,18 @@ RemidyStatusCode remidy_instance_set_parameter_value(
     RemidyPluginInstance* instance,
     uint32_t param_id,
     double value
+);
+
+// ========== EventLoop API ==========
+
+// Callback type for enqueueing tasks on main thread
+typedef void (*RemidyMainThreadTask)(void* user_data);
+
+// Initialize the event loop for Node.js environment
+// This should be called once at startup from the Node.js main thread
+void remidy_eventloop_init_nodejs(
+    void (*enqueue_callback)(RemidyMainThreadTask task, void* user_data, void* context),
+    void* context
 );
 
 #ifdef __cplusplus

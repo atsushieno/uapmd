@@ -3,17 +3,73 @@
 #include "remidy-tooling/PluginScanTool.hpp"
 #include <cstring>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+#include <functional>
 
 using namespace remidy;
 using namespace remidy_tooling;
+
+// Node.js EventLoop implementation
+namespace {
+    class NodeJSEventLoop : public remidy::EventLoop {
+    private:
+        void (*enqueue_callback_)(RemidyMainThreadTask task, void* user_data, void* context);
+        void* context_;
+        std::mutex task_mutex_;
+        struct TaskWrapper {
+            std::function<void()> func;
+        };
+
+    public:
+        NodeJSEventLoop(void (*enqueue_callback)(RemidyMainThreadTask, void*, void*), void* context)
+            : enqueue_callback_(enqueue_callback), context_(context) {}
+
+    protected:
+        void initializeOnUIThreadImpl() override {
+            // Nothing to do for Node.js - it's already initialized
+        }
+
+        bool runningOnMainThreadImpl() override {
+            // In Node.js, we're always on the main thread (single-threaded event loop)
+            return true;
+        }
+
+        void enqueueTaskOnMainThreadImpl(std::function<void()>&& func) override {
+            // Create a wrapper that will be passed to Node.js
+            auto* wrapper = new TaskWrapper{std::move(func)};
+
+            // Call the JavaScript callback to schedule this on Node.js event loop
+            enqueue_callback_(
+                [](void* user_data) {
+                    auto* wrapper = static_cast<TaskWrapper*>(user_data);
+                    wrapper->func();
+                    delete wrapper;
+                },
+                wrapper,
+                context_
+            );
+        }
+
+        void startImpl() override {
+            // Node.js event loop is already running
+        }
+
+        void stopImpl() override {
+            // We don't control Node.js event loop
+        }
+    };
+
+    NodeJSEventLoop* nodejs_event_loop = nullptr;
+}
 
 // Helper to convert C++ StatusCode to C enum
 static RemidyStatusCode to_c_status(StatusCode status) {
     switch (status) {
         case StatusCode::OK: return REMIDY_OK;
-        case StatusCode::Error: return REMIDY_ERROR;
-        case StatusCode::NotSupported: return REMIDY_NOT_SUPPORTED;
-        case StatusCode::InvalidParameter: return REMIDY_INVALID_PARAMETER;
+        case StatusCode::NOT_IMPLEMENTED: return REMIDY_NOT_SUPPORTED;
+        case StatusCode::INVALID_PARAMETER_OPERATION: return REMIDY_INVALID_PARAMETER;
         default: return REMIDY_ERROR;
     }
 }
@@ -158,6 +214,46 @@ RemidyPluginFormatInfo remidy_scan_tool_get_format_at(RemidyPluginScanTool* tool
 
 // ========== PluginInstance API ==========
 
+// Helper struct to hold callback data
+struct InstanceCreateCallbackData {
+    RemidyInstanceCreateCallback callback;
+    void* user_data;
+};
+
+void remidy_instance_create_async(
+    RemidyPluginFormat* format,
+    RemidyPluginCatalogEntry* entry,
+    RemidyInstanceCreateCallback callback,
+    void* user_data
+) {
+    try {
+        auto* fmt = reinterpret_cast<PluginFormat*>(format);
+        auto* ent = reinterpret_cast<PluginCatalogEntry*>(entry);
+
+        // Create callback data on heap to survive this function scope
+        auto* cb_data = new InstanceCreateCallbackData{callback, user_data};
+
+        fmt->createInstance(ent, {}, [cb_data](std::unique_ptr<PluginInstance> instance, std::string error) {
+            // Call the user's callback
+            if (cb_data->callback) {
+                RemidyPluginInstance* inst = instance ? reinterpret_cast<RemidyPluginInstance*>(instance.release()) : nullptr;
+                const char* err = error.empty() ? nullptr : error.c_str();
+                cb_data->callback(inst, err, cb_data->user_data);
+            }
+            delete cb_data;
+        });
+    } catch (const std::exception& e) {
+        // Call callback with error
+        if (callback) {
+            callback(nullptr, e.what(), user_data);
+        }
+    } catch (...) {
+        if (callback) {
+            callback(nullptr, "Unknown error", user_data);
+        }
+    }
+}
+
 RemidyPluginInstance* remidy_instance_create(
     RemidyPluginFormat* format,
     RemidyPluginCatalogEntry* entry
@@ -165,8 +261,27 @@ RemidyPluginInstance* remidy_instance_create(
     try {
         auto* fmt = reinterpret_cast<PluginFormat*>(format);
         auto* ent = reinterpret_cast<PluginCatalogEntry*>(entry);
-        auto instance = fmt->createInstance(ent);
-        return reinterpret_cast<RemidyPluginInstance*>(instance.release());
+
+        // createInstance is now async with callback, so we need to block and wait
+        PluginInstance* result = nullptr;
+        std::mutex mtx;
+        std::condition_variable cv;
+        bool done = false;
+
+        fmt->createInstance(ent, {}, [&](std::unique_ptr<PluginInstance> instance, std::string error) {
+            std::lock_guard<std::mutex> lock(mtx);
+            if (instance) {
+                result = instance.release();
+            }
+            done = true;
+            cv.notify_one();
+        });
+
+        // Wait for callback
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock, [&]{ return done; });
+
+        return reinterpret_cast<RemidyPluginInstance*>(result);
     } catch (...) {
         return nullptr;
     }
@@ -222,9 +337,11 @@ RemidyStatusCode remidy_instance_stop_processing(RemidyPluginInstance* instance)
 
 int remidy_instance_get_parameter_count(RemidyPluginInstance* instance) {
     try {
-        auto* params = reinterpret_cast<PluginInstance*>(instance)->parameters();
-        if (!params) return 0;
-        return static_cast<int>(params->parameterCount());
+        auto* inst = reinterpret_cast<PluginInstance*>(instance);
+        auto* paramSupport = inst->parameters();
+        if (!paramSupport) return 0;
+        auto& params = paramSupport->parameters();
+        return static_cast<int>(params.size());
     } catch (...) {
         return 0;
     }
@@ -236,20 +353,25 @@ RemidyStatusCode remidy_instance_get_parameter_info(
     RemidyParameterInfo* info
 ) {
     try {
-        auto* params = reinterpret_cast<PluginInstance*>(instance)->parameters();
-        if (!params) return REMIDY_NOT_SUPPORTED;
+        auto* inst = reinterpret_cast<PluginInstance*>(instance);
+        auto* paramSupport = inst->parameters();
+        if (!paramSupport) return REMIDY_NOT_SUPPORTED;
 
-        auto meta = params->parameterMetadata(index);
-        if (!meta) return REMIDY_INVALID_PARAMETER;
+        auto& params = paramSupport->parameters();
+        if (index < 0 || static_cast<size_t>(index) >= params.size())
+            return REMIDY_INVALID_PARAMETER;
 
-        info->id = meta->id;
-        strncpy(info->name, meta->displayName.c_str(), sizeof(info->name) - 1);
+        auto* param = params[index];
+        if (!param) return REMIDY_INVALID_PARAMETER;
+
+        info->id = param->index();
+        strncpy(info->name, param->name().c_str(), sizeof(info->name) - 1);
         info->name[sizeof(info->name) - 1] = '\0';
-        info->min_value = meta->minValue;
-        info->max_value = meta->maxValue;
-        info->default_value = meta->defaultValue;
-        info->is_automatable = meta->isAutomatable;
-        info->is_readonly = meta->isReadOnly;
+        info->min_value = param->minPlainValue();
+        info->max_value = param->maxPlainValue();
+        info->default_value = param->defaultPlainValue();
+        info->is_automatable = param->automatable();
+        info->is_readonly = !param->readable();
 
         return REMIDY_OK;
     } catch (...) {
@@ -263,13 +385,15 @@ RemidyStatusCode remidy_instance_get_parameter_value(
     double* value
 ) {
     try {
-        auto* params = reinterpret_cast<PluginInstance*>(instance)->parameters();
-        if (!params) return REMIDY_NOT_SUPPORTED;
+        auto* inst = reinterpret_cast<PluginInstance*>(instance);
+        auto* paramSupport = inst->parameters();
+        if (!paramSupport) return REMIDY_NOT_SUPPORTED;
 
-        auto val = params->getParameter(param_id);
-        if (!val.has_value()) return REMIDY_INVALID_PARAMETER;
+        double val;
+        auto status = paramSupport->getParameter(param_id, &val);
+        if (status != StatusCode::OK) return to_c_status(status);
 
-        *value = val.value();
+        *value = val;
         return REMIDY_OK;
     } catch (...) {
         return REMIDY_ERROR;
@@ -282,13 +406,27 @@ RemidyStatusCode remidy_instance_set_parameter_value(
     double value
 ) {
     try {
-        auto* params = reinterpret_cast<PluginInstance*>(instance)->parameters();
-        if (!params) return REMIDY_NOT_SUPPORTED;
+        auto* inst = reinterpret_cast<PluginInstance*>(instance);
+        auto* paramSupport = inst->parameters();
+        if (!paramSupport) return REMIDY_NOT_SUPPORTED;
 
-        auto status = params->setParameter(param_id, value);
+        // timestamp of 0 means immediate
+        auto status = paramSupport->setParameter(param_id, value, 0);
         return to_c_status(status);
     } catch (...) {
         return REMIDY_ERROR;
+    }
+}
+
+// ========== EventLoop API ==========
+
+void remidy_eventloop_init_nodejs(
+    void (*enqueue_callback)(RemidyMainThreadTask task, void* user_data, void* context),
+    void* context
+) {
+    if (!nodejs_event_loop) {
+        nodejs_event_loop = new NodeJSEventLoop(enqueue_callback, context);
+        remidy::setEventLoop(nodejs_event_loop);
     }
 }
 

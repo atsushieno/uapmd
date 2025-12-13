@@ -1,5 +1,8 @@
 // Main entry point for @remidy/node package
 
+// Initialize the EventLoop for Node.js (must happen before any plugin operations)
+import './eventloop';
+
 export { StatusCode } from './ffi';
 
 export {
