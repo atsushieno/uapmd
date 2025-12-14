@@ -7,6 +7,7 @@
 #include <condition_variable>
 #include <queue>
 #include <functional>
+#include <thread>
 
 using namespace remidy;
 using namespace remidy_tooling;
@@ -21,6 +22,7 @@ namespace {
         struct TaskWrapper {
             std::function<void()> func;
         };
+        std::thread::id main_thread_id_{};
 
     public:
         NodeJSEventLoop(void (*enqueue_callback)(RemidyMainThreadTask, void*, void*), void* context)
@@ -28,12 +30,14 @@ namespace {
 
     protected:
         void initializeOnUIThreadImpl() override {
-            // Nothing to do for Node.js - it's already initialized
+            main_thread_id_ = std::this_thread::get_id();
         }
 
         bool runningOnMainThreadImpl() override {
-            // In Node.js, we're always on the main thread (single-threaded event loop)
-            return true;
+            if (main_thread_id_ == std::thread::id{}) {
+                return false;
+            }
+            return std::this_thread::get_id() == main_thread_id_;
         }
 
         void enqueueTaskOnMainThreadImpl(std::function<void()>&& func) override {
