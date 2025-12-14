@@ -21,7 +21,18 @@ export {
     PluginInstance,
     type ConfigurationRequest,
     type ParameterInfo,
+    type PluginUICreateOptions,
+    type NativeHandle,
 } from './plugin-instance';
+
+export {
+    ContainerWindow,
+    type Bounds,
+} from './container-window';
+
+export {
+    GLContextGuard,
+} from './gl-context-guard';
 
 // Re-export for convenience
 export { PluginCatalog as Catalog } from './plugin-catalog';

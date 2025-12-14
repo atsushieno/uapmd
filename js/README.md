@@ -216,12 +216,48 @@ Information about a plugin parameter.
 - `isAutomatable`: Can be automated
 - `isReadonly`: Is read-only
 
+### GUI Utilities
+
+The package also exposes light bindings for remidy-gui helpers:
+
+- `ContainerWindow`: Create native top-level windows (HWND/NSView/X11) that plugins can embed their editors into.
+- `GLContextGuard`: RAII helper that captures the current OpenGL context and restores it when disposed, mirroring the native host’s guard against misbehaving plugins.
+
+### ContainerWindow
+
+Native window container for plugin UI editors.
+
+#### Methods
+
+- `constructor(title, width, height, onClose?)`: Create a new container window
+- `show(visible)`: Show or hide the window
+- `resize(width, height)`: Resize the window
+- `getBounds()`: Get window bounds (x, y, width, height)
+- `dispose()`: Clean up resources
+
+#### Properties
+
+- `nativeHandle`: Platform-specific window handle (HWND on Windows, NSView* on macOS, XID on Linux)
+
+### Bounds
+
+Window bounds information.
+
+#### Properties
+
+- `x`: X position
+- `y`: Y position
+- `width`: Width in pixels
+- `height`: Height in pixels
+
 ## Examples
 
 See the `examples/` directory for complete working examples:
 
 - `scan-plugins.ts`: Plugin scanning and catalog management
 - `plugin-instance.ts`: Loading and controlling plugin instances
+- `web-plugin-host/`: Browser-based UI that mirrors the native `remidy-plugin-host` tool
+- `electron-plugin-host/`: Desktop Electron UI that can open plugin editors via native container windows
 
 Run examples:
 
@@ -229,6 +265,10 @@ Run examples:
 npm run build
 node dist/examples/scan-plugins.js
 node dist/examples/plugin-instance.js
+# start the web UI server (then open http://localhost:5173)
+npm run example:web-host
+# launch the Electron desktop host
+npm run example:electron-host
 ```
 
 ## Architecture

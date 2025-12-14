@@ -2,6 +2,30 @@ import * as ffi from './ffi';
 import { PluginCatalogEntry } from './plugin-catalog';
 import { PluginFormat } from './plugin-scan-tool';
 
+export type NativeHandle = Buffer | bigint | number;
+
+function normalizeHandle(handle?: NativeHandle | null): bigint {
+    if (!handle) {
+        return 0n;
+    }
+    if (typeof handle === 'bigint') {
+        return handle;
+    }
+    if (typeof handle === 'number') {
+        return BigInt(handle);
+    }
+    if (Buffer.isBuffer(handle)) {
+        if (handle.length >= 8) {
+            return handle.readBigUInt64LE(0);
+        }
+        if (handle.length >= 4) {
+            return BigInt(handle.readUInt32LE(0));
+        }
+        throw new Error('Unsupported native handle length');
+    }
+    throw new Error('Unsupported native handle type');
+}
+
 export interface ConfigurationRequest {
     sampleRate?: number;
     bufferSizeInSamples?: number;
@@ -20,8 +44,15 @@ export interface ParameterInfo {
     isReadonly: boolean;
 }
 
+export interface PluginUICreateOptions {
+    floating?: boolean;
+    parentHandle?: NativeHandle;
+    onResize?: (width: number, height: number) => boolean;
+}
+
 export class PluginInstance {
     private handle: ffi.PluginInstanceHandle;
+    private uiResizeCallback: ((width: number, height: number) => boolean) | null = null;
 
     /**
      * Create a plugin instance synchronously (not recommended).
@@ -137,11 +168,9 @@ export class PluginInstance {
         }
 
         // Convert char array to string
-        const nameBytes = info.name as number[];
-        let name = '';
-        for (let i = 0; i < nameBytes.length && nameBytes[i] !== 0; i++) {
-            name += String.fromCharCode(nameBytes[i]);
-        }
+        const nameBuffer = Buffer.from(info.name as Buffer);
+        const nullIndex = nameBuffer.indexOf(0);
+        const name = nameBuffer.toString('utf8', 0, nullIndex >= 0 ? nullIndex : undefined);
 
         return {
             id: info.id,
@@ -184,5 +213,71 @@ export class PluginInstance {
         if (result !== ffi.StatusCode.OK) {
             throw new Error(`Failed to set parameter ${paramId} to ${value}: status ${result}`);
         }
+    }
+
+    hasUISupport(): boolean {
+        return ffi.remidy_instance_has_ui(this.handle);
+    }
+
+    createUI(options: PluginUICreateOptions = {}): void {
+        const parentHandle = normalizeHandle(options.parentHandle);
+        const resizeCallback = options.onResize
+            ? (width: number, height: number) => options.onResize!(width, height)
+            : null;
+
+        const status = ffi.remidy_instance_create_ui(
+            this.handle,
+            options.floating ?? false,
+            parentHandle,
+            resizeCallback,
+            null
+        );
+        if (status !== ffi.StatusCode.OK) {
+            throw new Error(`Failed to create plugin UI: status ${status}`);
+        }
+        this.uiResizeCallback = resizeCallback;
+    }
+
+    destroyUI(): void {
+        ffi.remidy_instance_destroy_ui(this.handle);
+        this.uiResizeCallback = null;
+    }
+
+    showUI(): void {
+        const status = ffi.remidy_instance_show_ui(this.handle);
+        if (status !== ffi.StatusCode.OK) {
+            throw new Error(`Failed to show plugin UI: status ${status}`);
+        }
+    }
+
+    hideUI(): void {
+        const status = ffi.remidy_instance_hide_ui(this.handle);
+        if (status !== ffi.StatusCode.OK) {
+            throw new Error(`Failed to hide plugin UI: status ${status}`);
+        }
+    }
+
+    getUISize(): { width: number; height: number } | null {
+        const width = [0];
+        const height = [0];
+        const status = ffi.remidy_instance_get_ui_size(this.handle, width, height);
+        if (status === ffi.StatusCode.NOT_SUPPORTED) {
+            return null;
+        }
+        if (status !== ffi.StatusCode.OK) {
+            throw new Error(`Failed to query plugin UI size: status ${status}`);
+        }
+        return { width: width[0], height: height[0] };
+    }
+
+    setUISize(width: number, height: number): void {
+        const status = ffi.remidy_instance_set_ui_size(this.handle, width, height);
+        if (status !== ffi.StatusCode.OK) {
+            throw new Error(`Failed to resize plugin UI: status ${status}`);
+        }
+    }
+
+    canUIResize(): boolean {
+        return ffi.remidy_instance_can_ui_resize(this.handle);
     }
 }

@@ -10,6 +10,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(REMIDY_BUILD_DIR ${CMAKE_SOURCE_DIR}/../../cmake-build-debug)
 set(REMIDY_LIB ${REMIDY_BUILD_DIR}/src/remidy/libremidy.a)
 set(REMIDY_TOOLING_LIB ${REMIDY_BUILD_DIR}/src/remidy-tooling/libremidy-tooling.a)
+set(REMIDY_GUI_LIB ${REMIDY_BUILD_DIR}/src/remidy-gui/libremidy-gui.a)
 
 # Create shared library for FFI
 add_library(remidy_c SHARED
@@ -31,6 +32,7 @@ target_link_libraries(remidy_c
     PRIVATE
         ${REMIDY_LIB}
         ${REMIDY_TOOLING_LIB}
+        ${REMIDY_GUI_LIB}
         ${REMIDY_BUILD_DIR}/lib/Debug/libsdk_hosting.a
         ${REMIDY_BUILD_DIR}/lib/Debug/libsdk_common.a
         ${REMIDY_BUILD_DIR}/lib/Debug/libsdk.a
@@ -48,7 +50,12 @@ if(APPLE)
         "-framework AudioToolbox"
         "-framework Foundation"
         "-framework AppKit"
+        "-framework Cocoa"
+        "-framework OpenGL"
     )
+elseif(UNIX)
+    find_package(X11 REQUIRED)
+    target_link_libraries(remidy_c PRIVATE X11::X11)
 endif()
 
 # Find and link LV2 dependencies

@@ -57,6 +57,8 @@ export type PluginCatalogEntryHandle = koffi.IKoffiCType;
 export type PluginFormatHandle = koffi.IKoffiCType;
 export type PluginInstanceHandle = koffi.IKoffiCType;
 export type PluginScanToolHandle = koffi.IKoffiCType;
+export type ContainerWindowHandle = koffi.IKoffiCType;
+export type GLContextGuardHandle = koffi.IKoffiCType;
 
 // Define opaque pointer types
 const RemidyPluginCatalog = koffi.opaque('RemidyPluginCatalog');
@@ -64,6 +66,8 @@ const RemidyPluginCatalogEntry = koffi.opaque('RemidyPluginCatalogEntry');
 const RemidyPluginFormat = koffi.opaque('RemidyPluginFormat');
 const RemidyPluginInstance = koffi.opaque('RemidyPluginInstance');
 const RemidyPluginScanTool = koffi.opaque('RemidyPluginScanTool');
+const RemidyContainerWindow = koffi.opaque('RemidyContainerWindow');
+const RemidyGLContextGuard = koffi.opaque('RemidyGLContextGuard');
 
 // Struct definitions
 const RemidyConfigurationRequest = koffi.struct('RemidyConfigurationRequest', {
@@ -89,6 +93,13 @@ const RemidyParameterInfo = koffi.struct('RemidyParameterInfo', {
 const RemidyPluginFormatInfo = koffi.struct('RemidyPluginFormatInfo', {
     name: 'string',
     handle: koffi.pointer(RemidyPluginFormat),
+});
+
+const RemidyBounds = koffi.struct('RemidyBounds', {
+    x: 'int',
+    y: 'int',
+    width: 'int',
+    height: 'int',
 });
 
 // ========== PluginCatalog API ==========
@@ -156,6 +167,8 @@ export type InstanceCreateCallback = (
 
 // Define the callback signature for koffi
 const RemidyInstanceCreateCallback = koffi.proto('void RemidyInstanceCreateCallback(void* instance, const char* error, void* user_data)');
+const RemidyUIResizeCallback = koffi.proto('bool RemidyUIResizeCallback(uint32_t width, uint32_t height, void* user_data)');
+const RemidyContainerWindowCloseCallback = koffi.proto('void RemidyContainerWindowCloseCallback(void* user_data)');
 
 export const remidy_instance_create = lib.func('remidy_instance_create',
     koffi.pointer(RemidyPluginInstance),
@@ -186,6 +199,42 @@ export const remidy_instance_get_parameter_value = lib.func('remidy_instance_get
 export const remidy_instance_set_parameter_value = lib.func('remidy_instance_set_parameter_value',
     'int', [koffi.pointer(RemidyPluginInstance), 'uint32_t', 'double']);
 
+export const remidy_instance_has_ui = lib.func('remidy_instance_has_ui',
+    'bool', [koffi.pointer(RemidyPluginInstance)]);
+export const remidy_instance_create_ui = lib.func('remidy_instance_create_ui',
+    'int', [koffi.pointer(RemidyPluginInstance), 'bool', 'uintptr_t',
+        koffi.pointer(RemidyUIResizeCallback), koffi.pointer('void')]);
+export const remidy_instance_destroy_ui = lib.func('remidy_instance_destroy_ui',
+    'void', [koffi.pointer(RemidyPluginInstance)]);
+export const remidy_instance_show_ui = lib.func('remidy_instance_show_ui',
+    'int', [koffi.pointer(RemidyPluginInstance)]);
+export const remidy_instance_hide_ui = lib.func('remidy_instance_hide_ui',
+    'int', [koffi.pointer(RemidyPluginInstance)]);
+export const remidy_instance_get_ui_size = lib.func('remidy_instance_get_ui_size',
+    'int', [koffi.pointer(RemidyPluginInstance), koffi.out(koffi.pointer('uint32_t')), koffi.out(koffi.pointer('uint32_t'))]);
+export const remidy_instance_set_ui_size = lib.func('remidy_instance_set_ui_size',
+    'int', [koffi.pointer(RemidyPluginInstance), 'uint32_t', 'uint32_t']);
+export const remidy_instance_can_ui_resize = lib.func('remidy_instance_can_ui_resize',
+    'bool', [koffi.pointer(RemidyPluginInstance)]);
+
+export const remidy_container_window_create = lib.func('remidy_container_window_create',
+    koffi.pointer(RemidyContainerWindow),
+    ['string', 'int', 'int', koffi.pointer(RemidyContainerWindowCloseCallback), koffi.pointer('void')]);
+export const remidy_container_window_destroy = lib.func('remidy_container_window_destroy',
+    'void', [koffi.pointer(RemidyContainerWindow)]);
+export const remidy_container_window_show = lib.func('remidy_container_window_show',
+    'void', [koffi.pointer(RemidyContainerWindow), 'bool']);
+export const remidy_container_window_resize = lib.func('remidy_container_window_resize',
+    'void', [koffi.pointer(RemidyContainerWindow), 'int', 'int']);
+export const remidy_container_window_get_bounds = lib.func('remidy_container_window_get_bounds',
+    RemidyBounds, [koffi.pointer(RemidyContainerWindow)]);
+export const remidy_container_window_get_handle = lib.func('remidy_container_window_get_handle',
+    'uintptr_t', [koffi.pointer(RemidyContainerWindow)]);
+export const remidy_gl_context_guard_create = lib.func('remidy_gl_context_guard_create',
+    koffi.pointer(RemidyGLContextGuard), []);
+export const remidy_gl_context_guard_destroy = lib.func('remidy_gl_context_guard_destroy',
+    'void', [koffi.pointer(RemidyGLContextGuard)]);
+
 // ========== EventLoop API ==========
 
 // Callback type for main thread tasks
@@ -197,4 +246,4 @@ const RemidyEnqueueCallback = koffi.proto('void RemidyEnqueueCallback(void* task
 export const remidy_eventloop_init_nodejs = lib.func('remidy_eventloop_init_nodejs',
     'void', [koffi.pointer(RemidyEnqueueCallback), koffi.pointer('void')]);
 
-export { RemidyConfigurationRequest, RemidyParameterInfo, RemidyPluginFormatInfo };
+export { RemidyConfigurationRequest, RemidyParameterInfo, RemidyPluginFormatInfo, RemidyBounds };

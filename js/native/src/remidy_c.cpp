@@ -1,6 +1,7 @@
 #include "../include/remidy_c.h"
 #include "remidy/remidy.hpp"
 #include "remidy-tooling/PluginScanTool.hpp"
+#include "remidy-gui/remidy-gui.hpp"
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -8,6 +9,10 @@
 #include <queue>
 #include <functional>
 #include <thread>
+#include <iostream>
+#include <future>
+#include <type_traits>
+#include <utility>
 
 using namespace remidy;
 using namespace remidy_tooling;
@@ -26,7 +31,9 @@ namespace {
 
     public:
         NodeJSEventLoop(void (*enqueue_callback)(RemidyMainThreadTask, void*, void*), void* context)
-            : enqueue_callback_(enqueue_callback), context_(context) {}
+            : enqueue_callback_(enqueue_callback),
+              context_(context),
+              main_thread_id_(std::this_thread::get_id()) {}
 
     protected:
         void initializeOnUIThreadImpl() override {
@@ -48,6 +55,7 @@ namespace {
             enqueue_callback_(
                 [](void* user_data) {
                     auto* wrapper = static_cast<TaskWrapper*>(user_data);
+                    remidy::gui::GLContextGuard guard;
                     wrapper->func();
                     delete wrapper;
                 },
@@ -66,6 +74,39 @@ namespace {
     };
 
     NodeJSEventLoop* nodejs_event_loop = nullptr;
+}
+
+struct RemidyContainerWindow {
+    std::unique_ptr<remidy::gui::ContainerWindow> window;
+    RemidyContainerWindowCloseCallback closeCallback{nullptr};
+    void* closeContext{nullptr};
+};
+
+struct RemidyGLContextGuard {
+    std::unique_ptr<remidy::gui::GLContextGuard> guard;
+};
+
+template <typename Fn>
+auto runOnMainThreadSync(Fn&& fn) -> decltype(fn()) {
+    using Result = decltype(fn());
+    std::promise<Result> promise;
+    EventLoop::runTaskOnMainThread([fn = std::forward<Fn>(fn), &promise]() mutable {
+        try {
+            if constexpr (std::is_void_v<Result>) {
+                fn();
+                promise.set_value();
+            } else {
+                promise.set_value(fn());
+            }
+        } catch (...) {
+            promise.set_exception(std::current_exception());
+        }
+    });
+    if constexpr (std::is_void_v<Result>) {
+        promise.get_future().get();
+    } else {
+        return promise.get_future().get();
+    }
 }
 
 // Helper to convert C++ StatusCode to C enum
@@ -420,6 +461,219 @@ RemidyStatusCode remidy_instance_set_parameter_value(
     } catch (...) {
         return REMIDY_ERROR;
     }
+}
+
+// Helper to get UI support
+static remidy::PluginUISupport* get_ui_support(RemidyPluginInstance* instance) {
+    auto* inst = reinterpret_cast<PluginInstance*>(instance);
+    if (!inst) return nullptr;
+    return inst->ui();
+}
+
+bool remidy_instance_has_ui(RemidyPluginInstance* instance) {
+    try {
+        auto* ui = get_ui_support(instance);
+        if (!ui) return false;
+        return ui->hasUI();
+    } catch (...) {
+        return false;
+    }
+}
+
+RemidyStatusCode remidy_instance_create_ui(
+    RemidyPluginInstance* instance,
+    bool is_floating,
+    uintptr_t parent_handle,
+    RemidyUIResizeCallback resize_callback,
+    void* user_data
+) {
+    try {
+        auto* ui = get_ui_support(instance);
+        if (!ui) return REMIDY_NOT_SUPPORTED;
+
+        std::function<bool(uint32_t, uint32_t)> resizeHandler;
+        if (resize_callback) {
+            resizeHandler = [resize_callback, user_data](uint32_t width, uint32_t height) {
+                return resize_callback(width, height, user_data);
+            };
+        }
+
+        void* parent = reinterpret_cast<void*>(parent_handle);
+        if (!ui->create(is_floating, parent, resizeHandler)) {
+            return REMIDY_ERROR;
+        }
+        return REMIDY_OK;
+    } catch (...) {
+        return REMIDY_ERROR;
+    }
+}
+
+void remidy_instance_destroy_ui(RemidyPluginInstance* instance) {
+    try {
+        auto* ui = get_ui_support(instance);
+        if (!ui) return;
+        ui->destroy();
+    } catch (...) {
+    }
+}
+
+RemidyStatusCode remidy_instance_show_ui(RemidyPluginInstance* instance) {
+    try {
+        auto* ui = get_ui_support(instance);
+        if (!ui) return REMIDY_NOT_SUPPORTED;
+        std::fprintf(stderr, "[remidy-node] remidy_instance_show_ui calling ui->show()\n");
+        if (!ui->show()) return REMIDY_ERROR;
+        std::fprintf(stderr, "[remidy-node] remidy_instance_show_ui ui->show() succeeded\n");
+        return REMIDY_OK;
+    } catch (...) {
+        std::fprintf(stderr, "[remidy-node] remidy_instance_show_ui threw\n");
+        return REMIDY_ERROR;
+    }
+}
+
+RemidyStatusCode remidy_instance_hide_ui(RemidyPluginInstance* instance) {
+    try {
+        auto* ui = get_ui_support(instance);
+        if (!ui) return REMIDY_NOT_SUPPORTED;
+        ui->hide();
+        return REMIDY_OK;
+    } catch (...) {
+        return REMIDY_ERROR;
+    }
+}
+
+RemidyStatusCode remidy_instance_get_ui_size(
+    RemidyPluginInstance* instance,
+    uint32_t* width,
+    uint32_t* height
+) {
+    try {
+        auto* ui = get_ui_support(instance);
+        if (!ui) return REMIDY_NOT_SUPPORTED;
+        if (!width || !height) return REMIDY_INVALID_PARAMETER;
+        uint32_t w = 0, h = 0;
+        if (!ui->getSize(w, h)) return REMIDY_ERROR;
+        *width = w;
+        *height = h;
+        return REMIDY_OK;
+    } catch (...) {
+        return REMIDY_ERROR;
+    }
+}
+
+RemidyStatusCode remidy_instance_set_ui_size(
+    RemidyPluginInstance* instance,
+    uint32_t width,
+    uint32_t height
+) {
+    try {
+        auto* ui = get_ui_support(instance);
+        if (!ui) return REMIDY_NOT_SUPPORTED;
+        if (!ui->setSize(width, height)) return REMIDY_ERROR;
+        return REMIDY_OK;
+    } catch (...) {
+        return REMIDY_ERROR;
+    }
+}
+
+bool remidy_instance_can_ui_resize(RemidyPluginInstance* instance) {
+    try {
+        auto* ui = get_ui_support(instance);
+        if (!ui) return false;
+        return ui->canResize();
+    } catch (...) {
+        return false;
+    }
+}
+
+RemidyContainerWindow* remidy_container_window_create(
+    const char* title,
+    int width,
+    int height,
+    RemidyContainerWindowCloseCallback callback,
+    void* user_data
+) {
+    try {
+        auto* wrapper = new RemidyContainerWindow();
+        wrapper->closeCallback = callback;
+        wrapper->closeContext = user_data;
+        auto created = runOnMainThreadSync([&]() -> bool {
+            remidy::gui::GLContextGuard guard;
+            wrapper->window = remidy::gui::ContainerWindow::create(title, width, height, [wrapper]() {
+                if (wrapper->closeCallback) {
+                    wrapper->closeCallback(wrapper->closeContext);
+                }
+            });
+            return wrapper->window != nullptr;
+        });
+        if (!created) {
+            delete wrapper;
+            return nullptr;
+        }
+        return wrapper;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void remidy_container_window_destroy(RemidyContainerWindow* window) {
+    if (!window) return;
+    runOnMainThreadSync([&]() {
+        remidy::gui::GLContextGuard guard;
+        window->window.reset();
+    });
+    delete window;
+}
+
+void remidy_container_window_show(RemidyContainerWindow* window, bool visible) {
+    if (!window || !window->window) return;
+    runOnMainThreadSync([&]() {
+        remidy::gui::GLContextGuard guard;
+        window->window->show(visible);
+    });
+}
+
+void remidy_container_window_resize(RemidyContainerWindow* window, int width, int height) {
+    if (!window || !window->window) return;
+    runOnMainThreadSync([&]() {
+        remidy::gui::GLContextGuard guard;
+        window->window->resize(width, height);
+    });
+}
+
+RemidyBounds remidy_container_window_get_bounds(RemidyContainerWindow* window) {
+    RemidyBounds bounds{0, 0, 0, 0};
+    if (!window || !window->window) return bounds;
+    auto cpp_bounds = runOnMainThreadSync([&]() {
+        return window->window->getBounds();
+    });
+    bounds.x = cpp_bounds.x;
+    bounds.y = cpp_bounds.y;
+    bounds.width = cpp_bounds.width;
+    bounds.height = cpp_bounds.height;
+    return bounds;
+}
+
+uintptr_t remidy_container_window_get_handle(RemidyContainerWindow* window) {
+    if (!window || !window->window) return 0;
+    return runOnMainThreadSync([&]() -> uintptr_t {
+        return reinterpret_cast<uintptr_t>(window->window->getHandle());
+    });
+}
+
+RemidyGLContextGuard* remidy_gl_context_guard_create() {
+    try {
+        auto* wrapper = new RemidyGLContextGuard();
+        wrapper->guard = std::make_unique<remidy::gui::GLContextGuard>();
+        return wrapper;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void remidy_gl_context_guard_destroy(RemidyGLContextGuard* guard) {
+    if (!guard) return;
+    delete guard;
 }
 
 // ========== EventLoop API ==========

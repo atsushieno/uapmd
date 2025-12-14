@@ -8,7 +8,9 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test": "node --test dist/**/*.test.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "example:web-host": "node dist/examples/web-plugin-host/server.js",
+    "example:electron-host": "electron dist/examples/electron-plugin-host/main.js"
   },
   "keywords": [
     "audio",
@@ -27,7 +29,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "electron": "^30.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

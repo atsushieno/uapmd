@@ -14,6 +14,8 @@ typedef struct RemidyPluginCatalogEntry RemidyPluginCatalogEntry;
 typedef struct RemidyPluginFormat RemidyPluginFormat;
 typedef struct RemidyPluginInstance RemidyPluginInstance;
 typedef struct RemidyPluginScanTool RemidyPluginScanTool;
+typedef struct RemidyContainerWindow RemidyContainerWindow;
+typedef struct RemidyGLContextGuard RemidyGLContextGuard;
 
 // Status codes
 typedef enum {
@@ -130,6 +132,59 @@ RemidyStatusCode remidy_instance_set_parameter_value(
     uint32_t param_id,
     double value
 );
+
+// ========== Plugin UI API ==========
+
+typedef bool (*RemidyUIResizeCallback)(uint32_t width, uint32_t height, void* user_data);
+
+bool remidy_instance_has_ui(RemidyPluginInstance* instance);
+RemidyStatusCode remidy_instance_create_ui(
+    RemidyPluginInstance* instance,
+    bool is_floating,
+    uintptr_t parent_handle,
+    RemidyUIResizeCallback resize_callback,
+    void* user_data
+);
+void remidy_instance_destroy_ui(RemidyPluginInstance* instance);
+RemidyStatusCode remidy_instance_show_ui(RemidyPluginInstance* instance);
+RemidyStatusCode remidy_instance_hide_ui(RemidyPluginInstance* instance);
+RemidyStatusCode remidy_instance_get_ui_size(
+    RemidyPluginInstance* instance,
+    uint32_t* width,
+    uint32_t* height
+);
+RemidyStatusCode remidy_instance_set_ui_size(
+    RemidyPluginInstance* instance,
+    uint32_t width,
+    uint32_t height
+);
+bool remidy_instance_can_ui_resize(RemidyPluginInstance* instance);
+
+// ========== Container Window API ==========
+
+typedef struct {
+    int x;
+    int y;
+    int width;
+    int height;
+} RemidyBounds;
+
+typedef void (*RemidyContainerWindowCloseCallback)(void* user_data);
+
+RemidyContainerWindow* remidy_container_window_create(
+    const char* title,
+    int width,
+    int height,
+    RemidyContainerWindowCloseCallback callback,
+    void* user_data
+);
+void remidy_container_window_destroy(RemidyContainerWindow* window);
+void remidy_container_window_show(RemidyContainerWindow* window, bool visible);
+void remidy_container_window_resize(RemidyContainerWindow* window, int width, int height);
+RemidyBounds remidy_container_window_get_bounds(RemidyContainerWindow* window);
+uintptr_t remidy_container_window_get_handle(RemidyContainerWindow* window);
+RemidyGLContextGuard* remidy_gl_context_guard_create(void);
+void remidy_gl_context_guard_destroy(RemidyGLContextGuard* guard);
 
 // ========== EventLoop API ==========
 
