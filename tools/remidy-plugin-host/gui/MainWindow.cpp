@@ -371,7 +371,7 @@ void MainWindow::renderInstanceControl() {
     if (ImGui::BeginTable("##InstanceTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableSetupColumn("Plugin", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 300.0f);
+        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableHeadersRow();
 
         for (size_t i = 0; i < instances_.size(); i++) {
@@ -390,141 +390,147 @@ void MainWindow::renderInstanceControl() {
             ImGui::TableSetColumnIndex(1);
             ImGui::Text("%s", pluginFormat.c_str());
 
-            // Plugin UI button column
+            // Actions context menu button
             ImGui::TableSetColumnIndex(2);
-            bool hasUI = instance->hasUISupport();
-            bool isVisible = instance->isUIVisible();
-            const char* uiButtonText = isVisible ? "Hide UI" : "Show UI";
-            std::string uiButtonId = std::string(uiButtonText) + "##ui" + std::to_string(instanceId);
+            std::string menuButtonId = "Actions##menu" + std::to_string(instanceId);
+            std::string popupId = "ActionsPopup##" + std::to_string(instanceId);
 
-            if (!hasUI) {
-                ImGui::BeginDisabled();
+            if (ImGui::Button(menuButtonId.c_str())) {
+                ImGui::OpenPopup(popupId.c_str());
             }
 
-            if (ImGui::Button(uiButtonId.c_str())) {
-                if (hasUI) {
-                    if (isVisible) {
+            if (ImGui::BeginPopup(popupId.c_str())) {
+                bool hasUI = instance->hasUISupport();
+                bool isVisible = instance->isUIVisible();
+
+                // Show/Hide UI menu item
+                if (!hasUI) {
+                    ImGui::BeginDisabled();
+                }
+
+                const char* uiMenuText = isVisible ? "Hide UI" : "Show UI";
+                if (ImGui::MenuItem(uiMenuText)) {
+                    if (hasUI) {
+                        if (isVisible) {
+                            instance->hideUI();
+                            auto windowIt = pluginWindows_.find(instanceId);
+                            if (windowIt != pluginWindows_.end()) windowIt->second->show(false);
+                        } else {
+                            // Create container window if needed
+                            auto windowIt = pluginWindows_.find(instanceId);
+                            remidy::gui::ContainerWindow* container = nullptr;
+                            if (windowIt == pluginWindows_.end()) {
+                                std::string windowTitle = pluginName + " (" + pluginFormat + ")";
+                                auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600, [this, instanceId]() {
+                                    onPluginWindowClosed(instanceId);
+                                });
+                                container = w.get();
+                                pluginWindows_[instanceId] = std::move(w);
+                                pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
+                            } else {
+                                container = windowIt->second.get();
+                                if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
+                                    pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
+                            }
+
+                            if (!container) {
+                                std::cout << "Failed to create container window for instance " << instanceId << std::endl;
+                            } else {
+                                container->show(true);
+                                void* parentHandle = container->getHandle();
+
+                                // Check if plugin UI has been created
+                                bool pluginUIExists = (pluginWindowEmbedded_.find(instanceId) != pluginWindowEmbedded_.end());
+
+                                if (!pluginUIExists) {
+                                    // First time: create plugin UI with resize handler
+                                    if (!instance->createUI(false, parentHandle,
+                                        [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
+                                        container->show(false);
+                                        pluginWindows_.erase(instanceId);
+                                        std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
+                                    } else {
+                                        pluginWindowEmbedded_[instanceId] = true;
+                                    }
+                                }
+
+                                // Show the plugin UI (whether just created or already exists)
+                                if (pluginUIExists || pluginWindowEmbedded_[instanceId]) {
+                                    if (!instance->showUI()) {
+                                        std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!hasUI) {
+                    ImGui::EndDisabled();
+                }
+
+                // Details menu item
+                auto detailsIt = detailsWindows_.find(instanceId);
+                bool detailsVisible = (detailsIt != detailsWindows_.end() && detailsIt->second.visible);
+                const char* detailsMenuText = detailsVisible ? "Hide Details" : "Show Details";
+
+                if (ImGui::MenuItem(detailsMenuText)) {
+                    if (detailsVisible) {
+                        hideDetailsWindow(instanceId);
+                    } else {
+                        showDetailsWindow(instanceId);
+                    }
+                }
+
+                ImGui::Separator();
+
+                // Save State menu item
+                if (ImGui::MenuItem("Save State")) {
+                    savePluginState(instanceId);
+                }
+
+                // Load State menu item
+                if (ImGui::MenuItem("Load State")) {
+                    loadPluginState(instanceId);
+                }
+
+                ImGui::Separator();
+
+                // Remove menu item
+                if (ImGui::MenuItem("Remove")) {
+                    // Hide and cleanup UI if it's open
+                    if (instance->hasUISupport() && instance->isUIVisible()) {
                         instance->hideUI();
                         auto windowIt = pluginWindows_.find(instanceId);
-                        if (windowIt != pluginWindows_.end()) windowIt->second->show(false);
-                    } else {
-                        // Create container window if needed
-                        auto windowIt = pluginWindows_.find(instanceId);
-                        remidy::gui::ContainerWindow* container = nullptr;
-                        if (windowIt == pluginWindows_.end()) {
-                            std::string windowTitle = pluginName + " (" + pluginFormat + ")";
-                            auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600, [this, instanceId]() {
-                                onPluginWindowClosed(instanceId);
-                            });
-                            container = w.get();
-                            pluginWindows_[instanceId] = std::move(w);
-                            pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
-                        } else {
-                            container = windowIt->second.get();
-                            if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
-                                pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
-                        }
-
-                        if (!container) {
-                            std::cout << "Failed to create container window for instance " << instanceId << std::endl;
-                        } else {
-                            container->show(true);
-                            void* parentHandle = container->getHandle();
-
-                            // Check if plugin UI has been created
-                            bool pluginUIExists = (pluginWindowEmbedded_.find(instanceId) != pluginWindowEmbedded_.end());
-
-                            if (!pluginUIExists) {
-                                // First time: create plugin UI with resize handler
-                                if (!instance->createUI(false, parentHandle,
-                                    [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
-                                    container->show(false);
-                                    pluginWindows_.erase(instanceId);
-                                    std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
-                                } else {
-                                    pluginWindowEmbedded_[instanceId] = true;
-                                }
-                            }
-
-                            // Show the plugin UI (whether just created or already exists)
-                            if (pluginUIExists || pluginWindowEmbedded_[instanceId]) {
-                                if (!instance->showUI()) {
-                                    std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
-                                }
-                            }
+                        if (windowIt != pluginWindows_.end()) {
+                            windowIt->second->show(false);
                         }
                     }
-                }
-            }
 
-            if (!hasUI) {
-                ImGui::EndDisabled();
-            }
-            ImGui::SameLine();
+                    // Cleanup plugin UI resources
+                    instance->destroyUI();
+                    pluginWindows_.erase(instanceId);
+                    pluginWindowEmbedded_.erase(instanceId);
+                    pluginWindowBounds_.erase(instanceId);
+                    pluginWindowResizeIgnore_.erase(instanceId);
 
-            // Details button
-            auto detailsIt = detailsWindows_.find(instanceId);
-            bool detailsVisible = (detailsIt != detailsWindows_.end() && detailsIt->second.visible);
-            const char* detailsButtonText = detailsVisible ? "Hide Details" : "Show Details";
-            std::string detailsButtonId = std::string(detailsButtonText) + "##details" + std::to_string(instanceId);
-
-            if (ImGui::Button(detailsButtonId.c_str())) {
-                if (detailsVisible) {
-                    hideDetailsWindow(instanceId);
-                } else {
-                    showDetailsWindow(instanceId);
-                }
-            }
-
-            // line break
-
-            // Save button
-            std::string saveButtonId = "Save##save" + std::to_string(instanceId);
-            if (ImGui::Button(saveButtonId.c_str())) {
-                savePluginState(instanceId);
-            }
-            ImGui::SameLine();
-
-            // Load button
-            std::string loadButtonId = "Load##load" + std::to_string(instanceId);
-            if (ImGui::Button(loadButtonId.c_str())) {
-                loadPluginState(instanceId);
-            }
-            ImGui::SameLine();
-
-            // Remove button
-            std::string removeButtonId = "Remove##remove" + std::to_string(instanceId);
-            if (ImGui::Button(removeButtonId.c_str())) {
-                // Hide and cleanup UI if it's open
-                if (instance->hasUISupport() && instance->isUIVisible()) {
-                    instance->hideUI();
-                    auto windowIt = pluginWindows_.find(instanceId);
-                    if (windowIt != pluginWindows_.end()) {
-                        windowIt->second->show(false);
+                    // Cleanup details window if open
+                    auto detailsIt = detailsWindows_.find(instanceId);
+                    if (detailsIt != detailsWindows_.end()) {
+                        detailsWindows_.erase(detailsIt);
                     }
+
+                    // Remove the plugin instance
+                    uapmd::AppModel::instance().removePluginInstance(instanceId);
+
+                    // Refresh the instance list
+                    refreshInstances();
+
+                    std::cout << "Removed plugin instance: " << instanceId << std::endl;
+                    ImGui::CloseCurrentPopup();
                 }
 
-                // Cleanup plugin UI resources
-                instance->destroyUI();
-                pluginWindows_.erase(instanceId);
-                pluginWindowEmbedded_.erase(instanceId);
-                pluginWindowBounds_.erase(instanceId);
-                pluginWindowResizeIgnore_.erase(instanceId);
-
-                // Cleanup details window if open
-                auto detailsIt = detailsWindows_.find(instanceId);
-                if (detailsIt != detailsWindows_.end()) {
-                    detailsWindows_.erase(detailsIt);
-                }
-
-                // Remove the plugin instance
-                uapmd::AppModel::instance().removePluginInstance(instanceId);
-
-                // Refresh the instance list
-                refreshInstances();
-
-                std::cout << "Removed plugin instance: " << instanceId << std::endl;
-                break; // Exit loop after removal since we're modifying the list
+                ImGui::EndPopup();
             }
         }
 

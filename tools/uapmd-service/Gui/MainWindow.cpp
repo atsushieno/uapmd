@@ -511,69 +511,83 @@ void MainWindow::renderDeviceManager() {
 
         ImGui::TableSetColumnIndex(4);
         bool removeTriggered = false;
-        const char* uiText = uiVisible ? "Hide UI" : "Show UI";
-        std::string btnId = std::format("{}##{}::{}", uiText, row.deviceIndex, row.instanceId);
 
-        // Disable button if plugin doesn't support UI
-        if (!uiSupported) {
-            ImGui::BeginDisabled();
+        std::string menuButtonId = std::format("Actions##menu{}::{}", row.deviceIndex, row.instanceId);
+        std::string popupId = std::format("ActionsPopup##{}::{}", row.deviceIndex, row.instanceId);
+
+        if (ImGui::Button(menuButtonId.c_str())) {
+            ImGui::OpenPopup(popupId.c_str());
         }
 
-        if (ImGui::Button(btnId.c_str())) {
-            if (uiSupported) {
-                if (uiVisible) {
-                    hidePluginUIInstance(row.deviceState, row.instanceId);
-                } else {
-                    showPluginUIInstance(row.deviceState, row.instanceId);
-                }
-            }
-        }
+        if (ImGui::BeginPopup(popupId.c_str())) {
+            const char* uiText = uiVisible ? "Hide UI" : "Show UI";
 
-        if (!uiSupported) {
-            ImGui::EndDisabled();
-        }
-
-        ImGui::SameLine();
-
-        if (deviceState && row.instanceId >= 0) {
-            std::string runBtnId = std::format("{}##{}::{}::run", deviceRunning ? "Stop" : "Start", row.deviceIndex, row.instanceId);
-            if (deviceInstantiating) {
+            // Show/Hide UI menu item
+            if (!uiSupported) {
                 ImGui::BeginDisabled();
             }
-            if (ImGui::Button(runBtnId.c_str())) {
-                std::lock_guard guard(deviceState->mutex);
-                auto device = deviceState->device;
-                if (device) {
-                    if (deviceState->running) {
-                        device->stop();
-                        deviceState->running = false;
-                        deviceState->statusMessage = "Stopped";
+
+            if (ImGui::MenuItem(uiText)) {
+                if (uiSupported) {
+                    if (uiVisible) {
+                        hidePluginUIInstance(row.deviceState, row.instanceId);
                     } else {
-                        auto statusCode = device->start();
-                        if (statusCode == 0) {
-                            deviceState->running = true;
-                            deviceState->statusMessage = "Running";
-                            deviceState->hasError = false;
-                        } else {
-                            deviceState->statusMessage = std::format("Start failed (status {})", statusCode);
-                            deviceState->hasError = true;
-                        }
+                        showPluginUIInstance(row.deviceState, row.instanceId);
                     }
                 }
             }
-            if (deviceInstantiating) {
+
+            if (!uiSupported) {
                 ImGui::EndDisabled();
             }
-            ImGui::SameLine();
-        }
 
-        std::string removeBtnId = std::format("Remove##{}::{}::rm", row.deviceIndex, row.instanceId);
-        if (ImGui::Button(removeBtnId.c_str())) {
-            if (row.deviceState && row.instanceId >= 0) {
-                hidePluginUIInstance(row.deviceState, row.instanceId);
+            // Start/Stop device menu item
+            if (deviceState && row.instanceId >= 0) {
+                const char* runText = deviceRunning ? "Stop" : "Start";
+                if (deviceInstantiating) {
+                    ImGui::BeginDisabled();
+                }
+
+                if (ImGui::MenuItem(runText)) {
+                    std::lock_guard guard(deviceState->mutex);
+                    auto device = deviceState->device;
+                    if (device) {
+                        if (deviceState->running) {
+                            device->stop();
+                            deviceState->running = false;
+                            deviceState->statusMessage = "Stopped";
+                        } else {
+                            auto statusCode = device->start();
+                            if (statusCode == 0) {
+                                deviceState->running = true;
+                                deviceState->statusMessage = "Running";
+                                deviceState->hasError = false;
+                            } else {
+                                deviceState->statusMessage = std::format("Start failed (status {})", statusCode);
+                                deviceState->hasError = true;
+                            }
+                        }
+                    }
+                }
+
+                if (deviceInstantiating) {
+                    ImGui::EndDisabled();
+                }
             }
-            removeIndex = row.deviceIndex;
-            removeTriggered = true;
+
+            ImGui::Separator();
+
+            // Remove menu item
+            if (ImGui::MenuItem("Remove")) {
+                if (row.deviceState && row.instanceId >= 0) {
+                    hidePluginUIInstance(row.deviceState, row.instanceId);
+                }
+                removeIndex = row.deviceIndex;
+                removeTriggered = true;
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
         }
 
         return removeTriggered;
@@ -614,7 +628,7 @@ void MainWindow::renderDeviceManager() {
                     ImGui::TableSetupColumn("Plugin");
                     ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
                     ImGui::TableSetupColumn("Status");
-                    ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 240.0f);
+                    ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 80.0f);
                     ImGui::TableHeadersRow();
                     tableOpen = true;
                 }
