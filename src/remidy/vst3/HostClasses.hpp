@@ -20,12 +20,6 @@
 #endif
 #endif
 
-#if defined(_MSC_VER)
-#define min(v1, v2) (v1 < v2 ? v1 : v2)
-#else
-#define min(v1, v2) std::min(v1, v2)
-#endif
-
 namespace remidy_vst3 {
     using namespace Steinberg::Vst;
     using namespace Steinberg::Linux;
@@ -445,64 +439,10 @@ namespace remidy_vst3 {
         }
 
         // IBStream interface
-        tresult PLUGIN_API read(void* buffer, int32 numBytes, int32* numBytesRead = nullptr) SMTG_OVERRIDE {
-            if (!buffer || numBytes < 0)
-                return kInvalidArgument;
-            auto remaining = static_cast<int32>(data.size() - offset);
-            if (remaining <= 0 || numBytes == 0) {
-                if (numBytesRead)
-                    *numBytesRead = 0;
-                return kResultFalse;
-            }
-            auto toCopy = min(remaining, numBytes);
-            memcpy(buffer, data.data() + offset, static_cast<size_t>(toCopy));
-            offset += toCopy;
-            if (numBytesRead)
-                *numBytesRead = toCopy;
-            return kResultOk;
-        }
-
-        tresult PLUGIN_API write(void* buffer, int32 numBytes, int32* numBytesWritten = nullptr) SMTG_OVERRIDE {
-            if (!buffer || numBytes < 0)
-                return kInvalidArgument;
-            auto required = offset + static_cast<int64>(numBytes);
-            if (required > static_cast<int64>(data.size()))
-                data.resize(static_cast<size_t>(required));
-            memcpy(data.data() + offset, buffer, static_cast<size_t>(numBytes));
-            offset += numBytes;
-            if (numBytesWritten)
-                *numBytesWritten = numBytes;
-            return kResultOk;
-        }
-
-        tresult PLUGIN_API seek(int64 pos, int32 mode, int64* result = nullptr) SMTG_OVERRIDE {
-            int64 newOffset = offset;
-            switch (mode) {
-                case IBStream::kIBSeekSet:
-                    newOffset = pos;
-                    break;
-                case IBStream::kIBSeekCur:
-                    newOffset = offset + pos;
-                    break;
-                case IBStream::kIBSeekEnd:
-                    newOffset = static_cast<int64>(data.size()) + pos;
-                    break;
-                default:
-                    return kInvalidArgument;
-            }
-            if (newOffset < 0 || newOffset > static_cast<int64>(data.size()))
-                return kInvalidArgument;
-            offset = newOffset;
-            if (result)
-                *result = offset;
-            return kResultOk;
-        }
-
-        tresult PLUGIN_API tell(int64* pos) SMTG_OVERRIDE {
-            if (pos)
-                *pos = offset;
-            return kResultOk;
-        }
+        tresult PLUGIN_API read(void* buffer, int32 numBytes, int32* numBytesRead = nullptr) SMTG_OVERRIDE;
+        tresult PLUGIN_API write(void* buffer, int32 numBytes, int32* numBytesWritten = nullptr) SMTG_OVERRIDE;
+        tresult PLUGIN_API seek(int64 pos, int32 mode, int64* result = nullptr) SMTG_OVERRIDE;
+        tresult PLUGIN_API tell(int64* pos) SMTG_OVERRIDE;
     };
 
     class InterceptingConnectionPoint : public IConnectionPoint {

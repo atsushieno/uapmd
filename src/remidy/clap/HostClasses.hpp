@@ -13,12 +13,6 @@ using CLAPHelperHost = clap::helpers::Host<
     clap::helpers::CheckingLevel::Maximal
 >;
 
-#if defined(_MSC_VER)
-#define min(v1, v2) (v1 < v2 ? v1 : v2)
-#else
-#define min(v1, v2) std::min(v1, v2)
-#endif
-
 namespace remidy {
     class PluginInstanceCLAP;
 
