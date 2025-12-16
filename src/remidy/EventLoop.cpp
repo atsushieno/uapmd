@@ -2,8 +2,7 @@
 #include <choc/gui/choc_MessageLoop.h>
 
 #if defined(__linux__) || defined(__unix__)
-#include "remidy/priv/event-loop-linux.hpp"
-#include "remidy/priv/event-loop-linux.hpp"  // The bare FD version still exists
+#include "EventLoopLinux.hpp"
 #endif
 
 namespace remidy {

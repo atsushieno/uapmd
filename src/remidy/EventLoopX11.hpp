@@ -1,6 +1,6 @@
 #pragma once
 
-#include "event-loop.hpp"
+#include <remidy/priv/event-loop.hpp>
 #include <queue>
 #include <mutex>
 #include <thread>

@@ -15,7 +15,6 @@
 #include <chrono>
 
 #if defined(__linux__) || defined(__unix__)
-#include "remidy/priv/event-loop-linux.hpp"
 #ifdef HAVE_WAYLAND
 #include <pluginterfaces/gui/iwaylandframe.h>
 #endif

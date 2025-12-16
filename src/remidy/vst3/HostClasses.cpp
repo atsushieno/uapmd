@@ -5,6 +5,9 @@
 #include <sys/select.h>
 #endif
 #include <priv/event-loop.hpp>
+#if defined(__linux__) || defined(__unix__)
+#include "EventLoopLinux.hpp"
+#endif
 #include <public.sdk/source/vst/utility/stringconvert.h>
 
 // Define Wayland interface IIDs

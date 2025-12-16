@@ -1,7 +1,7 @@
 #include "PluginFormatVST3.hpp"
 #include <priv/event-loop.hpp>
 #if defined(__linux__) || defined(__unix__)
-#include "remidy/priv/event-loop-linux.hpp"
+#include "EventLoopLinux.hpp"
 #endif
 
 namespace remidy {
