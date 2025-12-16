@@ -1,4 +1,5 @@
 #include <thread>
+#include <algorithm>
 
 #include "HostClasses.hpp"
 #if !SMTG_OS_WINDOWS
