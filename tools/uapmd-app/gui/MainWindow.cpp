@@ -1,17 +1,21 @@
-#include "MainWindow.hpp"
-#include "../AppModel.hpp"
-#include <remidy-gui/remidy-gui.hpp>
-#include <remidy/priv/common.hpp>
-#include <remidy/priv/plugin-parameter.hpp>
-#include <imgui.h>
-#include <iostream>
+#include <cctype>
+#include <cstring>
 #include <algorithm>
+#include <map>
 #include <format>
-#include <limits>
+#include <iostream>
 #include <fstream>
+#include <optional>
+#include <ranges>
+#include <unordered_map>
+#include <unordered_set>
 #include <portable-file-dialogs.h>
+#include <imgui.h>
 
 #include "SharedTheme.hpp"
+
+#include "MainWindow.hpp"
+#include "../AppModel.hpp"
 
 namespace {
 std::string formatPlainValueLabel(double value) {
