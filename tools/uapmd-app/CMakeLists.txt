@@ -70,14 +70,16 @@ if(NOT BACKEND_FOUND)
 endif()
 
 # ImGui and backend dependencies
-CPMAddPackage(
-        NAME imgui
-        GIT_TAG v1.92.3
-        GIT_REPOSITORY https://github.com/ocornut/imgui
-        DOWNLOAD_ONLY YES
-)
+if(NOT DEFINED imgui_SOURCE_DIR)
+    CPMAddPackage(
+            NAME imgui
+            GIT_TAG v1.92.3
+            GIT_REPOSITORY https://github.com/ocornut/imgui
+            DOWNLOAD_ONLY YES
+    )
+endif()
 
-if(imgui_ADDED)
+if(NOT TARGET imgui)
     # Base ImGui sources
     set(IMGUI_SOURCES
             ${imgui_SOURCE_DIR}/imgui.cpp
