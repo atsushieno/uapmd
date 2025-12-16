@@ -11,7 +11,7 @@
 
 #ifdef __linux__
 #include <X11/Xlib.h>
-#include "EventLoopLinux.hpp"
+#include "../EventLoopLinux.hpp"
 #include "remidy/lv2/wayland-ui.h"
 #elif defined(__APPLE__)
 #include <choc/platform/choc_ObjectiveCHelpers.h>
