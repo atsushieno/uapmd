@@ -9,8 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "remidy-tooling/PluginInstancing.hpp"
-#include "remidy/priv/plugin-parameter.hpp"
+#include "remidy/remidy.hpp"
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {

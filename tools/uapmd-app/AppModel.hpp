@@ -1,6 +1,6 @@
 #pragma once
 
-#include <uapmd/uapmd.hpp>
+#include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
 #include <remidy-tooling/PluginScanTool.hpp>
 #include "../../include/uapmd/priv/sequencer/AudioPluginSequencer.hpp"
 #include "Controller/VirtualMidiDeviceController.hpp"

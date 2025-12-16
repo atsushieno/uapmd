@@ -1,4 +1,3 @@
-#include <remidy/remidy.hpp>
 #include "AppModel.hpp"
 #include "gui/MainWindow.hpp"
 #include <ImGuiEventLoop.hpp>

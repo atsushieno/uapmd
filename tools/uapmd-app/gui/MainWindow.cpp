@@ -10,6 +10,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <portable-file-dialogs.h>
+
+#include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
+
 #include <imgui.h>
 
 #include "SharedTheme.hpp"

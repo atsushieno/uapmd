@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "midicci/midicci.hpp" // include before anything that indirectly includes X.h
 #include "uapmd/uapmd.hpp"
 #include "../VirtualMidiDevices/UapmdMidiDevice.hpp"
 
