@@ -6,9 +6,9 @@
 #include <memory>
 #include <string>
 
+#include "midicci/midicci.hpp"
 #include "uapmd/uapmd.hpp"
 #include "PlatformVirtualMidiDevice.hpp"
-#include "midicci/midicci.hpp"
 
 namespace uapmd {
 
