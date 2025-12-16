@@ -8,10 +8,6 @@ CPMAddPackage(
 
 add_subdirectory(remidy-scan)
 add_subdirectory(remidy-apply)
-
-# Unified executable combining remidy-plugin-host and uapmd-service
-add_subdirectory(uapmd-app)
-
-# Original tools (kept for comparison and reference)
 add_subdirectory(remidy-plugin-host)
 add_subdirectory(uapmd-service)
+add_subdirectory(uapmd-app)
