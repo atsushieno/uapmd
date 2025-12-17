@@ -29,7 +29,7 @@ There are supplemental tools for diagnosing problems we encounter.
 
 The virtual MIDI 2.0 device service controller. Currently the command line options are hacky:
 
-> $ uapmd-service (plugin-name) (format-name) (api-name)
+> $ uapmd-app (plugin-name) (format-name) (api-name)
 
 `plugin-name` is match by `std::string::contains()` within display name, case-sensitive.
 
@@ -70,9 +70,9 @@ What this layer introduces in practice is a set of filters e.g. various existing
 
 `uapmd` provides reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). It serves `AllCtrlList` MIDI-CI standard property for plugin parameters as Assignable Controllers (NRPNs), `ProgramList` MIDI-CI standard property for the indexed presets as Program Change, and saves and loads states in MIDI-CI property manner. It is supposed to manage multiple tracks with multiple plugins [not implemented yet].
 
-### uapmd-service
+### uapmd-app
 
-`uapmd-service` works as a virtual MIDI device service that can receive platform UMP inputs (and most likely MIDI 1.0 inputs, translated, depending on the platform) to control plugins.
+`uapmd-app` works as a virtual MIDI device service that can receive platform UMP inputs (and most likely MIDI 1.0 inputs, translated, depending on the platform) to control plugins.
 
 
 ## License and Dependencies

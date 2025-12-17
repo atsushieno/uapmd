@@ -1,6 +1,8 @@
-# How to make use of MIDI 2.0 apps with uapmd-service
+# How to make use of MIDI 2.0 apps with uapmd-app
 
-uapmd-service is a standalone desktop application that lets you pick up audio plugins and register them as virtual MIDI 2.0 UMP devices.
+uapmd-app is a standalone desktop application that lets you pick up audio plugins and register them as virtual MIDI 2.0 UMP devices.
+
+(Screenshots might be outdated, but they would still mostly make sense.)
 
 ## General Notes
 
@@ -10,19 +12,19 @@ Somehow (against @atsushieno's desire) things tend to work better on macOS, espe
 
 ## Step 1: set up audio plugins you want to use
 
-uapmd-service makes use of audio plugins in VST3/AU/LV2/CLAP format, so just install whatever you would like to use. There may be plugins that do not work with uapmd-service, but it's hard to tell in prior.
+uapmd-app makes use of audio plugins in VST3/AU/LV2/CLAP format, so just install whatever you would like to use. There may be plugins that do not work with uapmd-app, but it's hard to tell in prior.
 
-You can find some open source audio plugins by using [StudioRack](https://studiorack.github.io/studiorack-site/) (just note that there are instrument files that uapmd-service does not directly support).
+You can find some open source audio plugins by using [StudioRack](https://studiorack.github.io/studiorack-site/) (just note that there are instrument files that uapmd-app does not directly support).
 
 ## Step 2: create your virtual device
 
-Run uapmd-service and "Scan Plugins" then the app main window would look like this:
+Run uapmd-app and "Scan Plugins" then the app main window would look like this:
 
-![uapmd-service after plugin scanning](../images/uapmd-service-after-scanning.png)
+![uapmd-app after plugin scanning](../images/uapmd-service-after-scanning.png)
 
 Select a plugin and "Create UMP Device". It will add a new audio track:
 
-![uampd-service after adding a plugin track](../images/adlplug-ae-on-uapmd-service.png)
+![uampd-app after adding a plugin track](../images/adlplug-ae-on-uapmd-service.png)
 
 ## Step 3: Connect your app as a client
 
