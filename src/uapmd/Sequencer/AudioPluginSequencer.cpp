@@ -538,8 +538,9 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
     std::function<void(int32_t instanceId, std::string error)> callback
 ) {
     auto audioDevice = dispatcher.audio();
-    const auto inputChannels = audioDevice ? audioDevice->inputChannels() : 0;
-    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 0;
+    // Always use at least 2 input channels to support audio file playback even without mic input
+    const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
+    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
     sequencer.addSimpleTrack(format, pluginId, inputChannels, outputChannels, [&,callback,inputChannels,outputChannels](AudioPluginTrack* track, std::string error) {
         if (!error.empty()) {
             callback(-1, error);
@@ -586,8 +587,9 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
     }
 
     auto audioDevice = dispatcher.audio();
-    const auto inputChannels = audioDevice ? audioDevice->inputChannels() : 0;
-    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 0;
+    // Always use at least 2 input channels to support audio file playback even without mic input
+    const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
+    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
 
     plugin_host_pal->createPluginInstance(sample_rate, inputChannels, outputChannels, offline_rendering_.load(std::memory_order_acquire), format, pluginId,
         [this, trackIndex, cb = std::move(callback)](auto node, std::string error) mutable {
