@@ -19,7 +19,15 @@ namespace uapmd {
 }
 
 namespace uapmd::gui {
-    class MainWindow {
+
+struct GuiDefaults {
+    std::string pluginName;
+    std::string formatName;
+    std::string apiName;
+    std::string deviceName;
+};
+
+class MainWindow {
         bool isOpen_ = true;
 
         // Device settings
@@ -121,7 +129,7 @@ namespace uapmd::gui {
         std::unordered_map<int32_t, DetailsWindowState> detailsWindows_;
 
     public:
-        MainWindow();
+        explicit MainWindow(GuiDefaults defaults = {});
         void render(void* window);  // Generic window pointer
         void update();
         bool& isOpen() { return isOpen_; }

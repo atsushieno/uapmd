@@ -27,8 +27,14 @@ std::string formatPlainValueLabel(double value) {
 }
 
 namespace uapmd::gui {
-MainWindow::MainWindow() {
+MainWindow::MainWindow(GuiDefaults defaults) {
     SetupImGuiStyle();
+
+    // Apply defaults from command line arguments
+    if (!defaults.pluginName.empty()) {
+        selectedPluginFormat_ = defaults.formatName;
+        // Plugin selection will be applied after plugin list is loaded
+    }
 
     // Initialize with some example recent files
     recentFiles_.push_back("example1.wav");

@@ -3,7 +3,11 @@
 #include <ImGuiEventLoop.hpp>
 #include <PlatformBackend.hpp>
 #include <cpptrace/from_current.hpp>
+#include <algorithm>
 #include <iostream>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include <imgui.h>
 
@@ -46,6 +50,53 @@
 #endif
 
 int runMain(int argc, char** argv) {
+    std::vector<std::string> args;
+    args.reserve(static_cast<size_t>(std::max(argc - 1, 0)));
+    for (int i = 1; i < argc; ++i) {
+        args.emplace_back(argv[i]);
+    }
+
+    enum class Mode {
+        Gui,
+        Headless
+    };
+
+    std::optional<Mode> requestedMode;
+    std::vector<std::string> positional;
+    positional.reserve(args.size());
+    for (const auto& arg : args) {
+        /*if (arg == "--shell" || arg == "--cli" || arg == "--no-gui" || arg == "--headless") {
+            requestedMode = Mode::Headless;
+            continue;
+        }
+        if (arg == "--gui") {
+            requestedMode = Mode::Gui;
+            continue;
+        }*/
+        positional.push_back(arg);
+    }
+
+    bool guiAvailable = true;
+
+    bool runGui = guiAvailable;
+    if (requestedMode.has_value()) {
+        if (*requestedMode == Mode::Gui) {
+            if (!guiAvailable) {
+                std::cerr << "uapmd-app built without GUI support; continuing in headless mode" << std::endl;
+                runGui = false;
+            } else {
+                runGui = true;
+            }
+        } else {
+            runGui = false;
+        }
+    }
+
+    if (!runGui) {
+        std::cerr << "uapmd-app can only run in GUI mode" << std::endl;
+        return EXIT_FAILURE;
+    }
+
     // Create windowing backend with priority: SDL3 > SDL2 > GLFW
     auto windowingBackend = uapmd::gui::WindowingBackend::create();
     if (!windowingBackend) {
@@ -62,7 +113,7 @@ int runMain(int argc, char** argv) {
     // backend initialized
 
     // Create window
-    uapmd::gui::WindowHandle* window = windowingBackend->createWindow("Remidy Plugin Host", 800, 800);
+    uapmd::gui::WindowHandle* window = windowingBackend->createWindow("UAPMD", 800, 800);
     if (!window) {
         std::cerr << "Error: Failed to create window" << std::endl;
         windowingBackend->shutdown();
@@ -119,8 +170,15 @@ int runMain(int argc, char** argv) {
     // Initialize application model
     uapmd::AppModel::instantiate();
 
+    // Prepare GUI defaults from command line arguments
+    uapmd::gui::GuiDefaults defaults;
+    if (!positional.empty()) defaults.pluginName = positional[0];
+    if (positional.size() > 1) defaults.formatName = positional[1];
+    if (positional.size() > 2) defaults.apiName = positional[2];
+    if (positional.size() > 3) defaults.deviceName = positional[3];
+
     // Create main window controller
-    uapmd::gui::MainWindow mainWindow;
+    uapmd::gui::MainWindow mainWindow(defaults);
 
     // Start audio
     uapmd::AppModel::instance().sequencer().startAudio();
@@ -233,7 +291,7 @@ int main(int argc, char** argv) {
     CPPTRACE_TRY {
         return runMain(argc, argv);
     } CPPTRACE_CATCH(const std::exception &e) {
-        std::cerr << "Exception in remidy-plugin-host-imgui: " << e.what() << std::endl;
+        std::cerr << "Exception in uapmd-app: " << e.what() << std::endl;
         cpptrace::from_current_exception().print();
         return EXIT_FAILURE;
     }
