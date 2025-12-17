@@ -70,7 +70,7 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
         skip = true;
 
     // Not sure when it started, but their AU version stalls while instantiating.
-    // Their individual plugin could be instantiated on remidy-plugin-host except for #TCrossOver,
+    // Their individual plugin could be instantiated on uapmd-app except for #TCrossOver,
     // but the scanner stalls at anything. So we have to mark them as blocked.
     if (format->name() == "AU" && vendor == "Tracktion")
         skip = true;

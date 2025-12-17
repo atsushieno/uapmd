@@ -38,7 +38,7 @@ Plugins like Dexed does not implement these functions while it converts paramete
 
 ## Automatable
 
-We support only "automatable" parameters in some use cases. Namely, non-automatable parameters are not displayed on remidy-plugin-host and not mapped to MIDI-CI AllCtrlList property.
+We support only "automatable" parameters in some use cases. Namely, non-automatable parameters are not displayed on uapmd-app and not mapped to MIDI-CI AllCtrlList property.
 
 - AU parameters can be `kAudioUnitParameterFlag_NonRealTime`
 - VST3 parameters can be `kCanAutomate`

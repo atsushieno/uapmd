@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 # Shared ImGui platform backend library for remidy tools
 # This library provides SDL3/SDL2/GLFW backend abstractions with ImGui support
-# Used by both remidy-plugin-host and uapmd-service
+# Used by both remidy-plugin-host, uapmd-service, and uapmd-app.
 
 add_library(remidy-imgui-shared STATIC
     PlatformBackend.cpp

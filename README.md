@@ -5,10 +5,9 @@ There are two primary components on this repository:
 - `remidy` aims to provide audio plugin hosting features in a cross-platform and multi-format manner in liberal licenses (MIT/BSD). It supports VST3, AudioUnit (on macOS), LV2, and CLAP formats.
 - `uapmd` (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that can instantiate an arbitrary set of plugins and acts as a virtual MIDI 2.0 UMP device on various platforms (multiple tracks do not mean they work in parallel yet).
 
-At user developers perspective, there are two primary GUI tools:
+At user developers perspective, there is one primary GUI tools: `uapmd-app` is a plugin host that you can list the installed plugins, instantiate plugins, process audio with simple UMP keyboard, adjust parameters, launch the GUI, save and restore states. It can also expose those plugins as platform virtual MIDI 2.0 devices (translating UMP inputs into event inputs to those in each plugin API, as well as exposing some plugin features using MIDI-CI property exchange).
 
-- `remidy-plugin-host` is a simple plugin host that you can list the installed plugins, instantiate, and process audio with simple MIDI 2.0 keyboard.
-- `uapmd-service` instantiates one single audio plugin for each virtual MIDI 2.0 device, and translates UMP inputs into event inputs to those in each plugin API, as well as exposing some plugin features using MIDI-CI property exchange.
+(There used to be two separate apps: `remidy-plugin-host` for plugin hosting and `uapmd-service` for exposing platform virtual MIDI 2.0 devices).
 
 ## Screenshots
 
@@ -16,20 +15,17 @@ I put them on the [wiki](https://github.com/atsushieno/uapmd/wiki) pages.
 
 ## What's the point of these tools?
 
-With UAPMD, You do not have to wait for MIDI 2.0 synthesizers in the market; existing audio plugins should work as a virtual MIDI 2.0 device. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take a similar place for MIDI 2.0.
+With UAPMD, You do not have to wait for MIDI 2.0 synthesizers in the market; existing audio plugins should work as virtual MIDI 2.0 devices. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take a similar place for MIDI 2.0.
 
 Currently, both Remidy and UAPMD target only desktop platforms so far, but if you use my [AAP project](https://github.com/atsushieno/aap-core) those synth plugins already work as UMP devices (you need Android 15 or later that supports [`MidiUmpDeviceService`](https://developer.android.com/reference/kotlin/android/media/midi/MidiUmpDeviceService)).
 
 ## Usage
 
-This repository consists of two primary executables:
-
-- `remidy-plugin-host` is an audio plugin host
-- `uapmd-service` is a plugin host that maps plugin instances to platform virtual MIDI 2.0 devices
+This repository contains one primary executable `uapmd-app`.
 
 There are supplemental tools for diagnosing problems we encounter.
 
-### uapmd-service
+### uapmd-app
 
 The virtual MIDI 2.0 device service controller. Currently the command line options are hacky:
 
@@ -40,10 +36,6 @@ The virtual MIDI 2.0 device service controller. Currently the command line optio
 `format-name` is one of `VST3` `AU`, `LV2`, or `CLAP`.
 
 `api-name` so far accepts only `PIPEWIRE` (on Linux) to use PipeWire, and uses default available API otherwise.
-
-### remidy-plugin-host
-
-The plugin host. No particular command line options exist.
 
 ### remidy-scan
 

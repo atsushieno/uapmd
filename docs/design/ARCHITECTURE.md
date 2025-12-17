@@ -1,6 +1,6 @@
 # The App Architecture
 
-There is an audio plugin "sequencer" which is the audio engine in both remidy-plugin-host and uapmd-service.
+There is an audio plugin "sequencer" which is the audio engine in uapmd-app.
 
 A sequencer consists of sequences. One audio plugin track instantiates an audio plugin graph that can be mapped to one or more channels in a group.
 
