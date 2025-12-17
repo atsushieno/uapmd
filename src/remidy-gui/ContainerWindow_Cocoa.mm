@@ -90,7 +90,11 @@ public:
             if (visible) [window makeKeyAndOrderFront:nil]; else [window orderOut:nil];
         }
     }
+    bool resizing{false};
     void resize(int width, int height) override {
+        if (resizing)
+            return;
+        resizing = true;
         @autoreleasepool {
             if (!window_) return;
             NSWindow* window = (__bridge NSWindow*)window_;
@@ -105,6 +109,7 @@ public:
             for (NSView* subview in [contentView subviews]) {
                 [subview setFrame:[contentView bounds]];
             }
+            resizing = false;
         }
     }
     Bounds getBounds() const override { return b_; }

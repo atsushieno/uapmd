@@ -1,5 +1,6 @@
 #include "PluginFormatAU.hpp"
 #include <priv/event-loop.hpp>
+#include <cmath>
 #import <Cocoa/Cocoa.h>
 #import <AudioUnit/AudioUnit.h>
 
@@ -171,7 +172,9 @@ namespace remidy {
 
                         // Set the view's frame to fill the parent view
                         // This ensures correct positioning and allows the parent to control sizing
+                        ignore_view_notifications = true;
                         [view setFrame:[parentView bounds]];
+                        ignore_view_notifications = false;
 
                         // Set autoresizing to allow the view to resize with the parent
                         [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
@@ -189,6 +192,8 @@ namespace remidy {
                     created = true;
                     visible = false;
                     success = true;
+                    if (ns_view)
+                        startViewResizeObservation(ns_view);
                 }
             }
         });
@@ -212,6 +217,7 @@ namespace remidy {
 
                 // Release view
                 if (ns_view) {
+                    stopViewResizeObservation();
                     NSView* view = (__bridge NSView*)ns_view;
                     [view removeFromSuperview];
                     [view release];
@@ -350,13 +356,23 @@ namespace remidy {
                     NSWindow* window = (__bridge NSWindow*)ns_window;
                     // Set content size, not frame size (frame includes title bar)
                     NSSize contentSize = NSMakeSize(width, height);
+                    ignore_view_notifications = true;
                     [window setContentSize:contentSize];
+                    ignore_view_notifications = false;
+                    last_view_width = contentSize.width;
+                    last_view_height = contentSize.height;
+                    last_view_size_valid = true;
                     success = true;
                 } else if (ns_view) {
                     NSView* view = (__bridge NSView*)ns_view;
                     // Always position at origin (0,0) relative to parent
                     NSRect frame = NSMakeRect(0, 0, width, height);
+                    ignore_view_notifications = true;
                     [view setFrame:frame];
+                    ignore_view_notifications = false;
+                    last_view_width = frame.size.width;
+                    last_view_height = frame.size.height;
+                    last_view_size_valid = true;
                     success = true;
                 }
             }
@@ -376,6 +392,67 @@ namespace remidy {
         }
 
         return false;
+    }
+
+    void PluginInstanceAU::UISupport::startViewResizeObservation(void* viewHandle) {
+        if (!viewHandle || view_resize_observer)
+            return;
+
+        NSView* view = (__bridge NSView*)viewHandle;
+        [view setPostsFrameChangedNotifications:YES];
+
+        __block PluginInstanceAU::UISupport* blockSelf = this;
+        id observer = [[NSNotificationCenter defaultCenter] addObserverForName:NSViewFrameDidChangeNotification
+            object:view
+            queue:nil
+            usingBlock:^(NSNotification* _Nonnull) {
+                if (!blockSelf)
+                    return;
+                blockSelf->handleViewSizeChange();
+            }];
+
+        view_resize_observer = (void*)CFBridgingRetain(observer);
+
+        NSSize currentSize = [view frame].size;
+        last_view_width = currentSize.width;
+        last_view_height = currentSize.height;
+        last_view_size_valid = true;
+    }
+
+    void PluginInstanceAU::UISupport::stopViewResizeObservation() {
+        if (!view_resize_observer)
+            return;
+
+        id observer = (__bridge id)view_resize_observer;
+        [[NSNotificationCenter defaultCenter] removeObserver:observer];
+        CFBridgingRelease(view_resize_observer);
+        view_resize_observer = nullptr;
+        last_view_size_valid = false;
+    }
+
+    void PluginInstanceAU::UISupport::handleViewSizeChange() {
+        if (ignore_view_notifications || !host_resize_handler || !ns_view)
+            return;
+
+        NSView* view = (__bridge NSView*)ns_view;
+        NSSize size = [view frame].size;
+        if (size.width <= 0.0 || size.height <= 0.0)
+            return;
+
+        auto nearlyEqual = [](double a, double b) {
+            return std::abs(a - b) < 0.5;
+        };
+
+        if (last_view_size_valid && nearlyEqual(size.width, last_view_width) && nearlyEqual(size.height, last_view_height))
+            return;
+
+        last_view_width = size.width;
+        last_view_height = size.height;
+        last_view_size_valid = true;
+
+        uint32_t width = static_cast<uint32_t>(std::round(size.width));
+        uint32_t height = static_cast<uint32_t>(std::round(size.height));
+        host_resize_handler(width, height);
     }
 
     bool PluginInstanceAU::UISupport::setScale(double scale) {

@@ -134,11 +134,20 @@ namespace remidy {
             void* ns_window{nullptr};          // NSWindow* - only for floating windows
             void* ns_bundle{nullptr};          // NSBundle* - for AUv2 cleanup
             void* ns_view_controller{nullptr}; // NSViewController* - for AUv3
+            void* view_resize_observer{nullptr}; // NSNotification observer for view frame changes
             bool created{false};
             bool visible{false};
             bool attached{false};
             bool is_floating{false};
             std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
+            bool ignore_view_notifications{false};
+            bool last_view_size_valid{false};
+            double last_view_width{0.0};
+            double last_view_height{0.0};
+
+            void startViewResizeObservation(void* viewHandle);
+            void stopViewResizeObservation();
+            void handleViewSizeChange();
         };
 
         struct HostTransportInfo {
