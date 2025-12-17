@@ -451,6 +451,18 @@ void MainWindow::renderInstanceControl() {
                                         std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
                                     } else {
                                         pluginWindowEmbedded_[instanceId] = true;
+
+                                        // Query plugin's preferred UI size and resize window to match
+                                        uint32_t preferredWidth = 0, preferredHeight = 0;
+                                        if (instance->getUISize(preferredWidth, preferredHeight) && preferredWidth > 0 && preferredHeight > 0) {
+                                            pluginWindowBounds_[instanceId].width = static_cast<int>(preferredWidth);
+                                            pluginWindowBounds_[instanceId].height = static_cast<int>(preferredHeight);
+                                            container->resize(static_cast<int>(preferredWidth), static_cast<int>(preferredHeight));
+                                        }
+
+                                        // Set window resizability based on plugin capability
+                                        bool canResize = instance->canUIResize();
+                                        container->setResizable(canResize);
                                     }
                                 }
 

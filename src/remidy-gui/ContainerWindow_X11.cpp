@@ -112,9 +112,10 @@ public:
         // Pass the holder (socket) XID to plugins
         return reinterpret_cast<void*>(static_cast<uintptr_t>(holder_ ? holder_ : wnd_));
     }
-
-private:
-    void setResizable(bool resizable) {
+    void setResizeCallback(std::function<void(int, int)> callback) override {
+        resizeCallback_ = std::move(callback);
+    }
+    void setResizable(bool resizable) override {
         if (!dpy_ || !wnd_) return;
         XSizeHints hints{};
         hints.flags = PMinSize | PMaxSize;
@@ -145,6 +146,7 @@ private:
     std::atomic<bool> running_{false};
     Window child_{};
     std::function<void()> closeCallback_;
+    std::function<void(int, int)> resizeCallback_;
 
     void eventPump() {
         // Only handle events targeted to our container window; don't drain the connection-wide queue.
@@ -167,6 +169,23 @@ private:
                             XUnmapWindow(dpy_, wnd_);
                             if (holder_) XUnmapWindow(dpy_, holder_);
                             XFlush(dpy_);
+                        }
+                        break;
+                    case ConfigureNotify:
+                        if (ev.xconfigure.window == wnd_) {
+                            int newWidth = ev.xconfigure.width;
+                            int newHeight = ev.xconfigure.height;
+                            // Only notify if size actually changed
+                            if (newWidth != b_.width || newHeight != b_.height) {
+                                b_.width = newWidth;
+                                b_.height = newHeight;
+                                // Resize holder to match
+                                if (holder_) XResizeWindow(dpy_, holder_, (unsigned)newWidth, (unsigned)newHeight);
+                                // Notify via callback
+                                if (resizeCallback_) {
+                                    resizeCallback_(newWidth, newHeight);
+                                }
+                            }
                         }
                         break;
                     case ReparentNotify:

@@ -298,12 +298,15 @@ namespace remidy {
     }
 
     bool PluginInstanceAU::UISupport::canResize() {
-        if (!created)
+        if (!created || !ns_view)
             return false;
 
-        // Most AU views support resizing through NSView frame manipulation
-        // We'll return true by default
-        return true;
+        // FIXME: this should return true, but that makes content not resize somehow.
+
+        // AU doesn't have a standard resize API
+        // The view has autoresizing mask set, which works when the parent resizes
+        // but we need the window to be non-resizable for this to work properly
+        return false;
     }
 
     bool PluginInstanceAU::UISupport::getSize(uint32_t &width, uint32_t &height) {

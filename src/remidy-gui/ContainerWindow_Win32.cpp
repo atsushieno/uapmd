@@ -48,9 +48,10 @@ public:
     }
     Bounds getBounds() const override { return b_; }
     void* getHandle() const override { return hwnd_; }
-
-private:
-    void setResizable(bool resizable) {
+    void setResizeCallback(std::function<void(int, int)> callback) override {
+        resizeCallback_ = std::move(callback);
+    }
+    void setResizable(bool resizable) override {
         if (!hwnd_) return;
         LONG_PTR style = GetWindowLongPtrW(hwnd_, GWL_STYLE);
         if (resizable) {
@@ -76,6 +77,12 @@ private:
             return 0; // Prevent default close behavior
         }
 
+        if (msg == WM_SIZE && window && window->resizeCallback_) {
+            int width = LOWORD(lParam);
+            int height = HIWORD(lParam);
+            window->resizeCallback_(width, height);
+        }
+
         return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 
@@ -87,6 +94,7 @@ private:
     HWND hwnd_{};
     Bounds b_{};
     std::function<void()> closeCallback_;
+    std::function<void(int, int)> resizeCallback_;
 };
 
 std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height, std::function<void()> closeCallback) {

@@ -2,9 +2,10 @@
 #include <remidy-gui/remidy-gui.hpp>
 #import <Cocoa/Cocoa.h>
 
-// Window delegate to handle close events
+// Window delegate to handle close and resize events
 @interface ContainerWindowDelegate : NSObject <NSWindowDelegate>
 @property (nonatomic, copy) void (^closeCallback)(void);
+@property (nonatomic, copy) void (^resizeCallback)(int, int);
 @end
 
 @implementation ContainerWindowDelegate
@@ -15,6 +16,14 @@
     }
     [sender orderOut:nil];
     return NO; // Prevent actual window close
+}
+
+- (void)windowDidResize:(NSNotification *)notification {
+    if (self.resizeCallback) {
+        NSWindow* window = [notification object];
+        NSSize contentSize = [[window contentView] bounds].size;
+        self.resizeCallback((int)contentSize.width, (int)contentSize.height);
+    }
 }
 @end
 
@@ -54,10 +63,11 @@ public:
             NSWindow* window = (__bridge_transfer NSWindow*)window_;
             ContainerWindowDelegate* delegate = (__bridge_transfer ContainerWindowDelegate*)delegate_;
 
-            // Critical: Clear the delegate's callback FIRST before any operations
+            // Critical: Clear the delegate's callbacks FIRST before any operations
             // This prevents calling into destroyed C++ objects
             if (delegate) {
                 delegate.closeCallback = nil;
+                delegate.resizeCallback = nil;
             }
 
             // Detach delegate from window
@@ -103,8 +113,20 @@ public:
         NSWindow* window = (__bridge NSWindow*)window_;
         return (__bridge void*)[window contentView];
     }
-private:
-    void setResizable(bool resizable) {
+    void setResizeCallback(std::function<void(int, int)> callback) override {
+        @autoreleasepool {
+            if (!delegate_) return;
+            ContainerWindowDelegate* delegate = (__bridge ContainerWindowDelegate*)delegate_;
+            if (callback) {
+                delegate.resizeCallback = ^(int w, int h) {
+                    callback(w, h);
+                };
+            } else {
+                delegate.resizeCallback = nil;
+            }
+        }
+    }
+    void setResizable(bool resizable) override {
         @autoreleasepool {
             if (!window_) return;
             NSWindow* window = (__bridge NSWindow*)window_;

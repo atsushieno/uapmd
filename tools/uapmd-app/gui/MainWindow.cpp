@@ -182,8 +182,13 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
     if (windowIt == pluginWindows_.end())
         return;
 
-    if (pluginWindowResizeIgnore_.erase(instanceId) > 0)
+    // Check if this resize should be ignored (programmatic resize from plugin)
+    // Don't erase yet - we only erase after processing a real user resize
+    if (pluginWindowResizeIgnore_.find(instanceId) != pluginWindowResizeIgnore_.end()) {
+        // Erase from ignore set so the next user resize will be processed
+        pluginWindowResizeIgnore_.erase(instanceId);
         return;
+    }
 
     auto* window = windowIt->second.get();
     if (!window)
@@ -198,9 +203,9 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
     const uint32_t currentHeight = static_cast<uint32_t>(std::max(currentBounds.height, 0));
 
     auto* instance = sequencer.getPluginInstance(instanceId);
-    if (instance->setUISize(currentWidth, currentHeight))
-        return;
+    instance->setUISize(currentWidth, currentHeight);
 
+    // Check if the plugin adjusted the size
     uint32_t adjustedWidth = currentWidth;
     uint32_t adjustedHeight = currentHeight;
     if (!instance->getUISize(adjustedWidth, adjustedHeight))
@@ -537,6 +542,12 @@ void MainWindow::renderInstanceControl() {
                                     onPluginWindowClosed(instanceId);
                                 });
                                 container = w.get();
+                                // Set up resize callback to notify plugin when user resizes the window
+                                w->setResizeCallback([this, instanceId](int width, int height) {
+                                    pluginWindowBounds_[instanceId].width = width;
+                                    pluginWindowBounds_[instanceId].height = height;
+                                    onPluginWindowResized(instanceId);
+                                });
                                 pluginWindows_[instanceId] = std::move(w);
                                 pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
                             } else {
@@ -563,6 +574,9 @@ void MainWindow::renderInstanceControl() {
                                         std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
                                     } else {
                                         pluginWindowEmbedded_[instanceId] = true;
+                                        // Set window resizability based on plugin's capability
+                                        bool canResize = instance->canUIResize();
+                                        container->setResizable(canResize);
                                     }
                                 }
 
@@ -806,6 +820,12 @@ void MainWindow::renderInstanceControl() {
                                     onPluginWindowClosed(instanceId);
                                 });
                                 container = w.get();
+                                // Set up resize callback to notify plugin when user resizes the window
+                                w->setResizeCallback([this, instanceId](int width, int height) {
+                                    pluginWindowBounds_[instanceId].width = width;
+                                    pluginWindowBounds_[instanceId].height = height;
+                                    onPluginWindowResized(instanceId);
+                                });
                                 pluginWindows_[instanceId] = std::move(w);
                                 pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
                             } else {
@@ -829,6 +849,9 @@ void MainWindow::renderInstanceControl() {
                                         std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
                                     } else {
                                         pluginWindowEmbedded_[instanceId] = true;
+                                        // Set window resizability based on plugin's capability
+                                        bool canResize = instance->canUIResize();
+                                        container->setResizable(canResize);
                                     }
                                 }
 

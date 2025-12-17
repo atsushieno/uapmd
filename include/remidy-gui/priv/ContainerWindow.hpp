@@ -14,6 +14,8 @@ public:
 
     virtual void show(bool visible) = 0;
     virtual void resize(int width, int height) = 0;
+    virtual void setResizeCallback(std::function<void(int, int)> callback) = 0;
+    virtual void setResizable(bool resizable) = 0;
     virtual Bounds getBounds() const = 0;
     virtual void* getHandle() const = 0; // Platform-specific: HWND, NSView*, XID encoded in void*
 };
