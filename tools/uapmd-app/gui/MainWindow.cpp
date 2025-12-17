@@ -1489,7 +1489,7 @@ void MainWindow::renderPluginSelector() {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
 
-            std::string selectableId = plugin.format + "##" + plugin.id + "##" + std::to_string(sortedIndex);
+            std::string selectableId = "##" + plugin.id + "##" + std::to_string(sortedIndex);
             if (ImGui::Selectable(selectableId.c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns)) {
                 selectedPluginFormat_ = plugin.format;
                 selectedPluginId_ = plugin.id;
