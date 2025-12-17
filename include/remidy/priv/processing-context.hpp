@@ -245,12 +245,6 @@ namespace remidy {
                 if (bus)
                     bus->clear();
 
-            // Copy events output to input for the next node
-            auto eventBytes = std::min(event_in.maxMessagesInBytes(), event_out.position());
-            if (eventBytes > 0) {
-                std::memcpy(event_in.getMessages(), event_out.getMessages(), eventBytes);
-                event_in.position(eventBytes);
-            }
             event_out.position(0);
         }
     };

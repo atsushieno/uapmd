@@ -10,6 +10,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <portable-file-dialogs.h>
+#include <choc/audio/choc_AudioFileFormat_WAV.h>
+#include <choc/audio/choc_AudioFileFormat_FLAC.h>
+#include <choc/audio/choc_AudioFileFormat_Ogg.h>
 
 #include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
 
@@ -285,17 +288,36 @@ void MainWindow::renderPlayerSettings() {
         loadFile();
     }
 
-    if (!recentFiles_.empty()) {
-        ImGui::SameLine();
-        if (ImGui::BeginCombo("Recent Files", "Recent...")) {
-            for (const auto& file : recentFiles_) {
-                if (ImGui::Selectable(file.c_str())) {
-                    currentFile_ = file;
-                    std::cout << "Loading file: " << currentFile_ << std::endl;
-                }
-            }
-            ImGui::EndCombo();
-        }
+    // Spectrum analyzers - side by side
+    // Update spectrum data from sequencer
+    sequencer.getInputSpectrum(inputSpectrum_, kSpectrumBars);
+    sequencer.getOutputSpectrum(outputSpectrum_, kSpectrumBars);
+
+    float availableWidth = ImGui::GetContentRegionAvail().x;
+    float spectrumWidth = (availableWidth - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+    ImVec2 spectrumSize = ImVec2(spectrumWidth, 64);
+
+    // Use table layout for proper alignment
+    if (ImGui::BeginTable("##SpectrumTable", 2, ImGuiTableFlags_None))
+    {
+        ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, spectrumWidth);
+        ImGui::TableSetupColumn("Output", ImGuiTableColumnFlags_WidthFixed, spectrumWidth);
+
+        // First row: labels
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::Text("Input");
+        ImGui::TableNextColumn();
+        ImGui::Text("Output");
+
+        // Second row: histograms
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::PlotHistogram("##InputSpectrum", inputSpectrum_, kSpectrumBars, 0, nullptr, 0.0f, 1.0f, spectrumSize);
+        ImGui::TableNextColumn();
+        ImGui::PlotHistogram("##OutputSpectrum", outputSpectrum_, kSpectrumBars, 0, nullptr, 0.0f, 1.0f, spectrumSize);
+
+        ImGui::EndTable();
     }
 
     ImGui::Text("Transport Controls:");
@@ -1018,8 +1040,56 @@ void MainWindow::record() {
 }
 
 void MainWindow::loadFile() {
-    currentFile_ = "loaded_file.wav";
-    playbackLength_ = 120.0f; // 2 minutes
+    auto selection = pfd::open_file(
+        "Select Audio File",
+        ".",
+        { "Audio Files", "*.wav *.flac *.ogg",
+          "WAV Files", "*.wav",
+          "FLAC Files", "*.flac",
+          "OGG Files", "*.ogg",
+          "All Files", "*" }
+    );
+
+    if (selection.result().empty()) {
+        return; // User cancelled
+    }
+
+    std::string filepath = selection.result()[0];
+
+    // Determine file type by extension and create appropriate reader
+    std::unique_ptr<choc::audio::AudioFileReader> reader;
+
+    auto extension = filepath.substr(filepath.find_last_of('.') + 1);
+    std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+
+    if (extension == "wav") {
+        reader = choc::audio::WAVAudioFileFormat<true>().createReader(filepath);
+    } else if (extension == "flac") {
+        reader = choc::audio::FLACAudioFileFormat<true>().createReader(filepath);
+    } else if (extension == "ogg") {
+        reader = choc::audio::OggAudioFileFormat<true>().createReader(filepath);
+    } else {
+        // Try all formats as fallback
+        reader = choc::audio::WAVAudioFileFormat<true>().createReader(filepath);
+        if (!reader)
+            reader = choc::audio::FLACAudioFileFormat<true>().createReader(filepath);
+        if (!reader)
+            reader = choc::audio::OggAudioFileFormat<true>().createReader(filepath);
+    }
+
+    if (!reader) {
+        pfd::message("Load Failed",
+                    "Could not load audio file: " + filepath + "\nSupported formats: WAV, FLAC, OGG",
+                    pfd::choice::ok,
+                    pfd::icon::error);
+        return;
+    }
+
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    sequencer.loadAudioFile(std::move(reader));
+
+    currentFile_ = filepath;
+    playbackLength_ = static_cast<float>(sequencer.audioFileDurationSeconds());
     playbackPosition_ = 0.0f;
 
     // Add to recent files if not already there

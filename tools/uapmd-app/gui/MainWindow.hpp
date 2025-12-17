@@ -48,6 +48,11 @@ class MainWindow {
         float playbackLength_ = 0.0f;
         float volume_ = 0.8f;
 
+        // Spectrum analyzer data
+        static constexpr int kSpectrumBars = 32;
+        float inputSpectrum_[kSpectrumBars] = {};
+        float outputSpectrum_[kSpectrumBars] = {};
+
         // Instance control
         int selectedInstance_ = -1;
         std::vector<int32_t> instances_;
