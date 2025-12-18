@@ -21,7 +21,7 @@ namespace uapmd {
         const size_t ump_buffer_size_in_bytes;
         int32_t sample_rate;
 
-        DeviceIODispatcher dispatcher{};
+        DeviceIODispatcher* dispatcher{};
         AudioPluginHostPAL* plugin_host_pal;
         SequenceProcessor sequencer;
 
@@ -102,7 +102,7 @@ namespace uapmd {
             std::vector<PluginNodeInfo> nodes;
         };
 
-        AudioPluginSequencer(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate);
+        AudioPluginSequencer(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
         ~AudioPluginSequencer();
 
         // Audio plugin support

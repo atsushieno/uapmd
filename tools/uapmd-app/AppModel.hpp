@@ -18,7 +18,7 @@ namespace uapmd {
         static void instantiate();
         static AppModel& instance();
         static void cleanupInstance();
-        AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate);
+        AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
 
         AudioPluginSequencer& sequencer() { return sequencer_; }
         remidy_tooling::PluginScanTool& pluginScanTool() { return pluginScanTool_; }

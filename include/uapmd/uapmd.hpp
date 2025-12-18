@@ -1,9 +1,9 @@
 #pragma once
 
 #include "priv/CommonTypes.hpp"
-#include "priv/audiograph/DeviceIODispatcher.hpp"
 #include "priv/audiograph/AudioIODevice.hpp"
 #include "priv/audiograph/MidiIODevice.hpp"
+#include "priv/audiograph/DeviceIODispatcher.hpp"
 #include "priv/plugingraph/AudioPluginGraph.hpp"
 #include "priv/plugingraph/AudioPluginHostPAL.hpp"
 #include "priv/plugingraph/AudioPluginNode.hpp"

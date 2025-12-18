@@ -227,9 +227,11 @@ std::optional<uapmd::AudioPluginSequencer::RouteResolution> uapmd::AudioPluginSe
 uapmd::AudioPluginSequencer::AudioPluginSequencer(
     size_t audioBufferSizeInFrames,
     size_t umpBufferSizeInBytes,
-    int32_t sampleRate
+    int32_t sampleRate,
+    DeviceIODispatcher* dispatcher
 ) : buffer_size_in_frames(audioBufferSizeInFrames),
     ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
+    dispatcher(dispatcher),
     plugin_host_pal(AudioPluginHostPAL::instance()),
     sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal),
     plugin_output_handlers_(std::make_shared<HandlerMap>()),
@@ -240,9 +242,9 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
     manager->initialize(audioConfig);
 
     // FIXME: enable MIDI devices
-    dispatcher.configure(umpBufferSizeInBytes, manager->open());
+    dispatcher->configure(umpBufferSizeInBytes, manager->open());
 
-    dispatcher.addCallback([&](uapmd::AudioProcessContext& process) {
+    dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
         auto& data = sequencer.data();
         auto& masterContext = data.masterContext();
 
@@ -537,7 +539,7 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
     std::string& pluginId,
     std::function<void(int32_t instanceId, std::string error)> callback
 ) {
-    auto audioDevice = dispatcher.audio();
+    auto audioDevice = dispatcher->audio();
     // Always use at least 2 input channels to support audio file playback even without mic input
     const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
     const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
@@ -586,7 +588,7 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
         return;
     }
 
-    auto audioDevice = dispatcher.audio();
+    auto audioDevice = dispatcher->audio();
     // Always use at least 2 input channels to support audio file playback even without mic input
     const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
     const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
@@ -795,15 +797,15 @@ std::optional<int32_t> uapmd::AudioPluginSequencer::instanceForGroup(uint8_t gro
 }
 
 uapmd_status_t uapmd::AudioPluginSequencer::startAudio() {
-    return dispatcher.start();
+    return dispatcher->start();
 }
 
 uapmd_status_t uapmd::AudioPluginSequencer::stopAudio() {
-    return dispatcher.stop();
+    return dispatcher->stop();
 }
 
 uapmd_status_t uapmd::AudioPluginSequencer::isAudioPlaying() {
-    return dispatcher.isPlaying();
+    return dispatcher->isPlaying();
 }
 
 void uapmd::AudioPluginSequencer::startPlayback() {
@@ -832,7 +834,7 @@ int64_t uapmd::AudioPluginSequencer::playbackPositionSamples() const {
 
 int32_t uapmd::AudioPluginSequencer::sampleRate() { return sample_rate; }
 bool uapmd::AudioPluginSequencer::sampleRate(int32_t newSampleRate) {
-    if (dispatcher.isPlaying())
+    if (dispatcher->isPlaying())
         return false;
     sample_rate = newSampleRate;
     return true;

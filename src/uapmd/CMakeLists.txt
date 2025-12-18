@@ -26,7 +26,7 @@ target_link_libraries(uapmd PUBLIC
 
 target_sources(uapmd PRIVATE
         AudioBackend/AudioIODevice.cpp
-        AudioBackend/DeviceIODispatcher.cpp
+        AudioBackend/impl/DefaultDeviceIODispatcher.cpp
         AudioBackend/MidiIODevice.cpp
         AudioBackend/impl/MiniAudioIODevice.cpp
         AudioBackend/impl/LibreMidiIODevice.cpp

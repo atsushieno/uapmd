@@ -9,7 +9,7 @@
 std::unique_ptr<uapmd::AppModel> model{};
 
 void uapmd::AppModel::instantiate() {
-    model = std::make_unique<uapmd::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE);
+    model = std::make_unique<uapmd::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());
 }
 
 uapmd::AppModel& uapmd::AppModel::instance() {
@@ -20,8 +20,8 @@ void uapmd::AppModel::cleanupInstance() {
     model.reset();
 }
 
-uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate) :
-        sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate),
+uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
+        sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
         deviceController_(std::make_unique<VirtualMidiDeviceController>(&sequencer_)) {
 }
 

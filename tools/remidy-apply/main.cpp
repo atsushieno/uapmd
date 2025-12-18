@@ -122,7 +122,7 @@ class RemidyApply {
 
         static uint32_t AUDIO_BUFFER_SIZE = 1024;
         static uint32_t UMP_BUFFER_SIZE = 65536;
-        auto dispatcher = std::make_unique<uapmd::DeviceIODispatcher>();
+        auto dispatcher = uapmd::defaultDeviceIODispatcher();
         // FIXME: enable MIDI devices
         auto manager = uapmd::AudioIODeviceManager::instance();
         auto logger = remidy::Logger::global();
