@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <future>
 
+#include "../VirtualMidiDevices/LibreMidiVirtualMidiDevice.hpp"
+
 namespace uapmd {
 
     VirtualMidiDeviceController::VirtualMidiDeviceController(AudioPluginSequencer* sharedSequencer)
@@ -66,7 +68,9 @@ namespace uapmd {
         }
 
         auto actualTrackIndex = sequencer_->findTrackIndexForInstance(instanceId);
-        auto device = std::make_shared<UapmdMidiDevice>(sequencer_,
+        auto platformDevice = std::make_unique<LibreMidiVirtualMidiDevice>(apiName, deviceName, manufacturer, version);
+        auto device = std::make_shared<UapmdMidiDevice>(std::move(platformDevice),
+                                                        sequencer_,
                                                         instanceId,
                                                         actualTrackIndex,
                                                         apiName,

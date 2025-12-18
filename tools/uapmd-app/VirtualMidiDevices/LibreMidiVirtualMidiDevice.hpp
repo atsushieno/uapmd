@@ -1,14 +1,14 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
-#include "../PlatformVirtualMidiDevice.hpp"
+#include <uapmd/uapmd.hpp>
 #include <libremidi/libremidi-c.h>
 
 namespace uapmd {
 
-    // A PAL to virtual MIDI device
-    class PlatformVirtualMidiDevice::Impl {
+    class LibreMidiVirtualMidiDevice : public PlatformVirtualMidiDevice {
         std::string api_name;
         std::string device_name;
         std::string manufacturer;
@@ -27,12 +27,12 @@ namespace uapmd {
         void inputCallback(libremidi_timestamp timestamp, const libremidi_midi2_symbol* messages, size_t len);
 
     public:
-        Impl(std::string& apiName, std::string& deviceName, std::string& manufacturer, std::string& version, uint64_t sysExDelayInMicroseconds);
-        virtual ~Impl();
+        LibreMidiVirtualMidiDevice(std::string apiName, std::string deviceName, std::string manufacturer, std::string version, uint64_t sysExDelayInMicroseconds = 1000);
+        ~LibreMidiVirtualMidiDevice() override;
 
-        void addInputHandler(ump_receiver_t receiver, void* userData);
-        void removeInputHandler(ump_receiver_t receiver);
-        void send(uapmd_ump_t* messages, size_t length, uapmd_timestamp_t timestamp);
+        void addInputHandler(ump_receiver_t receiver, void* userData) override;
+        void removeInputHandler(ump_receiver_t receiver) override;
+        void send(uapmd_ump_t* messages, size_t length, uapmd_timestamp_t timestamp) override;
     };
 
 }

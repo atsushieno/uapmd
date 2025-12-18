@@ -6,11 +6,15 @@
 #include <memory>
 #include <string>
 
+// FIXME: remove these undefs once we sort out name conflicts
+#undef JR_TIMESTAMP_TICKS_PER_SECOND
+#undef MIDI_2_0_RESERVED
 #include "midicci/midicci.hpp"
 #include "uapmd/uapmd.hpp"
-#include "PlatformVirtualMidiDevice.hpp"
 
 namespace uapmd {
+    class AudioPluginSequencer;
+
 
     class UapmdMidiDevice {
         std::string api_name{};
@@ -23,7 +27,7 @@ namespace uapmd {
         int32_t track_index{-1};
         uint8_t ump_group{0xFF};
 
-        std::unique_ptr<PlatformVirtualMidiDevice> platformDevice{};
+        std::unique_ptr<PlatformVirtualMidiDevice> platform_device{};
         std::map<uint32_t, std::unique_ptr<midicci::musicdevice::MidiCISession>> ci_sessions{};
         std::vector<midicci::musicdevice::MidiInputCallback> ci_input_forwarders{};
         bool output_handler_registered{false};
@@ -34,7 +38,8 @@ namespace uapmd {
         void teardownOutputHandler();
 
     public:
-        UapmdMidiDevice(AudioPluginSequencer* sequencer,
+        UapmdMidiDevice(std::unique_ptr<PlatformVirtualMidiDevice> platformMidiDevice,
+                        AudioPluginSequencer* sequencer,
                         int32_t instanceId,
                         int32_t trackIndex,
                         std::string apiName,

@@ -7,7 +7,7 @@
 
 #include "midicci/midicci.hpp" // include before anything that indirectly includes X.h
 #include "uapmd/uapmd.hpp"
-#include "../VirtualMidiDevices/UapmdMidiDevice.hpp"
+#include "../../../include/uapmd/priv/midi/UapmdMidiDevice.hpp"
 
 namespace uapmd {
 

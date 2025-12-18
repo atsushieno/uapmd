@@ -1,4 +1,4 @@
-#include "UapmdMidiDevice.hpp"
+#include "../../../include/uapmd/priv/midi/UapmdMidiDevice.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -10,7 +10,8 @@ using namespace midicci::commonproperties;
 
 namespace uapmd {
 
-    UapmdMidiDevice::UapmdMidiDevice(AudioPluginSequencer* sharedSequencer,
+    UapmdMidiDevice::UapmdMidiDevice(std::unique_ptr<PlatformVirtualMidiDevice> platformMidiDevice,
+                                     AudioPluginSequencer* sharedSequencer,
                                      int32_t instanceId,
                                      int32_t trackIndex,
                                      std::string apiName,
@@ -23,12 +24,15 @@ namespace uapmd {
           version(std::move(versionString)),
           sequencer(sharedSequencer),
           instance_id(instanceId),
-          track_index(trackIndex) {
+          track_index(trackIndex),
+          platform_device(std::move(platformMidiDevice)) {
+        platform_device->addInputHandler(&UapmdMidiDevice::umpReceivedTrampoline, this);
     }
 
     UapmdMidiDevice::~UapmdMidiDevice() {
         stop();
         teardownOutputHandler();
+        platform_device->removeInputHandler(&UapmdMidiDevice::umpReceivedTrampoline);
     }
 
     void UapmdMidiDevice::teardownOutputHandler() {
@@ -62,9 +66,9 @@ namespace uapmd {
             ci_input_forwarders.push_back(std::move(callback));
         };
         auto sender = [&](const uint8_t* data, size_t offset, size_t length, uint64_t timestamp) {
-            if (!platformDevice)
+            if (!platform_device)
                 return;
-            platformDevice->send(const_cast<uapmd_ump_t*>(reinterpret_cast<const uapmd_ump_t*>(data + offset)),
+            platform_device->send(const_cast<uapmd_ump_t*>(reinterpret_cast<const uapmd_ump_t*>(data + offset)),
                                  length,
                                  static_cast<uapmd_timestamp_t>(timestamp));
         };
@@ -186,9 +190,9 @@ namespace uapmd {
 
         if (!output_handler_registered && sequencer) {
             sequencer->setPluginOutputHandler(instance_id, [this](const uapmd_ump_t* data, size_t bytes) {
-                if (!platformDevice)
+                if (!platform_device)
                     return;
-                platformDevice->send(const_cast<uapmd_ump_t*>(data), bytes, 0);
+                platform_device->send(const_cast<uapmd_ump_t*>(data), bytes, 0);
             });
             output_handler_registered = true;
         }
@@ -207,17 +211,10 @@ namespace uapmd {
         if (!sequencer)
             return -1;
 
-        platformDevice = std::make_unique<PlatformVirtualMidiDevice>(api_name, device_name, manufacturer, version);
-        platformDevice->addInputHandler(&UapmdMidiDevice::umpReceivedTrampoline, this);
-
         return 0;
     }
 
     uapmd_status_t UapmdMidiDevice::stop() {
-        if (platformDevice) {
-            platformDevice->removeInputHandler(&UapmdMidiDevice::umpReceivedTrampoline);
-            platformDevice.reset(nullptr);
-        }
         return 0;
     }
 
