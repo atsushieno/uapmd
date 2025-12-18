@@ -268,6 +268,20 @@ void MainWindow::renderPlayerSettings() {
         loadFile();
     }
 
+    ImGui::SameLine();
+
+    // Disable Unload button if no file is loaded
+    bool hasFile = !currentFile_.empty();
+    if (!hasFile) {
+        ImGui::BeginDisabled();
+    }
+    if (ImGui::Button("Unload File")) {
+        unloadFile();
+    }
+    if (!hasFile) {
+        ImGui::EndDisabled();
+    }
+
     if (!recentFiles_.empty()) {
         ImGui::SameLine();
         if (ImGui::BeginCombo("Recent Files", "Recent...")) {
@@ -643,6 +657,25 @@ void MainWindow::loadFile() {
     }
 
     std::cout << "File loaded: " << currentFile_ << std::endl;
+}
+
+void MainWindow::unloadFile() {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+
+    // Stop playback if currently playing
+    if (isPlaying_) {
+        stop();
+    }
+
+    // Unload the audio file from the sequencer
+    sequencer.unloadAudioFile();
+
+    // Clear UI state
+    currentFile_.clear();
+    playbackLength_ = 0.0f;
+    playbackPosition_ = 0.0f;
+
+    std::cout << "Audio file unloaded" << std::endl;
 }
 
 void MainWindow::refreshInstances() {

@@ -871,6 +871,13 @@ void uapmd::AudioPluginSequencer::loadAudioFile(std::unique_ptr<choc::audio::Aud
     }
 }
 
+void uapmd::AudioPluginSequencer::unloadAudioFile() {
+    std::lock_guard<std::mutex> lock(audio_file_mutex_);
+    audio_file_reader_.reset();
+    audio_file_buffer_.clear();
+    audio_file_read_position_.store(0, std::memory_order_release);
+}
+
 double uapmd::AudioPluginSequencer::audioFileDurationSeconds() const {
     std::lock_guard<std::mutex> lock(audio_file_mutex_);
     if (!audio_file_reader_)

@@ -162,6 +162,7 @@ namespace uapmd {
 
         // Audio file playback
         void loadAudioFile(std::unique_ptr<choc::audio::AudioFileReader> reader);
+        void unloadAudioFile();
         double audioFileDurationSeconds() const;
 
         // Audio analysis

@@ -154,6 +154,7 @@ class MainWindow {
         void resume();
         void record();
         void loadFile();
+        void unloadFile();
 
         // Instance control
         void renderInstanceControl();
