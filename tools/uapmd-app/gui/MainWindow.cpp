@@ -1706,14 +1706,14 @@ void MainWindow::renderPluginSelector() {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Instantiate Plugin")) {
-        // Determine track index (matching uapmd-service logic)
+        // Determine track index
         int32_t trackIndex = -1;
         if (selectedTrackOption_ > 0 && static_cast<size_t>(selectedTrackOption_ - 1) < trackOptions_.size()) {
             // Use existing track
             trackIndex = trackOptions_[static_cast<size_t>(selectedTrackOption_ - 1)].trackIndex;
         }
 
-        // Always create device (matching uapmd-service - it creates UMP device even for existing tracks)
+        // Always create device (creates UMP device even for existing tracks)
         createDeviceForPlugin(selectedPluginFormat_, selectedPluginId_, trackIndex);
         showPluginSelector_ = false;
     }
@@ -2016,7 +2016,7 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
         return;
     }
 
-    // Get plugin name from catalog (matching uapmd-service logic)
+    // Get plugin name from catalog
     std::string pluginName;
     auto& catalog = uapmd::AppModel::instance().sequencer().catalog();
     auto plugins = catalog.getPlugins();
@@ -2027,7 +2027,7 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
         }
     }
 
-    // Create device state (matching uapmd-service MainWindow.cpp:719-730)
+    // Create device state
     auto state = std::make_shared<DeviceState>();
     state->apiName = std::string(apiInput_);
     if (state->apiName.empty()) {
@@ -2045,8 +2045,8 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
     auto device = deviceController->createDevice(
         state->apiName,
         state->label,      // Use the label (device name) here!
-        "UAPMD Project",  // manufacturer (matching uapmd-service)
-        "0.1",            // version (matching uapmd-service)
+        "UAPMD Project",  // manufacturer
+        "0.1",            // version
         trackIndex,
         format,
         pluginId,
@@ -2064,7 +2064,7 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
 
     state->device = device;
 
-    // Start the device (matching uapmd-service MainWindow.cpp:747-774)
+    // Start the device
     int startStatus = device->start();
     {
         std::lock_guard guard(state->mutex);
@@ -2119,7 +2119,7 @@ void MainWindow::renderVirtualMidiDeviceManager() {
 
     size_t removeIndex = static_cast<size_t>(-1);
 
-    // Build rows structure (copied from uapmd-service MainWindow.cpp:384-463)
+    // Build rows structure
     struct PluginRow {
         int32_t instanceId{-1};
         std::string pluginName{};
@@ -2203,7 +2203,7 @@ void MainWindow::renderVirtualMidiDeviceManager() {
         }
     }
 
-    // Render row lambda (copied from uapmd-service MainWindow.cpp:465-594)
+    // Render row lambda
     auto renderRow = [&](PluginRow& row) -> bool {
         ImGui::TableNextRow();
 
@@ -2331,7 +2331,7 @@ void MainWindow::renderVirtualMidiDeviceManager() {
         return removeTriggered;
     };
 
-    // Render tracks (copied from uapmd-service MainWindow.cpp:596-674)
+    // Render tracks
     if (sequencer) {
         auto trackInfos = sequencer->getTrackInfos();
         bool exitLoops = false;
@@ -2417,7 +2417,7 @@ void MainWindow::renderVirtualMidiDeviceManager() {
     }
     rowsByTrack.clear();
 
-    // Render pending rows (copied from uapmd-service MainWindow.cpp:681-700)
+    // Render pending rows
     if (!pendingRows.empty() && removeIndex == static_cast<size_t>(-1)) {
         ImGui::Separator();
         ImGui::TextUnformatted("Pending plugins");
@@ -2439,7 +2439,7 @@ void MainWindow::renderVirtualMidiDeviceManager() {
         }
     }
 
-    // Handle removal (copied from uapmd-service MainWindow.cpp:702-704 + removeDevice logic)
+    // Handle removal
     if (removeIndex != static_cast<size_t>(-1)) {
         std::shared_ptr<DeviceState> state;
         {

@@ -13,7 +13,7 @@ namespace uapmd::gui {
 /**
  * ImGui-compatible event loop for Remidy.
  * Processes tasks queued from audio threads safely on the UI thread.
- * Shared between remidy-plugin-host, uapmd-service, and uapmd-app.
+ * It used to be shared by remidy-plugin-host, uapmd-service, and uapmd-app to avoid code duplication.
  */
 class ImGuiEventLoop : public remidy::EventLoop {
 private:

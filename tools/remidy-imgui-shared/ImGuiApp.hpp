@@ -53,7 +53,7 @@ struct ImGuiAppConfig {
 /**
  * Shared ImGui application runner.
  * Handles windowing backend initialization, ImGui setup, and main render loop.
- * Used by remidy-plugin-host, uapmd-service, and uapmd-app to avoid code duplication.
+ * It used to be shared by remidy-plugin-host, uapmd-service, and uapmd-app to avoid code duplication.
  */
 class ImGuiApp {
 public:

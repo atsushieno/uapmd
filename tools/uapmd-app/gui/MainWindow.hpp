@@ -77,7 +77,7 @@ class MainWindow {
         char deviceNameInput_[128] = "";  // Empty by default, will use plugin name if not filled
         char apiInput_[64] = "default";
 
-        // Virtual MIDI device state tracking (from uapmd-service)
+        // Virtual MIDI device state tracking
         struct PluginInstanceState {
             std::string pluginName;
             std::string pluginFormat;
