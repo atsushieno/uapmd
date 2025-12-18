@@ -187,6 +187,10 @@ int run(int argc, const char* argv[]) {
 
     std::thread thread([&] {
         CPPTRACE_TRY {
+            // Instancing CLAP plugins involve audio thread check.
+            // Therefore, it must be set as if the processing thread is the audio thread.
+            remidy::audioThreadIds().push_back(std::this_thread::get_id());
+
             result = testInstancing();
             remidy::EventLoop::stop();
 
