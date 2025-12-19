@@ -14,13 +14,13 @@
 
 namespace uapmd {
     class AudioPluginSequencer;
-
+    class UapmdMidiCISessions;
 
     class UapmdMidiDevice {
+        // FIXME: remove this hack
+        friend class UapmdMidiCISessions;
+
         std::string api_name{};
-        std::string device_name{};
-        std::string manufacturer{};
-        std::string version{};
 
         AudioPluginSequencer* sequencer{};
         int32_t instance_id{-1};
@@ -28,14 +28,14 @@ namespace uapmd {
         uint8_t ump_group{0xFF};
 
         std::unique_ptr<PlatformVirtualMidiDevice> platform_device{};
-        std::map<uint32_t, std::unique_ptr<midicci::musicdevice::MidiCISession>> ci_sessions{};
-        std::vector<midicci::musicdevice::MidiInputCallback> ci_input_forwarders{};
         bool output_handler_registered{false};
 
         static void umpReceivedTrampoline(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void setupMidiCISession();
         void teardownOutputHandler();
+
+        std::unique_ptr<UapmdMidiCISessions> uapmd_sessions{};
 
     public:
         UapmdMidiDevice(std::unique_ptr<PlatformVirtualMidiDevice> platformMidiDevice,

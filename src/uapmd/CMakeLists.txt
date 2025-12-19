@@ -37,6 +37,7 @@ target_sources(uapmd PRIVATE
         AudioPluginHosting/AudioPluginNode.cpp
         AudioPluginHosting/AudioPluginTrack.cpp
         Midi/UapmdMidiDevice.cpp
+        Midi/UapmdMidiCISessions.cpp
         Sequencer/SequenceProcessor.cpp
         Sequencer/AudioPluginSequencer.cpp
 )
