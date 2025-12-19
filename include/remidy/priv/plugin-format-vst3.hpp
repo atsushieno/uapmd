@@ -5,8 +5,6 @@
 namespace remidy {
     class PluginFormatVST3 : public PluginFormat {
     public:
-        class Impl;
-
         class Extensibility : public PluginExtensibility<PluginFormat> {
             bool report_not_implemented{false};
         public:
@@ -19,22 +17,14 @@ namespace remidy {
             }
         };
 
-        explicit PluginFormatVST3(std::vector<std::string>& overrideSearchPaths);
-        ~PluginFormatVST3() override;
+        PluginFormatVST3() = default;
+        ~PluginFormatVST3() override = default;
 
         std::string name() override { return "VST3"; }
-        PluginScanning* scanning() override;
-        PluginExtensibility<PluginFormat>* getExtensibility() override;
         PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry* entry) override { return PluginUIThreadRequirement::AllNonAudioOperation; }
         bool canOmitUiState() override { return true; }
         bool isStateStructured() override { return false; }
 
-        void createInstance(PluginCatalogEntry* info,
-                            PluginInstantiationOptions options,
-                            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
-                            ) override;
-
-    private:
-        Impl *impl;
+        static std::unique_ptr<PluginFormatVST3> create(std::vector<std::string>& overrideSearchPaths);
     };
 }

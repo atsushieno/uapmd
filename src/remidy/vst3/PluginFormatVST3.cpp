@@ -15,25 +15,13 @@ namespace remidy {
             : PluginExtensibility(format) {
     }
 
-    PluginFormatVST3::PluginFormatVST3(std::vector<std::string> &overrideSearchPaths) {
-        impl = new Impl(this);
+    std::unique_ptr<PluginFormatVST3> PluginFormatVST3::create(std::vector<std::string>& overrideSearchPaths) {
+        return std::make_unique<PluginFormatVST3Impl>(overrideSearchPaths);
     }
 
-    PluginFormatVST3::~PluginFormatVST3() {
-        delete impl;
-    }
+    // PluginFormatVST3Impl
 
-    PluginScanning *PluginFormatVST3::scanning() {
-        return impl->scanning();
-    }
-
-    PluginExtensibility<PluginFormat> *PluginFormatVST3::getExtensibility() {
-        return impl->getExtensibility();
-    }
-
-    // Impl
-
-    StatusCode PluginFormatVST3::Impl::doLoad(std::filesystem::path &vst3Dir, void **module) const {
+    StatusCode PluginFormatVST3Impl::doLoad(std::filesystem::path &vst3Dir, void **module) const {
         *module = loadModuleFromVst3Path(vst3Dir);
         if (*module) {
             auto err = initializeModule(*module);
@@ -49,23 +37,17 @@ namespace remidy {
         return *module == nullptr ? StatusCode::FAILED_TO_INSTANTIATE : StatusCode::OK;
     };
 
-    StatusCode PluginFormatVST3::Impl::doUnload(std::filesystem::path &vst3Dir, void *module) {
+    StatusCode PluginFormatVST3Impl::doUnload(std::filesystem::path &vst3Dir, void *module) {
         unloadModule(module);
         return StatusCode::OK;
     }
 
-    PluginExtensibility<PluginFormat> *PluginFormatVST3::Impl::getExtensibility() {
+    PluginExtensibility<PluginFormat> *PluginFormatVST3Impl::getExtensibility() {
         return &extensibility;
     }
 
-    void PluginFormatVST3::createInstance(PluginCatalogEntry *info,
-                                          PluginInstantiationOptions options,
-                                          std::function<void(std::unique_ptr<PluginInstance> instance,
-                                                             std::string error)> callback) {
-        return impl->createInstance(info, callback);
-    }
-
-    void PluginFormatVST3::Impl::createInstance(PluginCatalogEntry *pluginInfo,
+    void PluginFormatVST3Impl::createInstance(PluginCatalogEntry *pluginInfo,
+                                                PluginInstantiationOptions options,
                                                 std::function<void(std::unique_ptr<PluginInstance> instance,
                                                                    std::string error)> callback) {
         PluginCatalogEntry *entry = pluginInfo;
@@ -226,7 +208,7 @@ namespace remidy {
             callback(nullptr, std::format("Specified VST3 plugin {} could not be instantiated: {}", entry->displayName(), error));
     }
 
-    void PluginFormatVST3::Impl::unrefLibrary(PluginCatalogEntry *info) {
+    void PluginFormatVST3Impl::unrefLibrary(PluginCatalogEntry *info) {
         library_pool.removeReference(info->bundlePath());
     }
 
@@ -302,7 +284,7 @@ namespace remidy {
 
     void PluginScannerVST3::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir,
                                                                     std::vector<PluginClassInfo> &results) {
-        impl->getLogger()->logInfo("VST3: scanning %s ", vst3Dir.c_str());
+        owner->getLogger()->logInfo("VST3: scanning %s ", vst3Dir.c_str());
         // fast path scanning using moduleinfo.json
         if (remidy_vst3::hasModuleInfo(vst3Dir)) {
             for (auto &e: remidy_vst3::getModuleInfo(vst3Dir))
@@ -310,19 +292,16 @@ namespace remidy {
             return;
         }
 
-        if (isBlocklistedAsBundle(vst3Dir))
-            return;
-
-        impl->forEachPlugin(vst3Dir, [&](void *module, IPluginFactory *factory, PluginClassInfo &pluginInfo) {
+        owner->forEachPlugin(vst3Dir, [&](void *module, IPluginFactory *factory, PluginClassInfo &pluginInfo) {
             results.emplace_back(pluginInfo);
         }, [&](void *module) {
-            impl->libraryPool()->removeReference(vst3Dir);
+            owner->libraryPool()->removeReference(vst3Dir);
         });
     }
 
     // Loader helpers
 
-    void PluginFormatVST3::Impl::forEachPlugin(std::filesystem::path &vst3Path,
+    void PluginFormatVST3Impl::forEachPlugin(std::filesystem::path &vst3Path,
                                                const std::function<void(void *module, IPluginFactory *factory,
                                                                         PluginClassInfo &info)> &func,
                                                const std::function<void(void *module)> &cleanup

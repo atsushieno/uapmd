@@ -15,7 +15,7 @@ using namespace remidy_vst3;
 //  Some plugins take long time to instantiate IEditController, and it does not make sense for
 //  non-UI-based audio processing like our virtual MIDI devices.
 remidy::PluginInstanceVST3::PluginInstanceVST3(
-        PluginFormatVST3::Impl *owner,
+        PluginFormatVST3Impl *owner,
         PluginCatalogEntry *info,
         void *module,
         IPluginFactory *factory,

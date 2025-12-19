@@ -3,44 +3,34 @@
 #include <optional>
 #include <unordered_map>
 
-#include "remidy.hpp"
+#include "remidy/remidy.hpp"
 #include "HostClasses.hpp"
 #include "../GenericAudioBuses.hpp"
 
 using namespace remidy_vst3;
 
 namespace remidy {
+    class PluginFormatVST3Impl;
+
     class PluginScannerVST3 : public FileBasedPluginScanning {
         void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos);
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
 
-        PluginFormatVST3::Impl* impl{};
+        PluginFormatVST3Impl* owner{};
 
     public:
-        explicit PluginScannerVST3(PluginFormatVST3::Impl* impl)
-            : impl(impl) {
+        explicit PluginScannerVST3(PluginFormatVST3Impl* owner)
+            : owner(owner) {
         }
         bool usePluginSearchPaths() override;
         std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         ScanningStrategyValue scanRequiresInstantiation() override;
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
-
-        virtual bool isBlocklistedAsBundle(std::filesystem::path path) {
-            // Vienna Synchron Player causes crash if (and only if) the code runs in debug mode.
-            // It prevents our development, and they cause it intentionally.
-            // It is not acceptable behavior as a plugin developer, so we do not approve their civil rights here.
-            //
-            // You can override this function to unblock it, but do it in your responsibility.
-            if (path.string().contains("Vienna Synchron Player"))
-                return true;
-            return false;
-        }
     };
 
-    class PluginFormatVST3::Impl {
-        PluginFormatVST3* owner;
+    class PluginFormatVST3Impl : public PluginFormatVST3 {
         Logger* logger;
         Extensibility extensibility;
         PluginScannerVST3 scanning_;
@@ -54,11 +44,9 @@ namespace remidy {
         HostApplication host;
 
     public:
-        explicit Impl(PluginFormatVST3* owner) :
-            owner(owner),
-            // FIXME: should be provided by some means
+        explicit PluginFormatVST3Impl(std::vector<std::string>& overrideSearchPaths) :
             logger(Logger::global()),
-            extensibility(*owner),
+            extensibility(*this),
             scanning_(this),
             loadFunc([&](std::filesystem::path &vst3Dir, void** module)->StatusCode { return doLoad(vst3Dir, module); }),
             unloadFunc([&](std::filesystem::path &vst3Dir, void* module)->StatusCode { return doUnload(vst3Dir, module); }),
@@ -66,13 +54,12 @@ namespace remidy {
             host(logger) {
         }
 
-        auto format() const { return owner; }
         Logger* getLogger() { return logger; }
         HostApplication* getHost() { return &host; }
         PluginBundlePool* libraryPool() { return &library_pool; }
 
-        PluginExtensibility<PluginFormat>* getExtensibility();
-        PluginScanning* scanning() { return &scanning_; }
+        PluginExtensibility<PluginFormat>* getExtensibility() override;
+        PluginScanning* scanning() override { return &scanning_; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path& vst3Path,
             const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
@@ -80,7 +67,9 @@ namespace remidy {
         );
         void unrefLibrary(PluginCatalogEntry* info);
 
-        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback);
+        void createInstance(PluginCatalogEntry* info,
+                            PluginInstantiationOptions options,
+                            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;
     };
 
     class PluginInstanceVST3 : public PluginInstance {
@@ -224,7 +213,7 @@ namespace remidy {
             bool setScale(double scale) override;
         };
 
-        PluginFormatVST3::Impl* owner;
+        PluginFormatVST3Impl* owner;
         void* module;
         IPluginFactory* factory;
         std::string pluginName;
@@ -266,7 +255,7 @@ namespace remidy {
 
     public:
         explicit PluginInstanceVST3(
-            PluginFormatVST3::Impl* owner,
+            PluginFormatVST3Impl* owner,
             PluginCatalogEntry* info,
             void* module,
             IPluginFactory* factory,
@@ -279,8 +268,7 @@ namespace remidy {
         ~PluginInstanceVST3() override;
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
-            // maybe we add some entries for known issues
-            return owner->format()->requiresUIThreadOn(info());
+            return owner->requiresUIThreadOn(info());
         }
 
         // audio processing core features

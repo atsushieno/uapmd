@@ -12,7 +12,7 @@ namespace remidy_tooling {
         std::vector<std::string> vst3SearchPaths{};
         std::vector<std::string> lv2SearchPaths{};
         std::vector<std::string> clapSearchPaths{};
-        PluginFormatVST3 vst3{vst3SearchPaths};
+        std::unique_ptr<PluginFormatVST3> vst3;
 #if __APPLE__
         PluginFormatAU au{};
 #endif
@@ -20,14 +20,7 @@ namespace remidy_tooling {
         PluginFormatCLAP clap{clapSearchPaths};
         std::filesystem::path plugin_list_cache_file{};
 
-        std::vector<PluginFormat*> formats_{
-            &clap,
-            &lv2,
-#if __APPLE__
-            &au,
-#endif
-            &vst3
-        };
+        std::vector<PluginFormat*> formats_;
     public:
         PluginScanTool();
 

@@ -8,6 +8,16 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
     auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
     plugin_list_cache_file = dir.empty() ? std::filesystem::path{""} : std::filesystem::path{dir}.append(
             "plugin-list-cache.json");
+
+    vst3 = remidy::PluginFormatVST3::create(vst3SearchPaths);
+    formats_ = {
+        &clap,
+        &lv2,
+#if __APPLE__
+        &au,
+#endif
+        vst3.get()
+    };
 }
 
 int remidy_tooling::PluginScanTool::performPluginScanning() {
