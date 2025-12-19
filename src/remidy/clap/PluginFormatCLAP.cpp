@@ -6,28 +6,8 @@
 namespace remidy {
     // PluginFormatCLAP
 
-    PluginFormatCLAP::PluginFormatCLAP(std::vector<std::string> &overrideSearchPaths) {
-        impl = new Impl(this);
-    }
-
-    PluginFormatCLAP::~PluginFormatCLAP() {
-        delete impl;
-    }
-
-    PluginScanning *PluginFormatCLAP::scanning() {
-        return impl->scanning();
-    }
-
-    PluginExtensibility<PluginFormat> *PluginFormatCLAP::getExtensibility() {
-        return impl->getExtensibility();
-    }
-
-    void PluginFormatCLAP::createInstance(
-        PluginCatalogEntry* info,
-        PluginInstantiationOptions options,
-        std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
-    ) {
-        impl->createInstance(info, callback);
+    std::unique_ptr<PluginFormatCLAP> PluginFormatCLAP::create(std::vector<std::string>& overrideSearchPaths) {
+        return std::make_unique<PluginFormatCLAPImpl>(overrideSearchPaths);
     }
 
     PluginFormatCLAP::Extensibility::Extensibility(PluginFormat &format)
@@ -94,7 +74,7 @@ namespace remidy {
 
         impl->forEachPlugin(clapDir, [&](void *module, clap_plugin_factory_t* factory, clap_preset_discovery_factory* presetDiscoveryFactory, const clap_plugin_descriptor_t *descriptor) {
             auto e = std::make_unique<PluginCatalogEntry>();
-            auto name = impl->owner->name();
+            auto name = impl->name();
             std::string id{descriptor->id};
             e->format(name);
             e->bundlePath(clapDir);
@@ -109,7 +89,7 @@ namespace remidy {
         });
     }
 
-    // PluginFormatCLAP::Impl
+    // PluginFormatCLAPImpl
 
     // may return nullptr if it failed to load.
     void* loadModuleFromPath(std::filesystem::path clapPath) {
@@ -150,12 +130,12 @@ namespace remidy {
 #endif
     }
 
-    StatusCode PluginFormatCLAP::Impl::doLoad(std::filesystem::path &clapPath, void **module) const {
+    StatusCode PluginFormatCLAPImpl::doLoad(std::filesystem::path &clapPath, void **module) const {
         *module = loadModuleFromPath(clapPath);
         return *module == nullptr ? StatusCode::FAILED_TO_INSTANTIATE : StatusCode::OK;
     };
 
-    StatusCode PluginFormatCLAP::Impl::doUnload(std::filesystem::path &clapPath, void *module) {
+    StatusCode PluginFormatCLAPImpl::doUnload(std::filesystem::path &clapPath, void *module) {
         auto entrypoint = remidy_clap::getFactoryFromLibrary(module);
         if (entrypoint && entrypoint->deinit)
             entrypoint->deinit();
@@ -169,11 +149,11 @@ namespace remidy {
         return StatusCode::OK;
     }
 
-    PluginExtensibility<PluginFormat> *PluginFormatCLAP::Impl::getExtensibility() {
+    PluginExtensibility<PluginFormat> *PluginFormatCLAPImpl::getExtensibility() {
         return &extensibility;
     }
 
-    void PluginFormatCLAP::Impl::forEachPlugin(std::filesystem::path& clapPath,
+    void PluginFormatCLAPImpl::forEachPlugin(std::filesystem::path& clapPath,
             const std::function<void(void* module, clap_plugin_factory_t* factory, clap_preset_discovery_factory* presetDiscoveryFactory, const clap_plugin_descriptor_t* info)>& func,
             const std::function<void(void* module)>& cleanup // it should unload the library only when it is not kept alive e.g. scanning plugins.
         ) {
@@ -231,8 +211,9 @@ namespace remidy {
         std::filesystem::current_path(savedPath);
     }
 
-    void PluginFormatCLAP::Impl::createInstance(
+    void PluginFormatCLAPImpl::createInstance(
         PluginCatalogEntry* info,
+        PluginInstantiationOptions options,
         std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
     ) {
         std::unique_ptr<PluginInstanceCLAP> ret{nullptr};

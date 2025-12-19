@@ -6,7 +6,7 @@
 
 namespace remidy {
     PluginInstanceCLAP::PluginInstanceCLAP(
-        PluginFormatCLAP::Impl* owner,
+        PluginFormatCLAPImpl* owner,
         PluginCatalogEntry* info,
         clap_preset_discovery_factory* presetDiscoveryFactory,
         void* module,

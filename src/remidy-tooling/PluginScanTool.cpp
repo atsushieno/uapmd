@@ -10,11 +10,16 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
             "plugin-list-cache.json");
 
     vst3 = remidy::PluginFormatVST3::create(vst3SearchPaths);
-    formats_ = {
-        &clap,
-        &lv2,
+    lv2 = remidy::PluginFormatLV2::create(lv2SearchPaths);
+    clap = remidy::PluginFormatCLAP::create(clapSearchPaths);
 #if __APPLE__
-        &au,
+    au = remidy::PluginFormatAU::create();
+#endif
+    formats_ = {
+        clap.get(),
+        lv2.get(),
+#if __APPLE__
+        au.get(),
 #endif
         vst3.get()
     };

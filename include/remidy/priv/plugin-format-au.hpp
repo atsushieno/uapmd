@@ -6,30 +6,21 @@
 
 namespace remidy {
     class PluginFormatAU : public PluginFormat {
-        class Impl;
-        Impl* impl;
-
     public:
-        PluginFormatAU();
-        ~PluginFormatAU() override;
-
         class Extensibility : public PluginExtensibility<PluginFormat> {
         public:
             explicit Extensibility(PluginFormat& format);
         };
 
-        std::string name() override { return "AU"; }
-        PluginExtensibility<PluginFormat>* getExtensibility() override;
-        PluginScanning* scanning() override;
+        PluginFormatAU() = default;
+        ~PluginFormatAU() override = default;
 
+        std::string name() override { return "AU"; }
         PluginUIThreadRequirement requiresUIThreadOn(PluginCatalogEntry*) override { return PluginUIThreadRequirement::None; }
         bool canOmitUiState() override { return true; }
         bool isStateStructured() override { return true; }
 
-        void createInstance(PluginCatalogEntry* info,
-                            PluginInstantiationOptions options,
-                            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
-                            ) override;
+        static std::unique_ptr<PluginFormatAU> create();
     };
 }
 

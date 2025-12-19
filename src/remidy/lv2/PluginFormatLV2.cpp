@@ -2,10 +2,9 @@
 #include "cmidi2.h"
 
 namespace remidy {
-    PluginFormatLV2::Impl::Impl(PluginFormatLV2* owner) :
-        owner(owner),
+    PluginFormatLV2Impl::PluginFormatLV2Impl(std::vector<std::string>& overrideSearchPaths) :
         logger(Logger::global()),
-        extensibility(*owner) {
+        extensibility(*this) {
         world = lilv_world_new();
         scanning_ = AudioPluginScannerLV2(world);
         // FIXME: setup paths
@@ -14,7 +13,7 @@ namespace remidy {
         // This also initializes features
         worldContext = new remidy_lv2::LV2ImplWorldContext(logger, world);
     }
-    PluginFormatLV2::Impl::~Impl() {
+    PluginFormatLV2Impl::~PluginFormatLV2Impl() {
         delete worldContext;
         lilv_free(world);
     }
@@ -50,8 +49,9 @@ namespace remidy {
         return ret;
     }
 
-    void PluginFormatLV2::Impl::createInstance(
+    void PluginFormatLV2Impl::createInstance(
         PluginCatalogEntry* info,
+        PluginInstantiationOptions options,
         std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
     ) {
         auto targetUri = lilv_new_uri(world, info->pluginId().c_str());
@@ -65,32 +65,20 @@ namespace remidy {
         callback(nullptr, std::string{"Plugin '"} + info->pluginId() + "' was not found");
     }
 
-    void PluginFormatLV2::Impl::unrefLibrary(PluginCatalogEntry& info) {
+    void PluginFormatLV2Impl::unrefLibrary(PluginCatalogEntry& info) {
     }
 
-    PluginCatalog PluginFormatLV2::Impl::createCatalogFragment(const std::filesystem::path &bundlePath) {
+    PluginCatalog PluginFormatLV2Impl::createCatalogFragment(const std::filesystem::path &bundlePath) {
         // FIXME: implement
         throw std::runtime_error("AudioPluginFormatLV2::createCatalogFragment() is not implemented");
     }
 
-    PluginExtensibility<PluginFormat> * PluginFormatLV2::Impl::getExtensibility() {
+    PluginExtensibility<PluginFormat> * PluginFormatLV2Impl::getExtensibility() {
         return &extensibility;
     }
 
-    PluginFormatLV2::PluginFormatLV2(std::vector<std::string> &overrideSearchPaths) {
-        impl = new Impl(this);
-    }
-
-    PluginFormatLV2::~PluginFormatLV2() {
-        delete impl;
-    }
-
-    PluginExtensibility<PluginFormat> * PluginFormatLV2::getExtensibility() {
-        return impl->getExtensibility();
-    }
-
-    PluginScanning * PluginFormatLV2::scanning() {
-        return impl->scanning();
+    std::unique_ptr<PluginFormatLV2> PluginFormatLV2::create(std::vector<std::string>& overrideSearchPaths) {
+        return std::make_unique<PluginFormatLV2Impl>(overrideSearchPaths);
     }
 
     std::vector<std::filesystem::path>& AudioPluginScannerLV2::getDefaultSearchPaths() {
@@ -116,13 +104,6 @@ namespace remidy {
         return ret;
     }
 
-    void PluginFormatLV2::createInstance(
-            PluginCatalogEntry* info,
-            PluginInstantiationOptions options,
-            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
-    ) {
-        impl->createInstance(info, callback);
-    }
 
     PluginFormatLV2::Extensibility::Extensibility(PluginFormat &format) :
         PluginExtensibility(format) {

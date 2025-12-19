@@ -5,7 +5,7 @@
 #include <cmath>
 
 remidy::PluginInstanceAU::PluginInstanceAU(
-        PluginFormatAU *format,
+        PluginFormatAUImpl *format,
         PluginFormat::PluginInstantiationOptions options,
         Logger* logger,
         PluginCatalogEntry* info,

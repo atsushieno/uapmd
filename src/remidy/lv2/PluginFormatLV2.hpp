@@ -4,7 +4,7 @@
 #include <optional>
 #include <unordered_map>
 
-#include "remidy.hpp"
+#include "remidy/remidy.hpp"
 #include "../GenericAudioBuses.hpp"
 #include "lilv/lilv.h"
 #include <lv2/ui/ui.h>
@@ -17,6 +17,8 @@
 #include "concurrentqueue.h"
 
 namespace remidy {
+    class PluginFormatLV2Impl;
+
     class AudioPluginScannerLV2 : public FileBasedPluginScanning {
         LilvWorld *world;
     public:
@@ -33,31 +35,29 @@ namespace remidy {
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
     };
 
-    class PluginFormatLV2::Impl {
-        PluginFormatLV2 *owner;
+    class PluginFormatLV2Impl : public PluginFormatLV2 {
         Logger *logger;
-        Extensibility extensibility;
+        PluginFormatLV2::Extensibility extensibility;
         AudioPluginScannerLV2 scanning_{nullptr};
 
     public:
-        explicit Impl(PluginFormatLV2 *owner);
+        explicit PluginFormatLV2Impl(std::vector<std::string>& overrideSearchPaths);
 
-        ~Impl();
+        ~PluginFormatLV2Impl() override;
 
         auto getLogger() { return logger; }
-
-        auto format() const { return owner; }
 
         LilvWorld *world;
         remidy_lv2::LV2ImplWorldContext *worldContext;
         std::vector<LV2_Feature *> features{};
 
-        PluginExtensibility<PluginFormat> *getExtensibility();
+        PluginExtensibility<PluginFormat> *getExtensibility() override;
 
-        PluginScanning *scanning() { return &scanning_; }
+        PluginScanning *scanning() override { return &scanning_; }
 
         void createInstance(PluginCatalogEntry *info,
-                            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback);
+                            PluginInstantiationOptions options,
+                            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;
 
         void unrefLibrary(PluginCatalogEntry &info);
 
@@ -318,7 +318,7 @@ namespace remidy {
             static int resizeUI(LV2UI_Feature_Handle handle, int width, int height);
         };
 
-        PluginFormatLV2::Impl *formatImpl;
+        PluginFormatLV2Impl *formatImpl;
         int32_t sample_rate;
         const LilvPlugin *plugin;
         LilvInstance *instance{nullptr};
@@ -391,14 +391,14 @@ namespace remidy {
         }
 
     public:
-        explicit PluginInstanceLV2(PluginCatalogEntry *entry, PluginFormatLV2::Impl *formatImpl,
+        explicit PluginInstanceLV2(PluginCatalogEntry *entry, PluginFormatLV2Impl *formatImpl,
                                    const LilvPlugin *plugin);
 
         ~PluginInstanceLV2() override;
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
-            return formatImpl->format()->requiresUIThreadOn(info());
+            return formatImpl->requiresUIThreadOn(info());
         }
 
         // audio processing core functions.

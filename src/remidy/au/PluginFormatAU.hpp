@@ -11,22 +11,28 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 namespace remidy {
+    class PluginFormatAUImpl;
+
     class PluginScannerAU : public PluginScanning {
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
     };
 
-    class PluginFormatAU::Impl {
-        PluginFormatAU* format;
+    class PluginFormatAUImpl : public PluginFormatAU {
         Logger* logger;
-        Extensibility extensibility;
+        PluginFormatAU::Extensibility extensibility;
         PluginScannerAU scanning_{};
     public:
-        Impl(PluginFormatAU* format, Logger* logger) : format(format), logger(logger), extensibility(*format) {}
+        explicit PluginFormatAUImpl() : logger(Logger::global()), extensibility(*this) {}
+        ~PluginFormatAUImpl() override = default;
 
-        Extensibility* getExtensibility() { return &extensibility; }
-        PluginScanning* scanning() { return &scanning_; }
+        PluginExtensibility<PluginFormat>* getExtensibility() override { return &extensibility; }
+        PluginScanning* scanning() override { return &scanning_; }
+
+        void createInstance(PluginCatalogEntry* info,
+                            PluginInstantiationOptions options,
+                            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;
 
         Logger* getLogger() { return logger; }
     };
@@ -200,14 +206,14 @@ namespace remidy {
         size_t midi_output_count{0};
 
     protected:
-        PluginFormatAU *format;
+        PluginFormatAUImpl *format;
         PluginFormat::PluginInstantiationOptions options;
         Logger* logger_;
         AudioComponent component;
         AudioUnit instance;
         std::string name{};
 
-        PluginInstanceAU(PluginFormatAU* format, PluginFormat::PluginInstantiationOptions options, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
+        PluginInstanceAU(PluginFormatAUImpl* format, PluginFormat::PluginInstantiationOptions options, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
         ~PluginInstanceAU() override;
 
     public:
@@ -257,7 +263,7 @@ namespace remidy {
 
     class PluginInstanceAUv2 final : public PluginInstanceAU {
     public:
-        PluginInstanceAUv2(PluginFormatAU* format, PluginFormat::PluginInstantiationOptions options,
+        PluginInstanceAUv2(PluginFormatAUImpl* format, PluginFormat::PluginInstantiationOptions options,
                                 Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
         ) : PluginInstanceAU(format, options, logger, info, component, instance) {
         }
@@ -271,7 +277,7 @@ namespace remidy {
 
     class PluginInstanceAUv3 final : public PluginInstanceAU {
     public:
-        PluginInstanceAUv3(PluginFormatAU* format, PluginFormat::PluginInstantiationOptions options,
+        PluginInstanceAUv3(PluginFormatAUImpl* format, PluginFormat::PluginInstantiationOptions options,
                                 Logger *logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
         ) : PluginInstanceAU(format, options, logger, info, component, instance) {
         }

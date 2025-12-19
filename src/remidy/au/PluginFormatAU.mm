@@ -3,20 +3,8 @@
 #include <format>
 #include "PluginFormatAU.hpp"
 
-remidy::PluginFormatAU::PluginFormatAU() {
-    impl = new Impl(this, Logger::global());
-}
-
-remidy::PluginFormatAU::~PluginFormatAU() {
-    delete impl;
-}
-
-remidy::PluginExtensibility<remidy::PluginFormat> * remidy::PluginFormatAU::getExtensibility() {
-    return impl->getExtensibility();
-}
-
-remidy::PluginScanning* remidy::PluginFormatAU::scanning() {
-    return impl->scanning();
+std::unique_ptr<remidy::PluginFormatAU> remidy::PluginFormatAU::create() {
+    return std::make_unique<remidy::PluginFormatAUImpl>();
 }
 
 struct AUPluginEntry {
@@ -82,12 +70,12 @@ std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::PluginScannerAU
     return ret;
 }
 
-void remidy::PluginFormatAU::createInstance(
+void remidy::PluginFormatAUImpl::createInstance(
         PluginCatalogEntry* info,
         PluginInstantiationOptions options,
         std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback
 ) {
-    auto impl = [&] {
+    auto implFunc = [&] {
     AudioComponentDescription desc{};
     std::istringstream id{info->pluginId()};
     id >> std::hex >> std::setw(2) >> desc.componentManufacturer >> desc.componentType >> desc.componentSubType;
@@ -126,9 +114,9 @@ void remidy::PluginFormatAU::createInstance(
 
     };
     if (requiresUIThreadOn(info) & PluginUIThreadRequirement::InstanceControl)
-        EventLoop::runTaskOnMainThread(impl);
+        EventLoop::runTaskOnMainThread(implFunc);
     else
-        impl();
+        implFunc();
 }
 
 remidy::PluginFormatAU::Extensibility::Extensibility(PluginFormat &format) : PluginExtensibility(format) {

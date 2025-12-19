@@ -23,14 +23,16 @@ namespace remidy {
         clap::helpers::CheckingLevel::Maximal
     >;
 
+    class PluginFormatCLAPImpl;
+
     class PluginScannerCLAP : public FileBasedPluginScanning {
         void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<std::unique_ptr<PluginCatalogEntry>>& entries);
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path clapDir, std::vector<std::unique_ptr<PluginCatalogEntry>>& entries);
 
-        PluginFormatCLAP::Impl* impl{};
+        PluginFormatCLAPImpl* impl{};
 
     public:
-        explicit PluginScannerCLAP(PluginFormatCLAP::Impl* impl)
+        explicit PluginScannerCLAP(PluginFormatCLAPImpl* impl)
             : impl(impl) {
         }
         bool usePluginSearchPaths() override;
@@ -44,9 +46,9 @@ namespace remidy {
         }
     };
 
-    class PluginFormatCLAP::Impl {
+    class PluginFormatCLAPImpl : public PluginFormatCLAP {
         Logger* logger;
-        Extensibility extensibility;
+        PluginFormatCLAP::Extensibility extensibility;
         PluginScannerCLAP scanning_;
 
         StatusCode doLoad(std::filesystem::path &clapPath, void** module) const;
@@ -57,25 +59,22 @@ namespace remidy {
         PluginBundlePool library_pool;
 
     public:
-        explicit Impl(PluginFormatCLAP* owner) :
-            owner(owner),
+        explicit PluginFormatCLAPImpl(std::vector<std::string>& overrideSearchPaths) :
             // FIXME: should be provided by some means
             logger(Logger::global()),
-            extensibility(*owner),
+            extensibility(*this),
             scanning_(this),
             loadFunc([&](std::filesystem::path &clapDir, void** module)->StatusCode { return doLoad(clapDir, module); }),
             unloadFunc([&](std::filesystem::path &clapDir, void* module)->StatusCode { return doUnload(clapDir, module); }),
             library_pool(loadFunc,unloadFunc) {
         }
+        ~PluginFormatCLAPImpl() override = default;
 
-        PluginFormatCLAP* owner;
-
-        auto format() const { return owner; }
         Logger* getLogger() { return logger; }
         PluginBundlePool* libraryPool() { return &library_pool; }
 
-        PluginExtensibility<PluginFormat>* getExtensibility();
-        PluginScanning* scanning() { return &scanning_; }
+        PluginExtensibility<PluginFormat>* getExtensibility() override;
+        PluginScanning* scanning() override { return &scanning_; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path& clapDir,
             const std::function<void(void* module, clap_plugin_factory_t* factory, clap_preset_discovery_factory* presetDiscoveryFactory, const clap_plugin_descriptor_t* info)>& func,
@@ -83,13 +82,15 @@ namespace remidy {
         );
         void unrefLibrary(PluginCatalogEntry* info);
 
-        void createInstance(PluginCatalogEntry* info, std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback);
+        void createInstance(PluginCatalogEntry* info,
+                            PluginInstantiationOptions options,
+                            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;
     };
 
     class PluginInstanceCLAP : public PluginInstance {
         friend class RemidyCLAPHost;
 
-        PluginFormatCLAP::Impl* owner;
+        PluginFormatCLAPImpl* owner;
         std::unique_ptr<CLAPPluginProxy> plugin;
         clap_preset_discovery_factory* preset_discovery_factory;
         void* module;
@@ -248,7 +249,7 @@ namespace remidy {
 
     public:
         explicit PluginInstanceCLAP(
-            PluginFormatCLAP::Impl* owner,
+            PluginFormatCLAPImpl* owner,
             PluginCatalogEntry* info,
             clap_preset_discovery_factory* presetDiscoveryFactory,
             void* module,
@@ -259,7 +260,7 @@ namespace remidy {
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues
-            return owner->format()->requiresUIThreadOn(info());
+            return owner->requiresUIThreadOn(info());
         }
 
         // audio processing core features
