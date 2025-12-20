@@ -840,6 +840,49 @@ bool uapmd::AudioPluginSequencer::sampleRate(int32_t newSampleRate) {
     return true;
 }
 
+bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) {
+    // Stop audio if it's currently playing
+    bool wasPlaying = dispatcher->isPlaying();
+    if (wasPlaying) {
+        if (stopAudio() != 0) {
+            remidy::Logger::global()->logError("Failed to stop audio during device reconfiguration");
+            return false;
+        }
+    }
+
+    // Get a new audio device from the manager with specific device indices
+    auto manager = AudioIODeviceManager::instance();
+    auto* newDevice = manager->open(inputDeviceIndex, outputDeviceIndex, sampleRate);
+    if (!newDevice) {
+        remidy::Logger::global()->logError("Failed to open audio device with indices: input={}, output={}, sampleRate={}", inputDeviceIndex, outputDeviceIndex, sampleRate);
+        return false;
+    }
+
+    // Update the sample rate if specified
+    if (sampleRate > 0) {
+        sample_rate = sampleRate;
+    } else {
+        // Use the device's actual sample rate
+        sample_rate = static_cast<int32_t>(newDevice->sampleRate());
+    }
+
+    // Reconfigure the dispatcher with the new device
+    if (dispatcher->configure(ump_buffer_size_in_bytes, newDevice) != 0) {
+        remidy::Logger::global()->logError("Failed to reconfigure dispatcher with new audio device");
+        return false;
+    }
+
+    // Restart audio if it was playing before
+    if (wasPlaying) {
+        if (startAudio() != 0) {
+            remidy::Logger::global()->logError("Failed to restart audio after device reconfiguration");
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void uapmd::AudioPluginSequencer::loadAudioFile(std::unique_ptr<choc::audio::AudioFileReader> reader) {
     std::lock_guard<std::mutex> lock(audio_file_mutex_);
 

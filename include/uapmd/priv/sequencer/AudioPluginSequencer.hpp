@@ -157,6 +157,10 @@ namespace uapmd {
         int32_t sampleRate();
         bool sampleRate(int32_t newSampleRate);
 
+        // Reconfigure audio device (stops audio, reconfigures, restarts)
+        // Use -1 for default device, 0 for no sample rate change
+        bool reconfigureAudioDevice(int inputDeviceIndex = -1, int outputDeviceIndex = -1, uint32_t sampleRate = 0);
+
         bool offlineRendering() const;
         void offlineRendering(bool enabled);
 

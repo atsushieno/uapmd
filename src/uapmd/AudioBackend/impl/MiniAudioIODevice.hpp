@@ -13,7 +13,7 @@ namespace uapmd {
         MiniAudioIODeviceManager();
         ~MiniAudioIODeviceManager();
         void initialize(Configuration& config) override;
-        AudioIODevice * open() override;
+        AudioIODevice * open(int inputDeviceIndex = -1, int outputDeviceIndex = -1, uint32_t sampleRate = 0) override;
         std::vector<uint32_t> getDeviceSampleRates(const std::string& deviceName, AudioIODirections direction) override;
 
         ma_context& maContext() { return context; }
@@ -52,6 +52,9 @@ namespace uapmd {
         uapmd_status_t start() override;
         uapmd_status_t stop() override;
         bool isPlaying() override;
+
+        // Reconfigure the device with new device IDs and sample rate
+        bool reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate = 0);
 
         MiniAudioIODeviceManager* getManager() const { return manager_; }
     };

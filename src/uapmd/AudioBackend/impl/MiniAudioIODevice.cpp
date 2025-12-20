@@ -132,8 +132,37 @@ std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices
 }
 
 // The entire API is hacky so far...
-uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::open() {
+uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::open(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) {
     static uapmd::MiniAudioIODevice audio{this};
+
+    // Get device lists
+    ma_device_info* playbackDevices;
+    ma_device_info* captureDevices;
+    ma_uint32 playbackCount, captureCount;
+    ma_context_get_devices(&context, &playbackDevices, &playbackCount, &captureDevices, &captureCount);
+
+    // Find device IDs by index (-1 means use default device, i.e., nullptr)
+    const ma_device_id* inputId = nullptr;
+    const ma_device_id* outputId = nullptr;
+
+    if (inputDeviceIndex >= 0 && static_cast<ma_uint32>(inputDeviceIndex) < captureCount) {
+        inputId = &captureDevices[inputDeviceIndex].id;
+    } else if (inputDeviceIndex >= 0) {
+        remidy_logger->logWarning("Input device index {} out of range (max {}), using default", inputDeviceIndex, captureCount - 1);
+    }
+
+    if (outputDeviceIndex >= 0 && static_cast<ma_uint32>(outputDeviceIndex) < playbackCount) {
+        outputId = &playbackDevices[outputDeviceIndex].id;
+    } else if (outputDeviceIndex >= 0) {
+        remidy_logger->logWarning("Output device index {} out of range (max {}), using default", outputDeviceIndex, playbackCount - 1);
+    }
+
+    // Reconfigure the device with the new IDs and sample rate
+    if (!audio.reconfigure(inputId, outputId, sampleRate)) {
+        remidy_logger->logError("Failed to reconfigure audio device");
+        return nullptr;
+    }
+
     return &audio;
 }
 
@@ -215,6 +244,77 @@ uapmd::MiniAudioIODevice::MiniAudioIODevice(
 
 uapmd::MiniAudioIODevice::~MiniAudioIODevice() {
     ma_engine_uninit(&engine);
+}
+
+bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate) {
+    // Stop the engine if it's running
+    bool wasRunning = isPlaying();
+    if (wasRunning) {
+        stop();
+    }
+
+    // Save callbacks before uninitializing
+    auto savedCallbacks = callbacks;
+
+    // Uninitialize the current engine
+    ma_engine_uninit(&engine);
+
+    // Create a new device with the specified IDs
+    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_duplex);
+    deviceConfig.capture.pDeviceID = inputDeviceId;
+    deviceConfig.playback.pDeviceID = outputDeviceId;
+    deviceConfig.capture.format = ma_format_f32;
+    deviceConfig.playback.format = ma_format_f32;
+    deviceConfig.sampleRate = sampleRate; // 0 = use device's native sample rate
+    deviceConfig.dataCallback = data_callback;
+    deviceConfig.pUserData = this;
+    deviceConfig.periodSizeInFrames = config.periodSizeInFrames;
+    deviceConfig.notificationCallback = config.notificationCallback;
+    deviceConfig.noPreSilencedOutputBuffer = MA_TRUE;
+
+    ma_device* pDevice = new ma_device();
+    if (ma_device_init(config.pContext, &deviceConfig, pDevice) != MA_SUCCESS) {
+        remidy::Logger::global()->logError("Failed to initialize device with new device IDs");
+        delete pDevice;
+        return false;
+    }
+
+    // Update config to use the new device
+    config.pDevice = pDevice;
+    config.pPlaybackDeviceID = (ma_device_id*)outputDeviceId;
+    if (sampleRate > 0) {
+        config.sampleRate = sampleRate;
+    }
+
+    // Reinitialize the engine
+    if (ma_engine_init(&config, &engine) != MA_SUCCESS) {
+        remidy::Logger::global()->logError("Failed to reinitialize audio engine with new devices");
+        ma_device_uninit(pDevice);
+        delete pDevice;
+        return false;
+    }
+
+    // Restore callbacks
+    callbacks = savedCallbacks;
+
+    // Restore pUserData
+    engine.pDevice->pUserData = this;
+
+    // Update channel counts
+    auto device = ma_engine_get_device(&engine);
+    input_channels = device->capture.channels;
+    output_channels = device->playback.channels;
+    data.configureMainBus(device->capture.channels, device->playback.channels, config.periodSizeInFrames);
+    dataOutPtrs.clear();
+    if (device->playback.channels)
+        dataOutPtrs.resize(device->playback.channels);
+
+    // Restart if it was running
+    if (wasRunning) {
+        start();
+    }
+
+    return true;
 }
 
 uapmd_status_t uapmd::MiniAudioIODevice::start() {

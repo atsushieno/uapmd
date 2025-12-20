@@ -129,6 +129,9 @@ void AudioDeviceSettings::render() {
             if (ImGui::Selectable(label.c_str(), isSelected)) {
                 selectedInputSampleRateIndex_ = static_cast<int>(i);
                 inputSampleRate_ = static_cast<int>(inputAvailableSampleRates_[i]);
+                if (onDeviceChanged_) {
+                    onDeviceChanged_();
+                }
             }
             if (isSelected) {
                 ImGui::SetItemDefaultFocus();
@@ -149,6 +152,9 @@ void AudioDeviceSettings::render() {
             if (ImGui::Selectable(label.c_str(), isSelected)) {
                 selectedOutputSampleRateIndex_ = static_cast<int>(i);
                 outputSampleRate_ = static_cast<int>(outputAvailableSampleRates_[i]);
+                if (onDeviceChanged_) {
+                    onDeviceChanged_();
+                }
             }
             if (isSelected) {
                 ImGui::SetItemDefaultFocus();

@@ -68,7 +68,7 @@ namespace uapmd {
             return onDevices();
         }
 
-        virtual AudioIODevice* open() = 0;
+        virtual AudioIODevice* open(int inputDeviceIndex = -1, int outputDeviceIndex = -1, uint32_t sampleRate = 0) = 0;
         virtual std::vector<uint32_t> getDeviceSampleRates(const std::string& deviceName, AudioIODirections direction) = 0;
 
         void setDeviceChangeCallback(DeviceChangeCallback callback) {

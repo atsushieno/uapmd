@@ -134,6 +134,7 @@ class MainWindow {
         void updateAudioDeviceSettingsData();
         void refreshDeviceList();
         void applyDeviceSettings();
+        void handleAudioDeviceChange();
 
         // Player settings
         void renderPlayerSettings();
