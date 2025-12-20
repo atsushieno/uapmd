@@ -4,8 +4,6 @@
 
 namespace uapmd {
     class MidiIODevice {
-        class Impl;
-        Impl* impl;
 
     protected:
         MidiIODevice() = default;

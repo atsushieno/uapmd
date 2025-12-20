@@ -1,6 +1,8 @@
 #pragma once
 
+#include <memory>
 #include <string>
+#include <vector>
 #include "uapmd/priv/CommonTypes.hpp"
 #include "AudioPluginHostPAL.hpp"
 
@@ -34,8 +36,10 @@ namespace uapmd {
     };
 
     class AudioPluginNode {
-        class Impl;
-        Impl* impl;
+        std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> node_;
+        bool bypassed_{false};
+        int32_t instance_id_;
+
     public:
         AudioPluginNode(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL, int32_t instanceId);
         virtual ~AudioPluginNode();
