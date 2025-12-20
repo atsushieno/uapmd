@@ -9,39 +9,45 @@ namespace uapmd::gui {
 
 class AudioDeviceSettings {
 public:
-    using ApplySettingsCallback = std::function<void(int inputDeviceIndex, int outputDeviceIndex, int bufferSize, int sampleRate)>;
-    using RefreshDevicesCallback = std::function<void()>;
+    using DeviceChangedCallback = std::function<void()>;
 
 private:
     std::vector<std::string> inputDevices_;
     std::vector<std::string> outputDevices_;
+    std::vector<uint32_t> inputAvailableSampleRates_;
+    std::vector<uint32_t> outputAvailableSampleRates_;
     int selectedInputDevice_ = 0;
     int selectedOutputDevice_ = 0;
     int bufferSize_ = 512;
-    int sampleRate_ = 44100;
+    int inputSampleRate_ = 44100;
+    int outputSampleRate_ = 44100;
+    int selectedInputSampleRateIndex_ = 0;
+    int selectedOutputSampleRateIndex_ = 0;
 
-    ApplySettingsCallback onApplySettings_;
-    RefreshDevicesCallback onRefreshDevices_;
+    DeviceChangedCallback onDeviceChanged_;
 
 public:
     AudioDeviceSettings();
 
     void setInputDevices(const std::vector<std::string>& devices);
     void setOutputDevices(const std::vector<std::string>& devices);
+    void setInputAvailableSampleRates(const std::vector<uint32_t>& sampleRates);
+    void setOutputAvailableSampleRates(const std::vector<uint32_t>& sampleRates);
     void setSelectedInputDevice(int index);
     void setSelectedOutputDevice(int index);
     void setBufferSize(int size);
-    void setSampleRate(int rate);
+    void setInputSampleRate(int rate);
+    void setOutputSampleRate(int rate);
 
     int getSelectedInputDevice() const;
     int getSelectedOutputDevice() const;
     int getBufferSize() const;
-    int getSampleRate() const;
+    int getInputSampleRate() const;
+    int getOutputSampleRate() const;
 
     void render();
 
-    void setOnApplySettings(ApplySettingsCallback callback);
-    void setOnRefreshDevices(RefreshDevicesCallback callback);
+    void setOnDeviceChanged(DeviceChangedCallback callback);
 };
 
 }

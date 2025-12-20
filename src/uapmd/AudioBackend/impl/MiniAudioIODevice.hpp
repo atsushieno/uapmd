@@ -9,9 +9,12 @@ namespace uapmd {
 
         static void on_ma_log(void* userData, uint32_t logLevel, const char* message);
     public:
+        static void on_ma_device_notification(const ma_device_notification* pNotification);
         MiniAudioIODeviceManager();
+        ~MiniAudioIODeviceManager();
         void initialize(Configuration& config) override;
         AudioIODevice * open() override;
+        std::vector<uint32_t> getDeviceSampleRates(const std::string& deviceName, AudioIODirections direction) override;
 
         ma_context& maContext() { return context; }
 
@@ -28,6 +31,7 @@ namespace uapmd {
         std::vector<const float *> dataOutPtrs{};
         uint32_t input_channels{0};
         uint32_t output_channels{0};
+        MiniAudioIODeviceManager* manager_{nullptr};
 
     public:
         explicit MiniAudioIODevice(MiniAudioIODeviceManager* manager);
@@ -44,8 +48,11 @@ namespace uapmd {
         uint32_t channels() override;
         uint32_t inputChannels() override;
         uint32_t outputChannels() override;
+        std::vector<uint32_t> getNativeSampleRates() override;
         uapmd_status_t start() override;
         uapmd_status_t stop() override;
         bool isPlaying() override;
+
+        MiniAudioIODeviceManager* getManager() const { return manager_; }
     };
 }

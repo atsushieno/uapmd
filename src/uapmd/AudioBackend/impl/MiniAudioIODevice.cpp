@@ -24,8 +24,46 @@ void uapmd::MiniAudioIODeviceManager::on_ma_log(void* userData, uint32_t logLeve
         logger->log(convertFromMALogLevel(logLevel), message);
 }
 
+void uapmd::MiniAudioIODeviceManager::on_ma_device_notification(const ma_device_notification* pNotification) {
+    // This callback is invoked from miniaudio when device state changes
+    if (!pNotification || !pNotification->pDevice) {
+        return;
+    }
+
+    auto device = static_cast<MiniAudioIODevice*>(pNotification->pDevice->pUserData);
+    if (!device) {
+        return;
+    }
+
+    auto manager = device->getManager();
+    if (!manager) {
+        return;
+    }
+
+    // Device ID would need proper mapping from ma_device_id
+    int32_t deviceId = 0;
+
+    switch (pNotification->type) {
+        case ma_device_notification_type_started:
+            // Device has started - could indicate new device available
+            manager->notifyDeviceChange(deviceId, UAPMD_AUDIO_DEVICE_CHANGE_ADDED);
+            break;
+        case ma_device_notification_type_stopped:
+        case ma_device_notification_type_rerouted:
+            // Device stopped or rerouted - might indicate device removal
+            manager->notifyDeviceChange(deviceId, UAPMD_AUDIO_DEVICE_CHANGE_REMOVED);
+            break;
+        default:
+            break;
+    }
+}
+
 uapmd::MiniAudioIODeviceManager::MiniAudioIODeviceManager(
         ) : AudioIODeviceManager("miniaudio") {
+}
+
+uapmd::MiniAudioIODeviceManager::~MiniAudioIODeviceManager() {
+    ma_context_uninit(&context);
 }
 
 void uapmd::MiniAudioIODeviceManager::initialize(uapmd::AudioIODeviceManager::Configuration &config) {
@@ -52,12 +90,12 @@ const ma_device_id* findDeviceId(ma_context& context, std::string name, uapmd::A
     ma_device_info* capture;
     ma_uint32 playbackCount, captureCount;
     ma_context_get_devices(&context, &playback, &playbackCount, &capture, &captureCount);
-    if (directions & uapmd::AudioIODirections::Input) {
+    if (directions & uapmd::UAPMD_AUDIO_DIRECTION_INPUT) {
         for (ma_uint32 i = 0; i < captureCount; i++)
             if (name == capture[i].name)
                 return &capture[i].id;
     }
-    if (directions & uapmd::AudioIODirections::Output) {
+    if (directions & uapmd::UAPMD_AUDIO_DIRECTION_OUTPUT) {
         for (ma_uint32 i = 0; i < playbackCount; i++)
             if (name == playback[i].name)
                 return &playback[i].id;
@@ -74,21 +112,22 @@ std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices
     // For device IDs we treat ma_device_id as if it contained char[256]...
     for (ma_uint32 i = 0; i < captureCount; i++) {
         ret.emplace_back(AudioIODeviceInfo {
-                .directions = AudioIODirections::Input,
+                .directions = UAPMD_AUDIO_DIRECTION_INPUT,
                 .id = static_cast<int32_t>(std::hash<std::string_view>{}(std::string_view(capture[i].id.custom.s))),
                 .name = capture[i].name,
                 .sampleRate = capture[i].nativeDataFormats[0].sampleRate,
                 .channels = capture[i].nativeDataFormats[0].channels,
         });
     }
-    for (ma_uint32 i = 0; i < playbackCount; i++)
+    for (ma_uint32 i = 0; i < playbackCount; i++) {
         ret.emplace_back(AudioIODeviceInfo {
-                .directions = AudioIODirections::Output,
+                .directions = UAPMD_AUDIO_DIRECTION_OUTPUT,
                 .id = static_cast<int32_t>(std::hash<std::string_view>{}(std::string_view(playback[i].id.custom.s))),
                 .name = playback[i].name,
                 .sampleRate = playback[i].nativeDataFormats[0].sampleRate,
                 .channels = playback[i].nativeDataFormats[0].channels,
         });
+    }
     return ret;
 }
 
@@ -96,6 +135,49 @@ std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices
 uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::open() {
     static uapmd::MiniAudioIODevice audio{this};
     return &audio;
+}
+
+std::vector<uint32_t> uapmd::MiniAudioIODeviceManager::getDeviceSampleRates(const std::string& deviceName, AudioIODirections direction) {
+    std::vector<uint32_t> sampleRates;
+
+    ma_device_info* playback;
+    ma_device_info* capture;
+    ma_uint32 playbackCount, captureCount;
+    ma_context_get_devices(&context, &playback, &playbackCount, &capture, &captureCount);
+
+    if (direction & UAPMD_AUDIO_DIRECTION_INPUT) {
+        for (ma_uint32 i = 0; i < captureCount; i++) {
+            if (deviceName == capture[i].name) {
+                // Use ma_context_get_device_info to get detailed device information
+                ma_device_info deviceInfo;
+                ma_result result = ma_context_get_device_info(&context, ma_device_type_capture, &capture[i].id, &deviceInfo);
+                if (result == MA_SUCCESS) {
+                    for (ma_uint32 j = 0; j < deviceInfo.nativeDataFormatCount; j++) {
+                        sampleRates.push_back(deviceInfo.nativeDataFormats[j].sampleRate);
+                    }
+                }
+                return sampleRates;
+            }
+        }
+    }
+
+    if (direction & UAPMD_AUDIO_DIRECTION_OUTPUT) {
+        for (ma_uint32 i = 0; i < playbackCount; i++) {
+            if (deviceName == playback[i].name) {
+                // Use ma_context_get_device_info to get detailed device information
+                ma_device_info deviceInfo;
+                ma_result result = ma_context_get_device_info(&context, ma_device_type_playback, &playback[i].id, &deviceInfo);
+                if (result == MA_SUCCESS) {
+                    for (ma_uint32 j = 0; j < deviceInfo.nativeDataFormatCount; j++) {
+                        sampleRates.push_back(deviceInfo.nativeDataFormats[j].sampleRate);
+                    }
+                }
+                return sampleRates;
+            }
+        }
+    }
+
+    return sampleRates;
 }
 
 // MiniAudioIODevice
@@ -107,15 +189,19 @@ static void data_callback(ma_device* device, void* output, const void* input, ma
 uapmd::MiniAudioIODevice::MiniAudioIODevice(
         MiniAudioIODeviceManager* manager
     ) : config(ma_engine_config_init()),
-        data(master_context, 0) {
+        data(master_context, 0),
+        manager_(manager) {
     config.pContext = &manager->maContext();
     config.dataCallback = data_callback;
     config.periodSizeInFrames = 1024; // FIXME: provide audio buffer size
     config.noAutoStart = true;
+    config.notificationCallback = MiniAudioIODeviceManager::on_ma_device_notification;
 
     if (ma_engine_init(&config, &engine) != MA_SUCCESS) {
         throw std::runtime_error("uapmd: Failed to initialize miniaudio driver.");
     }
+
+    // Keep pUserData pointing to this device for data callback
     engine.pDevice->pUserData = this;
 
     auto device = ma_engine_get_device(&engine);
@@ -163,6 +249,36 @@ uint32_t uapmd::MiniAudioIODevice::inputChannels() {
 
 uint32_t uapmd::MiniAudioIODevice::outputChannels() {
     return output_channels;
+}
+
+std::vector<uint32_t> uapmd::MiniAudioIODevice::getNativeSampleRates() {
+    std::vector<uint32_t> sampleRates;
+    auto device = ma_engine_get_device(&engine);
+
+    if (!device) {
+        return sampleRates;
+    }
+
+    // Get device info for the opened device
+    ma_device_info deviceInfo;
+    ma_result result;
+
+    if (device->type == ma_device_type_playback) {
+        result = ma_context_get_device_info(device->pContext, ma_device_type_playback, &device->playback.id, &deviceInfo);
+    } else if (device->type == ma_device_type_capture) {
+        result = ma_context_get_device_info(device->pContext, ma_device_type_capture, &device->capture.id, &deviceInfo);
+    } else {
+        // Duplex - get playback info (could also get capture)
+        result = ma_context_get_device_info(device->pContext, ma_device_type_playback, &device->playback.id, &deviceInfo);
+    }
+
+    if (result == MA_SUCCESS) {
+        for (ma_uint32 i = 0; i < deviceInfo.nativeDataFormatCount; i++) {
+            sampleRates.push_back(deviceInfo.nativeDataFormats[i].sampleRate);
+        }
+    }
+
+    return sampleRates;
 }
 
 void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_uint32 frameCount) {

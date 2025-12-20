@@ -170,6 +170,11 @@ int runMain(int argc, char** argv) {
     // Initialize application model
     uapmd::AppModel::instantiate();
 
+    // Initialize audio device manager
+    auto audioManager = uapmd::AudioIODeviceManager::instance();
+    uapmd::AudioIODeviceManager::Configuration audioConfig{ .logger = remidy::Logger::global() };
+    audioManager->initialize(audioConfig);
+
     // Prepare GUI defaults from command line arguments
     uapmd::gui::GuiDefaults defaults;
     if (!positional.empty()) defaults.pluginName = positional[0];

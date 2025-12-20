@@ -106,11 +106,14 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     });
 
     // Set up AudioDeviceSettings callbacks
-    audioDeviceSettings_.setOnApplySettings([this](int inputDeviceIndex, int outputDeviceIndex, int bufferSize, int sampleRate) {
-        applyDeviceSettings();
+    audioDeviceSettings_.setOnDeviceChanged([this]() {
+        updateAudioDeviceSettingsData();
     });
 
-    audioDeviceSettings_.setOnRefreshDevices([this]() {
+    // Register device change listener with AudioIODeviceManager
+    auto audioManager = uapmd::AudioIODeviceManager::instance();
+    audioManager->setDeviceChangeCallback([this](int32_t deviceId, AudioIODeviceChange change) {
+        // Refresh device list when devices are added or removed
         refreshDeviceList();
     });
 }
@@ -286,7 +289,47 @@ bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t
 }
 
 void MainWindow::updateAudioDeviceSettingsData() {
-    // Nothing to update per-frame; device lists are updated via refreshDeviceList
+    // Update sample rates for the selected devices
+    auto manager = uapmd::AudioIODeviceManager::instance();
+
+    // Get selected device indices
+    int selectedInput = audioDeviceSettings_.getSelectedInputDevice();
+    int selectedOutput = audioDeviceSettings_.getSelectedOutputDevice();
+
+    // Get device names from the lists
+    auto devices = manager->devices();
+
+    std::string inputDeviceName;
+    std::string outputDeviceName;
+
+    int inputIndex = 0;
+    for (auto& d : devices) {
+        if (d.directions & UAPMD_AUDIO_DIRECTION_INPUT) {
+            if (inputIndex == selectedInput) {
+                inputDeviceName = d.name;
+                break;
+            }
+            inputIndex++;
+        }
+    }
+
+    int outputIndex = 0;
+    for (auto& d : devices) {
+        if (d.directions & UAPMD_AUDIO_DIRECTION_OUTPUT) {
+            if (outputIndex == selectedOutput) {
+                outputDeviceName = d.name;
+                break;
+            }
+            outputIndex++;
+        }
+    }
+
+    // Get sample rates for selected devices
+    auto inputSampleRates = manager->getDeviceSampleRates(inputDeviceName, UAPMD_AUDIO_DIRECTION_INPUT);
+    auto outputSampleRates = manager->getDeviceSampleRates(outputDeviceName, UAPMD_AUDIO_DIRECTION_OUTPUT);
+
+    audioDeviceSettings_.setInputAvailableSampleRates(inputSampleRates);
+    audioDeviceSettings_.setOutputAvailableSampleRates(outputSampleRates);
 }
 
 void MainWindow::renderPlayerSettings() {
@@ -498,10 +541,10 @@ void MainWindow::refreshDeviceList() {
     auto devices = manager->devices();
 
     for (auto& d : devices) {
-        if (d.directions & AudioIODirections::Input) {
+        if (d.directions & UAPMD_AUDIO_DIRECTION_INPUT) {
             inputDevices.push_back(d.name);
         }
-        if (d.directions & AudioIODirections::Output) {
+        if (d.directions & UAPMD_AUDIO_DIRECTION_OUTPUT) {
             outputDevices.push_back(d.name);
         }
     }
@@ -509,7 +552,7 @@ void MainWindow::refreshDeviceList() {
     audioDeviceSettings_.setInputDevices(inputDevices);
     audioDeviceSettings_.setOutputDevices(outputDevices);
 
-    // Reset selection if out of bounds
+    // Reset selection if out of bounds FIRST
     int selectedInput = audioDeviceSettings_.getSelectedInputDevice();
     int selectedOutput = audioDeviceSettings_.getSelectedOutputDevice();
 
@@ -519,6 +562,9 @@ void MainWindow::refreshDeviceList() {
     if (selectedOutput >= static_cast<int>(outputDevices.size())) {
         audioDeviceSettings_.setSelectedOutputDevice(0);
     }
+
+    // Get sample rates from the opened audio device and update the UI
+    updateAudioDeviceSettingsData();
 }
 
 void MainWindow::applyDeviceSettings() {
@@ -528,10 +574,11 @@ void MainWindow::applyDeviceSettings() {
     // - Reconfiguring the audio system with new settings
     // - Restarting audio
 
-    std::cout << std::format("Applied audio settings: Input Index={}, Output Index={}, SR={}, BS={}",
+    std::cout << std::format("Applied audio settings: Input Index={}, Output Index={}, Input SR={}, Output SR={}, BS={}",
                             audioDeviceSettings_.getSelectedInputDevice(),
                             audioDeviceSettings_.getSelectedOutputDevice(),
-                            audioDeviceSettings_.getSampleRate(),
+                            audioDeviceSettings_.getInputSampleRate(),
+                            audioDeviceSettings_.getOutputSampleRate(),
                             audioDeviceSettings_.getBufferSize()) << std::endl;
 }
 

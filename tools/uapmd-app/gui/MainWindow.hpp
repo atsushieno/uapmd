@@ -5,6 +5,7 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <chrono>
 #include <uapmd/uapmd.hpp>
 #include "MidiKeyboard.hpp"
 #include "PluginList.hpp"
