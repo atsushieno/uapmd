@@ -30,7 +30,7 @@ namespace uapmd {
         std::unique_ptr<PlatformVirtualMidiDevice> platform_device{};
         bool output_handler_registered{false};
 
-        static void umpReceivedTrampoline(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
+        static void umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void setupMidiCISession();
         void teardownOutputHandler();
@@ -49,7 +49,6 @@ namespace uapmd {
 
         ~UapmdMidiDevice();
 
-        AudioPluginSequencer* sequencerPtr() { return sequencer; }
         int32_t instanceId() const { return instance_id; }
         int32_t trackIndex() const { return track_index; }
         void trackIndex(int32_t newIndex) { track_index = newIndex; }

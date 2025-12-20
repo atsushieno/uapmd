@@ -23,26 +23,12 @@
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
 
-namespace {
-std::string formatPlainValueLabel(double value) {
-    return std::format("{:.7g}", value);
-}
-}
-
 namespace uapmd::gui {
 MainWindow::MainWindow(GuiDefaults defaults) {
     SetupImGuiStyle();
 
     // Apply defaults from command line arguments
-    if (!defaults.pluginName.empty()) {
-        selectedPluginFormat_ = defaults.formatName;
-        // Plugin selection will be applied after plugin list is loaded
-    }
-
-    // Initialize with some example recent files
-    recentFiles_.push_back("example1.wav");
-    recentFiles_.push_back("example2.mid");
-    recentFiles_.push_back("example3.wav");
+    // TODO: If needed, implement default plugin selection through pluginList_
 
     refreshDeviceList();
     refreshInstances();
@@ -68,6 +54,65 @@ MainWindow::MainWindow(GuiDefaults defaults) {
                 std::cout << "Plugin scanning failed: " << error << std::endl;
             }
         });
+
+    // Set up TrackList callbacks
+    trackList_.setOnShowUI([this](int32_t instanceId) {
+        handleShowUI(instanceId);
+    });
+
+    trackList_.setOnHideUI([this](int32_t instanceId) {
+        handleHideUI(instanceId);
+    });
+
+    trackList_.setOnShowDetails([this](int32_t instanceId) {
+        showDetailsWindow(instanceId);
+    });
+
+    trackList_.setOnHideDetails([this](int32_t instanceId) {
+        hideDetailsWindow(instanceId);
+    });
+
+    trackList_.setOnEnableDevice([this](int32_t instanceId, const std::string& deviceName) {
+        handleEnableDevice(instanceId, deviceName);
+    });
+
+    trackList_.setOnDisableDevice([this](int32_t instanceId) {
+        handleDisableDevice(instanceId);
+    });
+
+    trackList_.setOnSaveState([this](int32_t instanceId) {
+        savePluginState(instanceId);
+    });
+
+    trackList_.setOnLoadState([this](int32_t instanceId) {
+        loadPluginState(instanceId);
+    });
+
+    trackList_.setOnRemoveInstance([this](int32_t instanceId) {
+        handleRemoveInstance(instanceId);
+    });
+
+    trackList_.setOnRefresh([this]() {
+        refreshInstances();
+    });
+
+    trackList_.setOnUMPDeviceNameChange([this](int32_t instanceId, const std::string& newName) {
+        // Update the UMP device name buffer
+        if (umpDeviceNameBuffers_.find(instanceId) != umpDeviceNameBuffers_.end()) {
+            std::strncpy(umpDeviceNameBuffers_[instanceId].data(), newName.c_str(),
+                        umpDeviceNameBuffers_[instanceId].size() - 1);
+            umpDeviceNameBuffers_[instanceId][umpDeviceNameBuffers_[instanceId].size() - 1] = '\0';
+        }
+    });
+
+    // Set up AudioDeviceSettings callbacks
+    audioDeviceSettings_.setOnApplySettings([this](int inputDeviceIndex, int outputDeviceIndex, int bufferSize, int sampleRate) {
+        applyDeviceSettings();
+    });
+
+    audioDeviceSettings_.setOnRefreshDevices([this]() {
+        refreshDeviceList();
+    });
 }
 
 void MainWindow::render(void* window) {
@@ -86,7 +131,8 @@ void MainWindow::render(void* window) {
     if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
         // Device Settings Section
         if (ImGui::CollapsingHeader("Device Settings", ImGuiTreeNodeFlags_None)) {
-            renderDeviceSettings();
+            updateAudioDeviceSettingsData();
+            audioDeviceSettings_.render();
         }
 
         ImGui::Separator();
@@ -239,49 +285,8 @@ bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t
     return instance->getUISize(width, height);
 }
 
-void MainWindow::renderDeviceSettings() {
-    ImGui::Text("Audio Device Configuration:");
-
-    // Input device selection
-    if (ImGui::BeginCombo("Input Device", selectedInputDevice_ < inputDevices_.size() ? inputDevices_[selectedInputDevice_].c_str() : "None")) {
-        for (size_t i = 0; i < inputDevices_.size(); i++) {
-            bool isSelected = (selectedInputDevice_ == static_cast<int>(i));
-            if (ImGui::Selectable(inputDevices_[i].c_str(), isSelected)) {
-                selectedInputDevice_ = static_cast<int>(i);
-            }
-            if (isSelected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-
-    // Output device selection
-    if (ImGui::BeginCombo("Output Device", selectedOutputDevice_ < outputDevices_.size() ? outputDevices_[selectedOutputDevice_].c_str() : "None")) {
-        for (size_t i = 0; i < outputDevices_.size(); i++) {
-            bool isSelected = (selectedOutputDevice_ == static_cast<int>(i));
-            if (ImGui::Selectable(outputDevices_[i].c_str(), isSelected)) {
-                selectedOutputDevice_ = static_cast<int>(i);
-            }
-            if (isSelected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-
-    // Buffer size and sample rate
-    ImGui::InputInt("Buffer Size", &bufferSize_);
-    ImGui::InputInt("Sample Rate", &sampleRate_);
-
-    // Apply and refresh buttons
-    if (ImGui::Button("Apply Settings")) {
-        applyDeviceSettings();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Refresh Devices")) {
-        refreshDeviceList();
-    }
+void MainWindow::updateAudioDeviceSettingsData() {
+    // Nothing to update per-frame; device lists are updated via refreshDeviceList
 }
 
 void MainWindow::renderPlayerSettings() {
@@ -421,605 +426,98 @@ void MainWindow::renderInstanceControl() {
         pluginWindowsPendingClose_.clear();
     }
 
-    if (ImGui::Button("Refresh Instances")) {
-        refreshInstances();
-    }
+    // Update the track list data and render
+    updateTrackListData();
+    trackList_.render();
+}
 
-    ImGui::Text("Active Instances:");
+void MainWindow::updateTrackListData() {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
 
-    // Group instances by track
-    std::map<int32_t, std::vector<int32_t>> instancesByTrack;
-    std::vector<int32_t> unassignedInstances;
+    std::vector<TrackInstance> trackInstances;
 
     for (int32_t instanceId : instances_) {
         int32_t trackIndex = sequencer.findTrackIndexForInstance(instanceId);
-        if (trackIndex >= 0) {
-            instancesByTrack[trackIndex].push_back(instanceId);
-        } else {
-            unassignedInstances.push_back(instanceId);
+        std::string pluginName = sequencer.getPluginName(instanceId);
+        std::string pluginFormat = sequencer.getPluginFormat(instanceId);
+        auto* instance = sequencer.getPluginInstance(instanceId);
+
+        if (!instance) continue;
+
+        // Initialize UMP device name buffer if needed
+        if (umpDeviceNameBuffers_.find(instanceId) == umpDeviceNameBuffers_.end()) {
+            umpDeviceNameBuffers_[instanceId] = {};
+            std::string defaultName = std::format("{} [{}]", pluginName, pluginFormat);
+            std::strncpy(umpDeviceNameBuffers_[instanceId].data(), defaultName.c_str(),
+                        umpDeviceNameBuffers_[instanceId].size() - 1);
         }
+
+        // Find if device exists and is running
+        bool deviceRunning = false;
+        bool deviceExists = false;
+        bool deviceInstantiating = false;
+
+        auto* deviceController = uapmd::AppModel::instance().deviceController();
+        if (deviceController) {
+            std::lock_guard lock(devicesMutex_);
+            for (auto& entry : devices_) {
+                auto state = entry.state;
+                std::lock_guard guard(state->mutex);
+                if (state->pluginInstances.count(instanceId) > 0) {
+                    deviceExists = true;
+                    deviceRunning = state->running;
+                    deviceInstantiating = state->instantiating;
+                    break;
+                }
+            }
+        }
+
+        TrackInstance ti;
+        ti.instanceId = instanceId;
+        ti.trackIndex = trackIndex;
+        ti.pluginName = pluginName;
+        ti.pluginFormat = pluginFormat;
+        ti.umpDeviceName = std::string(umpDeviceNameBuffers_[instanceId].data());
+        ti.hasUI = instance->hasUISupport();
+        ti.uiVisible = instance->isUIVisible();
+        ti.deviceRunning = deviceRunning;
+        ti.deviceExists = deviceExists;
+        ti.deviceInstantiating = deviceInstantiating;
+
+        trackInstances.push_back(ti);
     }
 
-    if (ImGui::BeginTable("##InstanceTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame)) {
-        ImGui::TableSetupColumn("Track", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-        ImGui::TableSetupColumn("Plugin", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-        ImGui::TableSetupColumn("UMP Device Name", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-        ImGui::TableHeadersRow();
-
-        // Render instances grouped by track
-        for (const auto& [trackIndex, trackInstances] : instancesByTrack) {
-            for (size_t i = 0; i < trackInstances.size(); i++) {
-                int32_t instanceId = trackInstances[i];
-                std::string pluginName = sequencer.getPluginName(instanceId);
-                std::string pluginFormat = sequencer.getPluginFormat(instanceId);
-                auto* instance = sequencer.getPluginInstance(instanceId);
-
-                ImGui::TableNextRow();
-
-                // Track column - only show for first plugin in track
-                ImGui::TableSetColumnIndex(0);
-                if (i == 0) {
-                    ImGui::Text("Track %d", trackIndex + 1);
-                }
-
-                // Plugin name column
-                ImGui::TableSetColumnIndex(1);
-                // Indent chained effects
-                if (i > 0) {
-                    ImGui::Indent(20.0f);
-                }
-                ImGui::Text("%s", pluginName.c_str());
-                if (i > 0) {
-                    ImGui::Unindent(20.0f);
-                }
-
-                // Format column
-                ImGui::TableSetColumnIndex(2);
-                ImGui::Text("%s", pluginFormat.c_str());
-
-                // UMP Device Name column
-                ImGui::TableSetColumnIndex(3);
-                {
-                    // Initialize buffer if needed
-                    if (umpDeviceNameBuffers_.find(instanceId) == umpDeviceNameBuffers_.end()) {
-                        umpDeviceNameBuffers_[instanceId] = {};
-                        // Set default name from plugin
-                        std::string defaultName = std::format("{} [{}]", pluginName, pluginFormat);
-                        std::strncpy(umpDeviceNameBuffers_[instanceId].data(), defaultName.c_str(),
-                                    umpDeviceNameBuffers_[instanceId].size() - 1);
-                    }
-
-                    // Find if device exists and is running
-                    bool deviceRunning = false;
-                    auto* deviceController = uapmd::AppModel::instance().deviceController();
-                    if (deviceController) {
-                        std::lock_guard lock(devicesMutex_);
-                        for (auto& entry : devices_) {
-                            auto state = entry.state;
-                            std::lock_guard guard(state->mutex);
-                            if (state->pluginInstances.count(instanceId) > 0) {
-                                deviceRunning = state->running;
-                                break;
-                            }
-                        }
-                    }
-
-                    // Disable textbox if device is running
-                    if (deviceRunning) {
-                        ImGui::BeginDisabled();
-                    }
-
-                    std::string inputId = "##ump_name_" + std::to_string(instanceId);
-                    ImGui::SetNextItemWidth(-FLT_MIN);
-                    ImGui::InputText(inputId.c_str(), umpDeviceNameBuffers_[instanceId].data(),
-                                    umpDeviceNameBuffers_[instanceId].size());
-
-                    if (deviceRunning) {
-                        ImGui::EndDisabled();
-                    }
-                }
-
-                // Actions context menu button
-                ImGui::TableSetColumnIndex(4);
-                std::string menuButtonId = "Actions##menu" + std::to_string(instanceId);
-            std::string popupId = "ActionsPopup##" + std::to_string(instanceId);
-
-            if (ImGui::Button(menuButtonId.c_str())) {
-                ImGui::OpenPopup(popupId.c_str());
-            }
-
-            if (ImGui::BeginPopup(popupId.c_str())) {
-                bool hasUI = instance->hasUISupport();
-                bool isVisible = instance->isUIVisible();
-
-                // Show/Hide UI menu item
-                if (!hasUI) {
-                    ImGui::BeginDisabled();
-                }
-
-                const char* uiMenuText = isVisible ? "Hide UI" : "Show UI";
-                if (ImGui::MenuItem(uiMenuText)) {
-                    if (hasUI) {
-                        if (isVisible) {
-                            instance->hideUI();
-                            auto windowIt = pluginWindows_.find(instanceId);
-                            if (windowIt != pluginWindows_.end()) windowIt->second->show(false);
-                        } else {
-                            // Create container window if needed
-                            auto windowIt = pluginWindows_.find(instanceId);
-                            remidy::gui::ContainerWindow* container = nullptr;
-                            if (windowIt == pluginWindows_.end()) {
-                                std::string windowTitle = pluginName + " (" + pluginFormat + ")";
-                                auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600, [this, instanceId]() {
-                                    onPluginWindowClosed(instanceId);
-                                });
-                                container = w.get();
-                                // Set up resize callback to notify plugin when user resizes the window
-                                w->setResizeCallback([this, instanceId](int width, int height) {
-                                    pluginWindowBounds_[instanceId].width = width;
-                                    pluginWindowBounds_[instanceId].height = height;
-                                    onPluginWindowResized(instanceId);
-                                });
-                                pluginWindows_[instanceId] = std::move(w);
-                                pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
-                            } else {
-                                container = windowIt->second.get();
-                                if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
-                                    pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
-                            }
-
-                            if (!container) {
-                                std::cout << "Failed to create container window for instance " << instanceId << std::endl;
-                            } else {
-                                container->show(true);
-                                void* parentHandle = container->getHandle();
-
-                                // Check if plugin UI has been created
-                                bool pluginUIExists = (pluginWindowEmbedded_.find(instanceId) != pluginWindowEmbedded_.end());
-
-                                if (!pluginUIExists) {
-                                    // First time: create plugin UI with resize handler
-                                    if (!instance->createUI(false, parentHandle,
-                                        [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
-                                        container->show(false);
-                                        pluginWindows_.erase(instanceId);
-                                        std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
-                                    } else {
-                                        pluginWindowEmbedded_[instanceId] = true;
-                                        // Set window resizability based on plugin's capability
-                                        bool canResize = instance->canUIResize();
-                                        container->setResizable(canResize);
-                                    }
-                                }
-
-                                // Show the plugin UI (whether just created or already exists)
-                                if (pluginUIExists || pluginWindowEmbedded_[instanceId]) {
-                                    if (!instance->showUI()) {
-                                        std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (!hasUI) {
-                    ImGui::EndDisabled();
-                }
-
-                // Details menu item
-                auto detailsIt = detailsWindows_.find(instanceId);
-                bool detailsVisible = (detailsIt != detailsWindows_.end() && detailsIt->second.visible);
-                const char* detailsMenuText = detailsVisible ? "Hide Details" : "Show Details";
-
-                if (ImGui::MenuItem(detailsMenuText)) {
-                    if (detailsVisible) {
-                        hideDetailsWindow(instanceId);
-                    } else {
-                        showDetailsWindow(instanceId);
-                    }
-                }
-
-                // Enable/Disable UMP device menu items
-                auto* deviceController = uapmd::AppModel::instance().deviceController();
-                if (deviceController) {
-                    std::shared_ptr<uapmd::UapmdMidiDevice> foundDevice;
-                    std::shared_ptr<DeviceState> foundDeviceState;
-                    bool hasDevice = false;
-
-                    // Find device associated with this instance
-                    {
-                        std::lock_guard lock(devicesMutex_);
-                        for (auto& entry : devices_) {
-                            auto state = entry.state;
-                            std::lock_guard guard(state->mutex);
-                            if (state->pluginInstances.count(instanceId) > 0) {
-                                foundDevice = state->device;
-                                foundDeviceState = state;
-                                hasDevice = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (hasDevice && foundDeviceState) {
-                        std::lock_guard guard(foundDeviceState->mutex);
-                        const char* deviceMenuText = foundDeviceState->running ? "Disable UMP Device" : "Enable UMP Device";
-
-                        if (foundDeviceState->instantiating) {
-                            ImGui::BeginDisabled();
-                        }
-
-                        if (ImGui::MenuItem(deviceMenuText)) {
-                            if (foundDeviceState->running) {
-                                foundDevice->stop();
-                                foundDeviceState->running = false;
-                                foundDeviceState->statusMessage = "Stopped";
-                                std::cout << "Disabled UMP device for instance: " << instanceId << std::endl;
-                            } else {
-                                // Update device name from textbox before starting
-                                if (umpDeviceNameBuffers_.find(instanceId) != umpDeviceNameBuffers_.end()) {
-                                    foundDeviceState->label = std::string(umpDeviceNameBuffers_[instanceId].data());
-                                }
-
-                                auto statusCode = foundDevice->start();
-                                if (statusCode == 0) {
-                                    foundDeviceState->running = true;
-                                    foundDeviceState->statusMessage = "Running";
-                                    foundDeviceState->hasError = false;
-                                    std::cout << "Enabled UMP device for instance: " << instanceId << std::endl;
-                                } else {
-                                    foundDeviceState->statusMessage = std::format("Start failed (status {})", statusCode);
-                                    foundDeviceState->hasError = true;
-                                    std::cout << "Failed to enable UMP device (status " << statusCode << ")" << std::endl;
-                                }
-                            }
-                        }
-
-                        if (foundDeviceState->instantiating) {
-                            ImGui::EndDisabled();
-                        }
-                    }
-                    // Note: If no device exists, don't show Enable/Disable options
-                    // Devices are created when plugins are instantiated
-                }
-
-                ImGui::Separator();
-
-                // Save State menu item
-                if (ImGui::MenuItem("Save State")) {
-                    savePluginState(instanceId);
-                }
-
-                // Load State menu item
-                if (ImGui::MenuItem("Load State")) {
-                    loadPluginState(instanceId);
-                }
-
-                ImGui::Separator();
-
-                // Remove menu item
-                if (ImGui::MenuItem("Remove")) {
-                    // Hide and cleanup UI if it's open
-                    if (instance->hasUISupport() && instance->isUIVisible()) {
-                        instance->hideUI();
-                        auto windowIt = pluginWindows_.find(instanceId);
-                        if (windowIt != pluginWindows_.end()) {
-                            windowIt->second->show(false);
-                        }
-                    }
-
-                    // Cleanup plugin UI resources
-                    instance->destroyUI();
-                    pluginWindows_.erase(instanceId);
-                    pluginWindowEmbedded_.erase(instanceId);
-                    pluginWindowBounds_.erase(instanceId);
-                    pluginWindowResizeIgnore_.erase(instanceId);
-
-                    // Cleanup details window if open
-                    auto detailsIt = detailsWindows_.find(instanceId);
-                    if (detailsIt != detailsWindows_.end()) {
-                        detailsWindows_.erase(detailsIt);
-                    }
-
-                    // Remove the plugin instance
-                    uapmd::AppModel::instance().removePluginInstance(instanceId);
-
-                    // Refresh the instance list
-                    refreshInstances();
-
-                    std::cout << "Removed plugin instance: " << instanceId << std::endl;
-                    ImGui::CloseCurrentPopup();
-                }
-
-                ImGui::EndPopup();
-            }
-            }
-        }
-
-        // Render unassigned instances (not grouped by track yet)
-        for (int32_t instanceId : unassignedInstances) {
-            std::string pluginName = sequencer.getPluginName(instanceId);
-            std::string pluginFormat = sequencer.getPluginFormat(instanceId);
-            auto* instance = sequencer.getPluginInstance(instanceId);
-
-            ImGui::TableNextRow();
-
-            // Track column
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextDisabled("-");
-
-            // Plugin name column
-            ImGui::TableSetColumnIndex(1);
-            ImGui::Text("%s", pluginName.c_str());
-
-            // Format column
-            ImGui::TableSetColumnIndex(2);
-            ImGui::Text("%s", pluginFormat.c_str());
-
-            // UMP Device Name column
-            ImGui::TableSetColumnIndex(3);
-            {
-                // Initialize buffer if needed
-                if (umpDeviceNameBuffers_.find(instanceId) == umpDeviceNameBuffers_.end()) {
-                    umpDeviceNameBuffers_[instanceId] = {};
-                    // Set default name from plugin
-                    std::string defaultName = std::format("{} [{}]", pluginName, pluginFormat);
-                    std::strncpy(umpDeviceNameBuffers_[instanceId].data(), defaultName.c_str(),
-                                umpDeviceNameBuffers_[instanceId].size() - 1);
-                }
-
-                // Find if device exists and is running
-                bool deviceRunning = false;
-                auto* deviceController = uapmd::AppModel::instance().deviceController();
-                if (deviceController) {
-                    std::lock_guard lock(devicesMutex_);
-                    for (auto& entry : devices_) {
-                        auto state = entry.state;
-                        std::lock_guard guard(state->mutex);
-                        if (state->pluginInstances.count(instanceId) > 0) {
-                            deviceRunning = state->running;
-                            break;
-                        }
-                    }
-                }
-
-                // Disable textbox if device is running
-                if (deviceRunning) {
-                    ImGui::BeginDisabled();
-                }
-
-                std::string inputId = "##ump_name_" + std::to_string(instanceId);
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                ImGui::InputText(inputId.c_str(), umpDeviceNameBuffers_[instanceId].data(),
-                                umpDeviceNameBuffers_[instanceId].size());
-
-                if (deviceRunning) {
-                    ImGui::EndDisabled();
-                }
-            }
-
-            // Actions context menu button (copied from above)
-            ImGui::TableSetColumnIndex(4);
-            std::string menuButtonId = "Actions##menu" + std::to_string(instanceId);
-            std::string popupId = "ActionsPopup##" + std::to_string(instanceId);
-
-            if (ImGui::Button(menuButtonId.c_str())) {
-                ImGui::OpenPopup(popupId.c_str());
-            }
-
-            if (ImGui::BeginPopup(popupId.c_str())) {
-                bool hasUI = instance->hasUISupport();
-                bool isVisible = instance->isUIVisible();
-
-                if (!hasUI) {
-                    ImGui::BeginDisabled();
-                }
-
-                const char* uiMenuText = isVisible ? "Hide UI" : "Show UI";
-                if (ImGui::MenuItem(uiMenuText)) {
-                    if (hasUI) {
-                        if (isVisible) {
-                            instance->hideUI();
-                            auto windowIt = pluginWindows_.find(instanceId);
-                            if (windowIt != pluginWindows_.end()) windowIt->second->show(false);
-                        } else {
-                            auto windowIt = pluginWindows_.find(instanceId);
-                            remidy::gui::ContainerWindow* container = nullptr;
-                            if (windowIt == pluginWindows_.end()) {
-                                std::string windowTitle = pluginName + " (" + pluginFormat + ")";
-                                auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600, [this, instanceId]() {
-                                    onPluginWindowClosed(instanceId);
-                                });
-                                container = w.get();
-                                // Set up resize callback to notify plugin when user resizes the window
-                                w->setResizeCallback([this, instanceId](int width, int height) {
-                                    pluginWindowBounds_[instanceId].width = width;
-                                    pluginWindowBounds_[instanceId].height = height;
-                                    onPluginWindowResized(instanceId);
-                                });
-                                pluginWindows_[instanceId] = std::move(w);
-                                pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
-                            } else {
-                                container = windowIt->second.get();
-                                if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
-                                    pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
-                            }
-
-                            if (!container) {
-                                std::cout << "Failed to create container window for instance " << instanceId << std::endl;
-                            } else {
-                                container->show(true);
-                                void* parentHandle = container->getHandle();
-                                bool pluginUIExists = (pluginWindowEmbedded_.find(instanceId) != pluginWindowEmbedded_.end());
-
-                                if (!pluginUIExists) {
-                                    if (!instance->createUI(false, parentHandle,
-                                        [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
-                                        container->show(false);
-                                        pluginWindows_.erase(instanceId);
-                                        std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
-                                    } else {
-                                        pluginWindowEmbedded_[instanceId] = true;
-                                        // Set window resizability based on plugin's capability
-                                        bool canResize = instance->canUIResize();
-                                        container->setResizable(canResize);
-                                    }
-                                }
-
-                                if (pluginUIExists || pluginWindowEmbedded_[instanceId]) {
-                                    if (!instance->showUI()) {
-                                        std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (!hasUI) {
-                    ImGui::EndDisabled();
-                }
-
-                auto detailsIt = detailsWindows_.find(instanceId);
-                bool detailsVisible = (detailsIt != detailsWindows_.end() && detailsIt->second.visible);
-                const char* detailsMenuText = detailsVisible ? "Hide Details" : "Show Details";
-
-                if (ImGui::MenuItem(detailsMenuText)) {
-                    if (detailsVisible) {
-                        hideDetailsWindow(instanceId);
-                    } else {
-                        showDetailsWindow(instanceId);
-                    }
-                }
-
-                // Enable/Disable UMP device menu items (same as track instances)
-                auto* deviceController = uapmd::AppModel::instance().deviceController();
-                if (deviceController) {
-                    std::shared_ptr<uapmd::UapmdMidiDevice> foundDevice;
-                    std::shared_ptr<DeviceState> foundDeviceState;
-
-                    {
-                        std::lock_guard lock(devicesMutex_);
-                        for (auto& entry : devices_) {
-                            auto state = entry.state;
-                            std::lock_guard guard(state->mutex);
-                            if (state->pluginInstances.count(instanceId) > 0) {
-                                foundDevice = state->device;
-                                foundDeviceState = state;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (foundDevice && foundDeviceState) {
-                        std::lock_guard guard(foundDeviceState->mutex);
-                        const char* deviceMenuText = foundDeviceState->running ? "Disable UMP Device" : "Enable UMP Device";
-
-                        if (foundDeviceState->instantiating) {
-                            ImGui::BeginDisabled();
-                        }
-
-                        if (ImGui::MenuItem(deviceMenuText)) {
-                            if (foundDeviceState->running) {
-                                foundDevice->stop();
-                                foundDeviceState->running = false;
-                                foundDeviceState->statusMessage = "Stopped";
-                            } else {
-                                // Update device name from textbox before starting
-                                if (umpDeviceNameBuffers_.find(instanceId) != umpDeviceNameBuffers_.end()) {
-                                    foundDeviceState->label = std::string(umpDeviceNameBuffers_[instanceId].data());
-                                }
-
-                                auto statusCode = foundDevice->start();
-                                if (statusCode == 0) {
-                                    foundDeviceState->running = true;
-                                    foundDeviceState->statusMessage = "Running";
-                                    foundDeviceState->hasError = false;
-                                } else {
-                                    foundDeviceState->statusMessage = std::format("Start failed (status {})", statusCode);
-                                    foundDeviceState->hasError = true;
-                                }
-                            }
-                        }
-
-                        if (foundDeviceState->instantiating) {
-                            ImGui::EndDisabled();
-                        }
-                    }
-                }
-
-                ImGui::Separator();
-
-                if (ImGui::MenuItem("Save State")) {
-                    savePluginState(instanceId);
-                }
-
-                if (ImGui::MenuItem("Load State")) {
-                    loadPluginState(instanceId);
-                }
-
-                ImGui::Separator();
-
-                if (ImGui::MenuItem("Remove")) {
-                    if (instance->hasUISupport() && instance->isUIVisible()) {
-                        instance->hideUI();
-                        auto windowIt = pluginWindows_.find(instanceId);
-                        if (windowIt != pluginWindows_.end()) {
-                            windowIt->second->show(false);
-                        }
-                    }
-
-                    instance->destroyUI();
-                    pluginWindows_.erase(instanceId);
-                    pluginWindowEmbedded_.erase(instanceId);
-                    pluginWindowBounds_.erase(instanceId);
-                    pluginWindowResizeIgnore_.erase(instanceId);
-
-                    auto detailsIt = detailsWindows_.find(instanceId);
-                    if (detailsIt != detailsWindows_.end()) {
-                        detailsWindows_.erase(detailsIt);
-                    }
-
-                    uapmd::AppModel::instance().removePluginInstance(instanceId);
-                    refreshInstances();
-
-                    std::cout << "Removed plugin instance: " << instanceId << std::endl;
-                    ImGui::CloseCurrentPopup();
-                }
-
-                ImGui::EndPopup();
-            }
-        }
-
-        ImGui::EndTable();
-    }
+    trackList_.setInstances(trackInstances);
 }
 
 void MainWindow::refreshDeviceList() {
-    inputDevices_.clear();
-    outputDevices_.clear();
+    std::vector<std::string> inputDevices;
+    std::vector<std::string> outputDevices;
 
     auto manager = uapmd::AudioIODeviceManager::instance();
     auto devices = manager->devices();
 
     for (auto& d : devices) {
         if (d.directions & AudioIODirections::Input) {
-            inputDevices_.push_back(d.name);
+            inputDevices.push_back(d.name);
         }
         if (d.directions & AudioIODirections::Output) {
-            outputDevices_.push_back(d.name);
+            outputDevices.push_back(d.name);
         }
     }
 
+    audioDeviceSettings_.setInputDevices(inputDevices);
+    audioDeviceSettings_.setOutputDevices(outputDevices);
+
     // Reset selection if out of bounds
-    if (selectedInputDevice_ >= static_cast<int>(inputDevices_.size())) {
-        selectedInputDevice_ = 0;
+    int selectedInput = audioDeviceSettings_.getSelectedInputDevice();
+    int selectedOutput = audioDeviceSettings_.getSelectedOutputDevice();
+
+    if (selectedInput >= static_cast<int>(inputDevices.size())) {
+        audioDeviceSettings_.setSelectedInputDevice(0);
     }
-    if (selectedOutputDevice_ >= static_cast<int>(outputDevices_.size())) {
-        selectedOutputDevice_ = 0;
+    if (selectedOutput >= static_cast<int>(outputDevices.size())) {
+        audioDeviceSettings_.setSelectedOutputDevice(0);
     }
 }
 
@@ -1030,11 +528,11 @@ void MainWindow::applyDeviceSettings() {
     // - Reconfiguring the audio system with new settings
     // - Restarting audio
 
-    std::string inputDevice = selectedInputDevice_ < inputDevices_.size() ? inputDevices_[selectedInputDevice_] : "";
-    std::string outputDevice = selectedOutputDevice_ < outputDevices_.size() ? outputDevices_[selectedOutputDevice_] : "";
-
-    std::cout << std::format("Applied audio settings: Input={}, Output={}, SR={}, BS={}",
-                            inputDevice, outputDevice, sampleRate_, bufferSize_) << std::endl;
+    std::cout << std::format("Applied audio settings: Input Index={}, Output Index={}, SR={}, BS={}",
+                            audioDeviceSettings_.getSelectedInputDevice(),
+                            audioDeviceSettings_.getSelectedOutputDevice(),
+                            audioDeviceSettings_.getSampleRate(),
+                            audioDeviceSettings_.getBufferSize()) << std::endl;
 }
 
 void MainWindow::play() {
@@ -1129,15 +627,6 @@ void MainWindow::loadFile() {
     playbackLength_ = static_cast<float>(sequencer.audioFileDurationSeconds());
     playbackPosition_ = 0.0f;
 
-    // Add to recent files if not already there
-    auto it = std::find(recentFiles_.begin(), recentFiles_.end(), currentFile_);
-    if (it == recentFiles_.end()) {
-        recentFiles_.insert(recentFiles_.begin(), currentFile_);
-        if (recentFiles_.size() > 10) { // Keep only 10 recent files
-            recentFiles_.pop_back();
-        }
-    }
-
     std::cout << "File loaded: " << currentFile_ << std::endl;
 }
 
@@ -1207,30 +696,29 @@ void MainWindow::refreshInstances() {
 }
 
 void MainWindow::refreshParameters(int32_t instanceId, DetailsWindowState& state) {
-    state.parameters.clear();
-    state.parameterValues.clear();
-    state.parameterValueStrings.clear();
-
     auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
 
-    state.parameters = pal->parameterMetadataList();
-    state.parameterValues.resize(state.parameters.size());
-    state.parameterValueStrings.resize(state.parameters.size());
+    auto parameters = pal->parameterMetadataList();
+    state.parameterList.setParameters(parameters);
+
     auto* parameterSupport = pal->parameterSupport();
-    for (size_t i = 0; i < state.parameters.size(); ++i) {
-        double initialValue = state.parameters[i].defaultPlainValue;
+    for (size_t i = 0; i < parameters.size(); ++i) {
+        double initialValue = parameters[i].defaultPlainValue;
         if (parameterSupport) {
             double queriedValue = initialValue;
-            auto status = parameterSupport->getParameter(state.parameters[i].index, &queriedValue);
+            auto status = parameterSupport->getParameter(parameters[i].index, &queriedValue);
             if (status == remidy::StatusCode::OK) {
                 initialValue = queriedValue;
             }
         }
-        state.parameterValues[i] = static_cast<float>(initialValue);
-        updateParameterValueString(i, instanceId, state);
+        state.parameterList.setParameterValue(i, static_cast<float>(initialValue));
+
+        // Update value string
+        auto valueString = pal->getParameterValueString(parameters[i].index, initialValue);
+        state.parameterList.setParameterValueString(i, valueString);
     }
 
     applyParameterUpdates(instanceId, state);
@@ -1265,33 +753,22 @@ void MainWindow::loadSelectedPreset(int32_t instanceId, DetailsWindowState& stat
     refreshParameters(instanceId, state);
 }
 
-void MainWindow::updateParameterValueString(size_t parameterIndex, int32_t instanceId, DetailsWindowState& state) {
-    if (parameterIndex >= state.parameters.size()) {
-        return;
-    }
-
-    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+void MainWindow::applyParameterUpdates(int32_t instanceId, DetailsWindowState& state) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto* pal = sequencer.getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
 
-    auto& param = state.parameters[parameterIndex];
-    if (state.parameterValueStrings.size() <= parameterIndex) {
-        state.parameterValueStrings.resize(parameterIndex + 1);
-    }
-
-    state.parameterValueStrings[parameterIndex] = pal->getParameterValueString(
-        param.index, state.parameterValues[parameterIndex]);
-}
-
-void MainWindow::applyParameterUpdates(int32_t instanceId, DetailsWindowState& state) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
     auto updates = sequencer.getParameterUpdates(instanceId);
+    const auto& parameters = state.parameterList.getParameters();
+
     for (const auto& update : updates) {
-        for (size_t i = 0; i < state.parameters.size(); ++i) {
-            if (state.parameters[i].index == update.parameterIndex) {
-                state.parameterValues[i] = static_cast<float>(update.value);
-                updateParameterValueString(i, instanceId, state);
+        for (size_t i = 0; i < parameters.size(); ++i) {
+            if (parameters[i].index == update.parameterIndex) {
+                state.parameterList.setParameterValue(i, static_cast<float>(update.value));
+                auto valueString = pal->getParameterValueString(parameters[i].index, update.value);
+                state.parameterList.setParameterValueString(i, valueString);
                 break;
             }
         }
@@ -1299,350 +776,36 @@ void MainWindow::applyParameterUpdates(int32_t instanceId, DetailsWindowState& s
 }
 
 void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState& state) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* pal = sequencer.getPluginInstance(instanceId);
-    if (!pal) {
-        return;
-    }
-
-    ImGui::Checkbox("Reflect Event Out", &state.reflectEventOut);
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("When enabled, parameter changes from plugin output events\nwill be reflected in the UI controls");
-    }
-
-    if (state.reflectEventOut) {
+    // Apply parameter updates if reflecting event out
+    if (state.parameterList.getReflectEventOut()) {
         applyParameterUpdates(instanceId, state);
     }
 
-    ImGui::InputText("Filter Parameters", state.parameterFilter, sizeof(state.parameterFilter));
-
-    const ImGuiTableFlags parameterTableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
-                                                ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate;
-    if (ImGui::BeginTable("ParameterTable", 5, parameterTableFlags)) {
-        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort |
-                                               ImGuiTableColumnFlags_PreferSortAscending,
-                                30.0f);
-        ImGui::TableSetupColumn("Stable ID", ImGuiTableColumnFlags_WidthFixed, 50.0f);
-        ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthStretch, 0.0f, 0);
-        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 180.0f);
-        ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-        ImGui::TableHeadersRow();
-
-        std::string filter = state.parameterFilter;
-        std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
-
-        std::vector<size_t> visibleParameterIndices;
-        visibleParameterIndices.reserve(state.parameters.size());
-
-        for (size_t i = 0; i < state.parameters.size(); ++i) {
-            auto& param = state.parameters[i];
-
-            if (param.hidden || (!param.automatable && !param.discrete))
-                continue;
-
-            if (!filter.empty()) {
-                std::string name = param.name;
-                std::string stableId = param.stableId;
-                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-                std::transform(stableId.begin(), stableId.end(), stableId.begin(), ::tolower);
-                if (name.find(filter) == std::string::npos && stableId.find(filter) == std::string::npos) {
-                    continue;
-                }
-            }
-
-            visibleParameterIndices.push_back(i);
-        }
-
-        auto compareByColumn = [&](size_t lhs, size_t rhs, int columnIndex) {
-            const auto& leftParam = state.parameters[lhs];
-            const auto& rightParam = state.parameters[rhs];
-            switch (columnIndex) {
-            case 0:
-                if (leftParam.index < rightParam.index)
-                    return -1;
-                if (leftParam.index > rightParam.index)
-                    return 1;
-                return 0;
-            case 1:
-                if (leftParam.stableId < rightParam.stableId)
-                    return -1;
-                if (leftParam.stableId > rightParam.stableId)
-                    return 1;
-                return 0;
-            case 2:
-                if (leftParam.name < rightParam.name)
-                    return -1;
-                if (leftParam.name > rightParam.name)
-                    return 1;
-                return 0;
-            case 3:
-                if (state.parameterValues[lhs] < state.parameterValues[rhs])
-                    return -1;
-                if (state.parameterValues[lhs] > state.parameterValues[rhs])
-                    return 1;
-                return 0;
-            case 4:
-                if (leftParam.defaultPlainValue < rightParam.defaultPlainValue)
-                    return -1;
-                if (leftParam.defaultPlainValue > rightParam.defaultPlainValue)
-                    return 1;
-                return 0;
-            default:
-                return 0;
-            }
-        };
-
-        if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs()) {
-            if (!visibleParameterIndices.empty() && sortSpecs->SpecsCount > 0) {
-                std::stable_sort(visibleParameterIndices.begin(), visibleParameterIndices.end(),
-                                 [&](size_t lhs, size_t rhs) {
-                                     for (int n = 0; n < sortSpecs->SpecsCount; ++n) {
-                                         const ImGuiTableColumnSortSpecs& spec = sortSpecs->Specs[n];
-                                         int delta = compareByColumn(lhs, rhs, spec.ColumnIndex);
-                                         if (delta != 0) {
-                                             return spec.SortDirection == ImGuiSortDirection_Ascending ? (delta < 0)
-                                                                                                       : (delta > 0);
-                                         }
-                                     }
-                                     return lhs < rhs;
-                                 });
-            }
-            sortSpecs->SpecsDirty = false;
-        }
-
-        for (size_t paramIndex : visibleParameterIndices) {
-            auto& param = state.parameters[paramIndex];
-
-            ImGui::TableNextRow();
-
-            ImGui::TableNextColumn();
-            ImGui::Text("%u", param.index);
-
-            ImGui::TableNextColumn();
-            if (param.stableId.empty()) {
-                ImGui::Text("(empty)");
-            } else {
-                ImGui::Text("%s", param.stableId.c_str());
-            }
-
-            ImGui::TableNextColumn();
-            ImGui::Text("%s", param.name.c_str());
-
-            ImGui::TableNextColumn();
-            std::string controlId = "##" + std::to_string(param.index);
-
-            bool parameterChanged = false;
-            const bool hasDiscreteCombo = !param.namedValues.empty();
-            const char* format = state.parameterValueStrings[paramIndex].empty()
-                                     ? "%.3f"
-                                     : state.parameterValueStrings[paramIndex].c_str();
-
-            float sliderWidth = ImGui::GetContentRegionAvail().x;
-            float comboButtonWidth = 0.0f;
-            float comboSpacing = 0.0f;
-            if (hasDiscreteCombo) {
-                comboButtonWidth = ImGui::GetFrameHeight();
-                comboSpacing = ImGui::GetStyle().ItemInnerSpacing.x;
-                sliderWidth = std::max(20.0f, sliderWidth - (comboButtonWidth + comboSpacing));
-            }
-
-            ImGui::SetNextItemWidth(sliderWidth);
-            if (ImGui::SliderFloat(controlId.c_str(), &state.parameterValues[paramIndex],
-                                   static_cast<float>(param.minPlainValue),
-                                   static_cast<float>(param.maxPlainValue), format)) {
-                parameterChanged = true;
-            }
-
-            ImVec2 sliderMin = ImGui::GetItemRectMin();
-            ImVec2 sliderMax = ImGui::GetItemRectMax();
-
-            if (hasDiscreteCombo) {
-                ImGui::SameLine(0.0f, comboSpacing);
-                std::string comboButtonId = controlId + "_combo";
-                std::string comboPopupId = controlId + "_popup";
-                const bool popupOpen = ImGui::IsPopupOpen(comboPopupId.c_str(), ImGuiPopupFlags_None);
-                bool requestPopupClose = false;
-
-                if (popupOpen) {
-                    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
-                }
-
-                if (ImGui::ArrowButton(comboButtonId.c_str(), ImGuiDir_Down)) {
-                    if (popupOpen) {
-                        requestPopupClose = true;
-                    } else {
-                        ImGui::OpenPopup(comboPopupId.c_str());
-                    }
-                }
-
-                if (popupOpen) {
-                    ImGui::PopStyleColor(2);
-                }
-
-                ImGui::SetNextWindowPos(sliderMin);
-                ImGui::SetNextWindowSize(ImVec2(sliderMax.x - sliderMin.x, 0.0f));
-                if (ImGui::BeginPopup(comboPopupId.c_str())) {
-                    if (requestPopupClose) {
-                        ImGui::CloseCurrentPopup();
-                    } else {
-                        const std::string& currentLabel = state.parameterValueStrings[paramIndex].empty()
-                                                               ? std::to_string(state.parameterValues[paramIndex])
-                                                               : state.parameterValueStrings[paramIndex];
-
-                        if (!currentLabel.empty()) {
-                            ImGui::TextUnformatted(currentLabel.c_str());
-                            ImGui::Separator();
-                        }
-
-                        for (const auto& namedValue : param.namedValues) {
-                            bool isSelected = (std::abs(namedValue.value - state.parameterValues[paramIndex]) < 0.0001);
-                            if (ImGui::Selectable(namedValue.name.c_str(), isSelected)) {
-                                state.parameterValues[paramIndex] = static_cast<float>(namedValue.value);
-                                parameterChanged = true;
-                                ImGui::CloseCurrentPopup();
-                            }
-                            if (isSelected) {
-                                ImGui::SetItemDefaultFocus();
-                            }
-                        }
-                    }
-                    ImGui::EndPopup();
-                }
-            }
-
-            if (parameterChanged) {
-                sequencer.setParameterValue(instanceId, param.index, state.parameterValues[paramIndex]);
-                updateParameterValueString(paramIndex, instanceId, state);
-                std::cout << "Parameter " << param.name << " changed to " << state.parameterValues[paramIndex] << std::endl;
-            }
-
-            ImGui::TableNextColumn();
-            std::string resetId = "Reset##" + std::to_string(param.index);
-            if (ImGui::Button(resetId.c_str())) {
-                state.parameterValues[paramIndex] = static_cast<float>(param.defaultPlainValue);
-                sequencer.setParameterValue(instanceId, param.index, state.parameterValues[paramIndex]);
-                updateParameterValueString(paramIndex, instanceId, state);
-            }
-        }
-
-        ImGui::EndTable();
-    }
+    // Render the parameter list component
+    state.parameterList.render();
 }
 
 void MainWindow::refreshPluginList() {
-    availablePlugins_.clear();
+    std::vector<PluginEntry> plugins;
 
     auto& catalog = uapmd::AppModel::instance().sequencer().catalog();
-    auto plugins = catalog.getPlugins();
+    auto catalogPlugins = catalog.getPlugins();
 
-    for (auto* plugin : plugins) {
-        availablePlugins_.push_back({
+    for (auto* plugin : catalogPlugins) {
+        plugins.push_back({
             .format = plugin->format(),
             .id = plugin->pluginId(),
             .name = plugin->displayName(),
             .vendor = plugin->vendorName()
         });
     }
+
+    pluginList_.setPlugins(plugins);
 }
 
 void MainWindow::renderPluginSelector() {
-    ImGui::InputText("Search", searchFilter_, sizeof(searchFilter_));
-
-    if (ImGui::BeginTable("PluginTable", 4,
-                          ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY |
-                              ImGuiTableFlags_Sortable,
-                          ImVec2(0, 300))) {
-        ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Vendor", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableHeadersRow();
-
-        std::string filter = searchFilter_;
-        std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
-
-        // Build list of visible indices after filtering
-        std::vector<int> indices;
-        indices.reserve(availablePlugins_.size());
-        for (size_t i = 0; i < availablePlugins_.size(); ++i) {
-            const auto& p = availablePlugins_[i];
-            if (!filter.empty()) {
-                std::string name = p.name;
-                std::string vendor = p.vendor;
-                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-                std::transform(vendor.begin(), vendor.end(), vendor.begin(), ::tolower);
-                if (name.find(filter) == std::string::npos && vendor.find(filter) == std::string::npos) {
-                    continue;
-                }
-            }
-            indices.push_back(static_cast<int>(i));
-        }
-
-        // Sort visible indices according to table sort specs
-        if (!indices.empty()) {
-            if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
-                if (sort_specs->SpecsCount > 0) {
-                    auto cmp = [&](int lhsIdx, int rhsIdx) {
-                        const auto& a = availablePlugins_[static_cast<size_t>(lhsIdx)];
-                        const auto& b = availablePlugins_[static_cast<size_t>(rhsIdx)];
-                        for (int n = 0; n < sort_specs->SpecsCount; n++) {
-                            const ImGuiTableColumnSortSpecs* s = &sort_specs->Specs[n];
-                            int delta = 0;
-                            switch (s->ColumnIndex) {
-                                case 0: delta = a.format.compare(b.format); break;
-                                case 1: delta = a.name.compare(b.name); break;
-                                case 2: delta = a.vendor.compare(b.vendor); break;
-                                case 3: delta = a.id.compare(b.id); break;
-                                default: break;
-                            }
-                            if (delta != 0) {
-                                return (s->SortDirection == ImGuiSortDirection_Ascending) ? (delta < 0) : (delta > 0);
-                            }
-                        }
-                        // Tiebreaker to get deterministic order
-                        if (int t = a.name.compare(b.name); t != 0) return t < 0;
-                        if (int t = a.vendor.compare(b.vendor); t != 0) return t < 0;
-                        if (int t = a.id.compare(b.id); t != 0) return t < 0;
-                        return a.format < b.format;
-                    };
-                    std::sort(indices.begin(), indices.end(), cmp);
-                }
-            }
-        }
-
-        for (int sortedIndex : indices) {
-            const auto& plugin = availablePlugins_[static_cast<size_t>(sortedIndex)];
-
-            bool isSelected = (selectedPluginFormat_ == plugin.format && selectedPluginId_ == plugin.id);
-
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-
-            std::string selectableId = "##" + plugin.id + "##" + std::to_string(sortedIndex);
-            if (ImGui::Selectable(selectableId.c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns)) {
-                selectedPluginFormat_ = plugin.format;
-                selectedPluginId_ = plugin.id;
-                std::cout << "[GUI] Selected plugin: format='" << plugin.format << "', id='" << plugin.id
-                          << "', name='" << plugin.name << "'" << std::endl;
-            }
-
-            ImGui::SameLine();
-            ImGui::Text("%s", plugin.format.c_str());
-
-            ImGui::TableNextColumn();
-            ImGui::Text("%s", plugin.name.c_str());
-
-            ImGui::TableNextColumn();
-            ImGui::Text("%s", plugin.vendor.c_str());
-
-            ImGui::TableNextColumn();
-            ImGui::Text("%s", plugin.id.c_str());
-        }
-        ImGui::EndTable();
-                          }
+    // Render the plugin list component
+    pluginList_.render();
 
     // Plugin scanning controls
     ImGui::Separator();
@@ -1701,7 +864,8 @@ void MainWindow::renderPluginSelector() {
     }
 
     // Plugin instantiation controls
-    bool canInstantiate = !selectedPluginFormat_.empty() && !selectedPluginId_.empty();
+    auto selection = pluginList_.getSelection();
+    bool canInstantiate = selection.hasSelection;
     if (!canInstantiate) {
         ImGui::BeginDisabled();
     }
@@ -1714,7 +878,7 @@ void MainWindow::renderPluginSelector() {
         }
 
         // Always create device (creates UMP device even for existing tracks)
-        createDeviceForPlugin(selectedPluginFormat_, selectedPluginId_, trackIndex);
+        createDeviceForPlugin(selection.format, selection.pluginId, trackIndex);
         showPluginSelector_ = false;
     }
     if (!canInstantiate) {
@@ -1765,6 +929,21 @@ void MainWindow::showDetailsWindow(int32_t instanceId) {
             }
         });
 
+        // Set up parameter list callbacks
+        state.parameterList.setOnParameterChanged([this, instanceId](uint32_t parameterIndex, float value) {
+            auto& seq = uapmd::AppModel::instance().sequencer();
+            seq.setParameterValue(instanceId, parameterIndex, value);
+        });
+
+        state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
+            auto& seq = uapmd::AppModel::instance().sequencer();
+            auto* pal = seq.getPluginInstance(instanceId);
+            if (pal) {
+                return pal->getParameterValueString(parameterIndex, value);
+            }
+            return "";
+        });
+
         state.visible = true;
         refreshParameters(instanceId, state);
         refreshPresets(instanceId, state);
@@ -1809,7 +988,7 @@ void MainWindow::renderDetailsWindows() {
             if (!instance) {
                 ImGui::TextUnformatted("Instance is no longer available.");
             } else {
-                if (detailsState.parameters.empty() && detailsState.parameterValues.empty()) {
+                if (detailsState.parameterList.getParameters().empty()) {
                     refreshParameters(instanceId, detailsState);
                 }
                 if (detailsState.presets.empty()) {
@@ -2467,6 +1646,181 @@ void MainWindow::renderVirtualMidiDeviceManager() {
 
         refreshInstances();
     }
+}
+
+
+void MainWindow::handleShowUI(int32_t instanceId) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto* instance = sequencer.getPluginInstance(instanceId);
+    if (!instance) return;
+
+    std::string pluginName = sequencer.getPluginName(instanceId);
+    std::string pluginFormat = sequencer.getPluginFormat(instanceId);
+
+    // Create container window if needed
+    auto windowIt = pluginWindows_.find(instanceId);
+    remidy::gui::ContainerWindow* container = nullptr;
+    if (windowIt == pluginWindows_.end()) {
+        std::string windowTitle = pluginName + " (" + pluginFormat + ")";
+        auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600, [this, instanceId]() {
+            onPluginWindowClosed(instanceId);
+        });
+        container = w.get();
+        w->setResizeCallback([this, instanceId](int width, int height) {
+            pluginWindowBounds_[instanceId].width = width;
+            pluginWindowBounds_[instanceId].height = height;
+            onPluginWindowResized(instanceId);
+        });
+        pluginWindows_[instanceId] = std::move(w);
+        pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
+    } else {
+        container = windowIt->second.get();
+        if (pluginWindowBounds_.find(instanceId) == pluginWindowBounds_.end())
+            pluginWindowBounds_[instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
+    }
+
+    if (!container) {
+        std::cout << "Failed to create container window for instance " << instanceId << std::endl;
+        return;
+    }
+
+    container->show(true);
+    void* parentHandle = container->getHandle();
+    bool pluginUIExists = (pluginWindowEmbedded_.find(instanceId) != pluginWindowEmbedded_.end());
+
+    if (!pluginUIExists) {
+        if (!instance->createUI(false, parentHandle,
+            [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
+            container->show(false);
+            pluginWindows_.erase(instanceId);
+            std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
+        } else {
+            pluginWindowEmbedded_[instanceId] = true;
+            bool canResize = instance->canUIResize();
+            container->setResizable(canResize);
+        }
+    }
+
+    if (pluginUIExists || pluginWindowEmbedded_[instanceId]) {
+        if (!instance->showUI()) {
+            std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
+        }
+    }
+}
+
+void MainWindow::handleHideUI(int32_t instanceId) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto* instance = sequencer.getPluginInstance(instanceId);
+    if (!instance) return;
+
+    instance->hideUI();
+    auto windowIt = pluginWindows_.find(instanceId);
+    if (windowIt != pluginWindows_.end()) {
+        windowIt->second->show(false);
+    }
+}
+
+void MainWindow::handleEnableDevice(int32_t instanceId, const std::string& deviceName) {
+    auto* deviceController = uapmd::AppModel::instance().deviceController();
+    if (!deviceController) return;
+
+    std::shared_ptr<uapmd::UapmdMidiDevice> foundDevice;
+    std::shared_ptr<DeviceState> foundDeviceState;
+
+    {
+        std::lock_guard lock(devicesMutex_);
+        for (auto& entry : devices_) {
+            auto state = entry.state;
+            std::lock_guard guard(state->mutex);
+            if (state->pluginInstances.count(instanceId) > 0) {
+                foundDevice = state->device;
+                foundDeviceState = state;
+                break;
+            }
+        }
+    }
+
+    if (foundDevice && foundDeviceState) {
+        std::lock_guard guard(foundDeviceState->mutex);
+        foundDeviceState->label = deviceName;
+
+        auto statusCode = foundDevice->start();
+        if (statusCode == 0) {
+            foundDeviceState->running = true;
+            foundDeviceState->statusMessage = "Running";
+            foundDeviceState->hasError = false;
+            std::cout << "Enabled UMP device for instance: " << instanceId << std::endl;
+        } else {
+            foundDeviceState->statusMessage = std::format("Start failed (status {})", statusCode);
+            foundDeviceState->hasError = true;
+            std::cout << "Failed to enable UMP device (status " << statusCode << ")" << std::endl;
+        }
+    }
+}
+
+void MainWindow::handleDisableDevice(int32_t instanceId) {
+    auto* deviceController = uapmd::AppModel::instance().deviceController();
+    if (!deviceController) return;
+
+    std::shared_ptr<uapmd::UapmdMidiDevice> foundDevice;
+    std::shared_ptr<DeviceState> foundDeviceState;
+
+    {
+        std::lock_guard lock(devicesMutex_);
+        for (auto& entry : devices_) {
+            auto state = entry.state;
+            std::lock_guard guard(state->mutex);
+            if (state->pluginInstances.count(instanceId) > 0) {
+                foundDevice = state->device;
+                foundDeviceState = state;
+                break;
+            }
+        }
+    }
+
+    if (foundDevice && foundDeviceState) {
+        std::lock_guard guard(foundDeviceState->mutex);
+        foundDevice->stop();
+        foundDeviceState->running = false;
+        foundDeviceState->statusMessage = "Stopped";
+        std::cout << "Disabled UMP device for instance: " << instanceId << std::endl;
+    }
+}
+
+void MainWindow::handleRemoveInstance(int32_t instanceId) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto* instance = sequencer.getPluginInstance(instanceId);
+    if (!instance) return;
+
+    // Hide and cleanup UI if it's open
+    if (instance->hasUISupport() && instance->isUIVisible()) {
+        instance->hideUI();
+        auto windowIt = pluginWindows_.find(instanceId);
+        if (windowIt != pluginWindows_.end()) {
+            windowIt->second->show(false);
+        }
+    }
+
+    // Cleanup plugin UI resources
+    instance->destroyUI();
+    pluginWindows_.erase(instanceId);
+    pluginWindowEmbedded_.erase(instanceId);
+    pluginWindowBounds_.erase(instanceId);
+    pluginWindowResizeIgnore_.erase(instanceId);
+
+    // Cleanup details window if open
+    auto detailsIt = detailsWindows_.find(instanceId);
+    if (detailsIt != detailsWindows_.end()) {
+        detailsWindows_.erase(detailsIt);
+    }
+
+    // Remove the plugin instance
+    uapmd::AppModel::instance().removePluginInstance(instanceId);
+
+    // Refresh the instance list
+    refreshInstances();
+
+    std::cout << "Removed plugin instance: " << instanceId << std::endl;
 }
 
 }

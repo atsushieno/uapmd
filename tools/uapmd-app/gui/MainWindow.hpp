@@ -7,16 +7,16 @@
 #include <unordered_set>
 #include <uapmd/uapmd.hpp>
 #include "MidiKeyboard.hpp"
+#include "PluginList.hpp"
+#include "ParameterList.hpp"
+#include "TrackList.hpp"
+#include "AudioDeviceSettings.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 
 // Forward declarations for different window types
 struct SDL_Window;
 struct GLFWwindow;
-
-namespace uapmd {
-    class UapmdMidiDevice;
-}
 
 namespace uapmd::gui {
 
@@ -31,16 +31,10 @@ class MainWindow {
         bool isOpen_ = true;
 
         // Device settings
-        std::vector<std::string> inputDevices_;
-        std::vector<std::string> outputDevices_;
-        int selectedInputDevice_ = 0;
-        int selectedOutputDevice_ = 0;
-        int bufferSize_ = 512;
-        int sampleRate_ = 44100;
+        AudioDeviceSettings audioDeviceSettings_;
 
         // Player settings
         std::string currentFile_;
-        std::vector<std::string> recentFiles_;
         bool isPlaying_ = false;
         bool isPaused_ = false;
         bool isRecording_ = false;
@@ -56,13 +50,11 @@ class MainWindow {
         // Instance control
         int selectedInstance_ = -1;
         std::vector<int32_t> instances_;
+        TrackList trackList_;
 
         // Plugin selection
         bool showPluginSelector_ = false;
-        std::vector<PluginEntry> availablePlugins_;
-        std::string selectedPluginFormat_;
-        std::string selectedPluginId_;
-        char searchFilter_[256] = "";
+        PluginList pluginList_;
 
         // Plugin scanning
         bool forceRescan_ = false;
@@ -121,12 +113,8 @@ class MainWindow {
 
         struct DetailsWindowState {
             MidiKeyboard midiKeyboard;
+            ParameterList parameterList;
             bool visible = false;
-            bool reflectEventOut = true;
-            char parameterFilter[256] = "";
-            std::vector<uapmd::ParameterMetadata> parameters;
-            std::vector<float> parameterValues;
-            std::vector<std::string> parameterValueStrings;
             std::vector<uapmd::PresetsMetadata> presets;
             int selectedPreset = -1;
         };
@@ -142,7 +130,7 @@ class MainWindow {
     private:
         // No native embedding; we use dedicated windows for plugin UIs
         // Device settings
-        void renderDeviceSettings();
+        void updateAudioDeviceSettingsData();
         void refreshDeviceList();
         void applyDeviceSettings();
 
@@ -164,7 +152,6 @@ class MainWindow {
         void refreshPresets(int32_t instanceId, DetailsWindowState& state);
         void loadSelectedPreset(int32_t instanceId, DetailsWindowState& state);
         void renderParameterControls(int32_t instanceId, DetailsWindowState& state);
-        void updateParameterValueString(size_t parameterIndex, int32_t instanceId, DetailsWindowState& state);
         bool handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height);
         void onPluginWindowResized(int32_t instanceId);
         void onPluginWindowClosed(int32_t instanceId);
@@ -187,6 +174,14 @@ class MainWindow {
         // Virtual MIDI device management
         void renderVirtualMidiDeviceManager();
         void createDeviceForPlugin(const std::string& format, const std::string& pluginId, int32_t trackIndex);
+
+        // TrackList helper methods
+        void updateTrackListData();
+        void handleShowUI(int32_t instanceId);
+        void handleHideUI(int32_t instanceId);
+        void handleEnableDevice(int32_t instanceId, const std::string& deviceName);
+        void handleDisableDevice(int32_t instanceId);
+        void handleRemoveInstance(int32_t instanceId);
 
     };
 }

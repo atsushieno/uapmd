@@ -26,13 +26,13 @@ namespace uapmd {
           track_index(trackIndex),
           platform_device(std::move(platformMidiDevice)) {
         uapmd_sessions = std::make_unique<UapmdMidiCISessions>(this, deviceName, manufacturerName, versionString);
-        platform_device->addInputHandler(&UapmdMidiDevice::umpReceivedTrampoline, this);
+        platform_device->addInputHandler(umpReceived, this);
     }
 
     UapmdMidiDevice::~UapmdMidiDevice() {
         stop();
         teardownOutputHandler();
-        platform_device->removeInputHandler(&UapmdMidiDevice::umpReceivedTrampoline);
+        platform_device->removeInputHandler(umpReceived);
     }
 
     void UapmdMidiDevice::teardownOutputHandler() {
@@ -68,7 +68,7 @@ namespace uapmd {
         return 0;
     }
 
-    void UapmdMidiDevice::umpReceivedTrampoline(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    void UapmdMidiDevice::umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
         static_cast<UapmdMidiDevice*>(context)->umpReceived(ump, sizeInBytes, timestamp);
     }
 
