@@ -1,7 +1,7 @@
 
 #include <iostream>
 #include <midicci/midicci.hpp>
-#include "UapmdMidiCISessions.hpp"
+#include "uapmd/uapmd.hpp"
 
 namespace uapmd {
     void UapmdMidiCISessions::interceptUmpInput(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {

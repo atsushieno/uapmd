@@ -6,7 +6,7 @@ namespace uapmd {
     // Handles UAPMD-specific MIDI-CI messages. Namely, it registers property getter and setter for
     // AllCtrlList, CtrlMapList, ProgramList, and State.
     //
-    // There is no "output intercepter" as it will be handled by MidiCISession and its registered `MidiIODevice`.
+    // There is no "output interceptor" as it will be handled by MidiCISession and its registered `MidiIODevice`.
     class UapmdMidiCISessions {
         UapmdMidiDevice* device;
 

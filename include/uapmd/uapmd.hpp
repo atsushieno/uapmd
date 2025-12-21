@@ -13,3 +13,4 @@
 #include "priv/sequencer/AudioPluginSequencer.hpp"
 #include "priv/midi/PlatformVirtualMidiDevice.hpp"
 #include "priv/midi/UapmdMidiDevice.hpp"
+#include "priv/midi/UapmdMidiCISessions.hpp"

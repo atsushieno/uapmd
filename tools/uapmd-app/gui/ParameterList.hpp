@@ -4,7 +4,7 @@
 #include <string>
 #include <functional>
 #include <imgui.h>
-#include <uapmd/priv/plugingraph/AudioPluginNode.hpp>
+#include <uapmd/uapmd.hpp>
 
 namespace uapmd::gui {
 

@@ -4,7 +4,7 @@
 #include <optional>
 #include <thread>
 #include <vector>
-#include "../../../../include/uapmd/priv/audiograph/DeviceIODispatcher.hpp"
+#include "uapmd/uapmd.hpp"
 
 namespace uapmd {
     class DefaultDeviceIODispatcher : public DeviceIODispatcher {

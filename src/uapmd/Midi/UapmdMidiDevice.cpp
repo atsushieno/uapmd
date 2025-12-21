@@ -1,4 +1,3 @@
-#include "../../../include/uapmd/priv/midi/UapmdMidiDevice.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -6,7 +5,7 @@
 #include <iostream>
 #include <memory>
 
-#include "UapmdMidiCISessions.hpp"
+#include "uapmd/uapmd.hpp"
 
 using namespace midicci::commonproperties;
 

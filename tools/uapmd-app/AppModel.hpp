@@ -2,7 +2,7 @@
 
 #include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
 #include <remidy-tooling/PluginScanTool.hpp>
-#include "../../include/uapmd/priv/sequencer/AudioPluginSequencer.hpp"
+#include <uapmd/uapmd.hpp>
 #include "Controller/VirtualMidiDeviceController.hpp"
 #include <format>
 #include <thread>
