@@ -196,7 +196,7 @@ Audio configuration for plugin instance.
 
 #### Properties
 
-- `sampleRate?: number`: Sample rate (default: 44100)
+- `sampleRate?: number`: Sample rate (default: 48000)
 - `bufferSizeInSamples?: number`: Buffer size (default: 4096)
 - `offlineMode?: boolean`: Offline processing mode
 - `mainInputChannels?: number`: Number of input channels

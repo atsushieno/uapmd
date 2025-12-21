@@ -35,7 +35,7 @@ namespace remidy {
         uint16_t dctpq{480};
         uint32_t tempo_{500000};
         int64_t playback_position_samples_{0};
-        int32_t sample_rate_{44100};
+        int32_t sample_rate_{48000};
         bool is_playing_{false};
 
     public:

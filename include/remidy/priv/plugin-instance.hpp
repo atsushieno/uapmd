@@ -25,7 +25,7 @@ namespace remidy {
 
     public:
         struct ConfigurationRequest {
-            uint32_t sampleRate{44100};
+            uint32_t sampleRate{48000};
             uint32_t bufferSizeInSamples{4096};
             bool offlineMode{false};
             AudioContentType dataType{AudioContentType::Float32};

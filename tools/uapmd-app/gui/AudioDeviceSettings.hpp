@@ -19,8 +19,8 @@ private:
     int selectedInputDevice_ = 0;
     int selectedOutputDevice_ = 0;
     int bufferSize_ = 512;
-    int inputSampleRate_ = 44100;
-    int outputSampleRate_ = 44100;
+    int inputSampleRate_ = 48000;
+    int outputSampleRate_ = 48000;
     int selectedInputSampleRateIndex_ = 0;
     int selectedOutputSampleRateIndex_ = 0;
 

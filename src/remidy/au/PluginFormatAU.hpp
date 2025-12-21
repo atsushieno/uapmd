@@ -167,7 +167,7 @@ namespace remidy {
             bool isPlaying{false};
             bool isRecording{false};
             bool transportStateChanged{false};
-            double sampleRate{44100.0};
+            double sampleRate{48000.0};
         };
 
         void initializeHostCallbacks();

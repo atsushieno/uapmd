@@ -234,7 +234,7 @@ namespace remidy {
         CLAPUmpInputDispatcher ump_input_dispatcher{this};
         std::unique_ptr<RemidyCLAPHost> host{};
         bool is_offline_{false};
-        double sample_rate_{44100.0};
+        double sample_rate_{48000.0};
         std::atomic<bool> flush_requested_{false};
         std::atomic<bool> is_processing{false};
         bool processing_active_{false};

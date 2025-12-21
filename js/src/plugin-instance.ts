@@ -95,7 +95,7 @@ export class PluginInstance {
 
     configure(config: ConfigurationRequest): void {
         const nativeConfig = {
-            sample_rate: config.sampleRate ?? 44100,
+            sample_rate: config.sampleRate ?? 48000,
             buffer_size_in_samples: config.bufferSizeInSamples ?? 4096,
             offline_mode: config.offlineMode ?? false,
             main_input_channels: config.mainInputChannels ?? 0,
