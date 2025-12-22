@@ -93,7 +93,7 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
         static std::map<int32_t, std::array<char, 128>> deviceNameBuffers;
         if (deviceNameBuffers.find(instance.instanceId) == deviceNameBuffers.end()) {
             deviceNameBuffers[instance.instanceId] = {};
-            std::strncpy(deviceNameBuffers[instance.instanceId].data(),
+            strncpy(deviceNameBuffers[instance.instanceId].data(),
                         instance.umpDeviceName.c_str(),
                         deviceNameBuffers[instance.instanceId].size() - 1);
         }
