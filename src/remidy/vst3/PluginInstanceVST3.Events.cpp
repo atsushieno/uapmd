@@ -54,10 +54,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::uint4
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
                                                                    remidy::uint7_t index, uint32_t data, bool relative) {
-    // parameter change (index = bank * 128 + index)
-    auto parameterIndex = bank * 0x80 + index;
-    double value = (double) data / UINT32_MAX;
-    owner->parameters()->setParameter(parameterIndex, value, timestamp());
+    // we handle AC-to-parameters mappings in UAPMD, not here.
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
@@ -97,6 +94,9 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNRC(remidy::uint4_t 
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) {
+    // FIXME: we should make sure that IMidiMapping is really mandatory here.
+    // Parameter with kPitchBend could be queried from the parameter list, regardless of IMidiMapping experience.
+
     // use parameter kPitchBend (if available)
     if (!owner->midi_mapping)
         return;
