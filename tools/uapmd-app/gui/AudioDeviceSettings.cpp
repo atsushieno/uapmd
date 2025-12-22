@@ -47,6 +47,14 @@ void AudioDeviceSettings::setSelectedOutputDevice(int index) {
 
 void AudioDeviceSettings::setBufferSize(int size) {
     bufferSize_ = size;
+    // Try to find the buffer size in the available list and set the index
+    selectedBufferSizeIndex_ = 3; // Default to 512 (index 3)
+    for (size_t i = 0; i < availableBufferSizes_.size(); i++) {
+        if (availableBufferSizes_[i] == size) {
+            selectedBufferSizeIndex_ = static_cast<int>(i);
+            break;
+        }
+    }
 }
 
 void AudioDeviceSettings::setInputSampleRate(int rate) {
@@ -114,8 +122,28 @@ void AudioDeviceSettings::render() {
         ImGui::EndCombo();
     }
 
-    // Buffer size
-    ImGui::InputInt("Buffer Size", &bufferSize_);
+    // Buffer size dropdown - fixed values only, no text editing
+    std::string bufferSizeLabel = selectedBufferSizeIndex_ < static_cast<int>(availableBufferSizes_.size())
+        ? std::to_string(availableBufferSizes_[selectedBufferSizeIndex_])
+        : "Unknown";
+
+    if (ImGui::BeginCombo("Buffer Size", bufferSizeLabel.c_str())) {
+        for (size_t i = 0; i < availableBufferSizes_.size(); i++) {
+            bool isSelected = (selectedBufferSizeIndex_ == static_cast<int>(i));
+            std::string label = std::to_string(availableBufferSizes_[i]);
+            if (ImGui::Selectable(label.c_str(), isSelected)) {
+                selectedBufferSizeIndex_ = static_cast<int>(i);
+                bufferSize_ = availableBufferSizes_[i];
+                if (onDeviceChanged_) {
+                    onDeviceChanged_();
+                }
+            }
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
 
     // Input sample rate dropdown
     std::string inputSampleRateLabel = selectedInputSampleRateIndex_ < static_cast<int>(inputAvailableSampleRates_.size())
