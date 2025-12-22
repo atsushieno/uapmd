@@ -70,6 +70,9 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         unit_info = nullptr; // just to make sure
     if (component->queryInterface(IProgramListData::iid, (void**) &program_list_data) != kResultOk)
         program_list_data = nullptr; // just to make sure
+    // Try IMidiMapping2 first (VST3.8.0+), fallback to IMidiMapping
+    if (controller->queryInterface(IMidiMapping2::iid, (void**) &midi_mapping2) != kResultOk)
+        midi_mapping2 = nullptr; // just to make sure
     if (controller->queryInterface(IMidiMapping::iid, (void**) &midi_mapping) != kResultOk)
         midi_mapping = nullptr; // just to make sure
 
@@ -95,6 +98,73 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     // Leave the component inactive until startProcessing() explicitly activates it.
 
     synchronizeControllerState();
+    refreshMidiMappings();
+}
+
+void remidy::PluginInstanceVST3::refreshMidiMappings() {
+    // This must be called on the UI thread (or main thread)
+    // Cache MIDI mappings for RT-safe access in audio processing
+
+    cached_midi1_mappings_from_mapping2.clear();
+    cached_midi2_mappings_from_mapping2.clear();
+    cached_midi1_mappings_from_mapping.clear();
+
+    // Cache from IMidiMapping2 (VST3.8.0+) if available
+    if (midi_mapping2) {
+        // Cache MIDI 1.0 controller mappings
+        uint32_t count1 = midi_mapping2->getNumMidi1ControllerAssignments(kInput);
+        if (count1 > 0) {
+            cached_midi1_mappings_from_mapping2.resize(count1);
+            Midi1ControllerParamIDAssignmentList list{count1, cached_midi1_mappings_from_mapping2.data()};
+            if (midi_mapping2->getMidi1ControllerAssignments(kInput, list) != kResultOk) {
+                cached_midi1_mappings_from_mapping2.clear();
+            }
+        }
+
+        // Cache MIDI 2.0 controller mappings
+        uint32_t count2 = midi_mapping2->getNumMidi2ControllerAssignments(kInput);
+        if (count2 > 0) {
+            cached_midi2_mappings_from_mapping2.resize(count2);
+            Midi2ControllerParamIDAssignmentList list{count2, cached_midi2_mappings_from_mapping2.data()};
+            if (midi_mapping2->getMidi2ControllerAssignments(kInput, list) != kResultOk) {
+                cached_midi2_mappings_from_mapping2.clear();
+            }
+        }
+    }
+
+    // ALSO cache from IMidiMapping (pre-VST3.8.0) if available
+    // This is NOT an "else" - we cache from BOTH interfaces
+    if (midi_mapping) {
+        // IMidiMapping uses a query-based API, so we need to query common controllers
+        // Query for all standard MIDI 1.0 CC numbers (0-127) plus special controllers
+        std::vector<CtrlNumber> controllersToQuery = {
+            ControllerNumbers::kAfterTouch,
+            ControllerNumbers::kPitchBend
+        };
+        // Add standard CC 0-127
+        for (CtrlNumber cc = 0; cc < 128; cc++) {
+            controllersToQuery.push_back(cc);
+        }
+
+        // Query mappings for each bus/channel/controller combination
+        // We'll query for bus 0 and channels 0-15 (16 MIDI channels)
+        for (int32 busIndex = 0; busIndex < 1; busIndex++) { // Typically only bus 0 for input
+            for (int16 channel = 0; channel < 16; channel++) {
+                for (CtrlNumber ctrlNum : controllersToQuery) {
+                    ParamID paramId;
+                    if (midi_mapping->getMidiControllerAssignment(busIndex, channel, ctrlNum, paramId) == kResultOk) {
+                        // Successfully got a mapping from IMidiMapping
+                        Midi1ControllerParamIDAssignment assignment;
+                        assignment.pId = paramId;
+                        assignment.busIndex = busIndex;
+                        assignment.channel = channel;
+                        assignment.controller = ctrlNum;
+                        cached_midi1_mappings_from_mapping.push_back(assignment);
+                    }
+                }
+            }
+        }
+    }
 }
 
 remidy::PluginInstanceVST3::~PluginInstanceVST3() {
@@ -606,9 +676,9 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
         }
 
         if (flags & Vst::RestartFlags::kMidiCCAssignmentChanged) {
-            // MIDI CC mapping changed
-            logger->logInfo("%s: Handling kMidiCCAssignmentChanged - MIDI mapping updated (not implemented)", pluginName.c_str());
-            // TODO: Re-query MIDI mappings if we use them
+            // MIDI CC mapping changed - refresh cached mappings
+            logger->logInfo("%s: Handling kMidiCCAssignmentChanged - refreshing MIDI mappings", pluginName.c_str());
+            refreshMidiMappings();
         }
 
         if (flags & Vst::RestartFlags::kParamValuesChanged) {

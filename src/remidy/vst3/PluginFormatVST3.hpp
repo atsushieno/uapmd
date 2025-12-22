@@ -224,6 +224,7 @@ namespace remidy {
         IUnitInfo* unit_info{nullptr};
         IProgramListData* program_list_data{nullptr};
         IMidiMapping* midi_mapping{nullptr};
+        IMidiMapping2* midi_mapping2{nullptr};
         bool isControllerDistinctFromComponent;
         FUnknown* instance;
         // the connection point for IComponent, retrieved from the plugin.
@@ -252,6 +253,15 @@ namespace remidy {
         VST3UmpInputDispatcher ump_input_dispatcher{this};
         bool componentActive{false};
         bool processingActive{false};
+
+        // Cached MIDI mappings (retrieved on UI thread, used on audio thread)
+        // From IMidiMapping2 (VST3.8.0+)
+        std::vector<Midi1ControllerParamIDAssignment> cached_midi1_mappings_from_mapping2{};
+        std::vector<Midi2ControllerParamIDAssignment> cached_midi2_mappings_from_mapping2{};
+        // From IMidiMapping (pre-VST3.8.0)
+        std::vector<Midi1ControllerParamIDAssignment> cached_midi1_mappings_from_mapping{};
+
+        void refreshMidiMappings();
 
     public:
         explicit PluginInstanceVST3(

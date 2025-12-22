@@ -54,7 +54,28 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::uint4
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
                                                                    remidy::uint7_t index, uint32_t data, bool relative) {
-    // we handle AC-to-parameters mappings in UAPMD, not here.
+    // Assignable Controller (MIDI 2.0)
+    ParamID id = 0;
+    double value = (double) data / UINT32_MAX;
+    bool mappingFound = false;
+
+    // Check MIDI 2.0 Assignable Controller mappings from IMidiMapping2 - RT-safe
+    for (const auto& assignment : owner->cached_midi2_mappings_from_mapping2) {
+        if (assignment.busIndex == group &&
+            assignment.channel == channel &&
+            assignment.controller.registered == false &&
+            assignment.controller.bank == bank &&
+            assignment.controller.index == index) {
+            id = assignment.pId;
+            mappingFound = true;
+            break;
+        }
+    }
+
+    if (mappingFound) {
+        owner->parameters()->setParameter(id, value, timestamp());
+    }
+    // If no mapping found, UAPMD handles AC-to-parameter mappings
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNAC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
@@ -66,14 +87,57 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNAC(remidy::uint4_t 
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index,
                                                                    uint32_t data) {
-    // parameter change, use IMidiMapping to resolve index, or directly use it as parameter ID.
+    // parameter change, use cached MIDI mappings to resolve index, or directly use it as parameter ID.
     ParamID id = index;
     double value = (double) data / UINT32_MAX;
-    if (owner == nullptr)
-        Logger::global()->logInfo("VST3 IMidiMapping does not exist in this plugin. Directly using it as a parameter Id.");
-    else if (owner->midi_mapping->getMidiControllerAssignment(group, channel, index, id) != kResultOk)
-        Logger::global()->logInfo("VST3 IMidiMapping does not give any mapping to index %d. Directly using it as a parameter Id.", index);
-    owner->parameters()->setParameter(index, value, timestamp());
+    bool mappingFound = false;
+
+    // Check MIDI 2.0 mappings from IMidiMapping2 first - RT-safe
+    // CC can be mapped as MIDI 2.0 Assignable Controller
+    for (const auto& assignment : owner->cached_midi2_mappings_from_mapping2) {
+        if (assignment.busIndex == group &&
+            assignment.channel == channel &&
+            assignment.controller.registered == false &&
+            assignment.controller.bank == 0 &&
+            assignment.controller.index == index) {
+            id = assignment.pId;
+            mappingFound = true;
+            break;
+        }
+    }
+
+    // Check MIDI 1.0 mappings from IMidiMapping2 - RT-safe
+    if (!mappingFound) {
+        for (const auto& assignment : owner->cached_midi1_mappings_from_mapping2) {
+            if (assignment.busIndex == group &&
+                assignment.channel == channel &&
+                assignment.controller == index) {
+                id = assignment.pId;
+                mappingFound = true;
+                break;
+            }
+        }
+    }
+
+    // Fallback to IMidiMapping cache if not found in IMidiMapping2 - RT-safe
+    if (!mappingFound) {
+        for (const auto& assignment : owner->cached_midi1_mappings_from_mapping) {
+            if (assignment.busIndex == group &&
+                assignment.channel == channel &&
+                assignment.controller == index) {
+                id = assignment.pId;
+                mappingFound = true;
+                break;
+            }
+        }
+    }
+
+    if (!mappingFound) {
+        // No cached mapping found - directly use CC index as parameter ID
+        Logger::global()->logInfo("VST3 MIDI mapping does not give any mapping to CC index %d. Directly using it as a parameter Id.", index);
+    }
+
+    owner->parameters()->setParameter(id, value, timestamp());
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onProgramChange(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t flags,
@@ -85,7 +149,29 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onProgramChange(remidy:
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t bank,
                                                                    remidy::uint7_t index, uint32_t data, bool relative) {
-    // nothing is mapped here
+    // Registered Controller (MIDI 2.0)
+    // Use cached MIDI 2.0 mappings to resolve RC to parameter ID
+    ParamID id = 0;
+    double value = (double) data / UINT32_MAX;
+    bool mappingFound = false;
+
+    // Use cached MIDI 2.0 mappings from IMidiMapping2 (RT-safe)
+    // Note: IMidiMapping doesn't support MIDI 2.0 controllers, so no fallback needed
+    for (const auto& assignment : owner->cached_midi2_mappings_from_mapping2) {
+        if (assignment.busIndex == group &&
+            assignment.channel == channel &&
+            assignment.controller.registered == true &&
+            assignment.controller.bank == bank &&
+            assignment.controller.index == index) {
+            id = assignment.pId;
+            mappingFound = true;
+            break;
+        }
+    }
+
+    if (mappingFound) {
+        owner->parameters()->setParameter(id, value, timestamp());
+    }
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNRC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t note,
@@ -94,38 +180,94 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNRC(remidy::uint4_t 
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy::uint4_t group, remidy::uint4_t channel, int8_t perNoteOrMinus, uint32_t data) {
-    // FIXME: we should make sure that IMidiMapping is really mandatory here.
-    // Parameter with kPitchBend could be queried from the parameter list, regardless of IMidiMapping experience.
-
-    // use parameter kPitchBend (if available)
-    if (!owner->midi_mapping)
-        return;
-    ParamID id;
+    // Note: Pitch bend is a dedicated MIDI message type in both MIDI 1.0 and MIDI 2.0
+    // It is represented using ControllerNumbers::kPitchBend in MIDI 1.0 mappings
+    ParamID id = 0;
     double value = (double) data / UINT32_MAX;
-    if (owner->midi_mapping->getMidiControllerAssignment(group, channel, ControllerNumbers::kPitchBend, id) != kResultOk)
-        Logger::global()->logInfo("VST3 IMidiMapping on this plugin is not working as expected");
+    bool mappingFound = false;
+
+    // Check MIDI 1.0 mappings from IMidiMapping2 - RT-safe
+    for (const auto& assignment : owner->cached_midi1_mappings_from_mapping2) {
+        if (assignment.busIndex == group &&
+            assignment.channel == channel &&
+            assignment.controller == ControllerNumbers::kPitchBend) {
+            id = assignment.pId;
+            mappingFound = true;
+            break;
+        }
+    }
+
+    // Fallback to IMidiMapping cache - RT-safe
+    if (!mappingFound) {
+        for (const auto& assignment : owner->cached_midi1_mappings_from_mapping) {
+            if (assignment.busIndex == group &&
+                assignment.channel == channel &&
+                assignment.controller == ControllerNumbers::kPitchBend) {
+                id = assignment.pId;
+                mappingFound = true;
+                break;
+            }
+        }
+    }
+
+    if (!mappingFound) {
+        // No cached mapping found - UAPMD handles pitch bend
+        return;
+    }
+
     if (perNoteOrMinus < 0)
         owner->parameters()->setParameter(id, value, timestamp());
     else
         owner->parameters()->setPerNoteController(
             { .note = static_cast<uint8_t>(perNoteOrMinus), .channel = channel, .group = group },
-            id, perNoteOrMinus, timestamp());
+            id, value, timestamp());
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPressure(remidy::uint4_t group, remidy::uint4_t channel,
                                                                          int8_t perNoteOrMinus, uint32_t data) {
     // CAf: use parameter kAfterTouch (if available)
     // PAf: use IEventList to add Event (kPolyPressureEvent)
+
     if (perNoteOrMinus < 0) {
-        if (!owner->midi_mapping)
-            return;
-        ParamID id;
+        // Channel aftertouch
+        // Note: Channel pressure is a dedicated MIDI message type in both MIDI 1.0 and MIDI 2.0
+        // It is represented using ControllerNumbers::kAfterTouch in MIDI 1.0 mappings
+        // There is no separate MIDI 2.0 controller representation for channel pressure
+        ParamID id = 0;
         double value = (double) data / UINT32_MAX;
-        if (owner->midi_mapping->getMidiControllerAssignment(group, channel, ControllerNumbers::kAfterTouch, id) != kResultOk)
-            Logger::global()->logInfo("VST3 IMidiMapping on this plugin is not working as expected");
-        else
+        bool mappingFound = false;
+
+        // Check MIDI 1.0 mappings from IMidiMapping2 - RT-safe
+        for (const auto& assignment : owner->cached_midi1_mappings_from_mapping2) {
+            if (assignment.busIndex == group &&
+                assignment.channel == channel &&
+                assignment.controller == ControllerNumbers::kAfterTouch) {
+                id = assignment.pId;
+                mappingFound = true;
+                break;
+            }
+        }
+
+        // Fallback to IMidiMapping cache - RT-safe
+        if (!mappingFound) {
+            for (const auto& assignment : owner->cached_midi1_mappings_from_mapping) {
+                if (assignment.busIndex == group &&
+                    assignment.channel == channel &&
+                    assignment.controller == ControllerNumbers::kAfterTouch) {
+                    id = assignment.pId;
+                    mappingFound = true;
+                    break;
+                }
+            }
+        }
+
+        if (mappingFound) {
             owner->parameters()->setParameter(id, value, timestamp());
+        }
+        // If no mapping found, channel aftertouch is ignored
     } else {
+        // Polyphonic aftertouch - not supported by mapping interfaces
+        // Send as VST3 event instead
         auto& el = owner->processDataInputEvents;
         int32_t noteId = -1; // should be alright, UMP has no concept for that
 
