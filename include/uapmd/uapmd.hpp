@@ -1,11 +1,9 @@
 #pragma once
 
 #include "priv/CommonTypes.hpp"
-// FIXME: they should be renamed from `audiograph` to `devices`
-#include "priv/audiograph/AudioIODevice.hpp"
-#include "priv/audiograph/MidiIODevice.hpp"
-#include "priv/audiograph/DeviceIODispatcher.hpp"
-// FIXME: they should be renamed from `plugingraph` to `audiograph`
+#include "priv/devices/AudioIODevice.hpp"
+#include "priv/devices/MidiIODevice.hpp"
+#include "priv/devices/DeviceIODispatcher.hpp"
 #include "priv/plugingraph/AudioPluginGraph.hpp"
 #include "priv/plugingraph/AudioPluginHostPAL.hpp"
 #include "priv/plugingraph/AudioPluginNode.hpp"
