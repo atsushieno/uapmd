@@ -1,5 +1,6 @@
 #include "TrackList.hpp"
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <map>
 
