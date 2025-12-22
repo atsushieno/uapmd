@@ -5,6 +5,7 @@
 #include <vector>
 #include "uapmd/priv/CommonTypes.hpp"
 #include "AudioPluginHostPAL.hpp"
+#include "uapmd/priv/midi/UapmdUmpMapper.hpp"
 
 namespace uapmd {
 
@@ -39,6 +40,7 @@ namespace uapmd {
         std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> node_;
         bool bypassed_{false};
         int32_t instance_id_;
+        std::unique_ptr<UapmdUmpInputMapper> ump_input_mapper{};
 
     public:
         AudioPluginNode(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL, int32_t instanceId);

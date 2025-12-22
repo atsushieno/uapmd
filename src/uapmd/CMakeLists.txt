@@ -36,8 +36,10 @@ target_sources(uapmd PRIVATE
         AudioPluginHosting/impl/RemidyAudioPluginHostPAL.cpp
         AudioPluginHosting/AudioPluginNode.cpp
         AudioPluginHosting/AudioPluginTrack.cpp
+        AudioPluginHosting/UapmdNodeUmpInputMapper.cpp
         Midi/UapmdMidiDevice.cpp
         Midi/UapmdMidiCISessions.cpp
+        Midi/UapmdUmpMapper.cpp
         Sequencer/SequenceProcessor.cpp
         Sequencer/AudioPluginSequencer.cpp
 )

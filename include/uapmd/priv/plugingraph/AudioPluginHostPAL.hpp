@@ -25,6 +25,7 @@ namespace uapmd {
             virtual std::vector<uint8_t> saveState() = 0;
             virtual void loadState(std::vector<uint8_t>& state) = 0;
 
+            virtual double getParameterValue(int32_t index) = 0;
             virtual void setParameterValue(int32_t index, double value) = 0;
             virtual std::string getParameterValueString(int32_t index, double value) = 0;
 

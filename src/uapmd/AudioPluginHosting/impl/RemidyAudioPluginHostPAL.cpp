@@ -97,6 +97,12 @@ namespace uapmd {
             return instance->states()->getState(remidy::PluginStateSupport::StateContextType::Project, false);
         }
 
+        double getParameterValue(int32_t index) override {
+            double value;
+            instance->parameters()->getParameter(index, &value);
+            return value;
+        }
+
         void setParameterValue(int32_t index, double value) override {
             instance->parameters()->setParameter(index, value, 0);
         }
