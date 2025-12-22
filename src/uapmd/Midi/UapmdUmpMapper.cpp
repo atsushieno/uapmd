@@ -42,7 +42,8 @@ namespace uapmd {
                     break;
                 }
             }
-            cmidi2_ump_forge_add_single_packet(&forge, u);
+            // FIXME: so far, we do not try to create "stripped" UMP sequences, but we likely have to.
+            //cmidi2_ump_forge_add_single_packet(&forge, u);
         }
         outEvents.position(forge.offset / sizeof(uapmd_ump_t));
     }

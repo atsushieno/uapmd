@@ -7,7 +7,11 @@ namespace uapmd {
     // Process UAPMD-intrinsic UMP mappings, in particular:
     // - assignable controllers (NRPNs) to plugin parameters
     // - program/bank change to plugin presets (by index)
-    // It makes use of UmpInputDispatcher. Any unmapped UMPs are copied into output events.
+    //
+    // It makes use of UmpInputDispatcher in uapmd implementation.
+    //
+    // <del>Any unmapped UMPs are copied into output events.</del>
+    // We so far skip and pass unmodified sources to the plugin later.
     class UapmdUmpInputMapper {
 
     public:
