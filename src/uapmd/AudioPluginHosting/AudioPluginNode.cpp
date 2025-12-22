@@ -2,13 +2,19 @@
 #include <string>
 #include "uapmd/uapmd.hpp"
 #include "uapmd/priv/plugingraph/AudioPluginNode.hpp"
-#include "UapmdNodeUmpInputMapper.hpp"
+#include "UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
 
-    AudioPluginNode::AudioPluginNode(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL, int32_t instanceId)
-        : node_(std::move(nodePAL)), instance_id_(instanceId) {
-        ump_input_mapper = std::make_unique<UapmdNodeUmpInputMapper>(pal());
+    AudioPluginNode::AudioPluginNode(
+        std::unique_ptr<UapmdUmpInputMapper> umpInputMapper,
+        std::unique_ptr<UapmdUmpOutputMapper> umpOutputMapper,
+        std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL,
+        int32_t instanceId
+    ) : node_(std::move(nodePAL)),
+        instance_id_(instanceId),
+        ump_input_mapper(std::move(umpInputMapper)),
+        ump_output_mapper(std::move(umpOutputMapper)) {
     }
 
     AudioPluginNode::~AudioPluginNode() = default;

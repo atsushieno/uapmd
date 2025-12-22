@@ -40,10 +40,11 @@ namespace uapmd {
         std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> node_;
         bool bypassed_{false};
         int32_t instance_id_;
-        std::unique_ptr<UapmdUmpInputMapper> ump_input_mapper{};
+        std::unique_ptr<UapmdUmpInputMapper> ump_input_mapper;
+        std::unique_ptr<UapmdUmpOutputMapper> ump_output_mapper;
 
     public:
-        AudioPluginNode(std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL, int32_t instanceId);
+        AudioPluginNode(std::unique_ptr<UapmdUmpInputMapper> umpInputMapper, std::unique_ptr<UapmdUmpOutputMapper> umpOutputMapper, std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL, int32_t instanceId);
         virtual ~AudioPluginNode();
 
         AudioPluginHostPAL::AudioPluginNodePAL* pal();

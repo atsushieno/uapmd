@@ -1,6 +1,7 @@
 #pragma once
 #include <remidy/remidy.hpp>
-#include "../../../include/uapmd/priv/midi/UapmdUmpMapper.hpp"
+
+#include "uapmd/uapmd.hpp"
 
 namespace uapmd {
     class UapmdNodeUmpInputMapper :
@@ -13,15 +14,23 @@ namespace uapmd {
 
         void process(uint64_t timestamp, remidy::AudioProcessContext& src) override;
 
-        // UAPMD maps a parameter ID to an assignable controller bank and index, which totals only up to 14 bytes.
-        // We use uint16_t to match that.
         void setParameterValue(uint16_t index, double value) override;
 
-        // Same for uint16_t index as `setParameter()`.
-        // We use this function to calculate "relative assignable controllers"
         double getParameterValue(uint16_t index) override;
 
-        // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
         void loadPreset(uint32_t index) override;
+    };
+
+    class UapmdNodeUmpOutputMapper : public UapmdUmpOutputMapper {
+        MidiIODevice* device;
+        AudioPluginHostPAL::AudioPluginNodePAL* plugin;
+        remidy::PluginParameterSupport::ParameterChangeListenerId param_change_listener_id;
+
+    public:
+        explicit UapmdNodeUmpOutputMapper(MidiIODevice* device, AudioPluginHostPAL::AudioPluginNodePAL* plugin);
+
+        void onParameterValueUpdated(uint16_t index, double value) override;
+
+        void onPresetLoaded(uint32_t index) override;
     };
 }

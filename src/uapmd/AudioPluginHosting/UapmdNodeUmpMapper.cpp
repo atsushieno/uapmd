@@ -1,4 +1,7 @@
-#include "UapmdNodeUmpInputMapper.hpp"
+#include "UapmdNodeUmpMapper.hpp"
+
+#include "uapmd/priv/devices/MidiIODevice.hpp"
+#include "uapmd/priv/midi/PlatformVirtualMidiDevice.hpp"
 
 namespace uapmd {
     UapmdNodeUmpInputMapper::UapmdNodeUmpInputMapper(AudioPluginHostPAL::AudioPluginNodePAL* plugin)
@@ -27,4 +30,21 @@ namespace uapmd {
         plugin->loadPreset(index);
     }
 
+    UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(MidiIODevice* device, AudioPluginHostPAL::AudioPluginNodePAL* plugin)
+      : UapmdUmpOutputMapper(),
+        device(device),
+        plugin(plugin) {
+        param_change_listener_id = plugin->addParameterChangeListener([&](uint32_t index, double value) {
+            onParameterValueUpdated(index, value);
+        });
+    }
+
+    void UapmdNodeUmpOutputMapper::onParameterValueUpdated(uint16_t index, double value) {
+
+        // FIXME: send AC
+    }
+
+    void UapmdNodeUmpOutputMapper::onPresetLoaded(uint32_t index) {
+        // FIXME: send program change
+    }
 }

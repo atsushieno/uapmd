@@ -3,6 +3,8 @@
 #include <functional>
 #include <ranges>
 
+#include "../UapmdNodeUmpMapper.hpp"
+
 namespace uapmd {
     class RemidyAudioPluginNodePAL : public RemidyAudioPluginHostPAL::AudioPluginNodePAL {
         remidy_tooling::PluginInstancing* instancing{};
@@ -244,10 +246,16 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
             request.mainOutputChannels.reset();
         request.offlineMode = offlineMode;
         auto cb = std::move(callback);
-        instancing->makeAlive([instancing,cb](std::string error) {
+        instancing->makeAlive([this,instancing,cb](std::string error) {
             if (error.empty())
-                instancing->withInstance([instancing,cb](auto instance) {
-                    auto node = std::make_unique<AudioPluginNode>(std::make_unique<RemidyAudioPluginNodePAL>(instancing, instance), instanceIdSerial++);
+                instancing->withInstance([this,instancing,cb](auto instance) {
+                    auto pal = std::make_unique<RemidyAudioPluginNodePAL>(instancing, instance);
+                    auto inputMapper = std::make_unique<UapmdNodeUmpInputMapper>(pal.get());
+                    // FIXME: we have to retrieve MidiIODevice from somewhere.
+                    auto outputMapper = std::make_unique<UapmdNodeUmpOutputMapper>(nullptr, pal.get());
+                    auto node = std::make_unique<AudioPluginNode>(
+                        std::move(inputMapper), std::move(outputMapper),
+                        std::move(pal), instanceIdSerial++);
                     cb(std::move(node), "");
                 });
             else {

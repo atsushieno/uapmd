@@ -33,4 +33,11 @@ namespace uapmd {
         // FIXME: add support for per-note controllers
     };
 
+    class UapmdUmpOutputMapper {
+    public:
+        virtual ~UapmdUmpOutputMapper() = default;
+
+        virtual void onParameterValueUpdated(uint16_t index, double value) = 0;
+        virtual void onPresetLoaded(uint32_t index) = 0;
+    };
 }
