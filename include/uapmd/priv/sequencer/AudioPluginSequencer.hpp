@@ -17,7 +17,7 @@
 namespace uapmd {
 
     class AudioPluginSequencer {
-        const size_t buffer_size_in_frames;
+        size_t buffer_size_in_frames;
         const size_t ump_buffer_size_in_bytes;
         int32_t sample_rate;
 
@@ -158,8 +158,8 @@ namespace uapmd {
         bool sampleRate(int32_t newSampleRate);
 
         // Reconfigure audio device (stops audio, reconfigures, restarts)
-        // Use -1 for default device, 0 for no sample rate change
-        bool reconfigureAudioDevice(int inputDeviceIndex = -1, int outputDeviceIndex = -1, uint32_t sampleRate = 0);
+        // Use -1 for default device, 0 for no sample rate change, 0 for no buffer size change
+        bool reconfigureAudioDevice(int inputDeviceIndex = -1, int outputDeviceIndex = -1, uint32_t sampleRate = 0, uint32_t bufferSize = 0);
 
         bool offlineRendering() const;
         void offlineRendering(bool enabled);

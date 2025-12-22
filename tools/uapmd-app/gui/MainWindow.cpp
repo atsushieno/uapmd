@@ -575,19 +575,22 @@ void MainWindow::handleAudioDeviceChange() {
     // Get selected sample rate (use output sample rate as the primary)
     uint32_t sampleRate = static_cast<uint32_t>(audioDeviceSettings_.getOutputSampleRate());
 
+    // Get selected buffer size
+    uint32_t bufferSize = static_cast<uint32_t>(audioDeviceSettings_.getBufferSize());
+
     // Update the UI with sample rates for the newly selected device
     updateAudioDeviceSettingsData();
 
-    // Reconfigure the audio device in the sequencer with the selected device indices and sample rate
+    // Reconfigure the audio device in the sequencer with the selected device indices, sample rate, and buffer size
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    if (!sequencer.reconfigureAudioDevice(selectedInput, selectedOutput, sampleRate)) {
+    if (!sequencer.reconfigureAudioDevice(selectedInput, selectedOutput, sampleRate, bufferSize)) {
         std::cerr << "Failed to reconfigure audio device" << std::endl;
     } else {
-        std::cout << std::format("Audio device reconfigured: Input Index={}, Output Index={}, Sample Rate={}, BS={}",
+        std::cout << std::format("Audio device reconfigured: Input Index={}, Output Index={}, Sample Rate={}, Buffer Size={}",
                                 selectedInput,
                                 selectedOutput,
                                 sampleRate,
-                                audioDeviceSettings_.getBufferSize()) << std::endl;
+                                bufferSize) << std::endl;
     }
 }
 

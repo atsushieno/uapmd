@@ -840,7 +840,7 @@ bool uapmd::AudioPluginSequencer::sampleRate(int32_t newSampleRate) {
     return true;
 }
 
-bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) {
+bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate, uint32_t bufferSize) {
     // Stop audio if it's currently playing
     bool wasPlaying = dispatcher->isPlaying();
     if (wasPlaying) {
@@ -864,6 +864,26 @@ bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, i
     } else {
         // Use the device's actual sample rate
         sample_rate = static_cast<int32_t>(newDevice->sampleRate());
+    }
+
+    // Update the buffer size if specified
+    if (bufferSize > 0) {
+        buffer_size_in_frames = bufferSize;
+        // Reconfigure all track contexts with the new buffer size
+        auto& tracks = sequencer.tracks();
+        auto& data = sequencer.data();
+        for (size_t i = 0; i < tracks.size() && i < data.tracks.size(); i++) {
+            auto* trackCtx = data.tracks[i];
+            if (trackCtx) {
+                // Get channel counts from the track's current configuration
+                uint32_t inputChannels = trackCtx->audioInBusCount() > 0 ? trackCtx->inputChannelCount(0) : 2;
+                uint32_t outputChannels = trackCtx->audioOutBusCount() > 0 ? trackCtx->outputChannelCount(0) : 2;
+
+                // Reconfigure the track context with new buffer size
+                // Note: This will recreate the audio buffers with the new size
+                trackCtx->configureMainBus(inputChannels, outputChannels, buffer_size_in_frames);
+            }
+        }
     }
 
     // Reconfigure the dispatcher with the new device
