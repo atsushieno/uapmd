@@ -118,10 +118,10 @@ namespace uapmd {
         auto originalGetter = hostProps.get_property_binary_getter();
 
         // Create custom property getter that uses AudioPluginNode::saveState() for State/fullState
-        auto customGetter = [this, originalGetter, &sequencer, &instance_id](const std::string& property_id, const std::string& res_id) -> std::vector<uint8_t> {
+        auto customGetter = [this, originalGetter](const std::string& property_id, const std::string& res_id) -> std::vector<uint8_t> {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
-                if (sequencer && instance_id >= 0) {
-                    auto* instance = sequencer->getPluginInstance(instance_id);
+                if (device->sequencer && device->instance_id >= 0) {
+                    auto* instance = device->sequencer->getPluginInstance(device->instance_id);
                     if (instance) {
                         return instance->saveState();
                     }
@@ -137,11 +137,11 @@ namespace uapmd {
         auto originalSetter = hostProps.get_property_binary_setter();
 
         // Create custom property setter that uses AudioPluginNode::loadState() for State/fullState
-        auto customSetter = [this, originalSetter, &sequencer, &instance_id](const std::string& property_id, const std::string& res_id,
+        auto customSetter = [this, originalSetter](const std::string& property_id, const std::string& res_id,
                                                      const std::string& media_type, const std::vector<uint8_t>& body) -> bool {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
-                if (sequencer && instance_id >= 0) {
-                    auto* instance = sequencer->getPluginInstance(instance_id);
+                if (device->sequencer && device->instance_id >= 0) {
+                    auto* instance = device->sequencer->getPluginInstance(device->instance_id);
                     if (instance) {
                         std::vector<uint8_t> state = body;
                         instance->loadState(state);
