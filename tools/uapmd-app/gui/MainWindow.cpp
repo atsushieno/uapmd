@@ -1888,8 +1888,30 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
         detailsWindows_.erase(detailsIt);
     }
 
-    // Remove the plugin instance
-    uapmd::AppModel::instance().removePluginInstance(instanceId);
+    // Find and remove the associated virtual MIDI device
+    auto* deviceController = uapmd::AppModel::instance().deviceController();
+    if (deviceController) {
+        std::lock_guard lock(devicesMutex_);
+        for (auto it = devices_.begin(); it != devices_.end(); ++it) {
+            auto state = it->state;
+            std::lock_guard guard(state->mutex);
+            if (state->pluginInstances.count(instanceId) > 0) {
+                // Found the device containing this instance
+                auto device = state->device;
+                if (device) {
+                    device->stop();
+                    deviceController->removeDevice(device->instanceId());
+                    state->device.reset();
+                }
+                // Remove the device entry from the list
+                devices_.erase(it);
+                break;
+            }
+        }
+    } else {
+        // Fallback: if no device controller, just remove the plugin instance
+        uapmd::AppModel::instance().removePluginInstance(instanceId);
+    }
 
     // Refresh the instance list
     refreshInstances();
