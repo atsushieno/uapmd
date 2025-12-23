@@ -104,9 +104,12 @@ namespace remidy {
                                 NSString* className = (__bridge NSString*)viewInfo->mCocoaAUViewClass[0];
                                 Class viewClass = [bundle classNamed:className];
 
-                                if (viewClass) {
+                                if (viewClass &&
+                                    [viewClass conformsToProtocol: @protocol (AUCocoaUIBase)] &&
+                                    [viewClass instancesRespondToSelector: @selector (interfaceVersion)] &&
+                                    [viewClass instancesRespondToSelector: @selector (uiViewForAudioUnit: withSize:)]) {
                                     // Create factory instance and get the view
-                                    id<AUCocoaUIBase> factory = [[viewClass alloc] init];
+                                    id<AUCocoaUIBase> factory = [[[viewClass alloc] init] autorelease];
                                     // Pass a large size hint - the plugin will use its preferred size
                                     NSSize sizeHint = NSMakeSize(800, 600);
                                     view = [factory uiViewForAudioUnit:au withSize:sizeHint];
