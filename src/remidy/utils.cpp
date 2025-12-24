@@ -38,11 +38,13 @@ void* loadLibraryFromBinary(std::filesystem::path& pluginDirOrFile) {
     auto ret = LoadLibraryW(pluginDirOrFile.c_str());
 #elif __APPLE__
     auto cfStringRef = createCFString(pluginDirOrFile.string().c_str());
-    auto ret = CFBundleCreate(kCFAllocatorDefault,
-        CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
-            cfStringRef,
-            kCFURLPOSIXPathStyle,
-            false));
+    auto cfUrl = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
+        cfStringRef,
+        kCFURLPOSIXPathStyle,
+        false);
+    auto ret = CFBundleCreate(kCFAllocatorDefault, cfUrl);
+    CFRelease(cfUrl);
+    CFRelease(cfStringRef);
 #else
     auto ret = dlopen(pluginDirOrFile.c_str(), RTLD_LAZY | RTLD_LOCAL);
     //if (errno)
