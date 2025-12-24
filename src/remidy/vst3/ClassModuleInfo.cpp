@@ -133,7 +133,7 @@ namespace remidy_vst3 {
             kCFAllocatorDefault,
             (const UInt8*) vst3Dir.c_str(),
             vst3Dir.string().size(),
-            CFStringEncoding{},
+            kCFStringEncodingUTF8,
             false);
         const auto cfUrl = CFURLCreateWithFileSystemPath(
             kCFAllocatorDefault,
