@@ -11,8 +11,9 @@ MidiKeyboard::MidiKeyboard() {
 }
 
 void MidiKeyboard::setOctaveRange(int startOctave, int numOctaves) {
-    octaveStart_ = startOctave;
-    numOctaves_ = numOctaves;
+    numOctaves_ = std::clamp(numOctaves, 1, 10);
+    const int maxStart = std::max(0, 10 - numOctaves_);
+    octaveStart_ = std::clamp(startOctave, 0, maxStart);
     setupKeys();
 }
 
@@ -25,6 +26,16 @@ void MidiKeyboard::setKeySize(float width, float whiteHeight, float blackHeight)
 
 void MidiKeyboard::setKeyEventCallback(std::function<void(int note, int velocity, bool isPressed)> callback) {
     onKeyEvent_ = callback;
+}
+
+void MidiKeyboard::shiftOctave(int delta) {
+    if (delta == 0) {
+        return;
+    }
+    releaseAllKeys();
+    const int maxStart = std::max(0, 10 - numOctaves_);
+    octaveStart_ = std::clamp(octaveStart_ + delta, 0, maxStart);
+    setupKeys();
 }
 
 void MidiKeyboard::setupKeys() {
@@ -68,19 +79,44 @@ void MidiKeyboard::setupKeys() {
 void MidiKeyboard::render() {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     ImVec2 canvasPos = ImGui::GetCursorScreenPos();
-    ImVec2 canvasSize = ImVec2((numOctaves_ * 7) * keyWidth_, whiteKeyHeight_);
+    float keyboardWidth = (numOctaves_ * 7) * keyWidth_;
+    float sideButtonWidth = keyWidth_;
+    float totalWidth = keyboardWidth + (sideButtonWidth * 2.0f);
+    ImVec2 canvasSize = ImVec2(totalWidth, whiteKeyHeight_);
 
-    // Reserve space for the keyboard
+    // Reserve space for the keyboard plus octave buttons
     ImGui::InvisibleButton("##keyboard", canvasSize);
 
     bool isHovered = ImGui::IsItemHovered();
     ImVec2 mousePos = ImGui::GetMousePos();
     bool mouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+    bool mouseClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    float relativeXFull = mousePos.x - canvasPos.x;
+    float relativeY = mousePos.y - canvasPos.y;
+    float keyboardStartX = canvasPos.x + sideButtonWidth;
+    float relativeX = mousePos.x - keyboardStartX;
+    float keyboardEndX = keyboardStartX + keyboardWidth;
 
-    // Handle mouse input
-    if (isHovered) {
-        float relativeX = mousePos.x - canvasPos.x;
-        float relativeY = mousePos.y - canvasPos.y;
+    bool inLeftButton = relativeXFull >= 0.0f && relativeXFull < sideButtonWidth &&
+                        relativeY >= 0.0f && relativeY < whiteKeyHeight_;
+    bool inRightButton = relativeXFull >= (sideButtonWidth + keyboardWidth) &&
+                         relativeXFull < totalWidth &&
+                         relativeY >= 0.0f && relativeY < whiteKeyHeight_;
+    bool leftHovered = isHovered && inLeftButton;
+    bool rightHovered = isHovered && inRightButton;
+
+    // Handle octave shift clicks
+    if (isHovered && mouseClicked) {
+        if (leftHovered) {
+            shiftOctave(-1);
+        } else if (rightHovered) {
+            shiftOctave(1);
+        }
+    }
+
+    // Handle mouse input for keys
+    if (isHovered && relativeX >= 0.0f && relativeX < keyboardWidth &&
+        relativeY >= 0.0f && relativeY < whiteKeyHeight_) {
         int hoveredNote = getNoteFromPosition(relativeX, relativeY);
 
         if (mouseDown && hoveredNote != -1) {
@@ -100,9 +136,27 @@ void MidiKeyboard::render() {
         mouseDownKey_ = -1;
     }
 
+    // Draw octave shift buttons as key-like shapes
+    auto drawShiftButton = [&](ImVec2 pos, const char* glyph, bool hovered) {
+        ImVec2 size(sideButtonWidth, whiteKeyHeight_);
+        ImU32 keyColor = hovered ? IM_COL32(210, 210, 230, 255) : IM_COL32(235, 235, 235, 255);
+        ImU32 borderColor = IM_COL32(100, 100, 100, 255);
+        drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), keyColor);
+        drawList->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), borderColor);
+
+        ImVec2 textSize = ImGui::CalcTextSize(glyph);
+        ImVec2 textPos = ImVec2(pos.x + (size.x - textSize.x) * 0.5f,
+                                pos.y + (size.y - textSize.y) * 0.5f);
+        drawList->AddText(textPos, IM_COL32(0, 0, 0, 255), glyph);
+    };
+
+    drawShiftButton(canvasPos, "<", leftHovered);
+    drawShiftButton(ImVec2(canvasPos.x + sideButtonWidth + keyboardWidth, canvasPos.y), ">",
+                    rightHovered);
+
     // Draw keys
     for (const auto& key : keys_) {
-        ImVec2 keyPos = ImVec2(canvasPos.x + key.x, canvasPos.y);
+        ImVec2 keyPos = ImVec2(keyboardStartX + key.x, canvasPos.y);
         ImVec2 keySize = ImVec2(key.width, key.isBlack ? blackKeyHeight_ : whiteKeyHeight_);
 
         bool isPressed = pressedKeys_[key.note];

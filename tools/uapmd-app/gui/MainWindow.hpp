@@ -118,6 +118,8 @@ class MainWindow {
             bool visible = false;
             std::vector<uapmd::PresetsMetadata> presets;
             int selectedPreset = -1;
+            float pitchBendValue = 0.0f; // -1..1 UI range
+            float channelPressureValue = 0.0f; // 0..1 UI range
         };
 
         std::unordered_map<int32_t, DetailsWindowState> detailsWindows_;
@@ -184,6 +186,8 @@ class MainWindow {
         void handleEnableDevice(int32_t instanceId, const std::string& deviceName);
         void handleDisableDevice(int32_t instanceId);
         void handleRemoveInstance(int32_t instanceId);
+        void sendPitchBend(int32_t instanceId, float normalizedValue);
+        void sendChannelPressure(int32_t instanceId, float pressure);
 
     };
 }

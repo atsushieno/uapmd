@@ -40,6 +40,9 @@ namespace uapmd::gui {
         void setOctaveRange(int startOctave, int numOctaves);
         void setKeySize(float width, float whiteHeight, float blackHeight);
         void setKeyEventCallback(std::function<void(int note, int velocity, bool isPressed)> callback);
+        void shiftOctave(int delta);
+        int octaveStart() const { return octaveStart_; }
+        int numOctaves() const { return numOctaves_; }
 
         void render();
         void pressKey(int note, int velocity = 100);

@@ -15,6 +15,7 @@
 #include <choc/audio/choc_AudioFileFormat_Ogg.h>
 
 #include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
+#include <cmidi2.h>
 
 #include <imgui.h>
 
@@ -1069,16 +1070,25 @@ void MainWindow::renderDetailsWindows() {
                     refreshPresets(instanceId, detailsState);
                 }
 
-                ImGui::Text("MIDI Keyboard:");
+                ImGui::TextUnformatted("MIDI Keyboard:");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(140.0f);
+                if (ImGui::SliderFloat("Pitchbend", &detailsState.pitchBendValue,
+                                       -1.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
+                    sendPitchBend(instanceId, detailsState.pitchBendValue);
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(150.0f);
+                if (ImGui::SliderFloat("Chan. Pressure", &detailsState.channelPressureValue,
+                                       0.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
+                    sendChannelPressure(instanceId, detailsState.channelPressureValue);
+                }
                 detailsState.midiKeyboard.render();
                 ImGui::Separator();
 
                 ImGui::Text("Presets:");
                 if (detailsState.presets.empty()) {
                     ImGui::TextDisabled("No presets available for this plugin.");
-                    ImGui::BeginDisabled();
-                    ImGui::Button("Load Preset");
-                    ImGui::EndDisabled();
                 } else {
                     std::string presetPreviewLabel = "Select preset...";
                     if (detailsState.selectedPreset >= 0 &&
@@ -1101,25 +1111,13 @@ void MainWindow::renderDetailsWindows() {
                                 displayName + "##Preset" + std::to_string(i);
                             if (ImGui::Selectable(selectableLabel.c_str(), isSelected)) {
                                 detailsState.selectedPreset = static_cast<int>(i);
+                                loadSelectedPreset(instanceId, detailsState);
                             }
                             if (isSelected) {
                                 ImGui::SetItemDefaultFocus();
                             }
                         }
                         ImGui::EndCombo();
-                    }
-
-                    ImGui::SameLine();
-                    bool canLoadPreset = detailsState.selectedPreset >= 0 &&
-                                         detailsState.selectedPreset < static_cast<int>(detailsState.presets.size());
-                    if (!canLoadPreset) {
-                        ImGui::BeginDisabled();
-                    }
-                    if (ImGui::Button("Load Preset")) {
-                        loadSelectedPreset(instanceId, detailsState);
-                    }
-                    if (!canLoadPreset) {
-                        ImGui::EndDisabled();
                     }
                 }
 
@@ -1917,6 +1915,38 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
     refreshInstances();
 
     std::cout << "Removed plugin instance: " << instanceId << std::endl;
+}
+
+void MainWindow::sendPitchBend(int32_t instanceId, float normalizedValue) {
+    auto& seq = uapmd::AppModel::instance().sequencer();
+    auto trackIdx = seq.findTrackIndexForInstance(instanceId);
+    if (trackIdx < 0) {
+        return;
+    }
+
+    float clamped = std::clamp((normalizedValue + 1.0f) * 0.5f, 0.0f, 1.0f);
+    uint32_t pitchValue = static_cast<uint32_t>(clamped * 4294967295.0f);
+    uapmd_ump_t buffer[2];
+    uint64_t ump = cmidi2_ump_midi2_pitch_bend_direct(0, 0, pitchValue);
+    buffer[0] = static_cast<uapmd_ump_t>(ump >> 32);
+    buffer[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
+    seq.enqueueUmp(trackIdx, buffer, sizeof(buffer), 0);
+}
+
+void MainWindow::sendChannelPressure(int32_t instanceId, float pressure) {
+    auto& seq = uapmd::AppModel::instance().sequencer();
+    auto trackIdx = seq.findTrackIndexForInstance(instanceId);
+    if (trackIdx < 0) {
+        return;
+    }
+
+    float clamped = std::clamp(pressure, 0.0f, 1.0f);
+    uint32_t pressureValue = static_cast<uint32_t>(clamped * 4294967295.0f);
+    uapmd_ump_t buffer[2];
+    uint64_t ump = cmidi2_ump_midi2_caf(0, 0, pressureValue);
+    buffer[0] = static_cast<uapmd_ump_t>(ump >> 32);
+    buffer[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
+    seq.enqueueUmp(trackIdx, buffer, sizeof(buffer), 0);
 }
 
 }
