@@ -10,8 +10,14 @@ namespace uapmd {
         if (audio_)
             audio_->clearAudioCallbacks();
         callbacks.clear();
-        if (queued_inputs)
+        if (midi_in && midi_input_handler_registered) {
+            midi_in->removeInputHandler(midiInputTrampoline);
+            midi_input_handler_registered = false;
+        }
+        if (queued_inputs) {
             free(queued_inputs);
+            queued_inputs = nullptr;
+        }
     }
 
     AudioIODevice* DefaultDeviceIODispatcher::audio() { return audio_; }
@@ -51,31 +57,37 @@ namespace uapmd {
     uapmd_status_t DefaultDeviceIODispatcher::configure(size_t umpBufferSizeInBytes, AudioIODevice *audio,
                                                         MidiIODevice *midiIn, MidiIODevice *midiOut) {
         ump_buffer_size_in_bytes = umpBufferSizeInBytes;
+        if (queued_inputs) {
+            free(queued_inputs);
+            queued_inputs = nullptr;
+        }
+        queued_inputs = static_cast<uapmd_ump_t*>(calloc(1, ump_buffer_size_in_bytes));
+        queued_input_bytes = 0;
+
+        if (audio_)
+            audio_->clearAudioCallbacks();
+        if (midi_in && midi_input_handler_registered) {
+            midi_in->removeInputHandler(midiInputTrampoline);
+            midi_input_handler_registered = false;
+        }
+
         audio_ = audio;
         midi_in = midiIn;
         midi_out = midiOut;
-        queued_inputs = (uapmd_ump_t*) calloc(1, umpBufferSizeInBytes);
-        if (audio)
-            audio->addAudioCallback([this](auto& data) {
-                auto ret = runCallbacks(data);
-                next_ump_position = 0;
-                return ret;
+        if (audio_)
+            audio_->addAudioCallback([this](auto& data) {
+                return runCallbacks(data);
             });
-        if (midi_in)
-            midi_in->addCallback([this](AudioProcessContext& data) {
-                auto& input = data.eventIn();
-                size_t size = input.position();
-                if (size + next_ump_position >= ump_buffer_size_in_bytes)
-                    return 1;
-                memcpy(queued_inputs + next_ump_position, input.getMessages(), size);
-                next_ump_position += size;
-                return 0;
-            });
+        if (midi_in) {
+            midi_in->addInputHandler(midiInputTrampoline, this);
+            midi_input_handler_registered = true;
+        }
 
         return (uapmd_status_t) 0;
     }
 
     uapmd_status_t DefaultDeviceIODispatcher::runCallbacks(AudioProcessContext& data) {
+        drainQueuedMidi(data);
         if (!audio_thread_id.has_value()) {
             audio_thread_id = std::this_thread::get_id();
             remidy::audioThreadIds().push_back(audio_thread_id.value());
@@ -92,5 +104,36 @@ namespace uapmd {
         if (!default_dispatcher)
             default_dispatcher = std::make_unique<DefaultDeviceIODispatcher>();
         return default_dispatcher.get();
+    }
+
+    void DefaultDeviceIODispatcher::drainQueuedMidi(AudioProcessContext& data) {
+        if (!queued_inputs || queued_input_bytes == 0)
+            return;
+        std::lock_guard<std::mutex> lock(midi_mutex);
+        auto& eventIn = data.eventIn();
+        auto capacity = eventIn.maxMessagesInBytes();
+        auto bytes_to_copy = std::min(capacity, queued_input_bytes);
+        if (bytes_to_copy > 0) {
+            std::memcpy(eventIn.getMessages(), queued_inputs, bytes_to_copy);
+            eventIn.position(bytes_to_copy);
+        }
+        queued_input_bytes = 0;
+    }
+
+    void DefaultDeviceIODispatcher::midiInputTrampoline(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+        (void) timestamp;
+        if (!context || !ump || sizeInBytes == 0)
+            return;
+        static_cast<DefaultDeviceIODispatcher*>(context)->enqueueMidiInput(ump, sizeInBytes);
+    }
+
+    void DefaultDeviceIODispatcher::enqueueMidiInput(uapmd_ump_t* ump, size_t sizeInBytes) {
+        if (!queued_inputs || sizeInBytes == 0)
+            return;
+        std::lock_guard<std::mutex> lock(midi_mutex);
+        if (queued_input_bytes + sizeInBytes > ump_buffer_size_in_bytes)
+            return;
+        std::memcpy(reinterpret_cast<uint8_t*>(queued_inputs) + queued_input_bytes, ump, sizeInBytes);
+        queued_input_bytes += sizeInBytes;
     }
 }

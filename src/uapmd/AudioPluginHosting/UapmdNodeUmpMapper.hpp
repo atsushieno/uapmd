@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <remidy/remidy.hpp>
 
 #include "uapmd/uapmd.hpp"
@@ -22,12 +23,13 @@ namespace uapmd {
     };
 
     class UapmdNodeUmpOutputMapper : public UapmdUmpOutputMapper {
-        MidiIODevice* device;
+        std::shared_ptr<MidiIODevice> device;
         AudioPluginHostPAL::AudioPluginNodePAL* plugin;
         remidy::PluginParameterSupport::ParameterChangeListenerId param_change_listener_id;
 
     public:
-        explicit UapmdNodeUmpOutputMapper(MidiIODevice* device, AudioPluginHostPAL::AudioPluginNodePAL* plugin);
+        explicit UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIODevice> device, AudioPluginHostPAL::AudioPluginNodePAL* plugin);
+        ~UapmdNodeUmpOutputMapper() override;
 
         void onParameterValueUpdated(uint16_t index, double value) override;
 

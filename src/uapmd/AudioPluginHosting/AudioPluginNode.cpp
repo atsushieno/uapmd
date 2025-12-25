@@ -42,4 +42,8 @@ namespace uapmd {
     std::vector<uint8_t> AudioPluginNode::saveState() {
         return pal()->saveState();
     }
+
+    void AudioPluginNode::setUmpOutputMapper(std::unique_ptr<UapmdUmpOutputMapper> mapper) {
+        ump_output_mapper = std::move(mapper);
+    }
 }

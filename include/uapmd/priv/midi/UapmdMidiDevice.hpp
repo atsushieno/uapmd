@@ -27,7 +27,7 @@ namespace uapmd {
         int32_t track_index{-1};
         uint8_t ump_group{0xFF};
 
-        std::unique_ptr<PlatformVirtualMidiDevice> platform_device{};
+        std::shared_ptr<MidiIODevice> midi_device{};
         bool output_handler_registered{false};
 
         static void umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
@@ -38,7 +38,7 @@ namespace uapmd {
         std::unique_ptr<UapmdMidiCISessions> uapmd_sessions{};
 
     public:
-        UapmdMidiDevice(std::unique_ptr<PlatformVirtualMidiDevice> platformMidiDevice,
+        UapmdMidiDevice(std::shared_ptr<MidiIODevice> midiDevice,
                         AudioPluginSequencer* sequencer,
                         int32_t instanceId,
                         int32_t trackIndex,

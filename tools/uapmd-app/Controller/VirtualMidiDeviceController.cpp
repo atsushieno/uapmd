@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <future>
 
-#include "../VirtualMidiDevices/LibreMidiVirtualMidiDevice.hpp"
-
 namespace uapmd {
 
     VirtualMidiDeviceController::VirtualMidiDeviceController(AudioPluginSequencer* sharedSequencer)
@@ -68,8 +66,8 @@ namespace uapmd {
         }
 
         auto actualTrackIndex = sequencer_->findTrackIndexForInstance(instanceId);
-        auto platformDevice = std::make_unique<LibreMidiVirtualMidiDevice>(apiName, deviceName, manufacturer, version);
-        auto device = std::make_shared<UapmdMidiDevice>(std::move(platformDevice),
+        auto midiDevice = createLibreMidiIODevice(apiName, deviceName, manufacturer, version);
+        auto device = std::make_shared<UapmdMidiDevice>(midiDevice,
                                                         sequencer_,
                                                         instanceId,
                                                         actualTrackIndex,
@@ -82,6 +80,7 @@ namespace uapmd {
             device->group(group.value());
         }
 
+        sequencer_->assignMidiDeviceToPlugin(instanceId, midiDevice);
         device->initialize();
         devices_.push_back(device);
         syncDeviceAssignments();

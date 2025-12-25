@@ -11,7 +11,7 @@ using namespace midicci::commonproperties;
 
 namespace uapmd {
 
-    UapmdMidiDevice::UapmdMidiDevice(std::unique_ptr<PlatformVirtualMidiDevice> platformMidiDevice,
+    UapmdMidiDevice::UapmdMidiDevice(std::shared_ptr<MidiIODevice> midiDevice,
                                      AudioPluginSequencer* sharedSequencer,
                                      int32_t instanceId,
                                      int32_t trackIndex,
@@ -23,15 +23,17 @@ namespace uapmd {
           sequencer(sharedSequencer),
           instance_id(instanceId),
           track_index(trackIndex),
-          platform_device(std::move(platformMidiDevice)) {
+          midi_device(std::move(midiDevice)) {
         uapmd_sessions = std::make_unique<UapmdMidiCISessions>(this, deviceName, manufacturerName, versionString);
-        platform_device->addInputHandler(umpReceived, this);
+        if (midi_device)
+            midi_device->addInputHandler(umpReceived, this);
     }
 
     UapmdMidiDevice::~UapmdMidiDevice() {
         stop();
         teardownOutputHandler();
-        platform_device->removeInputHandler(umpReceived);
+        if (midi_device)
+            midi_device->removeInputHandler(umpReceived);
     }
 
     void UapmdMidiDevice::teardownOutputHandler() {
@@ -59,11 +61,14 @@ namespace uapmd {
     uapmd_status_t UapmdMidiDevice::start() {
         if (!sequencer)
             return -1;
-
+        if (midi_device)
+            return midi_device->start();
         return 0;
     }
 
     uapmd_status_t UapmdMidiDevice::stop() {
+        if (midi_device)
+            return midi_device->stop();
         return 0;
     }
 

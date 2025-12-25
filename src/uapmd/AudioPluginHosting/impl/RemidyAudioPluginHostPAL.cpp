@@ -251,10 +251,8 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
                 instancing->withInstance([this,instancing,cb](auto instance) {
                     auto pal = std::make_unique<RemidyAudioPluginNodePAL>(instancing, instance);
                     auto inputMapper = std::make_unique<UapmdNodeUmpInputMapper>(pal.get());
-                    // FIXME: we have to retrieve MidiIODevice from somewhere.
-                    auto outputMapper = std::make_unique<UapmdNodeUmpOutputMapper>(nullptr, pal.get());
                     auto node = std::make_unique<AudioPluginNode>(
-                        std::move(inputMapper), std::move(outputMapper),
+                        std::move(inputMapper), nullptr,
                         std::move(pal), instanceIdSerial++);
                     cb(std::move(node), "");
                 });

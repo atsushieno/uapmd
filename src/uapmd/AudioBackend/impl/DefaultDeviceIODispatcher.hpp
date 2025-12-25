@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <mutex>
 #include <optional>
 #include <thread>
 #include <vector>
@@ -13,11 +14,16 @@ namespace uapmd {
         MidiIODevice* midi_in{};
         MidiIODevice* midi_out{};
         uapmd_ump_t* queued_inputs{};
-        std::atomic<size_t> next_ump_position{0};
+        size_t queued_input_bytes{0};
         size_t ump_buffer_size_in_bytes{0};
+        std::mutex midi_mutex{};
+        bool midi_input_handler_registered{false};
         std::optional<std::thread::id> audio_thread_id{};
 
         uapmd_status_t runCallbacks(AudioProcessContext& data);
+        void drainQueuedMidi(AudioProcessContext& data);
+        static void midiInputTrampoline(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
+        void enqueueMidiInput(uapmd_ump_t* ump, size_t sizeInBytes);
 
     public:
         DefaultDeviceIODispatcher();
@@ -36,4 +42,3 @@ namespace uapmd {
         bool isPlaying() override;
     };
 }
-

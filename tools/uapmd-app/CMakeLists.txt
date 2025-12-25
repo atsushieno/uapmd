@@ -174,7 +174,6 @@ target_sources(uapmd-app PRIVATE
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         Controller/VirtualMidiDeviceController.cpp
-        VirtualMidiDevices/LibreMidiVirtualMidiDevice.cpp
 )
 
 # Use C++23 like the WebView version

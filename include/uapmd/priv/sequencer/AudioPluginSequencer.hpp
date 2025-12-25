@@ -88,6 +88,7 @@ namespace uapmd {
         std::optional<int32_t> instanceForGroupOptional(uint8_t group) const;
         void registerParameterListener(int32_t instanceId, AudioPluginHostPAL::AudioPluginNodePAL* node);
         void unregisterParameterListener(int32_t instanceId);
+        AudioPluginNode* findPluginNodeByInstance(int32_t instanceId);
 
     public:
         struct PluginNodeInfo {
@@ -138,6 +139,7 @@ namespace uapmd {
         void enqueueUmp(int32_t targetId, uapmd_ump_t *ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void enqueueUmpForInstance(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler);
+        void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device);
         std::optional<uint8_t> pluginGroup(int32_t instanceId) const;
         std::optional<int32_t> instanceForGroup(uint8_t group) const;
 

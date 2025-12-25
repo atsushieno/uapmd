@@ -35,9 +35,9 @@ namespace uapmd {
             ci_input_forwarders.push_back(std::move(callback));
         };
         auto sender = [&](const uint8_t* data, size_t offset, size_t length, uint64_t timestamp) {
-            if (!device->platform_device)
+            if (!device->midi_device)
                 return;
-            device->platform_device->send(const_cast<uapmd_ump_t*>(reinterpret_cast<const uapmd_ump_t*>(data + offset)),
+            device->midi_device->send(const_cast<uapmd_ump_t*>(reinterpret_cast<const uapmd_ump_t*>(data + offset)),
                                  length,
                                  static_cast<uapmd_timestamp_t>(timestamp));
         };
@@ -159,12 +159,11 @@ namespace uapmd {
 
         if (!device->output_handler_registered && sequencer) {
             sequencer->setPluginOutputHandler(instance_id, [this](const uapmd_ump_t* data, size_t bytes) {
-                if (!device->platform_device)
+                if (!device->midi_device)
                     return;
-                device->platform_device->send(const_cast<uapmd_ump_t*>(data), bytes, 0);
+                device->midi_device->send(const_cast<uapmd_ump_t*>(data), bytes, 0);
             });
             device->output_handler_registered = true;
         }
     }
 }
-

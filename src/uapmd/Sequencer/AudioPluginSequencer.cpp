@@ -11,6 +11,7 @@
 #include "uapmd/uapmd.hpp"
 #include "uapmd/priv/sequencer/AudioPluginSequencer.hpp"
 #include "uapmd/priv/plugingraph/AudioPluginHostPAL.hpp"
+#include "../AudioPluginHosting/UapmdNodeUmpMapper.hpp"
 
 void uapmd::AudioPluginSequencer::configureTrackRouting(AudioPluginTrack* track) {
     if (!track)
@@ -534,6 +535,19 @@ int32_t uapmd::AudioPluginSequencer::findTrackIndexForInstance(int32_t instanceI
     return -1;
 }
 
+uapmd::AudioPluginNode* uapmd::AudioPluginSequencer::findPluginNodeByInstance(int32_t instanceId) {
+    auto& tracksRef = sequencer.tracks();
+    for (auto* track : tracksRef) {
+        if (!track)
+            continue;
+        for (auto* plugin : track->graph().plugins()) {
+            if (plugin && plugin->instanceId() == instanceId)
+                return plugin;
+        }
+    }
+    return nullptr;
+}
+
 void uapmd::AudioPluginSequencer::addSimplePluginTrack(
     std::string& format,
     std::string& pluginId,
@@ -786,6 +800,19 @@ void uapmd::AudioPluginSequencer::setPluginOutputHandler(int32_t instanceId, Plu
         next->erase(instanceId);
     }
     std::atomic_store_explicit(&plugin_output_handlers_, next, std::memory_order_release);
+}
+
+void uapmd::AudioPluginSequencer::assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device) {
+    if (!device)
+        return;
+    auto* node = findPluginNodeByInstance(instanceId);
+    if (!node)
+        return;
+    auto* palPtr = node->pal();
+    if (!palPtr)
+        return;
+    auto mapper = std::make_unique<UapmdNodeUmpOutputMapper>(std::move(device), palPtr);
+    node->setUmpOutputMapper(std::move(mapper));
 }
 
 std::optional<uint8_t> uapmd::AudioPluginSequencer::pluginGroup(int32_t instanceId) const {

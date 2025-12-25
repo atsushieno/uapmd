@@ -60,6 +60,8 @@ namespace uapmd {
 
         void loadState(std::vector<uint8_t>& state);
         std::vector<uint8_t> saveState();
+
+        void setUmpOutputMapper(std::unique_ptr<UapmdUmpOutputMapper> mapper);
     };
 
 }
