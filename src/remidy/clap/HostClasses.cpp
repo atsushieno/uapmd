@@ -85,7 +85,10 @@ namespace remidy {
             return;
         }
 
-        instance->flush_requested_.store(true, std::memory_order_release);
+        if (instance->is_processing.load(std::memory_order_relaxed))
+            instance->flush_requested_.store(true, std::memory_order_release);
+        else
+            instance->processParamsFlush();
     }
 
     bool RemidyCLAPHost::threadCheckIsMainThread() const noexcept {
