@@ -1079,7 +1079,12 @@ void MainWindow::refreshParameters(int32_t instanceId, DetailsWindowState& state
         state.parameterList.setParameterValue(i, static_cast<float>(initialValue));
 
         // Update value string
-        auto valueString = pal->getParameterValueString(parameters[i].index, initialValue);
+        auto valueString = (usingPerNoteControllers && perNoteSelection)
+                               ? pal->getPerNoteControllerValueString(
+                                     static_cast<uint8_t>(perNoteSelection->context.note),
+                                     static_cast<uint8_t>(parameters[i].index),
+                                     initialValue)
+                               : pal->getParameterValueString(parameters[i].index, initialValue);
         state.parameterList.setParameterValueString(i, valueString);
     }
 
@@ -1311,15 +1316,34 @@ void MainWindow::showDetailsWindow(int32_t instanceId) {
             if (!pal) {
                 return;
             }
-            if (auto* parameterSupport = pal->parameterSupport()) {
-                parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value, 0);
+            if (perNoteSelection->type == remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE) {
+                pal->setPerNoteControllerValue(
+                    static_cast<uint8_t>(perNoteSelection->context.note),
+                    static_cast<uint8_t>(parameterIndex),
+                    value);
+                return;
             }
+            if (auto* parameterSupport = pal->parameterSupport())
+                parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value, 0);
         });
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
             auto& seq = uapmd::AppModel::instance().sequencer();
             auto* pal = seq.getPluginInstance(instanceId);
             if (pal) {
+                auto perNoteSelection = [this, instanceId]() -> std::optional<PerNoteSelection> {
+                    auto it = detailsWindows_.find(instanceId);
+                    if (it == detailsWindows_.end())
+                        return std::nullopt;
+                    return buildPerNoteSelection(it->second.parameterList);
+                }();
+
+                if (perNoteSelection) {
+                    return pal->getPerNoteControllerValueString(
+                        static_cast<uint8_t>(perNoteSelection->context.note),
+                        static_cast<uint8_t>(parameterIndex),
+                        value);
+                }
                 return pal->getParameterValueString(parameterIndex, value);
             }
             return "";
