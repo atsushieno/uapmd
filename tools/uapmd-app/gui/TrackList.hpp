@@ -17,6 +17,7 @@ struct TrackInstance {
     std::string umpDeviceName;
     bool hasUI;
     bool uiVisible;
+    bool detailsVisible;
     bool deviceRunning;
     bool deviceExists;
     bool deviceInstantiating;
@@ -33,7 +34,6 @@ public:
     using SaveStateCallback = std::function<void(int32_t instanceId)>;
     using LoadStateCallback = std::function<void(int32_t instanceId)>;
     using RemoveInstanceCallback = std::function<void(int32_t instanceId)>;
-    using RefreshCallback = std::function<void()>;
     using UMPDeviceNameChangeCallback = std::function<void(int32_t instanceId, const std::string& newName)>;
 
 private:
@@ -48,7 +48,6 @@ private:
     SaveStateCallback onSaveState_;
     LoadStateCallback onLoadState_;
     RemoveInstanceCallback onRemoveInstance_;
-    RefreshCallback onRefresh_;
     UMPDeviceNameChangeCallback onUMPDeviceNameChange_;
 
 public:
@@ -66,7 +65,6 @@ public:
     void setOnSaveState(SaveStateCallback callback);
     void setOnLoadState(LoadStateCallback callback);
     void setOnRemoveInstance(RemoveInstanceCallback callback);
-    void setOnRefresh(RefreshCallback callback);
     void setOnUMPDeviceNameChange(UMPDeviceNameChangeCallback callback);
 
 private:

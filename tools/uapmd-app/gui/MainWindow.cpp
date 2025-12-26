@@ -93,10 +93,6 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         handleRemoveInstance(instanceId);
     });
 
-    trackList_.setOnRefresh([this]() {
-        refreshInstances();
-    });
-
     trackList_.setOnUMPDeviceNameChange([this](int32_t instanceId, const std::string& newName) {
         // Update the UMP device name buffer
         if (umpDeviceNameBuffers_.find(instanceId) != umpDeviceNameBuffers_.end()) {
@@ -524,6 +520,8 @@ void MainWindow::updateTrackListData() {
         ti.umpDeviceName = std::string(umpDeviceNameBuffers_[instanceId].data());
         ti.hasUI = instance->hasUISupport();
         ti.uiVisible = instance->isUIVisible();
+        auto detailsIt = detailsWindows_.find(instanceId);
+        ti.detailsVisible = detailsIt != detailsWindows_.end() && detailsIt->second.visible;
         ti.deviceRunning = deviceRunning;
         ti.deviceExists = deviceExists;
         ti.deviceInstantiating = deviceInstantiating;
@@ -1317,6 +1315,7 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
 
     // Start the device
     int startStatus = device->start();
+    int32_t newInstanceId = -1;
     {
         std::lock_guard guard(state->mutex);
         if (startStatus == 0) {
@@ -1344,6 +1343,7 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
             node.instantiating = false;
             node.hasError = false;
             node.trackIndex = device->trackIndex();
+            newInstanceId = node.instanceId;
         }
     }
 
@@ -1353,6 +1353,9 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
     }
 
     refreshInstances();
+    if (newInstanceId >= 0) {
+        showDetailsWindow(newInstanceId);
+    }
 }
 
 void MainWindow::renderVirtualMidiDeviceManager() {

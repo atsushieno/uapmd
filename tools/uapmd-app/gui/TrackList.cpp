@@ -14,12 +14,6 @@ void TrackList::setInstances(const std::vector<TrackInstance>& instances) {
 }
 
 void TrackList::render() {
-    if (ImGui::Button("Refresh Instances")) {
-        if (onRefresh_) {
-            onRefresh_();
-        }
-    }
-
     ImGui::Text("Active Instances:");
 
     // Group instances by track
@@ -146,9 +140,14 @@ void TrackList::renderActionsMenu(const TrackInstance& instance) {
         }
 
         // Show/Hide Details menu item
-        const char* detailsMenuText = "Show Details";  // We don't track details visibility in TrackInstance
+        const bool detailsVisible = instance.detailsVisible;
+        const char* detailsMenuText = detailsVisible ? "Hide Details" : "Show Details";
         if (ImGui::MenuItem(detailsMenuText)) {
-            if (onShowDetails_) {
+            if (detailsVisible) {
+                if (onHideDetails_) {
+                    onHideDetails_(instance.instanceId);
+                }
+            } else if (onShowDetails_) {
                 onShowDetails_(instance.instanceId);
             }
         }
@@ -244,10 +243,6 @@ void TrackList::setOnLoadState(LoadStateCallback callback) {
 
 void TrackList::setOnRemoveInstance(RemoveInstanceCallback callback) {
     onRemoveInstance_ = callback;
-}
-
-void TrackList::setOnRefresh(RefreshCallback callback) {
-    onRefresh_ = callback;
 }
 
 void TrackList::setOnUMPDeviceNameChange(UMPDeviceNameChangeCallback callback) {
