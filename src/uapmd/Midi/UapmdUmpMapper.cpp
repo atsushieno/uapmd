@@ -29,6 +29,17 @@ namespace uapmd {
                             setParameterValue(parameterIndex, value);
                             continue;
                         }
+
+                        // per-note controllers
+                        case CMIDI2_STATUS_PER_NOTE_ACC: {
+                            const auto note = cmidi2_ump_get_midi2_pnacc_note(u);
+                            const auto index = cmidi2_ump_get_midi2_pnacc_index(u);
+                            const auto data = cmidi2_ump_get_midi2_pnacc_data(u);
+                            const double value = static_cast<double>(data) / UINT32_MAX;
+                            setPerNoteControllerValue(note, index, value);
+                            continue;
+                        }
+
                         // presets
                         case CMIDI2_STATUS_PROGRAM: {
                             const auto bankMsb = cmidi2_ump_get_midi2_program_bank_msb(u);
