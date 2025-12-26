@@ -43,6 +43,8 @@ class MainWindow {
         float playbackPosition_ = 0.0f;
         float playbackLength_ = 0.0f;
         float volume_ = 0.8f;
+        bool showDeviceSettingsWindow_ = false;
+        bool showPlayerSettingsWindow_ = false;
 
         // Spectrum analyzer data
         static constexpr int kSpectrumBars = 32;
@@ -55,7 +57,7 @@ class MainWindow {
         TrackList trackList_;
 
         // Plugin selection
-        bool showPluginSelector_ = false;
+        bool showPluginSelectorWindow_ = false;
         PluginList pluginList_;
 
         // Plugin scanning
@@ -190,6 +192,8 @@ class MainWindow {
         void handleRemoveInstance(int32_t instanceId);
         void sendPitchBend(int32_t instanceId, float normalizedValue);
         void sendChannelPressure(int32_t instanceId, float pressure);
-
+        void renderDeviceSettingsWindow();
+        void renderPlayerSettingsWindow();
+        void renderPluginSelectorWindow();
     };
 }

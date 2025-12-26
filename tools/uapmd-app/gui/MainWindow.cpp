@@ -129,29 +129,22 @@ void MainWindow::render(void* window) {
                                    ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
     if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
-        // Device Settings Section
-        if (ImGui::CollapsingHeader("Device Settings", ImGuiTreeNodeFlags_None)) {
-            updateAudioDeviceSettingsData();
-            audioDeviceSettings_.render();
+        if (ImGui::BeginChild("MainToolbar", ImVec2(0, 80), false, ImGuiWindowFlags_NoScrollbar)) {
+            if (ImGui::Button("Device Settings")) {
+                showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Player Settings")) {
+                showPlayerSettingsWindow_ = !showPlayerSettingsWindow_;
+            }
+
+            ImGui::Dummy(ImVec2(0, 12));
+
+            if (ImGui::Button("Plugins")) {
+                showPluginSelectorWindow_ = !showPluginSelectorWindow_;
+            }
         }
-
-        ImGui::Separator();
-
-        // Player Settings Section
-        if (ImGui::CollapsingHeader("Player Settings", ImGuiTreeNodeFlags_None)) {
-            renderPlayerSettings();
-        }
-
-        ImGui::Separator();
-
-        // Select a Plugin Button - positioned before instance control for better visibility
-        if (ImGui::Button(showPluginSelector_ ? "Hide Plugin List" : "Select a Plugin", ImVec2(200, 40))) {
-            showPluginSelector_ = !showPluginSelector_;
-        }
-
-        if (showPluginSelector_) {
-            renderPluginSelector();
-        }
+        ImGui::EndChild();
 
         ImGui::Separator();
 
@@ -167,8 +160,48 @@ void MainWindow::render(void* window) {
     ImGui::End();
     ImGui::PopStyleVar(3);
 
-    // Render details windows as separate ImGui floating windows
+    // Render floating windows
+    renderPluginSelectorWindow();
+    renderDeviceSettingsWindow();
+    renderPlayerSettingsWindow();
     renderDetailsWindows();
+}
+
+void MainWindow::renderDeviceSettingsWindow() {
+    if (!showDeviceSettingsWindow_) {
+        return;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(400, 360), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Device Settings", &showDeviceSettingsWindow_)) {
+        updateAudioDeviceSettingsData();
+        audioDeviceSettings_.render();
+    }
+    ImGui::End();
+}
+
+void MainWindow::renderPlayerSettingsWindow() {
+    if (!showPlayerSettingsWindow_) {
+        return;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(500, 420), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Player Settings", &showPlayerSettingsWindow_)) {
+        renderPlayerSettings();
+    }
+    ImGui::End();
+}
+
+void MainWindow::renderPluginSelectorWindow() {
+    if (!showPluginSelectorWindow_) {
+        return;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(520, 560), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Plugin Selector", &showPluginSelectorWindow_)) {
+        renderPluginSelector();
+    }
+    ImGui::End();
 }
 
 void MainWindow::update() {
@@ -881,12 +914,6 @@ void MainWindow::refreshPluginList() {
 }
 
 void MainWindow::renderPluginSelector() {
-    // Render the plugin list component
-    pluginList_.render();
-
-    // Plugin scanning controls
-    ImGui::Separator();
-
     bool isScanning = uapmd::AppModel::instance().isScanning();
     if (isScanning) {
         ImGui::BeginDisabled();
@@ -908,6 +935,10 @@ void MainWindow::renderPluginSelector() {
 
     ImGui::Separator();
 
+    // Render the plugin list component
+    pluginList_.render();
+
+    ImGui::Separator();
     // Build track destination options
     std::vector<std::string> labels;
     {
@@ -956,7 +987,7 @@ void MainWindow::renderPluginSelector() {
 
         // Always create device (creates UMP device even for existing tracks)
         createDeviceForPlugin(selection.format, selection.pluginId, trackIndex);
-        showPluginSelector_ = false;
+        showPluginSelectorWindow_ = false;
     }
     if (!canInstantiate) {
         ImGui::EndDisabled();
