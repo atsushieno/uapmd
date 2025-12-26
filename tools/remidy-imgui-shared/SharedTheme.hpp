@@ -44,8 +44,8 @@ void SetupImGuiStyle()
 	style.Colors[ImGuiCol_WindowBg] = ImVec4(0.0627451f, 0.06666667f, 0.08627451f, 1.0f);
 	style.Colors[ImGuiCol_ChildBg] = ImVec4(0.043137256f, 0.047058824f, 0.05882353f, 1.0f);
 	style.Colors[ImGuiCol_PopupBg] = ImVec4(0.043137256f, 0.047058824f, 0.05882353f, 1.0f);
-	style.Colors[ImGuiCol_Border] = ImVec4(0.10980392f, 0.11372549f, 0.13333334f, 1.0f);
-	style.Colors[ImGuiCol_BorderShadow] = ImVec4(0.10980392f, 0.11372549f, 0.13333334f, 1.0f);
+	style.Colors[ImGuiCol_Border] = ImVec4(0.3f, 0.3f, 0.3f, 1.0f); // modified; make it more visible
+	style.Colors[ImGuiCol_BorderShadow] = ImVec4(0.16f, 0.16f, 0.16f, 1.0f); // modified; make it more visible
 	style.Colors[ImGuiCol_FrameBg] = ImVec4(0.0627451f, 0.06666667f, 0.08627451f, 1.0f);
 	style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.05882353f, 0.5294118f, 0.9764706f, 1.0f);
 	style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.05882353f, 0.5294118f, 0.9764706f, 0.0f);
