@@ -124,6 +124,10 @@ namespace remidy {
                 return StatusCode::INVALID_PARAMETER_OPERATION;
             }
             std::string valueToString(uint32_t index, double value) override;
+            std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override {
+                (void) context; (void) index; (void) value;
+                return "";
+            }
             void refreshParameterMetadata(uint32_t index) override;
             std::optional<uint32_t> indexForProperty(LV2_URID propertyUrid) const;
             std::optional<LV2_URID> propertyUridForIndex(uint32_t index) const;

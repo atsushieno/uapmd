@@ -19,6 +19,8 @@ namespace uapmd {
 
         double getParameterValue(uint16_t index) override;
 
+        void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override;
+
         void loadPreset(uint32_t index) override;
     };
 

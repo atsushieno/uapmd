@@ -45,7 +45,7 @@ namespace remidy {
             AudioUnitParameterID* au_param_id_list{nullptr};
             UInt32 au_param_id_list_size{0};
             std::vector<PluginParameter*> parameter_list{};
-            std::map<uint64_t, std::vector<PluginParameter*>> parameter_lists_per_scope{};
+            std::vector<PluginParameter*> scoped_parameter_list{};
             AUEventListenerRef parameter_listener{nullptr};
             std::unordered_map<AudioUnitParameterID, uint32_t> parameter_id_to_index{};
 
@@ -61,13 +61,13 @@ namespace remidy {
             StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
             std::string valueToString(uint32_t index, double value) override;
+            std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override;
             void refreshParameterMetadata(uint32_t index) override;
             void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
         private:
             void installParameterListener();
             void uninstallParameterListener();
             std::vector<PluginParameter*> buildScopedParameterList(AudioUnitScope scope, UInt32 element);
-            uint64_t scopedParameterCacheKey(AudioUnitScope scope, UInt32 element) const;
             std::optional<std::pair<AudioUnitScope, UInt32>> scopeFromContext(PerNoteControllerContextTypes types, PerNoteControllerContext context) const;
             static void parameterEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value);
             void handleParameterEvent(const AudioUnitEvent* event, Float32 value);

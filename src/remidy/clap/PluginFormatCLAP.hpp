@@ -111,7 +111,7 @@ namespace remidy {
             std::vector<void*> parameter_cookies{};
             std::vector<uint32_t> parameter_flags{};
             std::unordered_map<clap_id, uint32_t> param_id_to_index{};
-            std::unordered_map<uint32_t, std::vector<PluginParameter*>> per_note_parameter_cache{};
+            std::vector<PluginParameter*> per_note_parameter_defs{};
 
         public:
             explicit ParameterSupport(PluginInstanceCLAP* owner);
@@ -124,6 +124,7 @@ namespace remidy {
             StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
             std::string valueToString(uint32_t index, double value) override;
+            std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override;
             void refreshParameterMetadata(uint32_t index) override;
             std::optional<uint32_t> indexForParamId(clap_id id) const;
             void notifyParameterValue(clap_id id, double plainValue);

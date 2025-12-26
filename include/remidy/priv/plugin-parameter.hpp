@@ -170,6 +170,7 @@ namespace remidy {
         // Those plugins make it impossible to query defined values in prior and do not give the best user experience,
         // but that's not our fault...
         virtual std::string valueToString(uint32_t index, double value) = 0;
+        virtual std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) = 0;
 
         // Refresh parameter metadata (min/max/default values) from the plugin.
         // This is needed for plugins that may change parameter ranges dynamically.

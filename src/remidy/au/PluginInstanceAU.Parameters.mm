@@ -160,22 +160,17 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAU::ParameterSuppor
 
     const auto scope = scopeInfo->first;
     const auto element = scopeInfo->second;
-    const auto key = scopedParameterCacheKey(scope, element);
-    auto cached = parameter_lists_per_scope.find(key);
-    if (cached != parameter_lists_per_scope.end())
-        return cached->second;
+    scoped_parameter_list.clear();
 
-    std::vector<PluginParameter*> scopedParameters{};
     auto populate = [&] {
-        scopedParameters = buildScopedParameterList(scope, element);
+        scoped_parameter_list = buildScopedParameterList(scope, element);
     };
     if (owner->requiresUIThreadOn() & PluginUIThreadRequirement::Parameters)
         EventLoop::runTaskOnMainThread(populate);
     else
         populate();
 
-    auto [it, inserted] = parameter_lists_per_scope.emplace(key, std::move(scopedParameters));
-    return it->second;
+    return scoped_parameter_list;
 }
 
 std::vector<remidy::PluginParameter*> remidy::PluginInstanceAU::ParameterSupport::buildScopedParameterList(AudioUnitScope scope, UInt32 element) {
@@ -184,8 +179,6 @@ std::vector<remidy::PluginParameter*> remidy::PluginInstanceAU::ParameterSupport
     UInt32 listSize = 0;
     auto status = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, scope, element, &listSize, nil);
     if (status != noErr) {
-        if (status == kAudioUnitErr_InvalidScope) // the AU treats ParameterList as global-only.
-            return scoped;
         if (owner->logger())
             owner->logger()->logError("%s: failed to query scoped parameter info (scope=%u, element=%u). Status: %d",
                 owner->name.c_str(), scope, element, status);
@@ -213,10 +206,6 @@ std::vector<remidy::PluginParameter*> remidy::PluginInstanceAU::ParameterSupport
             scoped.emplace_back(parameter_list[index.value()]);
     }
     return scoped;
-}
-
-uint64_t remidy::PluginInstanceAU::ParameterSupport::scopedParameterCacheKey(AudioUnitScope scope, UInt32 element) const {
-    return (static_cast<uint64_t>(scope) << 32) | static_cast<uint64_t>(element);
 }
 
 std::optional<std::pair<AudioUnitScope, UInt32>> remidy::PluginInstanceAU::ParameterSupport::scopeFromContext(PerNoteControllerContextTypes types, PerNoteControllerContext context) const {
@@ -307,6 +296,11 @@ std::string remidy::PluginInstanceAU::ParameterSupport::valueToString(uint32_t i
 
     // Fallback: format as number
     return std::format("{:.3f}", value);
+}
+
+std::string remidy::PluginInstanceAU::ParameterSupport::valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) {
+    (void) context;
+    return valueToString(index, value);
 }
 
 void remidy::PluginInstanceAU::ParameterSupport::refreshParameterMetadata(uint32_t index) {

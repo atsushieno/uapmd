@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <unordered_map>
 
@@ -77,8 +78,8 @@ namespace remidy {
             PluginInstanceVST3* owner;
             std::vector<PluginParameter*> parameter_defs{};
             std::unordered_map<ParamID, uint32_t> param_id_to_index{};
-            // map<PerNoteControllerContext, definition>
-            std::vector<std::pair<PerNoteControllerContext, std::vector<PluginParameter*>>> per_note_controller_defs{};
+            std::vector<std::unique_ptr<PluginParameter>> per_note_controller_storage{};
+            std::vector<PluginParameter*> per_note_controller_defs{};
             ParamID *parameter_ids{};
             ParamID program_change_parameter_id{static_cast<ParamID>(-1)};
             int32_t program_change_parameter_index{-1};
@@ -100,6 +101,7 @@ namespace remidy {
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
 
             std::string valueToString(uint32_t index, double value) override;
+            std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override;
             void refreshParameterMetadata(uint32_t index) override;
             std::optional<uint32_t> indexForParamId(ParamID id) const;
             void notifyParameterValue(ParamID id, double plainValue);

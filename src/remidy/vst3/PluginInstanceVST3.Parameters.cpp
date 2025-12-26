@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <memory>
 #include <optional>
 
 #include "remidy.hpp"
@@ -66,9 +67,8 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
 remidy::PluginInstanceVST3::ParameterSupport::~ParameterSupport() {
     for (auto p : parameter_defs)
         delete p;
-    for (auto pair : per_note_controller_defs)
-        for (auto p : pair.second)
-            delete p;
+    per_note_controller_defs.clear();
+    per_note_controller_storage.clear();
     free(parameter_ids);
 }
 
@@ -80,31 +80,32 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
     PerNoteControllerContextTypes types,
     PerNoteControllerContext context
 ) {
-    for (auto& p : per_note_controller_defs)
-        if (p.first.group == context.group && p.first.channel == context.channel)
-            return p.second;
-    std::vector<PluginParameter*> defs{};
+    (void) types;
+    per_note_controller_defs.clear();
+    per_note_controller_storage.clear();
+
     // populate the PNC list only if INoteExpressionController is implemented...
     auto nec = owner->note_expression_controller;
     if (nec) {
-        auto count = nec->getNoteExpressionCount(context.group, context.channel);
+        const auto count = nec->getNoteExpressionCount(context.group, context.channel);
+        per_note_controller_defs.reserve(static_cast<size_t>(count));
+        per_note_controller_storage.reserve(static_cast<size_t>(count));
         for (auto i = 0; i < count; i++) {
             NoteExpressionTypeInfo info{};
             if (nec->getNoteExpressionInfo(context.group, context.channel, i, info) == kResultOk) {
                 auto name = vst3StringToStdString(info.shortTitle);
                 static std::string empty{};
-                auto parameter = new PluginParameter(i, name, name, empty,
+                auto parameter = std::make_unique<PluginParameter>(i, name, name, empty,
                     info.valueDesc.defaultValue,
                     info.valueDesc.minimum,
                     info.valueDesc.maximum,
                     true, true, false, false);
-                defs.emplace_back(parameter);
+                per_note_controller_defs.emplace_back(parameter.get());
+                per_note_controller_storage.emplace_back(std::move(parameter));
             }
         }
     }
-    const auto ctx = PerNoteControllerContext{0, context.channel, context.group, 0};
-    per_note_controller_defs.emplace_back(ctx, defs);
-    return perNoteControllers(types, ctx);
+    return per_note_controller_defs;
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
@@ -258,6 +259,30 @@ std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t
     }
 
     // Fallback to empty string if conversion fails
+    return "";
+}
+
+std::string remidy::PluginInstanceVST3::ParameterSupport::valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) {
+    auto nec = owner->note_expression_controller;
+    if (!nec)
+        return "";
+
+    double normalized = value;
+    NoteExpressionTypeInfo info{};
+    if (nec->getNoteExpressionInfo(context.group, context.channel, index, info) == kResultOk) {
+        const double minValue = info.valueDesc.minimum;
+        const double maxValue = info.valueDesc.maximum;
+        if (maxValue > minValue)
+            normalized = (value - minValue) / (maxValue - minValue);
+    }
+    if (normalized < 0.0)
+        normalized = 0.0;
+    else if (normalized > 1.0)
+        normalized = 1.0;
+
+    String128 stringBuffer{};
+    if (nec->getNoteExpressionStringByValue(context.group, context.channel, index, normalized, stringBuffer) == kResultOk)
+        return vst3StringToStdString(stringBuffer);
     return "";
 }
 

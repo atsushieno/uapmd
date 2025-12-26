@@ -113,6 +113,14 @@ namespace uapmd {
             return instance->parameters()->valueToString(index, value);
         }
 
+        void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override {
+            instance->parameters()->setPerNoteController({.note = note }, index, value, 0);
+        }
+
+        std::string getPerNoteControllerValueString(uint8_t note, uint8_t index, double value) override {
+            return instance->parameters()->valueToStringPerNote({ .note = note }, index, value);
+        }
+
         bool hasUISupport() override {
             auto ui = ensureUISupport();
             if (!ui)

@@ -27,6 +27,10 @@ namespace uapmd {
         return plugin->getParameterValue(index);
     }
 
+    void UapmdNodeUmpInputMapper::setPerNoteControllerValue(uint8_t note, uint8_t index, double value) {
+        plugin->setPerNoteControllerValue(note, index, value);
+    }
+
     // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
     void UapmdNodeUmpInputMapper::loadPreset(uint32_t index) {
         plugin->loadPreset(index);

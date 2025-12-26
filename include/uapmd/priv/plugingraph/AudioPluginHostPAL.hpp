@@ -28,6 +28,8 @@ namespace uapmd {
             virtual double getParameterValue(int32_t index) = 0;
             virtual void setParameterValue(int32_t index, double value) = 0;
             virtual std::string getParameterValueString(int32_t index, double value) = 0;
+            virtual void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) = 0;
+            virtual std::string getPerNoteControllerValueString(uint8_t node, uint8_t index, double value) = 0;
 
             virtual bool hasUISupport() = 0;
             virtual bool createUI(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) = 0;

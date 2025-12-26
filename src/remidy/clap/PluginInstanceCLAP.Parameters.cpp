@@ -75,20 +75,13 @@ namespace remidy {
         if (types == PER_NOTE_CONTROLLER_NONE)
             return parameter_defs;
 
-        const uint32_t key = static_cast<uint32_t>(types);
-        auto cached = per_note_parameter_cache.find(key);
-        if (cached != per_note_parameter_cache.end())
-            return cached->second;
-
-        std::vector<PluginParameter*> filtered{};
-        filtered.reserve(parameter_defs.size());
+        per_note_parameter_defs.clear();
+        per_note_parameter_defs.reserve(parameter_defs.size());
         for (size_t i = 0; i < parameter_defs.size(); ++i) {
             if (parameterSupportsContext(parameter_flags[i], types))
-                filtered.emplace_back(parameter_defs[i]);
+                per_note_parameter_defs.emplace_back(parameter_defs[i]);
         }
-
-        auto [it, inserted] = per_note_parameter_cache.emplace(key, std::move(filtered));
-        return it->second;
+        return per_note_parameter_defs;
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
@@ -153,6 +146,11 @@ namespace remidy {
             return "";
         char s[1024];
         return owner->plugin->paramsValueToText(parameter_ids[index], value, s, sizeof(s)) ? s : "";
+    }
+
+    std::string PluginInstanceCLAP::ParameterSupport::valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) {
+        (void) context;
+        return valueToString(index, value);
     }
 
     void PluginInstanceCLAP::ParameterSupport::refreshParameterMetadata(uint32_t index) {

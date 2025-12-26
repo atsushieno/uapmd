@@ -27,6 +27,10 @@ namespace uapmd {
         // We use this function to calculate "relative assignable controllers"
         virtual double getParameterValue(uint16_t index) = 0;
 
+        // UAPMD maps a parameter ID to a per-note assignable controller index, which is only 7 bytes.
+        // (There is no relative PN-AC, so no getter here.)
+        virtual void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) = 0;
+
         // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
         virtual void loadPreset(uint32_t index) = 0;
 
