@@ -154,8 +154,79 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAU::ParameterSuppor
 }
 
 std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAU::ParameterSupport::perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) {
-    // FIXME: query requested parameter list per group/channel/note
-    return parameter_list;
+    auto scopeInfo = scopeFromContext(types, context);
+    if (!scopeInfo.has_value())
+        return parameter_list;
+
+    const auto scope = scopeInfo->first;
+    const auto element = scopeInfo->second;
+    const auto key = scopedParameterCacheKey(scope, element);
+    auto cached = parameter_lists_per_scope.find(key);
+    if (cached != parameter_lists_per_scope.end())
+        return cached->second;
+
+    std::vector<PluginParameter*> scopedParameters{};
+    auto populate = [&] {
+        scopedParameters = buildScopedParameterList(scope, element);
+    };
+    if (owner->requiresUIThreadOn() & PluginUIThreadRequirement::Parameters)
+        EventLoop::runTaskOnMainThread(populate);
+    else
+        populate();
+
+    auto [it, inserted] = parameter_lists_per_scope.emplace(key, std::move(scopedParameters));
+    return it->second;
+}
+
+std::vector<remidy::PluginParameter*> remidy::PluginInstanceAU::ParameterSupport::buildScopedParameterList(AudioUnitScope scope, UInt32 element) {
+    std::vector<PluginParameter*> scoped{};
+
+    UInt32 listSize = 0;
+    auto status = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, scope, element, &listSize, nil);
+    if (status != noErr) {
+        if (status == kAudioUnitErr_InvalidScope) // the AU treats ParameterList as global-only.
+            return scoped;
+        if (owner->logger())
+            owner->logger()->logError("%s: failed to query scoped parameter info (scope=%u, element=%u). Status: %d",
+                owner->name.c_str(), scope, element, status);
+        return scoped;
+    }
+    if (listSize == 0)
+        return scoped;
+
+    const auto parameterCount = listSize / sizeof(AudioUnitParameterID);
+    if (parameterCount == 0)
+        return scoped;
+
+    std::vector<AudioUnitParameterID> scopedIds(parameterCount);
+    status = AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterList, scope, element, scopedIds.data(), &listSize);
+    if (status != noErr) {
+        if (owner->logger())
+            owner->logger()->logError("%s: failed to retrieve scoped parameter list (scope=%u, element=%u). Status: %d",
+                owner->name.c_str(), scope, element, status);
+        return {};
+    }
+
+    scoped.reserve(parameterCount);
+    for (auto id : scopedIds) {
+        if (auto index = indexForParameterId(id); index.has_value())
+            scoped.emplace_back(parameter_list[index.value()]);
+    }
+    return scoped;
+}
+
+uint64_t remidy::PluginInstanceAU::ParameterSupport::scopedParameterCacheKey(AudioUnitScope scope, UInt32 element) const {
+    return (static_cast<uint64_t>(scope) << 32) | static_cast<uint64_t>(element);
+}
+
+std::optional<std::pair<AudioUnitScope, UInt32>> remidy::PluginInstanceAU::ParameterSupport::scopeFromContext(PerNoteControllerContextTypes types, PerNoteControllerContext context) const {
+    if (types & PER_NOTE_CONTROLLER_PER_NOTE)
+        return std::make_pair(kAudioUnitScope_Note, context.note);
+    if (types & PER_NOTE_CONTROLLER_PER_CHANNEL)
+        return std::make_pair(kAudioUnitScope_Part, context.channel);
+    if (types & PER_NOTE_CONTROLLER_PER_GROUP)
+        return std::make_pair(kAudioUnitScope_Group, context.group);
+    return std::nullopt;
 }
 
 remidy::StatusCode remidy::PluginInstanceAU::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {

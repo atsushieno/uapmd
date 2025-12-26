@@ -109,7 +109,9 @@ namespace remidy {
             std::vector<PluginParameter*> parameter_defs{};
             std::vector<clap_id> parameter_ids{};
             std::vector<void*> parameter_cookies{};
+            std::vector<uint32_t> parameter_flags{};
             std::unordered_map<clap_id, uint32_t> param_id_to_index{};
+            std::unordered_map<uint32_t, std::vector<PluginParameter*>> per_note_parameter_cache{};
 
         public:
             explicit ParameterSupport(PluginInstanceCLAP* owner);
@@ -126,6 +128,8 @@ namespace remidy {
             std::optional<uint32_t> indexForParamId(clap_id id) const;
             void notifyParameterValue(clap_id id, double plainValue);
             clap_id getParameterId(uint32_t index) const { return index < parameter_ids.size() ? parameter_ids[index] : 0; }
+        private:
+            bool parameterSupportsContext(uint32_t flags, PerNoteControllerContextTypes types) const;
         };
 
         class CLAPUmpInputDispatcher : public TypedUmpInputDispatcher {

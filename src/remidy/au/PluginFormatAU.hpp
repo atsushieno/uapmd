@@ -2,6 +2,7 @@
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <utility>
 #include <unordered_map>
 
 #include "remidy.hpp"
@@ -44,7 +45,7 @@ namespace remidy {
             AudioUnitParameterID* au_param_id_list{nullptr};
             UInt32 au_param_id_list_size{0};
             std::vector<PluginParameter*> parameter_list{};
-            std::map<uint32_t,std::vector<PluginParameter*>> parameter_lists_per_note{};
+            std::map<uint64_t, std::vector<PluginParameter*>> parameter_lists_per_scope{};
             AUEventListenerRef parameter_listener{nullptr};
             std::unordered_map<AudioUnitParameterID, uint32_t> parameter_id_to_index{};
 
@@ -65,6 +66,9 @@ namespace remidy {
         private:
             void installParameterListener();
             void uninstallParameterListener();
+            std::vector<PluginParameter*> buildScopedParameterList(AudioUnitScope scope, UInt32 element);
+            uint64_t scopedParameterCacheKey(AudioUnitScope scope, UInt32 element) const;
+            std::optional<std::pair<AudioUnitScope, UInt32>> scopeFromContext(PerNoteControllerContextTypes types, PerNoteControllerContext context) const;
             static void parameterEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value);
             void handleParameterEvent(const AudioUnitEvent* event, Float32 value);
             std::optional<uint32_t> indexForParameterId(AudioUnitParameterID id) const;

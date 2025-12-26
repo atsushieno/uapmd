@@ -57,6 +57,7 @@ namespace remidy {
                         enums));
                 parameter_ids.emplace_back(info.id);
                 parameter_cookies.emplace_back(info.cookie);
+                parameter_flags.emplace_back(info.flags);
                 param_id_to_index[info.id] = static_cast<uint32_t>(i);
             }
         });
@@ -67,8 +68,27 @@ namespace remidy {
         PerNoteControllerContextTypes types,
         PerNoteControllerContext context
     ) {
-        // CLAP has no distinct definitions for parameters and per-note controllers.
-        return parameter_defs;
+        (void) context;
+        if (parameter_defs.empty())
+            parameters();
+
+        if (types == PER_NOTE_CONTROLLER_NONE)
+            return parameter_defs;
+
+        const uint32_t key = static_cast<uint32_t>(types);
+        auto cached = per_note_parameter_cache.find(key);
+        if (cached != per_note_parameter_cache.end())
+            return cached->second;
+
+        std::vector<PluginParameter*> filtered{};
+        filtered.reserve(parameter_defs.size());
+        for (size_t i = 0; i < parameter_defs.size(); ++i) {
+            if (parameterSupportsContext(parameter_flags[i], types))
+                filtered.emplace_back(parameter_defs[i]);
+        }
+
+        auto [it, inserted] = per_note_parameter_cache.emplace(key, std::move(filtered));
+        return it->second;
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
@@ -143,6 +163,24 @@ namespace remidy {
         if (owner->plugin->paramsGetInfo(index, &info)) {
             parameter_defs[index]->updateRange(info.min_value, info.max_value, info.default_value);
         }
+    }
+
+    bool PluginInstanceCLAP::ParameterSupport::parameterSupportsContext(uint32_t flags, PerNoteControllerContextTypes types) const {
+        if (types & PER_NOTE_CONTROLLER_PER_GROUP) {
+            if ((flags & CLAP_PARAM_IS_MODULATABLE_PER_PORT) == 0)
+                return false;
+        }
+        if (types & PER_NOTE_CONTROLLER_PER_CHANNEL) {
+            if ((flags & CLAP_PARAM_IS_MODULATABLE_PER_CHANNEL) == 0)
+                return false;
+        }
+        if (types & PER_NOTE_CONTROLLER_PER_NOTE) {
+            const bool supportsKey = (flags & CLAP_PARAM_IS_MODULATABLE_PER_KEY) != 0;
+            const bool supportsNoteId = (flags & CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID) != 0;
+            if (!supportsKey && !supportsNoteId)
+                return false;
+        }
+        return true;
     }
 
     std::optional<uint32_t> PluginInstanceCLAP::ParameterSupport::indexForParamId(clap_id id) const {
