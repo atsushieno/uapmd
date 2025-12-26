@@ -1385,7 +1385,12 @@ void MainWindow::renderDetailsWindows() {
         bool windowOpen = detailsState.visible;
         bool deleteRequested = false;
         std::string windowSizeId = std::format("DetailsWindow{}", instanceId);
-        setNextChildWindowSize(windowSizeId, ImVec2(600.0f, 500.0f));
+        float baseWidth = 600.0f;
+        const float viewportWidth = ImGui::GetIO().DisplaySize.x;
+        if (viewportWidth > 0.0f && uiScale_ > 0.0f) {
+            baseWidth = std::min(baseWidth, viewportWidth / uiScale_);
+        }
+        setNextChildWindowSize(windowSizeId, ImVec2(baseWidth, 500.0f));
         if (ImGui::Begin(windowTitle.c_str(), &windowOpen)) {
             updateChildWindowSizeState(windowSizeId);
             auto* instance = sequencer.getPluginInstance(instanceId);

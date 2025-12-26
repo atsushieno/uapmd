@@ -107,7 +107,8 @@ void ParameterList::setParameterValueString(size_t index, const std::string& val
 void ParameterList::render() {
     static const char* kContextLabels[] = {"Global", "Group", "Channel", "Key"};
 
-    if (ImGui::BeginTable("ParameterContextRow", 2, ImGuiTableFlags_SizingFixedFit)) {
+    if (ImGui::BeginTable("ParameterContextRow", 2,
+                          ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoSavedSettings)) {
         ImGui::TableSetupColumn("ContextControls", ImGuiTableColumnFlags_WidthFixed, 360.0f);
         ImGui::TableSetupColumn("Keyboard", ImGuiTableColumnFlags_WidthStretch, 0.0f);
         ImGui::TableNextRow();
@@ -163,7 +164,8 @@ void ParameterList::render() {
     ImGui::PopStyleColor(3);
 
     const ImGuiTableFlags parameterTableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
-                                                ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate;
+                                                ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate |
+                                                ImGuiTableFlags_NoSavedSettings;
     if (ImGui::BeginTable("ParameterTable", 6, parameterTableFlags)) {
         ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthFixed, 30.0f);
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort |
