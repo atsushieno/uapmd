@@ -25,6 +25,70 @@
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
 
+namespace {
+using ParameterContext = uapmd::gui::ParameterList::ParameterContext;
+
+struct PerNoteSelection {
+    remidy::PerNoteControllerContextTypes type{remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_NONE};
+    remidy::PerNoteControllerContext context{};
+};
+
+std::optional<PerNoteSelection> buildPerNoteSelection(const uapmd::gui::ParameterList& list) {
+    PerNoteSelection selection{};
+    selection.context = remidy::PerNoteControllerContext{};
+    switch (list.context()) {
+    case ParameterContext::Global:
+        return std::nullopt;
+    case ParameterContext::Group:
+        selection.type = remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_GROUP;
+        selection.context.group = list.contextValue();
+        break;
+    case ParameterContext::Channel:
+        selection.type = remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_CHANNEL;
+        selection.context.channel = list.contextValue();
+        break;
+    case ParameterContext::Key:
+        selection.type = remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE;
+        selection.context.note = list.contextValue();
+        break;
+    }
+    return selection;
+}
+
+std::vector<uapmd::ParameterMetadata> toParameterMetadata(const std::vector<remidy::PluginParameter*>& pluginParams) {
+    std::vector<uapmd::ParameterMetadata> metadata;
+    metadata.reserve(pluginParams.size());
+    for (auto* param : pluginParams) {
+        if (!param) {
+            continue;
+        }
+        std::vector<uapmd::ParameterNamedValue> namedValues;
+        namedValues.reserve(param->enums().size());
+        for (const auto& enumeration : param->enums()) {
+            namedValues.push_back(uapmd::ParameterNamedValue{
+                .value = enumeration.value,
+                .name = enumeration.label
+            });
+        }
+        metadata.push_back(uapmd::ParameterMetadata{
+            .index = param->index(),
+            .stableId = param->stableId(),
+            .name = param->name(),
+            .path = param->path(),
+            .defaultPlainValue = param->defaultPlainValue(),
+            .minPlainValue = param->minPlainValue(),
+            .maxPlainValue = param->maxPlainValue(),
+            .automatable = param->automatable(),
+            .hidden = param->hidden(),
+            .discrete = param->discrete(),
+            .namedValues = std::move(namedValues)
+        });
+    }
+    return metadata;
+}
+
+}
+
 namespace uapmd::gui {
 MainWindow::MainWindow(GuiDefaults defaults) {
     SetupImGuiStyle();
@@ -976,15 +1040,38 @@ void MainWindow::refreshParameters(int32_t instanceId, DetailsWindowState& state
         return;
     }
 
-    auto parameters = pal->parameterMetadataList();
-    state.parameterList.setParameters(parameters);
-
     auto* parameterSupport = pal->parameterSupport();
+    auto perNoteSelection = buildPerNoteSelection(state.parameterList);
+    const bool usingPerNoteControllers = perNoteSelection.has_value();
+
+    if (usingPerNoteControllers && !parameterSupport) {
+        state.parameterList.setParameters({});
+        return;
+    }
+
+    std::vector<uapmd::ParameterMetadata> parameters;
+    if (usingPerNoteControllers) {
+        auto pluginParams = parameterSupport->perNoteControllers(perNoteSelection->type, perNoteSelection->context);
+        parameters = toParameterMetadata(pluginParams);
+    } else {
+        parameters = pal->parameterMetadataList();
+    }
+
+    state.parameterList.setParameters(parameters);
+    if (parameters.empty()) {
+        if (!usingPerNoteControllers) {
+            applyParameterUpdates(instanceId, state);
+        }
+        return;
+    }
+
     for (size_t i = 0; i < parameters.size(); ++i) {
         double initialValue = parameters[i].defaultPlainValue;
         if (parameterSupport) {
             double queriedValue = initialValue;
-            auto status = parameterSupport->getParameter(parameters[i].index, &queriedValue);
+            auto status = usingPerNoteControllers
+                              ? parameterSupport->getPerNoteController(perNoteSelection->context, parameters[i].index, &queriedValue)
+                              : parameterSupport->getParameter(parameters[i].index, &queriedValue);
             if (status == remidy::StatusCode::OK) {
                 initialValue = queriedValue;
             }
@@ -996,7 +1083,9 @@ void MainWindow::refreshParameters(int32_t instanceId, DetailsWindowState& state
         state.parameterList.setParameterValueString(i, valueString);
     }
 
-    applyParameterUpdates(instanceId, state);
+    if (!usingPerNoteControllers) {
+        applyParameterUpdates(instanceId, state);
+    }
 }
 
 void MainWindow::refreshPresets(int32_t instanceId, DetailsWindowState& state) {
@@ -1029,6 +1118,9 @@ void MainWindow::loadSelectedPreset(int32_t instanceId, DetailsWindowState& stat
 }
 
 void MainWindow::applyParameterUpdates(int32_t instanceId, DetailsWindowState& state) {
+    if (state.parameterList.context() != ParameterList::ParameterContext::Global) {
+        return;
+    }
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     auto* pal = sequencer.getPluginInstance(instanceId);
     if (!pal) {
@@ -1202,7 +1294,26 @@ void MainWindow::showDetailsWindow(int32_t instanceId) {
         // Set up parameter list callbacks
         state.parameterList.setOnParameterChanged([this, instanceId](uint32_t parameterIndex, float value) {
             auto& seq = uapmd::AppModel::instance().sequencer();
-            seq.setParameterValue(instanceId, parameterIndex, value);
+            auto perNoteSelection = [this, instanceId]() -> std::optional<PerNoteSelection> {
+                auto it = detailsWindows_.find(instanceId);
+                if (it == detailsWindows_.end()) {
+                    return std::nullopt;
+                }
+                return buildPerNoteSelection(it->second.parameterList);
+            }();
+
+            if (!perNoteSelection) {
+                seq.setParameterValue(instanceId, parameterIndex, value);
+                return;
+            }
+
+            auto* pal = seq.getPluginInstance(instanceId);
+            if (!pal) {
+                return;
+            }
+            if (auto* parameterSupport = pal->parameterSupport()) {
+                parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value, 0);
+            }
         });
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
@@ -1212,6 +1323,14 @@ void MainWindow::showDetailsWindow(int32_t instanceId) {
                 return pal->getParameterValueString(parameterIndex, value);
             }
             return "";
+        });
+
+        state.parameterList.setOnContextChanged([this, instanceId](ParameterList::ParameterContext, uint8_t) {
+            auto it = detailsWindows_.find(instanceId);
+            if (it == detailsWindows_.end()) {
+                return;
+            }
+            refreshParameters(instanceId, it->second);
         });
 
         state.visible = true;

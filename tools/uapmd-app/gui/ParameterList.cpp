@@ -8,6 +8,82 @@ namespace uapmd::gui {
 
 ParameterList::ParameterList() {
     std::fill(std::begin(parameterFilter_), std::end(parameterFilter_), '\0');
+    for (size_t i = 0; i < contextValueLabels_.size(); ++i)
+        contextValueLabels_[i] = std::to_string(i);
+
+    perNoteKeyboard_.setOctaveRange(4, 2);
+    perNoteKeyboard_.setKeySize(14.0f, 50.0f, 32.0f);
+    bindKeyboardCallback();
+    perNoteKeyboard_.setHighlightedKey(contextValue_);
+}
+
+ParameterList::ParameterList(const ParameterList& other) :
+        parameters_(other.parameters_),
+        parameterValues_(other.parameterValues_),
+        parameterValueStrings_(other.parameterValueStrings_),
+        onParameterChanged_(other.onParameterChanged_),
+        onGetParameterValueString_(other.onGetParameterValueString_),
+        onContextChanged_(other.onContextChanged_),
+        context_(other.context_),
+        contextValue_(other.contextValue_),
+        perNoteKeyboard_(other.perNoteKeyboard_),
+        contextValueLabels_(other.contextValueLabels_) {
+    std::copy(std::begin(other.parameterFilter_), std::end(other.parameterFilter_), std::begin(parameterFilter_));
+    bindKeyboardCallback();
+    perNoteKeyboard_.setHighlightedKey(contextValue_);
+}
+
+ParameterList& ParameterList::operator=(const ParameterList& other) {
+    if (this == &other)
+        return *this;
+    parameters_ = other.parameters_;
+    parameterValues_ = other.parameterValues_;
+    parameterValueStrings_ = other.parameterValueStrings_;
+    std::copy(std::begin(other.parameterFilter_), std::end(other.parameterFilter_), std::begin(parameterFilter_));
+    onParameterChanged_ = other.onParameterChanged_;
+    onGetParameterValueString_ = other.onGetParameterValueString_;
+    onContextChanged_ = other.onContextChanged_;
+    context_ = other.context_;
+    contextValue_ = other.contextValue_;
+    perNoteKeyboard_ = other.perNoteKeyboard_;
+    contextValueLabels_ = other.contextValueLabels_;
+    bindKeyboardCallback();
+    perNoteKeyboard_.setHighlightedKey(contextValue_);
+    return *this;
+}
+
+ParameterList::ParameterList(ParameterList&& other) noexcept :
+        parameters_(std::move(other.parameters_)),
+        parameterValues_(std::move(other.parameterValues_)),
+        parameterValueStrings_(std::move(other.parameterValueStrings_)),
+        onParameterChanged_(std::move(other.onParameterChanged_)),
+        onGetParameterValueString_(std::move(other.onGetParameterValueString_)),
+        onContextChanged_(std::move(other.onContextChanged_)),
+        context_(other.context_),
+        contextValue_(other.contextValue_),
+        perNoteKeyboard_(std::move(other.perNoteKeyboard_)),
+        contextValueLabels_(std::move(other.contextValueLabels_)) {
+    std::copy(std::begin(other.parameterFilter_), std::end(other.parameterFilter_), std::begin(parameterFilter_));
+    bindKeyboardCallback();
+    perNoteKeyboard_.setHighlightedKey(contextValue_);
+}
+
+ParameterList& ParameterList::operator=(ParameterList&& other) noexcept {
+    if (this == &other)
+        return *this;
+    parameters_ = std::move(other.parameters_);
+    parameterValues_ = std::move(other.parameterValues_);
+    parameterValueStrings_ = std::move(other.parameterValueStrings_);
+    std::copy(std::begin(other.parameterFilter_), std::end(other.parameterFilter_), std::begin(parameterFilter_));
+    onParameterChanged_ = std::move(other.onParameterChanged_);
+    onGetParameterValueString_ = std::move(other.onGetParameterValueString_);
+    onContextChanged_ = std::move(other.onContextChanged_);
+    context_ = other.context_;
+    contextValue_ = other.contextValue_;
+    perNoteKeyboard_ = std::move(other.perNoteKeyboard_);
+    contextValueLabels_ = std::move(other.contextValueLabels_);
+    bindKeyboardCallback();
+    return *this;
 }
 
 void ParameterList::setParameters(const std::vector<ParameterMetadata>& parameters) {
@@ -29,6 +105,52 @@ void ParameterList::setParameterValueString(size_t index, const std::string& val
 }
 
 void ParameterList::render() {
+    static const char* kContextLabels[] = {"Global", "Group", "Channel", "Key"};
+
+    if (ImGui::BeginTable("ParameterContextRow", 2, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("ContextControls", ImGuiTableColumnFlags_WidthFixed, 360.0f);
+        ImGui::TableSetupColumn("Keyboard", ImGuiTableColumnFlags_WidthStretch, 0.0f);
+        ImGui::TableNextRow();
+
+        ImGui::TableSetColumnIndex(1);
+        ImGui::PushID("PerNoteSelector");
+        perNoteKeyboard_.render();
+        ImGui::PopID();
+
+        ImGui::TableSetColumnIndex(0);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Context:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f);
+        int contextIndex = static_cast<int>(context_);
+        if (ImGui::Combo("##ParameterContext", &contextIndex, kContextLabels,
+                         IM_ARRAYSIZE(kContextLabels))) {
+            contextIndex = std::clamp(contextIndex, 0, IM_ARRAYSIZE(kContextLabels) - 1);
+            setContext(static_cast<ParameterContext>(contextIndex));
+        }
+
+        ImGui::SameLine();
+        ImGui::TextUnformatted("Value/Key:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(100.0f);
+        const int contextValueCount = static_cast<int>(contextValueLabels_.size());
+        const auto& previewLabel = contextValueLabels_[static_cast<size_t>(contextValue_)];
+        if (ImGui::BeginCombo("##ParameterContextValue", previewLabel.c_str())) {
+            for (int idx = 0; idx < contextValueCount; ++idx) {
+                bool isSelected = (idx == contextValue_);
+                if (ImGui::Selectable(contextValueLabels_[static_cast<size_t>(idx)].c_str(), isSelected)) {
+                    setContextValue(static_cast<uint8_t>(idx));
+                }
+                if (isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Separator();
+
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Filter Parameters:");
     ImGui::SameLine();
@@ -199,6 +321,10 @@ void ParameterList::setOnGetParameterValueString(GetParameterValueStringCallback
     onGetParameterValueString_ = callback;
 }
 
+void ParameterList::setOnContextChanged(ContextChangeCallback callback) {
+    onContextChanged_ = callback;
+}
+
 const std::vector<ParameterMetadata>& ParameterList::getParameters() const {
     return parameters_;
 }
@@ -212,6 +338,33 @@ float ParameterList::getParameterValue(size_t index) const {
         return parameterValues_[index];
     }
     return 0.0f;
+}
+
+ParameterList::ParameterContext ParameterList::context() const {
+    return context_;
+}
+
+uint8_t ParameterList::contextValue() const {
+    return static_cast<uint8_t>(contextValue_);
+}
+
+void ParameterList::setContext(ParameterContext context) {
+    if (context_ == context) {
+        return;
+    }
+    context_ = context;
+    perNoteKeyboard_.setHighlightedKey(contextValue_);
+    notifyContextChanged();
+}
+
+void ParameterList::setContextValue(uint8_t value) {
+    const int newValue = std::clamp(static_cast<int>(value), 0, 127);
+    if (contextValue_ == newValue) {
+        return;
+    }
+    contextValue_ = newValue;
+    perNoteKeyboard_.setHighlightedKey(contextValue_);
+    notifyContextChanged();
 }
 
 void ParameterList::clearFilter() {
@@ -317,6 +470,19 @@ void ParameterList::sortIndices(std::vector<size_t>& indices) {
         }
         sortSpecs->SpecsDirty = false;
     }
+}
+
+void ParameterList::notifyContextChanged() {
+    if (onContextChanged_) {
+        onContextChanged_(context_, static_cast<uint8_t>(contextValue_));
+    }
+}
+
+void ParameterList::bindKeyboardCallback() {
+    perNoteKeyboard_.setKeyEventCallback([this](int note, int /*velocity*/, bool isPressed) {
+        if (isPressed)
+            setContextValue(static_cast<uint8_t>(std::clamp(note, 0, 127)));
+    });
 }
 
 }

@@ -160,13 +160,31 @@ void MidiKeyboard::render() {
         ImVec2 keySize = ImVec2(key.width, key.isBlack ? blackKeyHeight_ : whiteKeyHeight_);
 
         bool isPressed = pressedKeys_[key.note];
+        bool isHighlighted = (highlightedKey_ == key.note);
         ImU32 keyColor;
         ImU32 borderColor = IM_COL32(100, 100, 100, 255);
+
+        auto blendColor = [](ImU32 base, ImU32 overlay) {
+            ImVec4 baseColor = ImGui::ColorConvertU32ToFloat4(base);
+            ImVec4 overlayColor = ImGui::ColorConvertU32ToFloat4(overlay);
+            ImVec4 result = {
+                overlayColor.x * overlayColor.w + baseColor.x * (1.0f - overlayColor.w),
+                overlayColor.y * overlayColor.w + baseColor.y * (1.0f - overlayColor.w),
+                overlayColor.z * overlayColor.w + baseColor.z * (1.0f - overlayColor.w),
+                1.0f
+            };
+            return ImGui::ColorConvertFloat4ToU32(result);
+        };
 
         if (key.isBlack) {
             keyColor = isPressed ? IM_COL32(100, 100, 100, 255) : IM_COL32(50, 50, 50, 255);
         } else {
             keyColor = isPressed ? IM_COL32(200, 200, 255, 255) : IM_COL32(255, 255, 255, 255);
+        }
+
+        if (isHighlighted && !isPressed) {
+            const ImU32 highlightOverlay = key.isBlack ? IM_COL32(120, 80, 180, 180) : IM_COL32(120, 160, 255, 200);
+            keyColor = blendColor(keyColor, highlightOverlay);
         }
 
         // Draw key
@@ -243,6 +261,14 @@ const char* MidiKeyboard::getNoteName(int note) {
 void MidiKeyboard::handleKeyEvent(int note, bool isPressed, int velocity) {
     if (onKeyEvent_) {
         onKeyEvent_(note, velocity, isPressed);
+    }
+}
+
+void MidiKeyboard::setHighlightedKey(int note) {
+    if (note < 0 || note >= 128) {
+        highlightedKey_ = -1;
+    } else {
+        highlightedKey_ = note;
     }
 }
 

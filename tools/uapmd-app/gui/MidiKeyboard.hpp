@@ -22,6 +22,7 @@ namespace uapmd::gui {
 
         std::vector<bool> pressedKeys_;
         int mouseDownKey_ = -1;
+        int highlightedKey_ = -1;
 
         std::function<void(int note, int velocity, bool isPressed)> onKeyEvent_;
 
@@ -48,6 +49,7 @@ namespace uapmd::gui {
         void pressKey(int note, int velocity = 100);
         void releaseKey(int note);
         void releaseAllKeys();
+        void setHighlightedKey(int note);
 
     private:
         void setupKeys();
