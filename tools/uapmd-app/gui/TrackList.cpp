@@ -33,7 +33,7 @@ void TrackList::render() {
         ImGui::TableSetupColumn("Plugin", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 60.0f);
         ImGui::TableSetupColumn("UMP Device Name", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableHeadersRow();
 
         // Render instances grouped by track
@@ -105,107 +105,17 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
         }
     }
 
-    // Actions column
+    // Details toggle column
     ImGui::TableSetColumnIndex(4);
-    renderActionsMenu(instance);
-}
-
-void TrackList::renderActionsMenu(const TrackInstance& instance) {
-    std::string menuButtonId = "Actions##menu" + std::to_string(instance.instanceId);
-    std::string popupId = "ActionsPopup##" + std::to_string(instance.instanceId);
-
-    if (ImGui::Button(menuButtonId.c_str())) {
-        ImGui::OpenPopup(popupId.c_str());
-    }
-
-    if (ImGui::BeginPopup(popupId.c_str())) {
-        // Show/Hide UI menu item
-        if (!instance.hasUI) {
-            ImGui::BeginDisabled();
-        }
-
-        const char* uiMenuText = instance.uiVisible ? "Hide UI" : "Show UI";
-        if (ImGui::MenuItem(uiMenuText)) {
-            if (instance.hasUI) {
-                if (instance.uiVisible && onHideUI_) {
-                    onHideUI_(instance.instanceId);
-                } else if (!instance.uiVisible && onShowUI_) {
-                    onShowUI_(instance.instanceId);
-                }
+    std::string buttonId = "Details##" + std::to_string(instance.instanceId);
+    if (ImGui::Button(buttonId.c_str())) {
+        if (instance.detailsVisible) {
+            if (onHideDetails_) {
+                onHideDetails_(instance.instanceId);
             }
+        } else if (onShowDetails_) {
+            onShowDetails_(instance.instanceId);
         }
-
-        if (!instance.hasUI) {
-            ImGui::EndDisabled();
-        }
-
-        // Show/Hide Details menu item
-        const bool detailsVisible = instance.detailsVisible;
-        const char* detailsMenuText = detailsVisible ? "Hide Details" : "Show Details";
-        if (ImGui::MenuItem(detailsMenuText)) {
-            if (detailsVisible) {
-                if (onHideDetails_) {
-                    onHideDetails_(instance.instanceId);
-                }
-            } else if (onShowDetails_) {
-                onShowDetails_(instance.instanceId);
-            }
-        }
-
-        // Enable/Disable UMP Device menu items
-        if (instance.deviceExists) {
-            const char* deviceMenuText = instance.deviceRunning ? "Disable UMP Device" : "Enable UMP Device";
-
-            if (instance.deviceInstantiating) {
-                ImGui::BeginDisabled();
-            }
-
-            if (ImGui::MenuItem(deviceMenuText)) {
-                if (instance.deviceRunning && onDisableDevice_) {
-                    onDisableDevice_(instance.instanceId);
-                } else if (!instance.deviceRunning && onEnableDevice_) {
-                    // Get the current device name from the input buffer
-                    static std::map<int32_t, std::array<char, 128>> deviceNameBuffers;
-                    std::string deviceName = instance.umpDeviceName;
-                    if (deviceNameBuffers.find(instance.instanceId) != deviceNameBuffers.end()) {
-                        deviceName = std::string(deviceNameBuffers[instance.instanceId].data());
-                    }
-                    onEnableDevice_(instance.instanceId, deviceName);
-                }
-            }
-
-            if (instance.deviceInstantiating) {
-                ImGui::EndDisabled();
-            }
-        }
-
-        ImGui::Separator();
-
-        // Save State menu item
-        if (ImGui::MenuItem("Save State")) {
-            if (onSaveState_) {
-                onSaveState_(instance.instanceId);
-            }
-        }
-
-        // Load State menu item
-        if (ImGui::MenuItem("Load State")) {
-            if (onLoadState_) {
-                onLoadState_(instance.instanceId);
-            }
-        }
-
-        ImGui::Separator();
-
-        // Remove menu item
-        if (ImGui::MenuItem("Remove")) {
-            if (onRemoveInstance_) {
-                onRemoveInstance_(instance.instanceId);
-            }
-            ImGui::CloseCurrentPopup();
-        }
-
-        ImGui::EndPopup();
     }
 }
 

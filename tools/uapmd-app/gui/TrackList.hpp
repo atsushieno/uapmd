@@ -69,7 +69,6 @@ public:
 
 private:
     void renderInstanceRow(const TrackInstance& instance, bool showTrackColumn, int32_t trackIndex);
-    void renderActionsMenu(const TrackInstance& instance);
 };
 
 }

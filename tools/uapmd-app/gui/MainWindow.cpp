@@ -471,62 +471,69 @@ void MainWindow::renderInstanceControl() {
     trackList_.render();
 }
 
+std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instanceId) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto* instance = sequencer.getPluginInstance(instanceId);
+    if (!instance) {
+        return std::nullopt;
+    }
+
+    int32_t trackIndex = sequencer.findTrackIndexForInstance(instanceId);
+    std::string pluginName = sequencer.getPluginName(instanceId);
+    std::string pluginFormat = sequencer.getPluginFormat(instanceId);
+
+    if (umpDeviceNameBuffers_.find(instanceId) == umpDeviceNameBuffers_.end()) {
+        umpDeviceNameBuffers_[instanceId] = {};
+        std::string defaultName = std::format("{} [{}]", pluginName, pluginFormat);
+        std::strncpy(umpDeviceNameBuffers_[instanceId].data(), defaultName.c_str(),
+                     umpDeviceNameBuffers_[instanceId].size() - 1);
+    }
+
+    bool deviceRunning = false;
+    bool deviceExists = false;
+    bool deviceInstantiating = false;
+
+    auto* deviceController = uapmd::AppModel::instance().deviceController();
+    if (deviceController) {
+        std::lock_guard lock(devicesMutex_);
+        for (auto& entry : devices_) {
+            auto state = entry.state;
+            std::lock_guard guard(state->mutex);
+            if (state->pluginInstances.count(instanceId) > 0) {
+                deviceExists = true;
+                deviceRunning = state->running;
+                deviceInstantiating = state->instantiating;
+                break;
+            }
+        }
+    }
+
+    TrackInstance ti;
+    ti.instanceId = instanceId;
+    ti.trackIndex = trackIndex;
+    ti.pluginName = pluginName;
+    ti.pluginFormat = pluginFormat;
+    ti.umpDeviceName = std::string(umpDeviceNameBuffers_[instanceId].data());
+    ti.hasUI = instance->hasUISupport();
+    ti.uiVisible = instance->isUIVisible();
+    auto detailsIt = detailsWindows_.find(instanceId);
+    ti.detailsVisible = detailsIt != detailsWindows_.end() && detailsIt->second.visible;
+    ti.deviceRunning = deviceRunning;
+    ti.deviceExists = deviceExists;
+    ti.deviceInstantiating = deviceInstantiating;
+
+    return ti;
+}
+
 void MainWindow::updateTrackListData() {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
 
     std::vector<TrackInstance> trackInstances;
 
     for (int32_t instanceId : instances_) {
-        int32_t trackIndex = sequencer.findTrackIndexForInstance(instanceId);
-        std::string pluginName = sequencer.getPluginName(instanceId);
-        std::string pluginFormat = sequencer.getPluginFormat(instanceId);
-        auto* instance = sequencer.getPluginInstance(instanceId);
-
-        if (!instance) continue;
-
-        // Initialize UMP device name buffer if needed
-        if (umpDeviceNameBuffers_.find(instanceId) == umpDeviceNameBuffers_.end()) {
-            umpDeviceNameBuffers_[instanceId] = {};
-            std::string defaultName = std::format("{} [{}]", pluginName, pluginFormat);
-            std::strncpy(umpDeviceNameBuffers_[instanceId].data(), defaultName.c_str(),
-                        umpDeviceNameBuffers_[instanceId].size() - 1);
+        if (auto trackInstance = buildTrackInstanceInfo(instanceId)) {
+            trackInstances.push_back(*trackInstance);
         }
-
-        // Find if device exists and is running
-        bool deviceRunning = false;
-        bool deviceExists = false;
-        bool deviceInstantiating = false;
-
-        auto* deviceController = uapmd::AppModel::instance().deviceController();
-        if (deviceController) {
-            std::lock_guard lock(devicesMutex_);
-            for (auto& entry : devices_) {
-                auto state = entry.state;
-                std::lock_guard guard(state->mutex);
-                if (state->pluginInstances.count(instanceId) > 0) {
-                    deviceExists = true;
-                    deviceRunning = state->running;
-                    deviceInstantiating = state->instantiating;
-                    break;
-                }
-            }
-        }
-
-        TrackInstance ti;
-        ti.instanceId = instanceId;
-        ti.trackIndex = trackIndex;
-        ti.pluginName = pluginName;
-        ti.pluginFormat = pluginFormat;
-        ti.umpDeviceName = std::string(umpDeviceNameBuffers_[instanceId].data());
-        ti.hasUI = instance->hasUISupport();
-        ti.uiVisible = instance->isUIVisible();
-        auto detailsIt = detailsWindows_.find(instanceId);
-        ti.detailsVisible = detailsIt != detailsWindows_.end() && detailsIt->second.visible;
-        ti.deviceRunning = deviceRunning;
-        ti.deviceExists = deviceExists;
-        ti.deviceInstantiating = deviceInstantiating;
-
-        trackInstances.push_back(ti);
     }
 
     trackList_.setInstances(trackInstances);
@@ -1044,7 +1051,19 @@ void MainWindow::onDetailsWindowClosed(int32_t instanceId) {
 void MainWindow::renderDetailsWindows() {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
 
-    for (auto& [instanceId, detailsState] : detailsWindows_) {
+    std::vector<int32_t> detailIds;
+    detailIds.reserve(detailsWindows_.size());
+    for (const auto& entry : detailsWindows_) {
+        detailIds.push_back(entry.first);
+    }
+
+    for (int32_t instanceId : detailIds) {
+        auto it = detailsWindows_.find(instanceId);
+        if (it == detailsWindows_.end()) {
+            continue;
+        }
+
+        auto& detailsState = it->second;
         if (!detailsState.visible) {
             continue;
         }
@@ -1055,12 +1074,68 @@ void MainWindow::renderDetailsWindows() {
                                  std::to_string(instanceId);
 
         bool windowOpen = detailsState.visible;
+        bool deleteRequested = false;
         ImGui::SetNextWindowSize(ImVec2(600, 500), ImGuiCond_FirstUseEver);
         if (ImGui::Begin(windowTitle.c_str(), &windowOpen)) {
             auto* instance = sequencer.getPluginInstance(instanceId);
             if (!instance) {
                 ImGui::TextUnformatted("Instance is no longer available.");
             } else {
+                if (auto trackInstance = buildTrackInstanceInfo(instanceId)) {
+                    bool disableShowUIButton = !trackInstance->hasUI;
+                    if (disableShowUIButton) {
+                        ImGui::BeginDisabled();
+                    }
+                    const char* uiButtonText = trackInstance->uiVisible ? "Hide UI" : "Show UI";
+                    if (ImGui::Button(uiButtonText)) {
+                        if (trackInstance->uiVisible) {
+                            handleHideUI(instanceId);
+                        } else {
+                            handleShowUI(instanceId);
+                        }
+                    }
+                    if (disableShowUIButton) {
+                        ImGui::EndDisabled();
+                    }
+
+                    ImGui::SameLine();
+
+                    bool disableDeviceButton = !trackInstance->deviceExists || trackInstance->deviceInstantiating;
+                    if (disableDeviceButton) {
+                        ImGui::BeginDisabled();
+                    }
+                    const char* deviceButtonText = trackInstance->deviceRunning ?
+                        "Disable UMP Device" : "Enable UMP Device";
+                    if (ImGui::Button(deviceButtonText)) {
+                        if (trackInstance->deviceRunning) {
+                            handleDisableDevice(instanceId);
+                        } else {
+                            handleEnableDevice(instanceId, trackInstance->umpDeviceName);
+                        }
+                    }
+                    if (disableDeviceButton) {
+                        ImGui::EndDisabled();
+                    }
+
+                    ImGui::SameLine();
+                }
+
+                if (ImGui::Button("Save State")) {
+                    savePluginState(instanceId);
+                }
+
+                ImGui::SameLine();
+                if (ImGui::Button("Load State")) {
+                    loadPluginState(instanceId);
+                }
+
+                ImGui::SameLine();
+                if (ImGui::Button("Delete")) {
+                    deleteRequested = true;
+                }
+
+                ImGui::Separator();
+
                 if (detailsState.parameterList.getParameters().empty()) {
                     refreshParameters(instanceId, detailsState);
                 }
@@ -1133,6 +1208,10 @@ void MainWindow::renderDetailsWindows() {
         // Update visibility if user closed the window
         if (!windowOpen) {
             hideDetailsWindow(instanceId);
+        }
+
+        if (deleteRequested) {
+            handleRemoveInstance(instanceId);
         }
     }
 }

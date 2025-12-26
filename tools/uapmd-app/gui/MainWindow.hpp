@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <chrono>
+#include <optional>
 #include <uapmd/uapmd.hpp>
 #include "MidiKeyboard.hpp"
 #include "PluginList.hpp"
@@ -181,6 +182,7 @@ class MainWindow {
 
         // TrackList helper methods
         void updateTrackListData();
+        std::optional<TrackInstance> buildTrackInstanceInfo(int32_t instanceId);
         void handleShowUI(int32_t instanceId);
         void handleHideUI(int32_t instanceId);
         void handleEnableDevice(int32_t instanceId, const std::string& deviceName);
