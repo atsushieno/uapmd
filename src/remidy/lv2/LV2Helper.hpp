@@ -32,6 +32,10 @@
 #include <lv2/patch/patch.h>
 #include <format>
 
+#ifndef LV2_CORE__name
+#define LV2_CORE__name LV2_CORE_PREFIX "name"
+#endif
+
 #include "remidy.hpp"
 
 namespace remidy_lv2 {
@@ -148,6 +152,7 @@ namespace remidy_lv2 {
             rdf_value_node = lilv_new_uri(world, LILV_NS_RDF "value");
             rdfs_label_node = lilv_new_uri(world, LILV_NS_RDFS "label");
             rdfs_range_node = lilv_new_uri(world, LILV_NS_RDFS "range");
+            lv2_name_uri_node = lilv_new_uri(world, LV2_CORE__name);
 
             // Port Groups channel designations
             designation_uri_node = lilv_new_uri(world, LV2_CORE__designation);
@@ -227,6 +232,7 @@ namespace remidy_lv2 {
             lilv_node_free(rdf_value_node);
             lilv_node_free(rdfs_label_node);
             lilv_node_free(rdfs_range_node);
+            lilv_node_free(lv2_name_uri_node);
 
             // Port Groups designations
             lilv_node_free(designation_uri_node);
@@ -277,6 +283,7 @@ namespace remidy_lv2 {
                 *patch_property_uri_node, *state_state_uri_node,
                 *resize_port_minimum_size_node, *presets_preset_node,
                 *work_interface_uri_node, *rdf_value_node, *rdfs_label_node, *rdfs_range_node,
+                *lv2_name_uri_node,
                 *designation_uri_node,
                 *control_designation_uri_node,
                 *pg_left_uri_node, *pg_right_uri_node, *pg_center_uri_node, *pg_side_uri_node,

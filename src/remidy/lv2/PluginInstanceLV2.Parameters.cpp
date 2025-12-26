@@ -15,6 +15,33 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceLV2::ParameterSuppo
     return parameter_defs;
 }
 
+namespace {
+
+std::string portGroupDisplayName(LilvWorld* world,
+                                 const LilvNode* groupNode,
+                                 const LilvNode* namePredicate) {
+    if (!world || !groupNode)
+        return {};
+
+    std::string label;
+    if (namePredicate) {
+        if (auto* nameNode = lilv_world_get(world, groupNode, namePredicate, nullptr)) {
+            label = std::string{lilv_node_as_string(nameNode)};
+            lilv_node_free(nameNode);
+        }
+    }
+
+    if (!label.empty())
+        return label;
+
+    if (const char* uri = lilv_node_as_uri(groupNode))
+        return std::string{uri};
+
+    return std::string{lilv_node_as_string(groupNode)};
+}
+
+}
+
 std::unique_ptr<PluginParameter> createParameter(uint32_t index, const LilvNode* parameter, remidy_lv2::LV2ImplPluginContext& implContext, remidy::Logger* logger, std::string& displayName) {
     auto labelNode = lilv_world_get(implContext.world, parameter, implContext.statics->rdfs_label_node, nullptr);
     if (!labelNode) {
@@ -23,9 +50,11 @@ std::unique_ptr<PluginParameter> createParameter(uint32_t index, const LilvNode*
     }
     auto label = std::string{lilv_node_as_string(labelNode)};
 
-    // portGroup is used as its parameter path
-    auto portGroupNode = lilv_world_get(implContext.world, parameter, implContext.statics->port_group_uri_node, nullptr);
-    auto portGroup = portGroupNode ? std::string{lilv_node_as_string(portGroupNode)} : "";
+    std::string portGroup{};
+    if (auto* portGroupNode = lilv_world_get(implContext.world, parameter, implContext.statics->port_group_uri_node, nullptr)) {
+        portGroup = portGroupDisplayName(implContext.world, portGroupNode, implContext.statics->lv2_name_uri_node);
+        lilv_node_free(portGroupNode);
+    }
 
     auto rangeNode = lilv_world_get(implContext.world, parameter, implContext.statics->rdfs_range_node, nullptr);
     if (rangeNode) {
@@ -186,8 +215,10 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
         auto portSymbol = symbolNode ? std::string{lilv_node_as_string(symbolNode)} : std::to_string(portIndex);
 
         // Get port group
-        auto portGroupNode = lilv_port_get(plugin, port, implContext.statics->port_group_uri_node);
-        auto portGroup = portGroupNode ? std::string{lilv_node_as_uri(portGroupNode)} : "";
+        std::string portGroup{};
+        if (auto* portGroupNode = lilv_port_get(plugin, port, implContext.statics->port_group_uri_node)) {
+            portGroup = portGroupDisplayName(implContext.world, portGroupNode, implContext.statics->lv2_name_uri_node);
+        }
 
         // Get port range (default, min, max)
         LilvNode *defNode = nullptr, *minNode = nullptr, *maxNode = nullptr;
