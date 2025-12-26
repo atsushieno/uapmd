@@ -32,7 +32,7 @@ void TrackList::render() {
         ImGui::TableSetupColumn("Track", ImGuiTableColumnFlags_WidthFixed, 60.0f);
         ImGui::TableSetupColumn("Plugin", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-        ImGui::TableSetupColumn("UMP Device Name", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("UMP Device", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableHeadersRow();
 
@@ -73,16 +73,19 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
     ImGui::TableSetColumnIndex(2);
     ImGui::Text("%s", instance.pluginFormat.c_str());
 
-    // UMP Device Name column
+    // UMP Device column
     ImGui::TableSetColumnIndex(3);
     {
-        // Disable textbox if device is running
-        if (instance.deviceRunning) {
+        bool disableDeviceControls = instance.deviceInstantiating;
+        if (disableDeviceControls) {
             ImGui::BeginDisabled();
         }
 
         std::string inputId = "##ump_name_" + std::to_string(instance.instanceId);
-        ImGui::SetNextItemWidth(-FLT_MIN);
+        float availableWidth = ImGui::GetContentRegionAvail().x;
+        float buttonWidth = 90.0f;
+        float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+        ImGui::SetNextItemWidth(std::max(0.0f, availableWidth - (buttonWidth + spacing)));
 
         // Create a modifiable copy for ImGui
         static std::map<int32_t, std::array<char, 128>> deviceNameBuffers;
@@ -93,6 +96,11 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
                         deviceNameBuffers[instance.instanceId].size() - 1);
         }
 
+        bool disableNameEdit = instance.deviceRunning;
+        if (disableNameEdit) {
+            ImGui::BeginDisabled();
+        }
+
         if (ImGui::InputText(inputId.c_str(), deviceNameBuffers[instance.instanceId].data(),
                             deviceNameBuffers[instance.instanceId].size())) {
             if (onUMPDeviceNameChange_) {
@@ -100,15 +108,36 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
             }
         }
 
-        if (instance.deviceRunning) {
+        if (disableNameEdit) {
+            ImGui::EndDisabled();
+        }
+
+        ImGui::SameLine();
+        const char* deviceButtonText = instance.deviceRunning ? "Disable" : "Enable";
+        if (ImGui::Button(deviceButtonText, ImVec2(buttonWidth, 0.0f))) {
+            if (instance.deviceRunning) {
+                if (onDisableDevice_) {
+                    onDisableDevice_(instance.instanceId);
+                }
+            } else if (onEnableDevice_) {
+                // Get the current device name from the input buffer
+                std::string deviceName = instance.umpDeviceName;
+                if (deviceNameBuffers.find(instance.instanceId) != deviceNameBuffers.end()) {
+                    deviceName = std::string(deviceNameBuffers[instance.instanceId].data());
+                }
+                onEnableDevice_(instance.instanceId, deviceName);
+            }
+        }
+
+        if (disableDeviceControls) {
             ImGui::EndDisabled();
         }
     }
 
     // Details toggle column
     ImGui::TableSetColumnIndex(4);
-    std::string buttonId = "Details##" + std::to_string(instance.instanceId);
-    if (ImGui::Button(buttonId.c_str())) {
+    std::string buttonLabel = (instance.detailsVisible ? "Hide##" : "Show##") + std::to_string(instance.instanceId);
+    if (ImGui::Button(buttonLabel.c_str())) {
         if (instance.detailsVisible) {
             if (onHideDetails_) {
                 onHideDetails_(instance.instanceId);

@@ -1097,23 +1097,6 @@ void MainWindow::renderDetailsWindows() {
 
                     ImGui::SameLine();
 
-                    bool disableDeviceButton = !trackInstance->deviceExists || trackInstance->deviceInstantiating;
-                    if (disableDeviceButton) {
-                        ImGui::BeginDisabled();
-                    }
-                    const char* deviceButtonText = trackInstance->deviceRunning ?
-                        "Disable UMP Device" : "Enable UMP Device";
-                    if (ImGui::Button(deviceButtonText)) {
-                        if (trackInstance->deviceRunning) {
-                            handleDisableDevice(instanceId);
-                        } else {
-                            handleEnableDevice(instanceId, trackInstance->umpDeviceName);
-                        }
-                    }
-                    if (disableDeviceButton) {
-                        ImGui::EndDisabled();
-                    }
-
                     ImGui::SameLine();
                 }
 
