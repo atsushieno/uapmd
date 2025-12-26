@@ -68,6 +68,11 @@ public:
     virtual void getDrawableSize(WindowHandle* window, int* width, int* height) = 0;
 
     /**
+     * Set the window size
+     */
+    virtual void setWindowSize(WindowHandle* window, int width, int height) = 0;
+
+    /**
      * Make the GL context current for this window
      * Call this before any GL operations to ensure correct context
      */

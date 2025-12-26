@@ -133,6 +133,12 @@ public:
         }
     }
 
+    void setWindowSize(WindowHandle* window, int width, int height) override {
+        if (window && window->type == WindowHandle::SDL3) {
+            SDL_SetWindowSize(window->sdlWindow, width, height);
+        }
+    }
+
     void makeContextCurrent(WindowHandle* window) override {
         if (window && window->type == WindowHandle::SDL3 && glContext) {
             SDL_GL_MakeCurrent(window->sdlWindow, glContext);
@@ -314,6 +320,12 @@ public:
         }
     }
 
+    void setWindowSize(WindowHandle* window, int width, int height) override {
+        if (window && window->type == WindowHandle::SDL2) {
+            SDL_SetWindowSize(window->sdlWindow, width, height);
+        }
+    }
+
     void makeContextCurrent(WindowHandle* window) override {
         if (window && window->type == WindowHandle::SDL2 && glContext) {
             SDL_GL_MakeCurrent(window->sdlWindow, glContext);
@@ -474,6 +486,12 @@ public:
     void getDrawableSize(WindowHandle* window, int* width, int* height) override {
         if (window && window->type == WindowHandle::GLFW) {
             glfwGetFramebufferSize(window->glfwWindow, width, height);
+        }
+    }
+
+    void setWindowSize(WindowHandle* window, int width, int height) override {
+        if (window && window->type == WindowHandle::GLFW) {
+            glfwSetWindowSize(window->glfwWindow, width, height);
         }
     }
 

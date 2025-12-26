@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <chrono>
 #include <optional>
+#include <imgui.h>
 #include <uapmd/uapmd.hpp>
 #include "MidiKeyboard.hpp"
 #include "PluginList.hpp"
@@ -112,6 +113,23 @@ class MainWindow {
         std::vector<int32_t> pluginWindowsPendingClose_;
         std::unordered_set<int32_t> pluginWindowResizeIgnore_;
 
+        ImGuiStyle baseStyle_{};
+        float uiScale_ = 1.0f;
+        bool uiScaleDirty_ = false;
+        ImVec2 baseWindowSize_ = ImVec2(800.0f, 800.0f);
+        ImVec2 lastWindowSize_ = ImVec2(0.0f, 0.0f);
+        bool windowSizeRequestPending_ = false;
+        bool waitingForWindowResize_ = false;
+        ImVec2 requestedWindowSize_ = ImVec2(0.0f, 0.0f);
+        std::vector<float> baseFontScales_;
+        bool fontScalesCaptured_ = false;
+        struct ChildWindowSizeState {
+            ImVec2 baseSize{0.0f, 0.0f};
+            ImVec2 lastSize{0.0f, 0.0f};
+            bool waitingForResize = false;
+        };
+        std::unordered_map<std::string, ChildWindowSizeState> childWindowSizes_;
+
         // UMP device name buffers for each instance
         std::unordered_map<int32_t, std::array<char, 128>> umpDeviceNameBuffers_;
 
@@ -132,6 +150,7 @@ class MainWindow {
         void render(void* window);  // Generic window pointer
         void update();
         bool& isOpen() { return isOpen_; }
+        bool consumePendingWindowResize(ImVec2& size);
 
     private:
         // No native embedding; we use dedicated windows for plugin UIs
@@ -195,5 +214,11 @@ class MainWindow {
         void renderDeviceSettingsWindow();
         void renderPlayerSettingsWindow();
         void renderPluginSelectorWindow();
+        void applyUiScale(float scale);
+        void requestWindowResize();
+        void captureFontScales();
+        void applyFontScaling();
+        void setNextChildWindowSize(const std::string& id, ImVec2 defaultBaseSize);
+        void updateChildWindowSizeState(const std::string& id);
     };
 }

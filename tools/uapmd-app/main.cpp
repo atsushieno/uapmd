@@ -4,6 +4,7 @@
 #include <PlatformBackend.hpp>
 #include <cpptrace/from_current.hpp>
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -240,6 +241,13 @@ int runMain(int argc, char** argv) {
 
         // Update (handles dialogs)
         mainWindow.update();
+
+        ImVec2 pendingWindowSize;
+        if (mainWindow.consumePendingWindowResize(pendingWindowSize)) {
+            int width = std::max(1, static_cast<int>(std::lround(pendingWindowSize.x)));
+            int height = std::max(1, static_cast<int>(std::lround(pendingWindowSize.y)));
+            windowingBackend->setWindowSize(window, width, height);
+        }
 
         // Rendering
         ImGui::Render();

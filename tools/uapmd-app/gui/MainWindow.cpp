@@ -9,6 +9,7 @@
 #include <ranges>
 #include <unordered_map>
 #include <unordered_set>
+#include <cmath>
 #include <portable-file-dialogs.h>
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_AudioFileFormat_FLAC.h>
@@ -27,6 +28,9 @@
 namespace uapmd::gui {
 MainWindow::MainWindow(GuiDefaults defaults) {
     SetupImGuiStyle();
+    baseStyle_ = ImGui::GetStyle();
+    captureFontScales();
+    applyUiScale(uiScale_);
 
     // Apply defaults from command line arguments
     // TODO: If needed, implement default plugin selection through pluginList_
@@ -118,18 +122,44 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 void MainWindow::render(void* window) {
     // Use the entire screen space as the main window (no nested window)
     ImGuiIO& io = ImGui::GetIO();
+    ImVec2 displaySize = io.DisplaySize;
+    constexpr float kWindowSizeEpsilon = 1.0f;
+    if (displaySize.x > 0.0f && displaySize.y > 0.0f) {
+        if (lastWindowSize_.x == 0.0f && lastWindowSize_.y == 0.0f) {
+            baseWindowSize_.x = displaySize.x / uiScale_;
+            baseWindowSize_.y = displaySize.y / uiScale_;
+        }
+
+        const float deltaX = std::fabs(displaySize.x - lastWindowSize_.x);
+        const float deltaY = std::fabs(displaySize.y - lastWindowSize_.y);
+
+        if (waitingForWindowResize_) {
+            const bool reachedTarget = std::fabs(displaySize.x - requestedWindowSize_.x) < kWindowSizeEpsilon &&
+                                       std::fabs(displaySize.y - requestedWindowSize_.y) < kWindowSizeEpsilon;
+            if (reachedTarget || (deltaX > kWindowSizeEpsilon || deltaY > kWindowSizeEpsilon)) {
+                waitingForWindowResize_ = false;
+                baseWindowSize_.x = displaySize.x / uiScale_;
+                baseWindowSize_.y = displaySize.y / uiScale_;
+            }
+        } else if (deltaX > kWindowSizeEpsilon || deltaY > kWindowSizeEpsilon) {
+            baseWindowSize_.x = displaySize.x / uiScale_;
+            baseWindowSize_.y = displaySize.y / uiScale_;
+        }
+
+        lastWindowSize_ = displaySize;
+    }
     ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(io.DisplaySize);
+    ImGui::SetNextWindowSize(displaySize);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * uiScale_, 8.0f * uiScale_));
 
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
                                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                    ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
     if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
-        if (ImGui::BeginChild("MainToolbar", ImVec2(0, 80), false, ImGuiWindowFlags_NoScrollbar)) {
+        if (ImGui::BeginChild("MainToolbar", ImVec2(0, 80.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
             if (ImGui::Button("Device Settings")) {
                 showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
             }
@@ -137,8 +167,39 @@ void MainWindow::render(void* window) {
             if (ImGui::Button("Player Settings")) {
                 showPlayerSettingsWindow_ = !showPlayerSettingsWindow_;
             }
+            ImGui::SameLine();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Scale:");
+            ImGui::SameLine();
+            static constexpr float scaleOptions[] = {0.5f, 0.8f, 1.0f, 1.2f, 1.5f, 2.0f, 4.0f};
+            static constexpr const char* scaleLabels[] = {"x0.5", "x0.8", "x1.0", "x1.2", "x1.5", "x2.0", "x4.0"};
+            int currentScaleIndex = 0;
+            for (size_t i = 0; i < std::size(scaleOptions); ++i) {
+                if (std::fabs(uiScale_ - scaleOptions[i]) < 0.001f) {
+                    currentScaleIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+            int selectedIndex = currentScaleIndex;
+            ImGui::SetNextItemWidth(100.0f * uiScale_);
+            if (ImGui::BeginCombo("##UiScaleCombo", scaleLabels[currentScaleIndex])) {
+                for (int i = 0; i < static_cast<int>(std::size(scaleOptions)); ++i) {
+                    bool isSelected = (selectedIndex == i);
+                    if (ImGui::Selectable(scaleLabels[i], isSelected)) {
+                        selectedIndex = i;
+                    }
+                    if (isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (selectedIndex != currentScaleIndex) {
+                applyUiScale(scaleOptions[selectedIndex]);
+                requestWindowResize();
+            }
 
-            ImGui::Dummy(ImVec2(0, 12));
+            ImGui::Dummy(ImVec2(0, 12.0f * uiScale_));
 
             if (ImGui::Button("Plugins")) {
                 showPluginSelectorWindow_ = !showPluginSelectorWindow_;
@@ -165,6 +226,8 @@ void MainWindow::render(void* window) {
     renderDeviceSettingsWindow();
     renderPlayerSettingsWindow();
     renderDetailsWindows();
+
+    uiScaleDirty_ = false;
 }
 
 void MainWindow::renderDeviceSettingsWindow() {
@@ -172,8 +235,10 @@ void MainWindow::renderDeviceSettingsWindow() {
         return;
     }
 
-    ImGui::SetNextWindowSize(ImVec2(400, 360), ImGuiCond_FirstUseEver);
+    const std::string windowId = "DeviceSettings";
+    setNextChildWindowSize(windowId, ImVec2(400.0f, 360.0f));
     if (ImGui::Begin("Device Settings", &showDeviceSettingsWindow_)) {
+        updateChildWindowSizeState(windowId);
         updateAudioDeviceSettingsData();
         audioDeviceSettings_.render();
     }
@@ -185,8 +250,10 @@ void MainWindow::renderPlayerSettingsWindow() {
         return;
     }
 
-    ImGui::SetNextWindowSize(ImVec2(500, 420), ImGuiCond_FirstUseEver);
+    const std::string windowId = "PlayerSettings";
+    setNextChildWindowSize(windowId, ImVec2(500.0f, 420.0f));
     if (ImGui::Begin("Player Settings", &showPlayerSettingsWindow_)) {
+        updateChildWindowSizeState(windowId);
         renderPlayerSettings();
     }
     ImGui::End();
@@ -197,14 +264,109 @@ void MainWindow::renderPluginSelectorWindow() {
         return;
     }
 
-    ImGui::SetNextWindowSize(ImVec2(520, 560), ImGuiCond_FirstUseEver);
+    const std::string windowId = "PluginSelector";
+    setNextChildWindowSize(windowId, ImVec2(520.0f, 560.0f));
     if (ImGui::Begin("Plugin Selector", &showPluginSelectorWindow_)) {
+        updateChildWindowSizeState(windowId);
         renderPluginSelector();
     }
     ImGui::End();
 }
 
 void MainWindow::update() {
+}
+
+void MainWindow::applyUiScale(float scale) {
+    uiScale_ = std::clamp(scale, 0.5f, 4.0f);
+
+    ImGuiStyle& style = ImGui::GetStyle();
+    style = baseStyle_;
+    style.ScaleAllSizes(uiScale_);
+
+    applyFontScaling();
+    uiScaleDirty_ = true;
+}
+
+void MainWindow::requestWindowResize() {
+    ImGuiIO& io = ImGui::GetIO();
+    if (baseWindowSize_.x <= 0.0f || baseWindowSize_.y <= 0.0f) {
+        if (io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
+            baseWindowSize_.x = io.DisplaySize.x / std::max(uiScale_, 0.0001f);
+            baseWindowSize_.y = io.DisplaySize.y / std::max(uiScale_, 0.0001f);
+        }
+    }
+
+    requestedWindowSize_.x = std::max(200.0f, baseWindowSize_.x * uiScale_);
+    requestedWindowSize_.y = std::max(200.0f, baseWindowSize_.y * uiScale_);
+    windowSizeRequestPending_ = true;
+    waitingForWindowResize_ = true;
+}
+
+bool MainWindow::consumePendingWindowResize(ImVec2& size) {
+    if (!windowSizeRequestPending_) {
+        return false;
+    }
+    size = requestedWindowSize_;
+    windowSizeRequestPending_ = false;
+    return true;
+}
+
+void MainWindow::captureFontScales() {
+    auto& io = ImGui::GetIO();
+    baseFontScales_.clear();
+    baseFontScales_.reserve(static_cast<size_t>(io.Fonts->Fonts.Size));
+    for (int i = 0; i < io.Fonts->Fonts.Size; ++i) {
+        baseFontScales_.push_back(io.Fonts->Fonts[i]->Scale);
+    }
+    fontScalesCaptured_ = true;
+}
+
+void MainWindow::applyFontScaling() {
+    auto& io = ImGui::GetIO();
+    if (!fontScalesCaptured_ || baseFontScales_.size() != static_cast<size_t>(io.Fonts->Fonts.Size)) {
+        captureFontScales();
+    }
+    for (int i = 0; i < io.Fonts->Fonts.Size; ++i) {
+        io.Fonts->Fonts[i]->Scale = baseFontScales_[i] * uiScale_;
+    }
+    io.FontGlobalScale = 1.0f;
+}
+
+void MainWindow::setNextChildWindowSize(const std::string& id, ImVec2 defaultBaseSize) {
+    auto& state = childWindowSizes_[id];
+    if (state.baseSize.x <= 0.0f || state.baseSize.y <= 0.0f) {
+        state.baseSize = defaultBaseSize;
+    }
+    ImVec2 desired = ImVec2(state.baseSize.x * uiScale_, state.baseSize.y * uiScale_);
+    ImGuiCond cond = uiScaleDirty_ ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    ImGui::SetNextWindowSize(desired, cond);
+    if (uiScaleDirty_) {
+        state.waitingForResize = true;
+    }
+}
+
+void MainWindow::updateChildWindowSizeState(const std::string& id) {
+    auto it = childWindowSizes_.find(id);
+    if (it == childWindowSizes_.end()) {
+        return;
+    }
+
+    auto& state = it->second;
+    ImVec2 size = ImGui::GetWindowSize();
+    constexpr float epsilon = 1.0f;
+    if (state.waitingForResize) {
+        ImVec2 target = ImVec2(state.baseSize.x * uiScale_, state.baseSize.y * uiScale_);
+        if (std::fabs(size.x - target.x) < epsilon && std::fabs(size.y - target.y) < epsilon) {
+            state.waitingForResize = false;
+        }
+    } else if (std::fabs(size.x - state.lastSize.x) > epsilon ||
+               std::fabs(size.y - state.lastSize.y) > epsilon) {
+        if (uiScale_ > 0.0f) {
+            state.baseSize.x = size.x / uiScale_;
+            state.baseSize.y = size.y / uiScale_;
+        }
+    }
+    state.lastSize = size;
 }
 
 bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height) {
@@ -1103,8 +1265,10 @@ void MainWindow::renderDetailsWindows() {
 
         bool windowOpen = detailsState.visible;
         bool deleteRequested = false;
-        ImGui::SetNextWindowSize(ImVec2(600, 500), ImGuiCond_FirstUseEver);
+        std::string windowSizeId = std::format("DetailsWindow{}", instanceId);
+        setNextChildWindowSize(windowSizeId, ImVec2(600.0f, 500.0f));
         if (ImGui::Begin(windowTitle.c_str(), &windowOpen)) {
+            updateChildWindowSizeState(windowSizeId);
             auto* instance = sequencer.getPluginInstance(instanceId);
             if (!instance) {
                 ImGui::TextUnformatted("Instance is no longer available.");
