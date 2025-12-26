@@ -113,8 +113,8 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
         }
 
         ImGui::SameLine();
-        const char* deviceButtonText = instance.deviceRunning ? "Disable" : "Enable";
-        if (ImGui::Button(deviceButtonText, ImVec2(buttonWidth, 0.0f))) {
+        std::string deviceButtonLabel = (instance.deviceRunning ? "Disable##" : "Enable##") + std::to_string(instance.instanceId);
+        if (ImGui::Button(deviceButtonLabel.c_str(), ImVec2(buttonWidth, 0.0f))) {
             if (instance.deviceRunning) {
                 if (onDisableDevice_) {
                     onDisableDevice_(instance.instanceId);
