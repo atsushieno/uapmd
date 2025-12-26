@@ -82,6 +82,11 @@ namespace remidy {
             ParamID *parameter_ids{};
             ParamID program_change_parameter_id{static_cast<ParamID>(-1)};
             int32_t program_change_parameter_index{-1};
+            std::unordered_map<UnitID, std::pair<UnitID, std::string>> unit_hierarchy{};
+            std::unordered_map<UnitID, std::string> unit_path_cache{};
+
+            void buildUnitHierarchy();
+            std::string buildUnitPath(UnitID unitId);
 
         public:
             explicit ParameterSupport(PluginInstanceVST3* owner);

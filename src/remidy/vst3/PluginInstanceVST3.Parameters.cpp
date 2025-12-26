@@ -14,13 +14,14 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
     auto count = controller->getParameterCount();
 
     parameter_ids = (ParamID*) calloc(sizeof(ParamID), count);
+    buildUnitHierarchy();
 
     for (auto i = 0; i < count; i++) {
         ParameterInfo info{};
         controller->getParameterInfo(i, info);
         std::string idString = std::format("{}", info.id);
         std::string name = vst3StringToStdString(info.title);
-        std::string path{""};
+        std::string path = buildUnitPath(info.unitId);
 
         // Query plain (denormalized) value ranges from VST3
         double plainMin = controller->normalizedParamToPlain(info.id, 0.0);
@@ -163,6 +164,54 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::getParameter(ui
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) {
     return StatusCode::NOT_IMPLEMENTED;
+}
+
+void remidy::PluginInstanceVST3::ParameterSupport::buildUnitHierarchy() {
+    if (!unit_hierarchy.empty() || owner->unit_info == nullptr)
+        return;
+
+    auto unitInfo = owner->unit_info;
+    const int32 unitCount = unitInfo->getUnitCount();
+    for (int32 i = 0; i < unitCount; ++i) {
+        UnitInfo info{};
+        if (unitInfo->getUnitInfo(i, info) != kResultOk)
+            continue;
+        std::string unitName = vst3StringToStdString(info.name);
+        unit_hierarchy[info.id] = std::make_pair(info.parentUnitId, unitName);
+    }
+}
+
+std::string remidy::PluginInstanceVST3::ParameterSupport::buildUnitPath(UnitID unitId) {
+    if (owner->unit_info == nullptr)
+        return {};
+    if (unitId == Vst::kRootUnitId)
+        return {};
+
+    auto cached = unit_path_cache.find(unitId);
+    if (cached != unit_path_cache.end())
+        return cached->second;
+
+    auto it = unit_hierarchy.find(unitId);
+    if (it == unit_hierarchy.end())
+        return {};
+
+    const std::string& name = it->second.second;
+    UnitID parentId = it->second.first;
+
+    std::string parentPath;
+    if (parentId != unitId && parentId != Vst::kRootUnitId)
+        parentPath = buildUnitPath(parentId);
+
+    std::string path;
+    if (!parentPath.empty() && !name.empty())
+        path = parentPath + "/" + name;
+    else if (!parentPath.empty())
+        path = parentPath;
+    else
+        path = name;
+
+    unit_path_cache[unitId] = path;
+    return path;
 }
 
 void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint4_t group, remidy::uint4_t channel,
