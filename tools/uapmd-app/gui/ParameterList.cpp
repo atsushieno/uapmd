@@ -42,7 +42,8 @@ void ParameterList::render() {
 
     const ImGuiTableFlags parameterTableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
                                                 ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate;
-    if (ImGui::BeginTable("ParameterTable", 5, parameterTableFlags)) {
+    if (ImGui::BeginTable("ParameterTable", 6, parameterTableFlags)) {
+        ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthFixed, 30.0f);
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort |
                                                ImGuiTableColumnFlags_PreferSortAscending,
                                 30.0f);
@@ -59,6 +60,13 @@ void ParameterList::render() {
             auto& param = parameters_[paramIndex];
 
             ImGui::TableNextRow();
+
+            ImGui::TableNextColumn();
+            if (param.path.empty()) {
+                ImGui::TextUnformatted("-");
+            } else {
+                ImGui::TextUnformatted(param.path.c_str());
+            }
 
             ImGui::TableNextColumn();
             ImGui::Text("%u", param.index);
@@ -230,9 +238,12 @@ std::vector<size_t> ParameterList::filterAndBuildIndices() {
         if (!filter.empty()) {
             std::string name = param.name;
             std::string stableId = param.stableId;
+            std::string path = param.path;
             std::transform(name.begin(), name.end(), name.begin(), ::tolower);
             std::transform(stableId.begin(), stableId.end(), stableId.begin(), ::tolower);
-            if (name.find(filter) == std::string::npos && stableId.find(filter) == std::string::npos) {
+            std::transform(path.begin(), path.end(), path.begin(), ::tolower);
+            if (name.find(filter) == std::string::npos && stableId.find(filter) == std::string::npos &&
+                path.find(filter) == std::string::npos) {
                 continue;
             }
         }
@@ -249,30 +260,36 @@ void ParameterList::sortIndices(std::vector<size_t>& indices) {
         const auto& rightParam = parameters_[rhs];
         switch (columnIndex) {
         case 0:
+            if (leftParam.path < rightParam.path)
+                return -1;
+            if (leftParam.path > rightParam.path)
+                return 1;
+            return 0;
+        case 1:
             if (leftParam.index < rightParam.index)
                 return -1;
             if (leftParam.index > rightParam.index)
                 return 1;
             return 0;
-        case 1:
+        case 2:
             if (leftParam.stableId < rightParam.stableId)
                 return -1;
             if (leftParam.stableId > rightParam.stableId)
                 return 1;
             return 0;
-        case 2:
+        case 3:
             if (leftParam.name < rightParam.name)
                 return -1;
             if (leftParam.name > rightParam.name)
                 return 1;
             return 0;
-        case 3:
+        case 4:
             if (parameterValues_[lhs] < parameterValues_[rhs])
                 return -1;
             if (parameterValues_[lhs] > parameterValues_[rhs])
                 return 1;
             return 0;
-        case 4:
+        case 5:
             if (leftParam.defaultPlainValue < rightParam.defaultPlainValue)
                 return -1;
             if (leftParam.defaultPlainValue > rightParam.defaultPlainValue)
