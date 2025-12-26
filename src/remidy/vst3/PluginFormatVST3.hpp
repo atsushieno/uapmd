@@ -80,6 +80,23 @@ namespace remidy {
             std::unordered_map<ParamID, uint32_t> param_id_to_index{};
             std::vector<std::unique_ptr<PluginParameter>> per_note_controller_storage{};
             std::vector<PluginParameter*> per_note_controller_defs{};
+            struct NoteExpressionKey {
+                uint32_t group;
+                uint32_t channel;
+                uint32_t index;
+                bool operator==(const NoteExpressionKey& other) const {
+                    return group == other.group && channel == other.channel && index == other.index;
+                }
+            };
+            struct NoteExpressionKeyHash {
+                size_t operator()(const NoteExpressionKey& key) const {
+                    size_t h1 = std::hash<uint32_t>{}(key.group);
+                    size_t h2 = std::hash<uint32_t>{}(key.channel);
+                    size_t h3 = std::hash<uint32_t>{}(key.index);
+                    return ((h1 ^ (h2 << 1)) >> 1) ^ (h3 << 1);
+                }
+            };
+            std::unordered_map<NoteExpressionKey, NoteExpressionTypeInfo, NoteExpressionKeyHash> note_expression_info_map{};
             ParamID *parameter_ids{};
             ParamID program_change_parameter_id{static_cast<ParamID>(-1)};
             int32_t program_change_parameter_index{-1};
@@ -112,6 +129,9 @@ namespace remidy {
 
             void setProgramChange(uint4_t group, uint4_t channel, uint7_t flags, uint7_t program, uint7_t bankMSB,
                                   uint7_t bankLSB);
+        private:
+            void clearNoteExpressionInfo(uint32_t group, uint32_t channel);
+            const NoteExpressionTypeInfo* resolveNoteExpressionInfo(uint32_t group, uint32_t channel, uint32_t index);
         };
 
         class VST3UmpInputDispatcher : public TypedUmpInputDispatcher {

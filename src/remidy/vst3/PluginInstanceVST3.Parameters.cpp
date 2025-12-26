@@ -69,6 +69,7 @@ remidy::PluginInstanceVST3::ParameterSupport::~ParameterSupport() {
         delete p;
     per_note_controller_defs.clear();
     per_note_controller_storage.clear();
+    note_expression_info_map.clear();
     free(parameter_ids);
 }
 
@@ -83,6 +84,7 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
     (void) types;
     per_note_controller_defs.clear();
     per_note_controller_storage.clear();
+    clearNoteExpressionInfo(context.group, context.channel);
 
     // populate the PNC list only if INoteExpressionController is implemented...
     auto nec = owner->note_expression_controller;
@@ -100,6 +102,8 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
                     info.valueDesc.minimum,
                     info.valueDesc.maximum,
                     true, true, false, false);
+                NoteExpressionKey key{context.group, context.channel, static_cast<uint32_t>(i)};
+                note_expression_info_map[key] = info;
                 per_note_controller_defs.emplace_back(parameter.get());
                 per_note_controller_storage.emplace_back(std::move(parameter));
             }
@@ -142,7 +146,10 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setPerNoteContr
     evt.ppqPosition = ppqPosition;
     evt.flags = flags;
     evt.type = Event::kNoteExpressionValueEvent;
-    evt.noteExpressionValue.typeId = index;
+    NoteExpressionTypeID typeId = static_cast<NoteExpressionTypeID>(index);
+    if (const auto* info = resolveNoteExpressionInfo(context.group, context.channel, index))
+        typeId = info->typeId;
+    evt.noteExpressionValue.typeId = typeId;
     evt.noteExpressionValue.noteId = static_cast<int32_t>(context.note);
     evt.noteExpressionValue.value = value;
     auto evtList = owner->processDataOutputEvents.asInterface();
@@ -267,23 +274,51 @@ std::string remidy::PluginInstanceVST3::ParameterSupport::valueToStringPerNote(P
     if (!nec)
         return "";
 
+    const auto* info = resolveNoteExpressionInfo(context.group, context.channel, index);
+    if (!info)
+        return "";
+
     double normalized = value;
-    NoteExpressionTypeInfo info{};
-    if (nec->getNoteExpressionInfo(context.group, context.channel, index, info) == kResultOk) {
-        const double minValue = info.valueDesc.minimum;
-        const double maxValue = info.valueDesc.maximum;
-        if (maxValue > minValue)
-            normalized = (value - minValue) / (maxValue - minValue);
-    }
+    const double minValue = info->valueDesc.minimum;
+    const double maxValue = info->valueDesc.maximum;
+    if (maxValue > minValue)
+        normalized = (value - minValue) / (maxValue - minValue);
     if (normalized < 0.0)
         normalized = 0.0;
     else if (normalized > 1.0)
         normalized = 1.0;
 
     String128 stringBuffer{};
-    if (nec->getNoteExpressionStringByValue(context.group, context.channel, index, normalized, stringBuffer) == kResultOk)
+    if (nec->getNoteExpressionStringByValue(context.group, context.channel, info->typeId, normalized, stringBuffer) == kResultOk)
         return vst3StringToStdString(stringBuffer);
     return "";
+}
+
+void remidy::PluginInstanceVST3::ParameterSupport::clearNoteExpressionInfo(uint32_t group, uint32_t channel) {
+    for (auto it = note_expression_info_map.begin(); it != note_expression_info_map.end();) {
+        if (it->first.group == group && it->first.channel == channel)
+            it = note_expression_info_map.erase(it);
+        else
+            ++it;
+    }
+}
+
+const NoteExpressionTypeInfo* remidy::PluginInstanceVST3::ParameterSupport::resolveNoteExpressionInfo(uint32_t group, uint32_t channel, uint32_t index) {
+    NoteExpressionKey key{group, channel, index};
+    auto it = note_expression_info_map.find(key);
+    if (it != note_expression_info_map.end())
+        return &it->second;
+
+    auto nec = owner->note_expression_controller;
+    if (!nec)
+        return nullptr;
+
+    NoteExpressionTypeInfo info{};
+    if (nec->getNoteExpressionInfo(group, channel, static_cast<int32>(index), info) != kResultOk)
+        return nullptr;
+
+    auto [insertedIt, _] = note_expression_info_map.emplace(key, info);
+    return &insertedIt->second;
 }
 
 void remidy::PluginInstanceVST3::ParameterSupport::refreshParameterMetadata(uint32_t index) {
