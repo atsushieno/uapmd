@@ -1,7 +1,26 @@
 #if __APPLE__
 
 #include <format>
+#include <algorithm>
+#include <unordered_map>
+#import <AudioToolbox/AUAudioUnit.h>
 #include "PluginFormatAU.hpp"
+
+namespace {
+
+static std::string keyPathToGroupPath(NSString* keyPath) {
+    if (!keyPath)
+        return {};
+
+    std::string path = cfStringToString((__bridge CFStringRef) keyPath);
+    auto pos = path.rfind('.');
+    if (pos != std::string::npos)
+        path = path.substr(0, pos);
+    std::replace(path.begin(), path.end(), '.', '/');
+    return path;
+}
+
+}
 
 remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInstanceAU *owner)
         : owner(owner) {
@@ -19,6 +38,47 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
     }
 
     AudioUnitParameterInfo info;
+    AUParameterTree* parameterTree = nullptr;
+    if (owner->auVersion() == PluginInstanceAU::AUV3) {
+        AudioComponentDescription desc{};
+        if (AudioComponentGetDescription(owner->component, &desc) == noErr) {
+            NSError* error = nil;
+            AUAudioUnit* auAudioUnit = [[AUAudioUnit alloc] initWithComponentDescription:desc error:&error];
+            if (auAudioUnit) {
+                parameterTree = [[auAudioUnit parameterTree] retain];
+                [auAudioUnit release];
+            } else if (owner->logger() && error) {
+                owner->logger()->logWarning("Failed to create AUAudioUnit for %s: %s",
+                    owner->name.c_str(),
+                    [[error localizedDescription] UTF8String]);
+            }
+        }
+    }
+    std::unordered_map<UInt32, std::string> clumpNames;
+    auto getClumpPath = [&](UInt32 clumpId) -> std::string {
+        if (clumpId == 0)
+            return {};
+        auto found = clumpNames.find(clumpId);
+        if (found != clumpNames.end())
+            return found->second;
+
+        AudioUnitParameterNameInfo clumpNameInfo{};
+        clumpNameInfo.inID = clumpId;
+        clumpNameInfo.inDesiredLength = kAudioUnitParameterName_Full;
+        UInt32 clumpSize = sizeof(clumpNameInfo);
+        std::string name{};
+        if (AudioUnitGetProperty(owner->instance, kAudioUnitProperty_ParameterClumpName,
+                                 kAudioUnitScope_Global, 0, &clumpNameInfo, &clumpSize) == noErr &&
+            clumpNameInfo.outName) {
+            name = cfStringToString(clumpNameInfo.outName);
+            CFRelease(clumpNameInfo.outName);
+        }
+        if (name.empty())
+            name = std::to_string(clumpId);
+        clumpNames.emplace(clumpId, name);
+        return name;
+    };
+
     for (size_t i = 0, n = au_param_id_list_size / sizeof(AudioUnitParameterID); i < n; i++) {
         auto id = au_param_id_list[i];
         UInt32 size = sizeof(info);
@@ -32,6 +92,13 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
         CFStringGetCString(info.cfNameString, nameBuffer, sizeof(nameBuffer), kCFStringEncodingUTF8);
         std::string pName{nameBuffer};
         std::string path{};
+        if (parameterTree) {
+            AUParameter* param = [parameterTree parameterWithID:id scope:kAudioUnitScope_Global element:0];
+            if (param)
+                path = keyPathToGroupPath(param.keyPath);
+        }
+        if (path.empty() && (info.flags & kAudioUnitParameterFlag_HasClump))
+            path = getClumpPath(info.clumpID);
 
         // Retrieve enumeration strings before creating parameter
         CFArrayRef enumArray{nullptr};
@@ -61,6 +128,9 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
         parameter_list.emplace_back(p);
         parameter_id_to_index[id] = static_cast<uint32_t>(i);
     }
+
+    if (parameterTree)
+        [parameterTree release];
 
     // FIXME: collect parameter_lists_per_note i.e. per-note parameter controllers, *per note* !
 
