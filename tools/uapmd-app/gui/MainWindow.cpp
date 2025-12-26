@@ -856,10 +856,7 @@ void MainWindow::applyParameterUpdates(int32_t instanceId, DetailsWindowState& s
 }
 
 void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState& state) {
-    // Apply parameter updates if reflecting event out
-    if (state.parameterList.getReflectEventOut()) {
-        applyParameterUpdates(instanceId, state);
-    }
+    applyParameterUpdates(instanceId, state);
 
     // Render the parameter list component
     state.parameterList.render();
@@ -1143,16 +1140,20 @@ void MainWindow::renderDetailsWindows() {
                     refreshPresets(instanceId, detailsState);
                 }
 
-                ImGui::TextUnformatted("MIDI Keyboard:");
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted("Pitchbend:");
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(140.0f);
-                if (ImGui::SliderFloat("Pitchbend", &detailsState.pitchBendValue,
+                if (ImGui::SliderFloat("##Pitchbend", &detailsState.pitchBendValue,
                                        -1.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
                     sendPitchBend(instanceId, detailsState.pitchBendValue);
                 }
                 ImGui::SameLine();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted("Chan.Pressure:");
+                ImGui::SameLine();
                 ImGui::SetNextItemWidth(150.0f);
-                if (ImGui::SliderFloat("Chan. Pressure", &detailsState.channelPressureValue,
+                if (ImGui::SliderFloat("##ChanPressure", &detailsState.channelPressureValue,
                                        0.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
                     sendChannelPressure(instanceId, detailsState.channelPressureValue);
                 }

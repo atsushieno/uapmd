@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cmath>
+#include <cfloat>
 
 namespace uapmd::gui {
 
@@ -28,14 +29,16 @@ void ParameterList::setParameterValueString(size_t index, const std::string& val
 }
 
 void ParameterList::render() {
-    ImGui::Checkbox("Reflect Event Out", &reflectEventOut_);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Filter Parameters:");
     ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("When enabled, parameter changes from plugin output events\nwill be reflected in the UI controls");
-    }
-
-    ImGui::InputText("Filter Parameters", parameterFilter_, sizeof(parameterFilter_));
+    const ImVec4 filterBg(0.22f, 0.22f, 0.22f, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, filterBg);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, filterBg);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, filterBg);
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputText("##ParameterFilter", parameterFilter_, sizeof(parameterFilter_));
+    ImGui::PopStyleColor(3);
 
     const ImGuiTableFlags parameterTableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
                                                 ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate;
@@ -178,14 +181,6 @@ void ParameterList::render() {
 
         ImGui::EndTable();
     }
-}
-
-void ParameterList::setReflectEventOut(bool reflect) {
-    reflectEventOut_ = reflect;
-}
-
-bool ParameterList::getReflectEventOut() const {
-    return reflectEventOut_;
 }
 
 void ParameterList::setOnParameterChanged(ParameterChangeCallback callback) {

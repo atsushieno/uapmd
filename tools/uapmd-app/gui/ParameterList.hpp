@@ -18,7 +18,6 @@ private:
     std::vector<float> parameterValues_;
     std::vector<std::string> parameterValueStrings_;
     char parameterFilter_[256] = "";
-    bool reflectEventOut_ = true;
 
     ParameterChangeCallback onParameterChanged_;
     GetParameterValueStringCallback onGetParameterValueString_;
@@ -31,9 +30,6 @@ public:
     void setParameterValueString(size_t index, const std::string& valueString);
 
     void render();
-
-    void setReflectEventOut(bool reflect);
-    bool getReflectEventOut() const;
 
     void setOnParameterChanged(ParameterChangeCallback callback);
     void setOnGetParameterValueString(GetParameterValueStringCallback callback);
