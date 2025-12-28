@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.18)
 
 if (APPLE)
-    project(UniversalAudioPluginMidiDevice LANGUAGES C CXX OBJC OBJCXX)
+    project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX OBJC OBJCXX)
 else()
-    project(UniversalAudioPluginMidiDevice LANGUAGES C CXX)
+    project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX)
 endif()
 
 set(CMAKE_CXX_STANDARD 23)
@@ -114,7 +114,7 @@ set(UAPMD_VERSION "0.1.0" CACHE STRING "Project version for packaging")
 set(CPACK_PACKAGE_NAME "uapmd")
 set(CPACK_PACKAGE_VENDOR "uapmd")
 set(CPACK_PACKAGE_CONTACT "uapmd maintainers")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Universal Audio Plugin MIDI Device tools and libraries")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Ubiquitous Audio Plugin MIDI Device tools and libraries")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/atsushieno/uapmd")
 
 # Install under /usr in packages regardless of CMAKE_INSTALL_PREFIX

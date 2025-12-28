@@ -2,7 +2,7 @@
 pkgname=uapmd
 pkgver=@UAPMD_VERSION@
 pkgrel=1
-pkgdesc="Universal Audio Plugin MIDI Device tools and libraries"
+pkgdesc="Ubiquitous Audio Plugin MIDI Device tools and libraries"
 arch=('x86_64')
 url='@CPACK_PACKAGE_HOMEPAGE_URL@'
 license=('MIT')
