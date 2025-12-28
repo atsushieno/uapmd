@@ -30,11 +30,22 @@ namespace uapmd {
         assert(libremidi_midi_configuration_init(&midiCfg) == 0);
         midiCfg.virtual_port = true;
         midiCfg.version = libremidi_midi_configuration::MIDI2;
-        midiCfg.port_name = device_name.c_str();
+
+        // Use distinct names for input and output ports to avoid ALSA/UIs confusion.
+        in_port_name = device_name + " In";
+        out_port_name = device_name + " Out";
+
+        // Create input with callback and its own port name.
+        midiCfg.port_name = in_port_name.c_str();
         midiCfg.on_midi2_message.context = this;
         midiCfg.on_midi2_message.callback = midi2_in_callback;
         assert(libremidi_midi_in_new(&midiCfg, &apiCfg, &midiIn) == 0);
-        assert(libremidi_midi_out_new(&midiCfg, &apiCfg, &midiOut) == 0);
+
+        // Create output with a separate config to avoid dangling callback fields.
+        libremidi_midi_configuration midiOutCfg = midiCfg;
+        midiOutCfg.on_midi2_message = {};
+        midiOutCfg.port_name = out_port_name.c_str();
+        assert(libremidi_midi_out_new(&midiOutCfg, &apiCfg, &midiOut) == 0);
     }
 
     LibreMidiIODevice::~LibreMidiIODevice() {

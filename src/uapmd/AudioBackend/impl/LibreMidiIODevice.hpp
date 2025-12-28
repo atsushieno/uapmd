@@ -14,6 +14,8 @@ namespace uapmd {
         std::string manufacturer;
         std::string version;
         uint64_t sysex_delay_in_microseconds;
+        std::string in_port_name;
+        std::string out_port_name;
         std::vector<ump_receiver_t> receivers;
         std::vector<void*> receiver_user_data;
 
