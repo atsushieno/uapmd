@@ -9,10 +9,6 @@
 #include <unordered_map>
 #include <vector>
 
-// FIXME: we should create some abstraction interface layer for audio file reader API
-// and avoid exposing choc API.
-namespace choc { namespace audio { class AudioFileReader; } }
-
 #include "remidy/remidy.hpp"
 #include "uapmd/uapmd.hpp"
 
@@ -33,7 +29,7 @@ namespace uapmd {
         std::atomic<bool> offline_rendering_{false};
 
         // Audio file playback
-        std::unique_ptr<choc::audio::AudioFileReader> audio_file_reader_;
+        std::unique_ptr<AudioFileReader> audio_file_reader_;
         std::vector<std::vector<float>> audio_file_buffer_; // per-channel buffers
         std::atomic<size_t> audio_file_read_position_{0};
         mutable std::mutex audio_file_mutex_;
@@ -169,7 +165,7 @@ namespace uapmd {
         void offlineRendering(bool enabled);
 
         // Audio file playback
-        void loadAudioFile(std::unique_ptr<choc::audio::AudioFileReader> reader);
+        void loadAudioFile(std::unique_ptr<AudioFileReader> reader);
         void unloadAudioFile();
         double audioFileDurationSeconds() const;
 

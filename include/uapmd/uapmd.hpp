@@ -8,6 +8,7 @@
 #include "priv/plugingraph/AudioPluginHostPAL.hpp"
 #include "priv/plugingraph/AudioPluginNode.hpp"
 #include "priv/plugingraph/AudioPluginTrack.hpp"
+#include "priv/audio/AudioFileReader.hpp"
 #include "priv/sequencer/SequenceProcessContext.hpp"
 #include "priv/sequencer/SequenceProcessor.hpp"
 #include "priv/sequencer/AudioPluginSequencer.hpp"

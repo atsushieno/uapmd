@@ -13,9 +13,7 @@
 #include "uapmd/priv/plugingraph/AudioPluginHostPAL.hpp"
 #include "../AudioPluginHosting/UapmdNodeUmpMapper.hpp"
 
-// Internal dependency: only used in implementation to avoid exposing choc in public headers
-#include <choc/audio/choc_AudioFileFormat.h>
-#include <choc/audio/choc_SampleBuffers.h>
+// Note: audio file decoding is abstracted behind uapmd::AudioFileReader interface now.
 
 void uapmd::AudioPluginSequencer::configureTrackRouting(AudioPluginTrack* track) {
     if (!track)
@@ -934,7 +932,7 @@ bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, i
     return true;
 }
 
-void uapmd::AudioPluginSequencer::loadAudioFile(std::unique_ptr<choc::audio::AudioFileReader> reader) {
+void uapmd::AudioPluginSequencer::loadAudioFile(std::unique_ptr<AudioFileReader> reader) {
     std::lock_guard<std::mutex> lock(audio_file_mutex_);
 
     audio_file_reader_ = std::move(reader);
@@ -946,25 +944,24 @@ void uapmd::AudioPluginSequencer::loadAudioFile(std::unique_ptr<choc::audio::Aud
     }
 
     // Load entire file into memory for simplicity
-    const auto& props = audio_file_reader_->getProperties();
-    auto numFrames = props.numFrames;
-    auto numChannels = props.numChannels;
+    const auto props = audio_file_reader_->getProperties();
+    const uint64_t numFrames = props.numFrames;
+    const uint32_t numChannels = props.numChannels;
 
     audio_file_buffer_.resize(numChannels);
     for (auto& channel : audio_file_buffer_) {
         channel.resize(numFrames);
     }
 
-    // Read all audio data using ChannelArrayBuffer
-    choc::buffer::ChannelArrayBuffer<float> tempBuffer(numChannels, numFrames);
-    audio_file_reader_->readFrames(0, tempBuffer.getView());
-
-    // Copy to our planar format
+    // Prepare array of channel pointers for planar read
+    std::vector<float*> destPtrs;
+    destPtrs.reserve(numChannels);
     for (uint32_t ch = 0; ch < numChannels; ++ch) {
-        for (uint64_t frame = 0; frame < numFrames; ++frame) {
-            audio_file_buffer_[ch][frame] = tempBuffer.getSample(ch, frame);
-        }
+        destPtrs.push_back(audio_file_buffer_[ch].data());
     }
+
+    // Read all frames into our planar buffers via the abstract reader
+    audio_file_reader_->readFrames(0, numFrames, destPtrs.data(), numChannels);
 }
 
 void uapmd::AudioPluginSequencer::unloadAudioFile() {

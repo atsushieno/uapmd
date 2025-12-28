@@ -30,6 +30,7 @@ target_sources(uapmd PRIVATE
         AudioBackend/MidiIODevice.cpp
         AudioBackend/impl/MiniAudioIODevice.cpp
         AudioBackend/impl/LibreMidiIODevice.cpp
+        AudioBackend/impl/ChocAudioFileFactory.cpp
         AudioPluginHosting/impl/RemidyAudioPluginHostPAL.cpp
         AudioPluginHosting/AudioPluginGraph.cpp
         AudioPluginHosting/AudioPluginHostPAL.cpp

@@ -11,9 +11,6 @@
 #include <unordered_set>
 #include <cmath>
 #include <portable-file-dialogs.h>
-#include <choc/audio/choc_AudioFileFormat_WAV.h>
-#include <choc/audio/choc_AudioFileFormat_FLAC.h>
-#include <choc/audio/choc_AudioFileFormat_Ogg.h>
 
 #include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
 #include <cmidi2.h>
@@ -24,6 +21,7 @@
 
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
+#include "uapmd/priv/audio/AudioFileFactory.hpp"
 
 namespace {
 using ParameterContext = uapmd::gui::ParameterList::ParameterContext;
@@ -954,27 +952,7 @@ void MainWindow::loadFile() {
 
     std::string filepath = selection.result()[0];
 
-    // Determine file type by extension and create appropriate reader
-    std::unique_ptr<choc::audio::AudioFileReader> reader;
-
-    auto extension = filepath.substr(filepath.find_last_of('.') + 1);
-    std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-
-    if (extension == "wav") {
-        reader = choc::audio::WAVAudioFileFormat<true>().createReader(filepath);
-    } else if (extension == "flac") {
-        reader = choc::audio::FLACAudioFileFormat<true>().createReader(filepath);
-    } else if (extension == "ogg") {
-        reader = choc::audio::OggAudioFileFormat<true>().createReader(filepath);
-    } else {
-        // Try all formats as fallback
-        reader = choc::audio::WAVAudioFileFormat<true>().createReader(filepath);
-        if (!reader)
-            reader = choc::audio::FLACAudioFileFormat<true>().createReader(filepath);
-        if (!reader)
-            reader = choc::audio::OggAudioFileFormat<true>().createReader(filepath);
-    }
-
+    auto reader = uapmd::createAudioFileReaderFromPath(filepath);
     if (!reader) {
         pfd::message("Load Failed",
                     "Could not load audio file: " + filepath + "\nSupported formats: WAV, FLAC, OGG",
