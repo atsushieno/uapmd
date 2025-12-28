@@ -19,12 +19,12 @@ include(GNUInstallDirs)
 # Disable install() rules for third-party dependencies we bring in below
 set(CMAKE_SKIP_INSTALL_RULES ON)
 
-FetchContent_Declare(choc
+CPMAddPackage(
         NAME            choc
         GIT_TAG         68a63dd
         GIT_REPOSITORY  https://github.com/Tracktion/choc
+        DOWNLOAD_ONLY YES
 )
-FetchContent_MakeAvailable(choc)
 
 FetchContent_Declare(cmidi2
         GIT_REPOSITORY https://github.com/atsushieno/cmidi2
@@ -49,6 +49,7 @@ FetchContent_Declare(midicci
         NAME            midicci
         GIT_TAG         8d4aec9
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
+        EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(midicci)
 
@@ -63,7 +64,7 @@ CPMAddPackage(
         NAME           concurrentqueue
         GIT_TAG        2f09da73d22a47dc8a89cdd4fc4c3bfae07f4284
         GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
-        EXCLUDE_FROM_ALL
+        DOWNLOAD_ONLY YES
 )
 
 # Re-enable install() rules for our own targets
