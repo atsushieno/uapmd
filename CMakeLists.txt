@@ -95,7 +95,8 @@ endif()
 
 # Install public headers and in-tree libraries only
 install(DIRECTORY include/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        PATTERN "remidy-gui/outdated/*" EXCLUDE)
 
 install(TARGETS
         remidy

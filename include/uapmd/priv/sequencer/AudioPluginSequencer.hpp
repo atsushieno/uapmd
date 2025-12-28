@@ -9,7 +9,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include <choc/audio/choc_AudioFileFormat.h>
+// FIXME: we should create some abstraction interface layer for audio file reader API
+// and avoid exposing choc API.
+namespace choc { namespace audio { class AudioFileReader; } }
 
 #include "remidy/remidy.hpp"
 #include "uapmd/uapmd.hpp"

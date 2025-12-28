@@ -13,6 +13,10 @@
 #include "uapmd/priv/plugingraph/AudioPluginHostPAL.hpp"
 #include "../AudioPluginHosting/UapmdNodeUmpMapper.hpp"
 
+// Internal dependency: only used in implementation to avoid exposing choc in public headers
+#include <choc/audio/choc_AudioFileFormat.h>
+#include <choc/audio/choc_SampleBuffers.h>
+
 void uapmd::AudioPluginSequencer::configureTrackRouting(AudioPluginTrack* track) {
     if (!track)
         return;
