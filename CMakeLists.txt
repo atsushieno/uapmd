@@ -24,7 +24,7 @@ FetchContent_MakeAvailable(choc)
 
 FetchContent_Declare(cmidi2
         GIT_REPOSITORY https://github.com/atsushieno/cmidi2
-        GIT_TAG        280bb44
+        GIT_TAG        0.9.3
         EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(cmidi2)
