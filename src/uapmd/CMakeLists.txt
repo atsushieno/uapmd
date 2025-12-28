@@ -1,12 +1,14 @@
 
 add_library(uapmd STATIC)
 
+set(CMAKE_SKIP_INSTALL_RULES ON)
 CPMAddPackage(
         NAME           libremidi
         GIT_TAG        v5.3.1
         GIT_REPOSITORY https://github.com/celtera/libremidi
         EXCLUDE_FROM_ALL
 )
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 # No direct GTK dependency here; keep this core free of GUI toolkits
 
 target_include_directories(uapmd PRIVATE

@@ -1,6 +1,7 @@
 add_library(remidy-tooling STATIC)
 
 include(FetchContent)
+set(CMAKE_SKIP_INSTALL_RULES ON)
 FetchContent_Declare(
         cpptrace
         GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
@@ -8,6 +9,7 @@ FetchContent_Declare(
         EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(cpptrace)
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 target_include_directories(remidy-tooling PRIVATE
         ../../include

@@ -17,6 +17,7 @@ endif()
 
 # FIXME: it would be slightly nicer if we could migrate to CPM (failed to resolve farbot if we actually do so. Also see https://github.com/hogliux/farbot/pull/15 )
 # <rtlog>
+set(CMAKE_SKIP_INSTALL_RULES ON)
 FetchContent_Declare(rtlog-cpp
         GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
         GIT_TAG 36381f9b2d64f7852590dd0c2564dbfdee90e116
@@ -49,6 +50,7 @@ FetchContent_Declare(vst3sdk
         UPDATE_DISCONNECTED 1
 )
 FetchContent_MakeAvailable(vst3sdk)
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/moduleinfo)
 

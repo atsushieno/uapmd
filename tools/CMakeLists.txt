@@ -12,6 +12,8 @@ add_subdirectory(uapmd-app)
 
 # Install the CLI tools as executables
 install(TARGETS remidy-scan
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT uapmd)
 install(TARGETS uapmd-app
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT uapmd)

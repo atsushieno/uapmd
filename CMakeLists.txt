@@ -15,9 +15,8 @@ endif()
 
 include(cmake/CPM.cmake)
 include(GNUInstallDirs)
+set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME uapmd)
 
-# Disable install() rules for third-party dependencies we bring in below
-set(CMAKE_SKIP_INSTALL_RULES ON)
 
 CPMAddPackage(
         NAME            choc
@@ -26,6 +25,7 @@ CPMAddPackage(
         DOWNLOAD_ONLY YES
 )
 
+set(CMAKE_SKIP_INSTALL_RULES ON)
 FetchContent_Declare(cmidi2
         GIT_REPOSITORY https://github.com/atsushieno/cmidi2
         GIT_TAG        0.9.3
@@ -52,6 +52,7 @@ FetchContent_Declare(midicci
         EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(midicci)
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 CPMAddPackage(
         NAME portable-file-dialogs
@@ -67,19 +68,15 @@ CPMAddPackage(
         DOWNLOAD_ONLY YES
 )
 
-# Re-enable install() rules for our own targets
-set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 #add_compile_options("-fsanitize=address")
 #link_libraries("-fsanitize=address")
 #add_link_options(-fPIC)
 
-set(CMAKE_SKIP_INSTALL_RULES ON)
 add_subdirectory(src/remidy)
 add_subdirectory(src/remidy-gui)
 add_subdirectory(src/remidy-tooling)
 add_subdirectory(src/uapmd)
-set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 add_subdirectory(tools)
 
@@ -97,6 +94,7 @@ endif()
 # Install public headers and in-tree libraries only
 install(DIRECTORY include/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        COMPONENT uapmd
         PATTERN "remidy-gui/outdated/*" EXCLUDE)
 
 install(TARGETS
@@ -105,7 +103,8 @@ install(TARGETS
         remidy-gui
         uapmd
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        COMPONENT uapmd)
 
 # -----------------
 # CPack (Deb/RPM/TXZ)
@@ -137,6 +136,11 @@ set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
 
 # Common metadata
 set(CPACK_PACKAGE_VERSION "${UAPMD_VERSION}")
+
+# Package only our component
+set(CPACK_COMPONENTS_ALL uapmd)
+set(CPACK_COMPONENT_UAPMD_DISPLAY_NAME "uapmd")
+set(CPACK_COMPONENT_UAPMD_DESCRIPTION "UAPMD tools, libraries, and headers")
 
 include(CPack)
 
