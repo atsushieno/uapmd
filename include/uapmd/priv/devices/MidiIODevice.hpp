@@ -26,5 +26,5 @@ namespace uapmd {
                                                           std::string deviceName,
                                                           std::string manufacturer,
                                                           std::string version,
-                                                          uint64_t sysExDelayInMicroseconds = 1000);
+                                                          uint64_t sysExDelayInMicroseconds = 10000);
 }
