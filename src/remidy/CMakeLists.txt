@@ -21,6 +21,7 @@ set(CMAKE_SKIP_INSTALL_RULES ON)
 FetchContent_Declare(rtlog-cpp
         GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
         GIT_TAG 36381f9b2d64f7852590dd0c2564dbfdee90e116
+        EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(rtlog-cpp)
 # </rtlog>
@@ -28,12 +29,14 @@ FetchContent_MakeAvailable(rtlog-cpp)
 FetchContent_Declare(clap
         GIT_REPOSITORY https://github.com/free-audio/clap
         GIT_TAG 1.2.6
+        EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(clap)
 
 FetchContent_Declare(clap-helpers
         GIT_REPOSITORY https://github.com/free-audio/clap-helpers
         GIT_TAG 58ab81b1dc8219e859529c1306f364bb3aedf7d5
+        EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(clap-helpers)
 
@@ -48,6 +51,7 @@ FetchContent_Declare(vst3sdk
         GIT_TAG v3.8.0_build_66
         PATCH_COMMAND git apply ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-mac-terminate.patch
         UPDATE_DISCONNECTED 1
+        EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(vst3sdk)
 set(CMAKE_SKIP_INSTALL_RULES OFF)

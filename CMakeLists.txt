@@ -43,7 +43,16 @@ FetchContent_Declare(cpplocate
         #UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
         EXCLUDE_FROM_ALL
 )
+# Force static build for cpplocate
+set(_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL "${BUILD_SHARED_LIBS}")
+set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(cpplocate)
+# Restore previous BUILD_SHARED_LIBS setting
+if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS_CPPL AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL}" STREQUAL "")
+    set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL}")
+else()
+    unset(BUILD_SHARED_LIBS)
+endif()
 
 FetchContent_Declare(midicci
         NAME            midicci
@@ -51,7 +60,16 @@ FetchContent_Declare(midicci
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
         EXCLUDE_FROM_ALL
 )
+# Ensure we use a static build of midicci regardless of parent defaults
+set(_UAPMD_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
+set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(midicci)
+# Restore previous BUILD_SHARED_LIBS setting
+if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
+    set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS}")
+else()
+    unset(BUILD_SHARED_LIBS)
+endif()
 set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 CPMAddPackage(
