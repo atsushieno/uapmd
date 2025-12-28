@@ -742,10 +742,34 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     std::string pluginFormat = sequencer.getPluginFormat(instanceId);
 
     if (umpDeviceNameBuffers_.find(instanceId) == umpDeviceNameBuffers_.end()) {
+        // Initialize the buffer from device state label if available, otherwise use default
+        std::string initialName;
+
+        bool labelFound = false;
+        auto* deviceController = uapmd::AppModel::instance().deviceController();
+        if (deviceController) {
+            std::lock_guard lock(devicesMutex_);
+            for (auto& entry : devices_) {
+                auto state = entry.state;
+                std::lock_guard guard(state->mutex);
+                if (state->pluginInstances.count(instanceId) > 0) {
+                    if (!state->label.empty()) {
+                        initialName = state->label;
+                        labelFound = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (!labelFound) {
+            initialName = std::format("{} [{}]", pluginName, pluginFormat);
+        }
+
         umpDeviceNameBuffers_[instanceId] = {};
-        std::string defaultName = std::format("{} [{}]", pluginName, pluginFormat);
-        std::strncpy(umpDeviceNameBuffers_[instanceId].data(), defaultName.c_str(),
+        std::strncpy(umpDeviceNameBuffers_[instanceId].data(), initialName.c_str(),
                      umpDeviceNameBuffers_[instanceId].size() - 1);
+        umpDeviceNameBuffers_[instanceId][umpDeviceNameBuffers_[instanceId].size() - 1] = '\0';
     }
 
     bool deviceRunning = false;
@@ -1760,6 +1784,11 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
 
     refreshInstances();
     if (newInstanceId >= 0) {
+        // Ensure the UMP device name buffer reflects the chosen Device Name
+        umpDeviceNameBuffers_[newInstanceId] = {};
+        std::strncpy(umpDeviceNameBuffers_[newInstanceId].data(), state->label.c_str(),
+                     umpDeviceNameBuffers_[newInstanceId].size() - 1);
+        umpDeviceNameBuffers_[newInstanceId][umpDeviceNameBuffers_[newInstanceId].size() - 1] = '\0';
         showDetailsWindow(newInstanceId);
     }
 }
