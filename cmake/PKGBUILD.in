@@ -1,0 +1,24 @@
+# Maintainer: @CPACK_PACKAGE_CONTACT@
+pkgname=uapmd
+pkgver=@UAPMD_VERSION@
+pkgrel=1
+pkgdesc="Universal Audio Plugin MIDI Device tools and libraries"
+arch=('x86_64')
+url='@CPACK_PACKAGE_HOMEPAGE_URL@'
+license=('MIT')
+depends=('glibc')
+makedepends=('cmake' 'ninja' 'pkgconf')
+source=()
+sha256sums=()
+
+build() {
+  cmake -S "$startdir" -B "$srcdir/build" -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build "$srcdir/build"
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install "$srcdir/build"
+}
+

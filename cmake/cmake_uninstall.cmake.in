@@ -1,0 +1,30 @@
+if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/install_manifest.txt")
+    message(FATAL_ERROR "Cannot find install manifest: ${CMAKE_CURRENT_BINARY_DIR}/install_manifest.txt\nRun 'cmake --install <build-dir>' first.")
+endif()
+
+file(READ "${CMAKE_CURRENT_BINARY_DIR}/install_manifest.txt" _manifest)
+string(REPLACE "\n" ";" _files "${_manifest}")
+
+# Remove files in reverse order to better handle nested resources
+list(REVERSE _files)
+
+foreach(_file IN LISTS _files)
+    if("${_file}" STREQUAL "")
+        continue()
+    endif()
+    if(EXISTS "${_file}" OR IS_SYMLINK "${_file}")
+        message(STATUS "Removing: ${_file}")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E remove -f "${_file}"
+            RESULT_VARIABLE _rm_ret
+        )
+        if(NOT _rm_ret EQUAL 0)
+            message(WARNING "Failed to remove: ${_file}")
+        endif()
+    else()
+        message(STATUS "File not found (skipped): ${_file}")
+    endif()
+endforeach()
+
+message(STATUS "Uninstall complete.")
+

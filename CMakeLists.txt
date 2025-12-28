@@ -14,6 +14,10 @@ add_compile_definitions(NOMINMAX)
 endif()
 
 include(cmake/CPM.cmake)
+include(GNUInstallDirs)
+
+# Disable install() rules for third-party dependencies we bring in below
+set(CMAKE_SKIP_INSTALL_RULES ON)
 
 FetchContent_Declare(choc
         NAME            choc
@@ -62,16 +66,88 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 
+# Re-enable install() rules for our own targets
+set(CMAKE_SKIP_INSTALL_RULES OFF)
+
 #add_compile_options("-fsanitize=address")
 #link_libraries("-fsanitize=address")
 #add_link_options(-fPIC)
 
+set(CMAKE_SKIP_INSTALL_RULES ON)
 add_subdirectory(src/remidy)
-
 add_subdirectory(src/remidy-gui)
-
 add_subdirectory(src/remidy-tooling)
-
 add_subdirectory(src/uapmd)
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 add_subdirectory(tools)
+
+# Provide an 'uninstall' target using the install manifest
+if(NOT TARGET uninstall)
+    configure_file(
+            ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in
+            ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
+            IMMEDIATE @ONLY)
+    add_custom_target(uninstall
+            COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
+            COMMENT "Uninstalling files from install manifest")
+endif()
+
+# Install public headers and in-tree libraries only
+install(DIRECTORY include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+install(TARGETS
+        remidy
+        remidy-tooling
+        remidy-gui
+        uapmd
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+# -----------------
+# CPack (Deb/RPM/TXZ)
+# -----------------
+# Version used for packages (override with -DUAPMD_VERSION=...)
+set(UAPMD_VERSION "0.1.0" CACHE STRING "Project version for packaging")
+
+set(CPACK_PACKAGE_NAME "uapmd")
+set(CPACK_PACKAGE_VENDOR "uapmd")
+set(CPACK_PACKAGE_CONTACT "uapmd maintainers")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Universal Audio Plugin MIDI Device tools and libraries")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/atsushieno/uapmd")
+
+# Install under /usr in packages regardless of CMAKE_INSTALL_PREFIX
+set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+
+# Generators: deb, rpm, and a portable txz archive
+set(CPACK_GENERATOR "DEB;RPM;TXZ")
+
+# Debian-specific
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
+set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
+set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+
+# RPM-specific
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
+set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
+
+# Common metadata
+set(CPACK_PACKAGE_VERSION "${UAPMD_VERSION}")
+
+include(CPack)
+
+# -----------------
+# Arch Linux helper
+# -----------------
+set(PACKAGING_ARCH_DIR "${CMAKE_BINARY_DIR}/packaging/arch")
+file(MAKE_DIRECTORY "${PACKAGING_ARCH_DIR}")
+configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PKGBUILD.in
+        ${PACKAGING_ARCH_DIR}/PKGBUILD
+        @ONLY)
+add_custom_target(package-arch
+        COMMAND ${CMAKE_COMMAND} -E echo "PKGBUILD generated at: ${PACKAGING_ARCH_DIR}/PKGBUILD"
+        WORKING_DIRECTORY ${PACKAGING_ARCH_DIR}
+        COMMENT "Generate Arch Linux PKGBUILD (use makepkg to build)")
