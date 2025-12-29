@@ -1,17 +1,40 @@
-# What is this?
+# UAPMD: Ubiquitous Audio Plugin MIDI Device
 
-There are two primary components on this repository:
+UAPMD is an audio plugin host that serves audio plugin instances as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
 
-- `remidy` aims to provide audio plugin hosting features in a cross-platform and multi-format manner in liberal licenses (MIT/BSD). It supports VST3, AudioUnit (on macOS), LV2, and CLAP formats.
-- `uapmd` (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that can instantiate an arbitrary set of plugins and acts as a virtual MIDI 2.0 UMP device on various platforms (multiple tracks do not mean they work in parallel yet).
+- play MIDI 2.0 instruments with 32-bit precision; use Assignable Controllers (NRPNs) to change plugin parameters in 32-bit values (velocity in 16-bit).
+- retrieve parameter list that are mapped to Assignable Controllers and Program List that are mapped to presets that are exposed via the plugin APIs. Thus you don't have to remember which controller index maps to the parameter you want, or which program number maps to the tone you need.
+- save and load the plugin's state.
 
-At user developers perspective, there is one primary GUI tools: `uapmd-app` is a plugin host that you can list the installed plugins, instantiate plugins, process audio with simple UMP keyboard, adjust parameters, launch the GUI, save and restore states. It can also expose those plugins as platform virtual MIDI 2.0 devices (translating UMP inputs into event inputs to those in each plugin API, as well as exposing some plugin features using MIDI-CI property exchange).
+UAPMD targets macOS and Linux desktop. Windows builds are untested, especially support for Windows MIDI Services is not even attempted).
 
-(There used to be two separate apps: `remidy-plugin-host` for plugin hosting and `uapmd-service` for exposing platform virtual MIDI 2.0 devices).
+We support VST3, AudioUnit, LV2, and CLAP plugin formats.
+
+UAPMD is based on its own plugin hosting foundation and released under the MIT license.
+
+## Build or Install
+
+There is an application `uapmd-app` that performs almost all features UAPMD provides.
+
+### packages
+
+`uapmd` offers Linux packages on the release pages and GitHub Actions build artifacts, in `.deb`, `.rpm` and `.tar.xz` (They are based on CPack packaging tasks).
+
+`uapmd` offers Homebrew package as well. You can install it as: `brew install atsushieno/oss/uapmd` then run `/opt/homebrew/bin/uapmd-app` or use those libraries the package offers.
+
+### building from source
+
+This `uapmd` Git repository provides the simple normative `cmake` build:
+
+```
+$ cmake -B build # -G Ninja
+$ cmake --build build
+$ cmake --install build # --prefix=/usr/local
+```
 
 ## Screenshots
 
-I put them on the [wiki](https://github.com/atsushieno/uapmd/wiki) pages.
+I put them on the [wiki](https://github.com/atsushieno/uapmd/wiki) pages (note that other than the latest ones they are more like historical records).
 
 ## What's the point of these tools?
 
@@ -45,7 +68,7 @@ The virtual MIDI 2.0 device service controller. Currently the command line optio
 
 ALL docs under [`docs`](docs) are supposed to describe design investigation and thoughts.
 
-We are moving quick and may not reflect current state of union, or describe our plans correctly.
+We are moving quick and may not reflect the latest state of union, or describe our plans correctly.
 
 There are some notable docs:
 
@@ -57,22 +80,26 @@ There are some notable docs:
 
 ## Code modules
 
+There are two primary libraries in this repository:
+
 ### remidy
 
 `remidy` offers plugin API abstraction layer at lower level that primarily involves application agnostic audio and event processing. Apart from parameter API, it adopts UMP for event inputs, including parameter support via NRPN (AC, Assignable Controller) and Per-Note AC. It is an opinionated layer towards MIDI 2.0 i.e. events are parsed into timed parameter changes and other events on the plugins.
 
 ### remidy-tooling
 
-`remidy-tooling` offers higher level API to build audio plugin hosting tools like plugin scanning and instancing in common manner.
-What this layer introduces in practice is a set of filters e.g. various existing specific plugin products and vendors are filtered at "safe for multithreaded access to the plugin API", "plugin scanning requires UI thread", or "crashes remidy" kind of information.
+`remidy-tooling` offers higher level API to build audio plugin hosting tools like plugin scanning and instancing in the common manner.
+What this layer introduces in practice is a set of filters; various existing specific plugin products and vendors are filtered by "safe for multithreaded access to the plugin API," "plugin scanning requires the UI thread," or "crashes remidy" kind of information.
 
 ### uapmd
 
-`uapmd` provides reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). It serves `AllCtrlList` MIDI-CI standard property for plugin parameters as Assignable Controllers (NRPNs), `ProgramList` MIDI-CI standard property for the indexed presets as Program Change, and saves and loads states in MIDI-CI property manner. It is supposed to manage multiple tracks with multiple plugins [not implemented yet].
+`uapmd` provides reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). It serves `AllCtrlList` MIDI-CI standard property for plugin parameters as Assignable Controllers (NRPNs), `ProgramList` MIDI-CI standard property for the indexed presets as Program Change, and saves and loads states in MIDI-CI property manner.
 
 ### uapmd-app
 
-`uapmd-app` works as a virtual MIDI device service that can receive platform UMP inputs (and most likely MIDI 1.0 inputs, translated, depending on the platform) to control plugins.
+`uapmd-app` is a plugin host that you can list the installed plugins, instantiate plugins, process audio with a UMP keyboard, adjust parameters, select presets, launch the GUI, save, and restore the states. It also exposes those plugins as platform virtual MIDI 2.0 devices, translating UMP inputs into event inputs to those in each plugin API, as well as exposing some plugin features using MIDI-CI property exchange.
+
+It likely works with MIDI 1.0 inputs (translated, depending on the platform) to control plugins.
 
 
 ## License and Dependencies
