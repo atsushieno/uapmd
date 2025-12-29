@@ -159,10 +159,3 @@ jobs:
         prerelease: ${{ github.event.inputs.prerelease }}
         generateReleaseNotes: ${{ github.event.inputs.generate_release_notes }}
         artifacts: build/*.deb,build/*.rpm,build/*.tar.xz
-
-    - name: update Homebrew tap
-      uses: Justintime50/homebrew-releaser@v3
-      with:
-        homebrew_owner: atsushieno
-        homebrew_tap: homebrew-oss
-        github_token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
