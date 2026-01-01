@@ -87,8 +87,10 @@ namespace uapmd {
                 normalized = std::clamp(normalized, 0.0, 1.0);
                 return static_cast<uint32_t>(normalized * static_cast<double>(UINT32_MAX));
             };
-            ctrl.defaultValue = plainToUint32(p.defaultPlainValue);
-            ctrl.minMax = {plainToUint32(p.minPlainValue), plainToUint32(p.maxPlainValue)};
+            if (p.defaultPlainValue != 0.0)
+                ctrl.defaultValue = plainToUint32(p.defaultPlainValue);
+            if (p.minPlainValue != 0.0 || p.maxPlainValue != 1.0)
+                ctrl.minMax = {plainToUint32(p.minPlainValue), plainToUint32(p.maxPlainValue)};
 
             if (!p.namedValues.empty()) {
                 ctrl.ctrlMapId = std::to_string(p.index);
