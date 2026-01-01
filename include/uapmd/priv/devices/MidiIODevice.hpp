@@ -27,7 +27,7 @@ namespace uapmd {
                                                           std::string manufacturer,
                                                           std::string version,
 #if defined(__APPLE__)
-                                                          uint64_t sysExDelayInMicroseconds = 1000
+                                                          uint64_t sysExDelayInMicroseconds = 20
 #else
                                                           uint64_t sysExDelayInMicroseconds = 10000
 #endif
