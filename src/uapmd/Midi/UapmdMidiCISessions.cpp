@@ -91,13 +91,13 @@ namespace uapmd {
             ctrl.minMax = {plainToUint32(p.minPlainValue), plainToUint32(p.maxPlainValue)};
 
             if (!p.namedValues.empty()) {
-                ctrl.ctrlMapId = p.name;
+                ctrl.ctrlMapId = std::to_string(p.index);
 
                 std::vector<MidiCIControlMap> ctrlMapList{};
                 ctrlMapList.reserve(p.namedValues.size());
                 for (auto &m: p.namedValues)
                     ctrlMapList.emplace_back(MidiCIControlMap{plainToUint32(m.value), m.name});
-                StandardPropertiesExtensions::setCtrlMapList(ciDevice, p.name, ctrlMapList);
+                StandardPropertiesExtensions::setCtrlMapList(ciDevice, std::to_string(p.index), ctrlMapList);
             }
             allCtrlList.push_back(ctrl);
         }
