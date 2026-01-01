@@ -26,5 +26,10 @@ namespace uapmd {
                                                           std::string deviceName,
                                                           std::string manufacturer,
                                                           std::string version,
-                                                          uint64_t sysExDelayInMicroseconds = 10000);
+#if defined(__APPLE__)
+                                                          uint64_t sysExDelayInMicroseconds = 1000
+#else
+                                                          uint64_t sysExDelayInMicroseconds = 10000
+#endif
+                                                          );
 }
