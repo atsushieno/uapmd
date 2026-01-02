@@ -106,10 +106,15 @@ void ParameterList::setParameterValueString(size_t index, const std::string& val
 
 void ParameterList::render() {
     static const char* kContextLabels[] = {"Global", "Group", "Channel", "Key"};
+    const ImFont* font = ImGui::GetFont();
+    const float uiScale = font ? std::max(font->Scale, 0.1f) : 1.0f;
+    const float contextColumnWidth = 360.0f * uiScale;
+    const float contextComboWidth = 120.0f * uiScale;
+    const float contextValueWidth = 100.0f * uiScale;
 
     if (ImGui::BeginTable("ParameterContextRow", 2,
                           ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoSavedSettings)) {
-        ImGui::TableSetupColumn("ContextControls", ImGuiTableColumnFlags_WidthFixed, 360.0f);
+        ImGui::TableSetupColumn("ContextControls", ImGuiTableColumnFlags_WidthFixed, contextColumnWidth);
         ImGui::TableSetupColumn("Keyboard", ImGuiTableColumnFlags_WidthStretch, 0.0f);
         ImGui::TableNextRow();
 
@@ -122,7 +127,7 @@ void ParameterList::render() {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Context:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(120.0f);
+        ImGui::SetNextItemWidth(contextComboWidth);
         int contextIndex = static_cast<int>(context_);
         if (ImGui::Combo("##ParameterContext", &contextIndex, kContextLabels,
                          IM_ARRAYSIZE(kContextLabels))) {
@@ -133,7 +138,7 @@ void ParameterList::render() {
         ImGui::SameLine();
         ImGui::TextUnformatted("Value/Key:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(100.0f);
+        ImGui::SetNextItemWidth(contextValueWidth);
         const int contextValueCount = static_cast<int>(contextValueLabels_.size());
         const auto& previewLabel = contextValueLabels_[static_cast<size_t>(contextValue_)];
         if (ImGui::BeginCombo("##ParameterContextValue", previewLabel.c_str())) {
