@@ -32,12 +32,22 @@ namespace remidy {
                 bool isEnum = (info.flags & CLAP_PARAM_IS_ENUM) || (info.flags & CLAP_PARAM_IS_STEPPED);
                 if (isEnum) {
                     char enumLabel[1024];
-                    // CLAP enum parameters must have value_to_text for all values from min to max
-                    for (int i = static_cast<int>(info.min_value); i <= static_cast<int>(info.max_value); i++) {
-                        if (owner->plugin->paramsValueToText(info.id, i, enumLabel, sizeof(enumLabel))) {
-                            std::string enumLabelString{enumLabel};
-                            if (!enumLabelString.empty())
-                                enums.emplace_back(enumLabelString, i);
+                    const double vmin = info.min_value;
+                    const double vmax = info.max_value;
+                    const double span = vmax - vmin;
+                    if (span > 0.0) {
+                        const int probes = 512; // dense enough to capture common step counts
+                        std::string lastLabel;
+                        for (int p = 0; p <= probes; ++p) {
+                            const double t = static_cast<double>(p) / static_cast<double>(probes);
+                            const double val = vmin + span * t;
+                            if (owner->plugin->paramsValueToText(info.id, val, enumLabel, sizeof(enumLabel))) {
+                                std::string lbl{enumLabel};
+                                if (!lbl.empty() && (enums.empty() || lbl != lastLabel)) {
+                                    enums.emplace_back(lbl, val);
+                                    lastLabel = lbl;
+                                }
+                            }
                         }
                     }
                 }
