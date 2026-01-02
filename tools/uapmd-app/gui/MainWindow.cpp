@@ -1287,14 +1287,11 @@ void MainWindow::showDetailsWindow(int32_t instanceId) {
         state.midiKeyboard.setOctaveRange(3, 4);
         state.midiKeyboard.setKeyEventCallback([this, instanceId](int note, int velocity, bool isPressed) {
             auto& seq = uapmd::AppModel::instance().sequencer();
-            // Find the track index for this instance
-            auto trackIdx = seq.findTrackIndexForInstance(instanceId);
-            if (trackIdx >= 0) {
-                if (isPressed) {
-                    seq.sendNoteOn(trackIdx, note);
-                } else {
-                    seq.sendNoteOff(trackIdx, note);
-                }
+            // Route directly to this instance to avoid ambiguity on tracks with multiple plugins
+            if (isPressed) {
+                seq.sendNoteOn(instanceId, note);
+            } else {
+                seq.sendNoteOff(instanceId, note);
             }
         });
 
