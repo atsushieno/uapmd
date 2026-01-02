@@ -171,7 +171,7 @@ configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PKGBUILD.in
         ${PACKAGING_ARCH_DIR}/PKGBUILD
         @ONLY)
-add_custom_target(package-arch
+add_custom_target(package-arch-uapmd
         COMMAND ${CMAKE_COMMAND} -E echo "PKGBUILD generated at: ${PACKAGING_ARCH_DIR}/PKGBUILD"
         WORKING_DIRECTORY ${PACKAGING_ARCH_DIR}
         COMMENT "Generate Arch Linux PKGBUILD (use makepkg to build)")
