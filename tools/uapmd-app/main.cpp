@@ -126,6 +126,8 @@ int runMain(int argc, char** argv) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.IniFilename = nullptr; // disable ImGui's built-in ini persistence
+    ImGui::LoadIniSettingsFromMemory("", 0);
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
