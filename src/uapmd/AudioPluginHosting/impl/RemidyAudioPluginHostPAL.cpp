@@ -68,6 +68,34 @@ namespace uapmd {
             }
             return ret;
         }
+        std::vector<ParameterMetadata> perNoteControllerMetadataList(remidy::PerNoteControllerContextTypes contextType, uint32_t context) override {
+            if (contextType != remidy::PER_NOTE_CONTROLLER_PER_NOTE)
+                return {};
+            std::vector<ParameterMetadata> ret{};
+            auto pl = instance->parameters();
+            for (auto p : pl->perNoteControllers(contextType, { .note = context })) {
+                std::vector<ParameterNamedValue> enums{};
+                for (auto e : p->enums())
+                    enums.emplace_back(ParameterNamedValue{
+                        .value = e.value,
+                        .name = e.label
+                    });
+                ret.emplace_back(ParameterMetadata{
+                        .index = p->index(),
+                        .stableId = p->stableId(),
+                        .name = p->name(),
+                        .path = p->path(),
+                        .defaultPlainValue = p->defaultPlainValue(),
+                        .minPlainValue = p->minPlainValue(),
+                        .maxPlainValue = p->maxPlainValue(),
+                        .automatable = p->automatable(),
+                        .hidden = p->hidden(),
+                        .discrete = p->discrete(),
+                        .namedValues = std::vector(enums)
+                });
+            }
+            return ret;
+        }
         std::vector<uapmd::PresetsMetadata> presetMetadataList() override {
             std::vector<PresetsMetadata> ret{};
             auto pl = instance->presets();

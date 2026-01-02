@@ -10,6 +10,44 @@ namespace uapmd {
             forwarder(reinterpret_cast<uint8_t*>(static_cast<void*>(ump)), 0, sizeInBytes, timestamp);
 
     }
+
+    void setupParameterList(std::string controlType,
+                            std::vector<commonproperties::MidiCIControl>& allCtrlList,
+                            std::vector<uapmd::ParameterMetadata>& parameterList,
+                            MidiCIDevice& ciDevice) {
+        for (auto& p : parameterList) {
+            if (p.hidden || !p.automatable)
+                continue;
+
+            commonproperties::MidiCIControl ctrl{p.name, controlType, "",
+                                                 std::vector<uint8_t>{static_cast<uint8_t>(p.index / 0x80), static_cast<uint8_t>(p.index % 0x80)}};
+            ctrl.paramPath = p.path;
+            const double range = p.maxPlainValue - p.minPlainValue;
+            auto plainToUint32 = [&](double plainValue) -> uint32_t {
+                if (!(range > 0.0))
+                    return 0;
+                double normalized = (plainValue - p.minPlainValue) / range;
+                normalized = std::clamp(normalized, 0.0, 1.0);
+                return static_cast<uint32_t>(normalized * static_cast<double>(UINT32_MAX));
+            };
+            if (p.defaultPlainValue != 0.0)
+                ctrl.defaultValue = plainToUint32(p.defaultPlainValue);
+            if (p.minPlainValue != 0.0 || p.maxPlainValue != 1.0)
+                ctrl.minMax = {plainToUint32(p.minPlainValue), plainToUint32(p.maxPlainValue)};
+
+            if (!p.namedValues.empty()) {
+                ctrl.ctrlMapId = std::to_string(p.index);
+
+                std::vector<MidiCIControlMap> ctrlMapList{};
+                ctrlMapList.reserve(p.namedValues.size());
+                for (auto &m: p.namedValues)
+                    ctrlMapList.emplace_back(MidiCIControlMap{plainToUint32(m.value), m.name});
+                StandardPropertiesExtensions::setCtrlMapList(ciDevice, std::to_string(p.index), ctrlMapList);
+            }
+            allCtrlList.push_back(ctrl);
+        }
+    }
+
     void UapmdMidiCISessions::setupMidiCISession() {
         auto sequencer = device->sequencer;
         auto instance_id = device->instance_id;
@@ -69,40 +107,15 @@ namespace uapmd {
         hostProps.updateCommonRulesDeviceInfo(device_info);
 
         auto* instance = sequencer->getPluginInstance(instance_id);
-        std::vector<uapmd::ParameterMetadata> parameterList = instance->parameterMetadataList();
+
         std::vector<commonproperties::MidiCIControl> allCtrlList{};
-        allCtrlList.reserve(parameterList.size());
-        for (auto& p : parameterList) {
-            if (p.hidden || !p.automatable)
-                continue;
 
-            commonproperties::MidiCIControl ctrl{p.name, MidiCIControlType::NRPN, "",
-                                                 std::vector<uint8_t>{static_cast<uint8_t>(p.index / 0x80), static_cast<uint8_t>(p.index % 0x80)}};
-            ctrl.paramPath = p.path;
-            const double range = p.maxPlainValue - p.minPlainValue;
-            auto plainToUint32 = [&](double plainValue) -> uint32_t {
-                if (!(range > 0.0))
-                    return 0;
-                double normalized = (plainValue - p.minPlainValue) / range;
-                normalized = std::clamp(normalized, 0.0, 1.0);
-                return static_cast<uint32_t>(normalized * static_cast<double>(UINT32_MAX));
-            };
-            if (p.defaultPlainValue != 0.0)
-                ctrl.defaultValue = plainToUint32(p.defaultPlainValue);
-            if (p.minPlainValue != 0.0 || p.maxPlainValue != 1.0)
-                ctrl.minMax = {plainToUint32(p.minPlainValue), plainToUint32(p.maxPlainValue)};
+        auto parameterList = instance->parameterMetadataList();
+        setupParameterList(MidiCIControlType::NRPN, allCtrlList, parameterList, ciDevice);
+        // FIXME: we need some way to indicate the context key (it is impossible so far, by design).
+        auto perNoteControllerList = instance->perNoteControllerMetadataList(remidy::PER_NOTE_CONTROLLER_PER_NOTE, 64);
+        setupParameterList(MidiCIControlType::PNAC, allCtrlList, perNoteControllerList, ciDevice);
 
-            if (!p.namedValues.empty()) {
-                ctrl.ctrlMapId = std::to_string(p.index);
-
-                std::vector<MidiCIControlMap> ctrlMapList{};
-                ctrlMapList.reserve(p.namedValues.size());
-                for (auto &m: p.namedValues)
-                    ctrlMapList.emplace_back(MidiCIControlMap{plainToUint32(m.value), m.name});
-                StandardPropertiesExtensions::setCtrlMapList(ciDevice, std::to_string(p.index), ctrlMapList);
-            }
-            allCtrlList.push_back(ctrl);
-        }
         StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);
 
         std::vector<uapmd::PresetsMetadata> presetsList = instance->presetMetadataList();
