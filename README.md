@@ -1,6 +1,6 @@
 # UAPMD: Ubiquitous Audio Plugin MIDI Device
 
-![UAPMD v0.1 example screenshot](https://private-user-images.githubusercontent.com/53929/530912922-2340bd62-9be0-408b-9c93-a8daeb46b864.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NjcwNzk5MDUsIm5iZiI6MTc2NzA3OTYwNSwicGF0aCI6Ii81MzkyOS81MzA5MTI5MjItMjM0MGJkNjItOWJlMC00MDhiLTljOTMtYThkYWViNDZiODY0LnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTEyMzAlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUxMjMwVDA3MjY0NVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTQwMjFjNDk5NDJkYzdkMjAxMzY4YTQyOTg3NjkzNzE2NGI2NDMyMmRmMjJkYTJkNDk2NzVlNjNlOTI3MWJkZDMmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.Nw-0PjPURNRfURiawfk9pEOO9FiV02nKn-RH_4nJHj4)
+![UAPMD v0.1 example screenshot](docs/images/uapmd-app-v0.1-sshot.png)
 
 UAPMD is an audio plugin host that serves audio plugin instances as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
 
@@ -116,9 +116,9 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [steinbergmedia/vst3sdk](https://github.com/steinbergmedia/vst3sdk) - MIT
 - [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
-- [atsushieno/cmidi2](atsushieno/cmidi2) - MIT
-- [atsushieno/midicci](atsushieno/midicci) - MIT
-  - [zlib-ng/zlib-ng] - Zlib license.
+- [atsushieno/cmidi2](https://github.com/atsushieno/cmidi2) - MIT
+- [atsushieno/midicci](https://github.com/atsushieno/midicci) - MIT
+  - [zlib-ng/zlib-ng](https://github.com/zlib-ng/zlib-ng) - Zlib license.
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)
 - [cginternals/cpplocate](https://github.com/cginternals/cpplocate): the MIT license.
 - [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): the MIT license.
