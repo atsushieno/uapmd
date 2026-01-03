@@ -7,7 +7,7 @@
 namespace remidy {
 
 // Implementation of MIDIEventConverter - converts UMP to AURenderEvent
-AURenderEvent* PluginInstanceAUv3::MIDIEventConverter::convertUMPToRenderEvents(EventSequence& eventIn, AUEventSampleTime baseSampleTime) {
+AURenderEvent* PluginInstanceAUv3::MIDIEventConverter::convertUMPToRenderEvents(EventSequence& eventIn, AUEventSampleTime eventSampleTime) {
     eventCount = 0;
 
     if (eventIn.position() == 0)
@@ -32,7 +32,7 @@ AURenderEvent* PluginInstanceAUv3::MIDIEventConverter::convertUMPToRenderEvents(
         if (messageType == CMIDI2_MESSAGE_TYPE_MIDI_2_CHANNEL) {
             AURenderEvent* evt = &eventStorage[eventCount];
             evt->head.eventType = AURenderEventMIDI;
-            evt->head.eventSampleTime = baseSampleTime;
+            evt->head.eventSampleTime = eventSampleTime;
             evt->MIDI.cable = group;
             evt->MIDI.length = 0;
 
@@ -133,7 +133,7 @@ AURenderEvent* PluginInstanceAUv3::MIDIEventConverter::convertUMPToRenderEvents(
         else if (messageType == CMIDI2_MESSAGE_TYPE_MIDI_1_CHANNEL) {
             AURenderEvent* evt = &eventStorage[eventCount];
             evt->head.eventType = AURenderEventMIDI;
-            evt->head.eventSampleTime = baseSampleTime;
+            evt->head.eventSampleTime = eventSampleTime;
             evt->MIDI.cable = group;
 
             // MIDI 1.0 messages are already in the right format - just copy the bytes

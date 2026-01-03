@@ -3,9 +3,15 @@
 #include "PluginFormatAUv3.hpp"
 #include "AUv2Helper.hpp"
 #include "cmidi2.h"
+#import <CoreMIDI/CoreMIDI.h>
 #include <cmath>
 #include <cstring>
 #include <vector>
+#include <cstdlib>
+
+namespace {
+    constexpr size_t kMidiEventListCapacityBytes = 65536;
+}
 
 remidy::PluginInstanceAUv3::PluginInstanceAUv3(
         PluginFormatAUv3Impl *format,
@@ -19,6 +25,8 @@ remidy::PluginInstanceAUv3::PluginInstanceAUv3(
         setCurrentThreadNameIfPossible("remidy.AUv3.instance." + name);
         audio_buses = new AudioBuses(this);
         midiConverter = new MIDIEventConverter();
+        midi_event_list_capacity = kMidiEventListCapacityBytes;
+        midi_event_list = static_cast<MIDIEventList*>(std::calloc(1, midi_event_list_capacity));
         initializeHostCallbacks();
     }
 }
@@ -44,6 +52,11 @@ remidy::PluginInstanceAUv3::~PluginInstanceAUv3() {
         delete _states;
         delete _presets;
         delete _ui;
+        if (midi_event_list) {
+            std::free(midi_event_list);
+            midi_event_list = nullptr;
+            midi_event_list_capacity = 0;
+        }
     }
 }
 
@@ -191,7 +204,6 @@ remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &proc
 
         host_transport_info.isPlaying = masterContext.isPlaying();
         host_transport_info.transportStateChanged = false;
-        host_transport_info.currentSample = static_cast<double>(masterContext.playbackPositionSamples());
         host_transport_info.sampleRate = masterContext.sampleRate();
         // NOTE: The following fields are available but not yet populated from MasterContext:
         // - timeSigNumerator, timeSigDenominator (currently using defaults: 4/4)
@@ -203,7 +215,7 @@ remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &proc
         host_transport_info.currentTempo = tempoBPM;
 
         if (host_transport_info.currentTempo > 0.0 && host_transport_info.sampleRate > 0.0) {
-            double seconds = static_cast<double>(masterContext.playbackPositionSamples()) / host_transport_info.sampleRate;
+            double seconds = host_transport_info.currentSample / host_transport_info.sampleRate;
             host_transport_info.currentBeat = seconds * (host_transport_info.currentTempo / 60.0);
         } else {
             host_transport_info.currentBeat = 0.0;
@@ -274,24 +286,91 @@ remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &proc
         timestamp.mHostTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
         timestamp.mFlags = kAudioTimeStampSampleTimeValid | kAudioTimeStampHostTimeValid;
 
-        // Schedule MIDI events before rendering
-        // NOTE: some non-trivial replacement during AUv2->AUv3 migration
-        // AUv3 uses scheduleMIDIEventBlock, AUv2 used MusicDeviceMIDIEventList
-        if (midiConverter && process.eventIn().position() > 0) {
-            AURenderEvent* midiEvents = midiConverter->convertUMPToRenderEvents(process.eventIn(), 0);
+        AUEventSampleTime eventSampleTime = static_cast<AUEventSampleTime>(timestamp.mSampleTime);
+        size_t eventBytes = process.eventIn().position();
+        bool midiEventsScheduled = false;
+        bool hasMidiBlock = audioUnit.scheduleMIDIEventBlock != nil;
+        bool hasMidiListBlock = false;
+        if (@available(macOS 12.0, *)) {
+            hasMidiListBlock = audioUnit.scheduleMIDIEventListBlock != nil;
+        }
 
-            // Schedule MIDI events via the scheduleMIDIEventBlock
-            if (midiEvents && audioUnit.scheduleMIDIEventBlock) {
-                AURenderEvent* evt = midiEvents;
-                while (evt != nullptr) {
-                    if (evt->head.eventType == AURenderEventMIDI) {
-                        audioUnit.scheduleMIDIEventBlock(evt->head.eventSampleTime,
-                                                        evt->MIDI.cable,
-                                                        evt->MIDI.length,
-                                                        evt->MIDI.data);
+        if (eventBytes > 0) {
+            if (@available(macOS 12.0, *)) {
+                AUMIDIEventListBlock midiListBlock = audioUnit.scheduleMIDIEventListBlock;
+                if (midiListBlock && midi_event_list && midi_event_list_capacity >= sizeof(MIDIEventList)) {
+                    MIDIEventPacket* packet = MIDIEventListInit(midi_event_list, kMIDIProtocol_1_0);
+                    bool buildSucceeded = packet != nullptr;
+
+                    if (buildSucceeded) {
+                        const uint8_t* umpData = static_cast<const uint8_t*>(process.eventIn().getMessages());
+                        bool unsupportedMessage = false;
+                        CMIDI2_UMP_SEQUENCE_FOREACH(umpData, eventBytes, iter) {
+                            auto* words = reinterpret_cast<const UInt32*>(iter);
+                            auto* ump = reinterpret_cast<cmidi2_ump*>(const_cast<uint8_t*>(iter));
+                            if (cmidi2_ump_get_message_type(ump) != CMIDI2_MESSAGE_TYPE_MIDI_1_CHANNEL) {
+                                unsupportedMessage = true;
+                                break;
+                            }
+                            ByteCount wordCount = static_cast<ByteCount>(cmidi2_ump_get_message_size_bytes(ump) / sizeof(uint32_t));
+                            packet = MIDIEventListAdd(midi_event_list,
+                                                      midi_event_list_capacity,
+                                                      packet,
+                                                      0,
+                                                      wordCount,
+                                                      words);
+                            if (packet == nullptr) {
+                                buildSucceeded = false;
+                                logger()->logError("%s: MIDIEventListAdd failed - buffer too small", name.c_str());
+                                break;
+                            }
+                        }
+                        if (unsupportedMessage) {
+                            buildSucceeded = false;
+                        }
                     }
-                    evt = evt->head.next;
+
+                    if (buildSucceeded) {
+                        OSStatus midiStatus = midiListBlock(eventSampleTime, 0, midi_event_list);
+                        if (midiStatus != noErr) {
+                            logger()->logError("%s: scheduleMIDIEventListBlock failed with status %d",
+                                               name.c_str(),
+                                               midiStatus);
+                        } else {
+                            midiEventsScheduled = true;
+                        }
+                    }
+                } else if (!midiEventsScheduled && midi_event_list && midi_event_list_capacity < sizeof(MIDIEventList)) {
+                    logger()->logWarning("%s: MIDI event list buffer too small (%zu bytes)",
+                                         name.c_str(),
+                                         midi_event_list_capacity);
                 }
+            }
+
+            if (!midiEventsScheduled && midiConverter && audioUnit.scheduleMIDIEventBlock) {
+                AURenderEvent* midiEvents = midiConverter->convertUMPToRenderEvents(process.eventIn(), eventSampleTime);
+
+                if (midiEvents) {
+                    AURenderEvent* evt = midiEvents;
+                    while (evt != nullptr) {
+                        if (evt->head.eventType == AURenderEventMIDI) {
+                            audioUnit.scheduleMIDIEventBlock(evt->head.eventSampleTime,
+                                                             evt->MIDI.cable,
+                                                             evt->MIDI.length,
+                                                             evt->MIDI.data);
+                        }
+                        evt = evt->head.next;
+                    }
+                    midiEventsScheduled = true;
+                }
+            }
+
+            if (!midiEventsScheduled) {
+                logger()->logWarning("%s: Dropped %zu MIDI bytes (listBlock=%s, midiBlock=%s)",
+                                     name.c_str(),
+                                     eventBytes,
+                                     hasMidiListBlock ? "yes" : "no",
+                                     hasMidiBlock ? "yes" : "no");
             }
         }
 

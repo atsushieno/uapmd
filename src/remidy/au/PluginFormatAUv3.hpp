@@ -11,6 +11,8 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import <AVFoundation/AVFoundation.h>
 
+struct MIDIEventList;
+
 namespace remidy {
     class PluginFormatAUv3Impl;
 
@@ -51,7 +53,7 @@ namespace remidy {
 
             // Convert UMP events from EventSequence to AURenderEvent linked list
             // Returns pointer to first event, or nullptr if no events
-            AURenderEvent* convertUMPToRenderEvents(EventSequence& eventIn, AUEventSampleTime baseSampleTime);
+            AURenderEvent* convertUMPToRenderEvents(EventSequence& eventIn, AUEventSampleTime eventSampleTime);
         };
 
         class ParameterSupport : public PluginParameterSupport {
@@ -185,6 +187,8 @@ namespace remidy {
         // Temporary buffer for MIDI output events during processing (as uint32_t words)
         std::vector<uint32_t> midi_output_buffer{};
         size_t midi_output_count{0};
+        MIDIEventList* midi_event_list{nullptr};
+        size_t midi_event_list_capacity{0};
 
     protected:
         PluginFormatAUv3Impl *format;
