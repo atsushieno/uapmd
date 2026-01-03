@@ -13,7 +13,8 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
     lv2 = remidy::PluginFormatLV2::create(lv2SearchPaths);
     clap = remidy::PluginFormatCLAP::create(clapSearchPaths);
 #if __APPLE__
-    au = remidy::PluginFormatAU::create();
+    //au = remidy::PluginFormatAU::create();
+    au = remidy::PluginFormatAUv3::create();
 #endif
     formats_ = {
         clap.get(),

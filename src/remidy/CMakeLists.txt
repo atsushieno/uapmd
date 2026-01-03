@@ -102,6 +102,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
         "-framework CoreFoundation"
         "-framework CoreAudio"
         "-framework Foundation"
+        "-framework AVFoundation"
     )
 endif ()
 
@@ -138,6 +139,14 @@ if (APPLE)
             au/PluginInstanceAU.Presets.mm
             au/PluginInstanceAU.States.mm
             au/PluginInstanceAU.UI.mm
+            au/PluginFormatAUv3.mm
+            au/PluginInstanceAUv3.mm
+            au/PluginInstanceAUv3.Buses.mm
+            au/PluginInstanceAUv3.Events.mm
+            au/PluginInstanceAUv3.Parameters.mm
+            au/PluginInstanceAUv3.States.mm
+            au/PluginInstanceAUv3.Presets.mm
+            au/PluginInstanceAUv3.UI.mm
     )
 endif ()
 
