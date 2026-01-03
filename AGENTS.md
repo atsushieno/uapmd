@@ -1,18 +1,8 @@
-# Repository Guidelines
+# Coding Guidelines for AI agents
 
-## Project Structure & Module Organization
+## Primary development documentation
 
-- `include/`: the library public API (`include/<module>`)
-  - They are split under `include/<module>/priv` (direct references to those files may break at any version)
-- `src/`: the library sources.
-  - `src/remidy/`: plugin API abstraction (VST3/AU/LV2/CLAP backends).
-  - `src/remidy-tooling/`: commonized scanning/instancing utilities.
-  - `src/uapmd/`: virtual MIDI 2.0 device foundation (AudioBackend, AudioPluginHosting, Sequencer).
-- `tools/`: tools
-  - `uapmd-app`: an example plugin host that also serves virtual UMP devices
-  - `remidy-scan`: standalone plugin scanner
-- `external/`: Third‑party dependencies (submodules/FetchContent).
-- `cmake/`: CMake build helpers
+You have to follow our [Developers Guide](docs/DEVELOPERS.md) that is written for human beings.
 
 ## Build, Test, and Development Commands
 
@@ -50,10 +40,9 @@
   - If drafted: keep concise, imperative mood (e.g., "Fix VST3 parameter mapping"). Group related changes; avoid noisy reformatting.
 - PRs: PRs are only made, updated, and resolved only by humans.
   - If drafted: include a clear summary, reproduction steps, platform notes (Linux/macOS/Windows), and linked issues. Ensure `cmake --build cmake-build-debug` succeeds on all OSes.
-- Keep changes modular: headers in `include/`, sources in `src/`, tools in `tools/`, and update `CMakeLists.txt` as needed.
+- Keep changes modular: public API headers in `include/`, library sources and non-public headers in `src/`, tools sources in `tools/`, and update `CMakeLists.txt` as needed.
 
 ## Security & Configuration Tips
 
 - Plugin scanning/hosting loads third‑party code. Test new plugins in a clean environment. Do not commit proprietary SDKs or local plugin paths.
-- Supported formats: VST3, AU (macOS), LV2, CLAP. Some backends require platform packages (see CI for hints).
-
+- Supported formats: VST3, AU (macOS), LV2, CLAP.

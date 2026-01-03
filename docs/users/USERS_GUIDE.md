@@ -26,6 +26,8 @@ Select a plugin and "Create UMP Device". It will add a new audio track:
 
 ![uampd-app after adding a plugin track](../images/adlplug-ae-on-uapmd-service.png)
 
+At this state, you can open the plugin GUI ("Show UI") to select presets, configure parameters, and/or whatever operations like you can do on a DAW.
+
 ## Step 3: Connect your app as a client
 
 Those devices show up if your platform supports virtual MIDI 2.0 devices:
@@ -47,7 +49,7 @@ Now you can play your audio plugin as a MIDI device.
 
 (Note that VMPK is a MIDI 1.0 application that does not find UMP devices on Linux.)
 
-If you want to try UMP keyboard on Linux, you can try my `midicci-keyboard` app from [atsushieno/midicci](https://github.com/atsushieno/midicci/) GitHub repo (note that you'll have to build it from source).
+If you want to try UMP keyboard on Linux, you can try my `midicci-app` app from [atsushieno/midicci](https://github.com/atsushieno/midicci/) GitHub repo. They have Linux packages and Homebrew setup.
 
 It can retrieve parameters metadata and presets from the UMP device too, but is a bit complicated to use though; select both input and output device (from the same plugin), "Start MIDI-CI Session" and "Refresh" All Control and/or Programs.
 
@@ -55,4 +57,4 @@ IF everything works well, you'll see like this:
 
 ![Dexed on midicci-keyboard](../images/dexed-on-midicci.png)
 
-Note that changing parameter values and selecting presets are very unlikely to work fine yet.
+Note that changing parameter values often does not work fine yet.
