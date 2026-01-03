@@ -128,7 +128,7 @@ install(TARGETS
 # CPack (Deb/RPM/TXZ)
 # -----------------
 # Version used for packages (override with -DUAPMD_VERSION=...)
-set(UAPMD_VERSION "0.1.1" CACHE STRING "Project version for packaging")
+set(UAPMD_VERSION "0.1.2" CACHE STRING "Project version for packaging")
 
 set(CPACK_PACKAGE_NAME "uapmd")
 set(CPACK_PACKAGE_VENDOR "uapmd")
