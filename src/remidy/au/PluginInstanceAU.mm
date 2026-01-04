@@ -363,11 +363,13 @@ remidy::StatusCode remidy::PluginInstanceAUv2::sampleRate(double sampleRate) {
 
 // AudioPluginInstanceAUv3
 
+#if REMIDY_LEGACY_AUV3
 remidy::StatusCode remidy::PluginInstanceAUv3::sampleRate(double sampleRate) {
     // FIXME: implement
     logger()->logWarning("AudioPluginInstanceAUv3::sampleRate() not implemented");
     return StatusCode::OK;
 }
+#endif
 
 OSStatus remidy::PluginInstanceAU::hostCallbackGetBeatAndTempo(void* inHostUserData, Float64* outCurrentBeat, Float64* outCurrentTempo) {
     auto* instance = static_cast<PluginInstanceAU*>(inHostUserData);

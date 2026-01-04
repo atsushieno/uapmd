@@ -100,6 +100,7 @@ void remidy::PluginFormatAUImpl::createInstance(
             // FIXME: how should we acquire logger instance?
             auto logger = Logger::global();
 
+#if REMIDY_LEGACY_AUV3
             if (v3) {
                 auto au = std::make_unique<PluginInstanceAUv3>(this, options, logger, info, component, instance);
                 cb(std::move(au), "");
@@ -107,6 +108,10 @@ void remidy::PluginFormatAUImpl::createInstance(
                 auto au = std::make_unique<PluginInstanceAUv2>(this, options, logger, info, component, instance);
                 cb(std::move(au), "");
             }
+#else
+            auto au = std::make_unique<PluginInstanceAUv2>(this, options, logger, info, component, instance);
+            cb(std::move(au), "");
+#endif
         }
         else
           cb(nullptr, std::format("Failed to instantiate AudioUnit {}", info->displayName()));

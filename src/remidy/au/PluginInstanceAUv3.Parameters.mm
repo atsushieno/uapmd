@@ -23,6 +23,40 @@ static std::string keyPathToGroupPath(NSString* keyPath) {
 
 }
 
+static void* kAUParameterKVOContext = &kAUParameterKVOContext;
+
+static NSArray<NSString*>* parameterObservationKeyPaths() {
+    static NSArray<NSString*>* keyPaths = nil;
+    if (!keyPaths) {
+        keyPaths = [[NSArray alloc] initWithObjects:@"allParameterValues",
+                                                     @"currentPreset",
+                                                     nil];
+    }
+    return keyPaths;
+}
+
+@interface AUParameterChangeObserver : NSObject {
+@public
+    remidy::PluginInstanceAUv3::ParameterSupport* support;
+}
+@end
+
+@implementation AUParameterChangeObserver
+
+- (void)observeValueForKeyPath:(NSString*)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary<NSKeyValueChangeKey, id>*)change
+                       context:(void*)context {
+    if (context == kAUParameterKVOContext) {
+        if (support)
+            support->handleParameterSetChange();
+    } else {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+    }
+}
+
+@end
+
 remidy::PluginInstanceAUv3::ParameterSupport::ParameterSupport(remidy::PluginInstanceAUv3 *owner)
         : owner(owner) {
     auto impl = [&] {
@@ -97,6 +131,8 @@ remidy::PluginInstanceAUv3::ParameterSupport::ParameterSupport(remidy::PluginIns
                 );
                 parameter_list.emplace_back(p);
             }
+
+            v2AudioUnit = owner->bridgedAudioUnit;
         }
     };
 
@@ -106,9 +142,13 @@ remidy::PluginInstanceAUv3::ParameterSupport::ParameterSupport(remidy::PluginIns
         impl();
 
     installParameterObserver();
+    installParameterChangeObserver();
+    installV2PresetListener();
 }
 
 remidy::PluginInstanceAUv3::ParameterSupport::~ParameterSupport() {
+    uninstallV2PresetListener();
+    uninstallParameterChangeObserver();
     uninstallParameterObserver();
     for (auto* param : parameter_list) {
         delete param;
@@ -267,6 +307,116 @@ void remidy::PluginInstanceAUv3::ParameterSupport::installParameterObserver() {
 
         // Store the token - no need for bridge casts in non-ARC
         parameterObserverToken = token;
+    }
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::installParameterChangeObserver() {
+    @autoreleasepool {
+        if (parameterChangeObserver != nullptr)
+            return;
+
+        if (owner->audioUnit == nil)
+            return;
+
+        auto observer = [[AUParameterChangeObserver alloc] init];
+        observer->support = this;
+        for (NSString* keyPath in parameterObservationKeyPaths()) {
+            [owner->audioUnit addObserver:observer
+                               forKeyPath:keyPath
+                                  options:NSKeyValueObservingOptionNew
+                                  context:kAUParameterKVOContext];
+        }
+        parameterChangeObserver = observer;
+    }
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::uninstallParameterChangeObserver() {
+    @autoreleasepool {
+        if (parameterChangeObserver == nullptr)
+            return;
+
+        auto observer = static_cast<AUParameterChangeObserver*>(parameterChangeObserver);
+        if (owner->audioUnit != nil) {
+            for (NSString* keyPath in parameterObservationKeyPaths()) {
+                @try {
+                    [owner->audioUnit removeObserver:observer forKeyPath:keyPath];
+                } @catch(NSException* exception) {
+                    (void)exception;
+                }
+            }
+        }
+        [observer release];
+        parameterChangeObserver = nullptr;
+    }
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::handleParameterSetChange() {
+    refreshAllParameterMetadata();
+    broadcastAllParameterValues();
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::broadcastAllParameterValues() {
+    for (size_t i = 0; i < parameter_list.size(); ++i) {
+        double currentValue = 0.0;
+        if (getParameter(static_cast<uint32_t>(i), &currentValue) == StatusCode::OK)
+            notifyParameterChangeListeners(static_cast<uint32_t>(i), currentValue);
+    }
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::installV2PresetListener() {
+    if (v2AudioUnit == nullptr || v2PresetListener)
+        return;
+
+    if (AUEventListenerCreate(v2PresetEventCallback, this, CFRunLoopGetMain(), kCFRunLoopDefaultMode, 0.1f, 0.1f, &v2PresetListener) != noErr)
+        v2PresetListener = nullptr;
+
+    if (!v2PresetListener)
+        return;
+
+    AudioUnitEvent presetEvent{};
+    presetEvent.mEventType = kAudioUnitEvent_PropertyChange;
+    presetEvent.mArgument.mProperty.mAudioUnit = v2AudioUnit;
+    presetEvent.mArgument.mProperty.mScope = kAudioUnitScope_Global;
+    presetEvent.mArgument.mProperty.mElement = 0;
+    presetEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_PresentPreset;
+    AUEventListenerAddEventType(v2PresetListener, this, &presetEvent);
+
+    AudioUnitEvent classInfoEvent{};
+    classInfoEvent.mEventType = kAudioUnitEvent_PropertyChange;
+    classInfoEvent.mArgument.mProperty.mAudioUnit = v2AudioUnit;
+    classInfoEvent.mArgument.mProperty.mScope = kAudioUnitScope_Global;
+    classInfoEvent.mArgument.mProperty.mElement = 0;
+    classInfoEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_ClassInfo;
+    AUEventListenerAddEventType(v2PresetListener, this, &classInfoEvent);
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::uninstallV2PresetListener() {
+    if (!v2PresetListener)
+        return;
+
+    AUListenerDispose(v2PresetListener);
+    v2PresetListener = nullptr;
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::v2PresetEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value) {
+    (void)object;
+    (void)hostTime;
+    (void)value;
+
+    if (!event || event->mEventType != kAudioUnitEvent_PropertyChange)
+        return;
+
+    auto* support = static_cast<ParameterSupport*>(refCon);
+    if (!support)
+        return;
+
+    switch (event->mArgument.mProperty.mPropertyID) {
+        case kAudioUnitProperty_PresentPreset:
+        case kAudioUnitProperty_ClassInfo:
+            support->handleParameterSetChange();
+            break;
+        default:
+            break;
     }
 }
 

@@ -3,6 +3,7 @@
 #include "PluginFormatAUv3.hpp"
 #include "AUv2Helper.hpp"
 #include "cmidi2.h"
+#import <AudioToolbox/AUAudioUnitImplementation.h>
 #import <CoreMIDI/CoreMIDI.h>
 #include <cmath>
 #include <cstring>
@@ -23,6 +24,12 @@ remidy::PluginInstanceAUv3::PluginInstanceAUv3(
     @autoreleasepool {
         name = std::string([[audioUnit componentName] UTF8String]);
         setCurrentThreadNameIfPossible("remidy.AUv3.instance." + name);
+        if (@available(macOS 11.0, *)) {
+            if ([audioUnit isKindOfClass:[AUAudioUnitV2Bridge class]]) {
+                auto bridge = static_cast<AUAudioUnitV2Bridge*>(audioUnit);
+                bridgedAudioUnit = bridge.audioUnit;
+            }
+        }
         audio_buses = new AudioBuses(this);
         midiConverter = new MIDIEventConverter();
         midi_event_list_capacity = kMidiEventListCapacityBytes;

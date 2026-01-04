@@ -56,11 +56,15 @@ namespace remidy {
             AURenderEvent* convertUMPToRenderEvents(EventSequence& eventIn, AUEventSampleTime eventSampleTime);
         };
 
+    public:
         class ParameterSupport : public PluginParameterSupport {
             remidy::PluginInstanceAUv3 *owner;
             std::vector<PluginParameter*> parameter_list{};
             std::vector<AUParameterAddress> parameter_addresses{};
             AUParameterObserverToken parameterObserverToken{nil};
+            void* parameterChangeObserver{nullptr};
+            AudioUnit v2AudioUnit{nullptr};
+            AUEventListenerRef v2PresetListener{nullptr};
 
         public:
             explicit ParameterSupport(PluginInstanceAUv3* owner);
@@ -76,12 +80,20 @@ namespace remidy {
             std::string valueToString(uint32_t index, double value) override;
             std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override;
             void refreshParameterMetadata(uint32_t index) override;
+            void handleParameterSetChange();
             void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
         private:
             void installParameterObserver();
             void uninstallParameterObserver();
+            void installParameterChangeObserver();
+            void uninstallParameterChangeObserver();
+            void broadcastAllParameterValues();
+            void installV2PresetListener();
+            void uninstallV2PresetListener();
+            static void v2PresetEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value);
         };
 
+    private:
         class AudioBuses : public GenericAudioBuses {
             PluginInstanceAUv3* owner;
 
@@ -183,6 +195,7 @@ namespace remidy {
 
         // MIDI event converter - converts UMP to AURenderEvent
         MIDIEventConverter* midiConverter{nullptr};
+        AudioUnit bridgedAudioUnit{nullptr};
 
         // Temporary buffer for MIDI output events during processing (as uint32_t words)
         std::vector<uint32_t> midi_output_buffer{};

@@ -2,11 +2,54 @@
 
 #include <format>
 #include "PluginFormatAUv3.hpp"
+#include "remidy/priv/plugin-format-au.hpp"
 #include "AUv2Helper.hpp"
 
 std::unique_ptr<remidy::PluginFormatAUv3> remidy::PluginFormatAUv3::create() {
     return std::make_unique<remidy::PluginFormatAUv3Impl>();
 }
+
+namespace {
+
+std::string trimWhitespaceCopy(const std::string& value) {
+    auto first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+        return {};
+    auto last = value.find_last_not_of(" \t\r\n");
+    return value.substr(first, last - first + 1);
+}
+
+std::string deriveVendorFromComponent(AudioComponent component) {
+    CFStringRef nameCF = nullptr;
+    if (AudioComponentCopyName(component, &nameCF) != noErr || nameCF == nullptr)
+        return {};
+
+    std::string componentName = cfStringToString(nameCF);
+    CFRelease(nameCF);
+
+    auto colonPos = componentName.find(':');
+    if (colonPos == std::string::npos)
+        return {};
+
+    return trimWhitespaceCopy(componentName.substr(0, colonPos));
+}
+
+std::string manufacturerCodeToString(UInt32 code) {
+    char buffer[5];
+    buffer[0] = static_cast<char>((code >> 24) & 0xFF);
+    buffer[1] = static_cast<char>((code >> 16) & 0xFF);
+    buffer[2] = static_cast<char>((code >> 8) & 0xFF);
+    buffer[3] = static_cast<char>(code & 0xFF);
+    buffer[4] = '\0';
+
+    auto trimmed = trimWhitespaceCopy(std::string(buffer, 4));
+    if (!trimmed.empty())
+        return trimmed;
+
+    return std::format("{:08X}", code);
+}
+
+} // namespace
 
 struct AUPluginEntry {
     AudioComponent component;
@@ -70,14 +113,20 @@ std::vector<AUPluginEntry> scanAllAvailableAUPluginsV3() {
 
 std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::PluginScannerAUv3::scanAllAvailablePlugins() {
     std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
+    auto plugins = scanAllAvailableAUPluginsV3();
+    ret.reserve(plugins.size());
 
-    for (auto& plugin : scanAllAvailableAUPluginsV3()) {
+    for (auto& plugin : plugins) {
         auto entry = std::make_unique<PluginCatalogEntry>();
         static std::string format{"AU"};
         entry->format(format);
         entry->pluginId(plugin.id);
         entry->displayName(plugin.name);
-        entry->vendorName(plugin.vendor);
+        auto vendor = deriveVendorFromComponent(plugin.component);
+        if (vendor.empty())
+            vendor = manufacturerCodeToString(plugin.desc.componentManufacturer);
+        if (!vendor.empty())
+            entry->vendorName(vendor);
         // Store whether it's native v3 or v2-wrapped in metadata if needed
         // For now, we handle both through AUAudioUnit API
 
@@ -105,6 +154,16 @@ void remidy::PluginFormatAUv3Impl::createInstance(
         auto status = AudioComponentGetDescription(component, &desc);
         if (status) {
             callback(nullptr, "Failed to get AudioUnit component description");
+            return;
+        }
+
+        if ((desc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) == 0) {
+            static std::unique_ptr<PluginFormatAU> fallbackFormat = PluginFormatAU::create();
+            if (!fallbackFormat) {
+                callback(nullptr, "Failed to initialize AUv2 fallback host");
+                return;
+            }
+            fallbackFormat->createInstance(info, options, std::move(callback));
             return;
         }
 

@@ -279,6 +279,7 @@ namespace remidy {
         StatusCode sampleRate(double sampleRate) override;
     };
 
+#if REMIDY_LEGACY_AUV3
     class PluginInstanceAUv3 final : public PluginInstanceAU {
     public:
         PluginInstanceAUv3(PluginFormatAUImpl* format, PluginFormat::PluginInstantiationOptions options,
@@ -292,4 +293,5 @@ namespace remidy {
 
         StatusCode sampleRate(double sampleRate) override;
     };
+#endif
 }
