@@ -12,36 +12,11 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 namespace remidy {
-    class PluginFormatAUImpl;
 
-    class PluginScannerAU : public PluginScanning {
-        ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
-        ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
-    };
-
-    class PluginFormatAUImpl : public PluginFormatAU {
-        Logger* logger;
-        PluginFormatAU::Extensibility extensibility;
-        PluginScannerAU scanning_{};
-    public:
-        explicit PluginFormatAUImpl() : logger(Logger::global()), extensibility(*this) {}
-        ~PluginFormatAUImpl() override = default;
-
-        PluginExtensibility<PluginFormat>* getExtensibility() override { return &extensibility; }
-        PluginScanning* scanning() override { return &scanning_; }
-
-        void createInstance(PluginCatalogEntry* info,
-                            PluginInstantiationOptions options,
-                            std::function<void(std::unique_ptr<PluginInstance> instance, std::string error)> callback) override;
-
-        Logger* getLogger() { return logger; }
-    };
-
-    class PluginInstanceAU : public PluginInstance {
+    class PluginInstanceAUv2 : public PluginInstance {
 
         class ParameterSupport : public PluginParameterSupport {
-            remidy::PluginInstanceAU *owner;
+            remidy::PluginInstanceAUv2 *owner;
             AudioUnitParameterID* au_param_id_list{nullptr};
             UInt32 au_param_id_list_size{0};
             std::vector<PluginParameter*> parameter_list{};
@@ -50,7 +25,7 @@ namespace remidy {
             std::unordered_map<AudioUnitParameterID, uint32_t> parameter_id_to_index{};
 
         public:
-            explicit ParameterSupport(PluginInstanceAU* owner);
+            explicit ParameterSupport(PluginInstanceAUv2* owner);
             ~ParameterSupport() override;
 
             std::vector<PluginParameter*>& parameters() override;
@@ -75,20 +50,20 @@ namespace remidy {
         };
 
         class AUUmpInputDispatcher : UmpInputDispatcher {
-            remidy::PluginInstanceAU *owner;
+            remidy::PluginInstanceAUv2 *owner;
             MIDIEventList* ump_event_list{};
         public:
-            explicit AUUmpInputDispatcher(remidy::PluginInstanceAU *owner);
+            explicit AUUmpInputDispatcher(remidy::PluginInstanceAUv2 *owner);
             ~AUUmpInputDispatcher() override;
 
             void process(uint64_t timestamp, remidy::AudioProcessContext &src) override;
         };
 
         class AudioBuses : public GenericAudioBuses {
-            PluginInstanceAU* owner;
+            PluginInstanceAUv2* owner;
 
         public:
-            explicit AudioBuses(PluginInstanceAU* owner) : owner(owner) {
+            explicit AudioBuses(PluginInstanceAUv2* owner) : owner(owner) {
                 inspectBuses();
             }
 
@@ -98,21 +73,21 @@ namespace remidy {
         };
 
         class PluginStatesAU : public PluginStateSupport {
-            PluginInstanceAU* owner;
+            PluginInstanceAUv2* owner;
 
         public:
-            explicit PluginStatesAU(PluginInstanceAU* owner) : owner(owner) {}
+            explicit PluginStatesAU(PluginInstanceAUv2* owner) : owner(owner) {}
 
             std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override;
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 
         class PresetsSupport : public PluginPresetsSupport {
-            PluginInstanceAU *owner;
+            PluginInstanceAUv2 *owner;
             std::vector<PresetInfo> items{};
 
         public:
-            explicit PresetsSupport(PluginInstanceAU* owner);
+            explicit PresetsSupport(PluginInstanceAUv2* owner);
             ~PresetsSupport() override = default;
 
             bool isIndexStable() override { return false; }
@@ -125,7 +100,7 @@ namespace remidy {
 
         class UISupport : public PluginUISupport {
         public:
-            explicit UISupport(PluginInstanceAU* owner);
+            explicit UISupport(PluginInstanceAUv2* owner);
             ~UISupport() override = default;
             bool hasUI() override;
             bool create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) override;
@@ -139,7 +114,7 @@ namespace remidy {
             bool suggestSize(uint32_t &width, uint32_t &height) override;
             bool setScale(double scale) override;
         private:
-            PluginInstanceAU* owner;
+            PluginInstanceAUv2* owner;
             void* ns_view{nullptr};            // NSView*
             void* ns_window{nullptr};          // NSWindow* - only for floating windows
             void* ns_bundle{nullptr};          // NSBundle* - for AUv2 cleanup
@@ -182,11 +157,11 @@ namespace remidy {
 
         OSStatus audioInputRenderCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
         static OSStatus audioInputRenderCallback(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData) {
-            return ((PluginInstanceAU *)inRefCon)->audioInputRenderCallback(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, ioData);
+            return ((PluginInstanceAUv2 *)inRefCon)->audioInputRenderCallback(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, ioData);
         }
         OSStatus midiOutputCallback(const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist);
         static OSStatus midiOutputCallback(void *userData, const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist) {
-            return ((remidy::PluginInstanceAU*) userData)->midiOutputCallback(timeStamp, midiOutNum, pktlist);
+            return ((remidy::PluginInstanceAUv2*) userData)->midiOutputCallback(timeStamp, midiOutNum, pktlist);
         }
 
         std::vector<::AudioBufferList*> auDataIns{};
@@ -209,18 +184,17 @@ namespace remidy {
         std::vector<uint32_t> midi_output_buffer{};
         size_t midi_output_count{0};
 
-    protected:
-        PluginFormatAUImpl *format;
+        PluginFormatAUv3 *format;
         PluginFormat::PluginInstantiationOptions options;
         Logger* logger_;
         AudioComponent component;
         AudioUnit instance;
         std::string name{};
 
-        PluginInstanceAU(PluginFormatAUImpl* format, PluginFormat::PluginInstantiationOptions options, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
-        ~PluginInstanceAU() override;
-
     public:
+        PluginInstanceAUv2(PluginFormatAUv3* format, PluginFormat::PluginInstantiationOptions options, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
+        ~PluginInstanceAUv2() override;
+
         enum AUVersion {
             AUV2 = 2,
             AUV3 = 3
@@ -239,8 +213,8 @@ namespace remidy {
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
 
-        virtual AUVersion auVersion() = 0;
-        virtual StatusCode sampleRate(double sampleRate) = 0;
+        AUVersion auVersion();
+        StatusCode sampleRate(double sampleRate);
 
         PluginParameterSupport* parameters() override {
             if (!_parameters) _parameters = new ParameterSupport(this);
@@ -265,33 +239,4 @@ namespace remidy {
         AudioBuses* audioBuses() override { return audio_buses; }
     };
 
-    class PluginInstanceAUv2 final : public PluginInstanceAU {
-    public:
-        PluginInstanceAUv2(PluginFormatAUImpl* format, PluginFormat::PluginInstantiationOptions options,
-                                Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
-        ) : PluginInstanceAU(format, options, logger, info, component, instance) {
-        }
-
-        ~PluginInstanceAUv2() override = default;
-
-        AUVersion auVersion() override { return AUV2; }
-
-        StatusCode sampleRate(double sampleRate) override;
-    };
-
-#if REMIDY_LEGACY_AUV3
-    class PluginInstanceAUv3 final : public PluginInstanceAU {
-    public:
-        PluginInstanceAUv3(PluginFormatAUImpl* format, PluginFormat::PluginInstantiationOptions options,
-                                Logger *logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance
-        ) : PluginInstanceAU(format, options, logger, info, component, instance) {
-        }
-
-        ~PluginInstanceAUv3() override = default;
-
-        AUVersion auVersion() override { return AUV3; }
-
-        StatusCode sampleRate(double sampleRate) override;
-    };
-#endif
 }

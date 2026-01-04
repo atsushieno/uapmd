@@ -11,10 +11,10 @@
 
 namespace remidy {
 
-    PluginInstanceAU::UISupport::UISupport(PluginInstanceAU* owner) : owner(owner) {
+    PluginInstanceAUv2::UISupport::UISupport(PluginInstanceAUv2* owner) : owner(owner) {
     }
 
-    bool PluginInstanceAU::UISupport::hasUI() {
+    bool PluginInstanceAUv2::UISupport::hasUI() {
         AudioUnit au = owner->instance;
         if (!au)
             return false;
@@ -32,7 +32,7 @@ namespace remidy {
         return (result == noErr && dataSize > 0);
     }
 
-    bool PluginInstanceAU::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
+    bool PluginInstanceAUv2::UISupport::create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
         if (created)
             return false; // Already created
 
@@ -44,32 +44,8 @@ namespace remidy {
             @autoreleasepool {
                 NSView* view = nil;
 
-                // Try AUv3 first (requestViewController)
-                if (owner->auVersion() == PluginInstanceAU::AUV3) {
-                    // AUv3 uses requestViewControllerWithCompletionHandler (async)
-                    // For now, we'll use the sync property approach if available
-                    // Note: This is a simplification - proper async handling would be better
-                    AudioUnit au = owner->instance;
-
-                    // Try to get the view controller synchronously (some AUv3 support this)
-                    UInt32 dataSize = sizeof(void*);
-                    void* viewController = nullptr;
-                    OSStatus result = AudioUnitGetProperty(au,
-                        kAudioUnitProperty_CocoaUI,  // Try legacy property first
-                        kAudioUnitScope_Global,
-                        0,
-                        &viewController,
-                        &dataSize);
-
-                    if (result == noErr && viewController) {
-                        NSViewController* vc = (__bridge NSViewController*)viewController;
-                        ns_view_controller = (__bridge void*)[vc retain];
-                        view = [vc view];
-                    }
-                }
-
-                // Try AUv2 Cocoa UI
-                if (!view && owner->auVersion() == PluginInstanceAU::AUV2) {
+                // Try Cocoa UI
+                if (!view) {
                     AudioUnit au = owner->instance;
                     UInt32 dataSize = 0;
                     Boolean writable = false;
@@ -204,7 +180,7 @@ namespace remidy {
         return success;
     }
 
-    void PluginInstanceAU::UISupport::destroy() {
+    void PluginInstanceAUv2::UISupport::destroy() {
         if (!created)
             return;
 
@@ -249,7 +225,7 @@ namespace remidy {
         });
     }
 
-    bool PluginInstanceAU::UISupport::show() {
+    bool PluginInstanceAUv2::UISupport::show() {
         if (!created)
             return false;
 
@@ -274,7 +250,7 @@ namespace remidy {
         return success;
     }
 
-    void PluginInstanceAU::UISupport::hide() {
+    void PluginInstanceAUv2::UISupport::hide() {
         if (!created)
             return;
 
@@ -293,7 +269,7 @@ namespace remidy {
         visible = false;
     }
 
-    void PluginInstanceAU::UISupport::setWindowTitle(std::string title) {
+    void PluginInstanceAUv2::UISupport::setWindowTitle(std::string title) {
         if (!created || !is_floating || !ns_window)
             return;
 
@@ -306,7 +282,7 @@ namespace remidy {
         });
     }
 
-    bool PluginInstanceAU::UISupport::canResize() {
+    bool PluginInstanceAUv2::UISupport::canResize() {
         if (!created || !ns_view)
             return false;
 
@@ -318,7 +294,7 @@ namespace remidy {
         return false;
     }
 
-    bool PluginInstanceAU::UISupport::getSize(uint32_t &width, uint32_t &height) {
+    bool PluginInstanceAUv2::UISupport::getSize(uint32_t &width, uint32_t &height) {
         if (!created)
             return false;
 
@@ -348,7 +324,7 @@ namespace remidy {
         return success;
     }
 
-    bool PluginInstanceAU::UISupport::setSize(uint32_t width, uint32_t height) {
+    bool PluginInstanceAUv2::UISupport::setSize(uint32_t width, uint32_t height) {
         if (!created)
             return false;
 
@@ -384,7 +360,7 @@ namespace remidy {
         return success;
     }
 
-    bool PluginInstanceAU::UISupport::suggestSize(uint32_t &width, uint32_t &height) {
+    bool PluginInstanceAUv2::UISupport::suggestSize(uint32_t &width, uint32_t &height) {
         if (!created)
             return false;
 
@@ -397,14 +373,14 @@ namespace remidy {
         return false;
     }
 
-    void PluginInstanceAU::UISupport::startViewResizeObservation(void* viewHandle) {
+    void PluginInstanceAUv2::UISupport::startViewResizeObservation(void* viewHandle) {
         if (!viewHandle || view_resize_observer)
             return;
 
         NSView* view = (__bridge NSView*)viewHandle;
         [view setPostsFrameChangedNotifications:YES];
 
-        __block PluginInstanceAU::UISupport* blockSelf = this;
+        __block PluginInstanceAUv2::UISupport* blockSelf = this;
         id observer = [[NSNotificationCenter defaultCenter] addObserverForName:NSViewFrameDidChangeNotification
             object:view
             queue:nil
@@ -422,7 +398,7 @@ namespace remidy {
         last_view_size_valid = true;
     }
 
-    void PluginInstanceAU::UISupport::stopViewResizeObservation() {
+    void PluginInstanceAUv2::UISupport::stopViewResizeObservation() {
         if (!view_resize_observer)
             return;
 
@@ -433,7 +409,7 @@ namespace remidy {
         last_view_size_valid = false;
     }
 
-    void PluginInstanceAU::UISupport::handleViewSizeChange() {
+    void PluginInstanceAUv2::UISupport::handleViewSizeChange() {
         if (ignore_view_notifications || !host_resize_handler || !ns_view)
             return;
 
@@ -458,7 +434,7 @@ namespace remidy {
         host_resize_handler(width, height);
     }
 
-    bool PluginInstanceAU::UISupport::setScale(double scale) {
+    bool PluginInstanceAUv2::UISupport::setScale(double scale) {
         (void)scale;
         // AudioUnit doesn't have a standard scale API
         // Some plugins might respond to backing scale factor changes,

@@ -4,8 +4,8 @@
 #include "cmidi2.h"
 #include <cmath>
 
-remidy::PluginInstanceAU::PluginInstanceAU(
-        PluginFormatAUImpl *format,
+remidy::PluginInstanceAUv2::PluginInstanceAUv2(
+        PluginFormatAUv3 *format,
         PluginFormat::PluginInstantiationOptions options,
         Logger* logger,
         PluginCatalogEntry* info,
@@ -18,7 +18,7 @@ remidy::PluginInstanceAU::PluginInstanceAU(
     initializeHostCallbacks();
 }
 
-remidy::PluginInstanceAU::~PluginInstanceAU() {
+remidy::PluginInstanceAUv2::~PluginInstanceAUv2() {
     if (options.uiThreadRequirement & PluginUIThreadRequirement::InstanceControl)
         EventLoop::runTaskOnMainThread([&] {
             AudioComponentInstanceDispose(instance);
@@ -36,14 +36,14 @@ remidy::PluginInstanceAU::~PluginInstanceAU() {
         free(auDataOut);
 }
 
-void remidy::PluginInstanceAU::initializeHostCallbacks() {
+void remidy::PluginInstanceAUv2::initializeHostCallbacks() {
     host_transport_info = HostTransportInfo{};
     host_callback_info = HostCallbackInfo{};
     host_callback_info.hostUserData = this;
-    host_callback_info.beatAndTempoProc = &PluginInstanceAU::hostCallbackGetBeatAndTempo;
-    host_callback_info.musicalTimeLocationProc = &PluginInstanceAU::hostCallbackGetMusicalTimeLocation;
-    host_callback_info.transportStateProc = &PluginInstanceAU::hostCallbackGetTransportState;
-    host_callback_info.transportStateProc2 = &PluginInstanceAU::hostCallbackGetTransportState2;
+    host_callback_info.beatAndTempoProc = &PluginInstanceAUv2::hostCallbackGetBeatAndTempo;
+    host_callback_info.musicalTimeLocationProc = &PluginInstanceAUv2::hostCallbackGetMusicalTimeLocation;
+    host_callback_info.transportStateProc = &PluginInstanceAUv2::hostCallbackGetTransportState;
+    host_callback_info.transportStateProc2 = &PluginInstanceAUv2::hostCallbackGetTransportState2;
 
     auto status = AudioUnitSetProperty(instance,
         kAudioUnitProperty_HostCallbacks,
@@ -57,7 +57,7 @@ void remidy::PluginInstanceAU::initializeHostCallbacks() {
     }
 }
 
-OSStatus remidy::PluginInstanceAU::audioInputRenderCallback(
+OSStatus remidy::PluginInstanceAUv2::audioInputRenderCallback(
         AudioUnitRenderActionFlags *ioActionFlags,
         const AudioTimeStamp *inTimeStamp,
         UInt32 inBusNumber,
@@ -72,7 +72,7 @@ OSStatus remidy::PluginInstanceAU::audioInputRenderCallback(
     return noErr;
 }
 
-OSStatus remidy::PluginInstanceAU::midiOutputCallback(const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist) {
+OSStatus remidy::PluginInstanceAUv2::midiOutputCallback(const AudioTimeStamp *timeStamp, UInt32 midiOutNum, const struct MIDIPacketList *pktlist) {
     if (!pktlist || pktlist->numPackets == 0)
         return noErr;
 
@@ -138,13 +138,13 @@ OSStatus remidy::PluginInstanceAU::midiOutputCallback(const AudioTimeStamp *time
     return noErr;
 }
 
-remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& configuration) {
+remidy::StatusCode remidy::PluginInstanceAUv2::configure(ConfigurationRequest& configuration) {
     OSStatus result;
     UInt32 size; // unused field for AudioUnitGetProperty
 
     result = AudioUnitReset(instance, kAudioUnitScope_Global, 0);
     if (result) {
-        logger()->logError("%s PluginInstanceAU::configure failed to reset instance!?: OSStatus %d", name.c_str(), result);
+        logger()->logError("%s PluginInstanceAUv2::configure failed to reset instance!?: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
@@ -166,7 +166,7 @@ remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& con
     UInt32 frameSize = (UInt32) configuration.bufferSizeInSamples;
     result = AudioUnitSetProperty(instance, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &frameSize, sizeof (frameSize));
     if (result) {
-        logger()->logError("%s: PluginInstanceAU::configure failed to set kAudioUnitProperty_MaximumFramesPerSlice: OSStatus %d", name.c_str(), result);
+        logger()->logError("%s: PluginInstanceAUv2::configure failed to set kAudioUnitProperty_MaximumFramesPerSlice: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
@@ -176,7 +176,7 @@ remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& con
         audio_render_callback.inputProcRefCon = this;
         result = AudioUnitSetProperty(instance, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &audio_render_callback, sizeof(audio_render_callback));
         if (result) {
-            logger()->logError("%s: PluginInstanceAU::configure failed to set kAudioUnitProperty_SetRenderCallback: OSStatus %d", name.c_str(), result);
+            logger()->logError("%s: PluginInstanceAUv2::configure failed to set kAudioUnitProperty_SetRenderCallback: OSStatus %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
     }
@@ -188,7 +188,7 @@ remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& con
         callback.userData = this;
         result = AudioUnitSetProperty (instance, kAudioUnitProperty_MIDIOutputCallback, kAudioUnitScope_Global, 0, &callback, sizeof (callback));
         if (result) {
-            logger()->logError("%s: PluginInstanceAU::configure failed to set kAudioUnitProperty_MIDIOutputCallback: OSStatus %d", name.c_str(), result);
+            logger()->logError("%s: PluginInstanceAUv2::configure failed to set kAudioUnitProperty_MIDIOutputCallback: OSStatus %d", name.c_str(), result);
             return StatusCode::FAILED_TO_CONFIGURE;
         }
     }
@@ -214,7 +214,7 @@ remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& con
     // Once everything is set, initialize the instance here.
     result = AudioUnitInitialize(instance);
     if (result) {
-        logger()->logError("%s: PluginInstanceAU::configure failed to initialize AudioUnit: OSStatus %d", name.c_str(), result);
+        logger()->logError("%s: PluginInstanceAUv2::configure failed to initialize AudioUnit: OSStatus %d", name.c_str(), result);
         return StatusCode::FAILED_TO_CONFIGURE;
     }
 
@@ -222,7 +222,7 @@ remidy::StatusCode remidy::PluginInstanceAU::configure(ConfigurationRequest& con
 }
 
 
-remidy::StatusCode remidy::PluginInstanceAU::startProcessing() {
+remidy::StatusCode remidy::PluginInstanceAUv2::startProcessing() {
     process_timestamp.mSampleTime = 0;
     host_transport_info.currentSample = 0.0;
     host_transport_info.currentBeat = 0.0;
@@ -230,13 +230,13 @@ remidy::StatusCode remidy::PluginInstanceAU::startProcessing() {
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::PluginInstanceAU::stopProcessing() {
+remidy::StatusCode remidy::PluginInstanceAUv2::stopProcessing() {
     host_transport_info.isPlaying = false;
     host_transport_info.transportStateChanged = true;
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &process) {
+remidy::StatusCode remidy::PluginInstanceAUv2::process(AudioProcessContext &process) {
 
     // It seems the AudioUnit framework resets this information every time...
 
@@ -310,7 +310,7 @@ remidy::StatusCode remidy::PluginInstanceAU::process(AudioProcessContext &proces
         AudioUnitRenderActionFlags flags = 0;
         auto status = AudioUnitRender(instance, &flags, &process_timestamp, 0, process.frameCount(), auDataOut);
         if (status != noErr) {
-            logger()->logError("%s: failed to process audio PluginInstanceAU::process(). Status: %d", name.c_str(), status);
+            logger()->logError("%s: failed to process audio PluginInstanceAUv2::process(). Status: %d", name.c_str(), status);
             return StatusCode::FAILED_TO_PROCESS;
         }
 
@@ -371,8 +371,8 @@ remidy::StatusCode remidy::PluginInstanceAUv3::sampleRate(double sampleRate) {
 }
 #endif
 
-OSStatus remidy::PluginInstanceAU::hostCallbackGetBeatAndTempo(void* inHostUserData, Float64* outCurrentBeat, Float64* outCurrentTempo) {
-    auto* instance = static_cast<PluginInstanceAU*>(inHostUserData);
+OSStatus remidy::PluginInstanceAUv2::hostCallbackGetBeatAndTempo(void* inHostUserData, Float64* outCurrentBeat, Float64* outCurrentTempo) {
+    auto* instance = static_cast<PluginInstanceAUv2*>(inHostUserData);
     if (!instance)
         return kAudio_ParamError;
 
@@ -384,14 +384,14 @@ OSStatus remidy::PluginInstanceAU::hostCallbackGetBeatAndTempo(void* inHostUserD
     return noErr;
 }
 
-OSStatus remidy::PluginInstanceAU::hostCallbackGetMusicalTimeLocation(
+OSStatus remidy::PluginInstanceAUv2::hostCallbackGetMusicalTimeLocation(
     void* inHostUserData,
     UInt32* outDeltaSampleOffsetToNextBeat,
     Float32* outTimeSigNumerator,
     UInt32* outTimeSigDenominator,
     Float64* outCurrentMeasureDownBeat) {
 
-    auto* instance = static_cast<PluginInstanceAU*>(inHostUserData);
+    auto* instance = static_cast<PluginInstanceAUv2*>(inHostUserData);
     if (!instance)
         return kAudio_ParamError;
 
@@ -423,7 +423,7 @@ OSStatus remidy::PluginInstanceAU::hostCallbackGetMusicalTimeLocation(
     return noErr;
 }
 
-OSStatus remidy::PluginInstanceAU::hostCallbackGetTransportState(
+OSStatus remidy::PluginInstanceAUv2::hostCallbackGetTransportState(
     void* inHostUserData,
     Boolean* outIsPlaying,
     Boolean* outTransportStateChanged,
@@ -432,7 +432,7 @@ OSStatus remidy::PluginInstanceAU::hostCallbackGetTransportState(
     Float64* outCycleStartBeat,
     Float64* outCycleEndBeat) {
 
-    auto* instance = static_cast<PluginInstanceAU*>(inHostUserData);
+    auto* instance = static_cast<PluginInstanceAUv2*>(inHostUserData);
     if (!instance)
         return kAudio_ParamError;
 
@@ -454,7 +454,7 @@ OSStatus remidy::PluginInstanceAU::hostCallbackGetTransportState(
     return noErr;
 }
 
-OSStatus remidy::PluginInstanceAU::hostCallbackGetTransportState2(
+OSStatus remidy::PluginInstanceAUv2::hostCallbackGetTransportState2(
     void* inHostUserData,
     Boolean* outIsPlaying,
     Boolean* outIsRecording,
@@ -464,7 +464,7 @@ OSStatus remidy::PluginInstanceAU::hostCallbackGetTransportState2(
     Float64* outCycleStartBeat,
     Float64* outCycleEndBeat) {
 
-    auto* instance = static_cast<PluginInstanceAU*>(inHostUserData);
+    auto* instance = static_cast<PluginInstanceAUv2*>(inHostUserData);
     if (!instance)
         return kAudio_ParamError;
 

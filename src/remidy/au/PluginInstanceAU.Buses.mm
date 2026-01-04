@@ -168,7 +168,7 @@ namespace {
     }
 }
 
-void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
+void remidy::PluginInstanceAUv2::AudioBuses::inspectBuses() {
     auto impl = [&] {
     auto component = owner->component;
     auto instance = owner->instance;
@@ -323,7 +323,7 @@ void remidy::PluginInstanceAU::AudioBuses::inspectBuses() {
         impl();
 }
 
-remidy::StatusCode remidy::PluginInstanceAU::AudioBuses::configure(ConfigurationRequest& configuration) {
+remidy::StatusCode remidy::PluginInstanceAUv2::AudioBuses::configure(ConfigurationRequest& configuration) {
     remidy::StatusCode ret;
     auto impl = [&] {
     auto& component = owner->component;

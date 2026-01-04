@@ -22,7 +22,7 @@ static std::string keyPathToGroupPath(NSString* keyPath) {
 
 }
 
-remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInstanceAU *owner)
+remidy::PluginInstanceAUv2::ParameterSupport::ParameterSupport(remidy::PluginInstanceAUv2 *owner)
         : owner(owner) {
     auto impl = [&] {
     auto result = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &au_param_id_list_size, nil);
@@ -39,21 +39,6 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
 
     AudioUnitParameterInfo info;
     AUParameterTree* parameterTree = nullptr;
-    if (owner->auVersion() == PluginInstanceAU::AUV3) {
-        AudioComponentDescription desc{};
-        if (AudioComponentGetDescription(owner->component, &desc) == noErr) {
-            NSError* error = nil;
-            AUAudioUnit* auAudioUnit = [[AUAudioUnit alloc] initWithComponentDescription:desc error:&error];
-            if (auAudioUnit) {
-                parameterTree = [[auAudioUnit parameterTree] retain];
-                [auAudioUnit release];
-            } else if (owner->logger() && error) {
-                owner->logger()->logWarning("Failed to create AUAudioUnit for %s: %s",
-                    owner->name.c_str(),
-                    [[error localizedDescription] UTF8String]);
-            }
-        }
-    }
     std::unordered_map<UInt32, std::string> clumpNames;
     auto getClumpPath = [&](UInt32 clumpId) -> std::string {
         if (clumpId == 0)
@@ -143,17 +128,17 @@ remidy::PluginInstanceAU::ParameterSupport::ParameterSupport(remidy::PluginInsta
     installParameterListener();
 }
 
-remidy::PluginInstanceAU::ParameterSupport::~ParameterSupport() {
+remidy::PluginInstanceAUv2::ParameterSupport::~ParameterSupport() {
     uninstallParameterListener();
     if (au_param_id_list)
         free(au_param_id_list);
 }
 
-std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAU::ParameterSupport::parameters() {
+std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAUv2::ParameterSupport::parameters() {
     return parameter_list;
 }
 
-std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAU::ParameterSupport::perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) {
+std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAUv2::ParameterSupport::perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) {
     auto scopeInfo = scopeFromContext(types, context);
     if (!scopeInfo.has_value())
         return parameter_list;
@@ -173,7 +158,7 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAU::ParameterSuppor
     return scoped_parameter_list;
 }
 
-std::vector<remidy::PluginParameter*> remidy::PluginInstanceAU::ParameterSupport::buildScopedParameterList(AudioUnitScope scope, UInt32 element) {
+std::vector<remidy::PluginParameter*> remidy::PluginInstanceAUv2::ParameterSupport::buildScopedParameterList(AudioUnitScope scope, UInt32 element) {
     std::vector<PluginParameter*> scoped{};
 
     UInt32 listSize = 0;
@@ -208,7 +193,7 @@ std::vector<remidy::PluginParameter*> remidy::PluginInstanceAU::ParameterSupport
     return scoped;
 }
 
-std::optional<std::pair<AudioUnitScope, UInt32>> remidy::PluginInstanceAU::ParameterSupport::scopeFromContext(PerNoteControllerContextTypes types, PerNoteControllerContext context) const {
+std::optional<std::pair<AudioUnitScope, UInt32>> remidy::PluginInstanceAUv2::ParameterSupport::scopeFromContext(PerNoteControllerContextTypes types, PerNoteControllerContext context) const {
     if (types & PER_NOTE_CONTROLLER_PER_NOTE)
         return std::make_pair(kAudioUnitScope_Note, context.note);
     if (types & PER_NOTE_CONTROLLER_PER_CHANNEL)
@@ -218,16 +203,16 @@ std::optional<std::pair<AudioUnitScope, UInt32>> remidy::PluginInstanceAU::Param
     return std::nullopt;
 }
 
-remidy::StatusCode remidy::PluginInstanceAU::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
     // FIXME: calculate inBufferOffsetInFrames from timestamp.
     auto inBufferOffsetInFrames = 0;
     AudioUnitSetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Global, 0, (float) value, inBufferOffsetInFrames);
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::PluginInstanceAU::ParameterSupport::getParameter(uint32_t index, double* value) {
+remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::getParameter(uint32_t index, double* value) {
     if (!value) {
-        owner->logger()->logError("PluginInstanceAU::ParameterSupport::getParameter(): value is null");
+        owner->logger()->logError("PluginInstanceAUv2::ParameterSupport::getParameter(): value is null");
         return StatusCode::INVALID_PARAMETER_OPERATION;
     }
     AudioUnitParameterValue av;
@@ -236,24 +221,24 @@ remidy::StatusCode remidy::PluginInstanceAU::ParameterSupport::getParameter(uint
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::PluginInstanceAU::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
     // FIXME: calculate inBufferOffsetInFrames from timestamp.
     auto inBufferOffsetInFrames = 0;
     AudioUnitSetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Note, context.note, (float) value, inBufferOffsetInFrames);
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::PluginInstanceAU::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double* value) {
-    owner->logger()->logInfo("remidy::PluginInstanceAU::getPerNoteController not implemented");
+remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double* value) {
+    owner->logger()->logInfo("remidy::PluginInstanceAUv2::getPerNoteController not implemented");
     if (!value) {
-        owner->logger()->logError("PluginInstanceAU::ParameterSupport::getPerNoteController(): value is null");
+        owner->logger()->logError("PluginInstanceAUv2::ParameterSupport::getPerNoteController(): value is null");
         return StatusCode::INVALID_PARAMETER_OPERATION;
     }
     *value = 0;
     return StatusCode::NOT_IMPLEMENTED;
 }
 
-std::string remidy::PluginInstanceAU::ParameterSupport::valueToString(uint32_t index, double value) {
+std::string remidy::PluginInstanceAUv2::ParameterSupport::valueToString(uint32_t index, double value) {
     auto& enums = parameter_list[index]->enums();
 
     // For enumerated/indexed parameters, search for matching value
@@ -298,12 +283,12 @@ std::string remidy::PluginInstanceAU::ParameterSupport::valueToString(uint32_t i
     return std::format("{:.3f}", value);
 }
 
-std::string remidy::PluginInstanceAU::ParameterSupport::valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) {
+std::string remidy::PluginInstanceAUv2::ParameterSupport::valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) {
     (void) context;
     return valueToString(index, value);
 }
 
-void remidy::PluginInstanceAU::ParameterSupport::refreshParameterMetadata(uint32_t index) {
+void remidy::PluginInstanceAUv2::ParameterSupport::refreshParameterMetadata(uint32_t index) {
     if (index >= parameter_list.size())
         return;
 
@@ -317,7 +302,7 @@ void remidy::PluginInstanceAU::ParameterSupport::refreshParameterMetadata(uint32
     }
 }
 
-void remidy::PluginInstanceAU::ParameterSupport::installParameterListener() {
+void remidy::PluginInstanceAUv2::ParameterSupport::installParameterListener() {
     if (parameter_listener)
         return;
 
@@ -347,14 +332,14 @@ void remidy::PluginInstanceAU::ParameterSupport::installParameterListener() {
     AUEventListenerAddEventType(parameter_listener, this, &presetEvent);
 }
 
-void remidy::PluginInstanceAU::ParameterSupport::uninstallParameterListener() {
+void remidy::PluginInstanceAUv2::ParameterSupport::uninstallParameterListener() {
     if (!parameter_listener)
         return;
     AUListenerDispose(parameter_listener);
     parameter_listener = nullptr;
 }
 
-void remidy::PluginInstanceAU::ParameterSupport::parameterEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value) {
+void remidy::PluginInstanceAUv2::ParameterSupport::parameterEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value) {
     (void)object;
     (void)hostTime;
     auto* support = static_cast<ParameterSupport*>(refCon);
@@ -362,7 +347,7 @@ void remidy::PluginInstanceAU::ParameterSupport::parameterEventCallback(void* re
         support->handleParameterEvent(event, value);
 }
 
-void remidy::PluginInstanceAU::ParameterSupport::handleParameterEvent(const AudioUnitEvent* event, Float32 value) {
+void remidy::PluginInstanceAUv2::ParameterSupport::handleParameterEvent(const AudioUnitEvent* event, Float32 value) {
     if (!event)
         return;
 
@@ -385,7 +370,7 @@ void remidy::PluginInstanceAU::ParameterSupport::handleParameterEvent(const Audi
     }
 }
 
-std::optional<uint32_t> remidy::PluginInstanceAU::ParameterSupport::indexForParameterId(AudioUnitParameterID id) const {
+std::optional<uint32_t> remidy::PluginInstanceAUv2::ParameterSupport::indexForParameterId(AudioUnitParameterID id) const {
     auto it = parameter_id_to_index.find(id);
     if (it == parameter_id_to_index.end())
         return std::nullopt;

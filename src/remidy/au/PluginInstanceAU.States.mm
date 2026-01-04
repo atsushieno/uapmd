@@ -1,6 +1,6 @@
 #include "PluginFormatAU.hpp"
 
-std::vector<uint8_t> remidy::PluginInstanceAU::PluginStatesAU::getState(remidy::PluginStateSupport::StateContextType stateContextType,
+std::vector<uint8_t> remidy::PluginInstanceAUv2::PluginStatesAU::getState(remidy::PluginStateSupport::StateContextType stateContextType,
                                                                         bool includeUiState) {
     std::vector<uint8_t> ret{};
     auto impl = [&] {
@@ -38,7 +38,7 @@ std::vector<uint8_t> remidy::PluginInstanceAU::PluginStatesAU::getState(remidy::
     return ret;
 }
 
-void remidy::PluginInstanceAU::PluginStatesAU::setState(std::vector<uint8_t> &state,
+void remidy::PluginInstanceAUv2::PluginStatesAU::setState(std::vector<uint8_t> &state,
                                                         remidy::PluginStateSupport::StateContextType stateContextType,
                                                         bool includeUiState) {
     auto impl = [&] {

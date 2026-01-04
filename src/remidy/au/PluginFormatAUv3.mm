@@ -3,6 +3,7 @@
 #include <format>
 #include <CoreFoundation/CoreFoundation.h>
 #include "PluginFormatAUv3.hpp"
+#include "PluginFormatAU.hpp"
 #include "remidy/priv/plugin-format-au.hpp"
 #include "AUv2Helper.hpp"
 
@@ -158,22 +159,37 @@ void remidy::PluginFormatAUv3Impl::createInstance(
             return;
         }
 
-        if ((desc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) == 0) {
-            static std::unique_ptr<PluginFormatAU> fallbackFormat = PluginFormatAU::create();
-            if (!fallbackFormat) {
-                callback(nullptr, "Failed to initialize AUv2 fallback host");
-                return;
+        bool isV3 = (desc.componentFlags & kAudioComponentFlag_IsV3AudioUnit) != 0;
+        auto cb = std::move(callback);
+        __block auto self = this;
+        __block auto formatLogger = logger;
+
+        if (!isV3) {
+            AudioComponentInstantiationOptions auOptions = kAudioComponentInstantiation_LoadInProcess;
+            __block PluginInstance* createdInstanceRaw = nullptr;
+            __block std::string instantiationError;
+
+            AudioComponentInstantiate(component, auOptions, ^(AudioComponentInstance instance, OSStatus cbStatus) {
+                if (cbStatus == noErr) {
+                    createdInstanceRaw = new PluginInstanceAUv2(self, options, formatLogger, info, component, instance);
+                } else {
+                    instantiationError = std::format("Failed to instantiate AudioUnit {} (status {})",
+                                                     info->displayName(), cbStatus);
+                }
+            });
+
+            if (createdInstanceRaw) {
+                cb(std::unique_ptr<PluginInstance>(createdInstanceRaw), "");
+            } else {
+                if (instantiationError.empty())
+                    instantiationError = "AudioUnit instantiation did not complete";
+                cb(nullptr, instantiationError);
             }
-            fallbackFormat->createInstance(info, options, std::move(callback));
             return;
         }
 
-        // Use AUAudioUnit API for both v2 and v3
+        // Use AUAudioUnit API for native AUv3s
         AudioComponentInstantiationOptions auOptions = kAudioComponentInstantiation_LoadInProcess;
-
-        auto cb = std::move(callback);
-        __block auto logger = Logger::global();
-        __block auto self = this;
 
         __block bool instantiationCompleted = false;
         __block PluginInstance* createdInstanceRaw = nullptr;
@@ -206,7 +222,7 @@ void remidy::PluginFormatAUv3Impl::createInstance(
             [avAudioUnit retain];
             [audioUnit retain];
 
-            createdInstanceRaw = new PluginInstanceAUv3(self, options, logger, info, avAudioUnit, audioUnit);
+            createdInstanceRaw = new PluginInstanceAUv3(self, options, formatLogger, info, avAudioUnit, audioUnit);
             instantiationCompleted = true;
         }];
 

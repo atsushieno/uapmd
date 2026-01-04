@@ -6,7 +6,7 @@
 
 using namespace remidy;
 
-PluginInstanceAU::PresetsSupport::PresetsSupport(PluginInstanceAU* owner) : owner(owner) {
+PluginInstanceAUv2::PresetsSupport::PresetsSupport(PluginInstanceAUv2* owner) : owner(owner) {
     auto impl = [&] {
     CFArrayRef presets = nullptr;
     UInt32 size = sizeof(CFArrayRef);
@@ -30,7 +30,7 @@ PluginInstanceAU::PresetsSupport::PresetsSupport(PluginInstanceAU* owner) : owne
         impl();
 }
 
-int32_t PluginInstanceAU::PresetsSupport::getPresetIndexForId(std::string &id) {
+int32_t PluginInstanceAUv2::PresetsSupport::getPresetIndexForId(std::string &id) {
     for (int32_t i = 0, n = (int32_t) items.size(); i < n; i++) {
         if (items[i].id() == id)
             return i;
@@ -38,15 +38,15 @@ int32_t PluginInstanceAU::PresetsSupport::getPresetIndexForId(std::string &id) {
     return -1;
 }
 
-int32_t PluginInstanceAU::PresetsSupport::getPresetCount() {
+int32_t PluginInstanceAUv2::PresetsSupport::getPresetCount() {
     return (int32_t) items.size();
 }
 
-PresetInfo PluginInstanceAU::PresetsSupport::getPresetInfo(int32_t index) {
+PresetInfo PluginInstanceAUv2::PresetsSupport::getPresetInfo(int32_t index) {
     return items[(size_t) index];
 }
 
-void PluginInstanceAU::PresetsSupport::loadPreset(int32_t index) {
+void PluginInstanceAUv2::PresetsSupport::loadPreset(int32_t index) {
     auto impl = [&] {
     auto& preset = items[(size_t) index];
     AUPreset auPreset{};
@@ -64,7 +64,7 @@ void PluginInstanceAU::PresetsSupport::loadPreset(int32_t index) {
 
     // Refresh parameter metadata and poll values after preset load
     // This handles plugins like Dexed that may change parameter ranges or not emit proper change notifications
-    auto params = dynamic_cast<PluginInstanceAU::ParameterSupport*>(owner->parameters());
+    auto params = dynamic_cast<PluginInstanceAUv2::ParameterSupport*>(owner->parameters());
     if (params) {
         params->refreshAllParameterMetadata();
         auto& paramList = params->parameters();
