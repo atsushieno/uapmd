@@ -1,8 +1,8 @@
-#include "PluginFormatAUv3.hpp"
-#include <priv/event-loop.hpp>
 #include <cmath>
 #import <Cocoa/Cocoa.h>
 #import <AudioToolbox/AUAudioUnit.h>
+#include "priv/event-loop.hpp"
+#include "PluginFormatAU.hpp"
 
 namespace remidy {
 

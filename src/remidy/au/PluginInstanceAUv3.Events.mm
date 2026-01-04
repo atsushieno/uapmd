@@ -1,6 +1,6 @@
 #if __APPLE__
 
-#include "PluginFormatAUv3.hpp"
+#include "PluginFormatAU.hpp"
 #include "cmidi2.h"
 #import <CoreMIDI/CoreMIDI.h>
 

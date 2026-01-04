@@ -1,6 +1,7 @@
 #if __APPLE__
 
-#include "PluginFormatAUv3.hpp"
+#include <vector>
+#include "PluginFormatAU.hpp"
 
 std::vector<uint8_t> remidy::PluginInstanceAUv3::PluginStatesAUv3::getState(StateContextType stateContextType, bool includeUiState) {
     @autoreleasepool {

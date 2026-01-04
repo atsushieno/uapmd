@@ -132,14 +132,13 @@ target_compile_options(remidy PRIVATE
 if (APPLE)
     set(remidy_OBJC_SOURCES
             au/PluginFormatAU.mm
-            au/PluginInstanceAU.mm
-            au/PluginInstanceAU.Buses.mm
-            au/PluginInstanceAU.Events.mm
-            au/PluginInstanceAU.Parameters.mm
-            au/PluginInstanceAU.Presets.mm
-            au/PluginInstanceAU.States.mm
-            au/PluginInstanceAU.UI.mm
-            au/PluginFormatAUv3.mm
+            au/PluginInstanceAUv2.mm
+            au/PluginInstanceAUv2.Buses.mm
+            au/PluginInstanceAUv2.Events.mm
+            au/PluginInstanceAUv2.Parameters.mm
+            au/PluginInstanceAUv2.Presets.mm
+            au/PluginInstanceAUv2.States.mm
+            au/PluginInstanceAUv2.UI.mm
             au/PluginInstanceAUv3.mm
             au/PluginInstanceAUv3.Buses.mm
             au/PluginInstanceAUv3.Events.mm

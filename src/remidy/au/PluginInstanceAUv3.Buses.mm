@@ -1,6 +1,6 @@
 #if __APPLE__
 
-#include "PluginFormatAUv3.hpp"
+#include "PluginFormatAU.hpp"
 
 void remidy::PluginInstanceAUv3::AudioBuses::inspectBuses() {
     @autoreleasepool {

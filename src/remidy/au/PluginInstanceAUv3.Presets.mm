@@ -1,6 +1,6 @@
 #if __APPLE__
 
-#include "PluginFormatAUv3.hpp"
+#include "PluginFormatAU.hpp"
 
 remidy::PluginInstanceAUv3::PresetsSupport::PresetsSupport(remidy::PluginInstanceAUv3* owner) : owner(owner) {
     @autoreleasepool {

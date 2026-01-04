@@ -17,7 +17,7 @@ namespace remidy_tooling {
         std::unique_ptr<PluginFormatCLAP> clap;
 #if __APPLE__
         //std::unique_ptr<PluginFormatAU> au;
-        std::unique_ptr<PluginFormatAUv3> au;
+        std::unique_ptr<PluginFormatAU> au;
 #endif
         std::filesystem::path plugin_list_cache_file{};
 

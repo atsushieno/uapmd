@@ -1,6 +1,6 @@
 #if __APPLE__
 
-#include "PluginFormatAUv3.hpp"
+#include "PluginFormatAU.hpp"
 #include "AUv2Helper.hpp"
 #include "cmidi2.h"
 #import <AudioToolbox/AUAudioUnitImplementation.h>
@@ -15,7 +15,7 @@ namespace {
 }
 
 remidy::PluginInstanceAUv3::PluginInstanceAUv3(
-        PluginFormatAUv3Impl *format,
+        PluginFormatAUImpl *format,
         PluginFormat::PluginInstantiationOptions options,
         Logger* logger,
         PluginCatalogEntry* info,

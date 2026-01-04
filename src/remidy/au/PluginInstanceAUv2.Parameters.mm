@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <unordered_map>
 #import <AudioToolbox/AUAudioUnit.h>
+#include "AUv2Helper.hpp"
 #include "PluginFormatAU.hpp"
 
 namespace {

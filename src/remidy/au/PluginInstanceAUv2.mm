@@ -1,11 +1,12 @@
 #if __APPLE__
 
-#include "PluginFormatAU.hpp"
 #include "cmidi2.h"
 #include <cmath>
+#include "AUv2Helper.hpp"
+#include "PluginFormatAU.hpp"
 
 remidy::PluginInstanceAUv2::PluginInstanceAUv2(
-        PluginFormatAUv3 *format,
+        PluginFormatAU *format,
         PluginFormat::PluginInstantiationOptions options,
         Logger* logger,
         PluginCatalogEntry* info,
