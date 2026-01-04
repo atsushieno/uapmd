@@ -21,6 +21,19 @@ static std::string keyPathToGroupPath(NSString* keyPath) {
     return path;
 }
 
+constexpr uint64_t kAUParameterAddressScopeMask = 0x0000FFFF00000000ULL;
+
+static AudioUnitScope scopeFromAddress(AUParameterAddress address) {
+    return static_cast<AudioUnitScope>((address & kAUParameterAddressScopeMask) >> 32);
+}
+
+static bool isKnownScope(AudioUnitScope scope) {
+    return scope == kAudioUnitScope_Global
+        || scope == kAudioUnitScope_Input
+        || scope == kAudioUnitScope_Output
+        || scope == kAudioUnitScope_Group;
+}
+
 }
 
 static void* kAUParameterKVOContext = &kAUParameterKVOContext;
@@ -74,23 +87,26 @@ remidy::PluginInstanceAUv3::ParameterSupport::ParameterSupport(remidy::PluginIns
 
             NSArray<AUParameter*>* allParameters = [parameterTree allParameters];
 
-            // Filter to only include global scope parameters (exclude per-note, per-channel, per-group)
-            NSMutableArray<AUParameter*>* globalParameters = [NSMutableArray array];
-            for (AUParameter* param in allParameters) {
-                AUParameterAddress addr = [param address];
-                AUParameter* globalParam = [parameterTree parameterWithID:addr scope:kAudioUnitScope_Global element:0];
-                if (globalParam != nil) {
-                    [globalParameters addObject:param];
-                }
-            }
+            parameter_list.reserve([allParameters count]);
+            parameter_addresses.reserve([allParameters count]);
 
-            parameter_list.reserve([globalParameters count]);
-            parameter_addresses.reserve([globalParameters count]);
-
-            for (NSUInteger i = 0; i < [globalParameters count]; i++) {
-                AUParameter* param = globalParameters[i];
+            for (NSUInteger i = 0; i < [allParameters count]; i++) {
+                AUParameter* param = allParameters[i];
 
                 AUParameterAddress address = [param address];
+                auto scope = scopeFromAddress(address);
+                bool treatAsGlobal = (scope == kAudioUnitScope_Global);
+
+                // Native AUv3 parameters don't encode v2 scopes; assume global.
+                if (!treatAsGlobal && !owner->bridgedAudioUnit)
+                    treatAsGlobal = true;
+                // If we decoded an unknown scope, assume it's global (likely AUv3 style address).
+                if (!treatAsGlobal && !isKnownScope(scope))
+                    treatAsGlobal = true;
+
+                if (!treatAsGlobal)
+                    continue;
+
                 parameter_addresses.push_back(address);
 
                 std::string idString = std::format("{}", address);
