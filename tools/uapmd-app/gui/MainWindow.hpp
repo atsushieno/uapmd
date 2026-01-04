@@ -14,6 +14,7 @@
 #include "ParameterList.hpp"
 #include "TrackList.hpp"
 #include "AudioDeviceSettings.hpp"
+#include "ScriptEditor.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 
@@ -60,6 +61,9 @@ class MainWindow {
         // Plugin selection
         bool showPluginSelectorWindow_ = false;
         PluginList pluginList_;
+
+        // Script editor
+        ScriptEditor scriptEditor_;
 
         // Plugin scanning
         bool forceRescan_ = false;

@@ -266,6 +266,13 @@ void MainWindow::render(void* window) {
             if (ImGui::Button("Plugins")) {
                 showPluginSelectorWindow_ = !showPluginSelectorWindow_;
             }
+            ImGui::SameLine();
+            if (ImGui::Button("Script")) {
+                if (scriptEditor_.isOpen())
+                    scriptEditor_.hide();
+                else
+                    scriptEditor_.show();
+            }
         }
         ImGui::EndChild();
 
@@ -288,6 +295,7 @@ void MainWindow::render(void* window) {
     renderDeviceSettingsWindow();
     renderPlayerSettingsWindow();
     renderDetailsWindows();
+    scriptEditor_.render();
 
     uiScaleDirty_ = false;
 }

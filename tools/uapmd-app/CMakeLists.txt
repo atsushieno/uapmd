@@ -77,6 +77,14 @@ if(NOT DEFINED imgui_SOURCE_DIR)
     )
 endif()
 
+# ImGuiColorTextEdit for script editor
+CPMAddPackage(
+        NAME ImGuiColorTextEdit
+        GIT_TAG master
+        GIT_REPOSITORY https://github.com/BalazsJako/ImGuiColorTextEdit
+        DOWNLOAD_ONLY YES
+)
+
 if(NOT TARGET imgui)
     # Base ImGui sources
     set(IMGUI_SOURCES
@@ -86,6 +94,7 @@ if(NOT TARGET imgui)
             ${imgui_SOURCE_DIR}/imgui_tables.cpp
             ${imgui_SOURCE_DIR}/imgui_widgets.cpp
             ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+            ${ImGuiColorTextEdit_SOURCE_DIR}/TextEditor.cpp
     )
 
     # Add backend-specific ImGui implementation
@@ -102,6 +111,7 @@ if(NOT TARGET imgui)
     target_include_directories(imgui PUBLIC
             ${imgui_SOURCE_DIR}
             ${imgui_SOURCE_DIR}/backends
+            ${ImGuiColorTextEdit_SOURCE_DIR}
     )
 
     # Link backend library to ImGui so backends can find headers
@@ -130,6 +140,7 @@ target_include_directories(uapmd-app PRIVATE
         ${cmidi2_SOURCE_DIR}
         ${portable-file-dialogs_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include
+        ${ImGuiColorTextEdit_SOURCE_DIR}
         ../../include
         ../../src/remidy-tooling
         ../../external/libremidi/include
@@ -171,6 +182,8 @@ target_sources(uapmd-app PRIVATE
         gui/ParameterList.cpp
         gui/TrackList.cpp
         gui/AudioDeviceSettings.cpp
+        gui/ScriptEditor.cpp
+        ${ImGuiColorTextEdit_SOURCE_DIR}/TextEditor.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         Controller/VirtualMidiDeviceController.cpp
@@ -178,3 +191,11 @@ target_sources(uapmd-app PRIVATE
 
 # Use C++23 like the WebView version
 target_compile_features(uapmd-app PRIVATE cxx_std_23)
+
+# Create symbolic link to js directory for script editor module resolution
+add_custom_command(TARGET uapmd-app POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${CMAKE_SOURCE_DIR}/js
+        $<TARGET_FILE_DIR:uapmd-app>/js
+    COMMENT "Creating symbolic link to js directory for module resolution"
+)
