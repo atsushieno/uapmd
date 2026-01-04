@@ -108,6 +108,14 @@ remidy::StatusCode remidy::PluginInstanceAUv3::AudioBuses::configure(Configurati
             AUAudioUnitBus* bus = [inputBusArray objectAtIndexedSubscript:i];
             auto* busConfig = i < audio_in_buses.size() ? audio_in_buses[i] : nullptr;
 
+            // Check if bus can be queried first (some plugins don't support all buses)
+            AVAudioFormat* currentFormat = [bus format];
+            if (currentFormat == nil) {
+                owner->logger()->logWarning("%s: Input bus %lu has no format, skipping configuration",
+                                           owner->name.c_str(), i);
+                continue;
+            }
+
             uint32_t channels = 2; // Default stereo
             if (i == 0 && configuration.mainInputChannels.has_value()) {
                 channels = configuration.mainInputChannels.value();
@@ -122,11 +130,12 @@ remidy::StatusCode remidy::PluginInstanceAUv3::AudioBuses::configure(Configurati
             }
 
             if (![bus setFormat:format error:&error]) {
-                owner->logger()->logError("%s: Failed to set format on input bus %lu: %s",
+                // Log warning but continue - some buses might not support configuration
+                owner->logger()->logWarning("%s: Failed to set format on input bus %lu: %s (continuing)",
                                         owner->name.c_str(), i,
                                         [[error localizedDescription] UTF8String]);
                 [format release];
-                return StatusCode::FAILED_TO_CONFIGURE;
+                continue;
             }
 
             if (busConfig)
@@ -142,6 +151,14 @@ remidy::StatusCode remidy::PluginInstanceAUv3::AudioBuses::configure(Configurati
             AUAudioUnitBus* bus = [outputBusArray objectAtIndexedSubscript:i];
             auto* busConfig = i < audio_out_buses.size() ? audio_out_buses[i] : nullptr;
 
+            // Check if bus can be queried first (some plugins don't support all buses)
+            AVAudioFormat* currentFormat = [bus format];
+            if (currentFormat == nil) {
+                owner->logger()->logWarning("%s: Output bus %lu has no format, skipping configuration",
+                                           owner->name.c_str(), i);
+                continue;
+            }
+
             uint32_t channels = 2; // Default stereo
             if (i == 0 && configuration.mainOutputChannels.has_value()) {
                 channels = configuration.mainOutputChannels.value();
@@ -156,11 +173,12 @@ remidy::StatusCode remidy::PluginInstanceAUv3::AudioBuses::configure(Configurati
             }
 
             if (![bus setFormat:format error:&error]) {
-                owner->logger()->logError("%s: Failed to set format on output bus %lu: %s",
+                // Log warning but continue - some buses might not support configuration
+                owner->logger()->logWarning("%s: Failed to set format on output bus %lu: %s (continuing)",
                                         owner->name.c_str(), i,
                                         [[error localizedDescription] UTF8String]);
                 [format release];
-                return StatusCode::FAILED_TO_CONFIGURE;
+                continue;
             }
 
             if (busConfig)

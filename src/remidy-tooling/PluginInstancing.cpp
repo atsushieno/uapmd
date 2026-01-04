@@ -65,7 +65,12 @@ remidy_tooling::PluginInstancing::PluginInstancing(PluginScanTool& scanner, Plug
 
 
 remidy_tooling::PluginInstancing::~PluginInstancing() {
-    assert(instancing_state != PluginInstancingState::Preparing);
+    // Allow destruction during async instantiation (e.g., if instantiation fails or is cancelled)
+    if (instancing_state == PluginInstancingState::Preparing) {
+        Logger::global()->logWarning("  %s: %s destroyed while still preparing (async instantiation likely failed or cancelled)",
+                                    format->name().c_str(), displayName.c_str());
+        instancing_state = PluginInstancingState::Error;
+    }
     if (!instance)
         return;
     if (instancing_state == PluginInstancingState::Ready) {
