@@ -19,8 +19,9 @@ remidy::PluginInstanceAUv3::PluginInstanceAUv3(
         PluginFormat::PluginInstantiationOptions options,
         Logger* logger,
         PluginCatalogEntry* info,
+        AVAudioUnit* avAudioUnit,
         AUAudioUnit* audioUnit
-) : PluginInstance(info), format(format), options(options), logger_(logger), audioUnit(audioUnit) {
+) : PluginInstance(info), format(format), options(options), logger_(logger), avAudioUnit(avAudioUnit), audioUnit(audioUnit) {
     @autoreleasepool {
         name = std::string([[audioUnit componentName] UTF8String]);
         setCurrentThreadNameIfPossible("remidy.AUv3.instance." + name);
@@ -40,19 +41,21 @@ remidy::PluginInstanceAUv3::PluginInstanceAUv3(
 
 remidy::PluginInstanceAUv3::~PluginInstanceAUv3() {
     @autoreleasepool {
-        if (options.uiThreadRequirement & PluginUIThreadRequirement::InstanceControl) {
-            EventLoop::runTaskOnMainThread([&] {
-                if (audioUnit != nil) {
-                    [audioUnit release];
-                    audioUnit = nil;
-                }
-            });
-        } else {
+        auto releaseAudioObjects = [&] {
             if (audioUnit != nil) {
                 [audioUnit release];
                 audioUnit = nil;
             }
-        }
+            if (avAudioUnit != nil) {
+                [avAudioUnit release];
+                avAudioUnit = nil;
+            }
+        };
+
+        if (options.uiThreadRequirement & PluginUIThreadRequirement::InstanceControl)
+            EventLoop::runTaskOnMainThread(releaseAudioObjects);
+        else
+            releaseAudioObjects();
         delete audio_buses;
         delete midiConverter;
         delete _parameters;

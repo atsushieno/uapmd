@@ -207,15 +207,17 @@ namespace remidy {
         PluginFormatAUv3Impl *format;
         PluginFormat::PluginInstantiationOptions options;
         Logger* logger_;
+        AVAudioUnit* avAudioUnit{nil}; // Wrapper returned by AVFoundation
         AUAudioUnit* audioUnit{nil};  // The AUAudioUnit instance (Objective-C object)
         std::string name{};
 
     public:
         PluginInstanceAUv3(PluginFormatAUv3Impl* format,
-                          PluginFormat::PluginInstantiationOptions options,
-                          Logger* logger,
-                          PluginCatalogEntry* info,
-                          AUAudioUnit* audioUnit);
+                           PluginFormat::PluginInstantiationOptions options,
+                           Logger* logger,
+                           PluginCatalogEntry* info,
+                           AVAudioUnit* avAudioUnit,
+                           AUAudioUnit* audioUnit);
         ~PluginInstanceAUv3() override;
         Logger* logger() { return logger_; }
 

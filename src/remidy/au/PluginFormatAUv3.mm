@@ -1,6 +1,7 @@
 #if __APPLE__
 
 #include <format>
+#include <CoreFoundation/CoreFoundation.h>
 #include "PluginFormatAUv3.hpp"
 #include "remidy/priv/plugin-format-au.hpp"
 #include "AUv2Helper.hpp"
@@ -170,36 +171,60 @@ void remidy::PluginFormatAUv3Impl::createInstance(
         // Use AUAudioUnit API for both v2 and v3
         AudioComponentInstantiationOptions auOptions = kAudioComponentInstantiation_LoadInProcess;
 
-        __block auto cb = std::move(callback);
+        auto cb = std::move(callback);
         __block auto logger = Logger::global();
         __block auto self = this;
 
-        [AUAudioUnit instantiateWithComponentDescription:desc
-                                                  options:auOptions
-                                        completionHandler:^(AUAudioUnit * _Nullable audioUnit, NSError * _Nullable error) {
+        __block bool instantiationCompleted = false;
+        __block PluginInstance* createdInstanceRaw = nullptr;
+        __block std::string instantiationError;
+
+        [AVAudioUnit instantiateWithComponentDescription:desc
+                                                 options:auOptions
+                                       completionHandler:^(AVAudioUnit * _Nullable avAudioUnit, NSError * _Nullable error) {
             if (error != nil) {
                 NSString *errorMsg = [error localizedDescription];
-                cb(nullptr, std::format("Failed to instantiate AUAudioUnit: {}", [errorMsg UTF8String]));
+                instantiationError = std::format("Failed to instantiate AUAudioUnit: {}", [errorMsg UTF8String]);
+                instantiationCompleted = true;
                 return;
             }
 
+            if (avAudioUnit == nil) {
+                instantiationError = std::format("Failed to instantiate AUAudioUnit {}", info->displayName());
+                instantiationCompleted = true;
+                return;
+            }
+
+            AUAudioUnit* audioUnit = [avAudioUnit AUAudioUnit];
             if (audioUnit == nil) {
-                cb(nullptr, std::format("Failed to instantiate AUAudioUnit {}", info->displayName()));
+                instantiationError = std::format("Failed to obtain AUAudioUnit from AVAudioUnit {}", info->displayName());
+                instantiationCompleted = true;
                 return;
             }
 
-            // Retain the audioUnit since we're passing it to C++
+            // Retain both Objective-C objects since we're passing them to C++
+            [avAudioUnit retain];
             [audioUnit retain];
 
-            auto instance = std::make_unique<PluginInstanceAUv3>(self, options, logger, info, audioUnit);
-            cb(std::move(instance), "");
+            createdInstanceRaw = new PluginInstanceAUv3(self, options, logger, info, avAudioUnit, audioUnit);
+            instantiationCompleted = true;
         }];
+
+        while (!instantiationCompleted)
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, true);
+
+        if (createdInstanceRaw) {
+            cb(std::unique_ptr<PluginInstance>(createdInstanceRaw), "");
+        } else {
+            if (instantiationError.empty())
+                instantiationError = "AUAudioUnit instantiation did not complete";
+            cb(nullptr, instantiationError);
+        }
     };
 
-    if (requiresUIThreadOn(info) & PluginUIThreadRequirement::InstanceControl)
-        EventLoop::runTaskOnMainThread(implFunc);
-    else
-        implFunc();
+    // AUAudioUnit instantiation relies on the main run loop in many AUv3s (e.g. Mela).
+    // Always run this on the UI thread so the completion handler is invoked.
+    EventLoop::runTaskOnMainThread(implFunc);
 }
 
 remidy::PluginFormatAUv3::Extensibility::Extensibility(PluginFormat &format) : PluginExtensibility(format) {
