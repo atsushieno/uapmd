@@ -39,12 +39,27 @@ remidy::PluginInstanceAUv3::ParameterSupport::ParameterSupport(remidy::PluginIns
             }
 
             NSArray<AUParameter*>* allParameters = [parameterTree allParameters];
-            parameter_list.reserve([allParameters count]);
 
-            for (NSUInteger i = 0; i < [allParameters count]; i++) {
-                AUParameter* param = allParameters[i];
+            // Filter to only include global scope parameters (exclude per-note, per-channel, per-group)
+            NSMutableArray<AUParameter*>* globalParameters = [NSMutableArray array];
+            for (AUParameter* param in allParameters) {
+                AUParameterAddress addr = [param address];
+                AUParameter* globalParam = [parameterTree parameterWithID:addr scope:kAudioUnitScope_Global element:0];
+                if (globalParam != nil) {
+                    [globalParameters addObject:param];
+                }
+            }
 
-                std::string idString = std::format("{}", [param address]);
+            parameter_list.reserve([globalParameters count]);
+            parameter_addresses.reserve([globalParameters count]);
+
+            for (NSUInteger i = 0; i < [globalParameters count]; i++) {
+                AUParameter* param = globalParameters[i];
+
+                AUParameterAddress address = [param address];
+                parameter_addresses.push_back(address);
+
+                std::string idString = std::format("{}", address);
                 std::string pName = std::string([[param displayName] UTF8String]);
                 std::string path = keyPathToGroupPath([param keyPath]);
 
@@ -117,18 +132,17 @@ remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::setParameter(ui
         if (owner->audioUnit == nil)
             return StatusCode::INVALID_PARAMETER_OPERATION;
 
-        if (index >= parameter_list.size())
+        if (index >= parameter_list.size() || index >= parameter_addresses.size())
             return StatusCode::INVALID_PARAMETER_OPERATION;
 
         AUParameterTree* tree = [owner->audioUnit parameterTree];
         if (tree == nil)
             return StatusCode::INVALID_PARAMETER_OPERATION;
 
-        NSArray<AUParameter*>* allParameters = [tree allParameters];
-        if (index >= [allParameters count])
+        AUParameter* param = [tree parameterWithAddress:parameter_addresses[index]];
+        if (param == nil)
             return StatusCode::INVALID_PARAMETER_OPERATION;
 
-        AUParameter* param = allParameters[index];
         [param setValue:static_cast<AUValue>(value)];
 
         return StatusCode::OK;
@@ -145,18 +159,17 @@ remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::getParameter(ui
         if (owner->audioUnit == nil)
             return StatusCode::INVALID_PARAMETER_OPERATION;
 
-        if (index >= parameter_list.size())
+        if (index >= parameter_list.size() || index >= parameter_addresses.size())
             return StatusCode::INVALID_PARAMETER_OPERATION;
 
         AUParameterTree* tree = [owner->audioUnit parameterTree];
         if (tree == nil)
             return StatusCode::INVALID_PARAMETER_OPERATION;
 
-        NSArray<AUParameter*>* allParameters = [tree allParameters];
-        if (index >= [allParameters count])
+        AUParameter* param = [tree parameterWithAddress:parameter_addresses[index]];
+        if (param == nil)
             return StatusCode::INVALID_PARAMETER_OPERATION;
 
-        AUParameter* param = allParameters[index];
         *value = static_cast<double>([param value]);
 
         return StatusCode::OK;
@@ -180,19 +193,17 @@ remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::getPerNoteContr
 
 std::string remidy::PluginInstanceAUv3::ParameterSupport::valueToString(uint32_t index, double value) {
     @autoreleasepool {
-        if (owner->audioUnit == nil || index >= parameter_list.size())
+        if (owner->audioUnit == nil || index >= parameter_list.size() || index >= parameter_addresses.size())
             return std::format("{:.3f}", value);
 
         AUParameterTree* tree = [owner->audioUnit parameterTree];
         if (tree == nil)
             return std::format("{:.3f}", value);
 
-        NSArray<AUParameter*>* allParameters = [tree allParameters];
-        if (index >= [allParameters count])
+        AUParameter* param = [tree parameterWithAddress:parameter_addresses[index]];
+        if (param == nil)
             return std::format("{:.3f}", value);
 
-        AUParameter* param = allParameters[index];
-        // NOTE: some non-trivial replacement during AUv2->AUv3 migration
         AUValue auValue = static_cast<AUValue>(value);
         NSString* str = [param stringFromValue:&auValue];
         if (str != nil)
@@ -209,19 +220,17 @@ std::string remidy::PluginInstanceAUv3::ParameterSupport::valueToStringPerNote(
 
 void remidy::PluginInstanceAUv3::ParameterSupport::refreshParameterMetadata(uint32_t index) {
     @autoreleasepool {
-        if (owner->audioUnit == nil || index >= parameter_list.size())
+        if (owner->audioUnit == nil || index >= parameter_list.size() || index >= parameter_addresses.size())
             return;
 
         AUParameterTree* tree = [owner->audioUnit parameterTree];
         if (tree == nil)
             return;
 
-        NSArray<AUParameter*>* allParameters = [tree allParameters];
-        if (index >= [allParameters count])
+        AUParameter* param = [tree parameterWithAddress:parameter_addresses[index]];
+        if (param == nil)
             return;
 
-        // NOTE: some non-trivial replacement during AUv2->AUv3 migration
-        AUParameter* param = allParameters[index];
         // AUParameter doesn't have defaultValue, use current value
         parameter_list[index]->updateRange([param minValue], [param maxValue], static_cast<double>([param value]));
     }
@@ -248,10 +257,8 @@ void remidy::PluginInstanceAUv3::ParameterSupport::installParameterObserver() {
             if (!strongSelf)
                 return;
 
-            // Find parameter index by address
-            for (size_t i = 0; i < strongSelf->parameter_list.size(); i++) {
-                // Parameter ID is stored as string, need to convert back
-                if (std::stoul(strongSelf->parameter_list[i]->stableId()) == address) {
+            for (size_t i = 0; i < strongSelf->parameter_addresses.size(); i++) {
+                if (strongSelf->parameter_addresses[i] == address) {
                     strongSelf->notifyParameterChangeListeners(static_cast<uint32_t>(i), static_cast<double>(value));
                     break;
                 }

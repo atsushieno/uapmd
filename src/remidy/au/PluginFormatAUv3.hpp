@@ -59,7 +59,7 @@ namespace remidy {
         class ParameterSupport : public PluginParameterSupport {
             remidy::PluginInstanceAUv3 *owner;
             std::vector<PluginParameter*> parameter_list{};
-            // NOTE: some non-trivial replacement during AUv2->AUv3 migration
+            std::vector<AUParameterAddress> parameter_addresses{};
             AUParameterObserverToken parameterObserverToken{nil};
 
         public:
