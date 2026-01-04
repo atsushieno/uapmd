@@ -44,7 +44,8 @@ void remidy::PluginInstanceAUv3::AudioBuses::inspectBuses() {
             AUAudioUnitBus* bus = [inputBusArray objectAtIndexedSubscript:i];
             AVAudioFormat* format = [bus format];
 
-            auto busName = std::string([[bus name] UTF8String]);
+            NSString* busNameNS = [bus name];
+            auto busName = busNameNS ? std::string([busNameNS UTF8String]) : "";
             auto channels = static_cast<uint32_t>([format channelCount]);
 
             // NOTE: some non-trivial replacement during AUv2->AUv3 migration
@@ -68,7 +69,8 @@ void remidy::PluginInstanceAUv3::AudioBuses::inspectBuses() {
             AUAudioUnitBus* bus = [outputBusArray objectAtIndexedSubscript:i];
             AVAudioFormat* format = [bus format];
 
-            auto busName = std::string([[bus name] UTF8String]);
+            NSString* busNameNS = [bus name];
+            auto busName = busNameNS ? std::string([busNameNS UTF8String]) : "";
             auto channels = static_cast<uint32_t>([format channelCount]);
 
             // NOTE: some non-trivial replacement during AUv2->AUv3 migration
