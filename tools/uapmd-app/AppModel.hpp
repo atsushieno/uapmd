@@ -25,24 +25,34 @@ namespace uapmd {
         VirtualMidiDeviceController* deviceController() { return deviceController_.get(); }
         bool isScanning() const { return isScanning_; }
 
-        std::vector<std::function<void(int32_t instancingId, int32_t instanceId, std::string)>> instancingCompleted{};
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
 
-        void instantiatePlugin(int32_t instancingId, const std::string_view& format, const std::string_view& pluginId) {
-            std::string formatString{format};
-            std::string pluginIdString{pluginId};
-            sequencer_.addSimplePluginTrack(formatString, pluginIdString,
-                                            [this, instancingId](int32_t instanceId, std::string error) {
-                                                // FIXME: error reporting instead of dumping out here
-                                                if (!error.empty()) {
-                                                    std::string msg = std::format("Instancing ID {}: {}", instancingId,
-                                                                                  error);
-                                                    remidy::Logger::global()->logError(msg.c_str());
-                                                }
-                                                for (auto &f: instancingCompleted)
-                                                    f(instancingId, instanceId, error);
-                                            });
-        }
+        // Configuration for creating a plugin instance with virtual MIDI device
+        struct PluginInstanceConfig {
+            std::string apiName = "default";
+            std::string deviceName;  // Empty = auto-generate from plugin name
+            std::string manufacturer = "UAPMD Project";
+            std::string version = "0.1";
+        };
+
+        // Result from plugin instance creation
+        struct PluginInstanceResult {
+            int32_t instanceId = -1;
+            std::shared_ptr<UapmdMidiDevice> device;
+            int32_t trackIndex = -1;
+            std::string pluginName;
+            std::string error;
+        };
+
+        // Global callback registry - called whenever ANY instance is created (GUI or script)
+        std::vector<std::function<void(const PluginInstanceResult&)>> instanceCreated{};
+
+        // Create plugin instance with virtual MIDI device
+        // Notifies all registered callbacks when complete
+        void createPluginInstanceAsync(const std::string& format,
+                                       const std::string& pluginId,
+                                       int32_t trackIndex,
+                                       const PluginInstanceConfig& config);
 
         void removePluginInstance(int32_t instanceId) {
             sequencer_.removePluginInstance(instanceId);

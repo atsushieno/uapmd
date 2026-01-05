@@ -221,27 +221,32 @@ void ScriptEditor::initializeJavaScriptContext()
         if (formatName.empty() || pluginId.empty())
             return choc::value::createInt32 (-1);
 
-        // Use a unique instancing ID for each call
-        static std::atomic<int32_t> nextInstancingId{1};
-        int32_t instancingId = nextInstancingId.fetch_add(1);
+        // Use the unified AppModel API which calls global callbacks
+        // However, JavaScript needs synchronous return, so we still need to wait
+        auto& model = uapmd::AppModel::instance();
+
+        uapmd::AppModel::PluginInstanceConfig config;
+        // config uses defaults: apiName="default", auto-generated device name, etc.
 
         std::atomic<int32_t> resultInstanceId{-1};
         std::atomic<bool> completed{false};
 
-        // Register a one-time callback to capture the result
-        auto& model = uapmd::AppModel::instance();
+        // Register a temporary callback to capture the result for this specific call
+        auto callback = [&resultInstanceId, &completed](const uapmd::AppModel::PluginInstanceResult& result) {
+            if (!result.error.empty() || result.instanceId < 0) {
+                std::cerr << "[JS] Failed to create plugin instance: " << result.error << std::endl;
+                resultInstanceId = -1;
+            } else {
+                resultInstanceId = result.instanceId;
+            }
+            completed = true;
+        };
 
-        // Add a completion handler that will be called when instantiation completes
-        model.instancingCompleted.push_back(
-            [instancingId, &resultInstanceId, &completed] (int32_t callbackInstancingId, int32_t instanceId, std::string error) {
-                if (callbackInstancingId == instancingId) {
-                    resultInstanceId = instanceId;
-                    completed = true;
-                }
-            });
+        // Temporarily add our callback
+        model.instanceCreated.push_back(callback);
 
-        // Start the instantiation
-        model.instantiatePlugin (instancingId, formatName, pluginId);
+        // Trigger instance creation (will call all callbacks including ours and MainWindow's)
+        model.createPluginInstanceAsync(formatName, pluginId, -1, config);
 
         // Wait for completion with timeout (max 5 seconds)
         auto startTime = std::chrono::steady_clock::now();
@@ -249,29 +254,15 @@ void ScriptEditor::initializeJavaScriptContext()
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             auto elapsed = std::chrono::steady_clock::now() - startTime;
             if (elapsed > std::chrono::seconds(5)) {
-                // Timeout - cleanup the callback
-                auto& callbacks = model.instancingCompleted;
-                callbacks.erase(
-                    std::remove_if(callbacks.begin(), callbacks.end(),
-                        [instancingId](const auto& f) {
-                            // We can't easily identify which callback to remove,
-                            // so this is a limitation. The callback will remain but won't match.
-                            return false;
-                        }),
-                    callbacks.end());
+                std::cerr << "[JS] Timeout creating plugin instance" << std::endl;
+                // Remove our callback
+                model.instanceCreated.pop_back();
                 return choc::value::createInt32 (-1);
             }
         }
 
-        // Remove the callback now that it's been called
-        auto& callbacks = model.instancingCompleted;
-        callbacks.erase(
-            std::remove_if(callbacks.begin(), callbacks.end(),
-                [instancingId](const auto& f) {
-                    // Same limitation as above
-                    return false;
-                }),
-            callbacks.end());
+        // Remove our temporary callback
+        model.instanceCreated.pop_back();
 
         return choc::value::createInt32 (resultInstanceId.load());
     });

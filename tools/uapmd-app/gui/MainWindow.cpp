@@ -101,15 +101,6 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     refreshInstances();
     refreshPluginList();
 
-    // Register callback for when plugin instantiation completes
-    uapmd::AppModel::instance().instancingCompleted.push_back(
-        [this](int32_t instancingId, int32_t instanceId, std::string error) {
-            if (error.empty()) {
-                // Instantiation successful, refresh the instance list
-                refreshInstances();
-            }
-        });
-
     // Register callback for when plugin scanning completes
     uapmd::AppModel::instance().scanningCompleted.push_back(
         [this](bool success, std::string error) {
@@ -119,6 +110,57 @@ MainWindow::MainWindow(GuiDefaults defaults) {
                 std::cout << "Plugin list refreshed after scanning" << std::endl;
             } else {
                 std::cout << "Plugin scanning failed: " << error << std::endl;
+            }
+        });
+
+    // Register callback for when plugin instances are created (GUI or script)
+    uapmd::AppModel::instance().instanceCreated.push_back(
+        [this](const uapmd::AppModel::PluginInstanceResult& result) {
+            if (!result.error.empty() || result.instanceId < 0) {
+                return;  // Error already logged elsewhere
+            }
+
+            // This callback handles UI state updates for ALL instance creations
+            auto state = std::make_shared<DeviceState>();
+            state->device = result.device;
+            state->label = result.device ? std::format("{} [format]", result.pluginName) : "";
+            state->apiName = "default";  // FIXME: get from result
+
+            // Start the device
+            int startStatus = result.device ? result.device->start() : -1;
+            if (startStatus == 0) {
+                state->running = true;
+                state->statusMessage = "Running";
+
+                auto& node = state->pluginInstances[result.instanceId];
+                node.instanceId = result.instanceId;
+                node.pluginName = result.pluginName;
+                node.pluginFormat = "";  // FIXME: get from result
+                node.pluginId = "";
+                node.statusMessage = std::format("Plugin ready (instance {})", result.instanceId);
+                node.instantiating = false;
+                node.hasError = false;
+                node.trackIndex = result.trackIndex;
+            } else {
+                state->running = false;
+                state->hasError = true;
+                state->statusMessage = std::format("Failed to start device (status {})", startStatus);
+            }
+            state->instantiating = false;
+
+            // Add to devices list
+            {
+                std::lock_guard lock(devicesMutex_);
+                devices_.push_back(DeviceEntry{nextDeviceId_++, state});
+            }
+
+            refreshInstances();
+            if (startStatus == 0) {
+                // Ensure the UMP device name buffer reflects the device name
+                umpDeviceNameBuffers_[result.instanceId] = {};
+                std::strncpy(umpDeviceNameBuffers_[result.instanceId].data(), state->label.c_str(),
+                             umpDeviceNameBuffers_[result.instanceId].size() - 1);
+                umpDeviceNameBuffers_[result.instanceId][umpDeviceNameBuffers_[result.instanceId].size() - 1] = '\0';
             }
         });
 
@@ -1672,108 +1714,17 @@ void MainWindow::loadPluginState(int32_t instanceId) {
 }
 
 void MainWindow::createDeviceForPlugin(const std::string& format, const std::string& pluginId, int32_t trackIndex) {
-    auto* deviceController = uapmd::AppModel::instance().deviceController();
-    if (!deviceController) {
-        std::cout << "Device controller not available" << std::endl;
-        return;
+    // Prepare configuration
+    uapmd::AppModel::PluginInstanceConfig config;
+    config.apiName = std::string(apiInput_);
+    if (config.apiName.empty()) {
+        config.apiName = "default";
     }
+    config.deviceName = std::string(deviceNameInput_);  // Empty = auto-generate
 
-    // Get plugin name from catalog
-    std::string pluginName;
-    auto& catalog = uapmd::AppModel::instance().sequencer().catalog();
-    auto plugins = catalog.getPlugins();
-    for (const auto& plugin : plugins) {
-        if (plugin->format() == format && plugin->pluginId() == pluginId) {
-            pluginName = plugin->displayName();
-            break;
-        }
-    }
-
-    // Create device state
-    auto state = std::make_shared<DeviceState>();
-    state->apiName = std::string(apiInput_);
-    if (state->apiName.empty()) {
-        state->apiName = "default";
-    }
-    state->label = std::string(deviceNameInput_);
-    if (state->label.empty()) {
-        state->label = std::format("{} [{}]", pluginName, format);
-    }
-    state->statusMessage = trackIndex >= 0 ? std::format("Adding to track {}...", trackIndex + 1)
-                                           : "Instantiating plugin...";
-    state->instantiating = true;
-
-    std::string errorMessage;
-    auto device = deviceController->createDevice(
-        state->apiName,
-        state->label,      // Use the label (device name) here!
-        "UAPMD Project",  // manufacturer
-        "0.1",            // version
-        trackIndex,
-        format,
-        pluginId,
-        errorMessage
-    );
-
-    if (!device) {
-        std::lock_guard guard(state->mutex);
-        state->statusMessage = "Plugin instantiation failed: " + errorMessage;
-        state->hasError = true;
-        state->instantiating = false;
-        std::cout << "Failed to create virtual MIDI device: " << errorMessage << std::endl;
-        return;
-    }
-
-    state->device = device;
-
-    // Start the device
-    int startStatus = device->start();
-    int32_t newInstanceId = -1;
-    {
-        std::lock_guard guard(state->mutex);
-        if (startStatus == 0) {
-            state->running = true;
-            state->statusMessage = "Running";
-            std::cout << "Virtual MIDI device started successfully: " << state->label << std::endl;
-        } else {
-            state->running = false;
-            state->hasError = true;
-            state->statusMessage = std::format("Failed to start device (status {})", startStatus);
-            deviceController->removeDevice(device->instanceId());
-            state->device.reset();
-            state->pluginInstances.erase(device->instanceId());
-            std::cout << "Failed to start virtual MIDI device (status " << startStatus << ")" << std::endl;
-        }
-        state->instantiating = false;
-
-        if (startStatus == 0) {
-            auto& node = state->pluginInstances[device->instanceId()];
-            node.instanceId = device->instanceId();
-            node.pluginName = pluginName;
-            node.pluginFormat = format;
-            node.pluginId = pluginId;
-            node.statusMessage = std::format("Plugin ready (instance {})", node.instanceId);
-            node.instantiating = false;
-            node.hasError = false;
-            node.trackIndex = device->trackIndex();
-            newInstanceId = node.instanceId;
-        }
-    }
-
-    {
-        std::lock_guard lock(devicesMutex_);
-        devices_.push_back(DeviceEntry{nextDeviceId_++, state});
-    }
-
-    refreshInstances();
-    if (newInstanceId >= 0) {
-        // Ensure the UMP device name buffer reflects the chosen Device Name
-        umpDeviceNameBuffers_[newInstanceId] = {};
-        std::strncpy(umpDeviceNameBuffers_[newInstanceId].data(), state->label.c_str(),
-                     umpDeviceNameBuffers_[newInstanceId].size() - 1);
-        umpDeviceNameBuffers_[newInstanceId][umpDeviceNameBuffers_[newInstanceId].size() - 1] = '\0';
-        showDetailsWindow(newInstanceId);
-    }
+    // Use AppModel's unified creation method
+    // The global callback registered in constructor will handle UI updates
+    uapmd::AppModel::instance().createPluginInstanceAsync(format, pluginId, trackIndex, config);
 }
 
 void MainWindow::renderVirtualMidiDeviceManager() {

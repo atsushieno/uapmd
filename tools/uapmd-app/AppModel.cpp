@@ -80,3 +80,82 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan) {
 
     scanningThread.detach();
 }
+
+void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
+                                                 const std::string& pluginId,
+                                                 int32_t trackIndex,
+                                                 const PluginInstanceConfig& config) {
+    // Get plugin name from catalog
+    std::string pluginName;
+    auto& catalog = sequencer_.catalog();
+    auto plugins = catalog.getPlugins();
+    for (const auto& plugin : plugins) {
+        if (plugin->format() == format && plugin->pluginId() == pluginId) {
+            pluginName = plugin->displayName();
+            break;
+        }
+    }
+
+    if (pluginName.empty()) {
+        pluginName = "Unknown Plugin";
+    }
+
+    // Determine device name
+    std::string deviceLabel = config.deviceName.empty()
+        ? std::format("{} [{}]", pluginName, format)
+        : config.deviceName;
+
+    // This is the same logic as VirtualMidiDeviceController::createDevice
+    // but we call the callback instead of managing state
+    std::string formatCopy = format;
+    std::string pluginIdCopy = pluginId;
+
+    auto instantiateCallback = [this, config, deviceLabel, pluginName](int32_t instanceId, std::string error) {
+        PluginInstanceResult result;
+        result.instanceId = instanceId;
+        result.pluginName = pluginName;
+        result.error = std::move(error);
+
+        if (!result.error.empty() || instanceId < 0) {
+            // Notify all registered callbacks
+            for (auto& cb : instanceCreated) {
+                cb(result);
+            }
+            return;
+        }
+
+        // Create virtual MIDI device
+        auto actualTrackIndex = sequencer_.findTrackIndexForInstance(instanceId);
+        auto midiDevice = createLibreMidiIODevice(config.apiName, deviceLabel, config.manufacturer, config.version);
+
+        auto device = std::make_shared<UapmdMidiDevice>(midiDevice,
+                                                         &sequencer_,
+                                                         instanceId,
+                                                         actualTrackIndex,
+                                                         config.apiName,
+                                                         deviceLabel,
+                                                         config.manufacturer,
+                                                         config.version);
+
+        if (auto group = sequencer_.pluginGroup(instanceId); group.has_value()) {
+            device->group(group.value());
+        }
+
+        sequencer_.assignMidiDeviceToPlugin(instanceId, midiDevice);
+        device->initialize();
+
+        result.device = device;
+        result.trackIndex = actualTrackIndex;
+
+        // Notify all registered callbacks
+        for (auto& cb : instanceCreated) {
+            cb(result);
+        }
+    };
+
+    if (trackIndex < 0) {
+        sequencer_.addSimplePluginTrack(formatCopy, pluginIdCopy, instantiateCallback);
+    } else {
+        sequencer_.addPluginToTrack(trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
+    }
+}
