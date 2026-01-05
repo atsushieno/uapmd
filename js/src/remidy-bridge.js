@@ -137,3 +137,118 @@ export class PluginInstance {
         }
     }
 }
+
+export class ParameterUpdate {
+    constructor(data) {
+        this.parameterIndex = data.parameterIndex || 0;
+        this.value = data.value || 0;
+    }
+}
+
+export class PluginNodeInfo {
+    constructor(data) {
+        this.instanceId = data.instanceId || -1;
+        this.pluginId = data.pluginId || '';
+        this.format = data.format || '';
+        this.displayName = data.displayName || '';
+    }
+}
+
+export class TrackInfo {
+    constructor(data) {
+        this.trackIndex = data.trackIndex || -1;
+        this.nodes = (data.nodes || []).map(n => new PluginNodeInfo(n));
+    }
+}
+
+// Sequencer singleton - access to the application's audio sequencer
+export const sequencer = {
+    // MIDI Control
+    sendNoteOn: function(instanceId, note) {
+        __remidy_sequencer_sendNoteOn(instanceId, note);
+    },
+
+    sendNoteOff: function(instanceId, note) {
+        __remidy_sequencer_sendNoteOff(instanceId, note);
+    },
+
+    setParameterValue: function(instanceId, parameterIndex, value) {
+        __remidy_sequencer_setParameterValue(instanceId, parameterIndex, value);
+    },
+
+    // Transport/Playback
+    startPlayback: function() {
+        __remidy_sequencer_startPlayback();
+    },
+
+    stopPlayback: function() {
+        __remidy_sequencer_stopPlayback();
+    },
+
+    pausePlayback: function() {
+        __remidy_sequencer_pausePlayback();
+    },
+
+    resumePlayback: function() {
+        __remidy_sequencer_resumePlayback();
+    },
+
+    getPlaybackPosition: function() {
+        return __remidy_sequencer_getPlaybackPosition();
+    },
+
+    // Instance Management
+    getInstanceIds: function() {
+        return __remidy_sequencer_getInstanceIds();
+    },
+
+    getPluginName: function(instanceId) {
+        return __remidy_sequencer_getPluginName(instanceId);
+    },
+
+    getPluginFormat: function(instanceId) {
+        return __remidy_sequencer_getPluginFormat(instanceId);
+    },
+
+    isPluginBypassed: function(instanceId) {
+        return __remidy_sequencer_isPluginBypassed(instanceId);
+    },
+
+    setPluginBypassed: function(instanceId, bypassed) {
+        __remidy_sequencer_setPluginBypassed(instanceId, bypassed);
+    },
+
+    getTrackInfos: function() {
+        const tracks = __remidy_sequencer_getTrackInfos();
+        return tracks.map(t => new TrackInfo(t));
+    },
+
+    getParameterUpdates: function(instanceId) {
+        const updates = __remidy_sequencer_getParameterUpdates(instanceId);
+        return updates.map(u => new ParameterUpdate(u));
+    },
+
+    // Audio Analysis
+    getInputSpectrum: function(numBars) {
+        if (numBars === undefined) numBars = 32;
+        return __remidy_sequencer_getInputSpectrum(numBars);
+    },
+
+    getOutputSpectrum: function(numBars) {
+        if (numBars === undefined) numBars = 32;
+        return __remidy_sequencer_getOutputSpectrum(numBars);
+    },
+
+    // Audio Device/Settings
+    getSampleRate: function() {
+        return __remidy_sequencer_getSampleRate();
+    },
+
+    setSampleRate: function(sampleRate) {
+        return __remidy_sequencer_setSampleRate(sampleRate);
+    },
+
+    isScanning: function() {
+        return __remidy_sequencer_isScanning();
+    }
+};

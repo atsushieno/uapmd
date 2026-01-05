@@ -47,6 +47,10 @@ ScriptEditor::ScriptEditor()
         {"PluginFormat", "class PluginFormat - Plugin format descriptor (VST3, CLAP, AU, LV2)"},
         {"PluginInstance", "class PluginInstance - Instantiated plugin for audio processing"},
         {"ParameterInfo", "class ParameterInfo - Plugin parameter metadata"},
+        {"ParameterUpdate", "class ParameterUpdate - Parameter change notification"},
+        {"PluginNodeInfo", "class PluginNodeInfo - Plugin node information in a track"},
+        {"TrackInfo", "class TrackInfo - Track with its plugin nodes"},
+        {"sequencer", "const sequencer - Application's audio sequencer singleton (MIDI, transport, audio analysis)"},
     };
     for (auto& [name, decl] : apiTypes)
         langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
@@ -113,6 +117,32 @@ ScriptEditor::ScriptEditor()
     for (auto& [name, decl] : paramMembers)
         langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
 
+    // Sequencer members
+    static const char* const sequencerMembers[][2] = {
+        {"sendNoteOn", "method(instanceId: number, note: number) - Send MIDI note on"},
+        {"sendNoteOff", "method(instanceId: number, note: number) - Send MIDI note off"},
+        {"setParameterValue", "method(instanceId: number, paramIndex: number, value: number) - Set parameter"},
+        {"startPlayback", "method() - Start audio playback"},
+        {"stopPlayback", "method() - Stop audio playback"},
+        {"pausePlayback", "method() - Pause audio playback"},
+        {"resumePlayback", "method() - Resume audio playback"},
+        {"getPlaybackPosition", "method(): number - Get playback position in samples"},
+        {"getInstanceIds", "method(): number[] - Get all active plugin instance IDs"},
+        {"getPluginName", "method(instanceId: number): string - Get plugin display name"},
+        {"getPluginFormat", "method(instanceId: number): string - Get plugin format"},
+        {"isPluginBypassed", "method(instanceId: number): boolean - Check if plugin is bypassed"},
+        {"setPluginBypassed", "method(instanceId: number, bypassed: boolean) - Set plugin bypass state"},
+        {"getTrackInfos", "method(): TrackInfo[] - Get all tracks with their plugins"},
+        {"getParameterUpdates", "method(instanceId: number): ParameterUpdate[] - Get parameter changes"},
+        {"getInputSpectrum", "method(numBars?: number): number[] - Get input audio spectrum"},
+        {"getOutputSpectrum", "method(numBars?: number): number[] - Get output audio spectrum"},
+        {"getSampleRate", "method(): number - Get current sample rate"},
+        {"setSampleRate", "method(sampleRate: number): boolean - Set sample rate"},
+        {"isScanning", "method(): boolean - Check if plugin scanning is in progress"},
+    };
+    for (auto& [name, decl] : sequencerMembers)
+        langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
+
     // Common JavaScript globals
     static const char* const jsGlobals[][2] = {
         {"console", "object - Console logging API"},
@@ -171,10 +201,49 @@ void ScriptEditor::render()
 
     ImGui::SetNextWindowSize (ImVec2 (800, 600), ImGuiCond_FirstUseEver);
 
-    if (ImGui::Begin ("Script Editor", &isOpen_))
+    if (ImGui::Begin ("Script Editor", &isOpen_, ImGuiWindowFlags_MenuBar))
     {
-        // Render the text editor
-        editor_.Render ("ScriptTextEditor");
+        // Edit menu bar
+        if (ImGui::BeginMenuBar())
+        {
+            if (ImGui::BeginMenu ("Edit"))
+            {
+                bool hasSelection = editor_.HasSelection();
+
+                if (ImGui::MenuItem ("Undo", nullptr, nullptr, editor_.CanUndo()))
+                    editor_.Undo();
+                if (ImGui::MenuItem ("Redo", nullptr, nullptr, editor_.CanRedo()))
+                    editor_.Redo();
+
+                ImGui::Separator();
+
+                if (ImGui::MenuItem ("Cut", nullptr, nullptr, hasSelection))
+                    editor_.Cut();
+                if (ImGui::MenuItem ("Copy", nullptr, nullptr, hasSelection))
+                    editor_.Copy();
+                if (ImGui::MenuItem ("Paste", nullptr))
+                    editor_.Paste();
+                if (ImGui::MenuItem ("Delete", nullptr, nullptr, hasSelection))
+                    editor_.Delete();
+
+                ImGui::Separator();
+
+                if (ImGui::MenuItem ("Select All", nullptr))
+                    editor_.SelectAll();
+
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenuBar();
+        }
+
+
+        // Calculate available height for the text editor, leaving space for buttons and error messages
+        float buttonHeight = ImGui::GetFrameHeightWithSpacing() * 2;  // Space for buttons
+        float errorHeight = errorMessage_.empty() ? 0.0f : ImGui::GetFrameHeightWithSpacing() * 3;  // Space for error message
+        float availableHeight = ImGui::GetContentRegionAvail().y - buttonHeight - errorHeight;
+
+        // Render the text editor with constrained height
+        editor_.Render ("ScriptTextEditor", ImVec2 (0, availableHeight));
 
         ImGui::Separator();
 
@@ -454,6 +523,257 @@ void ScriptEditor::initializeJavaScriptContext()
         // Placeholder
         return choc::value::Value();
     });
+
+    // === Sequencer MIDI Control API ===
+
+    jsContext_.registerFunction ("__remidy_sequencer_sendNoteOn", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto note = args.get<int32_t> (1, 60);
+
+        if (instanceId >= 0 && note >= 0 && note < 128)
+        {
+            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            sequencer.sendNoteOn (instanceId, note);
+        }
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_sendNoteOff", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto note = args.get<int32_t> (1, 60);
+
+        if (instanceId >= 0 && note >= 0 && note < 128)
+        {
+            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            sequencer.sendNoteOff (instanceId, note);
+        }
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_setParameterValue", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto paramIndex = args.get<int32_t> (1, -1);
+        auto value = args.get<double> (2, 0.0);
+
+        if (instanceId >= 0 && paramIndex >= 0)
+        {
+            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            sequencer.setParameterValue (instanceId, paramIndex, value);
+        }
+        return choc::value::Value();
+    });
+
+    // === Sequencer Transport/Playback API ===
+
+    jsContext_.registerFunction ("__remidy_sequencer_startPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        sequencer.startPlayback();
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_stopPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        sequencer.stopPlayback();
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_pausePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        sequencer.pausePlayback();
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_resumePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        sequencer.resumePlayback();
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_getPlaybackPosition", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto position = sequencer.playbackPositionSamples();
+        return choc::value::createInt64 (position);
+    });
+
+    // === Sequencer Instance Management API ===
+
+    jsContext_.registerFunction ("__remidy_sequencer_getInstanceIds", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto instanceIds = sequencer.getInstanceIds();
+
+        auto arr = choc::value::createEmptyArray();
+        for (auto id : instanceIds)
+        {
+            arr.addArrayElement (choc::value::createInt32 (id));
+        }
+        return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_getPluginName", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        if (instanceId < 0)
+            return choc::value::createString ("");
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto name = sequencer.getPluginName (instanceId);
+        return choc::value::createString (name);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_getPluginFormat", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        if (instanceId < 0)
+            return choc::value::createString ("");
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto format = sequencer.getPluginFormat (instanceId);
+        return choc::value::createString (format);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_isPluginBypassed", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        if (instanceId < 0)
+            return choc::value::createBool (false);
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto bypassed = sequencer.isPluginBypassed (instanceId);
+        return choc::value::createBool (bypassed);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_setPluginBypassed", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto bypassed = args.get<bool> (1, false);
+
+        if (instanceId >= 0)
+        {
+            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            sequencer.setPluginBypassed (instanceId, bypassed);
+        }
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_getTrackInfos", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto trackInfos = sequencer.getTrackInfos();
+
+        auto arr = choc::value::createEmptyArray();
+        for (const auto& track : trackInfos)
+        {
+            auto trackObj = choc::value::createObject ("TrackInfo");
+            trackObj.setMember ("trackIndex", track.trackIndex);
+
+            auto nodesArr = choc::value::createEmptyArray();
+            for (const auto& node : track.nodes)
+            {
+                auto nodeObj = choc::value::createObject ("PluginNodeInfo");
+                nodeObj.setMember ("instanceId", node.instanceId);
+                nodeObj.setMember ("pluginId", node.pluginId);
+                nodeObj.setMember ("format", node.format);
+                nodeObj.setMember ("displayName", node.displayName);
+                nodesArr.addArrayElement (nodeObj);
+            }
+            trackObj.setMember ("nodes", nodesArr);
+            arr.addArrayElement (trackObj);
+        }
+        return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_getParameterUpdates", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        if (instanceId < 0)
+            return choc::value::createEmptyArray();
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto updates = sequencer.getParameterUpdates (instanceId);
+
+        auto arr = choc::value::createEmptyArray();
+        for (const auto& update : updates)
+        {
+            auto obj = choc::value::createObject ("ParameterUpdate");
+            obj.setMember ("parameterIndex", update.parameterIndex);
+            obj.setMember ("value", update.value);
+            arr.addArrayElement (obj);
+        }
+        return arr;
+    });
+
+    // === Sequencer Audio Analysis API ===
+
+    jsContext_.registerFunction ("__remidy_sequencer_getInputSpectrum", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto numBars = args.get<int32_t> (0, 32);
+        if (numBars <= 0 || numBars > 256)
+            numBars = 32;
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        std::vector<float> spectrum (static_cast<size_t>(numBars));
+        sequencer.getInputSpectrum (spectrum.data(), numBars);
+
+        auto arr = choc::value::createEmptyArray();
+        for (auto value : spectrum)
+        {
+            arr.addArrayElement (choc::value::createFloat32 (value));
+        }
+        return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_getOutputSpectrum", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto numBars = args.get<int32_t> (0, 32);
+        if (numBars <= 0 || numBars > 256)
+            numBars = 32;
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        std::vector<float> spectrum (static_cast<size_t>(numBars));
+        sequencer.getOutputSpectrum (spectrum.data(), numBars);
+
+        auto arr = choc::value::createEmptyArray();
+        for (auto value : spectrum)
+        {
+            arr.addArrayElement (choc::value::createFloat32 (value));
+        }
+        return arr;
+    });
+
+    // === Sequencer Audio Device/Settings API ===
+
+    jsContext_.registerFunction ("__remidy_sequencer_getSampleRate", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto sampleRate = sequencer.sampleRate();
+        return choc::value::createInt32 (sampleRate);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_setSampleRate", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto sampleRate = args.get<int32_t> (0, 44100);
+        if (sampleRate <= 0)
+            return choc::value::createBool (false);
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto success = sequencer.sampleRate (sampleRate);
+        return choc::value::createBool (success);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_isScanning", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto isScanning = uapmd::AppModel::instance().isScanning();
+        return choc::value::createBool (isScanning);
+    });
 }
 
 void ScriptEditor::executeScript()
@@ -562,7 +882,7 @@ void ScriptEditor::setDefaultScript()
 {
     std::string defaultScript = R"(// JavaScript Evaluation Engine for UAPMD
 // Import the remidy bridge module for plugin access
-import { PluginScanTool, PluginInstance } from 'remidy-bridge';
+import { PluginScanTool, PluginInstance, sequencer } from 'remidy-bridge';
 
 // Example 1: Scan for plugins and list them
 log('Creating scan tool...');
@@ -581,19 +901,43 @@ for (let i = 0; i < Math.min(5, plugins.length); i++) {
     log(`${i + 1}. ${plugin.displayName} (${plugin.format}) by ${plugin.vendorName}`);
 }
 
-// Example 2: Save catalog to cache
-// scanTool.saveCache('plugin-cache.json');
+// Example 2: Use the app's sequencer for audio analysis
+// const sampleRate = sequencer.getSampleRate();
+// log('Sample rate:', sampleRate, 'Hz');
+//
+// const instanceIds = sequencer.getInstanceIds();
+// log('Active instances:', instanceIds.length);
+//
+// // Get audio spectrum
+// const spectrum = sequencer.getOutputSpectrum(32);
+// log('Output spectrum (32 bars):', spectrum.slice(0, 8), '...');
 
-// Example 3: Load a plugin instance
-// const formats = scanTool.getFormats();
-// if (formats.length > 0 && plugins.length > 0) {
-//     const instance = new PluginInstance(plugins[0].format, plugins[0].pluginId);
-//     log('Created instance:', instance.instanceId);
+// Example 3: MIDI Control with the app's sequencer
+// const instanceIds = sequencer.getInstanceIds();
+// if (instanceIds.length > 0) {
+//     const instanceId = instanceIds[0];
+//     log('Sending notes to instance:', instanceId);
 //
-//     const params = instance.getParameters();
-//     log('Plugin has', params.length, 'parameters');
+//     // Send MIDI notes
+//     sequencer.sendNoteOn(instanceId, 60);  // C4
+//     sequencer.sendNoteOn(instanceId, 64);  // E4
+//     sequencer.sendNoteOn(instanceId, 67);  // G4
 //
-//     instance.dispose();
+//     // After some time, turn them off
+//     // sequencer.sendNoteOff(instanceId, 60);
+//     // sequencer.sendNoteOff(instanceId, 64);
+//     // sequencer.sendNoteOff(instanceId, 67);
+// }
+
+// Example 4: Track and instance info from the app's sequencer
+// const tracks = sequencer.getTrackInfos();
+// for (const track of tracks) {
+//     log(`Track ${track.trackIndex}: ${track.nodes.length} plugins`);
+//     for (const node of track.nodes) {
+//         log(`  - ${node.displayName} (${node.format})`);
+//         const bypassed = sequencer.isPluginBypassed(node.instanceId);
+//         log(`    Bypassed: ${bypassed}`);
+//     }
 // }
 
 )";
