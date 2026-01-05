@@ -221,16 +221,59 @@ void ScriptEditor::initializeJavaScriptContext()
         if (formatName.empty() || pluginId.empty())
             return choc::value::createInt32 (-1);
 
-        // Use a simple synchronous approach for now
-        // In a real implementation, you might want to handle the async callback properly
+        // Use a unique instancing ID for each call
+        static std::atomic<int32_t> nextInstancingId{1};
+        int32_t instancingId = nextInstancingId.fetch_add(1);
+
         std::atomic<int32_t> resultInstanceId{-1};
         std::atomic<bool> completed{false};
 
-        uapmd::AppModel::instance().instantiatePlugin (0, formatName, pluginId);
+        // Register a one-time callback to capture the result
+        auto& model = uapmd::AppModel::instance();
 
-        // For now, return a placeholder. The actual instance ID will be available via callback
-        // This is a limitation of the synchronous bridge - ideally we'd use promises/async
-        return choc::value::createInt32 (0);  // Temporary placeholder
+        // Add a completion handler that will be called when instantiation completes
+        model.instancingCompleted.push_back(
+            [instancingId, &resultInstanceId, &completed] (int32_t callbackInstancingId, int32_t instanceId, std::string error) {
+                if (callbackInstancingId == instancingId) {
+                    resultInstanceId = instanceId;
+                    completed = true;
+                }
+            });
+
+        // Start the instantiation
+        model.instantiatePlugin (instancingId, formatName, pluginId);
+
+        // Wait for completion with timeout (max 5 seconds)
+        auto startTime = std::chrono::steady_clock::now();
+        while (!completed) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            auto elapsed = std::chrono::steady_clock::now() - startTime;
+            if (elapsed > std::chrono::seconds(5)) {
+                // Timeout - cleanup the callback
+                auto& callbacks = model.instancingCompleted;
+                callbacks.erase(
+                    std::remove_if(callbacks.begin(), callbacks.end(),
+                        [instancingId](const auto& f) {
+                            // We can't easily identify which callback to remove,
+                            // so this is a limitation. The callback will remain but won't match.
+                            return false;
+                        }),
+                    callbacks.end());
+                return choc::value::createInt32 (-1);
+            }
+        }
+
+        // Remove the callback now that it's been called
+        auto& callbacks = model.instancingCompleted;
+        callbacks.erase(
+            std::remove_if(callbacks.begin(), callbacks.end(),
+                [instancingId](const auto& f) {
+                    // Same limitation as above
+                    return false;
+                }),
+            callbacks.end());
+
+        return choc::value::createInt32 (resultInstanceId.load());
     });
 
     jsContext_.registerFunction ("__remidy_instance_get_parameters", [] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -690,60 +733,78 @@ void ScriptEditor::setDefaultScript()
 // Import the remidy bridge module for plugin access
 import { PluginScanTool, PluginInstance, sequencer } from 'remidy-bridge';
 
-// Example 1: Scan for plugins and list them
-log('Creating scan tool...');
+// Example: Create tracks for VST3 Dexed, LV2 RipplerX, CLAP Six Sines, and AU Surge XT
 const scanTool = new PluginScanTool();
-
-log('Scanning for plugins...');
-scanTool.performScanning();
-
 const catalog = scanTool.catalog;
-log('Found', catalog.count, 'plugins');
 
-// List first 5 plugins
-const plugins = catalog.getPlugins();
-for (let i = 0; i < Math.min(5, plugins.length); i++) {
-    const plugin = plugins[i];
-    log(`${i + 1}. ${plugin.displayName} (${plugin.format}) by ${plugin.vendorName}`);
+// Helper function to find a plugin by name and format
+// First tries exact match (case-insensitive), then falls back to includes()
+function findPlugin(displayName, format) {
+    const plugins = catalog.getPlugins();
+    const lowerName = displayName.toLowerCase();
+
+    // Try exact match first
+    let plugin = plugins.find(p =>
+        p.displayName.toLowerCase() === lowerName &&
+        p.format === format
+    );
+
+    // Fall back to includes() if exact match not found
+    if (!plugin) {
+        plugin = plugins.find(p =>
+            p.displayName.toLowerCase().includes(lowerName) &&
+            p.format === format
+        );
+    }
+
+    return plugin;
 }
 
-// Example 2: Use the app's sequencer for audio analysis
-// const sampleRate = sequencer.getSampleRate();
-// log('Sample rate:', sampleRate, 'Hz');
-//
-// const instanceIds = sequencer.getInstanceIds();
-// log('Active instances:', instanceIds.length);
-//
-// // Get audio spectrum
-// const spectrum = sequencer.getOutputSpectrum(32);
-// log('Output spectrum (32 bars):', spectrum.slice(0, 8), '...');
+// Create four tracks with specific plugins
+const tracksToCreate = [
+    { name: 'Dexed', format: 'VST3' },
+    { name: 'ripplerx', format: 'LV2' },
+    { name: 'six sines', format: 'CLAP' },
+    { name: 'surge xt', format: 'AU' }
+];
 
-// Example 3: MIDI Control with the app's sequencer
-// const instanceIds = sequencer.getInstanceIds();
-// if (instanceIds.length > 0) {
-//     const instanceId = instanceIds[0];
-//     log('Sending notes to instance:', instanceId);
-//
-//     // Send MIDI notes
-//     sequencer.sendNoteOn(instanceId, 60);  // C4
-//     sequencer.sendNoteOn(instanceId, 64);  // E4
-//     sequencer.sendNoteOn(instanceId, 67);  // G4
-//
-//     // After some time, turn them off
-//     // sequencer.sendNoteOff(instanceId, 60);
-//     // sequencer.sendNoteOff(instanceId, 64);
-//     // sequencer.sendNoteOff(instanceId, 67);
-// }
+const instances = [];
 
-// Example 4: Track and instance info from the app's sequencer
-// const tracks = sequencer.getTrackInfos();
-// for (const track of tracks) {
-//     log(`Track ${track.trackIndex}: ${track.nodes.length} plugins`);
-//     for (const node of track.nodes) {
-//         log(`  - ${node.displayName} (${node.format})`);
-//         const bypassed = sequencer.isPluginBypassed(node.instanceId);
-//         log(`    Bypassed: ${bypassed}`);
-//     }
+for (const trackConfig of tracksToCreate) {
+    const plugin = findPlugin(trackConfig.name, trackConfig.format);
+
+    if (plugin) {
+        try {
+            const instance = new PluginInstance(plugin.format, plugin.pluginId);
+            instances.push({
+                instance: instance,
+                plugin: plugin
+            });
+        } catch (e) {
+            log(`Failed to create ${plugin.displayName}: ${e}`);
+        }
+    } else {
+        log(`Plugin not found: ${trackConfig.name} (${trackConfig.format})`);
+    }
+}
+
+// List all active tracks
+const tracks = sequencer.getTrackInfos();
+log(`Created ${instances.length} track(s):`);
+for (const track of tracks) {
+    for (const node of track.nodes) {
+        log(`  Track ${track.trackIndex}: ${node.displayName} (${node.format})`);
+    }
+}
+
+// Example: Send MIDI notes to all created instances
+// Uncomment to test MIDI functionality
+// log('\nSending test MIDI notes to all instances...');
+// for (const { instance, plugin } of instances) {
+//     log(`Sending notes to ${plugin.displayName}...`);
+//     sequencer.sendNoteOn(instance.instanceId, 60);  // C4
+//     sequencer.sendNoteOn(instance.instanceId, 64);  // E4
+//     sequencer.sendNoteOn(instance.instanceId, 67);  // G4
 // }
 
 )";

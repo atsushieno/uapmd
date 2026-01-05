@@ -40,7 +40,7 @@ namespace uapmd {
                                                     remidy::Logger::global()->logError(msg.c_str());
                                                 }
                                                 for (auto &f: instancingCompleted)
-                                                    f(instancingId, instancingId, error);
+                                                    f(instancingId, instanceId, error);
                                             });
         }
 
