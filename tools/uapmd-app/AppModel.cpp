@@ -264,3 +264,55 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
         cb(result);
     }
 }
+
+void uapmd::AppModel::showPluginUI(int32_t instanceId) {
+    UIStateResult result;
+    result.instanceId = instanceId;
+
+    auto* instance = sequencer_.getPluginInstance(instanceId);
+    if (!instance) {
+        result.success = false;
+        result.error = "Plugin instance not found";
+        for (auto& cb : uiShown) {
+            cb(result);
+        }
+        return;
+    }
+
+    // Just signal that UI should be shown - MainWindow callback will handle the actual UI creation
+    result.success = true;
+    result.visible = true;
+
+    // Notify all registered callbacks
+    for (auto& cb : uiShown) {
+        cb(result);
+    }
+}
+
+void uapmd::AppModel::hidePluginUI(int32_t instanceId) {
+    UIStateResult result;
+    result.instanceId = instanceId;
+
+    auto* instance = sequencer_.getPluginInstance(instanceId);
+    if (!instance) {
+        result.success = false;
+        result.error = "Plugin instance not found";
+        for (auto& cb : uiHidden) {
+            cb(result);
+        }
+        return;
+    }
+
+    // Hide the UI
+    if (instance->hasUISupport() && instance->isUIVisible()) {
+        instance->hideUI();
+    }
+
+    result.success = true;
+    result.visible = false;
+
+    // Notify all registered callbacks
+    for (auto& cb : uiHidden) {
+        cb(result);
+    }
+}

@@ -210,6 +210,14 @@ export const sequencer = {
         __remidy_instance_disable_ump_device(instanceId);
     },
 
+    showPluginUI: function(instanceId) {
+        __remidy_instance_show_ui(instanceId);
+    },
+
+    hidePluginUI: function(instanceId) {
+        __remidy_instance_hide_ui(instanceId);
+    },
+
     getInstanceIds: function() {
         return __remidy_sequencer_getInstanceIds();
     },

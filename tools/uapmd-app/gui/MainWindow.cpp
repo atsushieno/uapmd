@@ -218,13 +218,82 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             }
         });
 
+    // Register callback for when plugin UIs are shown (from scripts or GUI)
+    uapmd::AppModel::instance().uiShown.push_back(
+        [this](const uapmd::AppModel::UIStateResult& result) {
+            if (!result.success) return;
+
+            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            auto* instance = sequencer.getPluginInstance(result.instanceId);
+            if (!instance) return;
+
+            std::string pluginName = sequencer.getPluginName(result.instanceId);
+            std::string pluginFormat = sequencer.getPluginFormat(result.instanceId);
+
+            // Create container window if needed
+            auto windowIt = pluginWindows_.find(result.instanceId);
+            remidy::gui::ContainerWindow* container = nullptr;
+            if (windowIt == pluginWindows_.end()) {
+                std::string windowTitle = pluginName + " (" + pluginFormat + ")";
+                auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600, [this, instanceId = result.instanceId]() {
+                    onPluginWindowClosed(instanceId);
+                });
+                container = w.get();
+                w->setResizeCallback([this, instanceId = result.instanceId](int width, int height) {
+                    pluginWindowBounds_[instanceId].width = width;
+                    pluginWindowBounds_[instanceId].height = height;
+                    onPluginWindowResized(instanceId);
+                });
+                pluginWindows_[result.instanceId] = std::move(w);
+                pluginWindowBounds_[result.instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
+            } else {
+                container = windowIt->second.get();
+                if (pluginWindowBounds_.find(result.instanceId) == pluginWindowBounds_.end())
+                    pluginWindowBounds_[result.instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
+            }
+
+            if (!container) {
+                std::cout << "Failed to create container window for instance " << result.instanceId << std::endl;
+                return;
+            }
+
+            container->show(true);
+            void* parentHandle = container->getHandle();
+            bool pluginUIExists = (pluginWindowEmbedded_.find(result.instanceId) != pluginWindowEmbedded_.end());
+
+            if (!pluginUIExists) {
+                if (!instance->createUI(false, parentHandle,
+                    [this, instanceId = result.instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
+                    container->show(false);
+                    pluginWindows_.erase(result.instanceId);
+                    std::cout << "Failed to create plugin UI for instance " << result.instanceId << std::endl;
+                } else {
+                    pluginWindowEmbedded_[result.instanceId] = true;
+                    bool canResize = instance->canUIResize();
+                    container->setResizable(canResize);
+                }
+            }
+        });
+
+    // Register callback for when plugin UIs are hidden (from scripts or GUI)
+    uapmd::AppModel::instance().uiHidden.push_back(
+        [this](const uapmd::AppModel::UIStateResult& result) {
+            if (!result.success) return;
+
+            // UI hiding is already done in AppModel, just update window visibility
+            auto windowIt = pluginWindows_.find(result.instanceId);
+            if (windowIt != pluginWindows_.end()) {
+                windowIt->second->show(false);
+            }
+        });
+
     // Set up TrackList callbacks
     trackList_.setOnShowUI([this](int32_t instanceId) {
-        handleShowUI(instanceId);
+        uapmd::AppModel::instance().showPluginUI(instanceId);
     });
 
     trackList_.setOnHideUI([this](int32_t instanceId) {
-        handleHideUI(instanceId);
+        uapmd::AppModel::instance().hidePluginUI(instanceId);
     });
 
     trackList_.setOnShowDetails([this](int32_t instanceId) {
@@ -1532,9 +1601,9 @@ void MainWindow::renderDetailsWindows() {
                     const char* uiButtonText = trackInstance->uiVisible ? "Hide UI" : "Show UI";
                     if (ImGui::Button(uiButtonText)) {
                         if (trackInstance->uiVisible) {
-                            handleHideUI(instanceId);
+                            uapmd::AppModel::instance().hidePluginUI(instanceId);
                         } else {
-                            handleShowUI(instanceId);
+                            uapmd::AppModel::instance().showPluginUI(instanceId);
                         }
                     }
                     if (disableShowUIButton) {

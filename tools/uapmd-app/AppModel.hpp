@@ -84,6 +84,28 @@ namespace uapmd {
         // Notifies all registered callbacks when complete
         void disableUmpDevice(int32_t instanceId);
 
+        // Result from UI show/hide operations
+        struct UIStateResult {
+            int32_t instanceId = -1;
+            bool success = false;
+            bool visible = false;
+            std::string error;
+        };
+
+        // Global callback registry - called when a plugin UI is shown
+        std::vector<std::function<void(const UIStateResult&)>> uiShown{};
+
+        // Global callback registry - called when a plugin UI is hidden
+        std::vector<std::function<void(const UIStateResult&)>> uiHidden{};
+
+        // Show plugin UI
+        // Notifies all registered callbacks when complete
+        void showPluginUI(int32_t instanceId);
+
+        // Hide plugin UI
+        // Notifies all registered callbacks when complete
+        void hidePluginUI(int32_t instanceId);
+
         void performPluginScanning(bool forceRescan = false);
     };
 }

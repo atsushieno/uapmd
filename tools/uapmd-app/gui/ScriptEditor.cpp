@@ -387,6 +387,28 @@ void ScriptEditor::initializeJavaScriptContext()
         return choc::value::Value();
     });
 
+    jsContext_.registerFunction ("__remidy_instance_show_ui", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+
+        if (instanceId >= 0)
+        {
+            uapmd::AppModel::instance().showPluginUI (instanceId);
+        }
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_instance_hide_ui", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+
+        if (instanceId >= 0)
+        {
+            uapmd::AppModel::instance().hidePluginUI (instanceId);
+        }
+        return choc::value::Value();
+    });
+
     // === Sequencer MIDI Control API ===
 
     jsContext_.registerFunction ("__remidy_sequencer_sendNoteOn", [] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -792,6 +814,7 @@ for (const trackConfig of tracksToCreate) {
         const instanceId = sequencer.createPluginInstance(plugin.format, plugin.pluginId);
         if (instanceId >= 0) {
             instanceIds.push(instanceId);
+            sequencer.showPluginUI(instanceId);
         } else {
             log(`Failed to create ${plugin.displayName}`);
         }
