@@ -2,13 +2,13 @@
 
 #include <string>
 #include <memory>
-#include <TextEditor.h>
+#include <vector>
 #include <choc/javascript/choc_javascript.h>
 
 namespace uapmd::gui {
 
 class ScriptEditor {
-    TextEditor editor_;
+    std::vector<char> scriptBuffer_;
     bool isOpen_ = false;
     std::string errorMessage_;
     choc::javascript::Context jsContext_;

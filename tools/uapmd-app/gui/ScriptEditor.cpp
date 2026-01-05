@@ -9,177 +9,15 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <cstring>
 #include "../AppModel.hpp"
 
 namespace uapmd::gui {
 
 ScriptEditor::ScriptEditor()
 {
-    // Create JavaScript language definition
-    static TextEditor::LanguageDefinition langDef;
-    static bool initialized = false;
-
-    if (!initialized)
-    {
-        langDef.mName = "JavaScript";
-        langDef.mCaseSensitive = true;
-        langDef.mAutoIndentation = true;
-        langDef.mSingleLineComment = "//";
-        langDef.mCommentStart = "/*";
-        langDef.mCommentEnd = "*/";
-
-    // JavaScript keywords
-    static const char* const keywords[] = {
-        "async", "await", "break", "case", "catch", "class", "const", "continue", "debugger",
-        "default", "delete", "do", "else", "export", "extends", "finally", "for", "from",
-        "function", "if", "import", "in", "instanceof", "let", "new", "of", "return",
-        "static", "super", "switch", "this", "throw", "try", "typeof", "var", "void",
-        "while", "with", "yield", "true", "false", "null", "undefined"
-    };
-    for (auto& k : keywords)
-        langDef.mKeywords.insert(k);
-
-    // API type identifiers with their declarations
-    static const char* const apiTypes[][2] = {
-        {"PluginScanTool", "class PluginScanTool - Audio plugin scanning and catalog management"},
-        {"PluginCatalog", "class PluginCatalog - Plugin catalog for storing scanned plugins"},
-        {"PluginCatalogEntry", "class PluginCatalogEntry - Single plugin entry in catalog"},
-        {"PluginFormat", "class PluginFormat - Plugin format descriptor (VST3, CLAP, AU, LV2)"},
-        {"PluginInstance", "class PluginInstance - Instantiated plugin for audio processing"},
-        {"ParameterInfo", "class ParameterInfo - Plugin parameter metadata"},
-        {"ParameterUpdate", "class ParameterUpdate - Parameter change notification"},
-        {"PluginNodeInfo", "class PluginNodeInfo - Plugin node information in a track"},
-        {"TrackInfo", "class TrackInfo - Track with its plugin nodes"},
-        {"sequencer", "const sequencer - Application's audio sequencer singleton (MIDI, transport, audio analysis)"},
-    };
-    for (auto& [name, decl] : apiTypes)
-        langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
-
-    // PluginScanTool members
-    static const char* const scanToolMembers[][2] = {
-        {"catalog", "property: PluginCatalog - Access the plugin catalog"},
-        {"performScanning", "method() - Scan for plugins in standard locations"},
-        {"getFormats", "method(): PluginFormat[] - Get available plugin formats"},
-        {"saveCache", "method(path: string) - Save catalog cache to file"},
-        {"setCacheFile", "method(path: string) - Set default cache file path"},
-        {"filterByFormat", "method(entries, format): PluginCatalogEntry[] - Filter entries by format"},
-    };
-    for (auto& [name, decl] : scanToolMembers)
-        langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
-
-    // PluginCatalog members
-    static const char* const catalogMembers[][2] = {
-        {"count", "property: number - Number of plugins in catalog"},
-        {"getPluginAt", "method(index: number): PluginCatalogEntry - Get plugin by index"},
-        {"getPlugins", "method(): PluginCatalogEntry[] - Get all plugins"},
-        {"load", "method(path: string) - Load catalog from file"},
-        {"save", "method(path: string) - Save catalog to file"},
-    };
-    for (auto& [name, decl] : catalogMembers)
-        langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
-
-    // PluginInstance members
-    static const char* const instanceMembers[][2] = {
-        {"instanceId", "property: number - Unique instance identifier"},
-        {"configure", "method(config): boolean - Configure the plugin instance"},
-        {"startProcessing", "method() - Start audio processing"},
-        {"stopProcessing", "method() - Stop audio processing"},
-        {"getParameters", "method(): ParameterInfo[] - Get all parameter metadata"},
-        {"getParameterValue", "method(id: number): number - Get parameter value"},
-        {"setParameterValue", "method(id: number, value: number) - Set parameter value"},
-        {"dispose", "method() - Dispose the plugin instance"},
-    };
-    for (auto& [name, decl] : instanceMembers)
-        langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
-
-    // PluginCatalogEntry members
-    static const char* const entryMembers[][2] = {
-        {"format", "property: string - Plugin format (VST3, CLAP, AU, LV2)"},
-        {"pluginId", "property: string - Unique plugin identifier"},
-        {"displayName", "property: string - Human-readable plugin name"},
-        {"vendorName", "property: string - Plugin vendor/manufacturer"},
-        {"productUrl", "property: string - Product website URL"},
-        {"bundlePath", "property: string - File system path to plugin bundle"},
-    };
-    for (auto& [name, decl] : entryMembers)
-        langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
-
-    // ParameterInfo members
-    static const char* const paramMembers[][2] = {
-        {"id", "property: number - Parameter index/identifier"},
-        {"name", "property: string - Parameter display name"},
-        {"minValue", "property: number - Minimum parameter value"},
-        {"maxValue", "property: number - Maximum parameter value"},
-        {"defaultValue", "property: number - Default parameter value"},
-        {"isAutomatable", "property: boolean - Can be automated"},
-        {"isReadonly", "property: boolean - Read-only parameter"},
-    };
-    for (auto& [name, decl] : paramMembers)
-        langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
-
-    // Sequencer members
-    static const char* const sequencerMembers[][2] = {
-        {"sendNoteOn", "method(instanceId: number, note: number) - Send MIDI note on"},
-        {"sendNoteOff", "method(instanceId: number, note: number) - Send MIDI note off"},
-        {"setParameterValue", "method(instanceId: number, paramIndex: number, value: number) - Set parameter"},
-        {"startPlayback", "method() - Start audio playback"},
-        {"stopPlayback", "method() - Stop audio playback"},
-        {"pausePlayback", "method() - Pause audio playback"},
-        {"resumePlayback", "method() - Resume audio playback"},
-        {"getPlaybackPosition", "method(): number - Get playback position in samples"},
-        {"getInstanceIds", "method(): number[] - Get all active plugin instance IDs"},
-        {"getPluginName", "method(instanceId: number): string - Get plugin display name"},
-        {"getPluginFormat", "method(instanceId: number): string - Get plugin format"},
-        {"isPluginBypassed", "method(instanceId: number): boolean - Check if plugin is bypassed"},
-        {"setPluginBypassed", "method(instanceId: number, bypassed: boolean) - Set plugin bypass state"},
-        {"getTrackInfos", "method(): TrackInfo[] - Get all tracks with their plugins"},
-        {"getParameterUpdates", "method(instanceId: number): ParameterUpdate[] - Get parameter changes"},
-        {"getInputSpectrum", "method(numBars?: number): number[] - Get input audio spectrum"},
-        {"getOutputSpectrum", "method(numBars?: number): number[] - Get output audio spectrum"},
-        {"getSampleRate", "method(): number - Get current sample rate"},
-        {"setSampleRate", "method(sampleRate: number): boolean - Set sample rate"},
-        {"isScanning", "method(): boolean - Check if plugin scanning is in progress"},
-    };
-    for (auto& [name, decl] : sequencerMembers)
-        langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
-
-    // Common JavaScript globals
-    static const char* const jsGlobals[][2] = {
-        {"console", "object - Console logging API"},
-        {"Array", "class Array - JavaScript array type"},
-        {"Object", "class Object - JavaScript object type"},
-        {"String", "class String - JavaScript string type"},
-        {"Number", "class Number - JavaScript number type"},
-        {"Boolean", "class Boolean - JavaScript boolean type"},
-        {"JSON", "object - JSON parse/stringify utilities"},
-        {"Math", "object - Mathematical functions"},
-        {"Date", "class Date - Date and time utilities"},
-        {"Promise", "class Promise - Asynchronous operation"},
-    };
-    for (auto& [name, decl] : jsGlobals)
-        langDef.mIdentifiers.insert(std::make_pair(name, TextEditor::Identifier{{0, 0}, decl}));
-
-        // Token regex patterns for syntax highlighting
-        langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, TextEditor::PaletteIndex>(
-            "\\\"(\\\\.|[^\\\"])*\\\"", TextEditor::PaletteIndex::String));
-        langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, TextEditor::PaletteIndex>(
-            "\\'(\\\\.|[^\\'])*\\'", TextEditor::PaletteIndex::String));
-        langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, TextEditor::PaletteIndex>(
-            "`(\\\\.|[^`])*`", TextEditor::PaletteIndex::String));  // Template literals
-        langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, TextEditor::PaletteIndex>(
-            "[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?", TextEditor::PaletteIndex::Number));
-        langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, TextEditor::PaletteIndex>(
-            "0[xX][0-9a-fA-F]+", TextEditor::PaletteIndex::Number));  // Hex numbers
-        langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, TextEditor::PaletteIndex>(
-            "[a-zA-Z_$][a-zA-Z0-9_$]*", TextEditor::PaletteIndex::Identifier));
-        langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, TextEditor::PaletteIndex>(
-            "[\\[\\]\\{\\}\\!\\%\\^\\&\\*\\(\\)\\-\\+\\=\\~\\|\\<\\>\\?\\/\\;\\,\\.]", TextEditor::PaletteIndex::Punctuation));
-
-        initialized = true;
-    }
-
-    editor_.SetLanguageDefinition(langDef);
-    editor_.SetShowWhitespaces (false);
+    // Initialize buffer with a large size for the text editor
+    scriptBuffer_.resize(65536, '\0');
     setDefaultScript();
     initializeJavaScriptContext();
 }
@@ -201,49 +39,17 @@ void ScriptEditor::render()
 
     ImGui::SetNextWindowSize (ImVec2 (800, 600), ImGuiCond_FirstUseEver);
 
-    if (ImGui::Begin ("Script Editor", &isOpen_, ImGuiWindowFlags_MenuBar))
+    if (ImGui::Begin ("Script Editor", &isOpen_))
     {
-        // Edit menu bar
-        if (ImGui::BeginMenuBar())
-        {
-            if (ImGui::BeginMenu ("Edit"))
-            {
-                bool hasSelection = editor_.HasSelection();
-
-                if (ImGui::MenuItem ("Undo", nullptr, nullptr, editor_.CanUndo()))
-                    editor_.Undo();
-                if (ImGui::MenuItem ("Redo", nullptr, nullptr, editor_.CanRedo()))
-                    editor_.Redo();
-
-                ImGui::Separator();
-
-                if (ImGui::MenuItem ("Cut", nullptr, nullptr, hasSelection))
-                    editor_.Cut();
-                if (ImGui::MenuItem ("Copy", nullptr, nullptr, hasSelection))
-                    editor_.Copy();
-                if (ImGui::MenuItem ("Paste", nullptr))
-                    editor_.Paste();
-                if (ImGui::MenuItem ("Delete", nullptr, nullptr, hasSelection))
-                    editor_.Delete();
-
-                ImGui::Separator();
-
-                if (ImGui::MenuItem ("Select All", nullptr))
-                    editor_.SelectAll();
-
-                ImGui::EndMenu();
-            }
-            ImGui::EndMenuBar();
-        }
-
-
         // Calculate available height for the text editor, leaving space for buttons and error messages
         float buttonHeight = ImGui::GetFrameHeightWithSpacing() * 2;  // Space for buttons
         float errorHeight = errorMessage_.empty() ? 0.0f : ImGui::GetFrameHeightWithSpacing() * 3;  // Space for error message
         float availableHeight = ImGui::GetContentRegionAvail().y - buttonHeight - errorHeight;
 
-        // Render the text editor with constrained height
-        editor_.Render ("ScriptTextEditor", ImVec2 (0, availableHeight));
+        // Render the text editor with constrained height using ImGui's built-in multiline input
+        ImGui::InputTextMultiline("##ScriptEditor", scriptBuffer_.data(), scriptBuffer_.size(),
+                                   ImVec2(0, availableHeight),
+                                   ImGuiInputTextFlags_AllowTabInput);
 
         ImGui::Separator();
 
@@ -782,7 +588,7 @@ void ScriptEditor::executeScript()
 
     try
     {
-        auto scriptText = editor_.GetText();
+        auto scriptText = std::string(scriptBuffer_.data());
 
         if (! jsContext_)
         {
@@ -942,7 +748,10 @@ for (let i = 0; i < Math.min(5, plugins.length); i++) {
 
 )";
 
-    editor_.SetText (defaultScript);
+    // Copy default script to buffer
+    size_t len = std::min(defaultScript.length(), scriptBuffer_.size() - 1);
+    std::memcpy(scriptBuffer_.data(), defaultScript.c_str(), len);
+    scriptBuffer_[len] = '\0';
 }
 
 std::string ScriptEditor::getJsLibraryPath (const std::string& modulePath) const

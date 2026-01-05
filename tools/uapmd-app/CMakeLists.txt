@@ -94,7 +94,6 @@ if(NOT TARGET imgui)
             ${imgui_SOURCE_DIR}/imgui_tables.cpp
             ${imgui_SOURCE_DIR}/imgui_widgets.cpp
             ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-            ${ImGuiColorTextEdit_SOURCE_DIR}/TextEditor.cpp
     )
 
     # Add backend-specific ImGui implementation
@@ -111,7 +110,6 @@ if(NOT TARGET imgui)
     target_include_directories(imgui PUBLIC
             ${imgui_SOURCE_DIR}
             ${imgui_SOURCE_DIR}/backends
-            ${ImGuiColorTextEdit_SOURCE_DIR}
     )
 
     # Link backend library to ImGui so backends can find headers
@@ -140,7 +138,6 @@ target_include_directories(uapmd-app PRIVATE
         ${cmidi2_SOURCE_DIR}
         ${portable-file-dialogs_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include
-        ${ImGuiColorTextEdit_SOURCE_DIR}
         ../../include
         ../../src/remidy-tooling
         ../../external/libremidi/include
@@ -183,7 +180,6 @@ target_sources(uapmd-app PRIVATE
         gui/TrackList.cpp
         gui/AudioDeviceSettings.cpp
         gui/ScriptEditor.cpp
-        ${ImGuiColorTextEdit_SOURCE_DIR}/TextEditor.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         Controller/VirtualMidiDeviceController.cpp
