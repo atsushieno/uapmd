@@ -175,3 +175,92 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
         cb(instanceId);
     }
 }
+
+void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& deviceName) {
+    DeviceStateResult result;
+    result.instanceId = instanceId;
+
+    auto* deviceController = this->deviceController();
+    if (!deviceController) {
+        result.success = false;
+        result.error = "Device controller not available";
+        result.statusMessage = "Error";
+        for (auto& cb : deviceEnabled) {
+            cb(result);
+        }
+        return;
+    }
+
+    // Find the device for this instance
+    auto device = deviceController->getDevice(instanceId);
+    if (!device) {
+        result.success = false;
+        result.error = "Device not found for instance";
+        result.statusMessage = "Error";
+        for (auto& cb : deviceEnabled) {
+            cb(result);
+        }
+        return;
+    }
+
+    // Start the device
+    auto statusCode = device->start();
+    if (statusCode == 0) {
+        result.success = true;
+        result.running = true;
+        result.statusMessage = "Running";
+        std::cout << "Enabled UMP device for instance: " << instanceId << std::endl;
+    } else {
+        result.success = false;
+        result.running = false;
+        result.error = "Failed to start device (status: " + std::to_string(statusCode) + ")";
+        result.statusMessage = "Error";
+        std::cout << "Failed to enable UMP device for instance: " << instanceId
+                  << " (status: " << statusCode << ")" << std::endl;
+    }
+
+    // Notify all registered callbacks
+    for (auto& cb : deviceEnabled) {
+        cb(result);
+    }
+}
+
+void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
+    DeviceStateResult result;
+    result.instanceId = instanceId;
+
+    auto* deviceController = this->deviceController();
+    if (!deviceController) {
+        result.success = false;
+        result.error = "Device controller not available";
+        result.statusMessage = "Error";
+        for (auto& cb : deviceDisabled) {
+            cb(result);
+        }
+        return;
+    }
+
+    // Find the device for this instance
+    auto device = deviceController->getDevice(instanceId);
+    if (!device) {
+        result.success = false;
+        result.error = "Device not found for instance";
+        result.statusMessage = "Error";
+        for (auto& cb : deviceDisabled) {
+            cb(result);
+        }
+        return;
+    }
+
+    // Stop the device
+    device->stop();
+    result.success = true;
+    result.running = false;
+    result.statusMessage = "Stopped";
+    std::cout << "Disabled UMP device for instance: " << instanceId << std::endl;
+
+    // Notify all registered callbacks
+    for (auto& cb : deviceDisabled) {
+        cb(result);
+    }
+}

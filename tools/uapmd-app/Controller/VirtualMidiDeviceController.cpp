@@ -116,4 +116,14 @@ namespace uapmd {
         return true;
     }
 
+    std::shared_ptr<UapmdMidiDevice> VirtualMidiDeviceController::getDevice(int32_t instanceId) const {
+        auto it = std::find_if(devices_.begin(), devices_.end(), [instanceId](const std::shared_ptr<UapmdMidiDevice>& dev) {
+            return dev && dev->instanceId() == instanceId;
+        });
+        if (it != devices_.end()) {
+            return *it;
+        }
+        return nullptr;
+    }
+
 }

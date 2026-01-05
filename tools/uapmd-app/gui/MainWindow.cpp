@@ -184,6 +184,40 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             refreshInstances();
         });
 
+    // Register callback for when devices are enabled
+    uapmd::AppModel::instance().deviceEnabled.push_back(
+        [this](const uapmd::AppModel::DeviceStateResult& result) {
+            // Find and update the device state
+            std::lock_guard lock(devicesMutex_);
+            for (auto& entry : devices_) {
+                auto state = entry.state;
+                std::lock_guard guard(state->mutex);
+                if (state->pluginInstances.count(result.instanceId) > 0) {
+                    state->running = result.running;
+                    state->statusMessage = result.statusMessage;
+                    state->hasError = !result.success;
+                    break;
+                }
+            }
+        });
+
+    // Register callback for when devices are disabled
+    uapmd::AppModel::instance().deviceDisabled.push_back(
+        [this](const uapmd::AppModel::DeviceStateResult& result) {
+            // Find and update the device state
+            std::lock_guard lock(devicesMutex_);
+            for (auto& entry : devices_) {
+                auto state = entry.state;
+                std::lock_guard guard(state->mutex);
+                if (state->pluginInstances.count(result.instanceId) > 0) {
+                    state->running = result.running;
+                    state->statusMessage = result.statusMessage;
+                    state->hasError = !result.success;
+                    break;
+                }
+            }
+        });
+
     // Set up TrackList callbacks
     trackList_.setOnShowUI([this](int32_t instanceId) {
         handleShowUI(instanceId);
@@ -2185,70 +2219,26 @@ void MainWindow::handleHideUI(int32_t instanceId) {
 }
 
 void MainWindow::handleEnableDevice(int32_t instanceId, const std::string& deviceName) {
-    auto* deviceController = uapmd::AppModel::instance().deviceController();
-    if (!deviceController) return;
-
-    std::shared_ptr<uapmd::UapmdMidiDevice> foundDevice;
-    std::shared_ptr<DeviceState> foundDeviceState;
-
+    // Update the device label in the UI state
     {
         std::lock_guard lock(devicesMutex_);
         for (auto& entry : devices_) {
             auto state = entry.state;
             std::lock_guard guard(state->mutex);
             if (state->pluginInstances.count(instanceId) > 0) {
-                foundDevice = state->device;
-                foundDeviceState = state;
+                state->label = deviceName;
                 break;
             }
         }
     }
 
-    if (foundDevice && foundDeviceState) {
-        std::lock_guard guard(foundDeviceState->mutex);
-        foundDeviceState->label = deviceName;
-
-        auto statusCode = foundDevice->start();
-        if (statusCode == 0) {
-            foundDeviceState->running = true;
-            foundDeviceState->statusMessage = "Running";
-            foundDeviceState->hasError = false;
-            std::cout << "Enabled UMP device for instance: " << instanceId << std::endl;
-        } else {
-            foundDeviceState->statusMessage = std::format("Start failed (status {})", statusCode);
-            foundDeviceState->hasError = true;
-            std::cout << "Failed to enable UMP device (status " << statusCode << ")" << std::endl;
-        }
-    }
+    // Enable the device - this will trigger the global callback to update running state
+    uapmd::AppModel::instance().enableUmpDevice(instanceId, deviceName);
 }
 
 void MainWindow::handleDisableDevice(int32_t instanceId) {
-    auto* deviceController = uapmd::AppModel::instance().deviceController();
-    if (!deviceController) return;
-
-    std::shared_ptr<uapmd::UapmdMidiDevice> foundDevice;
-    std::shared_ptr<DeviceState> foundDeviceState;
-
-    {
-        std::lock_guard lock(devicesMutex_);
-        for (auto& entry : devices_) {
-            auto state = entry.state;
-            std::lock_guard guard(state->mutex);
-            if (state->pluginInstances.count(instanceId) > 0) {
-                foundDevice = state->device;
-                foundDeviceState = state;
-                break;
-            }
-        }
-    }
-
-    if (foundDevice && foundDeviceState) {
-        std::lock_guard guard(foundDeviceState->mutex);
-        foundDevice->stop();
-        foundDeviceState->running = false;
-        foundDeviceState->statusMessage = "Stopped";
-        std::cout << "Disabled UMP device for instance: " << instanceId << std::endl;
-    }
+    // Disable the device - this will trigger the global callback to update running state
+    uapmd::AppModel::instance().disableUmpDevice(instanceId);
 }
 
 void MainWindow::handleRemoveInstance(int32_t instanceId) {

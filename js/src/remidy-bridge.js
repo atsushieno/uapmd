@@ -202,6 +202,14 @@ export const sequencer = {
         return __remidy_instance_create(format, pluginId);
     },
 
+    enableUmpDevice: function(instanceId, deviceName) {
+        __remidy_instance_enable_ump_device(instanceId, deviceName || "");
+    },
+
+    disableUmpDevice: function(instanceId) {
+        __remidy_instance_disable_ump_device(instanceId);
+    },
+
     getInstanceIds: function() {
         return __remidy_sequencer_getInstanceIds();
     },

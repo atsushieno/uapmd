@@ -37,6 +37,8 @@ namespace uapmd {
 
         bool removeDevice(int32_t instanceId);
 
+        std::shared_ptr<UapmdMidiDevice> getDevice(int32_t instanceId) const;
+
         const std::vector<std::shared_ptr<UapmdMidiDevice>>& devices() const { return devices_; }
     };
 

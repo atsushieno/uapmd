@@ -364,6 +364,29 @@ void ScriptEditor::initializeJavaScriptContext()
         return choc::value::Value();
     });
 
+    jsContext_.registerFunction ("__remidy_instance_enable_ump_device", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto deviceName = args.get<std::string> (1, "");
+
+        if (instanceId >= 0)
+        {
+            uapmd::AppModel::instance().enableUmpDevice (instanceId, deviceName);
+        }
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_instance_disable_ump_device", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+
+        if (instanceId >= 0)
+        {
+            uapmd::AppModel::instance().disableUmpDevice (instanceId);
+        }
+        return choc::value::Value();
+    });
+
     // === Sequencer MIDI Control API ===
 
     jsContext_.registerFunction ("__remidy_sequencer_sendNoteOn", [] (choc::javascript::ArgumentList args) -> choc::value::Value

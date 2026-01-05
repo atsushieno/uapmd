@@ -50,6 +50,21 @@ namespace uapmd {
         // Global callback registry - called whenever ANY instance is removed (GUI or script)
         std::vector<std::function<void(int32_t instanceId)>> instanceRemoved{};
 
+        // Result from device enable/disable operations
+        struct DeviceStateResult {
+            int32_t instanceId = -1;
+            bool success = false;
+            bool running = false;
+            std::string statusMessage;
+            std::string error;
+        };
+
+        // Global callback registry - called whenever a device is enabled
+        std::vector<std::function<void(const DeviceStateResult&)>> deviceEnabled{};
+
+        // Global callback registry - called whenever a device is disabled
+        std::vector<std::function<void(const DeviceStateResult&)>> deviceDisabled{};
+
         // Create plugin instance with virtual MIDI device
         // Notifies all registered callbacks when complete
         void createPluginInstanceAsync(const std::string& format,
@@ -60,6 +75,14 @@ namespace uapmd {
         // Remove plugin instance and its virtual MIDI device
         // Notifies all registered callbacks when complete
         void removePluginInstance(int32_t instanceId);
+
+        // Enable virtual MIDI device for an instance
+        // Notifies all registered callbacks when complete
+        void enableUmpDevice(int32_t instanceId, const std::string& deviceName);
+
+        // Disable virtual MIDI device for an instance
+        // Notifies all registered callbacks when complete
+        void disableUmpDevice(int32_t instanceId);
 
         void performPluginScanning(bool forceRescan = false);
     };
