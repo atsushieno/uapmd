@@ -47,6 +47,9 @@ namespace uapmd {
         // Global callback registry - called whenever ANY instance is created (GUI or script)
         std::vector<std::function<void(const PluginInstanceResult&)>> instanceCreated{};
 
+        // Global callback registry - called whenever ANY instance is removed (GUI or script)
+        std::vector<std::function<void(int32_t instanceId)>> instanceRemoved{};
+
         // Create plugin instance with virtual MIDI device
         // Notifies all registered callbacks when complete
         void createPluginInstanceAsync(const std::string& format,
@@ -54,9 +57,9 @@ namespace uapmd {
                                        int32_t trackIndex,
                                        const PluginInstanceConfig& config);
 
-        void removePluginInstance(int32_t instanceId) {
-            sequencer_.removePluginInstance(instanceId);
-        }
+        // Remove plugin instance and its virtual MIDI device
+        // Notifies all registered callbacks when complete
+        void removePluginInstance(int32_t instanceId);
 
         void performPluginScanning(bool forceRescan = false);
     };

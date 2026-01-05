@@ -159,3 +159,19 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         sequencer_.addPluginToTrack(trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
     }
 }
+
+void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
+    // Stop and remove virtual MIDI device if it exists (from VirtualMidiDeviceController)
+    auto* deviceController = this->deviceController();
+    if (deviceController) {
+        deviceController->removeDevice(instanceId);
+    }
+
+    // Remove the plugin instance from sequencer
+    sequencer_.removePluginInstance(instanceId);
+
+    // Notify all registered callbacks
+    for (auto& cb : instanceRemoved) {
+        cb(instanceId);
+    }
+}
