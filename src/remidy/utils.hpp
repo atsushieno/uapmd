@@ -3,15 +3,10 @@
 #include <string>
 #include <functional>
 #include <filesystem>
-#if WIN32
-#include <Windows.h>
-#elif __APPLE__
-#include <CoreFoundation/CoreFoundation.h>
-#elif defined(__linux__)
-#include <dlfcn.h>
-#endif
 
 #if __APPLE__
+// Forward declare CoreFoundation type to avoid including the header
+typedef const struct __CFString* CFStringRef;
 CFStringRef createCFString(const char* s);
 #endif
 

@@ -3,6 +3,16 @@
 #include "CLAPHelper.hpp"
 #include <format>
 
+#if _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#elif __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#elif defined(__linux__)
+#include <dlfcn.h>
+#endif
+
 namespace remidy {
     // PluginFormatCLAP
 

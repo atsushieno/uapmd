@@ -3,6 +3,16 @@
 #include <thread>
 #include <vector>
 
+#if _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#elif __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#elif defined(__linux__)
+#include <dlfcn.h>
+#endif
+
 #if __APPLE__
 CFStringRef createCFString(const char* s) {
     return CFStringCreateWithBytes(kCFAllocatorDefault, (UInt8*) s, strlen(s), CFStringEncoding{}, false);
