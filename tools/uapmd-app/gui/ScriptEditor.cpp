@@ -731,7 +731,7 @@ void ScriptEditor::setDefaultScript()
 {
     std::string defaultScript = R"(// JavaScript Evaluation Engine for UAPMD
 // Import the remidy bridge module for plugin access
-import { PluginScanTool, PluginInstance, sequencer } from 'remidy-bridge';
+import { PluginScanTool, sequencer } from 'remidy-bridge';
 
 // Example: Create tracks for VST3 Dexed, LV2 RipplerX, CLAP Six Sines, and AU Surge XT
 const scanTool = new PluginScanTool();
@@ -768,20 +768,18 @@ const tracksToCreate = [
     { name: 'surge xt', format: 'AU' }
 ];
 
-const instances = [];
+const instanceIds = [];
 
 for (const trackConfig of tracksToCreate) {
     const plugin = findPlugin(trackConfig.name, trackConfig.format);
 
     if (plugin) {
-        try {
-            const instance = new PluginInstance(plugin.format, plugin.pluginId);
-            instances.push({
-                instance: instance,
-                plugin: plugin
-            });
-        } catch (e) {
-            log(`Failed to create ${plugin.displayName}: ${e}`);
+        // Use the low-level sequencer API directly, matching the C++ AppModel::instantiatePlugin pattern
+        const instanceId = sequencer.createPluginInstance(plugin.format, plugin.pluginId);
+        if (instanceId >= 0) {
+            instanceIds.push(instanceId);
+        } else {
+            log(`Failed to create ${plugin.displayName}`);
         }
     } else {
         log(`Plugin not found: ${trackConfig.name} (${trackConfig.format})`);
@@ -790,7 +788,7 @@ for (const trackConfig of tracksToCreate) {
 
 // List all active tracks
 const tracks = sequencer.getTrackInfos();
-log(`Created ${instances.length} track(s):`);
+log(`Created ${instanceIds.length} track(s):`);
 for (const track of tracks) {
     for (const node of track.nodes) {
         log(`  Track ${track.trackIndex}: ${node.displayName} (${node.format})`);
@@ -800,11 +798,10 @@ for (const track of tracks) {
 // Example: Send MIDI notes to all created instances
 // Uncomment to test MIDI functionality
 // log('\nSending test MIDI notes to all instances...');
-// for (const { instance, plugin } of instances) {
-//     log(`Sending notes to ${plugin.displayName}...`);
-//     sequencer.sendNoteOn(instance.instanceId, 60);  // C4
-//     sequencer.sendNoteOn(instance.instanceId, 64);  // E4
-//     sequencer.sendNoteOn(instance.instanceId, 67);  // G4
+// for (const instanceId of instanceIds) {
+//     sequencer.sendNoteOn(instanceId, 60);  // C4
+//     sequencer.sendNoteOn(instanceId, 64);  // E4
+//     sequencer.sendNoteOn(instanceId, 67);  // G4
 // }
 
 )";

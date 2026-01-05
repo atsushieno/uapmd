@@ -198,6 +198,10 @@ export const sequencer = {
     },
 
     // Instance Management
+    createPluginInstance: function(format, pluginId) {
+        return __remidy_instance_create(format, pluginId);
+    },
+
     getInstanceIds: function() {
         return __remidy_sequencer_getInstanceIds();
     },

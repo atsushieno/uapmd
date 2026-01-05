@@ -2307,7 +2307,7 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
         detailsWindows_.erase(detailsIt);
     }
 
-    // Find and remove the associated virtual MIDI device
+    // Find and remove the associated virtual MIDI device (if it exists)
     auto* deviceController = uapmd::AppModel::instance().deviceController();
     if (deviceController) {
         std::lock_guard lock(devicesMutex_);
@@ -2327,10 +2327,11 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
                 break;
             }
         }
-    } else {
-        // Fallback: if no device controller, just remove the plugin instance
-        uapmd::AppModel::instance().removePluginInstance(instanceId);
     }
+
+    // Always remove the plugin instance from the sequencer
+    // This works for both GUI-created instances (with virtual MIDI devices) and script-created instances (without)
+    uapmd::AppModel::instance().removePluginInstance(instanceId);
 
     // Refresh the instance list
     refreshInstances();
