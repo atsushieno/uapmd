@@ -992,7 +992,8 @@ void MainWindow::updateTrackListData() {
 
     std::vector<TrackInstance> trackInstances;
 
-    for (int32_t instanceId : instances_) {
+    auto instances = sequencer.getInstanceIds();
+    for (int32_t instanceId : instances) {
         if (auto trackInstance = buildTrackInstanceInfo(instanceId)) {
             trackInstances.push_back(*trackInstance);
         }
@@ -1078,35 +1079,33 @@ void MainWindow::applyDeviceSettings() {
 }
 
 void MainWindow::refreshInstances() {
-    instances_.clear();
-
     // Get actual instance list from sequencer
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    instances_ = sequencer.getInstanceIds();
+    auto instances = sequencer.getInstanceIds();
 
     for (auto it = pluginWindows_.begin(); it != pluginWindows_.end();) {
-        if (std::find(instances_.begin(), instances_.end(), it->first) == instances_.end()) {
+        if (std::find(instances.begin(), instances.end(), it->first) == instances.end()) {
             it = pluginWindows_.erase(it);
         } else {
             ++it;
         }
     }
     for (auto it = pluginWindowEmbedded_.begin(); it != pluginWindowEmbedded_.end();) {
-        if (std::find(instances_.begin(), instances_.end(), it->first) == instances_.end()) {
+        if (std::find(instances.begin(), instances.end(), it->first) == instances.end()) {
             it = pluginWindowEmbedded_.erase(it);
         } else {
             ++it;
         }
     }
     for (auto it = pluginWindowBounds_.begin(); it != pluginWindowBounds_.end();) {
-        if (std::find(instances_.begin(), instances_.end(), it->first) == instances_.end()) {
+        if (std::find(instances.begin(), instances.end(), it->first) == instances.end()) {
             it = pluginWindowBounds_.erase(it);
         } else {
             ++it;
         }
     }
     for (auto it = detailsWindows_.begin(); it != detailsWindows_.end();) {
-        if (std::find(instances_.begin(), instances_.end(), it->first) == instances_.end()) {
+        if (std::find(instances.begin(), instances.end(), it->first) == instances.end()) {
             it = detailsWindows_.erase(it);
         } else {
             ++it;
@@ -1115,7 +1114,7 @@ void MainWindow::refreshInstances() {
     std::vector<int32_t> resizeIgnoreRemove{};
     resizeIgnoreRemove.reserve(pluginWindowResizeIgnore_.size());
     for (auto id : pluginWindowResizeIgnore_) {
-        if (std::find(instances_.begin(), instances_.end(), id) == instances_.end())
+        if (std::find(instances.begin(), instances.end(), id) == instances.end())
             resizeIgnoreRemove.push_back(id);
     }
     for (auto id : resizeIgnoreRemove)

@@ -46,9 +46,6 @@ class MainWindow {
         SpectrumAnalyzer inputSpectrumAnalyzer_;
         SpectrumAnalyzer outputSpectrumAnalyzer_;
 
-        // Instance control
-        int selectedInstance_ = -1;
-        std::vector<int32_t> instances_;
         TrackList trackList_;
 
         // Plugin selection
