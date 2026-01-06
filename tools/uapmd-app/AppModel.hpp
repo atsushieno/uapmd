@@ -6,12 +6,52 @@
 #include "Controller/VirtualMidiDeviceController.hpp"
 #include <format>
 #include <thread>
+#include <string>
 
 namespace uapmd {
+    // Forward declaration
+    class AudioPluginSequencer;
+
+    class TransportController {
+        AudioPluginSequencer* sequencer_;
+        std::string currentFile_;
+        bool isPlaying_ = false;
+        bool isPaused_ = false;
+        bool isRecording_ = false;
+        float playbackPosition_ = 0.0f;
+        float playbackLength_ = 0.0f;
+        float volume_ = 0.8f;
+
+    public:
+        explicit TransportController(AudioPluginSequencer* sequencer);
+
+        // State getters
+        const std::string& currentFile() const { return currentFile_; }
+        bool isPlaying() const { return isPlaying_; }
+        bool isPaused() const { return isPaused_; }
+        bool isRecording() const { return isRecording_; }
+        float playbackPosition() const { return playbackPosition_; }
+        float playbackLength() const { return playbackLength_; }
+        float volume() const { return volume_; }
+
+        // State setters
+        void setVolume(float volume) { volume_ = volume; }
+
+        // Transport control methods
+        void loadFile();
+        void unloadFile();
+        void play();
+        void stop();
+        void pause();
+        void resume();
+        void record();
+    };
+
     class AppModel {
         AudioPluginSequencer sequencer_;
         remidy_tooling::PluginScanTool pluginScanTool_;
         std::unique_ptr<VirtualMidiDeviceController> deviceController_;
+        std::unique_ptr<TransportController> transportController_;
         std::atomic<bool> isScanning_{false};
 
     public:
@@ -23,6 +63,7 @@ namespace uapmd {
         AudioPluginSequencer& sequencer() { return sequencer_; }
         remidy_tooling::PluginScanTool& pluginScanTool() { return pluginScanTool_; }
         VirtualMidiDeviceController* deviceController() { return deviceController_.get(); }
+        TransportController& transport() { return *transportController_; }
         bool isScanning() const { return isScanning_; }
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};

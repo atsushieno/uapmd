@@ -764,23 +764,25 @@ void MainWindow::updateAudioDeviceSettingsData() {
 }
 
 void MainWindow::renderPlayerSettings() {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto& model = uapmd::AppModel::instance();
+    auto& transport = model.transport();
+    auto& sequencer = model.sequencer();
 
-    ImGui::Text("Current File: %s", currentFile_.empty() ? "None" : currentFile_.c_str());
+    ImGui::Text("Current File: %s", transport.currentFile().empty() ? "None" : transport.currentFile().c_str());
 
     if (ImGui::Button("Load File...")) {
-        loadFile();
+        transport.loadFile();
     }
 
     ImGui::SameLine();
 
     // Disable Unload button if no file is loaded
-    bool hasFile = !currentFile_.empty();
+    bool hasFile = !transport.currentFile().empty();
     if (!hasFile) {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Unload File")) {
-        unloadFile();
+        transport.unloadFile();
     }
     if (!hasFile) {
         ImGui::EndDisabled();
@@ -819,37 +821,35 @@ void MainWindow::renderPlayerSettings() {
     ImGui::Text("Transport Controls:");
 
     // Play/Stop button
-    const char* playStopButtonText = isPlaying_ ? "Stop" : "Play";
+    const char* playStopButtonText = transport.isPlaying() ? "Stop" : "Play";
     if (ImGui::Button(playStopButtonText)) {
-        if (isPlaying_) {
-            stop();
-        } else {
-            play();
-        }
+        if (transport.isPlaying())
+            transport.stop();
+        else
+            transport.play();
     }
 
     ImGui::SameLine();
 
     // Pause/Resume button - only enabled when playing
-    if (!isPlaying_) {
+    if (!transport.isPlaying()) {
         ImGui::BeginDisabled();
     }
-    const char* pauseResumeButtonText = isPaused_ ? "Resume" : "Pause";
+    const char* pauseResumeButtonText = transport.isPaused() ? "Resume" : "Pause";
     if (ImGui::Button(pauseResumeButtonText)) {
-        if (isPaused_) {
-            resume();
-        } else {
-            pause();
-        }
+        if (transport.isPaused())
+            transport.resume();
+        else
+            transport.pause();
     }
-    if (!isPlaying_) {
+    if (!transport.isPlaying()) {
         ImGui::EndDisabled();
     }
 
     ImGui::SameLine();
-    const char* recordButtonText = isRecording_ ? "Stop Recording" : "Record";
+    const char* recordButtonText = transport.isRecording() ? "Stop Recording" : "Record";
     if (ImGui::Button(recordButtonText)) {
-        record();
+        transport.record();
     }
 
     ImGui::SameLine();
@@ -860,21 +860,26 @@ void MainWindow::renderPlayerSettings() {
 
     // Position slider
     ImGui::Text("Position:");
-    if (ImGui::SliderFloat("##Position", &playbackPosition_, 0.0f, playbackLength_, "%.1f s")) {
-        std::cout << "Seeking to position: " << playbackPosition_ << std::endl;
+    float position = transport.playbackPosition();
+    float length = transport.playbackLength();
+    if (ImGui::SliderFloat("##Position", &position, 0.0f, length, "%.1f s")) {
+        std::cout << "Seeking to position: " << position << std::endl;
+        // TODO: Add setPlaybackPosition to TransportController if seeking is needed
     }
 
     // Time display
-    int currentMin = static_cast<int>(playbackPosition_) / 60;
-    int currentSec = static_cast<int>(playbackPosition_) % 60;
-    int totalMin = static_cast<int>(playbackLength_) / 60;
-    int totalSecTotal = static_cast<int>(playbackLength_) % 60;
+    int currentMin = static_cast<int>(position) / 60;
+    int currentSec = static_cast<int>(position) % 60;
+    int totalMin = static_cast<int>(length) / 60;
+    int totalSecTotal = static_cast<int>(length) % 60;
 
     ImGui::Text("Time: %02d:%02d / %02d:%02d", currentMin, currentSec, totalMin, totalSecTotal);
 
     ImGui::Text("Master Volume:");
-    if (ImGui::SliderFloat("##Volume", &volume_, 0.0f, 1.0f, "%.2f")) {
-        std::cout << "Volume changed to: " << volume_ << std::endl;
+    float volume = transport.volume();
+    if (ImGui::SliderFloat("##Volume", &volume, 0.0f, 1.0f, "%.2f")) {
+        transport.setVolume(volume);
+        std::cout << "Volume changed to: " << volume << std::endl;
     }
 
     // Mute button
@@ -1072,100 +1077,6 @@ void MainWindow::applyDeviceSettings() {
                             audioDeviceSettings_.getInputSampleRate(),
                             audioDeviceSettings_.getOutputSampleRate(),
                             audioDeviceSettings_.getBufferSize()) << std::endl;
-}
-
-void MainWindow::play() {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    sequencer.startPlayback();
-    isPlaying_ = true;
-    isPaused_ = false;
-}
-
-void MainWindow::stop() {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    sequencer.stopPlayback();
-    isPlaying_ = false;
-    isPaused_ = false;
-    playbackPosition_ = 0.0f;
-}
-
-void MainWindow::pause() {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    sequencer.pausePlayback();
-
-    isPaused_ = true;
-}
-
-void MainWindow::resume() {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    sequencer.resumePlayback();
-
-    isPaused_ = false;
-}
-
-void MainWindow::record() {
-    isRecording_ = !isRecording_;
-
-    if (isRecording_) {
-        std::cout << "Starting recording" << std::endl;
-    } else {
-        std::cout << "Stopping recording" << std::endl;
-    }
-}
-
-void MainWindow::loadFile() {
-    auto selection = pfd::open_file(
-        "Select Audio File",
-        ".",
-        { "Audio Files", "*.wav *.flac *.ogg",
-          "WAV Files", "*.wav",
-          "FLAC Files", "*.flac",
-          "OGG Files", "*.ogg",
-          "All Files", "*" }
-    );
-
-    if (selection.result().empty()) {
-        return; // User cancelled
-    }
-
-    std::string filepath = selection.result()[0];
-
-    auto reader = uapmd::createAudioFileReaderFromPath(filepath);
-    if (!reader) {
-        pfd::message("Load Failed",
-                    "Could not load audio file: " + filepath + "\nSupported formats: WAV, FLAC, OGG",
-                    pfd::choice::ok,
-                    pfd::icon::error);
-        return;
-    }
-
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    sequencer.loadAudioFile(std::move(reader));
-
-    currentFile_ = filepath;
-    playbackLength_ = static_cast<float>(sequencer.audioFileDurationSeconds());
-    playbackPosition_ = 0.0f;
-
-    std::cout << "File loaded: " << currentFile_ << std::endl;
-}
-
-void MainWindow::unloadFile() {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-
-    // Stop playback if currently playing
-    if (isPlaying_) {
-        stop();
-    }
-
-    // Unload the audio file from the sequencer
-    sequencer.unloadAudioFile();
-
-    // Clear UI state
-    currentFile_.clear();
-    playbackLength_ = 0.0f;
-    playbackPosition_ = 0.0f;
-
-    std::cout << "Audio file unloaded" << std::endl;
 }
 
 void MainWindow::refreshInstances() {

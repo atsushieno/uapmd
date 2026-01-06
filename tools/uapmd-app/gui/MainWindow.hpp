@@ -38,14 +38,7 @@ class MainWindow {
         // Device settings
         AudioDeviceSettings audioDeviceSettings_;
 
-        // Player settings
-        std::string currentFile_;
-        bool isPlaying_ = false;
-        bool isPaused_ = false;
-        bool isRecording_ = false;
-        float playbackPosition_ = 0.0f;
-        float playbackLength_ = 0.0f;
-        float volume_ = 0.8f;
+        // Player settings window visibility
         bool showDeviceSettingsWindow_ = false;
         bool showPlayerSettingsWindow_ = false;
 
@@ -167,13 +160,6 @@ class MainWindow {
 
         // Player settings
         void renderPlayerSettings();
-        void play();
-        void stop();
-        void pause();
-        void resume();
-        void record();
-        void loadFile();
-        void unloadFile();
 
         // Instance control
         void renderInstanceControl();

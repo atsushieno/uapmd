@@ -1,5 +1,7 @@
 
 #include "AppModel.hpp"
+#include "uapmd/priv/audio/AudioFileFactory.hpp"
+#include <portable-file-dialogs.h>
 #include <iostream>
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
@@ -7,6 +9,10 @@
 #define DEFAULT_SAMPLE_RATE 48000
 
 std::unique_ptr<uapmd::AppModel> model{};
+
+uapmd::TransportController::TransportController(AudioPluginSequencer* sequencer)
+    : sequencer_(sequencer) {
+}
 
 void uapmd::AppModel::instantiate() {
     model = std::make_unique<uapmd::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());
@@ -22,7 +28,8 @@ void uapmd::AppModel::cleanupInstance() {
 
 uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
         sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
-        deviceController_(std::make_unique<VirtualMidiDeviceController>(&sequencer_)) {
+        deviceController_(std::make_unique<VirtualMidiDeviceController>(&sequencer_)),
+        transportController_(std::make_unique<TransportController>(&sequencer_)) {
 }
 
 void uapmd::AppModel::performPluginScanning(bool forceRescan) {
@@ -362,4 +369,86 @@ void uapmd::AppModel::hidePluginUI(int32_t instanceId) {
     for (auto& cb : uiHidden) {
         cb(result);
     }
+}
+
+void uapmd::TransportController::play() {
+    sequencer_->startPlayback();
+    isPlaying_ = true;
+    isPaused_ = false;
+}
+
+void uapmd::TransportController::stop() {
+    sequencer_->stopPlayback();
+    isPlaying_ = false;
+    isPaused_ = false;
+    playbackPosition_ = 0.0f;
+}
+
+void uapmd::TransportController::pause() {
+    sequencer_->pausePlayback();
+    isPaused_ = true;
+}
+
+void uapmd::TransportController::resume() {
+    sequencer_->resumePlayback();
+    isPaused_ = false;
+}
+
+void uapmd::TransportController::record() {
+    isRecording_ = !isRecording_;
+
+    if (isRecording_)
+        std::cout << "Starting recording" << std::endl;
+    else
+        std::cout << "Stopping recording" << std::endl;
+}
+
+void uapmd::TransportController::loadFile() {
+    auto selection = pfd::open_file(
+        "Select Audio File",
+        ".",
+        { "Audio Files", "*.wav *.flac *.ogg",
+          "WAV Files", "*.wav",
+          "FLAC Files", "*.flac",
+          "OGG Files", "*.ogg",
+          "All Files", "*" }
+    );
+
+    if (selection.result().empty())
+        return; // User cancelled
+
+    std::string filepath = selection.result()[0];
+
+    auto reader = uapmd::createAudioFileReaderFromPath(filepath);
+    if (!reader) {
+        pfd::message("Load Failed",
+                    "Could not load audio file: " + filepath + "\nSupported formats: WAV, FLAC, OGG",
+                    pfd::choice::ok,
+                    pfd::icon::error);
+        return;
+    }
+
+    sequencer_->loadAudioFile(std::move(reader));
+
+    currentFile_ = filepath;
+    playbackLength_ = static_cast<float>(sequencer_->audioFileDurationSeconds());
+    playbackPosition_ = 0.0f;
+
+    std::cout << "File loaded: " << currentFile_ << std::endl;
+}
+
+void uapmd::TransportController::unloadFile() {
+    // Stop playback if currently playing
+    if (isPlaying_)
+        stop();
+
+    // Unload the audio file from the sequencer
+    sequencer_->unloadAudioFile();
+
+    // Clear state
+    currentFile_.clear();
+    playbackLength_ = 0.0f;
+    playbackPosition_ = 0.0f;
+
+    std::cout << "Audio file unloaded" << std::endl;
 }
