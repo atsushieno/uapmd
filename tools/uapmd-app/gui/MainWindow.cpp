@@ -924,8 +924,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
         std::string initialName;
 
         bool labelFound = false;
-        auto* deviceController = uapmd::AppModel::instance().deviceController();
-        if (deviceController) {
+        {
             std::lock_guard lock(devicesMutex_);
             for (auto& entry : devices_) {
                 auto state = entry.state;
@@ -954,8 +953,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     bool deviceExists = false;
     bool deviceInstantiating = false;
 
-    auto* deviceController = uapmd::AppModel::instance().deviceController();
-    if (deviceController) {
+    {
         std::lock_guard lock(devicesMutex_);
         for (auto& entry : devices_) {
             auto state = entry.state;
