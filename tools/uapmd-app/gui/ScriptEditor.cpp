@@ -799,9 +799,9 @@ function findPlugin(displayName, format) {
 // Create four tracks with specific plugins
 const tracksToCreate = [
     { name: 'Dexed', format: 'VST3' },
-    { name: 'ripplerx', format: 'LV2' },
-    { name: 'six sines', format: 'CLAP' },
-    { name: 'surge xt', format: 'AU' }
+    { name: 'RipplerX', format: 'LV2' },
+    { name: 'OctaSine', format: 'CLAP' },
+    { name: 'Surge XT', format: 'AU' }
 ];
 
 const instanceIds = [];
