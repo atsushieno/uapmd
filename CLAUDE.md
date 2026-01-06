@@ -1,2 +1,1 @@
-You must always follow AGENTS.md.
-
+AGENTS.md
