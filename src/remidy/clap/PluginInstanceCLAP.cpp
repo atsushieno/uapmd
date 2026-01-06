@@ -10,24 +10,15 @@ namespace remidy {
         PluginCatalogEntry* info,
         clap_preset_discovery_factory* presetDiscoveryFactory,
         void* module,
-        const clap_plugin_t* rawPlugin,
+        std::unique_ptr<CLAPPluginProxy> plugin,
         std::unique_ptr<RemidyCLAPHost> host
-    ) : PluginInstance(info), owner(owner), preset_discovery_factory(presetDiscoveryFactory), module(module), host(std::move(host)) {
+    ) : PluginInstance(info), owner(owner), preset_discovery_factory(presetDiscoveryFactory), module(module), host(std::move(host)), plugin(std::move(plugin)) {
         if (this->host)
             this->host->attachInstance(this);
-
-        // Create the plugin proxy wrapper
-        plugin = std::make_unique<CLAPPluginProxy>(*rawPlugin, *this->host);
 
         audio_buses = new AudioBuses(this);
         events_in = std::make_unique<clap::helpers::EventList>();
         events_out = std::make_unique<clap::helpers::EventList>();
-
-        // Initialize the plugin via the proxy
-        if (!plugin->init()) {
-            Logger::global()->logError("Failed to initialize CLAP plugin %s", info->displayName().data());
-            return;
-        }
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {

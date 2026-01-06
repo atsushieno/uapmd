@@ -237,8 +237,18 @@ namespace remidy {
 
             auto host = std::make_unique<RemidyCLAPHost>();
             auto plugin = factory->create_plugin(factory, host->clapHost(), desc->id);
-            if (plugin)
-                ret = std::make_unique<PluginInstanceCLAP>(this, info, presetDiscoveryFactory, module, plugin, std::move(host));
+            if (plugin) {
+                // Initialize the plugin via the proxy
+                // Create the plugin proxy wrapper
+                auto pluginProxy = std::make_unique<CLAPPluginProxy>(*plugin, *host);
+
+                if (!pluginProxy->init()) {
+                    Logger::global()->logError("Failed to initialize CLAP plugin %s", info->displayName().data());
+                    return;
+                }
+
+                ret = std::make_unique<PluginInstanceCLAP>(this, info, presetDiscoveryFactory, module, std::move(pluginProxy), std::move(host));
+            }
         }, [&](void *module) {
             // do not unload library here.
         });

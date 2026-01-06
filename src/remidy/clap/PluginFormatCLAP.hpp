@@ -258,7 +258,7 @@ namespace remidy {
             PluginCatalogEntry* info,
             clap_preset_discovery_factory* presetDiscoveryFactory,
             void* module,
-            const clap_plugin_t* rawPlugin,
+            std::unique_ptr<CLAPPluginProxy> plugin,
             std::unique_ptr<RemidyCLAPHost> host
             );
         ~PluginInstanceCLAP() override;
