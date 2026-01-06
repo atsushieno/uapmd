@@ -180,6 +180,7 @@ target_sources(uapmd-app PRIVATE
         gui/TrackList.cpp
         gui/AudioDeviceSettings.cpp
         gui/ScriptEditor.cpp
+        gui/SpectrumAnalyzer.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         Controller/VirtualMidiDeviceController.cpp

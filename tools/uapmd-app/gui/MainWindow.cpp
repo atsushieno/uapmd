@@ -97,6 +97,14 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     // Apply defaults from command line arguments
     // TODO: If needed, implement default plugin selection through pluginList_
 
+    // Set up spectrum analyzer data providers
+    inputSpectrumAnalyzer_.setDataProvider([this](float* data, int dataSize) {
+        uapmd::AppModel::instance().sequencer().getInputSpectrum(data, dataSize);
+    });
+    outputSpectrumAnalyzer_.setDataProvider([this](float* data, int dataSize) {
+        uapmd::AppModel::instance().sequencer().getOutputSpectrum(data, dataSize);
+    });
+
     refreshDeviceList();
     refreshInstances();
     refreshPluginList();
@@ -779,13 +787,11 @@ void MainWindow::renderPlayerSettings() {
     }
 
     // Spectrum analyzers - side by side
-    // Update spectrum data from sequencer
-    sequencer.getInputSpectrum(inputSpectrum_, kSpectrumBars);
-    sequencer.getOutputSpectrum(outputSpectrum_, kSpectrumBars);
-
     float availableWidth = ImGui::GetContentRegionAvail().x;
     float spectrumWidth = (availableWidth - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
     ImVec2 spectrumSize = ImVec2(spectrumWidth, 64);
+    inputSpectrumAnalyzer_.setSize(spectrumSize);
+    outputSpectrumAnalyzer_.setSize(spectrumSize);
 
     // Use table layout for proper alignment
     if (ImGui::BeginTable("##SpectrumTable", 2, ImGuiTableFlags_None))
@@ -803,9 +809,9 @@ void MainWindow::renderPlayerSettings() {
         // Second row: histograms
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        ImGui::PlotHistogram("##InputSpectrum", inputSpectrum_, kSpectrumBars, 0, nullptr, 0.0f, 1.0f, spectrumSize);
+        inputSpectrumAnalyzer_.render("##InputSpectrum");
         ImGui::TableNextColumn();
-        ImGui::PlotHistogram("##OutputSpectrum", outputSpectrum_, kSpectrumBars, 0, nullptr, 0.0f, 1.0f, spectrumSize);
+        outputSpectrumAnalyzer_.render("##OutputSpectrum");
 
         ImGui::EndTable();
     }

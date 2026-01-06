@@ -15,6 +15,7 @@
 #include "TrackList.hpp"
 #include "AudioDeviceSettings.hpp"
 #include "ScriptEditor.hpp"
+#include "SpectrumAnalyzer.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 
@@ -48,10 +49,9 @@ class MainWindow {
         bool showDeviceSettingsWindow_ = false;
         bool showPlayerSettingsWindow_ = false;
 
-        // Spectrum analyzer data
-        static constexpr int kSpectrumBars = 32;
-        float inputSpectrum_[kSpectrumBars] = {};
-        float outputSpectrum_[kSpectrumBars] = {};
+        // Spectrum analyzers
+        SpectrumAnalyzer inputSpectrumAnalyzer_;
+        SpectrumAnalyzer outputSpectrumAnalyzer_;
 
         // Instance control
         int selectedInstance_ = -1;
