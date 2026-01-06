@@ -53,6 +53,7 @@ namespace uapmd {
             else {
                 auto track = impl->addSimpleTrack(std::move(node));
                 callback(track, "");
+                track->bypassed(false);
             }
         });
     }

@@ -71,7 +71,7 @@ namespace uapmd {
             queue(eventBufferSizeInBytes) {
         }
 
-        bool bypass{false};
+        bool bypass{true}; // initial
         bool frozen{false};
         AudioPluginGraph graph{};
 
