@@ -129,6 +129,17 @@ namespace remidy {
         (void) wasDestroyed;
     }
 
+    void RemidyCLAPHost::logLog(clap_log_severity severity, const char *message) const noexcept {
+        switch (severity) {
+            default: // threading violations
+            case CLAP_LOG_FATAL:
+            case CLAP_LOG_ERROR: Logger::global()->logError(message); break;
+            case CLAP_LOG_WARNING: Logger::global()->logWarning(message); break;
+            case CLAP_LOG_INFO: Logger::global()->logInfo(message); break;
+            case CLAP_LOG_DEBUG: Logger::global()->logDiagnostic(message); break;
+        }
+    }
+
     void RemidyCLAPHost::attachInstance(PluginInstanceCLAP *instance) noexcept {
         attached_instance.store(instance);
     }

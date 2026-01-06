@@ -70,6 +70,10 @@ namespace remidy {
         bool timerSupportRegisterTimer(uint32_t periodMs, clap_id *timerId) noexcept override;
         bool timerSupportUnregisterTimer(clap_id timerId) noexcept override;
 
+        // log support
+        bool implementsLog() const noexcept override { return true; }
+        void logLog(clap_log_severity severity, const char *message) const noexcept override;
+
     public:
         void attachInstance(PluginInstanceCLAP* instance) noexcept;
         void detachInstance(PluginInstanceCLAP* instance) noexcept;
