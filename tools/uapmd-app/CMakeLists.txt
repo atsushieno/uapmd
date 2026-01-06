@@ -176,6 +176,7 @@ target_sources(uapmd-app PRIVATE
         gui/MainWindow.cpp
         gui/MidiKeyboard.cpp
         gui/PluginList.cpp
+        gui/PluginSelector.cpp
         gui/ParameterList.cpp
         gui/TrackList.cpp
         gui/AudioDeviceSettings.cpp

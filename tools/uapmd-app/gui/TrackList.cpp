@@ -1,4 +1,5 @@
 #include "TrackList.hpp"
+#include "../AppModel.hpp"
 #include <algorithm>
 #include <array>
 #include <iostream>
@@ -11,6 +12,24 @@ TrackList::TrackList() {
 
 void TrackList::setInstances(const std::vector<TrackInstance>& instances) {
     instances_ = instances;
+}
+
+void TrackList::update() {
+    if (!onBuildTrackInstance_) {
+        return;
+    }
+
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto instanceIds = sequencer.getInstanceIds();
+
+    instances_.clear();
+    instances_.reserve(instanceIds.size());
+
+    for (int32_t instanceId : instanceIds) {
+        if (auto trackInstance = onBuildTrackInstance_(instanceId)) {
+            instances_.push_back(*trackInstance);
+        }
+    }
 }
 
 void TrackList::render() {
@@ -146,6 +165,10 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
             onShowDetails_(instance.instanceId);
         }
     }
+}
+
+void TrackList::setOnBuildTrackInstance(BuildTrackInstanceCallback callback) {
+    onBuildTrackInstance_ = callback;
 }
 
 void TrackList::setOnShowDetails(ShowDetailsCallback callback) {

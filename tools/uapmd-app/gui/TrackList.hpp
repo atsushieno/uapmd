@@ -35,9 +35,11 @@ public:
     using LoadStateCallback = std::function<void(int32_t instanceId)>;
     using RemoveInstanceCallback = std::function<void(int32_t instanceId)>;
     using UMPDeviceNameChangeCallback = std::function<void(int32_t instanceId, const std::string& newName)>;
+    using BuildTrackInstanceCallback = std::function<std::optional<TrackInstance>(int32_t instanceId)>;
 
 private:
     std::vector<TrackInstance> instances_;
+    BuildTrackInstanceCallback onBuildTrackInstance_;
 
     ShowDetailsCallback onShowDetails_;
     HideDetailsCallback onHideDetails_;
@@ -52,8 +54,10 @@ public:
     TrackList();
 
     void setInstances(const std::vector<TrackInstance>& instances);
+    void update();  // Updates instances by calling onBuildTrackInstance_ for each instance
     void render();
 
+    void setOnBuildTrackInstance(BuildTrackInstanceCallback callback);
     void setOnShowDetails(ShowDetailsCallback callback);
     void setOnHideDetails(HideDetailsCallback callback);
     void setOnEnableDevice(EnableDeviceCallback callback);

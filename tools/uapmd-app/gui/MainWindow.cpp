@@ -288,14 +288,9 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         });
 
     // Set up TrackList callbacks
-    /*
-    trackList_.setOnShowUI([this](int32_t instanceId) {
-        handleShowUI(instanceId);
+    trackList_.setOnBuildTrackInstance([this](int32_t instanceId) -> std::optional<TrackInstance> {
+        return buildTrackInstanceInfo(instanceId);
     });
-
-    trackList_.setOnHideUI([this](int32_t instanceId) {
-        handleHideUI(instanceId);
-    });*/
 
     trackList_.setOnShowDetails([this](int32_t instanceId) {
         showDetailsWindow(instanceId);
@@ -332,6 +327,16 @@ MainWindow::MainWindow(GuiDefaults defaults) {
                         umpDeviceNameBuffers_[instanceId].size() - 1);
             umpDeviceNameBuffers_[instanceId][umpDeviceNameBuffers_[instanceId].size() - 1] = '\0';
         }
+    });
+
+    // Set up PluginSelector callbacks
+    pluginSelector_.setOnInstantiatePlugin([this](const std::string& format, const std::string& pluginId, int32_t trackIndex) {
+        createDeviceForPlugin(format, pluginId, trackIndex);
+        showPluginSelectorWindow_ = false;
+    });
+
+    pluginSelector_.setOnScanPlugins([](bool forceRescan) {
+        uapmd::AppModel::instance().performPluginScanning(forceRescan);
     });
 
     // Set up AudioDeviceSettings callbacks
@@ -504,7 +509,24 @@ void MainWindow::renderPluginSelectorWindow() {
     setNextChildWindowSize(windowId, ImVec2(520.0f, 560.0f));
     if (ImGui::Begin("Plugin Selector", &showPluginSelectorWindow_)) {
         updateChildWindowSizeState(windowId);
-        renderPluginSelector();
+
+        // Update track options before rendering
+        std::vector<TrackDestinationOption> trackOptions;
+        auto* deviceController = uapmd::AppModel::instance().deviceController();
+        if (deviceController && deviceController->sequencer()) {
+            auto tracks = deviceController->sequencer()->getTrackInfos();
+            for (const auto& track : tracks) {
+                TrackDestinationOption option{
+                    .trackIndex = track.trackIndex,
+                    .label = std::format("Track {}", track.trackIndex + 1)
+                };
+                trackOptions.push_back(std::move(option));
+            }
+        }
+        pluginSelector_.setTrackOptions(trackOptions);
+        pluginSelector_.setScanning(uapmd::AppModel::instance().isScanning());
+
+        pluginSelector_.render();
     }
     ImGui::End();
 }
@@ -904,7 +926,7 @@ void MainWindow::renderInstanceControl() {
     }
 
     // Update the track list data and render
-    updateTrackListData();
+    trackList_.update();
     trackList_.render();
 }
 
@@ -985,21 +1007,6 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     ti.deviceInstantiating = deviceInstantiating;
 
     return ti;
-}
-
-void MainWindow::updateTrackListData() {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-
-    std::vector<TrackInstance> trackInstances;
-
-    auto instances = sequencer.getInstanceIds();
-    for (int32_t instanceId : instances) {
-        if (auto trackInstance = buildTrackInstanceInfo(instanceId)) {
-            trackInstances.push_back(*trackInstance);
-        }
-    }
-
-    trackList_.setInstances(trackInstances);
 }
 
 void MainWindow::refreshDeviceList() {
@@ -1257,108 +1264,7 @@ void MainWindow::refreshPluginList() {
         });
     }
 
-    pluginList_.setPlugins(plugins);
-}
-
-void MainWindow::renderPluginSelector() {
-    bool isScanning = uapmd::AppModel::instance().isScanning();
-    if (isScanning) {
-        ImGui::BeginDisabled();
-    }
-
-    if (ImGui::Button("Scan Plugins")) {
-        uapmd::AppModel::instance().performPluginScanning(forceRescan_);
-        std::cout << "Starting plugin scanning" << std::endl;
-    }
-
-    if (isScanning) {
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        ImGui::Text("Scanning...");
-    } else {
-        ImGui::SameLine();
-        ImGui::Checkbox("Force Rescan", &forceRescan_);
-    }
-
-    ImGui::Separator();
-
-    // Render the plugin list component
-    pluginList_.render();
-
-    ImGui::Separator();
-    // Build track destination options
-    std::vector<std::string> labels;
-    {
-        trackOptions_.clear();
-        auto* deviceController = uapmd::AppModel::instance().deviceController();
-        if (deviceController && deviceController->sequencer()) {
-            auto tracks = deviceController->sequencer()->getTrackInfos();
-            for (const auto& track : tracks) {
-                TrackDestinationOption option{
-                    .trackIndex = track.trackIndex,
-                    .label = std::format("Track {}", track.trackIndex + 1)
-                };
-                trackOptions_.push_back(std::move(option));
-            }
-        }
-        if (selectedTrackOption_ < 0 || selectedTrackOption_ > static_cast<int>(trackOptions_.size())) {
-            selectedTrackOption_ = 0;
-        }
-
-        labels.reserve(trackOptions_.size() + 1);
-        labels.emplace_back("New track (new UMP device)");
-        for (const auto& option : trackOptions_) {
-            labels.push_back(option.label);
-        }
-    }
-
-    std::vector<const char*> labelPtrs;
-    labelPtrs.reserve(labels.size());
-    for (auto& label : labels) {
-        labelPtrs.push_back(label.c_str());
-    }
-
-    // Plugin instantiation controls
-    auto selection = pluginList_.getSelection();
-    bool canInstantiate = selection.hasSelection;
-    if (!canInstantiate) {
-        ImGui::BeginDisabled();
-    }
-    if (ImGui::Button("Instantiate Plugin")) {
-        // Determine track index
-        int32_t trackIndex = -1;
-        if (selectedTrackOption_ > 0 && static_cast<size_t>(selectedTrackOption_ - 1) < trackOptions_.size()) {
-            // Use existing track
-            trackIndex = trackOptions_[static_cast<size_t>(selectedTrackOption_ - 1)].trackIndex;
-        }
-
-        // Always create device (creates UMP device even for existing tracks)
-        createDeviceForPlugin(selection.format, selection.pluginId, trackIndex);
-        showPluginSelectorWindow_ = false;
-    }
-    if (!canInstantiate) {
-        ImGui::EndDisabled();
-    }
-
-    ImGui::SameLine();
-    ImGui::TextUnformatted("on");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(250.0f);
-    ImGui::Combo("##track_dest", &selectedTrackOption_, labelPtrs.data(), static_cast<int>(labelPtrs.size()));
-
-    if (selectedTrackOption_ == 0) {
-        // Show device configuration for new track
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("Device Name:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(200.0f);
-        ImGui::InputText("##device_name", deviceNameInput_, sizeof(deviceNameInput_));
-        ImGui::SameLine();
-        ImGui::TextUnformatted("API:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(120.0f);
-        ImGui::InputText("##api", apiInput_, sizeof(apiInput_));
-    }
+    pluginSelector_.setPlugins(plugins);
 }
 
 void MainWindow::showDetailsWindow(int32_t instanceId) {
@@ -1752,11 +1658,11 @@ void MainWindow::loadPluginState(int32_t instanceId) {
 void MainWindow::createDeviceForPlugin(const std::string& format, const std::string& pluginId, int32_t trackIndex) {
     // Prepare configuration
     uapmd::AppModel::PluginInstanceConfig config;
-    config.apiName = std::string(apiInput_);
+    config.apiName = std::string(pluginSelector_.getApiInput());
     if (config.apiName.empty()) {
         config.apiName = "default";
     }
-    config.deviceName = std::string(deviceNameInput_);  // Empty = auto-generate
+    config.deviceName = std::string(pluginSelector_.getDeviceNameInput());  // Empty = auto-generate
 
     // Use AppModel's unified creation method
     // The global callback registered in constructor will handle UI updates

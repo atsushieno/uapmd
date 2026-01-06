@@ -11,6 +11,7 @@
 #include <uapmd/uapmd.hpp>
 #include "MidiKeyboard.hpp"
 #include "PluginList.hpp"
+#include "PluginSelector.hpp"
 #include "ParameterList.hpp"
 #include "TrackList.hpp"
 #include "AudioDeviceSettings.hpp"
@@ -50,23 +51,10 @@ class MainWindow {
 
         // Plugin selection
         bool showPluginSelectorWindow_ = false;
-        PluginList pluginList_;
+        PluginSelector pluginSelector_;
 
         // Script editor
         ScriptEditor scriptEditor_;
-
-        // Plugin scanning
-        bool forceRescan_ = false;
-
-        // Track selection for plugin instantiation
-        struct TrackDestinationOption {
-            int32_t trackIndex;
-            std::string label;
-        };
-        std::vector<TrackDestinationOption> trackOptions_;
-        int selectedTrackOption_ = 0; // 0 = new track, 1+ = existing tracks
-        char deviceNameInput_[128] = "";  // Empty by default, will use plugin name if not filled
-        char apiInput_[64] = "default";
 
         // Virtual MIDI device state tracking
         struct PluginInstanceState {
@@ -183,13 +171,11 @@ class MainWindow {
 
         // Plugin selection
         void refreshPluginList();
-        void renderPluginSelector();
 
         // Virtual MIDI device management
         void createDeviceForPlugin(const std::string& format, const std::string& pluginId, int32_t trackIndex);
 
         // TrackList helper methods
-        void updateTrackListData();
         std::optional<TrackInstance> buildTrackInstanceInfo(int32_t instanceId);
         void handleShowUI(int32_t instanceId);
         void handleHideUI(int32_t instanceId);
