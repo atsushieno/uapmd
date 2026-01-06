@@ -19,14 +19,15 @@ namespace remidy {
         // Create the plugin proxy wrapper
         plugin = std::make_unique<CLAPPluginProxy>(*rawPlugin, *this->host);
 
-        // Initialize the plugin via the proxy
-        if (!plugin->init()) {
-            throw std::runtime_error("Failed to initialize CLAP plugin");
-        }
-
         audio_buses = new AudioBuses(this);
         events_in = std::make_unique<clap::helpers::EventList>();
         events_out = std::make_unique<clap::helpers::EventList>();
+
+        // Initialize the plugin via the proxy
+        if (!plugin->init()) {
+            Logger::global()->logError("Failed to initialize CLAP plugin %s", info->displayName().data());
+            return;
+        }
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {
