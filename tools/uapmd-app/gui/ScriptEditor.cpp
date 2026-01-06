@@ -393,7 +393,7 @@ void ScriptEditor::initializeJavaScriptContext()
 
         if (instanceId >= 0)
         {
-            uapmd::AppModel::instance().showPluginUI (instanceId);
+            uapmd::AppModel::instance().requestShowPluginUI (instanceId);
         }
         return choc::value::Value();
     });

@@ -167,6 +167,22 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     // Register callback for when plugin instances are removed (GUI or script)
     uapmd::AppModel::instance().instanceRemoved.push_back(
         [this](int32_t instanceId) {
+            // Cleanup plugin UI windows (must happen before removing from devices)
+            auto windowIt = pluginWindows_.find(instanceId);
+            if (windowIt != pluginWindows_.end()) {
+                windowIt->second->show(false);
+                pluginWindows_.erase(windowIt);
+            }
+            pluginWindowEmbedded_.erase(instanceId);
+            pluginWindowBounds_.erase(instanceId);
+            pluginWindowResizeIgnore_.erase(instanceId);
+
+            // Cleanup details window if open
+            auto detailsIt = detailsWindows_.find(instanceId);
+            if (detailsIt != detailsWindows_.end()) {
+                detailsWindows_.erase(detailsIt);
+            }
+
             // Remove from devices list
             {
                 std::lock_guard lock(devicesMutex_);
@@ -218,59 +234,38 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             }
         });
 
+    // Register callback for when scripts request to show UI
+    uapmd::AppModel::instance().uiShowRequested.push_back(
+        [this](int32_t instanceId) {
+            // Handle the request by calling our handleShowUI method
+            handleShowUI(instanceId);
+        });
+
     // Register callback for when plugin UIs are shown (from scripts or GUI)
     uapmd::AppModel::instance().uiShown.push_back(
         [this](const uapmd::AppModel::UIStateResult& result) {
-            if (!result.success) return;
+            if (!result.success) {
+                // Show error, hide container window if it was created
+                std::cout << "Failed to show plugin UI: " << result.error << std::endl;
+                auto windowIt = pluginWindows_.find(result.instanceId);
+                if (windowIt != pluginWindows_.end()) {
+                    windowIt->second->show(false);
+                }
+                return;
+            }
 
             auto& sequencer = uapmd::AppModel::instance().sequencer();
             auto* instance = sequencer.getPluginInstance(result.instanceId);
             if (!instance) return;
 
-            std::string pluginName = sequencer.getPluginName(result.instanceId);
-            std::string pluginFormat = sequencer.getPluginFormat(result.instanceId);
+            // Mark as embedded and configure container window if UI was just created
+            if (result.wasCreated) {
+                pluginWindowEmbedded_[result.instanceId] = true;
 
-            // Create container window if needed
-            auto windowIt = pluginWindows_.find(result.instanceId);
-            remidy::gui::ContainerWindow* container = nullptr;
-            if (windowIt == pluginWindows_.end()) {
-                std::string windowTitle = pluginName + " (" + pluginFormat + ")";
-                auto w = remidy::gui::ContainerWindow::create(windowTitle.c_str(), 800, 600, [this, instanceId = result.instanceId]() {
-                    onPluginWindowClosed(instanceId);
-                });
-                container = w.get();
-                w->setResizeCallback([this, instanceId = result.instanceId](int width, int height) {
-                    pluginWindowBounds_[instanceId].width = width;
-                    pluginWindowBounds_[instanceId].height = height;
-                    onPluginWindowResized(instanceId);
-                });
-                pluginWindows_[result.instanceId] = std::move(w);
-                pluginWindowBounds_[result.instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
-            } else {
-                container = windowIt->second.get();
-                if (pluginWindowBounds_.find(result.instanceId) == pluginWindowBounds_.end())
-                    pluginWindowBounds_[result.instanceId] = remidy::gui::Bounds{100, 100, 800, 600};
-            }
-
-            if (!container) {
-                std::cout << "Failed to create container window for instance " << result.instanceId << std::endl;
-                return;
-            }
-
-            container->show(true);
-            void* parentHandle = container->getHandle();
-            bool pluginUIExists = (pluginWindowEmbedded_.find(result.instanceId) != pluginWindowEmbedded_.end());
-
-            if (!pluginUIExists) {
-                if (!instance->createUI(false, parentHandle,
-                    [this, instanceId = result.instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
-                    container->show(false);
-                    pluginWindows_.erase(result.instanceId);
-                    std::cout << "Failed to create plugin UI for instance " << result.instanceId << std::endl;
-                } else {
-                    pluginWindowEmbedded_[result.instanceId] = true;
+                auto windowIt = pluginWindows_.find(result.instanceId);
+                if (windowIt != pluginWindows_.end()) {
                     bool canResize = instance->canUIResize();
-                    container->setResizable(canResize);
+                    windowIt->second->setResizable(canResize);
                 }
             }
         });
@@ -280,21 +275,19 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         [this](const uapmd::AppModel::UIStateResult& result) {
             if (!result.success) return;
 
-            // UI hiding is already done in AppModel, just update window visibility
-            auto windowIt = pluginWindows_.find(result.instanceId);
-            if (windowIt != pluginWindows_.end()) {
-                windowIt->second->show(false);
-            }
+            // Call handleHideUI to process the window state changes
+            handleHideUI(result.instanceId);
         });
 
     // Set up TrackList callbacks
+    /*
     trackList_.setOnShowUI([this](int32_t instanceId) {
-        uapmd::AppModel::instance().showPluginUI(instanceId);
+        handleShowUI(instanceId);
     });
 
     trackList_.setOnHideUI([this](int32_t instanceId) {
-        uapmd::AppModel::instance().hidePluginUI(instanceId);
-    });
+        handleHideUI(instanceId);
+    });*/
 
     trackList_.setOnShowDetails([this](int32_t instanceId) {
         showDetailsWindow(instanceId);
@@ -705,6 +698,9 @@ void MainWindow::onPluginWindowClosed(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     // Just update the visible flag in the plugin - don't touch the window or embedded state
     sequencer.getPluginInstance(instanceId)->hideUI();
+
+    // Update our visibility tracking so the button text is correct
+    pluginWindowVisible_[instanceId] = false;
 }
 
 bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height) {
@@ -969,7 +965,10 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     ti.pluginFormat = pluginFormat;
     ti.umpDeviceName = std::string(umpDeviceNameBuffers_[instanceId].data());
     ti.hasUI = instance->hasUISupport();
-    ti.uiVisible = instance->isUIVisible();
+    // Check if UI is actually visible by checking our visibility tracking
+    // We track this ourselves because instance->isUIVisible() may not be reliable
+    auto visIt = pluginWindowVisible_.find(instanceId);
+    ti.uiVisible = (visIt != pluginWindowVisible_.end() && visIt->second);
     auto detailsIt = detailsWindows_.find(instanceId);
     ti.detailsVisible = detailsIt != detailsWindows_.end() && detailsIt->second.visible;
     ti.deviceRunning = deviceRunning;
@@ -1603,7 +1602,7 @@ void MainWindow::renderDetailsWindows() {
                         if (trackInstance->uiVisible) {
                             uapmd::AppModel::instance().hidePluginUI(instanceId);
                         } else {
-                            uapmd::AppModel::instance().showPluginUI(instanceId);
+                            uapmd::AppModel::instance().requestShowPluginUI(instanceId);
                         }
                     }
                     if (disableShowUIButton) {
@@ -1850,371 +1849,6 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
     uapmd::AppModel::instance().createPluginInstanceAsync(format, pluginId, trackIndex, config);
 }
 
-void MainWindow::renderVirtualMidiDeviceManager() {
-    ImGui::TextUnformatted("Audio tracks");
-    std::vector<DeviceEntry> devicesCopy;
-    {
-        std::lock_guard lock(devicesMutex_);
-        devicesCopy = devices_;
-    }
-
-    if (devicesCopy.empty()) {
-        ImGui::TextDisabled("No virtual MIDI devices created yet.");
-        return;
-    }
-
-    size_t removeIndex = static_cast<size_t>(-1);
-
-    // Build rows structure
-    struct PluginRow {
-        int32_t instanceId{-1};
-        std::string pluginName{};
-        std::string pluginFormat{};
-        std::string pluginId{};
-        std::string status{};
-        bool pluginInstantiating{false};
-        bool pluginHasError{false};
-        int32_t trackIndex{-1};
-        std::shared_ptr<DeviceState> deviceState{};
-        size_t deviceIndex{static_cast<size_t>(-1)};
-        std::string deviceLabel{};
-        bool deviceRunning{false};
-        bool deviceInstantiating{false};
-        bool deviceHasError{false};
-    };
-
-    std::map<int32_t, std::vector<PluginRow>> rowsByTrack;
-    std::vector<PluginRow> pendingRows;
-
-    auto* deviceController = uapmd::AppModel::instance().deviceController();
-    auto* sequencer = deviceController ? deviceController->sequencer() : nullptr;
-
-    for (size_t deviceIdx = 0; deviceIdx < devicesCopy.size(); ++deviceIdx) {
-        auto entry = devicesCopy[deviceIdx];
-        auto state = entry.state;
-
-        std::lock_guard guard(state->mutex);
-        const std::string deviceLabel = state->label.empty() ? std::format("Device {}", deviceIdx + 1) : state->label;
-
-        if (state->pluginInstances.empty()) {
-            pendingRows.push_back(PluginRow{
-                -1,
-                deviceLabel,
-                "",
-                "",
-                state->statusMessage,
-                state->instantiating,
-                state->hasError,
-                -1,
-                state,
-                deviceIdx,
-                deviceLabel,
-                state->running,
-                state->instantiating,
-                state->hasError
-            });
-            continue;
-        }
-
-        for (auto& [instanceId, pluginState] : state->pluginInstances) {
-            PluginRow row{};
-            row.instanceId = instanceId;
-            row.pluginName = pluginState.pluginName;
-            row.pluginFormat = pluginState.pluginFormat;
-            row.pluginId = pluginState.pluginId;
-            row.status = pluginState.statusMessage;
-            row.pluginInstantiating = pluginState.instantiating;
-            row.pluginHasError = pluginState.hasError;
-            row.trackIndex = pluginState.trackIndex;
-            row.deviceState = state;
-            row.deviceIndex = deviceIdx;
-            row.deviceLabel = deviceLabel;
-            row.deviceRunning = state->running;
-            row.deviceInstantiating = state->instantiating;
-            row.deviceHasError = state->hasError;
-
-            if (sequencer) {
-                const auto trackIndex = sequencer->findTrackIndexForInstance(instanceId);
-                if (trackIndex >= 0) {
-                    pluginState.trackIndex = trackIndex;
-                }
-                row.trackIndex = pluginState.trackIndex;
-            }
-
-            if (row.trackIndex >= 0) {
-                rowsByTrack[row.trackIndex].push_back(std::move(row));
-            } else {
-                pendingRows.push_back(std::move(row));
-            }
-        }
-    }
-
-    // Render row lambda
-    auto renderRow = [&](PluginRow& row) -> bool {
-        ImGui::TableNextRow();
-
-        auto deviceState = row.deviceState;
-        bool deviceRunning = row.deviceRunning;
-        bool deviceInstantiating = row.deviceInstantiating;
-        bool deviceHasError = row.deviceHasError;
-        std::string pluginStatus = row.status;
-        bool pluginInstantiating = row.pluginInstantiating;
-        bool pluginHasError = row.pluginHasError;
-
-        if (deviceState) {
-            std::lock_guard guard(deviceState->mutex);
-            deviceRunning = deviceState->running;
-            deviceInstantiating = deviceState->instantiating;
-            deviceHasError = deviceState->hasError;
-            if (row.instanceId >= 0 && deviceState->pluginInstances.count(row.instanceId)) {
-                auto& pluginPtr = deviceState->pluginInstances[row.instanceId];
-                pluginStatus = pluginPtr.statusMessage;
-                pluginInstantiating = pluginPtr.instantiating;
-                pluginHasError = pluginPtr.hasError;
-            }
-        }
-
-        const bool uiSupported = sequencer && row.instanceId >= 0 && sequencer->getPluginInstance(row.instanceId)->hasUISupport();
-        const bool uiVisible = sequencer && row.instanceId >= 0 && sequencer->getPluginInstance(row.instanceId)->isUIVisible();
-
-        ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted(row.deviceLabel.c_str());
-
-        ImGui::TableSetColumnIndex(1);
-        ImGui::TextUnformatted(row.pluginName.empty() ? "(pending)" : row.pluginName.c_str());
-
-        ImGui::TableSetColumnIndex(2);
-        ImGui::TextUnformatted(row.pluginFormat.c_str());
-
-        ImGui::TableSetColumnIndex(3);
-        if (pluginInstantiating) {
-            ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s", pluginStatus.c_str());
-        } else if (pluginHasError || deviceHasError) {
-            ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s", pluginStatus.c_str());
-        } else {
-            ImGui::TextUnformatted(pluginStatus.c_str());
-        }
-
-        ImGui::TableSetColumnIndex(4);
-        bool removeTriggered = false;
-
-        std::string menuButtonId = std::format("Actions##menu{}::{}", row.deviceIndex, row.instanceId);
-        std::string popupId = std::format("ActionsPopup##{}::{}", row.deviceIndex, row.instanceId);
-
-        if (ImGui::Button(menuButtonId.c_str())) {
-            ImGui::OpenPopup(popupId.c_str());
-        }
-
-        if (ImGui::BeginPopup(popupId.c_str())) {
-            const char* uiText = uiVisible ? "Hide UI" : "Show UI";
-
-            // Show/Hide UI menu item
-            if (!uiSupported) {
-                ImGui::BeginDisabled();
-            }
-
-            if (ImGui::MenuItem(uiText)) {
-                if (uiSupported && uiVisible) {
-                    sequencer->getPluginInstance(row.instanceId)->hideUI();
-                } else if (uiSupported) {
-                    sequencer->getPluginInstance(row.instanceId)->showUI();
-                }
-            }
-
-            if (!uiSupported) {
-                ImGui::EndDisabled();
-            }
-
-            // Start/Stop device menu item
-            if (deviceState && row.instanceId >= 0) {
-                const char* runText = deviceRunning ? "Stop" : "Start";
-                if (deviceInstantiating) {
-                    ImGui::BeginDisabled();
-                }
-
-                if (ImGui::MenuItem(runText)) {
-                    std::lock_guard guard(deviceState->mutex);
-                    auto device = deviceState->device;
-                    if (device) {
-                        if (deviceState->running) {
-                            device->stop();
-                            deviceState->running = false;
-                            deviceState->statusMessage = "Stopped";
-                        } else {
-                            auto statusCode = device->start();
-                            if (statusCode == 0) {
-                                deviceState->running = true;
-                                deviceState->statusMessage = "Running";
-                                deviceState->hasError = false;
-                            } else {
-                                deviceState->statusMessage = std::format("Start failed (status {})", statusCode);
-                                deviceState->hasError = true;
-                            }
-                        }
-                    }
-                }
-
-                if (deviceInstantiating) {
-                    ImGui::EndDisabled();
-                }
-            }
-
-            ImGui::Separator();
-
-            // Remove menu item
-            if (ImGui::MenuItem("Remove")) {
-                if (row.deviceState && row.instanceId >= 0 && sequencer) {
-                    sequencer->getPluginInstance(row.instanceId)->hideUI();
-                }
-                removeIndex = row.deviceIndex;
-                removeTriggered = true;
-                ImGui::CloseCurrentPopup();
-            }
-
-            ImGui::EndPopup();
-        }
-
-        return removeTriggered;
-    };
-
-    // Render tracks
-    if (sequencer) {
-        auto trackInfos = sequencer->getTrackInfos();
-        bool exitLoops = false;
-        for (const auto& track : trackInfos) {
-            auto it = rowsByTrack.find(track.trackIndex);
-            if (it == rowsByTrack.end()) {
-                continue;
-            }
-
-            auto& rows = it->second;
-            if (rows.empty()) {
-                rowsByTrack.erase(it);
-                continue;
-            }
-
-            std::unordered_map<int32_t, size_t> indexByInstance;
-            indexByInstance.reserve(rows.size());
-            for (size_t i = 0; i < rows.size(); ++i) {
-                indexByInstance[rows[i].instanceId] = i;
-            }
-            std::vector<bool> displayed(rows.size(), false);
-
-            bool tableOpen = false;
-
-            auto beginTableIfNeeded = [&]() {
-                if (!tableOpen) {
-                    ImGui::Separator();
-                    ImGui::Text("Track %d", track.trackIndex + 1);
-                    ImGui::BeginTable(std::format("TrackPlugins-{}-{}", track.trackIndex, track.trackIndex).c_str(), 5,
-                                      ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame);
-                    ImGui::TableSetupColumn("Device");
-                    ImGui::TableSetupColumn("Plugin");
-                    ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-                    ImGui::TableSetupColumn("Status");
-                    ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-                    ImGui::TableHeadersRow();
-                    tableOpen = true;
-                }
-            };
-
-            for (const auto& node : track.nodes) {
-                auto idxIt = indexByInstance.find(node.instanceId);
-                if (idxIt == indexByInstance.end()) {
-                    continue;
-                }
-                beginTableIfNeeded();
-                auto& rowRef = rows[idxIt->second];
-                displayed[idxIt->second] = true;
-                if (renderRow(rowRef)) {
-                    exitLoops = true;
-                    break;
-                }
-            }
-
-            if (!exitLoops) {
-                for (size_t i = 0; i < rows.size(); ++i) {
-                    if (displayed[i]) {
-                        continue;
-                    }
-                    beginTableIfNeeded();
-                    if (renderRow(rows[i])) {
-                        exitLoops = true;
-                        break;
-                    }
-                }
-            }
-
-            if (tableOpen) {
-                ImGui::EndTable();
-            }
-
-            rowsByTrack.erase(it);
-
-            if (exitLoops) {
-                break;
-            }
-        }
-    }
-
-    // Collect remaining rows as pending
-    for (auto& [_, rows] : rowsByTrack) {
-        pendingRows.insert(pendingRows.end(), rows.begin(), rows.end());
-    }
-    rowsByTrack.clear();
-
-    // Render pending rows
-    if (!pendingRows.empty() && removeIndex == static_cast<size_t>(-1)) {
-        ImGui::Separator();
-        ImGui::TextUnformatted("Pending plugins");
-        if (ImGui::BeginTable("PendingPlugins", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
-            ImGui::TableSetupColumn("Device");
-            ImGui::TableSetupColumn("Plugin");
-            ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-            ImGui::TableSetupColumn("Status");
-            ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 240.0f);
-            ImGui::TableHeadersRow();
-
-            for (auto& row : pendingRows) {
-                if (renderRow(row)) {
-                    break;
-                }
-            }
-
-            ImGui::EndTable();
-        }
-    }
-
-    // Handle removal
-    if (removeIndex != static_cast<size_t>(-1)) {
-        std::shared_ptr<DeviceState> state;
-        {
-            std::lock_guard lock(devicesMutex_);
-            if (removeIndex < devices_.size()) {
-                state = devices_[removeIndex].state;
-                devices_.erase(devices_.begin() + static_cast<long>(removeIndex));
-            }
-        }
-
-        if (state) {
-            std::lock_guard guard(state->mutex);
-            auto device = state->device;
-            for (auto& [instanceId, pluginState] : state->pluginInstances) {
-                if (sequencer) {
-                    sequencer->getPluginInstance(instanceId)->destroyUI();
-                }
-            }
-            if (device) {
-                device->stop();
-                deviceController->removeDevice(device->instanceId());
-                state->device.reset();
-            }
-        }
-
-        refreshInstances();
-    }
-}
-
 
 void MainWindow::handleShowUI(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
@@ -2253,38 +1887,32 @@ void MainWindow::handleShowUI(int32_t instanceId) {
 
     container->show(true);
     void* parentHandle = container->getHandle();
-    bool pluginUIExists = (pluginWindowEmbedded_.find(instanceId) != pluginWindowEmbedded_.end());
 
-    if (!pluginUIExists) {
-        if (!instance->createUI(false, parentHandle,
-            [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); })) {
-            container->show(false);
-            pluginWindows_.erase(instanceId);
-            std::cout << "Failed to create plugin UI for instance " << instanceId << std::endl;
-        } else {
-            pluginWindowEmbedded_[instanceId] = true;
-            bool canResize = instance->canUIResize();
-            container->setResizable(canResize);
-        }
-    }
+    // Check if we need to create the UI (first time) or just show it (after hide)
+    bool needsCreate = (pluginWindowEmbedded_.find(instanceId) == pluginWindowEmbedded_.end());
 
-    if (pluginUIExists || pluginWindowEmbedded_[instanceId]) {
-        if (!instance->showUI()) {
-            std::cout << "Failed to show plugin UI for instance " << instanceId << std::endl;
-        }
-    }
+    // Call AppModel to create/show the UI - it will handle createUI() (if needed) and showUI()
+    uapmd::AppModel::instance().showPluginUI(instanceId, needsCreate, false, parentHandle,
+        [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); });
+
+    // Mark as visible
+    pluginWindowVisible_[instanceId] = true;
 }
 
 void MainWindow::handleHideUI(int32_t instanceId) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* instance = sequencer.getPluginInstance(instanceId);
-    if (!instance) return;
-
-    instance->hideUI();
+    // AppModel::hidePluginUI() has already called instance->hideUI()
+    // We just need to hide the window container - keep it so we can show again later
     auto windowIt = pluginWindows_.find(instanceId);
     if (windowIt != pluginWindows_.end()) {
         windowIt->second->show(false);
     }
+
+    // Mark as not visible
+    pluginWindowVisible_[instanceId] = false;
+
+    // DO NOT erase pluginWindows_ or pluginWindowEmbedded_
+    // The plugin UI and container still exist, just hidden
+    // They will be destroyed when the plugin instance is actually removed
 }
 
 void MainWindow::handleEnableDevice(int32_t instanceId, const std::string& deviceName) {
@@ -2311,34 +1939,12 @@ void MainWindow::handleDisableDevice(int32_t instanceId) {
 }
 
 void MainWindow::handleRemoveInstance(int32_t instanceId) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* instance = sequencer.getPluginInstance(instanceId);
-    if (!instance) return;
-
-    // Hide and cleanup UI if it's open
-    if (instance->hasUISupport() && instance->isUIVisible()) {
-        instance->hideUI();
-        auto windowIt = pluginWindows_.find(instanceId);
-        if (windowIt != pluginWindows_.end()) {
-            windowIt->second->show(false);
-        }
-    }
-
-    // Cleanup plugin UI resources
-    instance->destroyUI();
-    pluginWindows_.erase(instanceId);
-    pluginWindowEmbedded_.erase(instanceId);
-    pluginWindowBounds_.erase(instanceId);
-    pluginWindowResizeIgnore_.erase(instanceId);
-
-    // Cleanup details window if open
-    auto detailsIt = detailsWindows_.find(instanceId);
-    if (detailsIt != detailsWindows_.end()) {
-        detailsWindows_.erase(detailsIt);
-    }
-
     // Remove the plugin instance from AppModel
-    // This will trigger the global callback that updates devices_ and calls refreshInstances()
+    // This will:
+    // 1. Hide and destroy plugin UI (in AppModel)
+    // 2. Remove virtual MIDI device (in AppModel)
+    // 3. Remove from sequencer (in AppModel)
+    // 4. Trigger instanceRemoved callback which cleans up UI windows and devices list
     uapmd::AppModel::instance().removePluginInstance(instanceId);
 
     std::cout << "Removed plugin instance: " << instanceId << std::endl;

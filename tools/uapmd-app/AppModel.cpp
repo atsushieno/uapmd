@@ -161,6 +161,15 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
 }
 
 void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
+    // Hide and destroy plugin UI before removing the instance
+    auto* instance = sequencer_.getPluginInstance(instanceId);
+    if (instance) {
+        if (instance->hasUISupport() && instance->isUIVisible()) {
+            instance->hideUI();
+        }
+        instance->destroyUI();
+    }
+
     // Stop and remove virtual MIDI device if it exists (from VirtualMidiDeviceController)
     auto* deviceController = this->deviceController();
     if (deviceController) {
@@ -265,7 +274,14 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     }
 }
 
-void uapmd::AppModel::showPluginUI(int32_t instanceId) {
+void uapmd::AppModel::requestShowPluginUI(int32_t instanceId) {
+    // Trigger callbacks - MainWindow will handle preparing window and calling showPluginUI()
+    for (auto& cb : uiShowRequested) {
+        cb(instanceId);
+    }
+}
+
+void uapmd::AppModel::showPluginUI(int32_t instanceId, bool needsCreate, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
     UIStateResult result;
     result.instanceId = instanceId;
 
@@ -279,7 +295,38 @@ void uapmd::AppModel::showPluginUI(int32_t instanceId) {
         return;
     }
 
-    // Just signal that UI should be shown - MainWindow callback will handle the actual UI creation
+    if (!instance->hasUISupport()) {
+        result.success = false;
+        result.error = "Plugin does not support UI";
+        for (auto& cb : uiShown) {
+            cb(result);
+        }
+        return;
+    }
+
+    // Create the UI if needed (first time showing)
+    if (needsCreate) {
+        if (!instance->createUI(isFloating, parentHandle, resizeHandler)) {
+            result.success = false;
+            result.error = "Failed to create plugin UI";
+            for (auto& cb : uiShown) {
+                cb(result);
+            }
+            return;
+        }
+        result.wasCreated = true;
+    }
+
+    // Show the UI
+    if (!instance->showUI()) {
+        result.success = false;
+        result.error = "Failed to show plugin UI";
+        for (auto& cb : uiShown) {
+            cb(result);
+        }
+        return;
+    }
+
     result.success = true;
     result.visible = true;
 

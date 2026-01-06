@@ -148,14 +148,6 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
     }
 }
 
-void TrackList::setOnShowUI(ShowUICallback callback) {
-    onShowUI_ = callback;
-}
-
-void TrackList::setOnHideUI(HideUICallback callback) {
-    onHideUI_ = callback;
-}
-
 void TrackList::setOnShowDetails(ShowDetailsCallback callback) {
     onShowDetails_ = callback;
 }

@@ -113,6 +113,7 @@ class MainWindow {
 
         std::unordered_map<int32_t, std::unique_ptr<remidy::gui::ContainerWindow>> pluginWindows_;
         std::unordered_map<int32_t, bool> pluginWindowEmbedded_;
+        std::unordered_map<int32_t, bool> pluginWindowVisible_;  // Track which plugin UIs are currently visible
         std::unordered_map<int32_t, remidy::gui::Bounds> pluginWindowBounds_;
         std::vector<int32_t> pluginWindowsPendingClose_;
         std::unordered_set<int32_t> pluginWindowResizeIgnore_;
@@ -202,7 +203,6 @@ class MainWindow {
         void renderPluginSelector();
 
         // Virtual MIDI device management
-        void renderVirtualMidiDeviceManager();
         void createDeviceForPlugin(const std::string& format, const std::string& pluginId, int32_t trackIndex);
 
         // TrackList helper methods

@@ -89,6 +89,8 @@ namespace uapmd {
             int32_t instanceId = -1;
             bool success = false;
             bool visible = false;
+            bool wasCreated = false;  // True if createUI() was called
+            void* uiHandle = nullptr;  // UI window handle from createUI()
             std::string error;
         };
 
@@ -98,9 +100,16 @@ namespace uapmd {
         // Global callback registry - called when a plugin UI is hidden
         std::vector<std::function<void(const UIStateResult&)>> uiHidden{};
 
-        // Show plugin UI
+        // Global callback registry - called when user requests to show UI (from scripts)
+        // MainWindow should handle this by preparing window and calling showPluginUI()
+        std::vector<std::function<void(int32_t instanceId)>> uiShowRequested{};
+
+        // Request to show plugin UI (from scripts) - triggers uiShowRequested callbacks
+        void requestShowPluginUI(int32_t instanceId);
+
+        // Show plugin UI - creates (if needsCreate) and shows the UI
         // Notifies all registered callbacks when complete
-        void showPluginUI(int32_t instanceId);
+        void showPluginUI(int32_t instanceId, bool needsCreate, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler);
 
         // Hide plugin UI
         // Notifies all registered callbacks when complete

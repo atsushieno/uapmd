@@ -39,8 +39,6 @@ public:
 private:
     std::vector<TrackInstance> instances_;
 
-    ShowUICallback onShowUI_;
-    HideUICallback onHideUI_;
     ShowDetailsCallback onShowDetails_;
     HideDetailsCallback onHideDetails_;
     EnableDeviceCallback onEnableDevice_;
@@ -56,8 +54,6 @@ public:
     void setInstances(const std::vector<TrackInstance>& instances);
     void render();
 
-    void setOnShowUI(ShowUICallback callback);
-    void setOnHideUI(HideUICallback callback);
     void setOnShowDetails(ShowDetailsCallback callback);
     void setOnHideDetails(HideDetailsCallback callback);
     void setOnEnableDevice(EnableDeviceCallback callback);
