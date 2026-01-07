@@ -170,7 +170,7 @@ void uapmd::AudioPluginSequencer::dispatchPluginOutput(int32_t instanceId, const
 
 void uapmd::AudioPluginSequencer::refreshFunctionBlockMappings() {
     plugin_function_blocks_.clear();
-    auto& tracks = sequencer.tracks();
+    auto& tracks = sequencer->tracks();
     for (size_t trackIndex = 0; trackIndex < tracks.size(); ++trackIndex) {
         auto* track = tracks[trackIndex];
         if (!track)
@@ -203,7 +203,7 @@ std::optional<uapmd::AudioPluginSequencer::RouteResolution> uapmd::AudioPluginSe
     if (trackOrInstanceId < 0)
         return std::nullopt;
 
-    auto& tracks = sequencer.tracks();
+    auto& tracks = sequencer->tracks();
     if (static_cast<size_t>(trackOrInstanceId) >= tracks.size())
         return std::nullopt;
 
@@ -236,7 +236,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
     ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
     dispatcher(dispatcher),
     plugin_host_pal(AudioPluginHostingAPI::instance()),
-    sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal),
+    sequencer(SequenceProcessor::create(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal)),
     plugin_output_handlers_(std::make_shared<HandlerMap>()),
     plugin_output_scratch_(umpBufferSizeInBytes / sizeof(uapmd_ump_t), 0) {
     auto manager = AudioIODeviceManager::instance();
@@ -248,7 +248,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
     dispatcher->configure(umpBufferSizeInBytes, manager->open());
 
     dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
-        auto& data = sequencer.data();
+        auto& data = sequencer->data();
         auto& masterContext = data.masterContext();
 
         // Update playback position if playback is active
@@ -313,7 +313,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
         }
 
         // Send merged input to ALL tracks
-        for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
+        for (uint32_t t = 0, nTracks = sequencer->tracks().size(); t < nTracks; t++) {
             if (t >= data.tracks.size())
                 continue; // buffer not ready
             auto ctx = data.tracks[t];
@@ -338,7 +338,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
             audio_file_read_position_.fetch_add(process.frameCount(), std::memory_order_release);
         }
 
-        auto ret = sequencer.processAudio();
+        auto ret = sequencer->processAudio();
 
         // Clear main output bus (bus 0) before mixing
         if (process.audioOutBusCount() > 0) {
@@ -348,7 +348,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
         }
 
         // Mix all tracks into main output bus with additive mixing
-        for (uint32_t t = 0, nTracks = sequencer.tracks().size(); t < nTracks; t++) {
+        for (uint32_t t = 0, nTracks = sequencer->tracks().size(); t < nTracks; t++) {
             if (t >= data.tracks.size())
                 continue; // buffer not ready
             auto ctx = data.tracks[t];
@@ -467,7 +467,7 @@ std::vector<uapmd::AudioPluginSequencer::ParameterUpdate> uapmd::AudioPluginSequ
 
 std::vector<int32_t> uapmd::AudioPluginSequencer::getInstanceIds() {
     std::vector<int32_t> instances;
-    for (auto& track : sequencer.tracks()) {
+    for (auto& track : sequencer->tracks()) {
         for (auto plugin : track->graph().plugins()) {
             instances.push_back(plugin->instanceId());
         }
@@ -507,7 +507,7 @@ std::vector<uapmd::AudioPluginSequencer::TrackInfo> uapmd::AudioPluginSequencer:
         return pluginId;
     };
 
-    auto& tracksRef = sequencer.tracks();
+    auto& tracksRef = sequencer->tracks();
     info.reserve(tracksRef.size());
     for (size_t i = 0; i < tracksRef.size(); ++i) {
         TrackInfo trackInfo;
@@ -526,7 +526,7 @@ std::vector<uapmd::AudioPluginSequencer::TrackInfo> uapmd::AudioPluginSequencer:
 }
 
 int32_t uapmd::AudioPluginSequencer::findTrackIndexForInstance(int32_t instanceId) const {
-    auto& tracksRef = sequencer.tracks();
+    auto& tracksRef = sequencer->tracks();
     for (size_t i = 0; i < tracksRef.size(); ++i) {
         for (auto* plugin : tracksRef[i]->graph().plugins()) {
             if (plugin->instanceId() == instanceId) {
@@ -538,7 +538,7 @@ int32_t uapmd::AudioPluginSequencer::findTrackIndexForInstance(int32_t instanceI
 }
 
 uapmd::AudioPluginNode* uapmd::AudioPluginSequencer::findPluginNodeByInstance(int32_t instanceId) {
-    auto& tracksRef = sequencer.tracks();
+    auto& tracksRef = sequencer->tracks();
     for (auto* track : tracksRef) {
         if (!track)
             continue;
@@ -559,15 +559,15 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
     // Always use at least 2 input channels to support audio file playback even without mic input
     const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
     const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
-    sequencer.addSimpleTrack(format, pluginId, inputChannels, outputChannels, [&,callback,inputChannels,outputChannels](AudioPluginTrack* track, std::string error) {
+    sequencer->addSimpleTrack(format, pluginId, inputChannels, outputChannels, [&,callback,inputChannels,outputChannels](AudioPluginTrack* track, std::string error) {
         if (!error.empty()) {
             callback(-1, error);
         } else {
-            auto trackCtx = sequencer.data().tracks[sequencer.tracks().size() - 1];
+            auto trackCtx = sequencer->data().tracks[sequencer->tracks().size() - 1];
             trackCtx->configureMainBus(inputChannels, outputChannels, buffer_size_in_frames);
 
             configureTrackRouting(track);
-            auto trackIndex = static_cast<int32_t>(sequencer.tracks().size() - 1);
+            auto trackIndex = static_cast<int32_t>(sequencer->tracks().size() - 1);
             auto plugins = track->graph().plugins();
             if (plugins.empty()) {
                 callback(-1, "Track has no plugins after instantiation");
@@ -599,7 +599,7 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
     std::string& pluginId,
     std::function<void(int32_t instanceId, std::string error)> callback
 ) {
-    if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= sequencer.tracks().size()) {
+    if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= sequencer->tracks().size()) {
         callback(-1, std::format("Invalid track index {}", trackIndex));
         return;
     }
@@ -618,7 +618,7 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
                 return;
             }
 
-            auto& tracksRef = sequencer.tracks();
+            auto& tracksRef = sequencer->tracks();
             if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracksRef.size()) {
                 if (cb) {
                     cb(-1, std::format("Track {} no longer exists", trackIndex));
@@ -681,7 +681,7 @@ bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
         plugin_instances_.erase(instanceId);
         plugin_bypassed_.erase(instanceId);
     }
-    const auto removed = sequencer.removePluginInstance(instanceId);
+    const auto removed = sequencer->removePluginInstance(instanceId);
     if (removed) {
         refreshFunctionBlockMappings();
     }
@@ -899,8 +899,8 @@ bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, i
     if (bufferSize > 0) {
         buffer_size_in_frames = bufferSize;
         // Reconfigure all track contexts with the new buffer size
-        auto& tracks = sequencer.tracks();
-        auto& data = sequencer.data();
+        auto& tracks = sequencer->tracks();
+        auto& data = sequencer->data();
         for (size_t i = 0; i < tracks.size() && i < data.tracks.size(); i++) {
             auto* trackCtx = data.tracks[i];
             if (trackCtx) {

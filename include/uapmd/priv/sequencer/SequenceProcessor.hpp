@@ -11,21 +11,21 @@ namespace uapmd {
     // It is independent of DeviceIODispatcher (it will fire `processAudio()`)..
     // It is also independent of the timed sequencer that is to deliver sequencer inputs on time.
     class SequenceProcessor {
-        class Impl;
-        Impl *impl;
+    protected:
+        SequenceProcessor() = default;
 
     public:
-        explicit SequenceProcessor(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal = AudioPluginHostingAPI::instance());
-        ~SequenceProcessor();
+        virtual ~SequenceProcessor() = default;
+        static std::unique_ptr<SequenceProcessor> create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal = AudioPluginHostingAPI::instance());
 
-        SequenceProcessContext& data();
+        virtual SequenceProcessContext& data() = 0;
 
-        std::vector<AudioPluginTrack *> & tracks() const;
+        virtual std::vector<AudioPluginTrack *> & tracks() const = 0;
 
-        void addSimpleTrack(std::string& format, std::string& pluginId, uint32_t inputChannels, uint32_t outputChannels, std::function<void(AudioPluginTrack* track, std::string error)> callback);
-        bool removePluginInstance(int32_t instanceId);
+        virtual void addSimpleTrack(std::string& format, std::string& pluginId, uint32_t inputChannels, uint32_t outputChannels, std::function<void(AudioPluginTrack* track, std::string error)> callback) = 0;
+        virtual bool removePluginInstance(int32_t instanceId) = 0;
 
-        uapmd_status_t processAudio();
+        virtual uapmd_status_t processAudio() = 0;
     };
 
 }

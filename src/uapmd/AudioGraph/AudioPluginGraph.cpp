@@ -8,17 +8,17 @@
 
 namespace uapmd {
 
-    class AudioPluginGraph::Impl {
+    class AudioPluginGraphImpl : public AudioPluginGraph {
         std::vector<std::unique_ptr<AudioPluginNode>> nodes;
 
     public:
-        uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode);
-        bool removePluginInstance(int32_t instanceId);
-        int32_t processAudio(AudioProcessContext& process);
-        std::vector<AudioPluginNode *> plugins();
+        uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) override;
+        bool removePluginInstance(int32_t instanceId) override;
+        int32_t processAudio(AudioProcessContext& process) override;
+        std::vector<AudioPluginNode *> plugins() override;
     };
 
-    int32_t AudioPluginGraph::Impl::processAudio(AudioProcessContext& process) {
+    int32_t AudioPluginGraphImpl::processAudio(AudioProcessContext& process) {
         if (nodes.empty())
             return 0;
 
@@ -33,13 +33,13 @@ namespace uapmd {
         return 0;
     }
 
-    uapmd_status_t AudioPluginGraph::Impl::appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) {
+    uapmd_status_t AudioPluginGraphImpl::appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) {
         nodes.emplace_back(std::move(newNode));
         // FIXME: define return codes
         return 0;
     }
 
-    bool AudioPluginGraph::Impl::removePluginInstance(int32_t instanceId) {
+    bool AudioPluginGraphImpl::removePluginInstance(int32_t instanceId) {
         auto it = std::find_if(nodes.begin(), nodes.end(), [instanceId](const std::unique_ptr<AudioPluginNode>& node) {
             return node && node->instanceId() == instanceId;
         });
@@ -50,35 +50,15 @@ namespace uapmd {
         return true;
     }
 
-    std::vector<AudioPluginNode *> AudioPluginGraph::Impl::plugins() {
+    std::vector<AudioPluginNode *> AudioPluginGraphImpl::plugins() {
         std::vector<AudioPluginNode*> ret{};
         for (auto& p : nodes)
             ret.emplace_back(p.get());
         return ret;
     }
 
-    AudioPluginGraph::AudioPluginGraph() {
-        impl = new Impl();
-    }
-
-    AudioPluginGraph::~AudioPluginGraph() {
-        delete impl;
-    }
-
-    int32_t AudioPluginGraph::processAudio(AudioProcessContext& process) {
-        return impl->processAudio(process);
-    }
-
-    uapmd_status_t AudioPluginGraph::appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) {
-        return impl->appendNodeSimple(std::move(newNode));
-    }
-
-    bool AudioPluginGraph::removePluginInstance(int32_t instanceId) {
-        return impl->removePluginInstance(instanceId);
-    }
-
-    std::vector<AudioPluginNode *> AudioPluginGraph::plugins() {
-        return impl->plugins();
+    std::unique_ptr<AudioPluginGraph> AudioPluginGraph::create() {
+        return std::make_unique<AudioPluginGraphImpl>();
     }
 
 }

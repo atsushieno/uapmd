@@ -118,102 +118,135 @@ class RemidyApply {
         if (pluginId.empty())
             return EXIT_FAILURE;
 
-        std::atomic playing{true};
+        // Configuration for offline rendering
+        static constexpr uint32_t AUDIO_BUFFER_SIZE = 1024;
+        static constexpr uint32_t UMP_BUFFER_SIZE = 65536;
+        static constexpr int32_t SAMPLE_RATE = 48000;
+        static constexpr int64_t TOTAL_BUFFERS = 200;  // ~4.2 seconds at 48kHz
 
-        static uint32_t AUDIO_BUFFER_SIZE = 1024;
-        static uint32_t UMP_BUFFER_SIZE = 65536;
-        auto dispatcher = uapmd::defaultDeviceIODispatcher();
-        // FIXME: enable MIDI devices
-        auto manager = uapmd::AudioIODeviceManager::instance();
-        auto logger = remidy::Logger::global();
-        uapmd::AudioIODeviceManager::Configuration audioConfig{ .logger = logger };
-        manager->initialize(audioConfig);
+        // For offline rendering, use SequenceProcessor directly
+        // (AudioPluginSequencer requires a dispatcher)
+        auto sequencer = uapmd::SequenceProcessor::create(
+            SAMPLE_RATE,
+            AUDIO_BUFFER_SIZE,
+            UMP_BUFFER_SIZE
+        );
 
-        auto audioDevice = manager->open();
-        dispatcher->configure(UMP_BUFFER_SIZE, audioDevice);
+        // Add plugin track and wait for async instantiation
+        std::atomic<bool> trackReady{false};
+        uapmd::AudioPluginTrack* pluginTrack = nullptr;
 
-        auto inputChannels = audioDevice ? audioDevice->inputChannels() : 0;
-        auto outputChannels = audioDevice ? audioDevice->outputChannels() : 0;
-        auto sequencer = std::make_unique<uapmd::SequenceProcessor>(audioDevice ? static_cast<int32_t>(audioDevice->sampleRate()) : 0, AUDIO_BUFFER_SIZE, UMP_BUFFER_SIZE);
-        sequencer->addSimpleTrack(formatName, pluginId, inputChannels, outputChannels, [&](uapmd::AudioPluginTrack* track, std::string error) {
-            if (!error.empty()) {
-                std::cerr << "addSimpleTrack() failed." << std::endl;
-                playing = false;
-                return;
-            }
-            uint32_t round = 0;
-            remidy_ump_t umpSequence[512];
-            remidy::AudioProcessContext process{sequencer->data().masterContext(), UMP_BUFFER_SIZE};
-            process.configureMainBus(inputChannels, outputChannels, 1024);
+        // We need to specify input/output channels for offline rendering
+        uint32_t inputChannels = 2;   // Stereo input
+        uint32_t outputChannels = 2;  // Stereo output
 
-            dispatcher->addCallback([&](remidy::AudioProcessContext& data) {
-                for (auto track : sequencer->tracks()) {
-                    process.eventIn().position(0);
-                    // demo MIDI input buffers (some notes, one shot)
-                    memset(umpSequence, 0, sizeof(remidy_ump_t) * 512);
-                    int numNotes = 3;
-                    switch (round++) {
-                        case 64: {
-                            for (int m = 0; m < numNotes; m++) {
-                                int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 72 + 4 * m, 0, 0xF800, 0);
-                                umpSequence[m * 2] = noteOn >> 32;
-                                umpSequence[m * 2 + 1] = noteOn & UINT32_MAX;
-                            }
-                            memcpy(process.eventIn().getMessages(), umpSequence, 8 * numNotes);
-                            process.eventIn().position(8 * numNotes);
-                            break;
-                        }
-                        case 128: {
-                            for (int m = 0; m < numNotes; m++) {
-                                int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 72 + 4 * m, 0, 0xF800, 0);
-                                umpSequence[m * 2] = noteOff >> 32;
-                                umpSequence[m * 2 + 1] = noteOff & UINT32_MAX;
-                            }
-                            memcpy(process.eventIn().getMessages(), umpSequence, 8 * numNotes);
-                            process.eventIn().position(8 * numNotes);
-                            break;
-                        }
-                    }
-
-                    // FIXME: avoid memcpy (audio input)
-                    for (auto bus = 0, n = data.audioInBusCount(); bus < n; bus++) {
-                        for (uint32_t ch = 0, nCh = data.inputChannelCount(bus); ch < nCh; ch++)
-                            memcpy(process.getFloatInBuffer(bus, ch),
-                                   data.getFloatInBuffer(bus, ch),
-                                   data.frameCount() * sizeof(float));
-                    }
-                    process.frameCount(data.frameCount());
-
-                    if (auto ret = track->processAudio(process); ret)
-                        return ret;
-
-                    process.eventIn().position(0); // reset
-
-                    // FIXME: avoid memcpy (audio output)
-                    for (auto bus = 0, n = process.audioOutBusCount(); bus < n; bus++) {
-                        for (uint32_t ch = 0, nCh = process.outputChannelCount(bus); ch < nCh; ch++)
-                            memcpy(data.getFloatOutBuffer(bus, ch),
-                                   process.getFloatOutBuffer(bus, ch),
-                                   data.frameCount() * sizeof(float));
-                    }
-
-                    // FIXME: collect MIDI output
-
+        sequencer->addSimpleTrack(formatName, pluginId, inputChannels, outputChannels,
+            [&](uapmd::AudioPluginTrack* track, std::string error) {
+                if (!error.empty()) {
+                    std::cerr << "addSimpleTrack() failed: " << error << std::endl;
+                    trackReady = true;
+                    return;
                 }
-
-                // FIXME: define status codes
-                return 0;
+                pluginTrack = track;
+                trackReady = true;
+                std::cerr << "Plugin track loaded successfully" << std::endl;
             });
-            dispatcher->start();
 
-            std::cerr << "Type [CR] to quit." << std::endl;
-            std::cin.get();
-            dispatcher->stop();
-
-            playing = false;
-        });
-        while (playing)
+        // Wait for async track instantiation
+        while (!trackReady)
             std::this_thread::yield();
+
+        if (!pluginTrack) {
+            std::cerr << "Failed to create plugin track" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        // Get processing context and buffers
+        auto& seqData = sequencer->data();
+        auto& masterContext = seqData.masterContext();
+        auto& tracks = seqData.tracks;
+
+        if (tracks.empty()) {
+            std::cerr << "No tracks available" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        auto& processContext = *tracks[0];  // First track's AudioProcessContext
+
+        // Configure transport
+        masterContext.sampleRate(SAMPLE_RATE);
+        masterContext.isPlaying(true);
+
+        // Offline processing loop with sample-based timing
+        int64_t currentSample = 0;
+        constexpr int NUM_NOTES = 3;
+        std::cerr << "Starting offline rendering..." << std::endl;
+
+        for (int64_t bufferIndex = 0; bufferIndex < TOTAL_BUFFERS; bufferIndex++) {
+            // Update playback position
+            masterContext.playbackPositionSamples(currentSample);
+
+            // Sample-based MIDI timing (instead of round-based)
+            int64_t noteOnSample = 64 * AUDIO_BUFFER_SIZE;   // ~1.36 seconds
+            int64_t noteOffSample = 128 * AUDIO_BUFFER_SIZE;  // ~2.73 seconds
+
+            // Reset event input buffer
+            processContext.eventIn().position(0);
+
+            // Send MIDI events at specific sample positions
+            if (currentSample == noteOnSample) {
+                std::cerr << "Sending note-on at sample " << currentSample << std::endl;
+                remidy_ump_t umpSequence[NUM_NOTES * 2];  // 2 UMP words per note-on
+                for (int m = 0; m < NUM_NOTES; m++) {
+                    int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 72 + 4 * m, 0, 0xF800, 0);
+                    umpSequence[m * 2] = noteOn >> 32;
+                    umpSequence[m * 2 + 1] = noteOn & UINT32_MAX;
+                }
+                memcpy(processContext.eventIn().getMessages(), umpSequence, sizeof(umpSequence));
+                processContext.eventIn().position(sizeof(umpSequence));
+            }
+
+            if (currentSample == noteOffSample) {
+                std::cerr << "Sending note-off at sample " << currentSample << std::endl;
+                remidy_ump_t umpSequence[NUM_NOTES * 2];  // 2 UMP words per note-off
+                for (int m = 0; m < NUM_NOTES; m++) {
+                    int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 72 + 4 * m, 0, 0xF800, 0);
+                    umpSequence[m * 2] = noteOff >> 32;
+                    umpSequence[m * 2 + 1] = noteOff & UINT32_MAX;
+                }
+                memcpy(processContext.eventIn().getMessages(), umpSequence, sizeof(umpSequence));
+                processContext.eventIn().position(sizeof(umpSequence));
+            }
+
+            // Prepare input audio buffers (silence for demo, could read from audio file)
+            for (uint32_t bus = 0; bus < processContext.audioInBusCount(); bus++) {
+                for (uint32_t ch = 0; ch < processContext.inputChannelCount(bus); ch++) {
+                    float* buffer = processContext.getFloatInBuffer(bus, ch);
+                    memset(buffer, 0, AUDIO_BUFFER_SIZE * sizeof(float));
+                }
+            }
+
+            // Set frame count for this buffer
+            processContext.frameCount(AUDIO_BUFFER_SIZE);
+
+            // Process audio through all tracks (offline rendering)
+            sequencer->processAudio();
+
+            // Extract output buffers (write to audio file, analyze, etc.)
+            // For now, just verify we're getting output
+            for (uint32_t bus = 0; bus < processContext.audioOutBusCount(); bus++) {
+                for (uint32_t ch = 0; ch < processContext.outputChannelCount(bus); ch++) {
+                    float* buffer = processContext.getFloatOutBuffer(bus, ch);
+                    // TODO: Write to output file or analyze
+                    (void)buffer;  // Silence unused warning for demo
+                }
+            }
+
+            currentSample += AUDIO_BUFFER_SIZE;
+        }
+
+        std::cerr << "Processing complete: " << TOTAL_BUFFERS << " buffers, "
+                  << (currentSample / SAMPLE_RATE) << " seconds" << std::endl;
 
         return EXIT_SUCCESS;
     }

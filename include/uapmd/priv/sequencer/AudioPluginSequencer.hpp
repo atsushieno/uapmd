@@ -21,7 +21,7 @@ namespace uapmd {
 
         DeviceIODispatcher* dispatcher{};
         AudioPluginHostingAPI* plugin_host_pal;
-        SequenceProcessor sequencer;
+        std::unique_ptr<SequenceProcessor> sequencer;
 
         // Playback control
         std::atomic<bool> is_playback_active_{false};

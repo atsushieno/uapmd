@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <vector>
 
 #include "AudioPluginNode.hpp"
@@ -7,18 +8,19 @@
 namespace uapmd {
 
     class AudioPluginGraph {
-        class Impl;
-        Impl* impl{};
+    protected:
+        AudioPluginGraph() = default;
+
     public:
-        AudioPluginGraph();
-        ~AudioPluginGraph();
+        virtual ~AudioPluginGraph() = default;
+        static std::unique_ptr<AudioPluginGraph> create();
 
-        uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode);
-        bool removePluginInstance(int32_t instanceId);
+        virtual uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) = 0;
+        virtual bool removePluginInstance(int32_t instanceId) = 0;
 
-        std::vector<AudioPluginNode*> plugins();
+        virtual std::vector<AudioPluginNode*> plugins() = 0;
 
-        int32_t processAudio(AudioProcessContext& process);
+        virtual int32_t processAudio(AudioProcessContext& process) = 0;
     };
 
 }
