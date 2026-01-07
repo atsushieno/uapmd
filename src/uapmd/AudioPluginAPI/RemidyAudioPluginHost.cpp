@@ -7,7 +7,7 @@
 #include "../Midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
-    class RemidyAudioPluginNodePAL : public AudioPluginNodeAPI {
+    class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
         remidy_tooling::PluginInstancing* instancing{};
         remidy::PluginInstance* instance{};
         remidy::PluginUISupport* ui_support{nullptr};
@@ -24,9 +24,9 @@ namespace uapmd {
         }
 
     public:
-        explicit RemidyAudioPluginNodePAL(remidy_tooling::PluginInstancing* instancing, remidy::PluginInstance* instance) :
+        explicit RemidyAudioPluginInstance(remidy_tooling::PluginInstancing* instancing, remidy::PluginInstance* instance) :
             instancing(instancing), instance(instance) {}
-        ~RemidyAudioPluginNodePAL() override {
+        ~RemidyAudioPluginInstance() override {
             if (ui_support) {
                 if (uiVisible)
                     ui_support->hide();
@@ -286,7 +286,7 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
         instancing->makeAlive([this,instancing,cb](std::string error) {
             if (error.empty())
                 instancing->withInstance([this,instancing,cb](auto instance) {
-                    auto pal = std::make_unique<RemidyAudioPluginNodePAL>(instancing, instance);
+                    auto pal = std::make_unique<RemidyAudioPluginInstance>(instancing, instance);
                     auto inputMapper = std::make_unique<UapmdNodeUmpInputMapper>(pal.get());
                     auto node = std::make_unique<AudioPluginNode>(
                         std::move(inputMapper), nullptr,

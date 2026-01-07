@@ -63,7 +63,7 @@ namespace uapmd {
         std::unordered_map<int32_t, std::vector<ParameterUpdate>> pending_parameter_updates_;
 
         // Plugin instance management
-        std::unordered_map<int32_t, AudioPluginNodeAPI*> plugin_instances_;
+        std::unordered_map<int32_t, AudioPluginInstanceAPI*> plugin_instances_;
         std::unordered_map<int32_t, bool> plugin_bypassed_;
         mutable std::mutex instance_map_mutex_;
         std::unordered_map<int32_t, remidy::PluginParameterSupport::ParameterChangeListenerId> parameter_listener_tokens_;
@@ -84,7 +84,7 @@ namespace uapmd {
         void releaseGroup(int32_t instanceId);
         std::optional<uint8_t> groupForInstanceOptional(int32_t instanceId) const;
         std::optional<int32_t> instanceForGroupOptional(uint8_t group) const;
-        void registerParameterListener(int32_t instanceId, AudioPluginNodeAPI* node);
+        void registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* node);
         void unregisterParameterListener(int32_t instanceId);
         AudioPluginNode* findPluginNodeByInstance(int32_t instanceId);
 
@@ -117,7 +117,7 @@ namespace uapmd {
         bool removePluginInstance(int32_t instanceId);
 
         // Direct plugin instance access
-        AudioPluginNodeAPI* getPluginInstance(int32_t instanceId);
+        AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId);
         bool isPluginBypassed(int32_t instanceId);
         void setPluginBypassed(int32_t instanceId, bool bypassed);
 

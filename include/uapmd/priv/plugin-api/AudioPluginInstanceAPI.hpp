@@ -11,9 +11,9 @@ namespace uapmd {
     struct ParameterMetadata;
     struct PresetsMetadata;
 
-    class AudioPluginNodeAPI {
+    class AudioPluginInstanceAPI {
     public:
-        virtual ~AudioPluginNodeAPI() = default;
+        virtual ~AudioPluginInstanceAPI() = default;
         virtual std::string& formatName() const = 0;
         virtual std::string& pluginId() const = 0;
         virtual uapmd_status_t processAudio(AudioProcessContext &process) = 0;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <functional>
-#include "../plugin-api/AudioPluginNodeAPI.hpp"
+#include "../plugin-api/AudioPluginInstanceAPI.hpp"
 #include "uapmd/priv/CommonTypes.hpp"
 
 namespace uapmd {

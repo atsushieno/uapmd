@@ -4,7 +4,7 @@
 #include "priv/devices/AudioIODevice.hpp"
 #include "priv/devices/MidiIODevice.hpp"
 #include "priv/devices/DeviceIODispatcher.hpp"
-#include "priv/plugin-api/AudioPluginNodeAPI.hpp"
+#include "priv/plugin-api/AudioPluginInstanceAPI.hpp"
 #include "priv/plugin-api/AudioPluginHostingAPI.hpp"
 #include "priv/node-graph/AudioPluginGraph.hpp"
 #include "priv/node-graph/AudioPluginNode.hpp"
