@@ -28,7 +28,6 @@ void uapmd::AppModel::cleanupInstance() {
 
 uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
         sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
-        deviceController_(std::make_unique<VirtualMidiDeviceController>(&sequencer_)),
         transportController_(std::make_unique<TransportController>(&sequencer_)) {
 }
 
@@ -154,6 +153,9 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         result.device = device;
         result.trackIndex = actualTrackIndex;
 
+        // Store device in map for later enable/disable operations
+        devices_[instanceId] = device;
+
         // Notify all registered callbacks
         for (auto& cb : instanceCreated) {
             cb(result);
@@ -177,10 +179,12 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
         instance->destroyUI();
     }
 
-    // Stop and remove virtual MIDI device if it exists (from VirtualMidiDeviceController)
-    auto* deviceController = this->deviceController();
-    if (deviceController) {
-        deviceController->removeDevice(instanceId);
+    // Stop and remove virtual MIDI device if it exists
+    auto deviceIt = devices_.find(instanceId);
+    if (deviceIt != devices_.end()) {
+        if (deviceIt->second)
+            deviceIt->second->stop();
+        devices_.erase(deviceIt);
     }
 
     // Remove the plugin instance from sequencer
@@ -196,20 +200,9 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
     DeviceStateResult result;
     result.instanceId = instanceId;
 
-    auto* deviceController = this->deviceController();
-    if (!deviceController) {
-        result.success = false;
-        result.error = "Device controller not available";
-        result.statusMessage = "Error";
-        for (auto& cb : deviceEnabled) {
-            cb(result);
-        }
-        return;
-    }
-
     // Find the device for this instance
-    auto device = deviceController->getDevice(instanceId);
-    if (!device) {
+    auto deviceIt = devices_.find(instanceId);
+    if (deviceIt == devices_.end() || !deviceIt->second) {
         result.success = false;
         result.error = "Device not found for instance";
         result.statusMessage = "Error";
@@ -218,6 +211,8 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
         }
         return;
     }
+
+    auto& device = deviceIt->second;
 
     // Start the device
     auto statusCode = device->start();
@@ -245,20 +240,9 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     DeviceStateResult result;
     result.instanceId = instanceId;
 
-    auto* deviceController = this->deviceController();
-    if (!deviceController) {
-        result.success = false;
-        result.error = "Device controller not available";
-        result.statusMessage = "Error";
-        for (auto& cb : deviceDisabled) {
-            cb(result);
-        }
-        return;
-    }
-
     // Find the device for this instance
-    auto device = deviceController->getDevice(instanceId);
-    if (!device) {
+    auto deviceIt = devices_.find(instanceId);
+    if (deviceIt == devices_.end() || !deviceIt->second) {
         result.success = false;
         result.error = "Device not found for instance";
         result.statusMessage = "Error";
@@ -269,7 +253,7 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     }
 
     // Stop the device
-    device->stop();
+    deviceIt->second->stop();
     result.success = true;
     result.running = false;
     result.statusMessage = "Stopped";

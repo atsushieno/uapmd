@@ -512,16 +512,14 @@ void MainWindow::renderPluginSelectorWindow() {
 
         // Update track options before rendering
         std::vector<TrackDestinationOption> trackOptions;
-        auto* deviceController = uapmd::AppModel::instance().deviceController();
-        if (deviceController && deviceController->sequencer()) {
-            auto tracks = deviceController->sequencer()->getTrackInfos();
-            for (const auto& track : tracks) {
-                TrackDestinationOption option{
-                    .trackIndex = track.trackIndex,
-                    .label = std::format("Track {}", track.trackIndex + 1)
-                };
-                trackOptions.push_back(std::move(option));
-            }
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto tracks = sequencer.getTrackInfos();
+        for (const auto& track : tracks) {
+            TrackDestinationOption option{
+                .trackIndex = track.trackIndex,
+                .label = std::format("Track {}", track.trackIndex + 1)
+            };
+            trackOptions.push_back(std::move(option));
         }
         pluginSelector_.setTrackOptions(trackOptions);
         pluginSelector_.setScanning(uapmd::AppModel::instance().isScanning());

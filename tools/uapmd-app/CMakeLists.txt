@@ -185,7 +185,6 @@ target_sources(uapmd-app PRIVATE
         gui/SpectrumAnalyzer.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
-        Controller/VirtualMidiDeviceController.cpp
 )
 
 # Use C++23 like the WebView version

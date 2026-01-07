@@ -3,10 +3,10 @@
 #include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <uapmd/uapmd.hpp>
-#include "Controller/VirtualMidiDeviceController.hpp"
 #include <format>
 #include <thread>
 #include <string>
+#include <unordered_map>
 
 namespace uapmd {
     // Forward declaration
@@ -50,9 +50,9 @@ namespace uapmd {
     class AppModel {
         AudioPluginSequencer sequencer_;
         remidy_tooling::PluginScanTool pluginScanTool_;
-        std::unique_ptr<VirtualMidiDeviceController> deviceController_;
         std::unique_ptr<TransportController> transportController_;
         std::atomic<bool> isScanning_{false};
+        std::unordered_map<int32_t, std::shared_ptr<UapmdMidiDevice>> devices_;
 
     public:
         static void instantiate();
@@ -62,7 +62,6 @@ namespace uapmd {
 
         AudioPluginSequencer& sequencer() { return sequencer_; }
         remidy_tooling::PluginScanTool& pluginScanTool() { return pluginScanTool_; }
-        VirtualMidiDeviceController* deviceController() { return deviceController_.get(); }
         TransportController& transport() { return *transportController_; }
         bool isScanning() const { return isScanning_; }
 
