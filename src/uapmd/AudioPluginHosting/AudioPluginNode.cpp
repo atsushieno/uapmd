@@ -9,7 +9,7 @@ namespace uapmd {
     AudioPluginNode::AudioPluginNode(
         std::unique_ptr<UapmdUmpInputMapper> umpInputMapper,
         std::unique_ptr<UapmdUmpOutputMapper> umpOutputMapper,
-        std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL,
+        std::unique_ptr<AudioPluginNodePAL> nodePAL,
         int32_t instanceId
     ) : node_(std::move(nodePAL)),
         instance_id_(instanceId),
@@ -23,7 +23,7 @@ namespace uapmd {
 
     void AudioPluginNode::bypassed(bool value) { bypassed_ = value; }
 
-    AudioPluginHostPAL::AudioPluginNodePAL* AudioPluginNode::pal() { return node_.get(); }
+    AudioPluginNodePAL* AudioPluginNode::pal() { return node_.get(); }
 
     uapmd_status_t AudioPluginNode::processAudio(AudioProcessContext &process) {
         // FIXME: assign timestamp

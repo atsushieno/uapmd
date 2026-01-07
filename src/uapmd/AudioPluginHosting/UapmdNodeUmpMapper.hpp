@@ -8,10 +8,10 @@ namespace uapmd {
     class UapmdNodeUmpInputMapper :
         public UapmdUmpInputMapper,
         public remidy::UmpInputDispatcher {
-        AudioPluginHostPAL::AudioPluginNodePAL* plugin;
+        AudioPluginNodePAL* plugin;
 
     public:
-        explicit UapmdNodeUmpInputMapper(AudioPluginHostPAL::AudioPluginNodePAL* plugin);
+        explicit UapmdNodeUmpInputMapper(AudioPluginNodePAL* plugin);
 
         void process(uint64_t timestamp, remidy::AudioProcessContext& src) override;
 
@@ -26,11 +26,11 @@ namespace uapmd {
 
     class UapmdNodeUmpOutputMapper : public UapmdUmpOutputMapper {
         std::shared_ptr<MidiIODevice> device;
-        AudioPluginHostPAL::AudioPluginNodePAL* plugin;
+        AudioPluginNodePAL* plugin;
         remidy::PluginParameterSupport::ParameterChangeListenerId param_change_listener_id;
 
     public:
-        explicit UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIODevice> device, AudioPluginHostPAL::AudioPluginNodePAL* plugin);
+        explicit UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIODevice> device, AudioPluginNodePAL* plugin);
         ~UapmdNodeUmpOutputMapper() override;
 
         void onParameterValueUpdated(uint16_t index, double value) override;

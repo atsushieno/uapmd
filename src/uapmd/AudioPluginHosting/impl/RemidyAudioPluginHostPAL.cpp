@@ -6,7 +6,7 @@
 #include "../UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
-    class RemidyAudioPluginNodePAL : public RemidyAudioPluginHostPAL::AudioPluginNodePAL {
+    class RemidyAudioPluginNodePAL : public AudioPluginNodePAL {
         remidy_tooling::PluginInstancing* instancing{};
         remidy::PluginInstance* instance{};
         remidy::PluginUISupport* ui_support{nullptr};

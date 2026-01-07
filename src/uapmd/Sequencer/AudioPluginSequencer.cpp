@@ -79,7 +79,7 @@ std::optional<int32_t> uapmd::AudioPluginSequencer::instanceForGroupOptional(uin
     return it->second;
 }
 
-void uapmd::AudioPluginSequencer::registerParameterListener(int32_t instanceId, AudioPluginHostPAL::AudioPluginNodePAL* node) {
+void uapmd::AudioPluginSequencer::registerParameterListener(int32_t instanceId, AudioPluginNodePAL* node) {
     if (!node)
         return;
     auto token = node->addParameterChangeListener(
@@ -577,7 +577,7 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
             auto instanceId = plugin->instanceId();
             plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
             assignGroup(instanceId);
-            AudioPluginHostPAL::AudioPluginNodePAL* palPtr = nullptr;
+            AudioPluginNodePAL* palPtr = nullptr;
             {
                 std::lock_guard<std::mutex> lock(instance_map_mutex_);
                 palPtr = plugin->pal();
@@ -649,7 +649,7 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
                 auto instanceId = appended->instanceId();
                 plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
                 assignGroup(instanceId);
-                AudioPluginHostPAL::AudioPluginNodePAL* palPtr = nullptr;
+                AudioPluginNodePAL* palPtr = nullptr;
                 {
                     std::lock_guard<std::mutex> lock(instance_map_mutex_);
                     palPtr = appended->pal();
@@ -688,7 +688,7 @@ bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
     return removed;
 }
 
-uapmd::AudioPluginHostPAL::AudioPluginNodePAL* uapmd::AudioPluginSequencer::getPluginInstance(int32_t instanceId) {
+uapmd::AudioPluginNodePAL* uapmd::AudioPluginSequencer::getPluginInstance(int32_t instanceId) {
     std::lock_guard<std::mutex> lock(instance_map_mutex_);
     auto it = plugin_instances_.find(instanceId);
     if (it != plugin_instances_.end())

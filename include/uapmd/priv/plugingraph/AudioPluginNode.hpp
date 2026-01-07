@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include "uapmd/priv/CommonTypes.hpp"
-#include "AudioPluginHostPAL.hpp"
+#include "AudioPluginNodePAL.hpp"
 #include "uapmd/priv/midi/UapmdUmpMapper.hpp"
 
 namespace uapmd {
@@ -37,17 +37,17 @@ namespace uapmd {
     };
 
     class AudioPluginNode {
-        std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> node_;
+        std::unique_ptr<AudioPluginNodePAL> node_;
         bool bypassed_{false};
         int32_t instance_id_;
         std::unique_ptr<UapmdUmpInputMapper> ump_input_mapper;
         std::unique_ptr<UapmdUmpOutputMapper> ump_output_mapper;
 
     public:
-        AudioPluginNode(std::unique_ptr<UapmdUmpInputMapper> umpInputMapper, std::unique_ptr<UapmdUmpOutputMapper> umpOutputMapper, std::unique_ptr<AudioPluginHostPAL::AudioPluginNodePAL> nodePAL, int32_t instanceId);
+        AudioPluginNode(std::unique_ptr<UapmdUmpInputMapper> umpInputMapper, std::unique_ptr<UapmdUmpOutputMapper> umpOutputMapper, std::unique_ptr<AudioPluginNodePAL> nodePAL, int32_t instanceId);
         virtual ~AudioPluginNode();
 
-        AudioPluginHostPAL::AudioPluginNodePAL* pal();
+        AudioPluginNodePAL* pal();
 
         // instanceId can be used to indicate a plugin instance *across* processes i.e.
         // where pointer to the instance cannot be shared.

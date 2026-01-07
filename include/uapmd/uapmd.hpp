@@ -5,6 +5,7 @@
 #include "priv/devices/MidiIODevice.hpp"
 #include "priv/devices/DeviceIODispatcher.hpp"
 #include "priv/plugingraph/AudioPluginGraph.hpp"
+#include "priv/plugingraph/AudioPluginNodePAL.hpp"
 #include "priv/plugingraph/AudioPluginHostPAL.hpp"
 #include "priv/plugingraph/AudioPluginNode.hpp"
 #include "priv/plugingraph/AudioPluginTrack.hpp"
