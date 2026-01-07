@@ -1,13 +1,12 @@
 #pragma once
 
 #include <functional>
-#include "AudioPluginNodeAPI.hpp"
+#include "../plugin-api/AudioPluginNodeAPI.hpp"
 #include "uapmd/priv/CommonTypes.hpp"
 
 namespace uapmd {
+    // FIXME: we will replace this with AudioPluginNodeAPI later.
     class AudioPluginNode;
-    struct ParameterMetadata;
-    struct PresetsMetadata;
 
     // This PAL is more like a Plugin hosting API Abstraction Layer rather than a Platform Abstraction Layer.
     class AudioPluginHostingAPI {

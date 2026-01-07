@@ -1,9 +1,10 @@
 
-#include "RemidyAudioPluginHostPAL.hpp"
+#include "RemidyAudioPluginHost.hpp"
 #include <functional>
 #include <ranges>
 
-#include "../UapmdNodeUmpMapper.hpp"
+#include "remidy-tooling/PluginInstancing.hpp"
+#include "../Midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
     class RemidyAudioPluginNodePAL : public AudioPluginNodeAPI {
@@ -245,12 +246,12 @@ namespace uapmd {
     };
 }
 
-uapmd::RemidyAudioPluginHostPAL::RemidyAudioPluginHostPAL() {
+uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
     scanning.performPluginScanning();
 }
 
 std::filesystem::path empty_path{""};
-void uapmd::RemidyAudioPluginHostPAL::performPluginScanning(bool rescan) {
+void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
     catalog().clear();
     if (rescan) {
         scanning.performPluginScanning(empty_path);
@@ -261,7 +262,7 @@ void uapmd::RemidyAudioPluginHostPAL::performPluginScanning(bool rescan) {
 
 int32_t instanceIdSerial{0};
 
-void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
+void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
     scanning.performPluginScanning();
     auto format = *(scanning.formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning.catalog.getPlugins();
@@ -301,6 +302,6 @@ void uapmd::RemidyAudioPluginHostPAL::createPluginInstance(uint32_t sampleRate, 
 }
 
 
-uapmd_status_t uapmd::RemidyAudioPluginHostPAL::processAudio(std::vector<remidy::AudioProcessContext *> contexts) {
+uapmd_status_t uapmd::RemidyAudioPluginHost::processAudio(std::vector<remidy::AudioProcessContext *> contexts) {
     return 0;
 }

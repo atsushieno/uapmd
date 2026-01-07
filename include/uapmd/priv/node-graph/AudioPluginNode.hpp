@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include "uapmd/priv/CommonTypes.hpp"
-#include "AudioPluginNodeAPI.hpp"
+#include "../plugin-api/AudioPluginNodeAPI.hpp"
 #include "uapmd/priv/midi/UapmdUmpMapper.hpp"
 
 namespace uapmd {

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <remidy/remidy.hpp>
-#include <uapmd/priv/plugingraph/AudioPluginHostingAPI.hpp>
 
 namespace uapmd {
     // Process UAPMD-intrinsic UMP mappings, in particular:

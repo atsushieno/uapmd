@@ -1,8 +1,8 @@
 
 #include <string>
 #include "uapmd/uapmd.hpp"
-#include "uapmd/priv/plugingraph/AudioPluginNode.hpp"
-#include "UapmdNodeUmpMapper.hpp"
+#include "uapmd/priv/node-graph/AudioPluginNode.hpp"
+#include "../Midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
 

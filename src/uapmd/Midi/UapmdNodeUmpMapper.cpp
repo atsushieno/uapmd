@@ -1,9 +1,9 @@
-#include "UapmdNodeUmpMapper.hpp"
 
 #include <algorithm>
 #include <limits>
 #include "cmidi2.h"
 #include "uapmd/priv/devices/MidiIODevice.hpp"
+#include "UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
     UapmdNodeUmpInputMapper::UapmdNodeUmpInputMapper(AudioPluginNodeAPI* plugin)

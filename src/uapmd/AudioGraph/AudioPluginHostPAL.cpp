@@ -1,8 +1,8 @@
 #include "uapmd/uapmd.hpp"
-#include "impl/RemidyAudioPluginHostPAL.hpp"
+#include "../AudioPluginAPI/RemidyAudioPluginHost.hpp"
 
 
 uapmd::AudioPluginHostingAPI* uapmd::AudioPluginHostingAPI::instance() {
-    static RemidyAudioPluginHostPAL impl{};
+    static RemidyAudioPluginHost impl{};
     return &impl;
 }

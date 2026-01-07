@@ -33,13 +33,12 @@ target_sources(uapmd PRIVATE
         AudioBackend/impl/MiniAudioIODevice.cpp
         AudioBackend/impl/LibreMidiIODevice.cpp
         AudioBackend/impl/ChocAudioFileFactory.cpp
-        AudioPluginHosting/impl/RemidyAudioPluginHostPAL.cpp
-        AudioPluginHosting/AudioPluginGraph.cpp
-        AudioPluginHosting/AudioPluginHostPAL.cpp
-        AudioPluginHosting/impl/RemidyAudioPluginHostPAL.cpp
-        AudioPluginHosting/AudioPluginNode.cpp
-        AudioPluginHosting/AudioPluginTrack.cpp
-        AudioPluginHosting/UapmdNodeUmpMapper.cpp
+        AudioPluginAPI/RemidyAudioPluginHost.cpp
+        AudioGraph/AudioPluginGraph.cpp
+        AudioGraph/AudioPluginHostPAL.cpp
+        AudioGraph/AudioPluginNode.cpp
+        AudioGraph/AudioPluginTrack.cpp
+        Midi/UapmdNodeUmpMapper.cpp
         Midi/UapmdMidiDevice.cpp
         Midi/UapmdMidiCISessions.cpp
         Midi/UapmdUmpMapper.cpp
