@@ -239,6 +239,12 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
     sequencer(SequenceProcessor::create(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal)),
     plugin_output_handlers_(std::make_shared<HandlerMap>()),
     plugin_output_scratch_(umpBufferSizeInBytes / sizeof(uapmd_ump_t), 0) {
+    // Configure default channels based on audio device
+    auto audioDevice = dispatcher->audio();
+    const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
+    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
+    sequencer->setDefaultChannels(inputChannels, outputChannels);
+
     auto manager = AudioIODeviceManager::instance();
     auto logger = remidy::Logger::global();
     AudioIODeviceManager::Configuration audioConfig{ .logger = logger };
@@ -555,42 +561,34 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
     std::string& pluginId,
     std::function<void(int32_t instanceId, std::string error)> callback
 ) {
-    auto audioDevice = dispatcher->audio();
-    // Always use at least 2 input channels to support audio file playback even without mic input
-    const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
-    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
-    sequencer->addSimpleTrack(format, pluginId, inputChannels, outputChannels, [&,callback,inputChannels,outputChannels](AudioPluginTrack* track, std::string error) {
-        if (!error.empty()) {
-            callback(-1, error);
-        } else {
-            auto trackCtx = sequencer->data().tracks[sequencer->tracks().size() - 1];
-            trackCtx->configureMainBus(inputChannels, outputChannels, buffer_size_in_frames);
-
-            configureTrackRouting(track);
-            auto trackIndex = static_cast<int32_t>(sequencer->tracks().size() - 1);
-            auto plugins = track->graph().plugins();
-            if (plugins.empty()) {
-                callback(-1, "Track has no plugins after instantiation");
+    sequencer->addSimplePluginTrack(format, pluginId,
+        [this, callback](AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error) {
+            if (!node || !track || !error.empty()) {
+                if (callback)
+                    callback(-1, error);
                 return;
             }
-            auto* plugin = plugins.front();
-            auto instanceId = plugin->instanceId();
+
+            // Add live-specific features
+            auto instanceId = node->instanceId();
+            configureTrackRouting(track);
             plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
             assignGroup(instanceId);
-            AudioPluginInstanceAPI* palPtr = nullptr;
+
+            AudioPluginInstanceAPI* palPtr = node->pal();
             {
                 std::lock_guard<std::mutex> lock(instance_map_mutex_);
-                palPtr = plugin->pal();
                 plugin_instances_[instanceId] = palPtr;
                 plugin_bypassed_[instanceId] = false;
             }
 
             registerParameterListener(instanceId, palPtr);
-
             refreshFunctionBlockMappings();
-            callback(instanceId, error);
+
+            if (callback)
+                callback(instanceId, "");
         }
-    });
+    );
 }
 
 void uapmd::AudioPluginSequencer::addPluginToTrack(
@@ -599,72 +597,43 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
     std::string& pluginId,
     std::function<void(int32_t instanceId, std::string error)> callback
 ) {
-    if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= sequencer->tracks().size()) {
-        callback(-1, std::format("Invalid track index {}", trackIndex));
-        return;
-    }
-
-    auto audioDevice = dispatcher->audio();
-    // Always use at least 2 input channels to support audio file playback even without mic input
-    const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
-    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
-
-    plugin_host_pal->createPluginInstance(sample_rate, inputChannels, outputChannels, offline_rendering_.load(std::memory_order_acquire), format, pluginId,
-        [this, trackIndex, cb = std::move(callback)](auto node, std::string error) mutable {
-            if (!node) {
-                if (cb) {
-                    cb(-1, "Could not create plugin: " + error);
-                }
+    sequencer->addPluginToTrack(trackIndex, format, pluginId,
+        [this, trackIndex, cb = std::move(callback)](AudioPluginNode* node, std::string error) mutable {
+            if (!node || !error.empty()) {
+                if (cb)
+                    cb(-1, error);
                 return;
             }
 
+            // Get track for live feature setup
             auto& tracksRef = sequencer->tracks();
             if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracksRef.size()) {
-                if (cb) {
+                if (cb)
                     cb(-1, std::format("Track {} no longer exists", trackIndex));
-                }
                 return;
             }
-
             auto* track = tracksRef[static_cast<size_t>(trackIndex)];
-            auto status = track->graph().appendNodeSimple(std::move(node));
-            if (status != 0) {
-                if (cb) {
-                    cb(-1, std::format("Failed to append plugin to track {} (status {})", trackIndex, status));
-                }
-                return;
-            }
 
-            auto plugins = track->graph().plugins();
-            if (plugins.empty()) {
-                if (cb) {
-                    cb(-1, "Track has no plugins after append");
-                }
-                return;
-            }
-
+            // Add live-specific features
+            auto instanceId = node->instanceId();
             configureTrackRouting(track);
-            auto* appended = plugins.back();
-            if (appended) {
-                auto instanceId = appended->instanceId();
-                plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
-                assignGroup(instanceId);
-                AudioPluginInstanceAPI* palPtr = nullptr;
-                {
-                    std::lock_guard<std::mutex> lock(instance_map_mutex_);
-                    palPtr = appended->pal();
-                    plugin_instances_[instanceId] = palPtr;
-                    plugin_bypassed_[instanceId] = false;
-                }
-                registerParameterListener(instanceId, palPtr);
-                refreshFunctionBlockMappings();
-                if (cb) {
-                    cb(instanceId, "");
-                }
-            } else if (cb) {
-                cb(-1, "Appended plugin could not be resolved");
+            plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
+            assignGroup(instanceId);
+
+            AudioPluginInstanceAPI* palPtr = node->pal();
+            {
+                std::lock_guard<std::mutex> lock(instance_map_mutex_);
+                plugin_instances_[instanceId] = palPtr;
+                plugin_bypassed_[instanceId] = false;
             }
-        });
+
+            registerParameterListener(instanceId, palPtr);
+            refreshFunctionBlockMappings();
+
+            if (cb)
+                cb(instanceId, "");
+        }
+    );
 }
 
 bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
@@ -920,6 +889,12 @@ bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, i
         remidy::Logger::global()->logError("Failed to reconfigure dispatcher with new audio device");
         return false;
     }
+
+    // Update SequenceProcessor with new channel counts
+    auto audioDevice = dispatcher->audio();
+    const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
+    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
+    sequencer->setDefaultChannels(inputChannels, outputChannels);
 
     // Restart audio if it was playing before
     if (wasPlaying) {

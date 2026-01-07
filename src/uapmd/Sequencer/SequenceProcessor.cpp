@@ -5,6 +5,8 @@ namespace uapmd {
     class SequenceProcessorImpl : public SequenceProcessor {
         size_t audio_buffer_size_in_frames;
         size_t ump_buffer_size_in_ints;
+        uint32_t default_input_channels_{2};
+        uint32_t default_output_channels_{2};
         std::vector<std::unique_ptr<AudioPluginTrack>> tracks_{};
         SequenceProcessContext sequence{};
         int32_t sampleRate;
@@ -18,6 +20,9 @@ namespace uapmd {
         std::vector<AudioPluginTrack*>& tracks() const override;
 
         void addSimpleTrack(std::string& format, std::string& pluginId, uint32_t inputChannels, uint32_t outputChannels, std::function<void(AudioPluginTrack* track, std::string error)> callback) override;
+        void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
+        void addSimplePluginTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error)> callback) override;
+        void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, std::string error)> callback) override;
         bool removePluginInstance(int32_t instanceId) override;
 
         uapmd_status_t processAudio() override;
@@ -71,6 +76,71 @@ namespace uapmd {
                 callback(track, "");
                 track->bypassed(false);
             }
+        });
+    }
+
+    void SequenceProcessorImpl::setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) {
+        default_input_channels_ = inputChannels;
+        default_output_channels_ = outputChannels;
+    }
+
+    void SequenceProcessorImpl::addSimplePluginTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error)> callback) {
+        pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this,callback](auto node, std::string error) {
+            if (!node) {
+                callback(nullptr, nullptr, -1, "Could not create simple track: " + error);
+                return;
+            }
+
+            // Create track and add plugin
+            auto* track = addSimpleTrackInternal(std::move(node));
+            auto trackIndex = static_cast<int32_t>(tracks_.size() - 1);
+
+            // Configure main bus (moved from AudioPluginSequencer)
+            auto trackCtx = sequence.tracks[trackIndex];
+            trackCtx->configureMainBus(default_input_channels_, default_output_channels_, audio_buffer_size_in_frames);
+
+            // Get the plugin node
+            auto plugins = track->graph().plugins();
+            if (plugins.empty()) {
+                callback(nullptr, track, trackIndex, "Track has no plugins after instantiation");
+                return;
+            }
+
+            track->bypassed(false);
+            callback(plugins.front(), track, trackIndex, "");
+        });
+    }
+
+    void SequenceProcessorImpl::addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, std::string error)> callback) {
+        // Validate track index
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size()) {
+            callback(nullptr, std::format("Invalid track index {}", trackIndex));
+            return;
+        }
+
+        pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, callback](auto node, std::string error) {
+            if (!node) {
+                callback(nullptr, "Could not create plugin: " + error);
+                return;
+            }
+
+            // Re-validate track (may have been removed during async operation)
+            if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size()) {
+                callback(nullptr, std::format("Track {} no longer exists", trackIndex));
+                return;
+            }
+
+            auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+            auto* nodePtr = node.get();
+
+            // Append to track's graph
+            auto status = track->graph().appendNodeSimple(std::move(node));
+            if (status != 0) {
+                callback(nullptr, std::format("Failed to append plugin to track {} (status {})", trackIndex, status));
+                return;
+            }
+
+            callback(nodePtr, "");
         });
     }
 

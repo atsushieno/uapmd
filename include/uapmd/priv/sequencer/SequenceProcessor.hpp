@@ -23,6 +23,16 @@ namespace uapmd {
         virtual std::vector<AudioPluginTrack *> & tracks() const = 0;
 
         virtual void addSimpleTrack(std::string& format, std::string& pluginId, uint32_t inputChannels, uint32_t outputChannels, std::function<void(AudioPluginTrack* track, std::string error)> callback) = 0;
+
+        // Set default channel configuration (called by AudioPluginSequencer when device changes)
+        virtual void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) = 0;
+
+        // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
+        virtual void addSimplePluginTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error)> callback) = 0;
+
+        // Add plugin to existing track
+        virtual void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, std::string error)> callback) = 0;
+
         virtual bool removePluginInstance(int32_t instanceId) = 0;
 
         virtual uapmd_status_t processAudio() = 0;
