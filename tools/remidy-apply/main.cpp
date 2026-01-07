@@ -233,7 +233,7 @@ class RemidyApply {
             processContext.frameCount(AUDIO_BUFFER_SIZE);
 
             // Process audio through all tracks (offline rendering)
-            sequencer->processAudio();
+            sequencer->processAudio(processContext);
 
             // Extract output buffers (write to audio file, analyze, etc.)
             // For now, just verify we're getting output

@@ -254,198 +254,8 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
     dispatcher->configure(umpBufferSizeInBytes, manager->open());
 
     dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
-        auto& data = sequencer->data();
-        auto& masterContext = data.masterContext();
-
-        // Update playback position if playback is active
-        bool isPlaybackActive = is_playback_active_.load(std::memory_order_acquire);
-
-        // Update MasterContext with current playback state
-        masterContext.playbackPositionSamples(playback_position_samples_.load(std::memory_order_acquire));
-        masterContext.isPlaying(isPlaybackActive);
-        masterContext.sampleRate(sample_rate);
-
-        // Prepare merged input buffer (audio file + mic input)
-        std::vector<std::vector<float>> mergedInput;
-        size_t audioFilePosition = 0;
-        bool hasAudioFile = false;
-
-        {
-            std::lock_guard<std::mutex> lock(audio_file_mutex_);
-            hasAudioFile = !audio_file_buffer_.empty();
-            if (hasAudioFile && isPlaybackActive) {
-                audioFilePosition = audio_file_read_position_.load(std::memory_order_acquire);
-            }
-        }
-
-        // Determine number of channels for merged input
-        // Use the maximum of device input channels and audio file channels
-        uint32_t deviceInputChannels = process.audioInBusCount() > 0 ? process.inputChannelCount(0) : 0;
-        uint32_t fileChannels = hasAudioFile ? audio_file_buffer_.size() : 0;
-        uint32_t numInputChannels = std::max(deviceInputChannels, fileChannels);
-
-        // If both are 0, default to stereo
-        if (numInputChannels == 0) {
-            numInputChannels = 2;
-        }
-
-        mergedInput.resize(numInputChannels);
-        for (auto& channel : mergedInput) {
-            channel.resize(process.frameCount(), 0.0f);
-        }
-
-        // Fill merged input buffer
-        for (uint32_t ch = 0; ch < numInputChannels; ch++) {
-            float* dst = mergedInput[ch].data();
-
-            // Start with device input (mic)
-            if (process.audioInBusCount() > 0 && ch < process.inputChannelCount(0)) {
-                memcpy(dst, (void*)process.getFloatInBuffer(0, ch), process.frameCount() * sizeof(float));
-            }
-
-            // Add audio file playback if available and playing
-            if (hasAudioFile && isPlaybackActive) {
-                std::lock_guard<std::mutex> lock(audio_file_mutex_);
-                if (ch < audio_file_buffer_.size()) {
-                    const auto& channelData = audio_file_buffer_[ch];
-                    for (uint32_t frame = 0; frame < process.frameCount(); ++frame) {
-                        size_t pos = audioFilePosition + frame;
-                        if (pos < channelData.size()) {
-                            dst[frame] += channelData[pos];
-                        }
-                    }
-                }
-            }
-        }
-
-        // Send merged input to ALL tracks
-        for (uint32_t t = 0, nTracks = sequencer->tracks().size(); t < nTracks; t++) {
-            if (t >= data.tracks.size())
-                continue; // buffer not ready
-            auto ctx = data.tracks[t];
-            ctx->eventOut().position(0); // clean up *out* events here.
-            ctx->frameCount(process.frameCount());
-
-            // Copy merged input to track input buffers
-            for (uint32_t i = 0; i < ctx->audioInBusCount(); i++) {
-                for (uint32_t ch = 0, nCh = ctx->inputChannelCount(i); ch < nCh; ch++) {
-                    float* trackDst = ctx->getFloatInBuffer(i, ch);
-                    if (ch < mergedInput.size()) {
-                        memcpy(trackDst, mergedInput[ch].data(), process.frameCount() * sizeof(float));
-                    } else {
-                        memset(trackDst, 0, process.frameCount() * sizeof(float));
-                    }
-                }
-            }
-        }
-
-        // Advance audio file read position only when playing
-        if (hasAudioFile && isPlaybackActive) {
-            audio_file_read_position_.fetch_add(process.frameCount(), std::memory_order_release);
-        }
-
-        auto ret = sequencer->processAudio();
-
-        // Clear main output bus (bus 0) before mixing
-        if (process.audioOutBusCount() > 0) {
-            for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++) {
-                memset(process.getFloatOutBuffer(0, ch), 0, process.frameCount() * sizeof(float));
-            }
-        }
-
-        // Mix all tracks into main output bus with additive mixing
-        for (uint32_t t = 0, nTracks = sequencer->tracks().size(); t < nTracks; t++) {
-            if (t >= data.tracks.size())
-                continue; // buffer not ready
-            auto ctx = data.tracks[t];
-            ctx->eventIn().position(0); // clean up *in* events here.
-
-            // Mix only main bus (bus 0)
-            if (process.audioOutBusCount() > 0 && ctx->audioOutBusCount() > 0) {
-                // Mix matching channels only
-                uint32_t numChannels = std::min(ctx->outputChannelCount(0), process.outputChannelCount(0));
-                for (uint32_t ch = 0; ch < numChannels; ch++) {
-                    float* dst = process.getFloatOutBuffer(0, ch);
-                    const float* src = ctx->getFloatOutBuffer(0, ch);
-                    // Additive mixing
-                    for (uint32_t frame = 0; frame < process.frameCount(); frame++) {
-                        dst[frame] += src[frame];
-                    }
-                }
-            }
-        }
-
-        // Apply soft clipping to prevent harsh distortion
-        if (process.audioOutBusCount() > 0) {
-            for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++) {
-                float* buffer = process.getFloatOutBuffer(0, ch);
-                for (uint32_t frame = 0; frame < process.frameCount(); frame++) {
-                    buffer[frame] = std::tanh(buffer[frame]);
-                }
-            }
-        }
-
-        // Calculate spectrum for visualization (simple magnitude binning)
-        // RT-safe: write to local buffers without locking
-        {
-            // Calculate input spectrum from merged input buffer
-            for (int bar = 0; bar < kSpectrumBars; ++bar) {
-                float sum = 0.0f;
-                int sampleCount = 0;
-
-                if (!mergedInput.empty()) {
-                    int samplesPerBar = process.frameCount() / kSpectrumBars;
-                    int startSample = bar * samplesPerBar;
-                    int endSample = std::min((int)process.frameCount(), (bar + 1) * samplesPerBar);
-
-                    for (uint32_t ch = 0; ch < mergedInput.size(); ++ch) {
-                        const float* buffer = mergedInput[ch].data();
-                        for (int i = startSample; i < endSample; ++i) {
-                            sum += std::abs(buffer[i]);
-                            sampleCount++;
-                        }
-                    }
-                }
-
-                rt_input_spectrum_[bar] = sampleCount > 0 ? sum / sampleCount : 0.0f;
-            }
-
-            // Calculate output spectrum from main output
-            for (int bar = 0; bar < kSpectrumBars; ++bar) {
-                float sum = 0.0f;
-                int sampleCount = 0;
-
-                if (process.audioOutBusCount() > 0) {
-                    int samplesPerBar = process.frameCount() / kSpectrumBars;
-                    int startSample = bar * samplesPerBar;
-                    int endSample = std::min((int)process.frameCount(), (bar + 1) * samplesPerBar);
-
-                    for (uint32_t ch = 0; ch < process.outputChannelCount(0); ++ch) {
-                        const float* buffer = process.getFloatOutBuffer(0, ch);
-                        for (int i = startSample; i < endSample; ++i) {
-                            sum += std::abs(buffer[i]);
-                            sampleCount++;
-                        }
-                    }
-                }
-
-                rt_output_spectrum_[bar] = sampleCount > 0 ? sum / sampleCount : 0.0f;
-            }
-
-            // Try to copy to shared buffers (skip if reader is active - RT-safe, lock-free)
-            bool expected = false;
-            if (spectrum_reading_.compare_exchange_strong(expected, false, std::memory_order_acquire)) {
-                // No reader active, safe to write
-                std::copy(rt_input_spectrum_, rt_input_spectrum_ + kSpectrumBars, shared_input_spectrum_);
-                std::copy(rt_output_spectrum_, rt_output_spectrum_ + kSpectrumBars, shared_output_spectrum_);
-                // No need to release the flag - we keep it at false for next write
-            }
-        }
-
-        if (isPlaybackActive)
-            playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
-
-        return ret;
+        // Delegate all master audio processing to SequenceProcessor
+        return sequencer->processAudio(process);
     });
 }
 
@@ -822,27 +632,25 @@ uapmd_status_t uapmd::AudioPluginSequencer::isAudioPlaying() {
 }
 
 void uapmd::AudioPluginSequencer::startPlayback() {
-    playback_position_samples_.store(0, std::memory_order_release);
-    audio_file_read_position_.store(0, std::memory_order_release);
-    is_playback_active_.store(true, std::memory_order_release);
+    sequencer->setPlaybackPosition(0);
+    sequencer->setPlaybackActive(true);
 }
 
 void uapmd::AudioPluginSequencer::stopPlayback() {
-    is_playback_active_.store(false, std::memory_order_release);
-    playback_position_samples_.store(0, std::memory_order_release);
-    audio_file_read_position_.store(0, std::memory_order_release);
+    sequencer->setPlaybackActive(false);
+    sequencer->setPlaybackPosition(0);
 }
 
 void uapmd::AudioPluginSequencer::pausePlayback() {
-    is_playback_active_.store(false, std::memory_order_release);
+    sequencer->setPlaybackActive(false);
 }
 
 void uapmd::AudioPluginSequencer::resumePlayback() {
-    is_playback_active_.store(true, std::memory_order_release);
+    sequencer->setPlaybackActive(true);
 }
 
 int64_t uapmd::AudioPluginSequencer::playbackPositionSamples() const {
-    return playback_position_samples_.load(std::memory_order_acquire);
+    return sequencer->playbackPosition();
 }
 
 int32_t uapmd::AudioPluginSequencer::sampleRate() { return sample_rate; }
@@ -923,72 +731,21 @@ bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, i
 }
 
 void uapmd::AudioPluginSequencer::loadAudioFile(std::unique_ptr<AudioFileReader> reader) {
-    std::lock_guard<std::mutex> lock(audio_file_mutex_);
-
-    audio_file_reader_ = std::move(reader);
-    audio_file_read_position_.store(0, std::memory_order_release);
-
-    if (!audio_file_reader_) {
-        audio_file_buffer_.clear();
-        return;
-    }
-
-    // Load entire file into memory for simplicity
-    const auto props = audio_file_reader_->getProperties();
-    const uint64_t numFrames = props.numFrames;
-    const uint32_t numChannels = props.numChannels;
-
-    audio_file_buffer_.resize(numChannels);
-    for (auto& channel : audio_file_buffer_) {
-        channel.resize(numFrames);
-    }
-
-    // Prepare array of channel pointers for planar read
-    std::vector<float*> destPtrs;
-    destPtrs.reserve(numChannels);
-    for (uint32_t ch = 0; ch < numChannels; ++ch) {
-        destPtrs.push_back(audio_file_buffer_[ch].data());
-    }
-
-    // Read all frames into our planar buffers via the abstract reader
-    audio_file_reader_->readFrames(0, numFrames, destPtrs.data(), numChannels);
+    sequencer->loadAudioFile(std::move(reader));
 }
 
 void uapmd::AudioPluginSequencer::unloadAudioFile() {
-    std::lock_guard<std::mutex> lock(audio_file_mutex_);
-    audio_file_reader_.reset();
-    audio_file_buffer_.clear();
-    audio_file_read_position_.store(0, std::memory_order_release);
+    sequencer->unloadAudioFile();
 }
 
 double uapmd::AudioPluginSequencer::audioFileDurationSeconds() const {
-    std::lock_guard<std::mutex> lock(audio_file_mutex_);
-    if (!audio_file_reader_)
-        return 0.0;
-    const auto& props = audio_file_reader_->getProperties();
-    return static_cast<double>(props.numFrames) / props.sampleRate;
+    return sequencer->audioFileDurationSeconds();
 }
 
 void uapmd::AudioPluginSequencer::getInputSpectrum(float* outSpectrum, int numBars) const {
-    // Set reading flag to prevent RT thread from writing
-    spectrum_reading_.store(true, std::memory_order_release);
-
-    for (int i = 0; i < std::min(numBars, kSpectrumBars); ++i) {
-        outSpectrum[i] = shared_input_spectrum_[i];
-    }
-
-    // Release the reading flag
-    spectrum_reading_.store(false, std::memory_order_release);
+    sequencer->getInputSpectrum(outSpectrum, numBars);
 }
 
 void uapmd::AudioPluginSequencer::getOutputSpectrum(float* outSpectrum, int numBars) const {
-    // Set reading flag to prevent RT thread from writing
-    spectrum_reading_.store(true, std::memory_order_release);
-
-    for (int i = 0; i < std::min(numBars, kSpectrumBars); ++i) {
-        outSpectrum[i] = shared_output_spectrum_[i];
-    }
-
-    // Release the reading flag
-    spectrum_reading_.store(false, std::memory_order_release);
+    sequencer->getOutputSpectrum(outSpectrum, numBars);
 }

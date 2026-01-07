@@ -33,7 +33,22 @@ namespace uapmd {
 
         virtual bool removePluginInstance(int32_t instanceId) = 0;
 
-        virtual uapmd_status_t processAudio() = 0;
+        virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
+
+        // Playback control (accessed by AudioPluginSequencer)
+        virtual void setPlaybackActive(bool active) = 0;
+        virtual bool isPlaybackActive() const = 0;
+        virtual void setPlaybackPosition(int64_t samples) = 0;
+        virtual int64_t playbackPosition() const = 0;
+
+        // Audio file playback
+        virtual void loadAudioFile(std::unique_ptr<AudioFileReader> reader) = 0;
+        virtual void unloadAudioFile() = 0;
+        virtual double audioFileDurationSeconds() const = 0;
+
+        // Audio analysis
+        virtual void getInputSpectrum(float* outSpectrum, int numBars) const = 0;
+        virtual void getOutputSpectrum(float* outSpectrum, int numBars) const = 0;
     };
 
 }

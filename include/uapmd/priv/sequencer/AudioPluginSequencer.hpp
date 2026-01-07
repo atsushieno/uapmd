@@ -23,27 +23,8 @@ namespace uapmd {
         AudioPluginHostingAPI* plugin_host_pal;
         std::unique_ptr<SequenceProcessor> sequencer;
 
-        // Playback control
-        std::atomic<bool> is_playback_active_{false};
-        std::atomic<int64_t> playback_position_samples_{0};
+        // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
-
-        // Audio file playback
-        std::unique_ptr<AudioFileReader> audio_file_reader_;
-        std::vector<std::vector<float>> audio_file_buffer_; // per-channel buffers
-        std::atomic<size_t> audio_file_read_position_{0};
-        mutable std::mutex audio_file_mutex_;
-
-        // Audio analysis
-        static constexpr int kSpectrumBars = 32;
-        // RT-thread local buffers (no lock needed)
-        float rt_input_spectrum_[kSpectrumBars] = {};
-        float rt_output_spectrum_[kSpectrumBars] = {};
-        // Shared buffers for non-RT readers (lock-free using atomic flag)
-        float shared_input_spectrum_[kSpectrumBars] = {};
-        float shared_output_spectrum_[kSpectrumBars] = {};
-        // Lock-free flag: true = reader owns, false = writer can write
-        mutable std::atomic<bool> spectrum_reading_{false};
 
         struct FunctionBlockRoute {
             AudioPluginTrack* track{nullptr};
