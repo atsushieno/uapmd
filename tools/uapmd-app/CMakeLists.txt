@@ -173,6 +173,7 @@ endif()
 target_sources(uapmd-app PRIVATE
         main.cpp
         AppModel.cpp
+        UapmdJSRuntime.cpp
         gui/MainWindow.cpp
         gui/MidiKeyboard.cpp
         gui/PluginList.cpp

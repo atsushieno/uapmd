@@ -3,7 +3,7 @@
 #include <string>
 #include <memory>
 #include <vector>
-#include <choc/javascript/choc_javascript.h>
+#include "../UapmdJSRuntime.hpp"
 
 namespace uapmd::gui {
 
@@ -11,7 +11,7 @@ class ScriptEditor {
     std::vector<char> scriptBuffer_;
     bool isOpen_ = false;
     std::string errorMessage_;
-    choc::javascript::Context jsContext_;
+    uapmd::UapmdJSRuntime jsRuntime_;
 
 public:
     ScriptEditor();
@@ -23,7 +23,6 @@ public:
     void render();
 
 private:
-    void initializeJavaScriptContext();
     void executeScript();
     void setDefaultScript();
     std::string getJsLibraryPath (const std::string& filename) const;
