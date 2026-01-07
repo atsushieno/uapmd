@@ -386,9 +386,8 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
         }
 
         // Calculate spectrum for visualization (simple magnitude binning)
+        // RT-safe: write to local buffers without locking
         {
-            std::lock_guard<std::mutex> lock(spectrum_mutex_);
-
             // Calculate input spectrum from merged input buffer
             for (int bar = 0; bar < kSpectrumBars; ++bar) {
                 float sum = 0.0f;
@@ -408,7 +407,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
                     }
                 }
 
-                input_spectrum_[bar] = sampleCount > 0 ? sum / sampleCount : 0.0f;
+                rt_input_spectrum_[bar] = sampleCount > 0 ? sum / sampleCount : 0.0f;
             }
 
             // Calculate output spectrum from main output
@@ -430,7 +429,16 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
                     }
                 }
 
-                output_spectrum_[bar] = sampleCount > 0 ? sum / sampleCount : 0.0f;
+                rt_output_spectrum_[bar] = sampleCount > 0 ? sum / sampleCount : 0.0f;
+            }
+
+            // Try to copy to shared buffers (skip if reader is active - RT-safe, lock-free)
+            bool expected = false;
+            if (spectrum_reading_.compare_exchange_strong(expected, false, std::memory_order_acquire)) {
+                // No reader active, safe to write
+                std::copy(rt_input_spectrum_, rt_input_spectrum_ + kSpectrumBars, shared_input_spectrum_);
+                std::copy(rt_output_spectrum_, rt_output_spectrum_ + kSpectrumBars, shared_output_spectrum_);
+                // No need to release the flag - we keep it at false for next write
             }
         }
 
@@ -962,15 +970,25 @@ double uapmd::AudioPluginSequencer::audioFileDurationSeconds() const {
 }
 
 void uapmd::AudioPluginSequencer::getInputSpectrum(float* outSpectrum, int numBars) const {
-    std::lock_guard<std::mutex> lock(spectrum_mutex_);
+    // Set reading flag to prevent RT thread from writing
+    spectrum_reading_.store(true, std::memory_order_release);
+
     for (int i = 0; i < std::min(numBars, kSpectrumBars); ++i) {
-        outSpectrum[i] = input_spectrum_[i];
+        outSpectrum[i] = shared_input_spectrum_[i];
     }
+
+    // Release the reading flag
+    spectrum_reading_.store(false, std::memory_order_release);
 }
 
 void uapmd::AudioPluginSequencer::getOutputSpectrum(float* outSpectrum, int numBars) const {
-    std::lock_guard<std::mutex> lock(spectrum_mutex_);
+    // Set reading flag to prevent RT thread from writing
+    spectrum_reading_.store(true, std::memory_order_release);
+
     for (int i = 0; i < std::min(numBars, kSpectrumBars); ++i) {
-        outSpectrum[i] = output_spectrum_[i];
+        outSpectrum[i] = shared_output_spectrum_[i];
     }
+
+    // Release the reading flag
+    spectrum_reading_.store(false, std::memory_order_release);
 }

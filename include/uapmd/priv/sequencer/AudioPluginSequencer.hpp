@@ -36,9 +36,14 @@ namespace uapmd {
 
         // Audio analysis
         static constexpr int kSpectrumBars = 32;
-        float input_spectrum_[kSpectrumBars] = {};
-        float output_spectrum_[kSpectrumBars] = {};
-        mutable std::mutex spectrum_mutex_;
+        // RT-thread local buffers (no lock needed)
+        float rt_input_spectrum_[kSpectrumBars] = {};
+        float rt_output_spectrum_[kSpectrumBars] = {};
+        // Shared buffers for non-RT readers (lock-free using atomic flag)
+        float shared_input_spectrum_[kSpectrumBars] = {};
+        float shared_output_spectrum_[kSpectrumBars] = {};
+        // Lock-free flag: true = reader owns, false = writer can write
+        mutable std::atomic<bool> spectrum_reading_{false};
 
         struct FunctionBlockRoute {
             AudioPluginTrack* track{nullptr};
