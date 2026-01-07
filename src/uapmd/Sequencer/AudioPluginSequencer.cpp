@@ -561,7 +561,7 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
     std::string& pluginId,
     std::function<void(int32_t instanceId, std::string error)> callback
 ) {
-    sequencer->addSimplePluginTrack(format, pluginId,
+    sequencer->addSimpleTrack(format, pluginId,
         [this, callback](AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error) {
             if (!node || !track || !error.empty()) {
                 if (callback)

@@ -140,10 +140,13 @@ class RemidyApply {
         uint32_t inputChannels = 2;   // Stereo input
         uint32_t outputChannels = 2;  // Stereo output
 
-        sequencer->addSimpleTrack(formatName, pluginId, inputChannels, outputChannels,
-            [&](uapmd::AudioPluginTrack* track, std::string error) {
+        // Set default channels for the sequencer
+        sequencer->setDefaultChannels(inputChannels, outputChannels);
+
+        sequencer->addSimpleTrack(formatName, pluginId,
+            [&](uapmd::AudioPluginNode* node, uapmd::AudioPluginTrack* track, int32_t trackIndex, std::string error) {
                 if (!error.empty()) {
-                    std::cerr << "addSimpleTrack() failed: " << error << std::endl;
+                    std::cerr << "addSimplePluginTrack() failed: " << error << std::endl;
                     trackReady = true;
                     return;
                 }

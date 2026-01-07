@@ -19,16 +19,14 @@ namespace uapmd {
 
         std::vector<AudioPluginTrack*>& tracks() const override;
 
-        void addSimpleTrack(std::string& format, std::string& pluginId, uint32_t inputChannels, uint32_t outputChannels, std::function<void(AudioPluginTrack* track, std::string error)> callback) override;
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
-        void addSimplePluginTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error)> callback) override;
+        void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error)> callback) override;
         void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, std::string error)> callback) override;
         bool removePluginInstance(int32_t instanceId) override;
 
         uapmd_status_t processAudio() override;
 
     private:
-        AudioPluginTrack* addSimpleTrackInternal(std::unique_ptr<AudioPluginNode> node);
         void removeTrack(size_t index);
     };
 
@@ -67,24 +65,12 @@ namespace uapmd {
         return 0;
     }
 
-    void SequenceProcessorImpl::addSimpleTrack(std::string& format, std::string& pluginId, uint32_t inputChannels, uint32_t outputChannels, std::function<void(AudioPluginTrack*, std::string error)> callback) {
-        pal->createPluginInstance(sampleRate, inputChannels, outputChannels, false, format, pluginId, [this,callback](auto node, std::string error) {
-            if (!node)
-                callback(nullptr, "Could not create simple track: " + error);
-            else {
-                auto track = addSimpleTrackInternal(std::move(node));
-                callback(track, "");
-                track->bypassed(false);
-            }
-        });
-    }
-
     void SequenceProcessorImpl::setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) {
         default_input_channels_ = inputChannels;
         default_output_channels_ = outputChannels;
     }
 
-    void SequenceProcessorImpl::addSimplePluginTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error)> callback) {
+    void SequenceProcessorImpl::addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error)> callback) {
         pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this,callback](auto node, std::string error) {
             if (!node) {
                 callback(nullptr, nullptr, -1, "Could not create simple track: " + error);
@@ -92,7 +78,14 @@ namespace uapmd {
             }
 
             // Create track and add plugin
-            auto* track = addSimpleTrackInternal(std::move(node));
+            {
+                auto tr = AudioPluginTrack::create(ump_buffer_size_in_ints);
+                tr->graph().appendNodeSimple(std::move(node));
+                auto* track_ptr = tr.get();
+                tracks_.emplace_back(std::move(tr));
+                sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
+            }
+            auto* track = tracks_.back().get();
             auto trackIndex = static_cast<int32_t>(tracks_.size() - 1);
 
             // Configure main bus (moved from AudioPluginSequencer)
@@ -142,15 +135,6 @@ namespace uapmd {
 
             callback(nodePtr, "");
         });
-    }
-
-    AudioPluginTrack* SequenceProcessorImpl::addSimpleTrackInternal(std::unique_ptr<AudioPluginNode> node) {
-        auto track = AudioPluginTrack::create(ump_buffer_size_in_ints);
-        track->graph().appendNodeSimple(std::move(node));
-        auto* track_ptr = track.get();
-        tracks_.emplace_back(std::move(track));
-        sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
-        return track_ptr;
     }
 
     bool SequenceProcessorImpl::removePluginInstance(int32_t instanceId) {
