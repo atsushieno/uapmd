@@ -10,7 +10,7 @@
 #include <cmidi2.h>
 #include "uapmd/uapmd.hpp"
 #include "uapmd/priv/sequencer/AudioPluginSequencer.hpp"
-#include "uapmd/priv/plugingraph/AudioPluginHostPAL.hpp"
+#include "uapmd/priv/plugingraph/AudioPluginHostingAPI.hpp"
 #include "../AudioPluginHosting/UapmdNodeUmpMapper.hpp"
 
 // Note: audio file decoding is abstracted behind uapmd::AudioFileReader interface now.
@@ -79,7 +79,7 @@ std::optional<int32_t> uapmd::AudioPluginSequencer::instanceForGroupOptional(uin
     return it->second;
 }
 
-void uapmd::AudioPluginSequencer::registerParameterListener(int32_t instanceId, AudioPluginNodePAL* node) {
+void uapmd::AudioPluginSequencer::registerParameterListener(int32_t instanceId, AudioPluginNodeAPI* node) {
     if (!node)
         return;
     auto token = node->addParameterChangeListener(
@@ -235,7 +235,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
 ) : buffer_size_in_frames(audioBufferSizeInFrames),
     ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
     dispatcher(dispatcher),
-    plugin_host_pal(AudioPluginHostPAL::instance()),
+    plugin_host_pal(AudioPluginHostingAPI::instance()),
     sequencer(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal),
     plugin_output_handlers_(std::make_shared<HandlerMap>()),
     plugin_output_scratch_(umpBufferSizeInBytes / sizeof(uapmd_ump_t), 0) {
@@ -577,7 +577,7 @@ void uapmd::AudioPluginSequencer::addSimplePluginTrack(
             auto instanceId = plugin->instanceId();
             plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
             assignGroup(instanceId);
-            AudioPluginNodePAL* palPtr = nullptr;
+            AudioPluginNodeAPI* palPtr = nullptr;
             {
                 std::lock_guard<std::mutex> lock(instance_map_mutex_);
                 palPtr = plugin->pal();
@@ -649,7 +649,7 @@ void uapmd::AudioPluginSequencer::addPluginToTrack(
                 auto instanceId = appended->instanceId();
                 plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
                 assignGroup(instanceId);
-                AudioPluginNodePAL* palPtr = nullptr;
+                AudioPluginNodeAPI* palPtr = nullptr;
                 {
                     std::lock_guard<std::mutex> lock(instance_map_mutex_);
                     palPtr = appended->pal();
@@ -688,7 +688,7 @@ bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
     return removed;
 }
 
-uapmd::AudioPluginNodePAL* uapmd::AudioPluginSequencer::getPluginInstance(int32_t instanceId) {
+uapmd::AudioPluginNodeAPI* uapmd::AudioPluginSequencer::getPluginInstance(int32_t instanceId) {
     std::lock_guard<std::mutex> lock(instance_map_mutex_);
     auto it = plugin_instances_.find(instanceId);
     if (it != plugin_instances_.end())

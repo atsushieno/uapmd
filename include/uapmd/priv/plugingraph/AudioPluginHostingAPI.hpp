@@ -1,7 +1,7 @@
 #pragma once
 
 #include <functional>
-#include "AudioPluginNodePAL.hpp"
+#include "AudioPluginNodeAPI.hpp"
 #include "uapmd/priv/CommonTypes.hpp"
 
 namespace uapmd {
@@ -9,11 +9,11 @@ namespace uapmd {
     struct ParameterMetadata;
     struct PresetsMetadata;
 
-    // This PAL is more like a Plugin(-Format) Abstraction Layer rather than Platform Abstraction Layer.
-    class AudioPluginHostPAL {
+    // This PAL is more like a Plugin hosting API Abstraction Layer rather than a Platform Abstraction Layer.
+    class AudioPluginHostingAPI {
     public:
-        static AudioPluginHostPAL* instance();
-        virtual ~AudioPluginHostPAL() = default;
+        static AudioPluginHostingAPI* instance();
+        virtual ~AudioPluginHostingAPI() = default;
         virtual PluginCatalog& catalog() = 0;
         virtual void performPluginScanning(bool rescan) = 0;
         virtual void createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &format, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode>, std::string)>&& callback) = 0;

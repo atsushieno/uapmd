@@ -8,12 +8,12 @@ namespace uapmd {
         std::vector<AudioPluginTrack*> tracks_{};
         SequenceProcessContext sequence{};
     public:
-        explicit Impl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostPAL* pal);
+        explicit Impl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal);
         ~Impl();
 
         int32_t sampleRate;
 
-        AudioPluginHostPAL* pal;
+        AudioPluginHostingAPI* pal;
 
         SequenceProcessContext& data() { return sequence; }
 
@@ -26,7 +26,7 @@ namespace uapmd {
         uapmd_status_t processAudio();
     };
 
-    SequenceProcessor::SequenceProcessor(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostPAL* pal) {
+    SequenceProcessor::SequenceProcessor(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal) {
         impl = new Impl(sampleRate, audioBufferSizeInFrames, umpBufferSizeInInts, pal);
     }
 
@@ -63,7 +63,7 @@ namespace uapmd {
     }
 
     // Impl
-    SequenceProcessor::Impl::Impl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostPAL* pal) :
+    SequenceProcessor::Impl::Impl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal) :
         audio_buffer_size_in_frames(audioBufferSizeInFrames),
         sampleRate(sampleRate),
         ump_buffer_size_in_ints(umpBufferSizeInInts),

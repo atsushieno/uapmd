@@ -2,7 +2,7 @@
 #include "impl/RemidyAudioPluginHostPAL.hpp"
 
 
-uapmd::AudioPluginHostPAL* uapmd::AudioPluginHostPAL::instance() {
+uapmd::AudioPluginHostingAPI* uapmd::AudioPluginHostingAPI::instance() {
     static RemidyAudioPluginHostPAL impl{};
     return &impl;
 }

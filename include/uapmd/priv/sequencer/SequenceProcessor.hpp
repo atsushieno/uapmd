@@ -4,7 +4,7 @@
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
-    class AudioPluginHostPAL;
+    class AudioPluginHostingAPI;
 
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
@@ -15,7 +15,7 @@ namespace uapmd {
         Impl *impl;
 
     public:
-        explicit SequenceProcessor(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostPAL* pal = AudioPluginHostPAL::instance());
+        explicit SequenceProcessor(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal = AudioPluginHostingAPI::instance());
         ~SequenceProcessor();
 
         SequenceProcessContext& data();

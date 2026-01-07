@@ -6,7 +6,7 @@
 #include "uapmd/priv/devices/MidiIODevice.hpp"
 
 namespace uapmd {
-    UapmdNodeUmpInputMapper::UapmdNodeUmpInputMapper(AudioPluginNodePAL* plugin)
+    UapmdNodeUmpInputMapper::UapmdNodeUmpInputMapper(AudioPluginNodeAPI* plugin)
       : UapmdUmpInputMapper(),
         plugin(plugin) {
     }
@@ -36,7 +36,7 @@ namespace uapmd {
         plugin->loadPreset(index);
     }
 
-    UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIODevice> device, AudioPluginNodePAL* plugin)
+    UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIODevice> device, AudioPluginNodeAPI* plugin)
       : UapmdUmpOutputMapper(),
         device(std::move(device)),
         plugin(plugin) {
