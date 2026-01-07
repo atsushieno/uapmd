@@ -200,5 +200,22 @@ namespace uapmd {
         void hidePluginUI(int32_t instanceId);
 
         void performPluginScanning(bool forceRescan = false);
+
+        // Plugin state save/load operations
+        // These handle the file I/O and plugin state manipulation, but not UI dialogs
+        struct PluginStateResult {
+            int32_t instanceId = -1;
+            bool success = false;
+            std::string error;
+            std::string filepath;  // Path that was used for save/load
+        };
+
+        // Load plugin state from a file
+        // Returns result with success status and any error message
+        PluginStateResult loadPluginState(int32_t instanceId, const std::string& filepath);
+
+        // Save plugin state to a file
+        // Returns result with success status and any error message
+        PluginStateResult savePluginState(int32_t instanceId, const std::string& filepath);
     };
 }

@@ -3,6 +3,7 @@
 #include "uapmd/priv/audio/AudioFileFactory.hpp"
 #include <portable-file-dialogs.h>
 #include <iostream>
+#include <fstream>
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -576,4 +577,91 @@ void uapmd::AppModel::updateDeviceLabel(int32_t instanceId, const std::string& l
             }
         }
     }
+}
+
+uapmd::AppModel::PluginStateResult uapmd::AppModel::loadPluginState(int32_t instanceId, const std::string& filepath) {
+    PluginStateResult result;
+    result.instanceId = instanceId;
+    result.filepath = filepath;
+
+    // Get plugin instance
+    auto* instance = sequencer_.getPluginInstance(instanceId);
+    if (!instance) {
+        result.success = false;
+        result.error = "Failed to get plugin instance";
+        std::cerr << result.error << std::endl;
+        return result;
+    }
+
+    // Load from file
+    std::vector<uint8_t> stateData;
+    try {
+        std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) {
+            throw std::runtime_error("Failed to open file for reading");
+        }
+
+        auto fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        stateData.resize(static_cast<size_t>(fileSize));
+        file.read(reinterpret_cast<char*>(stateData.data()), fileSize);
+        file.close();
+    } catch (const std::exception& ex) {
+        result.success = false;
+        result.error = std::format("Failed to load plugin state: {}", ex.what());
+        std::cerr << result.error << std::endl;
+        return result;
+    }
+
+    // Set plugin state
+    instance->loadState(stateData);
+    // Note: loadState doesn't return a status, so we assume success
+
+    result.success = true;
+    std::cout << "Plugin state loaded from: " << filepath << std::endl;
+    return result;
+}
+
+uapmd::AppModel::PluginStateResult uapmd::AppModel::savePluginState(int32_t instanceId, const std::string& filepath) {
+    PluginStateResult result;
+    result.instanceId = instanceId;
+    result.filepath = filepath;
+
+    // Get plugin instance
+    auto* instance = sequencer_.getPluginInstance(instanceId);
+    if (!instance) {
+        result.success = false;
+        result.error = "Failed to get plugin instance";
+        std::cerr << result.error << std::endl;
+        return result;
+    }
+
+    // Get plugin state
+    auto stateData = instance->saveState();
+    if (stateData.empty()) {
+        result.success = false;
+        result.error = "Failed to retrieve plugin state";
+        std::cerr << result.error << std::endl;
+        return result;
+    }
+
+    // Save to file as binary blob
+    try {
+        std::ofstream file(filepath, std::ios::binary);
+        if (!file.is_open()) {
+            throw std::runtime_error("Failed to open file for writing");
+        }
+        file.write(reinterpret_cast<const char*>(stateData.data()), stateData.size());
+        file.close();
+
+        result.success = true;
+        std::cout << "Plugin state saved to: " << filepath << std::endl;
+    } catch (const std::exception& ex) {
+        result.success = false;
+        result.error = std::format("Failed to save plugin state: {}", ex.what());
+        std::cerr << result.error << std::endl;
+    }
+
+    return result;
 }

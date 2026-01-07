@@ -136,6 +136,14 @@ export class PluginInstance {
             this.instanceId = -1;
         }
     }
+
+    saveState(filepath) {
+        return __remidy_instance_save_state(this.instanceId, filepath);
+    }
+
+    loadState(filepath) {
+        return __remidy_instance_load_state(this.instanceId, filepath);
+    }
 }
 
 export class ParameterUpdate {
@@ -270,5 +278,14 @@ export const sequencer = {
 
     isScanning: function() {
         return __remidy_sequencer_isScanning();
+    },
+
+    // Plugin State Management
+    savePluginState: function(instanceId, filepath) {
+        return __remidy_instance_save_state(instanceId, filepath);
+    },
+
+    loadPluginState: function(instanceId, filepath) {
+        return __remidy_instance_load_state(instanceId, filepath);
     }
 };

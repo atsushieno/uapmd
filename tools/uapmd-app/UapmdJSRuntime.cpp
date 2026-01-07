@@ -359,6 +359,52 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         }
         return choc::value::Value();
     });
+
+    jsContext_.registerFunction ("__remidy_instance_save_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto filepath = args.get<std::string> (1, "");
+
+        if (instanceId < 0 || filepath.empty())
+        {
+            auto result = choc::value::createObject ("PluginStateResult");
+            result.setMember ("success", false);
+            result.setMember ("error", "Invalid instance ID or filepath");
+            return result;
+        }
+
+        auto result = uapmd::AppModel::instance().savePluginState (instanceId, filepath);
+
+        auto obj = choc::value::createObject ("PluginStateResult");
+        obj.setMember ("success", result.success);
+        obj.setMember ("error", result.error);
+        obj.setMember ("filepath", result.filepath);
+        obj.setMember ("instanceId", result.instanceId);
+        return obj;
+    });
+
+    jsContext_.registerFunction ("__remidy_instance_load_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto filepath = args.get<std::string> (1, "");
+
+        if (instanceId < 0 || filepath.empty())
+        {
+            auto result = choc::value::createObject ("PluginStateResult");
+            result.setMember ("success", false);
+            result.setMember ("error", "Invalid instance ID or filepath");
+            return result;
+        }
+
+        auto result = uapmd::AppModel::instance().loadPluginState (instanceId, filepath);
+
+        auto obj = choc::value::createObject ("PluginStateResult");
+        obj.setMember ("success", result.success);
+        obj.setMember ("error", result.error);
+        obj.setMember ("filepath", result.filepath);
+        obj.setMember ("instanceId", result.instanceId);
+        return obj;
+    });
 }
 
 void UapmdJSRuntime::registerSequencerMidiAPI()

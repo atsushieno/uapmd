@@ -1189,8 +1189,6 @@ void MainWindow::refreshPluginList() {
 }
 
 void MainWindow::showDetailsWindow(int32_t instanceId) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-
     auto it = detailsWindows_.find(instanceId);
     if (it == detailsWindows_.end()) {
         // Create new details window state
@@ -1470,45 +1468,16 @@ void MainWindow::savePluginState(int32_t instanceId) {
     );
 
     std::string filepath = save.result();
-    if (filepath.empty()) {
+    if (filepath.empty())
         return; // User cancelled
-    }
 
-    // Get plugin state directly from plugin instance
-    auto* instance = sequencer.getPluginInstance(instanceId);
-    if (!instance) {
-        std::cerr << "Failed to get plugin instance" << std::endl;
+    // Delegate to AppModel for non-UI logic
+    auto result = uapmd::AppModel::instance().savePluginState(instanceId, filepath);
+
+    // Handle UI feedback based on result
+    if (!result.success) {
         pfd::message("Save Failed",
-            "Failed to get plugin instance",
-            pfd::choice::ok,
-            pfd::icon::error);
-        return;
-    }
-
-    auto stateData = instance->saveState();
-    if (stateData.empty()) {
-        std::cerr << "Failed to retrieve plugin state" << std::endl;
-        pfd::message("Save Failed",
-            "Failed to retrieve plugin state",
-            pfd::choice::ok,
-            pfd::icon::error);
-        return;
-    }
-
-    // Save to file as binary blob
-    try {
-        std::ofstream file(filepath, std::ios::binary);
-        if (!file.is_open()) {
-            throw std::runtime_error("Failed to open file for writing");
-        }
-        file.write(reinterpret_cast<const char*>(stateData.data()), stateData.size());
-        file.close();
-
-        std::cout << "Plugin state saved to: " << filepath << std::endl;
-    } catch (const std::exception& ex) {
-        std::cerr << "Failed to save plugin state: " << ex.what() << std::endl;
-        pfd::message("Save Failed",
-            std::format("Failed to save plugin state:\n{}", ex.what()),
+            std::format("Failed to save plugin state:\n{}", result.error),
             pfd::choice::ok,
             pfd::icon::error);
     }
@@ -1523,51 +1492,22 @@ void MainWindow::loadPluginState(int32_t instanceId) {
     );
 
     auto filepaths = open.result();
-    if (filepaths.empty()) {
+    if (filepaths.empty())
         return; // User cancelled
-    }
 
     std::string filepath = filepaths[0];
 
-    // Load from file
-    std::vector<uint8_t> stateData;
-    try {
-        std::ifstream file(filepath, std::ios::binary | std::ios::ate);
-        if (!file.is_open()) {
-            throw std::runtime_error("Failed to open file for reading");
-        }
+    // Delegate to AppModel for non-UI logic
+    auto result = uapmd::AppModel::instance().loadPluginState(instanceId, filepath);
 
-        auto fileSize = file.tellg();
-        file.seekg(0, std::ios::beg);
-
-        stateData.resize(static_cast<size_t>(fileSize));
-        file.read(reinterpret_cast<char*>(stateData.data()), fileSize);
-        file.close();
-    } catch (const std::exception& ex) {
-        std::cerr << "Failed to load plugin state: " << ex.what() << std::endl;
+    // Handle UI feedback based on result
+    if (!result.success) {
         pfd::message("Load Failed",
-            std::format("Failed to load plugin state:\n{}", ex.what()),
+            std::format("Failed to load plugin state:\n{}", result.error),
             pfd::choice::ok,
             pfd::icon::error);
         return;
     }
-
-    // Set plugin state directly on plugin instance
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* instance = sequencer.getPluginInstance(instanceId);
-    if (!instance) {
-        std::cerr << "Failed to get plugin instance" << std::endl;
-        pfd::message("Load Failed",
-            "Failed to get plugin instance",
-            pfd::choice::ok,
-            pfd::icon::error);
-        return;
-    }
-
-    instance->loadState(stateData);
-    // Note: loadState doesn't return a status, so we assume success
-
-    std::cout << "Plugin state loaded from: " << filepath << std::endl;
 
     // Refresh parameters to reflect the loaded state if details window is open
     auto detailsIt = detailsWindows_.find(instanceId);
