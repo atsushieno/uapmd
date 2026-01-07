@@ -138,6 +138,7 @@ namespace uapmd {
         void enqueueUmpForInstance(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler);
         void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device);
+        void clearMidiDeviceFromPlugin(int32_t instanceId);
         std::optional<uint8_t> pluginGroup(int32_t instanceId) const;
         std::optional<int32_t> instanceForGroup(uint8_t group) const;
 

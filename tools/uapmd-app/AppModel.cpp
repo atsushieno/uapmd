@@ -116,7 +116,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
     std::string formatCopy = format;
     std::string pluginIdCopy = pluginId;
 
-    auto instantiateCallback = [this, config, deviceLabel, pluginName](int32_t instanceId, std::string error) {
+    auto instantiateCallback = [this, config, deviceLabel, pluginName, format, pluginId](int32_t instanceId, std::string error) {
         PluginInstanceResult result;
         result.instanceId = instanceId;
         result.pluginName = pluginName;
@@ -153,8 +153,39 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         result.device = device;
         result.trackIndex = actualTrackIndex;
 
-        // Store device in map for later enable/disable operations
-        devices_[instanceId] = device;
+        // Create DeviceState and add to devices_ vector
+        auto state = std::make_shared<DeviceState>();
+        state->device = device;
+        state->label = deviceLabel;
+        state->apiName = config.apiName;
+        state->instantiating = false;
+
+        // Start the device immediately
+        int startStatus = device->start();
+        if (startStatus == 0) {
+            state->running = true;
+            state->hasError = false;
+            state->statusMessage = "Running";
+        } else {
+            state->running = false;
+            state->hasError = true;
+            state->statusMessage = std::format("Failed to start device (status {})", startStatus);
+        }
+
+        auto& pluginNode = state->pluginInstances[instanceId];
+        pluginNode.instanceId = instanceId;
+        pluginNode.pluginName = pluginName;
+        pluginNode.pluginFormat = format;
+        pluginNode.pluginId = pluginId;
+        pluginNode.statusMessage = std::format("Plugin ready (instance {})", instanceId);
+        pluginNode.instantiating = false;
+        pluginNode.hasError = false;
+        pluginNode.trackIndex = actualTrackIndex;
+
+        {
+            std::lock_guard lock(devicesMutex_);
+            devices_.push_back(DeviceEntry{nextDeviceId_++, state});
+        }
 
         // Notify all registered callbacks
         for (auto& cb : instanceCreated) {
@@ -180,11 +211,20 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     }
 
     // Stop and remove virtual MIDI device if it exists
-    auto deviceIt = devices_.find(instanceId);
-    if (deviceIt != devices_.end()) {
-        if (deviceIt->second)
-            deviceIt->second->stop();
-        devices_.erase(deviceIt);
+    {
+        std::lock_guard lock(devicesMutex_);
+        for (auto it = devices_.begin(); it != devices_.end(); ++it) {
+            auto state = it->state;
+            if (state) {
+                std::lock_guard guard(state->mutex);
+                if (state->pluginInstances.count(instanceId) > 0) {
+                    if (state->device)
+                        state->device->stop();
+                    devices_.erase(it);
+                    break;
+                }
+            }
+        }
     }
 
     // Remove the plugin instance from sequencer
@@ -201,10 +241,21 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
     result.instanceId = instanceId;
 
     // Find the device for this instance
-    auto deviceIt = devices_.find(instanceId);
-    if (deviceIt == devices_.end() || !deviceIt->second) {
+    std::shared_ptr<DeviceState> deviceState;
+    {
+        std::lock_guard lock(devicesMutex_);
+        for (auto& entry : devices_) {
+            auto state = entry.state;
+            if (state && state->pluginInstances.count(instanceId) > 0) {
+                deviceState = state;
+                break;
+            }
+        }
+    }
+
+    if (!deviceState) {
         result.success = false;
-        result.error = "Device not found for instance";
+        result.error = "Device state not found for instance";
         result.statusMessage = "Error";
         for (auto& cb : deviceEnabled) {
             cb(result);
@@ -212,25 +263,58 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
         return;
     }
 
-    auto& device = deviceIt->second;
+    // Lock the device state for modifications
+    std::lock_guard guard(deviceState->mutex);
 
-    // Start the device
-    auto statusCode = device->start();
+    // If device was destroyed (disabled), recreate it
+    if (!deviceState->device) {
+        auto actualTrackIndex = sequencer_.findTrackIndexForInstance(instanceId);
+        auto midiDevice = createLibreMidiIODevice(deviceState->apiName, deviceName.empty() ? deviceState->label : deviceName, "UAPMD Project", "0.1");
+
+        auto device = std::make_shared<UapmdMidiDevice>(midiDevice,
+                                                         &sequencer_,
+                                                         instanceId,
+                                                         actualTrackIndex,
+                                                         deviceState->apiName,
+                                                         deviceName.empty() ? deviceState->label : deviceName,
+                                                         "UAPMD Project",
+                                                         "0.1");
+
+        if (auto group = sequencer_.pluginGroup(instanceId); group.has_value()) {
+            device->group(group.value());
+        }
+
+        sequencer_.assignMidiDeviceToPlugin(instanceId, midiDevice);
+        device->initialize();
+
+        deviceState->device = device;
+        if (!deviceName.empty()) {
+            deviceState->label = deviceName;
+        }
+    }
+
+    // Start the device and update state directly
+    auto statusCode = deviceState->device->start();
+
+    // Update DeviceState directly (no need for callback to do this)
+    deviceState->running = (statusCode == 0);
+    deviceState->hasError = (statusCode != 0);
+    deviceState->statusMessage = (statusCode == 0) ? "Running" : std::format("Error (status {})", statusCode);
+
+    // Populate result for callback notification
+    result.success = (statusCode == 0);
+    result.running = deviceState->running;
+    result.statusMessage = deviceState->statusMessage;
+
     if (statusCode == 0) {
-        result.success = true;
-        result.running = true;
-        result.statusMessage = "Running";
         std::cout << "Enabled UMP device for instance: " << instanceId << std::endl;
     } else {
-        result.success = false;
-        result.running = false;
-        result.error = "Failed to start device (status: " + std::to_string(statusCode) + ")";
-        result.statusMessage = "Error";
+        result.error = std::format("Failed to start device (status: {})", statusCode);
         std::cout << "Failed to enable UMP device for instance: " << instanceId
                   << " (status: " << statusCode << ")" << std::endl;
     }
 
-    // Notify all registered callbacks
+    // Notify all registered callbacks (just for UI refresh)
     for (auto& cb : deviceEnabled) {
         cb(result);
     }
@@ -241,8 +325,19 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     result.instanceId = instanceId;
 
     // Find the device for this instance
-    auto deviceIt = devices_.find(instanceId);
-    if (deviceIt == devices_.end() || !deviceIt->second) {
+    std::shared_ptr<DeviceState> deviceState;
+    {
+        std::lock_guard lock(devicesMutex_);
+        for (auto& entry : devices_) {
+            auto state = entry.state;
+            if (state && state->pluginInstances.count(instanceId) > 0) {
+                deviceState = state;
+                break;
+            }
+        }
+    }
+
+    if (!deviceState || !deviceState->device) {
         result.success = false;
         result.error = "Device not found for instance";
         result.statusMessage = "Error";
@@ -252,14 +347,30 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
         return;
     }
 
-    // Stop the device
-    deviceIt->second->stop();
+    // Clear MIDI device from plugin node to release the shared_ptr
+    sequencer_.clearMidiDeviceFromPlugin(instanceId);
+
+    // Stop and destroy the device to unregister the virtual MIDI port
+    std::lock_guard guard(deviceState->mutex);
+    if (deviceState->device) {
+        deviceState->device->stop();
+        // Destroy the device object to unregister the virtual MIDI port
+        deviceState->device.reset();
+    }
+
+    // Update DeviceState directly (no need for callback to do this)
+    deviceState->running = false;
+    deviceState->hasError = false;
+    deviceState->statusMessage = "Stopped";
+
+    // Populate result for callback notification
     result.success = true;
     result.running = false;
-    result.statusMessage = "Stopped";
+    result.statusMessage = deviceState->statusMessage;
+
     std::cout << "Disabled UMP device for instance: " << instanceId << std::endl;
 
-    // Notify all registered callbacks
+    // Notify all registered callbacks (just for UI refresh)
     for (auto& cb : deviceDisabled) {
         cb(result);
     }
@@ -435,4 +546,34 @@ void uapmd::TransportController::unloadFile() {
     playbackPosition_ = 0.0f;
 
     std::cout << "Audio file unloaded" << std::endl;
+}
+
+std::vector<uapmd::AppModel::DeviceEntry> uapmd::AppModel::getDevices() const {
+    std::lock_guard lock(devicesMutex_);
+    return devices_;  // Return copy
+}
+
+std::optional<std::shared_ptr<uapmd::AppModel::DeviceState>> uapmd::AppModel::getDeviceForInstance(int32_t instanceId) const {
+    std::lock_guard lock(devicesMutex_);
+    for (const auto& entry : devices_) {
+        auto state = entry.state;
+        if (state && state->pluginInstances.count(instanceId) > 0) {
+            return state;
+        }
+    }
+    return std::nullopt;
+}
+
+void uapmd::AppModel::updateDeviceLabel(int32_t instanceId, const std::string& label) {
+    std::lock_guard lock(devicesMutex_);
+    for (auto& entry : devices_) {
+        auto state = entry.state;
+        if (state) {
+            std::lock_guard guard(state->mutex);
+            if (state->pluginInstances.count(instanceId) > 0) {
+                state->label = label;
+                break;
+            }
+        }
+    }
 }

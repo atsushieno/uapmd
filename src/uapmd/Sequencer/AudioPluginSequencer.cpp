@@ -786,6 +786,13 @@ void uapmd::AudioPluginSequencer::assignMidiDeviceToPlugin(int32_t instanceId, s
     node->setUmpOutputMapper(std::move(mapper));
 }
 
+void uapmd::AudioPluginSequencer::clearMidiDeviceFromPlugin(int32_t instanceId) {
+    auto* node = findPluginNodeByInstance(instanceId);
+    if (!node)
+        return;
+    node->setUmpOutputMapper(nullptr);
+}
+
 std::optional<uint8_t> uapmd::AudioPluginSequencer::pluginGroup(int32_t instanceId) const {
     return groupForInstanceOptional(instanceId);
 }

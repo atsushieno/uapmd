@@ -7,6 +7,8 @@
 #include <thread>
 #include <string>
 #include <unordered_map>
+#include <optional>
+#include <mutex>
 
 namespace uapmd {
     // Forward declaration
@@ -48,11 +50,46 @@ namespace uapmd {
     };
 
     class AppModel {
+    public:
+        // Plugin instance metadata
+        struct PluginInstanceState {
+            std::string pluginName;
+            std::string pluginFormat;
+            std::string pluginId;
+            std::string statusMessage;
+            bool instantiating = true;
+            bool hasError = false;
+            int32_t instanceId = -1;
+            int32_t trackIndex = -1;
+        };
+
+        // Device state containing MIDI device and associated plugin instances
+        struct DeviceState {
+            std::mutex mutex;
+            std::shared_ptr<UapmdMidiDevice> device;
+            std::string label;
+            std::string apiName;
+            std::string statusMessage;
+            bool running = false;
+            bool instantiating = false;
+            bool hasError = false;
+            std::unordered_map<int32_t, PluginInstanceState> pluginInstances;
+        };
+
+        // Device entry wrapper for container management
+        struct DeviceEntry {
+            int id;
+            std::shared_ptr<DeviceState> state;
+        };
+
+    private:
         AudioPluginSequencer sequencer_;
         remidy_tooling::PluginScanTool pluginScanTool_;
         std::unique_ptr<TransportController> transportController_;
         std::atomic<bool> isScanning_{false};
-        std::unordered_map<int32_t, std::shared_ptr<UapmdMidiDevice>> devices_;
+        mutable std::mutex devicesMutex_;
+        std::vector<DeviceEntry> devices_;
+        int32_t nextDeviceId_ = 1;
 
     public:
         static void instantiate();
@@ -123,6 +160,13 @@ namespace uapmd {
         // Disable virtual MIDI device for an instance
         // Notifies all registered callbacks when complete
         void disableUmpDevice(int32_t instanceId);
+
+        // Query device state for display
+        std::vector<DeviceEntry> getDevices() const;
+        std::optional<std::shared_ptr<DeviceState>> getDeviceForInstance(int32_t instanceId) const;
+
+        // Update device label from GUI
+        void updateDeviceLabel(int32_t instanceId, const std::string& label);
 
         // Result from UI show/hide operations
         struct UIStateResult {

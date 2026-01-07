@@ -128,54 +128,22 @@ MainWindow::MainWindow(GuiDefaults defaults) {
                 return;  // Error already logged elsewhere
             }
 
-            // This callback handles UI state updates for ALL instance creations
-            auto state = std::make_shared<DeviceState>();
-            state->device = result.device;
-            state->label = result.device ? std::format("{} [format]", result.pluginName) : "";
-            state->apiName = "default";  // FIXME: get from result
+            // AppModel now creates DeviceState, we just initialize GUI-specific state
+            // Initialize UMP device name buffer
+            std::string deviceLabel = result.device ? std::format("{} [format]", result.pluginName) : "";
+            umpDeviceNameBuffers_[result.instanceId] = {};
+            std::strncpy(umpDeviceNameBuffers_[result.instanceId].data(), deviceLabel.c_str(),
+                         umpDeviceNameBuffers_[result.instanceId].size() - 1);
+            umpDeviceNameBuffers_[result.instanceId][umpDeviceNameBuffers_[result.instanceId].size() - 1] = '\0';
 
-            // Start the device
-            int startStatus = result.device ? result.device->start() : -1;
-            if (startStatus == 0) {
-                state->running = true;
-                state->statusMessage = "Running";
-
-                auto& node = state->pluginInstances[result.instanceId];
-                node.instanceId = result.instanceId;
-                node.pluginName = result.pluginName;
-                node.pluginFormat = "";  // FIXME: get from result
-                node.pluginId = "";
-                node.statusMessage = std::format("Plugin ready (instance {})", result.instanceId);
-                node.instantiating = false;
-                node.hasError = false;
-                node.trackIndex = result.trackIndex;
-            } else {
-                state->running = false;
-                state->hasError = true;
-                state->statusMessage = std::format("Failed to start device (status {})", startStatus);
-            }
-            state->instantiating = false;
-
-            // Add to devices list
-            {
-                std::lock_guard lock(devicesMutex_);
-                devices_.push_back(DeviceEntry{nextDeviceId_++, state});
-            }
-
+            // Refresh UI to display new instance
             refreshInstances();
-            if (startStatus == 0) {
-                // Ensure the UMP device name buffer reflects the device name
-                umpDeviceNameBuffers_[result.instanceId] = {};
-                std::strncpy(umpDeviceNameBuffers_[result.instanceId].data(), state->label.c_str(),
-                             umpDeviceNameBuffers_[result.instanceId].size() - 1);
-                umpDeviceNameBuffers_[result.instanceId][umpDeviceNameBuffers_[result.instanceId].size() - 1] = '\0';
-            }
         });
 
     // Register callback for when plugin instances are removed (GUI or script)
     uapmd::AppModel::instance().instanceRemoved.push_back(
         [this](int32_t instanceId) {
-            // Cleanup plugin UI windows (must happen before removing from devices)
+            // Cleanup plugin UI windows
             auto windowIt = pluginWindows_.find(instanceId);
             if (windowIt != pluginWindows_.end()) {
                 windowIt->second->show(false);
@@ -191,55 +159,22 @@ MainWindow::MainWindow(GuiDefaults defaults) {
                 detailsWindows_.erase(detailsIt);
             }
 
-            // Remove from devices list
-            {
-                std::lock_guard lock(devicesMutex_);
-                for (auto it = devices_.begin(); it != devices_.end(); ++it) {
-                    auto state = it->state;
-                    std::lock_guard guard(state->mutex);
-                    if (state->pluginInstances.count(instanceId) > 0) {
-                        devices_.erase(it);
-                        break;
-                    }
-                }
-            }
-
-            // Refresh the instance list
+            // AppModel handles removing from devices_ - we just refresh UI
             refreshInstances();
         });
 
     // Register callback for when devices are enabled
     uapmd::AppModel::instance().deviceEnabled.push_back(
         [this](const uapmd::AppModel::DeviceStateResult& result) {
-            // Find and update the device state
-            std::lock_guard lock(devicesMutex_);
-            for (auto& entry : devices_) {
-                auto state = entry.state;
-                std::lock_guard guard(state->mutex);
-                if (state->pluginInstances.count(result.instanceId) > 0) {
-                    state->running = result.running;
-                    state->statusMessage = result.statusMessage;
-                    state->hasError = !result.success;
-                    break;
-                }
-            }
+            // AppModel updates DeviceState directly - we just refresh UI
+            refreshInstances();
         });
 
     // Register callback for when devices are disabled
     uapmd::AppModel::instance().deviceDisabled.push_back(
         [this](const uapmd::AppModel::DeviceStateResult& result) {
-            // Find and update the device state
-            std::lock_guard lock(devicesMutex_);
-            for (auto& entry : devices_) {
-                auto state = entry.state;
-                std::lock_guard guard(state->mutex);
-                if (state->pluginInstances.count(result.instanceId) > 0) {
-                    state->running = result.running;
-                    state->statusMessage = result.statusMessage;
-                    state->hasError = !result.success;
-                    break;
-                }
-            }
+            // AppModel updates DeviceState directly - we just refresh UI
+            refreshInstances();
         });
 
     // Register callback for when scripts request to show UI
@@ -942,20 +877,14 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     if (umpDeviceNameBuffers_.find(instanceId) == umpDeviceNameBuffers_.end()) {
         // Initialize the buffer from device state label if available, otherwise use default
         std::string initialName;
-
         bool labelFound = false;
-        {
-            std::lock_guard lock(devicesMutex_);
-            for (auto& entry : devices_) {
-                auto state = entry.state;
-                std::lock_guard guard(state->mutex);
-                if (state->pluginInstances.count(instanceId) > 0) {
-                    if (!state->label.empty()) {
-                        initialName = state->label;
-                        labelFound = true;
-                    }
-                    break;
-                }
+
+        auto deviceState = uapmd::AppModel::instance().getDeviceForInstance(instanceId);
+        if (deviceState && *deviceState) {
+            std::lock_guard guard((*deviceState)->mutex);
+            if (!(*deviceState)->label.empty()) {
+                initialName = (*deviceState)->label;
+                labelFound = true;
             }
         }
 
@@ -973,18 +902,12 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     bool deviceExists = false;
     bool deviceInstantiating = false;
 
-    {
-        std::lock_guard lock(devicesMutex_);
-        for (auto& entry : devices_) {
-            auto state = entry.state;
-            std::lock_guard guard(state->mutex);
-            if (state->pluginInstances.count(instanceId) > 0) {
-                deviceExists = true;
-                deviceRunning = state->running;
-                deviceInstantiating = state->instantiating;
-                break;
-            }
-        }
+    auto deviceState = uapmd::AppModel::instance().getDeviceForInstance(instanceId);
+    if (deviceState && *deviceState) {
+        std::lock_guard guard((*deviceState)->mutex);
+        deviceExists = true;
+        deviceRunning = (*deviceState)->running;
+        deviceInstantiating = (*deviceState)->instantiating;
     }
 
     TrackInstance ti;
@@ -1734,25 +1657,15 @@ void MainWindow::handleHideUI(int32_t instanceId) {
 }
 
 void MainWindow::handleEnableDevice(int32_t instanceId, const std::string& deviceName) {
-    // Update the device label in the UI state
-    {
-        std::lock_guard lock(devicesMutex_);
-        for (auto& entry : devices_) {
-            auto state = entry.state;
-            std::lock_guard guard(state->mutex);
-            if (state->pluginInstances.count(instanceId) > 0) {
-                state->label = deviceName;
-                break;
-            }
-        }
-    }
+    // Update device label in AppModel
+    uapmd::AppModel::instance().updateDeviceLabel(instanceId, deviceName);
 
-    // Enable the device - this will trigger the global callback to update running state
+    // Enable device (AppModel will update state and trigger callback for UI refresh)
     uapmd::AppModel::instance().enableUmpDevice(instanceId, deviceName);
 }
 
 void MainWindow::handleDisableDevice(int32_t instanceId) {
-    // Disable the device - this will trigger the global callback to update running state
+    // Disable device (AppModel will update state and trigger callback for UI refresh)
     uapmd::AppModel::instance().disableUmpDevice(instanceId);
 }
 

@@ -57,37 +57,7 @@ class MainWindow {
         ScriptEditor scriptEditor_;
 
         // Virtual MIDI device state tracking
-        struct PluginInstanceState {
-            std::string pluginName;
-            std::string pluginFormat;
-            std::string pluginId;
-            std::string statusMessage;
-            bool instantiating = true;
-            bool hasError = false;
-            int32_t instanceId = -1;
-            int32_t trackIndex = -1;
-        };
-
-        struct DeviceState {
-            std::mutex mutex;
-            std::shared_ptr<UapmdMidiDevice> device;
-            std::string label;
-            std::string apiName;
-            std::string statusMessage;
-            bool running = false;
-            bool instantiating = false;
-            bool hasError = false;
-            std::unordered_map<int32_t, PluginInstanceState> pluginInstances;
-        };
-
-        struct DeviceEntry {
-            int id;
-            std::shared_ptr<DeviceState> state;
-        };
-
-        mutable std::mutex devicesMutex_;
-        std::vector<DeviceEntry> devices_;
-        int nextDeviceId_ = 1;
+        // Device state structures moved to AppModel - use AppModel::DeviceState, etc.
 
         std::unordered_map<int32_t, std::unique_ptr<remidy::gui::ContainerWindow>> pluginWindows_;
         std::unordered_map<int32_t, bool> pluginWindowEmbedded_;
