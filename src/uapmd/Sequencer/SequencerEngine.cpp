@@ -6,6 +6,7 @@
 #include <cstring>
 #include <cmidi2.h>
 #include "remidy/remidy.hpp"
+#include "../Midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
 
@@ -131,6 +132,11 @@ namespace uapmd {
         void unregisterParameterListener(int32_t instanceId) override;
         std::vector<ParameterUpdate> getParameterUpdates(int32_t instanceId) override;
 
+        void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) override;
+
+        void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device) override;
+        void clearMidiDeviceFromPlugin(int32_t instanceId) override;
+
     private:
         void removeTrack(size_t index);
 
@@ -154,6 +160,9 @@ namespace uapmd {
 
         // Output dispatch
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
+
+        // Application-specific MIDI device integration
+        AudioPluginNode* findPluginNodeByInstance(int32_t instanceId);
     };
 
     std::unique_ptr<SequencerEngine> SequencerEngine::create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts) {
@@ -496,6 +505,10 @@ namespace uapmd {
         });
     }
 
+    void uapmd::SequencerEngineImpl::setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) {
+        // FIXME: implement
+    }
+
     bool SequencerEngineImpl::removePluginInstance(int32_t instanceId) {
         // Destroy UI first (if caller didn't already)
         auto* instance = getPluginInstance(instanceId);
@@ -504,6 +517,9 @@ namespace uapmd {
 
         // Parameter listening cleanup
         unregisterParameterListener(instanceId);
+
+        // Clear plugin output handler (application-specific concern)
+        setPluginOutputHandler(instanceId, nullptr);
 
         // Function block cleanup
         plugin_function_blocks_.erase(instanceId);
@@ -1024,6 +1040,39 @@ namespace uapmd {
                 return catalogPlugin->displayName();
         }
         return "Plugin " + std::to_string(instanceId);
+    }
+
+    uapmd::AudioPluginNode* uapmd::SequencerEngineImpl::findPluginNodeByInstance(int32_t instanceId) {
+        auto& tracksRef = tracks();
+        for (auto* track : tracksRef) {
+            if (!track)
+                continue;
+            for (auto* plugin : track->graph().plugins()) {
+                if (plugin && plugin->instanceId() == instanceId)
+                    return plugin;
+            }
+        }
+        return nullptr;
+    }
+
+    void uapmd::SequencerEngineImpl::assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device) {
+        if (!device)
+            return;
+        auto* node = findPluginNodeByInstance(instanceId);
+        if (!node)
+            return;
+        auto* palPtr = node->pal();
+        if (!palPtr)
+            return;
+        auto mapper = std::make_unique<UapmdNodeUmpOutputMapper>(std::move(device), palPtr);
+        node->setUmpOutputMapper(std::move(mapper));
+    }
+
+    void uapmd::SequencerEngineImpl::clearMidiDeviceFromPlugin(int32_t instanceId) {
+        auto* node = findPluginNodeByInstance(instanceId);
+        if (!node)
+            return;
+        node->setUmpOutputMapper(nullptr);
     }
 
 }

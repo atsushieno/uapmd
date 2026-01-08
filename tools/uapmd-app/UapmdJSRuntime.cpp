@@ -483,7 +483,7 @@ void UapmdJSRuntime::registerSequencerTransportAPI()
     jsContext_.registerFunction ("__remidy_sequencer_getPlaybackPosition", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto position = sequencer.playbackPositionSamples();
+        auto position = sequencer.engine()->playbackPosition();
         return choc::value::createInt64 (position);
     });
 }

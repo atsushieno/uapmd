@@ -25,12 +25,6 @@ namespace uapmd {
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
 
-        using PluginOutputHandler = std::function<void(const uapmd_ump_t*, size_t)>;
-        using HandlerMap = std::unordered_map<int32_t, PluginOutputHandler>;
-        std::shared_ptr<HandlerMap> plugin_output_handlers_;
-
-        AudioPluginNode* findPluginNodeByInstance(int32_t instanceId);
-
     public:
         AudioPluginSequencer(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
         ~AudioPluginSequencer();
@@ -46,11 +40,6 @@ namespace uapmd {
         std::vector<int32_t> getInstanceIds();
         std::string getPluginFormat(int32_t instanceId);
         int32_t findTrackIndexForInstance(int32_t instanceId) const;
-
-        // Application-specific MIDI device integration
-        void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler);
-        void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device);
-        void clearMidiDeviceFromPlugin(int32_t instanceId);
 
         // Audio controller
 

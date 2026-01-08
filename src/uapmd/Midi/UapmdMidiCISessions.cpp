@@ -106,7 +106,7 @@ namespace uapmd {
 
         hostProps.updateCommonRulesDeviceInfo(device_info);
 
-        auto* instance = sequencer->engine()->getPluginInstance(instance_id);
+        auto* instance = sequencer->getPluginInstance(instance_id);
 
         std::vector<commonproperties::MidiCIControl> allCtrlList{};
 
@@ -136,7 +136,7 @@ namespace uapmd {
         auto customGetter = [this, originalGetter](const std::string& property_id, const std::string& res_id) -> std::vector<uint8_t> {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
                 if (device->sequencer && device->instance_id >= 0) {
-                    auto* instance = device->sequencer->engine()->getPluginInstance(device->instance_id);
+                    auto* instance = device->sequencer->getPluginInstance(device->instance_id);
                     if (instance) {
                         return instance->saveState();
                     }
@@ -156,7 +156,7 @@ namespace uapmd {
                                                      const std::string& media_type, const std::vector<uint8_t>& body) -> bool {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
                 if (device->sequencer && device->instance_id >= 0) {
-                    auto* instance = device->sequencer->engine()->getPluginInstance(device->instance_id);
+                    auto* instance = device->sequencer->getPluginInstance(device->instance_id);
                     if (instance) {
                         std::vector<uint8_t> state = body;
                         instance->loadState(state);

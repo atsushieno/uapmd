@@ -248,7 +248,7 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
                                                   "0.1");
 
         auto device = std::make_shared<UapmdMidiDevice>(midiDevice,
-                                                         &sequencer_,
+                                                         sequencer_.engine(),
                                                          instanceId,
                                                          actualTrackIndex,
                                                          deviceState->apiName,
@@ -260,7 +260,7 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
             device->group(group.value());
         }
 
-        sequencer_.assignMidiDeviceToPlugin(instanceId, midiDevice);
+        sequencer_.engine()->assignMidiDeviceToPlugin(instanceId, midiDevice);
         device->initialize();
 
         deviceState->device = device;
@@ -324,7 +324,7 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     }
 
     // Clear MIDI device from plugin node to release the shared_ptr
-    sequencer_.clearMidiDeviceFromPlugin(instanceId);
+    sequencer_.engine()->clearMidiDeviceFromPlugin(instanceId);
 
     // Stop and destroy the device to unregister the virtual MIDI port
     std::lock_guard guard(deviceState->mutex);

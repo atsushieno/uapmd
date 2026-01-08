@@ -22,7 +22,7 @@ namespace uapmd {
 
         std::string api_name{};
 
-        AudioPluginSequencer* sequencer{};
+        SequencerEngine* sequencer{};
         int32_t instance_id{-1};
         int32_t track_index{-1};
         uint8_t ump_group{0xFF};
@@ -39,7 +39,7 @@ namespace uapmd {
 
     public:
         UapmdMidiDevice(std::shared_ptr<MidiIODevice> midiDevice,
-                        AudioPluginSequencer* sequencer,
+                        SequencerEngine* sequencer,
                         int32_t instanceId,
                         int32_t trackIndex,
                         std::string apiName,

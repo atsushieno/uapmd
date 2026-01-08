@@ -12,7 +12,7 @@ using namespace midicci::commonproperties;
 namespace uapmd {
 
     UapmdMidiDevice::UapmdMidiDevice(std::shared_ptr<MidiIODevice> midiDevice,
-                                     AudioPluginSequencer* sharedSequencer,
+                                     SequencerEngine* sharedSequencer,
                                      int32_t instanceId,
                                      int32_t trackIndex,
                                      std::string apiName,
@@ -51,7 +51,7 @@ namespace uapmd {
 
     void UapmdMidiDevice::initialize() {
         if (sequencer) {
-            if (auto groupOpt = sequencer->engine()->groupForInstance(instance_id); groupOpt.has_value()) {
+            if (auto groupOpt = sequencer->groupForInstance(instance_id); groupOpt.has_value()) {
                 ump_group = groupOpt.value();
             }
         }
@@ -83,15 +83,15 @@ namespace uapmd {
         uapmd_sessions->interceptUmpInput(ump, sizeInBytes, timestamp);
 
         if (instance_id >= 0) {
-            sequencer->engine()->enqueueUmpForInstance(instance_id, ump, sizeInBytes, timestamp);
+            sequencer->enqueueUmpForInstance(instance_id, ump, sizeInBytes, timestamp);
             return;
         }
 
         auto groupId = static_cast<uint8_t>((ump[0] >> 28) & 0x0F);
-        if (auto instance = sequencer->engine()->instanceForGroup(groupId); instance.has_value()) {
-            sequencer->engine()->enqueueUmpForInstance(instance.value(), ump, sizeInBytes, timestamp);
+        if (auto instance = sequencer->instanceForGroup(groupId); instance.has_value()) {
+            sequencer->enqueueUmpForInstance(instance.value(), ump, sizeInBytes, timestamp);
         } else {
-            sequencer->engine()->enqueueUmp(groupId, ump, sizeInBytes, timestamp);
+            sequencer->enqueueUmp(groupId, ump, sizeInBytes, timestamp);
         }
     }
 

@@ -56,6 +56,12 @@ namespace uapmd {
         // Add plugin to existing track
         virtual void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackId, std::string error)> callback) = 0;
 
+        using PluginOutputHandler = std::function<void(const uapmd_ump_t*, size_t)>;
+        virtual void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) = 0;
+
+        virtual void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device) = 0;
+        virtual void clearMidiDeviceFromPlugin(int32_t instanceId) = 0;
+
         virtual bool removePluginInstance(int32_t instanceId) = 0;
 
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
