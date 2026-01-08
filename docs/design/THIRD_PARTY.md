@@ -2,22 +2,22 @@
 
 ## MIDI 2.0 I/O
 
-We use libremidi because none of others offers the same feature set.
+We use libremidi because none of the other libraries offer the same feature set.
 
-- It eases development in decent cross platform manner.
+- It eases development in an elegant cross-platform manner.
 - It supports MIDI 2.0 consistently.
 
-Rust: There are too many delusive MIDI libraries that only takes name and implements nothing.
+Rust: There are too many delusive MIDI libraries that only take midi2 name and implement nothing.
 
 ## MIDI 2.0 UMP / MIDI-CI message processing
 
-We ended up porting ktmidi to C++. ktmidi supports all of Profile Configuration, Property Exchange, and Process Inquiry messages, as well as session communication.
+We ended up porting ktmidi to C++ as `midicci`. ktmidi supports all of Profile Configuration, Property Exchange, and Process Inquiry messages, as well as session communication.
 
-[midi2-dev/ni-midi2](https://github.com/midi2-dev/ni-midi2) is left quite incomplete state and they don't work on it anymore.
+[midi2-dev/ni-midi2](https://github.com/midi2-dev/ni-midi2) is left quite incomplete, and they don't work on it anymore.
 
-juce_midi_ci does good job too, but feature wise it's still incomplete compared to ktmidi. Also licensing matters.
+juce_midi_ci does a good job too, but feature wise it's still incomplete compared to ktmidi. Also licensing matters.
 
-When we need complicated UMP processing maybe we use cmidi2 (ni-midi2 does not even process SysEx8 messages).
+We use atsushieno/cmidi2 for complicated UMP processing (ni-midi2 does not even process SysEx8 messages).
 
 ## Audio I/O
 
@@ -51,3 +51,5 @@ When we need complicated UMP processing maybe we use cmidi2 (ni-midi2 does not e
 ## GUI
 
 - We use ImGui for now
+- We used to use Web UI, but gave up for rapid development that does not involve message marshaling between the model and the UI.
+  - Now that we also have to deal with the plugin UIs, it will be even more complicated.

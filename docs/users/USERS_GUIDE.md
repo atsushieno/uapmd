@@ -6,13 +6,13 @@ uapmd-app is a standalone desktop application that lets you pick up audio plugin
 
 ## General Notes
 
-Please bear in mind that UAPMD is still under heavy development. There are many things that do not work as expected. It is poorly tested (there is no decent testable environment that sets up plugins on the CI server). Various crashers.
+Please bear in mind that UAPMD is still under heavy development. There are still some features that do not work as expected. It is poorly tested (there is no decent testable environment that sets up plugins on the CI server). Various crashers.
 
 Somehow (against @atsushieno's desire) things tend to work better on macOS, especially when it comes to platform MIDI features.
 
 ## Step 1: set up audio plugins you want to use
 
-uapmd-app makes use of audio plugins in VST3/AU/LV2/CLAP format, so just install whatever you would like to use. There may be plugins that do not work with uapmd-app, but it's hard to tell in prior.
+uapmd-app makes use of audio plugins in VST3/AU/LV2/CLAP format, so just install whatever you would like to use. There may be plugins that do not work with uapmd-app, but it's hard to tell in prior. We have some list of working and not-working plugins on [the wiki page](https://github.com/atsushieno/uapmd/wiki/KnownToWork).
 
 You can find some open source audio plugins by using [StudioRack](https://studiorack.github.io/studiorack-site/) (just note that there are instrument files that uapmd-app does not directly support).
 
@@ -55,6 +55,6 @@ It can retrieve parameters metadata and presets from the UMP device too, but is 
 
 IF everything works well, you'll see like this:
 
-![Dexed on midicci-keyboard](../images/dexed-on-midicci.png)
+![uapmd-app with midicci-app](../images/uapmd-midicci-v0.1.2+.png)
 
 Note that changing parameter values often does not work fine yet.
