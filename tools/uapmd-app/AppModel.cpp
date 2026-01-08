@@ -131,47 +131,13 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
             return;
         }
 
-        // Create virtual MIDI device
         auto actualTrackIndex = sequencer_.findTrackIndexForInstance(instanceId);
-        auto midiDevice = createLibreMidiIODevice(config.apiName, deviceLabel, config.manufacturer, config.version);
-
-        auto device = std::make_shared<UapmdMidiDevice>(midiDevice,
-                                                         &sequencer_,
-                                                         instanceId,
-                                                         actualTrackIndex,
-                                                         config.apiName,
-                                                         deviceLabel,
-                                                         config.manufacturer,
-                                                         config.version);
-
-        if (auto group = sequencer_.engine()->groupForInstance(instanceId); group.has_value()) {
-            device->group(group.value());
-        }
-
-        sequencer_.assignMidiDeviceToPlugin(instanceId, midiDevice);
-        device->initialize();
-
-        result.device = device;
-        result.trackIndex = actualTrackIndex;
 
         // Create DeviceState and add to devices_ vector
         auto state = std::make_shared<DeviceState>();
-        state->device = device;
         state->label = deviceLabel;
         state->apiName = config.apiName;
         state->instantiating = false;
-
-        // Start the device immediately
-        int startStatus = device->start();
-        if (startStatus == 0) {
-            state->running = true;
-            state->hasError = false;
-            state->statusMessage = "Running";
-        } else {
-            state->running = false;
-            state->hasError = true;
-            state->statusMessage = std::format("Failed to start device (status {})", startStatus);
-        }
 
         auto& pluginNode = state->pluginInstances[instanceId];
         pluginNode.instanceId = instanceId;
@@ -187,6 +153,12 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
             std::lock_guard lock(devicesMutex_);
             devices_.push_back(DeviceEntry{nextDeviceId_++, state});
         }
+
+        // Reuse the dedicated logic for MIDI device initialization
+        enableUmpDevice(instanceId, deviceLabel);
+
+        result.device = state->device;
+        result.trackIndex = actualTrackIndex;
 
         // Notify all registered callbacks
         for (auto& cb : instanceCreated) {
@@ -270,7 +242,10 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
     // If device was destroyed (disabled), recreate it
     if (!deviceState->device) {
         auto actualTrackIndex = sequencer_.findTrackIndexForInstance(instanceId);
-        auto midiDevice = createLibreMidiIODevice(deviceState->apiName, deviceName.empty() ? deviceState->label : deviceName, "UAPMD Project", "0.1");
+        auto midiDevice = createLibreMidiIODevice(deviceState->apiName,
+                                                  deviceName.empty() ? deviceState->label : deviceName,
+                                                  "UAPMD Project",
+                                                  "0.1");
 
         auto device = std::make_shared<UapmdMidiDevice>(midiDevice,
                                                          &sequencer_,
