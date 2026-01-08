@@ -7,16 +7,16 @@
 #include <unordered_set>
 #include <chrono>
 #include <optional>
+#include <array>
 #include <imgui.h>
 #include <uapmd/uapmd.hpp>
-#include "MidiKeyboard.hpp"
 #include "PluginList.hpp"
 #include "PluginSelector.hpp"
-#include "ParameterList.hpp"
 #include "TrackList.hpp"
 #include "AudioDeviceSettings.hpp"
 #include "ScriptEditor.hpp"
 #include "SpectrumAnalyzer.hpp"
+#include "InstanceDetails.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 
@@ -86,17 +86,7 @@ class MainWindow {
         // UMP device name buffers for each instance
         std::unordered_map<int32_t, std::array<char, 128>> umpDeviceNameBuffers_;
 
-        struct DetailsWindowState {
-            MidiKeyboard midiKeyboard;
-            ParameterList parameterList;
-            bool visible = false;
-            std::vector<uapmd::PresetsMetadata> presets;
-            int selectedPreset = -1;
-            float pitchBendValue = 0.0f; // -1..1 UI range
-            float channelPressureValue = 0.0f; // 0..1 UI range
-        };
-
-        std::unordered_map<int32_t, DetailsWindowState> detailsWindows_;
+        InstanceDetails instanceDetails_;
 
     public:
         explicit MainWindow(GuiDefaults defaults = {});
@@ -119,21 +109,10 @@ class MainWindow {
         // Instance control
         void renderInstanceControl();
         void refreshInstances();
-        void refreshParameters(int32_t instanceId, DetailsWindowState& state);
-        void applyParameterUpdates(int32_t instanceId, DetailsWindowState& state);
-        void refreshPresets(int32_t instanceId, DetailsWindowState& state);
-        void loadSelectedPreset(int32_t instanceId, DetailsWindowState& state);
-        void renderParameterControls(int32_t instanceId, DetailsWindowState& state);
         bool handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height);
         void onPluginWindowResized(int32_t instanceId);
         void onPluginWindowClosed(int32_t instanceId);
         bool fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height);
-
-        // Details window management
-        void showDetailsWindow(int32_t instanceId);
-        void hideDetailsWindow(int32_t instanceId);
-        void onDetailsWindowClosed(int32_t instanceId);
-        void renderDetailsWindows();
 
         // State save/load
         void savePluginState(int32_t instanceId);

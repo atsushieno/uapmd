@@ -23,70 +23,6 @@
 #include "../AppModel.hpp"
 #include "uapmd/priv/audio/AudioFileFactory.hpp"
 
-namespace {
-using ParameterContext = uapmd::gui::ParameterList::ParameterContext;
-
-struct PerNoteSelection {
-    remidy::PerNoteControllerContextTypes type{remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_NONE};
-    remidy::PerNoteControllerContext context{};
-};
-
-std::optional<PerNoteSelection> buildPerNoteSelection(const uapmd::gui::ParameterList& list) {
-    PerNoteSelection selection{};
-    selection.context = remidy::PerNoteControllerContext{};
-    switch (list.context()) {
-    case ParameterContext::Global:
-        return std::nullopt;
-    case ParameterContext::Group:
-        selection.type = remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_GROUP;
-        selection.context.group = list.contextValue();
-        break;
-    case ParameterContext::Channel:
-        selection.type = remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_CHANNEL;
-        selection.context.channel = list.contextValue();
-        break;
-    case ParameterContext::Key:
-        selection.type = remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE;
-        selection.context.note = list.contextValue();
-        break;
-    }
-    return selection;
-}
-
-std::vector<uapmd::ParameterMetadata> toParameterMetadata(const std::vector<remidy::PluginParameter*>& pluginParams) {
-    std::vector<uapmd::ParameterMetadata> metadata;
-    metadata.reserve(pluginParams.size());
-    for (auto* param : pluginParams) {
-        if (!param) {
-            continue;
-        }
-        std::vector<uapmd::ParameterNamedValue> namedValues;
-        namedValues.reserve(param->enums().size());
-        for (const auto& enumeration : param->enums()) {
-            namedValues.push_back(uapmd::ParameterNamedValue{
-                .value = enumeration.value,
-                .name = enumeration.label
-            });
-        }
-        metadata.push_back(uapmd::ParameterMetadata{
-            .index = param->index(),
-            .stableId = param->stableId(),
-            .name = param->name(),
-            .path = param->path(),
-            .defaultPlainValue = param->defaultPlainValue(),
-            .minPlainValue = param->minPlainValue(),
-            .maxPlainValue = param->maxPlainValue(),
-            .automatable = param->automatable(),
-            .hidden = param->hidden(),
-            .discrete = param->discrete(),
-            .namedValues = std::move(namedValues)
-        });
-    }
-    return metadata;
-}
-
-}
-
 namespace uapmd::gui {
 MainWindow::MainWindow(GuiDefaults defaults) {
     SetupImGuiStyle();
@@ -154,10 +90,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             pluginWindowResizeIgnore_.erase(instanceId);
 
             // Cleanup details window if open
-            auto detailsIt = detailsWindows_.find(instanceId);
-            if (detailsIt != detailsWindows_.end()) {
-                detailsWindows_.erase(detailsIt);
-            }
+            instanceDetails_.removeInstance(instanceId);
 
             // AppModel handles removing from devices_ - we just refresh UI
             refreshInstances();
@@ -228,11 +161,11 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     });
 
     trackList_.setOnShowDetails([this](int32_t instanceId) {
-        showDetailsWindow(instanceId);
+        instanceDetails_.showWindow(instanceId);
     });
 
     trackList_.setOnHideDetails([this](int32_t instanceId) {
-        hideDetailsWindow(instanceId);
+        instanceDetails_.hideWindow(instanceId);
     });
 
     trackList_.setOnEnableDevice([this](int32_t instanceId, const std::string& deviceName) {
@@ -400,7 +333,28 @@ void MainWindow::render(void* window) {
     renderPluginSelectorWindow();
     renderDeviceSettingsWindow();
     renderPlayerSettingsWindow();
-    renderDetailsWindows();
+    InstanceDetails::RenderContext detailsContext{
+        .buildTrackInstance = [this](int32_t instanceId) -> std::optional<TrackInstance> {
+            return buildTrackInstanceInfo(instanceId);
+        },
+        .savePluginState = [this](int32_t instanceId) {
+            savePluginState(instanceId);
+        },
+        .loadPluginState = [this](int32_t instanceId) {
+            loadPluginState(instanceId);
+        },
+        .removeInstance = [this](int32_t instanceId) {
+            handleRemoveInstance(instanceId);
+        },
+        .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
+            setNextChildWindowSize(id, defaultSize);
+        },
+        .updateChildWindowSizeState = [this](const std::string& id) {
+            updateChildWindowSizeState(id);
+        },
+        .uiScale = uiScale_,
+    };
+    instanceDetails_.render(detailsContext);
     scriptEditor_.render();
 
     uiScaleDirty_ = false;
@@ -921,8 +875,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     // We track this ourselves because instance->isUIVisible() may not be reliable
     auto visIt = pluginWindowVisible_.find(instanceId);
     ti.uiVisible = (visIt != pluginWindowVisible_.end() && visIt->second);
-    auto detailsIt = detailsWindows_.find(instanceId);
-    ti.detailsVisible = detailsIt != detailsWindows_.end() && detailsIt->second.visible;
+    ti.detailsVisible = instanceDetails_.isVisible(instanceId);
     ti.deviceRunning = deviceRunning;
     ti.deviceExists = deviceExists;
     ti.deviceInstantiating = deviceInstantiating;
@@ -1032,13 +985,7 @@ void MainWindow::refreshInstances() {
             ++it;
         }
     }
-    for (auto it = detailsWindows_.begin(); it != detailsWindows_.end();) {
-        if (std::find(instances.begin(), instances.end(), it->first) == instances.end()) {
-            it = detailsWindows_.erase(it);
-        } else {
-            ++it;
-        }
-    }
+    instanceDetails_.pruneInvalidInstances(instances);
     std::vector<int32_t> resizeIgnoreRemove{};
     resizeIgnoreRemove.reserve(pluginWindowResizeIgnore_.size());
     for (auto id : pluginWindowResizeIgnore_) {
@@ -1048,126 +995,6 @@ void MainWindow::refreshInstances() {
     for (auto id : resizeIgnoreRemove)
         pluginWindowResizeIgnore_.erase(id);
 
-}
-
-void MainWindow::refreshParameters(int32_t instanceId, DetailsWindowState& state) {
-    auto* pal = uapmd::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
-    if (!pal) {
-        return;
-    }
-
-    auto* parameterSupport = pal->parameterSupport();
-    auto perNoteSelection = buildPerNoteSelection(state.parameterList);
-    const bool usingPerNoteControllers = perNoteSelection.has_value();
-
-    if (usingPerNoteControllers && !parameterSupport) {
-        state.parameterList.setParameters({});
-        return;
-    }
-
-    std::vector<uapmd::ParameterMetadata> parameters;
-    if (usingPerNoteControllers) {
-        auto pluginParams = parameterSupport->perNoteControllers(perNoteSelection->type, perNoteSelection->context);
-        parameters = toParameterMetadata(pluginParams);
-    } else {
-        parameters = pal->parameterMetadataList();
-    }
-
-    state.parameterList.setParameters(parameters);
-    if (parameters.empty()) {
-        if (!usingPerNoteControllers) {
-            applyParameterUpdates(instanceId, state);
-        }
-        return;
-    }
-
-    for (size_t i = 0; i < parameters.size(); ++i) {
-        double initialValue = parameters[i].defaultPlainValue;
-        if (parameterSupport) {
-            double queriedValue = initialValue;
-            auto status = usingPerNoteControllers
-                              ? parameterSupport->getPerNoteController(perNoteSelection->context, parameters[i].index, &queriedValue)
-                              : parameterSupport->getParameter(parameters[i].index, &queriedValue);
-            if (status == remidy::StatusCode::OK) {
-                initialValue = queriedValue;
-            }
-        }
-        state.parameterList.setParameterValue(i, static_cast<float>(initialValue));
-
-        // Update value string
-        auto valueString = (usingPerNoteControllers && perNoteSelection)
-                               ? pal->getPerNoteControllerValueString(
-                                     static_cast<uint8_t>(perNoteSelection->context.note),
-                                     static_cast<uint8_t>(parameters[i].index),
-                                     initialValue)
-                               : pal->getParameterValueString(parameters[i].index, initialValue);
-        state.parameterList.setParameterValueString(i, valueString);
-    }
-
-    if (!usingPerNoteControllers) {
-        applyParameterUpdates(instanceId, state);
-    }
-}
-
-void MainWindow::refreshPresets(int32_t instanceId, DetailsWindowState& state) {
-    state.presets.clear();
-    state.selectedPreset = -1;
-
-    auto* pal = uapmd::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
-    if (!pal) {
-        return;
-    }
-
-    state.presets = pal->presetMetadataList();
-}
-
-void MainWindow::loadSelectedPreset(int32_t instanceId, DetailsWindowState& state) {
-    if (state.selectedPreset < 0 || state.selectedPreset >= static_cast<int>(state.presets.size())) {
-        return;
-    }
-
-    auto* pal = uapmd::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
-    if (!pal) {
-        return;
-    }
-
-    const auto& preset = state.presets[state.selectedPreset];
-    pal->loadPreset(preset.index);
-    std::cout << "Loading preset " << preset.name << " for instance " << instanceId << std::endl;
-
-    refreshParameters(instanceId, state);
-}
-
-void MainWindow::applyParameterUpdates(int32_t instanceId, DetailsWindowState& state) {
-    if (state.parameterList.context() != ParameterList::ParameterContext::Global) {
-        return;
-    }
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* pal = sequencer.engine()->getPluginInstance(instanceId);
-    if (!pal) {
-        return;
-    }
-
-    auto updates = sequencer.engine()->getParameterUpdates(instanceId);
-    const auto& parameters = state.parameterList.getParameters();
-
-    for (const auto& update : updates) {
-        for (size_t i = 0; i < parameters.size(); ++i) {
-            if (parameters[i].index == update.parameterIndex) {
-                state.parameterList.setParameterValue(i, static_cast<float>(update.value));
-                auto valueString = pal->getParameterValueString(parameters[i].index, update.value);
-                state.parameterList.setParameterValueString(i, valueString);
-                break;
-            }
-        }
-    }
-}
-
-void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState& state) {
-    applyParameterUpdates(instanceId, state);
-
-    // Render the parameter list component
-    state.parameterList.render();
 }
 
 void MainWindow::refreshPluginList() {
@@ -1186,271 +1013,6 @@ void MainWindow::refreshPluginList() {
     }
 
     pluginSelector_.setPlugins(plugins);
-}
-
-void MainWindow::showDetailsWindow(int32_t instanceId) {
-    auto it = detailsWindows_.find(instanceId);
-    if (it == detailsWindows_.end()) {
-        // Create new details window state
-        DetailsWindowState state;
-
-        // Initialize MIDI keyboard for this instance
-        state.midiKeyboard.setOctaveRange(3, 4);
-        state.midiKeyboard.setKeyEventCallback([this, instanceId](int note, int velocity, bool isPressed) {
-            auto& seq = uapmd::AppModel::instance().sequencer();
-            // Route directly to this instance to avoid ambiguity on tracks with multiple plugins
-            if (isPressed) {
-                seq.engine()->sendNoteOn(instanceId, note);
-            } else {
-                seq.engine()->sendNoteOff(instanceId, note);
-            }
-        });
-
-        // Set up parameter list callbacks
-        state.parameterList.setOnParameterChanged([this, instanceId](uint32_t parameterIndex, float value) {
-            auto& seq = uapmd::AppModel::instance().sequencer();
-            auto perNoteSelection = [this, instanceId]() -> std::optional<PerNoteSelection> {
-                auto it = detailsWindows_.find(instanceId);
-                if (it == detailsWindows_.end()) {
-                    return std::nullopt;
-                }
-                return buildPerNoteSelection(it->second.parameterList);
-            }();
-
-            if (!perNoteSelection) {
-                seq.engine()->setParameterValue(instanceId, parameterIndex, value);
-                return;
-            }
-
-            auto* pal = seq.engine()->getPluginInstance(instanceId);
-            if (!pal) {
-                return;
-            }
-            if (perNoteSelection->type == remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE) {
-                pal->setPerNoteControllerValue(
-                    static_cast<uint8_t>(perNoteSelection->context.note),
-                    static_cast<uint8_t>(parameterIndex),
-                    value);
-                return;
-            }
-            if (auto* parameterSupport = pal->parameterSupport())
-                parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value, 0);
-        });
-
-        state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
-            auto& seq = uapmd::AppModel::instance().sequencer();
-            auto* pal = seq.engine()->getPluginInstance(instanceId);
-            if (pal) {
-                auto perNoteSelection = [this, instanceId]() -> std::optional<PerNoteSelection> {
-                    auto it = detailsWindows_.find(instanceId);
-                    if (it == detailsWindows_.end())
-                        return std::nullopt;
-                    return buildPerNoteSelection(it->second.parameterList);
-                }();
-
-                if (perNoteSelection) {
-                    return pal->getPerNoteControllerValueString(
-                        static_cast<uint8_t>(perNoteSelection->context.note),
-                        static_cast<uint8_t>(parameterIndex),
-                        value);
-                }
-                return pal->getParameterValueString(parameterIndex, value);
-            }
-            return "";
-        });
-
-        state.parameterList.setOnContextChanged([this, instanceId](ParameterList::ParameterContext, uint8_t) {
-            auto it = detailsWindows_.find(instanceId);
-            if (it == detailsWindows_.end()) {
-                return;
-            }
-            refreshParameters(instanceId, it->second);
-        });
-
-        state.visible = true;
-        refreshParameters(instanceId, state);
-        refreshPresets(instanceId, state);
-        detailsWindows_[instanceId] = std::move(state);
-    } else {
-        // Window already exists, just show it
-        it->second.visible = true;
-    }
-}
-
-void MainWindow::hideDetailsWindow(int32_t instanceId) {
-    auto it = detailsWindows_.find(instanceId);
-    if (it != detailsWindows_.end()) {
-        it->second.visible = false;
-    }
-}
-
-void MainWindow::onDetailsWindowClosed(int32_t instanceId) {
-    auto it = detailsWindows_.find(instanceId);
-    if (it != detailsWindows_.end()) {
-        it->second.visible = false;
-    }
-}
-
-void MainWindow::renderDetailsWindows() {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-
-    std::vector<int32_t> detailIds;
-    detailIds.reserve(detailsWindows_.size());
-    for (const auto& entry : detailsWindows_) {
-        detailIds.push_back(entry.first);
-    }
-
-    for (int32_t instanceId : detailIds) {
-        auto it = detailsWindows_.find(instanceId);
-        if (it == detailsWindows_.end()) {
-            continue;
-        }
-
-        auto& detailsState = it->second;
-        if (!detailsState.visible) {
-            continue;
-        }
-
-        // Create ImGui window for this instance's details
-        std::string windowTitle = sequencer.engine()->getPluginName(instanceId) + " (" +
-                                 sequencer.getPluginFormat(instanceId) + ") - Details###Details" +
-                                 std::to_string(instanceId);
-
-        bool windowOpen = detailsState.visible;
-        bool deleteRequested = false;
-        std::string windowSizeId = std::format("DetailsWindow{}", instanceId);
-        float baseWidth = 600.0f;
-        const float viewportWidth = ImGui::GetIO().DisplaySize.x;
-        if (viewportWidth > 0.0f && uiScale_ > 0.0f) {
-            baseWidth = std::min(baseWidth, viewportWidth / uiScale_);
-        }
-        setNextChildWindowSize(windowSizeId, ImVec2(baseWidth, 500.0f));
-        if (ImGui::Begin(windowTitle.c_str(), &windowOpen)) {
-            updateChildWindowSizeState(windowSizeId);
-            auto* instance = sequencer.engine()->getPluginInstance(instanceId);
-            if (!instance) {
-                ImGui::TextUnformatted("Instance is no longer available.");
-            } else {
-                if (auto trackInstance = buildTrackInstanceInfo(instanceId)) {
-                    bool disableShowUIButton = !trackInstance->hasUI;
-                    if (disableShowUIButton) {
-                        ImGui::BeginDisabled();
-                    }
-                    const char* uiButtonText = trackInstance->uiVisible ? "Hide UI" : "Show UI";
-                    if (ImGui::Button(uiButtonText)) {
-                        if (trackInstance->uiVisible) {
-                            uapmd::AppModel::instance().hidePluginUI(instanceId);
-                        } else {
-                            uapmd::AppModel::instance().requestShowPluginUI(instanceId);
-                        }
-                    }
-                    if (disableShowUIButton) {
-                        ImGui::EndDisabled();
-                    }
-
-                    ImGui::SameLine();
-
-                    ImGui::SameLine();
-                }
-
-                if (ImGui::Button("Save State")) {
-                    savePluginState(instanceId);
-                }
-
-                ImGui::SameLine();
-                if (ImGui::Button("Load State")) {
-                    loadPluginState(instanceId);
-                }
-
-                ImGui::SameLine();
-                if (ImGui::Button("Delete")) {
-                    deleteRequested = true;
-                }
-
-                ImGui::Separator();
-
-                if (detailsState.parameterList.getParameters().empty()) {
-                    refreshParameters(instanceId, detailsState);
-                }
-                if (detailsState.presets.empty()) {
-                    refreshPresets(instanceId, detailsState);
-                }
-
-                ImGui::AlignTextToFramePadding();
-                ImGui::TextUnformatted("Pitchbend:");
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(140.0f);
-                if (ImGui::SliderFloat("##Pitchbend", &detailsState.pitchBendValue,
-                                       -1.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
-                    sequencer.engine()->sendPitchBend(instanceId, detailsState.pitchBendValue);
-                }
-                ImGui::SameLine();
-                ImGui::AlignTextToFramePadding();
-                ImGui::TextUnformatted("Chan.Pressure:");
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(150.0f);
-                if (ImGui::SliderFloat("##ChanPressure", &detailsState.channelPressureValue,
-                                       0.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
-                    sequencer.engine()->sendChannelPressure(instanceId, detailsState.channelPressureValue);
-                }
-                detailsState.midiKeyboard.render();
-                ImGui::Separator();
-
-                ImGui::Text("Presets:");
-                if (detailsState.presets.empty()) {
-                    ImGui::TextDisabled("No presets available for this plugin.");
-                } else {
-                    std::string presetPreviewLabel = "Select preset...";
-                    if (detailsState.selectedPreset >= 0 &&
-                        detailsState.selectedPreset < static_cast<int>(detailsState.presets.size())) {
-                        presetPreviewLabel = detailsState.presets[detailsState.selectedPreset].name;
-                        if (presetPreviewLabel.empty()) {
-                            presetPreviewLabel = "(Unnamed preset)";
-                        }
-                    }
-
-                    if (ImGui::BeginCombo("##PresetCombo", presetPreviewLabel.c_str())) {
-                        for (size_t i = 0; i < detailsState.presets.size(); i++) {
-                            const bool isSelected = (detailsState.selectedPreset == static_cast<int>(i));
-                            std::string displayName = detailsState.presets[i].name;
-                            if (displayName.empty()) {
-                                displayName = "(Unnamed preset)";
-                            }
-                            // Ensure ImGui receives a stable ID even if the preset has no label.
-                            std::string selectableLabel =
-                                displayName + "##Preset" + std::to_string(i);
-                            if (ImGui::Selectable(selectableLabel.c_str(), isSelected)) {
-                                detailsState.selectedPreset = static_cast<int>(i);
-                                loadSelectedPreset(instanceId, detailsState);
-                            }
-                            if (isSelected) {
-                                ImGui::SetItemDefaultFocus();
-                            }
-                        }
-                        ImGui::EndCombo();
-                    }
-                }
-
-                ImGui::Separator();
-
-                ImGui::Text("Parameters:");
-                if (ImGui::BeginChild("ParametersChild", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar)) {
-                    renderParameterControls(instanceId, detailsState);
-                }
-                ImGui::EndChild();
-            }
-        }
-        ImGui::End();
-
-        // Update visibility if user closed the window
-        if (!windowOpen) {
-            hideDetailsWindow(instanceId);
-        }
-
-        if (deleteRequested) {
-            handleRemoveInstance(instanceId);
-        }
-    }
 }
 
 void MainWindow::savePluginState(int32_t instanceId) {
@@ -1510,10 +1072,7 @@ void MainWindow::loadPluginState(int32_t instanceId) {
     }
 
     // Refresh parameters to reflect the loaded state if details window is open
-    auto detailsIt = detailsWindows_.find(instanceId);
-    if (detailsIt != detailsWindows_.end()) {
-        refreshParameters(instanceId, detailsIt->second);
-    }
+    instanceDetails_.refreshParametersForInstance(instanceId);
 }
 
 void MainWindow::createDeviceForPlugin(const std::string& format, const std::string& pluginId, int32_t trackIndex) {
