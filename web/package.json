@@ -1,0 +1,24 @@
+{
+  "name": "@remidy/wasm-imgui",
+  "version": "0.1.0",
+  "description": "WebAssembly build of uapmd-app with ImGui+SDL2",
+  "private": true,
+  "scripts": {
+    "build": "./build-wasm-imgui.sh",
+    "serve": "npx serve -s build-wasm-imgui -l 8080",
+    "dev": "npm run build && npm run serve"
+  },
+  "keywords": [
+    "wasm",
+    "webassembly",
+    "imgui",
+    "sdl2",
+    "audio",
+    "plugin-host"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.0"
+  }
+}
