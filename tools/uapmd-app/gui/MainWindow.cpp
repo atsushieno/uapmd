@@ -1623,34 +1623,24 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
 
 void MainWindow::sendPitchBend(int32_t instanceId, float normalizedValue) {
     auto& seq = uapmd::AppModel::instance().sequencer();
-    auto trackIdx = seq.findTrackIndexForInstance(instanceId);
-    if (trackIdx < 0) {
-        return;
-    }
-
     float clamped = std::clamp((normalizedValue + 1.0f) * 0.5f, 0.0f, 1.0f);
     uint32_t pitchValue = static_cast<uint32_t>(clamped * 4294967295.0f);
     uapmd_ump_t buffer[2];
     uint64_t ump = cmidi2_ump_midi2_pitch_bend_direct(0, 0, pitchValue);
     buffer[0] = static_cast<uapmd_ump_t>(ump >> 32);
     buffer[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
-    seq.engine()->enqueueUmp(trackIdx, buffer, sizeof(buffer), 0);
+    seq.engine()->enqueueUmp(instanceId, buffer, sizeof(buffer), 0);
 }
 
 void MainWindow::sendChannelPressure(int32_t instanceId, float pressure) {
     auto& seq = uapmd::AppModel::instance().sequencer();
-    auto trackIdx = seq.findTrackIndexForInstance(instanceId);
-    if (trackIdx < 0) {
-        return;
-    }
-
     float clamped = std::clamp(pressure, 0.0f, 1.0f);
     uint32_t pressureValue = static_cast<uint32_t>(clamped * 4294967295.0f);
     uapmd_ump_t buffer[2];
     uint64_t ump = cmidi2_ump_midi2_caf(0, 0, pressureValue);
     buffer[0] = static_cast<uapmd_ump_t>(ump >> 32);
     buffer[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
-    seq.engine()->enqueueUmp(trackIdx, buffer, sizeof(buffer), 0);
+    seq.engine()->enqueueUmp(instanceId, buffer, sizeof(buffer), 0);
 }
 
 }

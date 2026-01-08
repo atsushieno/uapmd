@@ -131,8 +131,6 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
             return;
         }
 
-        auto actualTrackIndex = sequencer_.findTrackIndexForInstance(instanceId);
-
         // Create DeviceState and add to devices_ vector
         auto state = std::make_shared<DeviceState>();
         state->label = deviceLabel;
@@ -147,7 +145,6 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         pluginNode.statusMessage = std::format("Plugin ready (instance {})", instanceId);
         pluginNode.instantiating = false;
         pluginNode.hasError = false;
-        pluginNode.trackIndex = actualTrackIndex;
 
         {
             std::lock_guard lock(devicesMutex_);
@@ -158,7 +155,6 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         enableUmpDevice(instanceId, deviceLabel);
 
         result.device = state->device;
-        result.trackIndex = actualTrackIndex;
 
         // Notify all registered callbacks
         for (auto& cb : instanceCreated) {
@@ -201,7 +197,7 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     }
 
     // Remove the plugin instance from sequencer
-    sequencer_.removePluginInstance(instanceId);
+    sequencer_.engine()->removePluginInstance(instanceId);
 
     // Notify all registered callbacks
     for (auto& cb : instanceRemoved) {

@@ -83,17 +83,6 @@ int32_t uapmd::AudioPluginSequencer::findTrackIndexForInstance(int32_t instanceI
     return -1;
 }
 
-bool uapmd::AudioPluginSequencer::removePluginInstance(int32_t instanceId) {
-    // Hide UI if visible (application-specific concern)
-    auto* instance = sequencer->getPluginInstance(instanceId);
-    if (instance && instance->hasUISupport() && instance->isUIVisible()) {
-        instance->hideUI();
-    }
-
-    // Delegate ALL cleanup to SequencerEngine
-    return sequencer->removePluginInstance(instanceId);
-}
-
 uapmd_status_t uapmd::AudioPluginSequencer::startAudio() {
     return dispatcher->start();
 }

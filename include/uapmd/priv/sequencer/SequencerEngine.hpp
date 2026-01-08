@@ -68,7 +68,7 @@ namespace uapmd {
 
         // Playback control (accessed by AudioPluginSequencer)
         virtual bool isPlaybackActive() const = 0;
-        virtual void setPlaybackPosition(int64_t samples) = 0;
+        virtual void playbackPosition(int64_t samples) = 0;
         virtual int64_t playbackPosition() const = 0;
         virtual void startPlayback() = 0;
         virtual void stopPlayback() = 0;
@@ -94,12 +94,11 @@ namespace uapmd {
         virtual std::optional<int32_t> instanceForGroup(uint8_t group) const = 0;
 
         // Event routing
-        virtual void enqueueUmpForInstance(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;
-        virtual void enqueueUmp(int32_t targetId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;
+        virtual void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;
 
         // Convenience methods for sending MIDI events
-        virtual void sendNoteOn(int32_t targetId, int32_t note) = 0;
-        virtual void sendNoteOff(int32_t targetId, int32_t note) = 0;
+        virtual void sendNoteOn(int32_t instanceId, int32_t note) = 0;
+        virtual void sendNoteOff(int32_t instanceId, int32_t note) = 0;
         virtual void setParameterValue(int32_t instanceId, int32_t index, double value) = 0;
 
         // Parameter listening

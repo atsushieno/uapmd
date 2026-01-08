@@ -93,7 +93,7 @@ namespace uapmd {
 
         // Playback control
         bool isPlaybackActive() const override;
-        void setPlaybackPosition(int64_t samples) override;
+        void playbackPosition(int64_t samples) override;
         int64_t playbackPosition() const override;
         void startPlayback() override;
         void stopPlayback() override;
@@ -119,12 +119,11 @@ namespace uapmd {
         std::optional<int32_t> instanceForGroup(uint8_t group) const override;
 
         // Event routing
-        void enqueueUmpForInstance(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) override;
-        void enqueueUmp(int32_t targetId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) override;
+        void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) override;
 
         // Convenience methods for sending MIDI events
-        void sendNoteOn(int32_t targetId, int32_t note) override;
-        void sendNoteOff(int32_t targetId, int32_t note) override;
+        void sendNoteOn(int32_t instanceId, int32_t note) override;
+        void sendNoteOff(int32_t instanceId, int32_t note) override;
         void setParameterValue(int32_t instanceId, int32_t index, double value) override;
 
         // Parameter listening
@@ -510,10 +509,13 @@ namespace uapmd {
     }
 
     bool SequencerEngineImpl::removePluginInstance(int32_t instanceId) {
-        // Destroy UI first (if caller didn't already)
+        // Hide and destroy UI first (if caller didn't already)
         auto* instance = getPluginInstance(instanceId);
-        if (instance)
+        if (instance) {
+            if (instance->hasUISupport() && instance->isUIVisible())
+                instance->hideUI();
             instance->destroyUI();
+        }
 
         // Parameter listening cleanup
         unregisterParameterListener(instanceId);
@@ -562,7 +564,7 @@ namespace uapmd {
         return is_playback_active_.load(std::memory_order_acquire);
     }
 
-    void SequencerEngineImpl::setPlaybackPosition(int64_t samples) {
+    void SequencerEngineImpl::playbackPosition(int64_t samples) {
         playback_position_samples_.store(samples, std::memory_order_release);
     }
 
@@ -907,7 +909,7 @@ namespace uapmd {
     }
 
     // UMP routing
-    void SequencerEngineImpl::enqueueUmpForInstance(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    void SequencerEngineImpl::enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
         auto mapping = plugin_function_blocks_.find(instanceId);
         if (mapping == plugin_function_blocks_.end() || !mapping->second.track)
             return;
@@ -927,56 +929,20 @@ namespace uapmd {
         mapping->second.track->scheduleEvents(timestamp, ump, sizeInBytes);
     }
 
-    void SequencerEngineImpl::enqueueUmp(int32_t targetId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-        auto route = resolveTarget(targetId);
-        if (!route || !route->track) {
-            remidy::Logger::global()->logError(std::format("Failed to enqueue UMP events: unresolved target {}", targetId).c_str());
-            return;
-        }
-        if (route->instanceId >= 0) {
-            if (auto group = groupForInstanceOptional(route->instanceId); group.has_value()) {
-                auto* bytes = reinterpret_cast<uint8_t*>(ump);
-                size_t offset = 0;
-                while (offset < sizeInBytes) {
-                    auto* msg = reinterpret_cast<cmidi2_ump*>(bytes + offset);
-                    auto sz = cmidi2_ump_get_message_size_bytes(msg);
-                    auto* words = reinterpret_cast<uint32_t*>(bytes + offset);
-                    words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group.value()) << 24);
-                    offset += sz;
-                }
-            }
-        }
-        if (!route->track->scheduleEvents(timestamp, ump, sizeInBytes))
-            remidy::Logger::global()->logError(std::format("Failed to enqueue UMP events for target {}: size {}", targetId, sizeInBytes).c_str());
+    void SequencerEngineImpl::sendNoteOn(int32_t instanceId, int32_t note) {
+        cmidi2_ump umps[2];
+        // group is dummy, to be replaced by group for instanceId
+        auto ump = cmidi2_ump_midi2_note_on(0, 0, note, 0, 0xF800, 0);
+        cmidi2_ump_write64(umps, ump);
+        enqueueUmp(instanceId, umps, 8, 0);
     }
 
-    void SequencerEngineImpl::sendNoteOn(int32_t targetId, int32_t note) {
-        auto route = resolveTarget(targetId);
-        if (!route || !route->track) {
-            remidy::Logger::global()->logError(std::format("sendNoteOn unresolved target {}", targetId).c_str());
-            return;
-        }
-
-        auto group = groupForInstance(route->instanceId).value_or(0);
+    void SequencerEngineImpl::sendNoteOff(int32_t instanceId, int32_t note) {
         cmidi2_ump umps[2];
-        auto ump = cmidi2_ump_midi2_note_on(group, 0, note, 0, 0xF800, 0);
+        // group is dummy, to be replaced by group for instanceId
+        auto ump = cmidi2_ump_midi2_note_off(0, 0, note, 0, 0xF800, 0);
         cmidi2_ump_write64(umps, ump);
-        if (!route->track->scheduleEvents(0, umps, 8))
-            remidy::Logger::global()->logError(std::format("Failed to enqueue note on event for target {}: {}", targetId, note).c_str());
-    }
-
-    void SequencerEngineImpl::sendNoteOff(int32_t targetId, int32_t note) {
-        auto route = resolveTarget(targetId);
-        if (!route || !route->track) {
-            remidy::Logger::global()->logError(std::format("sendNoteOff unresolved target {}", targetId).c_str());
-            return;
-        }
-        auto group = groupForInstance(route->instanceId).value_or(0);
-        cmidi2_ump umps[2];
-        auto ump = cmidi2_ump_midi2_note_off(group, 0, note, 0, 0xF800, 0);
-        cmidi2_ump_write64(umps, ump);
-        if (!route->track->scheduleEvents(0, umps, 8))
-            remidy::Logger::global()->logError(std::format("Failed to enqueue note off event for target {}: {}", targetId, note).c_str());
+        enqueueUmp(instanceId, umps, 8, 0);
     }
 
     void SequencerEngineImpl::setParameterValue(int32_t instanceId, int32_t index, double value) {

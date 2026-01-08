@@ -60,7 +60,6 @@ namespace uapmd {
             bool instantiating = true;
             bool hasError = false;
             int32_t instanceId = -1;
-            int32_t trackIndex = -1;
         };
 
         // Device state containing MIDI device and associated plugin instances
@@ -116,7 +115,6 @@ namespace uapmd {
         struct PluginInstanceResult {
             int32_t instanceId = -1;
             std::shared_ptr<UapmdMidiDevice> device;
-            int32_t trackIndex = -1;
             std::string pluginName;
             std::string error;
         };

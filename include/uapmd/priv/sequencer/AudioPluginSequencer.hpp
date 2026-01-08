@@ -31,11 +31,6 @@ namespace uapmd {
 
         SequencerEngine* engine() const { return sequencer.get(); }
 
-        // Audio plugin support
-
-        // Application-specific plugin management wrappers
-        bool removePluginInstance(int32_t instanceId);
-
         // Application-specific queries (metadata, track info)
         std::vector<int32_t> getInstanceIds();
         std::string getPluginFormat(int32_t instanceId);

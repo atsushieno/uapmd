@@ -83,16 +83,13 @@ namespace uapmd {
         uapmd_sessions->interceptUmpInput(ump, sizeInBytes, timestamp);
 
         if (instance_id >= 0) {
-            sequencer->enqueueUmpForInstance(instance_id, ump, sizeInBytes, timestamp);
+            sequencer->enqueueUmp(instance_id, ump, sizeInBytes, timestamp);
             return;
         }
 
         auto groupId = static_cast<uint8_t>((ump[0] >> 28) & 0x0F);
-        if (auto instance = sequencer->instanceForGroup(groupId); instance.has_value()) {
-            sequencer->enqueueUmpForInstance(instance.value(), ump, sizeInBytes, timestamp);
-        } else {
-            sequencer->enqueueUmp(groupId, ump, sizeInBytes, timestamp);
-        }
+        if (auto instance = sequencer->instanceForGroup(groupId); instance.has_value())
+            sequencer->enqueueUmp(instance.value(), ump, sizeInBytes, timestamp);
     }
 
 }
