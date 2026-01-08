@@ -71,6 +71,9 @@ namespace uapmd {
         std::unordered_map<int32_t, remidy::PluginParameterSupport::ParameterChangeListenerId> parameter_listener_tokens_;
         std::mutex parameter_listener_mutex_;
 
+        // Offline rendering mode
+        std::atomic<bool> offline_rendering_{false};
+
     public:
         explicit SequencerEngineImpl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
 
@@ -138,6 +141,9 @@ namespace uapmd {
 
         void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device) override;
         void clearMidiDeviceFromPlugin(int32_t instanceId) override;
+
+        bool offlineRendering() const override;
+        void offlineRendering(bool enabled) override;
 
     private:
         void removeTrack(size_t index);
@@ -1068,6 +1074,14 @@ namespace uapmd {
         if (!node)
             return;
         node->setUmpOutputMapper(nullptr);
+    }
+
+    bool uapmd::SequencerEngineImpl::offlineRendering() const {
+        return offline_rendering_.load(std::memory_order_acquire);
+    }
+
+    void uapmd::SequencerEngineImpl::offlineRendering(bool enabled) {
+        offline_rendering_.store(enabled, std::memory_order_release);
     }
 
 }

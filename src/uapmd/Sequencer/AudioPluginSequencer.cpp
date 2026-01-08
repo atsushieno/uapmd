@@ -48,14 +48,6 @@ uapmd::AudioPluginSequencer::~AudioPluginSequencer() {
     stopAudio();
 }
 
-bool uapmd::AudioPluginSequencer::offlineRendering() const {
-    return offline_rendering_.load(std::memory_order_acquire);
-}
-
-void uapmd::AudioPluginSequencer::offlineRendering(bool enabled) {
-    offline_rendering_.store(enabled, std::memory_order_release);
-}
-
 std::vector<int32_t> uapmd::AudioPluginSequencer::getInstanceIds() {
     std::vector<int32_t> instances;
     for (auto& track : sequencer->tracks()) {
@@ -93,10 +85,6 @@ uapmd_status_t uapmd::AudioPluginSequencer::stopAudio() {
 
 uapmd_status_t uapmd::AudioPluginSequencer::isAudioPlaying() {
     return dispatcher->isPlaying();
-}
-
-int64_t uapmd::AudioPluginSequencer::playbackPositionSamples() const {
-    return sequencer->playbackPosition();
 }
 
 int32_t uapmd::AudioPluginSequencer::sampleRate() { return sample_rate; }

@@ -808,9 +808,9 @@ void MainWindow::renderPlayerSettings() {
     }
 
     ImGui::SameLine();
-    bool offlineRendering = sequencer.offlineRendering();
+    bool offlineRendering = sequencer.engine()->offlineRendering();
     if (ImGui::Checkbox("Offline Rendering", &offlineRendering)) {
-        sequencer.offlineRendering(offlineRendering);
+        sequencer.engine()->offlineRendering(offlineRendering);
     }
 
     // Position slider
