@@ -124,6 +124,9 @@ namespace uapmd {
         // Convenience methods for sending MIDI events
         void sendNoteOn(int32_t instanceId, int32_t note) override;
         void sendNoteOff(int32_t instanceId, int32_t note) override;
+        void sendPitchBend(int32_t instanceId, float normalizedValue) override;
+        void sendChannelPressure(int32_t instanceId, float pressure) override;
+
         void setParameterValue(int32_t instanceId, int32_t index, double value) override;
 
         // Parameter listening
@@ -914,6 +917,12 @@ namespace uapmd {
         if (mapping == plugin_function_blocks_.end() || !mapping->second.track)
             return;
 
+        // FIXME: this Function Block mapping is wrong.
+        //  We define function blocks per track basis i.e. each track should form a virtual UMP device.
+        //  (and also, we currently do not even form one virtual device to gather all the plugins within the track so
+        //  every single plugin creates a virtual UMP device exposed to the platform API.)
+        //  So mapping will not simply work. We set group 0 everywhere for now.
+        /*
         if (auto group = groupForInstanceOptional(instanceId); group.has_value()) {
             auto* bytes = reinterpret_cast<uint8_t*>(ump);
             size_t offset = 0;
@@ -924,14 +933,14 @@ namespace uapmd {
                 words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group.value()) << 24);
                 offset += sz;
             }
-        }
+        }*/
 
         mapping->second.track->scheduleEvents(timestamp, ump, sizeInBytes);
     }
 
     void SequencerEngineImpl::sendNoteOn(int32_t instanceId, int32_t note) {
         cmidi2_ump umps[2];
-        // group is dummy, to be replaced by group for instanceId
+        // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
         auto ump = cmidi2_ump_midi2_note_on(0, 0, note, 0, 0xF800, 0);
         cmidi2_ump_write64(umps, ump);
         enqueueUmp(instanceId, umps, 8, 0);
@@ -939,8 +948,28 @@ namespace uapmd {
 
     void SequencerEngineImpl::sendNoteOff(int32_t instanceId, int32_t note) {
         cmidi2_ump umps[2];
-        // group is dummy, to be replaced by group for instanceId
+        // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
         auto ump = cmidi2_ump_midi2_note_off(0, 0, note, 0, 0xF800, 0);
+        cmidi2_ump_write64(umps, ump);
+        enqueueUmp(instanceId, umps, 8, 0);
+    }
+
+    void SequencerEngineImpl::sendPitchBend(int32_t instanceId, float normalizedValue) {
+        cmidi2_ump umps[2];
+        float clamped = std::clamp((normalizedValue + 1.0f) * 0.5f, 0.0f, 1.0f);
+        uint32_t pitchValue = static_cast<uint32_t>(clamped * 4294967295.0f);
+        // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
+        auto ump = cmidi2_ump_midi2_pitch_bend_direct(0, 0, pitchValue);
+        cmidi2_ump_write64(umps, ump);
+        enqueueUmp(instanceId, umps, 8, 0);
+    }
+
+    void SequencerEngineImpl::sendChannelPressure(int32_t instanceId, float pressure) {
+        cmidi2_ump umps[2];
+        float clamped = std::clamp(pressure, 0.0f, 1.0f);
+        uint32_t pressureValue = static_cast<uint32_t>(clamped * 4294967295.0f);
+        // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
+        auto ump = cmidi2_ump_midi2_caf(0, 0, pressureValue);
         cmidi2_ump_write64(umps, ump);
         enqueueUmp(instanceId, umps, 8, 0);
     }

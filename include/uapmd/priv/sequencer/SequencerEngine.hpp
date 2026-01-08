@@ -99,6 +99,8 @@ namespace uapmd {
         // Convenience methods for sending MIDI events
         virtual void sendNoteOn(int32_t instanceId, int32_t note) = 0;
         virtual void sendNoteOff(int32_t instanceId, int32_t note) = 0;
+        virtual void sendPitchBend(int32_t instanceId, float normalizedValue) = 0;
+        virtual void sendChannelPressure(int32_t instanceId, float pressure) = 0;
         virtual void setParameterValue(int32_t instanceId, int32_t index, double value) = 0;
 
         // Parameter listening

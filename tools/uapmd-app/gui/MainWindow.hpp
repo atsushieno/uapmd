@@ -152,8 +152,6 @@ class MainWindow {
         void handleEnableDevice(int32_t instanceId, const std::string& deviceName);
         void handleDisableDevice(int32_t instanceId);
         void handleRemoveInstance(int32_t instanceId);
-        void sendPitchBend(int32_t instanceId, float normalizedValue);
-        void sendChannelPressure(int32_t instanceId, float pressure);
         void renderDeviceSettingsWindow();
         void renderPlayerSettingsWindow();
         void renderPluginSelectorWindow();

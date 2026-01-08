@@ -1382,7 +1382,7 @@ void MainWindow::renderDetailsWindows() {
                 ImGui::SetNextItemWidth(140.0f);
                 if (ImGui::SliderFloat("##Pitchbend", &detailsState.pitchBendValue,
                                        -1.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
-                    sendPitchBend(instanceId, detailsState.pitchBendValue);
+                    sequencer.engine()->sendPitchBend(instanceId, detailsState.pitchBendValue);
                 }
                 ImGui::SameLine();
                 ImGui::AlignTextToFramePadding();
@@ -1391,7 +1391,7 @@ void MainWindow::renderDetailsWindows() {
                 ImGui::SetNextItemWidth(150.0f);
                 if (ImGui::SliderFloat("##ChanPressure", &detailsState.channelPressureValue,
                                        0.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
-                    sendChannelPressure(instanceId, detailsState.channelPressureValue);
+                    sequencer.engine()->sendChannelPressure(instanceId, detailsState.channelPressureValue);
                 }
                 detailsState.midiKeyboard.render();
                 ImGui::Separator();
@@ -1619,28 +1619,6 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
     uapmd::AppModel::instance().removePluginInstance(instanceId);
 
     std::cout << "Removed plugin instance: " << instanceId << std::endl;
-}
-
-void MainWindow::sendPitchBend(int32_t instanceId, float normalizedValue) {
-    auto& seq = uapmd::AppModel::instance().sequencer();
-    float clamped = std::clamp((normalizedValue + 1.0f) * 0.5f, 0.0f, 1.0f);
-    uint32_t pitchValue = static_cast<uint32_t>(clamped * 4294967295.0f);
-    uapmd_ump_t buffer[2];
-    uint64_t ump = cmidi2_ump_midi2_pitch_bend_direct(0, 0, pitchValue);
-    buffer[0] = static_cast<uapmd_ump_t>(ump >> 32);
-    buffer[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
-    seq.engine()->enqueueUmp(instanceId, buffer, sizeof(buffer), 0);
-}
-
-void MainWindow::sendChannelPressure(int32_t instanceId, float pressure) {
-    auto& seq = uapmd::AppModel::instance().sequencer();
-    float clamped = std::clamp(pressure, 0.0f, 1.0f);
-    uint32_t pressureValue = static_cast<uint32_t>(clamped * 4294967295.0f);
-    uapmd_ump_t buffer[2];
-    uint64_t ump = cmidi2_ump_midi2_caf(0, 0, pressureValue);
-    buffer[0] = static_cast<uapmd_ump_t>(ump >> 32);
-    buffer[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
-    seq.engine()->enqueueUmp(instanceId, buffer, sizeof(buffer), 0);
 }
 
 }
