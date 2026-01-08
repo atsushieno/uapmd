@@ -144,13 +144,13 @@ class RemidyApply {
         sequencer->setDefaultChannels(inputChannels, outputChannels);
 
         sequencer->addSimpleTrack(formatName, pluginId,
-            [&](uapmd::AudioPluginNode* node, uapmd::AudioPluginTrack* track, int32_t trackIndex, std::string error) {
+            [&](int32_t instance, int32_t trackIndex, std::string error) {
                 if (!error.empty()) {
                     std::cerr << "addSimplePluginTrack() failed: " << error << std::endl;
                     trackReady = true;
                     return;
                 }
-                pluginTrack = track;
+                pluginTrack = sequencer->tracks()[trackIndex];
                 trackReady = true;
                 std::cerr << "Plugin track loaded successfully" << std::endl;
             });
