@@ -99,10 +99,10 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
     // Set up spectrum analyzer data providers
     inputSpectrumAnalyzer_.setDataProvider([this](float* data, int dataSize) {
-        uapmd::AppModel::instance().sequencer().getInputSpectrum(data, dataSize);
+        uapmd::AppModel::instance().sequencer().engine()->getInputSpectrum(data, dataSize);
     });
     outputSpectrumAnalyzer_.setDataProvider([this](float* data, int dataSize) {
-        uapmd::AppModel::instance().sequencer().getOutputSpectrum(data, dataSize);
+        uapmd::AppModel::instance().sequencer().engine()->getOutputSpectrum(data, dataSize);
     });
 
     refreshDeviceList();
@@ -198,7 +198,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             }
 
             auto& sequencer = uapmd::AppModel::instance().sequencer();
-            auto* instance = sequencer.getPluginInstance(result.instanceId);
+            auto* instance = sequencer.engine()->getPluginInstance(result.instanceId);
             if (!instance) return;
 
             // Mark as embedded and configure container window if UI was just created
@@ -448,7 +448,7 @@ void MainWindow::renderPluginSelectorWindow() {
         // Update track options before rendering
         std::vector<TrackDestinationOption> trackOptions;
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto tracks = sequencer.getTrackInfos();
+        auto tracks = sequencer.engine()->getTrackInfos();
         for (const auto& track : tracks) {
             TrackDestinationOption option{
                 .trackIndex = track.trackIndex,
@@ -590,7 +590,7 @@ bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, u
     if (!success)
         pluginWindowResizeIgnore_.erase(instanceId);
 
-    auto* instance = sequencer.getPluginInstance(instanceId);
+    auto* instance = sequencer.engine()->getPluginInstance(instanceId);
     if (!instance->setUISize(width, height)) {
         uint32_t adjustedWidth = width;
         uint32_t adjustedHeight = height;
@@ -634,7 +634,7 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
     const uint32_t currentWidth = static_cast<uint32_t>(std::max(currentBounds.width, 0));
     const uint32_t currentHeight = static_cast<uint32_t>(std::max(currentBounds.height, 0));
 
-    auto* instance = sequencer.getPluginInstance(instanceId);
+    auto* instance = sequencer.engine()->getPluginInstance(instanceId);
     instance->setUISize(currentWidth, currentHeight);
 
     // Check if the plugin adjusted the size
@@ -660,7 +660,7 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
 void MainWindow::onPluginWindowClosed(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     // Just update the visible flag in the plugin - don't touch the window or embedded state
-    sequencer.getPluginInstance(instanceId)->hideUI();
+    sequencer.engine()->getPluginInstance(instanceId)->hideUI();
 
     // Update our visibility tracking so the button text is correct
     pluginWindowVisible_[instanceId] = false;
@@ -668,7 +668,7 @@ void MainWindow::onPluginWindowClosed(int32_t instanceId) {
 
 bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* instance = sequencer.getPluginInstance(instanceId);
+    auto* instance = sequencer.engine()->getPluginInstance(instanceId);
     if (!instance->hasUISupport())
         return false;
     return instance->getUISize(width, height);
@@ -849,7 +849,7 @@ void MainWindow::renderInstanceControl() {
 
     if (!pluginWindowsPendingClose_.empty()) {
         for (auto id : pluginWindowsPendingClose_) {
-            sequencer.getPluginInstance(id)->destroyUI();
+            sequencer.engine()->getPluginInstance(id)->destroyUI();
             pluginWindows_.erase(id);
             pluginWindowEmbedded_.erase(id);
             pluginWindowBounds_.erase(id);
@@ -865,13 +865,13 @@ void MainWindow::renderInstanceControl() {
 
 std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* instance = sequencer.getPluginInstance(instanceId);
+    auto* instance = sequencer.engine()->getPluginInstance(instanceId);
     if (!instance) {
         return std::nullopt;
     }
 
     int32_t trackIndex = sequencer.findTrackIndexForInstance(instanceId);
-    std::string pluginName = sequencer.getPluginName(instanceId);
+    std::string pluginName = sequencer.engine()->getPluginName(instanceId);
     std::string pluginFormat = sequencer.getPluginFormat(instanceId);
 
     if (umpDeviceNameBuffers_.find(instanceId) == umpDeviceNameBuffers_.end()) {
@@ -1051,7 +1051,7 @@ void MainWindow::refreshInstances() {
 }
 
 void MainWindow::refreshParameters(int32_t instanceId, DetailsWindowState& state) {
-    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    auto* pal = uapmd::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
@@ -1113,7 +1113,7 @@ void MainWindow::refreshPresets(int32_t instanceId, DetailsWindowState& state) {
     state.presets.clear();
     state.selectedPreset = -1;
 
-    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    auto* pal = uapmd::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
@@ -1126,7 +1126,7 @@ void MainWindow::loadSelectedPreset(int32_t instanceId, DetailsWindowState& stat
         return;
     }
 
-    auto* pal = uapmd::AppModel::instance().sequencer().getPluginInstance(instanceId);
+    auto* pal = uapmd::AppModel::instance().sequencer().engine()->getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
@@ -1143,12 +1143,12 @@ void MainWindow::applyParameterUpdates(int32_t instanceId, DetailsWindowState& s
         return;
     }
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* pal = sequencer.getPluginInstance(instanceId);
+    auto* pal = sequencer.engine()->getPluginInstance(instanceId);
     if (!pal) {
         return;
     }
 
-    auto updates = sequencer.getParameterUpdates(instanceId);
+    auto updates = sequencer.engine()->getParameterUpdates(instanceId);
     const auto& parameters = state.parameterList.getParameters();
 
     for (const auto& update : updates) {
@@ -1173,7 +1173,7 @@ void MainWindow::renderParameterControls(int32_t instanceId, DetailsWindowState&
 void MainWindow::refreshPluginList() {
     std::vector<PluginEntry> plugins;
 
-    auto& catalog = uapmd::AppModel::instance().sequencer().catalog();
+    auto& catalog = uapmd::AppModel::instance().sequencer().engine()->catalog();
     auto catalogPlugins = catalog.getPlugins();
 
     for (auto* plugin : catalogPlugins) {
@@ -1200,9 +1200,9 @@ void MainWindow::showDetailsWindow(int32_t instanceId) {
             auto& seq = uapmd::AppModel::instance().sequencer();
             // Route directly to this instance to avoid ambiguity on tracks with multiple plugins
             if (isPressed) {
-                seq.sendNoteOn(instanceId, note);
+                seq.engine()->sendNoteOn(instanceId, note);
             } else {
-                seq.sendNoteOff(instanceId, note);
+                seq.engine()->sendNoteOff(instanceId, note);
             }
         });
 
@@ -1218,11 +1218,11 @@ void MainWindow::showDetailsWindow(int32_t instanceId) {
             }();
 
             if (!perNoteSelection) {
-                seq.setParameterValue(instanceId, parameterIndex, value);
+                seq.engine()->setParameterValue(instanceId, parameterIndex, value);
                 return;
             }
 
-            auto* pal = seq.getPluginInstance(instanceId);
+            auto* pal = seq.engine()->getPluginInstance(instanceId);
             if (!pal) {
                 return;
             }
@@ -1239,7 +1239,7 @@ void MainWindow::showDetailsWindow(int32_t instanceId) {
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
             auto& seq = uapmd::AppModel::instance().sequencer();
-            auto* pal = seq.getPluginInstance(instanceId);
+            auto* pal = seq.engine()->getPluginInstance(instanceId);
             if (pal) {
                 auto perNoteSelection = [this, instanceId]() -> std::optional<PerNoteSelection> {
                     auto it = detailsWindows_.find(instanceId);
@@ -1312,7 +1312,7 @@ void MainWindow::renderDetailsWindows() {
         }
 
         // Create ImGui window for this instance's details
-        std::string windowTitle = sequencer.getPluginName(instanceId) + " (" +
+        std::string windowTitle = sequencer.engine()->getPluginName(instanceId) + " (" +
                                  sequencer.getPluginFormat(instanceId) + ") - Details###Details" +
                                  std::to_string(instanceId);
 
@@ -1327,7 +1327,7 @@ void MainWindow::renderDetailsWindows() {
         setNextChildWindowSize(windowSizeId, ImVec2(baseWidth, 500.0f));
         if (ImGui::Begin(windowTitle.c_str(), &windowOpen)) {
             updateChildWindowSizeState(windowSizeId);
-            auto* instance = sequencer.getPluginInstance(instanceId);
+            auto* instance = sequencer.engine()->getPluginInstance(instanceId);
             if (!instance) {
                 ImGui::TextUnformatted("Instance is no longer available.");
             } else {
@@ -1457,7 +1457,7 @@ void MainWindow::savePluginState(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
 
     std::string defaultFilename = std::format("{}.{}.state",
-                                              sequencer.getPluginName(instanceId),
+                                              sequencer.engine()->getPluginName(instanceId),
                                               sequencer.getPluginFormat(instanceId));
     std::ranges::replace(defaultFilename, ' ', '_');
 
@@ -1533,10 +1533,10 @@ void MainWindow::createDeviceForPlugin(const std::string& format, const std::str
 
 void MainWindow::handleShowUI(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* instance = sequencer.getPluginInstance(instanceId);
+    auto* instance = sequencer.engine()->getPluginInstance(instanceId);
     if (!instance) return;
 
-    std::string pluginName = sequencer.getPluginName(instanceId);
+    std::string pluginName = sequencer.engine()->getPluginName(instanceId);
     std::string pluginFormat = sequencer.getPluginFormat(instanceId);
 
     // Create container window if needed
@@ -1634,7 +1634,7 @@ void MainWindow::sendPitchBend(int32_t instanceId, float normalizedValue) {
     uint64_t ump = cmidi2_ump_midi2_pitch_bend_direct(0, 0, pitchValue);
     buffer[0] = static_cast<uapmd_ump_t>(ump >> 32);
     buffer[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
-    seq.enqueueUmp(trackIdx, buffer, sizeof(buffer), 0);
+    seq.engine()->enqueueUmp(trackIdx, buffer, sizeof(buffer), 0);
 }
 
 void MainWindow::sendChannelPressure(int32_t instanceId, float pressure) {
@@ -1650,7 +1650,7 @@ void MainWindow::sendChannelPressure(int32_t instanceId, float pressure) {
     uint64_t ump = cmidi2_ump_midi2_caf(0, 0, pressureValue);
     buffer[0] = static_cast<uapmd_ump_t>(ump >> 32);
     buffer[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
-    seq.enqueueUmp(trackIdx, buffer, sizeof(buffer), 0);
+    seq.engine()->enqueueUmp(trackIdx, buffer, sizeof(buffer), 0);
 }
 
 }

@@ -60,7 +60,7 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan) {
 
             // Now trigger the sequencer to reload its catalog from the updated cache
             // This ensures the sequencer gets the new scan results
-            sequencer_.performPluginScanning(false); // Load from cache, don't rescan
+            sequencer_.engine()->performPluginScanning(false); // Load from cache, don't rescan
 
             bool success = (result == 0);
             std::string errorMsg = success ? "" : "Plugin scanning failed with error code " + std::to_string(result);
@@ -94,7 +94,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const PluginInstanceConfig& config) {
     // Get plugin name from catalog
     std::string pluginName;
-    auto& catalog = sequencer_.catalog();
+    auto& catalog = sequencer_.engine()->catalog();
     auto plugins = catalog.getPlugins();
     for (const auto& plugin : plugins) {
         if (plugin->format() == format && plugin->pluginId() == pluginId) {
@@ -117,7 +117,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
     std::string formatCopy = format;
     std::string pluginIdCopy = pluginId;
 
-    auto instantiateCallback = [this, config, deviceLabel, pluginName, format, pluginId](int32_t instanceId, std::string error) {
+    auto instantiateCallback = [this, config, deviceLabel, pluginName, format, pluginId](int32_t instanceId, int32_t trackId, std::string error) {
         PluginInstanceResult result;
         result.instanceId = instanceId;
         result.pluginName = pluginName;
@@ -144,7 +144,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                          config.manufacturer,
                                                          config.version);
 
-        if (auto group = sequencer_.pluginGroup(instanceId); group.has_value()) {
+        if (auto group = sequencer_.engine()->groupForInstance(instanceId); group.has_value()) {
             device->group(group.value());
         }
 
@@ -195,15 +195,15 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
     };
 
     if (trackIndex < 0) {
-        sequencer_.addSimplePluginTrack(formatCopy, pluginIdCopy, instantiateCallback);
+        sequencer_.engine()->addSimpleTrack(formatCopy, pluginIdCopy, instantiateCallback);
     } else {
-        sequencer_.addPluginToTrack(trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
+        sequencer_.engine()->addPluginToTrack(trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
     }
 }
 
 void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     // Hide and destroy plugin UI before removing the instance
-    auto* instance = sequencer_.getPluginInstance(instanceId);
+    auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (instance) {
         if (instance->hasUISupport() && instance->isUIVisible()) {
             instance->hideUI();
@@ -281,7 +281,7 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
                                                          "UAPMD Project",
                                                          "0.1");
 
-        if (auto group = sequencer_.pluginGroup(instanceId); group.has_value()) {
+        if (auto group = sequencer_.engine()->groupForInstance(instanceId); group.has_value()) {
             device->group(group.value());
         }
 
@@ -388,7 +388,7 @@ void uapmd::AppModel::showPluginUI(int32_t instanceId, bool needsCreate, bool is
     UIStateResult result;
     result.instanceId = instanceId;
 
-    auto* instance = sequencer_.getPluginInstance(instanceId);
+    auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (!instance) {
         result.success = false;
         result.error = "Plugin instance not found";
@@ -443,7 +443,7 @@ void uapmd::AppModel::hidePluginUI(int32_t instanceId) {
     UIStateResult result;
     result.instanceId = instanceId;
 
-    auto* instance = sequencer_.getPluginInstance(instanceId);
+    auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (!instance) {
         result.success = false;
         result.error = "Plugin instance not found";
@@ -468,25 +468,25 @@ void uapmd::AppModel::hidePluginUI(int32_t instanceId) {
 }
 
 void uapmd::TransportController::play() {
-    sequencer_->startPlayback();
+    sequencer_->engine()->startPlayback();
     isPlaying_ = true;
     isPaused_ = false;
 }
 
 void uapmd::TransportController::stop() {
-    sequencer_->stopPlayback();
+    sequencer_->engine()->stopPlayback();
     isPlaying_ = false;
     isPaused_ = false;
     playbackPosition_ = 0.0f;
 }
 
 void uapmd::TransportController::pause() {
-    sequencer_->pausePlayback();
+    sequencer_->engine()->pausePlayback();
     isPaused_ = true;
 }
 
 void uapmd::TransportController::resume() {
-    sequencer_->resumePlayback();
+    sequencer_->engine()->resumePlayback();
     isPaused_ = false;
 }
 
@@ -524,10 +524,10 @@ void uapmd::TransportController::loadFile() {
         return;
     }
 
-    sequencer_->loadAudioFile(std::move(reader));
+    sequencer_->engine()->loadAudioFile(std::move(reader));
 
     currentFile_ = filepath;
-    playbackLength_ = static_cast<float>(sequencer_->audioFileDurationSeconds());
+    playbackLength_ = static_cast<float>(sequencer_->engine()->audioFileDurationSeconds());
     playbackPosition_ = 0.0f;
 
     std::cout << "File loaded: " << currentFile_ << std::endl;
@@ -539,7 +539,7 @@ void uapmd::TransportController::unloadFile() {
         stop();
 
     // Unload the audio file from the sequencer
-    sequencer_->unloadAudioFile();
+    sequencer_->engine()->unloadAudioFile();
 
     // Clear state
     currentFile_.clear();
@@ -585,7 +585,7 @@ uapmd::AppModel::PluginStateResult uapmd::AppModel::loadPluginState(int32_t inst
     result.filepath = filepath;
 
     // Get plugin instance
-    auto* instance = sequencer_.getPluginInstance(instanceId);
+    auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (!instance) {
         result.success = false;
         result.error = "Failed to get plugin instance";
@@ -629,7 +629,7 @@ uapmd::AppModel::PluginStateResult uapmd::AppModel::savePluginState(int32_t inst
     result.filepath = filepath;
 
     // Get plugin instance
-    auto* instance = sequencer_.getPluginInstance(instanceId);
+    auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (!instance) {
         result.success = false;
         result.error = "Failed to get plugin instance";

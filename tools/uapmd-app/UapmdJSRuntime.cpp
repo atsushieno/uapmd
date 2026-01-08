@@ -58,7 +58,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
     jsContext_.registerFunction ("__remidy_catalog_get_count", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.catalog();
+        auto& catalog = sequencer.engine()->catalog();
         auto plugins = catalog.getPlugins();
         return choc::value::createInt32 (static_cast<int32_t>(plugins.size()));
     });
@@ -70,7 +70,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
             return choc::value::Value();
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.catalog();
+        auto& catalog = sequencer.engine()->catalog();
         auto plugins = catalog.getPlugins();
 
         if (index >= static_cast<int32_t>(plugins.size()))
@@ -97,7 +97,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
             return choc::value::createBool (false);
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.catalog();
+        auto& catalog = sequencer.engine()->catalog();
         std::filesystem::path path (pathStr);
         catalog.load (path);
         return choc::value::createBool (true);
@@ -110,7 +110,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
             return choc::value::createBool (false);
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.catalog();
+        auto& catalog = sequencer.engine()->catalog();
         std::filesystem::path path (pathStr);
         catalog.save (path);
         return choc::value::createBool (true);
@@ -225,7 +225,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
             return choc::value::createEmptyArray();
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto* instance = sequencer.getPluginInstance (instanceId);
+        auto* instance = sequencer.engine()->getPluginInstance (instanceId);
 
         if (! instance)
             return choc::value::createEmptyArray();
@@ -258,7 +258,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
             return choc::value::createFloat64 (0.0);
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto* instance = sequencer.getPluginInstance (instanceId);
+        auto* instance = sequencer.engine()->getPluginInstance (instanceId);
 
         if (! instance)
             return choc::value::createFloat64 (0.0);
@@ -277,7 +277,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
             return choc::value::Value();
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto* instance = sequencer.getPluginInstance (instanceId);
+        auto* instance = sequencer.engine()->getPluginInstance (instanceId);
 
         if (instance)
         {
@@ -417,7 +417,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
         if (instanceId >= 0 && note >= 0 && note < 128)
         {
             auto& sequencer = uapmd::AppModel::instance().sequencer();
-            sequencer.sendNoteOn (instanceId, note);
+            sequencer.engine()->sendNoteOn (instanceId, note);
         }
         return choc::value::Value();
     });
@@ -430,7 +430,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
         if (instanceId >= 0 && note >= 0 && note < 128)
         {
             auto& sequencer = uapmd::AppModel::instance().sequencer();
-            sequencer.sendNoteOff (instanceId, note);
+            sequencer.engine()->sendNoteOff (instanceId, note);
         }
         return choc::value::Value();
     });
@@ -444,7 +444,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
         if (instanceId >= 0 && paramIndex >= 0)
         {
             auto& sequencer = uapmd::AppModel::instance().sequencer();
-            sequencer.setParameterValue (instanceId, paramIndex, value);
+            sequencer.engine()->setParameterValue (instanceId, paramIndex, value);
         }
         return choc::value::Value();
     });
@@ -455,28 +455,28 @@ void UapmdJSRuntime::registerSequencerTransportAPI()
     jsContext_.registerFunction ("__remidy_sequencer_startPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        sequencer.startPlayback();
+        sequencer.engine()->startPlayback();
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_stopPlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        sequencer.stopPlayback();
+        sequencer.engine()->stopPlayback();
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_pausePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        sequencer.pausePlayback();
+        sequencer.engine()->pausePlayback();
         return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_resumePlayback", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        sequencer.resumePlayback();
+        sequencer.engine()->resumePlayback();
         return choc::value::Value();
     });
 
@@ -510,7 +510,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             return choc::value::createString ("");
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto name = sequencer.getPluginName (instanceId);
+        auto name = sequencer.engine()->getPluginName (instanceId);
         return choc::value::createString (name);
     });
 
@@ -532,7 +532,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             return choc::value::createBool (false);
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto bypassed = sequencer.isPluginBypassed (instanceId);
+        auto bypassed = sequencer.engine()->isPluginBypassed (instanceId);
         return choc::value::createBool (bypassed);
     });
 
@@ -544,7 +544,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         if (instanceId >= 0)
         {
             auto& sequencer = uapmd::AppModel::instance().sequencer();
-            sequencer.setPluginBypassed (instanceId, bypassed);
+            sequencer.engine()->setPluginBypassed (instanceId, bypassed);
         }
         return choc::value::Value();
     });
@@ -552,7 +552,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
     jsContext_.registerFunction ("__remidy_sequencer_getTrackInfos", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto trackInfos = sequencer.getTrackInfos();
+        auto trackInfos = sequencer.engine()->getTrackInfos();
 
         auto arr = choc::value::createEmptyArray();
         for (const auto& track : trackInfos)
@@ -583,7 +583,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             return choc::value::createEmptyArray();
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto updates = sequencer.getParameterUpdates (instanceId);
+        auto updates = sequencer.engine()->getParameterUpdates (instanceId);
 
         auto arr = choc::value::createEmptyArray();
         for (const auto& update : updates)
@@ -607,7 +607,7 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
         std::vector<float> spectrum (static_cast<size_t>(numBars));
-        sequencer.getInputSpectrum (spectrum.data(), numBars);
+        sequencer.engine()->getInputSpectrum (spectrum.data(), numBars);
 
         auto arr = choc::value::createEmptyArray();
         for (auto value : spectrum)
@@ -625,7 +625,7 @@ void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
         std::vector<float> spectrum (static_cast<size_t>(numBars));
-        sequencer.getOutputSpectrum (spectrum.data(), numBars);
+        sequencer.engine()->getOutputSpectrum (spectrum.data(), numBars);
 
         auto arr = choc::value::createEmptyArray();
         for (auto value : spectrum)

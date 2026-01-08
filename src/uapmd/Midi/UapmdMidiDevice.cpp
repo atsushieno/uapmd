@@ -51,7 +51,7 @@ namespace uapmd {
 
     void UapmdMidiDevice::initialize() {
         if (sequencer) {
-            if (auto groupOpt = sequencer->pluginGroup(instance_id); groupOpt.has_value()) {
+            if (auto groupOpt = sequencer->engine()->groupForInstance(instance_id); groupOpt.has_value()) {
                 ump_group = groupOpt.value();
             }
         }
@@ -83,15 +83,15 @@ namespace uapmd {
         uapmd_sessions->interceptUmpInput(ump, sizeInBytes, timestamp);
 
         if (instance_id >= 0) {
-            sequencer->enqueueUmpForInstance(instance_id, ump, sizeInBytes, timestamp);
+            sequencer->engine()->enqueueUmpForInstance(instance_id, ump, sizeInBytes, timestamp);
             return;
         }
 
         auto groupId = static_cast<uint8_t>((ump[0] >> 28) & 0x0F);
-        if (auto instance = sequencer->instanceForGroup(groupId); instance.has_value()) {
-            sequencer->enqueueUmpForInstance(instance.value(), ump, sizeInBytes, timestamp);
+        if (auto instance = sequencer->engine()->instanceForGroup(groupId); instance.has_value()) {
+            sequencer->engine()->enqueueUmpForInstance(instance.value(), ump, sizeInBytes, timestamp);
         } else {
-            sequencer->enqueueUmp(groupId, ump, sizeInBytes, timestamp);
+            sequencer->engine()->enqueueUmp(groupId, ump, sizeInBytes, timestamp);
         }
     }
 
