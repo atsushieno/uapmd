@@ -37,10 +37,10 @@ class MainWindow {
         bool isOpen_ = true;
 
         // Device settings
+        bool showDeviceSettingsWindow_ = false;
         AudioDeviceSettings audioDeviceSettings_;
 
         // Player settings window visibility
-        bool showDeviceSettingsWindow_ = false;
         bool showPlayerSettingsWindow_ = false;
 
         // Spectrum analyzers

@@ -124,9 +124,9 @@ class RemidyApply {
         static constexpr int32_t SAMPLE_RATE = 48000;
         static constexpr int64_t TOTAL_BUFFERS = 200;  // ~4.2 seconds at 48kHz
 
-        // For offline rendering, use SequenceProcessor directly
+        // For offline rendering, use SequencerEngine directly
         // (AudioPluginSequencer requires a dispatcher)
-        auto sequencer = uapmd::SequenceProcessor::create(
+        auto sequencer = uapmd::SequencerEngine::create(
             SAMPLE_RATE,
             AUDIO_BUFFER_SIZE,
             UMP_BUFFER_SIZE

@@ -236,7 +236,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
     ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
     dispatcher(dispatcher),
     plugin_host_pal(AudioPluginHostingAPI::instance()),
-    sequencer(SequenceProcessor::create(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal)),
+    sequencer(SequencerEngine::create(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes, plugin_host_pal)),
     plugin_output_handlers_(std::make_shared<HandlerMap>()),
     plugin_output_scratch_(umpBufferSizeInBytes / sizeof(uapmd_ump_t), 0) {
     // Configure default channels based on audio device
@@ -254,7 +254,7 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
     dispatcher->configure(umpBufferSizeInBytes, manager->open());
 
     dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
-        // Delegate all master audio processing to SequenceProcessor
+        // Delegate all master audio processing to SequencerEngine
         return sequencer->processAudio(process);
     });
 }
@@ -713,7 +713,7 @@ bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, i
         return false;
     }
 
-    // Update SequenceProcessor with new channel counts
+    // Update SequencerEngine with new channel counts
     auto audioDevice = dispatcher->audio();
     const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
     const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;

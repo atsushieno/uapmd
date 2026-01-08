@@ -11,7 +11,7 @@
 #include "priv/node-graph/AudioPluginTrack.hpp"
 #include "priv/audio/AudioFileReader.hpp"
 #include "priv/sequencer/SequenceProcessContext.hpp"
-#include "priv/sequencer/SequenceProcessor.hpp"
+#include "priv/sequencer/SequencerEngine.hpp"
 #include "priv/sequencer/AudioPluginSequencer.hpp"
 #include "priv/midi/UapmdMidiDevice.hpp"
 #include "priv/midi/UapmdMidiCISessions.hpp"

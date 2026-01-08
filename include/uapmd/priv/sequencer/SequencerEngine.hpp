@@ -10,13 +10,13 @@ namespace uapmd {
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
     // It is independent of DeviceIODispatcher (it will fire `processAudio()`)..
     // It is also independent of the timed sequencer that is to deliver sequencer inputs on time.
-    class SequenceProcessor {
+    class SequencerEngine {
     protected:
-        SequenceProcessor() = default;
+        SequencerEngine() = default;
 
     public:
-        virtual ~SequenceProcessor() = default;
-        static std::unique_ptr<SequenceProcessor> create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal = AudioPluginHostingAPI::instance());
+        virtual ~SequencerEngine() = default;
+        static std::unique_ptr<SequencerEngine> create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal = AudioPluginHostingAPI::instance());
 
         virtual SequenceProcessContext& data() = 0;
 

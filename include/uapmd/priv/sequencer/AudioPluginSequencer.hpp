@@ -21,7 +21,7 @@ namespace uapmd {
 
         DeviceIODispatcher* dispatcher{};
         AudioPluginHostingAPI* plugin_host_pal;
-        std::unique_ptr<SequenceProcessor> sequencer;
+        std::unique_ptr<SequencerEngine> sequencer;
 
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
@@ -89,6 +89,8 @@ namespace uapmd {
 
         AudioPluginSequencer(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
         ~AudioPluginSequencer();
+
+        SequencerEngine* engine() const { return sequencer.get(); }
 
         // Audio plugin support
 

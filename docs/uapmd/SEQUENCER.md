@@ -16,7 +16,7 @@ It was supposed to be a live-rendering version of the audio engine.
 
 It works like the only facade for the entire audio engine.
 
-### `SequenceProcessor`
+### `SequencerEngine`
 
 It was supposed to be a static audio engine that can process audio without time constraints.
 
@@ -30,7 +30,7 @@ Conceptually they can also exist as virtual static entities, but they are so far
 
 ### `AudioPluginTrack`
 
-A `SequenceProcessor` holds a list of `AudioPluginTrack` instances. It currently exists for:
+A `SequencerEngine` holds a list of `AudioPluginTrack` instances. It currently exists for:
 
 - a control point for bypassing (mute)
 - a control point for freezing (not implemented)

@@ -7,7 +7,7 @@
 
 namespace uapmd {
 
-    class SequenceProcessorImpl : public SequenceProcessor {
+    class SequencerEngineImpl : public SequencerEngine {
         size_t audio_buffer_size_in_frames;
         size_t ump_buffer_size_in_ints;
         uint32_t default_input_channels_{2};
@@ -42,7 +42,7 @@ namespace uapmd {
         mutable std::atomic<bool> spectrum_reading_{false};
 
     public:
-        explicit SequenceProcessorImpl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal);
+        explicit SequencerEngineImpl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal);
 
         SequenceProcessContext& data() override { return sequence; }
 
@@ -74,19 +74,19 @@ namespace uapmd {
         void removeTrack(size_t index);
     };
 
-    std::unique_ptr<SequenceProcessor> SequenceProcessor::create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal) {
-        return std::make_unique<SequenceProcessorImpl>(sampleRate, audioBufferSizeInFrames, umpBufferSizeInInts, pal);
+    std::unique_ptr<SequencerEngine> SequencerEngine::create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal) {
+        return std::make_unique<SequencerEngineImpl>(sampleRate, audioBufferSizeInFrames, umpBufferSizeInInts, pal);
     }
 
-    // SequenceProcessorImpl
-    SequenceProcessorImpl::SequenceProcessorImpl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal) :
+    // SequencerEngineImpl
+    SequencerEngineImpl::SequencerEngineImpl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts, AudioPluginHostingAPI* pal) :
         audio_buffer_size_in_frames(audioBufferSizeInFrames),
         sampleRate(sampleRate),
         ump_buffer_size_in_ints(umpBufferSizeInInts),
         pal(pal) {
     }
 
-    std::vector<AudioPluginTrack*> &SequenceProcessorImpl::tracks() const {
+    std::vector<AudioPluginTrack*> &SequencerEngineImpl::tracks() const {
         // Note: This requires a mutable cache for const correctness
         // Since we need to return a reference to a vector of raw pointers
         static thread_local std::vector<AudioPluginTrack*> track_ptrs;
@@ -96,7 +96,7 @@ namespace uapmd {
         return track_ptrs;
     }
 
-    int32_t SequenceProcessorImpl::processAudio(AudioProcessContext& process) {
+    int32_t SequencerEngineImpl::processAudio(AudioProcessContext& process) {
         if (tracks_.size() != sequence.tracks.size())
             // FIXME: define status codes
             return 1;
@@ -300,12 +300,12 @@ namespace uapmd {
         return 0;
     }
 
-    void SequenceProcessorImpl::setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) {
+    void SequencerEngineImpl::setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) {
         default_input_channels_ = inputChannels;
         default_output_channels_ = outputChannels;
     }
 
-    void SequenceProcessorImpl::addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error)> callback) {
+    void SequencerEngineImpl::addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, AudioPluginTrack* track, int32_t trackIndex, std::string error)> callback) {
         pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this,callback](auto node, std::string error) {
             if (!node) {
                 callback(nullptr, nullptr, -1, "Could not create simple track: " + error);
@@ -339,7 +339,7 @@ namespace uapmd {
         });
     }
 
-    void SequenceProcessorImpl::addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, std::string error)> callback) {
+    void SequencerEngineImpl::addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(AudioPluginNode* node, std::string error)> callback) {
         // Validate track index
         if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size()) {
             callback(nullptr, std::format("Invalid track index {}", trackIndex));
@@ -372,7 +372,7 @@ namespace uapmd {
         });
     }
 
-    bool SequenceProcessorImpl::removePluginInstance(int32_t instanceId) {
+    bool SequencerEngineImpl::removePluginInstance(int32_t instanceId) {
         for (size_t i = 0; i < tracks_.size(); ++i) {
             auto& track = tracks_[i];
             if (!track)
@@ -386,7 +386,7 @@ namespace uapmd {
         return false;
     }
 
-    void SequenceProcessorImpl::removeTrack(size_t index) {
+    void SequencerEngineImpl::removeTrack(size_t index) {
         if (index >= tracks_.size())
             return;
         tracks_.erase(tracks_.begin() + static_cast<long>(index));
@@ -397,24 +397,24 @@ namespace uapmd {
     }
 
     // Playback control
-    void SequenceProcessorImpl::setPlaybackActive(bool active) {
+    void SequencerEngineImpl::setPlaybackActive(bool active) {
         is_playback_active_.store(active, std::memory_order_release);
     }
 
-    bool SequenceProcessorImpl::isPlaybackActive() const {
+    bool SequencerEngineImpl::isPlaybackActive() const {
         return is_playback_active_.load(std::memory_order_acquire);
     }
 
-    void SequenceProcessorImpl::setPlaybackPosition(int64_t samples) {
+    void SequencerEngineImpl::setPlaybackPosition(int64_t samples) {
         playback_position_samples_.store(samples, std::memory_order_release);
     }
 
-    int64_t SequenceProcessorImpl::playbackPosition() const {
+    int64_t SequencerEngineImpl::playbackPosition() const {
         return playback_position_samples_.load(std::memory_order_acquire);
     }
 
     // Audio file playback
-    void SequenceProcessorImpl::loadAudioFile(std::unique_ptr<AudioFileReader> reader) {
+    void SequencerEngineImpl::loadAudioFile(std::unique_ptr<AudioFileReader> reader) {
         if (!reader)
             return;
 
@@ -443,14 +443,14 @@ namespace uapmd {
         audio_file_read_position_.store(0, std::memory_order_release);
     }
 
-    void SequenceProcessorImpl::unloadAudioFile() {
+    void SequencerEngineImpl::unloadAudioFile() {
         std::lock_guard<std::mutex> lock(audio_file_mutex_);
         audio_file_reader_.reset();
         audio_file_buffer_.clear();
         audio_file_read_position_.store(0, std::memory_order_release);
     }
 
-    double SequenceProcessorImpl::audioFileDurationSeconds() const {
+    double SequencerEngineImpl::audioFileDurationSeconds() const {
         std::lock_guard<std::mutex> lock(audio_file_mutex_);
         if (!audio_file_reader_)
             return 0.0;
@@ -459,7 +459,7 @@ namespace uapmd {
     }
 
     // Audio analysis
-    void SequenceProcessorImpl::getInputSpectrum(float* outSpectrum, int numBars) const {
+    void SequencerEngineImpl::getInputSpectrum(float* outSpectrum, int numBars) const {
         // Set reading flag to prevent RT thread from writing
         spectrum_reading_.store(true, std::memory_order_release);
 
@@ -471,7 +471,7 @@ namespace uapmd {
         spectrum_reading_.store(false, std::memory_order_release);
     }
 
-    void SequenceProcessorImpl::getOutputSpectrum(float* outSpectrum, int numBars) const {
+    void SequencerEngineImpl::getOutputSpectrum(float* outSpectrum, int numBars) const {
         // Set reading flag to prevent RT thread from writing
         spectrum_reading_.store(true, std::memory_order_release);
 

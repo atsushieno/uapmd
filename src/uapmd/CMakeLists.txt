@@ -42,6 +42,6 @@ target_sources(uapmd PRIVATE
         Midi/UapmdMidiDevice.cpp
         Midi/UapmdMidiCISessions.cpp
         Midi/UapmdUmpMapper.cpp
-        Sequencer/SequenceProcessor.cpp
+        Sequencer/SequencerEngine.cpp
         Sequencer/AudioPluginSequencer.cpp
 )
