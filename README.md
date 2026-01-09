@@ -8,7 +8,7 @@ UAPMD is an audio plugin host that serves audio plugin instances as virtual MIDI
 - retrieve parameter list that are mapped to Assignable Controllers and Program List that are mapped to presets that are exposed via the plugin APIs. Thus you don't have to remember which controller index maps to the parameter you want, or which program number maps to the tone you need.
 - save and load the plugin's state.
 
-UAPMD targets macOS and Linux desktop. Windows builds are untested, especially support for Windows MIDI Services is not even attempted).
+UAPMD targets macOS and Linux desktop. Windows builds are experimental and currently rely on the [Windows MIDI Services developer preview](https://github.com/microsoft/MIDI).
 
 We support VST3, AudioUnit, LV2, and CLAP plugin formats.
 
@@ -33,6 +33,14 @@ $ cmake -B build # -G Ninja
 $ cmake --build build
 $ cmake --install build # --prefix=/usr/local
 ```
+
+### Windows MIDI Services support
+
+Windows builds expect the Windows MIDI Services runtime to be available and use libremidi's WinMIDI backend. During configuration the build downloads the NuGet package `Microsoft.Windows.Devices.Midi2.1.0.13-preview.13.192.nupkg` from the `preview-13` release of <https://github.com/microsoft/MIDI> and forwards it to libremidi as `LIBREMIDI_WINMIDI_HEADERS_ZIP`.
+
+- `UAPMD_ENABLE_WINMIDI` (defaults to `ON` on Windows, `OFF` elsewhere) toggles this integration.
+- Update `UAPMD_WINMIDI_RELEASE_TAG` and `UAPMD_WINMIDI_PACKAGE_NAME` if you want to pin a different preview drop.
+- Set `LIBREMIDI_WINMIDI_HEADERS_ZIP` manually to a local `.nupkg` if you need offline builds; the automatic download is skipped when this variable is provided.
 
 ## Screenshots
 

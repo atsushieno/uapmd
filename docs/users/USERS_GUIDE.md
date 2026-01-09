@@ -32,7 +32,7 @@ At this state, you can open the plugin GUI ("Show UI") to select presets, config
 
 Those devices show up if your platform supports virtual MIDI 2.0 devices:
 
-- Windows: N/A as [Windows MIDI Services](https://github.com/microsoft/MIDI) is not available on the platform yet.
+- Windows: requires the [Windows MIDI Services developer preview](https://github.com/microsoft/MIDI); once the service is installed and running the virtual devices appear under its endpoint list.
 - macOS: they will show up either as MIDI 1.0 or MIDI 2.0 devices via CoreMIDI
 - Linux: if you specify PIPEWIRE as the MIDI API, they will show up to its
   client. Otherwise, they show up as UMP devices to ALSA sequencer.

@@ -10,6 +10,10 @@ set(CMAKE_CXX_STANDARD 23)
 
 set(UAPMD_VERSION "0.1.2" CACHE STRING "Project version for packaging")
 
+option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (Windows only)" ${WIN32})
+set(UAPMD_WINMIDI_RELEASE_TAG "preview-13" CACHE STRING "Release tag from microsoft/MIDI that provides Windows MIDI Services headers")
+set(UAPMD_WINMIDI_PACKAGE_NAME "Microsoft.Windows.Devices.Midi2.1.0.13-preview.13.192.nupkg" CACHE STRING "Windows MIDI Services NuGet package that contains the headers libremidi needs")
+
 # wow, that's stupid... https://stackoverflow.com/questions/5004858/why-is-stdmin-failing-when-windows-h-is-included
 if (MSVC OR WIN32)
 add_compile_definitions(NOMINMAX)

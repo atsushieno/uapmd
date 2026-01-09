@@ -82,7 +82,7 @@ jobs:
     - name: setup build on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        cmake -B build -G "Visual Studio 17 2022" -DBUILD_SHARED_LIBS=OFF -DREMIDY_BUILD_CONFIG=Debug
+        cmake -B build -G "Visual Studio 17 2022" -DBUILD_SHARED_LIBS=OFF -DREMIDY_BUILD_CONFIG=Debug -DUAPMD_ENABLE_WINMIDI=ON -DUAPMD_WINMIDI_RELEASE_TAG=preview-13 -DUAPMD_WINMIDI_PACKAGE_NAME=Microsoft.Windows.Devices.Midi2.1.0.13-preview.13.192.nupkg
     - name: setup build on Darwin
       if: matrix.os == 'macos-15'
       run: |
