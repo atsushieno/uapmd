@@ -1,7 +1,9 @@
 #include "LibreMidiIODevice.hpp"
+#include "LibreMidiSupport.hpp"
 
 #include <algorithm>
 #include <chrono>
+#include <stdexcept>
 #include <thread>
 #include <libremidi/libremidi.hpp>
 
@@ -14,20 +16,15 @@ namespace uapmd {
           version(std::move(version)),
           sysex_delay_in_microseconds(sysexDelayInMicroseconds) {
 
-        assert(libremidi_midi_api_configuration_init(&apiCfg) == 0);
-        auto apis = libremidi::available_ump_apis();
-        if (remidy_strcasecmp(api_name.c_str(), "PIPEWIRE") == 0)
-            apiCfg.api = PIPEWIRE_UMP;
-        else if (remidy_strcasecmp(api_name.c_str(), "ALSA") == 0)
-            apiCfg.api = ALSA_SEQ_UMP;
-        else {
-            for (auto api : apis)
-                if (api == PIPEWIRE_UMP)
-                    apiCfg.api = api;
-            if (apiCfg.api == UNSPECIFIED)
-                apiCfg.api = apis.empty() ? UNSPECIFIED : apis[0];
-        }
-        assert(libremidi_midi_configuration_init(&midiCfg) == 0);
+        if (libremidi_midi_api_configuration_init(&apiCfg) != 0)
+            throw std::runtime_error("Failed to initialize libremidi API configuration");
+        auto resolvedApi = detail::resolveLibremidiUmpApi(api_name);
+        if (!resolvedApi)
+            throw std::runtime_error("No MIDI 2.0 backend is available on this system");
+        apiCfg.api = *resolvedApi;
+
+        if (libremidi_midi_configuration_init(&midiCfg) != 0)
+            throw std::runtime_error("Failed to initialize libremidi MIDI configuration");
         midiCfg.virtual_port = true;
         midiCfg.version = libremidi_midi_configuration::MIDI2;
 
@@ -39,18 +36,24 @@ namespace uapmd {
         midiCfg.port_name = in_port_name.c_str();
         midiCfg.on_midi2_message.context = this;
         midiCfg.on_midi2_message.callback = midi2_in_callback;
-        assert(libremidi_midi_in_new(&midiCfg, &apiCfg, &midiIn) == 0);
+        int err = libremidi_midi_in_new(&midiCfg, &apiCfg, &midiIn);
+        if (err != 0)
+            throw std::runtime_error("Failed to create libremidi MIDI input (error " + std::to_string(err) + ")");
 
         // Create output with a separate config to avoid dangling callback fields.
         libremidi_midi_configuration midiOutCfg = midiCfg;
         midiOutCfg.on_midi2_message = {};
         midiOutCfg.port_name = out_port_name.c_str();
-        assert(libremidi_midi_out_new(&midiOutCfg, &apiCfg, &midiOut) == 0);
+        err = libremidi_midi_out_new(&midiOutCfg, &apiCfg, &midiOut);
+        if (err != 0)
+            throw std::runtime_error("Failed to create libremidi MIDI output (error " + std::to_string(err) + ")");
     }
 
     LibreMidiIODevice::~LibreMidiIODevice() {
-        assert(libremidi_midi_in_free(midiIn) == 0);
-        assert(libremidi_midi_out_free(midiOut) == 0);
+        if (midiIn)
+            libremidi_midi_in_free(midiIn);
+        if (midiOut)
+            libremidi_midi_out_free(midiOut);
     }
 
     void LibreMidiIODevice::midi2_in_callback(void* ctx, libremidi_timestamp timestamp, const libremidi_midi2_symbol* messages, size_t len) {

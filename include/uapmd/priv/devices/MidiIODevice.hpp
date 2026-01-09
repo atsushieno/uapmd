@@ -32,4 +32,6 @@ namespace uapmd {
                                                           uint64_t sysExDelayInMicroseconds = 10000
 #endif
                                                           );
+
+    bool midiApiSupportsUmp(const std::string& apiName);
 }

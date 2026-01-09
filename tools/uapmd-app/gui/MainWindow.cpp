@@ -855,6 +855,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     bool deviceRunning = false;
     bool deviceExists = false;
     bool deviceInstantiating = false;
+    bool deviceSupported = false;
 
     auto deviceState = uapmd::AppModel::instance().getDeviceForInstance(instanceId);
     if (deviceState && *deviceState) {
@@ -862,6 +863,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
         deviceExists = true;
         deviceRunning = (*deviceState)->running;
         deviceInstantiating = (*deviceState)->instantiating;
+        deviceSupported = uapmd::midiApiSupportsUmp((*deviceState)->apiName);
     }
 
     TrackInstance ti;
@@ -879,6 +881,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     ti.deviceRunning = deviceRunning;
     ti.deviceExists = deviceExists;
     ti.deviceInstantiating = deviceInstantiating;
+    ti.deviceSupported = deviceSupported;
 
     return ti;
 }

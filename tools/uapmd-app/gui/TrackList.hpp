@@ -22,6 +22,7 @@ struct TrackInstance {
     bool deviceRunning;
     bool deviceExists;
     bool deviceInstantiating;
+    bool deviceSupported;
 };
 
 class TrackList {

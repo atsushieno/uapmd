@@ -95,61 +95,65 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
     // UMP Device column
     ImGui::TableSetColumnIndex(3);
     {
-        bool disableDeviceControls = instance.deviceInstantiating;
-        if (disableDeviceControls) {
-            ImGui::BeginDisabled();
-        }
-
-        std::string inputId = "##ump_name_" + std::to_string(instance.instanceId);
-        float availableWidth = ImGui::GetContentRegionAvail().x;
-        float buttonWidth = 90.0f;
-        float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
-        ImGui::SetNextItemWidth(std::max(0.0f, availableWidth - (buttonWidth + spacing)));
-
-        // Create a modifiable copy for ImGui
-        static std::map<int32_t, std::array<char, 128>> deviceNameBuffers;
-        if (deviceNameBuffers.find(instance.instanceId) == deviceNameBuffers.end()) {
-            deviceNameBuffers[instance.instanceId] = {};
-            strncpy(deviceNameBuffers[instance.instanceId].data(),
-                        instance.umpDeviceName.c_str(),
-                        deviceNameBuffers[instance.instanceId].size() - 1);
-        }
-
-        bool disableNameEdit = instance.deviceRunning;
-        if (disableNameEdit) {
-            ImGui::BeginDisabled();
-        }
-
-        if (ImGui::InputText(inputId.c_str(), deviceNameBuffers[instance.instanceId].data(),
-                            deviceNameBuffers[instance.instanceId].size())) {
-            if (onUMPDeviceNameChange_) {
-                onUMPDeviceNameChange_(instance.instanceId, std::string(deviceNameBuffers[instance.instanceId].data()));
+        if (!instance.deviceSupported && !instance.deviceRunning) {
+            ImGui::TextDisabled("Virtual MIDI 2.0 unavailable on this platform");
+        } else {
+            bool disableDeviceControls = instance.deviceInstantiating;
+            if (disableDeviceControls) {
+                ImGui::BeginDisabled();
             }
-        }
 
-        if (disableNameEdit) {
-            ImGui::EndDisabled();
-        }
+            std::string inputId = "##ump_name_" + std::to_string(instance.instanceId);
+            float availableWidth = ImGui::GetContentRegionAvail().x;
+            float buttonWidth = 90.0f;
+            float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+            ImGui::SetNextItemWidth(std::max(0.0f, availableWidth - (buttonWidth + spacing)));
 
-        ImGui::SameLine();
-        std::string deviceButtonLabel = (instance.deviceRunning ? "Disable##" : "Enable##") + std::to_string(instance.instanceId);
-        if (ImGui::Button(deviceButtonLabel.c_str(), ImVec2(buttonWidth, 0.0f))) {
-            if (instance.deviceRunning) {
-                if (onDisableDevice_) {
-                    onDisableDevice_(instance.instanceId);
-                }
-            } else if (onEnableDevice_) {
-                // Get the current device name from the input buffer
-                std::string deviceName = instance.umpDeviceName;
-                if (deviceNameBuffers.find(instance.instanceId) != deviceNameBuffers.end()) {
-                    deviceName = std::string(deviceNameBuffers[instance.instanceId].data());
-                }
-                onEnableDevice_(instance.instanceId, deviceName);
+            // Create a modifiable copy for ImGui
+            static std::map<int32_t, std::array<char, 128>> deviceNameBuffers;
+            if (deviceNameBuffers.find(instance.instanceId) == deviceNameBuffers.end()) {
+                deviceNameBuffers[instance.instanceId] = {};
+                strncpy(deviceNameBuffers[instance.instanceId].data(),
+                            instance.umpDeviceName.c_str(),
+                            deviceNameBuffers[instance.instanceId].size() - 1);
             }
-        }
 
-        if (disableDeviceControls) {
-            ImGui::EndDisabled();
+            bool disableNameEdit = instance.deviceRunning;
+            if (disableNameEdit) {
+                ImGui::BeginDisabled();
+            }
+
+            if (ImGui::InputText(inputId.c_str(), deviceNameBuffers[instance.instanceId].data(),
+                                deviceNameBuffers[instance.instanceId].size())) {
+                if (onUMPDeviceNameChange_) {
+                    onUMPDeviceNameChange_(instance.instanceId, std::string(deviceNameBuffers[instance.instanceId].data()));
+                }
+            }
+
+            if (disableNameEdit) {
+                ImGui::EndDisabled();
+            }
+
+            ImGui::SameLine();
+            std::string deviceButtonLabel = (instance.deviceRunning ? "Disable##" : "Enable##") + std::to_string(instance.instanceId);
+            if (ImGui::Button(deviceButtonLabel.c_str(), ImVec2(buttonWidth, 0.0f))) {
+                if (instance.deviceRunning) {
+                    if (onDisableDevice_) {
+                        onDisableDevice_(instance.instanceId);
+                    }
+                } else if (onEnableDevice_) {
+                    // Get the current device name from the input buffer
+                    std::string deviceName = instance.umpDeviceName;
+                    if (deviceNameBuffers.find(instance.instanceId) != deviceNameBuffers.end()) {
+                        deviceName = std::string(deviceNameBuffers[instance.instanceId].data());
+                    }
+                    onEnableDevice_(instance.instanceId, deviceName);
+                }
+            }
+
+            if (disableDeviceControls) {
+                ImGui::EndDisabled();
+            }
         }
     }
 

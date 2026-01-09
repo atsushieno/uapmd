@@ -4,6 +4,7 @@
 #include <portable-file-dialogs.h>
 #include <iostream>
 #include <fstream>
+#include <exception>
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -151,8 +152,14 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
             devices_.push_back(DeviceEntry{nextDeviceId_++, state});
         }
 
-        // Reuse the dedicated logic for MIDI device initialization
-        enableUmpDevice(instanceId, deviceLabel);
+        // Reuse the dedicated logic for MIDI device initialization when supported.
+        if (midiApiSupportsUmp(config.apiName)) {
+            enableUmpDevice(instanceId, deviceLabel);
+        } else {
+            state->running = false;
+            state->hasError = true;
+            state->statusMessage = "Virtual MIDI 2.0 devices are unavailable on this platform.";
+        }
 
         result.device = state->device;
 
@@ -235,22 +242,49 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
     // Lock the device state for modifications
     std::lock_guard guard(deviceState->mutex);
 
+    if (!midiApiSupportsUmp(deviceState->apiName)) {
+        deviceState->running = false;
+        deviceState->hasError = true;
+        deviceState->statusMessage = "Virtual MIDI 2.0 devices are unavailable on this platform.";
+        result.success = false;
+        result.error = deviceState->statusMessage;
+        result.statusMessage = deviceState->statusMessage;
+        for (auto& cb : deviceEnabled) {
+            cb(result);
+        }
+        return;
+    }
+
     // If device was destroyed (disabled), recreate it
     if (!deviceState->device) {
         auto actualTrackIndex = sequencer_.findTrackIndexForInstance(instanceId);
-        auto midiDevice = createLibreMidiIODevice(deviceState->apiName,
-                                                  deviceName.empty() ? deviceState->label : deviceName,
-                                                  "UAPMD Project",
-                                                  "0.1");
+        std::shared_ptr<MidiIODevice> midiDevice;
+        try {
+            midiDevice = createLibreMidiIODevice(deviceState->apiName,
+                                                 deviceName.empty() ? deviceState->label : deviceName,
+                                                 "UAPMD Project",
+                                                 "0.1");
+        } catch (const std::exception& e) {
+            deviceState->running = false;
+            deviceState->hasError = true;
+            deviceState->statusMessage = e.what();
+            result.success = false;
+            result.error = deviceState->statusMessage;
+            result.statusMessage = deviceState->statusMessage;
+            for (auto& cb : deviceEnabled) {
+                cb(result);
+            }
+            return;
+        }
 
         auto device = std::make_shared<UapmdMidiDevice>(midiDevice,
-                                                         sequencer_.engine(),
-                                                         instanceId,
-                                                         actualTrackIndex,
-                                                         deviceState->apiName,
-                                                         deviceName.empty() ? deviceState->label : deviceName,
-                                                         "UAPMD Project",
-                                                         "0.1");
+                                                        sequencer_.engine(),
+                                                        instanceId,
+                                                        actualTrackIndex,
+                                                        deviceState->apiName,
+                                                        deviceName.empty() ? deviceState->label : deviceName,
+                                                        "UAPMD Project",
+                                                        "0.1");
 
         if (auto group = sequencer_.engine()->groupForInstance(instanceId); group.has_value()) {
             device->group(group.value());
