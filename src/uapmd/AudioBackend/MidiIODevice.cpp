@@ -15,42 +15,51 @@
 #include <remidy/priv/common.hpp>
 
 #ifdef _WIN32
-#include <combaseapi.h>
-#include <unknwn.h>
+#include <windows.h>
+#include <winnt.h>
 #endif
 
 namespace {
 
 #ifdef _WIN32
-// UUID for MidiSrvTransport - used to check if Windows MIDI Services is installed
-// The MidiSrvTransport is installed with the MIDI Service, not the SDK, so its presence
-// tells us the service has been installed on this PC
-struct __declspec(uuid("2BA15E4E-5417-4A66-85B8-2B2260EFBC84")) MidiSrvTransportUuid : ::IUnknown {};
+bool isWindowsMidiServicesSupported() {
+    // Windows MIDI Services is supported on:
+    // - Windows 11 25H2 (Build 26100+)
+    // - Windows 11 Insider (Build 27788+)
+    // Not supported on Windows 10 (Build < 19045)
 
-bool isWindowsMidiServicesInstalled() {
-    // Check if Windows MIDI Services is actually installed by attempting to create
-    // the MidiSrvTransport COM component
-    IUnknown* servicePointer = nullptr;
+    // Get Windows version using RtlGetVersion (works even with version lie in manifest)
+    typedef LONG (WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
 
-    HRESULT hr = CoCreateInstance(
-        __uuidof(MidiSrvTransportUuid),
-        NULL,
-        CLSCTX_INPROC_SERVER,
-        IID_PPV_ARGS(&servicePointer)
-    );
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (!ntdll)
+        return false;
 
-    if (SUCCEEDED(hr)) {
-        if (servicePointer != nullptr) {
-            servicePointer->Release();
+    auto RtlGetVersion = reinterpret_cast<RtlGetVersionPtr>(GetProcAddress(ntdll, "RtlGetVersion"));
+    if (!RtlGetVersion)
+        return false;
+
+    RTL_OSVERSIONINFOW osvi{};
+    osvi.dwOSVersionInfoSize = sizeof(osvi);
+
+    if (RtlGetVersion(&osvi) != 0)
+        return false;
+
+    // Windows 11 is version 10.0 with build >= 22000
+    // We need build 26100+ for full Windows 11 25H2 support
+    // Or build 27788+ for Insider preview support
+    if (osvi.dwMajorVersion == 10 && osvi.dwMinorVersion == 0) {
+        if (osvi.dwBuildNumber >= 27788) {
+            // Windows 11 Insider preview - supported
             return true;
         }
-        return false;
+        if (osvi.dwBuildNumber >= 26100) {
+            // Windows 11 25H2 - supported
+            return true;
+        }
     }
-    if (hr == REGDB_E_CLASSNOTREG) {
-        // Class not registered. Windows MIDI Services is NOT installed
-        return false;
-    }
-    // Other error. Treat as unavailable
+
+    // All other versions (including Windows 10) - not supported
     return false;
 }
 #endif
@@ -120,10 +129,11 @@ std::optional<libremidi_api> uapmd::detail::resolveLibremidiUmpApi(const std::st
         return std::nullopt;
 
 #ifdef _WIN32
-    // Filter out Windows MIDI Services if it's not actually installed
+    // Filter out Windows MIDI Services if the OS version doesn't support it
     // libremidi reports it as available if compiled with LIBREMIDI_WINMIDI,
-    // but we need to check if the service is actually running
-    if (!isWindowsMidiServicesInstalled()) {
+    // but Windows MIDI Services is only supported on Windows 11 25H2 (build 26100+)
+    // or Windows 11 Insider (build 27788+)
+    if (!isWindowsMidiServicesSupported()) {
         auto it = std::find(apis.begin(), apis.end(), static_cast<libremidi::API>(WINDOWS_MIDI_SERVICES));
         if (it != apis.end())
             apis.erase(it);
