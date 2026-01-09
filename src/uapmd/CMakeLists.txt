@@ -23,7 +23,7 @@ target_link_libraries(uapmd PUBLIC
         libremidi::libremidi
         remidy::remidy
         remidy::remidy-tooling
-        midicci
+        midicci_static
 )
 
 target_sources(uapmd PRIVATE

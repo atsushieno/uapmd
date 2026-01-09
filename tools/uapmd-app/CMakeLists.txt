@@ -160,7 +160,7 @@ target_link_libraries(uapmd-app PRIVATE
         remidy-imgui-shared
         cpplocate::cpplocate
         libremidi::libremidi
-        midicci
+        midicci_static
         ${uapmd_LIBS_PLAT}
 )
 
