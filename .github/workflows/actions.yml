@@ -37,7 +37,6 @@ on:
 
 jobs:
   build:
-    if: github.event_name != 'workflow_dispatch'
     name: 'build on ${{ matrix.os }}'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -97,11 +96,11 @@ jobs:
       run: cmake --build build
 
     - name: packaging
-      if: matrix.os == 'ubuntu-24.04' && success()
+      if: success()
       run: cmake --build build --target package
 
-    - name: upload Linux artifacts
-      if: matrix.os == 'ubuntu-24.04' && success()
+    - name: upload artifacts
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: build-${{ matrix.os }}
@@ -109,6 +108,8 @@ jobs:
           build/*.deb
           build/*.rpm
           build/*.tar.xz
+          build/*.zip
+          build/*.dmg
 
     - name: upload build failure logs
       if: failure()
@@ -120,6 +121,7 @@ jobs:
 
   release:
     if: github.event_name == 'workflow_dispatch'
+    needs: build
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -127,27 +129,17 @@ jobs:
     - name: checkout
       uses: actions/checkout@v4
       with:
-        submodules: recursive
+        fetch-depth: 1
 
-    - name: apt update and install
-      run: |
-        sudo apt-get update
-        sudo apt install gcc-14 ninja-build libgtk-3-dev libwebkit2gtk-4.1-dev libadwaita-1-dev libsdl2-dev
+    - name: download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: build-*
+        merge-multiple: true
+        path: release-artifacts
 
-    - name: Install Qt6 (Ubuntu)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y qtbase5-dev qtbase5-dev-tools qt6-base-dev qt6-base-dev-tools
-
-    - name: setup build on Linux
-      run: |
-        cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-
-    - name: build
-      run: cmake --build build
-
-    - name: packaging
-      run: cmake --build build --target package
+    - name: list release assets
+      run: ls -R release-artifacts
 
     - name: create GitHub release
       uses: ncipollo/release-action@v1
@@ -158,4 +150,4 @@ jobs:
         draft: ${{ github.event.inputs.draft }}
         prerelease: ${{ github.event.inputs.prerelease }}
         generateReleaseNotes: ${{ github.event.inputs.generate_release_notes }}
-        artifacts: build/*.deb,build/*.rpm,build/*.tar.xz
+        artifacts: release-artifacts/**
