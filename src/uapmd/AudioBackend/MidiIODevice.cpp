@@ -14,7 +14,46 @@
 #include <libremidi/libremidi.hpp>
 #include <remidy/priv/common.hpp>
 
+#ifdef _WIN32
+#include <combaseapi.h>
+#include <unknwn.h>
+#endif
+
 namespace {
+
+#ifdef _WIN32
+// UUID for MidiSrvTransport - used to check if Windows MIDI Services is installed
+// The MidiSrvTransport is installed with the MIDI Service, not the SDK, so its presence
+// tells us the service has been installed on this PC
+struct __declspec(uuid("2BA15E4E-5417-4A66-85B8-2B2260EFBC84")) MidiSrvTransportUuid : ::IUnknown {};
+
+bool isWindowsMidiServicesInstalled() {
+    // Check if Windows MIDI Services is actually installed by attempting to create
+    // the MidiSrvTransport COM component
+    IUnknown* servicePointer = nullptr;
+
+    HRESULT hr = CoCreateInstance(
+        __uuidof(MidiSrvTransportUuid),
+        NULL,
+        CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(&servicePointer)
+    );
+
+    if (SUCCEEDED(hr)) {
+        if (servicePointer != nullptr) {
+            servicePointer->Release();
+            return true;
+        }
+        return false;
+    }
+    if (hr == REGDB_E_CLASSNOTREG) {
+        // Class not registered. Windows MIDI Services is NOT installed
+        return false;
+    }
+    // Other error. Treat as unavailable
+    return false;
+}
+#endif
 
 bool matches_api_name(const std::string& value, const char* name) {
     if (value.empty() || name == nullptr)
@@ -77,6 +116,20 @@ std::optional<libremidi_api> pick_default_api(const std::vector<libremidi::API>&
 
 std::optional<libremidi_api> uapmd::detail::resolveLibremidiUmpApi(const std::string& apiName) {
     auto apis = libremidi::available_ump_apis();
+    if (apis.empty())
+        return std::nullopt;
+
+#ifdef _WIN32
+    // Filter out Windows MIDI Services if it's not actually installed
+    // libremidi reports it as available if compiled with LIBREMIDI_WINMIDI,
+    // but we need to check if the service is actually running
+    if (!isWindowsMidiServicesInstalled()) {
+        auto it = std::find(apis.begin(), apis.end(), static_cast<libremidi::API>(WINDOWS_MIDI_SERVICES));
+        if (it != apis.end())
+            apis.erase(it);
+    }
+#endif
+
     if (apis.empty())
         return std::nullopt;
 
