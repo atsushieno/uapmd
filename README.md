@@ -36,11 +36,12 @@ $ cmake --install build # --prefix=/usr/local
 
 ### Windows MIDI Services support
 
-Windows builds expect the Windows MIDI Services runtime to be available and use libremidi's WinMIDI backend. During configuration the build downloads the NuGet package `Microsoft.Windows.Devices.Midi2.1.0.13-preview.13.192.nupkg` from the `preview-13` release of <https://github.com/microsoft/MIDI> by default and forwards it to libremidi as `LIBREMIDI_WINMIDI_HEADERS_ZIP`.
+Windows builds expect the Windows MIDI Services runtime to be available and use libremidi's WinMIDI backend. During configuration the build uses the NuGet package `Microsoft.Windows.Devices.Midi2.1.0.14-rc.1.209.nupkg` stored under `external/` and forwards it to libremidi as `LIBREMIDI_WINMIDI_HEADERS_ZIP`.
 
 - `UAPMD_ENABLE_WINMIDI` (defaults to `ON` on Windows, `OFF` elsewhere) toggles this integration.
-- `UAPMD_WINMIDI_PACKAGE_URL` overrides the exact asset URL if you need a different release or a locally mirrored file. You can also adjust `UAPMD_WINMIDI_RELEASE_TAG` and `UAPMD_WINMIDI_PACKAGE_NAME` to make the default URL point to another drop.
+- Override `UAPMD_WINMIDI_HEADERS_ARCHIVE` if you want to point at a different package file.
 - Set `LIBREMIDI_WINMIDI_HEADERS_ZIP` manually to a local `.nupkg` if you need offline builds; the automatic download is skipped when this variable is provided.
+
 
 ## Screenshots
 

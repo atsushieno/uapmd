@@ -11,13 +11,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(UAPMD_VERSION "0.1.2" CACHE STRING "Project version for packaging")
 
 option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (Windows only)" ${WIN32})
-set(UAPMD_WINMIDI_RELEASE_TAG "preview-13" CACHE STRING "Release tag from microsoft/MIDI that provides Windows MIDI Services headers")
-set(UAPMD_WINMIDI_PACKAGE_NAME "Microsoft.Windows.Devices.Midi2.1.0.13-preview.13.192.nupkg" CACHE STRING "Windows MIDI Services NuGet package that contains the headers libremidi needs")
-set(UAPMD_WINMIDI_PACKAGE_URL "" CACHE STRING "Full URL to the Windows MIDI Services NuGet package containing the headers")
-if(UAPMD_WINMIDI_PACKAGE_URL STREQUAL "")
-    set(_UAPMD_WINMIDI_DEFAULT_URL "https://github.com/microsoft/MIDI/releases/download/${UAPMD_WINMIDI_RELEASE_TAG}/${UAPMD_WINMIDI_PACKAGE_NAME}")
-    set(UAPMD_WINMIDI_PACKAGE_URL "${_UAPMD_WINMIDI_DEFAULT_URL}" CACHE STRING "Full URL to the Windows MIDI Services NuGet package containing the headers" FORCE)
-endif()
+set(UAPMD_WINMIDI_HEADERS_ARCHIVE "${CMAKE_CURRENT_LIST_DIR}/external/Microsoft.Windows.Devices.Midi2.1.0.14-rc.1.209.nupkg"
+        CACHE FILEPATH "Path to the Windows MIDI Services header package used by libremidi")
 
 # wow, that's stupid... https://stackoverflow.com/questions/5004858/why-is-stdmin-failing-when-windows-h-is-included
 if (MSVC OR WIN32)
