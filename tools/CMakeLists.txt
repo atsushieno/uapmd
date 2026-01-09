@@ -17,3 +17,8 @@ install(TARGETS remidy-scan
 install(TARGETS uapmd-app
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT uapmd)
+if(APPLE AND TARGET uapmd-app-bundle)
+    install(TARGETS uapmd-app-bundle
+            BUNDLE DESTINATION .
+            COMPONENT uapmd_app)
+endif()

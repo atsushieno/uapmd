@@ -8,6 +8,8 @@ endif()
 
 set(CMAKE_CXX_STANDARD 23)
 
+set(UAPMD_VERSION "0.1.2" CACHE STRING "Project version for packaging")
+
 # wow, that's stupid... https://stackoverflow.com/questions/5004858/why-is-stdmin-failing-when-windows-h-is-included
 if (MSVC OR WIN32)
 add_compile_definitions(NOMINMAX)
@@ -127,17 +129,14 @@ install(TARGETS
 # -----------------
 # CPack (Deb/RPM/TXZ)
 # -----------------
-# Version used for packages (override with -DUAPMD_VERSION=...)
-set(UAPMD_VERSION "0.1.2" CACHE STRING "Project version for packaging")
-
 set(CPACK_PACKAGE_NAME "uapmd")
 set(CPACK_PACKAGE_VENDOR "uapmd")
 set(CPACK_PACKAGE_CONTACT "uapmd maintainers")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Ubiquitous Audio Plugin MIDI Device tools and libraries")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/atsushieno/uapmd")
 
-# Install under /usr in packages regardless of CMAKE_INSTALL_PREFIX on UNIX
-if(NOT WIN32)
+# Install under /usr in packages regardless of CMAKE_INSTALL_PREFIX on Linux
+if(UNIX AND NOT APPLE)
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
 endif()
 
@@ -155,8 +154,13 @@ if(WIN32)
         set(CPACK_NSIS_URL_INFO_ABOUT "${CPACK_PACKAGE_HOMEPAGE_URL}")
         set(CPACK_NSIS_MODIFY_PATH OFF)
     endif()
+elseif(APPLE)
+    set(CPACK_GENERATOR "DragNDrop")
+    set(CPACK_DMG_VOLUME_NAME "UAPMD_${CPACK_PACKAGE_VERSION}")
+    set(CPACK_DMG_SLA_USE_RESOURCE_FILE OFF)
+    set(CPACK_DMG_DISABLE_APPLICATIONS_SYMLINK OFF)
 else()
-    # Linux / macOS still get our usual native managers plus a tarball
+    # Linux still gets our usual native managers plus a tarball
     set(CPACK_GENERATOR "DEB;RPM;TXZ")
 endif()
 
@@ -173,10 +177,16 @@ set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
 # Common metadata
 set(CPACK_PACKAGE_VERSION "${UAPMD_VERSION}")
 
-# Package only our component
-set(CPACK_COMPONENTS_ALL uapmd)
-set(CPACK_COMPONENT_UAPMD_DISPLAY_NAME "uapmd")
-set(CPACK_COMPONENT_UAPMD_DESCRIPTION "UAPMD tools, libraries, and headers")
+# Package components per-platform; DMG should only contain the app bundle
+if(APPLE)
+    set(CPACK_COMPONENTS_ALL uapmd_app)
+    set(CPACK_COMPONENT_UAPMD_APP_DISPLAY_NAME "uapmd app bundle")
+    set(CPACK_COMPONENT_UAPMD_APP_DESCRIPTION "UAPMD macOS desktop application bundle")
+else()
+    set(CPACK_COMPONENTS_ALL uapmd)
+    set(CPACK_COMPONENT_UAPMD_DISPLAY_NAME "uapmd")
+    set(CPACK_COMPONENT_UAPMD_DESCRIPTION "UAPMD tools, libraries, and headers")
+endif()
 
 include(CPack)
 

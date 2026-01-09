@@ -7,6 +7,12 @@ endif()
 set(CMAKE_CXX_STANDARD 23)
 
 add_executable(uapmd-app)
+set(UAPMD_APP_TARGETS uapmd-app)
+
+if(APPLE)
+    add_executable(uapmd-app-bundle MACOSX_BUNDLE)
+    list(APPEND UAPMD_APP_TARGETS uapmd-app-bundle)
+endif()
 
 # Backend selection with priority: SDL3 > SDL2 > GLFW
 set(BACKEND_FOUND FALSE)
@@ -133,17 +139,20 @@ if(NOT TARGET remidy-imgui-shared)
 endif()
 target_link_libraries(remidy-imgui-shared PUBLIC imgui ${BACKEND_LIBRARIES})
 
-target_include_directories(uapmd-app PRIVATE
-        ${choc_SOURCE_DIR}
-        ${cmidi2_SOURCE_DIR}
-        ${portable-file-dialogs_SOURCE_DIR}
-        ${midicci_SOURCE_DIR}/include
-        ../../include
-        ../../src/remidy-tooling
-        ../../external/libremidi/include
-        ../../external/cpplocate/source/cpplocate/include
-)
+foreach(app_target IN LISTS UAPMD_APP_TARGETS)
+    target_include_directories(${app_target} PRIVATE
+            ${choc_SOURCE_DIR}
+            ${cmidi2_SOURCE_DIR}
+            ${portable-file-dialogs_SOURCE_DIR}
+            ${midicci_SOURCE_DIR}/include
+            ../../include
+            ../../src/remidy-tooling
+            ../../external/libremidi/include
+            ../../external/cpplocate/source/cpplocate/include
+    )
+endforeach()
 
+set(uapmd_LIBS_PLAT)
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     set(uapmd_LIBS_PLAT
             "-framework AudioToolbox"
@@ -152,17 +161,19 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     )
 endif ()
 
-target_link_libraries(uapmd-app PRIVATE
-        imgui
-        cpptrace::cpptrace
-        uapmd
-        remidy-gui
-        remidy-imgui-shared
-        cpplocate::cpplocate
-        libremidi::libremidi
-        midicci_static
-        ${uapmd_LIBS_PLAT}
-)
+foreach(app_target IN LISTS UAPMD_APP_TARGETS)
+    target_link_libraries(${app_target} PRIVATE
+            imgui
+            cpptrace::cpptrace
+            uapmd
+            remidy-gui
+            remidy-imgui-shared
+            cpplocate::cpplocate
+            libremidi::libremidi
+            midicci_static
+            ${uapmd_LIBS_PLAT}
+    )
+endforeach()
 
 # On Linux, CHOC's DesktopWindow uses GTK3; ensure headers and libs are present
 if(UNIX AND NOT APPLE)
@@ -170,7 +181,7 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(uapmd-app PRIVATE X11::X11)
 endif()
 
-target_sources(uapmd-app PRIVATE
+set(UAPMD_APP_SOURCE_FILES
         main.cpp
         AppModel.cpp
         UapmdJSRuntime.cpp
@@ -188,8 +199,33 @@ target_sources(uapmd-app PRIVATE
         Configuration/VirtualMidiDeviceConfiguration.cpp
 )
 
-# Use C++23 like the WebView version
-target_compile_features(uapmd-app PRIVATE cxx_std_23)
+foreach(app_target IN LISTS UAPMD_APP_TARGETS)
+    target_sources(${app_target} PRIVATE ${UAPMD_APP_SOURCE_FILES})
+endforeach()
+
+foreach(app_target IN LISTS UAPMD_APP_TARGETS)
+    target_compile_features(${app_target} PRIVATE cxx_std_23)
+endforeach()
+
+if(APPLE)
+    set(UAPMD_APP_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/UapmdApp-Info.plist")
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in ${UAPMD_APP_INFO_PLIST} @ONLY)
+    set_target_properties(uapmd-app-bundle PROPERTIES
+            MACOSX_BUNDLE_INFO_PLIST ${UAPMD_APP_INFO_PLIST}
+            OUTPUT_NAME "uapmd-app"
+    )
+
+    add_custom_command(TARGET uapmd-app-bundle POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources"
+        COMMAND ${CMAKE_COMMAND} -E remove_directory
+            "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources/js"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/js
+            "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources/js"
+        COMMENT "Copying js resources into the macOS bundle"
+    )
+endif()
 
 # Create symbolic link to js directory for script editor module resolution
 add_custom_command(TARGET uapmd-app POST_BUILD

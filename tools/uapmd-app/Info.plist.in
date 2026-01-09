@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>UAPMD</string>
+    <key>CFBundleDisplayName</key>
+    <string>UAPMD</string>
+    <key>CFBundleIdentifier</key>
+    <string>org.uapmd.app</string>
+    <key>CFBundleExecutable</key>
+    <string>uapmd-app</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@UAPMD_VERSION@</string>
+    <key>CFBundleVersion</key>
+    <string>@UAPMD_VERSION@</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
