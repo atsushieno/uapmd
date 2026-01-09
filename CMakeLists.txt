@@ -136,11 +136,29 @@ set(CPACK_PACKAGE_CONTACT "uapmd maintainers")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Ubiquitous Audio Plugin MIDI Device tools and libraries")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/atsushieno/uapmd")
 
-# Install under /usr in packages regardless of CMAKE_INSTALL_PREFIX
-set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+# Install under /usr in packages regardless of CMAKE_INSTALL_PREFIX on UNIX
+if(NOT WIN32)
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+endif()
 
-# Generators: deb, rpm, and a portable txz archive
-set(CPACK_GENERATOR "DEB;RPM;TXZ")
+# Generators per platform
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP")
+    find_program(UAPMD_MAKENSIS_EXECUTABLE NAMES makensis)
+    if(UAPMD_MAKENSIS_EXECUTABLE)
+        # Produce a Windows installer when NSIS is available
+        set(CPACK_GENERATOR "${CPACK_GENERATOR};NSIS")
+        set(CPACK_NSIS_DISPLAY_NAME "Ubiquitous Audio Plugin MIDI Device")
+        set(CPACK_NSIS_PACKAGE_NAME "${CPACK_PACKAGE_NAME}")
+        set(CPACK_NSIS_CONTACT "${CPACK_PACKAGE_CONTACT}")
+        set(CPACK_NSIS_HELP_LINK "${CPACK_PACKAGE_HOMEPAGE_URL}")
+        set(CPACK_NSIS_URL_INFO_ABOUT "${CPACK_PACKAGE_HOMEPAGE_URL}")
+        set(CPACK_NSIS_MODIFY_PATH OFF)
+    endif()
+else()
+    # Linux / macOS still get our usual native managers plus a tarball
+    set(CPACK_GENERATOR "DEB;RPM;TXZ")
+endif()
 
 # Debian-specific
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
