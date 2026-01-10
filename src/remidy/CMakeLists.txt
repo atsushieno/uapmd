@@ -1,7 +1,8 @@
 
 include("../../external/LV2Kit.cmake")
 
-if(UNIX AND NOT APPLE)
+# Make X11 and GTK optional for WebAssembly builds
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     find_package(PkgConfig REQUIRED)
     find_package(X11 REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
@@ -13,6 +14,8 @@ if(UNIX AND NOT APPLE)
     else()
         message(WARNING "Wayland client not found - Wayland support disabled")
     endif()
+elseif(EMSCRIPTEN)
+    message(STATUS "Building remidy for WebAssembly - skipping X11/GTK dependencies")
 endif()
 
 # FIXME: it would be slightly nicer if we could migrate to CPM (failed to resolve farbot if we actually do so. Also see https://github.com/hogliux/farbot/pull/15 )
