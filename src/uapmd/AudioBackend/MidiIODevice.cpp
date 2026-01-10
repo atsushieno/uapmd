@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <libremidi/libremidi.hpp>
@@ -16,51 +17,23 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#include <winnt.h>
 #endif
 
 namespace {
 
 #ifdef _WIN32
 bool isWindowsMidiServicesSupported() {
-    // Windows MIDI Services is supported on:
-    // - Windows 11 25H2 (Build 26100+)
-    // - Windows 11 Insider (Build 27788+)
-    // Not supported on Windows 10 (Build < 19045)
-
-    // Get Windows version using RtlGetVersion (works even with version lie in manifest)
-    typedef LONG (WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
-
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    if (!ntdll)
+    // Check for the MIDI 2.0 USB driver
+    // If %SystemRoot%\System32\Drivers\usbmidi2.sys is missing,
+    // the system cannot handle MIDI 2.0 hardware natively
+    wchar_t systemRoot[MAX_PATH];
+    if (GetEnvironmentVariableW(L"SystemRoot", systemRoot, MAX_PATH) == 0)
         return false;
 
-    auto RtlGetVersion = reinterpret_cast<RtlGetVersionPtr>(GetProcAddress(ntdll, "RtlGetVersion"));
-    if (!RtlGetVersion)
-        return false;
+    std::wstring driverPath = std::wstring(systemRoot) + L"\\System32\\Drivers\\usbmidi2.sys";
 
-    RTL_OSVERSIONINFOW osvi{};
-    osvi.dwOSVersionInfoSize = sizeof(osvi);
-
-    if (RtlGetVersion(&osvi) != 0)
-        return false;
-
-    // Windows 11 is version 10.0 with build >= 22000
-    // We need build 26100+ for full Windows 11 25H2 support
-    // Or build 27788+ for Insider preview support
-    if (osvi.dwMajorVersion == 10 && osvi.dwMinorVersion == 0) {
-        if (osvi.dwBuildNumber >= 27788) {
-            // Windows 11 Insider preview - supported
-            return true;
-        }
-        if (osvi.dwBuildNumber >= 26100) {
-            // Windows 11 25H2 - supported
-            return true;
-        }
-    }
-
-    // All other versions (including Windows 10) - not supported
-    return false;
+    DWORD attribs = GetFileAttributesW(driverPath.c_str());
+    return (attribs != INVALID_FILE_ATTRIBUTES) && !(attribs & FILE_ATTRIBUTE_DIRECTORY);
 }
 #endif
 
