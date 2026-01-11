@@ -20,7 +20,9 @@
 #include "SharedTheme.hpp"
 
 #include "MainWindow.hpp"
+#if !defined(UAPMD_WEB_BUILD)
 #include "../AppModel.hpp"
+#endif
 #include "uapmd/priv/audio/AudioFileFactory.hpp"
 
 namespace uapmd::gui {
@@ -1002,10 +1004,14 @@ void MainWindow::refreshInstances() {
 
 void MainWindow::refreshPluginList() {
     std::vector<PluginEntry> plugins;
-
+#if defined(UAPMD_WEB_BUILD)
+    // Provide a small mock catalog for web stub build
+    plugins.push_back({ .format = "VST3", .id = "Dexed", .name = "Dexed", .vendor = "Digital Suburban" });
+    plugins.push_back({ .format = "LV2", .id = "sorcer", .name = "Sorcer", .vendor = "OpenAV" });
+    plugins.push_back({ .format = "CLAP", .id = "SurgeXT", .name = "Surge XT", .vendor = "Surge Synth Team" });
+#else
     auto& catalog = uapmd::AppModel::instance().sequencer().engine()->catalog();
     auto catalogPlugins = catalog.getPlugins();
-
     for (auto* plugin : catalogPlugins) {
         plugins.push_back({
             .format = plugin->format(),
@@ -1014,7 +1020,7 @@ void MainWindow::refreshPluginList() {
             .vendor = plugin->vendorName()
         });
     }
-
+#endif
     pluginSelector_.setPlugins(plugins);
 }
 

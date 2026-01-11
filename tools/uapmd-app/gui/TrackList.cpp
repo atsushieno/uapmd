@@ -1,5 +1,9 @@
 #include "TrackList.hpp"
+#if defined(UAPMD_WEB_BUILD)
+#include "AppModel.hpp"
+#else
 #include "../AppModel.hpp"
+#endif
 #include <algorithm>
 #include <array>
 #include <iostream>

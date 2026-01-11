@@ -34,6 +34,7 @@ set(CMAKE_EXE_LINKER_FLAGS
     -s USE_WEBGL2=1 \
     -s FULL_ES3=1 \
     -s MIN_WEBGL_VERSION=2 \
+    -s MAX_WEBGL_VERSION=2 \
     -s DISABLE_EXCEPTION_CATCHING=1 \
     --use-port=contrib.glfw3 \
     -s NO_EXIT_RUNTIME=0 \
@@ -62,6 +63,8 @@ add_executable(uapmd-app
 target_include_directories(uapmd-app PRIVATE
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends)
+
+target_compile_definitions(uapmd-app PRIVATE IMGUI_IMPL_OPENGL_ES3=1)
 
 find_package(Threads REQUIRED)
 target_link_libraries(uapmd-app PRIVATE Threads::Threads)

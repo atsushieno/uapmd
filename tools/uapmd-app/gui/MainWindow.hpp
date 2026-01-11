@@ -14,9 +14,16 @@
 #include "PluginSelector.hpp"
 #include "TrackList.hpp"
 #include "AudioDeviceSettings.hpp"
+#if defined(UAPMD_WEB_BUILD)
+#include "ScriptEditor_stub.hpp"
+#include "InstanceDetails_stub.hpp"
+#include "AppModel.hpp"
+#else
 #include "ScriptEditor.hpp"
-#include "SpectrumAnalyzer.hpp"
 #include "InstanceDetails.hpp"
+#include "../AppModel.hpp"
+#endif
+#include "SpectrumAnalyzer.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 

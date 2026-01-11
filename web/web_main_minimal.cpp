@@ -63,8 +63,9 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    // For OpenGL ES 3.0
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    // Request WebGL2 (maps to OpenGL ES 3.0). Emscripten's GLFW expects
+    // major versions 1 or 2; 2 selects WebGL2.
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
 
@@ -76,7 +77,10 @@ int main(int argc, char** argv) {
     }
 
     glfwMakeContextCurrent(g_ctx.window);
-    glfwSwapInterval(1); // Enable vsync
+    // Emscripten uses requestAnimationFrame; do not set swap interval before main loop.
+#if !defined(EMSCRIPTEN)
+    glfwSwapInterval(1); // Enable vsync on native
+#endif
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();

@@ -14,6 +14,9 @@ message(STATUS "Building for Emscripten/Wasm")
 # Define for WebAssembly build
 add_compile_definitions(EMSCRIPTEN=1)
 add_compile_definitions(USE_GLFW_BACKEND=1)
+add_compile_definitions(UAPMD_WEB_BUILD=1)
+# Ensure ImGui OpenGL3 backend uses GLES3 path on web
+add_compile_definitions(IMGUI_IMPL_OPENGL_ES3=1)
 
 # Disable all platform-specific features for WebAssembly
 add_compile_definitions(DISABLE_VST3=1)
@@ -42,6 +45,7 @@ set(CMAKE_EXE_LINKER_FLAGS
     -s USE_WEBGL2=1 \
     -s FULL_ES3=1 \
     -s MIN_WEBGL_VERSION=2 \
+    -s MAX_WEBGL_VERSION=2 \
     -s DISABLE_EXCEPTION_CATCHING=1 \
     --use-port=contrib.glfw3 \
     -s NO_EXIT_RUNTIME=0 \
@@ -136,12 +140,25 @@ CPMAddPackage(
 # add_subdirectory(${UAPMD_ROOT}/src/remidy ${CMAKE_BINARY_DIR}/remidy)
 # set(CMAKE_SKIP_INSTALL_RULES OFF)
 
-# For now, build a minimal executable to test the concept
-
-# Build minimal uapmd-app executable for WebAssembly
+# Build WebAssembly uapmd-app with GUI + stubs
 add_executable(uapmd-app
-    # Web-specific minimal main file
+    # Web-specific main
     web_main.cpp
+
+    # Real GUI sources (desktop code reused)
+    ${UAPMD_ROOT}/tools/uapmd-app/gui/AudioDeviceSettings.cpp
+    ${UAPMD_ROOT}/tools/uapmd-app/gui/PluginList.cpp
+    ${UAPMD_ROOT}/tools/uapmd-app/gui/PluginSelector.cpp
+    ${UAPMD_ROOT}/tools/uapmd-app/gui/SpectrumAnalyzer.cpp
+    ${UAPMD_ROOT}/tools/uapmd-app/gui/TrackList.cpp
+    ${UAPMD_ROOT}/tools/uapmd-app/gui/MainWindow.cpp
+
+    # Web stub implementations
+    stubs/remidy_gui_stubs.cpp
+    stubs/audio_stubs.cpp
+    stubs/midi_stubs.cpp
+    stubs/sequencer_stubs.cpp
+
     # ImGui sources
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
@@ -156,6 +173,13 @@ add_executable(uapmd-app
 target_include_directories(uapmd-app PRIVATE
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
+    # Prefer web stubs first to override desktop headers
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+    ${UAPMD_ROOT}/tools/remidy-imgui-shared
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    # Project headers used by GUI sources
+    ${UAPMD_ROOT}/include
+    ${UAPMD_ROOT}/tools
 )
 
 # Find and link required libraries

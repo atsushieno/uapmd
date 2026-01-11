@@ -9,7 +9,11 @@
 #include <imgui.h>
 #include <remidy-gui/remidy-gui.hpp>
 
+#if defined(UAPMD_WEB_BUILD)
+#include "AppModel.hpp"
+#else
 #include "../AppModel.hpp"
+#endif
 
 namespace {
 using ParameterContext = uapmd::gui::ParameterList::ParameterContext;
