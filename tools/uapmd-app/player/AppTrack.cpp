@@ -99,7 +99,8 @@ namespace uapmd_app {
         const TimelineState& timeline,
         float** deviceInputBuffers,
         uint32_t deviceChannelCount,
-        int32_t frameCount
+        int32_t frameCount,
+        remidy::AudioProcessContext* trackContext
     ) {
         if (!uapmd_track_)
             return;
@@ -192,12 +193,22 @@ namespace uapmd_app {
             }
         }
 
-        // Step 4: TODO - Copy mixed source buffer into uapmd track's input buffer
-        // This will be done when we integrate with AppModel and have access to the AudioProcessContext
+        // Step 4: Copy mixed source buffer into uapmd track's input buffer
+        if (trackContext) {
+            // Copy mixed source buffers to uapmd track input buffers
+            // We assume the track has at least one input bus configured
+            for (uint32_t ch = 0; ch < numChannels && ch < mixed_source_buffer_ptrs_.size(); ++ch) {
+                // Get track input buffer for main bus (bus 0)
+                if (trackContext->audioInBusCount() > 0 && ch < trackContext->inputChannelCount(0)) {
+                    float* trackInput = trackContext->getFloatInBuffer(0, ch);
 
-        // Step 5: Call uapmd track's processAudio()
-        // This will be done by AppModel/SequencerEngine with the proper context
-        // For now, we've prepared the mixed source buffer that the caller can use
+                    // Copy our mixed source buffer to track input
+                    memcpy(trackInput, mixed_source_buffer_ptrs_[ch], frameCount * sizeof(float));
+                }
+            }
+        }
+
+        // Step 5: Track's processAudio() will be called by SequencerEngine after this callback returns
     }
 
 } // namespace uapmd_app

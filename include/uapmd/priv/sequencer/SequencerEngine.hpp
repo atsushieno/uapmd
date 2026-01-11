@@ -64,6 +64,10 @@ namespace uapmd {
 
         virtual bool removePluginInstance(int32_t instanceId) = 0;
 
+        // Audio preprocessing callback (called before track processing)
+        using AudioPreprocessCallback = std::function<void(AudioProcessContext& process)>;
+        virtual void setAudioPreprocessCallback(AudioPreprocessCallback callback) = 0;
+
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
 
         // Playback control (accessed by AudioPluginSequencer)
@@ -74,11 +78,6 @@ namespace uapmd {
         virtual void stopPlayback() = 0;
         virtual void pausePlayback() = 0;
         virtual void resumePlayback() = 0;
-
-        // Audio file playback
-        virtual void loadAudioFile(std::unique_ptr<AudioFileReader> reader) = 0;
-        virtual void unloadAudioFile() = 0;
-        virtual double audioFileDurationSeconds() const = 0;
 
         // Audio analysis
         virtual void getInputSpectrum(float* outSpectrum, int numBars) const = 0;

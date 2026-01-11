@@ -3,6 +3,8 @@
 #include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <uapmd/uapmd.hpp>
+#include "player/TimelineTypes.hpp"
+#include "player/AppTrack.hpp"
 #include <format>
 #include <thread>
 #include <string>
@@ -11,12 +13,16 @@
 #include <mutex>
 
 namespace uapmd {
-    // Forward declaration
+    // Forward declarations
     class AudioPluginSequencer;
+    class AppModel;
 
     class TransportController {
+        AppModel* appModel_;
         AudioPluginSequencer* sequencer_;
         std::string currentFile_;
+        int32_t currentClipId_ = -1;  // Track the clip we loaded
+        int32_t currentTrackIndex_ = 0;  // Which track to load into (default to track 0)
         bool isPlaying_ = false;
         bool isPaused_ = false;
         bool isRecording_ = false;
@@ -25,7 +31,7 @@ namespace uapmd {
         float volume_ = 0.8f;
 
     public:
-        explicit TransportController(AudioPluginSequencer* sequencer);
+        explicit TransportController(AppModel* appModel, AudioPluginSequencer* sequencer);
 
         // State getters
         const std::string& currentFile() const { return currentFile_; }
@@ -89,6 +95,15 @@ namespace uapmd {
         mutable std::mutex devicesMutex_;
         std::vector<DeviceEntry> devices_;
         int32_t nextDeviceId_ = 1;
+
+        // Timeline and app-level tracks
+        uapmd_app::TimelineState timeline_;
+        std::vector<std::unique_ptr<uapmd_app::AppTrack>> app_tracks_;
+        int32_t sample_rate_;
+        int32_t next_source_node_id_ = 1;
+
+        // Audio processing callback (called by SequencerEngine)
+        void processAppTracksAudio(AudioProcessContext& process);
 
     public:
         static void instantiate();
@@ -215,5 +230,37 @@ namespace uapmd {
         // Save plugin state to a file
         // Returns result with success status and any error message
         PluginStateResult savePluginState(int32_t instanceId, const std::string& filepath);
+
+        // Timeline access
+        uapmd_app::TimelineState& timeline() { return timeline_; }
+        const uapmd_app::TimelineState& timeline() const { return timeline_; }
+
+        // Clip management
+        struct ClipAddResult {
+            int32_t clipId = -1;
+            int32_t sourceNodeId = -1;
+            bool success = false;
+            std::string error;
+        };
+
+        ClipAddResult addClipToTrack(
+            int32_t trackIndex,
+            const uapmd_app::TimelinePosition& position,
+            std::unique_ptr<uapmd::AudioFileReader> reader
+        );
+
+        bool removeClipFromTrack(int32_t trackIndex, int32_t clipId);
+
+        // Device input routing
+        int32_t addDeviceInputToTrack(
+            int32_t trackIndex,
+            const std::vector<uint32_t>& channelIndices
+        );
+
+        // App tracks access
+        std::vector<uapmd_app::AppTrack*> getAppTracks();
+
+        // Sample rate access
+        int32_t sampleRate() const { return sample_rate_; }
     };
 }

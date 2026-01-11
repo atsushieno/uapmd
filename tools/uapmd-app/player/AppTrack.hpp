@@ -34,7 +34,8 @@ namespace uapmd_app {
             const TimelineState& timeline,
             float** deviceInputBuffers,
             uint32_t deviceChannelCount,
-            int32_t frameCount
+            int32_t frameCount,
+            remidy::AudioProcessContext* trackContext  // Context for accessing track buffers
         );
 
         // Access to underlying uapmd track
