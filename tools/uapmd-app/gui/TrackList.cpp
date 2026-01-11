@@ -47,11 +47,12 @@ void TrackList::render() {
         }
     }
 
-    if (ImGui::BeginTable("##InstanceTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame)) {
+    if (ImGui::BeginTable("##InstanceTable", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableSetupColumn("Track", ImGuiTableColumnFlags_WidthFixed, 60.0f);
         ImGui::TableSetupColumn("Plugin", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 60.0f);
         ImGui::TableSetupColumn("UMP Device", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Sequence", ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableHeadersRow();
 
@@ -157,8 +158,25 @@ void TrackList::renderInstanceRow(const TrackInstance& instance, bool showTrackC
         }
     }
 
-    // Details toggle column
+    // Sequence button column
     ImGui::TableSetColumnIndex(4);
+    if (trackIndex >= 0) {
+        std::string sequenceButtonLabel = (instance.sequenceVisible ? "Hide##Seq" : "Show##Seq") + std::to_string(trackIndex);
+        if (ImGui::Button(sequenceButtonLabel.c_str())) {
+            if (instance.sequenceVisible) {
+                if (onHideSequence_) {
+                    onHideSequence_(trackIndex);
+                }
+            } else if (onShowSequence_) {
+                onShowSequence_(trackIndex);
+            }
+        }
+    } else {
+        ImGui::TextDisabled("-");
+    }
+
+    // Details toggle column
+    ImGui::TableSetColumnIndex(5);
     std::string buttonLabel = (instance.detailsVisible ? "Hide##" : "Show##") + std::to_string(instance.instanceId);
     if (ImGui::Button(buttonLabel.c_str())) {
         if (instance.detailsVisible) {
@@ -205,6 +223,14 @@ void TrackList::setOnRemoveInstance(RemoveInstanceCallback callback) {
 
 void TrackList::setOnUMPDeviceNameChange(UMPDeviceNameChangeCallback callback) {
     onUMPDeviceNameChange_ = callback;
+}
+
+void TrackList::setOnShowSequence(ShowSequenceCallback callback) {
+    onShowSequence_ = callback;
+}
+
+void TrackList::setOnHideSequence(HideSequenceCallback callback) {
+    onHideSequence_ = callback;
 }
 
 }

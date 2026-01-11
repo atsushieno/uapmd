@@ -110,19 +110,65 @@ namespace uapmd_app {
         return true;
     }
 
+    bool TrackClipManager::setClipName(int32_t clipId, const std::string& name) {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        it->second.name = name;
+        return true;
+    }
+
+    bool TrackClipManager::setClipFilepath(int32_t clipId, const std::string& filepath) {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        it->second.filepath = filepath;
+        return true;
+    }
+
+    bool TrackClipManager::setClipAnchor(int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset) {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        it->second.anchorClipId = anchorClipId;
+        it->second.anchorOrigin = anchorOrigin;
+        it->second.anchorOffset = anchorOffset;
+        return true;
+    }
+
     std::vector<ClipData*> TrackClipManager::getActiveClipsAt(const TimelinePosition& position) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         std::vector<ClipData*> result;
 
+        // Build clip map for absolute position calculation
+        std::unordered_map<int32_t, const ClipData*> clipMap;
+        for (const auto& pair : clips_) {
+            clipMap[pair.first] = &pair.second;
+        }
+
         for (auto& pair : clips_) {
-            if (pair.second.contains(position)) {
-                result.push_back(&pair.second);
+            ClipData& clip = pair.second;
+            // Calculate absolute position for this clip
+            TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
+
+            // Check if the given position falls within this clip's range
+            if (position.samples >= absPos.samples &&
+                position.samples < absPos.samples + clip.durationSamples) {
+                result.push_back(&clip);
             }
         }
 
-        // Sort by position (earlier clips first)
-        std::sort(result.begin(), result.end(), [](const ClipData* a, const ClipData* b) {
-            return a->position.samples < b->position.samples;
+        // Sort by absolute position (earlier clips first)
+        std::sort(result.begin(), result.end(), [&clipMap](const ClipData* a, const ClipData* b) {
+            TimelinePosition aPosAbs = a->getAbsolutePosition(clipMap);
+            TimelinePosition bPosAbs = b->getAbsolutePosition(clipMap);
+            return aPosAbs.samples < bPosAbs.samples;
         });
 
         return result;
@@ -132,15 +178,29 @@ namespace uapmd_app {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         std::vector<const ClipData*> result;
 
+        // Build clip map for absolute position calculation
+        std::unordered_map<int32_t, const ClipData*> clipMap;
         for (const auto& pair : clips_) {
-            if (pair.second.contains(position)) {
-                result.push_back(&pair.second);
+            clipMap[pair.first] = &pair.second;
+        }
+
+        for (const auto& pair : clips_) {
+            const ClipData& clip = pair.second;
+            // Calculate absolute position for this clip
+            TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
+
+            // Check if the given position falls within this clip's range
+            if (position.samples >= absPos.samples &&
+                position.samples < absPos.samples + clip.durationSamples) {
+                result.push_back(&clip);
             }
         }
 
-        // Sort by position (earlier clips first)
-        std::sort(result.begin(), result.end(), [](const ClipData* a, const ClipData* b) {
-            return a->position.samples < b->position.samples;
+        // Sort by absolute position (earlier clips first)
+        std::sort(result.begin(), result.end(), [&clipMap](const ClipData* a, const ClipData* b) {
+            TimelinePosition aPosAbs = a->getAbsolutePosition(clipMap);
+            TimelinePosition bPosAbs = b->getAbsolutePosition(clipMap);
+            return aPosAbs.samples < bPosAbs.samples;
         });
 
         return result;

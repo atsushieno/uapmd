@@ -12,9 +12,15 @@ namespace uapmd {
         virtual uint64_t absolutePositionInSamples() = 0;
     };
 
+    enum class UapmdAnchorOrigin {
+        Start,
+        End
+    };
+
     struct UapmdTimelinePosition {
         // can be used to calculate the absolute position.
         UapmdClipDataReferencible* anchor{nullptr};
+        UapmdAnchorOrigin origin{UapmdAnchorOrigin::Start};
         uint64_t samples{};
     };
 

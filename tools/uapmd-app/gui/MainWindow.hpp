@@ -17,6 +17,7 @@
 #include "ScriptEditor.hpp"
 #include "SpectrumAnalyzer.hpp"
 #include "InstanceDetails.hpp"
+#include "SequenceEditor.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 
@@ -87,6 +88,7 @@ class MainWindow {
         std::unordered_map<int32_t, std::array<char, 128>> umpDeviceNameBuffers_;
 
         InstanceDetails instanceDetails_;
+        SequenceEditor sequenceEditor_;
 
     public:
         explicit MainWindow(GuiDefaults defaults = {});
@@ -131,6 +133,16 @@ class MainWindow {
         void handleEnableDevice(int32_t instanceId, const std::string& deviceName);
         void handleDisableDevice(int32_t instanceId);
         void handleRemoveInstance(int32_t instanceId);
+
+        // Sequence Editor helpers
+        void refreshSequenceEditorForTrack(int32_t trackIndex);
+        void addClipToTrack(int32_t trackIndex, const std::string& filepath);
+        void removeClipFromTrack(int32_t trackIndex, int32_t clipId);
+        void clearAllClipsFromTrack(int32_t trackIndex);
+        void updateClip(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position);
+        void updateClipName(int32_t trackIndex, int32_t clipId, const std::string& name);
+        void changeClipFile(int32_t trackIndex, int32_t clipId);
+
         void renderDeviceSettingsWindow();
         void renderPlayerSettingsWindow();
         void renderPluginSelectorWindow();

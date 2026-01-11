@@ -183,6 +183,9 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
 
         result.device = state->device;
 
+        // Sync app tracks to wrap any newly created tracks
+        syncAppTracks();
+
         // Notify all registered callbacks
         for (auto& cb : instanceCreated) {
             cb(result);
@@ -555,6 +558,9 @@ void uapmd::TransportController::loadFile() {
         return;
     }
 
+    // Ensure at least one track exists
+    appModel_->ensureDefaultTrack();
+
     // Unload previous clip if any
     if (currentClipId_ >= 0) {
         appModel_->removeClipFromTrack(currentTrackIndex_, currentClipId_);
@@ -734,7 +740,8 @@ uapmd::AppModel::PluginStateResult uapmd::AppModel::savePluginState(int32_t inst
 uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
     int32_t trackIndex,
     const uapmd_app::TimelinePosition& position,
-    std::unique_ptr<uapmd::AudioFileReader> reader
+    std::unique_ptr<uapmd::AudioFileReader> reader,
+    const std::string& filepath
 ) {
     ClipAddResult result;
 
@@ -766,6 +773,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
         clip.sourceNodeInstanceId = sourceNodeId;
         clip.gain = 1.0;
         clip.muted = false;
+        clip.filepath = filepath;
 
         // Add clip to track
         int32_t clipId = app_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
@@ -821,6 +829,44 @@ std::vector<uapmd_app::AppTrack*> uapmd::AppModel::getAppTracks() {
         tracks.push_back(track.get());
     }
     return tracks;
+}
+
+void uapmd::AppModel::syncAppTracks() {
+    auto& uapmdTracks = sequencer_.engine()->tracks();
+
+    // Remove app tracks whose uapmd track no longer exists
+    app_tracks_.erase(
+        std::remove_if(app_tracks_.begin(), app_tracks_.end(),
+            [&](const auto& appTrack) {
+                return std::find(uapmdTracks.begin(), uapmdTracks.end(),
+                                appTrack->uapmdTrack()) == uapmdTracks.end();
+            }),
+        app_tracks_.end()
+    );
+
+    // Add new app tracks for any uapmd tracks we don't have yet
+    for (size_t i = app_tracks_.size(); i < uapmdTracks.size(); ++i) {
+        app_tracks_.push_back(
+            std::make_unique<uapmd_app::AppTrack>(uapmdTracks[i], sample_rate_)
+        );
+    }
+}
+
+void uapmd::AppModel::ensureDefaultTrack() {
+    // If no tracks exist, create a default empty track
+    if (app_tracks_.empty()) {
+        // Add a simple track without any plugins
+        std::string emptyFormat = "";
+        std::string emptyPluginId = "";
+        auto callback = [this](int32_t instanceId, int32_t trackIndex, std::string error) {
+            // No plugin instance, just track creation
+            syncAppTracks();
+        };
+        sequencer_.engine()->addSimpleTrack(emptyFormat, emptyPluginId, callback);
+
+        // Synchronize app_tracks_ to wrap the newly created track
+        syncAppTracks();
+    }
 }
 
 // Audio processing callback - processes app tracks with timeline

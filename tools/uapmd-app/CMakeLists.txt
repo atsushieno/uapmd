@@ -229,6 +229,7 @@ set(UAPMD_APP_SOURCE_FILES
         gui/AudioDeviceSettings.cpp
         gui/ScriptEditor.cpp
         gui/SpectrumAnalyzer.cpp
+        gui/SequenceEditor.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         player/UapmdProjectFileReader.cpp

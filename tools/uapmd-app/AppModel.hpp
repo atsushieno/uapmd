@@ -246,7 +246,8 @@ namespace uapmd {
         ClipAddResult addClipToTrack(
             int32_t trackIndex,
             const uapmd_app::TimelinePosition& position,
-            std::unique_ptr<uapmd::AudioFileReader> reader
+            std::unique_ptr<uapmd::AudioFileReader> reader,
+            const std::string& filepath = ""
         );
 
         bool removeClipFromTrack(int32_t trackIndex, int32_t clipId);
@@ -259,6 +260,10 @@ namespace uapmd {
 
         // App tracks access
         std::vector<uapmd_app::AppTrack*> getAppTracks();
+
+        // Track synchronization
+        void syncAppTracks();
+        void ensureDefaultTrack();
 
         // Sample rate access
         int32_t sampleRate() const { return sample_rate_; }

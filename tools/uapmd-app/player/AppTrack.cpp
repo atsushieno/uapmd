@@ -44,6 +44,38 @@ namespace uapmd_app {
         return true;
     }
 
+    bool AppTrack::replaceClipSourceNode(int32_t clipId, std::unique_ptr<AppAudioFileSourceNode> newSourceNode) {
+        if (!newSourceNode)
+            return false;
+
+        // Get the clip to find its current source node
+        auto* clip = clip_manager_.getClip(clipId);
+        if (!clip)
+            return false;
+
+        int32_t oldSourceNodeId = clip->sourceNodeInstanceId;
+        int32_t newSourceNodeId = newSourceNode->instanceId();
+
+        // Find and replace the source node
+        auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
+            [oldSourceNodeId](const std::unique_ptr<AppSourceNode>& node) {
+                return node->instanceId() == oldSourceNodeId;
+            });
+
+        if (it != source_nodes_.end()) {
+            // Replace the old source node with the new one
+            *it = std::move(newSourceNode);
+        } else {
+            // Old source node not found, just add the new one
+            source_nodes_.push_back(std::move(newSourceNode));
+        }
+
+        // Update the clip's source node reference
+        clip->sourceNodeInstanceId = newSourceNodeId;
+
+        return true;
+    }
+
     bool AppTrack::addDeviceInputSource(std::unique_ptr<AppDeviceInputSourceNode> sourceNode) {
         if (!sourceNode)
             return false;
@@ -116,10 +148,17 @@ namespace uapmd_app {
             std::memset(channelBuffer.data(), 0, frameCount * sizeof(float));
         }
 
-        // Step 1: Query active clips at current timeline position
+        // Step 1: Build clip map for absolute position calculations
+        auto allClips = clip_manager_.getAllClips();
+        std::unordered_map<int32_t, const ClipData*> clipMap;
+        for (auto* clip : allClips) {
+            clipMap[clip->clipId] = clip;
+        }
+
+        // Step 2: Query active clips at current timeline position
         auto activeClips = clip_manager_.getActiveClipsAt(timeline.playheadPosition);
 
-        // Step 2: Process source nodes for each active clip
+        // Step 3: Process source nodes for each active clip
         for (auto* clip : activeClips) {
             if (clip->muted)
                 continue;
@@ -129,8 +168,8 @@ namespace uapmd_app {
             if (!sourceNode)
                 continue;
 
-            // Calculate position within the source file
-            int64_t sourcePosition = clip->getSourcePosition(timeline.playheadPosition);
+            // Calculate position within the source file using anchor-aware calculation
+            int64_t sourcePosition = clip->getSourcePosition(timeline.playheadPosition, clipMap);
             if (sourcePosition < 0)
                 continue;
 

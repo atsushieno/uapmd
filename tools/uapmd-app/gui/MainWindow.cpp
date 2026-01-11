@@ -197,6 +197,16 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         }
     });
 
+    trackList_.setOnShowSequence([this](int32_t trackIndex) {
+        sequenceEditor_.showWindow(trackIndex);
+        // Refresh clips for this track
+        refreshSequenceEditorForTrack(trackIndex);
+    });
+
+    trackList_.setOnHideSequence([this](int32_t trackIndex) {
+        sequenceEditor_.hideWindow(trackIndex);
+    });
+
     // Set up PluginSelector callbacks
     pluginSelector_.setOnInstantiatePlugin([this](const std::string& format, const std::string& pluginId, int32_t trackIndex) {
         createDeviceForPlugin(format, pluginId, trackIndex);
@@ -355,6 +365,40 @@ void MainWindow::render(void* window) {
         .uiScale = uiScale_,
     };
     instanceDetails_.render(detailsContext);
+
+    // Render SequenceEditor
+    SequenceEditor::RenderContext seqContext{
+        .refreshClips = [this](int32_t trackIndex) {
+            refreshSequenceEditorForTrack(trackIndex);
+        },
+        .addClip = [this](int32_t trackIndex, const std::string& filepath) {
+            addClipToTrack(trackIndex, filepath);
+        },
+        .removeClip = [this](int32_t trackIndex, int32_t clipId) {
+            removeClipFromTrack(trackIndex, clipId);
+        },
+        .clearAllClips = [this](int32_t trackIndex) {
+            clearAllClipsFromTrack(trackIndex);
+        },
+        .updateClip = [this](int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position) {
+            updateClip(trackIndex, clipId, anchorId, origin, position);
+        },
+        .updateClipName = [this](int32_t trackIndex, int32_t clipId, const std::string& name) {
+            updateClipName(trackIndex, clipId, name);
+        },
+        .changeClipFile = [this](int32_t trackIndex, int32_t clipId) {
+            changeClipFile(trackIndex, clipId);
+        },
+        .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
+            setNextChildWindowSize(id, defaultSize);
+        },
+        .updateChildWindowSizeState = [this](const std::string& id) {
+            updateChildWindowSizeState(id);
+        },
+        .uiScale = uiScale_,
+    };
+    sequenceEditor_.render(seqContext);
+
     scriptEditor_.render();
 
     uiScaleDirty_ = false;
@@ -878,6 +922,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     auto visIt = pluginWindowVisible_.find(instanceId);
     ti.uiVisible = (visIt != pluginWindowVisible_.end() && visIt->second);
     ti.detailsVisible = instanceDetails_.isVisible(instanceId);
+    ti.sequenceVisible = sequenceEditor_.isVisible(trackIndex);
     ti.deviceRunning = deviceRunning;
     ti.deviceExists = deviceExists;
     ti.deviceInstantiating = deviceInstantiating;
@@ -1181,6 +1226,247 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
     uapmd::AppModel::instance().removePluginInstance(instanceId);
 
     std::cout << "Removed plugin instance: " << instanceId << std::endl;
+}
+
+// Sequence Editor helpers
+void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getAppTracks();
+
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        return;
+    }
+
+    auto* track = tracks[trackIndex];
+    auto clips = track->clipManager().getAllClips();
+
+    // Sort clips by clipId to ensure chronological order (oldest first)
+    std::sort(clips.begin(), clips.end(), [](const uapmd_app::ClipData* a, const uapmd_app::ClipData* b) {
+        return a->clipId < b->clipId;
+    });
+
+    std::vector<SequenceEditor::ClipRow> displayClips;
+    for (auto* clip : clips) {
+        SequenceEditor::ClipRow row;
+        row.clipId = clip->clipId;
+        row.anchorClipId = clip->anchorClipId;
+
+        // Format anchor origin
+        row.anchorOrigin = (clip->anchorOrigin == uapmd_app::AnchorOrigin::Start) ? "Start" : "End";
+
+        // Format position display
+        double positionSeconds = clip->anchorOffset.toSeconds(appModel.sampleRate());
+        row.position = std::format("{:+.3f}s", positionSeconds);
+
+        // Format duration (needed when End anchor is selected)
+        double durationSeconds = static_cast<double>(clip->durationSamples) / appModel.sampleRate();
+        row.duration = std::format("{:.3f}s", durationSeconds);
+
+        // Set name and filename (extract just filename from path)
+        row.name = clip->name.empty() ? std::format("Clip {}", clip->clipId) : clip->name;
+        if (clip->filepath.empty()) {
+            row.filename = "(no file)";
+        } else {
+            // Extract filename from full path
+            size_t lastSlash = clip->filepath.find_last_of("/\\");
+            row.filename = (lastSlash != std::string::npos)
+                ? clip->filepath.substr(lastSlash + 1)
+                : clip->filepath;
+        }
+        row.mimeType = "";
+
+        displayClips.push_back(row);
+    }
+
+    sequenceEditor_.refreshClips(trackIndex, displayClips);
+}
+
+void MainWindow::addClipToTrack(int32_t trackIndex, const std::string& filepath) {
+    // Open file dialog if filepath is empty
+    std::string selectedFile = filepath;
+    if (selectedFile.empty()) {
+        auto selection = pfd::open_file(
+            "Select Audio File",
+            ".",
+            { "Audio Files", "*.wav *.flac *.ogg",
+              "WAV Files", "*.wav",
+              "FLAC Files", "*.flac",
+              "OGG Files", "*.ogg",
+              "All Files", "*" }
+        );
+
+        if (selection.result().empty())
+            return; // User cancelled
+
+        selectedFile = selection.result()[0];
+    }
+
+    auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
+    if (!reader) {
+        pfd::message("Load Failed",
+                    "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG",
+                    pfd::choice::ok,
+                    pfd::icon::error);
+        return;
+    }
+
+    // Add clip at timeline position 0
+    uapmd_app::TimelinePosition position;
+    position.samples = 0;
+    position.beats = 0.0;
+
+    auto& appModel = uapmd::AppModel::instance();
+    auto result = appModel.addClipToTrack(trackIndex, position, std::move(reader), selectedFile);
+
+    if (!result.success) {
+        pfd::message("Add Clip Failed",
+                    "Could not add clip to track: " + result.error,
+                    pfd::choice::ok,
+                    pfd::icon::error);
+        return;
+    }
+
+    // Refresh the sequence editor display
+    refreshSequenceEditorForTrack(trackIndex);
+}
+
+void MainWindow::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
+    auto& appModel = uapmd::AppModel::instance();
+    appModel.removeClipFromTrack(trackIndex, clipId);
+    refreshSequenceEditorForTrack(trackIndex);
+}
+
+void MainWindow::clearAllClipsFromTrack(int32_t trackIndex) {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getAppTracks();
+
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        return;
+    }
+
+    tracks[trackIndex]->clipManager().clearAll();
+    refreshSequenceEditorForTrack(trackIndex);
+}
+
+void MainWindow::updateClip(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position) {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getAppTracks();
+
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        return;
+    }
+
+    // Parse position string (e.g., "+2.5s" or "-1.0s")
+    double offsetSeconds = 0.0;
+    try {
+        // Remove trailing 's' if present
+        std::string posStr = position;
+        if (!posStr.empty() && posStr.back() == 's') {
+            posStr = posStr.substr(0, posStr.length() - 1);
+        }
+        offsetSeconds = std::stod(posStr);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to parse position string: " << position << std::endl;
+        return;
+    }
+
+    // Parse origin string
+    uapmd_app::AnchorOrigin anchorOrigin = uapmd_app::AnchorOrigin::Start;
+    if (origin == "End") {
+        anchorOrigin = uapmd_app::AnchorOrigin::End;
+    }
+
+    // Convert to TimelinePosition
+    uapmd_app::TimelinePosition anchorOffset = uapmd_app::TimelinePosition::fromSeconds(offsetSeconds, appModel.sampleRate());
+
+    // Update the clip
+    tracks[trackIndex]->clipManager().setClipAnchor(clipId, anchorId, anchorOrigin, anchorOffset);
+    refreshSequenceEditorForTrack(trackIndex);
+}
+
+void MainWindow::updateClipName(int32_t trackIndex, int32_t clipId, const std::string& name) {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getAppTracks();
+
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        return;
+    }
+
+    tracks[trackIndex]->clipManager().setClipName(clipId, name);
+    refreshSequenceEditorForTrack(trackIndex);
+}
+
+void MainWindow::changeClipFile(int32_t trackIndex, int32_t clipId) {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getAppTracks();
+
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        return;
+    }
+
+    // Open file dialog to select new audio file
+    auto selection = pfd::open_file(
+        "Select Audio File",
+        ".",
+        { "Audio Files", "*.wav *.flac *.ogg",
+          "WAV Files", "*.wav",
+          "FLAC Files", "*.flac",
+          "OGG Files", "*.ogg",
+          "All Files", "*" }
+    );
+
+    if (selection.result().empty())
+        return; // User cancelled
+
+    std::string selectedFile = selection.result()[0];
+
+    // Create new audio file reader
+    auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
+    if (!reader) {
+        pfd::message("Load Failed",
+                    "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG",
+                    pfd::choice::ok,
+                    pfd::icon::error);
+        return;
+    }
+
+    // Get the clip to find its current source node ID
+    auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+    if (!clip) {
+        pfd::message("Error",
+                    "Could not find clip",
+                    pfd::choice::ok,
+                    pfd::icon::error);
+        return;
+    }
+
+    // Reuse the existing source node instance ID
+    int32_t sourceNodeId = clip->sourceNodeInstanceId;
+
+    // Create new source node with same instance ID
+    auto sourceNode = std::make_unique<uapmd_app::AppAudioFileSourceNode>(
+        sourceNodeId,
+        std::move(reader)
+    );
+
+    // Get the duration from the new source node
+    int64_t durationSamples = sourceNode->totalLength();
+
+    // Replace the source node in the track
+    if (!tracks[trackIndex]->replaceClipSourceNode(clipId, std::move(sourceNode))) {
+        pfd::message("Replace Failed",
+                    "Could not replace clip source node",
+                    pfd::choice::ok,
+                    pfd::icon::error);
+        return;
+    }
+
+    // Update the filepath and duration in the clip data
+    tracks[trackIndex]->clipManager().setClipFilepath(clipId, selectedFile);
+    tracks[trackIndex]->clipManager().resizeClip(clipId, durationSamples);
+
+    // Refresh the sequence editor display
+    refreshSequenceEditorForTrack(trackIndex);
 }
 
 }

@@ -27,6 +27,9 @@ namespace uapmd_app {
         bool resizeClip(int32_t clipId, int64_t newDuration);
         bool setClipGain(int32_t clipId, double gain);
         bool setClipMuted(int32_t clipId, bool muted);
+        bool setClipName(int32_t clipId, const std::string& name);
+        bool setClipFilepath(int32_t clipId, const std::string& filepath);
+        bool setClipAnchor(int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset);
 
         // Query clips at timeline position (RT-safe after initial query)
         std::vector<ClipData*> getActiveClipsAt(const TimelinePosition& position);
