@@ -155,6 +155,8 @@ add_executable(uapmd-app
 
     # Web stub implementations
     stubs/remidy_gui_stubs.cpp
+    stubs/remidy_event_loop_stub.cpp
+    stubs/remidy_logger_stub.cpp
     stubs/audio_stubs.cpp
     stubs/midi_stubs.cpp
     stubs/sequencer_stubs.cpp

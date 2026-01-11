@@ -1,3 +1,4 @@
+#include <uapmd/uapmd.hpp>
 #include "TrackList.hpp"
 #if defined(UAPMD_WEB_BUILD)
 #include "AppModel.hpp"

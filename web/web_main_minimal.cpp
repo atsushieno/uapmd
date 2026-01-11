@@ -93,6 +93,23 @@ int main(int argc, char** argv) {
     ImGui_ImplGlfw_InitForOpenGL(g_ctx.window, true);
     ImGui_ImplOpenGL3_Init("#version 300 es");
 
+#ifdef EMSCRIPTEN
+    double canvas_css_w = 0.0;
+    double canvas_css_h = 0.0;
+    emscripten_get_element_css_size("#canvas", &canvas_css_w, &canvas_css_h);
+    const double dpr = emscripten_get_device_pixel_ratio();
+    emscripten_set_canvas_element_size("#canvas", static_cast<int>(canvas_css_w * dpr), static_cast<int>(canvas_css_h * dpr));
+    emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, false,
+        [](int, const EmscriptenUiEvent*, void*) -> EM_BOOL {
+            double canvas_css_width2 = 0.0;
+            double canvas_css_height2 = 0.0;
+            double d = emscripten_get_device_pixel_ratio();
+            emscripten_get_element_css_size("#canvas", &canvas_css_width2, &canvas_css_height2);
+            emscripten_set_canvas_element_size("#canvas", static_cast<int>(canvas_css_width2 * d), static_cast<int>(canvas_css_height2 * d));
+            return EM_TRUE;
+        });
+#endif
+
     emscripten_set_main_loop_arg(mainLoopIteration, nullptr, 0, true);
 
     ImGui_ImplOpenGL3_Shutdown();

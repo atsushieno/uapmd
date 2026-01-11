@@ -8,24 +8,41 @@
 
 namespace uapmd {
 
-// Minimal stub plugin instance implementing only UI-related methods touched by MainWindow
+// Minimal stub plugin instance implementing API with no-ops
 class StubPluginInstance : public AudioPluginInstanceAPI {
+    mutable std::string fmt_{"Stub"};
+    mutable std::string id_{"stub.plugin"};
 public:
-    bool createUI(bool, void*, std::function<bool(uint32_t,uint32_t)>) override { return false; }
-    void showUI() override {}
-    void hideUI() override {}
-    void destroyUI() override {}
-    bool canUIResize() override { return false; }
-    bool getUISize(uint32_t&, uint32_t&) override { return false; }
+    std::string& formatName() const override { return fmt_; }
+    std::string& pluginId() const override { return id_; }
 
-    // Parameters/presets not used in web stub path
-    remidy::PluginParameterSupport* parameterSupport() override { return nullptr; }
-    std::vector<remidy::PluginParameter*> parameters() override { return {}; }
-    std::vector<remidy::PluginPreset> getPresets() override { return {}; }
-    void setPreset(int) override {}
-    std::string getParameterValueString(uint32_t, double) override { return {}; }
-    std::string getPerNoteControllerValueString(uint8_t, uint32_t, double) override { return {}; }
+    uapmd_status_t processAudio(AudioProcessContext&) override { return 0; }
+
+    std::vector<ParameterMetadata> parameterMetadataList() override { return {}; }
+    std::vector<ParameterMetadata> perNoteControllerMetadataList(remidy::PerNoteControllerContextTypes, uint32_t) override { return {}; }
+    std::vector<PresetsMetadata> presetMetadataList() override { return {}; }
+    void loadPreset(int32_t) override {}
+
+    std::vector<uint8_t> saveState() override { return {}; }
+    void loadState(std::vector<uint8_t>&) override {}
+
+    double getParameterValue(int32_t) override { return 0.0; }
+    void setParameterValue(int32_t, double) override {}
+    std::string getParameterValueString(int32_t, double) override { return {}; }
     void setPerNoteControllerValue(uint8_t, uint8_t, double) override {}
+    std::string getPerNoteControllerValueString(uint8_t, uint8_t, double) override { return {}; }
+
+    bool hasUISupport() override { return false; }
+    bool createUI(bool, void*, std::function<bool(uint32_t,uint32_t)>) override { return false; }
+    void destroyUI() override {}
+    bool showUI() override { return false; }
+    void hideUI() override {}
+    bool isUIVisible() const override { return false; }
+    bool setUISize(uint32_t, uint32_t) override { return false; }
+    bool getUISize(uint32_t&, uint32_t&) override { return false; }
+    bool canUIResize() override { return false; }
+
+    remidy::PluginParameterSupport* parameterSupport() override { return nullptr; }
 };
 
 // Minimal SequencerEngine implementation
@@ -173,4 +190,3 @@ void AppModel::requestShowPluginUI(int32_t instanceId) {
 }
 
 }
-

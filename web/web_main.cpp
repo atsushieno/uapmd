@@ -6,6 +6,7 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <iostream>
+#include <ImGuiEventLoop.hpp>
 
 #include "stubs/AppModel.hpp"         // Web AppModel stub
 #include "../tools/uapmd-app/gui/MainWindow.hpp"
@@ -88,6 +89,35 @@ int main(int, char**) {
         std::cout << "GL Version: " << glVersion << " | Renderer: " << glRenderer << std::endl;
     }
 
+#ifdef EMSCRIPTEN
+    auto updateCanvasSize = []() {
+        double canvas_css_width = 0.0;
+        double canvas_css_height = 0.0;
+        emscripten_get_element_css_size("#canvas", &canvas_css_width, &canvas_css_height);
+        const double dpr = emscripten_get_device_pixel_ratio();
+        int pixelW = static_cast<int>(canvas_css_width * dpr);
+        int pixelH = static_cast<int>(canvas_css_height * dpr);
+        if (pixelW <= 0 || pixelH <= 0) {
+            // Fallback to window inner size if CSS size is zero
+            EmscriptenFullscreenChangeEvent fs{};
+            emscripten_get_fullscreen_status(&fs);
+            pixelW = fs.screenWidth > 0 ? fs.screenWidth : 1024;
+            pixelH = fs.screenHeight > 0 ? fs.screenHeight : 768;
+        }
+        emscripten_set_canvas_element_size("#canvas", pixelW, pixelH);
+    };
+    updateCanvasSize();
+    emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, false,
+        [](int, const EmscriptenUiEvent*, void*) -> EM_BOOL {
+            double canvas_css_width2 = 0.0;
+            double canvas_css_height2 = 0.0;
+            emscripten_get_element_css_size("#canvas", &canvas_css_width2, &canvas_css_height2);
+            const double dpr = emscripten_get_device_pixel_ratio();
+            emscripten_set_canvas_element_size("#canvas", static_cast<int>(canvas_css_width2 * dpr), static_cast<int>(canvas_css_height2 * dpr));
+            return EM_TRUE;
+        });
+#endif
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -97,6 +127,10 @@ int main(int, char**) {
 
     ImGui_ImplGlfw_InitForOpenGL(g_ctx.window, true);
     ImGui_ImplOpenGL3_Init("#version 300 es");
+
+    // Install ImGui-based event loop implementation for remidy integration
+    auto eventLoop = std::make_unique<uapmd::gui::ImGuiEventLoop>();
+    remidy::setEventLoop(eventLoop.release());
 
     // Initialize application model and GUI
     uapmd::AppModel::instantiate();

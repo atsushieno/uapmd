@@ -15,6 +15,32 @@ class AudioPluginSequencer; // Provided by stub impl in sequencer_stubs.cpp
 
 class AppModel {
 public:
+    // Minimal transport controller stub for web build
+    class TransportController {
+        std::string currentFile_{};
+        bool playing_{false};
+        bool paused_{false};
+        bool recording_{false};
+        float position_{0.0f};
+        float length_{120.0f};
+        float volume_{0.8f};
+    public:
+        const std::string& currentFile() const { return currentFile_; }
+        bool isPlaying() const { return playing_; }
+        bool isPaused() const { return paused_; }
+        bool isRecording() const { return recording_; }
+        float playbackPosition() const { return position_; }
+        float playbackLength() const { return length_; }
+        float volume() const { return volume_; }
+        void setVolume(float v) { volume_ = v; }
+        void loadFile() { currentFile_ = "demo.wav"; position_ = 0.0f; length_ = 120.0f; }
+        void unloadFile() { currentFile_.clear(); position_ = 0.0f; }
+        void play() { playing_ = true; paused_ = false; }
+        void stop() { playing_ = false; paused_ = false; position_ = 0.0f; }
+        void pause() { if (playing_) paused_ = true; }
+        void resume() { if (playing_) paused_ = false; }
+        void record() { recording_ = !recording_; }
+    };
     struct PluginInstanceState {
         std::string pluginName;
         std::string pluginFormat;
@@ -76,6 +102,7 @@ public:
     AppModel();
 
     AudioPluginSequencer& sequencer();
+    TransportController& transport() { return transport_; }
 
     void performPluginScanning(bool forceRescan = false);
     bool isScanning() const { return isScanning_; }
@@ -120,7 +147,7 @@ private:
     std::unique_ptr<AudioPluginSequencer> sequencer_;
     std::atomic<bool> isScanning_{false};
     int32_t nextInstanceId_{1};
+    TransportController transport_{};
 };
 
 }
-

@@ -1024,6 +1024,11 @@ void MainWindow::refreshPluginList() {
     pluginSelector_.setPlugins(plugins);
 }
 
+#if defined(UAPMD_WEB_BUILD)
+void MainWindow::savePluginState(int32_t /*instanceId*/) {
+    std::cout << "[web] Save plugin state is not available in WebAssembly build (no file dialogs)." << std::endl;
+}
+#else
 void MainWindow::savePluginState(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
 
@@ -1053,7 +1058,13 @@ void MainWindow::savePluginState(int32_t instanceId) {
             pfd::icon::error);
     }
 }
+#endif
 
+#if defined(UAPMD_WEB_BUILD)
+void MainWindow::loadPluginState(int32_t /*instanceId*/) {
+    std::cout << "[web] Load plugin state is not available in WebAssembly build (no file dialogs)." << std::endl;
+}
+#else
 void MainWindow::loadPluginState(int32_t instanceId) {
     // Show open file dialog
     auto open = pfd::open_file(
@@ -1083,6 +1094,7 @@ void MainWindow::loadPluginState(int32_t instanceId) {
     // Refresh parameters to reflect the loaded state if details window is open
     instanceDetails_.refreshParametersForInstance(instanceId);
 }
+#endif
 
 void MainWindow::createDeviceForPlugin(const std::string& format, const std::string& pluginId, int32_t trackIndex) {
     // Prepare configuration

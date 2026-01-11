@@ -1,6 +1,6 @@
 # uapmd-app WebAssembly Build
 
-**Status**: ✅ **Build working!** Minimal ImGui demo successfully running in browser
+**Status**: ✅ **Build working!** Full GUI-with-stubs runs in browser
 
 ## Quick Start
 
@@ -24,21 +24,21 @@ cd external/emsdk
 cd ../..
 ```
 
-#### 2. Build WebAssembly
+#### 2. Build WebAssembly (standalone, recommended)
 ```bash
 cd web
 source ../external/emsdk/emsdk_env.sh
-./build-clean.sh
+./build-standalone.sh
 ```
 
-**Output files** (in `/tmp/uapmd-wasm-build/build/`):
-- `uapmd-app.js` - JavaScript loader (~172KB)
-- `uapmd-app.wasm` - WebAssembly binary (~576KB)
+This produces a browser-ready build in `web/build/`:
+- `uapmd-app.js` - JavaScript loader
+- `uapmd-app.wasm` - WebAssembly binary
 - `index.html` - HTML page with canvas
 
 #### 3. Test in Browser
 ```bash
-npx serve -s /tmp/uapmd-wasm-build/build -l 8080
+npx serve -s web/build -l 8080
 ```
 
 Open http://localhost:8080 in your browser
@@ -49,13 +49,13 @@ Open http://localhost:8080 in your browser
 ✅ GLFW input handling (mouse, keyboard)
 ✅ Emscripten main loop integration
 ✅ Canvas rendering with OpenGL ES 3.0
-✅ Basic demo UI displaying successfully
+✅ uapmd-app GUI compiled with web stubs
 ✅ Clean build system with portable paths
 
 ## Architecture
 
 ```
-web_main_minimal.cpp (C++ with ImGui+GLFW)
+web_main.cpp (uapmd-app GUI + web stubs)
          ↓
     emcc (Emscripten compiler)
          ↓
@@ -65,7 +65,7 @@ uapmd-app.wasm + uapmd-app.js
 ```
 
 ### Tech Stack
-- **Backend**: GLFW3 (switched from SDL2 for better Emscripten support)
+- **Backend**: GLFW3 (Emscripten contrib port)
 - **Rendering**: OpenGL ES 3.0 → WebGL2
 - **UI**: ImGui 1.92.3
 - **Compiler**: Emscripten 4.0.22
@@ -83,8 +83,8 @@ GLFW's `contrib.glfw3` port is more complete and actively maintained.
 
 | Script | Purpose |
 |--------|---------|
-| `build-clean.sh` | ✅ **Recommended** - Isolated build in `/tmp/` |
-| `build-standalone.sh` | In-tree build in `web/build/` |
+| `build-standalone.sh` | ✅ **Recommended** - In-tree build of full GUI with stubs |
+| `build-clean.sh` | Minimal isolated demo build (ImGui-only) |
 | `build-full.sh` | Full build with error checking |
 | `build-simple.sh` | Simple build without extras |
 
@@ -93,6 +93,7 @@ GLFW's `contrib.glfw3` port is more complete and actively maintained.
 | File | Description |
 |------|-------------|
 | `CMakeLists.txt` | Main build configuration |
+| `web_main.cpp` | Web entry combining GUI + stubs |
 | `web_main_minimal.cpp` | Minimal GLFW+ImGui example |
 | `WASM_PORT_STATUS.md` | Detailed status and next steps |
 | `BUILD.md` | Build instructions |
@@ -115,21 +116,32 @@ source ../external/emsdk/emsdk_env.sh
 # Check version
 emcc --version  # Should be 4.0.22
 
-# Clean and rebuild
-rm -rf /tmp/uapmd-wasm-build
-./build-clean.sh
+# Clean and rebuild standalone
+rm -rf web/build
+./build-standalone.sh
 ```
 
 ### Browser shows blank page
 1. Check browser console (F12) for errors
-2. Verify files exist: `ls /tmp/uapmd-wasm-build/build/`
-3. Try a different browser (Chrome, Firefox work best)
+2. Verify files exist: `ls web/build/`
+3. Hard reload to bypass cache
+4. Try a different browser (Chrome, Firefox work best)
 
 ### "Module not found" errors
-Make sure you're serving from the correct directory:
+Serve the correct directory:
 ```bash
-npx serve -s /tmp/uapmd-wasm-build/build -l 8080
+npx serve -s web/build -l 8080
 ```
+
+### WebGL or timing errors
+- We target WebGL2 only: the build enforces `MIN_WEBGL_VERSION=2` and `MAX_WEBGL_VERSION=2`.
+- If you see "Invalid WebGL version requested" ensure browser cache is cleared.
+- We don’t call `glfwSwapInterval(1)` on web; requestAnimationFrame drives vsync.
+
+### File dialogs on web
+- portable-file-dialogs is stubbed out on wasm. Save/Load state actions log to the console:
+  - "[web] Save plugin state is not available in WebAssembly build (no file dialogs)."
+  - "[web] Load plugin state is not available in WebAssembly build (no file dialogs)."
 
 ## Browser Support
 

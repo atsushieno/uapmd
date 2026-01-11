@@ -1,4 +1,4 @@
-#include <remidy-gui/priv/ContainerWindow.hpp>
+#include <remidy-gui/remidy-gui.hpp>
 #include <memory>
 
 namespace remidy::gui {
@@ -18,4 +18,3 @@ std::unique_ptr<ContainerWindow> ContainerWindow::create(const char*, int, int, 
 }
 
 }
-

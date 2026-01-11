@@ -1,4 +1,6 @@
+#include <uapmd/uapmd.hpp>
 #include <uapmd/priv/devices/AudioIODevice.hpp>
+#include <functional>
 #include <algorithm>
 
 namespace uapmd {
@@ -6,10 +8,9 @@ namespace uapmd {
 class WebAudioIODeviceManager : public AudioIODeviceManager {
 public:
     WebAudioIODeviceManager() : AudioIODeviceManager("webaudio") {}
-    ~WebAudioIODeviceManager() override = default;
+    ~WebAudioIODeviceManager() = default;
 
-    void initialize(Configuration&) override {}
-    void shutdown() override {}
+    void initialize(Configuration&) override { initialized = true; }
 
     std::vector<AudioIODeviceInfo> onDevices() override {
         // No devices in web stub
@@ -34,4 +35,3 @@ AudioIODeviceManager* AudioIODeviceManager::instance(const std::string&) {
 }
 
 }
-
