@@ -231,6 +231,8 @@ set(UAPMD_APP_SOURCE_FILES
         gui/SpectrumAnalyzer.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
+        player/UapmdProjectFileReader.cpp
+        player/UapmdProjectFileWriter.cpp
 )
 
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
@@ -268,3 +270,9 @@ add_custom_command(TARGET uapmd-app POST_BUILD
         $<TARGET_FILE_DIR:uapmd-app>/js
     COMMENT "Creating symbolic link to js directory for module resolution"
 )
+
+# Add tests subdirectory
+option(UAPMD_BUILD_TESTS "Build uapmd-app tests" ON)
+if(UAPMD_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

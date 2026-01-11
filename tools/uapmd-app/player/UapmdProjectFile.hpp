@@ -12,7 +12,7 @@ namespace uapmd {
         virtual uint64_t absolutePositionInSamples() = 0;
     };
 
-    struct UapmdSongPosition {
+    struct UapmdTimelinePosition {
         // can be used to calculate the absolute position.
         UapmdClipDataReferencible* anchor{nullptr};
         uint64_t samples{};
@@ -20,7 +20,7 @@ namespace uapmd {
 
     class UapmdProjectClipData : public UapmdClipDataReferencible {
     public:
-        virtual UapmdSongPosition position() = 0;
+        virtual UapmdTimelinePosition position() = 0;
         virtual std::filesystem::path& file() = 0;
         // The returned value can be empty, then guessed from the filename.
         // (`.midi2` has no registered MIME type so far...)
