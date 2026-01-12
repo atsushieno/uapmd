@@ -124,6 +124,9 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [free-audio/clap-helpers](https://github.com/free-audio/clap-helpers) - MIT
 - [steinbergmedia/vst3sdk](https://github.com/steinbergmedia/vst3sdk) - MIT
 - [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.
+  - [bellard/quickjs](https://github.com/bellard/quickjs) - MIT
+  - [xiph/vorbis](https://github.com/xiph/vorbis) - BSD (3-clause)
+  - [xiph/flac](https://github.com/xiph/flac) - BSD-like (libraries only)
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
 - [atsushieno/cmidi2](https://github.com/atsushieno/cmidi2) - MIT
 - [atsushieno/midicci](https://github.com/atsushieno/midicci) - MIT
@@ -136,3 +139,5 @@ There are third-party (and first party) dependency libraries (git submodules, CM
     - for submodules see their [LICENSE.md](https://github.com/cjappl/rtlog-cpp/blob/main/LICENSE.md) (modified BSD, MIT)
 - [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
 - [ocornut/imgui](https://github.com/ocornut/imgui) - MIT
+
+Note that while they might look comprehensive, I'm listing those to clarify the licenses that matter. For example, libraries like choc depend on other third-party libraries but we don't use them.
