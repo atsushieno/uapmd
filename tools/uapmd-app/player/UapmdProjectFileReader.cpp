@@ -142,7 +142,7 @@ namespace uapmd {
 
     static std::unique_ptr<UapmdProjectTrackDataImpl> parseTrack(
         const choc::value::ValueView& trackObj,
-        size_t trackIdx)
+        size_t trackIndex)
     {
         auto track = std::make_unique<UapmdProjectTrackDataImpl>();
 
@@ -154,7 +154,7 @@ namespace uapmd {
         if (trackObj.hasObjectMember("clips") && trackObj["clips"].isArray()) {
             size_t clipIdx = 0;
             for (const auto& clipObj : trackObj["clips"]) {
-                std::string anchorId = "track_" + std::to_string(trackIdx) +
+                std::string anchorId = "track_" + std::to_string(trackIndex) +
                                       "_clip_" + std::to_string(clipIdx);
                 track->addClip(parseClip(clipObj, anchorId, nullptr));
                 ++clipIdx;
@@ -180,10 +180,10 @@ namespace uapmd {
 
         // Parse tracks
         if (root.hasObjectMember("tracks") && root["tracks"].isArray()) {
-            size_t trackIdx = 0;
+            size_t trackIndex = 0;
             for (const auto& trackObj : root["tracks"]) {
-                project->addTrack(parseTrack(trackObj, trackIdx));
-                ++trackIdx;
+                project->addTrack(parseTrack(trackObj, trackIndex));
+                ++trackIndex;
             }
         }
 
@@ -202,9 +202,9 @@ namespace uapmd {
 
         // Re-parse clips with anchor resolution and validation
         if (root.hasObjectMember("tracks") && root["tracks"].isArray()) {
-            size_t trackIdx = 0;
+            size_t trackIndex = 0;
             for (const auto& trackObj : root["tracks"]) {
-                auto& track = project->tracksOwned()[trackIdx];
+                auto& track = project->tracksOwned()[trackIndex];
                 auto& clips = track->clips();
 
                 if (trackObj.hasObjectMember("clips") && trackObj["clips"].isArray()) {
@@ -223,11 +223,11 @@ namespace uapmd {
                                 auto* anchorPtr = resolver.resolve(anchor_str);
                                 if (!anchorPtr) {
                                     std::cerr << "Warning: Invalid anchor '" << anchor_str
-                                              << "' in track " << trackIdx << " clip " << clipIdx
+                                              << "' in track " << trackIndex << " clip " << clipIdx
                                               << " - anchor not found. Clip will be removed.\n";
                                 } else {
                                     std::cerr << "Warning: Invalid anchor '" << anchor_str
-                                              << "' in track " << trackIdx << " clip " << clipIdx
+                                              << "' in track " << trackIndex << " clip " << clipIdx
                                               << " - creates recursive reference. Clip will be removed.\n";
                                 }
                                 invalidClipIndices.push_back(clipIdx);
@@ -245,7 +245,7 @@ namespace uapmd {
                     for (auto it = invalidClipIndices.rbegin(); it != invalidClipIndices.rend(); ++it)
                         clips.erase(clips.begin() + *it);
                 }
-                ++trackIdx;
+                ++trackIndex;
             }
         }
 

@@ -83,7 +83,7 @@ namespace uapmd {
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) override;
-        void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackId, std::string error)> callback) override;
+        void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) override;
         bool removePluginInstance(int32_t instanceId) override;
 
         void setAudioPreprocessCallback(AudioPreprocessCallback callback) override {

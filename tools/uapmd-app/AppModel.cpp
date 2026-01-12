@@ -138,7 +138,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
     std::string formatCopy = format;
     std::string pluginIdCopy = pluginId;
 
-    auto instantiateCallback = [this, config, deviceLabel, pluginName, format, pluginId](int32_t instanceId, int32_t trackId, std::string error) {
+    auto instantiateCallback = [this, config, deviceLabel, pluginName, format, pluginId](int32_t instanceId, int32_t trackIndex, std::string error) {
         PluginInstanceResult result;
         result.instanceId = instanceId;
         result.pluginName = pluginName;

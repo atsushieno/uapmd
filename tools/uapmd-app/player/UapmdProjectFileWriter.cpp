@@ -10,11 +10,11 @@ namespace uapmd {
         std::map<UapmdClipDataReferencible*, std::string> id_map_;
 
     public:
-        void registerTrack(UapmdProjectTrackData* track, size_t trackIdx, bool isMaster = false) {
+        void registerTrack(UapmdProjectTrackData* track, size_t trackIndex, bool isMaster = false) {
             if (isMaster)
                 id_map_[track] = "master_track";
             else
-                id_map_[track] = "track_" + std::to_string(trackIdx);
+                id_map_[track] = "track_" + std::to_string(trackIndex);
 
             // Register clips within this track
             size_t clipIdx = 0;
@@ -113,10 +113,10 @@ namespace uapmd {
 
         // Build anchor ID map
         AnchorIdGenerator idGen;
-        size_t trackIdx = 0;
+        size_t trackIndex = 0;
         for (auto* track : data->tracks()) {
-            idGen.registerTrack(track, trackIdx);
-            ++trackIdx;
+            idGen.registerTrack(track, trackIndex);
+            ++trackIndex;
         }
         if (data->masterTrack())
             idGen.registerTrack(data->masterTrack(), 0, true);
