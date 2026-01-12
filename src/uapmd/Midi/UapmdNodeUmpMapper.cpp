@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <limits>
 #include "cmidi2.h"
-#include "uapmd/priv/devices/MidiIODevice.hpp"
+#include "uapmd/priv/core/uapmd-core.hpp"
 #include "UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {

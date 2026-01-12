@@ -9,8 +9,6 @@
 #include <utility>
 #include <cmidi2.h>
 #include "uapmd/uapmd.hpp"
-#include "uapmd/priv/sequencer/AudioPluginSequencer.hpp"
-#include "uapmd/priv/plugin-api/AudioPluginHostingAPI.hpp"
 
 // Note: audio file decoding is abstracted behind uapmd::AudioFileReader interface now.
 

@@ -16,7 +16,7 @@ namespace uapmd {
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
     // It is independent of DeviceIODispatcher (it will fire `processAudio()`)..
     // It is also independent of the timed sequencer that is to deliver sequencer inputs on time.
-    class SequencerEngine {
+    class SequencerEngine : public SequencerFeature {
     protected:
         SequencerEngine() = default;
 
@@ -56,9 +56,6 @@ namespace uapmd {
         // Add plugin to existing track
         virtual void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackId, std::string error)> callback) = 0;
 
-        using PluginOutputHandler = std::function<void(const uapmd_ump_t*, size_t)>;
-        virtual void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) = 0;
-
         virtual void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device) = 0;
         virtual void clearMidiDeviceFromPlugin(int32_t instanceId) = 0;
 
@@ -84,13 +81,8 @@ namespace uapmd {
         virtual void getOutputSpectrum(float* outSpectrum, int numBars) const = 0;
 
         // Plugin instance queries
-        virtual AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;
         virtual bool isPluginBypassed(int32_t instanceId) = 0;
         virtual void setPluginBypassed(int32_t instanceId, bool bypassed) = 0;
-
-        // Group queries
-        virtual std::optional<uint8_t> groupForInstance(int32_t instanceId) const = 0;
-        virtual std::optional<int32_t> instanceForGroup(uint8_t group) const = 0;
 
         // Event routing
         virtual void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;

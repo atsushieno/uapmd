@@ -1,7 +1,7 @@
 #pragma once
 
 #include "AppSourceNode.hpp"
-#include "uapmd/priv/audio/AudioFileReader.hpp"
+#include "uapmd/uapmd.hpp"
 #include <memory>
 #include <vector>
 #include <atomic>

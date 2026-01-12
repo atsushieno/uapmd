@@ -35,8 +35,6 @@ namespace uapmd {
         void addInputHandler(ump_receiver_t receiver, void* userData) override;
         void removeInputHandler(ump_receiver_t receiver) override;
         void send(uapmd_ump_t* messages, size_t length, uapmd_timestamp_t timestamp) override;
-        uapmd_status_t start() override;
-        uapmd_status_t stop() override;
     };
 
 }

@@ -32,10 +32,7 @@ namespace uapmd {
         if (!audio_)
             return -1;
 
-        return audio_->start()
-            || (midi_in ? midi_in->start() : 0)
-            || (midi_out ? midi_out->start() : 0)
-            ;
+        return audio_->start();
     }
 
     uapmd_status_t DefaultDeviceIODispatcher::stop() {
@@ -44,10 +41,7 @@ namespace uapmd {
 
         audio_thread_id.reset();
 
-        auto ret = audio_->stop();
-        ret |= (midi_in ? midi_in->stop() : 0);
-        ret |= (midi_out ? midi_out->stop() : 0);
-        return ret;
+        return audio_->stop();
     }
 
     bool DefaultDeviceIODispatcher::isPlaying() {

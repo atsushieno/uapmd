@@ -11,8 +11,8 @@ using namespace midicci::commonproperties;
 
 namespace uapmd {
 
-    UapmdMidiDevice::UapmdMidiDevice(std::shared_ptr<MidiIODevice> midiDevice,
-                                     SequencerEngine* sharedSequencer,
+    UapmdMidiDevice::UapmdMidiDevice(std::shared_ptr<MidiIOFeature> midiDevice,
+                                     SequencerFeature* sharedSequencer,
                                      int32_t instanceId,
                                      int32_t trackIndex,
                                      std::string apiName,
@@ -24,13 +24,12 @@ namespace uapmd {
           instance_id(instanceId),
           track_index(trackIndex),
           midi_device(std::move(midiDevice)) {
-        uapmd_sessions = std::make_unique<UapmdMidiCISessions>(this, deviceName, manufacturerName, versionString);
+        uapmd_sessions = std::make_unique<UapmdMidiCISessions>(this, sharedSequencer, deviceName, manufacturerName, versionString);
         if (midi_device)
             midi_device->addInputHandler(umpReceived, this);
     }
 
     UapmdMidiDevice::~UapmdMidiDevice() {
-        stop();
         teardownOutputHandler();
         if (midi_device)
             midi_device->removeInputHandler(umpReceived);
@@ -39,10 +38,7 @@ namespace uapmd {
     void UapmdMidiDevice::teardownOutputHandler() {
         if (!sequencer || instance_id < 0)
             return;
-        if (output_handler_registered) {
-            sequencer->setPluginOutputHandler(instance_id, nullptr);
-            output_handler_registered = false;
-        }
+        sequencer->setPluginOutputHandler(instance_id, nullptr);
     }
 
     void UapmdMidiDevice::setupMidiCISession() {
@@ -56,20 +52,6 @@ namespace uapmd {
             }
         }
         setupMidiCISession();
-    }
-
-    uapmd_status_t UapmdMidiDevice::start() {
-        if (!sequencer)
-            return -1;
-        if (midi_device)
-            return midi_device->start();
-        return 0;
-    }
-
-    uapmd_status_t UapmdMidiDevice::stop() {
-        if (midi_device)
-            return midi_device->stop();
-        return 0;
     }
 
     void UapmdMidiDevice::umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {

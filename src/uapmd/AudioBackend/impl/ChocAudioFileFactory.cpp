@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "uapmd/priv/audio/AudioFileFactory.hpp"
+#include "uapmd/priv/engine/audio/AudioFileFactory.hpp"
 
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_AudioFileFormat_FLAC.h>

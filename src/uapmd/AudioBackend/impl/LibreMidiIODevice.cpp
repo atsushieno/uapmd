@@ -108,13 +108,4 @@ namespace uapmd {
         if (written < total)
             libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + written, total - written);
     }
-
-    uapmd_status_t LibreMidiIODevice::start() {
-        return 0;
-    }
-
-    uapmd_status_t LibreMidiIODevice::stop() {
-        return 0;
-    }
-
 }

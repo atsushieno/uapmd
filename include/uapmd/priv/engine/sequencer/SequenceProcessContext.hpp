@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-#include "uapmd/priv/CommonTypes.hpp"
+#include "../../core/uapmd-core.hpp"
 
 namespace uapmd {
     class SequenceProcessContext {

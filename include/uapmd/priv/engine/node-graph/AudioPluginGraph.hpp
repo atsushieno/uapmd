@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "AudioPluginNode.hpp"
-#include "uapmd/priv/CommonTypes.hpp"
+#include "../../core/uapmd-core.hpp"
 
 namespace uapmd {
 

@@ -150,10 +150,10 @@ namespace uapmd {
         };
 
         // Global callback registry - called whenever a device is enabled
-        std::vector<std::function<void(const DeviceStateResult&)>> deviceEnabled{};
+        std::vector<std::function<void(const DeviceStateResult&)>> enableDeviceCompleted{};
 
         // Global callback registry - called whenever a device is disabled
-        std::vector<std::function<void(const DeviceStateResult&)>> deviceDisabled{};
+        std::vector<std::function<void(const DeviceStateResult&)>> disableDeviceCompleted{};
 
         // Create plugin instance with virtual MIDI device
         // Notifies all registered callbacks when complete

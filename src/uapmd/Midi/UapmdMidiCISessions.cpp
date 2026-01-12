@@ -49,11 +49,7 @@ namespace uapmd {
     }
 
     void UapmdMidiCISessions::setupMidiCISession() {
-        auto sequencer = device->sequencer;
-        auto instance_id = device->instance_id;
-
-        if (!sequencer)
-            return;
+        auto instance_id = device->instanceId();
 
         midicci::MidiCIDeviceConfiguration ci_config{
             midicci::DEFAULT_RECEIVABLE_MAX_SYSEX_SIZE,
@@ -73,9 +69,9 @@ namespace uapmd {
             ci_input_forwarders.push_back(std::move(callback));
         };
         auto sender = [&](const uint8_t* data, size_t offset, size_t length, uint64_t timestamp) {
-            if (!device->midi_device)
+            if (!device->midiIO())
                 return;
-            device->midi_device->send(const_cast<uapmd_ump_t*>(reinterpret_cast<const uapmd_ump_t*>(data + offset)),
+            device->midiIO()->send(const_cast<uapmd_ump_t*>(reinterpret_cast<const uapmd_ump_t*>(data + offset)),
                                  length,
                                  static_cast<uapmd_timestamp_t>(timestamp));
         };
@@ -135,8 +131,8 @@ namespace uapmd {
         // Create custom property getter that uses AudioPluginNode::saveState() for State/fullState
         auto customGetter = [this, originalGetter](const std::string& property_id, const std::string& res_id) -> std::vector<uint8_t> {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
-                if (device->sequencer && device->instance_id >= 0) {
-                    auto* instance = device->sequencer->getPluginInstance(device->instance_id);
+                if (sequencer && device->instanceId() >= 0) {
+                    auto* instance = sequencer->getPluginInstance(device->instanceId());
                     if (instance) {
                         return instance->saveState();
                     }
@@ -155,8 +151,8 @@ namespace uapmd {
         auto customSetter = [this, originalSetter](const std::string& property_id, const std::string& res_id,
                                                      const std::string& media_type, const std::vector<uint8_t>& body) -> bool {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
-                if (device->sequencer && device->instance_id >= 0) {
-                    auto* instance = device->sequencer->getPluginInstance(device->instance_id);
+                if (sequencer && device->instanceId() >= 0) {
+                    auto* instance = sequencer->getPluginInstance(device->instanceId());
                     if (instance) {
                         std::vector<uint8_t> state = body;
                         instance->loadState(state);
@@ -172,13 +168,12 @@ namespace uapmd {
 
         ci_sessions[muid] = std::move(ciSession);
 
-        if (!device->output_handler_registered && sequencer) {
+        if (sequencer) {
             sequencer->setPluginOutputHandler(instance_id, [this](const uapmd_ump_t* data, size_t bytes) {
-                if (!device->midi_device)
+                if (!device->midiIO())
                     return;
-                device->midi_device->send(const_cast<uapmd_ump_t*>(data), bytes, 0);
+                device->midiIO()->send(const_cast<uapmd_ump_t*>(data), bytes, 0);
             });
-            device->output_handler_registered = true;
         }
     }
 }

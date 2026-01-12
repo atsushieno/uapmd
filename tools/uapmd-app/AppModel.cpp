@@ -1,6 +1,6 @@
 
+#include "uapmd/uapmd.hpp"
 #include "AppModel.hpp"
-#include "uapmd/priv/audio/AudioFileFactory.hpp"
 #include <portable-file-dialogs.h>
 #include <iostream>
 #include <fstream>
@@ -217,8 +217,6 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
             if (state) {
                 std::lock_guard guard(state->mutex);
                 if (state->pluginInstances.count(instanceId) > 0) {
-                    if (state->device)
-                        state->device->stop();
                     devices_.erase(it);
                     break;
                 }
@@ -256,7 +254,7 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
         result.success = false;
         result.error = "Device state not found for instance";
         result.statusMessage = "Error";
-        for (auto& cb : deviceEnabled) {
+        for (auto& cb : enableDeviceCompleted) {
             cb(result);
         }
         return;
@@ -272,7 +270,7 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
         result.success = false;
         result.error = deviceState->statusMessage;
         result.statusMessage = deviceState->statusMessage;
-        for (auto& cb : deviceEnabled) {
+        for (auto& cb : enableDeviceCompleted) {
             cb(result);
         }
         return;
@@ -294,7 +292,7 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
             result.success = false;
             result.error = deviceState->statusMessage;
             result.statusMessage = deviceState->statusMessage;
-            for (auto& cb : deviceEnabled) {
+            for (auto& cb : enableDeviceCompleted) {
                 cb(result);
             }
             return;
@@ -322,29 +320,20 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
         }
     }
 
-    // Start the device and update state directly
-    auto statusCode = deviceState->device->start();
-
     // Update DeviceState directly (no need for callback to do this)
-    deviceState->running = (statusCode == 0);
-    deviceState->hasError = (statusCode != 0);
-    deviceState->statusMessage = (statusCode == 0) ? "Running" : std::format("Error (status {})", statusCode);
+    deviceState->running = true;
+    deviceState->hasError = false;
+    deviceState->statusMessage = "Running";
 
     // Populate result for callback notification
-    result.success = (statusCode == 0);
+    result.success = true;
     result.running = deviceState->running;
     result.statusMessage = deviceState->statusMessage;
 
-    if (statusCode == 0) {
-        std::cout << "Enabled UMP device for instance: " << instanceId << std::endl;
-    } else {
-        result.error = std::format("Failed to start device (status: {})", statusCode);
-        std::cout << "Failed to enable UMP device for instance: " << instanceId
-                  << " (status: " << statusCode << ")" << std::endl;
-    }
+    std::cout << "Enabled UMP device for instance: " << instanceId << std::endl;
 
     // Notify all registered callbacks (just for UI refresh)
-    for (auto& cb : deviceEnabled) {
+    for (auto& cb : enableDeviceCompleted) {
         cb(result);
     }
 }
@@ -370,7 +359,7 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
         result.success = false;
         result.error = "Device not found for instance";
         result.statusMessage = "Error";
-        for (auto& cb : deviceDisabled) {
+        for (auto& cb : disableDeviceCompleted) {
             cb(result);
         }
         return;
@@ -382,7 +371,6 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     // Stop and destroy the device to unregister the virtual MIDI port
     std::lock_guard guard(deviceState->mutex);
     if (deviceState->device) {
-        deviceState->device->stop();
         // Destroy the device object to unregister the virtual MIDI port
         deviceState->device.reset();
     }
@@ -400,7 +388,7 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     std::cout << "Disabled UMP device for instance: " << instanceId << std::endl;
 
     // Notify all registered callbacks (just for UI refresh)
-    for (auto& cb : deviceDisabled) {
+    for (auto& cb : disableDeviceCompleted) {
         cb(result);
     }
 }

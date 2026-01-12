@@ -21,7 +21,6 @@
 
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
-#include "uapmd/priv/audio/AudioFileFactory.hpp"
 
 namespace uapmd::gui {
 MainWindow::MainWindow(GuiDefaults defaults) {
@@ -97,14 +96,14 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         });
 
     // Register callback for when devices are enabled
-    uapmd::AppModel::instance().deviceEnabled.push_back(
+    uapmd::AppModel::instance().enableDeviceCompleted.push_back(
         [this](const uapmd::AppModel::DeviceStateResult& result) {
             // AppModel updates DeviceState directly - we just refresh UI
             refreshInstances();
         });
 
     // Register callback for when devices are disabled
-    uapmd::AppModel::instance().deviceDisabled.push_back(
+    uapmd::AppModel::instance().disableDeviceCompleted.push_back(
         [this](const uapmd::AppModel::DeviceStateResult& result) {
             // AppModel updates DeviceState directly - we just refresh UI
             refreshInstances();

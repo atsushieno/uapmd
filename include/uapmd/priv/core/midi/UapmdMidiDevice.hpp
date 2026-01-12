@@ -10,25 +10,18 @@
 #undef JR_TIMESTAMP_TICKS_PER_SECOND
 #undef MIDI_2_0_RESERVED
 #include "midicci/midicci.hpp"
-#include "uapmd/uapmd.hpp"
+#include "../uapmd-core.hpp"
 
 namespace uapmd {
-    class AudioPluginSequencer;
-    class UapmdMidiCISessions;
-
     class UapmdMidiDevice {
-        // FIXME: remove this hack
-        friend class UapmdMidiCISessions;
-
         std::string api_name{};
 
-        SequencerEngine* sequencer{};
+        SequencerFeature* sequencer{};
         int32_t instance_id{-1};
         int32_t track_index{-1};
         uint8_t ump_group{0xFF};
 
-        std::shared_ptr<MidiIODevice> midi_device{};
-        bool output_handler_registered{false};
+        std::shared_ptr<MidiIOFeature> midi_device{};
 
         static void umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
@@ -38,8 +31,8 @@ namespace uapmd {
         std::unique_ptr<UapmdMidiCISessions> uapmd_sessions{};
 
     public:
-        UapmdMidiDevice(std::shared_ptr<MidiIODevice> midiDevice,
-                        SequencerEngine* sequencer,
+        UapmdMidiDevice(std::shared_ptr<MidiIOFeature> midiDevice,
+                        SequencerFeature* sequencer,
                         int32_t instanceId,
                         int32_t trackIndex,
                         std::string apiName,
@@ -49,6 +42,8 @@ namespace uapmd {
 
         ~UapmdMidiDevice();
 
+        MidiIOFeature* midiIO() { return midi_device.get(); }
+
         int32_t instanceId() const { return instance_id; }
         int32_t trackIndex() const { return track_index; }
         void trackIndex(int32_t newIndex) { track_index = newIndex; }
@@ -56,9 +51,6 @@ namespace uapmd {
         void group(uint8_t groupId) { ump_group = groupId; }
 
         void initialize();
-
-        uapmd_status_t start();
-        uapmd_status_t stop();
     };
 
 }

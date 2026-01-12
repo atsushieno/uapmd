@@ -1,6 +1,6 @@
 
 #include "uapmd/uapmd.hpp"
-#include "uapmd/priv/node-graph/AudioPluginGraph.hpp"
+#include "uapmd/priv/engine/node-graph/AudioPluginGraph.hpp"
 
 
 #include <algorithm>

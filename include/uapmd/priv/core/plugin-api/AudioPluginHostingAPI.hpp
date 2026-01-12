@@ -2,7 +2,6 @@
 
 #include <functional>
 #include "../plugin-api/AudioPluginInstanceAPI.hpp"
-#include "uapmd/priv/CommonTypes.hpp"
 
 namespace uapmd {
     // FIXME: we will replace this with AudioPluginNodeAPI later.

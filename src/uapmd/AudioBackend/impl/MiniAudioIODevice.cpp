@@ -1,5 +1,5 @@
 #define MINIAUDIO_IMPLEMENTATION 1
-#include "uapmd/priv/CommonTypes.hpp"
+#include "../../../../include/uapmd/priv/core/CommonTypes.hpp"
 #include "MiniAudioIODevice.hpp"
 #include <choc/audio/choc_SampleBuffers.h>
 

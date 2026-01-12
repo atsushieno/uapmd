@@ -1,9 +1,8 @@
 #pragma once
 
 #include <functional>
-#include "uapmd/priv/CommonTypes.hpp"
+#include "../../core/uapmd-core.hpp"
 #include "AudioIODevice.hpp"
-#include "MidiIODevice.hpp"
 
 namespace uapmd {
 

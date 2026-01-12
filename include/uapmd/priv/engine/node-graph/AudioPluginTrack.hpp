@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 
-#include "uapmd/priv/CommonTypes.hpp"
+#include "../../core/uapmd-core.hpp"
 #include "AudioPluginGraph.hpp"
 
 namespace uapmd {
