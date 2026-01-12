@@ -266,11 +266,13 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
     scanning.performPluginScanning();
     auto format = *(scanning.formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning.catalog.getPlugins();
-    auto entry = *(plugins | std::views::filter([formatName,pluginId](auto e) { return e->format() == formatName && e->pluginId() == pluginId; })).begin();
-    if (entry == nullptr)
+    auto entry = std::ranges::find_if(plugins, [&formatName,&pluginId](auto e) {
+        return e->format() == formatName && e->pluginId() == pluginId;
+    });
+    if (entry == plugins.end())
         callback(nullptr, "Plugin not found");
     else {
-        auto instancing = new remidy_tooling::PluginInstancing(scanning, format, entry);
+        auto instancing = new remidy_tooling::PluginInstancing(scanning, format, *entry);
         auto& request = instancing->configurationRequest();
         request.sampleRate = static_cast<uint32_t>(sampleRate);
         if (inputChannels > 0)

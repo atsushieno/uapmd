@@ -533,30 +533,10 @@ void uapmd::TransportController::record() {
         std::cout << "Stopping recording" << std::endl;
 }
 
-void uapmd::TransportController::loadFile() {
-    auto selection = pfd::open_file(
-        "Select Audio File",
-        ".",
-        { "Audio Files", "*.wav *.flac *.ogg",
-          "WAV Files", "*.wav",
-          "FLAC Files", "*.flac",
-          "OGG Files", "*.ogg",
-          "All Files", "*" }
-    );
-
-    if (selection.result().empty())
-        return; // User cancelled
-
-    std::string filepath = selection.result()[0];
-
+std::string uapmd::TransportController::loadFile(std::string& filepath) {
     auto reader = uapmd::createAudioFileReaderFromPath(filepath);
-    if (!reader) {
-        pfd::message("Load Failed",
-                    "Could not load audio file: " + filepath + "\nSupported formats: WAV, FLAC, OGG",
-                    pfd::choice::ok,
-                    pfd::icon::error);
-        return;
-    }
+    if (!reader)
+        return "Could not load audio file: " + filepath + "\nSupported formats: WAV, FLAC, OGG";
 
     // Ensure at least one track exists
     appModel_->ensureDefaultTrack();
@@ -574,13 +554,8 @@ void uapmd::TransportController::loadFile() {
 
     auto result = appModel_->addClipToTrack(currentTrackIndex_, position, std::move(reader));
 
-    if (!result.success) {
-        pfd::message("Load Failed",
-                    "Could not add clip to track: " + result.error,
-                    pfd::choice::ok,
-                    pfd::icon::error);
-        return;
-    }
+    if (!result.success)
+        return "Could not add clip to track: " + result.error;
 
     currentClipId_ = result.clipId;
     currentFile_ = filepath;
@@ -596,7 +571,9 @@ void uapmd::TransportController::loadFile() {
 
     playbackPosition_ = 0.0f;
 
-    std::cout << "File loaded as clip: " << currentFile_ << " (clipId=" << currentClipId_ << ")" << std::endl;
+    Logger::global()->logInfo("File loaded as clip: %s (clipId=%d)", currentFile_.data(), currentClipId_);
+
+    return "";
 }
 
 void uapmd::TransportController::unloadFile() {

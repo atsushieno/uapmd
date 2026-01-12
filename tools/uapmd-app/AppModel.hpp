@@ -46,7 +46,7 @@ namespace uapmd {
         void setVolume(float volume) { volume_ = volume; }
 
         // Transport control methods
-        void loadFile();
+        std::string loadFile(std::string& filepath); // returns error message if any
         void unloadFile();
         void play();
         void stop();

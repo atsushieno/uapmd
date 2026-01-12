@@ -724,7 +724,22 @@ void MainWindow::renderPlayerSettings() {
     ImGui::Text("Current File: %s", transport.currentFile().empty() ? "None" : transport.currentFile().c_str());
 
     if (ImGui::Button("Load File...")) {
-        transport.loadFile();
+        auto selection = pfd::open_file(
+            "Select Audio File",
+            ".",
+            { "Audio Files", "*.wav *.flac *.ogg",
+              "WAV Files", "*.wav",
+              "FLAC Files", "*.flac",
+              "OGG Files", "*.ogg",
+              "All Files", "*" }
+        );
+
+        if (!selection.result().empty()) {
+            std::string filepath = selection.result()[0];
+            std::string error = transport.loadFile(filepath);
+            if (!error.empty())
+                pfd::message("Load Failed", error, pfd::choice::ok, pfd::icon::error);
+        }
     }
 
     ImGui::SameLine();
