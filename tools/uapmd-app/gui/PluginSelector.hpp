@@ -36,7 +36,7 @@ public:
 
 private:
     PluginList pluginList_;
-    bool forceRescan_ = false;
+    bool forceRescan_ = true;
     bool isScanning_ = false;
 
     // Track selection for plugin instantiation

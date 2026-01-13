@@ -34,11 +34,13 @@ void* remidy::PluginBundlePool::loadOrAddReference(std::filesystem::path &module
         return existing->second.module;
     }
     void* module{nullptr};
-    auto result = load(moduleBundlePath, &module);
-    if (result != StatusCode::OK)
-        return nullptr;
-    entries.emplace(moduleBundlePath, ModuleEntry{1, moduleBundlePath, module});
-    *loadedAsNew = true;
+    EventLoop::runTaskOnMainThread([&] {
+        auto result = load(moduleBundlePath, &module);
+        if (result != StatusCode::OK)
+            return nullptr;
+        entries.emplace(moduleBundlePath, ModuleEntry{1, moduleBundlePath, module});
+        *loadedAsNew = true;
+    });
     return module;
 }
 
