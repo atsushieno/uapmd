@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <cmath>
+#include <limits>
 #include <portable-file-dialogs.h>
 
 #include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
@@ -387,6 +388,9 @@ void MainWindow::render(void* window) {
         },
         .changeClipFile = [this](int32_t trackIndex, int32_t clipId) {
             changeClipFile(trackIndex, clipId);
+        },
+        .moveClipAbsolute = [this](int32_t trackIndex, int32_t clipId, double seconds) {
+            moveClipAbsolute(trackIndex, clipId, seconds);
         },
         .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
             setNextChildWindowSize(id, defaultSize);
@@ -1260,6 +1264,24 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
     });
 
     std::vector<SequenceEditor::ClipRow> displayClips;
+    std::unordered_map<int32_t, const uapmd_app::ClipData*> clipLookup;
+    clipLookup.reserve(clips.size());
+    for (const auto* clip : clips) {
+        clipLookup[clip->clipId] = clip;
+    }
+    const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
+    auto secondsToTimelineUnits = [](double seconds) -> int32_t {
+        if (!std::isfinite(seconds)) {
+            return 0;
+        }
+        seconds = std::max(0.0, seconds);
+        const double maxSeconds = static_cast<double>(std::numeric_limits<int32_t>::max() - 1);
+        if (seconds > maxSeconds) {
+            seconds = maxSeconds;
+        }
+        return static_cast<int32_t>(std::llround(seconds));
+    };
+
     for (auto* clip : clips) {
         SequenceEditor::ClipRow row;
         row.clipId = clip->clipId;
@@ -1288,6 +1310,16 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
                 : clip->filepath;
         }
         row.mimeType = "";
+        auto absolutePosition = clip->getAbsolutePosition(clipLookup);
+        double absoluteStartSeconds = static_cast<double>(absolutePosition.samples) / sampleRate;
+        double durationSecondsExact = static_cast<double>(clip->durationSamples) / sampleRate;
+        row.timelineStart = secondsToTimelineUnits(absoluteStartSeconds);
+        int32_t durationUnits = std::max(1, secondsToTimelineUnits(durationSecondsExact));
+        int64_t computedEnd = static_cast<int64_t>(row.timelineStart) + durationUnits;
+        if (computedEnd > std::numeric_limits<int32_t>::max()) {
+            computedEnd = std::numeric_limits<int32_t>::max();
+        }
+        row.timelineEnd = static_cast<int32_t>(computedEnd);
 
         displayClips.push_back(row);
     }
@@ -1480,6 +1512,20 @@ void MainWindow::changeClipFile(int32_t trackIndex, int32_t clipId) {
     tracks[trackIndex]->clipManager().resizeClip(clipId, durationSamples);
 
     // Refresh the sequence editor display
+    refreshSequenceEditorForTrack(trackIndex);
+}
+
+void MainWindow::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds) {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getAppTracks();
+
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        return;
+    }
+
+    double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
+    uapmd_app::TimelinePosition newOffset = uapmd_app::TimelinePosition::fromSeconds(seconds, static_cast<int32_t>(sr));
+    tracks[trackIndex]->clipManager().setClipAnchor(clipId, -1, uapmd_app::AnchorOrigin::Start, newOffset);
     refreshSequenceEditorForTrack(trackIndex);
 }
 

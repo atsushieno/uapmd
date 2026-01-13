@@ -2,16 +2,26 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <imgui.h>
+#include <memory>
+
+#include "SequenceTimelineNodeView.hpp"
+
+namespace ImTimeline {
+class Timeline;
+}
 
 namespace uapmd::gui {
 
 class SequenceEditor {
 public:
+    ~SequenceEditor();
+
     struct ClipRow {
         int32_t clipId{-1};
         int32_t anchorClipId{-1};  // -1 = track anchor
@@ -21,6 +31,8 @@ public:
         std::string filename;       // Actual file path
         std::string mimeType;
         std::string duration;       // Display string: "5.2s" (only shown when End anchor)
+        int32_t timelineStart = 0;   // Timeline start in milliseconds
+        int32_t timelineEnd = 0;     // Timeline end in milliseconds
     };
 
     struct RenderContext {
@@ -31,6 +43,7 @@ public:
         std::function<void(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position)> updateClip;
         std::function<void(int32_t trackIndex, int32_t clipId, const std::string& name)> updateClipName;
         std::function<void(int32_t trackIndex, int32_t clipId)> changeClipFile;
+        std::function<void(int32_t trackIndex, int32_t clipId, double seconds)> moveClipAbsolute;
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;
         float uiScale = 1.0f;
@@ -44,16 +57,28 @@ public:
 
 private:
     struct SequenceEditorState {
+        ~SequenceEditorState();
         bool visible = false;
         std::vector<ClipRow> displayClips;
         int32_t selectedClipId = -1;
+        std::unique_ptr<ImTimeline::Timeline> timeline;
+        bool timelineDirty = true;
+        std::shared_ptr<SequenceTimelineNodeView> timelineView;
+        std::unordered_map<int32_t, int32_t> sectionToClip;
+        int32_t activeDragSection = -1;
     };
 
     std::unordered_map<int32_t, SequenceEditorState> windows_;
 
     void renderWindow(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
-    void renderClipTable(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
+    void renderClipTable(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight);
+    void renderTimelineEditor(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight);
+    void rebuildTimelineModel(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
     void renderClipRow(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
+    bool renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
+    bool renderOriginCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
+    bool renderPositionInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
+    bool renderNameInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     std::vector<int32_t> getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const;
 };
 

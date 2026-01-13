@@ -99,12 +99,12 @@ if(NOT DEFINED imgui_SOURCE_DIR)
     )
 endif()
 
-# ImGuiColorTextEdit for script editor
+# ImTimeline for SequenceEditor timeline view
 CPMAddPackage(
-        NAME ImGuiColorTextEdit
-        GIT_TAG master
-        GIT_REPOSITORY https://github.com/BalazsJako/ImGuiColorTextEdit
-        DOWNLOAD_ONLY YES
+    NAME ImTimeline
+    GIT_TAG main
+    GIT_REPOSITORY https://github.com/unevens/ImTimeline
+    DOWNLOAD_ONLY YES
 )
 
 if(NOT TARGET imgui)
@@ -179,11 +179,18 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             ${cmidi2_SOURCE_DIR}
             ${portable-file-dialogs_SOURCE_DIR}
             ${midicci_SOURCE_DIR}/include
+            ${ImTimeline_SOURCE_DIR}
             ../../include
             ../../src/remidy-tooling
             ../../external/libremidi/include
             ../../external/cpplocate/source/cpplocate/include
     )
+endforeach()
+
+# Enable ImGui vector operators for all app translation units
+target_compile_definitions(remidy-imgui-shared PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
+foreach(app_target IN LISTS UAPMD_APP_TARGETS)
+    target_compile_definitions(${app_target} PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
 endforeach()
 
 set(uapmd_LIBS_PLAT)
@@ -230,6 +237,14 @@ set(UAPMD_APP_SOURCE_FILES
         gui/ScriptEditor.cpp
         gui/SpectrumAnalyzer.cpp
         gui/SequenceEditor.cpp
+        gui/SequenceTimelineNodeView.cpp
+        ${ImTimeline_SOURCE_DIR}/ImTimeline.cpp
+        ${ImTimeline_SOURCE_DIR}/Timeline.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineCore/ImTimeline_internal.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineCore/TimelinePlayer.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineData/ImDataControllerVector.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineViews/HorizontalNodeView.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineViews/DebugPlayerView.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         player/UapmdProjectFileReader.cpp

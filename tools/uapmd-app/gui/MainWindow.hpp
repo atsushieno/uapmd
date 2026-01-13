@@ -142,6 +142,7 @@ class MainWindow {
         void updateClip(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position);
         void updateClipName(int32_t trackIndex, int32_t clipId, const std::string& name);
         void changeClipFile(int32_t trackIndex, int32_t clipId);
+        void moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds);
 
         void renderDeviceSettingsWindow();
         void renderPlayerSettingsWindow();
