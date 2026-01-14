@@ -7,10 +7,8 @@
 
 #include <imgui.h>
 #include <ImTimeline.h>
-#include <TimelineData/ImDataController.h>
 
 #include "../AppModel.hpp"
-#include "SequenceTimelineNodeView.hpp"
 
 namespace uapmd::gui {
 
@@ -245,15 +243,16 @@ void SequenceEditor::renderTimelineEditor(int32_t trackIndex, SequenceEditorStat
 
             auto it = state.sectionToClip.find(section);
             if (it != state.sectionToClip.end() && it->second >= 0) {
-                const auto& timelineSection = state.timeline->GetTimelineSection(section);
-                double newStart = 0.0;
-                if (timelineSection.mNodeData) {
-                    timelineSection.mNodeData->iterate([&](TimelineNode& node) {
-                        newStart = static_cast<double>(node.start);
-                    });
-                }
-                if (context.moveClipAbsolute) {
-                    context.moveClipAbsolute(trackIndex, it->second, newStart);
+                // Use stored NodeID to find the node and get its new position
+                auto nodeIdIt = state.sectionToNodeId.find(section);
+                if (nodeIdIt != state.sectionToNodeId.end()) {
+                    auto* node = state.timeline->FindNodeByNodeID(nodeIdIt->second);
+                    if (node) {
+                        double newStart = static_cast<double>(node->start);
+                        if (context.moveClipAbsolute) {
+                            context.moveClipAbsolute(trackIndex, it->second, newStart);
+                        }
+                    }
                 }
             }
         }
@@ -270,10 +269,6 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
         return;
     }
 
-    if (!state.timelineView) {
-        state.timelineView = std::make_shared<SequenceTimelineNodeView>();
-    }
-
     ImTimelineStyle style;
     style.LegendWidth = 140.0f * context.uiScale;
     style.HeaderHeight = static_cast<int>(24.0f * context.uiScale);
@@ -285,6 +280,7 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
     int32_t maxFrame = 0;
     int sectionId = 0;
     state.sectionToClip.clear();
+    state.sectionToNodeId.clear();
     state.activeDragSection = -1;
 
     for (const auto& clip : state.displayClips) {
@@ -306,7 +302,10 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
         TimelineNode node;
         node.Setup(currentSection, clip.timelineStart, clip.timelineEnd, sectionName);
         node.displayProperties = props;
-        state.timeline->AddNewNode(&node);
+        auto* addedNode = state.timeline->AddNewNode(&node);
+        if (addedNode) {
+            state.sectionToNodeId[currentSection] = addedNode->GetID();
+        }
 
         maxFrame = std::max(maxFrame, clip.timelineEnd);
         state.sectionToClip[currentSection] = clip.clipId;
@@ -324,7 +323,6 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
 
     state.timeline->SetStartFrame(0);
     state.timeline->SetMaxFrame(maxFrame + 200);
-    state.timeline->SetNodeViewUI(state.timelineView);
     state.timeline->SetScale(std::max(1.0f, 5.0f * context.uiScale));
     state.timelineDirty = false;
 }

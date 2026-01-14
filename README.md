@@ -139,6 +139,6 @@ There are third-party (and first party) dependency libraries (git submodules, CM
     - for submodules see their [LICENSE.md](https://github.com/cjappl/rtlog-cpp/blob/main/LICENSE.md) (modified BSD, MIT)
 - [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
 - [ocornut/imgui](https://github.com/ocornut/imgui) - MIT
-- [unevens/ImTimeline](https://github.com/unevens/ImTimeline) (a well-maintained and buildable fork of NickVanheer/ImTimeline) - MIT
+- [unevens/ImTimeline](https://github.com/triplejam/ImTimeline) (a well-maintained and buildable fork of NickVanheer/ImTimeline) - MIT
 
 Note that while they might look comprehensive, I'm listing those to clarify the licenses that matter. For example, libraries like choc depend on other third-party libraries but we don't use them.

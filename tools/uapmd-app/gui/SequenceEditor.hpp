@@ -9,12 +9,7 @@
 
 #include <imgui.h>
 #include <memory>
-
-#include "SequenceTimelineNodeView.hpp"
-
-namespace ImTimeline {
-class Timeline;
-}
+#include <ImTimeline.h>
 
 namespace uapmd::gui {
 
@@ -63,8 +58,8 @@ private:
         int32_t selectedClipId = -1;
         std::unique_ptr<ImTimeline::Timeline> timeline;
         bool timelineDirty = true;
-        std::shared_ptr<SequenceTimelineNodeView> timelineView;
         std::unordered_map<int32_t, int32_t> sectionToClip;
+        std::unordered_map<int32_t, uint64_t> sectionToNodeId;  // Maps section ID to NodeID
         int32_t activeDragSection = -1;
     };
 

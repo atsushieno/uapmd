@@ -102,8 +102,8 @@ endif()
 # ImTimeline for SequenceEditor timeline view
 CPMAddPackage(
     NAME ImTimeline
-    GIT_TAG main
-    GIT_REPOSITORY https://github.com/unevens/ImTimeline
+    GIT_TAG fixes
+    GIT_REPOSITORY https://github.com/triplejam/ImTimeline
     DOWNLOAD_ONLY YES
 )
 
@@ -149,6 +149,38 @@ if(NOT TARGET imgui)
     endif()
 endif()
 
+# Build ImTimeline as a static library with controlled public API
+if(NOT TARGET imtimeline)
+    set(IMTIMELINE_SOURCES
+        ${ImTimeline_SOURCE_DIR}/ImTimeline.cpp
+        ${ImTimeline_SOURCE_DIR}/Timeline.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineCore/ImTimeline_internal.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineCore/TimelinePlayer.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineData/ImDataControllerVector.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineViews/HorizontalNodeView.cpp
+        ${ImTimeline_SOURCE_DIR}/TimelineViews/DebugPlayerView.cpp
+    )
+
+    add_library(imtimeline STATIC ${IMTIMELINE_SOURCES})
+
+    # Public headers: ImTimeline.h, Timeline.h, and their required dependencies
+    # TimelineCore and Core are needed by Timeline.h
+    # TimelineViews and TimelineData are kept private (internal interfaces)
+    target_include_directories(imtimeline
+        PUBLIC
+            ${ImTimeline_SOURCE_DIR}
+            ${ImTimeline_SOURCE_DIR}/TimelineCore
+            ${ImTimeline_SOURCE_DIR}/Core
+        PRIVATE
+            ${ImTimeline_SOURCE_DIR}/TimelineViews
+            ${ImTimeline_SOURCE_DIR}/TimelineData
+    )
+
+    # ImTimeline depends on ImGui
+    target_link_libraries(imtimeline PUBLIC imgui)
+    target_compile_definitions(imtimeline PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
+endif()
+
 # Add shared ImGui platform backend library
 if(NOT TARGET remidy-imgui-shared)
     add_subdirectory(../remidy-imgui-shared ${CMAKE_CURRENT_BINARY_DIR}/remidy-imgui-shared)
@@ -179,7 +211,6 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             ${cmidi2_SOURCE_DIR}
             ${portable-file-dialogs_SOURCE_DIR}
             ${midicci_SOURCE_DIR}/include
-            ${ImTimeline_SOURCE_DIR}
             ../../include
             ../../src/remidy-tooling
             ../../external/libremidi/include
@@ -205,6 +236,7 @@ endif ()
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     target_link_libraries(${app_target} PRIVATE
             imgui
+            imtimeline
             cpptrace::cpptrace
             uapmd
             remidy-gui
@@ -237,14 +269,6 @@ set(UAPMD_APP_SOURCE_FILES
         gui/ScriptEditor.cpp
         gui/SpectrumAnalyzer.cpp
         gui/SequenceEditor.cpp
-        gui/SequenceTimelineNodeView.cpp
-        ${ImTimeline_SOURCE_DIR}/ImTimeline.cpp
-        ${ImTimeline_SOURCE_DIR}/Timeline.cpp
-        ${ImTimeline_SOURCE_DIR}/TimelineCore/ImTimeline_internal.cpp
-        ${ImTimeline_SOURCE_DIR}/TimelineCore/TimelinePlayer.cpp
-        ${ImTimeline_SOURCE_DIR}/TimelineData/ImDataControllerVector.cpp
-        ${ImTimeline_SOURCE_DIR}/TimelineViews/HorizontalNodeView.cpp
-        ${ImTimeline_SOURCE_DIR}/TimelineViews/DebugPlayerView.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         player/UapmdProjectFileReader.cpp
