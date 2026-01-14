@@ -13,6 +13,3 @@
 [submodule "external/lv2kit"]
 	path = external/lv2kit
 	url = https://github.com/lv2/lv2kit.git
-[submodule "external/miniaudio"]
-	path = external/miniaudio
-	url = https://github.com/mackron/miniaudio.git

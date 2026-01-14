@@ -28,10 +28,16 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 set(CMAKE_SKIP_INSTALL_RULES OFF)
-# No direct GTK dependency here; keep this core free of GUI toolkits
+
+CPMAddPackage(
+        NAME           miniaudio
+        GIT_TAG        0.11.23
+        GIT_REPOSITORY https://github.com/mackron/miniaudio
+        EXCLUDE_FROM_ALL
+)
 
 target_include_directories(uapmd PRIVATE
-        ../../external/miniaudio
+        ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
         ../../include
         ${cmidi2_SOURCE_DIR}
