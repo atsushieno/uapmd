@@ -101,6 +101,7 @@ add_subdirectory(src/remidy)
 add_subdirectory(src/remidy-gui)
 add_subdirectory(src/remidy-tooling)
 add_subdirectory(src/uapmd)
+add_subdirectory(src/uapmd-engine)
 
 add_subdirectory(tools)
 
@@ -126,6 +127,7 @@ install(TARGETS
         remidy-tooling
         remidy-gui
         uapmd
+        uapmd-engine
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         COMPONENT uapmd)

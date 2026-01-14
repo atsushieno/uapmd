@@ -239,6 +239,7 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             imtimeline
             cpptrace::cpptrace
             uapmd
+            uapmd-engine
             remidy-gui
             remidy-imgui-shared
             cpplocate::cpplocate

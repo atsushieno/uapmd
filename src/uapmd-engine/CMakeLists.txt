@@ -1,5 +1,5 @@
 
-add_library(uapmd STATIC)
+add_library(uapmd-engine STATIC)
 
 set(CMAKE_SKIP_INSTALL_RULES ON)
 
@@ -36,7 +36,7 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 
-target_include_directories(uapmd PRIVATE
+target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
         ../../include
@@ -44,15 +44,27 @@ target_include_directories(uapmd PRIVATE
         ${concurrentqueue_SOURCE_DIR}
 )
 
-target_link_libraries(uapmd PUBLIC
+target_link_libraries(uapmd-engine PUBLIC
         libremidi::libremidi
         remidy::remidy
         remidy::remidy-tooling
+        uapmd
         midicci_static
 )
 
-target_sources(uapmd PRIVATE
-        Midi/UapmdMidiDevice.cpp
-        Midi/UapmdMidiCISessions.cpp
-        Midi/UapmdUmpMapper.cpp
+target_sources(uapmd-engine PRIVATE
+        audio/ChocAudioFileFactory.cpp
+        devices/AudioIODevice.cpp
+        devices/DefaultDeviceIODispatcher.cpp
+        devices/LibreMidiIODevice.cpp
+        devices/MidiIODevice.cpp
+        devices/MiniAudioIODevice.cpp
+        node-graph/AudioPluginGraph.cpp
+        node-graph/AudioPluginHostPAL.cpp
+        node-graph/AudioPluginNode.cpp
+        node-graph/AudioPluginTrack.cpp
+        node-graph/UapmdNodeUmpMapper.cpp
+        plugin-api/RemidyAudioPluginHost.cpp
+        sequencer/SequencerEngine.cpp
+        sequencer/AudioPluginSequencer.cpp
 )
