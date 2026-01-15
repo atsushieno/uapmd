@@ -102,9 +102,11 @@ There are two primary libraries in this repository:
 `remidy-tooling` offers higher level API to build audio plugin hosting tools like plugin scanning and instancing in the common manner.
 What this layer introduces in practice is a set of filters; various existing specific plugin products and vendors are filtered by "safe for multithreaded access to the plugin API," "plugin scanning requires the UI thread," or "crashes remidy" kind of information.
 
-### uapmd
+### uapmd and uapmd-engine
 
-`uapmd` provides reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). It serves `AllCtrlList` MIDI-CI standard property for plugin parameters as Assignable Controllers (NRPNs), `ProgramList` MIDI-CI standard property for the indexed presets as Program Change, and saves and loads states in MIDI-CI property manner.
+`uapmd` and `uapmd-engine` provide reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). `uapmd` serves `AllCtrlList` MIDI-CI standard property for plugin parameters as Assignable Controllers (NRPNs), `ProgramList` MIDI-CI standard property for the indexed presets as Program Change, and saves and loads states in MIDI-CI property manner.
+
+`uapmd` itself contains core engine behind MIDI-CI processing for audio plugin hosting and instancing API without implementation and usable backends. `uapmd-engine` goes one step further to establish the premise that there is single audio processing backend, multiple MIDI 2.0 devices, audio graphs, and so on to make everything in usable form.
 
 ### uapmd-app
 
