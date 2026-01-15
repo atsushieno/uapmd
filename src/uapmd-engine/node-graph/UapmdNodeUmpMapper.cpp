@@ -36,7 +36,7 @@ namespace uapmd {
         plugin->loadPreset(index);
     }
 
-    UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIODevice> device, AudioPluginInstanceAPI* plugin)
+    UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIOFeature> device, AudioPluginInstanceAPI* plugin)
       : UapmdUmpOutputMapper(),
         device(std::move(device)),
         plugin(plugin) {
