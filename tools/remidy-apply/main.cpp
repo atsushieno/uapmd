@@ -9,6 +9,7 @@
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <remidy-tooling/PluginInstancing.hpp>
 #include <uapmd/uapmd.hpp>
+#include <uapmd-engine/uapmd-engine.hpp>
 #include <cxxopts.hpp>
 #include <cmidi2.h>
 
