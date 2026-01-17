@@ -180,13 +180,20 @@ void ScriptEditor::setDefaultScript()
 import { PluginScanTool, sequencer } from 'remidy-bridge';
 
 // The public API is available via the global 'uapmd' object:
-//   uapmd.catalog.*    - Plugin discovery and management
-//   uapmd.scanTool.*   - Plugin scanning and caching
-//   uapmd.instance.*   - Plugin instance control
-//   uapmd.sequencer.*  - Audio engine, MIDI, and transport
+//   uapmd.catalog.*      - Plugin discovery and management
+//   uapmd.scanTool.*     - Plugin scanning and caching
+//   uapmd.instancing.*   - Plugin instance creation
+//   uapmd.instance(id)   - Get PluginInstance wrapper (getParameters, setParameterValue, etc.)
+//   uapmd.sequencer.*    - Audio engine, MIDI, and transport
 //
 // You can use either the OO wrapper (PluginScanTool, sequencer) or
 // the direct uapmd.* API. Both approaches work!
+//
+// Example using uapmd API:
+//   const id = uapmd.instancing.create("VST3", pluginId);
+//   const instance = uapmd.instance(id);
+//   instance.showUI();
+//   instance.setParameterValue(0, 0.5);
 
 // Example: Create tracks for VST3 Dexed, LV2 RipplerX, CLAP Six Sines, and AU Surge XT
 const scanTool = new PluginScanTool();

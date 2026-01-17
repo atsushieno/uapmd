@@ -4,6 +4,65 @@
 // IMPORTANT: The __remidy_* functions are internal implementation details
 // and are NOT part of the stable API. Always use the uapmd.* API instead.
 
+// PluginInstance class - wraps instance control methods
+class PluginInstance {
+    constructor(instanceId) {
+        this.instanceId = instanceId;
+    }
+
+    getParameters() {
+        return __remidy_instance_get_parameters(this.instanceId);
+    }
+
+    getParameterValue(paramId) {
+        return __remidy_instance_get_parameter_value(this.instanceId, paramId);
+    }
+
+    setParameterValue(paramId, value) {
+        __remidy_instance_set_parameter_value(this.instanceId, paramId, value);
+    }
+
+    dispose() {
+        __remidy_instance_dispose(this.instanceId);
+    }
+
+    configure(config) {
+        __remidy_instance_configure(this.instanceId, config);
+    }
+
+    startProcessing() {
+        __remidy_instance_start_processing(this.instanceId);
+    }
+
+    stopProcessing() {
+        __remidy_instance_stop_processing(this.instanceId);
+    }
+
+    enableUmpDevice(deviceName) {
+        __remidy_instance_enable_ump_device(this.instanceId, deviceName);
+    }
+
+    disableUmpDevice() {
+        __remidy_instance_disable_ump_device(this.instanceId);
+    }
+
+    showUI() {
+        __remidy_instance_show_ui(this.instanceId);
+    }
+
+    hideUI() {
+        __remidy_instance_hide_ui(this.instanceId);
+    }
+
+    saveState(filepath) {
+        return __remidy_instance_save_state(this.instanceId, filepath);
+    }
+
+    loadState(filepath) {
+        return __remidy_instance_load_state(this.instanceId, filepath);
+    }
+}
+
 globalThis.uapmd = {
     // Catalog API - Plugin discovery and management
     catalog: {
@@ -21,23 +80,13 @@ globalThis.uapmd = {
         setCacheFile: (path) => __remidy_scan_tool_set_cache_file(path)
     },
 
-    // Instance API - Plugin instance lifecycle and control
-    instance: {
-        create: (format, pluginId) => __remidy_instance_create(format, pluginId),
-        getParameters: (instanceId) => __remidy_instance_get_parameters(instanceId),
-        getParameterValue: (instanceId, paramId) => __remidy_instance_get_parameter_value(instanceId, paramId),
-        setParameterValue: (instanceId, paramId, value) => __remidy_instance_set_parameter_value(instanceId, paramId, value),
-        dispose: (instanceId) => __remidy_instance_dispose(instanceId),
-        configure: (instanceId, config) => __remidy_instance_configure(instanceId, config),
-        startProcessing: (instanceId) => __remidy_instance_start_processing(instanceId),
-        stopProcessing: (instanceId) => __remidy_instance_stop_processing(instanceId),
-        enableUmpDevice: (instanceId, deviceName) => __remidy_instance_enable_ump_device(instanceId, deviceName),
-        disableUmpDevice: (instanceId) => __remidy_instance_disable_ump_device(instanceId),
-        showUI: (instanceId) => __remidy_instance_show_ui(instanceId),
-        hideUI: (instanceId) => __remidy_instance_hide_ui(instanceId),
-        saveState: (instanceId, filepath) => __remidy_instance_save_state(instanceId, filepath),
-        loadState: (instanceId, filepath) => __remidy_instance_load_state(instanceId, filepath)
+    // Instance creation and management
+    instancing: {
+        create: (format, pluginId) => __remidy_instance_create(format, pluginId)
     },
+
+    // Factory function to create PluginInstance wrapper for an existing instance
+    instance: (instanceId) => new PluginInstance(instanceId),
 
     // Sequencer API - Audio engine control and queries
     sequencer: {
