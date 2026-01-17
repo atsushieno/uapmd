@@ -179,6 +179,15 @@ void ScriptEditor::setDefaultScript()
 // Import the remidy bridge module for plugin access
 import { PluginScanTool, sequencer } from 'remidy-bridge';
 
+// The public API is available via the global 'uapmd' object:
+//   uapmd.catalog.*    - Plugin discovery and management
+//   uapmd.scanTool.*   - Plugin scanning and caching
+//   uapmd.instance.*   - Plugin instance control
+//   uapmd.sequencer.*  - Audio engine, MIDI, and transport
+//
+// You can use either the OO wrapper (PluginScanTool, sequencer) or
+// the direct uapmd.* API. Both approaches work!
+
 // Example: Create tracks for VST3 Dexed, LV2 RipplerX, CLAP Six Sines, and AU Surge XT
 const scanTool = new PluginScanTool();
 const catalog = scanTool.catalog;

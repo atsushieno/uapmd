@@ -2,6 +2,9 @@
 // JavaScript bridge to C++ UAPMD API
 // This module wraps the native C++ functions exposed via QuickJS
 
+// Load the public uapmd API
+import './uapmd-api.js';
+
 export class PluginCatalogEntry {
     constructor(data) {
         this.format = data.format || '';
