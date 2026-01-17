@@ -1,6 +1,0 @@
-node_modules/
-dist/
-native/build/
-*.log
-*.tsbuildinfo
-.DS_Store
