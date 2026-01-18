@@ -43,9 +43,8 @@ bool matches_api_name(const std::string& value, const char* name) {
     return remidy_strcasecmp(value.c_str(), name) == 0;
 }
 
-std::optional<libremidi_api> select_if_available(const std::vector<libremidi::API>& apis, libremidi_api api) {
-    auto desired = static_cast<libremidi::API>(api);
-    if (std::find(apis.begin(), apis.end(), desired) != apis.end())
+std::optional<libremidi::API> select_if_available(const std::vector<libremidi::API>& apis, libremidi::API api) {
+    if (std::find(apis.begin(), apis.end(), api) != apis.end())
         return api;
     return std::nullopt;
 }
@@ -68,22 +67,22 @@ bool running_in_container() {
     return false;
 }
 
-std::optional<libremidi_api> pick_default_api(const std::vector<libremidi::API>& apis) {
+std::optional<libremidi::API> pick_default_api(const std::vector<libremidi::API>& apis) {
     if (apis.empty())
         return std::nullopt;
 
-    std::vector<libremidi_api> preferred;
+    std::vector<libremidi::API> preferred;
     if (running_in_container()) {
-        preferred.push_back(PIPEWIRE_UMP);
+        preferred.push_back(libremidi::API::PIPEWIRE_UMP);
     }
     preferred.insert(preferred.end(), {
-        ALSA_SEQ_UMP,
-        WINDOWS_MIDI_SERVICES,
-        JACK_UMP,
-        COREMIDI_UMP,
-        ALSA_RAW_UMP,
-        NETWORK_UMP,
-        KEYBOARD_UMP
+        libremidi::API::ALSA_SEQ_UMP,
+        libremidi::API::WINDOWS_MIDI_SERVICES,
+        libremidi::API::JACK_UMP,
+        libremidi::API::COREMIDI_UMP,
+        libremidi::API::ALSA_RAW_UMP,
+        libremidi::API::NETWORK_UMP,
+        libremidi::API::KEYBOARD_UMP
     });
 
     for (auto candidate : preferred) {
@@ -91,12 +90,12 @@ std::optional<libremidi_api> pick_default_api(const std::vector<libremidi::API>&
             return match;
     }
 
-    return static_cast<libremidi_api>(apis.front());
+    return apis.front();
 }
 
 } // namespace
 
-std::optional<libremidi_api> uapmd::detail::resolveLibremidiUmpApi(const std::string& apiName) {
+std::optional<libremidi::API> uapmd::detail::resolveLibremidiUmpApi(const std::string& apiName) {
     auto apis = libremidi::available_ump_apis();
     if (apis.empty())
         return std::nullopt;
@@ -107,7 +106,7 @@ std::optional<libremidi_api> uapmd::detail::resolveLibremidiUmpApi(const std::st
     // but Windows MIDI Services is only supported on Windows 11 25H2 (build 26100+)
     // or Windows 11 Insider (build 27788+)
     if (!isWindowsMidiServicesSupported()) {
-        auto it = std::find(apis.begin(), apis.end(), static_cast<libremidi::API>(WINDOWS_MIDI_SERVICES));
+        auto it = std::find(apis.begin(), apis.end(), libremidi::API::WINDOWS_MIDI_SERVICES);
         if (it != apis.end())
             apis.erase(it);
     }
@@ -117,11 +116,11 @@ std::optional<libremidi_api> uapmd::detail::resolveLibremidiUmpApi(const std::st
         return std::nullopt;
 
     if (matches_api_name(apiName, "PIPEWIRE"))
-        return select_if_available(apis, PIPEWIRE_UMP);
+        return select_if_available(apis, libremidi::API::PIPEWIRE_UMP);
     if (matches_api_name(apiName, "ALSA"))
-        return select_if_available(apis, ALSA_SEQ_UMP);
+        return select_if_available(apis, libremidi::API::ALSA_SEQ_UMP);
     if (matches_api_name(apiName, "WINDOWS") || matches_api_name(apiName, "WINMIDI"))
-        return select_if_available(apis, WINDOWS_MIDI_SERVICES);
+        return select_if_available(apis, libremidi::API::WINDOWS_MIDI_SERVICES);
 
     // Treat empty, "default", and unknown names the same: use preferred ordering.
     if (apiName.empty() || matches_api_name(apiName, "default"))

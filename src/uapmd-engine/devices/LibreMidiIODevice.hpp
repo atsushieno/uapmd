@@ -1,9 +1,10 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
-#include <libremidi/libremidi-c.h>
+#include <libremidi/libremidi.hpp>
 #include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd {
@@ -19,14 +20,10 @@ namespace uapmd {
         std::vector<ump_receiver_t> receivers;
         std::vector<void*> receiver_user_data;
 
-        libremidi_observer_configuration obsCfg{};
-        libremidi_api_configuration apiCfg{};
-        libremidi_midi_configuration midiCfg{};
-        libremidi_midi_in_handle* midiIn{};
-        libremidi_midi_out_handle* midiOut{};
+        std::unique_ptr<libremidi::midi_in> midiIn;
+        std::unique_ptr<libremidi::midi_out> midiOut;
 
-        static void midi2_in_callback(void* ctx, libremidi_timestamp timestamp, const libremidi_midi2_symbol* messages, size_t len);
-        void inputCallback(libremidi_timestamp timestamp, const libremidi_midi2_symbol* messages, size_t len);
+        void inputCallback(libremidi::ump&& message);
 
     public:
         LibreMidiIODevice(std::string apiName, std::string deviceName, std::string manufacturer, std::string version, uint64_t sysExDelayInMicroseconds = 1000);

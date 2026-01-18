@@ -16,54 +16,43 @@ namespace uapmd {
           version(std::move(version)),
           sysex_delay_in_microseconds(sysexDelayInMicroseconds) {
 
-        if (libremidi_midi_api_configuration_init(&apiCfg) != 0)
-            throw std::runtime_error("Failed to initialize libremidi API configuration");
         auto resolvedApi = detail::resolveLibremidiUmpApi(api_name);
         if (!resolvedApi)
             throw std::runtime_error("No MIDI 2.0 backend is available on this system");
-        apiCfg.api = *resolvedApi;
-
-        if (libremidi_midi_configuration_init(&midiCfg) != 0)
-            throw std::runtime_error("Failed to initialize libremidi MIDI configuration");
-        midiCfg.virtual_port = true;
-        midiCfg.version = libremidi_midi_configuration::MIDI2;
 
         // Use distinct names for input and output ports to avoid ALSA/UIs confusion.
         in_port_name = device_name + " In";
         out_port_name = device_name + " Out";
 
-        // Create input with callback and its own port name.
-        midiCfg.port_name = in_port_name.c_str();
-        midiCfg.on_midi2_message.context = this;
-        midiCfg.on_midi2_message.callback = midi2_in_callback;
-        int err = libremidi_midi_in_new(&midiCfg, &apiCfg, &midiIn);
-        if (err != 0)
-            throw std::runtime_error("Failed to create libremidi MIDI input (error " + std::to_string(err) + ")");
+        // Create input with callback
+        libremidi::ump_input_configuration inConfig{};
+        inConfig.on_message = [this](libremidi::ump&& message) {
+            inputCallback(std::move(message));
+        };
 
-        // Create output with a separate config to avoid dangling callback fields.
-        libremidi_midi_configuration midiOutCfg = midiCfg;
-        midiOutCfg.on_midi2_message = {};
-        midiOutCfg.port_name = out_port_name.c_str();
-        err = libremidi_midi_out_new(&midiOutCfg, &apiCfg, &midiOut);
-        if (err != 0)
-            throw std::runtime_error("Failed to create libremidi MIDI output (error " + std::to_string(err) + ")");
+        try {
+            midiIn = std::make_unique<libremidi::midi_in>(inConfig, *resolvedApi);
+            midiIn->open_virtual_port(in_port_name);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(std::string("Failed to create libremidi MIDI input: ") + e.what());
+        }
+
+        // Create output
+        libremidi::output_configuration outConfig{};
+
+        try {
+            midiOut = std::make_unique<libremidi::midi_out>(outConfig, *resolvedApi);
+            midiOut->open_virtual_port(out_port_name);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(std::string("Failed to create libremidi MIDI output: ") + e.what());
+        }
     }
 
-    LibreMidiIODevice::~LibreMidiIODevice() {
-        if (midiIn)
-            libremidi_midi_in_free(midiIn);
-        if (midiOut)
-            libremidi_midi_out_free(midiOut);
-    }
+    LibreMidiIODevice::~LibreMidiIODevice() = default;
 
-    void LibreMidiIODevice::midi2_in_callback(void* ctx, libremidi_timestamp timestamp, const libremidi_midi2_symbol* messages, size_t len) {
-        static_cast<LibreMidiIODevice*>(ctx)->inputCallback(timestamp, messages, len);
-    }
-
-    void LibreMidiIODevice::inputCallback(libremidi_timestamp timestamp, const libremidi_midi2_symbol* messages, size_t len) {
-        (void) timestamp;
+    void LibreMidiIODevice::inputCallback(libremidi::ump&& message) {
         for (size_t i = 0, n = receivers.size(); i < n; i++)
-            receivers[i](receiver_user_data[i], const_cast<uapmd_ump_t*>(messages), len * sizeof(int32_t), 0);
+            receivers[i](receiver_user_data[i], const_cast<uint32_t*>(message.data), sizeof(message.data), message.timestamp);
     }
 
     void LibreMidiIODevice::addInputHandler(ump_receiver_t receiver, void* userData) {
@@ -81,7 +70,7 @@ namespace uapmd {
     }
 
     void LibreMidiIODevice::send(uapmd_ump_t* messages, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-        auto total = sizeInBytes / sizeof(int32_t);
+        auto total = sizeInBytes / sizeof(uint32_t);
         size_t current = 0;
         size_t written = 0;
         size_t chunk = 0;
@@ -98,14 +87,15 @@ namespace uapmd {
             }
             chunk += size;
             if (chunk >= 256) {
-                libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + written, chunk);
+                midiOut->send_ump(reinterpret_cast<const uint32_t*>(messages + written), chunk);
                 std::this_thread::sleep_for(std::chrono::microseconds(sysex_delay_in_microseconds));
                 written += chunk;
                 chunk = 0;
             }
             current += size;
         }
-        if (written < total)
-            libremidi_midi_out_schedule_ump(midiOut, timestamp, messages + written, total - written);
+        if (written < total) {
+            midiOut->send_ump(reinterpret_cast<const uint32_t*>(messages + written), total - written);
+        }
     }
 }

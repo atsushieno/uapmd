@@ -3,10 +3,10 @@
 #include <optional>
 #include <string>
 
-#include <libremidi/libremidi-c.h>
+#include <libremidi/libremidi.hpp>
 
 namespace uapmd::detail {
 
-std::optional<libremidi_api> resolveLibremidiUmpApi(const std::string& apiName);
+std::optional<libremidi::API> resolveLibremidiUmpApi(const std::string& apiName);
 
 }

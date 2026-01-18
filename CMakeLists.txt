@@ -23,6 +23,15 @@ include(cmake/CPM.cmake)
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME uapmd)
 
+set(LIBREMIDI_HEADER_ONLY ON CACHE BOOL "Build libremidi as header-only" FORCE)
+if(MSVC)
+    # MSVC debug flags: /Zi for debug info, /Od for no optimization
+    set(CMAKE_CXX_FLAGS_DEBUG "/Zi /Od /MDd" CACHE STRING "" FORCE)
+    set(CMAKE_C_FLAGS_DEBUG "/Zi /Od /MDd" CACHE STRING "" FORCE)
+else()
+    # we do not mess platforms that works totally well
+endif()
+set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
 
 CPMAddPackage(
         NAME            choc
