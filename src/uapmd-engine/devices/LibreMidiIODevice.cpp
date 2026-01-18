@@ -29,6 +29,7 @@ namespace uapmd {
         inConfig.on_message = [this](libremidi::ump&& message) {
             inputCallback(std::move(message));
         };
+        inConfig.ignore_sysex = false;
 
         try {
             midiIn = std::make_unique<libremidi::midi_in>(inConfig, *resolvedApi);
