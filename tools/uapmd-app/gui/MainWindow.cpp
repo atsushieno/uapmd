@@ -68,7 +68,9 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
             // AppModel now creates DeviceState, we just initialize GUI-specific state
             // Initialize UMP device name buffer
-            std::string deviceLabel = result.device ? std::format("{} [format]", result.pluginName) : "";
+            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            std::string pluginFormat = sequencer.getPluginFormat(result.instanceId);
+            std::string deviceLabel = result.device ? std::format("{} [{}]", result.pluginName, pluginFormat) : "";
             umpDeviceNameBuffers_[result.instanceId] = {};
             std::strncpy(umpDeviceNameBuffers_[result.instanceId].data(), deviceLabel.c_str(),
                          umpDeviceNameBuffers_[result.instanceId].size() - 1);
