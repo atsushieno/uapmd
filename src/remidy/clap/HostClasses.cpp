@@ -38,7 +38,23 @@ namespace remidy {
         if (!params)
             return;
 
-        if (flags & CLAP_PARAM_RESCAN_VALUES) {
+        bool definitionsRebuilt = false;
+        if (flags & CLAP_PARAM_RESCAN_ALL) {
+            Logger::global()->logDiagnostic("CLAP: Full parameter rescan requested - rebuilding parameter list");
+            params->refreshAllParameterMetadata();
+            definitionsRebuilt = true;
+        } else if (flags & CLAP_PARAM_RESCAN_INFO) {
+            Logger::global()->logDiagnostic("CLAP: Parameter info changed - rebuilding parameter list");
+            params->refreshAllParameterMetadata();
+            definitionsRebuilt = true;
+        } else if (flags & CLAP_PARAM_RESCAN_TEXT) {
+            // Parameter text representations changed
+            Logger::global()->logDiagnostic("CLAP: Parameter text changed");
+            params->refreshAllParameterMetadata();
+            definitionsRebuilt = true;
+        }
+
+        if ((flags & CLAP_PARAM_RESCAN_VALUES) && !definitionsRebuilt) {
             // Parameter values changed - refresh all parameter values
             Logger::global()->logDiagnostic("CLAP: Parameter values changed, refreshing");
             auto& paramDefs = params->parameters();
@@ -49,24 +65,6 @@ namespace remidy {
                     params->notifyParameterValue(paramId, value);
                 }
             }
-        }
-        if (flags & CLAP_PARAM_RESCAN_INFO) {
-            // Parameter info (names, ranges) changed - refresh metadata
-            Logger::global()->logDiagnostic("CLAP: Parameter info changed, refreshing metadata");
-            auto& paramDefs = params->parameters();
-            for (size_t i = 0; i < paramDefs.size(); ++i) {
-                params->refreshParameterMetadata(static_cast<uint32_t>(i));
-            }
-        }
-        if (flags & CLAP_PARAM_RESCAN_TEXT) {
-            // Parameter text representations changed
-            Logger::global()->logDiagnostic("CLAP: Parameter text changed");
-            // Text changes don't require action - they're fetched on demand via valueToString
-        }
-        if (flags & CLAP_PARAM_RESCAN_ALL) {
-            // Full rescan needed - parameter list structure has changed
-            Logger::global()->logDiagnostic("CLAP: Full parameter rescan requested - this requires rebuilding the parameter list");
-            params->refreshAllParameterMetadata();
         }
     }
 

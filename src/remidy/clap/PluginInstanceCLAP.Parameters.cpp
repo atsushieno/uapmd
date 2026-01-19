@@ -1,4 +1,5 @@
 #include <format>
+#include <limits>
 #include "PluginFormatCLAP.hpp"
 
 namespace remidy {
@@ -6,22 +7,38 @@ namespace remidy {
     }
 
     PluginInstanceCLAP::ParameterSupport::~ParameterSupport() {
-        for (auto p : parameter_defs)
-            delete p;
-        parameter_defs.clear();
+        clearParameterList();
     }
 
-    std::vector<PluginParameter*>& PluginInstanceCLAP::ParameterSupport::parameters() {
-        if (!parameter_defs.empty())
-            return parameter_defs;
+    void PluginInstanceCLAP::ParameterSupport::clearParameterList() {
+        for (auto* param : parameter_defs)
+            delete param;
+        parameter_defs.clear();
+        parameter_ids.clear();
+        parameter_cookies.clear();
+        parameter_flags.clear();
+        param_id_to_index.clear();
+        per_note_parameter_defs.clear();
+    }
 
+    void PluginInstanceCLAP::ParameterSupport::populateParameterList(bool force) {
         EventLoop::runTaskOnMainThread([&] {
             if (!owner->plugin || !owner->plugin->canUseParams())
                 return;
+            if (!force && !parameter_defs.empty())
+                return;
 
-            for (size_t i = 0, n = owner->plugin->paramsCount(); i < n; i++) {
-                clap_param_info_t info;
-                if (!owner->plugin->paramsGetInfo(i, &info))
+            clearParameterList();
+
+            const size_t count = owner->plugin->paramsCount();
+            parameter_defs.reserve(count);
+            parameter_ids.reserve(count);
+            parameter_cookies.reserve(count);
+            parameter_flags.reserve(count);
+
+            for (size_t i = 0; i < count; ++i) {
+                clap_param_info_t info{};
+                if (!owner->plugin->paramsGetInfo(static_cast<uint32_t>(i), &info))
                     continue;
                 std::vector<ParameterEnumeration> enums{};
                 std::string id{std::format("{}", info.id)};
@@ -53,7 +70,7 @@ namespace remidy {
                 }
 
                 parameter_defs.emplace_back(new PluginParameter(
-                        i,
+                        static_cast<uint32_t>(i),
                         id,
                         name,
                         module,
@@ -71,6 +88,26 @@ namespace remidy {
                 param_id_to_index[info.id] = static_cast<uint32_t>(i);
             }
         });
+    }
+
+    void PluginInstanceCLAP::ParameterSupport::broadcastAllParameterValues() {
+        auto& defs = parameters();
+        for (size_t i = 0; i < defs.size(); ++i) {
+            double value = 0.0;
+            if (getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK)
+                notifyParameterChangeListeners(static_cast<uint32_t>(i), value);
+        }
+    }
+
+    void PluginInstanceCLAP::ParameterSupport::refreshAllParameterMetadata() {
+        populateParameterList(true);
+        broadcastAllParameterValues();
+        notifyParameterChangeListeners(std::numeric_limits<uint32_t>::max(), 0.0);
+    }
+
+    std::vector<PluginParameter*>& PluginInstanceCLAP::ParameterSupport::parameters() {
+        if (parameter_defs.empty())
+            populateParameterList(false);
         return parameter_defs;
     }
 
@@ -95,6 +132,8 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+        if (index >= parameter_ids.size() || index >= parameter_cookies.size())
+            return StatusCode::INVALID_PARAMETER_OPERATION;
         auto a = owner->events_in->tryAllocate(alignof(void *), sizeof(clap_event_param_value_t));
         if (!a)
             return StatusCode::INSUFFICIENT_MEMORY;
@@ -114,6 +153,8 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
+        if (index >= parameter_ids.size() || index >= parameter_cookies.size())
+            return StatusCode::INVALID_PARAMETER_OPERATION;
         auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events_in->tryAllocate(alignof(void *),
                                                                                               sizeof(clap_event_param_value_t)));
         evt->header.type = CLAP_EVENT_PARAM_VALUE;
@@ -152,7 +193,7 @@ namespace remidy {
     }
 
     std::string PluginInstanceCLAP::ParameterSupport::valueToString(uint32_t index, double value) {
-        if (!owner->plugin || !owner->plugin->canUseParams())
+        if (!owner->plugin || !owner->plugin->canUseParams() || index >= parameter_ids.size())
             return "";
         char s[1024];
         return owner->plugin->paramsValueToText(parameter_ids[index], value, s, sizeof(s)) ? s : "";

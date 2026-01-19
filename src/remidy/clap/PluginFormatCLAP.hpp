@@ -113,9 +113,15 @@ namespace remidy {
             std::unordered_map<clap_id, uint32_t> param_id_to_index{};
             std::vector<PluginParameter*> per_note_parameter_defs{};
 
+            void populateParameterList(bool force);
+            void clearParameterList();
+            void broadcastAllParameterValues();
+
         public:
             explicit ParameterSupport(PluginInstanceCLAP* owner);
             ~ParameterSupport();
+
+            void refreshAllParameterMetadata() override;
 
             std::vector<PluginParameter*>& parameters() override;
             std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) override;

@@ -53,6 +53,8 @@ namespace uapmd {
     void UapmdNodeUmpOutputMapper::onParameterValueUpdated(uint16_t index, double value) {
         if (!device)
             return;
+        if (index == 1 << 14)
+            return;
         constexpr uint8_t group = 0;
         constexpr uint8_t channel = 0;
         const uint8_t bank = static_cast<uint8_t>((index >> 7) & 0x7F);
