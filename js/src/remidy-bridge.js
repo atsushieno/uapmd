@@ -259,6 +259,10 @@ export const sequencer = {
         return updates.map(u => new ParameterUpdate(u));
     },
 
+    consumeParameterMetadataRefresh: function(instanceId) {
+        return __remidy_sequencer_consumeParameterMetadataRefresh(instanceId);
+    },
+
     // Audio Analysis
     getInputSpectrum: function(numBars) {
         if (numBars === undefined) numBars = 32;

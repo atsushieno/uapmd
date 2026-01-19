@@ -98,6 +98,7 @@ namespace uapmd {
         virtual void registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* instance) = 0;
         virtual void unregisterParameterListener(int32_t instanceId) = 0;
         virtual std::vector<ParameterUpdate> getParameterUpdates(int32_t instanceId) = 0;
+        virtual bool consumeParameterMetadataRefresh(int32_t instanceId) = 0;
 
         virtual bool offlineRendering() const = 0;
         virtual void offlineRendering(bool enabled) = 0;

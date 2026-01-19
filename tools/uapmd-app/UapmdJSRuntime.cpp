@@ -595,6 +595,18 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         }
         return arr;
     });
+
+    jsContext_.registerFunction ("__remidy_sequencer_consumeParameterMetadataRefresh", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        bool refreshed = false;
+        if (instanceId >= 0)
+        {
+            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            refreshed = sequencer.engine()->consumeParameterMetadataRefresh (instanceId);
+        }
+        return choc::value::createBool (refreshed);
+    });
 }
 
 void UapmdJSRuntime::registerSequencerAudioAnalysisAPI()

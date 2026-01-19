@@ -1,5 +1,4 @@
 #include <format>
-#include <limits>
 #include "PluginFormatCLAP.hpp"
 
 namespace remidy {
@@ -102,7 +101,7 @@ namespace remidy {
     void PluginInstanceCLAP::ParameterSupport::refreshAllParameterMetadata() {
         populateParameterList(true);
         broadcastAllParameterValues();
-        notifyParameterChangeListeners(std::numeric_limits<uint32_t>::max(), 0.0);
+        notifyParameterMetadataChangeListeners();
     }
 
     std::vector<PluginParameter*>& PluginInstanceCLAP::ParameterSupport::parameters() {

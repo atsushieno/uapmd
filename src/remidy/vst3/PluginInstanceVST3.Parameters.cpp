@@ -95,6 +95,7 @@ void remidy::PluginInstanceVST3::ParameterSupport::rebuildParameterList() {
 void remidy::PluginInstanceVST3::ParameterSupport::refreshAllParameterMetadata() {
     rebuildParameterList();
     broadcastAllParameterValues();
+    notifyParameterMetadataChangeListeners();
 }
 
 void remidy::PluginInstanceVST3::ParameterSupport::broadcastAllParameterValues() {

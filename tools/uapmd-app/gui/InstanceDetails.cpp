@@ -238,6 +238,9 @@ void InstanceDetails::render(const RenderContext& context) {
             if (!instance) {
                 ImGui::TextUnformatted("Instance is no longer available.");
             } else {
+                if (sequencer.engine()->consumeParameterMetadataRefresh(instanceId)) {
+                    refreshParameters(instanceId, detailsState);
+                }
                 if (context.buildTrackInstance) {
                     if (auto trackInstance = context.buildTrackInstance(instanceId)) {
                         bool disableShowUIButton = !trackInstance->hasUI;

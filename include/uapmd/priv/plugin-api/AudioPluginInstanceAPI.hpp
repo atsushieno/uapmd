@@ -77,6 +77,17 @@ namespace uapmd {
             if (auto* support = parameterSupport())
                 support->removeParameterChangeListener(id);
         }
+        virtual remidy::PluginParameterSupport::ParameterMetadataChangeListenerId addParameterMetadataChangeListener(
+            remidy::PluginParameterSupport::ParameterMetadataChangeListener listener) {
+            auto* support = parameterSupport();
+            if (!support)
+                return 0;
+            return support->addParameterMetadataChangeListener(std::move(listener));
+        }
+        virtual void removeParameterMetadataChangeListener(remidy::PluginParameterSupport::ParameterMetadataChangeListenerId id) {
+            if (auto* support = parameterSupport())
+                support->removeParameterMetadataChangeListener(id);
+        }
     };
 
 }

@@ -110,6 +110,7 @@ globalThis.uapmd = {
         setPluginBypassed: (instanceId, bypassed) => __remidy_sequencer_setPluginBypassed(instanceId, bypassed),
         getTrackInfos: () => __remidy_sequencer_getTrackInfos(),
         getParameterUpdates: (instanceId) => __remidy_sequencer_getParameterUpdates(instanceId),
+        consumeParameterMetadataRefresh: (instanceId) => __remidy_sequencer_consumeParameterMetadataRefresh(instanceId),
 
         // Audio analysis
         getInputSpectrum: (numBars) => __remidy_sequencer_getInputSpectrum(numBars),
