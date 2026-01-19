@@ -222,7 +222,7 @@ void InstanceDetails::render(const RenderContext& context) {
         bool windowOpen = detailsState.visible;
         bool deleteRequested = false;
         std::string windowSizeId = std::format("DetailsWindow{}", instanceId);
-        float baseWidth = 600.0f;
+        float baseWidth = 650.0f;
         const float viewportWidth = ImGui::GetIO().DisplaySize.x;
         if (viewportWidth > 0.0f && context.uiScale > 0.0f) {
             baseWidth = std::min(baseWidth, viewportWidth / context.uiScale);

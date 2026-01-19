@@ -245,6 +245,7 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             cpplocate::cpplocate
             libremidi::libremidi
             midicci_static
+            zlib-ng
             ${uapmd_LIBS_PLAT}
     )
 endforeach()
@@ -270,6 +271,7 @@ set(UAPMD_APP_SOURCE_FILES
         gui/ScriptEditor.cpp
         gui/SpectrumAnalyzer.cpp
         gui/SequenceEditor.cpp
+        gui/FontLoader.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
         player/UapmdProjectFileReader.cpp

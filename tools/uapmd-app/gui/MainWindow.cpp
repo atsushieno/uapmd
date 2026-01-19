@@ -19,6 +19,7 @@
 #include <imgui.h>
 
 #include "SharedTheme.hpp"
+#include "FontLoader.hpp"
 
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
@@ -26,6 +27,7 @@
 namespace uapmd::gui {
 MainWindow::MainWindow(GuiDefaults defaults) {
     SetupImGuiStyle();
+    ensureApplicationFont();
     baseStyle_ = ImGui::GetStyle();
     captureFontScales();
     applyUiScale(uiScale_);
@@ -270,7 +272,7 @@ void MainWindow::render(void* window) {
                                    ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
     if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
-        if (ImGui::BeginChild("MainToolbar", ImVec2(0, 80.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
+        if (ImGui::BeginChild("MainToolbar", ImVec2(0, 90.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
             if (ImGui::Button("Device Settings")) {
                 showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
             }
@@ -309,8 +311,6 @@ void MainWindow::render(void* window) {
                 applyUiScale(scaleOptions[selectedIndex]);
                 requestWindowResize();
             }
-
-            ImGui::Dummy(ImVec2(0, 12.0f * uiScale_));
 
             if (ImGui::Button("Plugins")) {
                 showPluginSelectorWindow_ = !showPluginSelectorWindow_;

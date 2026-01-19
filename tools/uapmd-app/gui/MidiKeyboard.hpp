@@ -19,6 +19,7 @@ namespace uapmd::gui {
         float keyWidth_ = 20.0f;
         float whiteKeyHeight_ = 80.0f;
         float blackKeyHeight_ = 50.0f;
+        float fontScale_ = 1.0f; // Font scale for note labels
 
         std::vector<bool> pressedKeys_;
         int mouseDownKey_ = -1;
@@ -40,6 +41,7 @@ namespace uapmd::gui {
 
         void setOctaveRange(int startOctave, int numOctaves);
         void setKeySize(float width, float whiteHeight, float blackHeight);
+        void setFontScale(float scale);
         void setKeyEventCallback(std::function<void(int note, int velocity, bool isPressed)> callback);
         void shiftOctave(int delta);
         int octaveStart() const { return octaveStart_; }

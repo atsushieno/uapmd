@@ -24,6 +24,10 @@ void MidiKeyboard::setKeySize(float width, float whiteHeight, float blackHeight)
     setupKeys();
 }
 
+void MidiKeyboard::setFontScale(float scale) {
+    fontScale_ = scale;
+}
+
 void MidiKeyboard::setKeyEventCallback(std::function<void(int note, int velocity, bool isPressed)> callback) {
     onKeyEvent_ = callback;
 }
@@ -194,12 +198,14 @@ void MidiKeyboard::render() {
         // Draw note name only for C notes on white keys
         if (!key.isBlack && (key.note % 12) == 0) {
             const char* noteName = getNoteName(key.note);
-            ImVec2 textSize = ImGui::CalcTextSize(noteName);
+            ImFont* font = ImGui::GetFont();
+            float fontSize = ImGui::GetFontSize() * fontScale_;
+            ImVec2 textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, noteName);
             ImVec2 textPos = ImVec2(
                 keyPos.x + (keySize.x - textSize.x) * 0.5f,
                 keyPos.y + keySize.y - textSize.y - 5.0f
             );
-            drawList->AddText(textPos, IM_COL32(0, 0, 0, 255), noteName);
+            drawList->AddText(font, fontSize, textPos, IM_COL32(0, 0, 0, 255), noteName);
         }
     }
 }

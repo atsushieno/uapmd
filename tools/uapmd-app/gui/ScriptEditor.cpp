@@ -33,7 +33,7 @@ void ScriptEditor::render()
     if (! isOpen_)
         return;
 
-    ImGui::SetNextWindowSize (ImVec2 (800, 600), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize (ImVec2 (640, 600), ImGuiCond_FirstUseEver);
 
     if (ImGui::Begin ("Script Editor", &isOpen_))
     {
@@ -44,7 +44,7 @@ void ScriptEditor::render()
 
         // Render the text editor with constrained height using ImGui's built-in multiline input
         ImGui::InputTextMultiline("##ScriptEditor", scriptBuffer_.data(), scriptBuffer_.size(),
-                                   ImVec2(0, availableHeight),
+                                   ImVec2(600, availableHeight),
                                    ImGuiInputTextFlags_AllowTabInput);
 
         ImGui::Separator();

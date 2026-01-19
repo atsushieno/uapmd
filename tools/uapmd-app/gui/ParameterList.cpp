@@ -13,6 +13,7 @@ ParameterList::ParameterList() {
 
     perNoteKeyboard_.setOctaveRange(4, 2);
     perNoteKeyboard_.setKeySize(14.0f, 50.0f, 32.0f);
+    perNoteKeyboard_.setFontScale(0.75f);
     bindKeyboardCallback();
     perNoteKeyboard_.setHighlightedKey(contextValue_);
 }
