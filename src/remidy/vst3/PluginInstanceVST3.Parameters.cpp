@@ -95,14 +95,14 @@ void remidy::PluginInstanceVST3::ParameterSupport::rebuildParameterList() {
 void remidy::PluginInstanceVST3::ParameterSupport::refreshAllParameterMetadata() {
     rebuildParameterList();
     broadcastAllParameterValues();
-    notifyParameterMetadataChangeListeners();
+    parameterMetadataChangeEvent().notify();
 }
 
 void remidy::PluginInstanceVST3::ParameterSupport::broadcastAllParameterValues() {
     for (size_t i = 0; i < parameter_defs.size(); ++i) {
         double value{};
         if (getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK)
-            notifyParameterChangeListeners(static_cast<uint32_t>(i), value);
+            parameterChangeEvent().notify(i, value);
     }
 }
 
@@ -395,5 +395,5 @@ std::optional<uint32_t> remidy::PluginInstanceVST3::ParameterSupport::indexForPa
 
 void remidy::PluginInstanceVST3::ParameterSupport::notifyParameterValue(ParamID id, double plainValue) {
     if (auto index = indexForParamId(id); index.has_value())
-        notifyParameterChangeListeners(index.value(), plainValue);
+        parameterChangeEvent().notify(index.value(), plainValue);
 }

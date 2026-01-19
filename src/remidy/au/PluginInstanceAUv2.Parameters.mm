@@ -356,7 +356,7 @@ void remidy::PluginInstanceAUv2::ParameterSupport::handleParameterEvent(const Au
         auto index = indexForParameterId(event->mArgument.mParameter.mParameterID);
         if (!index.has_value())
             return;
-        notifyParameterChangeListeners(index.value(), static_cast<double>(value));
+        parameterChangeEvent().notify(index.value(), static_cast<double>(value));
         return;
     }
 
@@ -366,7 +366,7 @@ void remidy::PluginInstanceAUv2::ParameterSupport::handleParameterEvent(const Au
         for (size_t i = 0; i < parameter_list.size(); ++i) {
             double currentValue;
             if (getParameter(static_cast<uint32_t>(i), &currentValue) == StatusCode::OK)
-                notifyParameterChangeListeners(static_cast<uint32_t>(i), currentValue);
+                parameterChangeEvent().notify(static_cast<uint32_t>(i), currentValue);
         }
     }
 }

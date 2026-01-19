@@ -99,9 +99,7 @@ namespace remidy {
     using EventListenerId = uint64_t;
 
     template<typename TReturn, typename ...TArgs>
-    class EventSupport {
-        friend class PluginParameterSupport;
-
+    class ParameterEventBase {
     public:
         using EventListener = std::function<TReturn(TArgs...)>;
 
@@ -109,19 +107,6 @@ namespace remidy {
         std::atomic<EventListenerId> listenerIdCounter{1};
         std::unordered_map<EventListenerId, EventListener> listeners{};
         std::mutex listenerMutex{};
-
-        void notify(TArgs... args) {
-            std::vector<EventListener> callbacks;
-            {
-                std::lock_guard<std::mutex> lock(listenerMutex);
-                callbacks.reserve(listeners.size());
-                for (auto& kv : listeners)
-                    callbacks.emplace_back(kv.second);
-            }
-            for (auto& cb : callbacks)
-                if (cb)
-                    cb(args...);
-        }
 
     public:
         EventListenerId addListener(EventListener listener) {
@@ -139,42 +124,35 @@ namespace remidy {
             std::lock_guard<std::mutex> lock(listenerMutex);
             listeners.erase(id);
         }
+
+        // FIXME: we should probably move it back to protected.
+        void notify(TArgs... args) {
+            std::vector<EventListener> callbacks;
+            {
+                std::lock_guard<std::mutex> lock(listenerMutex);
+                callbacks.reserve(listeners.size());
+                for (auto& kv : listeners)
+                    callbacks.emplace_back(kv.second);
+            }
+            for (auto& cb : callbacks)
+                if (cb)
+                    cb(args...);
+        }
     };
 
-    using ParameterMetadataChangeEventSupport = EventSupport<void>;
-    using ParameterChangeEventSupport = EventSupport<void, uint32_t, double>;
+    using ParameterMetadataChangeEvent = ParameterEventBase<void>;
+    using ParameterChangeEvent = ParameterEventBase<void, uint32_t, double>;
 
     class PluginParameterSupport {
-        ParameterMetadataChangeEventSupport parameterMetadataChangeEvent{};
-        ParameterChangeEventSupport parameterChangeEvent{};
-
-    protected:
-        void notifyParameterChangeListeners(uint32_t index, double plainValue) {
-            parameterChangeEvent.notify(index, plainValue);
-        }
-
-        void notifyParameterMetadataChangeListeners() {
-            parameterMetadataChangeEvent.notify();
-        }
+        ParameterMetadataChangeEvent parameter_metadata_event{};
+        ParameterChangeEvent parameter_event{};
 
     public:
         virtual ~PluginParameterSupport() = default;
 
-        EventListenerId addParameterChangeListener(ParameterChangeEventSupport::EventListener&& listener) {
-            return parameterChangeEvent.addListener(std::move(listener));
-        }
-
-        void removeParameterChangeListener(EventListenerId id) {
-            parameterChangeEvent.removeListener(id);
-        }
-
-        EventListenerId addParameterMetadataChangeListener(ParameterMetadataChangeEventSupport::EventListener&& listener) {
-            return parameterMetadataChangeEvent.addListener(std::move(listener));
-        }
-
-        void removeParameterMetadataChangeListener(EventListenerId id) {
-            parameterMetadataChangeEvent.removeListener(id);
-        }
+        // FIXME: should we also virtualize them?
+        ParameterMetadataChangeEvent& parameterMetadataChangeEvent() { return parameter_metadata_event; }
+        ParameterChangeEvent& parameterChangeEvent() { return parameter_event; }
 
         // Returns the list of parameter metadata.
         virtual std::vector<PluginParameter*>& parameters() = 0;
@@ -209,6 +187,8 @@ namespace remidy {
         virtual std::string valueToString(uint32_t index, double value) = 0;
         virtual std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) = 0;
 
+        // FIXME: this should probably be eliminated.
+        //
         // Refresh parameter metadata (min/max/default values) from the plugin.
         // This is needed for plugins that may change parameter ranges dynamically.
         virtual void refreshParameterMetadata(uint32_t index) {}
@@ -218,7 +198,7 @@ namespace remidy {
             auto& params = parameters();
             for (size_t i = 0; i < params.size(); i++)
                 refreshParameterMetadata(static_cast<uint32_t>(i));
-            notifyParameterMetadataChangeListeners();
+            parameterMetadataChangeEvent().notify();
         }
     };
 }

@@ -132,7 +132,7 @@ namespace remidy {
             std::optional<uint32_t> indexForProperty(LV2_URID propertyUrid) const;
             std::optional<LV2_URID> propertyUridForIndex(uint32_t index) const;
             void updateCachedParameterValue(uint32_t index, double plainValue);
-            void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
+            void notifyParameterValue(uint32_t index, double plainValue) { parameterChangeEvent().notify(index, plainValue); }
 
             // Internal method for setting parameters with control over UI notification
             StatusCode setParameterInternal(uint32_t index, double value, uint64_t timestamp, bool notifyUI);

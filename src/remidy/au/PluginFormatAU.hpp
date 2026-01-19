@@ -79,7 +79,7 @@ namespace remidy {
             std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override;
             void refreshParameterMetadata(uint32_t index) override;
             void handleParameterSetChange();
-            void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
+            void notifyParameterValue(uint32_t index, double plainValue) { parameterChangeEvent().notify(index, plainValue); }
         private:
             void populateParameterList();
             void rebuildParameterList();
@@ -282,7 +282,7 @@ namespace remidy {
             std::string valueToString(uint32_t index, double value) override;
             std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override;
             void refreshParameterMetadata(uint32_t index) override;
-            void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
+            void notifyParameterValue(uint32_t index, double plainValue) { parameterChangeEvent().notify(index, plainValue); }
         private:
             void installParameterListener();
             void uninstallParameterListener();

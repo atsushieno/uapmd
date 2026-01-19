@@ -94,14 +94,14 @@ namespace remidy {
         for (size_t i = 0; i < defs.size(); ++i) {
             double value = 0.0;
             if (getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK)
-                notifyParameterChangeListeners(static_cast<uint32_t>(i), value);
+                parameterChangeEvent().notify(static_cast<uint32_t>(i), value);
         }
     }
 
     void PluginInstanceCLAP::ParameterSupport::refreshAllParameterMetadata() {
         populateParameterList(true);
         broadcastAllParameterValues();
-        notifyParameterMetadataChangeListeners();
+        parameterMetadataChangeEvent().notify();
     }
 
     std::vector<PluginParameter*>& PluginInstanceCLAP::ParameterSupport::parameters() {
@@ -240,6 +240,6 @@ namespace remidy {
 
     void PluginInstanceCLAP::ParameterSupport::notifyParameterValue(clap_id id, double plainValue) {
         if (auto index = indexForParamId(id); index.has_value())
-            notifyParameterChangeListeners(index.value(), plainValue);
+            parameterChangeEvent().notify(index.value(), plainValue);
     }
 }

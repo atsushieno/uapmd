@@ -326,7 +326,7 @@ void remidy::PluginInstanceAUv3::ParameterSupport::installParameterObserver() {
 
             for (size_t i = 0; i < strongSelf->parameter_addresses.size(); i++) {
                 if (strongSelf->parameter_addresses[i] == address) {
-                    strongSelf->notifyParameterChangeListeners(static_cast<uint32_t>(i), static_cast<double>(value));
+                    strongSelf->parameterChangeEvent().notify(static_cast<uint32_t>(i), static_cast<double>(value));
                     break;
                 }
             }
@@ -387,7 +387,7 @@ void remidy::PluginInstanceAUv3::ParameterSupport::broadcastAllParameterValues()
     for (size_t i = 0; i < parameter_list.size(); ++i) {
         double currentValue = 0.0;
         if (getParameter(static_cast<uint32_t>(i), &currentValue) == StatusCode::OK)
-            notifyParameterChangeListeners(static_cast<uint32_t>(i), currentValue);
+            parameterChangeEvent().notify(static_cast<uint32_t>(i), currentValue);
     }
 }
 

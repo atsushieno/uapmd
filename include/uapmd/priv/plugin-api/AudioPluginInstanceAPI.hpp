@@ -67,26 +67,26 @@ namespace uapmd {
         virtual bool canUIResize() = 0;
         virtual remidy::PluginParameterSupport* parameterSupport() { return nullptr; }
         virtual remidy::EventListenerId addParameterChangeListener(
-            remidy::ParameterChangeEventSupport::EventListener listener) {
+            remidy::ParameterChangeEvent::EventListener listener) {
             auto* support = parameterSupport();
             if (!support)
                 return 0;
-            return support->addParameterChangeListener(std::move(listener));
+            return support->parameterChangeEvent().addListener(std::move(listener));
         }
         virtual void removeParameterChangeListener(remidy::EventListenerId id) {
             if (auto* support = parameterSupport())
-                support->removeParameterChangeListener(id);
+                support->parameterChangeEvent().removeListener(id);
         }
         virtual remidy::EventListenerId addParameterMetadataChangeListener(
-            remidy::ParameterMetadataChangeEventSupport::EventListener listener) {
+            remidy::ParameterMetadataChangeEvent::EventListener listener) {
             auto* support = parameterSupport();
             if (!support)
                 return 0;
-            return support->addParameterMetadataChangeListener(std::move(listener));
+            return support->parameterMetadataChangeEvent().addListener(std::move(listener));
         }
         virtual void removeParameterMetadataChangeListener(remidy::EventListenerId id) {
             if (auto* support = parameterSupport())
-                support->removeParameterMetadataChangeListener(id);
+                support->parameterMetadataChangeEvent().removeListener(id);
         }
     };
 
