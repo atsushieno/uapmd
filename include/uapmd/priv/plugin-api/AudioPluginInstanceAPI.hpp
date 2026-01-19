@@ -66,25 +66,25 @@ namespace uapmd {
         virtual bool getUISize(uint32_t &width, uint32_t &height) = 0;
         virtual bool canUIResize() = 0;
         virtual remidy::PluginParameterSupport* parameterSupport() { return nullptr; }
-        virtual remidy::PluginParameterSupport::ParameterChangeListenerId addParameterChangeListener(
-            remidy::PluginParameterSupport::ParameterChangeListener listener) {
+        virtual remidy::EventListenerId addParameterChangeListener(
+            remidy::ParameterChangeEventSupport::EventListener listener) {
             auto* support = parameterSupport();
             if (!support)
                 return 0;
             return support->addParameterChangeListener(std::move(listener));
         }
-        virtual void removeParameterChangeListener(remidy::PluginParameterSupport::ParameterChangeListenerId id) {
+        virtual void removeParameterChangeListener(remidy::EventListenerId id) {
             if (auto* support = parameterSupport())
                 support->removeParameterChangeListener(id);
         }
-        virtual remidy::PluginParameterSupport::ParameterMetadataChangeListenerId addParameterMetadataChangeListener(
-            remidy::PluginParameterSupport::ParameterMetadataChangeListener listener) {
+        virtual remidy::EventListenerId addParameterMetadataChangeListener(
+            remidy::ParameterMetadataChangeEventSupport::EventListener listener) {
             auto* support = parameterSupport();
             if (!support)
                 return 0;
             return support->addParameterMetadataChangeListener(std::move(listener));
         }
-        virtual void removeParameterMetadataChangeListener(remidy::PluginParameterSupport::ParameterMetadataChangeListenerId id) {
+        virtual void removeParameterMetadataChangeListener(remidy::EventListenerId id) {
             if (auto* support = parameterSupport())
                 support->removeParameterMetadataChangeListener(id);
         }

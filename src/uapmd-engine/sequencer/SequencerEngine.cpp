@@ -65,8 +65,8 @@ namespace uapmd {
         std::unordered_map<int32_t, std::vector<ParameterUpdate>> pending_parameter_updates_;
         std::unordered_set<int32_t> pending_metadata_refresh_;
         std::mutex pending_parameter_mutex_;
-        std::unordered_map<int32_t, remidy::PluginParameterSupport::ParameterChangeListenerId> parameter_listener_tokens_;
-        std::unordered_map<int32_t, remidy::PluginParameterSupport::ParameterMetadataChangeListenerId> metadata_listener_tokens_;
+        std::unordered_map<int32_t, remidy::EventListenerId> parameter_listener_tokens_;
+        std::unordered_map<int32_t, remidy::EventListenerId> metadata_listener_tokens_;
         std::mutex parameter_listener_mutex_;
 
         // Offline rendering mode
@@ -771,8 +771,8 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::unregisterParameterListener(int32_t instanceId) {
-        remidy::PluginParameterSupport::ParameterChangeListenerId token{0};
-        remidy::PluginParameterSupport::ParameterMetadataChangeListenerId metadataToken{0};
+        remidy::EventListenerId token{0};
+        remidy::EventListenerId metadataToken{0};
         {
             std::lock_guard<std::mutex> lock(parameter_listener_mutex_);
             auto it = parameter_listener_tokens_.find(instanceId);

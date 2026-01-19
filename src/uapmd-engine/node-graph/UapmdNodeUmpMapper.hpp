@@ -26,7 +26,7 @@ namespace uapmd {
     class UapmdNodeUmpOutputMapper : public UapmdUmpOutputMapper {
         std::shared_ptr<MidiIOFeature> device;
         AudioPluginInstanceAPI* plugin;
-        remidy::PluginParameterSupport::ParameterChangeListenerId param_change_listener_id;
+        remidy::EventListenerId param_change_listener_id;
 
     public:
         explicit UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIOFeature> device, AudioPluginInstanceAPI* plugin);

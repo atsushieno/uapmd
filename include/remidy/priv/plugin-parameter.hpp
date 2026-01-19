@@ -96,24 +96,22 @@ namespace remidy {
         uint32_t extra; // for any future uses
     };
 
-    class PluginParameterSupport {
+    using EventListenerId = uint64_t;
+
+    template<typename TReturn, typename ...TArgs>
+    class EventSupport {
+        friend class PluginParameterSupport;
+
     public:
-        using ParameterMetadataChangeListener = std::function<void()>;
-        using ParameterMetadataChangeListenerId = uint64_t;
-        using ParameterChangeListener = std::function<void(uint32_t, double)>;
-        using ParameterChangeListenerId = uint64_t;
+        using EventListener = std::function<TReturn(TArgs...)>;
 
     private:
-        std::atomic<ParameterChangeListenerId> listenerIdCounter{1};
-        std::unordered_map<ParameterChangeListenerId, ParameterChangeListener> listeners{};
+        std::atomic<EventListenerId> listenerIdCounter{1};
+        std::unordered_map<EventListenerId, EventListener> listeners{};
         std::mutex listenerMutex{};
-        std::atomic<ParameterMetadataChangeListenerId> metadataListenerIdCounter{1};
-        std::unordered_map<ParameterMetadataChangeListenerId, ParameterMetadataChangeListener> metadataListeners{};
-        std::mutex metadataListenerMutex{};
 
-    protected:
-        void notifyParameterChangeListeners(uint32_t index, double plainValue) {
-            std::vector<ParameterChangeListener> callbacks;
+        void notify(TArgs... args) {
+            std::vector<EventListener> callbacks;
             {
                 std::lock_guard<std::mutex> lock(listenerMutex);
                 callbacks.reserve(listeners.size());
@@ -122,26 +120,11 @@ namespace remidy {
             }
             for (auto& cb : callbacks)
                 if (cb)
-                    cb(index, plainValue);
-        }
-
-        void notifyParameterMetadataChangeListeners() {
-            std::vector<ParameterMetadataChangeListener> callbacks;
-            {
-                std::lock_guard<std::mutex> lock(metadataListenerMutex);
-                callbacks.reserve(metadataListeners.size());
-                for (auto& kv : metadataListeners)
-                    callbacks.emplace_back(kv.second);
-            }
-            for (auto& cb : callbacks)
-                if (cb)
-                    cb();
+                    cb(args...);
         }
 
     public:
-        virtual ~PluginParameterSupport() = default;
-
-        ParameterChangeListenerId addParameterChangeListener(ParameterChangeListener listener) {
+        EventListenerId addListener(EventListener listener) {
             if (!listener)
                 return 0;
             std::lock_guard<std::mutex> lock(listenerMutex);
@@ -150,27 +133,47 @@ namespace remidy {
             return id;
         }
 
-        void removeParameterChangeListener(ParameterChangeListenerId id) {
+        void removeListener(EventListenerId id) {
             if (id == 0)
                 return;
             std::lock_guard<std::mutex> lock(listenerMutex);
             listeners.erase(id);
         }
+    };
 
-        ParameterMetadataChangeListenerId addParameterMetadataChangeListener(ParameterMetadataChangeListener listener) {
-            if (!listener)
-                return 0;
-            std::lock_guard<std::mutex> lock(metadataListenerMutex);
-            auto id = metadataListenerIdCounter++;
-            metadataListeners.emplace(id, std::move(listener));
-            return id;
+    using ParameterMetadataChangeEventSupport = EventSupport<void>;
+    using ParameterChangeEventSupport = EventSupport<void, uint32_t, double>;
+
+    class PluginParameterSupport {
+        ParameterMetadataChangeEventSupport parameterMetadataChangeEvent{};
+        ParameterChangeEventSupport parameterChangeEvent{};
+
+    protected:
+        void notifyParameterChangeListeners(uint32_t index, double plainValue) {
+            parameterChangeEvent.notify(index, plainValue);
         }
 
-        void removeParameterMetadataChangeListener(ParameterMetadataChangeListenerId id) {
-            if (id == 0)
-                return;
-            std::lock_guard<std::mutex> lock(metadataListenerMutex);
-            metadataListeners.erase(id);
+        void notifyParameterMetadataChangeListeners() {
+            parameterMetadataChangeEvent.notify();
+        }
+
+    public:
+        virtual ~PluginParameterSupport() = default;
+
+        EventListenerId addParameterChangeListener(ParameterChangeEventSupport::EventListener&& listener) {
+            return parameterChangeEvent.addListener(std::move(listener));
+        }
+
+        void removeParameterChangeListener(EventListenerId id) {
+            parameterChangeEvent.removeListener(id);
+        }
+
+        EventListenerId addParameterMetadataChangeListener(ParameterMetadataChangeEventSupport::EventListener&& listener) {
+            return parameterMetadataChangeEvent.addListener(std::move(listener));
+        }
+
+        void removeParameterMetadataChangeListener(EventListenerId id) {
+            parameterMetadataChangeEvent.removeListener(id);
         }
 
         // Returns the list of parameter metadata.
