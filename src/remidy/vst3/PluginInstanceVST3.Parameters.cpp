@@ -11,13 +11,37 @@
 using namespace remidy_vst3;
 
 remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST3* owner) : owner(owner) {
-    auto controller = owner->controller;
-    auto count = controller->getParameterCount();
+    populateParameterList();
+}
 
-    parameter_ids = (ParamID*) calloc(sizeof(ParamID), count);
+void remidy::PluginInstanceVST3::ParameterSupport::clearParameterList() {
+    for (auto* param : parameter_defs)
+        delete param;
+    parameter_defs.clear();
+    parameter_ids.clear();
+    param_id_to_index.clear();
+    program_change_parameter_id = static_cast<ParamID>(-1);
+    program_change_parameter_index = -1;
+}
+
+void remidy::PluginInstanceVST3::ParameterSupport::populateParameterList() {
+    clearParameterList();
+
+    auto controller = owner->controller;
+    if (!controller)
+        return;
+
+    const int32 count = controller->getParameterCount();
+    if (count <= 0)
+        return;
+
+    parameter_ids.assign(static_cast<size_t>(count), 0);
+    parameter_defs.reserve(static_cast<size_t>(count));
+    param_id_to_index.reserve(static_cast<size_t>(count));
+
     buildUnitHierarchy();
 
-    for (auto i = 0; i < count; i++) {
+    for (int32 i = 0; i < count; i++) {
         ParameterInfo info{};
         controller->getParameterInfo(i, info);
         std::string idString = std::format("{}", info.id);
@@ -42,7 +66,7 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
                 enums.emplace_back(p);
             }
 
-        auto p = new PluginParameter(i, idString, name, path,
+        auto p = new PluginParameter(static_cast<uint32_t>(i), idString, name, path,
                                      plainDefault,
                                      plainMin,
                                      plainMax,
@@ -52,25 +76,40 @@ remidy::PluginInstanceVST3::ParameterSupport::ParameterSupport(PluginInstanceVST
                                      info.flags & ParameterInfo::kIsList,
                                      enums);
 
-        parameter_ids[i] = info.id;
+        parameter_ids[static_cast<size_t>(i)] = info.id;
         parameter_defs.emplace_back(p);
-        param_id_to_index[info.id] = i;
+        param_id_to_index[info.id] = static_cast<uint32_t>(i);
 
         // Detect program change parameter (marked with kIsProgramChange flag)
         if (info.flags & ParameterInfo::kIsProgramChange) {
             program_change_parameter_id = info.id;
-            program_change_parameter_index = i;
+            program_change_parameter_index = static_cast<int32_t>(i);
         }
     }
 }
 
+void remidy::PluginInstanceVST3::ParameterSupport::rebuildParameterList() {
+    populateParameterList();
+}
+
+void remidy::PluginInstanceVST3::ParameterSupport::refreshAllParameterMetadata() {
+    rebuildParameterList();
+    broadcastAllParameterValues();
+}
+
+void remidy::PluginInstanceVST3::ParameterSupport::broadcastAllParameterValues() {
+    for (size_t i = 0; i < parameter_defs.size(); ++i) {
+        double value{};
+        if (getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK)
+            notifyParameterChangeListeners(static_cast<uint32_t>(i), value);
+    }
+}
+
 remidy::PluginInstanceVST3::ParameterSupport::~ParameterSupport() {
-    for (auto p : parameter_defs)
-        delete p;
+    clearParameterList();
     per_note_controller_defs.clear();
     per_note_controller_storage.clear();
     note_expression_info_map.clear();
-    free(parameter_ids);
 }
 
 std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupport::parameters() {
@@ -116,6 +155,8 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
     // use IParameterChanges.
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
     auto pvc = owner->processDataInputParameterChanges.asInterface();
+    if (index >= parameter_ids.size())
+        return StatusCode::INVALID_PARAMETER_OPERATION;
     const ParamID id = parameter_ids[index];
 
     // Convert plain value to normalized for VST3
@@ -162,6 +203,8 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::getParameter(ui
     if (!value)
         return StatusCode::INVALID_PARAMETER_OPERATION;
     auto controller = owner->controller;
+    if (!controller || index >= parameter_ids.size())
+        return StatusCode::INVALID_PARAMETER_OPERATION;
     const ParamID id = parameter_ids[index];
 
     // Get normalized value from VST3 and convert to plain
@@ -254,6 +297,8 @@ void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint
 
 std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t index, double value) {
     auto controller = owner->controller;
+    if (!controller || index >= parameter_ids.size())
+        return "";
     const ParamID id = parameter_ids[index];
 
     // Convert plain value to normalized for VST3 API
@@ -322,11 +367,13 @@ const NoteExpressionTypeInfo* remidy::PluginInstanceVST3::ParameterSupport::reso
 }
 
 void remidy::PluginInstanceVST3::ParameterSupport::refreshParameterMetadata(uint32_t index) {
-    if (index >= parameter_defs.size())
+    if (index >= parameter_defs.size() || index >= parameter_ids.size())
         return;
 
     auto paramId = parameter_ids[index];
     auto controller = owner->controller;
+    if (!controller)
+        return;
 
     double plainMin = controller->normalizedParamToPlain(paramId, 0.0);
     double plainMax = controller->normalizedParamToPlain(paramId, 1.0);

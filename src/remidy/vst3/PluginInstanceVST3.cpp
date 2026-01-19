@@ -730,7 +730,10 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
             logger->logWarning("%s: kKeyswitchChanged not yet implemented", pluginName.c_str());
         }
         if (flags & Vst::RestartFlags::kParamIDMappingChanged) {
-            logger->logWarning("%s: kParamIDMappingChanged not yet implemented", pluginName.c_str());
+            logger->logInfo("%s: Handling kParamIDMappingChanged - rebuilding parameter list", pluginName.c_str());
+            auto paramSupport = dynamic_cast<PluginInstanceVST3::ParameterSupport*>(parameters());
+            if (paramSupport)
+                paramSupport->refreshAllParameterMetadata();
         }
     });
 }

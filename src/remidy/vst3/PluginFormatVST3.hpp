@@ -97,18 +97,24 @@ namespace remidy {
                 }
             };
             std::unordered_map<NoteExpressionKey, NoteExpressionTypeInfo, NoteExpressionKeyHash> note_expression_info_map{};
-            ParamID *parameter_ids{};
+            std::vector<ParamID> parameter_ids{};
             ParamID program_change_parameter_id{static_cast<ParamID>(-1)};
             int32_t program_change_parameter_index{-1};
             std::unordered_map<UnitID, std::pair<UnitID, std::string>> unit_hierarchy{};
             std::unordered_map<UnitID, std::string> unit_path_cache{};
 
+            void clearParameterList();
+            void populateParameterList();
+            void rebuildParameterList();
+            void broadcastAllParameterValues();
             void buildUnitHierarchy();
             std::string buildUnitPath(UnitID unitId);
 
         public:
             explicit ParameterSupport(PluginInstanceVST3* owner);
-            ~ParameterSupport();
+            ~ParameterSupport() override;
+
+            void refreshAllParameterMetadata() override;
 
             std::vector<PluginParameter*>& parameters() override;
             std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) override;
@@ -122,7 +128,7 @@ namespace remidy {
             void refreshParameterMetadata(uint32_t index) override;
             std::optional<uint32_t> indexForParamId(ParamID id) const;
             void notifyParameterValue(ParamID id, double plainValue);
-            ParamID getParameterId(uint32_t index) const { return index < parameter_defs.size() ? parameter_ids[index] : 0; }
+            ParamID getParameterId(uint32_t index) const { return index < parameter_ids.size() ? parameter_ids[index] : 0; }
 
             ParamID getProgramChangeParameterId() const { return program_change_parameter_id; }
             int32_t getProgramChangeParameterIndex() const { return program_change_parameter_index; }
