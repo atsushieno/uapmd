@@ -463,17 +463,32 @@ void InstanceDetails::applyParameterUpdates(int32_t instanceId, DetailsWindowSta
     }
 
     auto updates = sequencer.engine()->getParameterUpdates(instanceId);
+    if (updates.empty()) {
+        return;
+    }
+
     const auto& parameters = state.parameterList.getParameters();
+    bool needsRefresh = false;
 
     for (const auto& update : updates) {
+        bool handled = false;
         for (size_t i = 0; i < parameters.size(); ++i) {
             if (parameters[i].index == update.parameterIndex) {
                 state.parameterList.setParameterValue(i, static_cast<float>(update.value));
                 auto valueString = pal->getParameterValueString(parameters[i].index, update.value);
                 state.parameterList.setParameterValueString(i, valueString);
+                handled = true;
                 break;
             }
         }
+        if (!handled) {
+            needsRefresh = true;
+            break;
+        }
+    }
+
+    if (needsRefresh) {
+        refreshParameters(instanceId, state);
     }
 }
 

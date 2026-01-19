@@ -72,8 +72,27 @@ static NSArray<NSString*>* parameterObservationKeyPaths() {
 
 remidy::PluginInstanceAUv3::ParameterSupport::ParameterSupport(remidy::PluginInstanceAUv3 *owner)
         : owner(owner) {
+    populateParameterList();
+    v2AudioUnit = owner->bridgedAudioUnit;
+
+    installParameterObserver();
+    installParameterChangeObserver();
+    installV2PresetListener();
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::clearParameterList() {
+    for (auto* param : parameter_list) {
+        delete param;
+    }
+    parameter_list.clear();
+    parameter_addresses.clear();
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::populateParameterList() {
     auto impl = [&] {
         @autoreleasepool {
+            clearParameterList();
+
             if (owner->audioUnit == nil) {
                 owner->logger()->logError("%s: ParameterSupport - audioUnit is nil", owner->name.c_str());
                 return;
@@ -113,42 +132,34 @@ remidy::PluginInstanceAUv3::ParameterSupport::ParameterSupport(remidy::PluginIns
                 std::string pName = std::string([[param displayName] UTF8String]);
                 std::string path = keyPathToGroupPath([param keyPath]);
 
-                // Get enumeration values if available
-                // NOTE: some non-trivial replacement during AUv2->AUv3 migration
                 std::vector<ParameterEnumeration> enums;
                 NSArray<NSString*>* valueStrings = [param valueStrings];
                 if (valueStrings != nil && [valueStrings count] > 0) {
                     enums.reserve([valueStrings count]);
                     for (NSUInteger e = 0; e < [valueStrings count]; e++) {
                         NSString* label = valueStrings[e];
-                        // NOTE: some non-trivial replacement during AUv2->AUv3 migration
-                        // ParameterEnumeration constructor takes (label, value) as references
                         std::string labelStr = std::string([label UTF8String]);
                         double enumValue = static_cast<double>(e);
                         enums.emplace_back(labelStr, enumValue);
                     }
                 }
 
-                // NOTE: some non-trivial replacement during AUv2->AUv3 migration
-                // AUParameter defaultValue property doesn't exist, use value instead
                 auto p = new PluginParameter(
                     static_cast<uint32_t>(i),
                     idString,
                     pName,
                     path,
-                    static_cast<double>([param value]), // Use current value as default
+                    static_cast<double>([param value]),
                     [param minValue],
                     [param maxValue],
-                    ![param implementorValueObserver], // automatable if has observer
-                    true, // readable
-                    false, // not hidden
-                    [param unit] == kAudioUnitParameterUnit_Indexed, // NOTE: correct constant name
+                    ![param implementorValueObserver],
+                    true,
+                    false,
+                    [param unit] == kAudioUnitParameterUnit_Indexed,
                     enums
                 );
                 parameter_list.emplace_back(p);
             }
-
-            v2AudioUnit = owner->bridgedAudioUnit;
         }
     };
 
@@ -156,19 +167,19 @@ remidy::PluginInstanceAUv3::ParameterSupport::ParameterSupport(remidy::PluginIns
         EventLoop::runTaskOnMainThread(impl);
     else
         impl();
+}
 
+void remidy::PluginInstanceAUv3::ParameterSupport::rebuildParameterList() {
+    uninstallParameterObserver();
+    populateParameterList();
     installParameterObserver();
-    installParameterChangeObserver();
-    installV2PresetListener();
 }
 
 remidy::PluginInstanceAUv3::ParameterSupport::~ParameterSupport() {
     uninstallV2PresetListener();
     uninstallParameterChangeObserver();
     uninstallParameterObserver();
-    for (auto* param : parameter_list) {
-        delete param;
-    }
+    clearParameterList();
 }
 
 std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAUv3::ParameterSupport::parameters() {
@@ -367,6 +378,7 @@ void remidy::PluginInstanceAUv3::ParameterSupport::uninstallParameterChangeObser
 }
 
 void remidy::PluginInstanceAUv3::ParameterSupport::handleParameterSetChange() {
+    rebuildParameterList();
     refreshAllParameterMetadata();
     broadcastAllParameterValues();
 }

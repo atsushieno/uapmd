@@ -81,6 +81,9 @@ namespace remidy {
             void handleParameterSetChange();
             void notifyParameterValue(uint32_t index, double plainValue) { notifyParameterChangeListeners(index, plainValue); }
         private:
+            void populateParameterList();
+            void rebuildParameterList();
+            void clearParameterList();
             void installParameterObserver();
             void uninstallParameterObserver();
             void installParameterChangeObserver();
