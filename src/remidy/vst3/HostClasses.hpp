@@ -651,7 +651,6 @@ namespace remidy_vst3 {
         };
 
         EventHandlerImpl* event_handler{nullptr};
-        UnitHandlerImpl* unit_handler{nullptr};
         PlugInterfaceSupportImpl* support{nullptr};
         RunLoopImpl* run_loop{nullptr};
 #ifdef HAVE_WAYLAND
@@ -676,7 +675,6 @@ namespace remidy_vst3 {
         tresult PLUGIN_API getName(String128 name) SMTG_OVERRIDE;
         tresult PLUGIN_API createInstance(TUID cid, TUID _iid, void** obj) SMTG_OVERRIDE;
 
-        inline IUnitHandler* getUnitHandler() { return unit_handler; }
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return support; }
         inline IRunLoop* getRunLoop() { return run_loop; }
 #ifdef HAVE_WAYLAND
