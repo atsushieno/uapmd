@@ -510,8 +510,6 @@ namespace remidy_vst3 {
     private:
         std::atomic<uint32_t> refCount{1};
         remidy::Logger* logger;
-        std::unordered_map<void*, std::function<void(ParamID, double)>> parameter_edit_handlers{};
-        std::unordered_map<void*, std::function<void(int32)>> restart_component_handlers{};
 
         // IRunLoop timer management
         struct TimerInfo {
@@ -549,31 +547,6 @@ namespace remidy_vst3 {
                 return newCount;
             }
             void PLUGIN_API onFDIsSet(int fd) SMTG_OVERRIDE;
-        };
-
-        struct ComponentHandlerImpl : public IComponentHandler, public IComponentHandler2 {
-            std::atomic<uint32_t> refCount{1};
-            HostApplication* owner;
-
-            explicit ComponentHandlerImpl(HostApplication* owner) : owner(owner) {}
-            virtual ~ComponentHandlerImpl() = default;
-
-            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
-            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
-            uint32 PLUGIN_API release() SMTG_OVERRIDE {
-                uint32 newCount = --refCount;
-                if (newCount == 0) delete this;
-                return newCount;
-            }
-            tresult PLUGIN_API beginEdit(ParamID id) SMTG_OVERRIDE;
-            tresult PLUGIN_API performEdit(ParamID id, ParamValue valueNormalized) SMTG_OVERRIDE;
-            tresult PLUGIN_API endEdit(ParamID id) SMTG_OVERRIDE;
-            tresult PLUGIN_API restartComponent(int32 flags) SMTG_OVERRIDE;
-            // IComponentHandler2-specific methods
-            tresult PLUGIN_API setDirty(TBool state) SMTG_OVERRIDE;
-            tresult PLUGIN_API requestOpenEditor(FIDString name = ViewType::kEditor) SMTG_OVERRIDE;
-            tresult PLUGIN_API startGroupEdit() SMTG_OVERRIDE;
-            tresult PLUGIN_API finishGroupEdit() SMTG_OVERRIDE;
         };
 
         struct UnitHandlerImpl : public IUnitHandler {
@@ -678,7 +651,6 @@ namespace remidy_vst3 {
         };
 
         EventHandlerImpl* event_handler{nullptr};
-        ComponentHandlerImpl* handler{nullptr};
         UnitHandlerImpl* unit_handler{nullptr};
         PlugInterfaceSupportImpl* support{nullptr};
         RunLoopImpl* run_loop{nullptr};
@@ -704,7 +676,6 @@ namespace remidy_vst3 {
         tresult PLUGIN_API getName(String128 name) SMTG_OVERRIDE;
         tresult PLUGIN_API createInstance(TUID cid, TUID _iid, void** obj) SMTG_OVERRIDE;
 
-        inline IComponentHandler* getComponentHandler() { return handler; }
         inline IUnitHandler* getUnitHandler() { return unit_handler; }
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return support; }
         inline IRunLoop* getRunLoop() { return run_loop; }
@@ -714,20 +685,6 @@ namespace remidy_vst3 {
 
         void startProcessing();
         void stopProcessing();
-
-        void setParameterEditHandler(void* controller, std::function<void(ParamID, double)> handler_func) {
-            if (handler_func)
-                parameter_edit_handlers[controller] = std::move(handler_func);
-            else
-                parameter_edit_handlers.erase(controller);
-        }
-
-        void setRestartComponentHandler(void* controller, std::function<void(int32)> handler_func) {
-            if (handler_func)
-                restart_component_handlers[controller] = std::move(handler_func);
-            else
-                restart_component_handlers.erase(controller);
-        }
 
     };
 }

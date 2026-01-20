@@ -181,8 +181,6 @@ namespace remidy {
                     controllerValid = false;
             }
             if (controllerValid) {
-                auto handler = host.getComponentHandler();
-                result = controller->setComponentHandler((IComponentHandler *) handler);
                 if (result == kResultOk) {
                     ret = std::make_unique<PluginInstanceVST3>(this, entry, module, factory, component, processor,
                                                                     controller, distinctControllerInstance, instance);

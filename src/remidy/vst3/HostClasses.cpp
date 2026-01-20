@@ -37,7 +37,6 @@ namespace remidy_vst3 {
     HostApplication::HostApplication(remidy::Logger* logger): logger(logger) {
         // Instantiate nested implementation classes
         event_handler = new EventHandlerImpl(this);
-        handler = new ComponentHandlerImpl(this);
         unit_handler = new UnitHandlerImpl(this);
         support = new PlugInterfaceSupportImpl(this);
         run_loop = new RunLoopImpl(this);
@@ -49,7 +48,6 @@ namespace remidy_vst3 {
     HostApplication::~HostApplication() {
         // Clean up nested implementation classes
         if (event_handler) event_handler->release();
-        if (handler) handler->release();
         if (unit_handler) unit_handler->release();
         if (support) support->release();
         if (run_loop) run_loop->release();
@@ -71,11 +69,6 @@ namespace remidy_vst3 {
         QUERY_INTERFACE(_iid, obj, IHostApplication::iid, IHostApplication)
 
         // Return nested interface implementations
-        if (FUnknownPrivate::iidEqual(_iid, IComponentHandler::iid)) {
-            if (handler) handler->addRef();
-            *obj = handler;
-            return kResultOk;
-        }
         if (FUnknownPrivate::iidEqual(_iid, IUnitHandler::iid)) {
             if (unit_handler) unit_handler->addRef();
             *obj = unit_handler;
@@ -199,71 +192,6 @@ namespace remidy_vst3 {
 
     void PLUGIN_API HostApplication::EventHandlerImpl::onFDIsSet(int fd) {
         // Event handler implementation - currently not used
-    }
-
-    // ComponentHandlerImpl
-    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::queryInterface(const TUID _iid, void** obj) {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IComponentHandler)
-        QUERY_INTERFACE(_iid, obj, IComponentHandler::iid, IComponentHandler)
-        QUERY_INTERFACE(_iid, obj, IComponentHandler2::iid, IComponentHandler2)
-        logNoInterface("IComponentHandler::queryInterface", _iid);
-        *obj = nullptr;
-        return kNoInterface;
-    }
-
-    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::beginEdit(ParamID id) {
-        // Begin parameter edit - currently not implemented
-        remidy::Logger::global()->logWarning("ComponentHandler::beginEdit invoked (not implemented in this host)");
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::performEdit(ParamID id, ParamValue valueNormalized) {
-        // Find and invoke parameter edit handler if registered
-        for (auto& pair : owner->parameter_edit_handlers) {
-            if (pair.second)
-                pair.second(id, valueNormalized);
-        }
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::endEdit(ParamID id) {
-        // End parameter edit - currently not implemented
-        remidy::Logger::global()->logWarning("ComponentHandler::endEdit invoked (not implemented in this host)");
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::restartComponent(int32 flags) {
-        if (flags == 0)
-            return kResultOk; // Nothing to do
-        owner->logger->logInfo("ComponentHandler::restartComponent invoked with flags: 0x%x", flags);
-        for (auto& pair : owner->restart_component_handlers)
-            if (pair.second)
-                pair.second(flags);
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::setDirty(TBool state) {
-        remidy::Logger::global()->logWarning("ComponentHandler2::setDirty invoked (not implemented in this host)");
-        // Set dirty state - currently not implemented
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::requestOpenEditor(FIDString name) {
-        // Request open editor - currently not implemented
-        remidy::Logger::global()->logWarning("ComponentHandler2::requestOpenEditor invoked (not implemented in this host)");
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::startGroupEdit() {
-        // Start group edit - currently not implemented
-        remidy::Logger::global()->logWarning("ComponentHandler2::startGroupEdit invoked (not implemented in this host)");
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::finishGroupEdit() {
-        // Finish group edit - currently not implemented
-        remidy::Logger::global()->logWarning("ComponentHandler2::finishGroupEdit invoked (not implemented in this host)");
-        return kResultOk;
     }
 
     // UnitHandlerImpl

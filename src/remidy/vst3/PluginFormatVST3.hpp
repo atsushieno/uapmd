@@ -74,6 +74,47 @@ namespace remidy {
     };
 
     class PluginInstanceVST3 : public PluginInstance {
+        struct ComponentHandlerImpl : public IComponentHandler, public IComponentHandler2 {
+            std::atomic<uint32_t> refCount{1};
+            PluginInstanceVST3* owner;
+            std::function<void(int32)> restart_component_handler{};
+            std::function<void(ParamID, double)> parameter_edit_handler{};
+
+            explicit ComponentHandlerImpl(PluginInstanceVST3* owner) : owner(owner) {}
+            virtual ~ComponentHandlerImpl() = default;
+
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            tresult PLUGIN_API beginEdit(ParamID id) SMTG_OVERRIDE;
+            tresult PLUGIN_API performEdit(ParamID id, ParamValue valueNormalized) SMTG_OVERRIDE;
+            tresult PLUGIN_API endEdit(ParamID id) SMTG_OVERRIDE;
+            tresult PLUGIN_API restartComponent(int32 flags) SMTG_OVERRIDE;
+            // IComponentHandler2-specific methods
+            tresult PLUGIN_API setDirty(TBool state) SMTG_OVERRIDE;
+            tresult PLUGIN_API requestOpenEditor(FIDString name = ViewType::kEditor) SMTG_OVERRIDE;
+            tresult PLUGIN_API startGroupEdit() SMTG_OVERRIDE;
+            tresult PLUGIN_API finishGroupEdit() SMTG_OVERRIDE;
+
+            void setParameterEditHandler(std::function<void(ParamID, double)> handler_func) {
+                if (handler_func)
+                    parameter_edit_handler = std::move(handler_func);
+                else
+                    parameter_edit_handler = nullptr;
+            }
+
+            void setRestartComponentHandler(std::function<void(int32)> handler_func) {
+                if (handler_func)
+                    restart_component_handler = std::move(handler_func);
+                else
+                    restart_component_handler = nullptr;
+            }
+        };
+
         class ParameterSupport : public PluginParameterSupport {
             PluginInstanceVST3* owner;
             std::vector<PluginParameter*> parameter_defs{};
@@ -293,6 +334,7 @@ namespace remidy {
         void* module;
         IPluginFactory* factory;
         std::string pluginName;
+        std::unique_ptr<ComponentHandlerImpl> handler;
         IComponent* component;
         IAudioProcessor* processor;
         IEditController* controller;
