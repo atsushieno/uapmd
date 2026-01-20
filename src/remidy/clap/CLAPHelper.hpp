@@ -50,7 +50,7 @@ namespace remidy_clap {
                 .flags = location->flags,
                 .name = location->name,
                 .kind = location->kind,
-                .location = location->location
+                .location = location->location ? location->location : ""
             });
             return true;
         }
