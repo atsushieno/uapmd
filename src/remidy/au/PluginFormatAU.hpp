@@ -284,8 +284,12 @@ namespace remidy {
             std::string valueToString(uint32_t index, double value) override;
             std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override;
             void refreshParameterMetadata(uint32_t index) override;
+            void refreshAllParameterMetadata() override;
             void notifyParameterValue(uint32_t index, double plainValue) { parameterChangeEvent().notify(index, plainValue); }
         private:
+            void rebuildParameterList(bool notifyListeners);
+            void clearParameterList();
+            void broadcastAllParameterValues();
             void installParameterListener();
             void uninstallParameterListener();
             std::vector<PluginParameter*> buildScopedParameterList(AudioUnitScope scope, UInt32 element);

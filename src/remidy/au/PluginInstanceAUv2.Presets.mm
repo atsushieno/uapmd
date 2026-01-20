@@ -62,18 +62,9 @@ void PluginInstanceAUv2::PresetsSupport::loadPreset(int32_t index) {
     if (auPreset.presetName)
         CFRelease(auPreset.presetName);
 
-    // Refresh parameter metadata and poll values after preset load
-    // This handles plugins like Dexed that may change parameter ranges or not emit proper change notifications
     auto params = dynamic_cast<PluginInstanceAUv2::ParameterSupport*>(owner->parameters());
-    if (params) {
+    if (params)
         params->refreshAllParameterMetadata();
-        auto& paramList = params->parameters();
-        for (size_t i = 0; i < paramList.size(); i++) {
-            double value;
-            if (params->getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK)
-                params->notifyParameterValue(static_cast<uint32_t>(i), value);
-        }
-    }
     };
     if (owner->requiresUIThreadOn() & PluginUIThreadRequirement::State)
         EventLoop::runTaskOnMainThread(impl);
