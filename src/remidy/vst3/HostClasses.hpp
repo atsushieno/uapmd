@@ -549,49 +549,6 @@ namespace remidy_vst3 {
             void PLUGIN_API onFDIsSet(int fd) SMTG_OVERRIDE;
         };
 
-        struct UnitHandlerImpl : public IUnitHandler {
-            std::atomic<uint32_t> refCount{1};
-            HostApplication* owner;
-
-            explicit UnitHandlerImpl(HostApplication* owner) : owner(owner) {}
-            virtual ~UnitHandlerImpl() = default;
-
-            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
-            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
-            uint32 PLUGIN_API release() SMTG_OVERRIDE {
-                uint32 newCount = --refCount;
-                if (newCount == 0) delete this;
-                return newCount;
-            }
-            tresult PLUGIN_API notifyUnitSelection(UnitID unitId) SMTG_OVERRIDE;
-            tresult PLUGIN_API notifyProgramListChange(ProgramListID listId, int32 programIndex) SMTG_OVERRIDE;
-        };
-
-        struct MessageImpl : public IMessage {
-            std::atomic<uint32_t> refCount{1};
-            HostApplication* owner;
-            std::string message_id{};
-            IAttributeList* attributes{nullptr};
-
-            explicit MessageImpl(HostApplication* owner) : owner(owner) {
-                attributes = new HostAttributeList();
-            }
-            virtual ~MessageImpl() {
-                if (attributes) attributes->release();
-            }
-
-            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
-            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
-            uint32 PLUGIN_API release() SMTG_OVERRIDE {
-                uint32 newCount = --refCount;
-                if (newCount == 0) delete this;
-                return newCount;
-            }
-            FIDString PLUGIN_API getMessageID() SMTG_OVERRIDE;
-            void PLUGIN_API setMessageID(FIDString id) SMTG_OVERRIDE;
-            IAttributeList* PLUGIN_API getAttributes() SMTG_OVERRIDE;
-        };
-
         struct PlugInterfaceSupportImpl : public IPlugInterfaceSupport {
             std::atomic<uint32_t> refCount{1};
             HostApplication* owner;
@@ -651,7 +608,6 @@ namespace remidy_vst3 {
         };
 
         EventHandlerImpl* event_handler{nullptr};
-        UnitHandlerImpl* unit_handler{nullptr};
         PlugInterfaceSupportImpl* support{nullptr};
         RunLoopImpl* run_loop{nullptr};
 #ifdef HAVE_WAYLAND
@@ -676,7 +632,6 @@ namespace remidy_vst3 {
         tresult PLUGIN_API getName(String128 name) SMTG_OVERRIDE;
         tresult PLUGIN_API createInstance(TUID cid, TUID _iid, void** obj) SMTG_OVERRIDE;
 
-        inline IUnitHandler* getUnitHandler() { return unit_handler; }
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return support; }
         inline IRunLoop* getRunLoop() { return run_loop; }
 #ifdef HAVE_WAYLAND

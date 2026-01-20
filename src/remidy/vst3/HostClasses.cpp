@@ -37,7 +37,6 @@ namespace remidy_vst3 {
     HostApplication::HostApplication(remidy::Logger* logger): logger(logger) {
         // Instantiate nested implementation classes
         event_handler = new EventHandlerImpl(this);
-        unit_handler = new UnitHandlerImpl(this);
         support = new PlugInterfaceSupportImpl(this);
         run_loop = new RunLoopImpl(this);
 #ifdef HAVE_WAYLAND
@@ -48,7 +47,6 @@ namespace remidy_vst3 {
     HostApplication::~HostApplication() {
         // Clean up nested implementation classes
         if (event_handler) event_handler->release();
-        if (unit_handler) unit_handler->release();
         if (support) support->release();
         if (run_loop) run_loop->release();
 #ifdef HAVE_WAYLAND
@@ -69,11 +67,6 @@ namespace remidy_vst3 {
         QUERY_INTERFACE(_iid, obj, IHostApplication::iid, IHostApplication)
 
         // Return nested interface implementations
-        if (FUnknownPrivate::iidEqual(_iid, IUnitHandler::iid)) {
-            if (unit_handler) unit_handler->addRef();
-            *obj = unit_handler;
-            return kResultOk;
-        }
         if (FUnknownPrivate::iidEqual(_iid, IPlugInterfaceSupport::iid)) {
             if (support) support->addRef();
             *obj = support;
@@ -192,48 +185,6 @@ namespace remidy_vst3 {
 
     void PLUGIN_API HostApplication::EventHandlerImpl::onFDIsSet(int fd) {
         // Event handler implementation - currently not used
-    }
-
-    // UnitHandlerImpl
-    tresult PLUGIN_API HostApplication::UnitHandlerImpl::queryInterface(const TUID _iid, void** obj) {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IUnitHandler)
-        QUERY_INTERFACE(_iid, obj, IUnitHandler::iid, IUnitHandler)
-        logNoInterface("IUnitHandler::queryInterface", _iid);
-        *obj = nullptr;
-        return kNoInterface;
-    }
-
-    tresult PLUGIN_API HostApplication::UnitHandlerImpl::notifyUnitSelection(UnitID unitId) {
-        // Notify unit selection - currently not implemented
-        remidy::Logger::global()->logWarning("ComponentHandler2::notifyUnitSelection invoked (not implemented in this host)");
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API HostApplication::UnitHandlerImpl::notifyProgramListChange(ProgramListID listId, int32 programIndex) {
-        // Notify program list change - currently not implemented
-        remidy::Logger::global()->logWarning("ComponentHandler2::notifyProgramListChange invoked (not implemented in this host)");
-        return kResultOk;
-    }
-
-    // MessageImpl
-    tresult PLUGIN_API HostApplication::MessageImpl::queryInterface(const TUID _iid, void** obj) {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IMessage)
-        QUERY_INTERFACE(_iid, obj, IMessage::iid, IMessage)
-        logNoInterface("IMessage::queryInterface", _iid);
-        *obj = nullptr;
-        return kNoInterface;
-    }
-
-    FIDString PLUGIN_API HostApplication::MessageImpl::getMessageID() {
-        return message_id.empty() ? nullptr : message_id.c_str();
-    }
-
-    void PLUGIN_API HostApplication::MessageImpl::setMessageID(FIDString id) {
-        message_id = id ? id : "";
-    }
-
-    IAttributeList* PLUGIN_API HostApplication::MessageImpl::getAttributes() {
-        return attributes;
     }
 
     // PlugInterfaceSupportImpl

@@ -74,7 +74,7 @@ namespace remidy {
     };
 
     class PluginInstanceVST3 : public PluginInstance {
-        struct ComponentHandlerImpl : public IComponentHandler, public IComponentHandler2 {
+        struct ComponentHandlerImpl : public IComponentHandler, public IComponentHandler2, public IUnitHandler {
             std::atomic<uint32_t> refCount{1};
             PluginInstanceVST3* owner;
             std::function<void(int32)> restart_component_handler{};
@@ -99,6 +99,9 @@ namespace remidy {
             tresult PLUGIN_API requestOpenEditor(FIDString name = ViewType::kEditor) SMTG_OVERRIDE;
             tresult PLUGIN_API startGroupEdit() SMTG_OVERRIDE;
             tresult PLUGIN_API finishGroupEdit() SMTG_OVERRIDE;
+            // IUnitHandler methods
+            tresult PLUGIN_API notifyUnitSelection(UnitID unitId) SMTG_OVERRIDE;
+            tresult PLUGIN_API notifyProgramListChange(ProgramListID listId, int32 programIndex) SMTG_OVERRIDE;
 
             void setParameterEditHandler(std::function<void(ParamID, double)> handler_func) {
                 if (handler_func)

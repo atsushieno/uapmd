@@ -766,6 +766,7 @@ tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::queryInterf
     QUERY_INTERFACE(_iid, obj, FUnknown::iid, IComponentHandler)
     QUERY_INTERFACE(_iid, obj, IComponentHandler::iid, IComponentHandler)
     QUERY_INTERFACE(_iid, obj, IComponentHandler2::iid, IComponentHandler2)
+    QUERY_INTERFACE(_iid, obj, IUnitHandler::iid, IUnitHandler)
     logNoInterface("IComponentHandler::queryInterface", _iid);
     *obj = nullptr;
     return kNoInterface;
@@ -820,5 +821,17 @@ tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::startGroupE
 tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::finishGroupEdit() {
     // Finish group edit - currently not implemented
     remidy::Logger::global()->logWarning("ComponentHandler2::finishGroupEdit invoked (not implemented in this host)");
+    return kResultOk;
+}
+
+tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::notifyUnitSelection(UnitID unitId) {
+    // Notify unit selection - currently not implemented
+    remidy::Logger::global()->logWarning("IUnitHandler::notifyUnitSelection invoked (not implemented in this host)");
+    return kResultOk;
+}
+
+tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::notifyProgramListChange(ProgramListID listId, int32 programIndex) {
+    // Notify program list change - currently not implemented
+    remidy::Logger::global()->logWarning("IUnitHandler::notifyProgramListChange invoked (not implemented in this host)");
     return kResultOk;
 }
