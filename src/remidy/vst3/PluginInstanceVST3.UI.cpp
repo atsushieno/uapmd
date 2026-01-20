@@ -245,4 +245,29 @@ namespace remidy {
         return kResultFalse;
     }
 
+#if HAVE_WAYLAND
+    // PlugFrameImpl - IWaylandFrame methods
+    wl_surface* PLUGIN_API PluginInstanceVST3::UISupport::PlugFrameImpl::getWaylandSurface(wl_display* display) {
+        // Return the parent surface that the plugin should use as parent
+        // For now, we don't create a surface - the plugin creates its own top-level surface
+        // In a real implementation, you'd create and return a wl_surface here
+        (void)display;
+        return parent_surface;
+    }
+
+    xdg_surface* PLUGIN_API PluginInstanceVST3::UISupport::PlugFrameImpl::getParentSurface(ViewRect& parentSize, wl_display* display) {
+        // Return the parent XDG surface for the plugin to attach to
+        // parentSize would be filled with the parent window dimensions
+        // For now, return what we have (likely nullptr in headless mode)
+        (void)parentSize;
+        (void)display;
+        return parent_xdg_surface;
+    }
+
+    xdg_toplevel* PLUGIN_API PluginInstanceVST3::UISupport::PlugFrameImpl::getParentToplevel(wl_display* display) {
+        // Return the parent XDG toplevel for dialogs/transient windows
+        (void)display;
+        return parent_xdg_toplevel;
+    }
+#endif
 }
