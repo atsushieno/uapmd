@@ -34,6 +34,9 @@ static bool isKnownScope(AudioUnitScope scope) {
         || scope == kAudioUnitScope_Group;
 }
 
+static NSString* const ParameterTreeChangedNotificationName = @"AUParameterTreeChangedNotification";
+static NSString* const ParameterListChangedNotificationName = @"AUParameterListChangedNotification";
+
 }
 
 static void* kAUParameterKVOContext = &kAUParameterKVOContext;
@@ -43,6 +46,7 @@ static NSArray<NSString*>* parameterObservationKeyPaths() {
     if (!keyPaths) {
         keyPaths = [[NSArray alloc] initWithObjects:@"allParameterValues",
                                                      @"currentPreset",
+                                                     @"parameterTree",
                                                      nil];
     }
     return keyPaths;
@@ -52,6 +56,7 @@ static NSArray<NSString*>* parameterObservationKeyPaths() {
 @public
     remidy::PluginInstanceAUv3::ParameterSupport* support;
 }
+- (void)parameterTreeDidChange:(NSNotification*)notification;
 @end
 
 @implementation AUParameterChangeObserver
@@ -66,6 +71,13 @@ static NSArray<NSString*>* parameterObservationKeyPaths() {
     } else {
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
     }
+}
+
+- (void)parameterTreeDidChange:(NSNotification*)notification {
+    if (!support)
+        return;
+
+    support->handleParameterTreeStructureChange((__bridge void*)notification.object);
 }
 
 @end
@@ -95,14 +107,17 @@ void remidy::PluginInstanceAUv3::ParameterSupport::populateParameterList() {
 
             if (owner->audioUnit == nil) {
                 owner->logger()->logError("%s: ParameterSupport - audioUnit is nil", owner->name.c_str());
+                observedParameterTree = nullptr;
                 return;
             }
 
             AUParameterTree* parameterTree = [owner->audioUnit parameterTree];
             if (parameterTree == nil) {
                 owner->logger()->logWarning("%s: ParameterSupport - no parameter tree", owner->name.c_str());
+                observedParameterTree = nullptr;
                 return;
             }
+            observedParameterTree = (__bridge void*)parameterTree;
 
             NSArray<AUParameter*>* allParameters = [parameterTree allParameters];
 
@@ -347,6 +362,15 @@ void remidy::PluginInstanceAUv3::ParameterSupport::installParameterChangeObserve
 
         auto observer = [[AUParameterChangeObserver alloc] init];
         observer->support = this;
+        NSNotificationCenter* notificationCenter = [NSNotificationCenter defaultCenter];
+        [notificationCenter addObserver:observer
+                               selector:@selector(parameterTreeDidChange:)
+                                   name:ParameterTreeChangedNotificationName
+                                 object:nil];
+        [notificationCenter addObserver:observer
+                               selector:@selector(parameterTreeDidChange:)
+                                   name:ParameterListChangedNotificationName
+                                 object:nil];
         for (NSString* keyPath in parameterObservationKeyPaths()) {
             [owner->audioUnit addObserver:observer
                                forKeyPath:keyPath
@@ -363,6 +387,7 @@ void remidy::PluginInstanceAUv3::ParameterSupport::uninstallParameterChangeObser
             return;
 
         auto observer = static_cast<AUParameterChangeObserver*>(parameterChangeObserver);
+        [[NSNotificationCenter defaultCenter] removeObserver:observer];
         if (owner->audioUnit != nil) {
             for (NSString* keyPath in parameterObservationKeyPaths()) {
                 @try {
@@ -381,6 +406,25 @@ void remidy::PluginInstanceAUv3::ParameterSupport::handleParameterSetChange() {
     rebuildParameterList();
     refreshAllParameterMetadata();
     broadcastAllParameterValues();
+}
+
+void remidy::PluginInstanceAUv3::ParameterSupport::handleParameterTreeStructureChange(void* treeObject) {
+    if (!treeObject)
+        return;
+
+    bool shouldHandle = false;
+    @autoreleasepool {
+        if (owner->audioUnit == nil)
+            return;
+
+        AUParameterTree* currentTree = [owner->audioUnit parameterTree];
+        void* currentTreePtr = currentTree ? (__bridge void*)currentTree : nullptr;
+        if (treeObject == observedParameterTree || (currentTreePtr && treeObject == currentTreePtr))
+            shouldHandle = true;
+    }
+
+    if (shouldHandle)
+        handleParameterSetChange();
 }
 
 void remidy::PluginInstanceAUv3::ParameterSupport::broadcastAllParameterValues() {

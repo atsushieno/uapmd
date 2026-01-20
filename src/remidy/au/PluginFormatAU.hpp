@@ -61,6 +61,7 @@ namespace remidy {
             std::vector<AUParameterAddress> parameter_addresses{};
             AUParameterObserverToken parameterObserverToken{nil};
             void* parameterChangeObserver{nullptr};
+            void* observedParameterTree{nullptr};
             AudioUnit v2AudioUnit{nullptr};
             AUEventListenerRef v2PresetListener{nullptr};
 
@@ -80,6 +81,7 @@ namespace remidy {
             void refreshParameterMetadata(uint32_t index) override;
             void handleParameterSetChange();
             void notifyParameterValue(uint32_t index, double plainValue) { parameterChangeEvent().notify(index, plainValue); }
+            void handleParameterTreeStructureChange(void* treeObject);
         private:
             void populateParameterList();
             void rebuildParameterList();
