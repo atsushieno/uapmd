@@ -187,27 +187,6 @@ namespace remidy_vst3 {
         // Event handler implementation - currently not used
     }
 
-    // MessageImpl
-    tresult PLUGIN_API HostApplication::MessageImpl::queryInterface(const TUID _iid, void** obj) {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IMessage)
-        QUERY_INTERFACE(_iid, obj, IMessage::iid, IMessage)
-        logNoInterface("IMessage::queryInterface", _iid);
-        *obj = nullptr;
-        return kNoInterface;
-    }
-
-    FIDString PLUGIN_API HostApplication::MessageImpl::getMessageID() {
-        return message_id.empty() ? nullptr : message_id.c_str();
-    }
-
-    void PLUGIN_API HostApplication::MessageImpl::setMessageID(FIDString id) {
-        message_id = id ? id : "";
-    }
-
-    IAttributeList* PLUGIN_API HostApplication::MessageImpl::getAttributes() {
-        return attributes;
-    }
-
     // PlugInterfaceSupportImpl
     tresult PLUGIN_API HostApplication::PlugInterfaceSupportImpl::queryInterface(const TUID _iid, void** obj) {
         QUERY_INTERFACE(_iid, obj, FUnknown::iid, IPlugInterfaceSupport)
