@@ -1,3 +1,4 @@
+#include "HostClasses.hpp"
 #include "PluginFormatVST3.hpp"
 #include <priv/event-loop.hpp>
 #if defined(__linux__) || defined(__unix__)
@@ -20,6 +21,11 @@ namespace remidy {
 #else
         target_ui_string = kPlatformTypeHWND;
 #endif
+        plug_frame = new PlugFrameImpl(this);
+    }
+
+    PluginInstanceVST3::UISupport::~UISupport() {
+        if (plug_frame) plug_frame->release();
     }
 
     bool PluginInstanceVST3::UISupport::hasUI() {
@@ -42,13 +48,11 @@ namespace remidy {
             if (view) {
                 if (view->isPlatformTypeSupported(target_ui_string) == kResultOk) {
                     // Register resize handler
-                    if (host_resize_handler) {
-                        owner->owner->getHost()->setResizeRequestHandler(view, host_resize_handler);
-                    }
+                    if (host_resize_handler)
+                        plug_frame->resize_request_handler = host_resize_handler;
 
                     // Set up IPlugFrame - plugin may call resizeView() during this
-                    auto frame = owner->owner->getHost()->getPlugFrame();
-                    view->setFrame(frame);
+                    view->setFrame(plug_frame);
 
                     // Try to get scaling support (optional)
                     void* scale_ptr = nullptr;
@@ -110,7 +114,7 @@ namespace remidy {
 
             if (view) {
                 // Unregister the resize handler before destroying the view
-                owner->owner->getHost()->setResizeRequestHandler(view, nullptr);
+                plug_frame->resize_request_handler = nullptr;
                 view->removed();
                 view->release();
                 view = nullptr;
@@ -215,4 +219,30 @@ namespace remidy {
 
         return success;
     }
+
+    // PlugFrameImpl
+    tresult PLUGIN_API PluginInstanceVST3::UISupport::PlugFrameImpl::queryInterface(const TUID _iid, void** obj) {
+        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IPlugFrame)
+        QUERY_INTERFACE(_iid, obj, IPlugFrame::iid, IPlugFrame)
+#ifdef HAVE_WAYLAND
+        QUERY_INTERFACE(_iid, obj, IWaylandFrame::iid, IWaylandFrame)
+#endif
+        logNoInterface("IPlugFrame::queryInterface", _iid);
+        *obj = nullptr;
+        return kNoInterface;
+    }
+
+    tresult PLUGIN_API PluginInstanceVST3::UISupport::PlugFrameImpl::resizeView(IPlugView* view, ViewRect* newSize) {
+        if (!view || !newSize)
+            return kInvalidArgument;
+
+        // Check if there's a resize handler registered for this view
+        uint32_t width = newSize->right - newSize->left;
+        uint32_t height = newSize->bottom - newSize->top;
+        if (resize_request_handler && resize_request_handler(width, height))
+            return kResultOk;
+
+        return kResultFalse;
+    }
+
 }

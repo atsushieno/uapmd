@@ -221,6 +221,48 @@ namespace remidy {
         //    route resize requests from the plugin back to the correct UISupport instance.
         //    Currently no mechanism to map from HostApplication to UISupport instance.
         class UISupport : public PluginUISupport {
+
+            struct PlugFrameImpl : public IPlugFrame
+    #ifdef HAVE_WAYLAND
+                , public IWaylandFrame
+    #endif
+            {
+                std::atomic<uint32_t> refCount{1};
+                UISupport* owner;
+                std::function<bool(uint32_t, uint32_t)> resize_request_handler{};
+
+#ifdef HAVE_WAYLAND
+                wl_surface* parent_surface{nullptr};
+                xdg_surface* parent_xdg_surface{nullptr};
+                xdg_toplevel* parent_xdg_toplevel{nullptr};
+#endif
+
+                explicit PlugFrameImpl(UISupport* owner) : owner(owner) {}
+                virtual ~PlugFrameImpl() = default;
+
+                tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+                uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+                uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                    uint32 newCount = --refCount;
+                    if (newCount == 0) delete this;
+                    return newCount;
+                }
+                tresult PLUGIN_API resizeView(IPlugView* view, ViewRect* newSize) SMTG_OVERRIDE;
+
+#ifdef HAVE_WAYLAND
+                // IWaylandFrame interface
+                wl_surface* PLUGIN_API getWaylandSurface(wl_display* display) SMTG_OVERRIDE;
+                xdg_surface* PLUGIN_API getParentSurface(ViewRect& parentSize, wl_display* display) SMTG_OVERRIDE;
+                xdg_toplevel* PLUGIN_API getParentToplevel(wl_display* display) SMTG_OVERRIDE;
+
+                void setWaylandParent(wl_surface* surface, xdg_surface* xdg_surf, xdg_toplevel* toplevel) {
+                    parent_surface = surface;
+                    parent_xdg_surface = xdg_surf;
+                    parent_xdg_toplevel = toplevel;
+                }
+#endif
+            };
+
             PluginInstanceVST3* owner;
             IPlugView* view{nullptr};
             IPlugViewContentScaleSupport* scale_support{nullptr};
@@ -229,10 +271,11 @@ namespace remidy {
             bool attached{false};
             std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
             FIDString target_ui_string{};
+            PlugFrameImpl* plug_frame{nullptr};
 
         public:
             explicit UISupport(PluginInstanceVST3* owner);
-            ~UISupport() override = default;
+            ~UISupport() override;
             bool hasUI() override;
             bool create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) override;
             void destroy() override;

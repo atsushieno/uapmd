@@ -24,6 +24,8 @@ namespace remidy_vst3 {
     using namespace Steinberg::Vst;
     using namespace Steinberg::Linux;
 
+    void logNoInterface(std::string label, const TUID _iid);
+
     // Host implementation
     class HostAttributeList : public IAttributeList {
     private:
@@ -508,7 +510,6 @@ namespace remidy_vst3 {
     private:
         std::atomic<uint32_t> refCount{1};
         remidy::Logger* logger;
-        std::unordered_map<void*, std::function<bool(uint32_t, uint32_t)>> resize_request_handlers{};
         std::unordered_map<void*, std::function<void(ParamID, double)>> parameter_edit_handlers{};
         std::unordered_map<void*, std::function<void(int32)>> restart_component_handlers{};
 
@@ -550,7 +551,7 @@ namespace remidy_vst3 {
             void PLUGIN_API onFDIsSet(int fd) SMTG_OVERRIDE;
         };
 
-        struct ComponentHandlerImpl : public IComponentHandler {
+        struct ComponentHandlerImpl : public IComponentHandler, public IComponentHandler2 {
             std::atomic<uint32_t> refCount{1};
             HostApplication* owner;
 
@@ -568,27 +569,6 @@ namespace remidy_vst3 {
             tresult PLUGIN_API performEdit(ParamID id, ParamValue valueNormalized) SMTG_OVERRIDE;
             tresult PLUGIN_API endEdit(ParamID id) SMTG_OVERRIDE;
             tresult PLUGIN_API restartComponent(int32 flags) SMTG_OVERRIDE;
-        };
-
-        struct ComponentHandler2Impl : public IComponentHandler2 {
-            std::atomic<uint32_t> refCount{1};
-            HostApplication* owner;
-
-            explicit ComponentHandler2Impl(HostApplication* owner) : owner(owner) {}
-            virtual ~ComponentHandler2Impl() = default;
-
-            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
-            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
-            uint32 PLUGIN_API release() SMTG_OVERRIDE {
-                uint32 newCount = --refCount;
-                if (newCount == 0) delete this;
-                return newCount;
-            }
-            // IComponentHandler methods (inherited from IComponentHandler2's base)
-            tresult PLUGIN_API beginEdit(ParamID id) { return owner->handler->beginEdit(id); }
-            tresult PLUGIN_API performEdit(ParamID id, ParamValue valueNormalized) { return owner->handler->performEdit(id, valueNormalized); }
-            tresult PLUGIN_API endEdit(ParamID id) { return owner->handler->endEdit(id); }
-            tresult PLUGIN_API restartComponent(int32 flags) { return owner->handler->restartComponent(flags); }
             // IComponentHandler2-specific methods
             tresult PLUGIN_API setDirty(TBool state) SMTG_OVERRIDE;
             tresult PLUGIN_API requestOpenEditor(FIDString name = ViewType::kEditor) SMTG_OVERRIDE;
@@ -637,46 +617,6 @@ namespace remidy_vst3 {
             FIDString PLUGIN_API getMessageID() SMTG_OVERRIDE;
             void PLUGIN_API setMessageID(FIDString id) SMTG_OVERRIDE;
             IAttributeList* PLUGIN_API getAttributes() SMTG_OVERRIDE;
-        };
-
-        struct PlugFrameImpl : public IPlugFrame
-#ifdef HAVE_WAYLAND
-            , public IWaylandFrame
-#endif
-        {
-            std::atomic<uint32_t> refCount{1};
-            HostApplication* owner;
-
-#ifdef HAVE_WAYLAND
-            wl_surface* parent_surface{nullptr};
-            xdg_surface* parent_xdg_surface{nullptr};
-            xdg_toplevel* parent_xdg_toplevel{nullptr};
-#endif
-
-            explicit PlugFrameImpl(HostApplication* owner) : owner(owner) {}
-            virtual ~PlugFrameImpl() = default;
-
-            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
-            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
-            uint32 PLUGIN_API release() SMTG_OVERRIDE {
-                uint32 newCount = --refCount;
-                if (newCount == 0) delete this;
-                return newCount;
-            }
-            tresult PLUGIN_API resizeView(IPlugView* view, ViewRect* newSize) SMTG_OVERRIDE;
-
-#ifdef HAVE_WAYLAND
-            // IWaylandFrame interface
-            wl_surface* PLUGIN_API getWaylandSurface(wl_display* display) SMTG_OVERRIDE;
-            xdg_surface* PLUGIN_API getParentSurface(ViewRect& parentSize, wl_display* display) SMTG_OVERRIDE;
-            xdg_toplevel* PLUGIN_API getParentToplevel(wl_display* display) SMTG_OVERRIDE;
-
-            void setWaylandParent(wl_surface* surface, xdg_surface* xdg_surf, xdg_toplevel* toplevel) {
-                parent_surface = surface;
-                parent_xdg_surface = xdg_surf;
-                parent_xdg_toplevel = toplevel;
-            }
-#endif
         };
 
         struct PlugInterfaceSupportImpl : public IPlugInterfaceSupport {
@@ -739,10 +679,7 @@ namespace remidy_vst3 {
 
         EventHandlerImpl* event_handler{nullptr};
         ComponentHandlerImpl* handler{nullptr};
-        ComponentHandler2Impl* handler2{nullptr};
         UnitHandlerImpl* unit_handler{nullptr};
-        MessageImpl* message{nullptr};
-        PlugFrameImpl* plug_frame{nullptr};
         PlugInterfaceSupportImpl* support{nullptr};
         RunLoopImpl* run_loop{nullptr};
 #ifdef HAVE_WAYLAND
@@ -768,24 +705,15 @@ namespace remidy_vst3 {
         tresult PLUGIN_API createInstance(TUID cid, TUID _iid, void** obj) SMTG_OVERRIDE;
 
         inline IComponentHandler* getComponentHandler() { return handler; }
-        inline IComponentHandler2* getComponentHandler2() { return handler2; }
         inline IUnitHandler* getUnitHandler() { return unit_handler; }
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return support; }
         inline IRunLoop* getRunLoop() { return run_loop; }
-        inline IPlugFrame* getPlugFrame() { return plug_frame; }
 #ifdef HAVE_WAYLAND
         inline IWaylandHost* getWaylandHost() { return wayland_host; }
 #endif
 
         void startProcessing();
         void stopProcessing();
-
-        void setResizeRequestHandler(void* view, std::function<bool(uint32_t, uint32_t)> handler_func) {
-            if (handler_func)
-                resize_request_handlers[view] = std::move(handler_func);
-            else
-                resize_request_handlers.erase(view);
-        }
 
         void setParameterEditHandler(void* controller, std::function<void(ParamID, double)> handler_func) {
             if (handler_func)

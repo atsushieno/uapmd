@@ -20,6 +20,13 @@ DEF_CLASS_IID (Steinberg::IWaylandFrame)
 #include <algorithm>
 
 namespace remidy_vst3 {
+    void logNoInterface(std::string label, const TUID _iid) {
+        // FIXME: was there any TUID formatter?
+        auto iidString = std::format("{:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x}",
+            (uint8_t) _iid[0], (uint8_t) _iid[1], (uint8_t) _iid[2], (uint8_t) _iid[3], (uint8_t) _iid[4],(uint8_t) _iid[5], (uint8_t) _iid[6], (uint8_t) _iid[7],
+            (uint8_t) _iid[8], (uint8_t) _iid[9], (uint8_t) _iid[10], (uint8_t) _iid[11], (uint8_t) _iid[12], (uint8_t) _iid[13], (uint8_t) _iid[14], (uint8_t) _iid[15]);
+        remidy::Logger::global()->logWarning("%s invoked for missing interface: %s", label.data(), iidString.data());
+    }
 
     std::string vst3StringToStdString(String128& src) {
         return Steinberg::Vst::StringConvert::convert(src);
@@ -31,10 +38,7 @@ namespace remidy_vst3 {
         // Instantiate nested implementation classes
         event_handler = new EventHandlerImpl(this);
         handler = new ComponentHandlerImpl(this);
-        handler2 = new ComponentHandler2Impl(this);
         unit_handler = new UnitHandlerImpl(this);
-        message = new MessageImpl(this);
-        plug_frame = new PlugFrameImpl(this);
         support = new PlugInterfaceSupportImpl(this);
         run_loop = new RunLoopImpl(this);
 #ifdef HAVE_WAYLAND
@@ -46,10 +50,7 @@ namespace remidy_vst3 {
         // Clean up nested implementation classes
         if (event_handler) event_handler->release();
         if (handler) handler->release();
-        if (handler2) handler2->release();
         if (unit_handler) unit_handler->release();
-        if (message) message->release();
-        if (plug_frame) plug_frame->release();
         if (support) support->release();
         if (run_loop) run_loop->release();
 #ifdef HAVE_WAYLAND
@@ -73,21 +74,6 @@ namespace remidy_vst3 {
         if (FUnknownPrivate::iidEqual(_iid, IComponentHandler::iid)) {
             if (handler) handler->addRef();
             *obj = handler;
-            return kResultOk;
-        }
-        if (FUnknownPrivate::iidEqual(_iid, IComponentHandler2::iid)) {
-            if (handler2) handler2->addRef();
-            *obj = handler2;
-            return kResultOk;
-        }
-        if (FUnknownPrivate::iidEqual(_iid, IMessage::iid)) {
-            if (message) message->addRef();
-            *obj = message;
-            return kResultOk;
-        }
-        if (FUnknownPrivate::iidEqual(_iid, IPlugFrame::iid)) {
-            if (plug_frame) plug_frame->addRef();
-            *obj = plug_frame;
             return kResultOk;
         }
         if (FUnknownPrivate::iidEqual(_iid, IUnitHandler::iid)) {
@@ -118,7 +104,7 @@ namespace remidy_vst3 {
             return kResultOk;
         }
 #endif
-
+        logNoInterface("IHostApplication::queryInterface", _iid);
         *obj = nullptr;
         return kNoInterface;
     }
@@ -135,8 +121,10 @@ namespace remidy_vst3 {
             *obj = new HostAttributeList();
         else if (FUnknownPrivate::iidEqual(cid, IMessage::iid))
             *obj = new HostMessage();
-        else
+        else {
+            logNoInterface("IHostApplication::createInstance", cid);
             return kNoInterface;
+        }
         return kResultOk;
     }
 
@@ -204,9 +192,7 @@ namespace remidy_vst3 {
     tresult PLUGIN_API HostApplication::EventHandlerImpl::queryInterface(const TUID _iid, void** obj) {
         QUERY_INTERFACE(_iid, obj, FUnknown::iid, IEventHandler)
         QUERY_INTERFACE(_iid, obj, IEventHandler::iid, IEventHandler)
-        // Forward to owner
-        if (owner)
-            return owner->queryInterface(_iid, obj);
+        logNoInterface("IEventHandler::queryInterface", _iid);
         *obj = nullptr;
         return kNoInterface;
     }
@@ -219,8 +205,8 @@ namespace remidy_vst3 {
     tresult PLUGIN_API HostApplication::ComponentHandlerImpl::queryInterface(const TUID _iid, void** obj) {
         QUERY_INTERFACE(_iid, obj, FUnknown::iid, IComponentHandler)
         QUERY_INTERFACE(_iid, obj, IComponentHandler::iid, IComponentHandler)
-        if (owner)
-            return owner->queryInterface(_iid, obj);
+        QUERY_INTERFACE(_iid, obj, IComponentHandler2::iid, IComponentHandler2)
+        logNoInterface("IComponentHandler::queryInterface", _iid);
         *obj = nullptr;
         return kNoInterface;
     }
@@ -256,36 +242,25 @@ namespace remidy_vst3 {
         return kResultOk;
     }
 
-    // ComponentHandler2Impl
-    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::queryInterface(const TUID _iid, void** obj) {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IComponentHandler2)
-        QUERY_INTERFACE(_iid, obj, IComponentHandler::iid, IComponentHandler2)
-        QUERY_INTERFACE(_iid, obj, IComponentHandler2::iid, IComponentHandler2)
-        if (owner)
-            return owner->queryInterface(_iid, obj);
-        *obj = nullptr;
-        return kNoInterface;
-    }
-
-    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::setDirty(TBool state) {
+    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::setDirty(TBool state) {
         remidy::Logger::global()->logWarning("ComponentHandler2::setDirty invoked (not implemented in this host)");
         // Set dirty state - currently not implemented
         return kResultOk;
     }
 
-    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::requestOpenEditor(FIDString name) {
+    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::requestOpenEditor(FIDString name) {
         // Request open editor - currently not implemented
         remidy::Logger::global()->logWarning("ComponentHandler2::requestOpenEditor invoked (not implemented in this host)");
         return kResultOk;
     }
 
-    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::startGroupEdit() {
+    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::startGroupEdit() {
         // Start group edit - currently not implemented
         remidy::Logger::global()->logWarning("ComponentHandler2::startGroupEdit invoked (not implemented in this host)");
         return kResultOk;
     }
 
-    tresult PLUGIN_API HostApplication::ComponentHandler2Impl::finishGroupEdit() {
+    tresult PLUGIN_API HostApplication::ComponentHandlerImpl::finishGroupEdit() {
         // Finish group edit - currently not implemented
         remidy::Logger::global()->logWarning("ComponentHandler2::finishGroupEdit invoked (not implemented in this host)");
         return kResultOk;
@@ -295,8 +270,7 @@ namespace remidy_vst3 {
     tresult PLUGIN_API HostApplication::UnitHandlerImpl::queryInterface(const TUID _iid, void** obj) {
         QUERY_INTERFACE(_iid, obj, FUnknown::iid, IUnitHandler)
         QUERY_INTERFACE(_iid, obj, IUnitHandler::iid, IUnitHandler)
-        if (owner)
-            return owner->queryInterface(_iid, obj);
+        logNoInterface("IUnitHandler::queryInterface", _iid);
         *obj = nullptr;
         return kNoInterface;
     }
@@ -317,8 +291,7 @@ namespace remidy_vst3 {
     tresult PLUGIN_API HostApplication::MessageImpl::queryInterface(const TUID _iid, void** obj) {
         QUERY_INTERFACE(_iid, obj, FUnknown::iid, IMessage)
         QUERY_INTERFACE(_iid, obj, IMessage::iid, IMessage)
-        if (owner)
-            return owner->queryInterface(_iid, obj);
+        logNoInterface("IMessage::queryInterface", _iid);
         *obj = nullptr;
         return kNoInterface;
     }
@@ -335,42 +308,11 @@ namespace remidy_vst3 {
         return attributes;
     }
 
-    // PlugFrameImpl
-    tresult PLUGIN_API HostApplication::PlugFrameImpl::queryInterface(const TUID _iid, void** obj) {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IPlugFrame)
-        QUERY_INTERFACE(_iid, obj, IPlugFrame::iid, IPlugFrame)
-#ifdef HAVE_WAYLAND
-        QUERY_INTERFACE(_iid, obj, IWaylandFrame::iid, IWaylandFrame)
-#endif
-        if (owner)
-            return owner->queryInterface(_iid, obj);
-        *obj = nullptr;
-        return kNoInterface;
-    }
-
-    tresult PLUGIN_API HostApplication::PlugFrameImpl::resizeView(IPlugView* view, ViewRect* newSize) {
-        if (!view || !newSize)
-            return kInvalidArgument;
-
-        // Check if there's a resize handler registered for this view
-        auto it = owner->resize_request_handlers.find(view);
-        if (it != owner->resize_request_handlers.end() && it->second) {
-            uint32_t width = newSize->right - newSize->left;
-            uint32_t height = newSize->bottom - newSize->top;
-            if (it->second(width, height))
-                return kResultOk;
-            return kResultFalse;
-        }
-
-        return kResultFalse;
-    }
-
     // PlugInterfaceSupportImpl
     tresult PLUGIN_API HostApplication::PlugInterfaceSupportImpl::queryInterface(const TUID _iid, void** obj) {
         QUERY_INTERFACE(_iid, obj, FUnknown::iid, IPlugInterfaceSupport)
         QUERY_INTERFACE(_iid, obj, IPlugInterfaceSupport::iid, IPlugInterfaceSupport)
-        if (owner)
-            return owner->queryInterface(_iid, obj);
+        logNoInterface("IPlugInterfaceSupport::queryInterface", _iid);
         *obj = nullptr;
         return kNoInterface;
     }
@@ -395,8 +337,7 @@ namespace remidy_vst3 {
     tresult PLUGIN_API HostApplication::RunLoopImpl::queryInterface(const TUID _iid, void** obj) {
         QUERY_INTERFACE(_iid, obj, FUnknown::iid, IRunLoop)
         QUERY_INTERFACE(_iid, obj, IRunLoop::iid, IRunLoop)
-        if (owner)
-            return owner->queryInterface(_iid, obj);
+        logNoInterface("IRunLoop::queryInterface", _iid);
         *obj = nullptr;
         return kNoInterface;
     }
@@ -533,8 +474,7 @@ namespace remidy_vst3 {
     tresult PLUGIN_API HostApplication::WaylandHostImpl::queryInterface(const TUID _iid, void** obj) {
         QUERY_INTERFACE(_iid, obj, FUnknown::iid, IWaylandHost)
         QUERY_INTERFACE(_iid, obj, IWaylandHost::iid, IWaylandHost)
-        if (owner)
-            return owner->queryInterface(_iid, obj);
+        logNoInterface("IWaylandHost::queryInterface", _iid);
         *obj = nullptr;
         return kNoInterface;
     }
