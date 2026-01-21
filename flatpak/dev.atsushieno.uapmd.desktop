@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=UAPMD
+GenericName=Audio Plugin MIDI Device
+Comment=Host audio plugins as virtual MIDI devices
+Exec=uapmd-app
+Icon=dev.atsushieno.uapmd
+Terminal=false
+Categories=AudioVideo;Audio;Midi;
+Keywords=audio;plugin;vst;vst3;lv2;clap;midi;synthesizer;
+StartupNotify=true

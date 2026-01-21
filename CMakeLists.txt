@@ -141,6 +141,19 @@ install(TARGETS
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         COMPONENT uapmd)
 
+# Install desktop file, icon, and AppStream metadata (Linux only)
+if(UNIX AND NOT APPLE)
+    install(FILES flatpak/dev.atsushieno.uapmd.desktop
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+            COMPONENT uapmd)
+    install(FILES flatpak/dev.atsushieno.uapmd.metainfo.xml
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
+            COMPONENT uapmd)
+    install(FILES flatpak/dev.atsushieno.uapmd.svg
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
+            COMPONENT uapmd)
+endif()
+
 # -----------------
 # CPack (Deb/RPM/TXZ)
 # -----------------

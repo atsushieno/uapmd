@@ -1,0 +1,76 @@
+# UAPMD Flatpak manifest
+#
+# Local development build:
+#   flatpak-builder --user --install --force-clean build-flatpak flatpak/dev.atsushieno.uapmd.yaml
+#
+# Note: This manifest allows network access during build (for CMake FetchContent).
+# For Flathub submission, all dependencies must be vendored as separate sources.
+# See: https://docs.flathub.org/docs/for-app-authors/requirements
+
+app-id: dev.atsushieno.uapmd
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: uapmd-app
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+
+  # Audio and MIDI via PipeWire
+  - --socket=pulseaudio
+
+  # Plugin directories (read-only access to scan plugins)
+  - --filesystem=~/.vst3:ro
+  - --filesystem=~/.lv2:ro
+  - --filesystem=~/.clap:ro
+  - --filesystem=/usr/lib/vst3:ro
+  - --filesystem=/usr/lib/lv2:ro
+  - --filesystem=/usr/lib/clap:ro
+
+  # User data and config
+  - --filesystem=xdg-config/uapmd:create
+  - --filesystem=xdg-data/uapmd:create
+
+  # For loading/saving project files
+  - --filesystem=xdg-documents
+
+# Allow network access during build for FetchContent dependencies
+build-options:
+  build-args:
+    - --share=network
+
+modules:
+  # SDL2 for windowing backend
+  - name: sdl2
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSDL_STATIC=OFF
+      - -DSDL_TEST=OFF
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL/releases/download/release-2.30.10/SDL2-2.30.10.tar.gz
+        sha256: f59adf36a0fcf4c94198e7d3d776c1b3824211ab7aeebeb31fe19836661196aa
+
+  - name: uapmd
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      # For local development, use directory source:
+      - type: dir
+        path: ..
+
+      # For releases, use a git tag:
+      # - type: git
+      #   url: https://github.com/atsushieno/uapmd.git
+      #   branch: main
+      #   # Submodules are defined but most deps use FetchContent
+      #   # Only lv2kit submodule is actively used
+      #   disable-submodules: false

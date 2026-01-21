@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.atsushieno.uapmd</id>
+
+  <name>UAPMD</name>
+  <summary>Host audio plugins as virtual MIDI devices</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <description>
+    <p>
+      UAPMD (Ubiquitous Audio Plugin MIDI Device) is a tool for hosting audio
+      plugins (VST3, LV2, CLAP) and exposing them as virtual MIDI devices.
+      This allows any MIDI-capable application to use software synthesizers
+      and effects without native plugin support.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Host VST3, LV2, and CLAP audio plugins</li>
+      <li>Expose plugins as virtual MIDI devices</li>
+      <li>Plugin parameter control and automation</li>
+      <li>Audio routing and device configuration</li>
+      <li>Cross-platform support (Linux, macOS, Windows)</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">dev.atsushieno.uapmd.desktop</launchable>
+
+  <url type="homepage">https://github.com/atsushieno/uapmd</url>
+  <url type="bugtracker">https://github.com/atsushieno/uapmd/issues</url>
+  <url type="vcs-browser">https://github.com/atsushieno/uapmd</url>
+
+  <developer id="dev.atsushieno">
+    <name>Atsushi Eno</name>
+  </developer>
+
+  <provides>
+    <binary>uapmd-app</binary>
+    <binary>remidy-scan</binary>
+  </provides>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.1.3" date="2025-01-01">
+      <description>
+        <p>Initial Flatpak release.</p>
+      </description>
+    </release>
+  </releases>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Midi</category>
+  </categories>
+
+  <keywords>
+    <keyword>audio</keyword>
+    <keyword>plugin</keyword>
+    <keyword>vst3</keyword>
+    <keyword>lv2</keyword>
+    <keyword>clap</keyword>
+    <keyword>midi</keyword>
+    <keyword>synthesizer</keyword>
+  </keywords>
+
+</component>

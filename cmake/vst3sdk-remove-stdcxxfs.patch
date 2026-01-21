@@ -1,0 +1,15 @@
+diff --git a/cmake/modules/SMTG_PlatformToolset.cmake b/cmake/modules/SMTG_PlatformToolset.cmake
+index 1234567..abcdefg 100644
+--- a/cmake/modules/SMTG_PlatformToolset.cmake
++++ b/cmake/modules/SMTG_PlatformToolset.cmake
+@@ -61,8 +61,8 @@ macro(smtg_setup_platform_toolset)
+                 if(ANDROID)
+                     set(CMAKE_ANDROID_STL_TYPE c++_static)
+                     link_libraries(dl)
+-                 else()
+-                    link_libraries(stdc++fs pthread dl)
++                else()
++                    link_libraries(pthread dl)
+                 endif(ANDROID)
+             endif(SMTG_MAC)
+         endif(XCODE)
