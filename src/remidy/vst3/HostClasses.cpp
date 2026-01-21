@@ -36,7 +36,6 @@ namespace remidy_vst3 {
 
     HostApplication::HostApplication(remidy::Logger* logger): logger(logger) {
         // Instantiate nested implementation classes
-        event_handler = new EventHandlerImpl(this);
         support = new PlugInterfaceSupportImpl(this);
         run_loop = new RunLoopImpl(this);
 #ifdef HAVE_WAYLAND
@@ -46,7 +45,6 @@ namespace remidy_vst3 {
 
     HostApplication::~HostApplication() {
         // Clean up nested implementation classes
-        if (event_handler) event_handler->release();
         if (support) support->release();
         if (run_loop) run_loop->release();
 #ifdef HAVE_WAYLAND
@@ -172,19 +170,6 @@ namespace remidy_vst3 {
         if (pos)
             *pos = offset;
         return kResultOk;
-    }
-
-    // EventHandlerImpl
-    tresult PLUGIN_API HostApplication::EventHandlerImpl::queryInterface(const TUID _iid, void** obj) {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IEventHandler)
-        QUERY_INTERFACE(_iid, obj, IEventHandler::iid, IEventHandler)
-        logNoInterface("IEventHandler::queryInterface", _iid);
-        *obj = nullptr;
-        return kNoInterface;
-    }
-
-    void PLUGIN_API HostApplication::EventHandlerImpl::onFDIsSet(int fd) {
-        // Event handler implementation - currently not used
     }
 
     // PlugInterfaceSupportImpl

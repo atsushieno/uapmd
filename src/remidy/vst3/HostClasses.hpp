@@ -532,23 +532,6 @@ namespace remidy_vst3 {
         static const std::basic_string<char16_t> name16t;
 
         // Nested interface implementation classes
-        struct EventHandlerImpl : public IEventHandler {
-            std::atomic<uint32_t> refCount{1};
-            HostApplication* owner;
-
-            explicit EventHandlerImpl(HostApplication* owner) : owner(owner) {}
-            virtual ~EventHandlerImpl() = default;
-
-            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
-            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
-            uint32 PLUGIN_API release() SMTG_OVERRIDE {
-                uint32 newCount = --refCount;
-                if (newCount == 0) delete this;
-                return newCount;
-            }
-            void PLUGIN_API onFDIsSet(int fd) SMTG_OVERRIDE;
-        };
-
         struct PlugInterfaceSupportImpl : public IPlugInterfaceSupport {
             std::atomic<uint32_t> refCount{1};
             HostApplication* owner;
@@ -607,7 +590,6 @@ namespace remidy_vst3 {
             tresult PLUGIN_API unregisterTimer(ITimerHandler* handler) SMTG_OVERRIDE;
         };
 
-        EventHandlerImpl* event_handler{nullptr};
         PlugInterfaceSupportImpl* support{nullptr};
         RunLoopImpl* run_loop{nullptr};
 #ifdef HAVE_WAYLAND
