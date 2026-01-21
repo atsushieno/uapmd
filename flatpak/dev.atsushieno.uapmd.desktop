@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=UAPMD
-GenericName=Audio Plugin MIDI Device
-Comment=Host audio plugins as virtual MIDI devices
+GenericName=Ubiquitous Audio Plugin MIDI Device
+Comment=Host audio plugins as virtual MIDI 2.0 devices
 Exec=uapmd-app
 Icon=dev.atsushieno.uapmd
 Terminal=false
