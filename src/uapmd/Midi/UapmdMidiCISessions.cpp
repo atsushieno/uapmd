@@ -82,17 +82,17 @@ namespace uapmd {
             sender
         };
 
-        auto ciSession = create_midi_ci_session(source, muid, std::move(ci_config), [&](const LogData& log) {
+        auto ciSession = createMidiCiSession(source, muid, std::move(ci_config), [&](const LogData& log) {
             auto msg = std::get_if<std::reference_wrapper<const Message>>(&log.data);
             if (msg)
-                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "IN] ") << msg->get().get_log_message() << std::endl;
+                std::cerr << "[UAPMD LOG " << (log.isOutgoing ? "OUT] " : "IN] ") << msg->get().getLogMessage() << std::endl;
             else
-                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "IN] ") << std::get<std::string>(log.data) << std::endl;
+                std::cerr << "[UAPMD LOG " << (log.isOutgoing ? "OUT] " : "IN] ") << std::get<std::string>(log.data) << std::endl;
         });
 
-        auto& ciDevice = ciSession->get_device();
+        auto& ciDevice = ciSession->getDevice();
 
-        auto& hostProps = ciDevice.get_property_host_facade();
+        auto& hostProps = ciDevice.getPropertyHostFacade();
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::allCtrlListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::chCtrlListMetadata()));
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::ctrlMapListMetadata()));
@@ -126,7 +126,7 @@ namespace uapmd {
 
         // Set up custom property getter/setter for dynamic state management
         // Retrieve the original getter before setting the new one
-        auto originalGetter = hostProps.get_property_binary_getter();
+        auto originalGetter = hostProps.getPropertyBinaryGetter();
 
         // Create custom property getter that uses AudioPluginNode::saveState() for State/fullState
         auto customGetter = [this, originalGetter](const std::string& property_id, const std::string& res_id) -> std::vector<uint8_t> {
@@ -142,10 +142,10 @@ namespace uapmd {
             // Fall back to the original delegate
             return originalGetter(property_id, res_id);
         };
-        hostProps.set_property_binary_getter(customGetter);
+        hostProps.setPropertyBinaryGetter(customGetter);
 
         // Retrieve the original setter before setting the new one
-        auto originalSetter = hostProps.get_property_binary_setter();
+        auto originalSetter = hostProps.getPropertyBinarySetter();
 
         // Create custom property setter that uses AudioPluginNode::loadState() for State/fullState
         auto customSetter = [this, originalSetter](const std::string& property_id, const std::string& res_id,
@@ -164,7 +164,7 @@ namespace uapmd {
             // Fall back to the original delegate
             return originalSetter(property_id, res_id, media_type, body);
         };
-        hostProps.set_property_binary_setter(customSetter);
+        hostProps.setPropertyBinarySetter(customSetter);
 
         ci_sessions[muid] = std::move(ciSession);
 
