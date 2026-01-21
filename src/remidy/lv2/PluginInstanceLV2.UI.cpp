@@ -204,9 +204,9 @@ namespace remidy {
 #ifdef HAVE_WAYLAND
         // Add Wayland display feature if using WaylandSurfaceUI
         if (selected_ui_type && std::strcmp(selected_ui_type, LV2_UI__WaylandSurfaceUI) == 0) {
-            auto* loop = dynamic_cast<EventLoopLinux*>(getEventLoop());
-            if (loop && loop->getDisplayServerType() == DisplayServerType::Wayland) {
-                wl_display* display = loop->getWaylandDisplay();
+            const char* wayland_display = std::getenv("WAYLAND_DISPLAY");
+            if (wayland_display && wayland_display[0] != '\0') {
+                wl_display* display = wl_display_connect(wayland_display);
 
                 // Provide the Wayland display connection via "urn:wayland:display" feature
                 static LV2_Feature wayland_display_feature = { LV2_WAYLAND_DISPLAY_URI, display };

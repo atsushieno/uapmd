@@ -7,7 +7,7 @@
 #endif
 #include <priv/event-loop.hpp>
 #if defined(__linux__) || defined(__unix__)
-#include "../EventLoopLinux.hpp"
+#include <wayland-client-core.h>
 #endif
 #include <public.sdk/source/vst/utility/stringconvert.h>
 
@@ -359,39 +359,16 @@ namespace remidy_vst3 {
     }
 
     wl_display* PLUGIN_API HostApplication::WaylandHostImpl::openWaylandConnection() {
-        // Get the Wayland display from EventLoopLinux
-        auto* loop = dynamic_cast<remidy::EventLoopLinux*>(remidy::getEventLoop());
-        if (!loop) {
-            owner->logger->logWarning("WaylandHost::openWaylandConnection: EventLoop is not EventLoopLinux");
-            return nullptr;
-        }
-
-        if (loop->getDisplayServerType() != remidy::DisplayServerType::Wayland) {
-            owner->logger->logWarning("WaylandHost::openWaylandConnection: Not running on Wayland (detected %s)",
-                loop->getDisplayServerType() == remidy::DisplayServerType::X11 ? "X11" : "Unknown");
-            return nullptr;
-        }
-
-        wl_display* display = loop->getWaylandDisplay();
-        if (!display) {
-            owner->logger->logWarning("WaylandHost::openWaylandConnection: Wayland display not available");
-        }
-        return display;
+        const char* wayland_display = std::getenv("WAYLAND_DISPLAY");
+        return wl_display_connect(wayland_display);
     }
 
     tresult PLUGIN_API HostApplication::WaylandHostImpl::closeWaylandConnection(wl_display* display) {
-        // We don't actually close the display as it's managed by EventLoopLinux
-        // Just validate that it matches what we expect
-        auto* loop = dynamic_cast<remidy::EventLoopLinux*>(remidy::getEventLoop());
-        if (!loop) {
+        if (!display) {
+            owner->logger->logError("WaylandHost::closeWaylandConnection: display pointer is null");
             return kResultFalse;
         }
-
-        if (loop->getWaylandDisplay() != display) {
-            owner->logger->logWarning("WaylandHost::closeWaylandConnection: Display pointer mismatch");
-            return kResultFalse;
-        }
-
+        wl_display_disconnect(display);
         return kResultOk;
     }
 #endif

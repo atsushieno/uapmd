@@ -10,8 +10,8 @@ namespace remidy {
     PluginInstanceVST3::UISupport::UISupport(PluginInstanceVST3* owner) : owner(owner) {
 #if SMTG_OS_LINUX
         // Auto-detect Wayland vs X11 on Linux
-        auto* loop = dynamic_cast<EventLoopLinux*>(getEventLoop());
-        if (loop && loop->getDisplayServerType() == DisplayServerType::Wayland) {
+        const char* wayland_display = std::getenv("WAYLAND_DISPLAY");
+        if (wayland_display && wayland_display[0] != '\0') {
             target_ui_string = kPlatformTypeWaylandSurfaceID;
         } else {
             target_ui_string = kPlatformTypeX11EmbedWindowID;
