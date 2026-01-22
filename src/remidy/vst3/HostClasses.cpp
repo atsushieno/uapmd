@@ -1,11 +1,6 @@
-#include <thread>
 #include <algorithm>
 
 #include "HostClasses.hpp"
-#if !SMTG_OS_WINDOWS
-#include <sys/select.h>
-#endif
-#include <priv/event-loop.hpp>
 #if defined(__linux__) || defined(__unix__)
 #include <wayland-client-core.h>
 #endif
@@ -37,7 +32,6 @@ namespace remidy_vst3 {
     HostApplication::HostApplication(remidy::Logger* logger): logger(logger) {
         // Instantiate nested implementation classes
         support = new PlugInterfaceSupportImpl(this);
-        run_loop = new RunLoopImpl(this);
 #ifdef HAVE_WAYLAND
         wayland_host = new WaylandHostImpl(this);
 #endif
@@ -46,7 +40,6 @@ namespace remidy_vst3 {
     HostApplication::~HostApplication() {
         // Clean up nested implementation classes
         if (support) support->release();
-        if (run_loop) run_loop->release();
 #ifdef HAVE_WAYLAND
         if (wayland_host) wayland_host->release();
 #endif
@@ -68,11 +61,6 @@ namespace remidy_vst3 {
         if (FUnknownPrivate::iidEqual(_iid, IPlugInterfaceSupport::iid)) {
             if (support) support->addRef();
             *obj = support;
-            return kResultOk;
-        }
-        if (FUnknownPrivate::iidEqual(_iid, IRunLoop::iid)) {
-            if (run_loop) run_loop->addRef();
-            *obj = run_loop;
             return kResultOk;
         }
         if (FUnknownPrivate::iidEqual(_iid, IParameterChanges::iid)) {
@@ -195,142 +183,6 @@ namespace remidy_vst3 {
         if (FUnknownPrivate::iidEqual(_iid, IWaylandFrame::iid)) return kResultOk;
 #endif
         return kResultFalse;
-    }
-
-    // RunLoopImpl
-    tresult PLUGIN_API HostApplication::RunLoopImpl::queryInterface(const TUID _iid, void** obj) {
-        QUERY_INTERFACE(_iid, obj, FUnknown::iid, IRunLoop)
-        QUERY_INTERFACE(_iid, obj, IRunLoop::iid, IRunLoop)
-        logNoInterface("IRunLoop::queryInterface", _iid);
-        *obj = nullptr;
-        return kNoInterface;
-    }
-
-    tresult PLUGIN_API HostApplication::RunLoopImpl::registerEventHandler(IEventHandler* handler, FileDescriptor fd) {
-#if SMTG_OS_WINDOWS
-        // File descriptor event handling not supported on Windows
-        // Windows plugins should use timers instead
-        (void)handler;
-        (void)fd;
-        return kNotImplemented;
-#else
-        if (!handler)
-            return kInvalidArgument;
-
-        std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
-
-        auto info = std::make_shared<HostApplication::EventHandlerInfo>();
-        info->handler = handler;
-        info->fd = fd;
-        info->active.store(true);
-
-        owner->event_handlers.push_back(info);
-
-        // Start a background thread to monitor this file descriptor
-        std::thread monitor_thread([info]() {
-            fd_set readfds;
-            struct timeval tv;
-
-            while (info->active.load()) {
-                FD_ZERO(&readfds);
-                FD_SET(info->fd, &readfds);
-
-                // Timeout for select so we can check active flag periodically
-                tv.tv_sec = 0;
-                tv.tv_usec = 100000;  // 100ms
-
-                int result = select(info->fd + 1, &readfds, nullptr, nullptr, &tv);
-
-                if (result > 0 && FD_ISSET(info->fd, &readfds)) {
-                    // File descriptor has data available
-                    remidy::EventLoop::runTaskOnMainThread([info]() {
-                        if (!info->active.load()) return;
-
-                        auto handler = info->handler;
-                        if (handler) {
-                            handler->onFDIsSet(info->fd);
-                        }
-                    });
-                }
-            }
-        });
-        monitor_thread.detach();
-
-        return kResultOk;
-#endif
-    }
-
-    tresult PLUGIN_API HostApplication::RunLoopImpl::unregisterEventHandler(IEventHandler* handler) {
-        if (!handler)
-            return kInvalidArgument;
-
-        std::lock_guard<std::mutex> lock(owner->event_handlers_mutex);
-        
-        auto it = owner->event_handlers.begin();
-        while (it != owner->event_handlers.end()) {
-            if ((*it)->handler == handler) {
-                (*it)->active.store(false);
-                it = owner->event_handlers.erase(it);
-                return kResultOk;
-            } else {
-                ++it;
-            }
-        }
-
-        return kInvalidArgument;
-    }
-
-    tresult PLUGIN_API HostApplication::RunLoopImpl::registerTimer(ITimerHandler* handler, TimerInterval milliseconds) {
-        if (!handler)
-            return kInvalidArgument;
-
-        std::lock_guard<std::mutex> lock(owner->timers_mutex);
-        
-        auto timer_info = std::make_shared<HostApplication::TimerInfo>();
-        timer_info->handler = handler;
-        timer_info->interval_ms = milliseconds;
-        timer_info->active.store(true);
-        
-        owner->timers.push_back(timer_info);
-
-        // Start timer thread
-        std::thread timer_thread([timer_info]() {
-            while (timer_info->active.load()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(timer_info->interval_ms));
-                
-                remidy::EventLoop::runTaskOnMainThread([timer_info]() {
-                    if (!timer_info->active.load()) return;
-
-                    auto handler = timer_info->handler;
-                    if (handler) {
-                        handler->onTimer();
-                    }
-                });
-            }
-        });
-        timer_thread.detach();
-
-        return kResultOk;
-    }
-
-    tresult PLUGIN_API HostApplication::RunLoopImpl::unregisterTimer(ITimerHandler* handler) {
-        if (!handler)
-            return kInvalidArgument;
-
-        std::lock_guard<std::mutex> lock(owner->timers_mutex);
-        
-        auto it = owner->timers.begin();
-        while (it != owner->timers.end()) {
-            if ((*it)->handler == handler) {
-                (*it)->active.store(false);
-                it = owner->timers.erase(it);
-                return kResultOk;
-            } else {
-                ++it;
-            }
-        }
-
-        return kInvalidArgument;
     }
 
 #ifdef HAVE_WAYLAND
