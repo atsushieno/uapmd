@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 #include "remidy/remidy.hpp"
 #include "HostClasses.hpp"
@@ -314,6 +315,7 @@ namespace remidy {
             bool visible{false};
             bool attached{false};
             std::function<bool(uint32_t, uint32_t)> host_resize_handler{};
+            std::vector<FIDString> supported_ui_types{};
             FIDString target_ui_string{};
             PlugFrameImpl* plug_frame{nullptr};
 

@@ -9,17 +9,22 @@ namespace remidy {
 
     PluginInstanceVST3::UISupport::UISupport(PluginInstanceVST3* owner) : owner(owner) {
 #if SMTG_OS_LINUX
-        // Auto-detect Wayland vs X11 on Linux
+        // On Linux, we support both Wayland and X11.
+        // Prioritize based on current session type, but try the other as fallback.
+        // This allows X11 plugins to work on Wayland via XWayland/Wayback.
+        const char* xdgSessionType = std::getenv("XDG_SESSION_TYPE");
         const char* wayland_display = std::getenv("WAYLAND_DISPLAY");
-        if (wayland_display && wayland_display[0] != '\0') {
-            target_ui_string = kPlatformTypeWaylandSurfaceID;
+        bool preferWayland = xdgSessionType && !strcmp(xdgSessionType, "wayland") &&
+                             wayland_display && wayland_display[0] != '\0';
+        if (preferWayland) {
+            supported_ui_types = {kPlatformTypeWaylandSurfaceID, kPlatformTypeX11EmbedWindowID};
         } else {
-            target_ui_string = kPlatformTypeX11EmbedWindowID;
+            supported_ui_types = {kPlatformTypeX11EmbedWindowID, kPlatformTypeWaylandSurfaceID};
         }
 #elif SMTG_OS_MACOS
-        target_ui_string = kPlatformTypeNSView;
+        supported_ui_types = {kPlatformTypeNSView};
 #else
-        target_ui_string = kPlatformTypeHWND;
+        supported_ui_types = {kPlatformTypeHWND};
 #endif
         plug_frame = new PlugFrameImpl(this);
     }
@@ -46,7 +51,17 @@ namespace remidy {
 
             view = owner->controller->createView("editor");
             if (view) {
-                if (view->isPlatformTypeSupported(target_ui_string) == kResultOk) {
+                // Find a supported UI type from our list of candidates.
+                // This allows fallback (e.g., X11 on Wayland via XWayland).
+                target_ui_string = nullptr;
+                for (auto& uiType : supported_ui_types) {
+                    if (view->isPlatformTypeSupported(uiType) == kResultOk) {
+                        target_ui_string = uiType;
+                        break;
+                    }
+                }
+
+                if (target_ui_string) {
                     // Register resize handler
                     if (host_resize_handler)
                         plug_frame->resize_request_handler = host_resize_handler;
@@ -91,9 +106,8 @@ namespace remidy {
                     created = true;
                     success = true;
                 } else {
-                    // Platform not supported or invalid view
-                    if (view)
-                        view->release();
+                    // No supported platform type found
+                    view->release();
                     view = nullptr;
                 }
             }
