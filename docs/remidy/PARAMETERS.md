@@ -73,3 +73,13 @@ The way how VST3 and AU support per-note controllers (parameters) is different f
 One of the problem mapping from parameters to Assignable Controllers is that VST3 parameters are often mapped *from* MIDI CCs for each channel, due to fundamental VST3 design problem that does not support MIDI messages.
 
 If we map every single parameter to Assignable Controller, it feels extraneous to further map them again. But CC-to-parameter mappings happen at plugin side, while Assignable Controllers to parameter mappings happen at the host side. We cannot guess which parameter should map to which CC to send (while we can "guess" by parameter names).
+
+## Dynamic parameter list updates
+
+Some plugins dynamically updates their parameter list (e.g. BYOD VST3/AUv2/CLAP, AUv3 Mela, etc.) and when they happen the plugin typically have to be "restarted" by the host (e.g. `IComponentHandler::restartComponent()` in VST3, `clap_host.request_restart()` in CLAP).
+
+The way how we *trigger* this component refresh should not be in the public API, but it is currently exposed as `PluginParameterSupport::refreshAllParameterMetadata()`. Each plugin format overrides it by triggering update events that are registered as in `PluginParameterSupport::parameterMetadataChangeEvent` members. It is exposed to the users (here its `notify()` should not also be exposed, likewise...).
+
+We support the entire parameter refresh in uapmd-app.
+
+LV2 partially supports this concept as [Dynamic Manifest](https://lv2plug.in/ns/ext/dynmanifest), but there does not seem any normative way to notify the manifest updates. It is also known to [not work well](https://github.com/jatinchowdhury18/AnalogTapeModel/issues/283).
