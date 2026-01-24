@@ -19,8 +19,8 @@ FetchContent_MakeAvailable(googletest)
 # Create test executable
 add_executable(uapmd-project-file-tests
     UapmdProjectFileTest.cpp
-    ../player/UapmdProjectFileReader.cpp
-    ../player/UapmdProjectFileWriter.cpp
+    ../project/UapmdProjectFileReader.cpp
+    ../project/UapmdProjectFileWriter.cpp
 )
 
 # Include directories

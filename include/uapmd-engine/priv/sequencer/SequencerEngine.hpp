@@ -77,6 +77,7 @@ namespace uapmd {
         virtual void resumePlayback() = 0;
 
         // Audio analysis
+        // FIXME: they should be replaced by direct access to current audio buffers.
         virtual void getInputSpectrum(float* outSpectrum, int numBars) const = 0;
         virtual void getOutputSpectrum(float* outSpectrum, int numBars) const = 0;
 
