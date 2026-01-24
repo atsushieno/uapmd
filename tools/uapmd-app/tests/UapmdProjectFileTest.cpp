@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "../player/UapmdProjectFile.hpp"
-#include "../player/UapmdProjectFileImpl.hpp"
+#include "../project/UapmdProjectFile.hpp"
+#include "../project/UapmdProjectFileImpl.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>

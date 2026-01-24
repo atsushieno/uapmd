@@ -212,9 +212,8 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             ${portable-file-dialogs_SOURCE_DIR}
             ${midicci_SOURCE_DIR}/include
             ../../include
-            ../../src/remidy-tooling
-            ../../external/libremidi/include
-            ../../external/cpplocate/source/cpplocate/include
+            ${libremidi_SOURCE_DIR}/include
+            ${cpplocate_SOURCE_DIR}/include
     )
 endforeach()
 
@@ -274,12 +273,12 @@ set(UAPMD_APP_SOURCE_FILES
         gui/FontLoader.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
-        player/UapmdProjectFileReader.cpp
-        player/UapmdProjectFileWriter.cpp
         player/AppAudioFileSourceNode.cpp
         player/AppDeviceInputSourceNode.cpp
         player/TrackClipManager.cpp
         player/AppTrack.cpp
+        project/UapmdProjectFileReader.cpp
+        project/UapmdProjectFileWriter.cpp
 )
 
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
