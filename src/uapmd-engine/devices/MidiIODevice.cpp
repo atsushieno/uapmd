@@ -30,7 +30,7 @@ bool isWindowsMidiServicesSupported() {
     if (GetEnvironmentVariableW(L"SystemRoot", systemRoot, MAX_PATH) == 0)
         return false;
 
-    std::wstring driverPath = std::wstring(systemRoot) + L"\\System32\\Drivers\\usbmidi2.sys";
+    std::wstring driverPath = std::wstring(systemRoot) + L"\\SysWOW64\\wdmaud2.drv";
 
     DWORD attribs = GetFileAttributesW(driverPath.c_str());
     return (attribs != INVALID_FILE_ATTRIBUTES) && !(attribs & FILE_ATTRIBUTE_DIRECTORY);
