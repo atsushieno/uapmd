@@ -85,9 +85,9 @@ namespace uapmd {
         auto ciSession = createMidiCiSession(source, muid, std::move(ci_config), [&](const LogData& log) {
             auto msg = std::get_if<std::reference_wrapper<const Message>>(&log.data);
             if (msg)
-                std::cerr << "[UAPMD LOG " << (log.isOutgoing ? "OUT] " : "IN] ") << msg->get().getLogMessage() << std::endl;
+                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "IN] ") << msg->get().getLogMessage() << std::endl;
             else
-                std::cerr << "[UAPMD LOG " << (log.isOutgoing ? "OUT] " : "IN] ") << std::get<std::string>(log.data) << std::endl;
+                std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "IN] ") << std::get<std::string>(log.data) << std::endl;
         });
 
         auto& ciDevice = ciSession->getDevice();

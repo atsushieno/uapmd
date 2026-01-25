@@ -53,7 +53,7 @@ namespace uapmd {
 
     void LibreMidiIODevice::inputCallback(libremidi::ump&& message) {
         for (size_t i = 0, n = receivers.size(); i < n; i++)
-            receivers[i](receiver_user_data[i], const_cast<uint32_t*>(message.data), sizeof(message.data), message.timestamp);
+            receivers[i](receiver_user_data[i], const_cast<uint32_t*>(message.data), umppi::Ump(message.data[0]).getSizeInBytes(), message.timestamp);
     }
 
     void LibreMidiIODevice::addInputHandler(ump_receiver_t receiver, void* userData) {
