@@ -45,7 +45,7 @@ jobs:
         os: [ubuntu-24.04, macos-15, windows-latest]
     steps:
     - name: checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: recursive
     - name: apt update and install
@@ -58,26 +58,6 @@ jobs:
       if: ${{ startsWith(matrix.os, 'macos') }}
       run: |
         brew install ninja sdl3
-
-    - name: Install Qt6 (Ubuntu)
-      if: matrix.os == 'ubuntu-24.04'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y qtbase5-dev qtbase5-dev-tools qt6-base-dev qt6-base-dev-tools
-
-    - name: Install Qt5 (macOS) - Qt6 fails
-      if: matrix.os == 'macos-15'
-      run: |
-        brew install qt@5
-        echo "/opt/homebrew/opt/qt@5/bin" >> $GITHUB_PATH
-        echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/qt@5" >> $GITHUB_ENV
-
-    - name: Install Qt5 (Windows) - Qt6 fails
-      if: matrix.os == 'windows-latest'
-      uses: jurplel/install-qt-action@v3
-      with:
-        version: '5.15.2'
-        arch: ${{ matrix.qt_arch }}
 
     - name: setup build on Windows
       if: matrix.os == 'windows-latest'
@@ -101,7 +81,7 @@ jobs:
 
     - name: upload artifacts
       if: success()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       env:
         NODE_OPTIONS: --max_old_space_size=4096
       with:
@@ -115,7 +95,7 @@ jobs:
 
     - name: upload build failure logs
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       env:
         NODE_OPTIONS: --max_old_space_size=4096
       with:
@@ -131,12 +111,12 @@ jobs:
       contents: write
     steps:
     - name: checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 1
 
     - name: download build artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         pattern: build-*
         merge-multiple: true
@@ -146,7 +126,7 @@ jobs:
       run: ls -R release-artifacts
 
     - name: create GitHub release
-      uses: ncipollo/release-action@v1
+      uses: ncipollo/release-action@v1.20.0
       with:
         tag: ${{ github.event.inputs.tag_name }}
         name: ${{ github.event.inputs.release_name || github.event.inputs.tag_name }}
