@@ -102,6 +102,8 @@ jobs:
     - name: upload artifacts
       if: success()
       uses: actions/upload-artifact@v4
+      env:
+        NODE_OPTIONS: --max_old_space_size=4096
       with:
         name: build-${{ matrix.os }}
         path: |
@@ -114,6 +116,8 @@ jobs:
     - name: upload build failure logs
       if: failure()
       uses: actions/upload-artifact@v4
+      env:
+        NODE_OPTIONS: --max_old_space_size=4096
       with:
         name: build-${{ matrix.os }}
         path: |
