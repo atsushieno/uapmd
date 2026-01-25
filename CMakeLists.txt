@@ -71,7 +71,7 @@ endif()
 
 FetchContent_Declare(midicci
         NAME            midicci
-        GIT_TAG         92e018a
+        GIT_TAG         bf06125
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
         EXCLUDE_FROM_ALL
 )
