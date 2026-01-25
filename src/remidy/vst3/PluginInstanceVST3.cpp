@@ -5,7 +5,7 @@
 
 #include "remidy.hpp"
 #include "../utils.hpp"
-#include "cmidi2.h"
+#include <umppi/umppi.hpp>
 
 #include "PluginFormatVST3.hpp"
 
@@ -493,7 +493,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
                     uint16_t velocity = static_cast<uint16_t>(e.noteOn.velocity * 65535.0f);
                     uint16_t attributeData = 0; // VST3 doesn't provide attribute data
                     uint8_t attributeType = 0;
-                    uint64_t ump = cmidi2_ump_midi2_note_on(
+                    uint64_t ump = umppi::UmpFactory::midi2NoteOn(
                         group, e.noteOn.channel, e.noteOn.pitch,
                         attributeType, velocity, attributeData);
                     umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
@@ -504,7 +504,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
                     uint16_t velocity = static_cast<uint16_t>(e.noteOff.velocity * 65535.0f);
                     uint16_t attributeData = 0;
                     uint8_t attributeType = 0;
-                    uint64_t ump = cmidi2_ump_midi2_note_off(
+                    uint64_t ump = umppi::UmpFactory::midi2NoteOff(
                         group, e.noteOff.channel, e.noteOff.pitch,
                         attributeType, velocity, attributeData);
                     umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
@@ -513,7 +513,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
                 }
                 case Event::kPolyPressureEvent: {
                     uint32_t pressure = static_cast<uint32_t>(e.polyPressure.pressure * 4294967295.0f);
-                    uint64_t ump = cmidi2_ump_midi2_paf(
+                    uint64_t ump = umppi::UmpFactory::midi2PAf(
                         group, e.polyPressure.channel, e.polyPressure.pitch, pressure);
                     umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                     umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
@@ -528,13 +528,13 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
                     // Special handling for pitch bend and poly pressure
                     if (cc == 128) { // kPitchBend
                         uint32_t pitchValue = (static_cast<uint32_t>(e.midiCCOut.value2) << 7) | e.midiCCOut.value;
-                        ump = cmidi2_ump_midi2_pitch_bend_direct(group, channel, pitchValue << 18);
+                        ump = umppi::UmpFactory::midi2PitchBendDirect(group, channel, pitchValue << 18);
                     } else if (cc == 129) { // kCtrlPolyPressure
                         uint32_t pressure = static_cast<uint32_t>(e.midiCCOut.value2) << 25;
-                        ump = cmidi2_ump_midi2_paf(group, channel, e.midiCCOut.value, pressure);
+                        ump = umppi::UmpFactory::midi2PAf(group, channel, e.midiCCOut.value, pressure);
                     } else {
                         // Regular CC
-                        ump = cmidi2_ump_midi2_cc(group, channel, cc, value);
+                        ump = umppi::UmpFactory::midi2CC(group, channel, cc, value);
                     }
                     umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                     umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
@@ -569,7 +569,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
                     uint32_t data = static_cast<uint32_t>(value * 4294967295.0);
 
                     // Use NRPN for channel-wide assignable controllers
-                    uint64_t ump = cmidi2_ump_midi2_nrpn(0, 0, bank, index, data); // group 0, channel 0
+                    uint64_t ump = umppi::UmpFactory::midi2NRPN(0, 0, bank, index, data); // group 0, channel 0
                     umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                     umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                 }

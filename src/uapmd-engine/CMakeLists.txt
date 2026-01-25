@@ -40,7 +40,7 @@ target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
         ../../include
-        ${cmidi2_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
         ${concurrentqueue_SOURCE_DIR}
 )
 

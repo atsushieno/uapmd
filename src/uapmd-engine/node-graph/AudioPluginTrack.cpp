@@ -1,5 +1,5 @@
 
-#include "cmidi2.h"
+#include <umppi/umppi.hpp>
 #include "concurrentqueue.h"
 
 #include <atomic>
@@ -12,9 +12,9 @@
 namespace uapmd {
     class AudioPluginTrackImpl : public AudioPluginTrack {
         EventSequence midi;
-        moodycamel::ConcurrentQueue<cmidi2_ump128_t> queue;
+        moodycamel::ConcurrentQueue<umppi::Ump> queue;
         std::atomic<bool> queue_reading{false};
-        std::vector<cmidi2_ump128_t> pending_events;
+        std::vector<umppi::Ump> pending_events;
         std::function<uint8_t(int32_t)> group_resolver;
         std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback;
         bool bypass{true}; // initial
@@ -44,17 +44,18 @@ namespace uapmd {
 
             auto it = pending_events.begin();
             while (it != pending_events.end()) {
-                auto* msg = reinterpret_cast<cmidi2_ump*>(std::addressof(*it));
-                const auto msgGroup = cmidi2_ump_get_group(msg);
+                const auto& ump = *it;
+                const auto msgGroup = ump.getGroup();
                 if (group != 0xFF && msgGroup != group) {
                     ++it;
                     continue;
                 }
-                const auto messageSize = cmidi2_ump_get_message_size_bytes(msg);
+                const auto messageSize = static_cast<size_t>(ump.getSizeInBytes());
                 if (position + messageSize > capacity) {
                     break;
                 }
-                std::memcpy(messages + position, msg, messageSize);
+                auto ints = ump.toInts();
+                std::memcpy(messages + position, ints.data(), messageSize);
                 position += messageSize;
                 it = pending_events.erase(it);
             }
@@ -69,16 +70,17 @@ namespace uapmd {
 
             auto* messages = static_cast<uint8_t*>(eventOut.getMessages());
             size_t offset = 0;
-            while (offset < bytes) {
-                auto* msg = reinterpret_cast<cmidi2_ump*>(messages + offset);
-                auto size = cmidi2_ump_get_message_size_bytes(msg);
+            while (offset + sizeof(uint32_t) <= bytes) {
                 auto* words = reinterpret_cast<uint32_t*>(messages + offset);
-                cmidi2_ump128_t u128{
-                    words[0],
-                    size > sizeof(uint32_t) ? words[1] : 0,
-                    size > sizeof(uint32_t) * 2 ? words[2] : 0,
-                    size > sizeof(uint32_t) * 3 ? words[3] : 0
-                };
+                auto messageType = static_cast<uint8_t>(words[0] >> 28);
+                auto wordCount = umppi::umpSizeInInts(messageType);
+                auto size = static_cast<size_t>(wordCount) * sizeof(uint32_t);
+                if (offset + size > bytes)
+                    break;
+                umppi::Ump u128(words[0],
+                                wordCount > 1 ? words[1] : 0,
+                                wordCount > 2 ? words[2] : 0,
+                                wordCount > 3 ? words[3] : 0);
                 pending_events.push_back(u128);
                 offset += size;
             }
@@ -92,20 +94,29 @@ namespace uapmd {
     }
 
     bool AudioPluginTrackImpl::scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) {
-        CMIDI2_UMP_SEQUENCE_FOREACH(events, size, iter) {
-            auto u = (cmidi2_ump*) iter;
-            auto u32 = (uint32_t*) iter;
-            auto uSize = cmidi2_ump_get_message_size_bytes(u);
-            cmidi2_ump128_t u128{u32[0], uSize > 4 ? u32[1] : 0, uSize > 8 ? u32[2] : 0, uSize > 8 ? u32[3] : 0};
+        auto* bytes = static_cast<const uint8_t*>(events);
+        size_t offset = 0;
+        while (offset + sizeof(uint32_t) <= size) {
+            auto* words = reinterpret_cast<const uint32_t*>(bytes + offset);
+            auto messageType = static_cast<uint8_t>(words[0] >> 28);
+            auto wordCount = umppi::umpSizeInInts(messageType);
+            auto messageSize = static_cast<size_t>(wordCount) * sizeof(uint32_t);
+            if (offset + messageSize > size)
+                break;
+            umppi::Ump u128(words[0],
+                            wordCount > 1 ? words[1] : 0,
+                            wordCount > 2 ? words[2] : 0,
+                            wordCount > 3 ? words[3] : 0);
             if (!queue.enqueue(u128))
                 return false;
+            offset += messageSize;
         }
         return true;
     }
 
     int32_t AudioPluginTrackImpl::processAudio(AudioProcessContext& process) {
         queue_reading.exchange(true);
-        cmidi2_ump128_t u128;
+        umppi::Ump u128;
         while (queue.try_dequeue(u128)) {
             pending_events.push_back(u128);
         }

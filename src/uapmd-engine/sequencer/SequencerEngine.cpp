@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <cmidi2.h>
+#include <umppi/umppi.hpp>
 #include <unordered_set>
 
 #include "../node-graph/UapmdNodeUmpMapper.hpp"
@@ -718,34 +718,38 @@ namespace uapmd {
         // Process UMP messages and extract parameter changes
         size_t offset = 0;
         auto* byteView = reinterpret_cast<uint8_t*>(scratch);
-        while (offset < bytes) {
-            auto* msg = reinterpret_cast<cmidi2_ump*>(byteView + offset);
-            auto size = cmidi2_ump_get_message_size_bytes(msg);
+        while (offset + sizeof(uint32_t) <= bytes) {
             auto* words = reinterpret_cast<uint32_t*>(byteView + offset);
+            uint8_t messageType = static_cast<uint8_t>(words[0] >> 28);
+            auto wordCount = umppi::umpSizeInInts(messageType);
+            size_t size = static_cast<size_t>(wordCount) * sizeof(uint32_t);
+            if (offset + size > bytes)
+                break;
+            umppi::Ump ump(words[0],
+                           wordCount > 1 ? words[1] : 0,
+                           wordCount > 2 ? words[2] : 0,
+                           wordCount > 3 ? words[3] : 0);
 
             // Check for NRPN messages (parameter changes)
-            uint8_t messageType = (words[0] >> 28) & 0xF;
-            if (messageType == 4) { // MIDI 2.0 Channel Voice Message (64-bit)
-                uint8_t status = (words[0] >> 16) & 0xF0;
-                if (status == 0x30) { // NRPN
-                    uint8_t bank = (words[0] >> 8) & 0x7F;
-                    uint8_t index = words[0] & 0x7F;
-                    uint32_t value32 = words[1];
+            if (ump.getMessageType() == umppi::MessageType::MIDI2 &&
+                static_cast<uint8_t>(ump.getStatusCode()) == umppi::MidiChannelStatus::NRPN) {
+                uint8_t bank = ump.getMidi2NrpnMsb();
+                uint8_t index = ump.getMidi2NrpnLsb();
+                uint32_t value32 = ump.getMidi2NrpnData();
 
-                    // Reconstruct parameter ID: bank * 128 + index
-                    int32_t paramId = (bank * 128) + index;
-                    double value = static_cast<double>(value32) / 4294967295.0;
+                // Reconstruct parameter ID: bank * 128 + index
+                int32_t paramId = (bank * 128) + index;
+                double value = static_cast<double>(value32) / 4294967295.0;
 
-                    // Store parameter update
-                    {
-                        std::lock_guard<std::mutex> parameterLock(pending_parameter_mutex_);
-                        pending_parameter_updates_[instanceId].push_back({paramId, value});
-                    }
+                // Store parameter update
+                {
+                    std::lock_guard<std::mutex> parameterLock(pending_parameter_mutex_);
+                    pending_parameter_updates_[instanceId].push_back({paramId, value});
                 }
             }
 
             // Rewrite group field
-            words[0] = (words[0] & 0xF0FFFFFF) | (static_cast<uint32_t>(group) << 24);
+            words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group) << 24);
             offset += size;
         }
     }
@@ -864,14 +868,17 @@ namespace uapmd {
         //  However, simply disabling this code causes regression that track > 0 will not receive inputs.
         //  So it is kept for a time being.
         if (auto group = groupForInstanceOptional(instanceId); group.has_value()) {
-            auto* bytes = reinterpret_cast<uint8_t*>(ump);
+            auto* bytesPtr = reinterpret_cast<uint8_t*>(ump);
             size_t offset = 0;
-            while (offset < sizeInBytes) {
-                auto* msg = reinterpret_cast<cmidi2_ump*>(bytes + offset);
-                auto sz = cmidi2_ump_get_message_size_bytes(msg);
-                auto* words = reinterpret_cast<uint32_t*>(bytes + offset);
+            while (offset + sizeof(uint32_t) <= sizeInBytes) {
+                auto* words = reinterpret_cast<uint32_t*>(bytesPtr + offset);
+                auto messageType = static_cast<uint8_t>(words[0] >> 28);
+                auto wordCount = umppi::umpSizeInInts(messageType);
+                auto messageSize = static_cast<size_t>(wordCount) * sizeof(uint32_t);
+                if (offset + messageSize > sizeInBytes)
+                    break;
                 words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group.value()) << 24);
-                offset += sz;
+                offset += messageSize;
             }
         }
 
@@ -879,39 +886,43 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::sendNoteOn(int32_t instanceId, int32_t note) {
-        cmidi2_ump umps[2];
+        uapmd_ump_t umps[2];
         // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
-        auto ump = cmidi2_ump_midi2_note_on(0, 0, note, 0, 0xF800, 0);
-        cmidi2_ump_write64(umps, ump);
-        enqueueUmp(instanceId, umps, 8, 0);
+        auto ump = umppi::UmpFactory::midi2NoteOn(0, 0, note, 0, 0xF800, 0);
+        umps[0] = static_cast<uapmd_ump_t>(ump >> 32);
+        umps[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
+        enqueueUmp(instanceId, umps, sizeof(umps), 0);
     }
 
     void SequencerEngineImpl::sendNoteOff(int32_t instanceId, int32_t note) {
-        cmidi2_ump umps[2];
+        uapmd_ump_t umps[2];
         // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
-        auto ump = cmidi2_ump_midi2_note_off(0, 0, note, 0, 0xF800, 0);
-        cmidi2_ump_write64(umps, ump);
-        enqueueUmp(instanceId, umps, 8, 0);
+        auto ump = umppi::UmpFactory::midi2NoteOff(0, 0, note, 0, 0xF800, 0);
+        umps[0] = static_cast<uapmd_ump_t>(ump >> 32);
+        umps[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
+        enqueueUmp(instanceId, umps, sizeof(umps), 0);
     }
 
     void SequencerEngineImpl::sendPitchBend(int32_t instanceId, float normalizedValue) {
-        cmidi2_ump umps[2];
+        uapmd_ump_t umps[2];
         float clamped = std::clamp((normalizedValue + 1.0f) * 0.5f, 0.0f, 1.0f);
         uint32_t pitchValue = static_cast<uint32_t>(clamped * 4294967295.0f);
         // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
-        auto ump = cmidi2_ump_midi2_pitch_bend_direct(0, 0, pitchValue);
-        cmidi2_ump_write64(umps, ump);
-        enqueueUmp(instanceId, umps, 8, 0);
+        auto ump = umppi::UmpFactory::midi2PitchBendDirect(0, 0, pitchValue);
+        umps[0] = static_cast<uapmd_ump_t>(ump >> 32);
+        umps[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
+        enqueueUmp(instanceId, umps, sizeof(umps), 0);
     }
 
     void SequencerEngineImpl::sendChannelPressure(int32_t instanceId, float pressure) {
-        cmidi2_ump umps[2];
+        uapmd_ump_t umps[2];
         float clamped = std::clamp(pressure, 0.0f, 1.0f);
         uint32_t pressureValue = static_cast<uint32_t>(clamped * 4294967295.0f);
         // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
-        auto ump = cmidi2_ump_midi2_caf(0, 0, pressureValue);
-        cmidi2_ump_write64(umps, ump);
-        enqueueUmp(instanceId, umps, 8, 0);
+        auto ump = umppi::UmpFactory::midi2CAf(0, 0, pressureValue);
+        umps[0] = static_cast<uapmd_ump_t>(ump >> 32);
+        umps[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
+        enqueueUmp(instanceId, umps, sizeof(umps), 0);
     }
 
     void SequencerEngineImpl::setParameterValue(int32_t instanceId, int32_t index, double value) {

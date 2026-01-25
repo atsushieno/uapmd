@@ -17,7 +17,7 @@ We ended up porting ktmidi to C++ as `midicci`. ktmidi supports all of Profile C
 
 juce_midi_ci does a good job too, but feature wise it's still incomplete compared to ktmidi. Also licensing matters.
 
-We use atsushieno/cmidi2 for complicated UMP processing (ni-midi2 does not even process SysEx8 messages).
+midicci's umppi module provides the UMP processing helpers we rely on (ni-midi2 does not even process SysEx8 messages).
 
 ## Audio I/O
 

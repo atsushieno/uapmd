@@ -2,7 +2,7 @@
 
 #include "PluginFormatAU.hpp"
 #include "AUv2Helper.hpp"
-#include "cmidi2.h"
+#include <umppi/umppi.hpp>
 #import <AudioToolbox/AUAudioUnitImplementation.h>
 #import <CoreMIDI/CoreMIDI.h>
 #include <cmath>
@@ -315,25 +315,32 @@ remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &proc
                     if (buildSucceeded) {
                         const uint8_t* umpData = static_cast<const uint8_t*>(process.eventIn().getMessages());
                         bool unsupportedMessage = false;
-                        CMIDI2_UMP_SEQUENCE_FOREACH(umpData, eventBytes, iter) {
-                            auto* words = reinterpret_cast<const UInt32*>(iter);
-                            auto* ump = reinterpret_cast<cmidi2_ump*>(const_cast<uint8_t*>(iter));
-                            if (cmidi2_ump_get_message_type(ump) != CMIDI2_MESSAGE_TYPE_MIDI_1_CHANNEL) {
+                        size_t offset = 0;
+                        while (offset + sizeof(uint32_t) <= eventBytes) {
+                            auto* words = reinterpret_cast<const UInt32*>(umpData + offset);
+                            uint8_t messageType = static_cast<uint8_t>(words[0] >> 28);
+                            auto wordCount = umppi::umpSizeInInts(messageType);
+                            ByteCount wordCountBytes = static_cast<ByteCount>(wordCount);
+                            if (offset + static_cast<size_t>(wordCount) * sizeof(uint32_t) > eventBytes) {
+                                buildSucceeded = false;
+                                break;
+                            }
+                            if (messageType != static_cast<uint8_t>(umppi::MessageType::MIDI1)) {
                                 unsupportedMessage = true;
                                 break;
                             }
-                            ByteCount wordCount = static_cast<ByteCount>(cmidi2_ump_get_message_size_bytes(ump) / sizeof(uint32_t));
                             packet = MIDIEventListAdd(midi_event_list,
                                                       midi_event_list_capacity,
                                                       packet,
                                                       0,
-                                                      wordCount,
+                                                      wordCountBytes,
                                                       words);
                             if (packet == nullptr) {
                                 buildSucceeded = false;
                                 logger()->logError("%s: MIDIEventListAdd failed - buffer too small", name.c_str());
                                 break;
                             }
+                            offset += static_cast<size_t>(wordCount) * sizeof(uint32_t);
                         }
                         if (unsupportedMessage) {
                             buildSucceeded = false;

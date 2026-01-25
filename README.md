@@ -130,7 +130,6 @@ There are third-party (and first party) dependency libraries (git submodules, CM
   - [xiph/vorbis](https://github.com/xiph/vorbis) - BSD (3-clause)
   - [xiph/flac](https://github.com/xiph/flac) - BSD-like (libraries only)
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
-- [atsushieno/cmidi2](https://github.com/atsushieno/cmidi2) - MIT
 - [atsushieno/midicci](https://github.com/atsushieno/midicci) - MIT
   - [zlib-ng/zlib-ng](https://github.com/zlib-ng/zlib-ng) - Zlib license.
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)

@@ -1,4 +1,4 @@
-#include "cmidi2.h"
+#include <umppi/umppi.hpp>
 #include "remidy.hpp"
 #include "../utils.hpp"
 
@@ -13,7 +13,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::uint4_
     auto& el = owner->processDataInputEvents;
 
     float tuning = 0;
-    if (attributeType == CMIDI2_ATTRIBUTE_TYPE_PITCH7_9)
+    if (attributeType == umppi::MidiNoteAttributeType::Pitch7_9)
         tuning = (float) ((uint8_t) (attribute >> 9) + (float) (attribute & 0x1F) / 512.0);
 
     int32_t noteId = -1; // should be alright, UMP has no concept for that

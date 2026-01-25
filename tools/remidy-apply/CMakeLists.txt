@@ -2,7 +2,7 @@ add_executable(remidy-apply)
 
 target_include_directories(remidy-apply PRIVATE
         ../../include
-        ${cmidi2_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
         ${choc_SOURCE_DIR}
         ${cxxopts_SOURCE_DIR}/include
 )

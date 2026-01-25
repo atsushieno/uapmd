@@ -1,61 +1,63 @@
-#include "cmidi2.h"
+#include <umppi/umppi.hpp>
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
     void UapmdUmpInputMapper::process(uint64_t timestamp, remidy::AudioProcessContext& src) {
         auto& inEvents = src.eventIn();
         auto& outEvents = src.eventOut();
-        cmidi2_ump_forge forge;
-        cmidi2_ump_forge_init(&forge, static_cast<cmidi2_ump *>(outEvents.getMessages()), outEvents.maxMessagesInBytes());
-        CMIDI2_UMP_SEQUENCE_FOREACH(inEvents.getMessages(), inEvents.position(), iter) {
-            const auto u = reinterpret_cast<cmidi2_ump *>(iter);
-            switch (cmidi2_ump_get_message_type(u)) {
-                case CMIDI2_MESSAGE_TYPE_MIDI_2_CHANNEL: {
-                    bool relative{false};
-                    switch (cmidi2_ump_get_status_code(u)) {
-                        // plugin parameters
-                        case CMIDI2_STATUS_RELATIVE_NRPN:
-                            relative = true;
-                            // continue below
-                        case CMIDI2_STATUS_NRPN: {
-                            // parameter change (index = bank * 128 + index)
-                            const auto bank = cmidi2_ump_get_midi2_nrpn_msb(u);
-                            const auto index = cmidi2_ump_get_midi2_nrpn_lsb(u);
-                            const auto data = cmidi2_ump_get_midi2_nrpn_data(u);
-                            const auto parameterIndex = bank * 0x80 + index;
-                            const double value = relative ?
+        auto* bytes = static_cast<const uint8_t*>(inEvents.getMessages());
+        size_t bytesAvailable = inEvents.position();
+        size_t offset = 0;
+        while (offset + sizeof(uint32_t) <= bytesAvailable) {
+            auto* words = reinterpret_cast<const uint32_t*>(bytes + offset);
+            auto messageType = static_cast<uint8_t>(words[0] >> 28);
+            auto wordCount = umppi::umpSizeInInts(messageType);
+            size_t messageSize = static_cast<size_t>(wordCount) * sizeof(uint32_t);
+            if (offset + messageSize > bytesAvailable)
+                break;
+            umppi::Ump ump(words[0],
+                           wordCount > 1 ? words[1] : 0,
+                           wordCount > 2 ? words[2] : 0,
+                           wordCount > 3 ? words[3] : 0);
+            if (ump.getMessageType() == umppi::MessageType::MIDI2) {
+                bool relative{false};
+                switch (static_cast<uint8_t>(ump.getStatusCode())) {
+                    case umppi::MidiChannelStatus::RELATIVE_NRPN:
+                        relative = true;
+                        [[fallthrough]];
+                    case umppi::MidiChannelStatus::NRPN: {
+                        const auto bank = ump.getMidi2NrpnMsb();
+                        const auto index = ump.getMidi2NrpnLsb();
+                        const auto data = ump.getMidi2NrpnData();
+                        const auto parameterIndex = bank * 0x80 + index;
+                        const double value = relative ?
                                 getParameterValue(parameterIndex) + static_cast<double>(data) / INT32_MAX :
                                 static_cast<double>(data) / UINT32_MAX;
-                            setParameterValue(parameterIndex, value);
-                            continue;
-                        }
-
-                        // per-note controllers
-                        case CMIDI2_STATUS_PER_NOTE_ACC: {
-                            const auto note = cmidi2_ump_get_midi2_pnacc_note(u);
-                            const auto index = cmidi2_ump_get_midi2_pnacc_index(u);
-                            const auto data = cmidi2_ump_get_midi2_pnacc_data(u);
-                            const double value = static_cast<double>(data) / UINT32_MAX;
-                            setPerNoteControllerValue(note, index, value);
-                            continue;
-                        }
-
-                        // presets
-                        case CMIDI2_STATUS_PROGRAM: {
-                            const auto bankMsb = cmidi2_ump_get_midi2_program_bank_msb(u);
-                            const auto bankLsb = cmidi2_ump_get_midi2_program_bank_lsb(u);
-                            const auto program = cmidi2_ump_get_midi2_program_program(u);
-                            const auto bankIndex = bankMsb * 0x80 + bankLsb;
-                            loadPreset(bankIndex * 0x80 + program);
-                            continue;
-                        }
+                        setParameterValue(parameterIndex, value);
+                        break;
                     }
-                    break;
+                    case umppi::MidiChannelStatus::PER_NOTE_ACC: {
+                        const auto note = ump.getMidi2Note();
+                        const auto index = static_cast<uint8_t>(ump.int1 & 0xFFu);
+                        const auto data = ump.int2;
+                        const double value = static_cast<double>(data) / UINT32_MAX;
+                        setPerNoteControllerValue(note, index, value);
+                        break;
+                    }
+                    case umppi::MidiChannelStatus::PROGRAM: {
+                        const auto bankMsb = ump.getMidi2ProgramBankMsb();
+                        const auto bankLsb = ump.getMidi2ProgramBankLsb();
+                        const auto program = ump.getMidi2ProgramProgram();
+                        const auto bankIndex = bankMsb * 0x80 + bankLsb;
+                        loadPreset(bankIndex * 0x80 + program);
+                        break;
+                    }
+                    default:
+                        break;
                 }
             }
-            // FIXME: so far, we do not try to create "stripped" UMP sequences, but we likely have to.
-            //cmidi2_ump_forge_add_single_packet(&forge, u);
+            offset += messageSize;
         }
-        outEvents.position(forge.offset / sizeof(uapmd_ump_t));
+        outEvents.position(0);
     }
 }

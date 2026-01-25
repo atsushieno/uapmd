@@ -1,6 +1,6 @@
 #if __APPLE__
 
-#include "cmidi2.h"
+#include <umppi/umppi.hpp>
 #include <cmath>
 #include "AUv2Helper.hpp"
 #include "PluginFormatAU.hpp"
@@ -95,32 +95,32 @@ OSStatus remidy::PluginInstanceAUv2::midiOutputCallback(const AudioTimeStamp *ti
             uint64_t ump;
             switch (status) {
                 case 0x80: // Note Off
-                    ump = cmidi2_ump_midi2_note_off(
+                    ump = umppi::UmpFactory::midi2NoteOff(
                         0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
                     break;
                 case 0x90: // Note On
-                    ump = cmidi2_ump_midi2_note_on(
+                    ump = umppi::UmpFactory::midi2NoteOn(
                         0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
                     break;
                 case 0xA0: // Poly Pressure
-                    ump = cmidi2_ump_midi2_paf(
+                    ump = umppi::UmpFactory::midi2PAf(
                         0, channel, data1, static_cast<uint32_t>(data2) << 25);
                     break;
                 case 0xB0: // Control Change
-                    ump = cmidi2_ump_midi2_cc(
+                    ump = umppi::UmpFactory::midi2CC(
                         0, channel, data1, static_cast<uint32_t>(data2) << 25);
                     break;
                 case 0xC0: // Program Change
-                    ump = cmidi2_ump_midi2_program(
+                    ump = umppi::UmpFactory::midi2Program(
                         0, channel, 0, data1, 0, 0);
                     break;
                 case 0xD0: // Channel Pressure
-                    ump = cmidi2_ump_midi2_caf(
+                    ump = umppi::UmpFactory::midi2CAf(
                         0, channel, static_cast<uint32_t>(data1) << 25);
                     break;
                 case 0xE0: { // Pitch Bend
                     uint32_t value = (static_cast<uint32_t>(data2) << 7) | data1;
-                    ump = cmidi2_ump_midi2_pitch_bend_direct(
+                    ump = umppi::UmpFactory::midi2PitchBendDirect(
                         0, channel, value << 18);
                     break;
                 }

@@ -1,7 +1,6 @@
 #if __APPLE__
 
 #include "PluginFormatAU.hpp"
-#include "cmidi2.h"
 
 remidy::PluginInstanceAUv2::AUUmpInputDispatcher::AUUmpInputDispatcher(remidy::PluginInstanceAUv2 *owner) :
         owner(owner)

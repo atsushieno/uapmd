@@ -1,5 +1,5 @@
 #include "PluginFormatLV2.hpp"
-#include "cmidi2.h"
+#include <umppi/umppi.hpp>
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::enqueueMidi1Event(uint8_t atomInIndex, size_t eventSize) {
     int32_t lv2PortIndex = owner->portIndexForAtomGroupIndex(false, atomInIndex);
@@ -47,7 +47,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onNoteOn(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // It has to downconvert to MIDI 1.0 note on. Group and attribute fields are ignored.
-    midi1Bytes[0] = CMIDI2_STATUS_NOTE_ON + channel;
+    midi1Bytes[0] = umppi::MidiChannelStatus::NOTE_ON + channel;
     midi1Bytes[1] = note;
     midi1Bytes[2] = (uint7_t) (velocity >> 9);
     enqueueMidi1Event(group, 3);
@@ -57,7 +57,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onNoteOff(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t note, uint8_t attributeType, uint16_t velocity, uint16_t attribute) {
     // It has to downconvert to MIDI 1.0 note on. Attribute field is ignored.
-    midi1Bytes[0] = CMIDI2_STATUS_NOTE_OFF + channel;
+    midi1Bytes[0] = umppi::MidiChannelStatus::NOTE_OFF + channel;
     midi1Bytes[1] = note;
     midi1Bytes[2] = (uint7_t) (velocity >> 9);
     enqueueMidi1Event(group, 3);
@@ -84,7 +84,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onCC(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t index, uint32_t data) {
     // It has to downconvert to MIDI 1.0 CC.
-    midi1Bytes[0] = CMIDI2_STATUS_CC + channel;
+    midi1Bytes[0] = umppi::MidiChannelStatus::CC + channel;
     midi1Bytes[1] = index;
     midi1Bytes[2] = (uint7_t) (data >> 25);
     enqueueMidi1Event(group, 3);
@@ -93,18 +93,18 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onCC(
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProgramChange(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t flags, remidy::uint7_t program, remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) {
-    if (flags & CMIDI2_PROGRAM_CHANGE_OPTION_BANK_VALID) {
-        midi1Bytes[0] = CMIDI2_STATUS_CC + channel;
-        midi1Bytes[1] = CMIDI2_CC_BANK_SELECT;
+    if (flags & umppi::MidiProgramChangeOptions::BANK_VALID) {
+        midi1Bytes[0] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[1] = umppi::MidiCC::BANK_SELECT;
         midi1Bytes[2] = bankMSB;
-        midi1Bytes[3] = CMIDI2_STATUS_CC + channel;
-        midi1Bytes[4] = CMIDI2_CC_BANK_SELECT_LSB;
+        midi1Bytes[3] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[4] = umppi::MidiCC::BANK_SELECT_LSB;
         midi1Bytes[5] = bankLSB;
-        midi1Bytes[6] = CMIDI2_STATUS_PROGRAM + channel;
+        midi1Bytes[6] = umppi::MidiChannelStatus::PROGRAM + channel;
         midi1Bytes[7] = program;
         enqueueMidi1Event(group, 8);
     } else {
-        midi1Bytes[0] = CMIDI2_STATUS_PROGRAM + channel;
+        midi1Bytes[0] = umppi::MidiChannelStatus::PROGRAM + channel;
         midi1Bytes[1] = program;
         enqueueMidi1Event(group, 2);
     }
@@ -113,7 +113,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProgramChange(
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onRC(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) {
-    midi1Bytes[0] = CMIDI2_STATUS_CC + channel;
+    midi1Bytes[0] = umppi::MidiChannelStatus::CC + channel;
     midi1Bytes[1] = index;
     midi1Bytes[2] = (uint7_t) (data >> 9);
     enqueueMidi1Event(group, 3);
@@ -128,7 +128,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPNRC(
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPitchBend(
         remidy::uint4_t group, remidy::uint4_t channel,
         int8_t perNoteOrMinus, uint32_t data) {
-    midi1Bytes[0] = CMIDI2_STATUS_PITCH_BEND + channel;
+    midi1Bytes[0] = umppi::MidiChannelStatus::PITCH_BEND + channel;
     midi1Bytes[1] = (uint7_t) (data >> 25);
     midi1Bytes[2] = (uint7_t) ((data >> 17) & 0x7F);
     enqueueMidi1Event(group, 3);
@@ -138,11 +138,11 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPressure(
         remidy::uint4_t group, remidy::uint4_t channel,
         int8_t perNoteOrMinus, uint32_t data) {
     if (perNoteOrMinus < 0) {
-        midi1Bytes[0] = CMIDI2_STATUS_CAF + channel;
+        midi1Bytes[0] = umppi::MidiChannelStatus::CAF + channel;
         midi1Bytes[1] = (uint7_t) (data >> 25);
         enqueueMidi1Event(group, 2);
     } else {
-        midi1Bytes[0] = CMIDI2_STATUS_PAF + channel;
+        midi1Bytes[0] = umppi::MidiChannelStatus::PAF + channel;
         midi1Bytes[1] = (uint7_t) perNoteOrMinus;
         midi1Bytes[2] = (uint7_t) (data >> 25);
         enqueueMidi1Event(group, 3);

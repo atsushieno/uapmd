@@ -7,7 +7,6 @@
 #include <iostream>
 #include <optional>
 #include <utility>
-#include <cmidi2.h>
 #include "uapmd-engine/uapmd-engine.hpp"
 
 // Note: audio file decoding is abstracted behind uapmd::AudioFileReader interface now.

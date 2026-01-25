@@ -208,7 +208,6 @@ endif()
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     target_include_directories(${app_target} PRIVATE
             ${choc_SOURCE_DIR}
-            ${cmidi2_SOURCE_DIR}
             ${portable-file-dialogs_SOURCE_DIR}
             ${midicci_SOURCE_DIR}/include
             ../../include

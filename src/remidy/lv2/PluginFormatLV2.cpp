@@ -1,5 +1,4 @@
 #include "PluginFormatLV2.hpp"
-#include "cmidi2.h"
 
 namespace remidy {
     PluginFormatLV2Impl::PluginFormatLV2Impl(std::vector<std::string>& overrideSearchPaths) :
@@ -109,4 +108,3 @@ namespace remidy {
         PluginExtensibility(format) {
     }
 }
-

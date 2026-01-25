@@ -1,5 +1,5 @@
 #include "PluginFormatCLAP.hpp"
-#include "cmidi2.h"
+#include <umppi/umppi.hpp>
 #undef min
 #undef max
 #include <algorithm>
@@ -383,7 +383,7 @@ namespace remidy {
                     uint8_t channel = ev->channel >= 0 ? static_cast<uint8_t>(ev->channel) : 0;
                     uint8_t note = ev->key >= 0 ? static_cast<uint8_t>(ev->key) : 0;
                     uint16_t velocity = static_cast<uint16_t>(ev->velocity * UINT16_MAX);
-                    uint64_t ump = cmidi2_ump_midi2_note_on(group, channel, note, 0, velocity, 0);
+                    uint64_t ump = umppi::UmpFactory::midi2NoteOn(group, channel, note, 0, velocity, 0);
                     umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                     umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                     break;
@@ -394,7 +394,7 @@ namespace remidy {
                     uint8_t channel = ev->channel >= 0 ? static_cast<uint8_t>(ev->channel) : 0;
                     uint8_t note = ev->key >= 0 ? static_cast<uint8_t>(ev->key) : 0;
                     uint16_t velocity = static_cast<uint16_t>(ev->velocity * UINT16_MAX);
-                    uint64_t ump = cmidi2_ump_midi2_note_off(group, channel, note, 0, velocity, 0);
+                    uint64_t ump = umppi::UmpFactory::midi2NoteOff(group, channel, note, 0, velocity, 0);
                     umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                     umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                     break;
@@ -413,7 +413,7 @@ namespace remidy {
                     uint32_t data = static_cast<uint32_t>(ev->value * UINT32_MAX);
 
                     // Use NRPN for channel-wide assignable controllers
-                    uint64_t ump = cmidi2_ump_midi2_nrpn(0, 0, bank, index, data); // group 0, channel 0
+                    uint64_t ump = umppi::UmpFactory::midi2NRPN(0, 0, bank, index, data); // group 0, channel 0
                     umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                     umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                     break;
@@ -428,42 +428,42 @@ namespace remidy {
 
                     switch (status) {
                         case 0x80: { // Note Off
-                            uint64_t ump = cmidi2_ump_midi2_note_off(
+                            uint64_t ump = umppi::UmpFactory::midi2NoteOff(
                                 0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
                             umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                             umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
                         }
                         case 0x90: { // Note On
-                            uint64_t ump = cmidi2_ump_midi2_note_on(
+                            uint64_t ump = umppi::UmpFactory::midi2NoteOn(
                                 0, channel, data1, 0, static_cast<uint16_t>(data2) << 9, 0);
                             umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                             umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
                         }
                         case 0xA0: { // Poly Pressure
-                            uint64_t ump = cmidi2_ump_midi2_paf(
+                            uint64_t ump = umppi::UmpFactory::midi2PAf(
                                 0, channel, data1, static_cast<uint32_t>(data2) << 25);
                             umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                             umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
                         }
                         case 0xB0: { // Control Change
-                            uint64_t ump = cmidi2_ump_midi2_cc(
+                            uint64_t ump = umppi::UmpFactory::midi2CC(
                                 0, channel, data1, static_cast<uint32_t>(data2) << 25);
                             umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                             umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
                         }
                         case 0xC0: { // Program Change
-                            uint64_t ump = cmidi2_ump_midi2_program(
+                            uint64_t ump = umppi::UmpFactory::midi2Program(
                                 0, channel, 0, data1, 0, 0);
                             umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                             umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
                             break;
                         }
                         case 0xD0: { // Channel Pressure
-                            uint64_t ump = cmidi2_ump_midi2_caf(
+                            uint64_t ump = umppi::UmpFactory::midi2CAf(
                                 0, channel, static_cast<uint32_t>(data1) << 25);
                             umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                             umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
@@ -471,7 +471,7 @@ namespace remidy {
                         }
                         case 0xE0: { // Pitch Bend
                             uint32_t value = (static_cast<uint32_t>(data2) << 7) | data1;
-                            uint64_t ump = cmidi2_ump_midi2_pitch_bend_direct(
+                            uint64_t ump = umppi::UmpFactory::midi2PitchBendDirect(
                                 0, channel, value << 18);
                             umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                             umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);

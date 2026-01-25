@@ -95,7 +95,7 @@ target_include_directories(remidy PRIVATE
         ${LV2KIT_INCLUDE_DIRS}
         ${clap_SOURCE_DIR}/include
         ${clap-helpers_SOURCE_DIR}/include
-        ${cmidi2_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
         ../../include
         ../../include/remidy # FIXME: this should be removed
         ${CMAKE_BINARY_DIR}/generated/include
@@ -119,6 +119,7 @@ target_link_libraries(remidy PRIVATE
         rtlog::rtlog
         cpplocate::cpplocate
         lv2kit
+        midicci_static
         sdk # pretty bad naming from vst3sdk (shrug)
         ${remidy_LIBS_PLAT}
         ${GTK3_LIBRARIES}

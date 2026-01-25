@@ -14,7 +14,6 @@
 #include <portable-file-dialogs.h>
 
 #include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
-#include <cmidi2.h>
 
 #include <imgui.h>
 

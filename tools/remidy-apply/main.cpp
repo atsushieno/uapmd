@@ -11,7 +11,7 @@
 #include <uapmd/uapmd.hpp>
 #include <uapmd-engine/uapmd-engine.hpp>
 #include <cxxopts.hpp>
-#include <cmidi2.h>
+#include <umppi/umppi.hpp>
 
 // -------- instancing --------
 remidy_tooling::PluginScanTool scanner{};
@@ -202,7 +202,7 @@ class RemidyApply {
                 std::cerr << "Sending note-on at sample " << currentSample << std::endl;
                 remidy_ump_t umpSequence[NUM_NOTES * 2];  // 2 UMP words per note-on
                 for (int m = 0; m < NUM_NOTES; m++) {
-                    int64_t noteOn = cmidi2_ump_midi2_note_on(0, 0, 72 + 4 * m, 0, 0xF800, 0);
+                    uint64_t noteOn = umppi::UmpFactory::midi2NoteOn(0, 0, 72 + 4 * m, 0, 0xF800, 0);
                     umpSequence[m * 2] = noteOn >> 32;
                     umpSequence[m * 2 + 1] = noteOn & UINT32_MAX;
                 }
@@ -214,7 +214,7 @@ class RemidyApply {
                 std::cerr << "Sending note-off at sample " << currentSample << std::endl;
                 remidy_ump_t umpSequence[NUM_NOTES * 2];  // 2 UMP words per note-off
                 for (int m = 0; m < NUM_NOTES; m++) {
-                    int64_t noteOff = cmidi2_ump_midi2_note_off(0, 0, 72 + 4 * m, 0, 0xF800, 0);
+                    uint64_t noteOff = umppi::UmpFactory::midi2NoteOff(0, 0, 72 + 4 * m, 0, 0xF800, 0);
                     umpSequence[m * 2] = noteOff >> 32;
                     umpSequence[m * 2 + 1] = noteOff & UINT32_MAX;
                 }

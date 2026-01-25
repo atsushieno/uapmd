@@ -40,14 +40,6 @@ CPMAddPackage(
         DOWNLOAD_ONLY YES
 )
 
-set(CMAKE_SKIP_INSTALL_RULES ON)
-FetchContent_Declare(cmidi2
-        GIT_REPOSITORY https://github.com/atsushieno/cmidi2
-        GIT_TAG        0.9.3
-        EXCLUDE_FROM_ALL
-)
-FetchContent_MakeAvailable(cmidi2)
-
 cmake_path(SET CPPLOCATE_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/external/cpplocate-remove-pthread.patch")
 FetchContent_Declare(cpplocate
         NAME           cpplocate

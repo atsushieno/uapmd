@@ -1,5 +1,15 @@
 #include "remidy.hpp"
-#include "cmidi2.h"
+#include <umppi/umppi.hpp>
+
+namespace {
+inline uint8_t midi2NoteAttributeType(const umppi::Ump& ump) {
+    return static_cast<uint8_t>(ump.int1 & 0xFFu);
+}
+
+inline uint16_t midi2NoteAttributeData(const umppi::Ump& ump) {
+    return static_cast<uint16_t>(ump.int2 & 0xFFFFu);
+}
+}
 
 void remidy::TypedUmpInputDispatcher::process(uint64_t newTimestamp, AudioProcessContext &src) {
     _timestamp = newTimestamp;
@@ -7,107 +17,118 @@ void remidy::TypedUmpInputDispatcher::process(uint64_t newTimestamp, AudioProces
 
     onProcessStart(src);
 
-    auto ptr = src.eventIn().getMessages();
+    auto* ptr = static_cast<const uint8_t*>(src.eventIn().getMessages());
     auto numBytes = src.eventIn().position();
-    CMIDI2_UMP_SEQUENCE_FOREACH(ptr, numBytes, iter) {
-        auto ump = (cmidi2_ump *) iter;
+    size_t offset = 0;
+    while (offset + sizeof(uint32_t) <= numBytes) {
+        auto* words = reinterpret_cast<const uint32_t*>(ptr + offset);
+        const auto messageType = static_cast<uint8_t>(words[0] >> 28);
+        const auto wordCount = umppi::umpSizeInInts(messageType);
+        const auto messageSize = static_cast<size_t>(wordCount) * sizeof(uint32_t);
+        if (offset + messageSize > numBytes)
+            break;
+        umppi::Ump ump(words[0],
+                       wordCount > 1 ? words[1] : 0,
+                       wordCount > 2 ? words[2] : 0,
+                       wordCount > 3 ? words[3] : 0);
         uint7_t group, channel, note;
         bool relative;
-        switch (cmidi2_ump_get_message_type(ump)) {
-            case CMIDI2_MESSAGE_TYPE_UTILITY:
-                switch (cmidi2_ump_get_status_code(ump)) {
-                    case CMIDI2_UTILITY_STATUS_DCTPQ:
-                        track_context->deltaClockstampTicksPerQuarterNotes(cmidi2_ump_get_dctpq(ump));
+        switch (ump.getMessageType()) {
+            case umppi::MessageType::UTILITY:
+                switch (static_cast<uint8_t>(ump.getStatusCode())) {
+                    case umppi::MidiUtilityStatus::DCTPQ:
+                        track_context->deltaClockstampTicksPerQuarterNotes(ump.getDCTPQ());
                         break;
-                    case CMIDI2_UTILITY_STATUS_JR_TIMESTAMP:
+                    case umppi::MidiUtilityStatus::JR_TIMESTAMP:
                         // FIXME: convert to sample-based timestamp (here?)
-                        _timestamp += cmidi2_ump_get_jr_timestamp_timestamp(ump);
+                        _timestamp += ump.getJRTimestamp();
                         break;
-                    case CMIDI2_UTILITY_STATUS_DELTA_CLOCKSTAMP:
+                    case umppi::MidiUtilityStatus::DELTA_CLOCKSTAMP:
                         // FIXME: implement (calculate timestamp delta)
                         break;
                 }
                 break;
-            case CMIDI2_MESSAGE_TYPE_MIDI_2_CHANNEL:
-                group = cmidi2_ump_get_group(ump);
-                channel = cmidi2_ump_get_channel(ump);
+            case umppi::MessageType::MIDI2:
+                group = ump.getGroup();
+                channel = ump.getChannelInGroup();
                 note = -1;
                 relative = false;
-                switch (cmidi2_ump_get_status_code(ump)) {
-                    case CMIDI2_STATUS_NOTE_ON:
+                switch (static_cast<uint8_t>(ump.getStatusCode())) {
+                    case umppi::MidiChannelStatus::NOTE_ON:
                         onNoteOn(group, channel,
-                                 cmidi2_ump_get_midi2_note_note(ump),
-                                 cmidi2_ump_get_midi2_note_attribute_type(ump),
-                                 cmidi2_ump_get_midi2_note_velocity(ump),
-                                 cmidi2_ump_get_midi2_note_attribute_data(ump));
+                                 ump.getMidi2Note(),
+                                 midi2NoteAttributeType(ump),
+                                 ump.getMidi2Velocity16(),
+                                 midi2NoteAttributeData(ump));
                         break;
-                    case CMIDI2_STATUS_NOTE_OFF:
+                    case umppi::MidiChannelStatus::NOTE_OFF:
                         onNoteOff(group, channel,
-                                  cmidi2_ump_get_midi2_note_note(ump),
-                                  cmidi2_ump_get_midi2_note_attribute_type(ump),
-                                  cmidi2_ump_get_midi2_note_velocity(ump),
-                                  cmidi2_ump_get_midi2_note_attribute_data(ump));
+                                  ump.getMidi2Note(),
+                                  midi2NoteAttributeType(ump),
+                                  ump.getMidi2Velocity16(),
+                                  midi2NoteAttributeData(ump));
                         break;
-                    case CMIDI2_STATUS_PAF:
-                        note = cmidi2_ump_get_midi2_paf_note(ump);
-                    case CMIDI2_STATUS_CAF:
-                        onPressure(group, channel, note, cmidi2_ump_get_midi2_paf_data(ump));
+                    case umppi::MidiChannelStatus::PAF:
+                        note = ump.getMidi2Note();
+                    case umppi::MidiChannelStatus::CAF:
+                        onPressure(group, channel, note, ump.getMidi2PafData());
                         break;
-                    case CMIDI2_STATUS_CC:
+                    case umppi::MidiChannelStatus::CC:
                         onCC(group, channel,
-                             cmidi2_ump_get_midi2_cc_index(ump),
-                             cmidi2_ump_get_midi2_cc_data(ump));
+                             ump.getMidi2CcIndex(),
+                             ump.getMidi2CcData());
                         break;
-                    case CMIDI2_STATUS_PROGRAM:
+                    case umppi::MidiChannelStatus::PROGRAM:
                         onProgramChange(group, channel,
-                                        cmidi2_ump_get_midi2_program_options(ump),
-                                        cmidi2_ump_get_midi2_program_program(ump),
-                                        cmidi2_ump_get_midi2_program_bank_msb(ump),
-                                        cmidi2_ump_get_midi2_program_bank_lsb(ump));
+                                        ump.getMidi2ProgramOptions(),
+                                        ump.getMidi2ProgramProgram(),
+                                        ump.getMidi2ProgramBankMsb(),
+                                        ump.getMidi2ProgramBankLsb());
                         break;
-                    case CMIDI2_STATUS_PER_NOTE_PITCH_BEND:
-                        note = cmidi2_ump_get_midi2_pn_pitch_bend_note(ump);
-                    case CMIDI2_STATUS_PITCH_BEND:
-                        onPitchBend(group, channel, note, cmidi2_ump_get_midi2_pitch_bend_data(ump));
+                    case umppi::MidiChannelStatus::PER_NOTE_PITCH_BEND:
+                        note = ump.getMidi2Note();
+                    case umppi::MidiChannelStatus::PITCH_BEND:
+                        onPitchBend(group, channel, note, ump.getMidi2PitchBendData());
                         break;
-                    case CMIDI2_STATUS_PER_NOTE_RCC:
+                    case umppi::MidiChannelStatus::PER_NOTE_RCC:
                         onPNRC(group, channel,
-                               cmidi2_ump_get_midi2_pnrcc_note(ump),
-                               cmidi2_ump_get_midi2_pnrcc_index(ump),
-                               cmidi2_ump_get_midi2_pnrcc_data(ump));
-                    case CMIDI2_STATUS_PER_NOTE_ACC:
+                               ump.getMidi2Note(),
+                               static_cast<uint8_t>(ump.int1 & 0xFFu),
+                               ump.int2);
+                    case umppi::MidiChannelStatus::PER_NOTE_ACC:
                         onPNAC(group, channel,
-                               cmidi2_ump_get_midi2_pnacc_note(ump),
-                               cmidi2_ump_get_midi2_pnacc_index(ump),
-                               cmidi2_ump_get_midi2_pnacc_data(ump));
+                               ump.getMidi2Note(),
+                               static_cast<uint8_t>(ump.int1 & 0xFFu),
+                               ump.int2);
                         break;
-                    case CMIDI2_STATUS_RELATIVE_RPN:
+                    case umppi::MidiChannelStatus::RELATIVE_RPN:
                         relative = true;
-                    case CMIDI2_STATUS_RPN:
+                    case umppi::MidiChannelStatus::RPN:
                         onRC(group, channel,
-                             cmidi2_ump_get_midi2_rpn_msb(ump),
-                             cmidi2_ump_get_midi2_rpn_lsb(ump),
-                             cmidi2_ump_get_midi2_rpn_data(ump),
+                             ump.getMidi2RpnMsb(),
+                             ump.getMidi2RpnLsb(),
+                             ump.getMidi2RpnData(),
                              relative);
                         break;
-                    case CMIDI2_STATUS_RELATIVE_NRPN:
+                    case umppi::MidiChannelStatus::RELATIVE_NRPN:
                         relative = true;
-                    case CMIDI2_STATUS_NRPN:
+                    case umppi::MidiChannelStatus::NRPN:
                         onAC(group, channel,
-                             cmidi2_ump_get_midi2_nrpn_msb(ump),
-                             cmidi2_ump_get_midi2_nrpn_lsb(ump),
-                             cmidi2_ump_get_midi2_nrpn_data(ump),
+                             ump.getMidi2NrpnMsb(),
+                             ump.getMidi2NrpnLsb(),
+                             ump.getMidi2NrpnData(),
                              relative);
                         break;
-                    case CMIDI2_STATUS_PER_NOTE_MANAGEMENT:
+                    case umppi::MidiChannelStatus::PER_NOTE_MANAGEMENT:
                         onPerNoteManagement(group, channel,
                                 // FIXME: we should not need this cast
-                                            (uint7_t) cmidi2_ump_get_midi2_pn_management_note(ump),
-                                            cmidi2_ump_get_midi2_pn_management_options(ump));
+                                            static_cast<uint7_t>(ump.getMidi2Note()),
+                                            static_cast<uint8_t>(ump.int1 & 0xFFu));
                         break;
                 }
                 break;
         }
+        offset += messageSize;
     }
 
     onProcessEnd(src);
