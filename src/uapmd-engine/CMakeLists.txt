@@ -23,7 +23,7 @@ endif()
 
 CPMAddPackage(
         NAME           libremidi
-        GIT_TAG        v5.3.1
+        GIT_TAG        v5.4.3
         GIT_REPOSITORY https://github.com/celtera/libremidi
         EXCLUDE_FROM_ALL
 )
