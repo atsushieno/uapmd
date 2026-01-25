@@ -179,6 +179,8 @@ elseif(APPLE)
     set(CPACK_DMG_VOLUME_NAME "UAPMD_${CPACK_PACKAGE_VERSION}")
     set(CPACK_DMG_SLA_USE_RESOURCE_FILE OFF)
     set(CPACK_DMG_DISABLE_APPLICATIONS_SYMLINK OFF)
+    # GitHub's macOS 15 runners can no longer build HFS+ DMGs reliably, so switch to APFS.
+    set(CPACK_DMG_FILESYSTEM "APFS")
 else()
     # Linux still gets our usual native managers plus a tarball
     set(CPACK_GENERATOR "DEB;RPM;TXZ")
