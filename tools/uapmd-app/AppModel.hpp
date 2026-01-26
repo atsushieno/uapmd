@@ -1,16 +1,16 @@
 #pragma once
 
-#include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
-#include <remidy-tooling/PluginScanTool.hpp>
-#include <uapmd/uapmd.hpp>
-#include "player/TimelineTypes.hpp"
-#include "player/AppTrack.hpp"
 #include <format>
 #include <thread>
 #include <string>
 #include <unordered_map>
 #include <optional>
 #include <mutex>
+#include <midicci/midicci.hpp>
+#include <remidy-tooling/PluginScanTool.hpp>
+#include <uapmd/uapmd.hpp>
+#include "player/TimelineTypes.hpp"
+#include "player/AppTrack.hpp"
 
 namespace uapmd {
     // Forward declarations
@@ -55,7 +55,11 @@ namespace uapmd {
         void record();
     };
 
-    class AppModel {
+    class AppModel : MidiIOManagerFeature {
+        UapmdFunctionBlockManager function_block_manager{this};
+        std::shared_ptr<MidiIOFeature> createMidiIOFeature(
+            std::string apiName, std::string deviceName, std::string manufacturer, std::string version) override;
+
     public:
         // Plugin instance metadata
         struct PluginInstanceState {

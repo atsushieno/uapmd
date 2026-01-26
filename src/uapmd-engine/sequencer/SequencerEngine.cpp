@@ -139,7 +139,7 @@ namespace uapmd {
 
         void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) override;
 
-        void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device) override;
+        void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIOFeature> device) override;
         void clearMidiDeviceFromPlugin(int32_t instanceId) override;
 
         bool offlineRendering() const override;
@@ -1005,7 +1005,7 @@ namespace uapmd {
         return nullptr;
     }
 
-    void uapmd::SequencerEngineImpl::assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device) {
+    void uapmd::SequencerEngineImpl::assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIOFeature> device) {
         if (!device)
             return;
         auto* node = findPluginNodeByInstance(instanceId);

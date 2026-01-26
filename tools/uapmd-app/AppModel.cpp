@@ -16,6 +16,12 @@ uapmd::TransportController::TransportController(AppModel* appModel, AudioPluginS
     : appModel_(appModel), sequencer_(sequencer) {
 }
 
+std::shared_ptr<uapmd::MidiIOFeature> uapmd::AppModel::createMidiIOFeature(
+    std::string apiName, std::string deviceName, std::string manufacturer, std::string version) {
+    return createLibreMidiIODevice(apiName, deviceName, manufacturer, version);
+}
+
+
 void uapmd::AppModel::instantiate() {
     model = std::make_unique<uapmd::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());
 }
@@ -282,12 +288,13 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
     // If device was destroyed (disabled), recreate it
     if (!deviceState->device) {
         auto actualTrackIndex = sequencer_.findTrackIndexForInstance(instanceId);
-        std::shared_ptr<MidiIODevice> midiDevice;
+        // FIXME: we will move this device creation to UapmdMidiDeviceManager (once we finish migrating group management stuff).
+        std::shared_ptr<MidiIOFeature> midiDevice;
         try {
-            midiDevice = createLibreMidiIODevice(deviceState->apiName,
-                                                 deviceName.empty() ? deviceState->label : deviceName,
-                                                 "UAPMD Project",
-                                                 "0.1");
+            midiDevice = createMidiIOFeature(deviceState->apiName,
+                                             deviceName.empty() ? deviceState->label : deviceName,
+                                             "UAPMD Project",
+                                             "0.1");
         } catch (const std::exception& e) {
             deviceState->running = false;
             deviceState->hasError = true;
@@ -301,13 +308,16 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
             return;
         }
 
-        auto device = std::make_shared<UapmdMidiDevice>(midiDevice,
-                                                        sequencer_.engine(),
-                                                        instanceId,
-                                                        actualTrackIndex,
-                                                        deviceName.empty() ? deviceState->label : deviceName,
-                                                        "UAPMD Project",
-                                                        "0.1");
+        auto fbIndex = function_block_manager.create();
+        auto fb = function_block_manager.getFunctionBlockByIndex(fbIndex);
+        auto deviceId = fb->createDevice(midiDevice,
+                                               sequencer_.engine(),
+                                               instanceId,
+                                               actualTrackIndex,
+                                               deviceName.empty() ? deviceState->label : deviceName,
+                                               "UAPMD Project",
+                                               "0.1");
+        auto device = function_block_manager.getDeviceById(deviceId);
 
         if (auto group = sequencer_.engine()->groupForInstance(instanceId); group.has_value()) {
             device->group(group.value());
@@ -369,6 +379,8 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
 
     // Clear MIDI device from plugin node to release the shared_ptr
     sequencer_.engine()->clearMidiDeviceFromPlugin(instanceId);
+    if (auto fb = function_block_manager.getFunctionBlockForInstance(instanceId))
+        fb->destroyDevice(instanceId);
 
     // Stop and destroy the device to unregister the virtual MIDI port
     std::lock_guard guard(deviceState->mutex);

@@ -56,7 +56,7 @@ namespace uapmd {
         // Add plugin to existing track
         virtual void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) = 0;
 
-        virtual void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIODevice> device) = 0;
+        virtual void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIOFeature> device) = 0;
         virtual void clearMidiDeviceFromPlugin(int32_t instanceId) = 0;
 
         virtual bool removePluginInstance(int32_t instanceId) = 0;
