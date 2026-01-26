@@ -260,9 +260,7 @@ void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
         scanning.performPluginScanning();
 }
 
-int32_t instanceIdSerial{0};
-
-void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginNode> node, std::string error)>&& callback) {
+void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginInstanceAPI> node, std::string error)>&& callback) {
     auto format = *(scanning.formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning.catalog.getPlugins();
     auto entry = std::ranges::find_if(plugins, [&formatName,&pluginId](auto e) {
@@ -287,11 +285,7 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
         instancing->makeAlive([this,instancing,cb](std::string error) {
             if (error.empty())
                 instancing->withInstance([this,instancing,cb](auto instance) {
-                    auto pal = std::make_unique<RemidyAudioPluginInstance>(instancing, instance);
-                    auto inputMapper = std::make_unique<UapmdNodeUmpInputMapper>(pal.get());
-                    auto node = std::make_unique<AudioPluginNode>(
-                        std::move(pal), instanceIdSerial++);
-                    cb(std::move(node), "");
+                    cb(std::make_unique<RemidyAudioPluginInstance>(instancing, instance), "");
                 });
             else {
                 cb(nullptr, error);

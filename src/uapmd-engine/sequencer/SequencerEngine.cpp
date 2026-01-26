@@ -12,6 +12,8 @@
 
 namespace uapmd {
 
+    int32_t instanceIdSerial{0};
+
     class SequencerEngineImpl : public SequencerEngine {
         size_t audio_buffer_size_in_frames;
         size_t ump_buffer_size_in_ints;
@@ -353,8 +355,8 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) {
-        pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this,callback](auto node, std::string error) {
-            if (!node) {
+        pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this,callback](auto instance, std::string error) {
+            if (!instance) {
                 callback(-1, -1, "Could not create simple track: " + error);
                 return;
             }
@@ -362,8 +364,9 @@ namespace uapmd {
             // Create track and add plugin
             {
                 auto tr = AudioPluginTrack::create(ump_buffer_size_in_ints);
+                auto inputMapper = std::make_unique<UapmdNodeUmpInputMapper>(instance.get());
+                auto node = std::make_unique<AudioPluginNode>(std::move(instance), instanceIdSerial++);
                 tr->graph().appendNodeSimple(std::move(node));
-                auto* track_ptr = tr.get();
                 tracks_.emplace_back(std::move(tr));
                 sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
             }
@@ -416,8 +419,8 @@ namespace uapmd {
             return;
         }
 
-        pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, callback](auto node, std::string error) {
-            if (!node) {
+        pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, callback](auto instance, std::string error) {
+            if (!instance) {
                 callback(-1, -1, "Could not create plugin: " + error);
                 return;
             }
@@ -429,6 +432,7 @@ namespace uapmd {
             }
 
             auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+            auto node = std::make_unique<AudioPluginNode>(std::move(instance), instanceIdSerial++);
             auto* nodePtr = node.get();
 
             // Append to track's graph
