@@ -4,6 +4,8 @@
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
+    typedef int32_t uapmd_track_index_t;
+
     class AudioPluginHostingAPI;
 
     // Parameter update from plugin (via NRPN or direct listener)
@@ -51,15 +53,20 @@ namespace uapmd {
         virtual void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) = 0;
 
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
-        virtual void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) = 0;
+        virtual uapmd_track_index_t addEmptyTrack() = 0;
+
+        // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
+        virtual void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
 
         // Add plugin to existing track
-        virtual void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) = 0;
+        virtual void addPluginToTrack(uapmd_track_index_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
 
         virtual void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIOFeature> device) = 0;
         virtual void clearMidiDeviceFromPlugin(int32_t instanceId) = 0;
 
         virtual bool removePluginInstance(int32_t instanceId) = 0;
+
+        virtual bool removeTrack(uapmd_track_index_t trackIndex) = 0;
 
         // Audio preprocessing callback (called before track processing)
         using AudioPreprocessCallback = std::function<void(AudioProcessContext& process)>;

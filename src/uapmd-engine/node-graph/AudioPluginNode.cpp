@@ -21,6 +21,9 @@ namespace uapmd {
     AudioPluginInstanceAPI* AudioPluginNode::pal() { return node_.get(); }
 
     uapmd_status_t AudioPluginNode::processAudio(AudioProcessContext &process) {
+        if (bypassed_)
+            // FIXME: maybe switch to remidy::StatusCode?
+            return 0;
         // FIXME: assign timestamp
         ump_input_mapper->process(0, process);
         return pal()->processAudio(process);

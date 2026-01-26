@@ -17,7 +17,7 @@ namespace uapmd {
         std::vector<umppi::Ump> pending_events;
         std::function<uint8_t(int32_t)> group_resolver;
         std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback;
-        bool bypass{true}; // initial
+        bool bypass{false};
         bool frozen_{false};
         std::unique_ptr<AudioPluginGraph> graph_;
 

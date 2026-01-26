@@ -88,6 +88,8 @@ namespace uapmd {
         std::vector<TrackInfo> getTrackInfos() override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
+        uapmd_track_index_t addEmptyTrack() override;
+        bool removeTrack(uapmd_track_index_t trackIndex) override;
         void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) override;
         void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) override;
         bool removePluginInstance(int32_t instanceId) override;
@@ -354,61 +356,33 @@ namespace uapmd {
         default_output_channels_ = outputChannels;
     }
 
+    uapmd_track_index_t SequencerEngineImpl::addEmptyTrack() {
+        auto tr = AudioPluginTrack::create(ump_buffer_size_in_ints);
+        tracks_.emplace_back(std::move(tr));
+        sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
+        auto trackIndex = static_cast<uapmd_track_index_t>(tracks_.size() - 1);
+
+        // Configure main bus (moved from AudioPluginSequencer)
+        auto trackCtx = sequence.tracks[trackIndex];
+        trackCtx->configureMainBus(default_input_channels_, default_output_channels_, audio_buffer_size_in_frames);
+
+        return trackIndex;
+    }
+
+    bool SequencerEngineImpl::removeTrack(uapmd_track_index_t index) {
+        if (index >= tracks_.size())
+            return false;
+        tracks_.erase(tracks_.begin() + static_cast<long>(index));
+        sequence.tracks.erase(sequence.tracks.begin() + static_cast<long>(index));
+        return true;
+    }
+
     void SequencerEngineImpl::addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) {
-        pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this,callback](auto instance, std::string error) {
-            if (!instance) {
-                callback(-1, -1, "Could not create simple track: " + error);
-                return;
-            }
-
-            // Create track and add plugin
-            {
-                auto tr = AudioPluginTrack::create(ump_buffer_size_in_ints);
-                auto inputMapper = std::make_unique<UapmdNodeUmpInputMapper>(instance.get());
-                auto node = std::make_unique<AudioPluginNode>(std::move(instance), instanceIdSerial++);
-                tr->graph().appendNodeSimple(std::move(node));
-                tracks_.emplace_back(std::move(tr));
-                sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
-            }
-            auto* track = tracks_.back().get();
-            auto trackIndex = static_cast<int32_t>(tracks_.size() - 1);
-
-            // Configure main bus (moved from AudioPluginSequencer)
-            auto trackCtx = sequence.tracks[trackIndex];
-            trackCtx->configureMainBus(default_input_channels_, default_output_channels_, audio_buffer_size_in_frames);
-
-            // Get the plugin node
-            auto plugins = track->graph().plugins();
-            if (plugins.empty()) {
-                callback(-1, trackIndex, "Track has no plugins after instantiation");
-                return;
-            }
-
-            auto* pluginNode = plugins.front();
-            auto instanceId = pluginNode->instanceId();
-            auto* palPtr = pluginNode->pal();
-
-            pluginNode->setUmpInputMapper(std::make_unique<UapmdNodeUmpInputMapper>(palPtr));
-
-            // Function block setup
-            configureTrackRouting(track);
-            plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
-            assignGroup(instanceId);
-
-            // Plugin instance management
-            {
-                std::lock_guard<std::mutex> lock(instance_map_mutex_);
-                plugin_instances_[instanceId] = palPtr;
-                plugin_bypassed_[instanceId] = false;
-            }
-
-            // Parameter listening
-            registerParameterListener(instanceId, palPtr);
-
-            refreshFunctionBlockMappings();
-
-            track->bypassed(false);
-            callback(instanceId, trackIndex, "");
+        auto trackIndex = addEmptyTrack();
+        addPluginToTrack(trackIndex, format, pluginId, [&](auto instanceId, auto trackIndex, auto error) -> void {
+            callback(instanceId, trackIndex, error);
+            if (!error.empty())
+                removeTrack(trackIndex);
         });
     }
 
@@ -432,6 +406,7 @@ namespace uapmd {
             }
 
             auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+
             auto node = std::make_unique<AudioPluginNode>(std::move(instance), instanceIdSerial++);
             auto* nodePtr = node.get();
 
@@ -463,6 +438,8 @@ namespace uapmd {
             registerParameterListener(instanceId, palPtr);
 
             refreshFunctionBlockMappings();
+
+            nodePtr->bypassed(false);
 
             callback(instanceId, trackIndex, "");
         });
