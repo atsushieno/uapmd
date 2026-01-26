@@ -1,12 +1,14 @@
-# UAPMD: Ubiquitous Audio Plugin MIDI Device
+# UAPMD: next-gen, multi-format, liberally licensed audio plugin host engine with fully equipped MIDI 2.0 frontend
 
 ![UAPMD v0.1 example screenshot](docs/images/uapmd-app-v0.1-sshot.png)
 
-UAPMD is an audio plugin host that serves audio plugin instances as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
+UAPMD (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that serves audio plugin instances and exposes their control points as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
 
 - play MIDI 2.0 instruments with 32-bit precision; use Assignable Controllers (NRPNs) to change plugin parameters in 32-bit values (velocity in 16-bit).
-- retrieve parameter list that are mapped to Assignable Controllers and Program List that are mapped to presets that are exposed via the plugin APIs. Thus you don't have to remember which controller index maps to the parameter you want, or which program number maps to the tone you need.
-- save and load the plugin's state.
+- retrieve parameter list as Assignable Controllers and presets as Program List, as long as they are exposed via the plugin APIs. Thus you don't have to remember which controller index maps to the parameter you want, or which program number maps to the tone you need.
+- save and load the plugin's binary state (`.vstpreset` etc.), just like how you use them in a DAW.
+
+We also develop [midicci](https://github.com/atsushieno/midicci), an fully featured MIDI 2.0 software keyboard that leverages the full potential of this project.
 
 UAPMD targets macOS and Linux desktop. Windows builds are experimental and currently rely on the [Windows MIDI Services developer preview](https://github.com/microsoft/MIDI).
 
