@@ -95,6 +95,13 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             // Cleanup details window if open
             instanceDetails_.removeInstance(instanceId);
 
+            // Cleanup stale Sequence Editor windows
+            // Get the current number of tracks and remove windows for deleted track indices
+            auto& sequencer = uapmd::AppModel::instance().sequencer();
+            auto tracks = sequencer.engine()->getTrackInfos();
+            int32_t maxValidTrackIndex = tracks.empty() ? -1 : static_cast<int32_t>(tracks.size() - 1);
+            sequenceEditor_.removeStaleWindows(maxValidTrackIndex);
+
             // AppModel handles removing from devices_ - we just refresh UI
             refreshInstances();
         });

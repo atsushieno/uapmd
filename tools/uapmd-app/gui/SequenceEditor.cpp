@@ -49,6 +49,17 @@ void SequenceEditor::refreshClips(int32_t trackIndex, const std::vector<ClipRow>
     }
 }
 
+void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
+    // Remove windows for track indices that no longer exist
+    for (auto it = windows_.begin(); it != windows_.end();) {
+        if (it->first > maxValidTrackIndex) {
+            it = windows_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 void SequenceEditor::render(const RenderContext& context) {
     // Collect track indices to avoid iterator invalidation
     std::vector<int32_t> trackIndices;

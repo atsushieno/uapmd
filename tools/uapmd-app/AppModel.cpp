@@ -227,6 +227,9 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     // Remove the plugin instance from sequencer
     sequencer_.engine()->removePluginInstance(instanceId);
 
+    // Sync app tracks to reflect any removed tracks
+    syncAppTracks();
+
     // Notify all registered callbacks
     for (auto& cb : instanceRemoved) {
         cb(instanceId);

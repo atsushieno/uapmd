@@ -49,6 +49,7 @@ public:
     bool isVisible(int32_t trackIndex) const;
     void refreshClips(int32_t trackIndex, const std::vector<ClipRow>& clips);
     void render(const RenderContext& context);
+    void removeStaleWindows(int32_t maxValidTrackIndex);
 
 private:
     struct SequenceEditorState {
