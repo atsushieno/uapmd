@@ -57,7 +57,7 @@ jobs:
     - name: brew install
       if: ${{ startsWith(matrix.os, 'macos') }}
       run: |
-        brew install ninja sdl3
+        brew install sdl3
 
     - name: setup build on Windows
       if: matrix.os == 'windows-latest'
