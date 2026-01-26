@@ -15,12 +15,10 @@ namespace uapmd {
                                      SequencerFeature* sharedSequencer,
                                      int32_t instanceId,
                                      int32_t trackIndex,
-                                     std::string apiName,
                                      std::string deviceName,
                                      std::string manufacturerName,
                                      std::string versionString)
-        : api_name(std::move(apiName)),
-          sequencer(sharedSequencer),
+        : sequencer(sharedSequencer),
           instance_id(instanceId),
           track_index(trackIndex),
           midi_device(std::move(midiDevice)) {

@@ -14,8 +14,6 @@
 
 namespace uapmd {
     class UapmdMidiDevice {
-        std::string api_name{};
-
         SequencerFeature* sequencer{};
         int32_t instance_id{-1};
         int32_t track_index{-1};
@@ -35,7 +33,6 @@ namespace uapmd {
                         SequencerFeature* sequencer,
                         int32_t instanceId,
                         int32_t trackIndex,
-                        std::string apiName,
                         std::string deviceName,
                         std::string manufacturer,
                         std::string version);

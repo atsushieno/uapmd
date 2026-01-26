@@ -305,7 +305,6 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
                                                         sequencer_.engine(),
                                                         instanceId,
                                                         actualTrackIndex,
-                                                        deviceState->apiName,
                                                         deviceName.empty() ? deviceState->label : deviceName,
                                                         "UAPMD Project",
                                                         "0.1");
