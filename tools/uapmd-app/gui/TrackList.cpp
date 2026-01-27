@@ -14,8 +14,12 @@ void TrackList::setInstances(const std::vector<TrackInstance>& instances) {
     instances_ = instances;
 }
 
+void TrackList::markDirty() {
+    dirty_ = true;
+}
+
 void TrackList::update() {
-    if (!onBuildTrackInstance_) {
+    if (!dirty_ || !onBuildTrackInstance_) {
         return;
     }
 
@@ -26,10 +30,11 @@ void TrackList::update() {
     instances_.reserve(instanceIds.size());
 
     for (int32_t instanceId : instanceIds) {
-        if (auto trackInstance = onBuildTrackInstance_(instanceId)) {
+        if (auto trackInstance = onBuildTrackInstance_(instanceId))
             instances_.push_back(*trackInstance);
-        }
     }
+
+    dirty_ = false;
 }
 
 void TrackList::render() {

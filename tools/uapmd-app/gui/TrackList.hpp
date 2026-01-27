@@ -45,6 +45,7 @@ public:
 private:
     std::vector<TrackInstance> instances_;
     BuildTrackInstanceCallback onBuildTrackInstance_;
+    bool dirty_ = true;  // Start dirty to force initial update
 
     ShowDetailsCallback onShowDetails_;
     HideDetailsCallback onHideDetails_;
@@ -63,6 +64,7 @@ public:
     void setInstances(const std::vector<TrackInstance>& instances);
     void update();  // Updates instances by calling onBuildTrackInstance_ for each instance
     void render();
+    void markDirty();
 
     void setOnBuildTrackInstance(BuildTrackInstanceCallback callback);
     void setOnShowDetails(ShowDetailsCallback callback);

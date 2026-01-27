@@ -77,6 +77,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
             // Refresh UI to display new instance
             refreshInstances();
+            trackList_.markDirty();
         });
 
     // Register callback for when plugin instances are removed (GUI or script)
@@ -104,6 +105,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
             // AppModel handles removing from devices_ - we just refresh UI
             refreshInstances();
+            trackList_.markDirty();
         });
 
     // Register callback for when devices are enabled
@@ -111,6 +113,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         [this](const uapmd::AppModel::DeviceStateResult& result) {
             // AppModel updates DeviceState directly - we just refresh UI
             refreshInstances();
+            trackList_.markDirty();
         });
 
     // Register callback for when devices are disabled
@@ -118,6 +121,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         [this](const uapmd::AppModel::DeviceStateResult& result) {
             // AppModel updates DeviceState directly - we just refresh UI
             refreshInstances();
+            trackList_.markDirty();
         });
 
     // Register callback for when scripts request to show UI
@@ -154,6 +158,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
                     windowIt->second->setResizable(canResize);
                 }
             }
+            trackList_.markDirty();
         });
 
     // Register callback for when plugin UIs are hidden (from scripts or GUI)
@@ -163,6 +168,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
             // Call handleHideUI to process the window state changes
             handleHideUI(result.instanceId);
+            trackList_.markDirty();
         });
 
     // Set up TrackList callbacks
@@ -211,10 +217,12 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         sequenceEditor_.showWindow(trackIndex);
         // Refresh clips for this track
         refreshSequenceEditorForTrack(trackIndex);
+        trackList_.markDirty();
     });
 
     trackList_.setOnHideSequence([this](int32_t trackIndex) {
         sequenceEditor_.hideWindow(trackIndex);
+        trackList_.markDirty();
     });
 
     // Set up PluginSelector callbacks
