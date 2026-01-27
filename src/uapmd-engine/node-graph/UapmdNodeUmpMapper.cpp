@@ -40,14 +40,14 @@ namespace uapmd {
       : UapmdUmpOutputMapper(),
         device(device),
         plugin(plugin) {
-        param_change_listener_id = plugin->addParameterChangeListener([this](uint32_t index, double value) {
+        param_change_listener_id = plugin->parameterSupport()->parameterChangeEvent().addListener([this](uint32_t index, double value) {
             onParameterValueUpdated(index, value);
         });
     }
 
     UapmdNodeUmpOutputMapper::~UapmdNodeUmpOutputMapper() {
         if (plugin && param_change_listener_id != 0)
-            plugin->removeParameterChangeListener(param_change_listener_id);
+            plugin->parameterSupport()->parameterChangeEvent().removeListener(param_change_listener_id);
     }
 
     void UapmdNodeUmpOutputMapper::onParameterValueUpdated(uint16_t index, double value) {

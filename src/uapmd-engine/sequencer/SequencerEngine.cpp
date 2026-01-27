@@ -678,12 +678,11 @@ namespace uapmd {
     void SequencerEngineImpl::registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* node) {
         if (!node)
             return;
-        auto token = node->addParameterChangeListener(
-            [this, instanceId](uint32_t paramIndex, double plainValue) {
-                std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
-                pending_parameter_updates_[instanceId].push_back({static_cast<int32_t>(paramIndex), plainValue});
-            });
-        auto metadataToken = node->addParameterMetadataChangeListener([this, instanceId]() {
+        auto token = node->parameterSupport()->parameterChangeEvent().addListener([this, instanceId](uint32_t paramIndex, double plainValue) {
+            std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
+            pending_parameter_updates_[instanceId].push_back({static_cast<int32_t>(paramIndex), plainValue});
+        });
+        auto metadataToken = node->parameterSupport()->parameterMetadataChangeEvent().addListener([this, instanceId]() {
             std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
             pending_metadata_refresh_.insert(instanceId);
         });
@@ -713,9 +712,9 @@ namespace uapmd {
         auto* node = getPluginInstance(instanceId);
         if (node) {
             if (token != 0)
-                node->removeParameterChangeListener(token);
+                node->parameterSupport()->parameterChangeEvent().removeListener(token);
             if (metadataToken != 0)
-                node->removeParameterMetadataChangeListener(metadataToken);
+                node->parameterSupport()->parameterMetadataChangeEvent().removeListener(metadataToken);
         }
         {
             std::lock_guard<std::mutex> lock(pending_parameter_mutex_);

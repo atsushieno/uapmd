@@ -67,29 +67,7 @@ namespace uapmd {
         virtual bool setUISize(uint32_t width, uint32_t height) = 0;
         virtual bool getUISize(uint32_t &width, uint32_t &height) = 0;
         virtual bool canUIResize() = 0;
-        virtual remidy::PluginParameterSupport* parameterSupport() { return nullptr; }
-        virtual remidy::EventListenerId addParameterChangeListener(
-            remidy::ParameterChangeEvent::EventListener listener) {
-            auto* support = parameterSupport();
-            if (!support)
-                return 0;
-            return support->parameterChangeEvent().addListener(std::move(listener));
-        }
-        virtual void removeParameterChangeListener(remidy::EventListenerId id) {
-            if (auto* support = parameterSupport())
-                support->parameterChangeEvent().removeListener(id);
-        }
-        virtual remidy::EventListenerId addParameterMetadataChangeListener(
-            remidy::ParameterMetadataChangeEvent::EventListener listener) {
-            auto* support = parameterSupport();
-            if (!support)
-                return 0;
-            return support->parameterMetadataChangeEvent().addListener(std::move(listener));
-        }
-        virtual void removeParameterMetadataChangeListener(remidy::EventListenerId id) {
-            if (auto* support = parameterSupport())
-                support->parameterMetadataChangeEvent().removeListener(id);
-        }
+        virtual remidy::PluginParameterSupport* parameterSupport() = 0;
 
         virtual void assignMidiDeviceToPlugin(MidiIOFeature* device) = 0;
         virtual void clearMidiDeviceFromPlugin() = 0;
