@@ -52,7 +52,6 @@ namespace uapmd {
 
         // UMP group allocation
         mutable std::unordered_map<int32_t, uint8_t> plugin_groups_;
-        mutable std::unordered_map<uint8_t, int32_t> group_to_instance_;
         std::vector<uint8_t> free_groups_;
         uint8_t next_group_{0};
 
@@ -118,10 +117,6 @@ namespace uapmd {
         bool isPluginBypassed(int32_t instanceId) override;
         void setPluginBypassed(int32_t instanceId, bool bypassed) override;
 
-        // Group queries
-        std::optional<uint8_t> groupForInstance(int32_t instanceId) const override;
-        std::optional<int32_t> instanceForGroup(uint8_t group) const override;
-
         UapmdFunctionBlockManager *functionBlockManager() override { return &function_block_manager; }
 
         // Event routing
@@ -152,8 +147,6 @@ namespace uapmd {
         // Group management
         uint8_t assignGroup(int32_t instanceId);
         void releaseGroup(int32_t instanceId);
-        std::optional<uint8_t> groupForInstanceOptional(int32_t instanceId) const;
-        std::optional<int32_t> instanceForGroupOptional(uint8_t group) const;
 
         // Routing configuration
         void configureTrackRouting(AudioPluginTrack* track);
@@ -165,7 +158,6 @@ namespace uapmd {
             int32_t trackIndex{-1};
             int32_t instanceId{-1};
         };
-        std::optional<RouteResolution> resolveTarget(int32_t trackOrInstanceId);
 
         // Output dispatch
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
@@ -542,6 +534,7 @@ namespace uapmd {
     }
 
     // Group management
+    // FIXME: this should be removed and totally delegate everything to UapmdFunctionBlockManager.
     uint8_t SequencerEngineImpl::assignGroup(int32_t instanceId) {
         auto it = plugin_groups_.find(instanceId);
         if (it != plugin_groups_.end())
@@ -562,7 +555,6 @@ namespace uapmd {
         }
         if (group != 0xFF) {
             plugin_groups_[instanceId] = group;
-            group_to_instance_[group] = instanceId;
         }
         return group;
     }
@@ -574,24 +566,9 @@ namespace uapmd {
         auto group = it->second;
         plugin_groups_.erase(it);
         if (group != 0xFF) {
-            group_to_instance_.erase(group);
             if (group <= 0x0F)
                 free_groups_.push_back(group);
         }
-    }
-
-    std::optional<uint8_t> SequencerEngineImpl::groupForInstanceOptional(int32_t instanceId) const {
-        auto it = plugin_groups_.find(instanceId);
-        if (it == plugin_groups_.end())
-            return std::nullopt;
-        return it->second;
-    }
-
-    std::optional<int32_t> SequencerEngineImpl::instanceForGroupOptional(uint8_t group) const {
-        auto it = group_to_instance_.find(group);
-        if (it == group_to_instance_.end())
-            return std::nullopt;
-        return it->second;
     }
 
     // Track routing configuration
@@ -599,8 +576,8 @@ namespace uapmd {
         if (!track)
             return;
         track->setGroupResolver([this](int32_t instanceId) {
-            auto group = groupForInstanceOptional(instanceId);
-            return group.has_value() ? group.value() : static_cast<uint8_t>(0xFF);
+            const auto fb = functionBlockManager()->getFunctionDeviceByInstanceId(instanceId);
+            return fb ? fb->group() : static_cast<uint8_t>(0xFF);
         });
         track->setEventOutputCallback([this](int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
             dispatchPluginOutput(instanceId, data, bytes);
@@ -626,54 +603,15 @@ namespace uapmd {
         }
     }
 
-    std::optional<SequencerEngineImpl::RouteResolution> SequencerEngineImpl::resolveTarget(int32_t trackOrInstanceId) {
-        auto instanceIt = plugin_function_blocks_.find(trackOrInstanceId);
-        if (instanceIt != plugin_function_blocks_.end()) {
-            return RouteResolution{instanceIt->second.track, instanceIt->second.trackIndex, trackOrInstanceId};
-        }
-
-        if (auto instFromGroup = instanceForGroupOptional(static_cast<uint8_t>(trackOrInstanceId)); instFromGroup.has_value()) {
-            auto mapping = plugin_function_blocks_.find(instFromGroup.value());
-            if (mapping != plugin_function_blocks_.end()) {
-                return RouteResolution{mapping->second.track, mapping->second.trackIndex, instFromGroup.value()};
-            }
-        }
-
-        if (trackOrInstanceId < 0)
-            return std::nullopt;
-
-        auto& trackPtrs = tracks();
-        if (static_cast<size_t>(trackOrInstanceId) >= trackPtrs.size())
-            return std::nullopt;
-
-        auto* track = trackPtrs[static_cast<size_t>(trackOrInstanceId)];
-        if (!track)
-            return std::nullopt;
-
-        configureTrackRouting(track);
-        auto plugins = track->graph().plugins();
-        if (plugins.empty())
-            return std::nullopt;
-
-        auto* first = plugins.front();
-        if (!first)
-            return std::nullopt;
-
-        auto instanceId = first->instanceId();
-        plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, static_cast<int32_t>(trackOrInstanceId)};
-        assignGroup(instanceId);
-        return RouteResolution{track, static_cast<int32_t>(trackOrInstanceId), instanceId};
-    }
-
     // Plugin output dispatch (with group rewriting + NRPN parameter extraction)
     void SequencerEngineImpl::dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
         if (!data || bytes == 0)
             return;
 
-        auto groupOpt = groupForInstanceOptional(instanceId);
-        if (!groupOpt.has_value())
+        const auto fb = functionBlockManager()->getFunctionDeviceByInstanceId(instanceId);
+        if (!fb)
             return;
-        auto group = groupOpt.value();
+        const auto group = fb->group();
 
         if (bytes > plugin_output_scratch_.size() * sizeof(uapmd_ump_t))
             return;
@@ -810,15 +748,6 @@ namespace uapmd {
         plugin_bypassed_[instanceId] = bypassed;
     }
 
-    // Group queries (public API)
-    std::optional<uint8_t> SequencerEngineImpl::groupForInstance(int32_t instanceId) const {
-        return groupForInstanceOptional(instanceId);
-    }
-
-    std::optional<int32_t> SequencerEngineImpl::instanceForGroup(uint8_t group) const {
-        return instanceForGroupOptional(group);
-    }
-
     // UMP routing
     void SequencerEngineImpl::enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
         auto mapping = plugin_function_blocks_.find(instanceId);
@@ -833,7 +762,8 @@ namespace uapmd {
         //
         //  However, simply disabling this code causes regression that track > 0 will not receive inputs.
         //  So it is kept for a time being.
-        if (auto group = groupForInstanceOptional(instanceId); group.has_value()) {
+        if (const auto fb = functionBlockManager()->getFunctionDeviceByInstanceId(instanceId); fb) {
+            auto group = fb->group();
             auto* bytesPtr = reinterpret_cast<uint8_t*>(ump);
             size_t offset = 0;
             while (offset + sizeof(uint32_t) <= sizeInBytes) {
@@ -843,7 +773,7 @@ namespace uapmd {
                 auto messageSize = static_cast<size_t>(wordCount) * sizeof(uint32_t);
                 if (offset + messageSize > sizeInBytes)
                     break;
-                words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group.value()) << 24);
+                words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group) << 24);
                 offset += messageSize;
             }
         }

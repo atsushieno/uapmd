@@ -236,10 +236,10 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     sequencer_.engine()->removePluginInstance(instanceId);
 
     // Clean up empty function blocks
-    sequencer().engine()->functionBlockManager()->deleteEmptyBlocks();
+    sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
 
     // Clean up empty function blocks
-    sequencer().engine()->functionBlockManager()->deleteEmptyBlocks();
+    sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
 
     // Sync app tracks to reflect any removed tracks
     syncAppTracks();
@@ -299,9 +299,9 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
 
         auto fbManager = sequencer_.engine()->functionBlockManager();
 
-        auto fbIndex = fbManager->create();
-        auto fb = fbManager->getFunctionBlockByIndex(fbIndex);
-        if (!fb->createDevice(deviceState->apiName,
+        auto fbDeviceIndex = fbManager->create();
+        auto fbDevice = fbManager->getFunctionDeviceByIndex(fbDeviceIndex);
+        if (!fbDevice->createFunctionBlock(deviceState->apiName,
                                       sequencer_.engine(),
                                                instanceId,
                                                actualTrackIndex,
@@ -319,16 +319,12 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
             }
             return;
         }
-        auto device = fbManager->getDeviceByInstanceId(instanceId);
+        auto fb = fbManager->getFunctionDeviceByInstanceId(instanceId);
 
-        if (auto group = sequencer_.engine()->groupForInstance(instanceId); group.has_value()) {
-            device->group(group.value());
-        }
+        sequencer_.engine()->getPluginInstance(instanceId)->assignMidiDeviceToPlugin(fb->midiIO());
+        fb->initialize();
 
-        sequencer_.engine()->getPluginInstance(instanceId)->assignMidiDeviceToPlugin(device->midiIO());
-        device->initialize();
-
-        deviceState->device = device;
+        deviceState->device = fb;
         if (!deviceName.empty()) {
             deviceState->label = deviceName;
         }
@@ -381,7 +377,7 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
 
     // Clear MIDI device from plugin node to release the shared_ptr
     sequencer_.engine()->getPluginInstance(instanceId)->clearMidiDeviceFromPlugin();
-    if (auto fb = sequencer().engine()->functionBlockManager()->getFunctionBlockForInstance(instanceId))
+    if (auto fb = sequencer().engine()->functionBlockManager()->getFunctionDeviceForInstance(instanceId))
         fb->destroyDevice(instanceId);
 
     // Stop and destroy the device to unregister the virtual MIDI port

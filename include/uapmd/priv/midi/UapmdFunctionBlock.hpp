@@ -13,37 +13,32 @@
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
-    class UapmdMidiDevice {
+    class UapmdFunctionBlock {
         SequencerFeature* sequencer{};
         int32_t instance_id{-1};
-        int32_t track_index{-1};
-        uint8_t ump_group{0xFF};
+        uint8_t ump_group{0xFF}; // invalid
 
         std::shared_ptr<MidiIOFeature> midi_device{};
 
         static void umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
-        void setupMidiCISession();
         void teardownOutputHandler();
 
-        std::unique_ptr<UapmdMidiCISessions> uapmd_sessions{};
+        std::unique_ptr<UapmdMidiCISession> uapmd_sessions{};
 
     public:
-        UapmdMidiDevice(std::shared_ptr<MidiIOFeature> midiDevice,
+        UapmdFunctionBlock(std::shared_ptr<MidiIOFeature> midiDevice,
                         SequencerFeature* sequencer,
                         int32_t instanceId,
-                        int32_t trackIndex,
                         std::string deviceName,
                         std::string manufacturer,
                         std::string version);
 
-        ~UapmdMidiDevice();
+        ~UapmdFunctionBlock();
 
         MidiIOFeature* midiIO() { return midi_device.get(); }
 
         int32_t instanceId() const { return instance_id; }
-        int32_t trackIndex() const { return track_index; }
-        void trackIndex(int32_t newIndex) { track_index = newIndex; }
         uint8_t group() const { return ump_group; }
         void group(uint8_t groupId) { ump_group = groupId; }
 

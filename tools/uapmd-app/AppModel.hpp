@@ -74,7 +74,7 @@ namespace uapmd {
         // Device state containing MIDI device and associated plugin instances
         struct DeviceState {
             std::mutex mutex;
-            std::shared_ptr<UapmdMidiDevice> device;
+            std::shared_ptr<UapmdFunctionBlock> device;
             std::string label;
             std::string apiName;
             std::string statusMessage;
@@ -132,7 +132,7 @@ namespace uapmd {
         // Result from plugin instance creation
         struct PluginInstanceResult {
             int32_t instanceId = -1;
-            std::shared_ptr<UapmdMidiDevice> device;
+            std::shared_ptr<UapmdFunctionBlock> device;
             std::string pluginName;
             std::string error;
         };

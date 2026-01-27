@@ -3,27 +3,27 @@
 #include "midicci/midicci.hpp"
 
 namespace uapmd {
-    class UapmdMidiDevice;
+    class UapmdFunctionBlock;
 
     // Handles UAPMD-specific MIDI-CI messages. Namely, it registers property getter and setter for
     // AllCtrlList, CtrlMapList, ProgramList, and State.
     //
     // There is no "output interceptor" as it will be handled by MidiCISession and its registered `MidiIODevice`.
-    class UapmdMidiCISessions {
-        UapmdMidiDevice* device;
+    class UapmdMidiCISession {
+        UapmdFunctionBlock* device;
         SequencerFeature* sequencer;
 
         std::string device_name{};
         std::string manufacturer{};
         std::string version{};
 
-        std::map<uint32_t, std::unique_ptr<midicci::musicdevice::MidiCISession>> ci_sessions{};
+        std::unique_ptr<midicci::musicdevice::MidiCISession> ci_session{};
 
         std::vector<midicci::musicdevice::MidiInputCallback> ci_input_forwarders{};
 
     public:
-        UapmdMidiCISessions(
-            UapmdMidiDevice* device,
+        UapmdMidiCISession(
+            UapmdFunctionBlock* device,
             SequencerFeature* sharedSequencer,
             std::string deviceName,
             std::string manufacturerName,

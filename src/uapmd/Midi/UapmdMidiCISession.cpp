@@ -4,7 +4,7 @@
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
-    void UapmdMidiCISessions::interceptUmpInput(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    void UapmdMidiCISession::interceptUmpInput(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
 
         for (auto& forwarder : ci_input_forwarders)
             forwarder(reinterpret_cast<uint8_t*>(static_cast<void*>(ump)), 0, sizeInBytes, timestamp);
@@ -48,7 +48,7 @@ namespace uapmd {
         }
     }
 
-    void UapmdMidiCISessions::setupMidiCISession() {
+    void UapmdMidiCISession::setupMidiCISession() {
         auto instance_id = device->instanceId();
 
         midicci::MidiCIDeviceConfiguration ci_config{
@@ -82,7 +82,7 @@ namespace uapmd {
             sender
         };
 
-        auto ciSession = createMidiCiSession(source, muid, std::move(ci_config), [&](const LogData& log) {
+        ci_session = createMidiCiSession(source, muid, std::move(ci_config), [&](const LogData& log) {
             auto msg = std::get_if<std::reference_wrapper<const Message>>(&log.data);
             if (msg)
                 std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "IN] ") << msg->get().getLogMessage() << std::endl;
@@ -90,7 +90,7 @@ namespace uapmd {
                 std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "IN] ") << std::get<std::string>(log.data) << std::endl;
         });
 
-        auto& ciDevice = ciSession->getDevice();
+        auto& ciDevice = ci_session->getDevice();
 
         auto& hostProps = ciDevice.getPropertyHostFacade();
         hostProps.addMetadata(std::make_unique<CommonRulesPropertyMetadata>(StandardProperties::allCtrlListMetadata()));
@@ -165,8 +165,6 @@ namespace uapmd {
             return originalSetter(property_id, res_id, media_type, body);
         };
         hostProps.setPropertyBinarySetter(customSetter);
-
-        ci_sessions[muid] = std::move(ciSession);
 
         if (sequencer) {
             sequencer->setPluginOutputHandler(instance_id, [this](const uapmd_ump_t* data, size_t bytes) {

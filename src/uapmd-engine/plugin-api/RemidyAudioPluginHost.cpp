@@ -251,13 +251,13 @@ namespace uapmd {
             return instance->parameters();
         }
 
-        void assignMidiDeviceToPlugin(MidiIOFeature* device) {
+        void assignMidiDeviceToPlugin(MidiIOFeature* device) override {
             if (!device)
                 return;
             ump_output_mapper = std::make_unique<UapmdNodeUmpOutputMapper>(device, this);
         }
 
-        void clearMidiDeviceFromPlugin() {
+        void clearMidiDeviceFromPlugin() override {
             ump_output_mapper.reset();
         }
     };

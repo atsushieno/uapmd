@@ -11,52 +11,41 @@ using namespace midicci::commonproperties;
 
 namespace uapmd {
 
-    UapmdMidiDevice::UapmdMidiDevice(std::shared_ptr<MidiIOFeature> midiDevice,
+    UapmdFunctionBlock::UapmdFunctionBlock(std::shared_ptr<MidiIOFeature> midiDevice,
                                      SequencerFeature* sharedSequencer,
                                      int32_t instanceId,
-                                     int32_t trackIndex,
                                      std::string deviceName,
                                      std::string manufacturerName,
                                      std::string versionString)
         : sequencer(sharedSequencer),
           instance_id(instanceId),
-          track_index(trackIndex),
           midi_device(std::move(midiDevice)) {
-        uapmd_sessions = std::make_unique<UapmdMidiCISessions>(this, sharedSequencer, deviceName, manufacturerName, versionString);
+        uapmd_sessions = std::make_unique<UapmdMidiCISession>(this, sharedSequencer, deviceName, manufacturerName, versionString);
         if (midi_device)
             midi_device->addInputHandler(umpReceived, this);
     }
 
-    UapmdMidiDevice::~UapmdMidiDevice() {
+    UapmdFunctionBlock::~UapmdFunctionBlock() {
         teardownOutputHandler();
         if (midi_device)
             midi_device->removeInputHandler(umpReceived);
     }
 
-    void UapmdMidiDevice::teardownOutputHandler() {
+    void UapmdFunctionBlock::teardownOutputHandler() {
         if (!sequencer || instance_id < 0)
             return;
         sequencer->setPluginOutputHandler(instance_id, nullptr);
     }
 
-    void UapmdMidiDevice::setupMidiCISession() {
+    void UapmdFunctionBlock::initialize() {
         uapmd_sessions->setupMidiCISession();
     }
 
-    void UapmdMidiDevice::initialize() {
-        if (sequencer) {
-            if (auto groupOpt = sequencer->groupForInstance(instance_id); groupOpt.has_value()) {
-                ump_group = groupOpt.value();
-            }
-        }
-        setupMidiCISession();
+    void UapmdFunctionBlock::umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+        static_cast<UapmdFunctionBlock*>(context)->umpReceived(ump, sizeInBytes, timestamp);
     }
 
-    void UapmdMidiDevice::umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-        static_cast<UapmdMidiDevice*>(context)->umpReceived(ump, sizeInBytes, timestamp);
-    }
-
-    void UapmdMidiDevice::umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    void UapmdFunctionBlock::umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
         if (!sequencer)
             return;
 
@@ -67,9 +56,7 @@ namespace uapmd {
             return;
         }
 
-        auto groupId = static_cast<uint8_t>((ump[0] >> 28) & 0x0F);
-        if (auto instance = sequencer->instanceForGroup(groupId); instance.has_value())
-            sequencer->enqueueUmp(instance.value(), ump, sizeInBytes, timestamp);
+        sequencer->enqueueUmp(instance_id, ump, sizeInBytes, timestamp);
     }
 
 }

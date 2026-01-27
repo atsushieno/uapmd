@@ -52,7 +52,7 @@ target_link_libraries(uapmd PUBLIC
 )
 
 target_sources(uapmd PRIVATE
-        Midi/UapmdMidiDevice.cpp
-        Midi/UapmdMidiCISessions.cpp
+        Midi/UapmdFunctionBlock.cpp
+        Midi/UapmdMidiCISession.cpp
         Midi/UapmdUmpMapper.cpp
 )
