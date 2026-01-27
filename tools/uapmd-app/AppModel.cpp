@@ -232,13 +232,8 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
         }
     }
 
-    // Remove the plugin instance from sequencer
     sequencer_.engine()->removePluginInstance(instanceId);
-
-    // Clean up empty function blocks
-    sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
-
-    // Clean up empty function blocks
+    sequencer_.engine()->cleanupEmptyTracks();
     sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
 
     // Sync app tracks to reflect any removed tracks

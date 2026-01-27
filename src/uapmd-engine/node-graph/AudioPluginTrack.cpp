@@ -35,6 +35,7 @@ namespace uapmd {
         int32_t processAudio(AudioProcessContext& process) override;
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
+        bool isProcessing() const override { return false; } // No longer used, protection is at SequencerEngine level
 
     private:
         size_t fillEventBufferForGroup(EventSequence& eventIn, uint8_t group) {

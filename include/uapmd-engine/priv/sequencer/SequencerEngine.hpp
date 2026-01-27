@@ -106,6 +106,9 @@ namespace uapmd {
         virtual void offlineRendering(bool enabled) = 0;
 
         virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
+
+        // Clean up empty tracks (must be called from non-audio thread)
+        virtual void cleanupEmptyTracks() = 0;
     };
 
 }

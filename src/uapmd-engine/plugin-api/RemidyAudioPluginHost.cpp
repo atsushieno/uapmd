@@ -7,7 +7,10 @@
 #include "../node-graph/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
+    int32_t instanceIdSerial{0};
+
     class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
+        bool bypassed_{true};
         std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
         remidy::PluginUISupport* ui_support{nullptr};
@@ -30,8 +33,10 @@ namespace uapmd {
         explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance) :
             instancing(instancing), instance(instance) {
             ump_input_mapper = std::make_unique<UapmdNodeUmpInputMapper>(this);
+            bypassed_ = false;
         }
         ~RemidyAudioPluginInstance() override {
+            bypassed_ = true;
             if (ui_support) {
                 if (uiVisible)
                     ui_support->hide();
@@ -43,13 +48,24 @@ namespace uapmd {
             }
         }
 
+        void bypassed(bool value) override {
+            bypassed_ = value;
+        }
+
         uapmd_status_t processAudio(AudioProcessContext &process) override {
+            if (bypassed_)
+                return 0;
+
             // FIXME: pass valid timestamp
-            ump_input_mapper->process(0, process);
+            if (const auto m = ump_input_mapper.get())
+                m->process(0, process);
             
             // FIXME: define error codes
-            return (uapmd_status_t) instance->process(process);
+            if (const auto p = instance)
+                return (uapmd_status_t) p->process(process);
+            return 0;
         }
+
         std::vector<uapmd::ParameterMetadata> parameterMetadataList() override {
             std::vector<ParameterMetadata> ret{};
             auto pl = instance->parameters();
@@ -277,14 +293,14 @@ void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
         scanning.performPluginScanning();
 }
 
-void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(std::unique_ptr<AudioPluginInstanceAPI> node, std::string error)>&& callback) {
+void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(AudioPluginInstanceAPI* node, int32_t instanceId, std::string error)>&& callback) {
     auto format = *(scanning.formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning.catalog.getPlugins();
     auto entry = std::ranges::find_if(plugins, [&formatName,&pluginId](auto e) {
         return e->format() == formatName && e->pluginId() == pluginId;
     });
     if (entry == plugins.end())
-        callback(nullptr, "Plugin not found");
+        callback(nullptr, -1, "Plugin not found");
     else {
         auto instancing = std::make_shared<remidy_tooling::PluginInstancing>(scanning, format, *entry);
         auto& request = instancing->configurationRequest();
@@ -301,16 +317,28 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
         auto cb = std::move(callback);
         instancing->makeAlive([this,instancing,cb](std::string error) {
             if (error.empty())
-                instancing->withInstance([this,instancing,cb](auto instance) {
-                    cb(std::make_unique<RemidyAudioPluginInstance>(instancing, instance), "");
+                instancing->withInstance([this,instancing,cb](remidy::PluginInstance* instance) {
+                    auto instanceId = instanceIdSerial++;
+                    auto api = std::make_unique<RemidyAudioPluginInstance>(instancing, instance);
+                    auto ptr = api.get();
+                    instances[instanceId] = std::move(api);
+                    cb(ptr, instanceId, "");
                 });
             else {
-                cb(nullptr, error);
+                cb(nullptr, -1, error);
             }
         });
     }
 }
 
+void uapmd::RemidyAudioPluginHost::deletePluginInstance(int32_t instanceId) {
+    instances.erase(instanceId);
+}
+
+uapmd::AudioPluginInstanceAPI * uapmd::RemidyAudioPluginHost::getInstance(int32_t instanceId) {
+    const auto &i = instances[instanceId];
+    return i ? i.get() : nullptr;
+}
 
 uapmd_status_t uapmd::RemidyAudioPluginHost::processAudio(std::vector<remidy::AudioProcessContext *> contexts) {
     return 0;

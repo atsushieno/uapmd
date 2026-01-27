@@ -1,18 +1,20 @@
 #pragma once
 
 #include "uapmd/uapmd.hpp"
+#include <atomic>
 
 namespace uapmd {
     class AudioPluginNode {
-        std::unique_ptr<AudioPluginInstanceAPI> node_;
-        bool bypassed_{true}; // initial
+        std::atomic<AudioPluginInstanceAPI*> node_;
+        std::atomic<bool> bypassed_{true}; // initial
         int32_t instance_id_;
+        std::function<void()> on_dispose;
 
     public:
-        AudioPluginNode(std::unique_ptr<AudioPluginInstanceAPI> nodePAL, int32_t instanceId);
+        AudioPluginNode(AudioPluginInstanceAPI* nodePAL, int32_t instanceId, std::function<void()> &&onDispose);
         virtual ~AudioPluginNode();
 
-        AudioPluginInstanceAPI* pal();
+        AudioPluginInstanceAPI* pal() const;
 
         // instanceId can be used to indicate a plugin instance *across* processes i.e.
         // where pointer to the instance cannot be shared.

@@ -1,6 +1,7 @@
 #include "uapmd/uapmd.hpp"
 #include <atomic>
 #include <mutex>
+#include <thread>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -12,8 +13,6 @@
 
 namespace uapmd {
 
-    int32_t instanceIdSerial{0};
-
     class SequencerEngineImpl : public SequencerEngine {
         size_t audio_buffer_size_in_frames;
         size_t ump_buffer_size_in_ints;
@@ -22,7 +21,7 @@ namespace uapmd {
         std::vector<std::unique_ptr<AudioPluginTrack>> tracks_{};
         SequenceProcessContext sequence{};
         int32_t sampleRate;
-        AudioPluginHostingAPI* pal;
+        AudioPluginHostingAPI* plugin_host;
         UapmdFunctionBlockManager function_block_manager{};
 
         // Playback state (managed by AudioPluginSequencer)
@@ -73,6 +72,10 @@ namespace uapmd {
 
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
+
+        // Track processing flags for safe deletion (parallel to tracks_ vector)
+        // Note: std::atomic is not copyable, so we use unique_ptr
+        std::vector<std::unique_ptr<std::atomic<bool>>> track_processing_flags_;
 
     public:
         explicit SequencerEngineImpl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
@@ -141,6 +144,8 @@ namespace uapmd {
         bool offlineRendering() const override;
         void offlineRendering(bool enabled) override;
 
+        void cleanupEmptyTracks() override;
+
     private:
         void removeTrack(size_t index);
 
@@ -172,7 +177,7 @@ namespace uapmd {
         audio_buffer_size_in_frames(audioBufferSizeInFrames),
         sampleRate(sampleRate),
         ump_buffer_size_in_ints(umpBufferSizeInInts),
-        pal(AudioPluginHostingAPI::instance()),
+        plugin_host(AudioPluginHostingAPI::instance()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
     }
 
@@ -231,9 +236,15 @@ namespace uapmd {
 
         // Process all tracks
         for (auto i = 0; i < sequence.tracks.size(); i++) {
+            // Set processing flag BEFORE accessing sequence.tracks[i]
+            track_processing_flags_[i]->store(true, std::memory_order_release);
+
             auto& tp = *sequence.tracks[i];
             tracks_[i]->processAudio(tp);
             tp.eventIn().position(0); // reset
+
+            // Clear processing flag AFTER we're done with the track context
+            track_processing_flags_[i]->store(false, std::memory_order_release);
         }
 
         // Clear main output bus (bus 0) before mixing
@@ -348,6 +359,7 @@ namespace uapmd {
         auto tr = AudioPluginTrack::create(ump_buffer_size_in_ints);
         tracks_.emplace_back(std::move(tr));
         sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
+        track_processing_flags_.emplace_back(std::make_unique<std::atomic<bool>>(false));
         auto trackIndex = static_cast<uapmd_track_index_t>(tracks_.size() - 1);
 
         // Configure main bus (moved from AudioPluginSequencer)
@@ -362,6 +374,7 @@ namespace uapmd {
             return false;
         tracks_.erase(tracks_.begin() + static_cast<long>(index));
         sequence.tracks.erase(sequence.tracks.begin() + static_cast<long>(index));
+        track_processing_flags_.erase(track_processing_flags_.begin() + static_cast<long>(index));
         return true;
     }
 
@@ -372,7 +385,7 @@ namespace uapmd {
             return;
         }
 
-        pal->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, callback](auto instance, std::string error) {
+        plugin_host->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, callback](AudioPluginInstanceAPI* instance, int32_t instanceId, std::string error) {
             if (!instance) {
                 callback(-1, -1, "Could not create plugin: " + error);
                 return;
@@ -386,8 +399,10 @@ namespace uapmd {
 
             auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
 
-            auto palPtr = instance.get();
-            auto node = std::make_unique<AudioPluginNode>(std::move(instance), instanceIdSerial++);
+            auto palPtr = instance;
+            auto node = std::make_unique<AudioPluginNode>(instance, instanceId, [this,instanceId] {
+                plugin_host->deletePluginInstance(instanceId);
+            });
             auto* nodePtr = node.get();
 
             // Append to track's graph
@@ -396,8 +411,6 @@ namespace uapmd {
                 callback(-1, -1, std::format("Failed to append plugin to track {} (status {})", trackIndex, status));
                 return;
             }
-
-            auto instanceId = nodePtr->instanceId();
 
             // Function block setup
             configureTrackRouting(track);
@@ -458,8 +471,9 @@ namespace uapmd {
             if (!track)
                 continue;
             if (track->graph().removePluginInstance(instanceId)) {
-                if (track->graph().plugins().empty())
-                    removeTrack(i);
+                // NOTE: Empty tracks are intentionally left in place to avoid real-time safety issues.
+                // They have minimal overhead (no plugins to process) and can be removed manually
+                // by calling removeTrack() from a non-audio thread when appropriate.
                 refreshFunctionBlockMappings();
                 return true;
             }
@@ -472,9 +486,11 @@ namespace uapmd {
             return;
         tracks_.erase(tracks_.begin() + static_cast<long>(index));
         if (index < sequence.tracks.size()) {
-            delete sequence.tracks[index];
+            auto* ctx = sequence.tracks[index];
             sequence.tracks.erase(sequence.tracks.begin() + static_cast<long>(index));
+            delete ctx;
         }
+        track_processing_flags_.erase(track_processing_flags_.begin() + static_cast<long>(index));
     }
 
     // Playback control
@@ -832,16 +848,16 @@ namespace uapmd {
     }
 
     uapmd::PluginCatalog& uapmd::SequencerEngineImpl::catalog() {
-        return pal->catalog();
+        return plugin_host->catalog();
     }
 
     void uapmd::SequencerEngineImpl::performPluginScanning(bool rescan) {
-        pal->performPluginScanning(rescan);
+        plugin_host->performPluginScanning(rescan);
     }
 
     std::vector<SequencerEngineImpl::TrackInfo> uapmd::SequencerEngineImpl::getTrackInfos() {
         std::vector<TrackInfo> info;
-        auto catalogPlugins = pal->catalog().getPlugins();
+        auto catalogPlugins = plugin_host->catalog().getPlugins();
         auto displayNameFor = [&](const std::string& format, const std::string& pluginId) -> std::string {
             for (auto* entry : catalogPlugins) {
                 if (entry->format() == format && entry->pluginId() == pluginId) {
@@ -876,7 +892,7 @@ namespace uapmd {
         std::string format = instance->formatName();
 
         // Search in the catalog for display name
-        auto plugins = pal->catalog().getPlugins();
+        auto plugins = plugin_host->catalog().getPlugins();
         for (auto* catalogPlugin : plugins) {
             if (catalogPlugin->pluginId() == pluginId && catalogPlugin->format() == format)
                 return catalogPlugin->displayName();
@@ -890,6 +906,27 @@ namespace uapmd {
 
     void uapmd::SequencerEngineImpl::offlineRendering(bool enabled) {
         offline_rendering_.store(enabled, std::memory_order_release);
+    }
+
+    void uapmd::SequencerEngineImpl::cleanupEmptyTracks() {
+        // It uses busy-waiting to ensure the audio thread is not currently processing
+        // the track before deletion.
+
+        // Iterate backwards to preserve indices when erasing
+        for (int i = static_cast<int>(tracks_.size()) - 1; i >= 0; --i) {
+            auto& track = tracks_[static_cast<size_t>(i)];
+            if (track && track->graph().plugins().empty()) {
+                // Busy-wait until audio thread is done processing this track
+                // This is typically a very short wait (microseconds to milliseconds)
+                while (track_processing_flags_[static_cast<size_t>(i)]->load(std::memory_order_acquire)) {
+                    // Spin-wait - audio thread will clear the flag very soon
+                    std::this_thread::yield(); // Be nice to other threads
+                }
+
+                // Now safe to delete - audio thread is not using this track's context
+                removeTrack(static_cast<size_t>(i));
+            }
+        }
     }
 
 }

@@ -29,6 +29,9 @@ namespace uapmd {
 
         virtual void setGroupResolver(std::function<uint8_t(int32_t)> resolver) = 0;
         virtual void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) = 0;
+
+        // For safe deletion: check if audio thread is currently processing this track
+        virtual bool isProcessing() const = 0;
     };
 
 }
