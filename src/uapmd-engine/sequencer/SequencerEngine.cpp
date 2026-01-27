@@ -23,6 +23,7 @@ namespace uapmd {
         SequenceProcessContext sequence{};
         int32_t sampleRate;
         AudioPluginHostingAPI* pal;
+        UapmdFunctionBlockManager function_block_manager{};
 
         // Playback state (managed by AudioPluginSequencer)
         std::atomic<bool> is_playback_active_{false};
@@ -120,6 +121,8 @@ namespace uapmd {
         // Group queries
         std::optional<uint8_t> groupForInstance(int32_t instanceId) const override;
         std::optional<int32_t> instanceForGroup(uint8_t group) const override;
+
+        UapmdFunctionBlockManager *functionBlockManager() override { return &function_block_manager; }
 
         // Event routing
         void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) override;

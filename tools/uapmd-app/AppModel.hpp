@@ -56,7 +56,6 @@ namespace uapmd {
     };
 
     class AppModel : MidiIOManagerFeature {
-        UapmdFunctionBlockManager function_block_manager{this};
         std::shared_ptr<MidiIOFeature> createMidiIOFeature(
             std::string apiName, std::string deviceName, std::string manufacturer, std::string version) override;
 

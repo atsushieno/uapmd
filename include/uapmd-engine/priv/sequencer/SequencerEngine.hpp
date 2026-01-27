@@ -107,6 +107,8 @@ namespace uapmd {
 
         virtual bool offlineRendering() const = 0;
         virtual void offlineRendering(bool enabled) = 0;
+
+        virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
     };
 
 }

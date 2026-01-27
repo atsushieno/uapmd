@@ -35,14 +35,18 @@ namespace uapmd {
         void destroyDevice(const int32_t instanceId) {
             devices_[instanceId].reset();
         }
+
+        bool isEmpty() const {
+            return devices_.empty();
+        }
     };
 
     class UapmdFunctionBlockManager {
-        MidiIOManagerFeature* midi_io_manager;
+        MidiIOManagerFeature* midi_io_manager{};
         std::vector<UapmdFunctionBlock> blocks{};
 
     public:
-        explicit UapmdFunctionBlockManager(MidiIOManagerFeature* midiIOManager) : midi_io_manager(midiIOManager) {}
+        void setMidiIOManager(MidiIOManagerFeature* midiIOManager) { midi_io_manager = midiIOManager; }
 
         size_t count() const { return blocks.size(); }
 
@@ -71,6 +75,14 @@ namespace uapmd {
                     return ret;
             }
             return nullptr;
+        }
+
+        void deleteEmptyBlocks() {
+            blocks.erase(
+                std::remove_if(blocks.begin(), blocks.end(),
+                    [](const UapmdFunctionBlock& block) { return block.isEmpty(); }),
+                blocks.end()
+            );
         }
     };
 }
