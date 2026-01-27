@@ -32,8 +32,6 @@ namespace uapmd {
 
         // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
         virtual void loadPreset(uint32_t index) = 0;
-
-        // FIXME: add support for per-note controllers
     };
 
     class UapmdUmpOutputMapper {

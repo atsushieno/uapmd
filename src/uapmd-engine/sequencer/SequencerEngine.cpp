@@ -769,30 +769,6 @@ namespace uapmd {
         if (mapping == plugin_function_blocks_.end() || !mapping->second.track)
             return;
 
-        // FIXME: this Function Block mapping is wrong.
-        //  We define function blocks per track basis i.e. each track should form a virtual UMP device.
-        //  (and also, we currently do not even form one virtual device to gather all the plugins within the track so
-        //  every single plugin creates a virtual UMP device exposed to the platform API.)
-        //  So mapping will not simply work. We should set group 0 everywhere for now.
-        //
-        //  However, simply disabling this code causes regression that track > 0 will not receive inputs.
-        //  So it is kept for a time being.
-        if (const auto fb = functionBlockManager()->getFunctionDeviceByInstanceId(instanceId); fb) {
-            auto group = fb->group();
-            auto* bytesPtr = reinterpret_cast<uint8_t*>(ump);
-            size_t offset = 0;
-            while (offset + sizeof(uint32_t) <= sizeInBytes) {
-                auto* words = reinterpret_cast<uint32_t*>(bytesPtr + offset);
-                auto messageType = static_cast<uint8_t>(words[0] >> 28);
-                auto wordCount = umppi::umpSizeInInts(messageType);
-                auto messageSize = static_cast<size_t>(wordCount) * sizeof(uint32_t);
-                if (offset + messageSize > sizeInBytes)
-                    break;
-                words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group) << 24);
-                offset += messageSize;
-            }
-        }
-
         mapping->second.track->scheduleEvents(timestamp, ump, sizeInBytes);
     }
 

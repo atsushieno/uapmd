@@ -6,9 +6,6 @@
 #include <memory>
 #include <string>
 
-// FIXME: remove these undefs once we sort out name conflicts
-#undef JR_TIMESTAMP_TICKS_PER_SECOND
-#undef MIDI_2_0_RESERVED
 #include "midicci/midicci.hpp"
 #include "uapmd/uapmd.hpp"
 
