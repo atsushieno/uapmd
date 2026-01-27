@@ -8,7 +8,7 @@
 
 namespace uapmd {
     class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
-        remidy_tooling::PluginInstancing* instancing{};
+        std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
         remidy::PluginUISupport* ui_support{nullptr};
         bool uiCreated{false};
@@ -24,7 +24,7 @@ namespace uapmd {
         }
 
     public:
-        explicit RemidyAudioPluginInstance(remidy_tooling::PluginInstancing* instancing, remidy::PluginInstance* instance) :
+        explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance) :
             instancing(instancing), instance(instance) {}
         ~RemidyAudioPluginInstance() override {
             if (ui_support) {
@@ -36,7 +36,6 @@ namespace uapmd {
                 uiCreated = false;
                 uiFloating = true;
             }
-            delete instancing;
         }
 
         uapmd_status_t processAudio(AudioProcessContext &process) override {
@@ -269,7 +268,7 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
     if (entry == plugins.end())
         callback(nullptr, "Plugin not found");
     else {
-        auto instancing = new remidy_tooling::PluginInstancing(scanning, format, *entry);
+        auto instancing = std::make_shared<remidy_tooling::PluginInstancing>(scanning, format, *entry);
         auto& request = instancing->configurationRequest();
         request.sampleRate = static_cast<uint32_t>(sampleRate);
         if (inputChannels > 0)
@@ -289,7 +288,6 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
                 });
             else {
                 cb(nullptr, error);
-                delete instancing;
             }
         });
     }
