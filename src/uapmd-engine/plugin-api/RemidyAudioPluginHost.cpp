@@ -44,6 +44,9 @@ namespace uapmd {
         }
 
         uapmd_status_t processAudio(AudioProcessContext &process) override {
+            // FIXME: pass valid timestamp
+            ump_input_mapper->process(0, process);
+            
             // FIXME: define error codes
             return (uapmd_status_t) instance->process(process);
         }
