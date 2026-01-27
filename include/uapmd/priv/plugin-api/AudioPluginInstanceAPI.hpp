@@ -6,6 +6,8 @@
 #include <cstdint>
 #include "remidy/remidy.hpp"
 #include "../CommonTypes.hpp"
+#include "../midi/UapmdUmpMapper.hpp"
+#include "../midi/MidiIOFeature.hpp"
 
 namespace uapmd {
     struct ParameterNamedValue {
@@ -34,7 +36,6 @@ namespace uapmd {
         std::string name;
         std::string path;
     };
-
 
     class AudioPluginInstanceAPI {
     public:
@@ -88,6 +89,9 @@ namespace uapmd {
             if (auto* support = parameterSupport())
                 support->parameterMetadataChangeEvent().removeListener(id);
         }
+
+        virtual void assignMidiDeviceToPlugin(MidiIOFeature* device) = 0;
+        virtual void clearMidiDeviceFromPlugin() = 0;
     };
 
 }

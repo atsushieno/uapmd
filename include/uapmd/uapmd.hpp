@@ -8,5 +8,5 @@
 #include "priv/midi/MidiIOManagerFeature.hpp"
 #include "priv/midi/UapmdMidiCISessions.hpp"
 #include "priv/midi/UapmdMidiDevice.hpp"
-#include "priv/midi/UapmdMidiDeviceManager.hpp"
+#include "priv/midi/UapmdFunctionBlockManager.hpp"
 #include "priv/midi/UapmdUmpMapper.hpp"

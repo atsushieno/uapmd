@@ -24,12 +24,12 @@ namespace uapmd {
     };
 
     class UapmdNodeUmpOutputMapper : public UapmdUmpOutputMapper {
-        std::shared_ptr<MidiIOFeature> device;
+        MidiIOFeature* device;
         AudioPluginInstanceAPI* plugin;
         remidy::EventListenerId param_change_listener_id;
 
     public:
-        explicit UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIOFeature> device, AudioPluginInstanceAPI* plugin);
+        explicit UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin);
         ~UapmdNodeUmpOutputMapper() override;
 
         void onParameterValueUpdated(uint16_t index, double value) override;

@@ -143,9 +143,6 @@ namespace uapmd {
 
         void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) override;
 
-        void assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIOFeature> device) override;
-        void clearMidiDeviceFromPlugin(int32_t instanceId) override;
-
         bool offlineRendering() const override;
         void offlineRendering(bool enabled) override;
 
@@ -172,9 +169,6 @@ namespace uapmd {
 
         // Output dispatch
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
-
-        // Application-specific MIDI device integration
-        AudioPluginNode* findPluginNodeByInstance(int32_t instanceId);
     };
 
     std::unique_ptr<SequencerEngine> SequencerEngine::create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts) {
@@ -400,6 +394,7 @@ namespace uapmd {
 
             auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
 
+            auto palPtr = instance.get();
             auto node = std::make_unique<AudioPluginNode>(std::move(instance), instanceIdSerial++);
             auto* nodePtr = node.get();
 
@@ -411,9 +406,6 @@ namespace uapmd {
             }
 
             auto instanceId = nodePtr->instanceId();
-            auto* palPtr = nodePtr->pal();
-
-            nodePtr->setUmpInputMapper(std::make_unique<UapmdNodeUmpInputMapper>(palPtr));
 
             // Function block setup
             configureTrackRouting(track);
@@ -960,39 +952,6 @@ namespace uapmd {
                 return catalogPlugin->displayName();
         }
         return "Plugin " + std::to_string(instanceId);
-    }
-
-    uapmd::AudioPluginNode* uapmd::SequencerEngineImpl::findPluginNodeByInstance(int32_t instanceId) {
-        auto& tracksRef = tracks();
-        for (auto* track : tracksRef) {
-            if (!track)
-                continue;
-            for (auto* plugin : track->graph().plugins()) {
-                if (plugin && plugin->instanceId() == instanceId)
-                    return plugin;
-            }
-        }
-        return nullptr;
-    }
-
-    void uapmd::SequencerEngineImpl::assignMidiDeviceToPlugin(int32_t instanceId, std::shared_ptr<MidiIOFeature> device) {
-        if (!device)
-            return;
-        auto* node = findPluginNodeByInstance(instanceId);
-        if (!node)
-            return;
-        auto* palPtr = node->pal();
-        if (!palPtr)
-            return;
-        auto mapper = std::make_unique<UapmdNodeUmpOutputMapper>(std::move(device), palPtr);
-        node->setUmpOutputMapper(std::move(mapper));
-    }
-
-    void uapmd::SequencerEngineImpl::clearMidiDeviceFromPlugin(int32_t instanceId) {
-        auto* node = findPluginNodeByInstance(instanceId);
-        if (!node)
-            return;
-        node->setUmpOutputMapper(nullptr);
     }
 
     bool uapmd::SequencerEngineImpl::offlineRendering() const {

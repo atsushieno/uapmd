@@ -1,5 +1,5 @@
 #pragma once
-#include "UapmdMidiDevice.hpp"
+#include "uapmd/uapmd.hpp"
 
 namespace uapmd {
     class UapmdFunctionBlock {
@@ -12,28 +12,33 @@ namespace uapmd {
         std::vector<UapmdMidiDevice*> devices() {
             std::vector<UapmdMidiDevice*> result{};
             for (auto &val: devices_ | std::views::values)
-                result.push_back(val.get());
+                if (val)  // Skip null shared_ptrs
+                    result.push_back(val.get());
             return result;
         }
 
-        int32_t createDevice(std::shared_ptr<MidiIOFeature> midiDevice,
+        bool createDevice(std::string& apiName,
                         SequencerFeature* sequencer,
                         int32_t instanceId,
                         int32_t trackIndex,
                         std::string deviceName,
                         std::string manufacturer,
                         std::string version) {
+            std::shared_ptr<MidiIOFeature> midiDevice  = midi_io_manager->createMidiIOFeature(apiName, deviceName, manufacturer, version);
+            if (!midiDevice) return false;
+
             devices_[instanceId] = std::make_shared<UapmdMidiDevice>(midiDevice, sequencer, instanceId, trackIndex, deviceName, manufacturer, version);
-            return instanceId;
+            return true;
         }
 
         // FIXME: we should not really return shared_ptr here...
-        std::shared_ptr<UapmdMidiDevice> getDeviceById(int32_t instanceId) {
-            return devices_[instanceId];
+        std::shared_ptr<UapmdMidiDevice> getDeviceByInstanceId(int32_t instanceId) {
+            const auto it = devices_.find(instanceId);
+            return it != devices_.end() ? it->second : nullptr;
         }
 
         void destroyDevice(const int32_t instanceId) {
-            devices_[instanceId].reset();
+            devices_.erase(instanceId);
         }
 
         bool isEmpty() const {
@@ -69,9 +74,9 @@ namespace uapmd {
         }
 
         // FIXME: we should not really return shared_ptr here...
-        std::shared_ptr<UapmdMidiDevice> getDeviceById(int32_t instanceId) {
+        std::shared_ptr<UapmdMidiDevice> getDeviceByInstanceId(int32_t instanceId) {
             for (auto& block : blocks) {
-                if (auto ret = block.getDeviceById(instanceId))
+                if (auto ret = block.getDeviceByInstanceId(instanceId))
                     return ret;
             }
             return nullptr;

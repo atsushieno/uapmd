@@ -36,9 +36,9 @@ namespace uapmd {
         plugin->loadPreset(index);
     }
 
-    UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(std::shared_ptr<MidiIOFeature> device, AudioPluginInstanceAPI* plugin)
+    UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin)
       : UapmdUmpOutputMapper(),
-        device(std::move(device)),
+        device(device),
         plugin(plugin) {
         param_change_listener_id = plugin->addParameterChangeListener([this](uint32_t index, double value) {
             onParameterValueUpdated(index, value);

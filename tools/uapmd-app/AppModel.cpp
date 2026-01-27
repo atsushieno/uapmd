@@ -215,6 +215,8 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
         instance->destroyUI();
     }
 
+    disableUmpDevice(instanceId);
+
     // Stop and remove virtual MIDI device if it exists
     {
         std::lock_guard lock(devicesMutex_);
@@ -232,6 +234,9 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
 
     // Remove the plugin instance from sequencer
     sequencer_.engine()->removePluginInstance(instanceId);
+
+    // Clean up empty function blocks
+    sequencer().engine()->functionBlockManager()->deleteEmptyBlocks();
 
     // Clean up empty function blocks
     sequencer().engine()->functionBlockManager()->deleteEmptyBlocks();
@@ -291,17 +296,21 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
     // If device was destroyed (disabled), recreate it
     if (!deviceState->device) {
         auto actualTrackIndex = sequencer_.findTrackIndexForInstance(instanceId);
-        // FIXME: we will move this device creation to UapmdMidiDeviceManager (once we finish migrating group management stuff).
-        std::shared_ptr<MidiIOFeature> midiDevice;
-        try {
-            midiDevice = createMidiIOFeature(deviceState->apiName,
-                                             deviceName.empty() ? deviceState->label : deviceName,
-                                             "UAPMD Project",
-                                             "0.1");
-        } catch (const std::exception& e) {
+
+        auto fbManager = sequencer_.engine()->functionBlockManager();
+
+        auto fbIndex = fbManager->create();
+        auto fb = fbManager->getFunctionBlockByIndex(fbIndex);
+        if (!fb->createDevice(deviceState->apiName,
+                                      sequencer_.engine(),
+                                               instanceId,
+                                               actualTrackIndex,
+                                               deviceName.empty() ? deviceState->label : deviceName,
+                                               "UAPMD Project",
+                                               "0.1")) {
             deviceState->running = false;
             deviceState->hasError = true;
-            deviceState->statusMessage = e.what();
+            deviceState->statusMessage = "Failed to create virtual MIDI device";
             result.success = false;
             result.error = deviceState->statusMessage;
             result.statusMessage = deviceState->statusMessage;
@@ -310,24 +319,13 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
             }
             return;
         }
-
-        auto fbManager = sequencer_.engine()->functionBlockManager();
-        auto fbIndex = fbManager->create();
-        auto fb = fbManager->getFunctionBlockByIndex(fbIndex);
-        auto deviceId = fb->createDevice(midiDevice,
-                                               sequencer_.engine(),
-                                               instanceId,
-                                               actualTrackIndex,
-                                               deviceName.empty() ? deviceState->label : deviceName,
-                                               "UAPMD Project",
-                                               "0.1");
-        auto device = fbManager->getDeviceById(deviceId);
+        auto device = fbManager->getDeviceByInstanceId(instanceId);
 
         if (auto group = sequencer_.engine()->groupForInstance(instanceId); group.has_value()) {
             device->group(group.value());
         }
 
-        sequencer_.engine()->assignMidiDeviceToPlugin(instanceId, midiDevice);
+        sequencer_.engine()->getPluginInstance(instanceId)->assignMidiDeviceToPlugin(device->midiIO());
         device->initialize();
 
         deviceState->device = device;
@@ -382,7 +380,7 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
     }
 
     // Clear MIDI device from plugin node to release the shared_ptr
-    sequencer_.engine()->clearMidiDeviceFromPlugin(instanceId);
+    sequencer_.engine()->getPluginInstance(instanceId)->clearMidiDeviceFromPlugin();
     if (auto fb = sequencer().engine()->functionBlockManager()->getFunctionBlockForInstance(instanceId))
         fb->destroyDevice(instanceId);
 

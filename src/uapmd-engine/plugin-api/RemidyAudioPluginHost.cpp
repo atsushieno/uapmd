@@ -15,6 +15,9 @@ namespace uapmd {
         bool uiVisible{false};
         bool uiFloating{true};
 
+        std::unique_ptr<UapmdUmpInputMapper> ump_input_mapper{};
+        std::unique_ptr<UapmdUmpOutputMapper> ump_output_mapper{};
+
         remidy::PluginUISupport* ensureUISupport() {
             if (!instance)
                 return nullptr;
@@ -25,7 +28,9 @@ namespace uapmd {
 
     public:
         explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance) :
-            instancing(instancing), instance(instance) {}
+            instancing(instancing), instance(instance) {
+            ump_input_mapper = std::make_unique<UapmdNodeUmpInputMapper>(this);
+        }
         ~RemidyAudioPluginInstance() override {
             if (ui_support) {
                 if (uiVisible)
@@ -241,6 +246,16 @@ namespace uapmd {
             if (!instance)
                 return nullptr;
             return instance->parameters();
+        }
+
+        void assignMidiDeviceToPlugin(MidiIOFeature* device) {
+            if (!device)
+                return;
+            ump_output_mapper = std::make_unique<UapmdNodeUmpOutputMapper>(device, this);
+        }
+
+        void clearMidiDeviceFromPlugin() {
+            ump_output_mapper.reset();
         }
     };
 }

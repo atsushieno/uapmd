@@ -24,8 +24,6 @@ namespace uapmd {
         if (bypassed_)
             // FIXME: maybe switch to remidy::StatusCode?
             return 0;
-        // FIXME: assign timestamp
-        ump_input_mapper->process(0, process);
         return pal()->processAudio(process);
     }
 
@@ -39,19 +37,5 @@ namespace uapmd {
 
     std::vector<uint8_t> AudioPluginNode::saveState() {
         return pal()->saveState();
-    }
-
-    void AudioPluginNode::setUmpInputMapper(std::unique_ptr<UapmdUmpInputMapper> mapper) {
-        if (mapper)
-            ump_input_mapper = std::move(mapper);
-        else
-            ump_input_mapper.reset();
-    }
-
-    void AudioPluginNode::setUmpOutputMapper(std::unique_ptr<UapmdUmpOutputMapper> mapper) {
-        if (mapper)
-            ump_output_mapper = std::move(mapper);
-        else
-            ump_output_mapper.reset();
     }
 }

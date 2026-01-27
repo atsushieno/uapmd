@@ -7,8 +7,6 @@ namespace uapmd {
         std::unique_ptr<AudioPluginInstanceAPI> node_;
         bool bypassed_{true}; // initial
         int32_t instance_id_;
-        std::unique_ptr<UapmdUmpInputMapper> ump_input_mapper{};
-        std::unique_ptr<UapmdUmpOutputMapper> ump_output_mapper{};
 
     public:
         AudioPluginNode(std::unique_ptr<AudioPluginInstanceAPI> nodePAL, int32_t instanceId);
@@ -27,9 +25,6 @@ namespace uapmd {
 
         void loadState(std::vector<uint8_t>& state);
         std::vector<uint8_t> saveState();
-
-        void setUmpInputMapper(std::unique_ptr<UapmdUmpInputMapper> mapper);
-        void setUmpOutputMapper(std::unique_ptr<UapmdUmpOutputMapper> mapper);
     };
 
 }
