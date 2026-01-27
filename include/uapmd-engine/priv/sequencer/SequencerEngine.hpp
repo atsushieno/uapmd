@@ -55,9 +55,6 @@ namespace uapmd {
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
         virtual uapmd_track_index_t addEmptyTrack() = 0;
 
-        // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
-        virtual void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
-
         // Add plugin to existing track
         virtual void addPluginToTrack(uapmd_track_index_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
 

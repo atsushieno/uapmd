@@ -144,7 +144,8 @@ class RemidyApply {
         // Set default channels for the sequencer
         sequencer->setDefaultChannels(inputChannels, outputChannels);
 
-        sequencer->addSimpleTrack(formatName, pluginId,
+        auto trackIndex = sequencer->addEmptyTrack();
+        sequencer->addPluginToTrack(trackIndex, formatName, pluginId,
             [&](int32_t instance, int32_t trackIndex, std::string error) {
                 if (!error.empty()) {
                     std::cerr << "addSimplePluginTrack() failed: " << error << std::endl;

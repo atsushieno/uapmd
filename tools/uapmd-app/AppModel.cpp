@@ -198,11 +198,9 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         }
     };
 
-    if (trackIndex < 0) {
-        sequencer_.engine()->addSimpleTrack(formatCopy, pluginIdCopy, instantiateCallback);
-    } else {
-        sequencer_.engine()->addPluginToTrack(trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
-    }
+    if (trackIndex < 0)
+        trackIndex = sequencer_.engine()->addEmptyTrack();
+    sequencer_.engine()->addPluginToTrack(trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
 }
 
 void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
@@ -841,7 +839,8 @@ void uapmd::AppModel::ensureDefaultTrack() {
             // No plugin instance, just track creation
             syncAppTracks();
         };
-        sequencer_.engine()->addSimpleTrack(emptyFormat, emptyPluginId, callback);
+        auto trackIndex = sequencer_.engine()->addEmptyTrack();
+        sequencer_.engine()->addPluginToTrack(trackIndex, emptyFormat, emptyPluginId, callback);
 
         // Synchronize app_tracks_ to wrap the newly created track
         syncAppTracks();

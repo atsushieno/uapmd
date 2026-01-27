@@ -90,7 +90,6 @@ namespace uapmd {
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         uapmd_track_index_t addEmptyTrack() override;
         bool removeTrack(uapmd_track_index_t trackIndex) override;
-        void addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) override;
         void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) override;
         bool removePluginInstance(int32_t instanceId) override;
 
@@ -375,15 +374,6 @@ namespace uapmd {
         tracks_.erase(tracks_.begin() + static_cast<long>(index));
         sequence.tracks.erase(sequence.tracks.begin() + static_cast<long>(index));
         return true;
-    }
-
-    void SequencerEngineImpl::addSimpleTrack(std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) {
-        auto trackIndex = addEmptyTrack();
-        addPluginToTrack(trackIndex, format, pluginId, [&](auto instanceId, auto trackIndex, auto error) -> void {
-            callback(instanceId, trackIndex, error);
-            if (!error.empty())
-                removeTrack(trackIndex);
-        });
     }
 
     void SequencerEngineImpl::addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) {
