@@ -166,6 +166,11 @@ namespace uapmd {
         };
         hostProps.setPropertyBinarySetter(customSetter);
 
+        ciDevice.getMessenger().addMessageCallback([&](const Message& req) {
+            if (on_process_midi_message_report && req.getType() == MessageType::MidiMessageReportInquiry)
+                on_process_midi_message_report();
+        });
+
         if (sequencer) {
             sequencer->setPluginOutputHandler(instance_id, [this](const uapmd_ump_t* data, size_t bytes) {
                 if (!device->midiIO())

@@ -21,6 +21,8 @@ namespace uapmd {
 
         std::vector<midicci::musicdevice::MidiInputCallback> ci_input_forwarders{};
 
+        std::function<void()> on_process_midi_message_report{};
+
     public:
         UapmdMidiCISession(
             UapmdFunctionBlock* device,
@@ -38,5 +40,9 @@ namespace uapmd {
         void setupMidiCISession();
 
         void interceptUmpInput(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
+
+        void setMidiMessageReportHandler(std::function<void()>&& onProcessMidiMessageReport) {
+            on_process_midi_message_report = onProcessMidiMessageReport;
+        }
     };
 }
