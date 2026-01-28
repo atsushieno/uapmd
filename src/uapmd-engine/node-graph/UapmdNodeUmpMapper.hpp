@@ -32,8 +32,9 @@ namespace uapmd {
         explicit UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin);
         ~UapmdNodeUmpOutputMapper() override;
 
-        void onParameterValueUpdated(uint16_t index, double value) override;
+        void sendParameterValue(uint16_t index, double value) override;
+        void sendPerNoteControllerValue(uint8_t note, uint8_t index, double value) override;
 
-        void onPresetLoaded(uint32_t index) override;
+        void sendPresetIndexChange(uint32_t index) override;
     };
 }

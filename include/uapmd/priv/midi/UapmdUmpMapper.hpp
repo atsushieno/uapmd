@@ -38,7 +38,8 @@ namespace uapmd {
     public:
         virtual ~UapmdUmpOutputMapper() = default;
 
-        virtual void onParameterValueUpdated(uint16_t index, double value) = 0;
-        virtual void onPresetLoaded(uint32_t index) = 0;
+        virtual void sendParameterValue(uint16_t index, double value) = 0;
+        virtual void sendPerNoteControllerValue(uint8_t note, uint8_t index, double value) = 0;
+        virtual void sendPresetIndexChange(uint32_t index) = 0;
     };
 }

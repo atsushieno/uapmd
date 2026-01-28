@@ -41,7 +41,7 @@ namespace uapmd {
         device(device),
         plugin(plugin) {
         param_change_listener_id = plugin->parameterSupport()->parameterChangeEvent().addListener([this](uint32_t index, double value) {
-            onParameterValueUpdated(index, value);
+            sendParameterValue(index, value);
         });
     }
 
@@ -50,10 +50,10 @@ namespace uapmd {
             plugin->parameterSupport()->parameterChangeEvent().removeListener(param_change_listener_id);
     }
 
-    void UapmdNodeUmpOutputMapper::onParameterValueUpdated(uint16_t index, double value) {
+    void UapmdNodeUmpOutputMapper::sendParameterValue(uint16_t index, double value) {
         if (!device)
             return;
-        if (index == 1 << 14)
+        if (index >= 1 << 14)
             return;
         constexpr uint8_t group = 0;
         constexpr uint8_t channel = 0;
@@ -69,7 +69,24 @@ namespace uapmd {
         device->send(words, sizeof(words), 0);
     }
 
-    void UapmdNodeUmpOutputMapper::onPresetLoaded(uint32_t index) {
+    void UapmdNodeUmpOutputMapper::sendPerNoteControllerValue(uint8_t note, uint8_t index, double value) {
+        if (!device)
+                return;
+        if (index >= 1 << 7)
+            return;
+        constexpr uint8_t group = 0;
+        constexpr uint8_t channel = 0;
+        const double clamped = std::clamp(value, 0.0, 1.0);
+        const auto data = static_cast<uint32_t>(clamped * static_cast<double>(std::numeric_limits<uint32_t>::max()));
+        auto ump = umppi::UmpFactory::midi2PerNoteACC(group, channel, note, index, data);
+        uapmd_ump_t words[2]{
+            static_cast<uapmd_ump_t>(ump >> 32),
+            static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu)
+        };
+        device->send(words, sizeof(words), 0);
+    }
+
+    void UapmdNodeUmpOutputMapper::sendPresetIndexChange(uint32_t index) {
         if (!device)
             return;
         constexpr uint8_t group = 0;
