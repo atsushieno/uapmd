@@ -27,6 +27,7 @@ namespace uapmd {
         MidiIOFeature* device;
         AudioPluginInstanceAPI* plugin;
         remidy::EventListenerId param_change_listener_id;
+        remidy::EventListenerId per_note_change_listener_id;
 
     public:
         explicit UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin);

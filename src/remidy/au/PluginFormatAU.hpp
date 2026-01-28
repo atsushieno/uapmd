@@ -294,6 +294,7 @@ namespace remidy {
             void uninstallParameterListener();
             std::vector<PluginParameter*> buildScopedParameterList(AudioUnitScope scope, UInt32 element);
             std::optional<std::pair<AudioUnitScope, UInt32>> scopeFromContext(PerNoteControllerContextTypes types, PerNoteControllerContext context) const;
+            std::optional<PerNoteControllerContextTypes> contextTypeFromScope(AudioUnitScope scope) const;
             static void parameterEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value);
             void handleParameterEvent(const AudioUnitEvent* event, Float32 value);
             std::optional<uint32_t> indexForParameterId(AudioUnitParameterID id) const;

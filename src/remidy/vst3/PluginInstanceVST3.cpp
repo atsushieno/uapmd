@@ -5,6 +5,7 @@
 
 #include "remidy.hpp"
 #include "../utils.hpp"
+#include <algorithm>
 #include <umppi/umppi.hpp>
 
 #include "PluginFormatVST3.hpp"
@@ -480,6 +481,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     auto* umpBuffer = static_cast<uint32_t*>(eventOut.getMessages());
     size_t umpPosition = eventOut.position() / sizeof(uint32_t); // position in uint32_t units
     size_t umpCapacity = eventOut.maxMessagesInBytes() / sizeof(uint32_t);
+    auto* parameterSupport = dynamic_cast<PluginInstanceVST3::ParameterSupport*>(parameters());
 
     // Process output events (notes, poly pressure, etc.)
     int32_t eventCount = processDataOutputEvents.getEventCount();
@@ -517,6 +519,32 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
                         group, e.polyPressure.channel, e.polyPressure.pitch, pressure);
                     umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
                     umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
+                    break;
+                }
+                case Event::kNoteExpressionValueEvent: {
+                    if (!parameterSupport)
+                        break;
+                    auto maybeIndex = parameterSupport->indexForNoteExpressionType(static_cast<uint32_t>(e.busIndex),
+                                                                                    0, // FIXME: is there any correct value?
+                                                                                    e.noteExpressionValue.typeId);
+                    if (!maybeIndex.has_value())
+                        break;
+                    const uint32_t controllerIndex = maybeIndex.value();
+                    const double plainValue = e.noteExpressionValue.value;
+                    parameterSupport->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_NOTE,
+                                                                   static_cast<uint32_t>(e.noteExpressionValue.noteId),
+                                                                   controllerIndex,
+                                                                   plainValue);
+                    const double clamped = std::clamp(plainValue, 0.0, 1.0);
+                    const uint32_t data = static_cast<uint32_t>(clamped * 4294967295.0);
+                    uint64_t ump = umppi::UmpFactory::midi2PerNoteACC(
+                        group,
+                        0, // FIXME: is there any correct value?
+                        static_cast<uint8_t>(e.noteExpressionValue.noteId),
+                        static_cast<uint8_t>(controllerIndex & 0x7F),
+                        data);
+                    umpBuffer[umpPosition++] = static_cast<uint32_t>(ump >> 32);
+                    umpBuffer[umpPosition++] = static_cast<uint32_t>(ump & 0xFFFFFFFF);
                     break;
                 }
                 case Event::kLegacyMIDICCOutEvent: {

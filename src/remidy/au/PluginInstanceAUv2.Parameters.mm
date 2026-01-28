@@ -270,6 +270,19 @@ std::optional<std::pair<AudioUnitScope, UInt32>> remidy::PluginInstanceAUv2::Par
     return std::nullopt;
 }
 
+std::optional<remidy::PerNoteControllerContextTypes> remidy::PluginInstanceAUv2::ParameterSupport::contextTypeFromScope(AudioUnitScope scope) const {
+    switch (scope) {
+        case kAudioUnitScope_Note:
+            return PER_NOTE_CONTROLLER_PER_NOTE;
+        case kAudioUnitScope_Part:
+            return PER_NOTE_CONTROLLER_PER_CHANNEL;
+        case kAudioUnitScope_Group:
+            return PER_NOTE_CONTROLLER_PER_GROUP;
+        default:
+            return std::nullopt;
+    }
+}
+
 remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
     if (!au_param_id_list || index >= parameter_list.size())
         return StatusCode::INVALID_PARAMETER_OPERATION;
@@ -437,7 +450,14 @@ void remidy::PluginInstanceAUv2::ParameterSupport::handleParameterEvent(const Au
         auto index = indexForParameterId(event->mArgument.mParameter.mParameterID);
         if (!index.has_value())
             return;
-        parameterChangeEvent().notify(index.value(), static_cast<double>(value));
+        auto scope = event->mArgument.mParameter.mScope;
+        auto contextType = contextTypeFromScope(scope);
+        if (contextType.has_value()) {
+            auto contextValue = static_cast<uint32_t>(event->mArgument.mParameter.mElement);
+            perNoteControllerChangeEvent().notify(contextType.value(), contextValue, index.value(), static_cast<double>(value));
+        } else {
+            parameterChangeEvent().notify(index.value(), static_cast<double>(value));
+        }
         return;
     }
 

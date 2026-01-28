@@ -403,8 +403,26 @@ namespace remidy {
                     auto* ev = reinterpret_cast<const clap_event_param_value_t*>(hdr);
                     if (_parameters) {
                         auto* params = dynamic_cast<ParameterSupport*>(_parameters);
-                        if (params)
-                            params->notifyParameterValue(ev->param_id, ev->value);
+                        if (params) {
+                            if (ev->key >= 0) {
+                                params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_NOTE,
+                                                                      static_cast<uint32_t>(ev->key),
+                                                                      ev->param_id,
+                                                                      ev->value);
+                            } else if (ev->channel >= 0) {
+                                params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_CHANNEL,
+                                                                      static_cast<uint32_t>(ev->channel),
+                                                                      ev->param_id,
+                                                                      ev->value);
+                            } else if (ev->port_index >= 0) {
+                                params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_GROUP,
+                                                                      static_cast<uint32_t>(ev->port_index),
+                                                                      ev->param_id,
+                                                                      ev->value);
+                            } else {
+                                params->notifyParameterValue(ev->param_id, ev->value);
+                            }
+                        }
                     }
                     // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
                     // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
@@ -586,8 +604,26 @@ namespace remidy {
             if (hdr->type == CLAP_EVENT_PARAM_VALUE) {
                 auto* ev = reinterpret_cast<const clap_event_param_value_t*>(hdr);
                 auto* params = dynamic_cast<ParameterSupport*>(_parameters);
-                if (params)
-                    params->notifyParameterValue(ev->param_id, ev->value);
+                if (params) {
+                    if (ev->key >= 0) {
+                        params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_NOTE,
+                                                             static_cast<uint32_t>(ev->key),
+                                                             ev->param_id,
+                                                             ev->value);
+                    } else if (ev->channel >= 0) {
+                        params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_CHANNEL,
+                                                             static_cast<uint32_t>(ev->channel),
+                                                             ev->param_id,
+                                                             ev->value);
+                    } else if (ev->port_index >= 0) {
+                        params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_GROUP,
+                                                             static_cast<uint32_t>(ev->port_index),
+                                                             ev->param_id,
+                                                             ev->value);
+                    } else {
+                        params->notifyParameterValue(ev->param_id, ev->value);
+                    }
+                }
             }
         }
 

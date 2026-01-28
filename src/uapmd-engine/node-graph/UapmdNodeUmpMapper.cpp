@@ -39,15 +39,31 @@ namespace uapmd {
     UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin)
       : UapmdUmpOutputMapper(),
         device(device),
-        plugin(plugin) {
-        param_change_listener_id = plugin->parameterSupport()->parameterChangeEvent().addListener([this](uint32_t index, double value) {
+        plugin(plugin),
+        param_change_listener_id(-1),
+        per_note_change_listener_id(-1) {
+        auto* parameterSupport = plugin->parameterSupport();
+        param_change_listener_id = parameterSupport->parameterChangeEvent().addListener([this](uint32_t index, double value) {
             sendParameterValue(index, value);
         });
+        per_note_change_listener_id = parameterSupport->perNoteControllerChangeEvent().addListener(
+            [this](remidy::PerNoteControllerContextTypes types, uint32_t context, uint32_t parameterIndex, double value) {
+                if ((types & remidy::PER_NOTE_CONTROLLER_PER_NOTE) == 0)
+                    return;
+                sendPerNoteControllerValue(
+                    static_cast<uint8_t>(context),
+                    static_cast<uint8_t>(parameterIndex),
+                    value);
+            });
     }
 
     UapmdNodeUmpOutputMapper::~UapmdNodeUmpOutputMapper() {
-        if (plugin && param_change_listener_id != 0)
-            plugin->parameterSupport()->parameterChangeEvent().removeListener(param_change_listener_id);
+        if (plugin) {
+            if (param_change_listener_id >= 0)
+                plugin->parameterSupport()->parameterChangeEvent().removeListener(param_change_listener_id);
+            if (per_note_change_listener_id >= 0)
+                plugin->parameterSupport()->perNoteControllerChangeEvent().removeListener(per_note_change_listener_id);
+        }
     }
 
     void UapmdNodeUmpOutputMapper::sendParameterValue(uint16_t index, double value) {

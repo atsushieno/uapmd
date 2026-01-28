@@ -397,3 +397,30 @@ void remidy::PluginInstanceVST3::ParameterSupport::notifyParameterValue(ParamID 
     if (auto index = indexForParamId(id); index.has_value())
         parameterChangeEvent().notify(index.value(), plainValue);
 }
+
+void remidy::PluginInstanceVST3::ParameterSupport::notifyPerNoteControllerValue(PerNoteControllerContextTypes contextType, uint32_t contextValue, uint32_t index, double plainValue) {
+    perNoteControllerChangeEvent().notify(contextType, contextValue, index, plainValue);
+}
+
+std::optional<uint32_t> remidy::PluginInstanceVST3::ParameterSupport::indexForNoteExpressionType(uint32_t group, uint32_t channel, NoteExpressionTypeID typeId) {
+    for (const auto& entry : note_expression_info_map) {
+        if (entry.first.group == group && entry.first.channel == channel && entry.second.typeId == typeId)
+            return entry.first.index;
+    }
+
+    auto nec = owner->note_expression_controller;
+    if (!nec)
+        return std::nullopt;
+
+    const auto count = nec->getNoteExpressionCount(group, channel);
+    if (count <= 0)
+        return std::nullopt;
+
+    for (int32 i = 0; i < count; ++i) {
+        if (const auto* info = resolveNoteExpressionInfo(group, channel, static_cast<uint32_t>(i))) {
+            if (info->typeId == typeId)
+                return static_cast<uint32_t>(i);
+        }
+    }
+    return std::nullopt;
+}

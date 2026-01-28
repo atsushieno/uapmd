@@ -242,4 +242,9 @@ namespace remidy {
         if (auto index = indexForParamId(id); index.has_value())
             parameterChangeEvent().notify(index.value(), plainValue);
     }
+
+    void PluginInstanceCLAP::ParameterSupport::notifyPerNoteControllerValue(PerNoteControllerContextTypes contextType, uint32_t contextValue, clap_id id, double plainValue) {
+        if (auto index = indexForParamId(id); index.has_value())
+            perNoteControllerChangeEvent().notify(contextType, contextValue, index.value(), plainValue);
+    }
 }

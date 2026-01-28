@@ -96,7 +96,7 @@ namespace remidy {
         uint32_t extra; // for any future uses
     };
 
-    using EventListenerId = uint64_t;
+    using EventListenerId = int64_t;
 
     template<typename TReturn, typename ...TArgs>
     class ParameterEventBase {
@@ -142,10 +142,12 @@ namespace remidy {
 
     using ParameterMetadataChangeEvent = ParameterEventBase<void>;
     using ParameterChangeEvent = ParameterEventBase<void, uint32_t, double>;
+    using PerNoteControllerChangeEvent = ParameterEventBase<void, PerNoteControllerContextTypes, uint32_t, uint32_t, double>;
 
     class PluginParameterSupport {
         ParameterMetadataChangeEvent parameter_metadata_event{};
         ParameterChangeEvent parameter_event{};
+        PerNoteControllerChangeEvent per_note_controller_event{};
 
     public:
         virtual ~PluginParameterSupport() = default;
@@ -153,6 +155,7 @@ namespace remidy {
         // FIXME: should we also virtualize them?
         ParameterMetadataChangeEvent& parameterMetadataChangeEvent() { return parameter_metadata_event; }
         ParameterChangeEvent& parameterChangeEvent() { return parameter_event; }
+        PerNoteControllerChangeEvent& perNoteControllerChangeEvent() { return per_note_controller_event; }
 
         // Returns the list of parameter metadata.
         virtual std::vector<PluginParameter*>& parameters() = 0;

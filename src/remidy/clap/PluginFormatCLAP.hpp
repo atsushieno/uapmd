@@ -134,6 +134,7 @@ namespace remidy {
             void refreshParameterMetadata(uint32_t index) override;
             std::optional<uint32_t> indexForParamId(clap_id id) const;
             void notifyParameterValue(clap_id id, double plainValue);
+            void notifyPerNoteControllerValue(PerNoteControllerContextTypes contextType, uint32_t contextValue, clap_id id, double plainValue);
             clap_id getParameterId(uint32_t index) const { return index < parameter_ids.size() ? parameter_ids[index] : 0; }
         private:
             bool parameterSupportsContext(uint32_t flags, PerNoteControllerContextTypes types) const;

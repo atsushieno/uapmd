@@ -173,6 +173,8 @@ namespace remidy {
             void refreshParameterMetadata(uint32_t index) override;
             std::optional<uint32_t> indexForParamId(ParamID id) const;
             void notifyParameterValue(ParamID id, double plainValue);
+            void notifyPerNoteControllerValue(PerNoteControllerContextTypes contextType, uint32_t contextValue, uint32_t index, double plainValue);
+            std::optional<uint32_t> indexForNoteExpressionType(uint32_t group, uint32_t channel, NoteExpressionTypeID typeId);
             ParamID getParameterId(uint32_t index) const { return index < parameter_ids.size() ? parameter_ids[index] : 0; }
 
             ParamID getProgramChangeParameterId() const { return program_change_parameter_id; }
