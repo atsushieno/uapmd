@@ -48,8 +48,10 @@ namespace uapmd {
                         const auto bankMsb = ump.getMidi2ProgramBankMsb();
                         const auto bankLsb = ump.getMidi2ProgramBankLsb();
                         const auto program = ump.getMidi2ProgramProgram();
-                        const auto bankIndex = bankMsb * 0x80 + bankLsb;
-                        loadPreset(bankIndex * 0x80 + program);
+                        // We use the 7th. bit of bankMSB to indicate whether the MSB is actually for bank or index.
+                        const auto bankIndex = (bankMsb & 0x40 ? 0 : bankMsb) * 0x80 + bankLsb;
+                        const auto presetIndex = (bankMsb & 0x40 ? bankMsb - 0x40 : 0) * 0x80 + program;
+                        loadPreset(bankIndex * 0x80 + presetIndex);
                         break;
                     }
                     default:

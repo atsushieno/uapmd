@@ -118,9 +118,16 @@ namespace uapmd {
         std::vector<commonproperties::MidiCIProgram> programList{};
         programList.reserve(presetsList.size());
         for (auto& p : presetsList) {
-            commonproperties::MidiCIProgram program{p.name,
-                {static_cast<uint8_t>(p.bank / 0x80), static_cast<uint8_t>(p.bank % 0x80), static_cast<uint8_t>(p.index)}};
-            programList.push_back(program);
+            // Unlike nominal mappings, we use bank MSB as part of preset index upper bits.
+            // To identify whether the bank MSB is for preset index or preset bank, we use the first 1 bit as
+            // - 1 to indicate that the field is index (8th-13th. bits)
+            // - 0 to indicate that the field is bank MSB (8th-13th. bits)
+            if (p.index < 1 << 13) {
+                auto msb = static_cast<uint8_t>(p.index >= 0x80 ? p.index / 0x80 | 0x40 : p.bank / 0x80);
+                auto lsb = static_cast<uint8_t>(p.bank % 0x80);
+                auto index = static_cast<uint8_t>(p.index % 0x80);
+                programList.push_back({p.name, {msb, lsb, index}});
+            }
         }
         StandardPropertiesExtensions::setProgramList(ciDevice, programList);
 
