@@ -18,11 +18,11 @@ You can find some open source audio plugins by using [StudioRack](https://studio
 
 ## Step 2: create your virtual device
 
-Run uapmd-app and "Scan Plugins" then the app main window would look like this:
+Launch `uapmd-app`. It will scan plugins, and once it's done the app main window would look like this:
 
 ![uapmd-app after plugin scanning](../images/uapmd-service-after-scanning.png)
 
-Select a plugin and "Create UMP Device". It will add a new audio track:
+Select a plugin and "Instantiate Plugin". It will add a new audio track:
 
 ![uampd-app after adding a plugin track](../images/adlplug-ae-on-uapmd-service.png)
 
