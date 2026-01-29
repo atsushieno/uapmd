@@ -2,7 +2,6 @@
 #include <memory>
 #include <vector>
 
-#include "AudioPluginNode.hpp"
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
@@ -15,10 +14,10 @@ namespace uapmd {
         virtual ~AudioPluginGraph() = default;
         static std::unique_ptr<AudioPluginGraph> create();
 
-        virtual uapmd_status_t appendNodeSimple(std::unique_ptr<AudioPluginNode> newNode) = 0;
-        virtual bool removePluginInstance(int32_t instanceId) = 0;
+        virtual uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) = 0;
+        virtual bool removeNodeSimple(int32_t instanceId) = 0;
 
-        virtual std::vector<AudioPluginNode*> plugins() = 0;
+        virtual std::map<int32_t,AudioPluginInstanceAPI*> plugins() = 0;
 
         virtual int32_t processAudio(AudioProcessContext& process) = 0;
     };

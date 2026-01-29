@@ -46,13 +46,13 @@ uapmd::AudioPluginSequencer::~AudioPluginSequencer() {
 }
 
 std::vector<int32_t> uapmd::AudioPluginSequencer::getInstanceIds() {
-    std::vector<int32_t> instances;
+    std::vector<int32_t> instanceIds;
     for (auto& track : sequencer->tracks()) {
-        for (auto plugin : track->graph().plugins()) {
-            instances.push_back(plugin->instanceId());
+        for (auto p : track->graph().plugins()) {
+            instanceIds.push_back(p.first);
         }
     }
-    return instances;
+    return instanceIds;
 }
 
 std::string uapmd::AudioPluginSequencer::getPluginFormat(int32_t instanceId) {
@@ -63,8 +63,8 @@ std::string uapmd::AudioPluginSequencer::getPluginFormat(int32_t instanceId) {
 int32_t uapmd::AudioPluginSequencer::findTrackIndexForInstance(int32_t instanceId) const {
     auto& tracksRef = sequencer->tracks();
     for (size_t i = 0; i < tracksRef.size(); ++i) {
-        for (auto* plugin : tracksRef[i]->graph().plugins()) {
-            if (plugin->instanceId() == instanceId) {
+        for (auto& p : tracksRef[i]->graph().plugins()) {
+            if (p.first == instanceId) {
                 return static_cast<int32_t>(i);
             }
         }

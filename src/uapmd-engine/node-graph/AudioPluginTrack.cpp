@@ -129,12 +129,19 @@ namespace uapmd {
         if (plugins.empty())
             return 0;
 
-        for (size_t idx = 0; idx < plugins.size(); ++idx) {
-            auto* plugin = plugins[idx];
+        // FIXME: this should not be that complicated;
+        // we should receive UMPs that already respects group field, and AudioPluginGraph should
+        // simply process graph one by one.
+        // Handling plugins should be totally up to AudioPluginGraph impl.
+        // This implementation is based on the wrong assumption that plugins are processed one by one.
+
+        size_t current = 0;
+        for (auto &p : plugins) {
+            auto* plugin = p.second;
             if (!plugin)
                 continue;
 
-            auto instanceId = plugin->instanceId();
+            auto instanceId = p.first;
             uint8_t group = 0xFF;
             if (group_resolver)
                 group = group_resolver(instanceId);
@@ -159,7 +166,7 @@ namespace uapmd {
                 eventOut.position(0);
             }
 
-            if (idx + 1 < plugins.size()) {
+            if (++current < plugins.size()) {
                 process.advanceToNextNode();
             }
         }

@@ -385,8 +385,8 @@ namespace uapmd {
             return;
         }
 
-        plugin_host->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, callback](AudioPluginInstanceAPI* instance, int32_t instanceId, std::string error) {
-            if (!instance) {
+        plugin_host->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, callback](int32_t instanceId, std::string error) {
+            if (instanceId < 0) {
                 callback(-1, -1, "Could not create plugin: " + error);
                 return;
             }
@@ -397,16 +397,15 @@ namespace uapmd {
                 return;
             }
 
+            auto instance = plugin_host->getInstance(instanceId);
             auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
 
-            auto palPtr = instance;
-            auto node = std::make_unique<AudioPluginNode>(instance, instanceId, [this,instanceId] {
+            // Append to track's graph
+            auto status = track->graph().appendNodeSimple(instanceId, instance, [this,instanceId] {
+                auto instance = plugin_host->getInstance(instanceId);
+                instance->bypassed(true);
                 plugin_host->deletePluginInstance(instanceId);
             });
-            auto* nodePtr = node.get();
-
-            // Append to track's graph
-            auto status = track->graph().appendNodeSimple(std::move(node));
             if (status != 0) {
                 callback(-1, -1, std::format("Failed to append plugin to track {} (status {})", trackIndex, status));
                 return;
@@ -420,16 +419,16 @@ namespace uapmd {
             // Plugin instance management
             {
                 std::lock_guard<std::mutex> lock(instance_map_mutex_);
-                plugin_instances_[instanceId] = palPtr;
+                plugin_instances_[instanceId] = instance;
                 plugin_bypassed_[instanceId] = false;
             }
 
             // Parameter listening
-            registerParameterListener(instanceId, palPtr);
+            registerParameterListener(instanceId, instance);
 
             refreshFunctionBlockMappings();
 
-            nodePtr->bypassed(false);
+            instance->bypassed(false);
 
             callback(instanceId, trackIndex, "");
         });
@@ -470,7 +469,7 @@ namespace uapmd {
             auto& track = tracks_[i];
             if (!track)
                 continue;
-            if (track->graph().removePluginInstance(instanceId)) {
+            if (track->graph().removeNodeSimple(instanceId)) {
                 // NOTE: Empty tracks are intentionally left in place to avoid real-time safety issues.
                 // They have minimal overhead (no plugins to process) and can be removed manually
                 // by calling removeTrack() from a non-audio thread when appropriate.
@@ -609,10 +608,10 @@ namespace uapmd {
                 continue;
             configureTrackRouting(track);
             auto plugins = track->graph().plugins();
-            for (auto* plugin : plugins) {
-                if (!plugin)
+            for (auto& p : plugins) {
+                if (!p.second)
                     continue;
-                auto instanceId = plugin->instanceId();
+                auto instanceId = p.first;
                 plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, static_cast<int32_t>(trackIndex)};
                 assignGroup(instanceId);
             }
@@ -847,11 +846,11 @@ namespace uapmd {
         for (size_t i = 0; i < tracksRef.size(); ++i) {
             TrackInfo trackInfo;
             trackInfo.trackIndex = static_cast<int32_t>(i);
-            for (auto* plugin : tracksRef[i]->graph().plugins()) {
+            for (auto& p : tracksRef[i]->graph().plugins()) {
                 PluginNodeInfo nodeInfo;
-                nodeInfo.instanceId = plugin->instanceId();
-                nodeInfo.pluginId = plugin->pal()->pluginId();
-                nodeInfo.format = plugin->pal()->formatName();
+                nodeInfo.instanceId = p.first;
+                nodeInfo.pluginId = p.second->pluginId();
+                nodeInfo.format = p.second->formatName();
                 nodeInfo.displayName = displayNameFor(nodeInfo.format, nodeInfo.pluginId);
                 trackInfo.nodes.push_back(std::move(nodeInfo));
             }

@@ -10,6 +10,8 @@ namespace uapmd {
     int32_t instanceIdSerial{0};
 
     class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
+        std::function<void()> on_delete_instance;
+
         bool bypassed_{true};
         std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
@@ -30,8 +32,8 @@ namespace uapmd {
         }
 
     public:
-        explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance) :
-            instancing(instancing), instance(instance) {
+        explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance, const std::function<void()>&& onDeleteInstance)
+          : on_delete_instance(onDeleteInstance), instancing(instancing), instance(instance) {
             ump_input_mapper = std::make_unique<UapmdNodeUmpInputMapper>(this);
             bypassed_ = false;
         }
@@ -46,6 +48,7 @@ namespace uapmd {
                 uiCreated = false;
                 uiFloating = true;
             }
+            on_delete_instance();
         }
 
         void bypassed(bool value) override {
@@ -293,14 +296,14 @@ void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
         scanning.performPluginScanning();
 }
 
-void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(AudioPluginInstanceAPI* node, int32_t instanceId, std::string error)>&& callback) {
+void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(int32_t instanceId, std::string error)>&& callback) {
     auto format = *(scanning.formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning.catalog.getPlugins();
     auto entry = std::ranges::find_if(plugins, [&formatName,&pluginId](auto e) {
         return e->format() == formatName && e->pluginId() == pluginId;
     });
     if (entry == plugins.end())
-        callback(nullptr, -1, "Plugin not found");
+        callback(-1, "Plugin not found");
     else {
         auto instancing = std::make_shared<remidy_tooling::PluginInstancing>(scanning, format, *entry);
         auto& request = instancing->configurationRequest();
@@ -319,13 +322,14 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
             if (error.empty())
                 instancing->withInstance([this,instancing,cb](remidy::PluginInstance* instance) {
                     auto instanceId = instanceIdSerial++;
-                    auto api = std::make_unique<RemidyAudioPluginInstance>(instancing, instance);
-                    auto ptr = api.get();
+                    auto api = std::make_unique<RemidyAudioPluginInstance>(instancing, instance, [&,instanceId] {
+                        deletePluginInstance(instanceId);
+                    });
                     instances[instanceId] = std::move(api);
-                    cb(ptr, instanceId, "");
+                    cb(instanceId, "");
                 });
             else {
-                cb(nullptr, -1, error);
+                cb(-1, error);
             }
         });
     }
