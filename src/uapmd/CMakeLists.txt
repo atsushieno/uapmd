@@ -21,21 +21,6 @@ if(WIN32 AND UAPMD_ENABLE_WINMIDI)
     endif()
 endif()
 
-CPMAddPackage(
-        NAME           libremidi
-        GIT_TAG        v5.3.1
-        GIT_REPOSITORY https://github.com/celtera/libremidi
-        EXCLUDE_FROM_ALL
-)
-set(CMAKE_SKIP_INSTALL_RULES OFF)
-
-CPMAddPackage(
-        NAME           miniaudio
-        GIT_TAG        0.11.23
-        GIT_REPOSITORY https://github.com/mackron/miniaudio
-        EXCLUDE_FROM_ALL
-)
-
 target_include_directories(uapmd PRIVATE
         ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
@@ -45,7 +30,6 @@ target_include_directories(uapmd PRIVATE
 )
 
 target_link_libraries(uapmd PUBLIC
-        libremidi::libremidi
         remidy::remidy
         remidy::remidy-tooling
         midicci_static
