@@ -54,6 +54,7 @@ All VST3, AU, LV2, and CLAP supports sample-accurate parameter changes. Those `s
 - VST3: use `IParameterChanges`
 - AU: use `AudioUnitScheduleParameters`
 - LV2: use `Atom_Sequence` (unsupported for ControlPort-based parameters)
+- CLAP: use event streams in `clap_process_t`
 
 ## Per-Note Controllers (parameters)
 

@@ -57,4 +57,4 @@ It takes channel and key.
 
 Here is another complication: VST3 provides MIDI mapping interaction on `IMidiMapping` and it requires MIDI 1.0 inputs, so we have to down-translate them first. There is also `IMidiMapping2` which does not require down-translation (since VST3.8.0).
 
-At this moment, we don't provide ways to access to these interfaces. It might have happened when CLAP had its draft MIDI mappings API, but it's gone.
+At this moment, we don't provide ways to access to these interfaces. It might have happened when CLAP had its draft MIDI mappings API, but it's gone. Note that having no public API access to them does not mean we do not simply support these interfaces - they are queries and used internally (because plugins might provide them with their own predefined mappings).
