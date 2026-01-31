@@ -66,12 +66,21 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onNoteOff(
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onAC(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) {
-    // FIXME: should we directly pass NRPN instead? Make it customizible?
-    // parameter change (index = bank * 128 + index)
-    auto parameterId = bank * 0x80 + index;
-    auto value = static_cast<double>(UINT32_MAX) / data;
-    atom_context_group = group;
-    owner->parameters()->setParameter(parameterId, value, timestamp());
+    if (!relative) { // Relative controllers cannot be translated to MIDI 1.0 Protocol.
+        midi1Bytes[0] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[1] = umppi::MidiCC::NRPN_MSB;
+        midi1Bytes[2] = bank; // MSB
+        midi1Bytes[3] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[4] = umppi::MidiCC::NRPN_LSB;
+        midi1Bytes[5] = index; // LSB
+        midi1Bytes[6] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[7] = umppi::MidiCC::DTE_MSB;
+        midi1Bytes[8] = static_cast<uint7_t>(data >> (32 - 25));
+        midi1Bytes[9] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[10] = umppi::MidiCC::DTE_LSB;
+        midi1Bytes[11] = static_cast<uint7_t>(data >> (32 - 18) & 0x7F);
+        enqueueMidi1Event(group, 12);
+    }
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPNAC(
@@ -113,10 +122,21 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onProgramChange(
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onRC(
         remidy::uint4_t group, remidy::uint4_t channel,
         remidy::uint7_t bank, remidy::uint7_t index, uint32_t data, bool relative) {
-    midi1Bytes[0] = umppi::MidiChannelStatus::CC + channel;
-    midi1Bytes[1] = index;
-    midi1Bytes[2] = (uint7_t) (data >> 9);
-    enqueueMidi1Event(group, 3);
+    if (!relative) { // Relative controllers cannot be translated to MIDI 1.0 Protocol.
+        midi1Bytes[0] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[1] = umppi::MidiCC::RPN_MSB;
+        midi1Bytes[2] = bank; // MSB
+        midi1Bytes[3] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[4] = umppi::MidiCC::RPN_LSB;
+        midi1Bytes[5] = index; // LSB
+        midi1Bytes[6] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[7] = umppi::MidiCC::DTE_MSB;
+        midi1Bytes[8] = static_cast<uint7_t>(data >> (32 - 25));
+        midi1Bytes[9] = umppi::MidiChannelStatus::CC + channel;
+        midi1Bytes[10] = umppi::MidiCC::DTE_LSB;
+        midi1Bytes[11] = static_cast<uint7_t>(data >> (32 - 18) & 0x7F);
+        enqueueMidi1Event(group, 12);
+    }
 }
 
 void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPNRC(
@@ -130,7 +150,7 @@ void remidy::PluginInstanceLV2::LV2UmpInputDispatcher::onPitchBend(
         int8_t perNoteOrMinus, uint32_t data) {
     midi1Bytes[0] = umppi::MidiChannelStatus::PITCH_BEND + channel;
     midi1Bytes[1] = (uint7_t) (data >> 25);
-    midi1Bytes[2] = (uint7_t) ((data >> 17) & 0x7F);
+    midi1Bytes[2] = (uint7_t) (data >> 17 & 0x7F);
     enqueueMidi1Event(group, 3);
 }
 
