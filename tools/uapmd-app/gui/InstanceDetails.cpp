@@ -357,6 +357,9 @@ void InstanceDetails::render(const RenderContext& context) {
 
         if (!windowOpen) {
             hideWindow(instanceId);
+            if (context.onWindowClosed) {
+                context.onWindowClosed(instanceId);
+            }
         }
 
         if (deleteRequested) {

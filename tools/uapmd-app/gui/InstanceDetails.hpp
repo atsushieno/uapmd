@@ -25,6 +25,7 @@ public:
         std::function<void(int32_t instanceId)> removeInstance;
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;
+        std::function<void(int32_t instanceId)> onWindowClosed;
         float uiScale = 1.0f;
     };
 

@@ -380,6 +380,9 @@ void MainWindow::render(void* window) {
         .updateChildWindowSizeState = [this](const std::string& id) {
             updateChildWindowSizeState(id);
         },
+        .onWindowClosed = [this](int32_t instanceId) {
+            trackList_.markDirty();
+        },
         .uiScale = uiScale_,
     };
     instanceDetails_.render(detailsContext);
