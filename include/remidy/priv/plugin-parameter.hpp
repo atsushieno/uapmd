@@ -173,6 +173,7 @@ namespace remidy {
 
         // Sets (schedules) a plain parameter value by index.
         // FIXME: we have to use it only in the RT-safe code. Needs review and fixes on all the usages.
+        // FIXME: we should split what each plugin format should implement vs. what is accessible by apps.
         virtual StatusCode setParameter(uint32_t index, double plainValue, uint64_t timestamp) = 0;
         // Retrieves current plain parameter, if possible.
         virtual StatusCode getParameter(uint32_t index, double *plainValue) = 0;

@@ -289,6 +289,10 @@ remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setParameter(ui
     // FIXME: calculate inBufferOffsetInFrames from timestamp.
     auto inBufferOffsetInFrames = 0;
     AudioUnitSetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Global, 0, (float) value, inBufferOffsetInFrames);
+
+    // Notify parameter change event listeners (e.g., UMP output mapper)
+    parameterChangeEvent().notify(index, value);
+
     return StatusCode::OK;
 }
 

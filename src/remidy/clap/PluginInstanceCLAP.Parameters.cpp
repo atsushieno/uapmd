@@ -148,6 +148,9 @@ namespace remidy {
         evt->param_id = parameter_ids[index];
         evt->value = value;
 
+        // Notify parameter change event listeners (e.g., UMP output mapper)
+        parameterChangeEvent().notify(index, value);
+
         return StatusCode::OK;
     }
 
@@ -167,6 +170,18 @@ namespace remidy {
         evt->param_id = index;
         evt->key = context.note;
         evt->value = value;
+
+        // Notify per-note controller change event listeners (e.g., UMP output mapper)
+        PerNoteControllerContextTypes contextType = PER_NOTE_CONTROLLER_NONE;
+        if (context.group != 0)
+            contextType = static_cast<PerNoteControllerContextTypes>(contextType | PER_NOTE_CONTROLLER_PER_GROUP);
+        if (context.channel != 0)
+            contextType = static_cast<PerNoteControllerContextTypes>(contextType | PER_NOTE_CONTROLLER_PER_CHANNEL);
+        if (context.note != 0)
+            contextType = static_cast<PerNoteControllerContextTypes>(contextType | PER_NOTE_CONTROLLER_PER_NOTE);
+
+        uint32_t contextValue = context.note;  // For PER_NOTE context type
+        perNoteControllerChangeEvent().notify(contextType, contextValue, index, value);
 
         return StatusCode::OK;
     }

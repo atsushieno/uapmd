@@ -173,8 +173,11 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
     if (!q)
         // It is an RT-safe operation, right?
         q = pvc->addParameterData(id, i);
-    if (q && q->addPoint(sampleOffset, normalized, i) == kResultOk)
+    if (q && q->addPoint(sampleOffset, normalized, i) == kResultOk) {
+        // Notify parameter change event listeners (e.g., UMP output mapper)
+        parameterChangeEvent().notify(index, value);
         return StatusCode::OK;
+    }
     return StatusCode::INVALID_PARAMETER_OPERATION;
 }
 
@@ -197,6 +200,10 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setPerNoteContr
     auto evtList = owner->processDataOutputEvents.asInterface();
     // This should copy the argument evt, right?
     evtList->addEvent(evt);
+
+    // Notify per-note controller change event listeners (e.g., UMP output mapper)
+    perNoteControllerChangeEvent().notify(PER_NOTE_CONTROLLER_PER_NOTE, context.note, index, value);
+
     return StatusCode::OK;
 }
 

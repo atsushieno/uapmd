@@ -227,6 +227,9 @@ remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::setParameter(ui
 
         [param setValue:static_cast<AUValue>(value)];
 
+        // Notify parameter change event listeners (e.g., UMP output mapper)
+        parameterChangeEvent().notify(index, value);
+
         return StatusCode::OK;
     }
 }
