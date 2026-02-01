@@ -98,6 +98,8 @@ namespace remidy {
 
     using EventListenerId = int64_t;
 
+    // FIXME: we will have to define the RT safety semantics on each usage.
+    //  Right now it is NOT RT-safe because it involves mutex locks.
     template<typename TReturn, typename ...TArgs>
     class ParameterEventBase {
     public:
@@ -169,14 +171,16 @@ namespace remidy {
         // See `perNoteControllerDefinitionsMayBeDistinctPerNote()` for details.
         virtual std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) = 0;
 
-        // Sets (schedules) a normalized parameter value by index.
+        // Sets (schedules) a plain parameter value by index.
+        // FIXME: we have to use it only in the RT-safe code. Needs review and fixes on all the usages.
         virtual StatusCode setParameter(uint32_t index, double plainValue, uint64_t timestamp) = 0;
-        // Retrieves current parameter, if possible.
+        // Retrieves current plain parameter, if possible.
         virtual StatusCode getParameter(uint32_t index, double *plainValue) = 0;
 
         // Sets (schedules) a normalized per-note controller value by index.
         // covers both parameter changes and per-note parameter changes (controllers).
         // Note that only some plugin formats support per-note controllers beyond 127.
+        // FIXME: we have to use it only in the RT-safe code. Needs review and fixes on all the usages.
         virtual StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) = 0;
 
         // Retrieves current per-note controller value, if possible.
