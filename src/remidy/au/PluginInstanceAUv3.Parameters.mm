@@ -3,6 +3,7 @@
 #include <format>
 #include <algorithm>
 #include <unordered_map>
+#include <utility>
 #import <AudioToolbox/AUAudioUnit.h>
 #include "PluginFormatAU.hpp"
 #include "AUv2Helper.hpp"
@@ -321,89 +322,101 @@ void remidy::PluginInstanceAUv3::ParameterSupport::refreshParameterMetadata(uint
     }
 }
 
-void remidy::PluginInstanceAUv3::ParameterSupport::installParameterObserver() {
-    @autoreleasepool {
-        if (parameterObserverToken != nil)
-            return;
+    void remidy::PluginInstanceAUv3::ParameterSupport::installParameterObserver() {
+        auto installTask = [this] {
+            @autoreleasepool {
+                if (parameterObserverToken != nil)
+                    return;
 
-        if (owner->audioUnit == nil)
-            return;
+                if (owner->audioUnit == nil)
+                    return;
 
-        AUParameterTree* tree = [owner->audioUnit parameterTree];
-        if (tree == nil)
-            return;
+                AUParameterTree* tree = [owner->audioUnit parameterTree];
+                if (tree == nil)
+                    return;
 
-        // NOTE: some non-trivial replacement during AUv2->AUv3 migration
-        // __weak doesn't work with C++ pointers, using __unsafe_unretained instead
-        // This is safe because the observer is uninstalled in the destructor
-        __unsafe_unretained PluginInstanceAUv3::ParameterSupport* weakSelf = this;
-        AUParameterObserverToken token = [tree tokenByAddingParameterObserver:^(AUParameterAddress address, AUValue value) {
-            PluginInstanceAUv3::ParameterSupport* strongSelf = weakSelf;
-            if (!strongSelf)
-                return;
+                // NOTE: some non-trivial replacement during AUv2->AUv3 migration
+                // __weak doesn't work with C++ pointers, using __unsafe_unretained instead
+                // This is safe because the observer is uninstalled in the destructor
+                __unsafe_unretained PluginInstanceAUv3::ParameterSupport* weakSelf = this;
+                AUParameterObserverToken token = [tree tokenByAddingParameterObserver:^(AUParameterAddress address, AUValue value) {
+                    PluginInstanceAUv3::ParameterSupport* strongSelf = weakSelf;
+                    if (!strongSelf)
+                        return;
 
-            for (size_t i = 0; i < strongSelf->parameter_addresses.size(); i++) {
-                if (strongSelf->parameter_addresses[i] == address) {
-                    strongSelf->parameterChangeEvent().notify(static_cast<uint32_t>(i), static_cast<double>(value));
-                    break;
-                }
+                    for (size_t i = 0; i < strongSelf->parameter_addresses.size(); i++) {
+                        if (strongSelf->parameter_addresses[i] == address) {
+                            strongSelf->parameterChangeEvent().notify(static_cast<uint32_t>(i), static_cast<double>(value));
+                            break;
+                        }
+                    }
+                }];
+
+                // Store the token - no need for bridge casts in non-ARC
+                parameterObserverToken = token;
             }
-        }];
+        };
 
-        // Store the token - no need for bridge casts in non-ARC
-        parameterObserverToken = token;
+        EventLoop::runTaskOnMainThread(std::move(installTask));
     }
-}
 
-void remidy::PluginInstanceAUv3::ParameterSupport::installParameterChangeObserver() {
-    @autoreleasepool {
-        if (parameterChangeObserver != nullptr)
-            return;
+    void remidy::PluginInstanceAUv3::ParameterSupport::installParameterChangeObserver() {
+        auto installTask = [this] {
+            @autoreleasepool {
+                if (parameterChangeObserver != nullptr)
+                    return;
 
-        if (owner->audioUnit == nil)
-            return;
+                if (owner->audioUnit == nil)
+                    return;
 
-        auto observer = [[AUParameterChangeObserver alloc] init];
-        observer->support = this;
-        NSNotificationCenter* notificationCenter = [NSNotificationCenter defaultCenter];
-        [notificationCenter addObserver:observer
-                               selector:@selector(parameterTreeDidChange:)
-                                   name:ParameterTreeChangedNotificationName
-                                 object:nil];
-        [notificationCenter addObserver:observer
-                               selector:@selector(parameterTreeDidChange:)
-                                   name:ParameterListChangedNotificationName
-                                 object:nil];
-        for (NSString* keyPath in parameterObservationKeyPaths()) {
-            [owner->audioUnit addObserver:observer
-                               forKeyPath:keyPath
-                                  options:NSKeyValueObservingOptionNew
-                                  context:kAUParameterKVOContext];
-        }
-        parameterChangeObserver = observer;
-    }
-}
-
-void remidy::PluginInstanceAUv3::ParameterSupport::uninstallParameterChangeObserver() {
-    @autoreleasepool {
-        if (parameterChangeObserver == nullptr)
-            return;
-
-        auto observer = static_cast<AUParameterChangeObserver*>(parameterChangeObserver);
-        [[NSNotificationCenter defaultCenter] removeObserver:observer];
-        if (owner->audioUnit != nil) {
-            for (NSString* keyPath in parameterObservationKeyPaths()) {
-                @try {
-                    [owner->audioUnit removeObserver:observer forKeyPath:keyPath];
-                } @catch(NSException* exception) {
-                    (void)exception;
+                auto observer = [[AUParameterChangeObserver alloc] init];
+                observer->support = this;
+                NSNotificationCenter* notificationCenter = [NSNotificationCenter defaultCenter];
+                [notificationCenter addObserver:observer
+                                       selector:@selector(parameterTreeDidChange:)
+                                           name:ParameterTreeChangedNotificationName
+                                         object:nil];
+                [notificationCenter addObserver:observer
+                                       selector:@selector(parameterTreeDidChange:)
+                                           name:ParameterListChangedNotificationName
+                                         object:nil];
+                for (NSString* keyPath in parameterObservationKeyPaths()) {
+                    [owner->audioUnit addObserver:observer
+                                       forKeyPath:keyPath
+                                          options:NSKeyValueObservingOptionNew
+                                          context:kAUParameterKVOContext];
                 }
+                parameterChangeObserver = observer;
             }
-        }
-        [observer release];
-        parameterChangeObserver = nullptr;
+        };
+
+        EventLoop::runTaskOnMainThread(std::move(installTask));
     }
-}
+
+    void remidy::PluginInstanceAUv3::ParameterSupport::uninstallParameterChangeObserver() {
+        auto uninstallTask = [this] {
+            @autoreleasepool {
+                if (parameterChangeObserver == nullptr)
+                    return;
+
+                auto observer = static_cast<AUParameterChangeObserver*>(parameterChangeObserver);
+                [[NSNotificationCenter defaultCenter] removeObserver:observer];
+                if (owner->audioUnit != nil) {
+                    for (NSString* keyPath in parameterObservationKeyPaths()) {
+                        @try {
+                            [owner->audioUnit removeObserver:observer forKeyPath:keyPath];
+                        } @catch(NSException* exception) {
+                            (void)exception;
+                        }
+                    }
+                }
+                [observer release];
+                parameterChangeObserver = nullptr;
+            }
+        };
+
+        EventLoop::runTaskOnMainThread(std::move(uninstallTask));
+    }
 
 void remidy::PluginInstanceAUv3::ParameterSupport::handleParameterSetChange() {
     rebuildParameterList();
@@ -495,21 +508,25 @@ void remidy::PluginInstanceAUv3::ParameterSupport::v2PresetEventCallback(void* r
     }
 }
 
-void remidy::PluginInstanceAUv3::ParameterSupport::uninstallParameterObserver() {
-    @autoreleasepool {
-        if (parameterObserverToken == nil)
-            return;
+    void remidy::PluginInstanceAUv3::ParameterSupport::uninstallParameterObserver() {
+        auto uninstallTask = [this] {
+            @autoreleasepool {
+                if (parameterObserverToken == nil)
+                    return;
 
-        if (owner->audioUnit != nil) {
-            AUParameterTree* tree = [owner->audioUnit parameterTree];
-            if (tree != nil) {
-                // NOTE: some non-trivial replacement during AUv2->AUv3 migration
-                [tree removeParameterObserver:parameterObserverToken];
+                if (owner->audioUnit != nil) {
+                    AUParameterTree* tree = [owner->audioUnit parameterTree];
+                    if (tree != nil) {
+                        // NOTE: some non-trivial replacement during AUv2->AUv3 migration
+                        [tree removeParameterObserver:parameterObserverToken];
+                    }
+                }
+
+                parameterObserverToken = nil;
             }
-        }
+        };
 
-        parameterObserverToken = nil;
+        EventLoop::runTaskOnMainThread(std::move(uninstallTask));
     }
-}
 
 #endif

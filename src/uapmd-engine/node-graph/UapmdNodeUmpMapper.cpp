@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <umppi/umppi.hpp>
 #include "uapmd/uapmd.hpp"
@@ -40,29 +41,32 @@ namespace uapmd {
       : UapmdUmpOutputMapper(),
         device(device),
         plugin(plugin),
+        parameter_support(plugin ? plugin->parameterSupport() : nullptr),
         param_change_listener_id(-1),
         per_note_change_listener_id(-1) {
-        auto* parameterSupport = plugin->parameterSupport();
-        param_change_listener_id = parameterSupport->parameterChangeEvent().addListener([this](uint32_t index, double value) {
+        if (!parameter_support)
+            return;
+        param_change_listener_id = parameter_support->parameterChangeEvent().addListener([this](uint32_t index, double value) {
             sendParameterValue(index, value);
         });
-        per_note_change_listener_id = parameterSupport->perNoteControllerChangeEvent().addListener(
+        per_note_change_listener_id = parameter_support->perNoteControllerChangeEvent().addListener(
             [this](remidy::PerNoteControllerContextTypes types, uint32_t context, uint32_t parameterIndex, double value) {
                 if ((types & remidy::PER_NOTE_CONTROLLER_PER_NOTE) == 0)
                     return;
+                const double normalized = normalizePerNoteControllerValue(types, context, parameterIndex, value);
                 sendPerNoteControllerValue(
                     static_cast<uint8_t>(context),
                     static_cast<uint8_t>(parameterIndex),
-                    value);
+                    normalized);
             });
     }
 
     UapmdNodeUmpOutputMapper::~UapmdNodeUmpOutputMapper() {
-        if (plugin) {
+        if (plugin && parameter_support) {
             if (param_change_listener_id >= 0)
-                plugin->parameterSupport()->parameterChangeEvent().removeListener(param_change_listener_id);
+                parameter_support->parameterChangeEvent().removeListener(param_change_listener_id);
             if (per_note_change_listener_id >= 0)
-                plugin->parameterSupport()->perNoteControllerChangeEvent().removeListener(per_note_change_listener_id);
+                parameter_support->perNoteControllerChangeEvent().removeListener(per_note_change_listener_id);
         }
     }
 
@@ -71,11 +75,14 @@ namespace uapmd {
             return;
         if (index >= 1 << 14)
             return;
+        double normalized = normalizeParameterValue(index, value);
+        if (!std::isfinite(normalized))
+            normalized = 0.0;
+        const double clamped = std::clamp(normalized, 0.0, 1.0);
         constexpr uint8_t group = 0;
         constexpr uint8_t channel = 0;
         const uint8_t bank = static_cast<uint8_t>((index >> 7) & 0x7F);
         const uint8_t controllerIndex = static_cast<uint8_t>(index & 0x7F);
-        const double clamped = std::clamp(value, 0.0, 1.0);
         const auto data = static_cast<uint32_t>(clamped * static_cast<double>(std::numeric_limits<uint32_t>::max()));
         auto ump = umppi::UmpFactory::midi2NRPN(group, channel, bank, controllerIndex, data);
         uapmd_ump_t words[2]{
@@ -87,12 +94,15 @@ namespace uapmd {
 
     void UapmdNodeUmpOutputMapper::sendPerNoteControllerValue(uint8_t note, uint8_t index, double value) {
         if (!device)
-                return;
+            return;
         if (index >= 1 << 7)
             return;
+        double normalized = value;
+        if (!std::isfinite(normalized))
+            normalized = 0.0;
+        const double clamped = std::clamp(normalized, 0.0, 1.0);
         constexpr uint8_t group = 0;
         constexpr uint8_t channel = 0;
-        const double clamped = std::clamp(value, 0.0, 1.0);
         const auto data = static_cast<uint32_t>(clamped * static_cast<double>(std::numeric_limits<uint32_t>::max()));
         auto ump = umppi::UmpFactory::midi2PerNoteACC(group, channel, note, index, data);
         uapmd_ump_t words[2]{
@@ -117,5 +127,37 @@ namespace uapmd {
             static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu)
         };
         device->send(words, sizeof(words), 0);
+    }
+
+    double UapmdNodeUmpOutputMapper::normalizeParameterValue(uint16_t index, double plainValue) const {
+        if (!parameter_support)
+            return plainValue;
+        auto& params = parameter_support->parameters();
+        if (index >= params.size())
+            return plainValue;
+        auto* param = params[index];
+        if (!param)
+            return plainValue;
+        double normalized = param->normalizedValue(plainValue);
+        if (!std::isfinite(normalized))
+            return 0.0;
+        return normalized;
+    }
+
+    double UapmdNodeUmpOutputMapper::normalizePerNoteControllerValue(remidy::PerNoteControllerContextTypes types, uint32_t context, uint32_t parameterIndex, double plainValue) const {
+        if (!parameter_support)
+            return plainValue;
+        remidy::PerNoteControllerContext ctx{};
+        ctx.note = context;
+        auto& controllers = parameter_support->perNoteControllers(types, ctx);
+        if (parameterIndex >= controllers.size())
+            return plainValue;
+        auto* param = controllers[parameterIndex];
+        if (!param)
+            return plainValue;
+        double normalized = param->normalizedValue(plainValue);
+        if (!std::isfinite(normalized))
+            return 0.0;
+        return normalized;
     }
 }
