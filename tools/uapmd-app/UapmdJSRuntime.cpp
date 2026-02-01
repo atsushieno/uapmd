@@ -281,6 +281,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
 
         if (instance)
         {
+            // FIXME: it must not directly invoke this function from this non-RT-safe context.
             instance->setParameterValue (paramId, value);
         }
 
@@ -444,6 +445,7 @@ void UapmdJSRuntime::registerSequencerMidiAPI()
         if (instanceId >= 0 && paramIndex >= 0)
         {
             auto& sequencer = uapmd::AppModel::instance().sequencer();
+            // FIXME: it must not invoke this function from this non-RT-safe context.
             sequencer.engine()->setParameterValue (instanceId, paramIndex, value);
         }
         return choc::value::Value();

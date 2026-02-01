@@ -102,6 +102,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
             }();
 
             if (!perNoteSelection) {
+                // FIXME: it must not invoke thid function from this non-RT-safe context.
                 seq.engine()->setParameterValue(instanceId, parameterIndex, value);
                 return;
             }
