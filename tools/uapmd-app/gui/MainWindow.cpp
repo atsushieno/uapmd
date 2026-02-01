@@ -178,10 +178,12 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
     trackList_.setOnShowDetails([this](int32_t instanceId) {
         instanceDetails_.showWindow(instanceId);
+        trackList_.markDirty();
     });
 
     trackList_.setOnHideDetails([this](int32_t instanceId) {
         instanceDetails_.hideWindow(instanceId);
+        trackList_.markDirty();
     });
 
     trackList_.setOnEnableDevice([this](int32_t instanceId, const std::string& deviceName) {
