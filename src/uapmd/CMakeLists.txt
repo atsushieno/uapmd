@@ -20,6 +20,7 @@ if(WIN32 AND UAPMD_ENABLE_WINMIDI)
         set(LIBREMIDI_WINMIDI_HEADERS_ZIP "${_uapmd_winmidi_archive}" CACHE FILEPATH "Path to the Windows MIDI Services header package used by libremidi" FORCE)
     endif()
 endif()
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 target_include_directories(uapmd PRIVATE
         ${miniaudio_SOURCE_DIR}
