@@ -404,22 +404,37 @@ namespace remidy {
                     if (_parameters) {
                         auto* params = dynamic_cast<ParameterSupport*>(_parameters);
                         if (params) {
-                            if (ev->key >= 0) {
-                                params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_NOTE,
-                                                                      static_cast<uint32_t>(ev->key),
-                                                                      ev->param_id,
-                                                                      ev->value);
-                            } else if (ev->channel >= 0) {
-                                params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_CHANNEL,
-                                                                      static_cast<uint32_t>(ev->channel),
-                                                                      ev->param_id,
-                                                                      ev->value);
-                            } else if (ev->port_index >= 0) {
-                                params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_GROUP,
-                                                                      static_cast<uint32_t>(ev->port_index),
-                                                                      ev->param_id,
-                                                                      ev->value);
+                            // LAMESPEC:
+                            // clap-juce-extensions sets note_id = 0 even if the parameter is NOT a per-note controller.
+                            // Then it results in the wrong code path below without this extraneous check for the parameter flags.
+                            // It is allowed to set 0 as a note_id when the parameter is NOT a per-note controller?
+                            // There is NO official definition that a CLAP parameter is per-note or not.
+                            // The only way to distinguish them is to use CLAP_PARAM_IS_AUTOMATABLE_PER_NOTE_ID
+                            // (but there can be non-automatable parameters which works per note ID).
+                            //
+                            // CLAP specification should clearly declare that non-per-note parameter changes MUST specify
+                            // note_id to be always -1. Those clap_juce_extension developers don't think it is a MUST.
+                            bool isPNC = params->clapParameterFlags(ev->param_id) & CLAP_PARAM_IS_AUTOMATABLE_PER_NOTE_ID;
+                            if (isPNC && ev->note_id >= 0) {
+                                // Polyphonic modulation - check which dimension is being used
+                                if (ev->key >= 0) {
+                                    params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_NOTE,
+                                                                          static_cast<uint32_t>(ev->key),
+                                                                          ev->param_id,
+                                                                          ev->value);
+                                } else if (ev->channel >= 0) {
+                                    params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_CHANNEL,
+                                                                          static_cast<uint32_t>(ev->channel),
+                                                                          ev->param_id,
+                                                                          ev->value);
+                                } else if (ev->port_index >= 0) {
+                                    params->notifyPerNoteControllerValue(PER_NOTE_CONTROLLER_PER_GROUP,
+                                                                          static_cast<uint32_t>(ev->port_index),
+                                                                          ev->param_id,
+                                                                          ev->value);
+                                }
                             } else {
+                                // Regular parameter change (note_id == -1)
                                 params->notifyParameterValue(ev->param_id, ev->value);
                             }
                         }

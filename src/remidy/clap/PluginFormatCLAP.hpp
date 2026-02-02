@@ -121,6 +121,11 @@ namespace remidy {
             explicit ParameterSupport(PluginInstanceCLAP* owner);
             ~ParameterSupport();
 
+            uint32_t clapParameterFlags(clap_id paramId) {
+                auto index = getParameterIndex(paramId);
+                return index < parameter_flags.size() ? parameter_flags[index] : 0;
+            }
+
             void refreshAllParameterMetadata() override;
 
             std::vector<PluginParameter*>& parameters() override;
@@ -136,6 +141,10 @@ namespace remidy {
             void notifyParameterValue(clap_id id, double plainValue);
             void notifyPerNoteControllerValue(PerNoteControllerContextTypes contextType, uint32_t contextValue, clap_id id, double plainValue);
             clap_id getParameterId(uint32_t index) const { return index < parameter_ids.size() ? parameter_ids[index] : 0; }
+            int32_t getParameterIndex(const clap_id id) {
+                auto index = param_id_to_index[id];
+                return index < parameter_flags.size() ? static_cast<int32_t>(parameter_flags[index]) : -1;
+            }
         private:
             bool parameterSupportsContext(uint32_t flags, PerNoteControllerContextTypes types) const;
         };
