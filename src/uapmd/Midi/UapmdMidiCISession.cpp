@@ -1,4 +1,5 @@
 
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <midicci/midicci.hpp>
