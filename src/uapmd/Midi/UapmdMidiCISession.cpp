@@ -35,8 +35,11 @@ namespace uapmd {
             };
             if (p.defaultPlainValue != 0.0)
                 ctrl.defaultValue = plainToUint32(p.defaultPlainValue);
-            if (p.minPlainValue != 0.0 || p.maxPlainValue != 1.0)
-                ctrl.minMax = {plainToUint32(p.minPlainValue), plainToUint32(p.maxPlainValue)};
+            // We disable min/max: There is no appropriate definition of normalized and "plain" values
+            // in MIDI-CI Property Exchange Controller Resources specification.
+            // Assigning minMax here only brings in inconsistency, like bringing in min/max between 0.0-1.0.
+            //if (p.minPlainValue != 0.0 || p.maxPlainValue != 1.0)
+            //    ctrl.minMax = {plainToUint32(p.minPlainValue), plainToUint32(p.maxPlainValue)};
 
             if (!p.namedValues.empty()) {
                 ctrl.ctrlMapId = std::to_string(p.index);
