@@ -507,17 +507,6 @@ namespace remidy {
                             }
                         }
                     }
-                    // Convert parameter to MIDI 2.0 AC (Assignable Controller) using NRPN
-                    // AC uses bank (MSB) and index (LSB): paramId = bank * 128 + index
-                    uint8_t bank = static_cast<uint8_t>((ev->param_id >> 7) & 0x7F);
-                    uint8_t index = static_cast<uint8_t>(ev->param_id & 0x7F);
-                    uint32_t data = static_cast<uint32_t>(ev->value * UINT32_MAX);
-
-                    // Use NRPN for channel-wide assignable controllers
-                    uint64_t ump = umppi::UmpFactory::midi2NRPN(0, 0, bank, index, data); // group 0, channel 0
-                    umpBuffer[umpPosition++] = (uint32_t)(ump >> 32);
-                    umpBuffer[umpPosition++] = (uint32_t)(ump & 0xFFFFFFFF);
-                    break;
                 }
                 case CLAP_EVENT_MIDI: {
                     // Convert MIDI1 to MIDI2 UMP
