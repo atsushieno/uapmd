@@ -78,15 +78,32 @@ namespace remidy {
         if (!instance)
             return;
 
-        if (threadCheckIsAudioThread()) {
-            Logger::global()->logWarning("paramsRequestFlush() called from audio thread, ignoring");
+        bool isAudioThread = threadCheckIsAudioThread();
+        bool isProcessing = instance->is_processing.load(std::memory_order_relaxed);
+
+        if (isAudioThread) {
+            // According to CLAP spec, request_flush should not be called from audio thread
+            if (isProcessing) {
+                // If process() is running, defer to next process() call
+                instance->flush_requested_.store(true, std::memory_order_release);
+            } else {
+                // If process() is not running, we can't defer - schedule on main thread
+                EventLoop::enqueueTaskOnMainThread([instance]{
+                    instance->processParamsFlush();
+                });
+            }
             return;
         }
 
-        if (instance->is_processing.load(std::memory_order_relaxed))
+        if (isProcessing) {
             instance->flush_requested_.store(true, std::memory_order_release);
-        else
-            instance->processParamsFlush();
+        } else {
+            // Even if processing is not active, we should schedule paramsFlush on main thread
+            // rather than calling it directly from whatever thread request_flush was called from
+            EventLoop::enqueueTaskOnMainThread([instance]{
+                instance->processParamsFlush();
+            });
+        }
     }
 
     bool RemidyCLAPHost::threadCheckIsMainThread() const noexcept {
