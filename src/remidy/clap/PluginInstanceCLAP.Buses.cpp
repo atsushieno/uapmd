@@ -4,7 +4,6 @@
 #include <clap/ext/surround.h>
 #include <clap/ext/note-ports.h>
 #include <optional>
-#include <map>
 
 namespace {
     // Helper to get layout name from CLAP surround channel map
@@ -91,26 +90,6 @@ namespace {
     }
 }
 
-namespace {
-    // Helper to store config ID with layout name (format: "name|configId")
-    std::string makeLayoutNameWithConfigId(const std::string& name, clap_id configId) {
-        return name + "|" + std::to_string(configId);
-    }
-
-    // Helper to extract config ID from layout name
-    std::optional<clap_id> extractConfigIdFromLayoutName(const std::string& layoutName) {
-        auto pos = layoutName.rfind('|');
-        if (pos == std::string::npos)
-            return std::nullopt;
-
-        try {
-            return std::stoul(layoutName.substr(pos + 1));
-        } catch (...) {
-            return std::nullopt;
-        }
-    }
-}
-
 namespace remidy {
     void PluginInstanceCLAP::AudioBuses::inspectBuses() {
         input_bus_defs.clear();
@@ -134,129 +113,58 @@ namespace remidy {
             (const clap_plugin_surround_t*)rawPlugin->get_extension(rawPlugin, CLAP_EXT_SURROUND) : nullptr;
 
         if (plugin && plugin->canUseAudioPorts()) {
-            // If audio-ports-config extension is available, enumerate all configurations
-            if (portsConfigExt) {
-                uint32_t configCount = portsConfigExt->count(rawPlugin);
+            std::vector<clap_audio_port_info_t> inputPortInfos;
+            std::vector<clap_audio_port_info_t> outputPortInfos;
 
-                // Build bus definitions from all available configurations
-                std::map<std::string, std::vector<AudioChannelLayout>> mainInputLayouts;
-                std::map<std::string, std::vector<AudioChannelLayout>> mainOutputLayouts;
-
-                for (uint32_t i = 0; i < configCount; i++) {
-                    clap_audio_ports_config_t config;
-                    if (!portsConfigExt->get(rawPlugin, i, &config))
+            for (bool isInput : {true, false}) {
+                auto& portInfos = isInput ? inputPortInfos : outputPortInfos;
+                for (uint32_t i = 0, n = plugin->audioPortsCount(isInput); i < n; i++) {
+                    clap_audio_port_info_t info{};
+                    if (!plugin->audioPortsGet(i, isInput, &info))
                         continue;
-
-                    // Create layout for this configuration
-                    if (config.has_main_input) {
-                        std::string layoutName = config.main_input_port_type ?
-                            std::string(config.main_input_port_type) : "";
-                        if (layoutName.empty())
-                            layoutName = config.main_input_channel_count == 1 ? "Mono" :
-                                        config.main_input_channel_count == 2 ? "Stereo" : "";
-
-                        std::string fullName = config.name;
-                        if (!layoutName.empty())
-                            fullName += " (" + layoutName + ")";
-
-                        mainInputLayouts["Main Input"].emplace_back(
-                            AudioChannelLayout{makeLayoutNameWithConfigId(fullName, config.id),
-                                             config.main_input_channel_count});
-                    }
-
-                    if (config.has_main_output) {
-                        std::string layoutName = config.main_output_port_type ?
-                            std::string(config.main_output_port_type) : "";
-                        if (layoutName.empty())
-                            layoutName = config.main_output_channel_count == 1 ? "Mono" :
-                                        config.main_output_channel_count == 2 ? "Stereo" : "";
-
-                        std::string fullName = config.name;
-                        if (!layoutName.empty())
-                            fullName += " (" + layoutName + ")";
-
-                        mainOutputLayouts["Main Output"].emplace_back(
-                            AudioChannelLayout{makeLayoutNameWithConfigId(fullName, config.id),
-                                             config.main_output_channel_count});
-                    }
+                    portInfos.emplace_back(info);
                 }
-
-                // Create bus definitions with all available layouts
-                if (!mainInputLayouts.empty()) {
-                    for (auto& [busName, layouts] : mainInputLayouts) {
-                        AudioBusDefinition def{busName, AudioBusRole::Main, layouts};
-                        input_bus_defs.emplace_back(def);
-                        ret.numAudioIn++;
-                    }
-                }
-
-                if (!mainOutputLayouts.empty()) {
-                    for (auto& [busName, layouts] : mainOutputLayouts) {
-                        AudioBusDefinition def{busName, AudioBusRole::Main, layouts};
-                        output_bus_defs.emplace_back(def);
-                        ret.numAudioOut++;
-                    }
-                }
-            } else {
-                // No audio-ports-config extension - use direct audio-ports enumeration
-                std::map<clap_id, size_t> inputPortIdToIndex;
-                std::map<clap_id, size_t> outputPortIdToIndex;
-                std::vector<clap_audio_port_info_t> inputPortInfos;
-                std::vector<clap_audio_port_info_t> outputPortInfos;
-
-                for (bool isInput : {true, false}) {
-                    auto& portInfos = isInput ? inputPortInfos : outputPortInfos;
-                    auto& portIdMap = isInput ? inputPortIdToIndex : outputPortIdToIndex;
-
-                    for (size_t i = 0, n = plugin->audioPortsCount(isInput); i < n; i++) {
-                        clap_audio_port_info_t info;
-                        if (!plugin->audioPortsGet(i, isInput, &info))
-                            continue;
-                        portInfos.push_back(info);
-                        portIdMap[info.id] = i;
-                    }
-                }
-
-                // Store port infos for later use (in-place processing detection)
-                owner->inputPortInfos = inputPortInfos;
-                owner->outputPortInfos = outputPortInfos;
-
-                // Helper to build bus definitions with surround support
-                auto buildBusDefs = [&](const std::vector<clap_audio_port_info_t>& portInfos,
-                                        std::vector<AudioBusDefinition>& busDefs,
-                                        uint32_t& busCount,
-                                        bool isInput) {
-                    for (size_t i = 0; i < portInfos.size(); i++) {
-                        const auto& info = portInfos[i];
-                        std::string layoutName = getLayoutNameFromPortInfo(info);
-
-                        // Try to get more precise layout from surround extension
-                        if (surroundExt && info.port_type && strcmp(info.port_type, CLAP_PORT_SURROUND) == 0) {
-                            std::vector<uint8_t> channelMap(info.channel_count);
-                            uint32_t retrieved = surroundExt->get_channel_map(rawPlugin, isInput, static_cast<uint32_t>(i),
-                                                                              channelMap.data(), info.channel_count);
-                            if (retrieved == info.channel_count) {
-                                std::string surroundLayoutName = getLayoutNameFromChannelMap(channelMap);
-                                if (!surroundLayoutName.empty())
-                                    layoutName = surroundLayoutName;
-                            }
-                        }
-
-                        std::vector<AudioChannelLayout> layouts{};
-                        AudioChannelLayout layout{layoutName, info.channel_count};
-                        layouts.emplace_back(layout);
-
-                        AudioBusDefinition def{info.name,
-                                              info.flags & CLAP_AUDIO_PORT_IS_MAIN ? AudioBusRole::Main : AudioBusRole::Aux,
-                                              layouts};
-                        busCount++;
-                        busDefs.emplace_back(def);
-                    }
-                };
-
-                buildBusDefs(inputPortInfos, input_bus_defs, ret.numAudioIn, true);
-                buildBusDefs(outputPortInfos, output_bus_defs, ret.numAudioOut, false);
             }
+
+            // Store port infos for later use (in-place processing detection)
+            owner->inputPortInfos = inputPortInfos;
+            owner->outputPortInfos = outputPortInfos;
+
+            // Helper to build bus definitions with surround support
+            auto buildBusDefs = [&](const std::vector<clap_audio_port_info_t>& portInfos,
+                                    std::vector<AudioBusDefinition>& busDefs,
+                                    uint32_t& busCount,
+                                    bool isInput) {
+                for (size_t i = 0; i < portInfos.size(); i++) {
+                    const auto& info = portInfos[i];
+                    std::string layoutName = getLayoutNameFromPortInfo(info);
+
+                    // Try to get more precise layout from surround extension
+                    if (surroundExt && info.port_type && strcmp(info.port_type, CLAP_PORT_SURROUND) == 0) {
+                        std::vector<uint8_t> channelMap(info.channel_count);
+                        uint32_t retrieved = surroundExt->get_channel_map(rawPlugin, isInput, static_cast<uint32_t>(i),
+                                                                          channelMap.data(), info.channel_count);
+                        if (retrieved == info.channel_count) {
+                            std::string surroundLayoutName = getLayoutNameFromChannelMap(channelMap);
+                            if (!surroundLayoutName.empty())
+                                layoutName = surroundLayoutName;
+                        }
+                    }
+
+                    std::vector<AudioChannelLayout> layouts{};
+                    AudioChannelLayout layout{layoutName, info.channel_count};
+                    layouts.emplace_back(layout);
+
+                    AudioBusDefinition def{info.name,
+                                          info.flags & CLAP_AUDIO_PORT_IS_MAIN ? AudioBusRole::Main : AudioBusRole::Aux,
+                                          layouts};
+                    busCount++;
+                    busDefs.emplace_back(def);
+                }
+            };
+
+            buildBusDefs(inputPortInfos, input_bus_defs, ret.numAudioIn, true);
+            buildBusDefs(outputPortInfos, output_bus_defs, ret.numAudioOut, false);
         }
 
         // FIXME: we need decent support for event buses
@@ -275,56 +183,25 @@ namespace remidy {
         auto* portsConfigExt = rawPlugin ?
             (const clap_plugin_audio_ports_config_t*)rawPlugin->get_extension(rawPlugin, CLAP_EXT_AUDIO_PORTS_CONFIG) : nullptr;
 
+        bool refreshedBuses = false;
+
         // If audio-ports-config extension is available, try to select a matching configuration
         if (portsConfigExt) {
-            // Look at the current bus configurations to find if a specific config was selected
             std::optional<clap_id> selectedConfigId;
 
-            // Check main input bus for config ID
-            if (!input_bus_defs.empty()) {
-                auto& mainInputDef = input_bus_defs[0];  // Assuming first is main
-                const auto& layouts = mainInputDef.supportedChannelLayouts();
-                if (!layouts.empty()) {
-                    // Check if any layout has a config ID embedded
-                    for (auto& layout : layouts) {
-                        auto configId = extractConfigIdFromLayoutName(const_cast<AudioChannelLayout&>(layout).name());
-                        if (configId.has_value()) {
-                            // User might have selected this layout - check if it matches requested config
-                            selectedConfigId = configId;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // If no config ID found yet, check main output bus
-            if (!selectedConfigId.has_value() && !output_bus_defs.empty()) {
-                auto& mainOutputDef = output_bus_defs[0];
-                const auto& layouts = mainOutputDef.supportedChannelLayouts();
-                if (!layouts.empty()) {
-                    for (auto& layout : layouts) {
-                        auto configId = extractConfigIdFromLayoutName(const_cast<AudioChannelLayout&>(layout).name());
-                        if (configId.has_value()) {
-                            selectedConfigId = configId;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Try to match requested configuration to a config preset
-            if (!selectedConfigId.has_value() && configuration.mainInputChannels.has_value() && configuration.mainOutputChannels.has_value()) {
+            if (configuration.mainInputChannels.has_value() || configuration.mainOutputChannels.has_value()) {
                 uint32_t configCount = portsConfigExt->count(rawPlugin);
                 for (uint32_t i = 0; i < configCount; i++) {
-                    clap_audio_ports_config_t config;
+                    clap_audio_ports_config_t config{};
                     if (!portsConfigExt->get(rawPlugin, i, &config))
                         continue;
 
-                    // Match input and output channel counts
                     bool inputMatches = !config.has_main_input ||
-                                       (configuration.mainInputChannels.value() == config.main_input_channel_count);
+                        (!configuration.mainInputChannels.has_value() ||
+                         configuration.mainInputChannels.value() == config.main_input_channel_count);
                     bool outputMatches = !config.has_main_output ||
-                                        (configuration.mainOutputChannels.value() == config.main_output_channel_count);
+                        (!configuration.mainOutputChannels.has_value() ||
+                         configuration.mainOutputChannels.value() == config.main_output_channel_count);
 
                     if (inputMatches && outputMatches) {
                         selectedConfigId = config.id;
@@ -333,17 +210,18 @@ namespace remidy {
                 }
             }
 
-            // Apply the selected configuration
             if (selectedConfigId.has_value()) {
                 if (portsConfigExt->select(rawPlugin, selectedConfigId.value())) {
-                    // Configuration applied successfully - re-inspect buses to get actual port layout
                     inspectBuses();
-                    return;
+                    refreshedBuses = true;
                 }
             }
         }
 
-        // Fallback: standard bus configuration without audio-ports-config extension
+        if (!refreshedBuses)
+            inspectBuses();
+
+        // Rebuild AudioBusConfiguration objects from the latest bus definitions
         for (auto bus: audio_in_buses)
             delete bus;
         for (auto bus: audio_out_buses)
