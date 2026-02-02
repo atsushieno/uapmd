@@ -1,6 +1,8 @@
 
 #include <iostream>
+#include <limits>
 #include <midicci/midicci.hpp>
+#include <umppi/umppi.hpp>
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
@@ -173,9 +175,54 @@ namespace uapmd {
         };
         hostProps.setPropertyBinarySetter(customSetter);
 
-        ciDevice.getMessenger().addMessageCallback([&](const Message& req) {
-            if (on_process_midi_message_report && req.getType() == MessageType::MidiMessageReportInquiry)
-                on_process_midi_message_report();
+        on_process_midi_message_report = [&] {
+            // Dump all current parameter values when MIDI Message Report is requested
+            if (!sequencer || !device->midiIO())
+                return;
+            auto* instance = sequencer->getPluginInstance(instance_id);
+            if (!instance)
+                return;
+
+            auto parameterList = instance->parameterMetadataList();
+            for (auto& p : parameterList) {
+                if (p.hidden || !p.automatable)
+                    continue;
+                if (p.index >= (1 << 14))
+                    continue;
+
+                double currentValue = instance->getParameterValue(p.index);
+
+                // Normalize the value
+                const double range = p.maxPlainValue - p.minPlainValue;
+                double normalized = 0.0;
+                if (range > 0.0) {
+                    normalized = (currentValue - p.minPlainValue) / range;
+                    normalized = std::clamp(normalized, 0.0, 1.0);
+                }
+
+                if (!std::isfinite(normalized))
+                    normalized = 0.0;
+
+                // Send as NRPN (same as UapmdNodeUmpOutputMapper::sendParameterValue)
+                constexpr uint8_t group = 0;
+                constexpr uint8_t channel = 0;
+                const uint8_t bank = static_cast<uint8_t>((p.index >> 7) & 0x7F);
+                const uint8_t controllerIndex = static_cast<uint8_t>(p.index & 0x7F);
+                const auto data = static_cast<uint32_t>(normalized * static_cast<double>(UINT32_MAX));
+                auto ump = umppi::UmpFactory::midi2NRPN(group, channel, bank, controllerIndex, data);
+                uapmd_ump_t words[2]{
+                    static_cast<uapmd_ump_t>(ump >> 32),
+                    static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu)
+                };
+                device->midiIO()->send(words, sizeof(words), 0);
+            }
+        };
+
+        ciDevice.getMessenger().addMessageCallback([this, instance_id](const Message& req) {
+            if (req.getType() == MessageType::MidiMessageReportInquiry) {
+                if (on_process_midi_message_report)
+                    on_process_midi_message_report();
+            }
         });
 
         if (sequencer) {
