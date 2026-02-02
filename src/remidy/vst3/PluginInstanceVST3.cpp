@@ -371,29 +371,25 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
             std::fill(buffer.begin(), buffer.begin() + numFrames, 0.0);
         return buffer.data();
     };
-    for (int32_t bus = 0, nBus = process.audioInBusCount(); bus < nBus; bus++) {
-        if (bus >= numInputBus) {
-            // disabed the log, too noisy.
-            //owner->getLogger()->logError("The process context has more input buses (%d) than the plugin supports (%d). Ignoring them.", nBus, numInputBus);
-            continue;
-        }
-        auto available = process.inputChannelCount(bus);
+    const int32_t hostInputBusCount = process.audioInBusCount();
+    for (int32_t bus = 0; bus < numInputBus; bus++) {
+        auto available = bus < hostInputBusCount ? process.inputChannelCount(bus) : 0;
         auto pluginChannels = processData.inputs[bus].numChannels;
         for (int32_t ch = 0; ch < pluginChannels; ch++) {
             if (processData.symbolicSampleSize == kSample32) {
                 float* ptr = nullptr;
-                if (ch < static_cast<int32_t>(available))
+                if (bus < hostInputBusCount && ch < static_cast<int32_t>(available))
                     ptr = process.getFloatInBuffer(bus, static_cast<uint32_t>(ch));
-                else if (available > 0)
+                else if (bus < hostInputBusCount && available > 0)
                     ptr = process.getFloatInBuffer(bus, static_cast<uint32_t>(0));
                 if (!ptr)
                     ptr = ensureFloatBuffer(fallbackInput32);
                 processData.inputs[bus].channelBuffers32[ch] = ptr;
             } else {
                 double* ptr = nullptr;
-                if (ch < static_cast<int32_t>(available))
+                if (bus < hostInputBusCount && ch < static_cast<int32_t>(available))
                     ptr = process.getDoubleInBuffer(bus, static_cast<uint32_t>(ch));
-                else if (available > 0)
+                else if (bus < hostInputBusCount && available > 0)
                     ptr = process.getDoubleInBuffer(bus, static_cast<uint32_t>(0));
                 if (!ptr)
                     ptr = ensureDoubleBuffer(fallbackInput64);
@@ -401,25 +397,21 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
             }
         }
     }
-    for (int32_t bus = 0, nBus = process.audioOutBusCount(); bus < nBus; bus++) {
-        if (bus >= numOutputBus) {
-            // disabed the log, too noisy.
-            //owner->getLogger()->logError("The process context has more output buses (%d) than the plugin supports (%d). Ignoring them.", nBus, numOutputBus);
-            continue;
-        }
-        auto available = process.outputChannelCount(bus);
+    const int32_t hostOutputBusCount = process.audioOutBusCount();
+    for (int32_t bus = 0; bus < numOutputBus; bus++) {
+        auto available = bus < hostOutputBusCount ? process.outputChannelCount(bus) : 0;
         auto pluginChannels = processData.outputs[bus].numChannels;
         for (int32_t ch = 0; ch < pluginChannels; ch++) {
             if (processData.symbolicSampleSize == kSample32) {
                 float* ptr = nullptr;
-                if (ch < static_cast<int32_t>(available))
+                if (bus < hostOutputBusCount && ch < static_cast<int32_t>(available))
                     ptr = process.getFloatOutBuffer(bus, static_cast<uint32_t>(ch));
                 if (!ptr)
                     ptr = ensureFloatBuffer(fallbackOutput32);
                 processData.outputs[bus].channelBuffers32[ch] = ptr;
             } else {
                 double* ptr = nullptr;
-                if (ch < static_cast<int32_t>(available))
+                if (bus < hostOutputBusCount && ch < static_cast<int32_t>(available))
                     ptr = process.getDoubleOutBuffer(bus, static_cast<uint32_t>(ch));
                 if (!ptr)
                     ptr = ensureDoubleBuffer(fallbackOutput64);
