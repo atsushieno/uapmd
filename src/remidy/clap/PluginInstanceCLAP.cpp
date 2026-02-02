@@ -298,25 +298,93 @@ namespace remidy {
             transport.tsig_denom = 4;
         }
 
-        // copy audio buffer pointers
-        auto numAudioIn = std::min((int32_t) dst.audio_inputs_count, src.audioInBusCount());
-        for (size_t bus = 0, nBus = numAudioIn; bus < nBus; bus++) {
-            if (src.trackContext()->masterContext().audioDataType() == AudioContentType::Float32)
-                for (size_t ch = 0, nCh = src.inputChannelCount(bus); ch < nCh; ch++)
-                    dst.audio_inputs[bus].data32[ch] = src.getFloatInBuffer(bus, ch);
-            else
-                for (size_t ch = 0, nCh = src.inputChannelCount(bus); ch < nCh; ch++)
-                    dst.audio_inputs[bus].data64[ch] = src.getDoubleInBuffer(bus, ch);
+        const bool useDouble = src.trackContext()->masterContext().audioDataType() == AudioContentType::Float64;
+        const size_t numFrames = static_cast<size_t>(src.frameCount());
+
+        auto zeroInputFallback = [&](size_t bus, size_t channel) -> std::pair<float*, double*> {
+            float* f32 = nullptr;
+            double* f64 = nullptr;
+            if (bus < audio_in_port_buffers.size()) {
+                auto& buffer = audio_in_port_buffers[bus];
+                if (channel < buffer.channel_count) {
+                    if (buffer.data32 && buffer.data32[channel]) {
+                        std::fill_n(buffer.data32[channel], numFrames, 0.0f);
+                        f32 = buffer.data32[channel];
+                    }
+                    if (buffer.data64 && buffer.data64[channel]) {
+                        std::fill_n(buffer.data64[channel], numFrames, 0.0);
+                        f64 = buffer.data64[channel];
+                    }
+                }
+            }
+            return {f32, f64};
+        };
+
+        auto prepareOutputFallback = [&](size_t bus, size_t channel) -> std::pair<float*, double*> {
+            float* f32 = nullptr;
+            double* f64 = nullptr;
+            if (bus < audio_out_port_buffers.size()) {
+                auto& buffer = audio_out_port_buffers[bus];
+                if (channel < buffer.channel_count) {
+                    if (buffer.data32 && buffer.data32[channel])
+                        f32 = buffer.data32[channel];
+                    if (buffer.data64 && buffer.data64[channel])
+                        f64 = buffer.data64[channel];
+                }
+            }
+            return {f32, f64};
+        };
+
+        const int32_t hostInputBuses = src.audioInBusCount();
+        for (size_t bus = 0; bus < dst.audio_inputs_count; ++bus) {
+            auto& audioIn = dst.audio_inputs[bus];
+            const bool hostHasBus = static_cast<int32_t>(bus) < hostInputBuses;
+            const int32_t hostChannels = hostHasBus ? src.inputChannelCount(static_cast<int32_t>(bus)) : 0;
+            for (size_t ch = 0; ch < audioIn.channel_count; ++ch) {
+                if (!useDouble) {
+                    float* ptr = nullptr;
+                    if (hostHasBus && ch < static_cast<size_t>(hostChannels))
+                        ptr = src.getFloatInBuffer(static_cast<int32_t>(bus), static_cast<uint32_t>(ch));
+                    else if (hostHasBus && hostChannels > 0)
+                        ptr = src.getFloatInBuffer(static_cast<int32_t>(bus), 0);
+                    if (!ptr)
+                        ptr = zeroInputFallback(bus, ch).first;
+                    audioIn.data32[ch] = ptr;
+                } else {
+                    double* ptr = nullptr;
+                    if (hostHasBus && ch < static_cast<size_t>(hostChannels))
+                        ptr = src.getDoubleInBuffer(static_cast<int32_t>(bus), static_cast<uint32_t>(ch));
+                    else if (hostHasBus && hostChannels > 0)
+                        ptr = src.getDoubleInBuffer(static_cast<int32_t>(bus), 0);
+                    if (!ptr)
+                        ptr = zeroInputFallback(bus, ch).second;
+                    audioIn.data64[ch] = ptr;
+                }
+            }
         }
 
-        auto numAudioOut = std::min((int32_t) dst.audio_outputs_count, src.audioOutBusCount());
-        for (size_t bus = 0, nBus = numAudioOut; bus < nBus; bus++) {
-            if (src.trackContext()->masterContext().audioDataType() == AudioContentType::Float32)
-                for (size_t ch = 0, nCh = src.outputChannelCount(bus); ch < nCh; ch++)
-                    dst.audio_outputs[bus].data32[ch] = src.getFloatOutBuffer(bus, ch);
-            else
-                for (size_t ch = 0, nCh = src.outputChannelCount(bus); ch < nCh; ch++)
-                    dst.audio_outputs[bus].data64[ch] = src.getDoubleOutBuffer(bus, ch);
+        const int32_t hostOutputBuses = src.audioOutBusCount();
+        for (size_t bus = 0; bus < dst.audio_outputs_count; ++bus) {
+            auto& audioOut = dst.audio_outputs[bus];
+            const bool hostHasBus = static_cast<int32_t>(bus) < hostOutputBuses;
+            const int32_t hostChannels = hostHasBus ? src.outputChannelCount(static_cast<int32_t>(bus)) : 0;
+            for (size_t ch = 0; ch < audioOut.channel_count; ++ch) {
+                if (!useDouble) {
+                    float* ptr = nullptr;
+                    if (hostHasBus && ch < static_cast<size_t>(hostChannels))
+                        ptr = src.getFloatOutBuffer(static_cast<int32_t>(bus), static_cast<uint32_t>(ch));
+                    if (!ptr)
+                        ptr = prepareOutputFallback(bus, ch).first;
+                    audioOut.data32[ch] = ptr;
+                } else {
+                    double* ptr = nullptr;
+                    if (hostHasBus && ch < static_cast<size_t>(hostChannels))
+                        ptr = src.getDoubleOutBuffer(static_cast<int32_t>(bus), static_cast<uint32_t>(ch));
+                    if (!ptr)
+                        ptr = prepareOutputFallback(bus, ch).second;
+                    audioOut.data64[ch] = ptr;
+                }
+            }
         }
 
         // set event buffers
