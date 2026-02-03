@@ -1,3 +1,5 @@
+#pragma once
+
 #include "uapmd/uapmd.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
 #include <miniaudio.h>
@@ -9,12 +11,15 @@ namespace uapmd {
         Logger* remidy_logger{};
 
         static void on_ma_log(void* userData, uint32_t logLevel, const char* message);
+
+    protected:
+        AudioIODevice* onOpen(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) override;
+
     public:
         static void on_ma_device_notification(const ma_device_notification* pNotification);
         MiniAudioIODeviceManager();
-        ~MiniAudioIODeviceManager();
+        ~MiniAudioIODeviceManager() override;
         void initialize(Configuration& config) override;
-        AudioIODevice * open(int inputDeviceIndex = -1, int outputDeviceIndex = -1, uint32_t sampleRate = 0) override;
         std::vector<uint32_t> getDeviceSampleRates(const std::string& deviceName, AudioIODirections direction) override;
 
         ma_context& maContext() { return context; }
@@ -57,6 +62,6 @@ namespace uapmd {
         // Reconfigure the device with new device IDs and sample rate
         bool reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate = 0);
 
-        MiniAudioIODeviceManager* getManager() const { return manager_; }
+        [[nodiscard]] MiniAudioIODeviceManager* getManager() const { return manager_; }
     };
 }

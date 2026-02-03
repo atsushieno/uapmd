@@ -1,7 +1,6 @@
 
 #include "uapmd/uapmd.hpp"
 #include "LibreMidiIODevice.hpp"
-#include "LibreMidiSupport.hpp"
 
 #include <algorithm>
 #include <array>
@@ -95,7 +94,7 @@ std::optional<libremidi::API> pick_default_api(const std::vector<libremidi::API>
 
 } // namespace
 
-std::optional<libremidi::API> uapmd::detail::resolveLibremidiUmpApi(const std::string& apiName) {
+std::optional<libremidi::API> uapmd::resolveLibreMidiUmpApi(const std::string& apiName) {
     auto apis = libremidi::available_ump_apis();
     if (apis.empty())
         return std::nullopt;
@@ -131,7 +130,7 @@ std::optional<libremidi::API> uapmd::detail::resolveLibremidiUmpApi(const std::s
 }
 
 bool uapmd::midiApiSupportsUmp(const std::string& apiName) {
-    return detail::resolveLibremidiUmpApi(apiName).has_value();
+    return resolveLibreMidiUmpApi(apiName).has_value();
 }
 
 uapmd::MidiIODevice *uapmd::MidiIODevice::instance(std::string driverName) {

@@ -1,5 +1,4 @@
 #include "LibreMidiIODevice.hpp"
-#include "LibreMidiSupport.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -16,7 +15,7 @@ namespace uapmd {
           version(std::move(version)),
           sysex_delay_in_microseconds(sysexDelayInMicroseconds) {
 
-        auto resolvedApi = detail::resolveLibremidiUmpApi(api_name);
+        auto resolvedApi = resolveLibreMidiUmpApi(api_name);
         if (!resolvedApi)
             throw std::runtime_error("No MIDI 2.0 backend is available on this system");
 

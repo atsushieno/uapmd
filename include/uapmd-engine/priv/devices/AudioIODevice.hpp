@@ -50,6 +50,8 @@ namespace uapmd {
         const std::string& driver_name;
 
     public:
+        virtual ~AudioIODeviceManager() = default;
+
         using DeviceChangeCallback = std::function<void(int32_t deviceId, AudioIODeviceChange change)>;
 
         static AudioIODeviceManager* instance(const std::string& driverName = "");
@@ -68,7 +70,9 @@ namespace uapmd {
             return onDevices();
         }
 
-        virtual AudioIODevice* open(int inputDeviceIndex = -1, int outputDeviceIndex = -1, uint32_t sampleRate = 0) = 0;
+        AudioIODevice* open(int inputDeviceIndex = -1, int outputDeviceIndex = -1, uint32_t sampleRate = 0) {
+            return onOpen(inputDeviceIndex, outputDeviceIndex, sampleRate);
+        }
         virtual std::vector<uint32_t> getDeviceSampleRates(const std::string& deviceName, AudioIODirections direction) = 0;
 
         void setDeviceChangeCallback(DeviceChangeCallback callback) {
@@ -81,8 +85,9 @@ namespace uapmd {
 
         explicit AudioIODeviceManager(const std::string& driverName) : driver_name(driverName) {}
         virtual std::vector<AudioIODeviceInfo> onDevices() = 0;
+        virtual AudioIODevice* onOpen(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) = 0;
 
-        void notifyDeviceChange(int32_t deviceId, AudioIODeviceChange change) {
+        void notifyDeviceChange(int32_t deviceId, AudioIODeviceChange change) const {
             if (deviceChangeCallback_) {
                 deviceChangeCallback_(deviceId, change);
             }

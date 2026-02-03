@@ -132,7 +132,7 @@ std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices
 }
 
 // The entire API is hacky so far...
-uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::open(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) {
+uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::onOpen(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) {
     static uapmd::MiniAudioIODevice audio{this};
 
     // Get device lists

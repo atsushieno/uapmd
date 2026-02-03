@@ -34,4 +34,6 @@ namespace uapmd {
         void send(uapmd_ump_t* messages, size_t length, uapmd_timestamp_t timestamp) override;
     };
 
+    std::optional<libremidi::API> resolveLibreMidiUmpApi(const std::string& apiName);
+
 }
