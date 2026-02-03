@@ -90,7 +90,7 @@ jobs:
           build/*.deb
           build/*.rpm
           build/*.tar.xz
-          build/*.zip
+          build/uapmd-*.zip
           build/*.dmg
 
     - name: upload build failure logs
