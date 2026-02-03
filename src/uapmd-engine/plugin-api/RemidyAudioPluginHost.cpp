@@ -4,7 +4,7 @@
 #include <ranges>
 
 #include "remidy-tooling/PluginInstancing.hpp"
-#include "../node-graph/UapmdNodeUmpMapper.hpp"
+#include "../../uapmd/Midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
     int32_t instanceIdSerial{0};

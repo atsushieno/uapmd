@@ -40,4 +40,5 @@ target_sources(uapmd PRIVATE
         Midi/UapmdFunctionBlock.cpp
         Midi/UapmdMidiCISession.cpp
         Midi/UapmdUmpMapper.cpp
+        Midi/UapmdNodeUmpMapper.cpp
 )

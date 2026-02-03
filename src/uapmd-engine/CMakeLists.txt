@@ -65,7 +65,6 @@ target_sources(uapmd-engine PRIVATE
         node-graph/AudioPluginGraph.cpp
         node-graph/AudioPluginHostPAL.cpp
         node-graph/AudioPluginTrack.cpp
-        node-graph/UapmdNodeUmpMapper.cpp
         plugin-api/RemidyAudioPluginHost.cpp
         sequencer/SequencerEngine.cpp
         sequencer/AudioPluginSequencer.cpp

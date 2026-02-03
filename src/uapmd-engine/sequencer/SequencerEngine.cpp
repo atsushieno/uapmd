@@ -8,8 +8,8 @@
 #include <umppi/umppi.hpp>
 #include <unordered_set>
 
-#include "../node-graph/UapmdNodeUmpMapper.hpp"
 #include "remidy/remidy.hpp"
+#include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd {
 
