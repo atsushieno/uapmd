@@ -8,6 +8,7 @@
 #include <umppi/umppi.hpp>
 #include <unordered_set>
 
+#include "../plugin-api/RemidyAudioPluginHost.hpp"
 #include "remidy/remidy.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
 
@@ -177,7 +178,7 @@ namespace uapmd {
         audio_buffer_size_in_frames(audioBufferSizeInFrames),
         sampleRate(sampleRate),
         ump_buffer_size_in_ints(umpBufferSizeInInts),
-        plugin_host(AudioPluginHostingAPI::instance()),
+        plugin_host(RemidyAudioPluginHost::instance()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
     }
 

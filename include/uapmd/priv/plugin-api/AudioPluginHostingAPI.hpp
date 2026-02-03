@@ -7,7 +7,6 @@ namespace uapmd {
     // This PAL is more like a Plugin hosting API Abstraction Layer rather than a Platform Abstraction Layer.
     class AudioPluginHostingAPI {
     public:
-        static AudioPluginHostingAPI* instance();
         virtual ~AudioPluginHostingAPI() = default;
         virtual PluginCatalog& catalog() = 0;
         virtual void performPluginScanning(bool rescan) = 0;

@@ -296,6 +296,11 @@ namespace uapmd {
     };
 }
 
+uapmd::AudioPluginHostingAPI* uapmd::RemidyAudioPluginHost::instance() {
+    static RemidyAudioPluginHost impl{};
+    return &impl;
+}
+
 uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
     scanning.performPluginScanning();
 }
