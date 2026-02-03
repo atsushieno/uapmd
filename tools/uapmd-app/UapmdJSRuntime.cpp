@@ -58,7 +58,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
     jsContext_.registerFunction ("__remidy_catalog_get_count", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.engine()->catalog();
+        auto& catalog = sequencer.engine()->pluginHost()->catalog();
         auto plugins = catalog.getPlugins();
         return choc::value::createInt32 (static_cast<int32_t>(plugins.size()));
     });
@@ -70,7 +70,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
             return choc::value::Value();
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.engine()->catalog();
+        auto& catalog = sequencer.engine()->pluginHost()->catalog();
         auto plugins = catalog.getPlugins();
 
         if (index >= static_cast<int32_t>(plugins.size()))
@@ -97,7 +97,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
             return choc::value::createBool (false);
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.engine()->catalog();
+        auto& catalog = sequencer.engine()->pluginHost()->catalog();
         std::filesystem::path path (pathStr);
         catalog.load (path);
         return choc::value::createBool (true);
@@ -110,7 +110,7 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
             return choc::value::createBool (false);
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.engine()->catalog();
+        auto& catalog = sequencer.engine()->pluginHost()->catalog();
         std::filesystem::path path (pathStr);
         catalog.save (path);
         return choc::value::createBool (true);

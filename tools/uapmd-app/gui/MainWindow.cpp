@@ -1087,7 +1087,7 @@ void MainWindow::refreshInstances() {
 void MainWindow::refreshPluginList() {
     std::vector<PluginEntry> plugins;
 
-    auto& catalog = uapmd::AppModel::instance().sequencer().engine()->catalog();
+    auto& catalog = uapmd::AppModel::instance().sequencer().engine()->pluginHost()->catalog();
     auto catalogPlugins = catalog.getPlugins();
 
     for (auto* plugin : catalogPlugins) {

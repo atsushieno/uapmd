@@ -38,9 +38,8 @@ namespace uapmd {
         virtual ~SequencerEngine() = default;
         static std::unique_ptr<SequencerEngine> create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
 
-        virtual void performPluginScanning(bool rescan) = 0;
+        virtual AudioPluginHostingAPI* pluginHost() = 0;
 
-        virtual PluginCatalog& catalog() = 0;
         virtual std::string getPluginName(int32_t instanceId) = 0;
 
         virtual SequenceProcessContext& data() = 0;

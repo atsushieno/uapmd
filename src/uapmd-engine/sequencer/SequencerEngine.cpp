@@ -13,7 +13,6 @@
 #include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd {
-
     class SequencerEngineImpl : public SequencerEngine {
         size_t audio_buffer_size_in_frames;
         size_t ump_buffer_size_in_ints;
@@ -81,9 +80,8 @@ namespace uapmd {
     public:
         explicit SequencerEngineImpl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
 
-        void performPluginScanning(bool rescan) override;
+        AudioPluginHostingAPI* pluginHost() override;
 
-        PluginCatalog& catalog() override;
         std::string getPluginName(int32_t instanceId) override;
 
         SequenceProcessContext& data() override { return sequence; }
@@ -822,12 +820,8 @@ namespace uapmd {
         remidy::Logger::global()->logInfo(std::format("Native parameter change {}: {} = {}", instanceId, index, value).c_str());
     }
 
-    uapmd::PluginCatalog& uapmd::SequencerEngineImpl::catalog() {
-        return plugin_host->catalog();
-    }
-
-    void uapmd::SequencerEngineImpl::performPluginScanning(bool rescan) {
-        plugin_host->performPluginScanning(rescan);
+    AudioPluginHostingAPI* uapmd::SequencerEngineImpl::pluginHost() {
+        return plugin_host;
     }
 
     std::vector<SequencerEngineImpl::TrackInfo> uapmd::SequencerEngineImpl::getTrackInfos() {

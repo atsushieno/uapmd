@@ -89,7 +89,7 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan) {
 
             // Now trigger the sequencer to reload its catalog from the updated cache
             // This ensures the sequencer gets the new scan results
-            sequencer_.engine()->performPluginScanning(false); // Load from cache, don't rescan
+            sequencer_.engine()->pluginHost()->performPluginScanning(false); // Load from cache, don't rescan
 
             bool success = (result == 0);
             std::string errorMsg = success ? "" : "Plugin scanning failed with error code " + std::to_string(result);
@@ -123,7 +123,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const PluginInstanceConfig& config) {
     // Get plugin name from catalog
     std::string pluginName;
-    auto& catalog = sequencer_.engine()->catalog();
+    auto& catalog = sequencer_.engine()->pluginHost()->catalog();
     auto plugins = catalog.getPlugins();
     for (const auto& plugin : plugins) {
         if (plugin->format() == format && plugin->pluginId() == pluginId) {
