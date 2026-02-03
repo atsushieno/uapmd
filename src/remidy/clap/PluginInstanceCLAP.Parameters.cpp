@@ -52,18 +52,28 @@ namespace remidy {
                     const double vmax = info.max_value;
                     const double span = vmax - vmin;
                     if (span > 0.0) {
-                        const int probes = 512; // dense enough to capture common step counts
-                        std::string lastLabel;
-                        for (int p = 0; p <= probes; ++p) {
-                            const double t = static_cast<double>(p) / static_cast<double>(probes);
-                            const double val = vmin + span * t;
-                            if (owner->plugin->paramsValueToText(info.id, val, enumLabel, sizeof(enumLabel))) {
-                                std::string lbl{enumLabel};
-                                if (!lbl.empty() && (enums.empty() || lbl != lastLabel)) {
-                                    enums.emplace_back(lbl, val);
-                                    lastLabel = lbl;
+                        // We have no idea how many "items" the CLAP parameter has, so we have to scan until we find all of them.
+                        // We begin with the assumption that there are only up to 4 items and expand the search if
+                        // all probed strings are distinct. If there are label overlaps, then we assume we found all.
+                        // We will drop some labels if the plugin is uncool and returns items in non-linear values, but who cares.
+                        int probes = 4;
+                        while (true) {
+                            enums.clear();
+                            std::string lastLabel;
+                            for (int p = 0; p <= probes; ++p) {
+                                const double t = static_cast<double>(p) / static_cast<double>(probes);
+                                const double val = vmin + span * t;
+                                if (owner->plugin->paramsValueToText(info.id, val, enumLabel, sizeof(enumLabel))) {
+                                    std::string lbl{enumLabel};
+                                    if (!lbl.empty() && (enums.empty() || lbl != lastLabel)) {
+                                        enums.emplace_back(lbl, val);
+                                        lastLabel = lbl;
+                                    }
                                 }
                             }
+                            if (enums.size() < probes)
+                                break; // we do not have to scan anymore
+                            probes *= 2;
                         }
                     }
                 }
