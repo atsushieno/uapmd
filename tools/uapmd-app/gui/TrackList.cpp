@@ -24,7 +24,7 @@ void TrackList::update() {
     }
 
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto instanceIds = sequencer.getInstanceIds();
+    auto instanceIds = sequencer.engine()->pluginHost()->instanceIds();
 
     instances_.clear();
     instances_.reserve(instanceIds.size());

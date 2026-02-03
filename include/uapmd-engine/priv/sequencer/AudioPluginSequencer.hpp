@@ -29,7 +29,6 @@ namespace uapmd {
         SequencerEngine* engine() const { return sequencer.get(); }
 
         // Application-specific queries (metadata, track info)
-        std::vector<int32_t> getInstanceIds();
         std::string getPluginFormat(int32_t instanceId);
         int32_t findTrackIndexForInstance(int32_t instanceId) const;
 

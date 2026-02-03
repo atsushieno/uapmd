@@ -1049,7 +1049,7 @@ void MainWindow::applyDeviceSettings() {
 void MainWindow::refreshInstances() {
     // Get actual instance list from sequencer
     auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto instances = sequencer.getInstanceIds();
+    auto instances = sequencer.engine()->pluginHost()->instanceIds();
 
     for (auto it = pluginWindows_.begin(); it != pluginWindows_.end();) {
         if (std::find(instances.begin(), instances.end(), it->first) == instances.end()) {

@@ -495,7 +495,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
     jsContext_.registerFunction ("__remidy_sequencer_getInstanceIds", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto instanceIds = sequencer.getInstanceIds();
+        auto instanceIds = sequencer.engine()->pluginHost()->instanceIds();
 
         auto arr = choc::value::createEmptyArray();
         for (auto id : instanceIds)

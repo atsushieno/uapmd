@@ -4,7 +4,7 @@
 #include "../plugin-api/AudioPluginInstanceAPI.hpp"
 
 namespace uapmd {
-    // This PAL is more like a Plugin hosting API Abstraction Layer rather than a Platform Abstraction Layer.
+    // a Plugin hosting API Abstraction Layer.
     class AudioPluginHostingAPI {
     public:
         virtual ~AudioPluginHostingAPI() = default;
@@ -14,6 +14,8 @@ namespace uapmd {
         virtual void deletePluginInstance(int32_t instanceId) = 0;
         virtual AudioPluginInstanceAPI* getInstance(int32_t instanceId) = 0;
         virtual uapmd_status_t processAudio(std::vector<AudioProcessContext*> contexts) = 0;
+
+        virtual std::vector<int32_t> instanceIds() = 0;
     };
 
 }

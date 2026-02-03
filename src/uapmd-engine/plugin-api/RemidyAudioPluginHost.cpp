@@ -357,6 +357,12 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
 void uapmd::RemidyAudioPluginHost::deletePluginInstance(int32_t instanceId) {
     instances.erase(instanceId);
 }
+std::vector<int32_t> uapmd::RemidyAudioPluginHost::instanceIds() {
+    std::vector<int32_t> ret;
+    for (auto& i : instances)
+        ret.push_back(i.first);
+    return ret;
+}
 
 uapmd::AudioPluginInstanceAPI * uapmd::RemidyAudioPluginHost::getInstance(int32_t instanceId) {
     const auto &i = instances[instanceId];

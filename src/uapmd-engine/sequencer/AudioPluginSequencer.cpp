@@ -45,16 +45,6 @@ uapmd::AudioPluginSequencer::~AudioPluginSequencer() {
     stopAudio();
 }
 
-std::vector<int32_t> uapmd::AudioPluginSequencer::getInstanceIds() {
-    std::vector<int32_t> instanceIds;
-    for (auto& track : sequencer->tracks()) {
-        for (auto p : track->graph().plugins()) {
-            instanceIds.push_back(p.first);
-        }
-    }
-    return instanceIds;
-}
-
 std::string uapmd::AudioPluginSequencer::getPluginFormat(int32_t instanceId) {
     auto* instance = sequencer->getPluginInstance(instanceId);
     return instance->formatName();
