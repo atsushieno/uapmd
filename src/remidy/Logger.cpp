@@ -107,7 +107,13 @@ void remidy::Logger::Impl::initializeGlobalLogger() {
 
     if (!loggerInitialized.exchange(true)) {
         owner->callbacks.emplace_back([](remidy::Logger::LogLevel level, size_t serial, const char* s) {
-            std::cerr << "[remidy #" << serial << " (" << levelString(level) << ")]: " << s << std::endl;
+            switch (level) {
+                // too much by default
+                case LogLevel::DIAGNOSTIC: break;
+                default:
+                    std::cerr << "[remidy #" << serial << " (" << levelString(level) << ")]: " << s << std::endl;
+                    break;
+            }
         });
         getLaunchedLoggerThread();
     }
