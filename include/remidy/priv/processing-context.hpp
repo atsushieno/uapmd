@@ -112,26 +112,76 @@ namespace remidy {
         class AudioBusBufferList {
             uint32_t channel_count{};
             uint32_t frame_capacity{};
-            void* data{nullptr};
+            uint32_t owned_channel_count{};
+            uint32_t owned_frame_capacity{};
+            void* owned_data{nullptr};
+            void* data_view{nullptr};
+            bool aliasing{false};
 
         public:
             AudioBusBufferList(uint32_t channelCount, uint32_t bufferSizeInFrames) :
                     channel_count(channelCount),
-                    frame_capacity(bufferSizeInFrames) {
-                data = calloc(sizeof(double) * bufferCapacityInFrames(), channel_count);
+                    frame_capacity(bufferSizeInFrames),
+                    owned_channel_count(channelCount),
+                    owned_frame_capacity(bufferSizeInFrames) {
+                const uint32_t channels = channelCount > 0 ? channelCount : 1;
+                const uint32_t frames = bufferSizeInFrames > 0 ? bufferSizeInFrames : 1;
+                owned_data = calloc(sizeof(double) * frames, channels);
+                data_view = owned_data;
             }
             ~AudioBusBufferList() {
-                free(data);
+                free(owned_data);
             }
 
             void clear() {
-                if (!data)
+                if (!data_view || aliasing)
                     return;
-                std::memset(data, 0, channel_count * frame_capacity * sizeof(double));
+                std::memset(data_view, 0, channel_count * frame_capacity * sizeof(double));
             }
 
-            float* getFloatBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : static_cast<float *>(data) + channel * frame_capacity; }
-            double* getDoubleBufferForChannel(uint32_t channel) const { return channel >= channel_count ? nullptr : static_cast<double *>(data) + channel * frame_capacity; };
+            void aliasFrom(AudioBusBufferList& other) {
+                aliasing = true;
+                data_view = other.data_view;
+                // Restrict to matching dimensions to avoid overruns
+                channel_count = std::min(owned_channel_count, other.channel_count);
+                frame_capacity = std::min(owned_frame_capacity, other.frame_capacity);
+            }
+
+            void useOwnedData() {
+                if (!aliasing)
+                    return;
+                aliasing = false;
+                data_view = owned_data;
+                channel_count = owned_channel_count;
+                frame_capacity = owned_frame_capacity;
+            }
+
+            void channelCount(uint32_t newCount) {
+                if (newCount == owned_channel_count)
+                    return;
+                const uint32_t frames = owned_frame_capacity > 0 ? owned_frame_capacity : 1;
+                const uint32_t channels = newCount > 0 ? newCount : 1;
+                auto* newData = calloc(sizeof(double) * frames, channels);
+                if (owned_data) {
+                    auto toCopy = std::min(owned_channel_count, newCount);
+                    if (toCopy > 0)
+                        std::memcpy(newData, owned_data, sizeof(double) * frames * toCopy);
+                    free(owned_data);
+                }
+                owned_data = newData;
+                owned_channel_count = newCount;
+                if (!aliasing) {
+                    channel_count = newCount;
+                    data_view = owned_data;
+                }
+            }
+
+            float* getFloatBufferForChannel(uint32_t channel) const {
+                return channel >= channel_count ? nullptr : static_cast<float *>(data_view) + channel * frame_capacity;
+            }
+            double* getDoubleBufferForChannel(uint32_t channel) const {
+                return channel >= channel_count ? nullptr : static_cast<double *>(data_view) + channel * frame_capacity;
+            };
             uint32_t channelCount() const { return channel_count; }
             uint32_t bufferCapacityInFrames() const { return frame_capacity; }
         };
@@ -143,6 +193,7 @@ namespace remidy {
         EventSequence event_out;
         int32_t frame_count{0};
         size_t audio_buffer_capacity_frames;
+        bool replacing_enabled_{false};
 
     public:
         AudioProcessContext(
@@ -190,28 +241,82 @@ namespace remidy {
         void frameCount(const int32_t newCount) { frame_count = newCount; }
 
 
-        int32_t audioInBusCount() { return audio_in.size(); }
-        int32_t audioOutBusCount() { return audio_out.size(); }
+        int32_t audioInBusCount() const { return static_cast<int32_t>(audio_in.size()); }
+        int32_t audioOutBusCount() const { return static_cast<int32_t>(audio_out.size()); }
 
-        int32_t inputChannelCount(int32_t bus) { return audio_in[bus]->channelCount(); }
-        int32_t outputChannelCount(int32_t bus) { return audio_out[bus]->channelCount(); }
+        int32_t inputChannelCount(int32_t bus) const { return bus >= audioInBusCount() ? 0 : audio_in[bus]->channelCount(); }
+        int32_t outputChannelCount(int32_t bus) const { return bus >= audioOutBusCount() ? 0 : audio_out[bus]->channelCount(); }
 
         float* getFloatInBuffer(int32_t bus, uint32_t channel) const {
+            if (bus < 0 || bus >= audioInBusCount())
+                return nullptr;
             auto b = audio_in[bus];
             return channel >= b->channelCount() ? nullptr : b->getFloatBufferForChannel(channel);
         }
         float* getFloatOutBuffer(int32_t bus, uint32_t channel) const {
+            if (bus < 0 || bus >= audioOutBusCount())
+                return nullptr;
             auto b = audio_out[bus];
             return channel >= b->channelCount() ? nullptr : b->getFloatBufferForChannel(channel);
         }
         double* getDoubleInBuffer(int32_t bus, uint32_t channel) const {
+            if (bus < 0 || bus >= audioInBusCount())
+                return nullptr;
             auto b = audio_in[bus];
             return channel >= b->channelCount() ? nullptr : b->getDoubleBufferForChannel(channel);
         };
         double* getDoubleOutBuffer(int32_t bus, uint32_t channel) const {
+            if (bus < 0 || bus >= audioOutBusCount())
+                return nullptr;
             auto b = audio_out[bus];
             return channel >= b->channelCount() ? nullptr : b->getDoubleBufferForChannel(channel);
         };
+
+        void copyInputsToOutputs() {
+            auto dataType = track_context.masterContext().audioDataType();
+            size_t busCount = std::min(audio_in.size(), audio_out.size());
+            for (size_t i = 0; i < busCount; ++i) {
+                auto* inBus = audio_in[i];
+                auto* outBus = audio_out[i];
+                if (!inBus || !outBus)
+                    continue;
+                auto channels = std::min(inBus->channelCount(), outBus->channelCount());
+                auto frames = std::min(inBus->bufferCapacityInFrames(), outBus->bufferCapacityInFrames());
+                for (uint32_t ch = 0; ch < channels; ++ch) {
+                    if (dataType == AudioContentType::Float64) {
+                        auto* src = inBus->getDoubleBufferForChannel(ch);
+                        auto* dst = outBus->getDoubleBufferForChannel(ch);
+                        if (src && dst)
+                            std::memcpy(dst, src, frames * sizeof(double));
+                    } else {
+                        auto* src = inBus->getFloatBufferForChannel(ch);
+                        auto* dst = outBus->getFloatBufferForChannel(ch);
+                        if (src && dst)
+                            std::memcpy(dst, src, frames * sizeof(float));
+                    }
+                }
+            }
+        }
+
+        void enableReplacingIO() {
+            if (replacing_enabled_)
+                return;
+            size_t busCount = std::min(audio_in.size(), audio_out.size());
+            for (size_t i = 0; i < busCount; ++i) {
+                if (audio_in[i] && audio_out[i])
+                    audio_in[i]->aliasFrom(*audio_out[i]);
+            }
+            replacing_enabled_ = true;
+        }
+
+        void disableReplacingIO() {
+            if (!replacing_enabled_)
+                return;
+            for (auto* bus : audio_in)
+                if (bus)
+                    bus->useOwnedData();
+            replacing_enabled_ = false;
+        }
 
         EventSequence& eventIn() { return event_in; }
         EventSequence& eventOut() { return event_out; }
@@ -224,6 +329,7 @@ namespace remidy {
         }
 
         void advanceToNextNode() {
+            auto dataType = track_context.masterContext().audioDataType();
             // Copy audio output to input for the next node
             for (size_t i = 0; i < std::min(audio_in.size(), audio_out.size()); ++i) {
                 auto* inBus = audio_in[i];
@@ -232,10 +338,17 @@ namespace remidy {
                     auto channels = std::min(inBus->channelCount(), outBus->channelCount());
                     auto frames = std::min(inBus->bufferCapacityInFrames(), outBus->bufferCapacityInFrames());
                     for (uint32_t ch = 0; ch < channels; ++ch) {
-                        // Copy based on the audio data type
-                        std::memcpy(inBus->getFloatBufferForChannel(ch),
-                                   outBus->getFloatBufferForChannel(ch),
-                                   frames * sizeof(float));
+                        if (dataType == AudioContentType::Float64) {
+                            auto* dst = inBus->getDoubleBufferForChannel(ch);
+                            auto* src = outBus->getDoubleBufferForChannel(ch);
+                            if (dst && src)
+                                std::memcpy(dst, src, frames * sizeof(double));
+                        } else {
+                            auto* dst = inBus->getFloatBufferForChannel(ch);
+                            auto* src = outBus->getFloatBufferForChannel(ch);
+                            if (dst && src)
+                                std::memcpy(dst, src, frames * sizeof(float));
+                        }
                     }
                 }
             }

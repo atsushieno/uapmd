@@ -59,14 +59,24 @@ namespace uapmd {
             if (bypassed_)
                 return 0;
 
+            const bool replacing = instance && instance->requiresReplacingProcess();
+            if (replacing) {
+                process.copyInputsToOutputs();
+                process.enableReplacingIO();
+            }
+
             // FIXME: pass valid timestamp
             if (const auto m = ump_input_mapper.get())
                 m->process(0, process);
-            
+
             // FIXME: define error codes
+            uapmd_status_t status = 0;
             if (const auto p = instance)
-                return (uapmd_status_t) p->process(process);
-            return 0;
+                status = static_cast<uapmd_status_t>(p->process(process));
+
+            if (replacing)
+                process.disableReplacingIO();
+            return status;
         }
 
         std::vector<uapmd::ParameterMetadata> parameterMetadataList() override {
@@ -278,6 +288,10 @@ namespace uapmd {
 
         void clearMidiDeviceFromPlugin() override {
             ump_output_mapper.reset();
+        }
+
+        bool requiresReplacingProcess() const override {
+            return instance && instance->requiresReplacingProcess();
         }
     };
 }

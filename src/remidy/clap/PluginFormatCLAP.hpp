@@ -99,6 +99,7 @@ namespace remidy {
         std::vector<clap_audio_buffer_t> audio_in_port_buffers{};
         std::vector<clap_audio_buffer_t> audio_out_port_buffers{};
         std::vector<clap_event_transport_t> transports_events{};
+        bool requires_replacing_process_{false};
 
         // Store port infos for in-place processing detection and 64-bit support
         std::vector<clap_audio_port_info_t> inputPortInfos{};
@@ -308,5 +309,7 @@ namespace remidy {
 
         // timers (CLAP host timer-support helper)
         void dispatchTimer(clap_id timerId);
+
+        bool requiresReplacingProcess() const override { return requires_replacing_process_; }
     };
 }

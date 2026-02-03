@@ -167,31 +167,19 @@ namespace remidy {
         });
         applyOfflineRenderingMode();
 
+        requires_replacing_process_ = false;
+        for (const auto& outInfo : outputPortInfos) {
+            if (outInfo.in_place_pair != CLAP_INVALID_ID) {
+                requires_replacing_process_ = true;
+                break;
+            }
+        }
+
         // alter the input/output audio buffers entries, and start allocation.
         clap_process.audio_inputs_count = audio_buses->audioInputBuses().size();
         clap_process.audio_outputs_count = audio_buses->audioOutputBuses().size();
         audio_in_port_buffers.resize(clap_process.audio_inputs_count);
         audio_out_port_buffers.resize(clap_process.audio_outputs_count);
-
-        // Detect in-place processing opportunities
-        std::map<size_t, size_t> inPlaceOutputToInput;  // output index -> input index
-        for (size_t outIdx = 0; outIdx < outputPortInfos.size(); ++outIdx) {
-            const auto& outInfo = outputPortInfos[outIdx];
-            if (outInfo.in_place_pair != CLAP_INVALID_ID) {
-                // Find corresponding input port
-                for (size_t inIdx = 0; inIdx < inputPortInfos.size(); ++inIdx) {
-                    if (inputPortInfos[inIdx].id == outInfo.in_place_pair) {
-                        // Check channel counts match
-                        auto inChannels = audio_buses->audioInputBuses()[inIdx]->channelLayout().channels();
-                        auto outChannels = audio_buses->audioOutputBuses()[outIdx]->channelLayout().channels();
-                        if (inChannels == outChannels) {
-                            inPlaceOutputToInput[outIdx] = inIdx;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
 
         for (size_t i = 0, n = clap_process.audio_inputs_count; i < n; i++)
             audio_in_port_buffers[i].channel_count = audio_buses->audioInputBuses()[i]->channelLayout().channels();
@@ -200,16 +188,6 @@ namespace remidy {
 
         // Allocate input buffers
         resizeAudioPortBuffers(configuration.bufferSizeInSamples, useDouble);
-
-        // Share buffers for in-place processing
-        for (const auto& [outIdx, inIdx] : inPlaceOutputToInput) {
-            // Point output buffer to input buffer for in-place processing
-            if (useDouble) {
-                audio_out_port_buffers[outIdx].data64 = audio_in_port_buffers[inIdx].data64;
-            } else {
-                audio_out_port_buffers[outIdx].data32 = audio_in_port_buffers[inIdx].data32;
-            }
-        }
 
         // After this, we fix (cannot resize) those audio port buffers.
         clap_process.audio_inputs = audio_in_port_buffers.data();

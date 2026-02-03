@@ -44,6 +44,7 @@ namespace uapmd {
         virtual std::string& pluginId() const = 0;
         virtual void bypassed(bool value) = 0;
         virtual uapmd_status_t processAudio(AudioProcessContext &process) = 0;
+        virtual bool requiresReplacingProcess() const = 0;
         virtual std::vector<ParameterMetadata> parameterMetadataList() = 0;
         virtual std::vector<ParameterMetadata> perNoteControllerMetadataList(remidy::PerNoteControllerContextTypes contextType, uint32_t context) = 0;
         virtual std::vector<PresetsMetadata> presetMetadataList() = 0;

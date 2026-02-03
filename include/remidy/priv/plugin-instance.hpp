@@ -58,6 +58,10 @@ namespace remidy {
         virtual PluginPresetsSupport* presets() = 0;
 
         virtual PluginUISupport* ui() = 0;
+
+        // Some plugin APIs (e.g. CLAP in-place pairs) require the host to provide replacing buffers.
+        // Hosts can query this flag to prepare AudioProcessContext inputs accordingly.
+        virtual bool requiresReplacingProcess() const { return false; }
     };
 
 }
