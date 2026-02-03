@@ -27,29 +27,32 @@ CPMAddPackage(
         GIT_REPOSITORY https://github.com/celtera/libremidi
         EXCLUDE_FROM_ALL
 )
-set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 CPMAddPackage(
         NAME           miniaudio
         GIT_TAG        0.11.23
         GIT_REPOSITORY https://github.com/mackron/miniaudio
-        EXCLUDE_FROM_ALL
+        DOWNLOAD_ONLY YES
 )
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
+        ${libremidi_SOURCE_DIR}
         ${choc_SOURCE_DIR}
         ../../include
         ${midicci_SOURCE_DIR}/include
         ${concurrentqueue_SOURCE_DIR}
 )
 
-target_link_libraries(uapmd-engine PUBLIC
+target_link_libraries(uapmd-engine
+        PRIVATE
         libremidi::libremidi
+        midicci_static
+        PUBLIC
         remidy::remidy
         remidy::remidy-tooling
         uapmd
-        midicci_static
 )
 
 target_sources(uapmd-engine PRIVATE
