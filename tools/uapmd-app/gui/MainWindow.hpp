@@ -124,7 +124,7 @@ class MainWindow {
         void refreshPluginList();
 
         // Virtual MIDI device management
-        void createDeviceForPlugin(const std::string& format, const std::string& pluginId, int32_t trackIndex);
+        void createPluginInstance(const std::string& format, const std::string& pluginId, int32_t trackIndex);
 
         // TrackList helper methods
         std::optional<TrackInstance> buildTrackInstanceInfo(int32_t instanceId);

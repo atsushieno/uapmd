@@ -229,7 +229,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
     // Set up PluginSelector callbacks
     pluginSelector_.setOnInstantiatePlugin([this](const std::string& format, const std::string& pluginId, int32_t trackIndex) {
-        createDeviceForPlugin(format, pluginId, trackIndex);
+        createPluginInstance(format, pluginId, trackIndex);
         showPluginSelectorWindow_ = false;
     });
 
@@ -745,41 +745,6 @@ void MainWindow::renderPlayerSettings() {
     auto& transport = model.transport();
     auto& sequencer = model.sequencer();
 
-    ImGui::Text("Current File: %s", transport.currentFile().empty() ? "None" : transport.currentFile().c_str());
-
-    if (ImGui::Button("Load File...")) {
-        auto selection = pfd::open_file(
-            "Select Audio File",
-            ".",
-            { "Audio Files", "*.wav *.flac *.ogg",
-              "WAV Files", "*.wav",
-              "FLAC Files", "*.flac",
-              "OGG Files", "*.ogg",
-              "All Files", "*" }
-        );
-
-        if (!selection.result().empty()) {
-            std::string filepath = selection.result()[0];
-            std::string error = transport.loadFile(filepath);
-            if (!error.empty())
-                pfd::message("Load Failed", error, pfd::choice::ok, pfd::icon::error);
-        }
-    }
-
-    ImGui::SameLine();
-
-    // Disable Unload button if no file is loaded
-    bool hasFile = !transport.currentFile().empty();
-    if (!hasFile) {
-        ImGui::BeginDisabled();
-    }
-    if (ImGui::Button("Unload File")) {
-        transport.unloadFile();
-    }
-    if (!hasFile) {
-        ImGui::EndDisabled();
-    }
-
     // Spectrum analyzers - side by side
     float availableWidth = ImGui::GetContentRegionAvail().x;
     float spectrumWidth = (availableWidth - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
@@ -849,23 +814,6 @@ void MainWindow::renderPlayerSettings() {
     if (ImGui::Checkbox("Offline Rendering", &offlineRendering)) {
         sequencer.engine()->offlineRendering(offlineRendering);
     }
-
-    // Position slider
-    ImGui::Text("Position:");
-    float position = transport.playbackPosition();
-    float length = transport.playbackLength();
-    if (ImGui::SliderFloat("##Position", &position, 0.0f, length, "%.1f s")) {
-        std::cout << "Seeking to position: " << position << std::endl;
-        // TODO: Add setPlaybackPosition to TransportController if seeking is needed
-    }
-
-    // Time display
-    int currentMin = static_cast<int>(position) / 60;
-    int currentSec = static_cast<int>(position) % 60;
-    int totalMin = static_cast<int>(length) / 60;
-    int totalSecTotal = static_cast<int>(length) % 60;
-
-    ImGui::Text("Time: %02d:%02d / %02d:%02d", currentMin, currentSec, totalMin, totalSecTotal);
 
     ImGui::Text("Master Volume:");
     float volume = transport.volume();
@@ -1162,7 +1110,7 @@ void MainWindow::loadPluginState(int32_t instanceId) {
     instanceDetails_.refreshParametersForInstance(instanceId);
 }
 
-void MainWindow::createDeviceForPlugin(const std::string& format, const std::string& pluginId, int32_t trackIndex) {
+void MainWindow::createPluginInstance(const std::string& format, const std::string& pluginId, int32_t trackIndex) {
     // Prepare configuration
     uapmd::AppModel::PluginInstanceConfig config;
     config.apiName = std::string(pluginSelector_.getApiInput());

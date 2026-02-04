@@ -20,34 +20,24 @@ namespace uapmd {
     class TransportController {
         AppModel* appModel_;
         AudioPluginSequencer* sequencer_;
-        std::string currentFile_;
-        int32_t currentClipId_ = -1;  // Track the clip we loaded
-        int32_t currentTrackIndex_ = 0;  // Which track to load into (default to track 0)
         bool isPlaying_ = false;
         bool isPaused_ = false;
         bool isRecording_ = false;
-        float playbackPosition_ = 0.0f;
-        float playbackLength_ = 0.0f;
         float volume_ = 0.8f;
 
     public:
         explicit TransportController(AppModel* appModel, AudioPluginSequencer* sequencer);
 
         // State getters
-        const std::string& currentFile() const { return currentFile_; }
         bool isPlaying() const { return isPlaying_; }
         bool isPaused() const { return isPaused_; }
         bool isRecording() const { return isRecording_; }
-        float playbackPosition() const { return playbackPosition_; }
-        float playbackLength() const { return playbackLength_; }
         float volume() const { return volume_; }
 
         // State setters
         void setVolume(float volume) { volume_ = volume; }
 
         // Transport control methods
-        std::string loadFile(std::string& filepath); // returns error message if any
-        void unloadFile();
         void play();
         void stop();
         void pause();
@@ -266,7 +256,6 @@ namespace uapmd {
 
         // Track synchronization
         void syncAppTracks();
-        void ensureDefaultTrack();
 
         // Sample rate access
         int32_t sampleRate() const { return sample_rate_; }

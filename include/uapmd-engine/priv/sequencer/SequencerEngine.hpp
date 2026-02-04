@@ -23,6 +23,7 @@ namespace uapmd {
         SequencerEngine() = default;
 
     public:
+        // FIXME: we should remove this structure and let SequencerTrack hold the master info.
         struct PluginNodeInfo {
             int32_t instanceId = -1;
             std::string pluginId;
@@ -30,6 +31,7 @@ namespace uapmd {
             std::string displayName;
         };
 
+        // FIXME: we should remove this structure and let SequencerTrack hold the master info.
         struct TrackInfo {
             int32_t trackIndex = -1;
             std::vector<PluginNodeInfo> nodes;

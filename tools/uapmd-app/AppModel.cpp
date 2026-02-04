@@ -1,7 +1,6 @@
 
 #include "uapmd/uapmd.hpp"
 #include "AppModel.hpp"
-#include <portable-file-dialogs.h>
 #include <iostream>
 #include <fstream>
 #include <exception>
@@ -501,7 +500,6 @@ void uapmd::TransportController::stop() {
     appModel_->timeline().playheadPosition.beats = 0.0;
     isPlaying_ = false;
     isPaused_ = false;
-    playbackPosition_ = 0.0f;
 }
 
 void uapmd::TransportController::pause() {
@@ -523,68 +521,6 @@ void uapmd::TransportController::record() {
         std::cout << "Starting recording" << std::endl;
     else
         std::cout << "Stopping recording" << std::endl;
-}
-
-std::string uapmd::TransportController::loadFile(std::string& filepath) {
-    auto reader = uapmd::createAudioFileReaderFromPath(filepath);
-    if (!reader)
-        return "Could not load audio file: " + filepath + "\nSupported formats: WAV, FLAC, OGG";
-
-    // Ensure at least one track exists
-    appModel_->ensureDefaultTrack();
-
-    // Unload previous clip if any
-    if (currentClipId_ >= 0) {
-        appModel_->removeClipFromTrack(currentTrackIndex_, currentClipId_);
-        currentClipId_ = -1;
-    }
-
-    // Add clip to track 0 at timeline position 0
-    uapmd_app::TimelinePosition position;
-    position.samples = 0;
-    position.beats = 0.0;
-
-    auto result = appModel_->addClipToTrack(currentTrackIndex_, position, std::move(reader));
-
-    if (!result.success)
-        return "Could not add clip to track: " + result.error;
-
-    currentClipId_ = result.clipId;
-    currentFile_ = filepath;
-
-    // Get duration from the clip
-    auto tracks = appModel_->getAppTracks();
-    if (currentTrackIndex_ < static_cast<int32_t>(tracks.size())) {
-        auto* clip = tracks[currentTrackIndex_]->clipManager().getClip(currentClipId_);
-        if (clip) {
-            playbackLength_ = static_cast<float>(clip->durationSamples) / static_cast<float>(appModel_->sampleRate());
-        }
-    }
-
-    playbackPosition_ = 0.0f;
-
-    Logger::global()->logInfo("File loaded as clip: %s (clipId=%d)", currentFile_.data(), currentClipId_);
-
-    return "";
-}
-
-void uapmd::TransportController::unloadFile() {
-    // Stop playback if currently playing
-    if (isPlaying_)
-        stop();
-
-    // Remove clip from track
-    if (currentClipId_ >= 0) {
-        appModel_->removeClipFromTrack(currentTrackIndex_, currentClipId_);
-        currentClipId_ = -1;
-    }
-
-    // Clear state
-    currentFile_.clear();
-    playbackLength_ = 0.0f;
-    playbackPosition_ = 0.0f;
-
-    std::cout << "Audio file unloaded" << std::endl;
 }
 
 std::vector<uapmd::AppModel::DeviceEntry> uapmd::AppModel::getDevices() const {
@@ -818,24 +754,6 @@ void uapmd::AppModel::syncAppTracks() {
         app_tracks_.push_back(
             std::make_unique<uapmd_app::AppTrack>(uapmdTracks[i], sample_rate_)
         );
-    }
-}
-
-void uapmd::AppModel::ensureDefaultTrack() {
-    // If no tracks exist, create a default empty track
-    if (app_tracks_.empty()) {
-        // Add a simple track without any plugins
-        std::string emptyFormat = "";
-        std::string emptyPluginId = "";
-        auto callback = [this](int32_t instanceId, int32_t trackIndex, std::string error) {
-            // No plugin instance, just track creation
-            syncAppTracks();
-        };
-        auto trackIndex = sequencer_.engine()->addEmptyTrack();
-        sequencer_.engine()->addPluginToTrack(trackIndex, emptyFormat, emptyPluginId, callback);
-
-        // Synchronize app_tracks_ to wrap the newly created track
-        syncAppTracks();
     }
 }
 
