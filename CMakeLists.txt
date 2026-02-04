@@ -19,6 +19,7 @@ if (MSVC OR WIN32)
 add_compile_definitions(NOMINMAX)
 endif()
 
+include(FetchContent)
 include(cmake/CPM.cmake)
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME uapmd)
@@ -32,6 +33,17 @@ else()
     # we do not mess platforms that works totally well
 endif()
 set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
+
+set(CMAKE_SKIP_INSTALL_RULES ON)
+CPMAddPackage(
+        NAME            cpptrace
+        GIT_REPOSITORY  https://github.com/jeremy-rifkin/cpptrace.git
+        GIT_TAG         v1.0.4
+        EXCLUDE_FROM_ALL
+)
+# Force a static build of cpptrace regardless of parent defaults
+set(BUILD_SHARED_LIBS OFF)
+FetchContent_MakeAvailable(cpptrace)
 
 CPMAddPackage(
         NAME            choc

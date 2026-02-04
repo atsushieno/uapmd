@@ -23,4 +23,3 @@
 - git tag
 - Once pushed, manually start release workflow on GitHub Actions.
   - It's better to only create a draft release, so that we can confirm that all the expected package files are there
-

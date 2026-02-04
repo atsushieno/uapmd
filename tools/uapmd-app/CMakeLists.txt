@@ -246,6 +246,15 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             zlib-ng
             ${uapmd_LIBS_PLAT}
     )
+
+    # Create a .dSYM file on macOS
+    if(APPLE)
+        add_custom_command(
+                TARGET ${app_target}
+                POST_BUILD
+                COMMAND dsymutil $<TARGET_FILE:${app_target}>
+        )
+    endif()
 endforeach()
 
 # On Linux, CHOC's DesktopWindow uses GTK3; ensure headers and libs are present
