@@ -63,7 +63,7 @@ target_sources(uapmd-engine PRIVATE
         devices/MidiIODevice.cpp
         devices/MiniAudioIODevice.cpp
         plugin-api/RemidyAudioPluginHost.cpp
-        sequencer/AudioPluginSequencer.cpp
+        sequencer/RealtimeSequencer.cpp
         sequencer/SequencerEngine.cpp
         sequencer/SequencerTrack.cpp
 )

@@ -16,7 +16,7 @@ namespace uapmd {
 
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
-    // It is independent of DeviceIODispatcher (it will fire `processAudio()`)..
+    // It is independent of DeviceIODispatcher, which fires `processAudio()` in its audio I/O callback.
     // It is also independent of the timed sequencer that is to deliver sequencer inputs on time.
     class SequencerEngine : public SequencerFeature {
     protected:
@@ -32,7 +32,7 @@ namespace uapmd {
 
         virtual std::vector<SequencerTrack *> & tracks() const = 0;
 
-        // Set default channel configuration (called by AudioPluginSequencer when device changes)
+        // Set default channel configuration (called by RealtimeSequencer when device changes)
         virtual void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) = 0;
 
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
@@ -51,7 +51,7 @@ namespace uapmd {
 
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
 
-        // Playback control (accessed by AudioPluginSequencer)
+        // Playback control (accessed by RealtimeSequencer)
         virtual bool isPlaybackActive() const = 0;
         virtual void playbackPosition(int64_t samples) = 0;
         virtual int64_t playbackPosition() const = 0;

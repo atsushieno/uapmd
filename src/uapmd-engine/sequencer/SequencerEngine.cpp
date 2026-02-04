@@ -24,7 +24,7 @@ namespace uapmd {
         AudioPluginHostingAPI* plugin_host;
         UapmdFunctionBlockManager function_block_manager{};
 
-        // Playback state (managed by AudioPluginSequencer)
+        // Playback state (managed by RealtimeSequencer)
         std::atomic<bool> is_playback_active_{false};
         std::atomic<int64_t> playback_position_samples_{0};
 
@@ -343,7 +343,7 @@ namespace uapmd {
         track_processing_flags_.emplace_back(std::make_unique<std::atomic<bool>>(false));
         auto trackIndex = static_cast<uapmd_track_index_t>(tracks_.size() - 1);
 
-        // Configure main bus (moved from AudioPluginSequencer)
+        // Configure main bus (moved from RealtimeSequencer)
         auto trackCtx = sequence.tracks[trackIndex];
         trackCtx->configureMainBus(default_input_channels_, default_output_channels_, audio_buffer_size_in_frames);
 

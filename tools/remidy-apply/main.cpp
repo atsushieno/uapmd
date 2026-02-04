@@ -126,7 +126,7 @@ class RemidyApply {
         static constexpr int64_t TOTAL_BUFFERS = 200;  // ~4.2 seconds at 48kHz
 
         // For offline rendering, use SequencerEngine directly
-        // (AudioPluginSequencer requires a dispatcher)
+        // (RealtimeSequencer requires a dispatcher)
         auto sequencer = uapmd::SequencerEngine::create(
             SAMPLE_RATE,
             AUDIO_BUFFER_SIZE,

@@ -14,7 +14,7 @@
 
 namespace uapmd {
 
-    class AudioPluginSequencer {
+    class RealtimeSequencer {
         size_t buffer_size_in_frames;
         const size_t ump_buffer_size_in_bytes;
         int32_t sample_rate;
@@ -23,8 +23,8 @@ namespace uapmd {
         std::unique_ptr<SequencerEngine> sequencer;
 
     public:
-        AudioPluginSequencer(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
-        ~AudioPluginSequencer();
+        RealtimeSequencer(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
+        ~RealtimeSequencer();
 
         SequencerEngine* engine() const { return sequencer.get(); }
 

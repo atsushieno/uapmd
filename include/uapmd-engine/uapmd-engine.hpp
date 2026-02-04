@@ -9,4 +9,4 @@
 #include "priv/audio/AudioFileFactory.hpp"
 #include "priv/sequencer/SequenceProcessContext.hpp"
 #include "priv/sequencer/SequencerEngine.hpp"
-#include "priv/sequencer/AudioPluginSequencer.hpp"
+#include "priv/sequencer/RealtimeSequencer.hpp"

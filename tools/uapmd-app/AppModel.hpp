@@ -14,19 +14,19 @@
 
 namespace uapmd {
     // Forward declarations
-    class AudioPluginSequencer;
+    class RealtimeSequencer;
     class AppModel;
 
     class TransportController {
         AppModel* appModel_;
-        AudioPluginSequencer* sequencer_;
+        RealtimeSequencer* sequencer_;
         bool isPlaying_ = false;
         bool isPaused_ = false;
         bool isRecording_ = false;
         float volume_ = 0.8f;
 
     public:
-        explicit TransportController(AppModel* appModel, AudioPluginSequencer* sequencer);
+        explicit TransportController(AppModel* appModel, RealtimeSequencer* sequencer);
 
         // State getters
         bool isPlaying() const { return isPlaying_; }
@@ -81,7 +81,7 @@ namespace uapmd {
         };
 
     private:
-        AudioPluginSequencer sequencer_;
+        RealtimeSequencer sequencer_;
         remidy_tooling::PluginScanTool pluginScanTool_;
         std::unique_ptr<TransportController> transportController_;
         std::atomic<bool> isScanning_{false};
@@ -104,7 +104,7 @@ namespace uapmd {
         static void cleanupInstance();
         AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
 
-        AudioPluginSequencer& sequencer() { return sequencer_; }
+        RealtimeSequencer& sequencer() { return sequencer_; }
         remidy_tooling::PluginScanTool& pluginScanTool() { return pluginScanTool_; }
         TransportController& transport() { return *transportController_; }
         bool isScanning() const { return isScanning_; }

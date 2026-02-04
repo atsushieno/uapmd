@@ -5,9 +5,9 @@ For MIDI-CI messaging we use midicci, which is mere port of ktmidi-ci and ktmidi
 
 ## Audio engine, plugin tracks, and plugin instances
 
-There is one single `AudioPluginSequencer`, which manages multiple `AudioPluginTrack`s. One `AudioPluginTrack` so far holds a simple `AudioPluginGraph` which also includes I/O nodes.
+There is one single `RealtimeSequencer`, which manages multiple `AudioPluginTrack`s. One `AudioPluginTrack` so far holds a simple `AudioPluginGraph` which also includes I/O nodes.
 
-UAPMD so far creates one virtual MIDI 2.0 (UMP) device for each plugin instance, whereas the actual audio I/O happens ultimately on the single `AudioPluginSequencer`. The UMP devices act only as the controllers to the plugins.
+UAPMD so far creates one virtual MIDI 2.0 (UMP) device for each plugin instance, whereas the actual audio I/O happens ultimately on the single `RealtimeSequencer`. The UMP devices act only as the controllers to the plugins.
 
 This avoids need for MIDI mappings unlike typical DAWs.
 

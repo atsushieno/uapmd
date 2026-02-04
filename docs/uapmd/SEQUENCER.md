@@ -10,7 +10,7 @@ The audio engine has to work in two ways:
 
 ## Current API Design Before Refactoring
 
-### `AudioPluginSequencer`
+### `RealtimeSequencer`
 
 It was supposed to be a live-rendering version of the audio engine. 
 
@@ -26,7 +26,7 @@ It is still used by remidy-apply, but the console tool is not really functional 
 
 `DeviceIODispatcher` collects device I/O functionality (i.e. `AudioIODevice` and `MidiIODevice`), which is essential to the live rendering engine.
 
-Conceptually they can also exist as virtual static entities, but they are so far specific to `AudioPluginSequencer`.
+Conceptually they can also exist as virtual static entities, but they are so far specific to `RealtimeSequencer`.
 
 ### `AudioPluginTrack`
 
@@ -49,7 +49,7 @@ There could be a master track which should also contain a plugin graph, but curr
 
 An `AudioPluginGraph` holds a list of `AudioPluginNode`s.
 
-There is no abstraction on audio graph nodes. The inputs and outputs are represented as `DeviceIODispatcher` and `AudioPluginSequencer` handles it. There is no other nodes such as mixer nodes or volume controller nodes. They could be part of audio graph implementation details. Our simple audio graph does not support it.
+There is no abstraction on audio graph nodes. The inputs and outputs are represented as `DeviceIODispatcher` and `RealtimeSequencer` handles it. There is no other nodes such as mixer nodes or volume controller nodes. They could be part of audio graph implementation details. Our simple audio graph does not support it.
 
 This node also holds an audio plugin instance and UAPMD UMP I/O mappers.
 

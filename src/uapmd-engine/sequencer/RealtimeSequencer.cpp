@@ -12,7 +12,7 @@
 // Note: audio file decoding is abstracted behind uapmd::AudioFileReader interface now.
 
 
-uapmd::AudioPluginSequencer::AudioPluginSequencer(
+uapmd::RealtimeSequencer::RealtimeSequencer(
     size_t audioBufferSizeInFrames,
     size_t umpBufferSizeInBytes,
     int32_t sampleRate,
@@ -41,36 +41,36 @@ uapmd::AudioPluginSequencer::AudioPluginSequencer(
     });
 }
 
-uapmd::AudioPluginSequencer::~AudioPluginSequencer() {
+uapmd::RealtimeSequencer::~RealtimeSequencer() {
     stopAudio();
 }
 
-std::string uapmd::AudioPluginSequencer::getPluginFormat(int32_t instanceId) {
+std::string uapmd::RealtimeSequencer::getPluginFormat(int32_t instanceId) {
     auto* instance = sequencer->getPluginInstance(instanceId);
     return instance->formatName();
 }
 
-uapmd_status_t uapmd::AudioPluginSequencer::startAudio() {
+uapmd_status_t uapmd::RealtimeSequencer::startAudio() {
     return dispatcher->start();
 }
 
-uapmd_status_t uapmd::AudioPluginSequencer::stopAudio() {
+uapmd_status_t uapmd::RealtimeSequencer::stopAudio() {
     return dispatcher->stop();
 }
 
-uapmd_status_t uapmd::AudioPluginSequencer::isAudioPlaying() {
+uapmd_status_t uapmd::RealtimeSequencer::isAudioPlaying() {
     return dispatcher->isPlaying();
 }
 
-int32_t uapmd::AudioPluginSequencer::sampleRate() { return sample_rate; }
-bool uapmd::AudioPluginSequencer::sampleRate(int32_t newSampleRate) {
+int32_t uapmd::RealtimeSequencer::sampleRate() { return sample_rate; }
+bool uapmd::RealtimeSequencer::sampleRate(int32_t newSampleRate) {
     if (dispatcher->isPlaying())
         return false;
     sample_rate = newSampleRate;
     return true;
 }
 
-bool uapmd::AudioPluginSequencer::reconfigureAudioDevice(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate, uint32_t bufferSize) {
+bool uapmd::RealtimeSequencer::reconfigureAudioDevice(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate, uint32_t bufferSize) {
     // Stop audio if it's currently playing
     bool wasPlaying = dispatcher->isPlaying();
     if (wasPlaying) {

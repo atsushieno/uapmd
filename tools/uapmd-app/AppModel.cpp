@@ -11,7 +11,7 @@
 
 std::unique_ptr<uapmd::AppModel> model{};
 
-uapmd::TransportController::TransportController(AppModel* appModel, AudioPluginSequencer* sequencer)
+uapmd::TransportController::TransportController(AppModel* appModel, RealtimeSequencer* sequencer)
     : appModel_(appModel), sequencer_(sequencer) {
 }
 
