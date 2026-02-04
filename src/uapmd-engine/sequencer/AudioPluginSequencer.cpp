@@ -50,18 +50,6 @@ std::string uapmd::AudioPluginSequencer::getPluginFormat(int32_t instanceId) {
     return instance->formatName();
 }
 
-int32_t uapmd::AudioPluginSequencer::findTrackIndexForInstance(int32_t instanceId) const {
-    auto& tracksRef = sequencer->tracks();
-    for (size_t i = 0; i < tracksRef.size(); ++i) {
-        for (auto& p : tracksRef[i]->graph().plugins()) {
-            if (p.first == instanceId) {
-                return static_cast<int32_t>(i);
-            }
-        }
-    }
-    return -1;
-}
-
 uapmd_status_t uapmd::AudioPluginSequencer::startAudio() {
     return dispatcher->start();
 }

@@ -124,6 +124,7 @@ namespace uapmd {
         void setPluginBypassed(int32_t instanceId, bool bypassed) override;
 
         UapmdFunctionBlockManager *functionBlockManager() override { return &function_block_manager; }
+        int32_t findTrackIndexForInstance(int32_t instanceId) const override;
 
         // Event routing
         void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) override;
@@ -629,6 +630,18 @@ namespace uapmd {
                 assignGroup(instanceId);
             }
         }
+    }
+
+    int32_t SequencerEngineImpl::findTrackIndexForInstance(int32_t instanceId) const {
+        auto& tracksRef = tracks();
+        for (size_t i = 0; i < tracksRef.size(); ++i) {
+            for (auto& p : tracksRef[i]->graph().plugins()) {
+                if (p.first == instanceId) {
+                    return static_cast<int32_t>(i);
+                }
+            }
+        }
+        return -1;
     }
 
     // Plugin output dispatch (with group rewriting + NRPN parameter extraction)

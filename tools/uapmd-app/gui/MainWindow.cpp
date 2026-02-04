@@ -907,7 +907,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
         return std::nullopt;
     }
 
-    int32_t trackIndex = sequencer.findTrackIndexForInstance(instanceId);
+    int32_t trackIndex = sequencer.engine()->findTrackIndexForInstance(instanceId);
     std::string pluginName = sequencer.engine()->getPluginName(instanceId);
     std::string pluginFormat = sequencer.getPluginFormat(instanceId);
 

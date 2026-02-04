@@ -290,7 +290,7 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
 
     // If device was destroyed (disabled), recreate it
     if (!deviceState->device) {
-        auto actualTrackIndex = sequencer_.findTrackIndexForInstance(instanceId);
+        auto actualTrackIndex = sequencer_.engine()->findTrackIndexForInstance(instanceId);
 
         auto fbManager = sequencer_.engine()->functionBlockManager();
 

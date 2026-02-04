@@ -30,7 +30,6 @@ namespace uapmd {
 
         // Application-specific queries (metadata, track info)
         std::string getPluginFormat(int32_t instanceId);
-        int32_t findTrackIndexForInstance(int32_t instanceId) const;
 
         // Audio controller
 

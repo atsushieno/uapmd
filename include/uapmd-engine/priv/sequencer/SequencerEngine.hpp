@@ -105,6 +105,8 @@ namespace uapmd {
         virtual void offlineRendering(bool enabled) = 0;
 
         virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
+        // FIXME: we should probably remove this at some stage
+        virtual int32_t findTrackIndexForInstance(int32_t instanceId) const = 0;
 
         // Clean up empty tracks (must be called from non-audio thread)
         virtual void cleanupEmptyTracks() = 0;
