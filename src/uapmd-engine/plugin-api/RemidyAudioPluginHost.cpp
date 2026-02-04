@@ -65,9 +65,8 @@ namespace uapmd {
                 process.enableReplacingIO();
             }
 
-            // FIXME: pass valid timestamp
             if (const auto m = ump_input_mapper.get())
-                m->process(0, process);
+                m->process(process);
 
             // FIXME: define error codes
             uapmd_status_t status = 0;

@@ -11,7 +11,7 @@ namespace uapmd {
     public:
         explicit UapmdNodeUmpInputMapper(AudioPluginInstanceAPI* plugin);
 
-        void process(uint64_t timestamp, remidy::AudioProcessContext& src) override;
+        void process(remidy::AudioProcessContext& src) override;
 
         void setParameterValue(uint16_t index, double value) override;
 

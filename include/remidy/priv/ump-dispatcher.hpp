@@ -6,7 +6,7 @@ namespace remidy {
         virtual ~UmpInputDispatcher() = default;
 
         // generic processor
-        virtual void process(uint64_t timestamp, AudioProcessContext& src) = 0;
+        virtual void process(AudioProcessContext& src) = 0;
     };
 
     typedef uint8_t uint4_t;
@@ -43,7 +43,7 @@ namespace remidy {
         virtual void onProcessStart(AudioProcessContext& src) {}
         virtual void onProcessEnd(AudioProcessContext& src) {}
     public:
-        void process(uint64_t timestamp, AudioProcessContext& src) override;
+        void process(AudioProcessContext& src) override;
 
         uint64_t timestamp() { return _timestamp; }
         TrackContext* trackContext() { return track_context; }

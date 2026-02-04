@@ -307,7 +307,7 @@ namespace remidy {
             explicit AUUmpInputDispatcher(remidy::PluginInstanceAUv2 *owner);
             ~AUUmpInputDispatcher() override;
 
-            void process(uint64_t timestamp, remidy::AudioProcessContext &src) override;
+            void process(remidy::AudioProcessContext &src) override;
         };
 
         class AudioBuses : public GenericAudioBuses {

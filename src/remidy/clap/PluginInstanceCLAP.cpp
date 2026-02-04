@@ -401,8 +401,7 @@ namespace remidy {
         // Prepare output event list for this audio block
         events_out->clear();
 
-        // FIXME: provide valid timestamp?
-        ump_input_dispatcher.process(0, process);
+        ump_input_dispatcher.process(process);
 
         // FIXME: we should report process result somehow
         auto result = plugin->process(&clap_process);

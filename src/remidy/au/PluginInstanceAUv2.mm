@@ -302,8 +302,7 @@ remidy::StatusCode remidy::PluginInstanceAUv2::process(AudioProcessContext &proc
         }
 
         if (audio_buses->hasEventInputs())
-            // FIXME: pass correct timestamp
-            ump_input_dispatcher.process(0, process);
+            ump_input_dispatcher.process(process);
 
         // Clear output buffer before processing
         midi_output_count = 0;

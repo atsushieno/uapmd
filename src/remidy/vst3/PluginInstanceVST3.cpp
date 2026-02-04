@@ -450,8 +450,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
 
     // handle UMP inputs via UmpInputDispatcher.
     processDataInputEvents.clear();
-    // FIXME: pass correct timestamp
-    ump_input_dispatcher.process(0, process);
+    ump_input_dispatcher.process(process);
 
     processDataOutputParameterChanges.clear();
 

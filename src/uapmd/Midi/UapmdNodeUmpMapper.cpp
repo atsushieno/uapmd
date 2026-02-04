@@ -12,8 +12,8 @@ namespace uapmd {
         plugin(plugin) {
     }
 
-    void UapmdNodeUmpInputMapper::process(uint64_t timestamp, remidy::AudioProcessContext& src) {
-        UapmdUmpInputMapper::process(timestamp, src);
+    void UapmdNodeUmpInputMapper::process(remidy::AudioProcessContext& src) {
+        UapmdUmpInputMapper::process(src);
     }
 
     // UAPMD maps a parameter ID to an assignable controller bank and index, which totals only up to 14 bytes.

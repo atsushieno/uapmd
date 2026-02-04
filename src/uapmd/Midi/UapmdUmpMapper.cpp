@@ -2,7 +2,7 @@
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
-    void UapmdUmpInputMapper::process(uint64_t timestamp, remidy::AudioProcessContext& src) {
+    void UapmdUmpInputMapper::process(remidy::AudioProcessContext& src) {
         auto& inEvents = src.eventIn();
         auto& outEvents = src.eventOut();
         auto* bytes = static_cast<const uint8_t*>(inEvents.getMessages());

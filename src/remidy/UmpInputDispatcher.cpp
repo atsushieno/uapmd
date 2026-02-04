@@ -11,8 +11,8 @@ inline uint16_t midi2NoteAttributeData(const umppi::Ump& ump) {
 }
 }
 
-void remidy::TypedUmpInputDispatcher::process(uint64_t newTimestamp, AudioProcessContext &src) {
-    _timestamp = newTimestamp;
+void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
+    _timestamp = 0;
     track_context = src.trackContext();
 
     onProcessStart(src);

@@ -226,8 +226,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
         }
     }
 
-    // FIXME: pass correct timestamp
-    ump_input_dispatcher.process(0, process);
+    ump_input_dispatcher.process(process);
 
     lilv_instance_run(instance, process.frameCount());
 

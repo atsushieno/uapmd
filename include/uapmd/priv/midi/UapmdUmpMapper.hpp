@@ -16,7 +16,7 @@ namespace uapmd {
     public:
         virtual ~UapmdUmpInputMapper() = default;
 
-        virtual void process(uint64_t timestamp, remidy::AudioProcessContext& src) = 0;
+        virtual void process(remidy::AudioProcessContext& src);
 
         // UAPMD maps a parameter ID to an assignable controller bank and index, which totals only up to 14 bytes.
         // We use uint16_t to match that.
