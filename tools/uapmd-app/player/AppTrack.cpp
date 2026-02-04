@@ -4,7 +4,7 @@
 
 namespace uapmd_app {
 
-    AppTrack::AppTrack(uapmd::AudioPluginTrack* uapmdTrack, int32_t sampleRate)
+    AppTrack::AppTrack(uapmd::SequencerTrack* uapmdTrack, int32_t sampleRate)
         : uapmd_track_(uapmdTrack), sample_rate_(sampleRate) {
     }
 

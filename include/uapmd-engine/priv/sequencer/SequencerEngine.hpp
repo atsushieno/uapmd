@@ -44,7 +44,7 @@ namespace uapmd {
 
         virtual SequenceProcessContext& data() = 0;
 
-        virtual std::vector<AudioPluginTrack *> & tracks() const = 0;
+        virtual std::vector<SequencerTrack *> & tracks() const = 0;
 
         virtual std::vector<TrackInfo> getTrackInfos() = 0;
 

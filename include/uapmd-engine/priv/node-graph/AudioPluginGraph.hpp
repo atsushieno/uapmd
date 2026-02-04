@@ -37,7 +37,9 @@ namespace uapmd {
         // Each AudioPluginNode can be enqueued UMP input directly, and we already do so for direct inputs
         // on uapmd-app.
         virtual void setGroupResolver(std::function<uint8_t(int32_t)> resolver) = 0;
-        virtual void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) = 0;
+
+        //
+        virtual void setEventOutputCallback(std::function<void(int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes)> callback) = 0;
 
         virtual int32_t processAudio(AudioProcessContext& process) = 0;
 

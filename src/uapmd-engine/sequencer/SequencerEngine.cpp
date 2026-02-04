@@ -19,7 +19,7 @@ namespace uapmd {
         size_t ump_buffer_size_in_ints;
         uint32_t default_input_channels_{2};
         uint32_t default_output_channels_{2};
-        std::vector<std::unique_ptr<AudioPluginTrack>> tracks_{};
+        std::vector<std::unique_ptr<SequencerTrack>> tracks_{};
         SequenceProcessContext sequence{};
         int32_t sampleRate;
         AudioPluginHostingAPI* plugin_host;
@@ -45,7 +45,7 @@ namespace uapmd {
 
         // Function block routing
         struct FunctionBlockRoute {
-            AudioPluginTrack* track{nullptr};
+            SequencerTrack* track{nullptr};
             int32_t trackIndex{-1};
         };
         std::unordered_map<int32_t, FunctionBlockRoute> plugin_function_blocks_;
@@ -90,7 +90,7 @@ namespace uapmd {
 
         SequenceProcessContext& data() override { return sequence; }
 
-        std::vector<AudioPluginTrack*>& tracks() const override;
+        std::vector<SequencerTrack*>& tracks() const override;
         std::vector<TrackInfo> getTrackInfos() override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
@@ -158,12 +158,12 @@ namespace uapmd {
         void releaseGroup(int32_t instanceId);
 
         // Routing configuration
-        void configureTrackRouting(AudioPluginTrack* track);
+        void configureTrackRouting(SequencerTrack* track);
         void refreshFunctionBlockMappings();
 
         // Route resolution
         struct RouteResolution {
-            AudioPluginTrack* track{nullptr};
+            SequencerTrack* track{nullptr};
             int32_t trackIndex{-1};
             int32_t instanceId{-1};
         };
@@ -185,10 +185,10 @@ namespace uapmd {
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
     }
 
-    std::vector<AudioPluginTrack*> &SequencerEngineImpl::tracks() const {
+    std::vector<SequencerTrack*> &SequencerEngineImpl::tracks() const {
         // Note: This requires a mutable cache for const correctness
         // Since we need to return a reference to a vector of raw pointers
-        static thread_local std::vector<AudioPluginTrack*> track_ptrs;
+        static thread_local std::vector<SequencerTrack*> track_ptrs;
         track_ptrs.clear();
         for (const auto& track : tracks_)
             track_ptrs.push_back(track.get());
@@ -360,7 +360,7 @@ namespace uapmd {
     }
 
     uapmd_track_index_t SequencerEngineImpl::addEmptyTrack() {
-        auto tr = AudioPluginTrack::create(ump_buffer_size_in_ints);
+        auto tr = SequencerTrack::create(ump_buffer_size_in_ints);
         tracks_.emplace_back(std::move(tr));
         sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
         track_processing_flags_.emplace_back(std::make_unique<std::atomic<bool>>(false));
@@ -599,15 +599,15 @@ namespace uapmd {
     }
 
     // Track routing configuration
-    void SequencerEngineImpl::configureTrackRouting(AudioPluginTrack* track) {
+    void SequencerEngineImpl::configureTrackRouting(SequencerTrack* track) {
         if (!track)
             return;
         track->graph().setGroupResolver([this](int32_t instanceId) {
             const auto fb = functionBlockManager()->getFunctionDeviceByInstanceId(instanceId);
             return fb ? fb->group() : static_cast<uint8_t>(0xFF);
         });
-        track->graph().setEventOutputCallback([this](int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
-            dispatchPluginOutput(instanceId, data, bytes);
+        track->graph().setEventOutputCallback([this](int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes) {
+            dispatchPluginOutput(instanceId, data, dataSizeInBytes);
         });
     }
 

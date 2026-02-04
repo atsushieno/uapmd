@@ -5,7 +5,7 @@
 #include "priv/devices/MidiIODevice.hpp"
 #include "priv/devices/DeviceIODispatcher.hpp"
 #include "priv/node-graph/AudioPluginGraph.hpp"
-#include "priv/node-graph/AudioPluginTrack.hpp"
+#include "priv/sequencer/SequencerTrack.hpp"
 #include "priv/audio/AudioFileReader.hpp"
 #include "priv/audio/AudioFileFactory.hpp"
 #include "priv/sequencer/SequenceProcessContext.hpp"

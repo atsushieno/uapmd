@@ -15,7 +15,7 @@ namespace uapmd_app {
     // Wraps a uapmd::AudioPluginTrack and adds timeline/clip functionality
     class AppTrack {
     public:
-        explicit AppTrack(uapmd::AudioPluginTrack* uapmdTrack, int32_t sampleRate);
+        explicit AppTrack(uapmd::SequencerTrack* uapmdTrack, int32_t sampleRate);
         ~AppTrack() = default;
 
         // Clip management
@@ -40,11 +40,11 @@ namespace uapmd_app {
         );
 
         // Access to underlying uapmd track
-        uapmd::AudioPluginTrack* uapmdTrack() { return uapmd_track_; }
-        const uapmd::AudioPluginTrack* uapmdTrack() const { return uapmd_track_; }
+        uapmd::SequencerTrack* uapmdTrack() { return uapmd_track_; }
+        const uapmd::SequencerTrack* uapmdTrack() const { return uapmd_track_; }
 
     private:
-        uapmd::AudioPluginTrack* uapmd_track_;  // Wrapped uapmd track (not owned)
+        uapmd::SequencerTrack* uapmd_track_;  // Wrapped uapmd track (not owned)
         int32_t sample_rate_;
 
         TrackClipManager clip_manager_;

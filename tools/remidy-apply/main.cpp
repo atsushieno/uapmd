@@ -135,7 +135,7 @@ class RemidyApply {
 
         // Add plugin track and wait for async instantiation
         std::atomic<bool> trackReady{false};
-        uapmd::AudioPluginTrack* pluginTrack = nullptr;
+        uapmd::SequencerTrack* pluginTrack = nullptr;
 
         // We need to specify input/output channels for offline rendering
         uint32_t inputChannels = 2;   // Stereo input
