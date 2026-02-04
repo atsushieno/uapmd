@@ -39,6 +39,8 @@ namespace uapmd {
 
         for (size_t i = 0; i < nodes_.size(); ++i) {
             auto& node = nodes_[i];
+            if (!node)
+                continue;
             auto instanceId = node->instanceId();
 
             // Drain queue to pending events
