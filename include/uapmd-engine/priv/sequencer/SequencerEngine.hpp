@@ -69,9 +69,6 @@ namespace uapmd {
         virtual bool isPluginBypassed(int32_t instanceId) = 0;
         virtual void setPluginBypassed(int32_t instanceId, bool bypassed) = 0;
 
-        // Event routing
-        virtual void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;
-
         // Convenience methods for sending MIDI events
         virtual void sendNoteOn(int32_t instanceId, int32_t note) = 0;
         virtual void sendNoteOff(int32_t instanceId, int32_t note) = 0;
