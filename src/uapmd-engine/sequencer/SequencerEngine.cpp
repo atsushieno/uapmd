@@ -42,18 +42,6 @@ namespace uapmd {
         // Lock-free flag: true = reader owns, false = writer can write
         mutable std::atomic<bool> spectrum_reading_{false};
 
-        // Function block routing
-        struct FunctionBlockRoute {
-            SequencerTrack* track{nullptr};
-            int32_t trackIndex{-1};
-        };
-        std::unordered_map<int32_t, FunctionBlockRoute> plugin_function_blocks_;
-
-        // UMP group allocation
-        mutable std::unordered_map<int32_t, uint8_t> plugin_groups_;
-        std::vector<uint8_t> free_groups_;
-        uint8_t next_group_{0};
-
         // UMP output processing
         std::vector<uapmd_ump_t> plugin_output_scratch_;
 
@@ -148,10 +136,6 @@ namespace uapmd {
 
     private:
         void removeTrack(size_t index);
-
-        // Group management
-        uint8_t assignGroup(int32_t instanceId);
-        void releaseGroup(int32_t instanceId);
 
         // Routing configuration
         void configureTrackRouting(SequencerTrack* track);
@@ -413,8 +397,6 @@ namespace uapmd {
 
             // Function block setup
             configureTrackRouting(track);
-            plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
-            assignGroup(instanceId);
 
             // Plugin instance management
             {
@@ -452,10 +434,6 @@ namespace uapmd {
 
         // Clear plugin output handler (application-specific concern)
         setPluginOutputHandler(instanceId, nullptr);
-
-        // Function block cleanup
-        plugin_function_blocks_.erase(instanceId);
-        releaseGroup(instanceId);
 
         // Plugin instance cleanup
         {
@@ -548,44 +526,6 @@ namespace uapmd {
         spectrum_reading_.store(false, std::memory_order_release);
     }
 
-    // Group management
-    // FIXME: this should be removed and totally delegate everything to UapmdFunctionBlockManager.
-    uint8_t SequencerEngineImpl::assignGroup(int32_t instanceId) {
-        auto it = plugin_groups_.find(instanceId);
-        if (it != plugin_groups_.end())
-            return it->second;
-
-        uint8_t group = 0xFF;
-        if (!free_groups_.empty()) {
-            group = free_groups_.back();
-            free_groups_.pop_back();
-        } else {
-            if (next_group_ <= 0x0F) {
-                group = next_group_;
-                ++next_group_;
-            } else {
-                remidy::Logger::global()->logError("No available UMP groups for plugin instance {}", instanceId);
-                group = 0xFF;
-            }
-        }
-        if (group != 0xFF) {
-            plugin_groups_[instanceId] = group;
-        }
-        return group;
-    }
-
-    void SequencerEngineImpl::releaseGroup(int32_t instanceId) {
-        auto it = plugin_groups_.find(instanceId);
-        if (it == plugin_groups_.end())
-            return;
-        auto group = it->second;
-        plugin_groups_.erase(it);
-        if (group != 0xFF) {
-            if (group <= 0x0F)
-                free_groups_.push_back(group);
-        }
-    }
-
     // Track routing configuration
     void SequencerEngineImpl::configureTrackRouting(SequencerTrack* track) {
         if (!track)
@@ -599,23 +539,10 @@ namespace uapmd {
         });
     }
 
+    // Do we really need this...?
     void SequencerEngineImpl::refreshFunctionBlockMappings() {
-        plugin_function_blocks_.clear();
-        auto& trackPtrs = tracks();
-        for (size_t trackIndex = 0; trackIndex < trackPtrs.size(); ++trackIndex) {
-            auto* track = trackPtrs[trackIndex];
-            if (!track)
-                continue;
-            configureTrackRouting(track);
-            auto nodes = track->graph().plugins();
-            for (auto& p : nodes) {
-                if (!p.second)
-                    continue;
-                auto instanceId = p.first;
-                plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, static_cast<int32_t>(trackIndex)};
-                assignGroup(instanceId);
-            }
-        }
+        for (auto& track : tracks_)
+            configureTrackRouting(track.get());
     }
 
     int32_t SequencerEngineImpl::findTrackIndexForInstance(int32_t instanceId) const {
