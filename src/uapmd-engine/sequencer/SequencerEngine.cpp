@@ -243,7 +243,7 @@ namespace uapmd {
             track_processing_flags_[i]->store(true, std::memory_order_release);
 
             auto& tp = *sequence.tracks[i];
-            tracks_[i]->processAudio(tp);
+            tracks_[i]->graph().processAudio(tp);
             tp.eventIn().position(0); // reset
 
             // Clear processing flag AFTER we're done with the track context
@@ -601,11 +601,11 @@ namespace uapmd {
     void SequencerEngineImpl::configureTrackRouting(AudioPluginTrack* track) {
         if (!track)
             return;
-        track->setGroupResolver([this](int32_t instanceId) {
+        track->graph().setGroupResolver([this](int32_t instanceId) {
             const auto fb = functionBlockManager()->getFunctionDeviceByInstanceId(instanceId);
             return fb ? fb->group() : static_cast<uint8_t>(0xFF);
         });
-        track->setEventOutputCallback([this](int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
+        track->graph().setEventOutputCallback([this](int32_t instanceId, const uapmd_ump_t* data, size_t bytes) {
             dispatchPluginOutput(instanceId, data, bytes);
         });
     }

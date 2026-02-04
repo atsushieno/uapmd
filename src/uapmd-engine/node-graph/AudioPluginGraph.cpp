@@ -8,6 +8,8 @@ namespace uapmd {
     class AudioPluginGraphImpl : public AudioPluginGraph {
         std::vector<std::unique_ptr<AudioPluginNodeImpl>> nodes_;
         size_t event_buffer_size_in_bytes_;
+        std::function<uint8_t(int32_t)> group_resolver_;
+        std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback_;
 
     public:
         explicit AudioPluginGraphImpl(size_t eventBufferSizeInBytes)
@@ -16,13 +18,25 @@ namespace uapmd {
 
         uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
         bool removeNodeSimple(int32_t instanceId) override;
-        int32_t processAudio(AudioProcessContext& process, std::function<uint8_t(int32_t)> groupResolver, std::function<void(int32_t, const uapmd_ump_t*, size_t)> eventOutputCallback) override;
+        void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
+        void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
+        int32_t processAudio(AudioProcessContext& process) override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
     };
 
-    int32_t AudioPluginGraphImpl::processAudio(AudioProcessContext& process, std::function<uint8_t(int32_t)> groupResolver, std::function<void(int32_t, const uapmd_ump_t*, size_t)> eventOutputCallback) {
+    void AudioPluginGraphImpl::setGroupResolver(std::function<uint8_t(int32_t)> resolver) {
+        group_resolver_ = std::move(resolver);
+    }
+
+    void AudioPluginGraphImpl::setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) {
+        event_output_callback_ = std::move(callback);
+    }
+
+    int32_t AudioPluginGraphImpl::processAudio(AudioProcessContext& process) {
         if (nodes_.empty())
             return 0;
+
+        process.clearAudioOutputs();
 
         for (size_t i = 0; i < nodes_.size(); ++i) {
             auto& node = nodes_[i];
@@ -33,11 +47,12 @@ namespace uapmd {
 
             // Get group for this instance
             uint8_t group = 0xFF;
-            if (groupResolver)
-                group = groupResolver(instanceId);
+            if (group_resolver_)
+                group = group_resolver_(instanceId);
 
             // Fill event buffer with events for this group
             auto& eventIn = process.eventIn();
+
             eventIn.position(0);
             node->fillEventBufferForGroup(eventIn, group);
 
@@ -49,8 +64,8 @@ namespace uapmd {
             // Handle event output
             auto& eventOut = process.eventOut();
             if (eventOut.position() > 0) {
-                if (eventOutputCallback) {
-                    eventOutputCallback(
+                if (event_output_callback_) {
+                    event_output_callback_(
                         instanceId,
                         static_cast<uapmd_ump_t*>(eventOut.getMessages()),
                         eventOut.position()

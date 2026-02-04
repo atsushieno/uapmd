@@ -14,6 +14,11 @@ NOTE: we are still not at the stage where API stability matters.
 - Not sure how much we consider as C++ is not for maintaining ABI compatibility, but we may start adding C API for
   ABI compatibility and cross-language usability.
 
+## Include path stability
+
+There are frontend header files such as `remidy/remidy.hpp` and `uapmd/uapmd.hpp`, and only those file paths are stable.
+Path to an individual include file will not be stable.
+
 ## Third party library types
 
 - No third party library types are part of stable API.
