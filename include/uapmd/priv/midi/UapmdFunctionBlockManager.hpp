@@ -22,7 +22,6 @@ namespace uapmd {
         bool createFunctionBlock(const std::string& apiName,
                         SequencerFeature* sequencer,
                         int32_t instanceId,
-                        int32_t trackIndex,
                         std::string deviceName,
                         std::string manufacturer,
                         std::string version) {

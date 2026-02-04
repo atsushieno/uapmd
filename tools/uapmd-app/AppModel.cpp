@@ -290,8 +290,6 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
 
     // If device was destroyed (disabled), recreate it
     if (!deviceState->device) {
-        auto actualTrackIndex = sequencer_.engine()->findTrackIndexForInstance(instanceId);
-
         auto fbManager = sequencer_.engine()->functionBlockManager();
 
         auto fbDeviceIndex = fbManager->create();
@@ -299,7 +297,6 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
         if (!fbDevice->createFunctionBlock(deviceState->apiName,
                                       sequencer_.engine(),
                                                instanceId,
-                                               actualTrackIndex,
                                                deviceName.empty() ? deviceState->label : deviceName,
                                                "UAPMD Project",
                                                "0.1")) {
