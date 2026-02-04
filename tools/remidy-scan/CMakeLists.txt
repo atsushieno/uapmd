@@ -3,8 +3,8 @@ add_executable(remidy-scan)
 target_include_directories(remidy-scan PRIVATE
         ../../include
         ../../src/remidy-tooling
-        ../../../../external/choc
-        ../../../../external/cpplocate/source/cpplocate/include
+        ${choc_SOURCE_DIR}
+        ${cpplocate_SOURCE_DIR}/source/cpplocate/include
 )
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")

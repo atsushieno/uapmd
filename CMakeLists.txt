@@ -34,7 +34,8 @@ else()
 endif()
 set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
 
-set(CMAKE_SKIP_INSTALL_RULES ON)
+set(_UAPMD_PREV_SKIP_INSTALL_RULES "${CMAKE_SKIP_INSTALL_RULES}")
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 CPMAddPackage(
         NAME            cpptrace
         GIT_REPOSITORY  https://github.com/jeremy-rifkin/cpptrace.git
@@ -43,7 +44,11 @@ CPMAddPackage(
 )
 # Force a static build of cpptrace regardless of parent defaults
 set(BUILD_SHARED_LIBS OFF)
-FetchContent_MakeAvailable(cpptrace)
+if(DEFINED _UAPMD_PREV_SKIP_INSTALL_RULES AND NOT "${_UAPMD_PREV_SKIP_INSTALL_RULES}" STREQUAL "")
+    set(CMAKE_SKIP_INSTALL_RULES "${_UAPMD_PREV_SKIP_INSTALL_RULES}")
+else()
+    unset(CMAKE_SKIP_INSTALL_RULES)
+endif()
 
 CPMAddPackage(
         NAME            choc

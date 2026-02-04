@@ -23,9 +23,9 @@ endif()
 set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 target_include_directories(uapmd PRIVATE
+        ../../include
         ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
-        ../../include
         ${midicci_SOURCE_DIR}/include
         ${concurrentqueue_SOURCE_DIR}
 )

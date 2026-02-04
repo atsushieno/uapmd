@@ -12,7 +12,7 @@ set(CMAKE_SKIP_INSTALL_RULES OFF)
 target_include_directories(remidy-tooling PRIVATE
         ../../include
         ${choc_SOURCE_DIR}
-        ../../../../external/cpplocate/source/cpplocate/include
+        ${cpplocate_SOURCE_DIR}/source/cpplocate/include
         .
 )
 
