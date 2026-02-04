@@ -856,8 +856,8 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     }
 
     int32_t trackIndex = sequencer.engine()->findTrackIndexForInstance(instanceId);
-    std::string pluginName = sequencer.engine()->getPluginName(instanceId);
-    std::string pluginFormat = sequencer.getPluginFormat(instanceId);
+    std::string pluginName = instance->displayName();
+    std::string pluginFormat = instance->formatName();
 
     if (umpDeviceNameBuffers_.find(instanceId) == umpDeviceNameBuffers_.end()) {
         // Initialize the buffer from device state label if available, otherwise use default
@@ -1052,10 +1052,11 @@ void MainWindow::refreshPluginList() {
 
 void MainWindow::savePluginState(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto instance = sequencer.engine()->getPluginInstance(instanceId);
 
     std::string defaultFilename = std::format("{}.{}.state",
-                                              sequencer.engine()->getPluginName(instanceId),
-                                              sequencer.getPluginFormat(instanceId));
+                                              instance->displayName(),
+                                              instance->formatName());
     std::ranges::replace(defaultFilename, ' ', '_');
 
     auto save = pfd::save_file(
@@ -1130,8 +1131,8 @@ void MainWindow::handleShowUI(int32_t instanceId) {
     auto* instance = sequencer.engine()->getPluginInstance(instanceId);
     if (!instance) return;
 
-    std::string pluginName = sequencer.engine()->getPluginName(instanceId);
-    std::string pluginFormat = sequencer.getPluginFormat(instanceId);
+    std::string pluginName = instance->displayName();
+    std::string pluginFormat = instance->formatName();
 
     // Create container window if needed
     auto windowIt = pluginWindows_.find(instanceId);

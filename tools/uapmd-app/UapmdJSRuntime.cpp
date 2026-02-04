@@ -512,8 +512,8 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             return choc::value::createString ("");
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto name = sequencer.engine()->getPluginName (instanceId);
-        return choc::value::createString (name);
+        auto instance = sequencer.engine()->getPluginInstance (instanceId);
+        return choc::value::createString (instance->displayName());
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_getPluginFormat", [] (choc::javascript::ArgumentList args) -> choc::value::Value

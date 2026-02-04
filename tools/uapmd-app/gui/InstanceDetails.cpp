@@ -216,7 +216,7 @@ void InstanceDetails::render(const RenderContext& context) {
             continue;
         }
 
-        std::string windowTitle = sequencer.engine()->getPluginName(instanceId) + " (" +
+        std::string windowTitle = sequencer.engine()->getPluginInstance(instanceId)->displayName() + " (" +
                                  sequencer.getPluginFormat(instanceId) + ") - Details###Details" +
                                  std::to_string(instanceId);
 

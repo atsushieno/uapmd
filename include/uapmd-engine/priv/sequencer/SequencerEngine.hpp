@@ -42,8 +42,6 @@ namespace uapmd {
 
         virtual AudioPluginHostingAPI* pluginHost() = 0;
 
-        virtual std::string getPluginName(int32_t instanceId) = 0;
-
         virtual SequenceProcessContext& data() = 0;
 
         virtual std::vector<SequencerTrack *> & tracks() const = 0;

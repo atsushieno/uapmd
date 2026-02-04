@@ -70,8 +70,6 @@ namespace uapmd {
 
         AudioPluginHostingAPI* pluginHost() override;
 
-        std::string getPluginName(int32_t instanceId) override;
-
         SequenceProcessContext& data() override { return sequence; }
 
         std::vector<SequencerTrack*>& tracks() const override;
@@ -761,21 +759,6 @@ namespace uapmd {
 
     AudioPluginHostingAPI* uapmd::SequencerEngineImpl::pluginHost() {
         return plugin_host;
-    }
-
-    std::string uapmd::SequencerEngineImpl::getPluginName(int32_t instanceId) {
-        auto* instance = getPluginInstance(instanceId);
-        // Get plugin ID and look it up in the catalog
-        std::string pluginId = instance->pluginId();
-        std::string format = instance->formatName();
-
-        // Search in the catalog for display name
-        auto plugins = plugin_host->catalog().getPlugins();
-        for (auto* catalogPlugin : plugins) {
-            if (catalogPlugin->pluginId() == pluginId && catalogPlugin->format() == format)
-                return catalogPlugin->displayName();
-        }
-        return "Plugin " + std::to_string(instanceId);
     }
 
     bool uapmd::SequencerEngineImpl::offlineRendering() const {
