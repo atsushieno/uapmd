@@ -303,6 +303,8 @@ uapmd::AudioPluginHostingAPI* uapmd::RemidyAudioPluginHost::instance() {
 
 uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
     scanning.performPluginScanning();
+    if (!exists(scanning.pluginListCacheFile()))
+        scanning.savePluginListCache();
 }
 
 std::filesystem::path empty_path{""};
