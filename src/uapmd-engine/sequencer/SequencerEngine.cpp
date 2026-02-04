@@ -11,6 +11,7 @@
 #include "../plugin-api/RemidyAudioPluginHost.hpp"
 #include "remidy/remidy.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
+#include "uapmd-engine/priv/node-graph/AudioPluginNode.hpp"
 
 namespace uapmd {
     class SequencerEngineImpl : public SequencerEngine {
@@ -48,6 +49,9 @@ namespace uapmd {
             int32_t trackIndex{-1};
         };
         std::unordered_map<int32_t, FunctionBlockRoute> plugin_function_blocks_;
+
+        // Plugin node mapping (for direct event dispatch)
+        std::unordered_map<int32_t, AudioPluginNode*> plugin_nodes_;
 
         // UMP group allocation
         mutable std::unordered_map<int32_t, uint8_t> plugin_groups_;
@@ -410,6 +414,13 @@ namespace uapmd {
                 return;
             }
 
+            // Get the node for direct event dispatch
+            auto nodes = track->graph().plugins();
+            auto nodeIt = nodes.find(instanceId);
+            if (nodeIt != nodes.end()) {
+                plugin_nodes_[instanceId] = nodeIt->second;
+            }
+
             // Function block setup
             configureTrackRouting(track);
             plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, trackIndex};
@@ -454,6 +465,7 @@ namespace uapmd {
 
         // Function block cleanup
         plugin_function_blocks_.erase(instanceId);
+        plugin_nodes_.erase(instanceId);
         releaseGroup(instanceId);
 
         // Plugin instance cleanup
@@ -600,18 +612,20 @@ namespace uapmd {
 
     void SequencerEngineImpl::refreshFunctionBlockMappings() {
         plugin_function_blocks_.clear();
+        plugin_nodes_.clear();
         auto& trackPtrs = tracks();
         for (size_t trackIndex = 0; trackIndex < trackPtrs.size(); ++trackIndex) {
             auto* track = trackPtrs[trackIndex];
             if (!track)
                 continue;
             configureTrackRouting(track);
-            auto plugins = track->graph().plugins();
-            for (auto& p : plugins) {
+            auto nodes = track->graph().plugins();
+            for (auto& p : nodes) {
                 if (!p.second)
                     continue;
                 auto instanceId = p.first;
                 plugin_function_blocks_[instanceId] = FunctionBlockRoute{track, static_cast<int32_t>(trackIndex)};
+                plugin_nodes_[instanceId] = p.second;
                 assignGroup(instanceId);
             }
         }
@@ -763,11 +777,11 @@ namespace uapmd {
 
     // UMP routing
     void SequencerEngineImpl::enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-        auto mapping = plugin_function_blocks_.find(instanceId);
-        if (mapping == plugin_function_blocks_.end() || !mapping->second.track)
+        auto nodeIt = plugin_nodes_.find(instanceId);
+        if (nodeIt == plugin_nodes_.end() || !nodeIt->second)
             return;
 
-        mapping->second.track->scheduleEvents(timestamp, ump, sizeInBytes);
+        nodeIt->second->scheduleEvents(timestamp, ump, sizeInBytes);
     }
 
     void SequencerEngineImpl::sendNoteOn(int32_t instanceId, int32_t note) {
@@ -844,8 +858,9 @@ namespace uapmd {
             for (auto& p : tracksRef[i]->graph().plugins()) {
                 PluginNodeInfo nodeInfo;
                 nodeInfo.instanceId = p.first;
-                nodeInfo.pluginId = p.second->pluginId();
-                nodeInfo.format = p.second->formatName();
+                auto* instance = p.second->instance();
+                nodeInfo.pluginId = instance->pluginId();
+                nodeInfo.format = instance->formatName();
                 nodeInfo.displayName = displayNameFor(nodeInfo.format, nodeInfo.pluginId);
                 trackInfo.nodes.push_back(std::move(nodeInfo));
             }

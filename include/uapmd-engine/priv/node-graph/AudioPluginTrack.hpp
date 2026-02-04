@@ -23,8 +23,6 @@ namespace uapmd {
         virtual void bypassed(bool value) = 0;
         virtual void frozen(bool value) = 0;
 
-        virtual bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) = 0;
-
         virtual int32_t processAudio(AudioProcessContext& process) = 0;
 
         virtual void setGroupResolver(std::function<uint8_t(int32_t)> resolver) = 0;
