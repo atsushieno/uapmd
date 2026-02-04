@@ -48,8 +48,6 @@ namespace uapmd {
 
         virtual std::vector<SequencerTrack *> & tracks() const = 0;
 
-        virtual std::vector<TrackInfo> getTrackInfos() = 0;
-
         // Set default channel configuration (called by AudioPluginSequencer when device changes)
         virtual void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) = 0;
 

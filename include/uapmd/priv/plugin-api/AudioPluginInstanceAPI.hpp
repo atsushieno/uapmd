@@ -40,6 +40,7 @@ namespace uapmd {
     class AudioPluginInstanceAPI {
     public:
         virtual ~AudioPluginInstanceAPI() = default;
+        virtual std::string& displayName() const = 0;
         virtual std::string& formatName() const = 0;
         virtual std::string& pluginId() const = 0;
         virtual void bypassed(bool value) = 0;

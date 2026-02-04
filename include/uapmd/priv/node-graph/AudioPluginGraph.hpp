@@ -32,7 +32,6 @@ namespace uapmd {
         virtual uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) = 0;
         virtual bool removeNodeSimple(int32_t instanceId) = 0;
 
-        // FIXME: we are examining the need for this function. If possible, remove it.
         virtual std::map<int32_t, AudioPluginNode*> plugins() = 0;
 
         // FIXME: in the end, we should move it to "sequencer" which has to dispatch the combined UMP inputs

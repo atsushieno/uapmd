@@ -9,11 +9,16 @@ namespace uapmd {
         bool bypass_{false};
         bool frozen_{false};
         std::unique_ptr<AudioPluginGraph> graph_;
+        std::vector<int32_t> instance_ids{};
 
     public:
         explicit SequencerTrackImpl(size_t eventBufferSizeInBytes);
 
         AudioPluginGraph& graph() override { return *graph_; }
+
+        std::vector<int32_t>& orderedInstanceIds() override {
+            return instance_ids;
+        }
 
         bool bypassed() override { return bypass_; }
         bool frozen() override { return frozen_; }

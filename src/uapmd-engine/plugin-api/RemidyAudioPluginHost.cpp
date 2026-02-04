@@ -148,6 +148,7 @@ namespace uapmd {
             return ret;
         }
 
+        std::string& displayName() const override { return instance->info()->displayName(); }
         std::string& formatName() const override { return instance->info()->format(); }
         std::string& pluginId() const override { return instance->info()->pluginId(); }
 

@@ -99,7 +99,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             // Cleanup stale Sequence Editor windows
             // Get the current number of tracks and remove windows for deleted track indices
             auto& sequencer = uapmd::AppModel::instance().sequencer();
-            auto tracks = sequencer.engine()->getTrackInfos();
+            auto& tracks = sequencer.engine()->tracks();
             int32_t maxValidTrackIndex = tracks.empty() ? -1 : static_cast<int32_t>(tracks.size() - 1);
             sequenceEditor_.removeStaleWindows(maxValidTrackIndex);
 
@@ -470,11 +470,11 @@ void MainWindow::renderPluginSelectorWindow() {
         // Update track options before rendering
         std::vector<TrackDestinationOption> trackOptions;
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto tracks = sequencer.engine()->getTrackInfos();
-        for (const auto& track : tracks) {
+        auto tracks = sequencer.engine()->tracks();
+        for (uapmd_track_index_t i = 0, n = tracks.size(); i < n; i++) {
             TrackDestinationOption option{
-                .trackIndex = track.trackIndex,
-                .label = std::format("Track {}", track.trackIndex + 1)
+                .trackIndex = i,
+                .label = std::format("Track {}", i + 1)
             };
             trackOptions.push_back(std::move(option));
         }

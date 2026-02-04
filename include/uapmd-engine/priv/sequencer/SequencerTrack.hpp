@@ -16,6 +16,7 @@ namespace uapmd {
         static std::unique_ptr<SequencerTrack> create(size_t eventBufferSizeInBytes);
 
         virtual AudioPluginGraph& graph() = 0;
+        virtual std::vector<int32_t>& orderedInstanceIds() = 0;
 
         virtual bool bypassed() = 0;
         virtual bool frozen() = 0;

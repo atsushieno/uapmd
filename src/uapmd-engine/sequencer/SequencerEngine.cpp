@@ -75,7 +75,6 @@ namespace uapmd {
         SequenceProcessContext& data() override { return sequence; }
 
         std::vector<SequencerTrack*>& tracks() const override;
-        std::vector<TrackInfo> getTrackInfos() override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         uapmd_track_index_t addEmptyTrack() override;
@@ -394,6 +393,8 @@ namespace uapmd {
                 callback(-1, -1, std::format("Failed to append plugin to track {} (status {})", trackIndex, status));
                 return;
             }
+
+            track->orderedInstanceIds().push_back(instanceId);
 
             // Function block setup
             configureTrackRouting(track);
@@ -760,37 +761,6 @@ namespace uapmd {
 
     AudioPluginHostingAPI* uapmd::SequencerEngineImpl::pluginHost() {
         return plugin_host;
-    }
-
-    std::vector<SequencerEngineImpl::TrackInfo> uapmd::SequencerEngineImpl::getTrackInfos() {
-        std::vector<TrackInfo> info;
-        auto catalogPlugins = plugin_host->catalog().getPlugins();
-        auto displayNameFor = [&](const std::string& format, const std::string& pluginId) -> std::string {
-            for (auto* entry : catalogPlugins) {
-                if (entry->format() == format && entry->pluginId() == pluginId) {
-                    return entry->displayName();
-                }
-            }
-            return pluginId;
-        };
-
-        auto& tracksRef = tracks();
-        info.reserve(tracksRef.size());
-        for (size_t i = 0; i < tracksRef.size(); ++i) {
-            TrackInfo trackInfo;
-            trackInfo.trackIndex = static_cast<int32_t>(i);
-            for (auto& p : tracksRef[i]->graph().plugins()) {
-                PluginNodeInfo nodeInfo;
-                nodeInfo.instanceId = p.first;
-                auto* instance = p.second->instance();
-                nodeInfo.pluginId = instance->pluginId();
-                nodeInfo.format = instance->formatName();
-                nodeInfo.displayName = displayNameFor(nodeInfo.format, nodeInfo.pluginId);
-                trackInfo.nodes.push_back(std::move(nodeInfo));
-            }
-            info.push_back(std::move(trackInfo));
-        }
-        return info;
     }
 
     std::string uapmd::SequencerEngineImpl::getPluginName(int32_t instanceId) {

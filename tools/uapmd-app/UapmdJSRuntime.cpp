@@ -554,22 +554,25 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
     jsContext_.registerFunction ("__remidy_sequencer_getTrackInfos", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto trackInfos = sequencer.engine()->getTrackInfos();
+        auto tracks = sequencer.engine()->tracks();
 
         auto arr = choc::value::createEmptyArray();
-        for (const auto& track : trackInfos)
-        {
+        for (uapmd_track_index_t i = 0, n = tracks.size(); i < n; ++i) {
+            auto track = tracks[i];
             auto trackObj = choc::value::createObject ("TrackInfo");
-            trackObj.setMember ("trackIndex", track.trackIndex);
+            trackObj.setMember ("trackIndex", i);
 
             auto nodesArr = choc::value::createEmptyArray();
-            for (const auto& node : track.nodes)
-            {
+            for (const int32_t instanceId : track->orderedInstanceIds()) {
+                auto p = track->graph().plugins()[instanceId];
+                if (!p)
+                    continue;
+                auto node = p->instance();
                 auto nodeObj = choc::value::createObject ("PluginNodeInfo");
-                nodeObj.setMember ("instanceId", node.instanceId);
-                nodeObj.setMember ("pluginId", node.pluginId);
-                nodeObj.setMember ("format", node.format);
-                nodeObj.setMember ("displayName", node.displayName);
+                nodeObj.setMember ("instanceId", instanceId);
+                nodeObj.setMember ("pluginId", node->pluginId());
+                nodeObj.setMember ("format", node->formatName());
+                nodeObj.setMember ("displayName", node->displayName());
                 nodesArr.addArrayElement (nodeObj);
             }
             trackObj.setMember ("nodes", nodesArr);
