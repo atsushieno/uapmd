@@ -11,7 +11,6 @@
 #include "../plugin-api/RemidyAudioPluginHost.hpp"
 #include "remidy/remidy.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
-#include "uapmd-engine/priv/node-graph/AudioPluginNode.hpp"
 
 namespace uapmd {
     class SequencerEngineImpl : public SequencerEngine {

@@ -1,10 +1,10 @@
-#include "uapmd-engine/priv/node-graph/AudioPluginNode.hpp"
 
 #include <umppi/umppi.hpp>
 #include "concurrentqueue.h"
 
 #include <atomic>
 #include <cstring>
+#include "uapmd/uapmd.hpp"
 
 namespace uapmd {
 

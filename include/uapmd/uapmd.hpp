@@ -10,3 +10,5 @@
 #include "priv/midi/UapmdFunctionBlock.hpp"
 #include "priv/midi/UapmdFunctionBlockManager.hpp"
 #include "priv/midi/UapmdUmpMapper.hpp"
+#include "priv/node-graph/AudioPluginNode.hpp"
+#include "priv/node-graph/AudioPluginGraph.hpp"

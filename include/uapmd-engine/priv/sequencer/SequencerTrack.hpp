@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "uapmd/uapmd.hpp"
-#include "../node-graph/AudioPluginGraph.hpp"
 
 namespace uapmd {
 

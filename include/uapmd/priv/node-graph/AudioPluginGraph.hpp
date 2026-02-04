@@ -15,6 +15,9 @@ namespace uapmd {
     // It can process nodes in a simple linear way, or in a perfect DAG that handles complex routing.
     // As a minimum requirement, it must support a linear chain of nodes, by "add" and "remove" functions.
     //
+    // Note that it is NOT to represent an entire audio graph that is supposed to involve audio device nodes.
+    // That should be handled by a sequencer, which is out of the scope of this class (not even of this library).
+    //
     // Usually an audio plugin instance shares its lifetime with `AudioPluginNode` when it is being added to the graph,
     // but the instance is "owned" by the `AudioPluginHostingAPI` implementation.
     // `appendNodeSimple()` takes a delegate function called when the instance is being removed by `removeNodeSimple()`

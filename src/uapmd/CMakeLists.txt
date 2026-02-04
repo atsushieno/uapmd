@@ -41,4 +41,6 @@ target_sources(uapmd PRIVATE
         Midi/UapmdMidiCISession.cpp
         Midi/UapmdUmpMapper.cpp
         Midi/UapmdNodeUmpMapper.cpp
+        node-graph/AudioPluginGraph.cpp
+        node-graph/AudioPluginNode.cpp
 )

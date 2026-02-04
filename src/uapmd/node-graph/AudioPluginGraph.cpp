@@ -1,6 +1,5 @@
 
 #include "uapmd/uapmd.hpp"
-#include "uapmd-engine/uapmd-engine.hpp"
 #include "AudioPluginNode.cpp"
 
 namespace uapmd {

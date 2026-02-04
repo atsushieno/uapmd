@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include "uapmd/uapmd.hpp"
+#include "../plugin-api/AudioPluginInstanceAPI.hpp"
 
 namespace uapmd {
 
