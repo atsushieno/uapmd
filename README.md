@@ -135,10 +135,11 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [atsushieno/midicci](https://github.com/atsushieno/midicci) - MIT
   - [zlib-ng/zlib-ng](https://github.com/zlib-ng/zlib-ng) - Zlib license.
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)
-- [cginternals/cpplocate](https://github.com/cginternals/cpplocate): the MIT license.
-- [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): the MIT license.
+- [cginternals/cpplocate](https://github.com/cginternals/cpplocate): MIT
+- [jeremy-rifkin/cpptrace](https://github.com/jeremy-rifkin/cpptrace) - MIT
+- [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): MIT
 - [cameron314/concurrentqueue](https://github.com/cameron314/concurrentqueue) - BSD (2-clause)
-- [cjappl/rtlog-cpp](https://github.com/cjappl/rtlog-cpp): the MIT license.
+- [cjappl/rtlog-cpp](https://github.com/cjappl/rtlog-cpp): MIT
     - for submodules see their [LICENSE.md](https://github.com/cjappl/rtlog-cpp/blob/main/LICENSE.md) (modified BSD, MIT)
 - [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
 - [ocornut/imgui](https://github.com/ocornut/imgui) - MIT
