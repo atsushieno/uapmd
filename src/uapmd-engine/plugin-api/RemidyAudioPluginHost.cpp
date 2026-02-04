@@ -307,9 +307,20 @@ uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
         scanning.savePluginListCache();
 }
 
+std::vector<remidy::PluginCatalogEntry> uapmd::RemidyAudioPluginHost::pluginCatalogEntries() {
+    std::vector<remidy::PluginCatalogEntry> ret{};
+    for (const auto e : scanning.catalog.getPlugins())
+        ret.emplace_back(*e);
+    return ret;
+}
+
+void uapmd::RemidyAudioPluginHost::savePluginCatalogToFile(std::filesystem::path path) {
+    scanning.catalog.save(path);
+}
+
 std::filesystem::path empty_path{""};
 void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
-    catalog().clear();
+    scanning.catalog.clear();
     if (rescan) {
         scanning.performPluginScanning(empty_path);
     }

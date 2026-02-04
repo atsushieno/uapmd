@@ -57,9 +57,8 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
 {
     jsContext_.registerFunction ("__remidy_catalog_get_count", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.engine()->pluginHost()->catalog();
-        auto plugins = catalog.getPlugins();
+        const auto& sequencer = uapmd::AppModel::instance().sequencer();
+        const auto plugins = sequencer.engine()->pluginHost()->pluginCatalogEntries();
         return choc::value::createInt32 (static_cast<int32_t>(plugins.size()));
     });
 
@@ -70,37 +69,23 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
             return choc::value::Value();
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.engine()->pluginHost()->catalog();
-        auto plugins = catalog.getPlugins();
+        auto plugins = sequencer.engine()->pluginHost()->pluginCatalogEntries();
 
         if (index >= static_cast<int32_t>(plugins.size()))
             return choc::value::Value();
 
-        auto* entry = plugins[static_cast<size_t>(index)];
-        if (! entry)
+        auto entry = plugins[static_cast<size_t>(index)];
+        if (entry.pluginId().empty())
             return choc::value::Value();
 
         auto obj = choc::value::createObject ("PluginCatalogEntry");
-        obj.setMember ("format", entry->format());
-        obj.setMember ("pluginId", entry->pluginId());
-        obj.setMember ("displayName", entry->displayName());
-        obj.setMember ("vendorName", entry->vendorName());
-        obj.setMember ("productUrl", entry->productUrl());
-        obj.setMember ("bundlePath", entry->bundlePath().string());
+        obj.setMember ("format", entry.format());
+        obj.setMember ("pluginId", entry.pluginId());
+        obj.setMember ("displayName", entry.displayName());
+        obj.setMember ("vendorName", entry.vendorName());
+        obj.setMember ("productUrl", entry.productUrl());
+        obj.setMember ("bundlePath", entry.bundlePath().string());
         return obj;
-    });
-
-    jsContext_.registerFunction ("__remidy_catalog_load", [] (choc::javascript::ArgumentList args) -> choc::value::Value
-    {
-        auto pathStr = args.get<std::string> (0, "");
-        if (pathStr.empty())
-            return choc::value::createBool (false);
-
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.engine()->pluginHost()->catalog();
-        std::filesystem::path path (pathStr);
-        catalog.load (path);
-        return choc::value::createBool (true);
     });
 
     jsContext_.registerFunction ("__remidy_catalog_save", [] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -109,10 +94,9 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
         if (pathStr.empty())
             return choc::value::createBool (false);
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto& catalog = sequencer.engine()->pluginHost()->catalog();
         std::filesystem::path path (pathStr);
-        catalog.save (path);
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        sequencer.engine()->pluginHost()->savePluginCatalogToFile(path);
         return choc::value::createBool (true);
     });
 }

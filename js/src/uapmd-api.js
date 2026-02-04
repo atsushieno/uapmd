@@ -68,7 +68,6 @@ globalThis.uapmd = {
     catalog: {
         getCount: () => __remidy_catalog_get_count(),
         getPluginAt: (index) => __remidy_catalog_get_plugin_at(index),
-        load: (path) => __remidy_catalog_load(path),
         save: (path) => __remidy_catalog_save(path)
     },
 

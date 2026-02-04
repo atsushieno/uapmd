@@ -122,11 +122,9 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const PluginInstanceConfig& config) {
     // Get plugin name from catalog
     std::string pluginName;
-    auto& catalog = sequencer_.engine()->pluginHost()->catalog();
-    auto plugins = catalog.getPlugins();
-    for (const auto& plugin : plugins) {
-        if (plugin->format() == format && plugin->pluginId() == pluginId) {
-            pluginName = plugin->displayName();
+    for (auto plugins = sequencer_.engine()->pluginHost()->pluginCatalogEntries(); auto& plugin : plugins) {
+        if (plugin.format() == format && plugin.pluginId() == pluginId) {
+            pluginName = plugin.displayName();
             break;
         }
     }

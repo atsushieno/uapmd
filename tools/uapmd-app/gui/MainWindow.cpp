@@ -1035,15 +1035,12 @@ void MainWindow::refreshInstances() {
 void MainWindow::refreshPluginList() {
     std::vector<PluginEntry> plugins;
 
-    auto& catalog = uapmd::AppModel::instance().sequencer().engine()->pluginHost()->catalog();
-    auto catalogPlugins = catalog.getPlugins();
-
-    for (auto* plugin : catalogPlugins) {
+    for (auto catalogPlugins = uapmd::AppModel::instance().sequencer().engine()->pluginHost()->pluginCatalogEntries(); auto& plugin : catalogPlugins) {
         plugins.push_back({
-            .format = plugin->format(),
-            .id = plugin->pluginId(),
-            .name = plugin->displayName(),
-            .vendor = plugin->vendorName()
+            .format = plugin.format(),
+            .id = plugin.pluginId(),
+            .name = plugin.displayName(),
+            .vendor = plugin.vendorName()
         });
     }
 

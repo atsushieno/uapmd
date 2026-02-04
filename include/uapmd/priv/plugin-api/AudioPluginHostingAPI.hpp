@@ -8,7 +8,8 @@ namespace uapmd {
     class AudioPluginHostingAPI {
     public:
         virtual ~AudioPluginHostingAPI() = default;
-        virtual PluginCatalog& catalog() = 0;
+        virtual std::vector<remidy::PluginCatalogEntry> pluginCatalogEntries() = 0;
+        virtual void savePluginCatalogToFile(std::filesystem::path path) = 0;
         virtual void performPluginScanning(bool rescan) = 0;
         virtual void createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &format, std::string &pluginId, std::function<void(int32_t instanceId, std::string)>&& callback) = 0;
         virtual void deletePluginInstance(int32_t instanceId) = 0;

@@ -42,10 +42,6 @@ export class PluginCatalog {
         return plugins;
     }
 
-    load(path) {
-        return __remidy_catalog_load(path);
-    }
-
     save(path) {
         return __remidy_catalog_save(path);
     }
