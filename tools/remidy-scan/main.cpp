@@ -208,12 +208,14 @@ int run(int argc, const char* argv[]) {
 };
 
 int main(int argc, const char* argv[]) {
+    int ret;
     CPPTRACE_TRY {
         RemidyScan scanner{};
-        return scanner.run(argc, argv);
+        ret = scanner.run(argc, argv);
     } CPPTRACE_CATCH(const std::exception& e) {
         std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
         cpptrace::from_current_exception().print();
-        return EXIT_FAILURE;
+        ret = EXIT_FAILURE;
     }
+    return ret;
 }

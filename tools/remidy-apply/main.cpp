@@ -259,59 +259,56 @@ class RemidyApply {
     public:
     int run(int argc, const char* argv[]) {
         int result{0};
-        CPPTRACE_TRY {
-            cxxopts::Options options("remidy-apply", "generate audio file from audio and MIDI inputs.");
-            options.add_options()
-                ("h,help", "print this help message")
-                ("f,format", "Plugin format: `VST3`, `AU`, or `LV2`", cxxopts::value<std::string>())
-                ("p,plugin", "The Plugin name to apply (`vendor: name` for more strict specification)", cxxopts::value<std::string>())
-                ("a,audio", "Audio file to apply plugins", cxxopts::value<std::string>())
-                ("m,midi", "MIDI 1.0 SMF to play", cxxopts::value<std::string>())
-                ("m2,midi2", "MIDI 2.0 UMP clip file to play", cxxopts::value<std::string>())
-                ("o,out", "Audio output file to save", cxxopts::value<std::string>())
-            ;
-            auto parsedOpts = options.parse(argc, argv);
+        cxxopts::Options options("remidy-apply", "generate audio file from audio and MIDI inputs.");
+        options.add_options()
+            ("h,help", "print this help message")
+            ("f,format", "Plugin format: `VST3`, `AU`, or `LV2`", cxxopts::value<std::string>())
+            ("p,plugin", "The Plugin name to apply (`vendor: name` for more strict specification)", cxxopts::value<std::string>())
+            ("a,audio", "Audio file to apply plugins", cxxopts::value<std::string>())
+            ("m,midi", "MIDI 1.0 SMF to play", cxxopts::value<std::string>())
+            ("m2,midi2", "MIDI 2.0 UMP clip file to play", cxxopts::value<std::string>())
+            ("o,out", "Audio output file to save", cxxopts::value<std::string>())
+        ;
+        auto parsedOpts = options.parse(argc, argv);
 
-            remidy::EventLoop::initializeOnUIThread();
-            if (!std::filesystem::exists(scanner.pluginListCacheFile())) {
-                std::cerr << "  remidy-apply needs existing plugin list cache first. Run `remidy-scan` first." << std::endl;
-                return 1;
-            }
-            result = scanner.performPluginScanning();
-
-            if (!parsedOpts.contains("p") || !parsedOpts.contains("f") || parsedOpts.contains("h")) {
-                std::cerr << options.help();
-                return parsedOpts.contains("h") ? EXIT_SUCCESS : EXIT_FAILURE;
-            }
-
-            std::cerr << "Start testing instantiation... " << std::endl;
-
-            std::thread thread([&] {
-                CPPTRACE_TRY {
-                    result = uapmd_apply(
-                        parsedOpts["f"].as<std::string>(),
-                        parsedOpts["p"].as<std::string>(),
-                        parsedOpts["a"].as_optional<std::string>(),
-                        parsedOpts["m"].as_optional<std::string>(),
-                        parsedOpts["m2"].as_optional<std::string>());
-                    remidy::EventLoop::stop();
-
-                    std::cerr << "Completed " << std::endl;
-                } CPPTRACE_CATCH(const std::exception& e) {
-                    std::cerr << "Exception in main: " << e.what() << std::endl;
-                    cpptrace::from_current_exception().print();
-                }
-            });
-            remidy::EventLoop::start();
-        } CPPTRACE_CATCH(const std::exception& e) {
-            std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
-            cpptrace::from_current_exception().print();
+        remidy::EventLoop::initializeOnUIThread();
+        if (!std::filesystem::exists(scanner.pluginListCacheFile())) {
+            std::cerr << "  remidy-apply needs existing plugin list cache first. Run `remidy-scan` first." << std::endl;
+            return 1;
         }
+        result = scanner.performPluginScanning();
+
+        if (!parsedOpts.contains("p") || !parsedOpts.contains("f") || parsedOpts.contains("h")) {
+            std::cerr << options.help();
+            return parsedOpts.contains("h") ? EXIT_SUCCESS : EXIT_FAILURE;
+        }
+
+        std::cerr << "Start testing instantiation... " << std::endl;
+
+        std::thread thread([&] {
+            result = uapmd_apply(
+                parsedOpts["f"].as<std::string>(),
+                parsedOpts["p"].as<std::string>(),
+                parsedOpts["a"].as_optional<std::string>(),
+                parsedOpts["m"].as_optional<std::string>(),
+                parsedOpts["m2"].as_optional<std::string>());
+            remidy::EventLoop::stop();
+
+            std::cerr << "Completed " << std::endl;
+        });
+        remidy::EventLoop::start();
         return result;
     }
 };
 
 int main(int argc, const char* argv[]) {
-    RemidyApply apply{};
-    apply.run(argc, argv);
+    int result{0};
+    CPPTRACE_TRY {
+        RemidyApply apply{};
+        result = apply.run(argc, argv);
+    } CPPTRACE_CATCH(const std::exception& e) {
+        std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
+        cpptrace::from_current_exception().print();
+    }
+    return result;
 }

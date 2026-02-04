@@ -17,7 +17,6 @@ endif ()
 target_link_libraries(remidy-apply PRIVATE
         uapmd
         uapmd-engine
-        cpplocate::cpplocate
         cpptrace::cpptrace
         ${remidy-apply_LIBS_PLAT}
 )

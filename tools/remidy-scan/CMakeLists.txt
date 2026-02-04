@@ -29,7 +29,6 @@ target_link_options(remidy-scan PRIVATE
 target_link_libraries(remidy-scan PRIVATE
         remidy
         remidy-tooling
-        cpplocate::cpplocate
         cpptrace::cpptrace
         ${remidy-scan_LIBS_PLAT}
 )

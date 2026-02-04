@@ -347,11 +347,13 @@ int runMain(int argc, char** argv) {
 int main(int argc, char** argv) {
     cpptrace::register_terminate_handler();
     installSignalTraceHandler();
+    int ret;
     CPPTRACE_TRY {
-        return runMain(argc, argv);
+        ret = runMain(argc, argv);
     } CPPTRACE_CATCH(...) {
         std::cerr << "Runtime Error in uapmd-app: " << std::endl;
         cpptrace::from_current_exception().print();
-        return EXIT_FAILURE;
+        ret = EXIT_FAILURE;
     }
+    return ret;
 }
