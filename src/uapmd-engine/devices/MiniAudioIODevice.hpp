@@ -63,5 +63,8 @@ namespace uapmd {
         bool reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate = 0);
 
         [[nodiscard]] MiniAudioIODeviceManager* getManager() const { return manager_; }
+
+    private:
+        bool initializeDuplexDevice(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate);
     };
 }

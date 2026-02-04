@@ -1,6 +1,7 @@
 #define MINIAUDIO_IMPLEMENTATION 1
 #include "uapmd/uapmd.hpp"
 #include "MiniAudioIODevice.hpp"
+#include <algorithm>
 #include <choc/audio/choc_SampleBuffers.h>
 
 // MiniAudioIODeviceManager
@@ -226,20 +227,9 @@ uapmd::MiniAudioIODevice::MiniAudioIODevice(
     config.noAutoStart = true;
     config.notificationCallback = MiniAudioIODeviceManager::on_ma_device_notification;
 
-    if (ma_engine_init(&config, &engine) != MA_SUCCESS) {
+    if (!initializeDuplexDevice(nullptr, nullptr, 0)) {
         throw std::runtime_error("uapmd: Failed to initialize miniaudio driver.");
     }
-
-    // Keep pUserData pointing to this device for data callback
-    engine.pDevice->pUserData = this;
-
-    auto device = ma_engine_get_device(&engine);
-    input_channels = device->capture.channels;
-    output_channels = device->playback.channels;
-    data.configureMainBus(device->capture.channels, device->playback.channels, config.periodSizeInFrames);
-    dataOutPtrs.clear();
-    if (device->playback.channels)
-        dataOutPtrs.resize(device->playback.channels);
 }
 
 uapmd::MiniAudioIODevice::~MiniAudioIODevice() {
@@ -259,48 +249,58 @@ bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, co
     // Uninitialize the current engine
     ma_engine_uninit(&engine);
 
-    // Create a new device with the specified IDs
-    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_duplex);
-    deviceConfig.capture.pDeviceID = inputDeviceId;
-    deviceConfig.playback.pDeviceID = outputDeviceId;
-    deviceConfig.capture.format = ma_format_f32;
-    deviceConfig.playback.format = ma_format_f32;
-    deviceConfig.sampleRate = sampleRate; // 0 = use device's native sample rate
-    deviceConfig.dataCallback = data_callback;
-    deviceConfig.pUserData = this;
-    deviceConfig.periodSizeInFrames = config.periodSizeInFrames;
-    deviceConfig.notificationCallback = config.notificationCallback;
-    deviceConfig.noPreSilencedOutputBuffer = MA_TRUE;
-
-    ma_device* pDevice = new ma_device();
-    if (ma_device_init(config.pContext, &deviceConfig, pDevice) != MA_SUCCESS) {
-        remidy::Logger::global()->logError("Failed to initialize device with new device IDs");
-        delete pDevice;
-        return false;
-    }
-
-    // Update config to use the new device
-    config.pDevice = pDevice;
-    config.pPlaybackDeviceID = (ma_device_id*)outputDeviceId;
-    if (sampleRate > 0) {
-        config.sampleRate = sampleRate;
-    }
-
-    // Reinitialize the engine
-    if (ma_engine_init(&config, &engine) != MA_SUCCESS) {
-        remidy::Logger::global()->logError("Failed to reinitialize audio engine with new devices");
-        ma_device_uninit(pDevice);
-        delete pDevice;
+    // Reinitialize the engine with the requested device configuration
+    if (!initializeDuplexDevice(inputDeviceId, outputDeviceId, sampleRate)) {
         return false;
     }
 
     // Restore callbacks
     callbacks = savedCallbacks;
 
-    // Restore pUserData
+    // Restart if it was running
+    if (wasRunning) {
+        start();
+    }
+
+    return true;
+}
+
+bool uapmd::MiniAudioIODevice::initializeDuplexDevice(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate) {
+    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_duplex);
+    deviceConfig.capture.pDeviceID = inputDeviceId;
+    deviceConfig.playback.pDeviceID = outputDeviceId;
+    deviceConfig.capture.format = ma_format_f32;
+    deviceConfig.playback.format = ma_format_f32;
+    deviceConfig.sampleRate = sampleRate; // 0 = native sample rate
+    deviceConfig.dataCallback = data_callback;
+    deviceConfig.pUserData = this;
+    deviceConfig.periodSizeInFrames = config.periodSizeInFrames;
+    deviceConfig.notificationCallback = config.notificationCallback;
+    deviceConfig.noPreSilencedOutputBuffer = MA_TRUE;
+
+    auto* newDevice = new ma_device();
+    if (ma_device_init(config.pContext, &deviceConfig, newDevice) != MA_SUCCESS) {
+        remidy::Logger::global()->logError("Failed to initialize audio device");
+        delete newDevice;
+        return false;
+    }
+
+    config.pDevice = newDevice;
+    config.pPlaybackDeviceID = const_cast<ma_device_id*>(outputDeviceId);
+    if (sampleRate > 0) {
+        config.sampleRate = sampleRate;
+    }
+
+    if (ma_engine_init(&config, &engine) != MA_SUCCESS) {
+        remidy::Logger::global()->logError("Failed to initialize audio engine");
+        ma_device_uninit(newDevice);
+        delete newDevice;
+        config.pDevice = nullptr;
+        return false;
+    }
+
     engine.pDevice->pUserData = this;
 
-    // Update channel counts
     auto device = ma_engine_get_device(&engine);
     input_channels = device->capture.channels;
     output_channels = device->playback.channels;
@@ -308,11 +308,6 @@ bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, co
     dataOutPtrs.clear();
     if (device->playback.channels)
         dataOutPtrs.resize(device->playback.channels);
-
-    // Restart if it was running
-    if (wasRunning) {
-        start();
-    }
 
     return true;
 }
@@ -385,13 +380,28 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
     // audio device only has the main bus
     int32_t mainBus = 0;
 
-    if (data.audioInBusCount() > 0) {
-        // FIXME: it should be pre-allocated elsewhere
-        auto inChannels = data.inputChannelCount(mainBus);
-        auto inputView = choc::buffer::createChannelArrayView((float* const *) input, inChannels, frameCount);
-        inputView.data.channels = (float* const *) input;
-        for (size_t i = 0, n = inChannels; i < n; i++)
-            memcpy(data.getFloatInBuffer(mainBus, i), inputView.getChannel(i).data.data, sizeof(float) * frameCount);
+    if (data.audioInBusCount() > 0 && input) {
+        const size_t pluginChannels = static_cast<size_t>(data.inputChannelCount(mainBus));
+        const size_t hardwareChannels = static_cast<size_t>(input_channels);
+        const size_t mappedChannels = std::min(pluginChannels, hardwareChannels);
+
+        static thread_local std::vector<float*> inputChannelPtrs{};
+        inputChannelPtrs.resize(mappedChannels);
+
+        if (mappedChannels > 0) {
+            for (size_t i = 0; i < mappedChannels; ++i)
+                inputChannelPtrs[i] = data.getFloatInBuffer(mainBus, static_cast<uint32_t>(i));
+
+            auto pluginView = choc::buffer::createChannelArrayView(inputChannelPtrs.data(), mappedChannels, frameCount);
+            auto deviceView = choc::buffer::createInterleavedView(static_cast<const float*>(input), hardwareChannels, frameCount);
+            choc::buffer::copyRemappingChannels(pluginView, deviceView);
+        }
+
+        for (size_t ch = mappedChannels; ch < pluginChannels; ++ch) {
+            auto* dst = data.getFloatInBuffer(mainBus, static_cast<uint32_t>(ch));
+            if (dst)
+                std::fill(dst, dst + frameCount, 0.0f);
+        }
     }
     data.frameCount(frameCount);
 
