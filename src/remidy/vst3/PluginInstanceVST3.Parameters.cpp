@@ -128,8 +128,7 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
 
     // populate the PNC list only if INoteExpressionController is implemented...
     auto nec = owner->note_expression_controller;
-    if (nec) {
-        const auto count = nec->getNoteExpressionCount(context.group, context.channel);
+    if (const auto count = nec ? nec->getNoteExpressionCount(context.group, context.channel) : -1; count > 0) {
         per_note_controller_defs.reserve(static_cast<size_t>(count));
         per_note_controller_storage.reserve(static_cast<size_t>(count));
         for (auto i = 0; i < count; i++) {
