@@ -228,13 +228,5 @@ namespace uapmd {
                     on_process_midi_message_report();
             }
         });
-
-        if (sequencer) {
-            sequencer->setPluginOutputHandler(instance_id, [this](const uapmd_ump_t* data, size_t bytes) {
-                if (!device->midiIO())
-                    return;
-                device->midiIO()->send(const_cast<uapmd_ump_t*>(data), bytes, 0);
-            });
-        }
     }
 }

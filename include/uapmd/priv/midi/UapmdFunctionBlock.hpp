@@ -19,7 +19,6 @@ namespace uapmd {
 
         static void umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
-        void teardownOutputHandler();
 
         std::unique_ptr<UapmdMidiCISession> uapmd_sessions{};
 

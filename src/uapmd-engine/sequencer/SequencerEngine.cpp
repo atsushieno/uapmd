@@ -118,8 +118,6 @@ namespace uapmd {
         // Parameter metadata refresh
         bool consumeParameterMetadataRefresh(int32_t instanceId) override;
 
-        void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) override;
-
         bool offlineRendering() const override;
         void offlineRendering(bool enabled) override;
 
@@ -418,10 +416,6 @@ namespace uapmd {
         });
     }
 
-    void uapmd::SequencerEngineImpl::setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) {
-        // FIXME: implement
-    }
-
     bool SequencerEngineImpl::removePluginInstance(int32_t instanceId) {
         // Hide and destroy UI first (if caller didn't already)
         auto* instance = getPluginInstance(instanceId);
@@ -445,9 +439,6 @@ namespace uapmd {
         if (metadataToken != 0 && instance && instance->parameterSupport()) {
             instance->parameterSupport()->parameterMetadataChangeEvent().removeListener(metadataToken);
         }
-
-        // Clear plugin output handler (application-specific concern)
-        setPluginOutputHandler(instanceId, nullptr);
 
         // Plugin instance cleanup
         {

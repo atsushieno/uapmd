@@ -26,15 +26,8 @@ namespace uapmd {
     }
 
     UapmdFunctionBlock::~UapmdFunctionBlock() {
-        teardownOutputHandler();
         if (midi_device)
             midi_device->removeInputHandler(umpReceived);
-    }
-
-    void UapmdFunctionBlock::teardownOutputHandler() {
-        if (!sequencer || instance_id < 0)
-            return;
-        sequencer->setPluginOutputHandler(instance_id, nullptr);
     }
 
     void UapmdFunctionBlock::initialize() {
