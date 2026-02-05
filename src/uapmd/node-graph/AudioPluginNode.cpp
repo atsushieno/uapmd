@@ -16,6 +16,7 @@ namespace uapmd {
         std::atomic<bool> queue_reading_{false};
         std::function<void()> on_delete_;
         ParameterUpdateEvent parameter_update_event_;
+        remidy::EventListenerId parameter_listener_token_{0};
 
     public:
         AudioPluginNodeImpl(
@@ -27,9 +28,21 @@ namespace uapmd {
             instance_(instance),
             queue_(eventBufferSizeInBytes),
             on_delete_(std::move(onDelete)) {
+            // Register parameter change listener directly with the plugin
+            if (instance_ && instance_->parameterSupport()) {
+                parameter_listener_token_ = instance_->parameterSupport()->parameterChangeEvent().addListener(
+                    [this](uint32_t paramIndex, double plainValue) {
+                        parameter_update_event_.notify(static_cast<int32_t>(paramIndex), plainValue);
+                    }
+                );
+            }
         }
 
         ~AudioPluginNodeImpl() override {
+            // Unregister parameter listener
+            if (parameter_listener_token_ != 0 && instance_ && instance_->parameterSupport()) {
+                instance_->parameterSupport()->parameterChangeEvent().removeListener(parameter_listener_token_);
+            }
             if (on_delete_)
                 on_delete_();
         }

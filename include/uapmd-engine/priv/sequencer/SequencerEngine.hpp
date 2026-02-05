@@ -70,9 +70,7 @@ namespace uapmd {
         virtual void sendChannelPressure(int32_t instanceId, float pressure) = 0;
         virtual void setParameterValue(int32_t instanceId, int32_t index, double value) = 0;
 
-        // Parameter listening
-        virtual void registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* instance) = 0;
-        virtual void unregisterParameterListener(int32_t instanceId) = 0;
+        // Parameter metadata refresh (for UI updates when parameter list changes)
         virtual bool consumeParameterMetadataRefresh(int32_t instanceId) = 0;
 
         virtual bool offlineRendering() const = 0;

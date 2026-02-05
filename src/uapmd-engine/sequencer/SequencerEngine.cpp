@@ -50,12 +50,10 @@ namespace uapmd {
         std::unordered_map<int32_t, bool> plugin_bypassed_;
         std::mutex instance_map_mutex_;
 
-        // Parameter listening
+        // Parameter metadata refresh tracking
         std::unordered_set<int32_t> pending_metadata_refresh_;
-        std::mutex pending_parameter_mutex_;
-        std::unordered_map<int32_t, remidy::EventListenerId> parameter_listener_tokens_;
         std::unordered_map<int32_t, remidy::EventListenerId> metadata_listener_tokens_;
-        std::mutex parameter_listener_mutex_;
+        std::mutex metadata_refresh_mutex_;
 
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
@@ -117,9 +115,7 @@ namespace uapmd {
 
         void setParameterValue(int32_t instanceId, int32_t index, double value) override;
 
-        // Parameter listening
-        void registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* instance) override;
-        void unregisterParameterListener(int32_t instanceId) override;
+        // Parameter metadata refresh
         bool consumeParameterMetadataRefresh(int32_t instanceId) override;
 
         void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) override;
@@ -402,8 +398,17 @@ namespace uapmd {
                 plugin_bypassed_[instanceId] = false;
             }
 
-            // Parameter listening
-            registerParameterListener(instanceId, instance);
+            // Register metadata change listener (parameter changes are handled in AudioPluginNode)
+            if (instance->parameterSupport()) {
+                auto metadataToken = instance->parameterSupport()->parameterMetadataChangeEvent().addListener([this, instanceId]() {
+                    std::lock_guard<std::mutex> lock(metadata_refresh_mutex_);
+                    pending_metadata_refresh_.insert(instanceId);
+                });
+                if (metadataToken != 0) {
+                    std::lock_guard<std::mutex> lock(metadata_refresh_mutex_);
+                    metadata_listener_tokens_[instanceId] = metadataToken;
+                }
+            }
 
             refreshFunctionBlockMappings();
 
@@ -426,8 +431,20 @@ namespace uapmd {
             instance->destroyUI();
         }
 
-        // Parameter listening cleanup
-        unregisterParameterListener(instanceId);
+        // Unregister metadata listener
+        remidy::EventListenerId metadataToken{0};
+        {
+            std::lock_guard<std::mutex> lock(metadata_refresh_mutex_);
+            auto metaIt = metadata_listener_tokens_.find(instanceId);
+            if (metaIt != metadata_listener_tokens_.end()) {
+                metadataToken = metaIt->second;
+                metadata_listener_tokens_.erase(metaIt);
+            }
+            pending_metadata_refresh_.erase(instanceId);
+        }
+        if (metadataToken != 0 && instance && instance->parameterSupport()) {
+            instance->parameterSupport()->parameterMetadataChangeEvent().removeListener(metadataToken);
+        }
 
         // Clear plugin output handler (application-specific concern)
         setPluginOutputHandler(instanceId, nullptr);
@@ -612,70 +629,8 @@ namespace uapmd {
         }
     }
 
-    // Parameter listening
-    void SequencerEngineImpl::registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* instance) {
-        if (!instance)
-            return;
-
-        // Find the AudioPluginNode for this instance
-        AudioPluginNode* pluginNode = nullptr;
-        for (const auto& track : tracks()) {
-            auto node = track->graph().plugins()[instanceId];
-            if (node) {
-                pluginNode = node;
-                break;
-            }
-        }
-
-        if (!pluginNode)
-            return;
-
-        // Forward plugin parameter changes to the node's event
-        auto token = instance->parameterSupport()->parameterChangeEvent().addListener([pluginNode](uint32_t paramIndex, double plainValue) {
-            pluginNode->parameterUpdateEvent().notify(static_cast<int32_t>(paramIndex), plainValue);
-        });
-        auto metadataToken = instance->parameterSupport()->parameterMetadataChangeEvent().addListener([this, instanceId]() {
-            std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
-            pending_metadata_refresh_.insert(instanceId);
-        });
-        std::lock_guard<std::mutex> lock(parameter_listener_mutex_);
-        if (token != 0)
-            parameter_listener_tokens_[instanceId] = token;
-        if (metadataToken != 0)
-            metadata_listener_tokens_[instanceId] = metadataToken;
-    }
-
-    void SequencerEngineImpl::unregisterParameterListener(int32_t instanceId) {
-        remidy::EventListenerId token{0};
-        remidy::EventListenerId metadataToken{0};
-        {
-            std::lock_guard<std::mutex> lock(parameter_listener_mutex_);
-            auto it = parameter_listener_tokens_.find(instanceId);
-            if (it != parameter_listener_tokens_.end()) {
-                token = it->second;
-                parameter_listener_tokens_.erase(it);
-            }
-            auto metaIt = metadata_listener_tokens_.find(instanceId);
-            if (metaIt != metadata_listener_tokens_.end()) {
-                metadataToken = metaIt->second;
-                metadata_listener_tokens_.erase(metaIt);
-            }
-        }
-        auto* node = getPluginInstance(instanceId);
-        if (node) {
-            if (token != 0)
-                node->parameterSupport()->parameterChangeEvent().removeListener(token);
-            if (metadataToken != 0)
-                node->parameterSupport()->parameterMetadataChangeEvent().removeListener(metadataToken);
-        }
-        {
-            std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
-            pending_metadata_refresh_.erase(instanceId);
-        }
-    }
-
     bool SequencerEngineImpl::consumeParameterMetadataRefresh(int32_t instanceId) {
-        std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
+        std::lock_guard<std::mutex> lock(metadata_refresh_mutex_);
         auto it = pending_metadata_refresh_.find(instanceId);
         if (it == pending_metadata_refresh_.end())
             return false;
