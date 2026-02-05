@@ -46,6 +46,7 @@ private:
         int selectedPreset = -1;
         float pitchBendValue = 0.0f; // -1..1 UI range
         float channelPressureValue = 0.0f; // 0..1 UI range
+        uapmd::EventListenerId parameterListenerId = 0; // For parameter update events
     };
 
     std::unordered_map<int32_t, DetailsWindowState> windows_;
@@ -53,7 +54,6 @@ private:
     void refreshParameters(int32_t instanceId, DetailsWindowState& state);
     void refreshPresets(int32_t instanceId, DetailsWindowState& state);
     void loadSelectedPreset(int32_t instanceId, DetailsWindowState& state);
-    void applyParameterUpdates(int32_t instanceId, DetailsWindowState& state);
     void renderParameterControls(int32_t instanceId, DetailsWindowState& state);
 };
 

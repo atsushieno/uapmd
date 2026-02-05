@@ -51,7 +51,6 @@ namespace uapmd {
         std::mutex instance_map_mutex_;
 
         // Parameter listening
-        std::unordered_map<int32_t, std::vector<ParameterUpdate>> pending_parameter_updates_;
         std::unordered_set<int32_t> pending_metadata_refresh_;
         std::mutex pending_parameter_mutex_;
         std::unordered_map<int32_t, remidy::EventListenerId> parameter_listener_tokens_;
@@ -121,7 +120,6 @@ namespace uapmd {
         // Parameter listening
         void registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* instance) override;
         void unregisterParameterListener(int32_t instanceId) override;
-        std::vector<ParameterUpdate> getParameterUpdates(int32_t instanceId) override;
         bool consumeParameterMetadataRefresh(int32_t instanceId) override;
 
         void setPluginOutputHandler(int32_t instanceId, PluginOutputHandler handler) override;
@@ -598,10 +596,13 @@ namespace uapmd {
                 int32_t paramId = (bank * 128) + index;
                 double value = static_cast<double>(value32) / 4294967295.0;
 
-                // Store parameter update
-                {
-                    std::lock_guard<std::mutex> parameterLock(pending_parameter_mutex_);
-                    pending_parameter_updates_[instanceId].push_back({paramId, value});
+                // Find the AudioPluginNode and notify parameter update
+                for (const auto& track : tracks()) {
+                    auto node = track->graph().plugins()[instanceId];
+                    if (node) {
+                        node->parameterUpdateEvent().notify(paramId, value);
+                        break;
+                    }
                 }
             }
 
@@ -612,14 +613,28 @@ namespace uapmd {
     }
 
     // Parameter listening
-    void SequencerEngineImpl::registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* node) {
-        if (!node)
+    void SequencerEngineImpl::registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* instance) {
+        if (!instance)
             return;
-        auto token = node->parameterSupport()->parameterChangeEvent().addListener([this, instanceId](uint32_t paramIndex, double plainValue) {
-            std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
-            pending_parameter_updates_[instanceId].push_back({static_cast<int32_t>(paramIndex), plainValue});
+
+        // Find the AudioPluginNode for this instance
+        AudioPluginNode* pluginNode = nullptr;
+        for (const auto& track : tracks()) {
+            auto node = track->graph().plugins()[instanceId];
+            if (node) {
+                pluginNode = node;
+                break;
+            }
+        }
+
+        if (!pluginNode)
+            return;
+
+        // Forward plugin parameter changes to the node's event
+        auto token = instance->parameterSupport()->parameterChangeEvent().addListener([pluginNode](uint32_t paramIndex, double plainValue) {
+            pluginNode->parameterUpdateEvent().notify(static_cast<int32_t>(paramIndex), plainValue);
         });
-        auto metadataToken = node->parameterSupport()->parameterMetadataChangeEvent().addListener([this, instanceId]() {
+        auto metadataToken = instance->parameterSupport()->parameterMetadataChangeEvent().addListener([this, instanceId]() {
             std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
             pending_metadata_refresh_.insert(instanceId);
         });
@@ -657,16 +672,6 @@ namespace uapmd {
             std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
             pending_metadata_refresh_.erase(instanceId);
         }
-    }
-
-    std::vector<ParameterUpdate> SequencerEngineImpl::getParameterUpdates(int32_t instanceId) {
-        std::lock_guard<std::mutex> lock(pending_parameter_mutex_);
-        auto it = pending_parameter_updates_.find(instanceId);
-        if (it == pending_parameter_updates_.end())
-            return {};
-        auto updates = std::move(it->second);
-        pending_parameter_updates_.erase(it);
-        return updates;
     }
 
     bool SequencerEngineImpl::consumeParameterMetadataRefresh(int32_t instanceId) {

@@ -155,6 +155,40 @@ void InstanceDetails::showWindow(int32_t instanceId) {
         state.visible = true;
         refreshParameters(instanceId, state);
         refreshPresets(instanceId, state);
+
+        // Register parameter update listener
+        auto& seq = uapmd::AppModel::instance().sequencer();
+        for (const auto& track : seq.engine()->tracks()) {
+            auto node = track->graph().plugins()[instanceId];
+            if (node) {
+                state.parameterListenerId = node->parameterUpdateEvent().addListener([this, instanceId](int32_t paramIndex, double value) {
+                    auto windowIt = windows_.find(instanceId);
+                    if (windowIt == windows_.end())
+                        return;
+
+                    auto& detailsState = windowIt->second;
+                    if (detailsState.parameterList.context() != ParameterList::ParameterContext::Global)
+                        return;
+
+                    auto& seq = uapmd::AppModel::instance().sequencer();
+                    auto* pal = seq.engine()->getPluginInstance(instanceId);
+                    if (!pal)
+                        return;
+
+                    const auto& parameters = detailsState.parameterList.getParameters();
+                    for (size_t i = 0; i < parameters.size(); ++i) {
+                        if (parameters[i].index == paramIndex) {
+                            detailsState.parameterList.setParameterValue(i, static_cast<float>(value));
+                            auto valueString = pal->getParameterValueString(parameters[i].index, value);
+                            detailsState.parameterList.setParameterValueString(i, valueString);
+                            break;
+                        }
+                    }
+                });
+                break;
+            }
+        }
+
         windows_[instanceId] = std::move(state);
     } else {
         it->second.visible = true;
@@ -169,6 +203,18 @@ void InstanceDetails::hideWindow(int32_t instanceId) {
 }
 
 void InstanceDetails::removeInstance(int32_t instanceId) {
+    // Unregister parameter listener
+    auto it = windows_.find(instanceId);
+    if (it != windows_.end() && it->second.parameterListenerId != 0) {
+        auto& seq = uapmd::AppModel::instance().sequencer();
+        for (const auto& track : seq.engine()->tracks()) {
+            auto node = track->graph().plugins()[instanceId];
+            if (node) {
+                node->parameterUpdateEvent().removeListener(it->second.parameterListenerId);
+                break;
+            }
+        }
+    }
     windows_.erase(instanceId);
 }
 
@@ -396,12 +442,8 @@ void InstanceDetails::refreshParameters(int32_t instanceId, DetailsWindowState& 
     }
 
     state.parameterList.setParameters(parameters);
-    if (parameters.empty()) {
-        if (!usingPerNoteControllers) {
-            applyParameterUpdates(instanceId, state);
-        }
+    if (parameters.empty())
         return;
-    }
 
     for (size_t i = 0; i < parameters.size(); ++i) {
         double initialValue = parameters[i].defaultPlainValue;
@@ -423,10 +465,6 @@ void InstanceDetails::refreshParameters(int32_t instanceId, DetailsWindowState& 
                                      initialValue)
                                : pal->getParameterValueString(parameters[i].index, initialValue);
         state.parameterList.setParameterValueString(i, valueString);
-    }
-
-    if (!usingPerNoteControllers) {
-        applyParameterUpdates(instanceId, state);
     }
 }
 
@@ -459,48 +497,7 @@ void InstanceDetails::loadSelectedPreset(int32_t instanceId, DetailsWindowState&
     refreshParameters(instanceId, state);
 }
 
-void InstanceDetails::applyParameterUpdates(int32_t instanceId, DetailsWindowState& state) {
-    if (state.parameterList.context() != ParameterList::ParameterContext::Global) {
-        return;
-    }
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    auto* pal = sequencer.engine()->getPluginInstance(instanceId);
-    if (!pal) {
-        return;
-    }
-
-    auto updates = sequencer.engine()->getParameterUpdates(instanceId);
-    if (updates.empty()) {
-        return;
-    }
-
-    const auto& parameters = state.parameterList.getParameters();
-    bool needsRefresh = false;
-
-    for (const auto& update : updates) {
-        bool handled = false;
-        for (size_t i = 0; i < parameters.size(); ++i) {
-            if (parameters[i].index == update.parameterIndex) {
-                state.parameterList.setParameterValue(i, static_cast<float>(update.value));
-                auto valueString = pal->getParameterValueString(parameters[i].index, update.value);
-                state.parameterList.setParameterValueString(i, valueString);
-                handled = true;
-                break;
-            }
-        }
-        if (!handled) {
-            needsRefresh = true;
-            break;
-        }
-    }
-
-    if (needsRefresh) {
-        refreshParameters(instanceId, state);
-    }
-}
-
 void InstanceDetails::renderParameterControls(int32_t instanceId, DetailsWindowState& state) {
-    applyParameterUpdates(instanceId, state);
     state.parameterList.render();
 }
 

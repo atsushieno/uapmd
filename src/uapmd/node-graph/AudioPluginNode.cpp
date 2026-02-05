@@ -15,6 +15,7 @@ namespace uapmd {
         std::vector<umppi::Ump> pending_events_;
         std::atomic<bool> queue_reading_{false};
         std::function<void()> on_delete_;
+        ParameterUpdateEvent parameter_update_event_;
 
     public:
         AudioPluginNodeImpl(
@@ -39,6 +40,10 @@ namespace uapmd {
 
         AudioPluginInstanceAPI* instance() override {
             return instance_;
+        }
+
+        ParameterUpdateEvent& parameterUpdateEvent() override {
+            return parameter_update_event_;
         }
 
         bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) override {

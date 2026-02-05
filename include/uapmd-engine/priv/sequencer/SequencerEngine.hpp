@@ -8,12 +8,6 @@ namespace uapmd {
 
     class AudioPluginHostingAPI;
 
-    // Parameter update from plugin (via NRPN or direct listener)
-    struct ParameterUpdate {
-        int32_t parameterIndex;
-        double value;
-    };
-
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
     // It is independent of DeviceIODispatcher, which fires `processAudio()` in its audio I/O callback.
@@ -79,7 +73,6 @@ namespace uapmd {
         // Parameter listening
         virtual void registerParameterListener(int32_t instanceId, AudioPluginInstanceAPI* instance) = 0;
         virtual void unregisterParameterListener(int32_t instanceId) = 0;
-        virtual std::vector<ParameterUpdate> getParameterUpdates(int32_t instanceId) = 0;
         virtual bool consumeParameterMetadataRefresh(int32_t instanceId) = 0;
 
         virtual bool offlineRendering() const = 0;

@@ -1,9 +1,20 @@
 #pragma once
 
 #include <choc/javascript/choc_javascript.h>
+#include <map>
+#include <mutex>
 #include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "uapmd/uapmd.hpp"
 
 namespace uapmd {
+
+struct ParameterUpdate {
+    int32_t parameterIndex;
+    double value;
+};
 
 /**
  * UapmdJSRuntime encapsulates the QuickJS runtime and provides
@@ -13,6 +24,11 @@ namespace uapmd {
  */
 class UapmdJSRuntime {
     choc::javascript::Context jsContext_;
+
+    // Parameter update queue for JavaScript polling
+    std::unordered_map<int32_t, std::vector<ParameterUpdate>> js_parameter_updates_;
+    std::mutex js_parameter_mutex_;
+    std::map<int32_t, EventListenerId> js_parameter_listener_ids_; // std::map for deterministic cleanup order
 
 public:
     UapmdJSRuntime();
@@ -27,6 +43,30 @@ public:
      * Re-initialize the JavaScript context (e.g., after a reset).
      */
     void reinitialize();
+
+    /**
+     * Register parameter update listener for an instance.
+     * Should be called when an instance is added to a track.
+     */
+    void registerParameterListener(int32_t instanceId);
+
+    /**
+     * Unregister parameter update listener for an instance.
+     * Should be called when an instance is removed.
+     */
+    void unregisterParameterListener(int32_t instanceId);
+
+    /**
+     * Register listeners for all currently active instances.
+     * Called on initialization or when script editor starts.
+     */
+    void registerAllParameterListeners();
+
+    /**
+     * Unregister all parameter listeners.
+     * Called on cleanup or when script editor stops.
+     */
+    void unregisterAllParameterListeners();
 
 private:
     void registerConsoleFunctions();

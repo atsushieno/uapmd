@@ -12,6 +12,7 @@ namespace uapmd {
 UapmdJSRuntime::UapmdJSRuntime()
 {
     reinitialize();
+    registerAllParameterListeners();
 }
 
 void UapmdJSRuntime::reinitialize()
@@ -565,14 +566,21 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_getParameterUpdates", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    jsContext_.registerFunction ("__remidy_sequencer_getParameterUpdates", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         if (instanceId < 0)
             return choc::value::createEmptyArray();
 
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto updates = sequencer.engine()->getParameterUpdates (instanceId);
+        std::vector<ParameterUpdate> updates;
+        {
+            std::lock_guard<std::mutex> lock(js_parameter_mutex_);
+            auto it = js_parameter_updates_.find(instanceId);
+            if (it != js_parameter_updates_.end()) {
+                updates = std::move(it->second);
+                js_parameter_updates_.erase(it);
+            }
+        }
 
         auto arr = choc::value::createEmptyArray();
         for (const auto& update : updates)
@@ -662,6 +670,90 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         auto isScanning = uapmd::AppModel::instance().isScanning();
         return choc::value::createBool (isScanning);
     });
+}
+
+void UapmdJSRuntime::registerParameterListener(int32_t instanceId)
+{
+    auto& seq = AppModel::instance().sequencer();
+    for (const auto& track : seq.engine()->tracks()) {
+        auto node = track->graph().plugins()[instanceId];
+        if (node) {
+            auto listenerId = node->parameterUpdateEvent().addListener([this, instanceId](int32_t paramIndex, double value) {
+                std::lock_guard<std::mutex> lock(js_parameter_mutex_);
+                js_parameter_updates_[instanceId].push_back({paramIndex, value});
+            });
+            std::lock_guard<std::mutex> lock(js_parameter_mutex_);
+            js_parameter_listener_ids_[instanceId] = listenerId;
+            break;
+        }
+    }
+}
+
+void UapmdJSRuntime::unregisterParameterListener(int32_t instanceId)
+{
+    EventListenerId listenerId = 0;
+    {
+        std::lock_guard<std::mutex> lock(js_parameter_mutex_);
+        auto it = js_parameter_listener_ids_.find(instanceId);
+        if (it != js_parameter_listener_ids_.end()) {
+            listenerId = it->second;
+            js_parameter_listener_ids_.erase(it);
+        }
+        js_parameter_updates_.erase(instanceId);
+    }
+
+    if (listenerId != 0) {
+        auto& seq = AppModel::instance().sequencer();
+        for (const auto& track : seq.engine()->tracks()) {
+            auto node = track->graph().plugins()[instanceId];
+            if (node) {
+                node->parameterUpdateEvent().removeListener(listenerId);
+                break;
+            }
+        }
+    }
+}
+
+void UapmdJSRuntime::registerAllParameterListeners()
+{
+    auto& seq = AppModel::instance().sequencer();
+    for (const auto& track : seq.engine()->tracks()) {
+        for (const auto& [instanceId, node] : track->graph().plugins()) {
+            if (node) {
+                // Only register if not already registered
+                std::lock_guard<std::mutex> lock(js_parameter_mutex_);
+                if (js_parameter_listener_ids_.find(instanceId) == js_parameter_listener_ids_.end()) {
+                    auto listenerId = node->parameterUpdateEvent().addListener([this, instanceId](int32_t paramIndex, double value) {
+                        std::lock_guard<std::mutex> lock(js_parameter_mutex_);
+                        js_parameter_updates_[instanceId].push_back({paramIndex, value});
+                    });
+                    js_parameter_listener_ids_[instanceId] = listenerId;
+                }
+            }
+        }
+    }
+}
+
+void UapmdJSRuntime::unregisterAllParameterListeners()
+{
+    std::map<int32_t, EventListenerId> listenerIdsCopy;
+    {
+        std::lock_guard<std::mutex> lock(js_parameter_mutex_);
+        listenerIdsCopy = js_parameter_listener_ids_;
+        js_parameter_listener_ids_.clear();
+        js_parameter_updates_.clear();
+    }
+
+    auto& seq = AppModel::instance().sequencer();
+    for (const auto& [instanceId, listenerId] : listenerIdsCopy) {
+        for (const auto& track : seq.engine()->tracks()) {
+            auto node = track->graph().plugins()[instanceId];
+            if (node) {
+                node->parameterUpdateEvent().removeListener(listenerId);
+                break;
+            }
+        }
+    }
 }
 
 } // namespace uapmd
