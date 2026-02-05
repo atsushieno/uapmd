@@ -1,7 +1,6 @@
 #include <choc/text/choc_JSON.h>
 #include <fstream>
 #include <map>
-#include "UapmdProjectFile.cpp"
 #include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
