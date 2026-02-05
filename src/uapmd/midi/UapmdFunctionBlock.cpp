@@ -12,15 +12,13 @@ using namespace midicci::commonproperties;
 namespace uapmd {
 
     UapmdFunctionBlock::UapmdFunctionBlock(std::shared_ptr<MidiIOFeature> midiDevice,
-                                     SequencerFeature* sharedSequencer,
-                                     int32_t instanceId,
+                                     AudioPluginNode* pluginNode,
                                      std::string deviceName,
                                      std::string manufacturerName,
                                      std::string versionString)
-        : sequencer(sharedSequencer),
-          instance_id(instanceId),
-          midi_device(std::move(midiDevice)) {
-        uapmd_sessions = std::make_unique<UapmdMidiCISession>(this, sharedSequencer, deviceName, manufacturerName, versionString);
+      : plugin_node(pluginNode),
+        midi_device(std::move(midiDevice)) {
+        uapmd_sessions = std::make_unique<UapmdMidiCISession>(this, pluginNode->instance(), deviceName, manufacturerName, versionString);
         if (midi_device)
             midi_device->addInputHandler(umpReceived, this);
     }
@@ -39,13 +37,12 @@ namespace uapmd {
     }
 
     void UapmdFunctionBlock::umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-        if (!sequencer)
+        if (!plugin_node)
             return;
 
         uapmd_sessions->interceptUmpInput(ump, sizeInBytes, timestamp);
 
-        if (instance_id >= 0)
-            sequencer->enqueueUmp(instance_id, ump, sizeInBytes, timestamp);
+        plugin_node->scheduleEvents(timestamp, ump, sizeInBytes);
     }
 
 }

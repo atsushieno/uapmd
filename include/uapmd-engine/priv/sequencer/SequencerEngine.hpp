@@ -12,13 +12,16 @@ namespace uapmd {
     // It is used to enqueue input events to each audio track, to process once at a time when an audio I/O event arrives.
     // It is independent of DeviceIODispatcher, which fires `processAudio()` in its audio I/O callback.
     // It is also independent of the timed sequencer that is to deliver sequencer inputs on time.
-    class SequencerEngine : public SequencerFeature {
+    class SequencerEngine {
     protected:
         SequencerEngine() = default;
 
     public:
-        ~SequencerEngine() override = default;
-        static std::unique_ptr<SequencerEngine> create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
+        virtual ~SequencerEngine() = default;
+
+        virtual void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;
+
+        virtual AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;
 
         virtual AudioPluginHostingAPI* pluginHost() = 0;
 
@@ -82,6 +85,8 @@ namespace uapmd {
 
         // Clean up empty tracks (must be called from non-audio thread)
         virtual void cleanupEmptyTracks() = 0;
+
+        static std::unique_ptr<SequencerEngine> create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
     };
 
 }

@@ -159,7 +159,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
         // Register parameter update listener
         auto& seq = uapmd::AppModel::instance().sequencer();
         for (const auto& track : seq.engine()->tracks()) {
-            auto node = track->graph().plugins()[instanceId];
+            auto node = track->graph().getPluginNode(instanceId);
             if (node) {
                 state.parameterListenerId = node->parameterUpdateEvent().addListener([this, instanceId](int32_t paramIndex, double value) {
                     auto windowIt = windows_.find(instanceId);
@@ -208,7 +208,7 @@ void InstanceDetails::removeInstance(int32_t instanceId) {
     if (it != windows_.end() && it->second.parameterListenerId != 0) {
         auto& seq = uapmd::AppModel::instance().sequencer();
         for (const auto& track : seq.engine()->tracks()) {
-            auto node = track->graph().plugins()[instanceId];
+            auto node = track->graph().getPluginNode(instanceId);
             if (node) {
                 node->parameterUpdateEvent().removeListener(it->second.parameterListenerId);
                 break;

@@ -33,6 +33,7 @@ namespace uapmd {
         virtual bool removeNodeSimple(int32_t instanceId) = 0;
 
         virtual std::map<int32_t, AudioPluginNode*> plugins() = 0;
+        virtual AudioPluginNode* getPluginNode(int32_t instanceId) = 0;
 
         // FIXME: in the end, we should move it to "sequencer" which has to dispatch the combined UMP inputs
         // to the "track" to each "mapped" Function Block by group ID (which identifies FB).

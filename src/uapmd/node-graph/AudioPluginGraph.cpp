@@ -21,6 +21,7 @@ namespace uapmd {
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
         int32_t processAudio(AudioProcessContext& process) override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
+        AudioPluginNode* getPluginNode(int32_t instanceId) override;
     };
 
     void AudioPluginGraphImpl::setGroupResolver(std::function<uint8_t(int32_t)> resolver) {
@@ -105,6 +106,13 @@ namespace uapmd {
             ret[node->instanceId()] = node.get();
         }
         return ret;
+    }
+
+    AudioPluginNode* AudioPluginGraphImpl::getPluginNode(int32_t instanceId) {
+        for (auto& node : nodes_)
+            if (node->instanceId() == instanceId)
+                return node.get();
+        return nullptr;
     }
 
     std::unique_ptr<AudioPluginGraph> AudioPluginGraph::create(size_t eventBufferSizeInBytes) {

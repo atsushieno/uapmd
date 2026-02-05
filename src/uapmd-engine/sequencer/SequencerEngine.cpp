@@ -550,13 +550,12 @@ namespace uapmd {
     }
 
     int32_t SequencerEngineImpl::findTrackIndexForInstance(int32_t instanceId) const {
-        auto& tracksRef = tracks();
+        const auto& tracksRef = tracks();
         for (size_t i = 0; i < tracksRef.size(); ++i) {
-            for (auto& p : tracksRef[i]->graph().plugins()) {
-                if (p.first == instanceId) {
-                    return static_cast<int32_t>(i);
-                }
-            }
+            if (const auto& ids = tracksRef[i]->orderedInstanceIds();
+                std::ranges::find(ids.begin(), ids.end(), instanceId) != tracksRef[i]->orderedInstanceIds().end()
+            )
+                return static_cast<int32_t>(i);
         }
         return -1;
     }
@@ -605,7 +604,7 @@ namespace uapmd {
 
                 // Find the AudioPluginNode and notify parameter update
                 for (const auto& track : tracks()) {
-                    auto node = track->graph().plugins()[instanceId];
+                    auto node = track->graph().getPluginNode(instanceId);
                     if (node) {
                         node->parameterUpdateEvent().notify(paramId, value);
                         break;
@@ -653,7 +652,7 @@ namespace uapmd {
     // UMP routing
     void SequencerEngineImpl::enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
         for (const auto& track : tracks())
-            if (const auto node = track->graph().plugins()[instanceId])
+            if (const auto node = track->graph().getPluginNode(instanceId))
                 node->scheduleEvents(timestamp, ump, sizeInBytes);
     }
 

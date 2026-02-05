@@ -291,9 +291,9 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
 
         auto fbDeviceIndex = fbManager->create();
         auto fbDevice = fbManager->getFunctionDeviceByIndex(fbDeviceIndex);
-        if (!fbDevice->createFunctionBlock(deviceState->apiName,
-                                      sequencer_.engine(),
-                                               instanceId,
+        const auto track = sequencer_.engine()->tracks()[sequencer_.engine()->findTrackIndexForInstance(instanceId)];
+        const auto pluginNode = track ? track->graph().getPluginNode(instanceId) : nullptr;
+        if (!fbDevice->createFunctionBlock(deviceState->apiName, pluginNode, instanceId,
                                                deviceName.empty() ? deviceState->label : deviceName,
                                                "UAPMD Project",
                                                "0.1")) {

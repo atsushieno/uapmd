@@ -549,7 +549,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
 
             auto nodesArr = choc::value::createEmptyArray();
             for (const int32_t instanceId : track->orderedInstanceIds()) {
-                auto p = track->graph().plugins()[instanceId];
+                auto p = track->graph().getPluginNode(instanceId);
                 if (!p)
                     continue;
                 auto node = p->instance();
@@ -676,7 +676,7 @@ void UapmdJSRuntime::registerParameterListener(int32_t instanceId)
 {
     auto& seq = AppModel::instance().sequencer();
     for (const auto& track : seq.engine()->tracks()) {
-        auto node = track->graph().plugins()[instanceId];
+        auto node = track->graph().getPluginNode(instanceId);
         if (node) {
             auto listenerId = node->parameterUpdateEvent().addListener([this, instanceId](int32_t paramIndex, double value) {
                 std::lock_guard<std::mutex> lock(js_parameter_mutex_);
@@ -705,7 +705,7 @@ void UapmdJSRuntime::unregisterParameterListener(int32_t instanceId)
     if (listenerId != 0) {
         auto& seq = AppModel::instance().sequencer();
         for (const auto& track : seq.engine()->tracks()) {
-            auto node = track->graph().plugins()[instanceId];
+            auto node = track->graph().getPluginNode(instanceId);
             if (node) {
                 node->parameterUpdateEvent().removeListener(listenerId);
                 break;
@@ -747,7 +747,7 @@ void UapmdJSRuntime::unregisterAllParameterListeners()
     auto& seq = AppModel::instance().sequencer();
     for (const auto& [instanceId, listenerId] : listenerIdsCopy) {
         for (const auto& track : seq.engine()->tracks()) {
-            auto node = track->graph().plugins()[instanceId];
+            auto node = track->graph().getPluginNode(instanceId);
             if (node) {
                 node->parameterUpdateEvent().removeListener(listenerId);
                 break;

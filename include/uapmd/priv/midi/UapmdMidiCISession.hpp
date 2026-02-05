@@ -11,7 +11,7 @@ namespace uapmd {
     // There is no "output interceptor" as it will be handled by MidiCISession and its registered `MidiIODevice`.
     class UapmdMidiCISession {
         UapmdFunctionBlock* device;
-        SequencerFeature* sequencer;
+        AudioPluginInstanceAPI* instance;
 
         std::string device_name{};
         std::string manufacturer{};
@@ -26,12 +26,12 @@ namespace uapmd {
     public:
         UapmdMidiCISession(
             UapmdFunctionBlock* device,
-            SequencerFeature* sharedSequencer,
+            AudioPluginInstanceAPI* instance,
             std::string deviceName,
             std::string manufacturerName,
             std::string versionString
         ) : device(device),
-            sequencer(sharedSequencer),
+            instance(instance),
             device_name(std::move(deviceName)),
             manufacturer(std::move(manufacturerName)),
             version(std::move(versionString)) {

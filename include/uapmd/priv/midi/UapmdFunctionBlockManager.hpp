@@ -20,7 +20,7 @@ namespace uapmd {
         }
 
         bool createFunctionBlock(const std::string& apiName,
-                        SequencerFeature* sequencer,
+                        AudioPluginNode* pluginNode,
                         int32_t instanceId,
                         std::string deviceName,
                         std::string manufacturer,
@@ -41,7 +41,7 @@ namespace uapmd {
             std::shared_ptr<MidiIOFeature> midiDevice  = midi_io_manager->createMidiIOFeature(apiName, deviceName, manufacturer, version);
             if (!midiDevice) return false;
 
-            const auto fb = std::make_shared<UapmdFunctionBlock>(midiDevice, sequencer, instanceId, deviceName, manufacturer, version);
+            const auto fb = std::make_shared<UapmdFunctionBlock>(midiDevice, pluginNode, deviceName, manufacturer, version);
             fb->group(group);
             blocks[instanceId] = fb;
             return true;

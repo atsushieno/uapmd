@@ -108,8 +108,6 @@ namespace uapmd {
 
         hostProps.updateCommonRulesDeviceInfo(device_info);
 
-        auto* instance = sequencer->getPluginInstance(instance_id);
-
         std::vector<commonproperties::MidiCIControl> allCtrlList{};
 
         auto parameterList = instance->parameterMetadataList();
@@ -144,12 +142,8 @@ namespace uapmd {
         // Create custom property getter that uses AudioPluginNode::saveState() for State/fullState
         auto customGetter = [this, originalGetter](const std::string& property_id, const std::string& res_id) -> std::vector<uint8_t> {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
-                if (sequencer && device->instanceId() >= 0) {
-                    auto* instance = sequencer->getPluginInstance(device->instanceId());
-                    if (instance) {
-                        return instance->saveState();
-                    }
-                }
+                if (instance)
+                    return instance->saveState();
                 return {};
             }
             // Fall back to the original delegate
@@ -164,13 +158,10 @@ namespace uapmd {
         auto customSetter = [this, originalSetter](const std::string& property_id, const std::string& res_id,
                                                      const std::string& media_type, const std::vector<uint8_t>& body) -> bool {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
-                if (sequencer && device->instanceId() >= 0) {
-                    auto* instance = sequencer->getPluginInstance(device->instanceId());
-                    if (instance) {
-                        std::vector<uint8_t> state = body;
-                        instance->loadState(state);
-                        return true;
-                    }
+                if (instance) {
+                    std::vector<uint8_t> state = body;
+                    instance->loadState(state);
+                    return true;
                 }
                 return false;
             }
@@ -181,10 +172,7 @@ namespace uapmd {
 
         on_process_midi_message_report = [&] {
             // Dump all current parameter values when MIDI Message Report is requested
-            if (!sequencer || !device->midiIO())
-                return;
-            auto* instance = sequencer->getPluginInstance(instance_id);
-            if (!instance)
+            if (!instance || !device->midiIO())
                 return;
 
             auto parameterList = instance->parameterMetadataList();
