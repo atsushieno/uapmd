@@ -119,6 +119,7 @@ add_subdirectory(src/remidy)
 add_subdirectory(src/remidy-gui)
 add_subdirectory(src/remidy-tooling)
 add_subdirectory(src/uapmd)
+add_subdirectory(src/uapmd-data)
 add_subdirectory(src/uapmd-engine)
 
 add_subdirectory(tools)

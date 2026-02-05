@@ -8,7 +8,6 @@
 #include <umppi/umppi.hpp>
 #include <unordered_set>
 
-#include "../plugin-api/RemidyAudioPluginHost.hpp"
 #include "remidy/remidy.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
 
@@ -21,7 +20,7 @@ namespace uapmd {
         std::vector<std::unique_ptr<SequencerTrack>> tracks_{};
         SequenceProcessContext sequence{};
         int32_t sampleRate;
-        AudioPluginHostingAPI* plugin_host;
+        std::unique_ptr<AudioPluginHostingAPI> plugin_host;
         UapmdFunctionBlockManager function_block_manager{};
 
         // Playback state (managed by RealtimeSequencer)
@@ -150,7 +149,7 @@ namespace uapmd {
         audio_buffer_size_in_frames(audioBufferSizeInFrames),
         sampleRate(sampleRate),
         ump_buffer_size_in_ints(umpBufferSizeInInts),
-        plugin_host(RemidyAudioPluginHost::instance()),
+        plugin_host(AudioPluginHostingAPI::create()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
     }
 
@@ -709,7 +708,7 @@ namespace uapmd {
     }
 
     AudioPluginHostingAPI* uapmd::SequencerEngineImpl::pluginHost() {
-        return plugin_host;
+        return plugin_host.get();
     }
 
     bool uapmd::SequencerEngineImpl::offlineRendering() const {

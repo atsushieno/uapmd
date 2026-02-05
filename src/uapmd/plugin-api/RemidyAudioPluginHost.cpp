@@ -4,6 +4,7 @@
 #include <ranges>
 
 #include "remidy-tooling/PluginInstancing.hpp"
+#include "../midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
     int32_t instanceIdSerial{0};
@@ -295,9 +296,8 @@ namespace uapmd {
     };
 }
 
-uapmd::AudioPluginHostingAPI* uapmd::RemidyAudioPluginHost::instance() {
-    static RemidyAudioPluginHost impl{};
-    return &impl;
+std::unique_ptr<uapmd::AudioPluginHostingAPI> uapmd::AudioPluginHostingAPI::create() {
+    return std::make_unique<RemidyAudioPluginHost>();
 }
 
 uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {

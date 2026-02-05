@@ -13,8 +13,6 @@ namespace uapmd {
         std::map<int32_t,std::unique_ptr<AudioPluginInstanceAPI>> instances{};
 
     public:
-        static AudioPluginHostingAPI* instance();
-
         RemidyAudioPluginHost();
         ~RemidyAudioPluginHost() override = default;
 

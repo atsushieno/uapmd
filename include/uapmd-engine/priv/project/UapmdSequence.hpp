@@ -3,10 +3,13 @@
 #include <algorithm>
 #include <vector>
 #include <uapmd/uapmd.hpp>
-#include "../audio/AudioFileReader.hpp"
-#include "UapmdProjectFile.hpp"
+#include "uapmd-data/priv/project/UapmdProjectFile.hpp"
 
 namespace uapmd {
+    // Forward declarations
+    class AudioFileReader;
+    class AudioPluginGraph;
+
     enum class UapmdClipMoveResult {
         Success,
         Rejected,

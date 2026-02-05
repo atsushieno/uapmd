@@ -2,7 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <gtest/gtest.h>
-#include "uapmd-engine/uapmd-engine.hpp"
+#include "uapmd-data/uapmd-data.hpp"
 
 namespace fs = std::filesystem;
 

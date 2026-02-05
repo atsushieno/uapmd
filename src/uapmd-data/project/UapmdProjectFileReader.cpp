@@ -4,7 +4,7 @@
 #include <map>
 #include <set>
 #include <iostream>
-#include "uapmd-engine/uapmd-engine.hpp"
+#include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
     // Helper to resolve clip anchors after all tracks and clips are loaded

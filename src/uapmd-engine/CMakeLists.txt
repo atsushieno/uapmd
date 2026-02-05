@@ -53,26 +53,17 @@ target_link_libraries(uapmd-engine
         remidy::remidy
         remidy::remidy-tooling
         uapmd
+        uapmd-project
 )
 
 target_sources(uapmd-engine PRIVATE
-        audio/ChocAudioFileFactory.cpp
         devices/AudioIODevice.cpp
         devices/DefaultDeviceIODispatcher.cpp
         devices/LibreMidiIODevice.cpp
         devices/MidiIODevice.cpp
         devices/MiniAudioIODevice.cpp
-        plugin-api/RemidyAudioPluginHost.cpp
         sequencer/RealtimeSequencer.cpp
         sequencer/SequencerEngine.cpp
         sequencer/SequencerTrack.cpp
-        project/UapmdProjectFileReader.cpp
-        project/UapmdProjectFileWriter.cpp
-        project/UapmdProjectFile.cpp
 )
 
-# Add tests subdirectory
-option(UAPMD_BUILD_TESTS "Build uapmd-app tests" ON)
-if(UAPMD_BUILD_TESTS)
-    add_subdirectory(tests)
-endif()

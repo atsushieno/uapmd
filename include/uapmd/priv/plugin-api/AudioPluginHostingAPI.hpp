@@ -17,6 +17,8 @@ namespace uapmd {
         virtual uapmd_status_t processAudio(std::vector<AudioProcessContext*> contexts) = 0;
 
         virtual std::vector<int32_t> instanceIds() = 0;
+
+        static std::unique_ptr<AudioPluginHostingAPI> create();
     };
 
 }

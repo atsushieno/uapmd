@@ -2,7 +2,7 @@
 #include <fstream>
 #include <map>
 #include "UapmdProjectFile.cpp"
-#include "uapmd-engine/uapmd-engine.hpp"
+#include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
     // Helper to generate unique anchor IDs for tracks and clips

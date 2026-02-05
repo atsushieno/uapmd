@@ -1,4 +1,5 @@
 #include <uapmd/uapmd.hpp>
+#include "uapmd-data/priv/project/UapmdProjectFile.hpp"
 #include "UapmdSequence.hpp"
 
 namespace uapmd {
