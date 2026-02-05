@@ -44,12 +44,8 @@ namespace uapmd {
 
         uapmd_sessions->interceptUmpInput(ump, sizeInBytes, timestamp);
 
-        if (instance_id >= 0) {
+        if (instance_id >= 0)
             sequencer->enqueueUmp(instance_id, ump, sizeInBytes, timestamp);
-            return;
-        }
-
-        sequencer->enqueueUmp(instance_id, ump, sizeInBytes, timestamp);
     }
 
 }
