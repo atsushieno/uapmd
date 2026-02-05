@@ -5,6 +5,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "uapmd/uapmd.hpp"
@@ -29,6 +30,11 @@ class UapmdJSRuntime {
     std::unordered_map<int32_t, std::vector<ParameterUpdate>> js_parameter_updates_;
     std::mutex js_parameter_mutex_;
     std::map<int32_t, EventListenerId> js_parameter_listener_ids_; // std::map for deterministic cleanup order
+
+    // Parameter metadata refresh queue for JavaScript polling
+    std::unordered_set<int32_t> js_metadata_refresh_;
+    std::mutex js_metadata_mutex_;
+    std::map<int32_t, EventListenerId> js_metadata_listener_ids_; // std::map for deterministic cleanup order
 
 public:
     UapmdJSRuntime();
@@ -67,6 +73,30 @@ public:
      * Called on cleanup or when script editor stops.
      */
     void unregisterAllParameterListeners();
+
+    /**
+     * Register parameter metadata refresh listener for an instance.
+     * Should be called when an instance is added to a track.
+     */
+    void registerMetadataListener(int32_t instanceId);
+
+    /**
+     * Unregister parameter metadata refresh listener for an instance.
+     * Should be called when an instance is removed.
+     */
+    void unregisterMetadataListener(int32_t instanceId);
+
+    /**
+     * Register metadata listeners for all currently active instances.
+     * Called on initialization or when script editor starts.
+     */
+    void registerAllMetadataListeners();
+
+    /**
+     * Unregister all metadata listeners.
+     * Called on cleanup or when script editor stops.
+     */
+    void unregisterAllMetadataListeners();
 
 private:
     void registerConsoleFunctions();

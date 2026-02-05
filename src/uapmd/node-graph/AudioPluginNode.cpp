@@ -16,7 +16,9 @@ namespace uapmd {
         std::atomic<bool> queue_reading_{false};
         std::function<void()> on_delete_;
         ParameterUpdateEvent parameter_update_event_;
+        ParameterMetadataRefreshEvent parameter_metadata_refresh_event_;
         remidy::EventListenerId parameter_listener_token_{0};
+        remidy::EventListenerId metadata_listener_token_{0};
 
     public:
         AudioPluginNodeImpl(
@@ -35,13 +37,21 @@ namespace uapmd {
                         parameter_update_event_.notify(static_cast<int32_t>(paramIndex), plainValue);
                     }
                 );
+                metadata_listener_token_ = instance_->parameterSupport()->parameterMetadataChangeEvent().addListener(
+                    [this]() {
+                        parameter_metadata_refresh_event_.notify();
+                    }
+                );
             }
         }
 
         ~AudioPluginNodeImpl() override {
-            // Unregister parameter listener
-            if (parameter_listener_token_ != 0 && instance_ && instance_->parameterSupport()) {
-                instance_->parameterSupport()->parameterChangeEvent().removeListener(parameter_listener_token_);
+            // Unregister parameter listeners
+            if (instance_ && instance_->parameterSupport()) {
+                if (parameter_listener_token_ != 0)
+                    instance_->parameterSupport()->parameterChangeEvent().removeListener(parameter_listener_token_);
+                if (metadata_listener_token_ != 0)
+                    instance_->parameterSupport()->parameterMetadataChangeEvent().removeListener(metadata_listener_token_);
             }
             if (on_delete_)
                 on_delete_();
@@ -57,6 +67,10 @@ namespace uapmd {
 
         ParameterUpdateEvent& parameterUpdateEvent() override {
             return parameter_update_event_;
+        }
+
+        ParameterMetadataRefreshEvent& parameterMetadataRefreshEvent() override {
+            return parameter_metadata_refresh_event_;
         }
 
         bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) override {

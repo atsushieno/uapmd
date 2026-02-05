@@ -60,6 +60,9 @@ namespace uapmd {
     // Event for parameter updates: (parameterIndex, value)
     using ParameterUpdateEvent = EventBase<int32_t, double>;
 
+    // Event for parameter metadata refresh (no parameters - just a notification)
+    using ParameterMetadataRefreshEvent = EventBase<>;
+
     // AudioPluginNode wraps a plugin instance with its own event queue.
     // This allows per-instance event routing instead of per-track routing.
     // Managed internally by AudioPluginGraph.
@@ -75,6 +78,9 @@ namespace uapmd {
 
         // Parameter update event - allows multiple consumers to listen for parameter changes
         virtual ParameterUpdateEvent& parameterUpdateEvent() = 0;
+
+        // Parameter metadata refresh event - notifies when parameter list changes
+        virtual ParameterMetadataRefreshEvent& parameterMetadataRefreshEvent() = 0;
     };
 
 }

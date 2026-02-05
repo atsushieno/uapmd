@@ -13,6 +13,7 @@ UapmdJSRuntime::UapmdJSRuntime()
 {
     reinitialize();
     registerAllParameterListeners();
+    registerAllMetadataListeners();
 }
 
 void UapmdJSRuntime::reinitialize()
@@ -593,14 +594,18 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         return arr;
     });
 
-    jsContext_.registerFunction ("__remidy_sequencer_consumeParameterMetadataRefresh", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    jsContext_.registerFunction ("__remidy_sequencer_consumeParameterMetadataRefresh", [this] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
         bool refreshed = false;
         if (instanceId >= 0)
         {
-            auto& sequencer = uapmd::AppModel::instance().sequencer();
-            refreshed = sequencer.engine()->consumeParameterMetadataRefresh (instanceId);
+            std::lock_guard<std::mutex> lock(js_metadata_mutex_);
+            auto it = js_metadata_refresh_.find(instanceId);
+            if (it != js_metadata_refresh_.end()) {
+                js_metadata_refresh_.erase(it);
+                refreshed = true;
+            }
         }
         return choc::value::createBool (refreshed);
     });
@@ -750,6 +755,90 @@ void UapmdJSRuntime::unregisterAllParameterListeners()
             auto node = track->graph().getPluginNode(instanceId);
             if (node) {
                 node->parameterUpdateEvent().removeListener(listenerId);
+                break;
+            }
+        }
+    }
+}
+
+void UapmdJSRuntime::registerMetadataListener(int32_t instanceId)
+{
+    auto& seq = AppModel::instance().sequencer();
+    for (const auto& track : seq.engine()->tracks()) {
+        auto node = track->graph().getPluginNode(instanceId);
+        if (node) {
+            auto listenerId = node->parameterMetadataRefreshEvent().addListener([this, instanceId]() {
+                std::lock_guard<std::mutex> lock(js_metadata_mutex_);
+                js_metadata_refresh_.insert(instanceId);
+            });
+            std::lock_guard<std::mutex> lock(js_metadata_mutex_);
+            js_metadata_listener_ids_[instanceId] = listenerId;
+            break;
+        }
+    }
+}
+
+void UapmdJSRuntime::unregisterMetadataListener(int32_t instanceId)
+{
+    EventListenerId listenerId = 0;
+    {
+        std::lock_guard<std::mutex> lock(js_metadata_mutex_);
+        auto it = js_metadata_listener_ids_.find(instanceId);
+        if (it != js_metadata_listener_ids_.end()) {
+            listenerId = it->second;
+            js_metadata_listener_ids_.erase(it);
+        }
+        js_metadata_refresh_.erase(instanceId);
+    }
+
+    if (listenerId != 0) {
+        auto& seq = AppModel::instance().sequencer();
+        for (const auto& track : seq.engine()->tracks()) {
+            auto node = track->graph().getPluginNode(instanceId);
+            if (node) {
+                node->parameterMetadataRefreshEvent().removeListener(listenerId);
+                break;
+            }
+        }
+    }
+}
+
+void UapmdJSRuntime::registerAllMetadataListeners()
+{
+    auto& seq = AppModel::instance().sequencer();
+    for (const auto& track : seq.engine()->tracks()) {
+        for (const auto& [instanceId, node] : track->graph().plugins()) {
+            if (node) {
+                // Only register if not already registered
+                std::lock_guard<std::mutex> lock(js_metadata_mutex_);
+                if (js_metadata_listener_ids_.find(instanceId) == js_metadata_listener_ids_.end()) {
+                    auto listenerId = node->parameterMetadataRefreshEvent().addListener([this, instanceId]() {
+                        std::lock_guard<std::mutex> lock(js_metadata_mutex_);
+                        js_metadata_refresh_.insert(instanceId);
+                    });
+                    js_metadata_listener_ids_[instanceId] = listenerId;
+                }
+            }
+        }
+    }
+}
+
+void UapmdJSRuntime::unregisterAllMetadataListeners()
+{
+    std::map<int32_t, EventListenerId> listenerIdsCopy;
+    {
+        std::lock_guard<std::mutex> lock(js_metadata_mutex_);
+        listenerIdsCopy = js_metadata_listener_ids_;
+        js_metadata_listener_ids_.clear();
+        js_metadata_refresh_.clear();
+    }
+
+    auto& seq = AppModel::instance().sequencer();
+    for (const auto& [instanceId, listenerId] : listenerIdsCopy) {
+        for (const auto& track : seq.engine()->tracks()) {
+            auto node = track->graph().getPluginNode(instanceId);
+            if (node) {
+                node->parameterMetadataRefreshEvent().removeListener(listenerId);
                 break;
             }
         }

@@ -21,31 +21,33 @@ namespace uapmd {
 
         virtual void enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) = 0;
 
+        virtual AudioPluginHostingAPI* pluginHost() = 0;
         virtual AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;
 
-        virtual AudioPluginHostingAPI* pluginHost() = 0;
-
-        virtual SequenceProcessContext& data() = 0;
+        virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
+        // FIXME: we should probably remove this at some stage
+        virtual int32_t findTrackIndexForInstance(int32_t instanceId) const = 0;
 
         virtual std::vector<SequencerTrack *> & tracks() const = 0;
+        // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
+        virtual uapmd_track_index_t addEmptyTrack() = 0;
+        // Add plugin to existing track
+        virtual void addPluginToTrack(uapmd_track_index_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
+        virtual bool removePluginInstance(int32_t instanceId) = 0;
+        virtual bool removeTrack(uapmd_track_index_t trackIndex) = 0;
+        // Clean up empty tracks (must be called from non-audio thread)
+        virtual void cleanupEmptyTracks() = 0;
 
         // Set default channel configuration (called by RealtimeSequencer when device changes)
         virtual void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) = 0;
-
-        // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
-        virtual uapmd_track_index_t addEmptyTrack() = 0;
-
-        // Add plugin to existing track
-        virtual void addPluginToTrack(uapmd_track_index_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
-
-        virtual bool removePluginInstance(int32_t instanceId) = 0;
-
-        virtual bool removeTrack(uapmd_track_index_t trackIndex) = 0;
+        virtual bool offlineRendering() const = 0;
+        virtual void offlineRendering(bool enabled) = 0;
 
         // Audio preprocessing callback (called before track processing)
         using AudioPreprocessCallback = std::function<void(AudioProcessContext& process)>;
         virtual void setAudioPreprocessCallback(AudioPreprocessCallback callback) = 0;
 
+        virtual SequenceProcessContext& data() = 0;
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
 
         // Playback control (accessed by RealtimeSequencer)
@@ -63,6 +65,7 @@ namespace uapmd {
         virtual void getOutputSpectrum(float* outSpectrum, int numBars) const = 0;
 
         // Plugin instance queries
+        // FIXME: they should be replaced by direct access to AudioPluginNode.
         virtual bool isPluginBypassed(int32_t instanceId) = 0;
         virtual void setPluginBypassed(int32_t instanceId, bool bypassed) = 0;
 
@@ -72,19 +75,6 @@ namespace uapmd {
         virtual void sendPitchBend(int32_t instanceId, float normalizedValue) = 0;
         virtual void sendChannelPressure(int32_t instanceId, float pressure) = 0;
         virtual void setParameterValue(int32_t instanceId, int32_t index, double value) = 0;
-
-        // Parameter metadata refresh (for UI updates when parameter list changes)
-        virtual bool consumeParameterMetadataRefresh(int32_t instanceId) = 0;
-
-        virtual bool offlineRendering() const = 0;
-        virtual void offlineRendering(bool enabled) = 0;
-
-        virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
-        // FIXME: we should probably remove this at some stage
-        virtual int32_t findTrackIndexForInstance(int32_t instanceId) const = 0;
-
-        // Clean up empty tracks (must be called from non-audio thread)
-        virtual void cleanupEmptyTracks() = 0;
 
         static std::unique_ptr<SequencerEngine> create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
     };

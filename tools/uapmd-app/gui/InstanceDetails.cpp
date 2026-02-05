@@ -185,6 +185,14 @@ void InstanceDetails::showWindow(int32_t instanceId) {
                         }
                     }
                 });
+
+                state.metadataListenerId = node->parameterMetadataRefreshEvent().addListener([this, instanceId]() {
+                    auto windowIt = windows_.find(instanceId);
+                    if (windowIt == windows_.end())
+                        return;
+                    refreshParameters(instanceId, windowIt->second);
+                });
+
                 break;
             }
         }
@@ -203,14 +211,17 @@ void InstanceDetails::hideWindow(int32_t instanceId) {
 }
 
 void InstanceDetails::removeInstance(int32_t instanceId) {
-    // Unregister parameter listener
+    // Unregister parameter and metadata listeners
     auto it = windows_.find(instanceId);
-    if (it != windows_.end() && it->second.parameterListenerId != 0) {
+    if (it != windows_.end() && (it->second.parameterListenerId != 0 || it->second.metadataListenerId != 0)) {
         auto& seq = uapmd::AppModel::instance().sequencer();
         for (const auto& track : seq.engine()->tracks()) {
             auto node = track->graph().getPluginNode(instanceId);
             if (node) {
-                node->parameterUpdateEvent().removeListener(it->second.parameterListenerId);
+                if (it->second.parameterListenerId != 0)
+                    node->parameterUpdateEvent().removeListener(it->second.parameterListenerId);
+                if (it->second.metadataListenerId != 0)
+                    node->parameterMetadataRefreshEvent().removeListener(it->second.metadataListenerId);
                 break;
             }
         }
@@ -285,9 +296,7 @@ void InstanceDetails::render(const RenderContext& context) {
             if (!instance) {
                 ImGui::TextUnformatted("Instance is no longer available.");
             } else {
-                if (sequencer.engine()->consumeParameterMetadataRefresh(instanceId)) {
-                    refreshParameters(instanceId, detailsState);
-                }
+                // Parameter metadata refresh is now handled by event listener
                 if (context.buildTrackInstance) {
                     if (auto trackInstance = context.buildTrackInstance(instanceId)) {
                         bool disableShowUIButton = !trackInstance->hasUI;
