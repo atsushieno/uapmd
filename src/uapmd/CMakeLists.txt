@@ -38,10 +38,10 @@ target_link_libraries(uapmd PUBLIC
 )
 
 target_sources(uapmd PRIVATE
-        Midi/UapmdFunctionBlock.cpp
-        Midi/UapmdMidiCISession.cpp
-        Midi/UapmdUmpMapper.cpp
-        Midi/UapmdNodeUmpMapper.cpp
+        midi/UapmdFunctionBlock.cpp
+        midi/UapmdMidiCISession.cpp
+        midi/UapmdUmpMapper.cpp
+        midi/UapmdNodeUmpMapper.cpp
         plugin-api/RemidyAudioPluginHost.cpp
         node-graph/AudioPluginGraph.cpp
         node-graph/AudioPluginNode.cpp
