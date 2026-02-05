@@ -34,6 +34,7 @@ We split DAW features like this:
     - miniaudio audio device I/O integration
     - remidy audio plugin API integration
     - libremidi platform MIDI integration
+- uapmd-data: sequence data serialization (probably support for SMF2 Container equivalent)
 - remidy-imgui-shared: some "shared" code that used be shared between remidy-plugin-host and uapmd-service (now unified in uapmd-app)
   - ImGui event loop
   - windowing

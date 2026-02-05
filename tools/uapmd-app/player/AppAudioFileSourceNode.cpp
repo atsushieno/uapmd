@@ -1,6 +1,7 @@
-#include "AppAudioFileSourceNode.hpp"
 #include <algorithm>
 #include <cstring>
+#include "AppAudioFileSourceNode.hpp"
+#include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd_app {
 

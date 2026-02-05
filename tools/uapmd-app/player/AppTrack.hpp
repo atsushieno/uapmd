@@ -8,6 +8,7 @@
 #include "AppSourceNode.hpp"
 #include "AppAudioFileSourceNode.hpp"
 #include "AppDeviceInputSourceNode.hpp"
+#include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd_app {
 

@@ -53,7 +53,7 @@ target_link_libraries(uapmd-engine
         remidy::remidy
         remidy::remidy-tooling
         uapmd
-        uapmd-project
+        uapmd-data
 )
 
 target_sources(uapmd-engine PRIVATE

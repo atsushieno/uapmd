@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(uapmd-project-tests)
+project(uapmd-data-tests)
 set(CMAKE_CXX_STANDARD 23)
 
 # Enable testing
@@ -17,12 +17,12 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 # Create test executable
-add_executable(uapmd-project-file-tests
+add_executable(uapmd-data-file-tests
     UapmdProjectFileTest.cpp
 )
 
 # Include directories
-target_include_directories(uapmd-project-file-tests PRIVATE
+target_include_directories(uapmd-data-file-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_SOURCE_DIR}/include
     ${choc_SOURCE_DIR}
@@ -30,12 +30,12 @@ target_include_directories(uapmd-project-file-tests PRIVATE
 )
 
 # Link libraries
-target_link_libraries(uapmd-project-file-tests
-    uapmd-project
+target_link_libraries(uapmd-data-file-tests
+    uapmd-data
     GTest::gtest_main
     GTest::gtest
 )
 
 # Discover tests
 include(GoogleTest)
-gtest_discover_tests(uapmd-project-file-tests)
+gtest_discover_tests(uapmd-data-file-tests)
