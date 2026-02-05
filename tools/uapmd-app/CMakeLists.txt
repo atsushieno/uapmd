@@ -268,7 +268,6 @@ set(UAPMD_APP_SOURCE_FILES
         AppModel.cpp
         UapmdJSRuntime.cpp
         gui/MainWindow.cpp
-        gui/MidiKeyboard.cpp
         gui/PluginList.cpp
         gui/InstanceDetails.cpp
         gui/PluginSelector.cpp
@@ -285,8 +284,6 @@ set(UAPMD_APP_SOURCE_FILES
         player/AppDeviceInputSourceNode.cpp
         player/TrackClipManager.cpp
         player/AppTrack.cpp
-        project/UapmdProjectFileReader.cpp
-        project/UapmdProjectFileWriter.cpp
 )
 
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
@@ -324,9 +321,3 @@ add_custom_command(TARGET uapmd-app POST_BUILD
         $<TARGET_FILE_DIR:uapmd-app>/js
     COMMENT "Creating symbolic link to js directory for module resolution"
 )
-
-# Add tests subdirectory
-option(UAPMD_BUILD_TESTS "Build uapmd-app tests" ON)
-if(UAPMD_BUILD_TESTS)
-    add_subdirectory(tests)
-endif()

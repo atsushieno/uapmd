@@ -8,7 +8,7 @@
 #include <imgui.h>
 #include <uapmd/uapmd.hpp>
 
-#include "MidiKeyboard.hpp"
+#include "../../remidy-imgui-shared/MidiKeyboard.hpp"
 
 namespace uapmd::gui {
 

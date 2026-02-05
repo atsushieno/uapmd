@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(uapmd-app-tests)
+project(uapmd-engine-tests)
 set(CMAKE_CXX_STANDARD 23)
 
 # Enable testing

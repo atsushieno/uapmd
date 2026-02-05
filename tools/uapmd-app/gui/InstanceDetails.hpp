@@ -10,7 +10,7 @@
 #include <uapmd/uapmd.hpp>
 #include <imgui.h>
 
-#include "MidiKeyboard.hpp"
+#include "../../remidy-imgui-shared/MidiKeyboard.hpp"
 #include "ParameterList.hpp"
 #include "TrackList.hpp"
 

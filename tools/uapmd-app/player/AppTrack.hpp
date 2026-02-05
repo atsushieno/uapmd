@@ -1,13 +1,13 @@
 #pragma once
 
+#include <memory>
+#include <vector>
+#include "uapmd/uapmd.hpp"
 #include "TimelineTypes.hpp"
 #include "TrackClipManager.hpp"
 #include "AppSourceNode.hpp"
 #include "AppAudioFileSourceNode.hpp"
 #include "AppDeviceInputSourceNode.hpp"
-#include "uapmd/uapmd.hpp"
-#include <memory>
-#include <vector>
 
 namespace uapmd_app {
 

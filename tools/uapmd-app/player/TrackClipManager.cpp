@@ -1,5 +1,5 @@
-#include "TrackClipManager.hpp"
 #include <algorithm>
+#include "TrackClipManager.hpp"
 
 namespace uapmd_app {
 

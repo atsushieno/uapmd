@@ -12,7 +12,6 @@ namespace uapmd_app {
         Start,  // Anchor at the beginning of the clip/track
         End     // Anchor at the end of the clip/track
     };
-
     // Represents a position on the timeline
     struct TimelinePosition {
         int64_t samples{0};     // Primary representation (RT-safe)

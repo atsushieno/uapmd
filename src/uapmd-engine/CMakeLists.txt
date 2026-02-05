@@ -66,4 +66,12 @@ target_sources(uapmd-engine PRIVATE
         sequencer/RealtimeSequencer.cpp
         sequencer/SequencerEngine.cpp
         sequencer/SequencerTrack.cpp
+        project/UapmdProjectFileReader.cpp
+        project/UapmdProjectFileWriter.cpp
 )
+
+# Add tests subdirectory
+option(UAPMD_BUILD_TESTS "Build uapmd-app tests" ON)
+if(UAPMD_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
