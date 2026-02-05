@@ -68,6 +68,7 @@ target_sources(uapmd-engine PRIVATE
         sequencer/SequencerTrack.cpp
         project/UapmdProjectFileReader.cpp
         project/UapmdProjectFileWriter.cpp
+        project/UapmdProjectFile.cpp
 )
 
 # Add tests subdirectory

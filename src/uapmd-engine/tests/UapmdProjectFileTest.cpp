@@ -1,9 +1,8 @@
-#include <gtest/gtest.h>
-#include "../project/UapmdProjectFile.hpp"
-#include "../project/UapmdProjectFileImpl.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <gtest/gtest.h>
+#include "uapmd-engine/uapmd-engine.hpp"
 
 namespace fs = std::filesystem;
 
@@ -33,22 +32,22 @@ protected:
 
 // Test: Basic write and read
 TEST_F(UapmdProjectFileTest, BasicWriteAndRead) {
-    auto project = std::make_unique<uapmd::UapmdProjectDataImpl>();
+    auto project = uapmd::UapmdProjectData::create();
 
     // Create a track
-    auto track = std::make_unique<uapmd::UapmdProjectTrackDataImpl>();
+    auto track = uapmd::UapmdProjectTrackData::create();
 
     // Add a clip with absolute positioning
-    auto clip = std::make_unique<uapmd::UapmdProjectClipDataImpl>();
-    clip->setFile("/audio/test.wav");
-    clip->setMimeType("audio/wav");
+    auto clip = uapmd::UapmdProjectClipData::create();
+    clip->file("/audio/test.wav");
+    clip->mimeType("audio/wav");
 
     uapmd::UapmdTimelinePosition pos;
     pos.anchor = nullptr;  // Absolute positioning
     pos.samples = 48000;
-    clip->setPosition(pos);
+    clip->position(pos);
 
-    track->addClip(std::move(clip));
+    track->clips().push_back(std::move(clip));
     project->addTrack(std::move(track));
 
     // Write to file
@@ -79,22 +78,22 @@ TEST_F(UapmdProjectFileTest, BasicWriteAndRead) {
 
 // Test: Multiple tracks and clips
 TEST_F(UapmdProjectFileTest, MultipleTracksAndClips) {
-    auto project = std::make_unique<uapmd::UapmdProjectDataImpl>();
+    auto project = uapmd::UapmdProjectData::create();
 
     // Create two tracks with multiple clips each
     for (int track_idx = 0; track_idx < 2; ++track_idx) {
-        auto track = std::make_unique<uapmd::UapmdProjectTrackDataImpl>();
+        auto track = uapmd::UapmdProjectTrackData::create();
 
         for (int clip_idx = 0; clip_idx < 3; ++clip_idx) {
-            auto clip = std::make_unique<uapmd::UapmdProjectClipDataImpl>();
-            clip->setFile("/audio/track" + std::to_string(track_idx) + "_clip" + std::to_string(clip_idx) + ".wav");
+            auto clip = uapmd::UapmdProjectClipData::create();
+            clip->file("/audio/track" + std::to_string(track_idx) + "_clip" + std::to_string(clip_idx) + ".wav");
 
             uapmd::UapmdTimelinePosition pos;
             pos.anchor = nullptr;
             pos.samples = clip_idx * 48000;
-            clip->setPosition(pos);
+            clip->position(pos);
 
-            track->addClip(std::move(clip));
+            track->clips().push_back(std::move(clip));
         }
 
         project->addTrack(std::move(track));
@@ -124,30 +123,30 @@ TEST_F(UapmdProjectFileTest, MultipleTracksAndClips) {
 
 // Test: Track-anchored positioning
 TEST_F(UapmdProjectFileTest, TrackAnchoredPositioning) {
-    auto project = std::make_unique<uapmd::UapmdProjectDataImpl>();
+    auto project = uapmd::UapmdProjectData::create();
 
     // Create first track
-    auto track1 = std::make_unique<uapmd::UapmdProjectTrackDataImpl>();
-    auto clip1 = std::make_unique<uapmd::UapmdProjectClipDataImpl>();
-    clip1->setFile("/audio/clip1.wav");
+    auto track1 = uapmd::UapmdProjectTrackData::create();
+    auto clip1 = uapmd::UapmdProjectClipData::create();
+    clip1->file("/audio/clip1.wav");
     uapmd::UapmdTimelinePosition pos1;
     pos1.anchor = nullptr;
     pos1.samples = 0;
-    clip1->setPosition(pos1);
-    track1->addClip(std::move(clip1));
+    clip1->position(pos1);
+    track1->clips().push_back(std::move(clip1));
     project->addTrack(std::move(track1));
 
     // Create second track with clip anchored to first track
-    auto track2 = std::make_unique<uapmd::UapmdProjectTrackDataImpl>();
-    auto clip2 = std::make_unique<uapmd::UapmdProjectClipDataImpl>();
-    clip2->setFile("/audio/clip2.wav");
+    auto track2 = uapmd::UapmdProjectTrackData::create();
+    auto clip2 = uapmd::UapmdProjectClipData::create();
+    clip2->file("/audio/clip2.wav");
     // Note: We can't set the anchor directly before the track is added
     // The reader will resolve it from the JSON
     uapmd::UapmdTimelinePosition pos2;
     pos2.anchor = nullptr;  // Will be set by reader
     pos2.samples = 96000;
-    clip2->setPosition(pos2);
-    track2->addClip(std::move(clip2));
+    clip2->position(pos2);
+    track2->clips().push_back(std::move(clip2));
     project->addTrack(std::move(track2));
 
     // Manually create JSON with track anchor
@@ -245,24 +244,24 @@ TEST_F(UapmdProjectFileTest, ClipAnchoredPositioning) {
 
 // Test: Plugin graph serialization
 TEST_F(UapmdProjectFileTest, PluginGraphSerialization) {
-    auto project = std::make_unique<uapmd::UapmdProjectDataImpl>();
-    auto track = std::make_unique<uapmd::UapmdProjectTrackDataImpl>();
+    auto project = uapmd::UapmdProjectData::create();
+    auto track = uapmd::UapmdProjectTrackData::create();
 
     // Add plugins to graph
-    auto graph = std::make_unique<uapmd::UapmdProjectPluginGraphDataImpl>();
+    auto graph = uapmd::UapmdProjectPluginGraphData::create();
     uapmd::UapmdProjectPluginNodeData plugin1;
     plugin1.plugin_id = "com.example.reverb";
     plugin1.format = "VST3";
     plugin1.state_file = "/presets/reverb.vstpreset";
-    graph->addPlugin(plugin1);
+    graph->plugins().push_back(plugin1);
 
     uapmd::UapmdProjectPluginNodeData plugin2;
     plugin2.plugin_id = "com.example.eq";
     plugin2.format = "AU";
     plugin2.state_file = "";
-    graph->addPlugin(plugin2);
+    graph->plugins().push_back(plugin2);
 
-    track->setGraph(std::move(graph));
+    track->graph(std::move(graph));
     project->addTrack(std::move(track));
 
     // Write and read
@@ -289,22 +288,22 @@ TEST_F(UapmdProjectFileTest, PluginGraphSerialization) {
 
 // Test: Master track
 TEST_F(UapmdProjectFileTest, MasterTrack) {
-    auto project = std::make_unique<uapmd::UapmdProjectDataImpl>();
+    auto project = uapmd::UapmdProjectData::create();
 
     // Add regular track
-    auto track = std::make_unique<uapmd::UapmdProjectTrackDataImpl>();
+    auto track = uapmd::UapmdProjectTrackData::create();
     project->addTrack(std::move(track));
 
     // Add plugin to master track
-    auto* master = dynamic_cast<uapmd::UapmdProjectTrackDataImpl*>(project->masterTrack());
+    auto* master = project->masterTrack();
     ASSERT_NE(master, nullptr);
 
-    auto graph = std::make_unique<uapmd::UapmdProjectPluginGraphDataImpl>();
+    auto graph = uapmd::UapmdProjectPluginGraphData::create();
     uapmd::UapmdProjectPluginNodeData limiter;
     limiter.plugin_id = "com.example.limiter";
     limiter.format = "VST3";
-    graph->addPlugin(limiter);
-    master->setGraph(std::move(graph));
+    graph->plugins().push_back(limiter);
+    master->graph(std::move(graph));
 
     // Write and read
     auto file_path = test_dir / "master_track_project.json";
@@ -500,7 +499,7 @@ TEST_F(UapmdProjectFileTest, AbsolutePositionCalculation) {
 
 // Test: Empty project
 TEST_F(UapmdProjectFileTest, EmptyProject) {
-    auto project = std::make_unique<uapmd::UapmdProjectDataImpl>();
+    auto project = uapmd::UapmdProjectData::create();
 
     auto file_path = test_dir / "empty_project.json";
     ASSERT_TRUE(uapmd::UapmdProjectDataWriter::write(project.get(), file_path));

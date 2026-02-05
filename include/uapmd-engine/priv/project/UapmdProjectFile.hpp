@@ -38,6 +38,12 @@ namespace uapmd {
                 return pos.samples;
             return pos.anchor->absolutePositionInSamples() + pos.samples;
         }
+
+        virtual void position(UapmdTimelinePosition pos) = 0;
+        virtual void file(const std::filesystem::path& f) = 0;
+        virtual void mimeType(const std::string& mime) = 0;
+
+        static std::unique_ptr<UapmdProjectClipData> create();
     };
 
     struct UapmdProjectPluginNodeData {
@@ -48,29 +54,43 @@ namespace uapmd {
 
     class UapmdProjectPluginGraphData {
     public:
-        virtual std::filesystem::path external_file() = 0;
+        virtual ~UapmdProjectPluginGraphData() = default;
+
+        virtual std::filesystem::path externalFile() = 0;
 
         // `external_file` might indicate more complicated graph.
         // For example, we could implement extension support for `.filtergraph` file from JUCE AudioPluginHost.
         // If empty, then it's a simple linear list.
         virtual std::vector<UapmdProjectPluginNodeData> plugins() = 0;
+
+        virtual void externalFile(const std::filesystem::path& f) = 0;
+
+        static std::unique_ptr<UapmdProjectPluginGraphData> create();
     };
 
     class UapmdProjectTrackData : public UapmdClipDataReferencible {
     public:
-        uint64_t absolutePositionInSamples() { return 0; }
+        uint64_t absolutePositionInSamples() override { return 0; }
 
         virtual UapmdProjectPluginGraphData* graph() = 0;
 
         virtual std::vector<std::unique_ptr<UapmdProjectClipData>>& clips() = 0;
+
+        virtual void graph(std::unique_ptr<UapmdProjectPluginGraphData>&& g) = 0;
+
+        static std::unique_ptr<UapmdProjectTrackData> create();
     };
 
     class UapmdProjectData {
     public:
+        virtual ~UapmdProjectData() = default;
+
         virtual size_t addTrack(std::unique_ptr<UapmdProjectTrackData> newTrack) = 0;
         virtual bool removeTrack(size_t trackIndex) = 0;
         virtual std::vector<UapmdProjectTrackData*>& tracks() = 0;
         virtual UapmdProjectTrackData* masterTrack() = 0;
+
+        static std::unique_ptr<UapmdProjectData> create();
     };
 
     class UapmdProjectDataWriter {

@@ -213,6 +213,7 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             ../../include
             ${libremidi_SOURCE_DIR}/include
             ${cpplocate_SOURCE_DIR}/include
+            ../remidy-imgui-shared
     )
 endforeach()
 

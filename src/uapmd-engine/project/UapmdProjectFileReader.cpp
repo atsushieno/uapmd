@@ -1,24 +1,23 @@
-#include "UapmdProjectFile.hpp"
-#include "UapmdProjectFileImpl.hpp"
 #include <choc/text/choc_JSON.h>
 #include <fstream>
 #include <sstream>
 #include <map>
 #include <set>
 #include <iostream>
+#include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd {
     // Helper to resolve clip anchors after all tracks and clips are loaded
     class AnchorResolver {
-        UapmdProjectDataImpl* project_;
+        UapmdProjectData* project_;
         std::map<std::string, UapmdClipDataReferencible*> anchor_map_;
 
     public:
-        explicit AnchorResolver(UapmdProjectDataImpl* project) : project_(project) {
+        explicit AnchorResolver(UapmdProjectData* project) : project_(project) {
             // Build anchor map - tracks are indexed by their position
             size_t track_idx = 0;
-            for (auto& track : project_->tracksOwned()) {
-                anchor_map_["track_" + std::to_string(track_idx)] = track.get();
+            for (auto track : project_->tracks()) {
+                anchor_map_["track_" + std::to_string(track_idx)] = track;
 
                 // Clips within each track
                 size_t clip_idx = 0;
@@ -82,12 +81,12 @@ namespace uapmd {
         }
     };
 
-    static std::unique_ptr<UapmdProjectClipDataImpl> parseClip(
+    static std::unique_ptr<UapmdProjectClipData> parseClip(
         const choc::value::ValueView& clipObj,
         const std::string& anchorId,
         AnchorResolver* resolver)
     {
-        auto clip = std::make_unique<UapmdProjectClipDataImpl>();
+        auto clip = UapmdProjectClipData::create();
 
         // Parse position
         UapmdTimelinePosition pos{};
@@ -97,31 +96,31 @@ namespace uapmd {
             pos.anchor = resolver ? resolver->resolve(anchor_str) : nullptr;
         }
         pos.samples = clipObj["position_samples"].getWithDefault<uint64_t>(0);
-        clip->setPosition(pos);
+        clip->position(pos);
 
         // Parse file reference
         if (clipObj.hasObjectMember("file")) {
             auto file_view = clipObj["file"].getString();
-            clip->setFile(std::string(file_view));
+            clip->file(std::string(file_view));
         }
 
         // Parse MIME type
         if (clipObj.hasObjectMember("mime_type")) {
             auto mime_view = clipObj["mime_type"].getString();
-            clip->setMimeType(std::string(mime_view));
+            clip->mimeType(std::string(mime_view));
         }
 
         return clip;
     }
 
-    static std::unique_ptr<UapmdProjectPluginGraphDataImpl> parsePluginGraph(
+    static std::unique_ptr<UapmdProjectPluginGraphData> parsePluginGraph(
         const choc::value::ValueView& graphObj)
     {
-        auto graph = std::make_unique<UapmdProjectPluginGraphDataImpl>();
+        auto graph = UapmdProjectPluginGraphData::create();
 
         if (graphObj.hasObjectMember("external_file")) {
             auto file_view = graphObj["external_file"].getString();
-            graph->setExternalFile(std::string(file_view));
+            graph->externalFile(std::string(file_view));
         }
 
         if (graphObj.hasObjectMember("plugins") && graphObj["plugins"].isArray()) {
@@ -133,22 +132,22 @@ namespace uapmd {
                     node.format = std::string(pluginObj["format"].getString());
                 if (pluginObj.hasObjectMember("state_file"))
                     node.state_file = std::string(pluginObj["state_file"].getString());
-                graph->addPlugin(node);
+                graph->plugins().push_back(node);
             }
         }
 
         return graph;
     }
 
-    static std::unique_ptr<UapmdProjectTrackDataImpl> parseTrack(
+    static std::unique_ptr<UapmdProjectTrackData> parseTrack(
         const choc::value::ValueView& trackObj,
         size_t trackIndex)
     {
-        auto track = std::make_unique<UapmdProjectTrackDataImpl>();
+        auto track = UapmdProjectTrackData::create();
 
         // Parse plugin graph
         if (trackObj.hasObjectMember("graph"))
-            track->setGraph(parsePluginGraph(trackObj["graph"]));
+            track->graph(parsePluginGraph(trackObj["graph"]));
 
         // Parse clips (first pass - without anchor resolution)
         if (trackObj.hasObjectMember("clips") && trackObj["clips"].isArray()) {
@@ -156,7 +155,7 @@ namespace uapmd {
             for (const auto& clipObj : trackObj["clips"]) {
                 std::string anchorId = "track_" + std::to_string(trackIndex) +
                                       "_clip_" + std::to_string(clipIdx);
-                track->addClip(parseClip(clipObj, anchorId, nullptr));
+                track->clips().push_back(parseClip(clipObj, anchorId, nullptr));
                 ++clipIdx;
             }
         }
@@ -176,7 +175,7 @@ namespace uapmd {
 
         // Parse JSON
         auto root = choc::json::parse(content);
-        auto project = std::make_unique<UapmdProjectDataImpl>();
+        auto project = UapmdProjectData::create();
 
         // Parse tracks
         if (root.hasObjectMember("tracks") && root["tracks"].isArray()) {
@@ -192,9 +191,9 @@ namespace uapmd {
             auto masterTrack = parseTrack(root["master_track"], 999999);
             // Note: master track is already created in constructor
             // We need to populate it instead
-            auto* master = dynamic_cast<UapmdProjectTrackDataImpl*>(project->masterTrack());
+            auto* master = dynamic_cast<UapmdProjectTrackData*>(project->masterTrack());
             if (master && root["master_track"].hasObjectMember("graph"))
-                master->setGraph(parsePluginGraph(root["master_track"]["graph"]));
+                master->graph(parsePluginGraph(root["master_track"]["graph"]));
         }
 
         // Second pass: resolve anchors for all clips and validate them
@@ -204,7 +203,7 @@ namespace uapmd {
         if (root.hasObjectMember("tracks") && root["tracks"].isArray()) {
             size_t trackIndex = 0;
             for (const auto& trackObj : root["tracks"]) {
-                auto& track = project->tracksOwned()[trackIndex];
+                auto& track = project->tracks()[trackIndex];
                 auto& clips = track->clips();
 
                 if (trackObj.hasObjectMember("clips") && trackObj["clips"].isArray()) {
@@ -212,7 +211,7 @@ namespace uapmd {
                     std::vector<size_t> invalidClipIndices;
 
                     for (const auto& clipObj : trackObj["clips"]) {
-                        auto* clipImpl = dynamic_cast<UapmdProjectClipDataImpl*>(clips[clipIdx].get());
+                        auto* clipImpl = dynamic_cast<UapmdProjectClipData*>(clips[clipIdx].get());
 
                         if (clipImpl && clipObj.hasObjectMember("anchor")) {
                             auto anchor_view = clipObj["anchor"].getString();
@@ -235,7 +234,7 @@ namespace uapmd {
                                 // Valid anchor - update position
                                 UapmdTimelinePosition pos = clipImpl->position();
                                 pos.anchor = resolver.resolve(anchor_str);
-                                clipImpl->setPosition(pos);
+                                clipImpl->position(pos);
                             }
                         }
                         ++clipIdx;
@@ -251,8 +250,7 @@ namespace uapmd {
 
         // Validate master track clips
         if (root.hasObjectMember("master_track")) {
-            auto* master = dynamic_cast<UapmdProjectTrackDataImpl*>(project->masterTrack());
-            if (master) {
+            if (auto* master = project->masterTrack()) {
                 auto& clips = master->clips();
                 auto masterTrackObj = root["master_track"];
 
@@ -261,7 +259,7 @@ namespace uapmd {
                     std::vector<size_t> invalidClipIndices;
 
                     for (const auto& clipObj : masterTrackObj["clips"]) {
-                        auto* clipImpl = dynamic_cast<UapmdProjectClipDataImpl*>(clips[clipIdx].get());
+                        auto* clipImpl = clips[clipIdx].get();
 
                         if (clipImpl && clipObj.hasObjectMember("anchor")) {
                             auto anchor_view = clipObj["anchor"].getString();
@@ -284,7 +282,7 @@ namespace uapmd {
                                 // Valid anchor - update position
                                 UapmdTimelinePosition pos = clipImpl->position();
                                 pos.anchor = resolver.resolve(anchor_str);
-                                clipImpl->setPosition(pos);
+                                clipImpl->position(pos);
                             }
                         }
                         ++clipIdx;

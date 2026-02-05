@@ -1,8 +1,8 @@
-#include "UapmdProjectFile.hpp"
-#include "UapmdProjectFileImpl.hpp"
 #include <choc/text/choc_JSON.h>
 #include <fstream>
 #include <map>
+#include "UapmdProjectFile.cpp"
+#include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd {
     // Helper to generate unique anchor IDs for tracks and clips
@@ -65,7 +65,7 @@ namespace uapmd {
     static choc::value::Value serializePluginGraph(UapmdProjectPluginGraphData* graph) {
         auto obj = choc::value::createObject("UapmdPluginGraph");
 
-        auto extFile = graph->external_file();
+        auto extFile = graph->externalFile();
         if (!extFile.empty())
             obj.addMember("external_file", extFile.string());
 

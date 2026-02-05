@@ -10,3 +10,6 @@
 #include "priv/sequencer/SequenceProcessContext.hpp"
 #include "priv/sequencer/SequencerEngine.hpp"
 #include "priv/sequencer/RealtimeSequencer.hpp"
+#include "priv/project/UapmdPluginGraphBuilder.hpp"
+#include "priv/project/UapmdSequence.hpp"
+#include "priv/project/UapmdProjectFile.hpp"
