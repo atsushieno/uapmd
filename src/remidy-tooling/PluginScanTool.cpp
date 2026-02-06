@@ -13,6 +13,9 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
     plugin_list_cache_file = dir.empty() ? std::filesystem::path{""} : std::filesystem::path{dir}.append(
             "plugin-list-cache.json");
 
+#if ANDROID
+    formats_ = {};
+#else
     vst3 = remidy::PluginFormatVST3::create(vst3SearchPaths);
     lv2 = remidy::PluginFormatLV2::create(lv2SearchPaths);
     clap = remidy::PluginFormatCLAP::create(clapSearchPaths);
@@ -20,6 +23,7 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
     //au = remidy::PluginFormatAU::create();
     au = remidy::PluginFormatAU::create();
 #endif
+
     formats_ = {
         clap.get(),
         lv2.get(),
@@ -28,6 +32,7 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
 #endif
         vst3.get()
     };
+#endif
 }
 
 int remidy_tooling::PluginScanTool::performPluginScanning() {

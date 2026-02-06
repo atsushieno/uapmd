@@ -4,12 +4,16 @@
 // Saves and restores the current OpenGL context to protect against plugins that
 // might change the active GL context without restoring it (e.g., Kontakt 8)
 
-#if defined(__APPLE__)
+#if defined(__ANDROID__)
+    #include <GLES3/gl3.h>
+    #include <GLES3/gl3ext.h>
+    #include <SDL3/SDL_opengl.h>
+#elif defined(__APPLE__)
     #include <OpenGL/OpenGL.h>
 #elif defined(_WIN32)
     #include <windows.h>
     #include <wingdi.h>
-#elif defined(__linux__)
+#elif defined(__linux__) && !defined(__ANDROID__)
     #include <GL/glx.h>
 #endif
 
@@ -49,7 +53,7 @@ namespace remidy::gui {
             GLContextGuard(const GLContextGuard&) = delete;
             GLContextGuard& operator=(const GLContextGuard&) = delete;
         };
-    #elif defined(__linux__)
+    #elif defined(__linux__) && !defined(__ANDROID__)
         class GLContextGuard {
         private:
             Display* saved_display;

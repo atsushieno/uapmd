@@ -27,13 +27,23 @@
 #endif
 
 // Ensure GL prototypes for framebuffer functions on Linux
-#if defined(__APPLE__)
+#if defined(__ANDROID__)
+    #include <GLES3/gl3.h>
+    #include <GLES3/gl3ext.h>
+    #include <SDL3/SDL_opengl.h>
+    #include <EGL/egl.h>
+
+    static void glDrawBuffer_(GLenum target) {
+        static auto func = eglGetProcAddress("glDrawBuffer");
+        ((void(*)(GLenum)) func)(GL_BACK);
+    }
+#elif defined(__APPLE__)
     #include <OpenGL/gl3.h>
 #elif defined(_WIN32)
     // Windows: only include basic OpenGL 1.1 headers
     // Modern GL functions would need GLEW/GLAD, but we skip those on Windows
     #include <GL/gl.h>
-#else
+#elif defined(__linux__)
     // Linux: try to get GL3 headers with extensions
     #if defined(__has_include)
         #if __has_include(<GL/gl3.h>)
@@ -264,9 +274,14 @@ int runMain(int argc, char** argv) {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
         #endif
 #endif
+#if ANDROID
+        glDrawBuffer_(GL_BACK);
+        glReadBuffer(GL_BACK);
+#else
 #ifdef GL_BACK
         glDrawBuffer(GL_BACK);
         glReadBuffer(GL_BACK);
+#endif
 #endif
 
         // Start the Dear ImGui frame
@@ -311,9 +326,14 @@ int runMain(int argc, char** argv) {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
         #endif
 #endif
+#if ANDROID
+        glDrawBuffer_(GL_BACK);
+        glReadBuffer(GL_BACK);
+#else
 #ifdef GL_BACK
         glDrawBuffer(GL_BACK);
         glReadBuffer(GL_BACK);
+#endif
 #endif
 
         int display_w, display_h;

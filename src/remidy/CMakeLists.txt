@@ -16,8 +16,9 @@ if (NOT ANDROID)
     )
 endif ()
 
-# Make X11 and GTK optional for WebAssembly builds
-if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND NOT ANDROID)
+if(ANDROID)
+    set(androidndk_LIBRARIES android)
+elseif(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     find_package(PkgConfig REQUIRED)
     find_package(X11 REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
@@ -97,6 +98,7 @@ set(VST3_SUPPORT_SOURCES
         vst3/PluginInstanceVST3.States.cpp
         vst3/PluginInstanceVST3.UI.cpp
 )
+set(vst3sdk_LIBRARY sdk) # pretty bad naming from vst3sdk (shrug)
 
 endif (NOT ANDROID)
 
@@ -153,9 +155,10 @@ target_link_libraries(remidy PRIVATE
         ${cpplocate_LIBRARIES}
         ${lv2kit_LIBRARY}
         midicci_static
-        sdk # pretty bad naming from vst3sdk (shrug)
+        ${vst3sdk_LIBRARY}
         ${remidy_LIBS_PLAT}
         ${GTK3_LIBRARIES}
+        ${androidndk_LIBRARIES}
 )
 
 target_compile_options(remidy PRIVATE

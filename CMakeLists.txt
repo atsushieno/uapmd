@@ -122,9 +122,7 @@ CPMAddPackage(
 #add_link_options(-fPIC)
 
 add_subdirectory(src/remidy)
-if ((NOT EMSCRIPTEN) AND ((NOT ANDROID) OR (NOT UNIX)))
 add_subdirectory(src/remidy-gui)
-endif ()
 add_subdirectory(src/remidy-tooling)
 add_subdirectory(src/uapmd)
 add_subdirectory(src/uapmd-data)
