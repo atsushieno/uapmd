@@ -1,6 +1,8 @@
 #include "ScriptEditor.hpp"
 #include <imgui.h>
+#if !ANDROID
 #include <cpplocate/cpplocate.h>
+#endif
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -285,12 +287,16 @@ std::string ScriptEditor::getJsLibraryPath (const std::string& modulePath) const
     else if (cleanPath.starts_with ("/"))
         cleanPath = cleanPath.substr (1);
 
+#if ANDROID
+    std::filesystem::path exeDir{};
+#else
     // Use cpplocate to find the executable directory
     std::filesystem::path exeDir = cpplocate::getExecutablePath();
     if (! exeDir.empty())
         exeDir = exeDir.parent_path();
     else
         exeDir = std::filesystem::current_path();  // Fallback
+#endif
 
     // Try different base paths for module resolution
     std::vector<std::filesystem::path> basePaths = {

@@ -56,6 +56,7 @@ FetchContent_Declare(clap-helpers
 )
 FetchContent_MakeAvailable(clap-helpers)
 
+if (NOT ANDROID)
 # it requires gtkmm-3.0 but we don't need it
 set(SMTG_ENABLE_VSTGUI_SUPPORT OFF)
 set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF)
@@ -71,18 +72,38 @@ FetchContent_Declare(vst3sdk
         EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(vst3sdk)
-set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/moduleinfo)
 
+set(VST3_SUPPORT_SOURCES
+        ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}/moduleinfoparser.cpp
+        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/funknown.cpp
+        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/coreiids.cpp
+        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/ustring.cpp
+        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/conststringtable.cpp
+        ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/vstinitiids.cpp
+        ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/commoniids.cpp
+
+        vst3/VST3Helper.cpp
+        vst3/HostClasses.cpp
+        vst3/ClassModuleInfo.cpp
+        vst3/LinuxRunLoopIIDs.cpp
+        vst3/PluginFormatVST3.cpp
+        vst3/PluginInstanceVST3.cpp
+        vst3/PluginInstanceVST3.Buses.cpp
+        vst3/PluginInstanceVST3.Events.cpp
+        vst3/PluginInstanceVST3.Parameters.cpp
+        vst3/PluginInstanceVST3.Presets.cpp
+        vst3/PluginInstanceVST3.States.cpp
+        vst3/PluginInstanceVST3.UI.cpp
+)
+
+endif (NOT ANDROID)
+
+set(CMAKE_SKIP_INSTALL_RULES OFF)
+
 add_library(remidy STATIC)
 
-target_compile_options(remidy PUBLIC
-        ${GTK3_CFLAGS}
-)
-target_link_options(remidy PUBLIC
-        ${GTK3_LDFLAGS}
-)
 target_link_libraries(remidy PUBLIC
         ${X11_LIBRARIES}
         ${WAYLAND_CLIENT_LIBRARIES}
@@ -129,7 +150,7 @@ endif()
 
 target_link_libraries(remidy PRIVATE
         rtlog::rtlog
-        cpplocate::cpplocate
+        ${cpplocate_LIBRARIES}
         ${lv2kit_LIBRARY}
         midicci_static
         sdk # pretty bad naming from vst3sdk (shrug)
@@ -173,13 +194,7 @@ target_sources(remidy PRIVATE
         utils.cpp
         EventLoop.cpp
 
-        ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}/moduleinfoparser.cpp
-        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/funknown.cpp
-        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/coreiids.cpp
-        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/ustring.cpp
-        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/conststringtable.cpp
-        ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/vstinitiids.cpp
-        ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/commoniids.cpp
+        ${VST3_SUPPORT_SOURCES}
 
         Logger.cpp
         AudioBufferList.cpp
@@ -188,19 +203,6 @@ target_sources(remidy PRIVATE
         PluginCatalog.cpp
         PluginBundlePool.cpp
         PluginFormat.cpp
-
-        vst3/VST3Helper.cpp
-        vst3/HostClasses.cpp
-        vst3/ClassModuleInfo.cpp
-        vst3/LinuxRunLoopIIDs.cpp
-        vst3/PluginFormatVST3.cpp
-        vst3/PluginInstanceVST3.cpp
-        vst3/PluginInstanceVST3.Buses.cpp
-        vst3/PluginInstanceVST3.Events.cpp
-        vst3/PluginInstanceVST3.Parameters.cpp
-        vst3/PluginInstanceVST3.Presets.cpp
-        vst3/PluginInstanceVST3.States.cpp
-        vst3/PluginInstanceVST3.UI.cpp
 
         au/AUv2Helper.cpp
         ${remidy_OBJC_SOURCES}

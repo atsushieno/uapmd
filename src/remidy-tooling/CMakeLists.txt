@@ -13,6 +13,8 @@ target_include_directories(remidy-tooling PRIVATE
         ../../include
         ${choc_SOURCE_DIR}
         ${cpplocate_SOURCE_DIR}/source/cpplocate/include
+        ${cpplocate_BINARY_DIR}/source/cpplocate/include
+        ${cpplocate_BINARY_DIR}/source/liblocate/include
         .
 )
 
@@ -26,7 +28,7 @@ endif ()
 
 target_link_libraries(remidy-tooling PRIVATE
         remidy::remidy
-        cpplocate::cpplocate
+        ${cpplocate_LIBRARIES}
         cpptrace::cpptrace
         ${remidy-tooling_LIBS_PLAT}
 )

@@ -1,11 +1,15 @@
 
+#include <cpplocate/cpplocate.h>
 #include "remidy-tooling/PluginScanTool.hpp"
-#include "cpplocate/cpplocate.h"
 
 const char* TOOLING_DIR_NAME= "remidy-tooling";
 
 remidy_tooling::PluginScanTool::PluginScanTool() {
+#if ANDROID
+    std::filesystem::path dir{};
+#else
     auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
+#endif
     plugin_list_cache_file = dir.empty() ? std::filesystem::path{""} : std::filesystem::path{dir}.append(
             "plugin-list-cache.json");
 

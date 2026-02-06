@@ -64,20 +64,19 @@ CPMAddPackage(
         DOWNLOAD_ONLY YES
 )
 
-cmake_path(SET CPPLOCATE_PATCH_FILE NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/external/cpplocate-remove-pthread.patch")
-FetchContent_Declare(cpplocate
+if (NOT ANDROID)
+CPMAddPackage(cpplocate
         NAME           cpplocate
         GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
         GIT_REPOSITORY https://github.com/cginternals/cpplocate
-        # required to mix CPP and Swift in the same project...
-        #PATCH_COMMAND        git apply "${CPPLOCATE_PATCH_FILE}"
-        #UPDATE_DISCONNECTED 1 # https://stackoverflow.com/questions/73718516/
         EXCLUDE_FROM_ALL
 )
+set (cpplocate_LIBRARIES cpplocate::cpplocate)
+endif (NOT ANDROID)
+
 # Force static build for cpplocate
 set(_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
-FetchContent_MakeAvailable(cpplocate)
 # Restore previous BUILD_SHARED_LIBS setting
 if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS_CPPL AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL}" STREQUAL "")
     set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL}")

@@ -212,7 +212,9 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             ${midicci_SOURCE_DIR}/include
             ../../include
             ${libremidi_SOURCE_DIR}/include
-            ${cpplocate_SOURCE_DIR}/include
+            ${cpplocate_SOURCE_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/liblocate/include
             ../remidy-imgui-shared
     )
 endforeach()
@@ -241,7 +243,7 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             uapmd-engine
             remidy-gui
             remidy-imgui-shared
-            cpplocate::cpplocate
+            ${cpplocate_LIBRARIES}
             libremidi::libremidi
             midicci_static
             zlib-ng
