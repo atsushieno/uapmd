@@ -51,6 +51,13 @@ else()
 endif()
 
 CPMAddPackage(
+        NAME           readerwriterqueue
+        GIT_TAG        v1.0.7
+        GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue
+        EXCLUDE_FROM_ALL
+)
+
+CPMAddPackage(
         NAME            choc
         GIT_TAG         68a63dd
         GIT_REPOSITORY  https://github.com/Tracktion/choc

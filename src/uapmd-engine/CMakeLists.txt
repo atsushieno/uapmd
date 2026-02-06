@@ -21,14 +21,6 @@ if(WIN32 AND UAPMD_ENABLE_WINMIDI)
     endif()
 endif()
 
-set(CMAKE_SKIP_INSTALL_RULES OFF)
-CPMAddPackage(
-        NAME           readerwriterqueue
-        GIT_TAG        v1.0.7
-        GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue
-        EXCLUDE_FROM_ALL
-)
-
 CPMAddPackage(
         NAME           libremidi
         GIT_TAG        v5.4.3
@@ -42,6 +34,7 @@ CPMAddPackage(
         GIT_REPOSITORY https://github.com/mackron/miniaudio
         DOWNLOAD_ONLY YES
 )
+set(CMAKE_SKIP_INSTALL_RULES OFF) # miniaudio resets this
 
 target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
