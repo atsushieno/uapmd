@@ -21,6 +21,7 @@ if(WIN32 AND UAPMD_ENABLE_WINMIDI)
     endif()
 endif()
 
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 CPMAddPackage(
         NAME           readerwriterqueue
         GIT_TAG        v1.0.7
@@ -41,7 +42,6 @@ CPMAddPackage(
         GIT_REPOSITORY https://github.com/mackron/miniaudio
         DOWNLOAD_ONLY YES
 )
-set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
