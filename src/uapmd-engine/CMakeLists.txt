@@ -22,6 +22,13 @@ if(WIN32 AND UAPMD_ENABLE_WINMIDI)
 endif()
 
 CPMAddPackage(
+        NAME           readerwriterqueue
+        GIT_TAG        v1.0.7
+        GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue
+        EXCLUDE_FROM_ALL
+)
+
+CPMAddPackage(
         NAME           libremidi
         GIT_TAG        v5.4.3
         GIT_REPOSITORY https://github.com/celtera/libremidi
@@ -65,9 +72,5 @@ target_sources(uapmd-engine PRIVATE
         sequencer/RealtimeSequencer.cpp
         sequencer/SequencerEngine.cpp
         sequencer/SequencerTrack.cpp
-        timeline/AudioFileSourceNode.cpp
-        timeline/DeviceInputSourceNode.cpp
-        timeline/ClipManager.cpp
-        timeline/TimelineTrack.cpp
 )
 

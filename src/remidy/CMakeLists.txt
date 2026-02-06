@@ -115,7 +115,6 @@ if (WIN32)
 endif()
 
 target_link_libraries(remidy PRIVATE
-        #libremidi::libremidi
         rtlog::rtlog
         cpplocate::cpplocate
         lv2kit
@@ -123,7 +122,6 @@ target_link_libraries(remidy PRIVATE
         sdk # pretty bad naming from vst3sdk (shrug)
         ${remidy_LIBS_PLAT}
         ${GTK3_LIBRARIES}
-        #-fsanitize=address
 )
 
 target_compile_options(remidy PRIVATE

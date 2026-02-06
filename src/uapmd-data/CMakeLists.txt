@@ -16,6 +16,10 @@ target_sources(uapmd-data PRIVATE
         project/UapmdProjectFileReader.cpp
         project/UapmdProjectFileWriter.cpp
         project/UapmdProjectFile.cpp
+        timeline/AudioFileSourceNode.cpp
+        timeline/DeviceInputSourceNode.cpp
+        timeline/ClipManager.cpp
+        timeline/TimelineTrack.cpp
 )
 
 # Add tests subdirectory

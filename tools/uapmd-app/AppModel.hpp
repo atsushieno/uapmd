@@ -9,9 +9,8 @@
 #include <midicci/midicci.hpp>
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <uapmd/uapmd.hpp>
+#include <uapmd-data/uapmd-data.hpp>
 #include <uapmd-engine/uapmd-engine.hpp>
-#include <uapmd-engine/priv/timeline/TimelineTypes.hpp>
-#include <uapmd-engine/priv/timeline/TimelineTrack.hpp>
 
 namespace uapmd {
     // Forward declarations
