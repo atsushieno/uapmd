@@ -1,8 +1,23 @@
 
-include("../../external/LV2Kit.cmake")
+if (NOT ANDROID)
+    include("../../external/LV2Kit.cmake")
+    set(lv2kit_LIBRARY lv2kit)
+    set(lv2kit_SOURCES
+            lv2/LV2Helper.cpp
+            lv2/symap.cpp
+            lv2/PluginFormatLV2.cpp
+            lv2/PluginInstanceLV2.cpp
+            lv2/PluginInstanceLV2.Buses.cpp
+            lv2/PluginInstanceLV2.Events.cpp
+            lv2/PluginInstanceLV2.Parameters.cpp
+            lv2/PluginInstanceLV2.Presets.cpp
+            lv2/PluginInstanceLV2.States.cpp
+            lv2/PluginInstanceLV2.UI.cpp
+    )
+endif ()
 
 # Make X11 and GTK optional for WebAssembly builds
-if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND NOT ANDROID)
     find_package(PkgConfig REQUIRED)
     find_package(X11 REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
@@ -14,8 +29,6 @@ if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     else()
         message(WARNING "Wayland client not found - Wayland support disabled")
     endif()
-elseif(EMSCRIPTEN)
-    message(STATUS "Building remidy for WebAssembly - skipping X11/GTK dependencies")
 endif()
 
 # FIXME: it would be slightly nicer if we could migrate to CPM (failed to resolve farbot if we actually do so. Also see https://github.com/hogliux/farbot/pull/15 )
@@ -117,7 +130,7 @@ endif()
 target_link_libraries(remidy PRIVATE
         rtlog::rtlog
         cpplocate::cpplocate
-        lv2kit
+        ${lv2kit_LIBRARY}
         midicci_static
         sdk # pretty bad naming from vst3sdk (shrug)
         ${remidy_LIBS_PLAT}
@@ -192,16 +205,7 @@ target_sources(remidy PRIVATE
         au/AUv2Helper.cpp
         ${remidy_OBJC_SOURCES}
 
-        lv2/LV2Helper.cpp
-        lv2/symap.cpp
-        lv2/PluginFormatLV2.cpp
-        lv2/PluginInstanceLV2.cpp
-        lv2/PluginInstanceLV2.Buses.cpp
-        lv2/PluginInstanceLV2.Events.cpp
-        lv2/PluginInstanceLV2.Parameters.cpp
-        lv2/PluginInstanceLV2.Presets.cpp
-        lv2/PluginInstanceLV2.States.cpp
-        lv2/PluginInstanceLV2.UI.cpp
+        ${lv2kit_SOURCES}
 
         clap/CLAPHelper.cpp
         clap/HostClasses.cpp

@@ -141,7 +141,7 @@ if(NOT TARGET imgui)
     if(APPLE)
         find_package(OpenGL REQUIRED)
         target_link_libraries(imgui PUBLIC OpenGL::GL)
-    elseif(UNIX)
+    elseif(UNIX AND NOT EMSCRIPTEN AND NOT ANDROID)
         find_package(OpenGL REQUIRED)
         target_link_libraries(imgui PUBLIC OpenGL::GL)
     elseif(WIN32)
@@ -257,12 +257,6 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
         )
     endif()
 endforeach()
-
-# On Linux, CHOC's DesktopWindow uses GTK3; ensure headers and libs are present
-if(UNIX AND NOT APPLE)
-    find_package(X11 REQUIRED)
-    target_link_libraries(uapmd-app PRIVATE X11::X11)
-endif()
 
 set(UAPMD_APP_SOURCE_FILES
         main.cpp

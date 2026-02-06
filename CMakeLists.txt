@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.18)
 
-if (APPLE)
-    project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX OBJC OBJCXX)
-else()
+if (ANDROID OR NOT APPLE)
     project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX)
+else()
+    project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX OBJC OBJCXX)
 endif()
 
 set(CMAKE_CXX_STANDARD 23)
@@ -123,13 +123,19 @@ CPMAddPackage(
 #add_link_options(-fPIC)
 
 add_subdirectory(src/remidy)
+if ((NOT EMSCRIPTEN) AND ((NOT ANDROID) OR (NOT UNIX)))
 add_subdirectory(src/remidy-gui)
+endif ()
 add_subdirectory(src/remidy-tooling)
 add_subdirectory(src/uapmd)
 add_subdirectory(src/uapmd-data)
 add_subdirectory(src/uapmd-engine)
 
 add_subdirectory(tools)
+
+
+# INSTALL AND UNINSTALL targets
+if (NOT ANDROID)
 
 # Provide an 'uninstall' target using the install manifest
 if(NOT TARGET uninstall)
@@ -250,3 +256,5 @@ add_custom_target(package-arch-uapmd
         COMMAND ${CMAKE_COMMAND} -E echo "PKGBUILD generated at: ${PACKAGING_ARCH_DIR}/PKGBUILD"
         WORKING_DIRECTORY ${PACKAGING_ARCH_DIR}
         COMMENT "Generate Arch Linux PKGBUILD (use makepkg to build)")
+
+endif (NOT ANDROID)
