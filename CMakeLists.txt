@@ -85,16 +85,16 @@ else()
     unset(BUILD_SHARED_LIBS)
 endif()
 
-FetchContent_Declare(midicci
-        NAME            midicci
-        GIT_TAG         bf06125
-        GIT_REPOSITORY  https://github.com/atsushieno/midicci
-        EXCLUDE_FROM_ALL
-)
 # Ensure we use a static build of midicci regardless of parent defaults
 set(_UAPMD_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
-FetchContent_MakeAvailable(midicci)
+CPMAddPackage(midicci
+        NAME            midicci
+        GIT_TAG         a2e7ccb
+        GIT_REPOSITORY  https://github.com/atsushieno/midicci
+        OPTIONS         "MIDICCI_SKIP_TOOLS ON"
+        EXCLUDE_FROM_ALL
+)
 # Restore previous BUILD_SHARED_LIBS setting
 if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
     set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS}")
