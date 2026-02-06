@@ -496,7 +496,7 @@ void uapmd::TransportController::stop() {
     sequencer_->engine()->stopPlayback();
     appModel_->timeline().isPlaying = false;
     appModel_->timeline().playheadPosition.samples = 0;
-    appModel_->timeline().playheadPosition.beats = 0.0;
+    appModel_->timeline().playheadPosition.legacy_beats = 0.0;
     isPlaying_ = false;
     isPaused_ = false;
 }
@@ -765,27 +765,21 @@ void uapmd::AppModel::processAppTracksAudio(AudioProcessContext& process) {
             }
         }
 
-        // Update beats based on tempo
+        // Update legacy_beats (keep for backwards compatibility with serialization)
         double secondsPerBeat = 60.0 / timeline_.tempo;
         int64_t samplesPerBeat = static_cast<int64_t>(secondsPerBeat * sample_rate_);
         if (samplesPerBeat > 0) {
-            timeline_.playheadPosition.beats = static_cast<double>(timeline_.playheadPosition.samples) / samplesPerBeat;
+            timeline_.playheadPosition.legacy_beats =
+                static_cast<double>(timeline_.playheadPosition.samples) / samplesPerBeat;
         }
-    }
 
-    // Get device input buffers
-    float** deviceInputBuffers = nullptr;
-    uint32_t deviceChannelCount = 0;
-    if (process.audioInBusCount() > 0) {
-        deviceChannelCount = process.inputChannelCount(0);
-        // Create array of pointers to device input channels
-        static thread_local std::vector<float*> deviceInputPtrs;
-        deviceInputPtrs.clear();
-        deviceInputPtrs.reserve(deviceChannelCount);
-        for (uint32_t ch = 0; ch < deviceChannelCount; ++ch) {
-            deviceInputPtrs.push_back(const_cast<float*>(process.getFloatInBuffer(0, ch)));
-        }
-        deviceInputBuffers = deviceInputPtrs.data();
+        // Sync timeline state to MasterContext
+        auto& masterCtx = process.trackContext()->masterContext();
+        masterCtx.playbackPositionSamples(timeline_.playheadPosition.samples);
+        masterCtx.isPlaying(timeline_.isPlaying);
+        masterCtx.tempo(static_cast<uint16_t>(timeline_.tempo));
+        masterCtx.timeSignatureNumerator(timeline_.timeSignatureNumerator);
+        masterCtx.timeSignatureDenominator(timeline_.timeSignatureDenominator);
     }
 
     // Get the sequence process context from engine
@@ -795,23 +789,26 @@ void uapmd::AppModel::processAppTracksAudio(AudioProcessContext& process) {
     for (size_t i = 0; i < timeline_tracks_.size() && i < sequenceData.tracks.size(); ++i) {
         auto* trackContext = sequenceData.tracks[i];
 
-        // Get track input buffers from context
-        const uint32_t numChannels = FIXED_CHANNEL_COUNT;
-        float* trackInputBuffers[FIXED_CHANNEL_COUNT] = {nullptr, nullptr};
-        for (uint32_t ch = 0; ch < numChannels; ++ch) {
-            if (trackContext->audioInBusCount() > 0 && ch < trackContext->inputChannelCount(0)) {
-                trackInputBuffers[ch] = trackContext->getFloatInBuffer(0, ch);
+        // Copy device inputs from main process context to track context
+        if (process.audioInBusCount() > 0 && trackContext->audioInBusCount() > 0) {
+            const uint32_t deviceChannels = std::min(
+                static_cast<uint32_t>(process.inputChannelCount(0)),
+                static_cast<uint32_t>(trackContext->inputChannelCount(0))
+            );
+
+            for (uint32_t ch = 0; ch < deviceChannels; ++ch) {
+                const float* src = process.getFloatInBuffer(0, ch);
+                float* dst = trackContext->getFloatInBuffer(0, ch);
+                if (src && dst) {
+                    std::memcpy(dst, src, process.frameCount() * sizeof(float));
+                }
             }
         }
 
-        // Process timeline - writes directly to track input buffers
-        timeline_tracks_[i]->processAudio(
-            timeline_,
-            trackInputBuffers,  // Output goes to track input buffers
-            numChannels,
-            process.frameCount(),
-            deviceInputBuffers,
-            deviceChannelCount
-        );
+        // Process timeline track
+        // Timeline writes to trackContext->audio_in[0]
+        // Then sequencer track's plugins process input->output
+        // SequencerEngine will mix track outputs into main output
+        timeline_tracks_[i]->processAudio(*trackContext, timeline_);
     }
 }

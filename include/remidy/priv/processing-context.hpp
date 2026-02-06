@@ -37,6 +37,8 @@ namespace remidy {
         int64_t playback_position_samples_{0};
         int32_t sample_rate_{48000};
         bool is_playing_{false};
+        int32_t time_signature_numerator_{4};
+        int32_t time_signature_denominator_{4};
 
     public:
         AudioContentType audioDataType() { return audio_data_type; }
@@ -66,6 +68,12 @@ namespace remidy {
 
         bool isPlaying() const { return is_playing_; }
         void isPlaying(bool newValue) { is_playing_ = newValue; }
+
+        int32_t timeSignatureNumerator() const { return time_signature_numerator_; }
+        void timeSignatureNumerator(int32_t newValue) { time_signature_numerator_ = newValue; }
+
+        int32_t timeSignatureDenominator() const { return time_signature_denominator_; }
+        void timeSignatureDenominator(int32_t newValue) { time_signature_denominator_ = newValue; }
     };
 
     class TrackContext {
@@ -99,8 +107,12 @@ namespace remidy {
         }
 
         double ppqPosition() {
-            // FIXME: calculate
-            return 0;
+            // Calculate PPQ from samples, like VST3 does
+            // PPQ = (samples / sampleRate) * (tempo_bpm / 60)
+            double tempoBPM = 60000000.0 / master_context.tempo();
+            double seconds = static_cast<double>(master_context.playbackPositionSamples()) /
+                           master_context.sampleRate();
+            return (seconds * tempoBPM) / 60.0;
         }
     };
 

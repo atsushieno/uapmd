@@ -8,6 +8,8 @@
 #include "AudioFileSourceNode.hpp"
 #include "DeviceInputSourceNode.hpp"
 
+namespace remidy { class AudioProcessContext; }
+
 namespace uapmd {
 
     // Timeline track wrapper
@@ -31,14 +33,10 @@ namespace uapmd {
         bool removeSource(int32_t sourceId);
 
         // Timeline-aware processing
-        // Writes mixed audio directly to output buffers
+        // Writes mixed audio to AudioProcessContext output buffers
         void processAudio(
-            const TimelineState& timeline,
-            float** outputBuffers,           // Direct output buffers
-            uint32_t numChannels,
-            int32_t frameCount,
-            float** deviceInputBuffers = nullptr,
-            uint32_t deviceChannelCount = 0
+            remidy::AudioProcessContext& process,
+            const TimelineState& timeline
         );
 
         // Channel information

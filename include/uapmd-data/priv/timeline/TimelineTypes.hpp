@@ -16,22 +16,25 @@ namespace uapmd {
     // Represents a position on the timeline
     struct TimelinePosition {
         int64_t samples{0};     // Primary representation (RT-safe)
-        double beats{0.0};      // Secondary representation (for UI/musical time)
+
+        // DEPRECATED: Use TrackContext.ppqPosition() instead for musical time
+        // This field is kept for backwards compatibility with serialized data only
+        double legacy_beats{0.0};
 
         TimelinePosition() = default;
-        explicit TimelinePosition(int64_t s) : samples(s), beats(0.0) {}
+        explicit TimelinePosition(int64_t s) : samples(s), legacy_beats(0.0) {}
 
         // Factory methods for creating positions
         static TimelinePosition fromSamples(int64_t samples, int32_t sampleRate, double tempo = 120.0) {
             TimelinePosition pos;
             pos.samples = samples;
-            pos.beats = samplesToBeats(samples, tempo, sampleRate);
+            pos.legacy_beats = samplesToBeats(samples, tempo, sampleRate);
             return pos;
         }
 
         static TimelinePosition fromBeats(double beats, int32_t sampleRate, double tempo = 120.0) {
             TimelinePosition pos;
-            pos.beats = beats;
+            pos.legacy_beats = beats;
             pos.samples = beatsToSamples(beats, tempo, sampleRate);
             return pos;
         }
@@ -39,7 +42,7 @@ namespace uapmd {
         static TimelinePosition fromSeconds(double seconds, int32_t sampleRate, double tempo = 120.0) {
             TimelinePosition pos;
             pos.samples = static_cast<int64_t>(seconds * sampleRate);
-            pos.beats = samplesToBeats(pos.samples, tempo, sampleRate);
+            pos.legacy_beats = samplesToBeats(pos.samples, tempo, sampleRate);
             return pos;
         }
 
@@ -72,14 +75,14 @@ namespace uapmd {
         TimelinePosition operator+(const TimelinePosition& other) const {
             TimelinePosition result;
             result.samples = samples + other.samples;
-            result.beats = beats + other.beats;
+            result.legacy_beats = legacy_beats + other.legacy_beats;
             return result;
         }
 
         TimelinePosition operator-(const TimelinePosition& other) const {
             TimelinePosition result;
             result.samples = samples - other.samples;
-            result.beats = beats - other.beats;
+            result.legacy_beats = legacy_beats - other.legacy_beats;
             return result;
         }
     };
@@ -193,8 +196,8 @@ namespace uapmd {
                 }
             }
 
-            // Update beats representation
-            playheadPosition.beats = TimelinePosition::samplesToBeats(
+            // Update legacy_beats representation
+            playheadPosition.legacy_beats = TimelinePosition::samplesToBeats(
                 playheadPosition.samples, tempo, sampleRate
             );
         }
@@ -202,7 +205,7 @@ namespace uapmd {
         // Seek to a specific position
         void seekTo(const TimelinePosition& position, int32_t sampleRate) {
             playheadPosition = position;
-            playheadPosition.beats = TimelinePosition::samplesToBeats(
+            playheadPosition.legacy_beats = TimelinePosition::samplesToBeats(
                 playheadPosition.samples, tempo, sampleRate
             );
         }

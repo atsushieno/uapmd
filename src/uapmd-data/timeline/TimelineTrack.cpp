@@ -128,13 +128,16 @@ namespace uapmd {
     }
 
     void TimelineTrack::processAudio(
-        const TimelineState& timeline,
-        float** outputBuffers,
-        uint32_t numChannels,
-        int32_t frameCount,
-        float** deviceInputBuffers,
-        uint32_t deviceChannelCount
+        remidy::AudioProcessContext& process,
+        const TimelineState& timeline
     ) {
+        const int32_t frameCount = process.frameCount();
+        const uint32_t numChannels = std::min(channel_count_,
+            static_cast<uint32_t>(process.audioOutBusCount() > 0 ? process.outputChannelCount(0) : 0));
+
+        if (numChannels == 0)
+            return;
+
         // Ensure our temporary buffers are allocated
         ensureBuffersAllocated(numChannels, frameCount);
 
@@ -196,41 +199,55 @@ namespace uapmd {
         }
 
         // Step 4: Process device input sources
-        for (auto& sourceNode : source_nodes_) {
-            if (sourceNode->nodeType() == SourceNodeType::DeviceInput) {
-                auto* deviceInputNode = dynamic_cast<DeviceInputSourceNode*>(sourceNode.get());
-                if (deviceInputNode && deviceInputBuffers) {
-                    // Set device input buffers for this node
-                    deviceInputNode->setDeviceInputBuffers(deviceInputBuffers, deviceChannelCount);
-                    deviceInputNode->setPlaying(timeline.isPlaying);
+        // Get device input buffer info from AudioProcessContext
+        const uint32_t deviceChannelCount =
+            process.audioInBusCount() > 0 ? process.inputChannelCount(0) : 0;
 
-                    // Create temporary buffers for device input
-                    std::vector<std::vector<float>> tempBuffers(numChannels);
-                    std::vector<float*> tempBufferPtrs;
-                    tempBufferPtrs.reserve(numChannels);
+        if (deviceChannelCount > 0) {
+            for (auto& sourceNode : source_nodes_) {
+                if (sourceNode->nodeType() == SourceNodeType::DeviceInput) {
+                    auto* deviceInputNode = dynamic_cast<DeviceInputSourceNode*>(sourceNode.get());
+                    if (deviceInputNode) {
+                        // Get device input buffer pointers from AudioProcessContext
+                        std::vector<float*> deviceInputPtrs;
+                        deviceInputPtrs.reserve(deviceChannelCount);
+                        for (uint32_t ch = 0; ch < deviceChannelCount; ++ch) {
+                            deviceInputPtrs.push_back(const_cast<float*>(process.getFloatInBuffer(0, ch)));
+                        }
 
-                    for (auto& buf : tempBuffers) {
-                        buf.resize(frameCount);
-                        tempBufferPtrs.push_back(buf.data());
-                    }
+                        deviceInputNode->setDeviceInputBuffers(deviceInputPtrs.data(), deviceChannelCount);
+                        deviceInputNode->setPlaying(timeline.isPlaying);
 
-                    // Process device input
-                    deviceInputNode->processAudio(tempBufferPtrs.data(), numChannels, frameCount);
+                        // Create temporary buffers for device input
+                        std::vector<std::vector<float>> tempBuffers(numChannels);
+                        std::vector<float*> tempBufferPtrs;
+                        tempBufferPtrs.reserve(numChannels);
 
-                    // Mix into our mixed source buffer
-                    for (uint32_t ch = 0; ch < numChannels; ++ch) {
-                        for (int32_t frame = 0; frame < frameCount; ++frame) {
-                            mixed_source_buffers_[ch][frame] += tempBuffers[ch][frame];
+                        for (auto& buf : tempBuffers) {
+                            buf.resize(frameCount);
+                            tempBufferPtrs.push_back(buf.data());
+                        }
+
+                        // Process device input
+                        deviceInputNode->processAudio(tempBufferPtrs.data(), numChannels, frameCount);
+
+                        // Mix into our mixed source buffer
+                        for (uint32_t ch = 0; ch < numChannels; ++ch) {
+                            for (int32_t frame = 0; frame < frameCount; ++frame) {
+                                mixed_source_buffers_[ch][frame] += tempBuffers[ch][frame];
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Step 5: Copy mixed source buffer to output buffers
+        // Step 5: Write mixed source buffer to AudioProcessContext INPUT
+        // Timeline track writes to sequencer track's input, then plugins process input->output
         for (uint32_t ch = 0; ch < numChannels && ch < mixed_source_buffer_ptrs_.size(); ++ch) {
-            if (outputBuffers[ch]) {
-                memcpy(outputBuffers[ch], mixed_source_buffer_ptrs_[ch], frameCount * sizeof(float));
+            float* inBuffer = process.getFloatInBuffer(0, ch);
+            if (inBuffer) {
+                std::memcpy(inBuffer, mixed_source_buffer_ptrs_[ch], frameCount * sizeof(float));
             }
         }
     }

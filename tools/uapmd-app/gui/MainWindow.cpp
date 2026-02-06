@@ -1326,7 +1326,7 @@ void MainWindow::addClipToTrack(int32_t trackIndex, const std::string& filepath)
     // Add clip at timeline position 0
     uapmd::TimelinePosition position;
     position.samples = 0;
-    position.beats = 0.0;
+    position.legacy_beats = 0.0;
 
     auto& appModel = uapmd::AppModel::instance();
     auto result = appModel.addClipToTrack(trackIndex, position, std::move(reader), selectedFile);
