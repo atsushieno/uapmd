@@ -281,10 +281,6 @@ set(UAPMD_APP_SOURCE_FILES
         gui/FontLoader.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
-        player/AppAudioFileSourceNode.cpp
-        player/AppDeviceInputSourceNode.cpp
-        player/TrackClipManager.cpp
-        player/AppTrack.cpp
 )
 
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)

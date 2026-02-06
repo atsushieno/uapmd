@@ -1,13 +1,13 @@
 #include <algorithm>
-#include "TrackClipManager.hpp"
+#include "uapmd-engine/uapmd-engine.hpp"
 
-namespace uapmd_app {
+namespace uapmd {
 
-    int32_t TrackClipManager::generateClipId() {
+    int32_t ClipManager::generateClipId() {
         return next_clip_id_++;
     }
 
-    int32_t TrackClipManager::addClip(const ClipData& clip) {
+    int32_t ClipManager::addClip(const ClipData& clip) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
 
         ClipData newClip = clip;
@@ -24,7 +24,7 @@ namespace uapmd_app {
         return newClip.clipId;
     }
 
-    bool TrackClipManager::removeClip(int32_t clipId) {
+    bool ClipManager::removeClip(int32_t clipId) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -34,7 +34,7 @@ namespace uapmd_app {
         return true;
     }
 
-    ClipData* TrackClipManager::getClip(int32_t clipId) {
+    ClipData* ClipManager::getClip(int32_t clipId) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -42,7 +42,7 @@ namespace uapmd_app {
         return &it->second;
     }
 
-    const ClipData* TrackClipManager::getClip(int32_t clipId) const {
+    const ClipData* ClipManager::getClip(int32_t clipId) const {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -50,7 +50,7 @@ namespace uapmd_app {
         return &it->second;
     }
 
-    std::vector<ClipData*> TrackClipManager::getAllClips() {
+    std::vector<ClipData*> ClipManager::getAllClips() {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         std::vector<ClipData*> result;
         result.reserve(clips_.size());
@@ -60,7 +60,7 @@ namespace uapmd_app {
         return result;
     }
 
-    std::vector<const ClipData*> TrackClipManager::getAllClips() const {
+    std::vector<const ClipData*> ClipManager::getAllClips() const {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         std::vector<const ClipData*> result;
         result.reserve(clips_.size());
@@ -70,7 +70,7 @@ namespace uapmd_app {
         return result;
     }
 
-    bool TrackClipManager::moveClip(int32_t clipId, const TimelinePosition& newPosition) {
+    bool ClipManager::moveClip(int32_t clipId, const TimelinePosition& newPosition) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -80,7 +80,7 @@ namespace uapmd_app {
         return true;
     }
 
-    bool TrackClipManager::resizeClip(int32_t clipId, int64_t newDuration) {
+    bool ClipManager::resizeClip(int32_t clipId, int64_t newDuration) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -90,7 +90,7 @@ namespace uapmd_app {
         return true;
     }
 
-    bool TrackClipManager::setClipGain(int32_t clipId, double gain) {
+    bool ClipManager::setClipGain(int32_t clipId, double gain) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -100,7 +100,7 @@ namespace uapmd_app {
         return true;
     }
 
-    bool TrackClipManager::setClipMuted(int32_t clipId, bool muted) {
+    bool ClipManager::setClipMuted(int32_t clipId, bool muted) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -110,7 +110,7 @@ namespace uapmd_app {
         return true;
     }
 
-    bool TrackClipManager::setClipName(int32_t clipId, const std::string& name) {
+    bool ClipManager::setClipName(int32_t clipId, const std::string& name) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -120,7 +120,7 @@ namespace uapmd_app {
         return true;
     }
 
-    bool TrackClipManager::setClipFilepath(int32_t clipId, const std::string& filepath) {
+    bool ClipManager::setClipFilepath(int32_t clipId, const std::string& filepath) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -130,7 +130,7 @@ namespace uapmd_app {
         return true;
     }
 
-    bool TrackClipManager::setClipAnchor(int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset) {
+    bool ClipManager::setClipAnchor(int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
@@ -142,7 +142,7 @@ namespace uapmd_app {
         return true;
     }
 
-    std::vector<ClipData*> TrackClipManager::getActiveClipsAt(const TimelinePosition& position) {
+    std::vector<ClipData*> ClipManager::getActiveClipsAt(const TimelinePosition& position) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         std::vector<ClipData*> result;
 
@@ -174,7 +174,7 @@ namespace uapmd_app {
         return result;
     }
 
-    std::vector<const ClipData*> TrackClipManager::getActiveClipsAt(const TimelinePosition& position) const {
+    std::vector<const ClipData*> ClipManager::getActiveClipsAt(const TimelinePosition& position) const {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         std::vector<const ClipData*> result;
 
@@ -206,14 +206,14 @@ namespace uapmd_app {
         return result;
     }
 
-    void TrackClipManager::clearAll() {
+    void ClipManager::clearAll() {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         clips_.clear();
     }
 
-    size_t TrackClipManager::clipCount() const {
+    size_t ClipManager::clipCount() const {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         return clips_.size();
     }
 
-} // namespace uapmd_app
+} // namespace uapmd

@@ -1,14 +1,14 @@
-#include "AppTrack.hpp"
 #include <algorithm>
 #include <cstring>
+#include "uapmd-engine/uapmd-engine.hpp"
 
-namespace uapmd_app {
+namespace uapmd {
 
-    AppTrack::AppTrack(uapmd::SequencerTrack* uapmdTrack, int32_t sampleRate)
-        : uapmd_track_(uapmdTrack), sample_rate_(sampleRate) {
+    TimelineTrack::TimelineTrack(uint32_t channelCount, double sampleRate)
+        : channel_count_(channelCount), sample_rate_(sampleRate) {
     }
 
-    int32_t AppTrack::addClip(const ClipData& clip, std::unique_ptr<AppAudioFileSourceNode> sourceNode) {
+    int32_t TimelineTrack::addClip(const ClipData& clip, std::unique_ptr<AudioFileSourceNode> sourceNode) {
         if (!sourceNode)
             return -1;
 
@@ -19,7 +19,7 @@ namespace uapmd_app {
         return clip_manager_.addClip(clip);
     }
 
-    bool AppTrack::removeClip(int32_t clipId) {
+    bool TimelineTrack::removeClip(int32_t clipId) {
         // Get the clip to find its source node
         auto* clip = clip_manager_.getClip(clipId);
         if (!clip)
@@ -33,7 +33,7 @@ namespace uapmd_app {
 
         // Remove the associated source node
         auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [sourceNodeId](const std::unique_ptr<AppSourceNode>& node) {
+            [sourceNodeId](const std::unique_ptr<AudioSourceNode>& node) {
                 return node->instanceId() == sourceNodeId;
             });
 
@@ -44,7 +44,7 @@ namespace uapmd_app {
         return true;
     }
 
-    bool AppTrack::replaceClipSourceNode(int32_t clipId, std::unique_ptr<AppAudioFileSourceNode> newSourceNode) {
+    bool TimelineTrack::replaceClipSourceNode(int32_t clipId, std::unique_ptr<AudioFileSourceNode> newSourceNode) {
         if (!newSourceNode)
             return false;
 
@@ -58,7 +58,7 @@ namespace uapmd_app {
 
         // Find and replace the source node
         auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [oldSourceNodeId](const std::unique_ptr<AppSourceNode>& node) {
+            [oldSourceNodeId](const std::unique_ptr<AudioSourceNode>& node) {
                 return node->instanceId() == oldSourceNodeId;
             });
 
@@ -76,7 +76,7 @@ namespace uapmd_app {
         return true;
     }
 
-    bool AppTrack::addDeviceInputSource(std::unique_ptr<AppDeviceInputSourceNode> sourceNode) {
+    bool TimelineTrack::addDeviceInputSource(std::unique_ptr<DeviceInputSourceNode> sourceNode) {
         if (!sourceNode)
             return false;
 
@@ -84,9 +84,9 @@ namespace uapmd_app {
         return true;
     }
 
-    bool AppTrack::removeSource(int32_t sourceId) {
+    bool TimelineTrack::removeSource(int32_t sourceId) {
         auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [sourceId](const std::unique_ptr<AppSourceNode>& node) {
+            [sourceId](const std::unique_ptr<AudioSourceNode>& node) {
                 return node->instanceId() == sourceId;
             });
 
@@ -97,7 +97,7 @@ namespace uapmd_app {
         return true;
     }
 
-    void AppTrack::ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount) {
+    void TimelineTrack::ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount) {
         // Resize buffers if needed
         if (mixed_source_buffers_.size() != numChannels ||
             (numChannels > 0 && mixed_source_buffers_[0].size() < static_cast<size_t>(frameCount))) {
@@ -118,28 +118,23 @@ namespace uapmd_app {
         }
     }
 
-    AppSourceNode* AppTrack::findSourceNode(int32_t instanceId) {
+    AudioSourceNode* TimelineTrack::findSourceNode(int32_t instanceId) {
         auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [instanceId](const std::unique_ptr<AppSourceNode>& node) {
+            [instanceId](const std::unique_ptr<AudioSourceNode>& node) {
                 return node->instanceId() == instanceId;
             });
 
         return (it != source_nodes_.end()) ? it->get() : nullptr;
     }
 
-    void AppTrack::processAudioWithTimeline(
+    void TimelineTrack::processAudio(
         const TimelineState& timeline,
-        float** deviceInputBuffers,
-        uint32_t deviceChannelCount,
+        float** outputBuffers,
+        uint32_t numChannels,
         int32_t frameCount,
-        remidy::AudioProcessContext* trackContext
+        float** deviceInputBuffers,
+        uint32_t deviceChannelCount
     ) {
-        if (!uapmd_track_)
-            return;
-
-        // Determine number of channels (assume stereo for now, could be configurable)
-        const uint32_t numChannels = 2;
-
         // Ensure our temporary buffers are allocated
         ensureBuffersAllocated(numChannels, frameCount);
 
@@ -200,11 +195,11 @@ namespace uapmd_app {
             }
         }
 
-        // Step 3: Process device input sources
+        // Step 4: Process device input sources
         for (auto& sourceNode : source_nodes_) {
-            if (sourceNode->nodeType() == AppNodeType::DeviceInput) {
-                auto* deviceInputNode = dynamic_cast<AppDeviceInputSourceNode*>(sourceNode.get());
-                if (deviceInputNode) {
+            if (sourceNode->nodeType() == SourceNodeType::DeviceInput) {
+                auto* deviceInputNode = dynamic_cast<DeviceInputSourceNode*>(sourceNode.get());
+                if (deviceInputNode && deviceInputBuffers) {
                     // Set device input buffers for this node
                     deviceInputNode->setDeviceInputBuffers(deviceInputBuffers, deviceChannelCount);
                     deviceInputNode->setPlaying(timeline.isPlaying);
@@ -232,22 +227,12 @@ namespace uapmd_app {
             }
         }
 
-        // Step 4: Copy mixed source buffer into uapmd track's input buffer
-        if (trackContext) {
-            // Copy mixed source buffers to uapmd track input buffers
-            // We assume the track has at least one input bus configured
-            for (uint32_t ch = 0; ch < numChannels && ch < mixed_source_buffer_ptrs_.size(); ++ch) {
-                // Get track input buffer for main bus (bus 0)
-                if (trackContext->audioInBusCount() > 0 && ch < trackContext->inputChannelCount(0)) {
-                    float* trackInput = trackContext->getFloatInBuffer(0, ch);
-
-                    // Copy our mixed source buffer to track input
-                    memcpy(trackInput, mixed_source_buffer_ptrs_[ch], frameCount * sizeof(float));
-                }
+        // Step 5: Copy mixed source buffer to output buffers
+        for (uint32_t ch = 0; ch < numChannels && ch < mixed_source_buffer_ptrs_.size(); ++ch) {
+            if (outputBuffers[ch]) {
+                memcpy(outputBuffers[ch], mixed_source_buffer_ptrs_[ch], frameCount * sizeof(float));
             }
         }
-
-        // Step 5: Track's processAudio() will be called by SequencerEngine after this callback returns
     }
 
-} // namespace uapmd_app
+} // namespace uapmd

@@ -4,32 +4,32 @@
 #include <vector>
 #include <atomic>
 #include <mutex>
-#include "AppSourceNode.hpp"
+#include "AudioSourceNode.hpp"
 #include "uapmd-data/uapmd-data.hpp"
 
-namespace uapmd_app {
+namespace uapmd {
 
-    // App-level audio file source node
+    // Timeline audio file source node
     // Plays back audio files as clips on the timeline
-    class AppAudioFileSourceNode : public AppSourceNode {
+    class AudioFileSourceNode : public AudioSourceNode {
     public:
-        AppAudioFileSourceNode(
+        AudioFileSourceNode(
             int32_t instanceId,
             std::unique_ptr<uapmd::AudioFileReader> reader,
             double targetSampleRate
         );
 
-        virtual ~AppAudioFileSourceNode() = default;
+        virtual ~AudioFileSourceNode() = default;
 
-        // AppAudioNode interface
+        // SourceNode interface
         int32_t instanceId() const override { return instance_id_; }
-        AppNodeType nodeType() const override { return AppNodeType::AudioFileSource; }
+        SourceNodeType nodeType() const override { return SourceNodeType::AudioFileSource; }
         bool bypassed() const override { return bypassed_; }
         void bypassed(bool value) override { bypassed_ = value; }
         std::vector<uint8_t> saveState() override;
         void loadState(const std::vector<uint8_t>& state) override;
 
-        // AppSourceNode interface
+        // AudioSourceNode interface
         void seek(int64_t samplePosition) override;
         int64_t currentPosition() const override;
         int64_t totalLength() const override;
@@ -63,4 +63,4 @@ namespace uapmd_app {
         std::atomic<bool> buffer_ready_{false};
     };
 
-} // namespace uapmd_app
+} // namespace uapmd

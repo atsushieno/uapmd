@@ -3,24 +3,23 @@
 #include <cstdint>
 #include <vector>
 
-namespace uapmd_app {
+namespace uapmd {
 
-    // Node type enumeration for app-level nodes
-    enum class AppNodeType {
-        Plugin,          // Wraps uapmd::AudioPluginNode
+    // Node type enumeration for timeline source nodes
+    enum class SourceNodeType {
         AudioFileSource, // Audio file clip playback
         DeviceInput,     // Device input capture
         Generator        // Future: synth/oscillator
     };
 
-    // Base interface for all app-level audio nodes
-    class AppAudioNode {
+    // Base interface for all timeline source nodes
+    class SourceNode {
     public:
-        virtual ~AppAudioNode() = default;
+        virtual ~SourceNode() = default;
 
         // Node identification
         virtual int32_t instanceId() const = 0;
-        virtual AppNodeType nodeType() const = 0;
+        virtual SourceNodeType nodeType() const = 0;
 
         // Bypass control
         virtual bool bypassed() const = 0;
@@ -31,4 +30,4 @@ namespace uapmd_app {
         virtual void loadState(const std::vector<uint8_t>& state) = 0;
     };
 
-} // namespace uapmd_app
+} // namespace uapmd

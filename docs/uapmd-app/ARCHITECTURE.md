@@ -25,16 +25,17 @@ We split DAW features like this:
   - function block management
   - audio plugin host and instance API integration for virtual MIDI 2.0 devices (without implementation)
   - audio plugin graph API, and simple linear graph implementation (without decent DAG)
+- uapmd-data: sequence data serialization (probably support for SMF2 Container equivalent)
 - uapmd-engine:
   - sequencer engine
   - audio file I/O API
   - audio device I/O integration API
+  - timeline editables
   - project support
   - implementations
     - miniaudio audio device I/O integration
     - remidy audio plugin API integration
     - libremidi platform MIDI integration
-- uapmd-data: sequence data serialization (probably support for SMF2 Container equivalent)
 - remidy-imgui-shared: some "shared" code that used be shared between remidy-plugin-host and uapmd-service (now unified in uapmd-app)
   - ImGui event loop
   - windowing

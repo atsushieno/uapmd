@@ -195,7 +195,7 @@ import { PluginScanTool, sequencer } from 'remidy-bridge';
 //   instance.showUI();
 //   instance.setParameterValue(0, 0.5);
 
-// Example: Create tracks for VST3 Dexed, LV2 RipplerX, CLAP Six Sines, and AU Surge XT
+// Example: Create tracks for VST3 Dexed, LV2 RipplerX, CLAP Six Sines, AU Surge XT, and AUv3 Mela FX
 const scanTool = new PluginScanTool();
 const catalog = scanTool.catalog;
 
@@ -227,7 +227,8 @@ const tracksToCreate = [
     { name: 'Dexed', format: 'VST3' },
     { name: 'RipplerX', format: 'LV2' },
     { name: 'OctaSine', format: 'CLAP' },
-    { name: 'Surge XT', format: 'AU' }
+    { name: 'Surge XT', format: 'AU' },
+    { name: 'Mela FX', format: 'AU' }
 ];
 
 const instanceIds = [];

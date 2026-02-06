@@ -1,11 +1,10 @@
 #include <algorithm>
 #include <cstring>
-#include "AppAudioFileSourceNode.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
 
-namespace uapmd_app {
+namespace uapmd {
 
-    AppAudioFileSourceNode::AppAudioFileSourceNode(
+    AudioFileSourceNode::AudioFileSourceNode(
         int32_t instanceId,
         std::unique_ptr<uapmd::AudioFileReader> reader,
         double targetSampleRate
@@ -42,7 +41,7 @@ namespace uapmd_app {
         buffer_ready_.store(true, std::memory_order_release);
     }
 
-    void AppAudioFileSourceNode::seek(int64_t samplePosition) {
+    void AudioFileSourceNode::seek(int64_t samplePosition) {
         playback_position_.store(samplePosition, std::memory_order_release);
         // Update source position (convert from target rate to source rate)
         const double sampleRateTolerance = 0.01;
@@ -53,11 +52,11 @@ namespace uapmd_app {
         }
     }
 
-    int64_t AppAudioFileSourceNode::currentPosition() const {
+    int64_t AudioFileSourceNode::currentPosition() const {
         return playback_position_.load(std::memory_order_acquire);
     }
 
-    int64_t AppAudioFileSourceNode::totalLength() const {
+    int64_t AudioFileSourceNode::totalLength() const {
         // Return length in target sample rate domain
         const double sampleRateTolerance = 0.01;
         if (std::abs(sample_rate_ - target_sample_rate_) > sampleRateTolerance) {
@@ -67,7 +66,7 @@ namespace uapmd_app {
         return num_frames_;
     }
 
-    void AppAudioFileSourceNode::processAudio(float** buffers, uint32_t numChannels, int32_t frameCount) {
+    void AudioFileSourceNode::processAudio(float** buffers, uint32_t numChannels, int32_t frameCount) {
         // Clear output buffers first
         for (uint32_t ch = 0; ch < numChannels; ++ch) {
             if (buffers[ch])
@@ -143,7 +142,7 @@ namespace uapmd_app {
         }
     }
 
-    std::vector<uint8_t> AppAudioFileSourceNode::saveState() {
+    std::vector<uint8_t> AudioFileSourceNode::saveState() {
         // Simple state: just the playback position
         std::vector<uint8_t> state(sizeof(int64_t));
         int64_t pos = playback_position_.load(std::memory_order_acquire);
@@ -151,7 +150,7 @@ namespace uapmd_app {
         return state;
     }
 
-    void AppAudioFileSourceNode::loadState(const std::vector<uint8_t>& state) {
+    void AudioFileSourceNode::loadState(const std::vector<uint8_t>& state) {
         if (state.size() >= sizeof(int64_t)) {
             int64_t pos;
             std::memcpy(&pos, state.data(), sizeof(int64_t));
@@ -159,4 +158,4 @@ namespace uapmd_app {
         }
     }
 
-} // namespace uapmd_app
+} // namespace uapmd

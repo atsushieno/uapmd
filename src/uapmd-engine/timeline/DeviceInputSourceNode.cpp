@@ -1,10 +1,10 @@
-#include "AppDeviceInputSourceNode.hpp"
 #include <algorithm>
 #include <cstring>
+#include "uapmd-engine/uapmd-engine.hpp"
 
-namespace uapmd_app {
+namespace uapmd {
 
-    AppDeviceInputSourceNode::AppDeviceInputSourceNode(
+    DeviceInputSourceNode::DeviceInputSourceNode(
         int32_t instanceId,
         uint32_t channelCount,
         const std::vector<uint32_t>& inputChannelIndices
@@ -20,16 +20,16 @@ namespace uapmd_app {
         }
     }
 
-    void AppDeviceInputSourceNode::setInputChannels(const std::vector<uint32_t>& channelIndices) {
+    void DeviceInputSourceNode::setInputChannels(const std::vector<uint32_t>& channelIndices) {
         input_channel_indices_ = channelIndices;
     }
 
-    void AppDeviceInputSourceNode::setDeviceInputBuffers(float** deviceBuffers, uint32_t deviceChannelCount) {
+    void DeviceInputSourceNode::setDeviceInputBuffers(float** deviceBuffers, uint32_t deviceChannelCount) {
         device_input_buffers_ = deviceBuffers;
         device_channel_count_ = deviceChannelCount;
     }
 
-    void AppDeviceInputSourceNode::processAudio(float** buffers, uint32_t numChannels, int32_t frameCount) {
+    void DeviceInputSourceNode::processAudio(float** buffers, uint32_t numChannels, int32_t frameCount) {
         // Clear output buffers first
         for (uint32_t ch = 0; ch < numChannels; ++ch) {
             if (buffers[ch])
@@ -63,7 +63,7 @@ namespace uapmd_app {
         }
     }
 
-    std::vector<uint8_t> AppDeviceInputSourceNode::saveState() {
+    std::vector<uint8_t> DeviceInputSourceNode::saveState() {
         // Save channel mapping
         std::vector<uint8_t> state;
         size_t numIndices = input_channel_indices_.size();
@@ -81,7 +81,7 @@ namespace uapmd_app {
         return state;
     }
 
-    void AppDeviceInputSourceNode::loadState(const std::vector<uint8_t>& state) {
+    void DeviceInputSourceNode::loadState(const std::vector<uint8_t>& state) {
         if (state.size() < sizeof(size_t))
             return;
 
@@ -104,4 +104,4 @@ namespace uapmd_app {
         }
     }
 
-} // namespace uapmd_app
+} // namespace uapmd

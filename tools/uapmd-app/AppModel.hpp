@@ -9,12 +9,12 @@
 #include <midicci/midicci.hpp>
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <uapmd/uapmd.hpp>
-#include "player/TimelineTypes.hpp"
-#include "player/AppTrack.hpp"
+#include <uapmd-engine/uapmd-engine.hpp>
+#include <uapmd-engine/priv/timeline/TimelineTypes.hpp>
+#include <uapmd-engine/priv/timeline/TimelineTrack.hpp>
 
 namespace uapmd {
     // Forward declarations
-    class RealtimeSequencer;
     class AppModel;
 
     class TransportController {
@@ -89,9 +89,9 @@ namespace uapmd {
         std::vector<DeviceEntry> devices_;
         int32_t nextDeviceId_ = 1;
 
-        // Timeline and app-level tracks
-        uapmd_app::TimelineState timeline_;
-        std::vector<std::unique_ptr<uapmd_app::AppTrack>> app_tracks_;
+        // Timeline and timeline tracks
+        uapmd::TimelineState timeline_;
+        std::vector<std::unique_ptr<uapmd::TimelineTrack>> timeline_tracks_;
         int32_t sample_rate_;
         int32_t next_source_node_id_ = 1;
 
@@ -225,8 +225,8 @@ namespace uapmd {
         PluginStateResult savePluginState(int32_t instanceId, const std::string& filepath);
 
         // Timeline access
-        uapmd_app::TimelineState& timeline() { return timeline_; }
-        const uapmd_app::TimelineState& timeline() const { return timeline_; }
+        uapmd::TimelineState& timeline() { return timeline_; }
+        const uapmd::TimelineState& timeline() const { return timeline_; }
 
         // Clip management
         struct ClipAddResult {
@@ -238,7 +238,7 @@ namespace uapmd {
 
         ClipAddResult addClipToTrack(
             int32_t trackIndex,
-            const uapmd_app::TimelinePosition& position,
+            const uapmd::TimelinePosition& position,
             std::unique_ptr<uapmd::AudioFileReader> reader,
             const std::string& filepath = ""
         );
@@ -251,8 +251,8 @@ namespace uapmd {
             const std::vector<uint32_t>& channelIndices
         );
 
-        // App tracks access
-        std::vector<uapmd_app::AppTrack*> getAppTracks();
+        // Timeline tracks access
+        std::vector<uapmd::TimelineTrack*> getTimelineTracks();
 
         // Track synchronization
         void syncAppTracks();

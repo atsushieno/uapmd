@@ -5,13 +5,14 @@
 #include <string>
 #include <unordered_map>
 
-namespace uapmd_app {
+namespace uapmd {
 
     // Anchor origin - whether the anchor point is at the start or end of a clip/track
     enum class AnchorOrigin {
         Start,  // Anchor at the beginning of the clip/track
         End     // Anchor at the end of the clip/track
     };
+
     // Represents a position on the timeline
     struct TimelinePosition {
         int64_t samples{0};     // Primary representation (RT-safe)
@@ -174,6 +175,7 @@ namespace uapmd_app {
         double tempo{120.0};                    // BPM
         int32_t timeSignatureNumerator{4};
         int32_t timeSignatureDenominator{4};
+        int32_t sample_rate{48000};             // Added for convenience
 
         TimelineState() = default;
 
@@ -206,4 +208,4 @@ namespace uapmd_app {
         }
     };
 
-} // namespace uapmd_app
+} // namespace uapmd

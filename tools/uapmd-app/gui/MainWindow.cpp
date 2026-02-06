@@ -1216,7 +1216,7 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
 // Sequence Editor helpers
 void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
     auto& appModel = uapmd::AppModel::instance();
-    auto tracks = appModel.getAppTracks();
+    auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         return;
@@ -1226,12 +1226,12 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
     auto clips = track->clipManager().getAllClips();
 
     // Sort clips by clipId to ensure chronological order (oldest first)
-    std::sort(clips.begin(), clips.end(), [](const uapmd_app::ClipData* a, const uapmd_app::ClipData* b) {
+    std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData* a, const uapmd::ClipData* b) {
         return a->clipId < b->clipId;
     });
 
     std::vector<SequenceEditor::ClipRow> displayClips;
-    std::unordered_map<int32_t, const uapmd_app::ClipData*> clipLookup;
+    std::unordered_map<int32_t, const uapmd::ClipData*> clipLookup;
     clipLookup.reserve(clips.size());
     for (const auto* clip : clips) {
         clipLookup[clip->clipId] = clip;
@@ -1255,7 +1255,7 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
         row.anchorClipId = clip->anchorClipId;
 
         // Format anchor origin
-        row.anchorOrigin = (clip->anchorOrigin == uapmd_app::AnchorOrigin::Start) ? "Start" : "End";
+        row.anchorOrigin = (clip->anchorOrigin == uapmd::AnchorOrigin::Start) ? "Start" : "End";
 
         // Format position display
         double positionSeconds = clip->anchorOffset.toSeconds(appModel.sampleRate());
@@ -1324,7 +1324,7 @@ void MainWindow::addClipToTrack(int32_t trackIndex, const std::string& filepath)
     }
 
     // Add clip at timeline position 0
-    uapmd_app::TimelinePosition position;
+    uapmd::TimelinePosition position;
     position.samples = 0;
     position.beats = 0.0;
 
@@ -1351,7 +1351,7 @@ void MainWindow::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
 
 void MainWindow::clearAllClipsFromTrack(int32_t trackIndex) {
     auto& appModel = uapmd::AppModel::instance();
-    auto tracks = appModel.getAppTracks();
+    auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         return;
@@ -1363,7 +1363,7 @@ void MainWindow::clearAllClipsFromTrack(int32_t trackIndex) {
 
 void MainWindow::updateClip(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position) {
     auto& appModel = uapmd::AppModel::instance();
-    auto tracks = appModel.getAppTracks();
+    auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         return;
@@ -1384,13 +1384,13 @@ void MainWindow::updateClip(int32_t trackIndex, int32_t clipId, int32_t anchorId
     }
 
     // Parse origin string
-    uapmd_app::AnchorOrigin anchorOrigin = uapmd_app::AnchorOrigin::Start;
+    uapmd::AnchorOrigin anchorOrigin = uapmd::AnchorOrigin::Start;
     if (origin == "End") {
-        anchorOrigin = uapmd_app::AnchorOrigin::End;
+        anchorOrigin = uapmd::AnchorOrigin::End;
     }
 
     // Convert to TimelinePosition
-    uapmd_app::TimelinePosition anchorOffset = uapmd_app::TimelinePosition::fromSeconds(offsetSeconds, appModel.sampleRate());
+    uapmd::TimelinePosition anchorOffset = uapmd::TimelinePosition::fromSeconds(offsetSeconds, appModel.sampleRate());
 
     // Update the clip
     tracks[trackIndex]->clipManager().setClipAnchor(clipId, anchorId, anchorOrigin, anchorOffset);
@@ -1399,7 +1399,7 @@ void MainWindow::updateClip(int32_t trackIndex, int32_t clipId, int32_t anchorId
 
 void MainWindow::updateClipName(int32_t trackIndex, int32_t clipId, const std::string& name) {
     auto& appModel = uapmd::AppModel::instance();
-    auto tracks = appModel.getAppTracks();
+    auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         return;
@@ -1411,7 +1411,7 @@ void MainWindow::updateClipName(int32_t trackIndex, int32_t clipId, const std::s
 
 void MainWindow::changeClipFile(int32_t trackIndex, int32_t clipId) {
     auto& appModel = uapmd::AppModel::instance();
-    auto tracks = appModel.getAppTracks();
+    auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         return;
@@ -1457,7 +1457,7 @@ void MainWindow::changeClipFile(int32_t trackIndex, int32_t clipId) {
     int32_t sourceNodeId = clip->sourceNodeInstanceId;
 
     // Create new source node with same instance ID
-    auto sourceNode = std::make_unique<uapmd_app::AppAudioFileSourceNode>(
+    auto sourceNode = std::make_unique<uapmd::AudioFileSourceNode>(
         sourceNodeId,
         std::move(reader),
         static_cast<double>(appModel.sampleRate())
@@ -1485,15 +1485,15 @@ void MainWindow::changeClipFile(int32_t trackIndex, int32_t clipId) {
 
 void MainWindow::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds) {
     auto& appModel = uapmd::AppModel::instance();
-    auto tracks = appModel.getAppTracks();
+    auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         return;
     }
 
     double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
-    uapmd_app::TimelinePosition newOffset = uapmd_app::TimelinePosition::fromSeconds(seconds, static_cast<int32_t>(sr));
-    tracks[trackIndex]->clipManager().setClipAnchor(clipId, -1, uapmd_app::AnchorOrigin::Start, newOffset);
+    uapmd::TimelinePosition newOffset = uapmd::TimelinePosition::fromSeconds(seconds, static_cast<int32_t>(sr));
+    tracks[trackIndex]->clipManager().setClipAnchor(clipId, -1, uapmd::AnchorOrigin::Start, newOffset);
     refreshSequenceEditorForTrack(trackIndex);
 }
 

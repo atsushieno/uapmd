@@ -1,14 +1,14 @@
 #pragma once
 
-#include "AppAudioNode.hpp"
+#include "SourceNode.hpp"
 #include <cstdint>
 
-namespace uapmd_app {
+namespace uapmd {
 
-    // Abstract base class for all source nodes (generate audio, not process)
-    class AppSourceNode : public AppAudioNode {
+    // Abstract base class for all audio source nodes (generate audio, not process)
+    class AudioSourceNode : public SourceNode {
     public:
-        virtual ~AppSourceNode() = default;
+        virtual ~AudioSourceNode() = default;
 
         // Source-specific interface
         virtual void seek(int64_t samplePosition) = 0;
@@ -28,4 +28,4 @@ namespace uapmd_app {
         virtual uint32_t channelCount() const = 0;
     };
 
-} // namespace uapmd_app
+} // namespace uapmd

@@ -65,5 +65,9 @@ target_sources(uapmd-engine PRIVATE
         sequencer/RealtimeSequencer.cpp
         sequencer/SequencerEngine.cpp
         sequencer/SequencerTrack.cpp
+        timeline/AudioFileSourceNode.cpp
+        timeline/DeviceInputSourceNode.cpp
+        timeline/ClipManager.cpp
+        timeline/TimelineTrack.cpp
 )
 

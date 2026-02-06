@@ -8,6 +8,7 @@
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
 #define DEFAULT_SAMPLE_RATE 48000
+#define FIXED_CHANNEL_COUNT 2
 
 std::unique_ptr<uapmd::AppModel> model{};
 
@@ -46,10 +47,10 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     timeline_.isPlaying = false;
     timeline_.loopEnabled = false;
 
-    // Initialize app tracks to wrap existing uapmd tracks
+    // Initialize timeline tracks (independent of SequencerTracks)
     auto& uapmdTracks = sequencer_.engine()->tracks();
-    for (auto* track : uapmdTracks) {
-        app_tracks_.push_back(std::make_unique<uapmd_app::AppTrack>(track, sampleRate));
+    for (size_t i = 0; i < uapmdTracks.size(); ++i) {
+        timeline_tracks_.push_back(std::make_unique<uapmd::TimelineTrack>(FIXED_CHANNEL_COUNT, static_cast<double>(sampleRate)));
     }
 
     // Register audio preprocessing callback for timeline-based source processing
@@ -642,13 +643,13 @@ uapmd::AppModel::PluginStateResult uapmd::AppModel::savePluginState(int32_t inst
 
 uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
     int32_t trackIndex,
-    const uapmd_app::TimelinePosition& position,
+    const uapmd::TimelinePosition& position,
     std::unique_ptr<uapmd::AudioFileReader> reader,
     const std::string& filepath
 ) {
     ClipAddResult result;
 
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(app_tracks_.size())) {
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
         result.error = "Invalid track index";
         return result;
     }
@@ -661,7 +662,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
     try {
         // Create source node for this audio file
         int32_t sourceNodeId = next_source_node_id_++;
-        auto sourceNode = std::make_unique<uapmd_app::AppAudioFileSourceNode>(
+        auto sourceNode = std::make_unique<uapmd::AudioFileSourceNode>(
             sourceNodeId,
             std::move(reader),
             static_cast<double>(sample_rate_)
@@ -671,7 +672,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
         int64_t durationSamples = sourceNode->totalLength();
 
         // Create clip data
-        uapmd_app::ClipData clip;
+        uapmd::ClipData clip;
         clip.position = position;
         clip.durationSamples = durationSamples;
         clip.sourceNodeInstanceId = sourceNodeId;
@@ -680,7 +681,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
         clip.filepath = filepath;
 
         // Add clip to track
-        int32_t clipId = app_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
+        int32_t clipId = timeline_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
 
         if (clipId >= 0) {
             result.success = true;
@@ -698,38 +699,38 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
 }
 
 bool uapmd::AppModel::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(app_tracks_.size()))
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size()))
         return false;
 
-    return app_tracks_[trackIndex]->removeClip(clipId);
+    return timeline_tracks_[trackIndex]->removeClip(clipId);
 }
 
 int32_t uapmd::AppModel::addDeviceInputToTrack(
     int32_t trackIndex,
     const std::vector<uint32_t>& channelIndices
 ) {
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(app_tracks_.size()))
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size()))
         return -1;
 
     int32_t sourceNodeId = next_source_node_id_++;
     uint32_t channelCount = channelIndices.empty() ? 2 : static_cast<uint32_t>(channelIndices.size());
 
-    auto sourceNode = std::make_unique<uapmd_app::AppDeviceInputSourceNode>(
+    auto sourceNode = std::make_unique<uapmd::DeviceInputSourceNode>(
         sourceNodeId,
         channelCount,
         channelIndices
     );
 
-    if (app_tracks_[trackIndex]->addDeviceInputSource(std::move(sourceNode)))
+    if (timeline_tracks_[trackIndex]->addDeviceInputSource(std::move(sourceNode)))
         return sourceNodeId;
 
     return -1;
 }
 
-std::vector<uapmd_app::AppTrack*> uapmd::AppModel::getAppTracks() {
-    std::vector<uapmd_app::AppTrack*> tracks;
-    tracks.reserve(app_tracks_.size());
-    for (auto& track : app_tracks_) {
+std::vector<uapmd::TimelineTrack*> uapmd::AppModel::getTimelineTracks() {
+    std::vector<uapmd::TimelineTrack*> tracks;
+    tracks.reserve(timeline_tracks_.size());
+    for (auto& track : timeline_tracks_) {
         tracks.push_back(track.get());
     }
     return tracks;
@@ -738,20 +739,15 @@ std::vector<uapmd_app::AppTrack*> uapmd::AppModel::getAppTracks() {
 void uapmd::AppModel::syncAppTracks() {
     auto& uapmdTracks = sequencer_.engine()->tracks();
 
-    // Remove app tracks whose uapmd track no longer exists
-    app_tracks_.erase(
-        std::remove_if(app_tracks_.begin(), app_tracks_.end(),
-            [&](const auto& appTrack) {
-                return std::find(uapmdTracks.begin(), uapmdTracks.end(),
-                                appTrack->uapmdTrack()) == uapmdTracks.end();
-            }),
-        app_tracks_.end()
-    );
+    // Remove timeline tracks if we have more than uapmd tracks
+    while (timeline_tracks_.size() > uapmdTracks.size()) {
+        timeline_tracks_.pop_back();
+    }
 
-    // Add new app tracks for any uapmd tracks we don't have yet
-    for (size_t i = app_tracks_.size(); i < uapmdTracks.size(); ++i) {
-        app_tracks_.push_back(
-            std::make_unique<uapmd_app::AppTrack>(uapmdTracks[i], sample_rate_)
+    // Add new timeline tracks to match uapmd tracks count
+    while (timeline_tracks_.size() < uapmdTracks.size()) {
+        timeline_tracks_.push_back(
+            std::make_unique<uapmd::TimelineTrack>(FIXED_CHANNEL_COUNT, static_cast<double>(sample_rate_))
         );
     }
 }
@@ -795,14 +791,27 @@ void uapmd::AppModel::processAppTracksAudio(AudioProcessContext& process) {
     // Get the sequence process context from engine
     auto& sequenceData = sequencer_.engine()->data();
 
-    // Process each app track with timeline
-    for (size_t i = 0; i < app_tracks_.size() && i < sequenceData.tracks.size(); ++i) {
-        app_tracks_[i]->processAudioWithTimeline(
+    // Process each timeline track
+    for (size_t i = 0; i < timeline_tracks_.size() && i < sequenceData.tracks.size(); ++i) {
+        auto* trackContext = sequenceData.tracks[i];
+
+        // Get track input buffers from context
+        const uint32_t numChannels = FIXED_CHANNEL_COUNT;
+        float* trackInputBuffers[FIXED_CHANNEL_COUNT] = {nullptr, nullptr};
+        for (uint32_t ch = 0; ch < numChannels; ++ch) {
+            if (trackContext->audioInBusCount() > 0 && ch < trackContext->inputChannelCount(0)) {
+                trackInputBuffers[ch] = trackContext->getFloatInBuffer(0, ch);
+            }
+        }
+
+        // Process timeline - writes directly to track input buffers
+        timeline_tracks_[i]->processAudio(
             timeline_,
-            deviceInputBuffers,
-            deviceChannelCount,
+            trackInputBuffers,  // Output goes to track input buffers
+            numChannels,
             process.frameCount(),
-            sequenceData.tracks[i]  // Pass track context
+            deviceInputBuffers,
+            deviceChannelCount
         );
     }
 }

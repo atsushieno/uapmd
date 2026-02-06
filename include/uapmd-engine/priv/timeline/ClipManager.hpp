@@ -5,14 +5,14 @@
 #include <vector>
 #include <mutex>
 
-namespace uapmd_app {
+namespace uapmd {
 
     // Manages clips for a single track
     // Thread-safe for concurrent UI and RT thread access
-    class TrackClipManager {
+    class ClipManager {
     public:
-        TrackClipManager() = default;
-        ~TrackClipManager() = default;
+        ClipManager() = default;
+        ~ClipManager() = default;
 
         // Clip CRUD operations (UI thread)
         int32_t addClip(const ClipData& clip);
@@ -50,4 +50,4 @@ namespace uapmd_app {
         int32_t generateClipId();
     };
 
-} // namespace uapmd_app
+} // namespace uapmd

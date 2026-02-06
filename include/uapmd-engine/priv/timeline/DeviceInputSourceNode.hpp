@@ -1,32 +1,32 @@
 #pragma once
 
-#include "AppSourceNode.hpp"
+#include "AudioSourceNode.hpp"
 #include <vector>
 #include <atomic>
 
-namespace uapmd_app {
+namespace uapmd {
 
-    // App-level device input source node
+    // Device input source node
     // Captures device input (microphone/line-in) and makes it available as a source
-    class AppDeviceInputSourceNode : public AppSourceNode {
+    class DeviceInputSourceNode : public AudioSourceNode {
     public:
-        AppDeviceInputSourceNode(
+        DeviceInputSourceNode(
             int32_t instanceId,
             uint32_t channelCount,
             const std::vector<uint32_t>& inputChannelIndices = {}
         );
 
-        virtual ~AppDeviceInputSourceNode() = default;
+        virtual ~DeviceInputSourceNode() = default;
 
-        // AppAudioNode interface
+        // SourceNode interface
         int32_t instanceId() const override { return instance_id_; }
-        AppNodeType nodeType() const override { return AppNodeType::DeviceInput; }
+        SourceNodeType nodeType() const override { return SourceNodeType::DeviceInput; }
         bool bypassed() const override { return bypassed_; }
         void bypassed(bool value) override { bypassed_ = value; }
         std::vector<uint8_t> saveState() override;
         void loadState(const std::vector<uint8_t>& state) override;
 
-        // AppSourceNode interface
+        // AudioSourceNode interface
         void seek(int64_t samplePosition) override {} // No-op for live input
         int64_t currentPosition() const override { return 0; }
         int64_t totalLength() const override { return INT64_MAX; }
@@ -54,4 +54,4 @@ namespace uapmd_app {
         uint32_t device_channel_count_{0};
     };
 
-} // namespace uapmd_app
+} // namespace uapmd
