@@ -15,7 +15,8 @@ namespace uapmd_app {
     public:
         AppAudioFileSourceNode(
             int32_t instanceId,
-            std::unique_ptr<uapmd::AudioFileReader> reader
+            std::unique_ptr<uapmd::AudioFileReader> reader,
+            double targetSampleRate
         );
 
         virtual ~AppAudioFileSourceNode() = default;
@@ -51,10 +52,15 @@ namespace uapmd_app {
         std::unique_ptr<uapmd::AudioFileReader> reader_;
         std::vector<std::vector<float>> audio_buffer_;  // Per-channel planar buffers
         uint32_t channel_count_{0};
-        int64_t num_frames_{0};
-        double sample_rate_{0.0};
+        int64_t num_frames_{0};  // Number of frames at source sample rate
+        double sample_rate_{0.0};  // Source file sample rate
+        double target_sample_rate_{0.0};  // Target playback sample rate
 
-        std::mutex buffer_mutex_;  // Protects audio_buffer_ during loading
+        // Resampling state
+        std::atomic<double> source_position_{0.0};  // Current fractional position in source buffer
+
+        // Realtime-safe loading flag: true when buffer is ready for reading
+        std::atomic<bool> buffer_ready_{false};
     };
 
 } // namespace uapmd_app

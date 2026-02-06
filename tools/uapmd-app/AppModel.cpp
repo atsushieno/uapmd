@@ -663,7 +663,8 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
         int32_t sourceNodeId = next_source_node_id_++;
         auto sourceNode = std::make_unique<uapmd_app::AppAudioFileSourceNode>(
             sourceNodeId,
-            std::move(reader)
+            std::move(reader),
+            static_cast<double>(sample_rate_)
         );
 
         // Get the duration of the audio file

@@ -1459,7 +1459,8 @@ void MainWindow::changeClipFile(int32_t trackIndex, int32_t clipId) {
     // Create new source node with same instance ID
     auto sourceNode = std::make_unique<uapmd_app::AppAudioFileSourceNode>(
         sourceNodeId,
-        std::move(reader)
+        std::move(reader),
+        static_cast<double>(appModel.sampleRate())
     );
 
     // Get the duration from the new source node
