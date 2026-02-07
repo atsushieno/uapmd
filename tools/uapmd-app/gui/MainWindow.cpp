@@ -5,6 +5,7 @@
 #include <format>
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <optional>
 #include <ranges>
 #include <unordered_map>
@@ -1423,7 +1424,13 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
                 ? clip->filepath.substr(lastSlash + 1)
                 : clip->filepath;
         }
-        row.mimeType = "";
+
+        // Set MIME type based on clip type
+        if (clip->clipType == uapmd::ClipType::Midi) {
+            row.mimeType = "audio/midi";
+        } else {
+            row.mimeType = "";  // Audio clip
+        }
         auto absolutePosition = clip->getAbsolutePosition(clipLookup);
         double absoluteStartSeconds = static_cast<double>(absolutePosition.samples) / sampleRate;
         double durationSecondsExact = static_cast<double>(clip->durationSamples) / sampleRate;
@@ -1446,9 +1453,11 @@ void MainWindow::addClipToTrack(int32_t trackIndex, const std::string& filepath)
     std::string selectedFile = filepath;
     if (selectedFile.empty()) {
         auto selection = pfd::open_file(
-            "Select Audio File",
+            "Select Audio or MIDI File",
             ".",
-            { "Audio Files", "*.wav *.flac *.ogg",
+            { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf",
+              "Audio Files", "*.wav *.flac *.ogg",
+              "MIDI Files", "*.mid *.midi *.smf",
               "WAV Files", "*.wav",
               "FLAC Files", "*.flac",
               "OGG Files", "*.ogg",
@@ -1461,6 +1470,33 @@ void MainWindow::addClipToTrack(int32_t trackIndex, const std::string& filepath)
         selectedFile = selection.result()[0];
     }
 
+    // Check if it's a MIDI file
+    std::filesystem::path path(selectedFile);
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
+        // MIDI file - pass directly to AppModel (no reader needed)
+        uapmd::TimelinePosition position;
+        position.samples = 0;
+        position.legacy_beats = 0.0;
+
+        auto& appModel = uapmd::AppModel::instance();
+        auto result = appModel.addClipToTrack(trackIndex, position, nullptr, selectedFile);
+
+        if (!result.success) {
+            pfd::message("Add MIDI Clip Failed",
+                        "Could not add MIDI clip to track: " + result.error,
+                        pfd::choice::ok,
+                        pfd::icon::error);
+            return;
+        }
+
+        refreshSequenceEditorForTrack(trackIndex);
+        return;
+    }
+
+    // Audio file - create reader
     auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
     if (!reader) {
         pfd::message("Load Failed",

@@ -19,6 +19,17 @@ namespace uapmd {
         return clip_manager_.addClip(clip);
     }
 
+    int32_t TimelineTrack::addClip(const ClipData& clip, std::unique_ptr<MidiSourceNode> sourceNode) {
+        if (!sourceNode)
+            return -1;
+
+        // Add the source node to our collection
+        source_nodes_.push_back(std::move(sourceNode));
+
+        // Add the clip to the clip manager
+        return clip_manager_.addClip(clip);
+    }
+
     bool TimelineTrack::removeClip(int32_t clipId) {
         // Get the clip to find its source node
         auto* clip = clip_manager_.getClip(clipId);
@@ -33,7 +44,7 @@ namespace uapmd {
 
         // Remove the associated source node
         auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [sourceNodeId](const std::unique_ptr<AudioSourceNode>& node) {
+            [sourceNodeId](const std::unique_ptr<SourceNode>& node) {
                 return node->instanceId() == sourceNodeId;
             });
 
@@ -58,7 +69,7 @@ namespace uapmd {
 
         // Find and replace the source node
         auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [oldSourceNodeId](const std::unique_ptr<AudioSourceNode>& node) {
+            [oldSourceNodeId](const std::unique_ptr<SourceNode>& node) {
                 return node->instanceId() == oldSourceNodeId;
             });
 
@@ -86,7 +97,7 @@ namespace uapmd {
 
     bool TimelineTrack::removeSource(int32_t sourceId) {
         auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [sourceId](const std::unique_ptr<AudioSourceNode>& node) {
+            [sourceId](const std::unique_ptr<SourceNode>& node) {
                 return node->instanceId() == sourceId;
             });
 
@@ -118,9 +129,9 @@ namespace uapmd {
         }
     }
 
-    AudioSourceNode* TimelineTrack::findSourceNode(int32_t instanceId) {
+    SourceNode* TimelineTrack::findSourceNode(int32_t instanceId) {
         auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [instanceId](const std::unique_ptr<AudioSourceNode>& node) {
+            [instanceId](const std::unique_ptr<SourceNode>& node) {
                 return node->instanceId() == instanceId;
             });
 
@@ -156,14 +167,21 @@ namespace uapmd {
         // Step 2: Query active clips at current timeline position
         auto activeClips = clip_manager_.getActiveClipsAt(timeline.playheadPosition);
 
-        // Step 3: Process source nodes for each active clip
+        // Step 3: Process audio source nodes for each active clip
         for (auto* clip : activeClips) {
+            if (clip->clipType != ClipType::Audio)
+                continue;  // Skip MIDI clips in this loop
+
             if (clip->muted)
                 continue;
 
             // Find the source node for this clip
             auto* sourceNode = findSourceNode(clip->sourceNodeInstanceId);
-            if (!sourceNode)
+            if (!sourceNode || sourceNode->nodeType() != SourceNodeType::AudioFileSource)
+                continue;
+
+            auto* audioSourceNode = dynamic_cast<AudioSourceNode*>(sourceNode);
+            if (!audioSourceNode)
                 continue;
 
             // Calculate position within the source file using anchor-aware calculation
@@ -172,10 +190,10 @@ namespace uapmd {
                 continue;
 
             // Seek source node to correct position
-            sourceNode->seek(sourcePosition);
+            audioSourceNode->seek(sourcePosition);
 
             // Set playing state
-            sourceNode->setPlaying(timeline.isPlaying);
+            audioSourceNode->setPlaying(timeline.isPlaying);
 
             // Create temporary buffers for this source
             std::vector<std::vector<float>> tempBuffers(numChannels);
@@ -188,7 +206,7 @@ namespace uapmd {
             }
 
             // Process the source node
-            sourceNode->processAudio(tempBufferPtrs.data(), numChannels, frameCount);
+            audioSourceNode->processAudio(tempBufferPtrs.data(), numChannels, frameCount);
 
             // Mix into our mixed source buffer with gain applied
             for (uint32_t ch = 0; ch < numChannels; ++ch) {
@@ -196,6 +214,41 @@ namespace uapmd {
                     mixed_source_buffers_[ch][frame] += tempBuffers[ch][frame] * static_cast<float>(clip->gain);
                 }
             }
+        }
+
+        // Step 3.5: Process MIDI clips (NEW)
+        for (auto* clip : activeClips) {
+            if (clip->clipType != ClipType::Midi)
+                continue;  // Skip audio clips in this loop
+
+            if (clip->muted)
+                continue;
+
+            // Find the MIDI source node for this clip
+            auto* sourceNode = findSourceNode(clip->sourceNodeInstanceId);
+            if (!sourceNode || sourceNode->nodeType() != SourceNodeType::MidiClipSource)
+                continue;
+
+            auto* midiNode = dynamic_cast<MidiSourceNode*>(sourceNode);
+            if (!midiNode)
+                continue;
+
+            // Calculate position within the source using anchor-aware calculation
+            int64_t sourcePosition = clip->getSourcePosition(timeline.playheadPosition, clipMap);
+            if (sourcePosition < 0)
+                continue;
+
+            // Seek MIDI source to correct position
+            midiNode->seek(sourcePosition);
+            midiNode->setPlaying(timeline.isPlaying);
+
+            // Generate MIDI events into AudioProcessContext event_in
+            midiNode->processEvents(
+                process.eventIn(),
+                frameCount,
+                static_cast<int32_t>(sample_rate_),
+                timeline.tempo
+            );
         }
 
         // Step 4: Process device input sources

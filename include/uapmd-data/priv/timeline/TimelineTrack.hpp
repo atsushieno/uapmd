@@ -4,9 +4,11 @@
 #include <vector>
 #include "TimelineTypes.hpp"
 #include "ClipManager.hpp"
+#include "SourceNode.hpp"
 #include "AudioSourceNode.hpp"
 #include "AudioFileSourceNode.hpp"
 #include "DeviceInputSourceNode.hpp"
+#include "MidiSourceNode.hpp"
 
 namespace remidy { class AudioProcessContext; }
 
@@ -25,6 +27,7 @@ namespace uapmd {
         const ClipManager& clipManager() const { return clip_manager_; }
 
         int32_t addClip(const ClipData& clip, std::unique_ptr<AudioFileSourceNode> sourceNode);
+        int32_t addClip(const ClipData& clip, std::unique_ptr<MidiSourceNode> sourceNode);  // NEW
         bool removeClip(int32_t clipId);
         bool replaceClipSourceNode(int32_t clipId, std::unique_ptr<AudioFileSourceNode> newSourceNode);
 
@@ -48,7 +51,7 @@ namespace uapmd {
         double sample_rate_;
 
         ClipManager clip_manager_;
-        std::vector<std::unique_ptr<AudioSourceNode>> source_nodes_;
+        std::vector<std::unique_ptr<SourceNode>> source_nodes_;  // Changed to SourceNode for polymorphism
 
         // Temporary buffers for mixing sources
         std::vector<std::vector<float>> mixed_source_buffers_;  // [channel][samples]
@@ -58,7 +61,7 @@ namespace uapmd {
         void ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount);
 
         // Helper to find source node by instance ID
-        AudioSourceNode* findSourceNode(int32_t instanceId);
+        SourceNode* findSourceNode(int32_t instanceId);
     };
 
 } // namespace uapmd

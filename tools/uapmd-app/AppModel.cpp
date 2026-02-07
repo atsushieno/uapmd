@@ -1,9 +1,13 @@
 
 #include "uapmd/uapmd.hpp"
 #include "AppModel.hpp"
+#include <uapmd-data/priv/project/Smf2ClipReader.hpp>
+#include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <exception>
+#include <algorithm>
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -665,6 +669,18 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
         return result;
     }
 
+    // Detect MIDI files by extension and route to addMidiClipToTrack
+    if (!filepath.empty()) {
+        std::filesystem::path path(filepath);
+        std::string ext = path.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+        if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
+            // MIDI file - route to MIDI clip handler
+            return addMidiClipToTrack(trackIndex, position, filepath);
+        }
+    }
+
     if (!reader) {
         result.error = "Invalid audio file reader";
         return result;
@@ -704,6 +720,71 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
 
     } catch (const std::exception& ex) {
         result.error = std::format("Exception adding clip: {}", ex.what());
+    }
+
+    return result;
+}
+
+uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
+    int32_t trackIndex,
+    const uapmd::TimelinePosition& position,
+    const std::string& filepath
+) {
+    ClipAddResult result;
+
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
+        result.error = "Invalid track index";
+        return result;
+    }
+
+    try {
+        // Convert SMF to UMP using Smf2ClipReader
+        auto clipInfo = uapmd::Smf2ClipReader::readAnyFormat(filepath);
+        if (!clipInfo.success) {
+            result.error = clipInfo.error;
+            return result;
+        }
+
+        // Create MIDI source node
+        int32_t sourceNodeId = next_source_node_id_++;
+        auto sourceNode = std::make_unique<uapmd::MidiClipSourceNode>(
+            sourceNodeId,
+            std::move(clipInfo.ump_data),
+            std::move(clipInfo.ump_tick_timestamps),
+            clipInfo.tick_resolution,
+            clipInfo.tempo,
+            static_cast<double>(sample_rate_)
+        );
+
+        // Get duration from source node
+        int64_t durationSamples = sourceNode->totalLength();
+
+        // Create MIDI clip data
+        uapmd::ClipData clip;
+        clip.clipType = uapmd::ClipType::Midi;
+        clip.position = position;
+        clip.durationSamples = durationSamples;
+        clip.sourceNodeInstanceId = sourceNodeId;
+        clip.filepath = filepath;
+        clip.tickResolution = clipInfo.tick_resolution;
+        clip.clipTempo = clipInfo.tempo;
+        clip.gain = 1.0;
+        clip.muted = false;
+        clip.name = std::filesystem::path(filepath).stem().string();
+
+        // Add clip to track
+        int32_t clipId = timeline_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
+
+        if (clipId >= 0) {
+            result.success = true;
+            result.clipId = clipId;
+            result.sourceNodeId = sourceNodeId;
+        } else {
+            result.error = "Failed to add MIDI clip to track";
+        }
+
+    } catch (const std::exception& ex) {
+        result.error = std::format("Failed to load MIDI file: {}", ex.what());
     }
 
     return result;

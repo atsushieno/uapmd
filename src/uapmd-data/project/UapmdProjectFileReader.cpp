@@ -110,6 +110,20 @@ namespace uapmd {
             clip->mimeType(std::string(mime_view));
         }
 
+        // Parse clip type
+        if (clipObj.hasObjectMember("clip_type")) {
+            auto type_view = clipObj["clip_type"].getString();
+            clip->clipType(std::string(type_view));
+        }
+
+        // Parse MIDI-specific metadata
+        if (clipObj.hasObjectMember("tick_resolution")) {
+            clip->tickResolution(clipObj["tick_resolution"].getWithDefault<uint32_t>(480));
+        }
+        if (clipObj.hasObjectMember("tempo")) {
+            clip->tempo(clipObj["tempo"].getWithDefault<double>(120.0));
+        }
+
         return clip;
     }
 

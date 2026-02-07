@@ -9,6 +9,7 @@ namespace uapmd {
     enum class SourceNodeType {
         AudioFileSource, // Audio file clip playback
         DeviceInput,     // Device input capture
+        MidiClipSource,  // MIDI file clip playback
         Generator        // Future: synth/oscillator
     };
 

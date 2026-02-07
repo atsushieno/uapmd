@@ -11,6 +11,9 @@ namespace uapmd {
         UapmdTimelinePosition position_{};
         std::filesystem::path file_{};
         std::string mime_type_{};
+        std::string clip_type_{"audio"};  // Default to audio for backward compatibility
+        uint32_t tick_resolution_{480};
+        double tempo_{120.0};
 
     public:
         UapmdProjectClipDataImpl() = default;
@@ -22,6 +25,15 @@ namespace uapmd {
         void position(UapmdTimelinePosition pos) override { position_ = pos; }
         void file(const std::filesystem::path& f) override { file_ = f; }
         void mimeType(const std::string& mime) override { mime_type_ = mime; }
+
+        std::string clipType() override { return clip_type_; }
+        void clipType(const std::string& type) override { clip_type_ = type; }
+
+        uint32_t tickResolution() override { return tick_resolution_; }
+        void tickResolution(uint32_t ticks) override { tick_resolution_ = ticks; }
+
+        double tempo() override { return tempo_; }
+        void tempo(double bpm) override { tempo_ = bpm; }
     };
 
     std::unique_ptr<UapmdProjectClipData> UapmdProjectClipData::create() {

@@ -87,6 +87,12 @@ namespace uapmd {
         }
     };
 
+    // Clip type discrimination
+    enum class ClipType {
+        Audio,  // filepath points to audio file (WAV/FLAC/OGG)
+        Midi    // filepath points to MIDI file (SMF/SMF2)
+    };
+
     // Represents a single clip on a track
     struct ClipData {
         int32_t clipId{-1};
@@ -99,6 +105,11 @@ namespace uapmd {
         bool muted{false};
         std::string name;                   // User-editable clip name
         std::string filepath;               // Source audio file path
+
+        // Clip type and MIDI-specific fields
+        ClipType clipType{ClipType::Audio};
+        uint32_t tickResolution{480};       // Ticks per quarter note from SMF (only valid for MIDI clips)
+        double clipTempo{120.0};            // Original tempo for time-stretching (only valid for MIDI clips)
 
         // Anchor support (NEW)
         int32_t anchorClipId{-1};          // -1 = track anchor (absolute position), >= 0 = clip ID

@@ -58,6 +58,17 @@ namespace uapmd {
         if (!mime.empty())
             obj.addMember("mime_type", mime);
 
+        // Serialize clip type
+        auto clipType = clip->clipType();
+        if (!clipType.empty())
+            obj.addMember("clip_type", clipType);
+
+        // Serialize MIDI-specific metadata (only for MIDI clips)
+        if (clipType == "midi") {
+            obj.addMember("tick_resolution", static_cast<int64_t>(clip->tickResolution()));
+            obj.addMember("tempo", clip->tempo());
+        }
+
         return obj;
     }
 

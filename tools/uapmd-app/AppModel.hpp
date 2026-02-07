@@ -259,6 +259,12 @@ namespace uapmd {
             const std::string& filepath = ""
         );
 
+        ClipAddResult addMidiClipToTrack(
+            int32_t trackIndex,
+            const uapmd::TimelinePosition& position,
+            const std::string& filepath
+        );
+
         bool removeClipFromTrack(int32_t trackIndex, int32_t clipId);
 
         // Device input routing

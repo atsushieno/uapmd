@@ -16,8 +16,11 @@ target_sources(uapmd-data PRIVATE
         project/UapmdProjectFileReader.cpp
         project/UapmdProjectFileWriter.cpp
         project/UapmdProjectFile.cpp
+        project/SmfConverter.cpp
+        project/Smf2ClipReader.cpp
         timeline/AudioFileSourceNode.cpp
         timeline/DeviceInputSourceNode.cpp
+        timeline/MidiClipSourceNode.cpp
         timeline/ClipManager.cpp
         timeline/TimelineTrack.cpp
 )

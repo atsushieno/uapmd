@@ -43,6 +43,17 @@ namespace uapmd {
         virtual void file(const std::filesystem::path& f) = 0;
         virtual void mimeType(const std::string& mime) = 0;
 
+        // Clip type ("audio" or "midi")
+        virtual std::string clipType() = 0;
+        virtual void clipType(const std::string& type) = 0;
+
+        // MIDI-specific metadata (only valid when clipType == "midi")
+        virtual uint32_t tickResolution() = 0;
+        virtual void tickResolution(uint32_t ticks) = 0;
+
+        virtual double tempo() = 0;
+        virtual void tempo(double bpm) = 0;
+
         static std::unique_ptr<UapmdProjectClipData> create();
     };
 
