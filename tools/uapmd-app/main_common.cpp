@@ -23,13 +23,6 @@
     #include <GLES3/gl3.h>
     #include <GLES3/gl3ext.h>
     #include <SDL3/SDL_opengl.h>
-    #include <EGL/egl.h>
-
-    // Android-specific GL function via EGL
-    static void glDrawBuffer_(GLenum target) {
-        static auto func = eglGetProcAddress("glDrawBuffer");
-        ((void(*)(GLenum)) func)(GL_BACK);
-    }
 #elif defined(__APPLE__)
     #include <OpenGL/gl3.h>
 #elif defined(_WIN32)
@@ -245,7 +238,7 @@ int runMainLoop(int argc, char** argv) {
         #endif
 #endif
 #if ANDROID
-        glDrawBuffer_(GL_BACK);
+        // glDrawBuffer does not exist in GLES3; default framebuffer renders to back buffer automatically
         glReadBuffer(GL_BACK);
 #else
 #ifdef GL_BACK
@@ -297,7 +290,7 @@ int runMainLoop(int argc, char** argv) {
         #endif
 #endif
 #if ANDROID
-        glDrawBuffer_(GL_BACK);
+        // glDrawBuffer does not exist in GLES3; default framebuffer renders to back buffer automatically
         glReadBuffer(GL_BACK);
 #else
 #ifdef GL_BACK
