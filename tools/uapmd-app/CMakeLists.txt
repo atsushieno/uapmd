@@ -1,9 +1,11 @@
 if (ANDROID)
-add_library(uapmd-app SHARED)
+# SDL3 on Android expects the library to be named "main"
+add_library(main SHARED)
+set(UAPMD_APP_TARGETS main)
 else ()
 add_executable(uapmd-app)
-endif ()
 set(UAPMD_APP_TARGETS uapmd-app)
+endif ()
 
 if(APPLE)
     add_executable(uapmd-app-bundle MACOSX_BUNDLE)
@@ -335,35 +337,23 @@ endif()
 
 # Android-specific configuration
 if(ANDROID)
-    # Add android_native_app_glue for NativeActivity support
-    add_library(android_native_app_glue STATIC
-        ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
-    )
-    target_include_directories(android_native_app_glue PUBLIC
-        ${ANDROID_NDK}/sources/android/native_app_glue
-    )
-
-    # Force export of ANativeActivity_onCreate symbol (required for NativeActivity)
-    set(CMAKE_SHARED_LINKER_FLAGS
-        "${CMAKE_SHARED_LINKER_FLAGS} -u ANativeActivity_onCreate"
-    )
-
     # Link Android system libraries
-    target_link_libraries(uapmd-app PRIVATE
-        android_native_app_glue
-        android  # Android native APIs
-        log      # Android logging
-    )
+    foreach(app_target IN LISTS UAPMD_APP_TARGETS)
+        target_link_libraries(${app_target} PRIVATE
+            android  # Android native APIs
+            log      # Android logging
+        )
 
-    # Android compile definitions
-    target_compile_definitions(uapmd-app PRIVATE
-        IMGUI_IMPL_OPENGL_ES3  # Use OpenGL ES 3.0 instead of desktop GL
-        __ANDROID__=1          # Android platform marker
-    )
+        # Android compile definitions
+        target_compile_definitions(${app_target} PRIVATE
+            IMGUI_IMPL_OPENGL_ES3  # Use OpenGL ES 3.0 instead of desktop GL
+            __ANDROID__=1          # Android platform marker
+        )
 
-    # Link SDL3 from prefab (provided by SDL3 AAR dependency)
-    find_package(SDL3 REQUIRED CONFIG)
-    target_link_libraries(uapmd-app PRIVATE SDL3::SDL3)
+        # Link SDL3 from prefab (provided by SDL3 AAR dependency)
+        find_package(SDL3 REQUIRED CONFIG)
+        target_link_libraries(${app_target} PRIVATE SDL3::SDL3)
+    endforeach()
 
-    message(STATUS "Android build configured with NativeActivity support")
+    message(STATUS "Android build configured with SDL3 support")
 endif()

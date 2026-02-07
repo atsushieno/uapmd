@@ -266,10 +266,14 @@ bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, co
 }
 
 bool uapmd::MiniAudioIODevice::initializeDuplexDevice(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate) {
+#if ANDROID
+    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
+#else
     ma_device_config deviceConfig = ma_device_config_init(ma_device_type_duplex);
     deviceConfig.capture.pDeviceID = inputDeviceId;
-    deviceConfig.playback.pDeviceID = outputDeviceId;
     deviceConfig.capture.format = ma_format_f32;
+#endif
+    deviceConfig.playback.pDeviceID = outputDeviceId;
     deviceConfig.playback.format = ma_format_f32;
     deviceConfig.sampleRate = sampleRate; // 0 = native sample rate
     deviceConfig.dataCallback = data_callback;

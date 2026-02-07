@@ -24,20 +24,12 @@
     #include <GLES3/gl3ext.h>
     #include <SDL3/SDL_opengl.h>
     #include <EGL/egl.h>
-    #include <android_native_app_glue.h>
-
-    // Forward declaration of Android global app pointer (defined in android_main.cpp)
-    extern struct android_app* g_AndroidApp;
 
     // Android-specific GL function via EGL
     static void glDrawBuffer_(GLenum target) {
         static auto func = eglGetProcAddress("glDrawBuffer");
         ((void(*)(GLenum)) func)(GL_BACK);
     }
-
-    // Forward declarations of JNI helpers (defined in android_main.cpp)
-    extern int showSoftKeyboardInput();
-    extern int pollUnicodeChars();
 #elif defined(__APPLE__)
     #include <OpenGL/gl3.h>
 #elif defined(_WIN32)
@@ -225,39 +217,13 @@ int runMainLoop(int argc, char** argv) {
 
     while (!done && mainWindow.isOpen()) {
         // Process events and forward to ImGui
+        // SDL3 handles all platform events including Android lifecycle
         imguiPlatformBackend->processEvents();
 
         // Check if window should close
         if (windowingBackend->shouldClose(window)) {
             done = true;
         }
-
-#if defined(__ANDROID__)
-        // Android: Process app lifecycle events
-        if (g_AndroidApp) {
-            int events;
-            struct android_poll_source* source;
-            while (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {
-                if (source != nullptr) {
-                    source->process(g_AndroidApp, source);
-                }
-                if (g_AndroidApp->destroyRequested != 0) {
-                    done = true;
-                    break;
-                }
-            }
-        }
-
-        // Handle soft keyboard for text input
-        static bool wantTextInputLast = false;
-        if (io.WantTextInput && !wantTextInputLast) {
-            showSoftKeyboardInput();
-        }
-        wantTextInputLast = io.WantTextInput;
-
-        // Poll Unicode characters from Java (via JNI)
-        pollUnicodeChars();
-#endif
 
         // Process queued tasks from remidy
         eventLoopPtr->processQueuedTasks();

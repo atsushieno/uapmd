@@ -107,7 +107,7 @@ choc::value::Value toJson(remidy::PluginCatalog* catalog) {
 }
 
 void remidy::PluginCatalog::save(std::filesystem::path& path) {
-    if (!std::filesystem::exists(path.parent_path()))
+    if (!path.empty() && !std::filesystem::exists(path.parent_path()))
         std::filesystem::create_directories(path.parent_path());
 
     auto j = toJson(this);
