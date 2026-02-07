@@ -136,6 +136,7 @@ if(NOT TARGET imgui)
     # Platform-specific OpenGL and windowing
     if(ANDROID)
         target_link_libraries(imgui PUBLIC GLESv3 EGL)
+        target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_ES3)
     elseif(APPLE)
         find_package(OpenGL REQUIRED)
         target_link_libraries(imgui PUBLIC OpenGL::GL)
@@ -258,8 +259,9 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     endif()
 endforeach()
 
-set(UAPMD_APP_SOURCE_FILES
-        main.cpp
+# Common source files shared by desktop and Android
+set(UAPMD_APP_COMMON_SOURCE_FILES
+        main_common.cpp
         AppModel.cpp
         UapmdJSRuntime.cpp
         gui/MainWindow.cpp
@@ -276,6 +278,21 @@ set(UAPMD_APP_SOURCE_FILES
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
 )
+
+# Platform-specific entrypoint files
+if(ANDROID)
+    # Android: Use android_main.cpp
+    set(UAPMD_APP_SOURCE_FILES
+        ${UAPMD_APP_COMMON_SOURCE_FILES}
+        android_main.cpp
+    )
+else()
+    # Desktop: Use main.cpp
+    set(UAPMD_APP_SOURCE_FILES
+        ${UAPMD_APP_COMMON_SOURCE_FILES}
+        main.cpp
+    )
+endif()
 
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     target_sources(${app_target} PRIVATE ${UAPMD_APP_SOURCE_FILES})
@@ -306,9 +323,47 @@ if(APPLE)
 endif()
 
 # Create symbolic link to js directory for script editor module resolution
-add_custom_command(TARGET uapmd-app POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${CMAKE_SOURCE_DIR}/js
-        $<TARGET_FILE_DIR:uapmd-app>/js
-    COMMENT "Creating symbolic link to js directory for module resolution"
-)
+# (Not applicable on Android - files would be in APK assets)
+if(NOT ANDROID)
+    add_custom_command(TARGET uapmd-app POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/js
+            $<TARGET_FILE_DIR:uapmd-app>/js
+        COMMENT "Creating symbolic link to js directory for module resolution"
+    )
+endif()
+
+# Android-specific configuration
+if(ANDROID)
+    # Add android_native_app_glue for NativeActivity support
+    add_library(android_native_app_glue STATIC
+        ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
+    )
+    target_include_directories(android_native_app_glue PUBLIC
+        ${ANDROID_NDK}/sources/android/native_app_glue
+    )
+
+    # Force export of ANativeActivity_onCreate symbol (required for NativeActivity)
+    set(CMAKE_SHARED_LINKER_FLAGS
+        "${CMAKE_SHARED_LINKER_FLAGS} -u ANativeActivity_onCreate"
+    )
+
+    # Link Android system libraries
+    target_link_libraries(uapmd-app PRIVATE
+        android_native_app_glue
+        android  # Android native APIs
+        log      # Android logging
+    )
+
+    # Android compile definitions
+    target_compile_definitions(uapmd-app PRIVATE
+        IMGUI_IMPL_OPENGL_ES3  # Use OpenGL ES 3.0 instead of desktop GL
+        __ANDROID__=1          # Android platform marker
+    )
+
+    # Link SDL3 from prefab (provided by SDL3 AAR dependency)
+    find_package(SDL3 REQUIRED CONFIG)
+    target_link_libraries(uapmd-app PRIVATE SDL3::SDL3)
+
+    message(STATUS "Android build configured with NativeActivity support")
+endif()

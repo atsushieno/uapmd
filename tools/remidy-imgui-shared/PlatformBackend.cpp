@@ -2,6 +2,10 @@
 #include <iostream>
 #include <stdexcept>
 
+#ifdef ANDROID
+#include <android/log.h>
+#endif
+
 #ifdef __APPLE__
 #include <choc/platform/choc_ObjectiveCHelpers.h>
 #endif
@@ -47,6 +51,22 @@ private:
 
 public:
     bool initialize() override {
+#if defined(__ANDROID__)
+        // Android: Initialize SDL3 with OpenGL ES 3.0
+        #include <android/log.h>
+        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+            __android_log_print(ANDROID_LOG_ERROR, "UAPMD", "SDL3 Init Error: %s", SDL_GetError());
+            return false;
+        }
+
+        // Configure for OpenGL ES 3.0 on Android
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+
+        __android_log_print(ANDROID_LOG_INFO, "UAPMD", "SDL3 initialized for Android/GLES3");
+#else
+        // Desktop: Initialize SDL3 with OpenGL 3.2
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             std::cerr << "SDL3 Error: " << SDL_GetError() << std::endl;
             return false;
@@ -60,6 +80,7 @@ public:
 #ifdef __APPLE__
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 #endif
+#endif
 
         initialized = true;
         return true;
@@ -68,16 +89,38 @@ public:
     WindowHandle* createWindow(const char* title, int width, int height) override {
         if (!initialized) return nullptr;
 
+#if defined(__ANDROID__)
+        // Android: Create fullscreen window
+        #include <android/log.h>
+        SDL_Window* window = SDL_CreateWindow(
+            title, width, height,
+            SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN
+        );
+
+        if (!window) {
+            __android_log_print(ANDROID_LOG_ERROR, "UAPMD", "SDL3 Window Error: %s", SDL_GetError());
+            return nullptr;
+        }
+
+        __android_log_print(ANDROID_LOG_INFO, "UAPMD", "SDL3 window created for Android");
+#else
+        // Desktop: Create resizable window
         SDL_Window* window = SDL_CreateWindow(title, width, height,
             SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
         if (!window) {
             std::cerr << "SDL3 Window Error: " << SDL_GetError() << std::endl;
             return nullptr;
         }
+#endif
 
+        // Create GL context (works for both desktop and Android)
         glContext = SDL_GL_CreateContext(window);
         if (!glContext) {
+#if defined(__ANDROID__)
+            __android_log_print(ANDROID_LOG_ERROR, "UAPMD", "SDL3 GL Context Error: %s", SDL_GetError());
+#else
             std::cerr << "SDL3 GL Context Error: " << SDL_GetError() << std::endl;
+#endif
             SDL_DestroyWindow(window);
             return nullptr;
         }
@@ -559,7 +602,13 @@ public:
 class OpenGL3Renderer : public ImGuiRenderer {
 public:
     bool initialize(WindowHandle* window) override {
+#if defined(__ANDROID__)
+        // Android: Use OpenGL ES 3.0 with GLSL ES 3.00
+        return ImGui_ImplOpenGL3_Init("#version 300 es");
+#else
+        // Desktop: Use OpenGL 3.2 with GLSL 1.50
         return ImGui_ImplOpenGL3_Init("#version 150");
+#endif
     }
 
     void newFrame() override {
