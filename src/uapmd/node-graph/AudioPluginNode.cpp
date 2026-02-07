@@ -106,7 +106,7 @@ namespace uapmd {
 
         size_t fillEventBufferForGroup(EventSequence& eventIn, uint8_t group) {
             auto* messages = static_cast<uint8_t*>(eventIn.getMessages());
-            size_t position = 0;
+            size_t position = eventIn.position();
             const auto capacity = eventIn.maxMessagesInBytes();
 
             auto it = pending_events_.begin();

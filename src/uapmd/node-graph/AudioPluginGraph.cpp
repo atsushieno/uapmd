@@ -53,9 +53,7 @@ namespace uapmd {
                 group = group_resolver_(instanceId);
 
             // Fill event buffer with events for this group
-            // FIXME: this is wrong. We should rather merge pending incoming events with the sequencer events here.
             auto& eventIn = process.eventIn();
-            eventIn.position(0);
             node->fillEventBufferForGroup(eventIn, group);
 
             // Process audio
