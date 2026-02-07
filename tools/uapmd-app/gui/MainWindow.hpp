@@ -18,6 +18,7 @@
 #include "SpectrumAnalyzer.hpp"
 #include "InstanceDetails.hpp"
 #include "SequenceEditor.hpp"
+#include "MidiDumpWindow.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 #include "../AppModel.hpp"
@@ -91,6 +92,7 @@ class MainWindow {
 
         InstanceDetails instanceDetails_;
         SequenceEditor sequenceEditor_;
+        MidiDumpWindow midiDumpWindow_;
 
     public:
         explicit MainWindow(GuiDefaults defaults = {});
@@ -150,6 +152,8 @@ class MainWindow {
         void updateClipName(int32_t trackIndex, int32_t clipId, const std::string& name);
         void changeClipFile(int32_t trackIndex, int32_t clipId);
         void moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds);
+        void showMidiClipDump(int32_t trackIndex, int32_t clipId);
+        MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);
 
         void renderDeviceSettingsWindow();
         void renderPlayerSettingsWindow();

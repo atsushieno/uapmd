@@ -256,11 +256,35 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
     std::string timelineChildId = std::format("##TimelineRegion{}", trackIndex);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     if (ImGui::BeginChild(timelineChildId.c_str(), ImVec2(0, timelineHeight), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        const bool timelineHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+        const ImVec2 childWindowPos = ImGui::GetWindowPos();
+        const ImVec2 childWindowSize = ImGui::GetWindowSize();
+        const float clipAreaMinX = childWindowPos.x + state.timelineStyle.LegendWidth;
+        float clipAreaMinY = childWindowPos.y + static_cast<float>(state.timelineStyle.HeaderHeight);
+        const float clipAreaMaxX = childWindowPos.x + childWindowSize.x;
+        float clipAreaMaxY = childWindowPos.y + childWindowSize.y;
+        if (state.timelineStyle.HasScrollbar) {
+            clipAreaMaxY -= static_cast<float>(state.timelineStyle.ScrollbarThickness);
+        }
+
         if (state.timeline->mDragData.DragState == eDragState::DragNode && state.activeDragSection == -1) {
             state.activeDragSection = state.timeline->mDragData.DragNode.GetSection();
         }
 
         state.timeline->DrawTimeline();
+
+        int32_t requestedContextClip = -1;
+        const ImVec2 mousePos = ImGui::GetMousePos();
+        const bool mouseInClipArea =
+            mousePos.x >= clipAreaMinX && mousePos.x <= clipAreaMaxX &&
+            mousePos.y >= clipAreaMinY && mousePos.y <= clipAreaMaxY;
+        if (timelineHovered && mouseInClipArea && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            int hoveredSection = state.timeline->GetSelectedSection();
+            auto clipIt = state.sectionToClip.find(hoveredSection);
+            if (clipIt != state.sectionToClip.end() && clipIt->second >= 0) {
+                requestedContextClip = clipIt->second;
+            }
+        }
 
         if (state.displayClips.empty()) {
             ImGui::SetCursorPos(ImVec2(8.0f, 8.0f));
@@ -287,6 +311,60 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
                     }
                 }
             }
+        }
+
+        std::string popupId = std::format("TimelineClipContext##{}", trackIndex);
+        if (requestedContextClip >= 0) {
+            state.contextMenuClipId = requestedContextClip;
+            ImGui::OpenPopup(popupId.c_str());
+        }
+
+        if (ImGui::BeginPopup(popupId.c_str())) {
+            const ClipRow* contextClip = nullptr;
+            if (state.contextMenuClipId >= 0) {
+                auto clipRowIt = std::find_if(
+                    state.displayClips.begin(),
+                    state.displayClips.end(),
+                    [clipId = state.contextMenuClipId](const ClipRow& row) { return row.clipId == clipId; }
+                );
+                if (clipRowIt != state.displayClips.end()) {
+                    contextClip = &(*clipRowIt);
+                }
+            }
+
+            if (!contextClip) {
+                ImGui::TextDisabled("Clip not available.");
+            } else {
+                const bool canShowDump = contextClip->isMidiClip && static_cast<bool>(context.showMidiClipDump);
+                if (!canShowDump) {
+                    ImGui::BeginDisabled();
+                }
+                if (ImGui::MenuItem("Show Dump List")) {
+                    if (context.showMidiClipDump) {
+                        context.showMidiClipDump(trackIndex, contextClip->clipId);
+                    }
+                    ImGui::CloseCurrentPopup();
+                }
+                if (!canShowDump) {
+                    ImGui::EndDisabled();
+                }
+
+                const bool canDelete = static_cast<bool>(context.removeClip);
+                if (!canDelete) {
+                    ImGui::BeginDisabled();
+                }
+                if (ImGui::MenuItem("Delete")) {
+                    if (context.removeClip) {
+                        context.removeClip(trackIndex, contextClip->clipId);
+                    }
+                    ImGui::CloseCurrentPopup();
+                }
+                if (!canDelete) {
+                    ImGui::EndDisabled();
+                }
+            }
+
+            ImGui::EndPopup();
         }
     }
     ImGui::EndChild();

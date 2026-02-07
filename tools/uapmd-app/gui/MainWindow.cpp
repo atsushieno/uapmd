@@ -14,8 +14,6 @@
 #include <limits>
 #include <portable-file-dialogs.h>
 
-#include <midicci/midicci.hpp> // include before anything that indirectly includes X.h
-
 #include <imgui.h>
 
 #include "SharedTheme.hpp"
@@ -25,6 +23,65 @@
 #include "../AppModel.hpp"
 
 namespace uapmd::gui {
+
+std::vector<MidiDumpWindow::EventRow> buildMidiDumpRows(
+    const uapmd::Smf2ClipReader::ClipInfo& clipInfo,
+    uint32_t tickResolution,
+    double tempo
+) {
+    std::vector<MidiDumpWindow::EventRow> rows;
+    if (clipInfo.ump_data.empty()) {
+        return rows;
+    }
+
+    const double safeResolution = tickResolution > 0 ? static_cast<double>(tickResolution) : 1.0;
+    const double safeTempo = tempo > 0.0 ? tempo : 120.0;
+
+    size_t index = 0;
+    rows.reserve(clipInfo.ump_data.size());
+    while (index < clipInfo.ump_data.size()) {
+        const uint32_t word = clipInfo.ump_data[index];
+        const size_t byteLength = umppi::Ump{word}.getSizeInBytes();
+        size_t wordCount = (byteLength + sizeof(uint32_t) - 1) / sizeof(uint32_t);
+        wordCount = std::max<size_t>(1, wordCount);
+        const size_t availableWords = clipInfo.ump_data.size() - index;
+        if (wordCount > availableWords) {
+            wordCount = availableWords;
+        }
+
+        double ticks = 0.0;
+        if (index < clipInfo.ump_tick_timestamps.size()) {
+            ticks = static_cast<double>(clipInfo.ump_tick_timestamps[index]);
+        }
+        const double beats = ticks / safeResolution;
+        const double seconds = beats * (60.0 / safeTempo);
+
+        MidiDumpWindow::EventRow row;
+        row.timeSeconds = seconds;
+        row.tickPosition = static_cast<uint64_t>(ticks);
+        row.lengthBytes = byteLength;
+        row.timeLabel = std::format("{:.3f}s", seconds);
+
+        bool firstByte = true;
+        for (size_t offset = 0; offset < wordCount; ++offset) {
+            const uint32_t dataWord = clipInfo.ump_data[index + offset];
+            for (int shift = 24; shift >= 0; shift -= 8) {
+                const uint8_t byteValue = static_cast<uint8_t>((dataWord >> shift) & 0xFF);
+                if (!firstByte) {
+                    row.hexBytes.push_back(' ');
+                }
+                firstByte = false;
+                row.hexBytes += std::format("{:02X}", byteValue);
+            }
+        }
+
+        rows.push_back(std::move(row));
+        index += wordCount;
+    }
+
+    return rows;
+}
+
 MainWindow::MainWindow(GuiDefaults defaults) {
     SetupImGuiStyle();
     ensureApplicationFont();
@@ -304,6 +361,9 @@ void MainWindow::render(void* window) {
         .moveClipAbsolute = [this](int32_t trackIndex, int32_t clipId, double seconds) {
             moveClipAbsolute(trackIndex, clipId, seconds);
         },
+        .showMidiClipDump = [this](int32_t trackIndex, int32_t clipId) {
+            showMidiClipDump(trackIndex, clipId);
+        },
         .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
             setNextChildWindowSize(id, defaultSize);
         },
@@ -410,6 +470,20 @@ void MainWindow::render(void* window) {
     instanceDetails_.render(detailsContext);
 
     sequenceEditor_.render(seqContext);
+
+    MidiDumpWindow::RenderContext midiDumpContext{
+        .reloadClip = [this](int32_t trackIndex, int32_t clipId) {
+            return buildMidiClipDumpData(trackIndex, clipId);
+        },
+        .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
+            setNextChildWindowSize(id, defaultSize);
+        },
+        .updateChildWindowSizeState = [this](const std::string& id) {
+            updateChildWindowSizeState(id);
+        },
+        .uiScale = uiScale_,
+    };
+    midiDumpWindow_.render(midiDumpContext);
 
     scriptEditor_.render();
 
@@ -1426,7 +1500,8 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
         }
 
         // Set MIME type based on clip type
-        if (clip->clipType == uapmd::ClipType::Midi) {
+        row.isMidiClip = (clip->clipType == uapmd::ClipType::Midi);
+        if (row.isMidiClip) {
             row.mimeType = "audio/midi";
         } else {
             row.mimeType = "";  // Audio clip
@@ -1678,6 +1753,70 @@ void MainWindow::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double sec
     uapmd::TimelinePosition newOffset = uapmd::TimelinePosition::fromSeconds(seconds, static_cast<int32_t>(sr));
     tracks[trackIndex]->clipManager().setClipAnchor(clipId, -1, uapmd::AnchorOrigin::Start, newOffset);
     refreshSequenceEditorForTrack(trackIndex);
+}
+
+void MainWindow::showMidiClipDump(int32_t trackIndex, int32_t clipId) {
+    midiDumpWindow_.showClipDump(buildMidiClipDumpData(trackIndex, clipId));
+}
+
+MidiDumpWindow::ClipDumpData MainWindow::buildMidiClipDumpData(int32_t trackIndex, int32_t clipId) {
+    MidiDumpWindow::ClipDumpData dump;
+    dump.trackIndex = trackIndex;
+    dump.clipId = clipId;
+
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        dump.error = "Invalid track index";
+        return dump;
+    }
+
+    auto* track = tracks[trackIndex];
+    if (!track) {
+        dump.error = "Track is unavailable";
+        return dump;
+    }
+
+    auto* clip = track->clipManager().getClip(clipId);
+    if (!clip) {
+        dump.error = "Clip not found";
+        return dump;
+    }
+
+    dump.clipName = clip->name.empty() ? std::format("Clip {}", clip->clipId) : clip->name;
+    dump.filepath = clip->filepath;
+    if (clip->clipType != uapmd::ClipType::Midi) {
+        dump.error = "Selected clip is not a MIDI clip";
+        return dump;
+    }
+
+    if (clip->filepath.empty()) {
+        dump.error = "Clip has no source file";
+        return dump;
+    }
+
+    std::filesystem::path clipPath(clip->filepath);
+    dump.fileLabel = clipPath.filename().string();
+    if (dump.fileLabel.empty()) {
+        dump.fileLabel = clip->filepath;
+    }
+
+    auto clipInfo = uapmd::Smf2ClipReader::readAnyFormat(clipPath);
+    if (!clipInfo.success) {
+        dump.error = clipInfo.error;
+        return dump;
+    }
+
+    dump.tickResolution = clipInfo.tick_resolution > 0 ? clipInfo.tick_resolution : clip->tickResolution;
+    double tempo = clipInfo.tempo > 0.0 ? clipInfo.tempo : clip->clipTempo;
+    if (tempo <= 0.0) {
+        tempo = 120.0;
+    }
+    dump.tempo = tempo;
+    dump.events = buildMidiDumpRows(clipInfo, dump.tickResolution, tempo);
+    dump.success = true;
+    dump.error.clear();
+    return dump;
 }
 
 }

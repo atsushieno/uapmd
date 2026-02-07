@@ -28,6 +28,7 @@ public:
         std::string duration;       // Display string: "5.2s" (only shown when End anchor)
         int32_t timelineStart = 0;   // Timeline start in milliseconds
         int32_t timelineEnd = 0;     // Timeline end in milliseconds
+        bool isMidiClip = false;
     };
 
     struct RenderContext {
@@ -39,6 +40,7 @@ public:
         std::function<void(int32_t trackIndex, int32_t clipId, const std::string& name)> updateClipName;
         std::function<void(int32_t trackIndex, int32_t clipId)> changeClipFile;
         std::function<void(int32_t trackIndex, int32_t clipId, double seconds)> moveClipAbsolute;
+        std::function<void(int32_t trackIndex, int32_t clipId)> showMidiClipDump;
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;
         float uiScale = 1.0f;
@@ -71,6 +73,7 @@ private:
         std::unordered_map<int32_t, int32_t> sectionToClip;
         std::unordered_map<int32_t, uint64_t> sectionToNodeId;  // Maps section ID to NodeID
         int32_t activeDragSection = -1;
+        int32_t contextMenuClipId = -1;
     };
 
     std::unordered_map<int32_t, SequenceEditorState> windows_;
