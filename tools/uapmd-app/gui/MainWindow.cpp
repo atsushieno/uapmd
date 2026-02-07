@@ -96,13 +96,6 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             // Cleanup details window if open
             instanceDetails_.removeInstance(instanceId);
 
-            // Cleanup stale Sequence Editor windows
-            // Get the current number of tracks and remove windows for deleted track indices
-            auto& sequencer = uapmd::AppModel::instance().sequencer();
-            auto& tracks = sequencer.engine()->tracks();
-            int32_t maxValidTrackIndex = tracks.empty() ? -1 : static_cast<int32_t>(tracks.size() - 1);
-            sequenceEditor_.removeStaleWindows(maxValidTrackIndex);
-
             // AppModel handles removing from devices_ - we just refresh UI
             refreshInstances();
             trackList_.markDirty();
@@ -215,17 +208,11 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         }
     });
 
-    trackList_.setOnShowSequence([this](int32_t trackIndex) {
-        sequenceEditor_.showWindow(trackIndex);
-        // Refresh clips for this track
-        refreshSequenceEditorForTrack(trackIndex);
-        trackList_.markDirty();
-    });
-
-    trackList_.setOnHideSequence([this](int32_t trackIndex) {
-        sequenceEditor_.hideWindow(trackIndex);
-        trackList_.markDirty();
-    });
+    // Track layout change notifications
+    uapmd::AppModel::instance().trackLayoutChanged.push_back(
+        [this](const uapmd::AppModel::TrackLayoutChange& change) {
+            handleTrackLayoutChange(change);
+        });
 
     // Set up PluginSelector callbacks
     pluginSelector_.setOnInstantiatePlugin([this](const std::string& format, const std::string& pluginId, int32_t trackIndex) {
@@ -248,6 +235,8 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         // Refresh device list when devices are added or removed
         refreshDeviceList();
     });
+
+    refreshAllSequenceEditorTracks();
 }
 
 void MainWindow::render(void* window) {
@@ -289,6 +278,40 @@ void MainWindow::render(void* window) {
                                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                    ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
+    SequenceEditor::RenderContext seqContext{
+        .refreshClips = [this](int32_t trackIndex) {
+            refreshSequenceEditorForTrack(trackIndex);
+        },
+        .addClip = [this](int32_t trackIndex, const std::string& filepath) {
+            addClipToTrack(trackIndex, filepath);
+        },
+        .removeClip = [this](int32_t trackIndex, int32_t clipId) {
+            removeClipFromTrack(trackIndex, clipId);
+        },
+        .clearAllClips = [this](int32_t trackIndex) {
+            clearAllClipsFromTrack(trackIndex);
+        },
+        .updateClip = [this](int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position) {
+            updateClip(trackIndex, clipId, anchorId, origin, position);
+        },
+        .updateClipName = [this](int32_t trackIndex, int32_t clipId, const std::string& name) {
+            updateClipName(trackIndex, clipId, name);
+        },
+        .changeClipFile = [this](int32_t trackIndex, int32_t clipId) {
+            changeClipFile(trackIndex, clipId);
+        },
+        .moveClipAbsolute = [this](int32_t trackIndex, int32_t clipId, double seconds) {
+            moveClipAbsolute(trackIndex, clipId, seconds);
+        },
+        .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
+            setNextChildWindowSize(id, defaultSize);
+        },
+        .updateChildWindowSizeState = [this](const std::string& id) {
+            updateChildWindowSizeState(id);
+        },
+        .uiScale = uiScale_,
+    };
+
     if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
         if (ImGui::BeginChild("MainToolbar", ImVec2(0, 90.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
             if (ImGui::Button("Device Settings")) {
@@ -297,6 +320,10 @@ void MainWindow::render(void* window) {
             ImGui::SameLine();
             if (ImGui::Button("Player Settings")) {
                 showPlayerSettingsWindow_ = !showPlayerSettingsWindow_;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Audio Graph")) {
+                showAudioGraphWindow_ = !showAudioGraphWindow_;
             }
             ImGui::SameLine();
             ImGui::AlignTextToFramePadding();
@@ -331,6 +358,7 @@ void MainWindow::render(void* window) {
             }
 
             if (ImGui::Button("Plugins")) {
+                pluginSelector_.setTargetTrackIndex(-1);
                 showPluginSelectorWindow_ = !showPluginSelectorWindow_;
             }
             ImGui::SameLine();
@@ -344,15 +372,7 @@ void MainWindow::render(void* window) {
         ImGui::EndChild();
 
         ImGui::Separator();
-
-        // Instance Control Section
-        if (ImGui::CollapsingHeader("Instance Control", ImGuiTreeNodeFlags_DefaultOpen)) {
-            renderInstanceControl();
-        }
-
-        ImGui::Separator();
-
-        // Virtual MIDI Device controls are now in the Actions menu of Instance Control
+        renderTrackList(seqContext);
     }
     ImGui::End();
     ImGui::PopStyleVar(3);
@@ -361,6 +381,7 @@ void MainWindow::render(void* window) {
     renderPluginSelectorWindow();
     renderDeviceSettingsWindow();
     renderPlayerSettingsWindow();
+    renderAudioGraphEditorWindow();
     InstanceDetails::RenderContext detailsContext{
         .buildTrackInstance = [this](int32_t instanceId) -> std::optional<TrackInstance> {
             return buildTrackInstanceInfo(instanceId);
@@ -387,40 +408,6 @@ void MainWindow::render(void* window) {
     };
     instanceDetails_.render(detailsContext);
 
-    // Render SequenceEditor
-    SequenceEditor::RenderContext seqContext{
-        .refreshClips = [this](int32_t trackIndex) {
-            refreshSequenceEditorForTrack(trackIndex);
-        },
-        .addClip = [this](int32_t trackIndex, const std::string& filepath) {
-            addClipToTrack(trackIndex, filepath);
-        },
-        .removeClip = [this](int32_t trackIndex, int32_t clipId) {
-            removeClipFromTrack(trackIndex, clipId);
-        },
-        .clearAllClips = [this](int32_t trackIndex) {
-            clearAllClipsFromTrack(trackIndex);
-        },
-        .updateClip = [this](int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position) {
-            updateClip(trackIndex, clipId, anchorId, origin, position);
-        },
-        .updateClipName = [this](int32_t trackIndex, int32_t clipId, const std::string& name) {
-            updateClipName(trackIndex, clipId, name);
-        },
-        .changeClipFile = [this](int32_t trackIndex, int32_t clipId) {
-            changeClipFile(trackIndex, clipId);
-        },
-        .moveClipAbsolute = [this](int32_t trackIndex, int32_t clipId, double seconds) {
-            moveClipAbsolute(trackIndex, clipId, seconds);
-        },
-        .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
-            setNextChildWindowSize(id, defaultSize);
-        },
-        .updateChildWindowSizeState = [this](const std::string& id) {
-            updateChildWindowSizeState(id);
-        },
-        .uiScale = uiScale_,
-    };
     sequenceEditor_.render(seqContext);
 
     scriptEditor_.render();
@@ -467,23 +454,203 @@ void MainWindow::renderPluginSelectorWindow() {
     if (ImGui::Begin("Plugin Selector", &showPluginSelectorWindow_)) {
         updateChildWindowSizeState(windowId);
 
-        // Update track options before rendering
-        std::vector<TrackDestinationOption> trackOptions;
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto tracks = sequencer.engine()->tracks();
-        for (uapmd_track_index_t i = 0, n = tracks.size(); i < n; i++) {
-            TrackDestinationOption option{
-                .trackIndex = i,
-                .label = std::format("Track {}", i + 1)
-            };
-            trackOptions.push_back(std::move(option));
-        }
-        pluginSelector_.setTrackOptions(trackOptions);
         pluginSelector_.setScanning(uapmd::AppModel::instance().isScanning());
 
         pluginSelector_.render();
     }
     ImGui::End();
+}
+
+void MainWindow::renderAudioGraphEditorWindow() {
+    if (!showAudioGraphWindow_) {
+        return;
+    }
+
+    const std::string windowId = "AudioGraphEditor";
+    setNextChildWindowSize(windowId, ImVec2(620.0f, 420.0f));
+    if (ImGui::Begin("Audio Graph Editor", &showAudioGraphWindow_)) {
+        updateChildWindowSizeState(windowId);
+        trackList_.update();
+        trackList_.render();
+    }
+    ImGui::End();
+}
+
+void MainWindow::renderTrackList(const SequenceEditor::RenderContext& context) {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    ImGui::TextUnformatted("Track List");
+    ImGui::Spacing();
+
+    ImGui::BeginChild("TrackListScroll", ImVec2(0, 0), true, ImGuiWindowFlags_None);
+    if (tracks.empty()) {
+        ImGui::TextDisabled("No tracks available.");
+        ImGui::Spacing();
+    }
+
+    for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
+        if (appModel.isTrackHidden(i))
+            continue;
+        renderTrackRow(i, context);
+        ImGui::Spacing();
+    }
+
+    if (ImGui::Button("Add New Track")) {
+        int32_t newIndex = appModel.addTrack();
+        if (newIndex >= 0) {
+            refreshSequenceEditorForTrack(newIndex);
+        }
+    }
+    ImGui::EndChild();
+}
+
+void MainWindow::renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context) {
+    ImGui::PushID(trackIndex);
+    if (ImGui::BeginTable("##TrackRowTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("Controls", ImGuiTableColumnFlags_WidthFixed, 160.0f * uiScale_);
+        ImGui::TableSetupColumn("Timeline", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableNextRow();
+
+        // Control column
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Track %d", trackIndex + 1);
+        ImGui::Separator();
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto tracksRef = sequencer.engine()->tracks();
+        auto* track = (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracksRef.size()))
+            ? tracksRef[trackIndex]
+            : nullptr;
+        std::vector<int32_t> validInstances;
+        if (track) {
+            auto& ids = track->orderedInstanceIds();
+            validInstances.reserve(ids.size());
+            for (int32_t instanceId : ids) {
+                if (sequencer.engine()->getPluginInstance(instanceId)) {
+                    validInstances.push_back(instanceId);
+                }
+            }
+        }
+        std::string pluginLabel = "Add Plugin";
+        if (!validInstances.empty()) {
+            if (auto* instance = sequencer.engine()->getPluginInstance(validInstances.front())) {
+                pluginLabel = instance->displayName();
+            }
+        }
+
+        std::string popupId = std::format("TrackActions##{}", trackIndex);
+        std::string clipPopupId = std::format("ClipActions##{}", trackIndex);
+
+        if (ImGui::Button("Edit Clips...")) {
+            ImGui::OpenPopup(clipPopupId.c_str());
+        }
+        if (ImGui::BeginPopup(clipPopupId.c_str())) {
+            if (ImGui::MenuItem("Edit Clips...", nullptr, sequenceEditor_.isVisible(trackIndex))) {
+                sequenceEditor_.showWindow(trackIndex);
+                refreshSequenceEditorForTrack(trackIndex);
+            }
+            if (ImGui::MenuItem("New Clip")) {
+                context.addClip(trackIndex, "");
+            }
+            if (ImGui::MenuItem("Clear All")) {
+                context.clearAllClips(trackIndex);
+            }
+            ImGui::EndPopup();
+        }
+        if (ImGui::Button(std::format("{}...", pluginLabel).c_str())) {
+            ImGui::OpenPopup(popupId.c_str());
+        }
+        if (ImGui::BeginPopup(popupId.c_str())) {
+            if (track) {
+                for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
+                    int32_t instanceId = validInstances[static_cast<size_t>(i)];
+                    auto* instance = sequencer.engine()->getPluginInstance(instanceId);
+                    if (!instance)
+                        continue;
+                    std::string pluginName = instance->displayName();
+
+                    bool detailsVisible = instanceDetails_.isVisible(instanceId);
+                    std::string detailsLabel = std::format("{} {} Details##details{}",
+                                                           detailsVisible ? "Hide" : "Show",
+                                                           pluginName,
+                                                           instanceId);
+                    if (ImGui::MenuItem(detailsLabel.c_str())) {
+                        if (detailsVisible) {
+                            instanceDetails_.hideWindow(instanceId);
+                        } else {
+                            instanceDetails_.showWindow(instanceId);
+                        }
+                    }
+                }
+
+                if (!validInstances.empty()) {
+                    ImGui::Separator();
+                    for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
+                        int32_t instanceId = validInstances[static_cast<size_t>(i)];
+                        auto* instance = sequencer.engine()->getPluginInstance(instanceId);
+                        if (!instance)
+                            continue;
+                        std::string pluginName = instance->displayName();
+
+                        std::string deleteLabel = std::format("Delete {} (at [{}])##delete{}",
+                                                              pluginName,
+                                                              i + 1,
+                                                              instanceId);
+                        if (ImGui::MenuItem(deleteLabel.c_str())) {
+                            handleRemoveInstance(instanceId);
+                        }
+                    }
+                    ImGui::Separator();
+                }
+            }
+
+            if (ImGui::MenuItem("Add Plugin")) {
+                pluginSelector_.setTargetTrackIndex(trackIndex);
+                showPluginSelectorWindow_ = true;
+            }
+
+            ImGui::EndPopup();
+        }
+        if (ImGui::Button("Delete Track")) {
+            deleteTrack(trackIndex);
+        }
+
+        // Timeline column
+        ImGui::TableSetColumnIndex(1);
+        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(trackIndex, context.uiScale);
+        sequenceEditor_.renderTimelineInline(trackIndex, context, timelineHeight);
+
+        ImGui::EndTable();
+    }
+    ImGui::PopID();
+}
+
+void MainWindow::deleteTrack(int32_t trackIndex) {
+    uapmd::AppModel::instance().removeTrack(trackIndex);
+}
+
+void MainWindow::refreshAllSequenceEditorTracks() {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
+        if (appModel.isTrackHidden(i))
+            continue;
+        refreshSequenceEditorForTrack(i);
+    }
+}
+
+void MainWindow::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChange& change) {
+    switch (change.type) {
+        case uapmd::AppModel::TrackLayoutChange::Type::Added:
+            refreshSequenceEditorForTrack(change.trackIndex);
+            break;
+        case uapmd::AppModel::TrackLayoutChange::Type::Removed:
+            sequenceEditor_.hideWindow(change.trackIndex);
+            break;
+        case uapmd::AppModel::TrackLayoutChange::Type::Cleared:
+            sequenceEditor_.reset();
+            break;
+    }
+    trackList_.markDirty();
 }
 
 void MainWindow::update() {
@@ -829,25 +996,6 @@ void MainWindow::renderPlayerSettings() {
     }
 }
 
-void MainWindow::renderInstanceControl() {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-
-    if (!pluginWindowsPendingClose_.empty()) {
-        for (auto id : pluginWindowsPendingClose_) {
-            sequencer.engine()->getPluginInstance(id)->destroyUI();
-            pluginWindows_.erase(id);
-            pluginWindowEmbedded_.erase(id);
-            pluginWindowBounds_.erase(id);
-            pluginWindowResizeIgnore_.erase(id);
-        }
-        pluginWindowsPendingClose_.clear();
-    }
-
-    // Update the track list data and render
-    trackList_.update();
-    trackList_.render();
-}
-
 std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     auto* instance = sequencer.engine()->getPluginInstance(instanceId);
@@ -909,7 +1057,6 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
     auto visIt = pluginWindowVisible_.find(instanceId);
     ti.uiVisible = (visIt != pluginWindowVisible_.end() && visIt->second);
     ti.detailsVisible = instanceDetails_.isVisible(instanceId);
-    ti.sequenceVisible = sequenceEditor_.isVisible(trackIndex);
     ti.deviceRunning = deviceRunning;
     ti.deviceExists = deviceExists;
     ti.deviceInstantiating = deviceInstantiating;

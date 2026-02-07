@@ -81,7 +81,7 @@ globalThis.uapmd = {
 
     // Instance creation and management
     instancing: {
-        create: (format, pluginId) => __remidy_instance_create(format, pluginId)
+        create: (format, pluginId, trackIndex = -1) => __remidy_instance_create(format, pluginId, trackIndex)
     },
 
     // Factory function to create PluginInstance wrapper for an existing instance
@@ -108,6 +108,9 @@ globalThis.uapmd = {
         isPluginBypassed: (instanceId) => __remidy_sequencer_isPluginBypassed(instanceId),
         setPluginBypassed: (instanceId, bypassed) => __remidy_sequencer_setPluginBypassed(instanceId, bypassed),
         getTrackInfos: () => __remidy_sequencer_getTrackInfos(),
+        addTrack: () => __remidy_sequencer_add_track(),
+        removeTrack: (trackIndex) => __remidy_sequencer_remove_track(trackIndex),
+        clearTracks: () => __remidy_sequencer_clear_tracks(),
         getParameterUpdates: (instanceId) => __remidy_sequencer_getParameterUpdates(instanceId),
         consumeParameterMetadataRefresh: (instanceId) => __remidy_sequencer_consumeParameterMetadataRefresh(instanceId),
 

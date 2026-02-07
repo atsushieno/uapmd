@@ -19,7 +19,6 @@ struct TrackInstance {
     bool hasUI;
     bool uiVisible;
     bool detailsVisible;
-    bool sequenceVisible;
     bool deviceRunning;
     bool deviceExists;
     bool deviceInstantiating;
@@ -38,8 +37,6 @@ public:
     using LoadStateCallback = std::function<void(int32_t instanceId)>;
     using RemoveInstanceCallback = std::function<void(int32_t instanceId)>;
     using UMPDeviceNameChangeCallback = std::function<void(int32_t instanceId, const std::string& newName)>;
-    using ShowSequenceCallback = std::function<void(int32_t trackIndex)>;
-    using HideSequenceCallback = std::function<void(int32_t trackIndex)>;
     using BuildTrackInstanceCallback = std::function<std::optional<TrackInstance>(int32_t instanceId)>;
 
 private:
@@ -55,8 +52,6 @@ private:
     LoadStateCallback onLoadState_;
     RemoveInstanceCallback onRemoveInstance_;
     UMPDeviceNameChangeCallback onUMPDeviceNameChange_;
-    ShowSequenceCallback onShowSequence_;
-    HideSequenceCallback onHideSequence_;
 
 public:
     TrackList();
@@ -75,8 +70,6 @@ public:
     void setOnLoadState(LoadStateCallback callback);
     void setOnRemoveInstance(RemoveInstanceCallback callback);
     void setOnUMPDeviceNameChange(UMPDeviceNameChangeCallback callback);
-    void setOnShowSequence(ShowSequenceCallback callback);
-    void setOnHideSequence(HideSequenceCallback callback);
 
 private:
     void renderInstanceRow(const TrackInstance& instance, bool showTrackColumn, int32_t trackIndex);

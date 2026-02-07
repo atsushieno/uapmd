@@ -50,14 +50,23 @@ public:
     void refreshClips(int32_t trackIndex, const std::vector<ClipRow>& clips);
     void render(const RenderContext& context);
     void removeStaleWindows(int32_t maxValidTrackIndex);
+    void renderTimelineInline(int32_t trackIndex, const RenderContext& context, float availableHeight);
+    void reset();
+    float getInlineTimelineHeight(int32_t trackIndex, float uiScale) const;
 
 private:
     struct SequenceEditorState {
-        ~SequenceEditorState();
+        SequenceEditorState() = default;
+        SequenceEditorState(const SequenceEditorState&) = delete;
+        SequenceEditorState& operator=(const SequenceEditorState&) = delete;
+        SequenceEditorState(SequenceEditorState&&) noexcept = default;
+        SequenceEditorState& operator=(SequenceEditorState&&) noexcept = default;
+        ~SequenceEditorState() = default;
         bool visible = false;
         std::vector<ClipRow> displayClips;
         int32_t selectedClipId = -1;
         std::unique_ptr<ImTimeline::Timeline> timeline;
+        ImTimelineStyle timelineStyle{};
         bool timelineDirty = true;
         std::unordered_map<int32_t, int32_t> sectionToClip;
         std::unordered_map<int32_t, uint64_t> sectionToNodeId;  // Maps section ID to NodeID
@@ -68,7 +77,7 @@ private:
 
     void renderWindow(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
     void renderClipTable(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight);
-    void renderTimelineEditor(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight);
+    void renderTimelineContent(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight, bool showLabel);
     void rebuildTimelineModel(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
     void renderClipRow(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     bool renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);

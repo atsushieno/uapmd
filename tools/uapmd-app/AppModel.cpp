@@ -53,6 +53,12 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
         timeline_tracks_.push_back(std::make_unique<uapmd::TimelineTrack>(FIXED_CHANNEL_COUNT, static_cast<double>(sampleRate)));
     }
 
+    // Start with a few empty tracks for the DAW layout
+    constexpr int kInitialTrackCount = 3;
+    for (int i = 0; i < kInitialTrackCount; ++i) {
+        addTrack();
+    }
+
     // Register audio preprocessing callback for timeline-based source processing
     sequencer_.engine()->setAudioPreprocessCallback(
         [this](uapmd::AudioProcessContext& process) {
@@ -189,17 +195,26 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
 
         result.device = state->device;
 
-        // Sync app tracks to wrap any newly created tracks
-        syncAppTracks();
-
         // Notify all registered callbacks
         for (auto& cb : instanceCreated) {
             cb(result);
         }
     };
 
-    if (trackIndex < 0)
-        trackIndex = sequencer_.engine()->addEmptyTrack();
+    if (trackIndex < 0) {
+        trackIndex = addTrack();
+        if (trackIndex < 0) {
+            instantiateCallback(-1, -1, "Failed to add track for new plugin instance");
+            return;
+        }
+    } else {
+        auto& tracks = sequencer_.engine()->tracks();
+        if (trackIndex >= static_cast<int32_t>(tracks.size())) {
+            instantiateCallback(-1, -1, std::format("Invalid track index {}", trackIndex));
+            return;
+        }
+    }
+
     sequencer_.engine()->addPluginToTrack(trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
 }
 
@@ -231,11 +246,7 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     }
 
     sequencer_.engine()->removePluginInstance(instanceId);
-    sequencer_.engine()->cleanupEmptyTracks();
     sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
-
-    // Sync app tracks to reflect any removed tracks
-    syncAppTracks();
 
     // Notify all registered callbacks
     for (auto& cb : instanceRemoved) {
@@ -736,20 +747,59 @@ std::vector<uapmd::TimelineTrack*> uapmd::AppModel::getTimelineTracks() {
     return tracks;
 }
 
-void uapmd::AppModel::syncAppTracks() {
-    auto& uapmdTracks = sequencer_.engine()->tracks();
+void uapmd::AppModel::notifyTrackLayoutChanged(const TrackLayoutChange& change) {
+    for (auto& cb : trackLayoutChanged) {
+        cb(change);
+    }
+}
 
-    // Remove timeline tracks if we have more than uapmd tracks
-    while (timeline_tracks_.size() > uapmdTracks.size()) {
-        timeline_tracks_.pop_back();
+int32_t uapmd::AppModel::addTrack() {
+    if (!hidden_tracks_.empty()) {
+        auto it = hidden_tracks_.begin();
+        int32_t reusedIndex = *it;
+        hidden_tracks_.erase(it);
+        notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, reusedIndex});
+        return reusedIndex;
     }
 
-    // Add new timeline tracks to match uapmd tracks count
-    while (timeline_tracks_.size() < uapmdTracks.size()) {
+    auto trackIndex = sequencer_.engine()->addEmptyTrack();
+    if (trackIndex < 0)
+        return -1;
+
+    while (timeline_tracks_.size() <= static_cast<size_t>(trackIndex)) {
         timeline_tracks_.push_back(
             std::make_unique<uapmd::TimelineTrack>(FIXED_CHANNEL_COUNT, static_cast<double>(sample_rate_))
         );
     }
+    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, trackIndex});
+    return trackIndex;
+}
+
+bool uapmd::AppModel::removeTrack(int32_t trackIndex) {
+    auto& uapmdTracks = sequencer_.engine()->tracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(uapmdTracks.size()))
+        return false;
+
+    auto instances = uapmdTracks[trackIndex]->orderedInstanceIds();
+    for (int32_t instanceId : instances) {
+        removePluginInstance(instanceId);
+    }
+
+    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())) {
+        timeline_tracks_[trackIndex]->clipManager().clearAll();
+    }
+
+    hidden_tracks_.insert(trackIndex);
+    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Removed, trackIndex});
+    return true;
+}
+
+void uapmd::AppModel::removeAllTracks() {
+    auto trackCount = static_cast<int32_t>(sequencer_.engine()->tracks().size());
+    for (int32_t i = 0; i < trackCount; ++i) {
+        removeTrack(i);
+    }
+    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
 }
 
 // Audio processing callback - processes app tracks with timeline

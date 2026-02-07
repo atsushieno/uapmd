@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <optional>
+#include <set>
 #include <mutex>
 #include <midicci/midicci.hpp>
 #include <remidy-tooling/PluginScanTool.hpp>
@@ -79,6 +80,17 @@ namespace uapmd {
             std::shared_ptr<DeviceState> state;
         };
 
+        struct TrackLayoutChange {
+            enum class Type {
+                Added,
+                Removed,
+                Cleared
+            };
+
+            Type type{Type::Added};
+            int32_t trackIndex{-1};
+        };
+
     private:
         RealtimeSequencer sequencer_;
         remidy_tooling::PluginScanTool pluginScanTool_;
@@ -93,9 +105,11 @@ namespace uapmd {
         std::vector<std::unique_ptr<uapmd::TimelineTrack>> timeline_tracks_;
         int32_t sample_rate_;
         int32_t next_source_node_id_ = 1;
+        std::set<int32_t> hidden_tracks_;
 
         // Audio processing callback (called by SequencerEngine)
         void processAppTracksAudio(AudioProcessContext& process);
+        void notifyTrackLayoutChanged(const TrackLayoutChange& change);
 
     public:
         static void instantiate();
@@ -146,6 +160,9 @@ namespace uapmd {
 
         // Global callback registry - called whenever a device is disabled
         std::vector<std::function<void(const DeviceStateResult&)>> disableDeviceCompleted{};
+
+        // Track layout change notifications
+        std::vector<std::function<void(const TrackLayoutChange&)>> trackLayoutChanged{};
 
         // Create plugin instance with virtual MIDI device
         // Notifies all registered callbacks when complete
@@ -252,9 +269,13 @@ namespace uapmd {
 
         // Timeline tracks access
         std::vector<uapmd::TimelineTrack*> getTimelineTracks();
+        size_t trackCount() const { return sequencer_.engine()->tracks().size(); }
 
-        // Track synchronization
-        void syncAppTracks();
+        // Track management
+        int32_t addTrack();
+        bool removeTrack(int32_t trackIndex);
+        void removeAllTracks();
+        bool isTrackHidden(int32_t trackIndex) const { return hidden_tracks_.contains(trackIndex); }
 
         // Sample rate access
         int32_t sampleRate() const { return sample_rate_; }

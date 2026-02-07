@@ -9,11 +9,6 @@
 
 namespace uapmd::gui {
 
-struct TrackDestinationOption {
-    int32_t trackIndex;
-    std::string label;
-};
-
 class PluginSelector {
 public:
     PluginSelector();
@@ -27,8 +22,9 @@ public:
 
     // State
     void setScanning(bool scanning);
-    void setTrackOptions(const std::vector<TrackDestinationOption>& options);
     bool getForceRescan() const { return forceRescan_; }
+    void setTargetTrackIndex(int32_t trackIndex) { targetTrackIndex_ = trackIndex; }
+    int32_t targetTrackIndex() const { return targetTrackIndex_; }
 
     // Access to input fields
     const char* getDeviceNameInput() const { return deviceNameInput_; }
@@ -40,8 +36,7 @@ private:
     bool isScanning_ = false;
 
     // Track selection for plugin instantiation
-    std::vector<TrackDestinationOption> trackOptions_;
-    int selectedTrackOption_ = 0; // 0 = new track, 1+ = existing tracks
+    int32_t targetTrackIndex_ = -1;
     char deviceNameInput_[128] = "";  // Empty by default, will use plugin name if not filled
     char apiInput_[64] = "default";
 

@@ -13,11 +13,12 @@
 namespace uapmd::gui {
 
 SequenceEditor::~SequenceEditor() = default;
-SequenceEditor::SequenceEditorState::~SequenceEditorState() = default;
 
 namespace {
 
 constexpr int32_t kTimelineSectionId = 0;
+constexpr float kTimelineSectionSpacing = 5.0f; // Matches Timeline::DrawTimeline spacing
+constexpr float kTimelineChildPadding = 8.0f;   // Matches Timeline::DrawTimeline padding
 
 } // namespace
 
@@ -42,11 +43,9 @@ bool SequenceEditor::isVisible(int32_t trackIndex) const {
 }
 
 void SequenceEditor::refreshClips(int32_t trackIndex, const std::vector<ClipRow>& clips) {
-    auto it = windows_.find(trackIndex);
-    if (it != windows_.end()) {
-        it->second.displayClips = clips;
-        it->second.timelineDirty = true;
-    }
+    auto& state = windows_[trackIndex];
+    state.displayClips = clips;
+    state.timelineDirty = true;
 }
 
 void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
@@ -58,6 +57,44 @@ void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
             ++it;
         }
     }
+}
+
+void SequenceEditor::renderTimelineInline(int32_t trackIndex, const RenderContext& context, float availableHeight) {
+    auto it = windows_.find(trackIndex);
+    if (it == windows_.end()) {
+        return;
+    }
+    renderTimelineContent(trackIndex, it->second, context, availableHeight, false);
+}
+
+float SequenceEditor::getInlineTimelineHeight(int32_t trackIndex, float uiScale) const {
+    const float baseSectionHeight = std::max(80.0f * uiScale, 40.0f);
+    const float minHeight = 120.0f * uiScale;
+
+    size_t sectionCount = 1;
+    ImTimelineStyle style;
+    auto it = windows_.find(trackIndex);
+    if (it != windows_.end()) {
+        sectionCount = std::max<size_t>(1, it->second.displayClips.size());
+        style = it->second.timelineStyle;
+    } else {
+        style.LegendWidth = 140.0f * uiScale;
+        style.HeaderHeight = static_cast<int>(24.0f * uiScale);
+        style.ScrollbarThickness = static_cast<int>(12.0f * uiScale);
+        style.SeekbarWidth = 2.0f * uiScale;
+    }
+
+    const float headerHeight = static_cast<float>(style.HeaderHeight);
+    const float scrollbarHeight = style.HasScrollbar ? static_cast<float>(style.ScrollbarThickness) : 0.0f;
+    const float sectionsHeight = static_cast<float>(sectionCount) * baseSectionHeight;
+    const float spacingHeight = static_cast<float>(sectionCount) * kTimelineSectionSpacing;
+    const float computedHeight = headerHeight + sectionsHeight + spacingHeight + kTimelineChildPadding + scrollbarHeight;
+
+    return std::max(computedHeight, minHeight);
+}
+
+void SequenceEditor::reset() {
+    windows_.clear();
 }
 
 void SequenceEditor::render(const RenderContext& context) {
@@ -108,25 +145,9 @@ void SequenceEditor::renderWindow(int32_t trackIndex, SequenceEditorState& state
             context.updateChildWindowSizeState(windowSizeId);
         }
 
-        const float reservedHeight = ImGui::GetFrameHeightWithSpacing() * 2.0f;
-        float tabRegionHeight = ImGui::GetContentRegionAvail().y - reservedHeight;
-        const float minTabHeight = 150.0f * context.uiScale;
-        tabRegionHeight = std::max(minTabHeight, tabRegionHeight);
-
-        std::string tabBarId = std::format("SequenceEditorTabs##{}", trackIndex);
-        if (ImGui::BeginTabBar(tabBarId.c_str())) {
-            if (ImGui::BeginTabItem("Timeline")) {
-                renderTimelineEditor(trackIndex, state, context, tabRegionHeight);
-                ImGui::EndTabItem();
-            }
-
-            if (ImGui::BeginTabItem("Clip Table")) {
-                renderClipTable(trackIndex, state, context, tabRegionHeight);
-                ImGui::EndTabItem();
-            }
-
-            ImGui::EndTabBar();
-        }
+        float clipRegionHeight = ImGui::GetContentRegionAvail().y;
+        clipRegionHeight = std::max(150.0f * context.uiScale, clipRegionHeight);
+        renderClipTable(trackIndex, state, context, clipRegionHeight);
 
         ImGui::Spacing();
         ImGui::Separator();
@@ -206,20 +227,20 @@ void SequenceEditor::renderClipTable(int32_t trackIndex, SequenceEditorState& st
     ImGui::EndChild();
 }
 
-void SequenceEditor::renderTimelineEditor(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight) {
+void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight, bool showLabel) {
     if (availableHeight <= 0.0f) {
         availableHeight = ImGui::GetContentRegionAvail().y;
     }
     availableHeight = std::max(availableHeight, 0.0f);
 
-    const float infoHeight = ImGui::GetTextLineHeightWithSpacing();
-    float timelineHeight = availableHeight - infoHeight - ImGui::GetStyle().ItemSpacing.y;
-    if (timelineHeight <= 0.0f) {
-        timelineHeight = availableHeight;
+    float timelineHeight = availableHeight;
+    if (showLabel) {
+        const float infoHeight = ImGui::GetTextLineHeightWithSpacing();
+        timelineHeight -= infoHeight + ImGui::GetStyle().ItemSpacing.y;
+        timelineHeight = std::max(timelineHeight, 0.0f);
+        ImGui::TextDisabled("Timeline units: seconds");
+        ImGui::Spacing();
     }
-
-    ImGui::TextDisabled("Timeline units: seconds");
-    ImGui::Spacing();
 
     if (state.timelineDirty) {
         rebuildTimelineModel(trackIndex, state, context);
@@ -286,6 +307,7 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
     style.ScrollbarThickness = static_cast<int>(12.0f * context.uiScale);
     style.SeekbarWidth = 2.0f * context.uiScale;
     state.timeline->SetTimelineStyle(style);
+    state.timelineStyle = style;
 
     const float baseHeight = std::max(80.0f * context.uiScale, 40.0f);
     int32_t maxFrame = 0;

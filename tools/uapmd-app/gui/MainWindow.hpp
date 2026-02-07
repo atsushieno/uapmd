@@ -20,6 +20,7 @@
 #include "SequenceEditor.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
+#include "../AppModel.hpp"
 
 // Forward declarations for different window types
 struct SDL_Window;
@@ -43,6 +44,7 @@ class MainWindow {
 
         // Player settings window visibility
         bool showPlayerSettingsWindow_ = false;
+        bool showAudioGraphWindow_ = false;
 
         // Spectrum analyzers
         SpectrumAnalyzer inputSpectrumAnalyzer_;
@@ -108,9 +110,14 @@ class MainWindow {
         // Player settings
         void renderPlayerSettings();
 
-        // Instance control
-        void renderInstanceControl();
+        // Track UI
+        void renderAudioGraphEditorWindow();
+        void renderTrackList(const SequenceEditor::RenderContext& context);
+        void renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context);
         void refreshInstances();
+        void refreshAllSequenceEditorTracks();
+        void deleteTrack(int32_t trackIndex);
+        void handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChange& change);
         bool handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height);
         void onPluginWindowResized(int32_t instanceId);
         void onPluginWindowClosed(int32_t instanceId);

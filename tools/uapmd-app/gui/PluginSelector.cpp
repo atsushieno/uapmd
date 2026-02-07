@@ -33,27 +33,6 @@ void PluginSelector::render() {
     // Render the plugin list component
     pluginList_.render();
 
-    ImGui::Separator();
-    // Build track destination options
-    std::vector<std::string> labels;
-    {
-        if (selectedTrackOption_ < 0 || selectedTrackOption_ > static_cast<int>(trackOptions_.size())) {
-            selectedTrackOption_ = 0;
-        }
-
-        labels.reserve(trackOptions_.size() + 1);
-        labels.emplace_back("New track (new UMP device)");
-        for (const auto& option : trackOptions_) {
-            labels.push_back(option.label);
-        }
-    }
-
-    std::vector<const char*> labelPtrs;
-    labelPtrs.reserve(labels.size());
-    for (auto& label : labels) {
-        labelPtrs.push_back(label.c_str());
-    }
-
     // Plugin instantiation controls
     auto selection = pluginList_.getSelection();
     bool canInstantiate = selection.hasSelection;
@@ -61,29 +40,17 @@ void PluginSelector::render() {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Instantiate Plugin")) {
-        // Determine track index
-        int32_t trackIndex = -1;
-        if (selectedTrackOption_ > 0 && static_cast<size_t>(selectedTrackOption_ - 1) < trackOptions_.size()) {
-            // Use existing track
-            trackIndex = trackOptions_[static_cast<size_t>(selectedTrackOption_ - 1)].trackIndex;
-        }
-
         // Call the callback
         if (onInstantiatePlugin_) {
-            onInstantiatePlugin_(selection.format, selection.pluginId, trackIndex);
+            onInstantiatePlugin_(selection.format, selection.pluginId, targetTrackIndex_);
         }
     }
     if (!canInstantiate) {
         ImGui::EndDisabled();
     }
 
-    ImGui::SameLine();
-    ImGui::TextUnformatted("on");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(250.0f);
-    ImGui::Combo("##track_dest", &selectedTrackOption_, labelPtrs.data(), static_cast<int>(labelPtrs.size()));
-
-    if (selectedTrackOption_ == 0) {
+    if (targetTrackIndex_ < 0) {
+        ImGui::TextUnformatted("Destination: New Track (new UMP device)");
         // Show device configuration for new track
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Device Name:");
@@ -95,6 +62,8 @@ void PluginSelector::render() {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(120.0f);
         ImGui::InputText("##api", apiInput_, sizeof(apiInput_));
+    } else {
+        ImGui::Text("Destination: Track %d", targetTrackIndex_ + 1);
     }
 }
 
@@ -112,10 +81,6 @@ void PluginSelector::setOnScanPlugins(std::function<void(bool forceRescan)> call
 
 void PluginSelector::setScanning(bool scanning) {
     isScanning_ = scanning;
-}
-
-void PluginSelector::setTrackOptions(const std::vector<TrackDestinationOption>& options) {
-    trackOptions_ = options;
 }
 
 }

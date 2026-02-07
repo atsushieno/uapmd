@@ -154,6 +154,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
     {
         auto formatName = args.get<std::string> (0, "");
         auto pluginId = args.get<std::string> (1, "");
+        auto trackIndex = args.get<int32_t> (2, -1);
 
         if (formatName.empty() || pluginId.empty())
             return choc::value::createInt32 (-1);
@@ -183,7 +184,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         model.instanceCreated.push_back(callback);
 
         // Trigger instance creation (will call all callbacks including ours and MainWindow's)
-        model.createPluginInstanceAsync(formatName, pluginId, -1, config);
+        model.createPluginInstanceAsync(formatName, pluginId, trackIndex, config);
 
         // Wait for completion with timeout (max 5 seconds)
         auto startTime = std::chrono::steady_clock::now();
@@ -565,6 +566,28 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             arr.addArrayElement (trackObj);
         }
         return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_add_track", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto index = uapmd::AppModel::instance().addTrack();
+        return choc::value::createInt32(index);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_remove_track", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        bool removed = false;
+        if (trackIndex >= 0) {
+            removed = uapmd::AppModel::instance().removeTrack(trackIndex);
+        }
+        return choc::value::createBool(removed);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_clear_tracks", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        uapmd::AppModel::instance().removeAllTracks();
+        return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_getParameterUpdates", [this] (choc::javascript::ArgumentList args) -> choc::value::Value

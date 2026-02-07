@@ -97,8 +97,8 @@ export class ParameterInfo {
 }
 
 export class PluginInstance {
-    constructor(formatName, pluginId) {
-        this.instanceId = __remidy_instance_create(formatName, pluginId);
+    constructor(formatName, pluginId, trackIndex = -1) {
+        this.instanceId = __remidy_instance_create(formatName, pluginId, trackIndex);
         if (this.instanceId < 0) {
             throw new Error('Failed to create plugin instance');
         }
@@ -205,8 +205,9 @@ export const sequencer = {
     },
 
     // Instance Management
-    createPluginInstance: function(format, pluginId) {
-        return __remidy_instance_create(format, pluginId);
+    createPluginInstance: function(format, pluginId, trackIndex) {
+        if (trackIndex === undefined) trackIndex = -1;
+        return __remidy_instance_create(format, pluginId, trackIndex);
     },
 
     enableUmpDevice: function(instanceId, deviceName) {
@@ -248,6 +249,15 @@ export const sequencer = {
     getTrackInfos: function() {
         const tracks = __remidy_sequencer_getTrackInfos();
         return tracks.map(t => new TrackInfo(t));
+    },
+    addTrack: function() {
+        return __remidy_sequencer_add_track();
+    },
+    removeTrack: function(trackIndex) {
+        return __remidy_sequencer_remove_track(trackIndex);
+    },
+    clearTracks: function() {
+        __remidy_sequencer_clear_tracks();
     },
 
     getParameterUpdates: function(instanceId) {

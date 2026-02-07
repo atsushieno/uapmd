@@ -224,7 +224,11 @@ function findPlugin(displayName, format) {
     return plugin;
 }
 
-// Create four tracks with specific plugins
+// Start from a clean slate
+log("Removing existing tracks...");
+sequencer.clearTracks();
+
+// Create five tracks with specific plugins
 const tracksToCreate = [
     { name: 'Dexed', format: 'VST3' },
     { name: 'RipplerX', format: 'LV2' },
@@ -240,7 +244,13 @@ for (const trackConfig of tracksToCreate) {
 
     if (plugin) {
         // Use the low-level sequencer API directly, matching the C++ AppModel::instantiatePlugin pattern
-        const instanceId = sequencer.createPluginInstance(plugin.format, plugin.pluginId);
+        const trackIndex = sequencer.addTrack();
+        if (trackIndex < 0) {
+            log(`Failed to create track for ${plugin.displayName}`);
+            continue;
+        }
+
+        const instanceId = sequencer.createPluginInstance(plugin.format, plugin.pluginId, trackIndex);
         if (instanceId >= 0) {
             instanceIds.push(instanceId);
             sequencer.showPluginUI(instanceId);
