@@ -256,6 +256,7 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
     std::string timelineChildId = std::format("##TimelineRegion{}", trackIndex);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     if (ImGui::BeginChild(timelineChildId.c_str(), ImVec2(0, timelineHeight), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        // Check if this window is actually hovered (will be false if another window is on top)
         const bool timelineHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
         const ImVec2 childWindowPos = ImGui::GetWindowPos();
         const ImVec2 childWindowSize = ImGui::GetWindowSize();
@@ -267,11 +268,35 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             clipAreaMaxY -= static_cast<float>(state.timelineStyle.ScrollbarThickness);
         }
 
-        if (state.timeline->mDragData.DragState == eDragState::DragNode && state.activeDragSection == -1) {
-            state.activeDragSection = state.timeline->mDragData.DragNode.GetSection();
+        // Block mouse input to ImTimeline when this window is not hovered (e.g., another window is on top)
+        // ImTimeline reads directly from ImGui::GetIO().MouseDown[], so we need to temporarily clear it
+        ImGuiIO& io = ImGui::GetIO();
+        bool savedMouseDown[5];
+        if (!timelineHovered) {
+            for (int i = 0; i < 5; ++i) {
+                savedMouseDown[i] = io.MouseDown[i];
+                io.MouseDown[i] = false;
+            }
         }
 
         state.timeline->DrawTimeline();
+
+        // Restore mouse state
+        if (!timelineHovered) {
+            for (int i = 0; i < 5; ++i) {
+                io.MouseDown[i] = savedMouseDown[i];
+            }
+        }
+
+        // Only start tracking drag if timeline window is actually hovered (not blocked by other windows)
+        if (state.timeline->mDragData.DragState == eDragState::DragNode && state.activeDragSection == -1 && timelineHovered) {
+            state.activeDragSection = state.timeline->mDragData.DragNode.GetSection();
+        }
+
+        // Cancel active drag if window is no longer hovered (e.g., another window came on top)
+        if (state.activeDragSection != -1 && !timelineHovered) {
+            state.activeDragSection = -1;
+        }
 
         int32_t requestedContextClip = -1;
         const ImVec2 mousePos = ImGui::GetMousePos();
