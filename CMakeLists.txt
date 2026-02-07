@@ -1,10 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 
-if (ANDROID OR NOT APPLE)
-    project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX)
-else()
-    project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX OBJC OBJCXX)
-endif()
+project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 

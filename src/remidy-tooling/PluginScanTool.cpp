@@ -1,5 +1,7 @@
 
+#if !ANDROID
 #include <cpplocate/cpplocate.h>
+#endif
 #include "remidy-tooling/PluginScanTool.hpp"
 
 const char* TOOLING_DIR_NAME= "remidy-tooling";
