@@ -1,6 +1,7 @@
 #include "SequenceEditor.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <iostream>
 #include <map>
@@ -19,6 +20,7 @@ namespace {
 constexpr int32_t kTimelineSectionId = 0;
 constexpr float kTimelineSectionSpacing = 5.0f; // Matches Timeline::DrawTimeline spacing
 constexpr float kTimelineChildPadding = 8.0f;   // Matches Timeline::DrawTimeline padding
+constexpr ImU32 kTimelinePlayheadColor = IM_COL32(255, 230, 0, 255);
 
 } // namespace
 
@@ -300,6 +302,8 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             io.MouseWheelH = savedMouseWheelH;
         }
 
+        drawPlayheadIndicator(state, clipAreaMinX, clipAreaMinY, clipAreaMaxX, clipAreaMaxY);
+
         // Only start tracking drag if no popup is blocking and timeline is hovered
         if (state.timeline->mDragData.DragState == eDragState::DragNode &&
             state.activeDragSection == -1 &&
@@ -420,6 +424,7 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
     style.HeaderHeight = static_cast<int>(24.0f * context.uiScale);
     style.ScrollbarThickness = static_cast<int>(12.0f * context.uiScale);
     style.SeekbarWidth = 2.0f * context.uiScale;
+    style.HasSeekbar = false;
     state.timeline->SetTimelineStyle(style);
     state.timelineStyle = style;
 
@@ -677,6 +682,65 @@ std::vector<int32_t> SequenceEditor::getAnchorOptions(int32_t trackIndex, int32_
 
     std::sort(options.begin(), options.end());
     return options;
+}
+
+void SequenceEditor::drawPlayheadIndicator(
+    const SequenceEditorState& state,
+    float clipAreaMinX,
+    float clipAreaMinY,
+    float clipAreaMaxX,
+    float clipAreaMaxY
+) const {
+    if (!state.timeline) {
+        return;
+    }
+
+    auto& appModel = uapmd::AppModel::instance();
+    const int32_t sampleRate = appModel.sampleRate();
+    if (sampleRate <= 0) {
+        return;
+    }
+
+    const auto& timelineState = appModel.timeline();
+    const double playheadSeconds = timelineState.playheadPosition.toSeconds(sampleRate);
+    if (!std::isfinite(playheadSeconds)) {
+        return;
+    }
+
+    const int32_t maxFrame = state.timeline->GetMaxFrame();
+    if (maxFrame <= 0) {
+        return;
+    }
+
+    const double clampedFrame = std::clamp(playheadSeconds, 0.0, static_cast<double>(maxFrame));
+    const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
+    if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame)) {
+        return;
+    }
+
+    const float scale = state.timeline->GetScale();
+    const float clipMinX = clipAreaMinX;
+    const float clipMaxX = clipAreaMaxX;
+    if (clipMaxX <= clipMinX) {
+        return;
+    }
+
+    const float x = clipMinX + static_cast<float>((clampedFrame - startFrame) * static_cast<double>(scale)) + (scale * 0.5f);
+    float y1 = clipAreaMinY;
+    float y2 = clipAreaMaxY;
+    if (state.timelineStyle.HasScrollbar) {
+        y2 += static_cast<float>(state.timelineStyle.ScrollbarThickness);
+    }
+
+    if (y2 <= y1) {
+        return;
+    }
+
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    drawList->PushClipRect(ImVec2(clipMinX, y1), ImVec2(clipMaxX, y2), true);
+    const float thickness = std::max(2.0f, state.timeline->mStyle.SeekbarWidth);
+    drawList->AddLine(ImVec2(x, y1), ImVec2(x, y2), kTimelinePlayheadColor, thickness);
+    drawList->PopClipRect();
 }
 
 }

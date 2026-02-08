@@ -88,6 +88,13 @@ private:
     bool renderPositionInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     bool renderNameInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     std::vector<int32_t> getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const;
+    void drawPlayheadIndicator(
+        const SequenceEditorState& state,
+        float clipAreaMinX,
+        float clipAreaMinY,
+        float clipAreaMaxX,
+        float clipAreaMaxY
+    ) const;
 };
 
 }
