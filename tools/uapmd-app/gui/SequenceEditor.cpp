@@ -305,7 +305,13 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             io.MouseWheelH = savedMouseWheelH;
         }
 
-        drawPlayheadIndicator(state, clipAreaMinX, clipAreaMinY, clipAreaMaxX, clipAreaMaxY);
+        const float headerMinX = clipAreaMinX;
+        const float headerMaxX = clipAreaMaxX;
+        const float headerMinY = childWindowPos.y;
+        const float headerMaxY = clipAreaMinY;
+        if (headerMaxX > headerMinX && headerMaxY > headerMinY) {
+            drawPlayheadIndicator(state, headerMinX, headerMinY, headerMaxX, headerMaxY);
+        }
 
         // Only start tracking drag if no popup is blocking and timeline is hovered
         if (state.timeline->mDragData.DragState == eDragState::DragNode &&
@@ -695,10 +701,10 @@ std::vector<int32_t> SequenceEditor::getAnchorOptions(int32_t trackIndex, int32_
 
 void SequenceEditor::drawPlayheadIndicator(
     const SequenceEditorState& state,
-    float clipAreaMinX,
-    float clipAreaMinY,
-    float clipAreaMaxX,
-    float clipAreaMaxY
+    float headerMinX,
+    float headerMinY,
+    float headerMaxX,
+    float headerMaxY
 ) const {
     if (!state.timeline) {
         return;
@@ -728,27 +734,35 @@ void SequenceEditor::drawPlayheadIndicator(
     }
 
     const float scale = state.timeline->GetScale();
-    const float clipMinX = clipAreaMinX;
-    const float clipMaxX = clipAreaMaxX;
+    const float clipMinX = headerMinX;
+    const float clipMaxX = headerMaxX;
     if (clipMaxX <= clipMinX) {
         return;
     }
 
     const float x = clipMinX + static_cast<float>((clampedFrame - startFrame) * static_cast<double>(scale)) + (scale * 0.5f);
-    float y1 = clipAreaMinY;
-    float y2 = clipAreaMaxY;
-    if (state.timelineStyle.HasScrollbar) {
-        y2 += static_cast<float>(state.timelineStyle.ScrollbarThickness);
-    }
-
-    if (y2 <= y1) {
+    const float yTop = headerMinY;
+    const float yBottom = headerMaxY;
+    if (yBottom <= yTop) {
         return;
     }
 
-    ImDrawList* drawList = ImGui::GetForegroundDrawList();
-    drawList->PushClipRect(ImVec2(clipMinX, y1), ImVec2(clipMaxX, y2), true);
-    const float thickness = std::max(2.0f, state.timeline->mStyle.SeekbarWidth);
-    drawList->AddLine(ImVec2(x, y1), ImVec2(x, y2), kTimelinePlayheadColor, thickness);
+    const float headerHeight = yBottom - yTop;
+    const float triangleHeight = std::clamp(headerHeight * 0.75f, 6.0f, headerHeight);
+    const float halfBaseWidth = std::clamp(triangleHeight * 0.35f, 4.0f, 12.0f);
+
+    const float tipX = std::clamp(x, clipMinX, clipMaxX);
+    const float baseLeftX = std::max(clipMinX, tipX - halfBaseWidth);
+    const float baseRightX = std::min(clipMaxX, tipX + halfBaseWidth);
+    const float tipY = std::min(yBottom, yTop + triangleHeight);
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->PushClipRect(ImVec2(clipMinX, yTop), ImVec2(clipMaxX, yBottom), true);
+    const ImVec2 baseLeft(baseLeftX, yTop);
+    const ImVec2 baseRight(baseRightX, yTop);
+    const ImVec2 tip(tipX, tipY);
+    drawList->AddTriangleFilled(baseLeft, baseRight, tip, kTimelinePlayheadColor);
+    drawList->AddTriangle(baseLeft, baseRight, tip, IM_COL32(0, 0, 0, 200), 1.0f);
     drawList->PopClipRect();
 }
 
