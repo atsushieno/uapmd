@@ -382,8 +382,33 @@ void MainWindow::render(void* window) {
                 showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
             }
             ImGui::SameLine();
-            if (ImGui::Button("Player Settings")) {
-                showPlayerSettingsWindow_ = !showPlayerSettingsWindow_;
+
+            // Transport controls
+            auto& transport = uapmd::AppModel::instance().transport();
+            const char* playStopLabel = transport.isPlaying() ? "Stop" : "Play";
+            if (ImGui::Button(playStopLabel)) {
+                if (transport.isPlaying())
+                    transport.stop();
+                else
+                    transport.play();
+            }
+            ImGui::SameLine();
+
+            if (!transport.isPlaying())
+                ImGui::BeginDisabled();
+            const char* pauseResumeLabel = transport.isPaused() ? "Resume" : "Pause";
+            if (ImGui::Button(pauseResumeLabel)) {
+                if (transport.isPaused())
+                    transport.resume();
+                else
+                    transport.pause();
+            }
+            if (!transport.isPlaying())
+                ImGui::EndDisabled();
+            ImGui::SameLine();
+
+            if (ImGui::Button("Rec")) {
+                transport.record();
             }
             ImGui::SameLine();
             if (ImGui::Button("Audio Graph")) {
@@ -436,6 +461,23 @@ void MainWindow::render(void* window) {
             if (ImGui::Button("Import Tracks")) {
                 importSmfTracks();
             }
+            ImGui::SameLine();
+
+            // Spectrum analyzers - shrunken to half size
+            ImVec2 spectrumSize = ImVec2(80.0f * uiScale_, 32.0f * uiScale_);
+            inputSpectrumAnalyzer_.setSize(spectrumSize);
+            outputSpectrumAnalyzer_.setSize(spectrumSize);
+
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("In");
+            ImGui::SameLine();
+            inputSpectrumAnalyzer_.render("##InputSpectrum");
+            ImGui::SameLine();
+
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Out");
+            ImGui::SameLine();
+            outputSpectrumAnalyzer_.render("##OutputSpectrum");
         }
         ImGui::EndChild();
 
@@ -448,7 +490,6 @@ void MainWindow::render(void* window) {
     // Render floating windows
     renderPluginSelectorWindow();
     renderDeviceSettingsWindow();
-    renderPlayerSettingsWindow();
     renderAudioGraphEditorWindow();
     InstanceDetails::RenderContext detailsContext{
         .buildTrackInstance = [this](int32_t instanceId) -> std::optional<TrackInstance> {
@@ -508,20 +549,6 @@ void MainWindow::renderDeviceSettingsWindow() {
         updateChildWindowSizeState(windowId);
         updateAudioDeviceSettingsData();
         audioDeviceSettings_.render();
-    }
-    ImGui::End();
-}
-
-void MainWindow::renderPlayerSettingsWindow() {
-    if (!showPlayerSettingsWindow_) {
-        return;
-    }
-
-    const std::string windowId = "PlayerSettings";
-    setNextChildWindowSize(windowId, ImVec2(500.0f, 420.0f));
-    if (ImGui::Begin("Player Settings", &showPlayerSettingsWindow_)) {
-        updateChildWindowSizeState(windowId);
-        renderPlayerSettings();
     }
     ImGui::End();
 }
@@ -596,6 +623,10 @@ void MainWindow::renderTrackRow(int32_t trackIndex, const SequenceEditor::Render
         // Control column
         ImGui::TableSetColumnIndex(0);
         ImGui::Text("Track %d", trackIndex + 1);
+        ImGui::SameLine();
+        if (ImGui::Button("Delete")) {
+            deleteTrack(trackIndex);
+        }
         ImGui::Separator();
         auto& sequencer = uapmd::AppModel::instance().sequencer();
         auto tracksRef = sequencer.engine()->tracks();
@@ -691,9 +722,6 @@ void MainWindow::renderTrackRow(int32_t trackIndex, const SequenceEditor::Render
             }
 
             ImGui::EndPopup();
-        }
-        if (ImGui::Button("Delete Track")) {
-            deleteTrack(trackIndex);
         }
 
         // Timeline column
@@ -989,94 +1017,6 @@ void MainWindow::updateAudioDeviceSettingsData() {
     audioDeviceSettings_.setOutputAvailableSampleRates(outputSampleRates);
 }
 
-void MainWindow::renderPlayerSettings() {
-    auto& model = uapmd::AppModel::instance();
-    auto& transport = model.transport();
-    auto& sequencer = model.sequencer();
-
-    // Spectrum analyzers - side by side
-    float availableWidth = ImGui::GetContentRegionAvail().x;
-    float spectrumWidth = (availableWidth - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-    ImVec2 spectrumSize = ImVec2(spectrumWidth, 64);
-    inputSpectrumAnalyzer_.setSize(spectrumSize);
-    outputSpectrumAnalyzer_.setSize(spectrumSize);
-
-    // Use table layout for proper alignment
-    if (ImGui::BeginTable("##SpectrumTable", 2, ImGuiTableFlags_None))
-    {
-        ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, spectrumWidth);
-        ImGui::TableSetupColumn("Output", ImGuiTableColumnFlags_WidthFixed, spectrumWidth);
-
-        // First row: labels
-        ImGui::TableNextRow();
-        ImGui::TableNextColumn();
-        ImGui::Text("Input");
-        ImGui::TableNextColumn();
-        ImGui::Text("Output");
-
-        // Second row: histograms
-        ImGui::TableNextRow();
-        ImGui::TableNextColumn();
-        inputSpectrumAnalyzer_.render("##InputSpectrum");
-        ImGui::TableNextColumn();
-        outputSpectrumAnalyzer_.render("##OutputSpectrum");
-
-        ImGui::EndTable();
-    }
-
-    ImGui::Text("Transport Controls:");
-
-    // Play/Stop button
-    const char* playStopButtonText = transport.isPlaying() ? "Stop" : "Play";
-    if (ImGui::Button(playStopButtonText)) {
-        if (transport.isPlaying())
-            transport.stop();
-        else
-            transport.play();
-    }
-
-    ImGui::SameLine();
-
-    // Pause/Resume button - only enabled when playing
-    if (!transport.isPlaying()) {
-        ImGui::BeginDisabled();
-    }
-    const char* pauseResumeButtonText = transport.isPaused() ? "Resume" : "Pause";
-    if (ImGui::Button(pauseResumeButtonText)) {
-        if (transport.isPaused())
-            transport.resume();
-        else
-            transport.pause();
-    }
-    if (!transport.isPlaying()) {
-        ImGui::EndDisabled();
-    }
-
-    ImGui::SameLine();
-    const char* recordButtonText = transport.isRecording() ? "Stop Recording" : "Record";
-    if (ImGui::Button(recordButtonText)) {
-        transport.record();
-    }
-
-    ImGui::SameLine();
-    bool offlineRendering = sequencer.engine()->offlineRendering();
-    if (ImGui::Checkbox("Offline Rendering", &offlineRendering)) {
-        sequencer.engine()->offlineRendering(offlineRendering);
-    }
-
-    ImGui::Text("Master Volume:");
-    float volume = transport.volume();
-    if (ImGui::SliderFloat("##Volume", &volume, 0.0f, 1.0f, "%.2f")) {
-        transport.setVolume(volume);
-        std::cout << "Volume changed to: " << volume << std::endl;
-    }
-
-    // Mute button
-    static bool isMuted = false;
-    if (ImGui::Checkbox("Mute", &isMuted)) {
-        std::cout << "Mute state: " << (isMuted ? "ON" : "OFF") << std::endl;
-    }
-}
 
 std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instanceId) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();

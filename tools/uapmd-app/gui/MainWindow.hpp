@@ -43,8 +43,6 @@ class MainWindow {
         bool showDeviceSettingsWindow_ = false;
         AudioDeviceSettings audioDeviceSettings_;
 
-        // Player settings window visibility
-        bool showPlayerSettingsWindow_ = false;
         bool showAudioGraphWindow_ = false;
 
         // Spectrum analyzers
@@ -109,9 +107,6 @@ class MainWindow {
         void applyDeviceSettings();
         void handleAudioDeviceChange();
 
-        // Player settings
-        void renderPlayerSettings();
-
         // Track UI
         void renderAudioGraphEditorWindow();
         void renderTrackList(const SequenceEditor::RenderContext& context);
@@ -157,7 +152,6 @@ class MainWindow {
         void importSmfTracks();
 
         void renderDeviceSettingsWindow();
-        void renderPlayerSettingsWindow();
         void renderPluginSelectorWindow();
         void applyUiScale(float scale);
         void requestWindowResize();
