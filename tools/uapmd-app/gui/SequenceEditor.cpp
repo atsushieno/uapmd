@@ -5,15 +5,16 @@
 #include <format>
 #include <iostream>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <imgui.h>
 #include <ImTimeline.h>
 
 #include "../AppModel.hpp"
+#include "ClipPreview.hpp"
 
 namespace uapmd::gui {
-
-SequenceEditor::~SequenceEditor() = default;
 
 namespace {
 
@@ -21,8 +22,9 @@ constexpr int32_t kTimelineSectionId = 0;
 constexpr float kTimelineSectionSpacing = 5.0f; // Matches Timeline::DrawTimeline spacing
 constexpr float kTimelineChildPadding = 8.0f;   // Matches Timeline::DrawTimeline padding
 constexpr ImU32 kTimelinePlayheadColor = IM_COL32(255, 230, 0, 255);
-
 } // namespace
+
+SequenceEditor::~SequenceEditor() = default;
 
 void SequenceEditor::showWindow(int32_t trackIndex) {
     auto [it, inserted] = windows_.try_emplace(trackIndex);
@@ -48,6 +50,7 @@ void SequenceEditor::refreshClips(int32_t trackIndex, const std::vector<ClipRow>
     auto& state = windows_[trackIndex];
     state.displayClips = clips;
     state.timelineDirty = true;
+    pruneClipPreviewCache(state);
 }
 
 void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
@@ -454,6 +457,12 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
         TimelineNode node;
         node.Setup(currentSection, clip.timelineStart, clip.timelineEnd, sectionName);
         node.displayProperties = props;
+        auto preview = ensureClipPreview(trackIndex, clip, state);
+        auto clipLabel = clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
+        auto customNode = createClipContentNode(preview, context.uiScale, clipLabel);
+        if (customNode) {
+            node.InitalizeCustomNode(customNode);
+        }
         auto* addedNode = state.timeline->AddNewNode(&node);
         if (addedNode) {
             state.sectionToNodeId[currentSection] = addedNode->GetID();
@@ -741,6 +750,108 @@ void SequenceEditor::drawPlayheadIndicator(
     const float thickness = std::max(2.0f, state.timeline->mStyle.SeekbarWidth);
     drawList->AddLine(ImVec2(x, y1), ImVec2(x, y2), kTimelinePlayheadColor, thickness);
     drawList->PopClipRect();
+}
+
+void SequenceEditor::pruneClipPreviewCache(SequenceEditorState& state) {
+    std::unordered_set<int32_t> validIds;
+    validIds.reserve(state.displayClips.size());
+    for (const auto& clip : state.displayClips) {
+        validIds.insert(clip.clipId);
+    }
+
+    for (auto it = state.clipPreviews.begin(); it != state.clipPreviews.end();) {
+        if (validIds.find(it->first) == validIds.end()) {
+            it = state.clipPreviews.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+const uapmd::ClipData* SequenceEditor::findClipData(int32_t trackIndex, int32_t clipId) const {
+    auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        return nullptr;
+    }
+    auto* track = tracks[trackIndex];
+    if (!track) {
+        return nullptr;
+    }
+    return track->clipManager().getClip(clipId);
+}
+
+std::string SequenceEditor::buildClipSignature(const ClipRow& clip, const uapmd::ClipData* clipData) const {
+    std::string sourcePath;
+    if (clipData && !clipData->filepath.empty()) {
+        sourcePath = clipData->filepath;
+    } else {
+        sourcePath = clip.filepath;
+    }
+    if (sourcePath.empty()) {
+        sourcePath = clip.name;
+    }
+
+    const int64_t durationSamples = clipData ? clipData->durationSamples : 0;
+    const int32_t sourceNodeId = clipData ? clipData->sourceNodeInstanceId : -1;
+    return std::format("{}|{}|{}|{}|{}",
+                       sourcePath,
+                       clip.isMidiClip ? 'm' : 'a',
+                       clip.timelineEnd - clip.timelineStart,
+                       durationSamples,
+                       sourceNodeId);
+}
+
+std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
+    int32_t trackIndex,
+    const ClipRow& clip,
+    SequenceEditorState& state
+) {
+    const auto* clipData = findClipData(trackIndex, clip.clipId);
+    const auto signature = buildClipSignature(clip, clipData);
+    auto existingIt = state.clipPreviews.find(clip.clipId);
+    if (existingIt != state.clipPreviews.end() &&
+        existingIt->second &&
+        existingIt->second->signature == signature) {
+        existingIt->second->displayName = clip.name;
+        return existingIt->second;
+    }
+
+    const double fallbackDurationSeconds = std::max(
+        0.0,
+        static_cast<double>(clip.timelineEnd - clip.timelineStart)
+    );
+
+    auto makeErrorPreview = [&](const std::string& message) {
+        auto preview = std::make_shared<ClipPreview>();
+        preview->isMidiClip = clip.isMidiClip;
+        preview->hasError = true;
+        preview->errorMessage = message;
+        preview->clipDurationSeconds = fallbackDurationSeconds;
+        return preview;
+    };
+
+    std::shared_ptr<ClipPreview> preview;
+    if (clip.isMidiClip) {
+        if (clipData) {
+            preview = createMidiClipPreview(trackIndex, *clipData, fallbackDurationSeconds);
+        } else {
+            preview = makeErrorPreview("Clip data unavailable");
+        }
+    } else {
+        std::string filepath = (clipData && !clipData->filepath.empty())
+            ? clipData->filepath
+            : clip.filepath;
+        preview = createAudioClipPreview(filepath, fallbackDurationSeconds, clipData);
+    }
+
+    if (!preview) {
+        preview = makeErrorPreview("Preview unavailable");
+    }
+
+    preview->signature = signature;
+    preview->displayName = clip.name;
+    state.clipPreviews[clip.clipId] = preview;
+    return preview;
 }
 
 }

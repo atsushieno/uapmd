@@ -8,8 +8,9 @@
 #include <vector>
 
 #include <imgui.h>
-#include <memory>
 #include <ImTimeline.h>
+
+#include "ClipPreview.hpp"
 
 namespace uapmd::gui {
 
@@ -24,6 +25,7 @@ public:
         std::string position;       // Display string: "+2.5s"
         std::string name;           // User-editable clip name
         std::string filename;       // Actual file path
+        std::string filepath;       // Full path for waveform/piano roll loading
         std::string mimeType;
         std::string duration;       // Display string: "5.2s" (only shown when End anchor)
         int32_t timelineStart = 0;   // Timeline start in milliseconds
@@ -74,6 +76,7 @@ private:
         std::unordered_map<int32_t, uint64_t> sectionToNodeId;  // Maps section ID to NodeID
         int32_t activeDragSection = -1;
         int32_t contextMenuClipId = -1;
+        std::unordered_map<int32_t, std::shared_ptr<ClipPreview>> clipPreviews;
     };
 
     std::unordered_map<int32_t, SequenceEditorState> windows_;
@@ -95,6 +98,10 @@ private:
         float clipAreaMaxX,
         float clipAreaMaxY
     ) const;
+    void pruneClipPreviewCache(SequenceEditorState& state);
+    std::shared_ptr<ClipPreview> ensureClipPreview(int32_t trackIndex, const ClipRow& clip, SequenceEditorState& state);
+    std::string buildClipSignature(const ClipRow& clip, const uapmd::ClipData* clipData) const;
+    const uapmd::ClipData* findClipData(int32_t trackIndex, int32_t clipId) const;
 };
 
 }

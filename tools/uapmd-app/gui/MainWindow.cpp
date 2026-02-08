@@ -1435,6 +1435,7 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
 
         // Set name and filename (extract just filename from path)
         row.name = clip->name.empty() ? std::format("Clip {}", clip->clipId) : clip->name;
+        row.filepath = clip->filepath;
         if (clip->filepath.empty()) {
             row.filename = "(no file)";
         } else {
