@@ -120,6 +120,25 @@ CPMAddPackage(
     DOWNLOAD_ONLY YES
 )
 
+CPMAddPackage(
+    NAME demucscpp
+    GIT_REPOSITORY https://github.com/sevagh/demucs.cpp
+    GIT_TAG f1206e9adeea103aef4a636b9e62297cf1f8e34e
+    DOWNLOAD_ONLY YES
+)
+
+if(NOT TARGET demucs-cpp)
+    file(GLOB DEMUCSPP_SOURCES
+        ${demucscpp_SOURCE_DIR}/src/*.cpp
+    )
+    add_library(demucs-cpp STATIC ${DEMUCSPP_SOURCES})
+    target_include_directories(demucs-cpp PUBLIC
+        ${demucscpp_SOURCE_DIR}/src
+        ${demucscpp_SOURCE_DIR}/vendor/eigen
+    )
+    target_compile_features(demucs-cpp PUBLIC cxx_std_17)
+endif()
+
 if(NOT TARGET imgui)
     # Base ImGui sources
     set(IMGUI_SOURCES
@@ -259,6 +278,7 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             uapmd-engine
             remidy-gui
             remidy-imgui-shared
+            demucs-cpp
             ${cpplocate_LIBRARIES}
             libremidi::libremidi
             midicci_static
@@ -281,6 +301,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         main_common.cpp
         AppModel.cpp
         UapmdJSRuntime.cpp
+        import/DemucsStemSeparator.cpp
         gui/MainWindow.cpp
         gui/PluginList.cpp
         gui/InstanceDetails.cpp

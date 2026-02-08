@@ -93,6 +93,7 @@ class MainWindow {
         MidiDumpWindow midiDumpWindow_;
         std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot> masterTrackSnapshot_;
         std::string masterTrackSignature_;
+        std::string demucsModelPath_;
 
     public:
         explicit MainWindow(GuiDefaults defaults = {});
@@ -154,7 +155,10 @@ class MainWindow {
         void showMasterMetaDump();
         MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);
         MidiDumpWindow::ClipDumpData buildMasterMetaDumpData();
-        void importSmfTracks();
+        void importTracks();
+        void importMidiTracks(const std::string& filepath);
+        void importAudioTracks(const std::string& filepath);
+        bool requestDemucsModelSelection();
 
         void renderDeviceSettingsWindow();
         void renderPluginSelectorWindow();

@@ -7,6 +7,7 @@
 #include <fstream>
 #include <filesystem>
 #include <optional>
+#include <chrono>
 #include <ranges>
 #include <unordered_map>
 #include <unordered_set>
@@ -23,6 +24,7 @@
 
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
+#include "../import/DemucsStemSeparator.hpp"
 #include <uapmd-data/priv/project/SmfConverter.hpp>
 #include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
 
@@ -468,7 +470,19 @@ void MainWindow::render(void* window) {
             }
             ImGui::SameLine();
             if (ImGui::Button("Import Tracks")) {
-                importSmfTracks();
+                importTracks();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Stems Model")) {
+                requestDemucsModelSelection();
+            }
+            if (!demucsModelPath_.empty()) {
+                ImGui::SameLine();
+                auto modelName = std::filesystem::path(demucsModelPath_).filename().string();
+                if (modelName.empty()) {
+                    modelName = demucsModelPath_;
+                }
+                ImGui::TextDisabled("%s", modelName.c_str());
             }
             ImGui::SameLine();
 
@@ -1976,29 +1990,46 @@ MidiDumpWindow::ClipDumpData MainWindow::buildMasterMetaDumpData() {
     return dump;
 }
 
-void MainWindow::importSmfTracks() {
+void MainWindow::importTracks() {
     // Open file dialog to select SMF file
     auto selection = pfd::open_file(
-        "Import SMF Tracks",
+        "Import Tracks",
         ".",
-        { "MIDI Files", "*.mid *.midi *.smf",
+        { "Supported", "*.mid *.midi *.smf *.wav *.flac *.ogg",
+          "MIDI Files", "*.mid *.midi *.smf",
+          "Audio Files", "*.wav *.flac *.ogg",
           "All Files", "*" }
     );
 
     if (selection.result().empty())
-        return; // User cancelled
+        return;
 
-    std::string selectedFile = selection.result()[0];
+    const std::string selectedFile = selection.result()[0];
+    std::filesystem::path filePath(selectedFile);
+    std::string ext = filePath.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
+    if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
+        importMidiTracks(selectedFile);
+    } else if (ext == ".wav" || ext == ".flac" || ext == ".ogg") {
+        importAudioTracks(selectedFile);
+    } else {
+        pfd::message("Unsupported File",
+                     std::format("Cannot import files with extension {}", ext),
+                     pfd::choice::ok,
+                     pfd::icon::warning);
+    }
+}
+
+void MainWindow::importMidiTracks(const std::string& selectedFile) {
     try {
-        // Read SMF file to get track count
         umppi::Midi1Music music = umppi::readMidi1File(selectedFile);
 
         if (music.tracks.empty()) {
             pfd::message("Import Failed",
-                        "The selected MIDI file contains no tracks.",
-                        pfd::choice::ok,
-                        pfd::icon::error);
+                         "The selected MIDI file contains no tracks.",
+                         pfd::choice::ok,
+                         pfd::icon::error);
             return;
         }
 
@@ -2006,30 +2037,26 @@ void MainWindow::importSmfTracks() {
         std::filesystem::path smfPath(selectedFile);
         std::string baseFilename = smfPath.stem().string();
 
-        // Import each track as a new timeline track with a MIDI clip
         for (size_t trackIdx = 0; trackIdx < music.tracks.size(); ++trackIdx) {
-            // Convert this track to UMP
             auto convertResult = uapmd::SmfConverter::convertTrackToUmp(selectedFile, trackIdx);
 
             if (!convertResult.success) {
                 pfd::message("Import Warning",
-                            std::format("Failed to import track {}:\n{}", trackIdx + 1, convertResult.error),
-                            pfd::choice::ok,
-                            pfd::icon::warning);
+                             std::format("Failed to import track {}:\n{}", trackIdx + 1, convertResult.error),
+                             pfd::choice::ok,
+                             pfd::icon::warning);
                 continue;
             }
 
-            // Create a new timeline track
             int32_t newTrackIndex = appModel.addTrack();
             if (newTrackIndex < 0) {
                 pfd::message("Import Error",
-                            std::format("Failed to create track for SMF track {}", trackIdx + 1),
-                            pfd::choice::ok,
-                            pfd::icon::error);
+                             std::format("Failed to create track for SMF track {}", trackIdx + 1),
+                             pfd::choice::ok,
+                             pfd::icon::error);
                 continue;
             }
 
-            // Add MIDI clip to the new track at position 0
             uapmd::TimelinePosition position;
             position.samples = 0;
             position.legacy_beats = 0.0;
@@ -2050,31 +2077,130 @@ void MainWindow::importSmfTracks() {
 
             if (!clipResult.success) {
                 pfd::message("Import Warning",
-                            std::format("Failed to add clip for track {}:\n{}", trackIdx + 1, clipResult.error),
-                            pfd::choice::ok,
-                            pfd::icon::warning);
-                // Track was created but clip failed - should we remove the track?
-                // For now, leave the empty track
+                             std::format("Failed to add clip for track {}:\n{}", trackIdx + 1, clipResult.error),
+                             pfd::choice::ok,
+                             pfd::icon::warning);
                 continue;
             }
 
-            // Refresh the sequence editor for this track
             refreshSequenceEditorForTrack(newTrackIndex);
         }
 
         pfd::message("Import Complete",
-                    std::format("Successfully imported {} track(s) from {}",
-                               music.tracks.size(),
-                               baseFilename),
-                    pfd::choice::ok,
-                    pfd::icon::info);
+                     std::format("Successfully imported {} track(s) from {}",
+                                 music.tracks.size(),
+                                 baseFilename),
+                     pfd::choice::ok,
+                     pfd::icon::info);
 
     } catch (const std::exception& ex) {
         pfd::message("Import Failed",
-                    std::format("Exception during SMF import:\n{}", ex.what()),
-                    pfd::choice::ok,
-                    pfd::icon::error);
+                     std::format("Exception during SMF import:\n{}", ex.what()),
+                     pfd::choice::ok,
+                     pfd::icon::error);
     }
+}
+
+void MainWindow::importAudioTracks(const std::string& selectedFile) {
+    if (demucsModelPath_.empty() || !std::filesystem::exists(demucsModelPath_)) {
+        if (!requestDemucsModelSelection()) {
+            return;
+        }
+    }
+
+    auto baseName = std::filesystem::path(selectedFile).stem().string();
+    if (baseName.empty()) {
+        baseName = "track";
+    }
+    const auto timestamp = std::chrono::system_clock::now();
+    const auto folderTag = std::format("{:%Y%m%d-%H%M%S}", timestamp);
+    auto outputDir = std::filesystem::temp_directory_path() / "uapmd-demucs" / std::format("{}-{}", baseName, folderTag);
+
+    uapmd::import::DemucsStemSeparator separator(demucsModelPath_);
+    auto separation = separator.separate(selectedFile, outputDir);
+    if (!separation.success) {
+        pfd::message("Import Failed",
+                     separation.error.empty() ? "Demucs failed to separate stems." : separation.error,
+                     pfd::choice::ok,
+                     pfd::icon::error);
+        return;
+    }
+
+    auto& appModel = uapmd::AppModel::instance();
+    size_t importedCount = 0;
+    std::vector<std::string> warnings;
+
+    for (const auto& stem : separation.stems) {
+        int32_t newTrackIndex = appModel.addTrack();
+        if (newTrackIndex < 0) {
+            warnings.push_back(std::format("Could not add track for stem {}", stem.name));
+            continue;
+        }
+
+        auto reader = uapmd::createAudioFileReaderFromPath(stem.filepath.string());
+        if (!reader) {
+            warnings.push_back(std::format("Failed to load audio for stem {}", stem.name));
+            continue;
+        }
+
+        uapmd::TimelinePosition position;
+        position.samples = 0;
+        position.legacy_beats = 0.0;
+
+        auto clipResult = appModel.addClipToTrack(newTrackIndex, position, std::move(reader), stem.filepath.string());
+        if (!clipResult.success) {
+            warnings.push_back(std::format("Failed to create clip for {}: {}", stem.name, clipResult.error));
+            continue;
+        }
+
+        auto tracks = appModel.getTimelineTracks();
+        if (newTrackIndex >= 0 && newTrackIndex < static_cast<int32_t>(tracks.size())) {
+            std::string clipName = std::format("{} - {}", baseName, stem.name);
+            tracks[newTrackIndex]->clipManager().setClipName(clipResult.clipId, clipName);
+        }
+
+        refreshSequenceEditorForTrack(newTrackIndex);
+        ++importedCount;
+    }
+
+    if (importedCount == 0) {
+        std::string errorMsg = "No stems were imported.";
+        if (!warnings.empty()) {
+            errorMsg += "\n";
+            for (const auto& warning : warnings) {
+                errorMsg += warning + "\n";
+            }
+        }
+        pfd::message("Import Failed", errorMsg, pfd::choice::ok, pfd::icon::error);
+        return;
+    }
+
+    std::string summary = std::format("Created {} stem track(s) from {}", importedCount, baseName);
+    pfd::icon icon = pfd::icon::info;
+    if (!warnings.empty()) {
+        summary += "\n\nWarnings:\n";
+        for (const auto& warning : warnings) {
+            summary += warning + "\n";
+        }
+        icon = pfd::icon::warning;
+    }
+
+    pfd::message("Import Complete", summary, pfd::choice::ok, icon);
+}
+
+bool MainWindow::requestDemucsModelSelection() {
+    auto selection = pfd::open_file(
+        "Select Demucs Model",
+        ".",
+        { "Demucs ggml Model", "*.bin",
+          "All Files", "*" }
+    );
+
+    if (selection.result().empty())
+        return false;
+
+    demucsModelPath_ = selection.result()[0];
+    return true;
 }
 
 }
