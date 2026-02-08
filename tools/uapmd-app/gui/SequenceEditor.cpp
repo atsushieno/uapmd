@@ -268,33 +268,48 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             clipAreaMaxY -= static_cast<float>(state.timelineStyle.ScrollbarThickness);
         }
 
-        // Block mouse input to ImTimeline when this window is not hovered (e.g., another window is on top)
-        // ImTimeline reads directly from ImGui::GetIO().MouseDown[], so we need to temporarily clear it
+        // Block mouse input to ImTimeline when there's a popup/modal window on top
+        // ImTimeline reads directly from ImGui::GetIO(), so we temporarily clear mouse state
+        // Check if any popup is open that could be blocking this timeline
+        const bool popupBlocking = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+
         ImGuiIO& io = ImGui::GetIO();
         bool savedMouseDown[5];
-        if (!timelineHovered) {
+        float savedMouseWheel = 0.0f;
+        float savedMouseWheelH = 0.0f;
+
+        if (popupBlocking) {
+            // Save and clear mouse state to prevent ImTimeline from reacting
             for (int i = 0; i < 5; ++i) {
                 savedMouseDown[i] = io.MouseDown[i];
                 io.MouseDown[i] = false;
             }
+            savedMouseWheel = io.MouseWheel;
+            savedMouseWheelH = io.MouseWheelH;
+            io.MouseWheel = 0.0f;
+            io.MouseWheelH = 0.0f;
         }
 
         state.timeline->DrawTimeline();
 
         // Restore mouse state
-        if (!timelineHovered) {
-            for (int i = 0; i < 5; ++i) {
+        if (popupBlocking) {
+            for (int i = 0; i < 5; ++i)
                 io.MouseDown[i] = savedMouseDown[i];
-            }
+            io.MouseWheel = savedMouseWheel;
+            io.MouseWheelH = savedMouseWheelH;
         }
 
-        // Only start tracking drag if timeline window is actually hovered (not blocked by other windows)
-        if (state.timeline->mDragData.DragState == eDragState::DragNode && state.activeDragSection == -1 && timelineHovered) {
+        // Only start tracking drag if no popup is blocking and timeline is hovered
+        if (state.timeline->mDragData.DragState == eDragState::DragNode &&
+            state.activeDragSection == -1 &&
+            !popupBlocking &&
+            timelineHovered) {
             state.activeDragSection = state.timeline->mDragData.DragNode.GetSection();
         }
 
-        // Cancel active drag if window is no longer hovered (e.g., another window came on top)
-        if (state.activeDragSection != -1 && !timelineHovered) {
+        // Cancel active drag if a popup appeared on top
+        if (state.activeDragSection != -1 && popupBlocking) {
             state.activeDragSection = -1;
         }
 
