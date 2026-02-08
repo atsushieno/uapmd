@@ -211,16 +211,6 @@ void SequenceEditor::renderClipTable(int32_t trackIndex, SequenceEditorState& st
     }
     availableHeight = std::max(availableHeight, 0.0f);
 
-    if (trackIndex < 0) {
-        if (ImGui::BeginChild("MasterTrackInfo", ImVec2(0, availableHeight), false, ImGuiWindowFlags_None)) {
-            ImGui::TextUnformatted("Master Track Meta Events");
-            ImGui::Separator();
-            ImGui::TextWrapped("This view displays tempo and time signature changes captured from SMF meta events. Editing is currently unsupported.");
-        }
-        ImGui::EndChild();
-        return;
-    }
-
     std::string childId = std::format("##ClipTableRegion{}", trackIndex);
     if (ImGui::BeginChild(childId.c_str(), ImVec2(0, availableHeight), false, ImGuiWindowFlags_None)) {
         ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
@@ -346,7 +336,7 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         if (timelineHovered && mouseInClipArea && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             int hoveredSection = state.timeline->GetSelectedSection();
             auto clipIt = state.sectionToClip.find(hoveredSection);
-            if (clipIt != state.sectionToClip.end() && clipIt->second >= 0) {
+            if (clipIt != state.sectionToClip.end() && clipIt->second != -1) {
                 requestedContextClip = clipIt->second;
             }
         }
@@ -375,14 +365,14 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         }
 
         std::string popupId = std::format("TimelineClipContext##{}", trackIndex);
-        if (requestedContextClip >= 0) {
+        if (requestedContextClip != -1) {
             state.contextMenuClipId = requestedContextClip;
             ImGui::OpenPopup(popupId.c_str());
         }
 
         if (ImGui::BeginPopup(popupId.c_str())) {
             const ClipRow* contextClip = nullptr;
-            if (state.contextMenuClipId >= 0) {
+            if (state.contextMenuClipId != -1) {
                 auto clipRowIt = std::find_if(
                     state.displayClips.begin(),
                     state.displayClips.end(),
@@ -396,9 +386,8 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             if (!contextClip) {
                 ImGui::TextDisabled("Clip not available.");
             } else {
-                const bool canShowMidiDump = contextClip->isMidiClip && static_cast<bool>(context.showMidiClipDump);
-                const bool canShowMasterDump = contextClip->isMasterTrack && static_cast<bool>(context.showMasterTrackDump);
-                const bool canShowDump = canShowMidiDump || canShowMasterDump;
+                const bool canShowDump = (contextClip->isMasterTrack && static_cast<bool>(context.showMasterTrackDump)) ||
+                    (contextClip->isMidiClip && static_cast<bool>(context.showMidiClipDump));
                 if (!canShowDump) {
                     ImGui::BeginDisabled();
                 }
@@ -525,37 +514,8 @@ void SequenceEditor::renderClipRow(int32_t trackIndex, const ClipRow& clip, cons
     // Anchor column
     ImGui::TableSetColumnIndex(0);
 
-    if (clip.isMasterTrack) {
-        ImGui::TableSetColumnIndex(1);
-        ImGui::TextUnformatted("N/A");
-        ImGui::TableSetColumnIndex(2);
-        ImGui::TextUnformatted("N/A");
-        ImGui::TableSetColumnIndex(3);
-        ImGui::TextUnformatted(clip.name.c_str());
-        ImGui::TableSetColumnIndex(4);
-        ImGui::TextUnformatted("-");
-        ImGui::TableSetColumnIndex(5);
-        ImGui::TextUnformatted("-");
-        return;
-    } else {
-        std::string anchorLabel = "Track";
-        if (clip.anchorClipId != -1) {
-            auto it = windows_.find(trackIndex);
-            if (it != windows_.end()) {
-                for (const auto& c : it->second.displayClips) {
-                    if (c.clipId == clip.anchorClipId) {
-                        anchorLabel = c.name.empty() ? std::format("Clip #{}", c.clipId) : c.name;
-                        break;
-                    }
-                }
-            }
-        }
-
-        ImGui::SetNextItemWidth(-FLT_MIN);  // Use all available width in column
-        std::string comboId = std::format("##AnchorCombo{}", clip.clipId);
-        anchorChanged = renderAnchorCombo(trackIndex, clip, context);
-
-    }
+    ImGui::SetNextItemWidth(-FLT_MIN);  // Use all available width in column
+    anchorChanged = renderAnchorCombo(trackIndex, clip, context);
 
     // Origin column
     ImGui::TableSetColumnIndex(1);
@@ -598,8 +558,6 @@ void SequenceEditor::renderClipRow(int32_t trackIndex, const ClipRow& clip, cons
 }
 
 bool SequenceEditor::renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
-    if (trackIndex < 0 || clip.isMasterTrack)
-        return false;
     bool changed = false;
     std::string anchorLabel = "Track";
     if (clip.anchorClipId != -1) {
@@ -658,8 +616,6 @@ bool SequenceEditor::renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, 
 }
 
 bool SequenceEditor::renderOriginCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
-    if (trackIndex < 0 || clip.isMasterTrack)
-        return false;
     bool changed = false;
     ImGui::SetNextItemWidth(-FLT_MIN);
     std::string originComboId = std::format("##OriginCombo{}", clip.clipId);
@@ -686,8 +642,6 @@ bool SequenceEditor::renderOriginCombo(int32_t trackIndex, const ClipRow& clip, 
 }
 
 bool SequenceEditor::renderPositionInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
-    if (trackIndex < 0 || clip.isMasterTrack)
-        return false;
     bool changed = false;
     char posBuffer[64];
     strncpy(posBuffer, clip.position.c_str(), sizeof(posBuffer) - 1);
@@ -705,8 +659,6 @@ bool SequenceEditor::renderPositionInput(int32_t trackIndex, const ClipRow& clip
 }
 
 bool SequenceEditor::renderNameInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
-    if (trackIndex < 0 || clip.isMasterTrack)
-        return false;
     bool changed = false;
     static std::map<int32_t, std::array<char, 256>> nameBuffers;
     if (nameBuffers.find(clip.clipId) == nameBuffers.end()) {

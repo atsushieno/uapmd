@@ -701,10 +701,6 @@ void MainWindow::renderMasterTrackRow(const SequenceEditor::RenderContext& conte
         if (ImGui::Button("Clips...")) {
             sequenceEditor_.showWindow(kMasterTrackIndex);
         }
-        ImGui::SameLine();
-        if (ImGui::Button("Dump...")) {
-            showMasterMetaDump();
-        }
 
         ImGui::TableSetColumnIndex(1);
         const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(kMasterTrackIndex, context.uiScale);
