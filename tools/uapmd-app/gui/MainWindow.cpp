@@ -622,11 +622,6 @@ void MainWindow::renderTrackRow(int32_t trackIndex, const SequenceEditor::Render
 
         // Control column
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Track %d", trackIndex + 1);
-        ImGui::SameLine();
-        if (ImGui::Button("Delete")) {
-            deleteTrack(trackIndex);
-        }
         ImGui::Separator();
         auto& sequencer = uapmd::AppModel::instance().sequencer();
         auto tracksRef = sequencer.engine()->tracks();
@@ -653,8 +648,15 @@ void MainWindow::renderTrackRow(int32_t trackIndex, const SequenceEditor::Render
         std::string popupId = std::format("TrackActions##{}", trackIndex);
         std::string clipPopupId = std::format("ClipActions##{}", trackIndex);
 
-        if (ImGui::Button("Edit Clips...")) {
+        if (ImGui::Button("Clips...")) {
             ImGui::OpenPopup(clipPopupId.c_str());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("DEL")) {
+            deleteTrack(trackIndex);
+        }
+        if (ImGui::Button(std::format("{}...", pluginLabel).c_str())) {
+            ImGui::OpenPopup(popupId.c_str());
         }
         if (ImGui::BeginPopup(clipPopupId.c_str())) {
             if (ImGui::MenuItem("Edit Clips...", nullptr, sequenceEditor_.isVisible(trackIndex))) {
@@ -668,9 +670,6 @@ void MainWindow::renderTrackRow(int32_t trackIndex, const SequenceEditor::Render
                 context.clearAllClips(trackIndex);
             }
             ImGui::EndPopup();
-        }
-        if (ImGui::Button(std::format("{}...", pluginLabel).c_str())) {
-            ImGui::OpenPopup(popupId.c_str());
         }
         if (ImGui::BeginPopup(popupId.c_str())) {
             if (track) {

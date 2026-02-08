@@ -326,10 +326,6 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             }
         }
 
-        if (state.displayClips.empty()) {
-            ImGui::SetCursorPos(ImVec2(8.0f, 8.0f));
-            ImGui::TextDisabled("Add clips to view them on the timeline.");
-        }
 
         if (state.activeDragSection != -1 &&
             state.timeline->mDragData.DragState == eDragState::None &&
@@ -436,7 +432,7 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
 
     for (const auto& clip : state.displayClips) {
         const int currentSection = sectionId++;
-        std::string sectionName = clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
+        std::string sectionName = std::format("Track {}", trackIndex + 1);
         state.timeline->InitializeTimelineSection(currentSection, sectionName);
         state.timeline->SetTimelineName(currentSection, sectionName);
 
@@ -463,7 +459,7 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
     }
 
     if (sectionId == 0) {
-        state.timeline->InitializeTimelineSection(0, std::format("Track {}", trackIndex));
+        state.timeline->InitializeTimelineSection(0, std::format("Track {}", trackIndex + 1));
         state.timeline->SetTimelineHeight(0, baseHeight);
         state.sectionToClip[0] = -1;
     }
