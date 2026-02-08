@@ -48,6 +48,30 @@ void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
                         break;
                 }
                 break;
+            case umppi::MessageType::MIDI1:
+                switch (static_cast<uint8_t>(ump.getStatusCode())) {
+                    case umppi::MidiChannelStatus::NOTE_OFF:
+                        onNoteOff(0, channel, ump.getMidi1Note(), 0, ump.getMidi1Velocity() << 9, 0);
+                        break;
+                    case umppi::MidiChannelStatus::NOTE_ON:
+                        onNoteOn(0, channel, ump.getMidi1Note(), 0, ump.getMidi1Velocity() << 9, 0);
+                        break;
+                    case umppi::MidiChannelStatus::PAF:
+                        onPressure(0, channel, ump.getMidi1Note(), ump.getMidi1CCData() << 25); // FIXME: there should be getByte3()...
+                        break;
+                    case umppi::MidiChannelStatus::CC:
+                        onCC(group, channel, ump.getMidi1CCIndex(), ump.getMidi1CCData() << 25);
+                        break;
+                    case umppi::MidiChannelStatus::PROGRAM:
+                        onProgramChange(0, channel, 0, ump.getMidi1Program(), 0, 0);
+                        break;
+                    case umppi::MidiChannelStatus::CAF:
+                        onPressure(0, channel, -1, ump.getMidi1CCIndex() << 25); // FIXME: there should be getByte2()...
+                        break;
+                    case umppi::MidiChannelStatus::PITCH_BEND:
+                        onPitchBend(0, channel, -1, ump.getMidi1PitchBendData() << 18);
+                        break;
+                }
             case umppi::MessageType::MIDI2:
                 group = ump.getGroup();
                 channel = ump.getChannelInGroup();
