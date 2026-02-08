@@ -19,6 +19,7 @@
 
 #include "SharedTheme.hpp"
 #include "FontLoader.hpp"
+#include "ClipPreview.hpp"
 
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
@@ -26,6 +27,11 @@
 #include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
 
 namespace uapmd::gui {
+
+namespace {
+constexpr int32_t kMasterTrackIndex = -1;
+constexpr int32_t kMasterTrackClipId = -1000;
+}
 
 std::vector<MidiDumpWindow::EventRow> buildMidiDumpRows(
     const uapmd::Smf2ClipReader::ClipInfo& clipInfo,
@@ -367,6 +373,9 @@ void MainWindow::render(void* window) {
         .showMidiClipDump = [this](int32_t trackIndex, int32_t clipId) {
             showMidiClipDump(trackIndex, clipId);
         },
+        .showMasterTrackDump = [this]() {
+            showMasterMetaDump();
+        },
         .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
             setNextChildWindowSize(id, defaultSize);
         },
@@ -592,6 +601,9 @@ void MainWindow::renderTrackList(const SequenceEditor::RenderContext& context) {
     ImGui::Spacing();
 
     ImGui::BeginChild("TrackListScroll", ImVec2(0, 0), true, ImGuiWindowFlags_None);
+    renderMasterTrackRow(context);
+    ImGui::Spacing();
+
     if (tracks.empty()) {
         ImGui::TextDisabled("No tracks available.");
         ImGui::Spacing();
@@ -611,6 +623,96 @@ void MainWindow::renderTrackList(const SequenceEditor::RenderContext& context) {
         }
     }
     ImGui::EndChild();
+}
+
+void MainWindow::renderMasterTrackRow(const SequenceEditor::RenderContext& context) {
+    auto snapshot = std::make_shared<uapmd::AppModel::MasterTrackSnapshot>(
+        uapmd::AppModel::instance().buildMasterTrackSnapshot());
+
+    const double lastTempoTime = snapshot->tempoPoints.empty()
+        ? 0.0 : snapshot->tempoPoints.back().timeSeconds;
+    const double lastTempoBpm = snapshot->tempoPoints.empty()
+        ? 0.0 : snapshot->tempoPoints.back().bpm;
+    const double lastSigTime = snapshot->timeSignaturePoints.empty()
+        ? 0.0 : snapshot->timeSignaturePoints.back().timeSeconds;
+    const double lastSigNum = snapshot->timeSignaturePoints.empty()
+        ? 0.0 : snapshot->timeSignaturePoints.back().signature.numerator;
+
+    const std::string signature = std::format("{}:{}:{:.6f}:{:.6f}:{:.6f}:{:.6f}:{:.6f}",
+        snapshot->tempoPoints.size(),
+        snapshot->timeSignaturePoints.size(),
+        snapshot->maxTimeSeconds,
+        lastTempoTime,
+        lastTempoBpm,
+        lastSigTime,
+        lastSigNum);
+
+    if (signature != masterTrackSignature_) {
+        masterTrackSignature_ = signature;
+        masterTrackSnapshot_ = snapshot;
+
+        std::vector<SequenceEditor::ClipRow> rows;
+        SequenceEditor::ClipRow row;
+        row.clipId = kMasterTrackClipId;
+        row.anchorClipId = -1;
+        row.anchorOrigin = "Start";
+        row.position = "+0.000s";
+        row.isMidiClip = false;
+        row.isMasterTrack = true;
+        row.name = snapshot->empty() ? "No Meta Events" : "SMF Meta Events";
+        row.filename = "-";
+        row.filepath = "";
+        const double durationSeconds = std::max(1.0, snapshot->maxTimeSeconds);
+        row.duration = std::format("{:.3f}s", durationSeconds);
+        row.timelineStart = 0;
+        row.timelineEnd = static_cast<int32_t>(std::llround(durationSeconds));
+        std::vector<ClipPreview::TempoPoint> tempoPoints;
+        tempoPoints.reserve(snapshot->tempoPoints.size());
+        for (const auto& point : snapshot->tempoPoints) {
+            tempoPoints.push_back(ClipPreview::TempoPoint{point.timeSeconds, point.bpm});
+        }
+        std::vector<ClipPreview::TimeSignaturePoint> sigPoints;
+        sigPoints.reserve(snapshot->timeSignaturePoints.size());
+        for (const auto& sig : snapshot->timeSignaturePoints) {
+            sigPoints.push_back(ClipPreview::TimeSignaturePoint{
+                sig.timeSeconds,
+                sig.signature.numerator,
+                sig.signature.denominator
+            });
+        }
+        row.customPreview = createMasterMetaPreview(std::move(tempoPoints), std::move(sigPoints), durationSeconds);
+        rows.push_back(std::move(row));
+
+        sequenceEditor_.refreshClips(kMasterTrackIndex, rows);
+    } else {
+        masterTrackSnapshot_ = snapshot;
+    }
+
+    ImGui::PushID("MasterTrackRow");
+    if (ImGui::BeginTable("##MasterTrackTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("Controls", ImGuiTableColumnFlags_WidthFixed, 160.0f * uiScale_);
+        ImGui::TableSetupColumn("Timeline", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableNextRow();
+
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Separator();
+        ImGui::TextUnformatted("Master Track");
+        ImGui::Spacing();
+        if (ImGui::Button("Clips...")) {
+            sequenceEditor_.showWindow(kMasterTrackIndex);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Dump...")) {
+            showMasterMetaDump();
+        }
+
+        ImGui::TableSetColumnIndex(1);
+        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(kMasterTrackIndex, context.uiScale);
+        sequenceEditor_.renderTimelineInline(kMasterTrackIndex, context, timelineHeight);
+
+        ImGui::EndTable();
+    }
+    ImGui::PopID();
 }
 
 void MainWindow::renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context) {
@@ -1383,6 +1485,9 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
 
 // Sequence Editor helpers
 void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
+    if (trackIndex < 0) {
+        return;
+    }
     auto& appModel = uapmd::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
 
@@ -1706,6 +1811,10 @@ void MainWindow::showMidiClipDump(int32_t trackIndex, int32_t clipId) {
     midiDumpWindow_.showClipDump(buildMidiClipDumpData(trackIndex, clipId));
 }
 
+void MainWindow::showMasterMetaDump() {
+    midiDumpWindow_.showClipDump(buildMasterMetaDumpData());
+}
+
 MidiDumpWindow::ClipDumpData MainWindow::buildMidiClipDumpData(int32_t trackIndex, int32_t clipId) {
     MidiDumpWindow::ClipDumpData dump;
     dump.trackIndex = trackIndex;
@@ -1779,6 +1888,98 @@ MidiDumpWindow::ClipDumpData MainWindow::buildMidiClipDumpData(int32_t trackInde
     return dump;
 }
 
+MidiDumpWindow::ClipDumpData MainWindow::buildMasterMetaDumpData() {
+    MidiDumpWindow::ClipDumpData dump;
+    dump.trackIndex = -1;
+    dump.clipId = -1;
+    dump.isMasterTrack = true;
+    dump.clipName = "Master Track Meta Events";
+    dump.fileLabel = "Aggregated SMF meta events";
+
+    std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot> snapshot = masterTrackSnapshot_;
+    if (!snapshot) {
+        snapshot = std::make_shared<uapmd::AppModel::MasterTrackSnapshot>(
+            uapmd::AppModel::instance().buildMasterTrackSnapshot());
+    }
+
+    if (!snapshot || snapshot->empty()) {
+        dump.success = false;
+        dump.error = "No tempo or time signature events are available.";
+        return dump;
+    }
+
+    struct MetaRow {
+        double time{0.0};
+        MidiDumpWindow::EventRow row;
+    };
+
+    std::vector<MetaRow> rows;
+    rows.reserve(snapshot->tempoPoints.size() + snapshot->timeSignaturePoints.size());
+
+    for (const auto& point : snapshot->tempoPoints) {
+        if (point.bpm <= 0.0)
+            continue;
+        MidiDumpWindow::EventRow row;
+        row.timeSeconds = point.timeSeconds;
+        row.timeLabel = std::format("{:.6f}", row.timeSeconds);
+        row.lengthBytes = 6;
+
+        double clampedBpm = std::clamp(point.bpm, 1.0, 1000.0);
+        uint64_t usec = static_cast<uint64_t>(std::llround(60000000.0 / clampedBpm));
+        if (usec > 0xFFFFFFu)
+            usec = 0xFFFFFFu;
+
+        uint8_t b0 = static_cast<uint8_t>((usec >> 16) & 0xFF);
+        uint8_t b1 = static_cast<uint8_t>((usec >> 8) & 0xFF);
+        uint8_t b2 = static_cast<uint8_t>(usec & 0xFF);
+        row.hexBytes = std::format(
+            "FF 51 03 {:02X} {:02X} {:02X}    (Tempo {:.2f} BPM)",
+            b0, b1, b2, clampedBpm
+        );
+        rows.push_back(MetaRow{row.timeSeconds, row});
+    }
+
+    for (const auto& point : snapshot->timeSignaturePoints) {
+        MidiDumpWindow::EventRow row;
+        row.timeSeconds = point.timeSeconds;
+        row.timeLabel = std::format("{:.6f}", row.timeSeconds);
+        row.lengthBytes = 7;
+
+        uint8_t denominator = std::max<uint8_t>(1, point.signature.denominator);
+        uint8_t exponent = 0;
+        uint8_t denomValue = denominator;
+        while (denomValue > 1 && exponent < 7) {
+            denomValue >>= 1;
+            ++exponent;
+        }
+
+        row.hexBytes = std::format(
+            "FF 58 04 {:02X} {:02X} {:02X} {:02X}    (Time Sig {}/{} )",
+            point.signature.numerator,
+            exponent,
+            point.signature.clocksPerClick,
+            point.signature.thirtySecondsPerQuarter,
+            point.signature.numerator,
+            denominator
+        );
+        rows.push_back(MetaRow{row.timeSeconds, row});
+    }
+
+    std::sort(rows.begin(), rows.end(),
+        [](const MetaRow& a, const MetaRow& b) {
+            return a.time < b.time;
+        });
+
+    dump.events.reserve(rows.size());
+    for (auto& row : rows) {
+        dump.events.push_back(std::move(row.row));
+    }
+
+    dump.success = true;
+    dump.error.clear();
+    return dump;
+}
+
 void MainWindow::importSmfTracks() {
     // Open file dialog to select SMF file
     auto selection = pfd::open_file(
@@ -1846,6 +2047,8 @@ void MainWindow::importSmfTracks() {
                 std::move(convertResult.umpEventTicksStamps),
                 convertResult.tickResolution,
                 convertResult.detectedTempo,
+                std::move(convertResult.tempoChanges),
+                std::move(convertResult.timeSignatureChanges),
                 clipName
             );
 

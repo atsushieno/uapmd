@@ -31,6 +31,8 @@ public:
         int32_t timelineStart = 0;   // Timeline start in milliseconds
         int32_t timelineEnd = 0;     // Timeline end in milliseconds
         bool isMidiClip = false;
+        bool isMasterTrack = false;
+        std::shared_ptr<ClipPreview> customPreview;
     };
 
     struct RenderContext {
@@ -43,6 +45,7 @@ public:
         std::function<void(int32_t trackIndex, int32_t clipId)> changeClipFile;
         std::function<void(int32_t trackIndex, int32_t clipId, double seconds)> moveClipAbsolute;
         std::function<void(int32_t trackIndex, int32_t clipId)> showMidiClipDump;
+        std::function<void()> showMasterTrackDump;
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;
         float uiScale = 1.0f;

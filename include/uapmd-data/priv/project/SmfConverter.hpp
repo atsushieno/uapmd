@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include <uapmd/uapmd.hpp>
+#include "../midi/MidiTimelineEvents.hpp"
 
 namespace uapmd {
 
@@ -17,6 +18,8 @@ namespace uapmd {
             std::string error;
             std::vector<uapmd_ump_t> umpEvents;
             std::vector<uint64_t> umpEventTicksStamps;  // Cumulative ticks for each UMP event
+            std::vector<MidiTempoChange> tempoChanges;   // Ordered tempo changes with tick offsets
+            std::vector<MidiTimeSignatureChange> timeSignatureChanges; // Ordered time signature changes
             uint32_t tickResolution{480};
             double detectedTempo{120.0};  // BPM from SMF tempo meta-events
         };

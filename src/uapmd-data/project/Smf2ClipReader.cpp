@@ -1,6 +1,5 @@
-#include <uapmd-data/priv/project/Smf2ClipReader.hpp>
-#include <uapmd-data/priv/project/SmfConverter.hpp>
 #include <fstream>
+#include <uapmd-data/uapmd-data.hpp>
 
 namespace uapmd {
 
@@ -63,6 +62,8 @@ namespace uapmd {
         result.ump_data = std::move(convertResult.umpEvents);
         result.ump_tick_timestamps = std::move(convertResult.umpEventTicksStamps);
         result.tick_resolution = convertResult.tickResolution;
+        result.tempo_changes = std::move(convertResult.tempoChanges);
+        result.time_signature_changes = std::move(convertResult.timeSignatureChanges);
         result.tempo = convertResult.detectedTempo;
 
         return result;

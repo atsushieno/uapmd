@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <cstdint>
 #include <uapmd/uapmd.hpp>
+#include "../midi/MidiTimelineEvents.hpp"
 
 namespace uapmd {
     // SMF2 Clip File reader according to M2-116-U v1.0 MIDI Clip File Specification
@@ -13,6 +14,8 @@ namespace uapmd {
             uint32_t tick_resolution{};  // Ticks per quarter note
             std::vector<uapmd_ump_t> ump_data{};
             std::vector<uint64_t> ump_tick_timestamps{};  // Cumulative ticks for each UMP word
+            std::vector<MidiTempoChange> tempo_changes;
+            std::vector<MidiTimeSignatureChange> time_signature_changes;
             double tempo{120.0};         // Detected tempo in BPM
             bool success{true};          // Conversion success flag
             std::string error;           // Error message if failed

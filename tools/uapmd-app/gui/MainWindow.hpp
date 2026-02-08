@@ -91,6 +91,8 @@ class MainWindow {
         InstanceDetails instanceDetails_;
         SequenceEditor sequenceEditor_;
         MidiDumpWindow midiDumpWindow_;
+        std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot> masterTrackSnapshot_;
+        std::string masterTrackSignature_;
 
     public:
         explicit MainWindow(GuiDefaults defaults = {});
@@ -110,6 +112,7 @@ class MainWindow {
         // Track UI
         void renderAudioGraphEditorWindow();
         void renderTrackList(const SequenceEditor::RenderContext& context);
+        void renderMasterTrackRow(const SequenceEditor::RenderContext& context);
         void renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context);
         void refreshInstances();
         void refreshAllSequenceEditorTracks();
@@ -148,7 +151,9 @@ class MainWindow {
         void changeClipFile(int32_t trackIndex, int32_t clipId);
         void moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds);
         void showMidiClipDump(int32_t trackIndex, int32_t clipId);
+        void showMasterMetaDump();
         MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);
+        MidiDumpWindow::ClipDumpData buildMasterMetaDumpData();
         void importSmfTracks();
 
         void renderDeviceSettingsWindow();

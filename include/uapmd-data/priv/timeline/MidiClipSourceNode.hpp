@@ -1,10 +1,11 @@
 #pragma once
 
-#include "MidiSourceNode.hpp"
-#include <uapmd/uapmd.hpp>
 #include <vector>
 #include <atomic>
 #include <cstdint>
+#include <uapmd/uapmd.hpp>
+#include "../midi/MidiTimelineEvents.hpp"
+#include "MidiSourceNode.hpp"
 
 namespace uapmd {
 
@@ -24,7 +25,9 @@ namespace uapmd {
             std::vector<uint64_t> umpTickTimestamps,
             uint32_t tickResolution,
             double clipTempo,
-            double targetSampleRate
+            double targetSampleRate,
+            std::vector<MidiTempoChange> tempoChanges,
+            std::vector<MidiTimeSignatureChange> timeSignatureChanges
         );
 
         ~MidiClipSourceNode() override = default;
@@ -54,6 +57,10 @@ namespace uapmd {
         const std::vector<uapmd_ump_t>& umpEvents() const { return ump_events_; }
         const std::vector<uint64_t>& eventTimestampsSamples() const { return event_timestamps_samples_; }
         const std::vector<uint64_t>& eventTimestampsTicks() const { return event_timestamps_ticks_; }
+        const std::vector<MidiTempoChange>& tempoChanges() const { return tempo_changes_; }
+        const std::vector<MidiTimeSignatureChange>& timeSignatureChanges() const { return time_signature_changes_; }
+        const std::vector<uint64_t>& tempoChangeSamples() const { return tempo_change_samples_; }
+        const std::vector<uint64_t>& timeSignatureChangeSamples() const { return time_signature_change_samples_; }
         uint32_t tickResolution() const { return tick_resolution_; }
         double clipTempo() const { return clip_tempo_; }
 
@@ -67,6 +74,10 @@ namespace uapmd {
         std::vector<uapmd_ump_t> ump_events_;           // Pre-loaded UMP messages
         std::vector<uint64_t> event_timestamps_ticks_;   // Original tick timestamps (for UI/dump)
         std::vector<uint64_t> event_timestamps_samples_; // Converted to samples (for playback)
+        std::vector<MidiTempoChange> tempo_changes_;
+        std::vector<MidiTimeSignatureChange> time_signature_changes_;
+        std::vector<uint64_t> tempo_change_samples_;
+        std::vector<uint64_t> time_signature_change_samples_;
         uint32_t tick_resolution_;
         double clip_tempo_;
         double target_sample_rate_;
@@ -84,6 +95,10 @@ namespace uapmd {
 
         // Helper: get UMP message size in bytes
         static size_t getUmpMessageSizeInBytes(uapmd_ump_t ump);
+
+        // Pre-compute sample timestamps using tempo change map
+        void rebuildSampleTimelines();
+        std::vector<uint64_t> computeSampleTimeline(const std::vector<uint64_t>& ticks) const;
     };
 
 } // namespace uapmd

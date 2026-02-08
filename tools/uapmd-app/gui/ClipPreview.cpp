@@ -1,6 +1,7 @@
 #include "ClipPreview.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <cmath>
 #include <format>
 #include <unordered_map>
@@ -98,7 +99,9 @@ private:
             return;
         }
 
-        if (preview_->isMidiClip) {
+        if (preview_->isMasterMeta) {
+            drawMasterMeta(contentRect);
+        } else if (preview_->isMidiClip) {
             drawMidi(contentRect);
         } else {
             drawWaveform(contentRect);
@@ -201,6 +204,80 @@ private:
                                                         0.9f));
             drawList->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), fillColor, 3.0f * uiScale_);
             drawList->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), IM_COL32(20, 20, 20, 200), 3.0f * uiScale_, 0, 1.0f);
+        }
+
+        drawList->PopClipRect();
+    }
+
+    void drawMasterMeta(const ImRect& rect) const {
+        auto* drawList = ImGui::GetWindowDrawList();
+        drawList->PushClipRect(rect.Min, rect.Max, true);
+
+        const float width = rect.Max.x - rect.Min.x;
+        const float height = rect.Max.y - rect.Min.y;
+        if (width <= 0.0f || height <= 0.0f) {
+            drawList->PopClipRect();
+            return;
+        }
+
+        if (preview_->tempoPoints.empty() && preview_->timeSignaturePoints.empty()) {
+            drawPlaceholder(rect, "No meta events");
+            drawList->PopClipRect();
+            return;
+        }
+
+        double duration = std::max(0.001, preview_->clipDurationSeconds);
+        double minBpm = std::numeric_limits<double>::max();
+        double maxBpm = std::numeric_limits<double>::lowest();
+        for (const auto& point : preview_->tempoPoints) {
+            if (point.bpm <= 0.0)
+                continue;
+            minBpm = std::min(minBpm, point.bpm);
+            maxBpm = std::max(maxBpm, point.bpm);
+        }
+        if (!std::isfinite(minBpm) || !std::isfinite(maxBpm) || minBpm >= maxBpm) {
+            minBpm = 40.0;
+            maxBpm = 200.0;
+        }
+        const double bpmRange = std::max(1.0, maxBpm - minBpm);
+
+        auto toX = [&](double seconds) -> float {
+            double normalized = std::clamp(seconds / duration, 0.0, 1.0);
+            return rect.Min.x + static_cast<float>(normalized * width);
+        };
+        auto toY = [&](double bpm) -> float {
+            double normalized = std::clamp((bpm - minBpm) / bpmRange, 0.0, 1.0);
+            return rect.Max.y - static_cast<float>(normalized * height);
+        };
+
+        const ImU32 gridColor = IM_COL32(120, 120, 140, 160);
+        const int gridLines = 3;
+        for (int i = 0; i <= gridLines; ++i) {
+            float t = static_cast<float>(i) / static_cast<float>(gridLines);
+            float y = rect.Max.y - t * height;
+            drawList->AddLine(ImVec2(rect.Min.x, y), ImVec2(rect.Max.x, y), gridColor, 1.0f);
+        }
+
+        const ImU32 tempoColor = IM_COL32(112, 202, 255, 255);
+        for (size_t i = 0; i < preview_->tempoPoints.size(); ++i) {
+            const auto& point = preview_->tempoPoints[i];
+            if (point.bpm <= 0.0)
+                continue;
+            ImVec2 current(toX(point.timeSeconds), toY(point.bpm));
+            if (i > 0) {
+                const auto& prev = preview_->tempoPoints[i - 1];
+                ImVec2 prevPos(toX(prev.timeSeconds), toY(prev.bpm));
+                drawList->AddLine(prevPos, current, tempoColor, 2.0f * uiScale_);
+            }
+            drawList->AddCircleFilled(current, 3.0f * uiScale_, tempoColor);
+        }
+
+        const ImU32 sigColor = IM_COL32(214, 143, 255, 200);
+        for (const auto& sig : preview_->timeSignaturePoints) {
+            float x = toX(sig.timeSeconds);
+            drawList->AddLine(ImVec2(x, rect.Min.y), ImVec2(x, rect.Max.y), sigColor, 1.0f);
+            std::string label = std::format("{}/{}", sig.numerator, sig.denominator);
+            drawList->AddText(ImVec2(x + 4.0f, rect.Min.y + 4.0f), sigColor, label.c_str());
         }
 
         drawList->PopClipRect();
@@ -432,6 +509,20 @@ std::shared_ptr<CustomNodeBase> createClipContentNode(
     const std::string& clipName
 ) {
     return std::make_shared<ClipContentNode>(std::move(preview), uiScale, clipName);
+}
+
+std::shared_ptr<ClipPreview> createMasterMetaPreview(
+    std::vector<ClipPreview::TempoPoint> tempoPoints,
+    std::vector<ClipPreview::TimeSignaturePoint> timeSignaturePoints,
+    double durationSeconds
+) {
+    auto preview = std::make_shared<ClipPreview>();
+    preview->isMasterMeta = true;
+    preview->clipDurationSeconds = std::max(0.001, durationSeconds);
+    preview->tempoPoints = std::move(tempoPoints);
+    preview->timeSignaturePoints = std::move(timeSignaturePoints);
+    preview->ready = true;
+    return preview;
 }
 
 } // namespace uapmd::gui

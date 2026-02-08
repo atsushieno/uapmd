@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <exception>
 #include <algorithm>
+#include <unordered_map>
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -753,7 +754,9 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
             std::move(clipInfo.ump_tick_timestamps),
             clipInfo.tick_resolution,
             clipInfo.tempo,
-            static_cast<double>(sample_rate_)
+            static_cast<double>(sample_rate_),
+            std::move(clipInfo.tempo_changes),
+            std::move(clipInfo.time_signature_changes)
         );
 
         // Get duration from source node
@@ -797,6 +800,8 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     std::vector<uint64_t> umpTickTimestamps,
     uint32_t tickResolution,
     double clipTempo,
+    std::vector<MidiTempoChange> tempoChanges,
+    std::vector<MidiTimeSignatureChange> timeSignatureChanges,
     const std::string& clipName
 ) {
     ClipAddResult result;
@@ -815,7 +820,9 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
             std::move(umpTickTimestamps),
             tickResolution,
             clipTempo,
-            static_cast<double>(sample_rate_)
+            static_cast<double>(sample_rate_),
+            std::move(tempoChanges),
+            std::move(timeSignatureChanges)
         );
 
         // Get duration from source node
@@ -888,6 +895,74 @@ std::vector<uapmd::TimelineTrack*> uapmd::AppModel::getTimelineTracks() {
         tracks.push_back(track.get());
     }
     return tracks;
+}
+
+uapmd::AppModel::MasterTrackSnapshot uapmd::AppModel::buildMasterTrackSnapshot() {
+    MasterTrackSnapshot snapshot;
+    const double sampleRate = std::max(1.0, static_cast<double>(sample_rate_));
+
+    for (const auto& trackPtr : timeline_tracks_) {
+        if (!trackPtr)
+            continue;
+
+        auto clips = trackPtr->clipManager().getAllClips();
+        if (clips.empty())
+            continue;
+
+        std::unordered_map<int32_t, const uapmd::ClipData*> clipMap;
+        clipMap.reserve(clips.size());
+        for (auto* clip : clips) {
+            if (clip)
+                clipMap[clip->clipId] = clip;
+        }
+
+        for (auto* clip : clips) {
+            if (!clip || clip->clipType != uapmd::ClipType::Midi)
+                continue;
+
+            auto* sourceNode = trackPtr->getSourceNode(clip->sourceNodeInstanceId);
+            auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode);
+            if (!midiNode)
+                continue;
+
+            const auto absolutePosition = clip->getAbsolutePosition(clipMap);
+            const double clipStartSamples = static_cast<double>(absolutePosition.samples);
+
+            const auto& tempoSamples = midiNode->tempoChangeSamples();
+            const auto& tempoEvents = midiNode->tempoChanges();
+            const size_t tempoCount = std::min(tempoSamples.size(), tempoEvents.size());
+            for (size_t i = 0; i < tempoCount; ++i) {
+                MasterTrackSnapshot::TempoPoint point;
+                point.timeSeconds = (clipStartSamples + static_cast<double>(tempoSamples[i])) / sampleRate;
+                point.bpm = tempoEvents[i].bpm;
+                snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
+                snapshot.tempoPoints.push_back(point);
+            }
+
+            const auto& sigSamples = midiNode->timeSignatureChangeSamples();
+            const auto& sigEvents = midiNode->timeSignatureChanges();
+            const size_t sigCount = std::min(sigSamples.size(), sigEvents.size());
+            for (size_t i = 0; i < sigCount; ++i) {
+                MasterTrackSnapshot::TimeSignaturePoint point;
+                point.timeSeconds = (clipStartSamples + static_cast<double>(sigSamples[i])) / sampleRate;
+                point.signature = sigEvents[i];
+                snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
+                snapshot.timeSignaturePoints.push_back(point);
+            }
+        }
+    }
+
+    std::sort(snapshot.tempoPoints.begin(), snapshot.tempoPoints.end(),
+        [](const MasterTrackSnapshot::TempoPoint& a, const MasterTrackSnapshot::TempoPoint& b) {
+            return a.timeSeconds < b.timeSeconds;
+        });
+
+    std::sort(snapshot.timeSignaturePoints.begin(), snapshot.timeSignaturePoints.end(),
+        [](const MasterTrackSnapshot::TimeSignaturePoint& a, const MasterTrackSnapshot::TimeSignaturePoint& b) {
+            return a.timeSeconds < b.timeSeconds;
+        });
+
+    return snapshot;
 }
 
 void uapmd::AppModel::notifyTrackLayoutChanged(const TrackLayoutChange& change) {

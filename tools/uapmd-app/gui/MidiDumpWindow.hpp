@@ -31,6 +31,7 @@ public:
         std::vector<EventRow> events;
         std::string error;
         bool success{false};
+        bool isMasterTrack{false};
     };
 
     struct RenderContext {

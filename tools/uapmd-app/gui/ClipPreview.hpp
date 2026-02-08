@@ -6,10 +6,7 @@
 #include <vector>
 
 #include <ImTimeline.h>
-
-namespace uapmd {
-    struct ClipData;
-}
+#include <uapmd-data/uapmd-data.hpp>
 
 namespace uapmd::gui {
 
@@ -29,6 +26,7 @@ struct ClipPreview {
     };
 
     bool isMidiClip{false};
+    bool isMasterMeta{false};
     bool ready{false};
     bool hasError{false};
     std::string errorMessage;
@@ -39,6 +37,17 @@ struct ClipPreview {
     std::vector<MidiNote> midiNotes;
     uint8_t minNote{48};
     uint8_t maxNote{72};
+    struct TempoPoint {
+        double timeSeconds{0.0};
+        double bpm{120.0};
+    };
+    struct TimeSignaturePoint {
+        double timeSeconds{0.0};
+        uint8_t numerator{4};
+        uint8_t denominator{4};
+    };
+    std::vector<TempoPoint> tempoPoints;
+    std::vector<TimeSignaturePoint> timeSignaturePoints;
 };
 
 std::shared_ptr<ClipPreview> createAudioClipPreview(
@@ -57,6 +66,12 @@ std::shared_ptr<CustomNodeBase> createClipContentNode(
     std::shared_ptr<ClipPreview> preview,
     float uiScale,
     const std::string& clipName
+);
+
+std::shared_ptr<ClipPreview> createMasterMetaPreview(
+    std::vector<ClipPreview::TempoPoint> tempoPoints,
+    std::vector<ClipPreview::TimeSignaturePoint> timeSignaturePoints,
+    double durationSeconds
 );
 
 } // namespace uapmd::gui

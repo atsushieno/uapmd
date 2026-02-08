@@ -10,7 +10,7 @@ constexpr float kDefaultWindowHeight = 420.0f;
 }
 
 void MidiDumpWindow::showClipDump(ClipDumpData data) {
-    if (data.trackIndex < 0 || data.clipId < 0) {
+    if (!data.isMasterTrack && (data.trackIndex < 0 || data.clipId < 0)) {
         return;
     }
 
@@ -44,6 +44,10 @@ void MidiDumpWindow::render(const RenderContext& context) {
 }
 
 std::string MidiDumpWindow::buildWindowTitle(const ClipDumpData& data) {
+    if (data.isMasterTrack) {
+        return "MIDI Dump - Master Track###MidiDumpMaster";
+    }
+
     return std::format(
         "MIDI Dump - Track {} Clip {}###MidiDump{}_{}",
         data.trackIndex + 1,
@@ -75,13 +79,18 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
         if (!dump.fileLabel.empty()) {
             ImGui::Text("File: %s", dump.fileLabel.c_str());
         }
-        ImGui::Text("Tempo: %.2f BPM | PPQ: %u", dump.tempo, dump.tickResolution);
 
-        if (context.reloadClip) {
-            if (ImGui::Button("Refresh")) {
-                auto refreshed = context.reloadClip(dump.trackIndex, dump.clipId);
-                if (refreshed.trackIndex == dump.trackIndex && refreshed.clipId == dump.clipId) {
-                    state.data = std::move(refreshed);
+        if (dump.isMasterTrack) {
+            ImGui::Text("Meta events: %zu", dump.events.size());
+        } else {
+            ImGui::Text("Tempo: %.2f BPM | PPQ: %u", dump.tempo, dump.tickResolution);
+
+            if (context.reloadClip) {
+                if (ImGui::Button("Refresh")) {
+                    auto refreshed = context.reloadClip(dump.trackIndex, dump.clipId);
+                    if (refreshed.trackIndex == dump.trackIndex && refreshed.clipId == dump.clipId) {
+                        state.data = std::move(refreshed);
+                    }
                 }
             }
         }

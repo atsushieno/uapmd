@@ -107,6 +107,7 @@ namespace uapmd {
         int32_t next_source_node_id_ = 1;
         std::set<int32_t> hidden_tracks_;
 
+
         // Audio processing callback (called by SequencerEngine)
         void processAppTracksAudio(AudioProcessContext& process);
         void notifyTrackLayoutChanged(const TrackLayoutChange& change);
@@ -273,6 +274,8 @@ namespace uapmd {
             std::vector<uint64_t> umpTickTimestamps,
             uint32_t tickResolution,
             double clipTempo,
+            std::vector<MidiTempoChange> tempoChanges,
+            std::vector<MidiTimeSignatureChange> timeSignatureChanges,
             const std::string& clipName = ""
         );
 
@@ -296,5 +299,25 @@ namespace uapmd {
 
         // Sample rate access
         int32_t sampleRate() const { return sample_rate_; }
+
+        struct MasterTrackSnapshot {
+            struct TempoPoint {
+                double timeSeconds{0.0};
+                double bpm{0.0};
+            };
+            struct TimeSignaturePoint {
+                double timeSeconds{0.0};
+                MidiTimeSignatureChange signature{};
+            };
+
+            std::vector<TempoPoint> tempoPoints;
+            std::vector<TimeSignaturePoint> timeSignaturePoints;
+            double maxTimeSeconds{0.0};
+            bool empty() const {
+                return tempoPoints.empty() && timeSignaturePoints.empty();
+            }
+        };
+
+        MasterTrackSnapshot buildMasterTrackSnapshot();
     };
 }

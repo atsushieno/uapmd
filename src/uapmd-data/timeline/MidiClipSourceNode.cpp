@@ -1,8 +1,8 @@
-#include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
-#include <remidy/priv/processing-context.hpp>
-#include <umppi/umppi.hpp>
 #include <algorithm>
 #include <cstring>
+#include <umppi/umppi.hpp>
+#include <remidy/remidy.hpp>
+#include <uapmd-data/uapmd-data.hpp>
 
 namespace uapmd {
 
@@ -12,29 +12,58 @@ namespace uapmd {
         std::vector<uint64_t> umpTickTimestamps,
         uint32_t tickResolution,
         double clipTempo,
-        double targetSampleRate
+        double targetSampleRate,
+        std::vector<MidiTempoChange> tempoChanges,
+        std::vector<MidiTimeSignatureChange> timeSignatureChanges
     ) : instance_id_(instanceId),
         ump_events_(std::move(umpEvents)),
-        event_timestamps_ticks_(umpTickTimestamps),  // Store original tick timestamps
-        tick_resolution_(tickResolution),
-        clip_tempo_(clipTempo),
+        event_timestamps_ticks_(std::move(umpTickTimestamps)),
+        tempo_changes_(std::move(tempoChanges)),
+        time_signature_changes_(std::move(timeSignatureChanges)),
+        tick_resolution_(tickResolution == 0 ? 480 : tickResolution),
+        clip_tempo_(clipTempo <= 0.0 ? 120.0 : clipTempo),
         target_sample_rate_(targetSampleRate)
     {
-        // Pre-process event timestamps (ticks → samples) using provided tick timestamps
-        event_timestamps_samples_.reserve(event_timestamps_ticks_.size());
-
-        for (uint64_t ticks : event_timestamps_ticks_) {
-            // Convert ticks → samples
-            // samples = (ticks / tickResolution) * (60.0 / tempo) * sampleRate
-            double beats = static_cast<double>(ticks) / tick_resolution_;
-            double seconds = (beats * 60.0) / clipTempo;
-            uint64_t samples = static_cast<uint64_t>(seconds * target_sample_rate_);
-
-            event_timestamps_samples_.push_back(samples);
-
-            if (static_cast<int64_t>(samples) > total_length_samples_)
-                total_length_samples_ = static_cast<int64_t>(samples);
+        // Ensure tempo changes start at tick 0 and are ordered
+        auto tempoComparator = [](const MidiTempoChange& a, const MidiTempoChange& b) {
+            return a.tickPosition < b.tickPosition;
+        };
+        if (tempo_changes_.empty()) {
+            tempo_changes_.push_back(MidiTempoChange{0, clip_tempo_});
+        } else {
+            std::sort(tempo_changes_.begin(), tempo_changes_.end(), tempoComparator);
+            if (tempo_changes_.front().tickPosition > 0) {
+                tempo_changes_.insert(
+                    tempo_changes_.begin(),
+                    MidiTempoChange{0, tempo_changes_.front().bpm > 0.0 ? tempo_changes_.front().bpm : clip_tempo_}
+                );
+            }
+            for (auto& change : tempo_changes_) {
+                if (change.bpm <= 0.0)
+                    change.bpm = clip_tempo_;
+            }
         }
+
+        auto timeSigComparator = [](const MidiTimeSignatureChange& a, const MidiTimeSignatureChange& b) {
+            return a.tickPosition < b.tickPosition;
+        };
+        if (time_signature_changes_.empty()) {
+            time_signature_changes_.push_back(MidiTimeSignatureChange{0, 4, 4});
+        } else {
+            std::sort(time_signature_changes_.begin(), time_signature_changes_.end(), timeSigComparator);
+            if (time_signature_changes_.front().tickPosition > 0) {
+                time_signature_changes_.insert(
+                    time_signature_changes_.begin(),
+                    MidiTimeSignatureChange{
+                        0,
+                        time_signature_changes_.front().numerator,
+                        time_signature_changes_.front().denominator
+                    }
+                );
+            }
+        }
+
+        rebuildSampleTimelines();
     }
 
     std::vector<uint8_t> MidiClipSourceNode::saveState() {
@@ -171,6 +200,73 @@ namespace uapmd {
             default:
                 return 4; // Default to 32-bit
         }
+    }
+
+    void MidiClipSourceNode::rebuildSampleTimelines() {
+        event_timestamps_samples_ = computeSampleTimeline(event_timestamps_ticks_);
+
+        std::vector<uint64_t> tempoTicks;
+        tempoTicks.reserve(tempo_changes_.size());
+        for (const auto& change : tempo_changes_) {
+            tempoTicks.push_back(change.tickPosition);
+        }
+        tempo_change_samples_ = computeSampleTimeline(tempoTicks);
+
+        std::vector<uint64_t> timeSigTicks;
+        timeSigTicks.reserve(time_signature_changes_.size());
+        for (const auto& change : time_signature_changes_) {
+            timeSigTicks.push_back(change.tickPosition);
+        }
+        time_signature_change_samples_ = computeSampleTimeline(timeSigTicks);
+
+        total_length_samples_ = 0;
+        for (uint64_t samples : event_timestamps_samples_) {
+            if (static_cast<int64_t>(samples) > total_length_samples_) {
+                total_length_samples_ = static_cast<int64_t>(samples);
+            }
+        }
+    }
+
+    std::vector<uint64_t> MidiClipSourceNode::computeSampleTimeline(const std::vector<uint64_t>& ticks) const {
+        std::vector<uint64_t> samples;
+        if (ticks.empty() || tempo_changes_.empty())
+            return samples;
+
+        samples.reserve(ticks.size());
+
+        size_t tempoIndex = 0;
+        uint64_t processedTick = tempo_changes_[tempoIndex].tickPosition;
+        if (processedTick > 0 && processedTick > ticks.front())
+            processedTick = ticks.front();
+
+        double bpm = tempo_changes_[tempoIndex].bpm > 0.0 ? tempo_changes_[tempoIndex].bpm : clip_tempo_;
+        double secondsPerTick = (60.0 / bpm) / static_cast<double>(tick_resolution_);
+        double secondsAccum = 0.0;
+
+        for (uint64_t tick : ticks) {
+            while (tempoIndex + 1 < tempo_changes_.size() &&
+                   tempo_changes_[tempoIndex + 1].tickPosition <= tick) {
+                uint64_t changeTick = tempo_changes_[tempoIndex + 1].tickPosition;
+                if (changeTick > processedTick) {
+                    secondsAccum += static_cast<double>(changeTick - processedTick) * secondsPerTick;
+                    processedTick = changeTick;
+                }
+                ++tempoIndex;
+                double nextBpm = tempo_changes_[tempoIndex].bpm;
+                if (nextBpm <= 0.0)
+                    nextBpm = clip_tempo_;
+                secondsPerTick = (60.0 / nextBpm) / static_cast<double>(tick_resolution_);
+            }
+
+            if (tick > processedTick) {
+                secondsAccum += static_cast<double>(tick - processedTick) * secondsPerTick;
+                processedTick = tick;
+            }
+
+            samples.push_back(static_cast<uint64_t>(secondsAccum * target_sample_rate_));
+        }
+
+        return samples;
     }
 
 } // namespace uapmd

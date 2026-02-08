@@ -1,19 +1,137 @@
-#include <uapmd-data/priv/project/SmfConverter.hpp>
-#include <umppi/umppi.hpp>
 #include <fstream>
 #include <format>
+#include <algorithm>
+#include <umppi/umppi.hpp>
+#include <uapmd-data/uapmd-data.hpp>
 
 namespace uapmd {
 
 namespace {
 
+constexpr uint8_t kTempoMetaType = 0x51;
+constexpr uint8_t kTimeSignatureMetaType = 0x58;
+
+double microsecondsPerQuarterToBpm(uint32_t value) {
+    if (value == 0)
+        return 120.0;
+    return 60000000.0 / static_cast<double>(value);
+}
+
+uint8_t pow2ToDenominator(uint8_t exponent) {
+    if (exponent > 7)
+        exponent = 7;
+    return static_cast<uint8_t>(1u << exponent);
+}
+
+void collectMetaEvent(const std::shared_ptr<umppi::Midi1Message>& msg,
+                      uint64_t absoluteTicks,
+                      SmfConverter::ConvertResult& result,
+                      bool& tempoDetected,
+                      bool& initialTempoSet,
+                      bool& timeSignatureDetected) {
+    if (!msg)
+        return;
+
+    if (msg->getStatusByte() != umppi::Midi1Status::META)
+        return;
+
+    if (msg->getMetaType() == kTempoMetaType) {
+        if (auto* compound = dynamic_cast<umppi::Midi1CompoundMessage*>(msg.get())) {
+            const auto& extraData = compound->getExtraData();
+            if (extraData.size() >= 3) {
+                uint32_t microsecondsPerQuarter =
+                    (static_cast<uint32_t>(extraData[0]) << 16) |
+                    (static_cast<uint32_t>(extraData[1]) << 8) |
+                    static_cast<uint32_t>(extraData[2]);
+                double bpm = microsecondsPerQuarterToBpm(microsecondsPerQuarter);
+
+                result.tempoChanges.push_back(MidiTempoChange{absoluteTicks, bpm});
+                tempoDetected = true;
+                if (!initialTempoSet) {
+                    result.detectedTempo = bpm;
+                    initialTempoSet = true;
+                }
+            }
+        }
+    } else if (msg->getMetaType() == kTimeSignatureMetaType) {
+        if (auto* compound = dynamic_cast<umppi::Midi1CompoundMessage*>(msg.get())) {
+            const auto& extraData = compound->getExtraData();
+            if (extraData.size() >= 2) {
+                uint8_t numerator = extraData[0];
+                uint8_t denominator = pow2ToDenominator(extraData[1]);
+                uint8_t clocksPerClick = extraData.size() >= 3 ? extraData[2] : 24;
+                uint8_t thirtySecondsPerQuarter = extraData.size() >= 4 ? extraData[3] : 8;
+                result.timeSignatureChanges.push_back(
+                    MidiTimeSignatureChange{
+                        absoluteTicks,
+                        numerator,
+                        denominator,
+                        clocksPerClick,
+                        thirtySecondsPerQuarter
+                    });
+                timeSignatureDetected = true;
+            }
+        }
+    }
+}
+
+void ensureDefaultMetaEvents(SmfConverter::ConvertResult& result,
+                             bool tempoDetected,
+                             bool timeSignatureDetected) {
+    if (!tempoDetected) {
+        result.tempoChanges.push_back(MidiTempoChange{0, result.detectedTempo});
+    }
+    if (!timeSignatureDetected) {
+        result.timeSignatureChanges.push_back(MidiTimeSignatureChange{0, 4, 4});
+    }
+}
+
+void collectMetaEventsFromEvents(const std::vector<umppi::Midi1Event>& events,
+                                 SmfConverter::ConvertResult& result) {
+    result.tempoChanges.clear();
+    result.timeSignatureChanges.clear();
+
+    bool tempoDetected = false;
+    bool timeSignatureDetected = false;
+    bool initialTempoSet = false;
+    uint64_t absoluteTicks = 0;
+
+    for (const auto& event : events) {
+        absoluteTicks += event.deltaTime;
+        collectMetaEvent(event.message, absoluteTicks, result,
+                         tempoDetected, initialTempoSet, timeSignatureDetected);
+    }
+
+    ensureDefaultMetaEvents(result, tempoDetected, timeSignatureDetected);
+}
+
+void collectMetaEventsFromMusic(const umppi::Midi1Music& music,
+                                SmfConverter::ConvertResult& result) {
+    const umppi::Midi1Music* source = &music;
+    umppi::Midi1Music mergedMusic;
+    if (music.format != 0) {
+        mergedMusic = music.mergeTracks();
+        source = &mergedMusic;
+    }
+
+    if (source->tracks.empty())
+        return;
+
+    collectMetaEventsFromEvents(source->tracks.front().events, result);
+}
+
 SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Event>& events,
-                                               uint32_t tickResolution) {
+                                               uint32_t tickResolution,
+                                               bool captureMetaEvents = true) {
     SmfConverter::ConvertResult result;
     result.tickResolution = tickResolution;
 
     if (events.empty()) {
         result.success = true;
+        if (captureMetaEvents) {
+            result.tempoChanges.push_back(MidiTempoChange{0, result.detectedTempo});
+            result.timeSignatureChanges.push_back(MidiTimeSignatureChange{0, 4, 4});
+        }
         return result;
     }
 
@@ -25,6 +143,10 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
     int absoluteTicks = 0;
     int previousMessageTick = 0;
     bool hasEmittedEvent = false;
+
+    bool tempoDetected = false;
+    bool timeSignatureDetected = false;
+    bool initialTempoSet = false;
 
     for (const auto& event : events) {
         absoluteTicks += event.deltaTime;
@@ -42,17 +164,9 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
 
         uint8_t status = msg->getStatusByte();
 
-        if (status == umppi::Midi1Status::META && msg->getMetaType() == 0x51) {
-            if (auto* compound = dynamic_cast<umppi::Midi1CompoundMessage*>(msg.get())) {
-                const auto& extraData = compound->getExtraData();
-                if (extraData.size() >= 3) {
-                    uint32_t microsecondsPerQuarter =
-                        (static_cast<uint32_t>(extraData[0]) << 16) |
-                        (static_cast<uint32_t>(extraData[1]) << 8) |
-                        static_cast<uint32_t>(extraData[2]);
-                    result.detectedTempo = 60000000.0 / microsecondsPerQuarter;
-                }
-            }
+        if (captureMetaEvents) {
+            collectMetaEvent(msg, absoluteTicks, result,
+                             tempoDetected, initialTempoSet, timeSignatureDetected);
         }
 
         midi1Bytes.push_back(status);
@@ -121,6 +235,10 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
         }
     }
 
+    if (captureMetaEvents) {
+        ensureDefaultMetaEvents(result, tempoDetected, timeSignatureDetected);
+    }
+
     result.success = true;
     return result;
 }
@@ -153,7 +271,7 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
                 return result;
             }
 
-            result = convertEventsToUmp(musicToConvert->tracks.front().events, result.tickResolution);
+            result = convertEventsToUmp(musicToConvert->tracks.front().events, result.tickResolution, true);
 
         } catch (const std::exception& e) {
             result.error = std::string("Exception during SMF conversion: ") + e.what();
@@ -201,7 +319,10 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
                 return result;
             }
 
-            result = convertEventsToUmp(music.tracks[trackIndex].events, result.tickResolution);
+            result = convertEventsToUmp(music.tracks[trackIndex].events, result.tickResolution, false);
+
+            // Tempo/time-signature events may reside on any track, so collect them
+            collectMetaEventsFromMusic(music, result);
 
         } catch (const std::exception& e) {
             result.error = std::string("Exception during SMF track conversion: ") + e.what();
