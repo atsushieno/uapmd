@@ -50,6 +50,13 @@ namespace uapmd {
             double tempo
         ) override;
 
+        // Access to clip data for UI/dump purposes
+        const std::vector<uapmd_ump_t>& umpEvents() const { return ump_events_; }
+        const std::vector<uint64_t>& eventTimestampsSamples() const { return event_timestamps_samples_; }
+        const std::vector<uint64_t>& eventTimestampsTicks() const { return event_timestamps_ticks_; }
+        uint32_t tickResolution() const { return tick_resolution_; }
+        double clipTempo() const { return clip_tempo_; }
+
     private:
         int32_t instance_id_;
         bool bypassed_{false};
@@ -58,7 +65,8 @@ namespace uapmd {
 
         // MIDI clip data
         std::vector<uapmd_ump_t> ump_events_;           // Pre-loaded UMP messages
-        std::vector<uint64_t> event_timestamps_samples_; // Converted to samples
+        std::vector<uint64_t> event_timestamps_ticks_;   // Original tick timestamps (for UI/dump)
+        std::vector<uint64_t> event_timestamps_samples_; // Converted to samples (for playback)
         uint32_t tick_resolution_;
         double clip_tempo_;
         double target_sample_rate_;

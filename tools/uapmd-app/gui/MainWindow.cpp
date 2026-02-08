@@ -15,12 +15,15 @@
 #include <portable-file-dialogs.h>
 
 #include <imgui.h>
+#include <umppi/umppi.hpp>
 
 #include "SharedTheme.hpp"
 #include "FontLoader.hpp"
 
 #include "MainWindow.hpp"
 #include "../AppModel.hpp"
+#include <uapmd-data/priv/project/SmfConverter.hpp>
+#include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
 
 namespace uapmd::gui {
 
@@ -428,6 +431,10 @@ void MainWindow::render(void* window) {
                     scriptEditor_.hide();
                 else
                     scriptEditor_.show();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Import Tracks")) {
+                importSmfTracks();
             }
         }
         ImGui::EndChild();
@@ -1790,33 +1797,145 @@ MidiDumpWindow::ClipDumpData MainWindow::buildMidiClipDumpData(int32_t trackInde
         return dump;
     }
 
+    // Get the source node
+    auto* sourceNode = track->getSourceNode(clip->sourceNodeInstanceId);
+    if (!sourceNode) {
+        dump.error = "Source node not found";
+        return dump;
+    }
+
+    // Cast to MidiClipSourceNode
+    auto* midiSourceNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode);
+    if (!midiSourceNode) {
+        dump.error = "Source node is not a MIDI clip source";
+        return dump;
+    }
+
+    // Always get the UMP data directly from the source node (it's already in memory)
     if (clip->filepath.empty()) {
-        dump.error = "Clip has no source file";
-        return dump;
+        dump.fileLabel = "(in-memory)";
+    } else {
+        std::filesystem::path clipPath(clip->filepath);
+        dump.fileLabel = clipPath.filename().string();
+        if (dump.fileLabel.empty()) {
+            dump.fileLabel = clip->filepath;
+        }
     }
 
-    std::filesystem::path clipPath(clip->filepath);
-    dump.fileLabel = clipPath.filename().string();
-    if (dump.fileLabel.empty()) {
-        dump.fileLabel = clip->filepath;
-    }
+    dump.tickResolution = midiSourceNode->tickResolution();
+    dump.tempo = midiSourceNode->clipTempo();
 
-    auto clipInfo = uapmd::Smf2ClipReader::readAnyFormat(clipPath);
-    if (!clipInfo.success) {
-        dump.error = clipInfo.error;
-        return dump;
-    }
+    // Build ClipInfo structure from source node data
+    uapmd::Smf2ClipReader::ClipInfo clipInfo;
+    clipInfo.success = true;
+    clipInfo.ump_data = midiSourceNode->umpEvents();
+    clipInfo.ump_tick_timestamps = midiSourceNode->eventTimestampsTicks();
+    clipInfo.tick_resolution = dump.tickResolution;
+    clipInfo.tempo = dump.tempo;
 
-    dump.tickResolution = clipInfo.tick_resolution > 0 ? clipInfo.tick_resolution : clip->tickResolution;
-    double tempo = clipInfo.tempo > 0.0 ? clipInfo.tempo : clip->clipTempo;
-    if (tempo <= 0.0) {
-        tempo = 120.0;
-    }
-    dump.tempo = tempo;
-    dump.events = buildMidiDumpRows(clipInfo, dump.tickResolution, tempo);
+    dump.events = buildMidiDumpRows(clipInfo, dump.tickResolution, dump.tempo);
     dump.success = true;
     dump.error.clear();
     return dump;
+}
+
+void MainWindow::importSmfTracks() {
+    // Open file dialog to select SMF file
+    auto selection = pfd::open_file(
+        "Import SMF Tracks",
+        ".",
+        { "MIDI Files", "*.mid *.midi *.smf",
+          "All Files", "*" }
+    );
+
+    if (selection.result().empty())
+        return; // User cancelled
+
+    std::string selectedFile = selection.result()[0];
+
+    try {
+        // Read SMF file to get track count
+        umppi::Midi1Music music = umppi::readMidi1File(selectedFile);
+
+        if (music.tracks.empty()) {
+            pfd::message("Import Failed",
+                        "The selected MIDI file contains no tracks.",
+                        pfd::choice::ok,
+                        pfd::icon::error);
+            return;
+        }
+
+        auto& appModel = uapmd::AppModel::instance();
+        std::filesystem::path smfPath(selectedFile);
+        std::string baseFilename = smfPath.stem().string();
+
+        // Import each track as a new timeline track with a MIDI clip
+        for (size_t trackIdx = 0; trackIdx < music.tracks.size(); ++trackIdx) {
+            // Convert this track to UMP
+            auto convertResult = uapmd::SmfConverter::convertTrackToUmp(selectedFile, trackIdx);
+
+            if (!convertResult.success) {
+                pfd::message("Import Warning",
+                            std::format("Failed to import track {}:\n{}", trackIdx + 1, convertResult.error),
+                            pfd::choice::ok,
+                            pfd::icon::warning);
+                continue;
+            }
+
+            // Create a new timeline track
+            int32_t newTrackIndex = appModel.addTrack();
+            if (newTrackIndex < 0) {
+                pfd::message("Import Error",
+                            std::format("Failed to create track for SMF track {}", trackIdx + 1),
+                            pfd::choice::ok,
+                            pfd::icon::error);
+                continue;
+            }
+
+            // Add MIDI clip to the new track at position 0
+            uapmd::TimelinePosition position;
+            position.samples = 0;
+            position.legacy_beats = 0.0;
+
+            std::string clipName = std::format("{} - Track {}", baseFilename, trackIdx + 1);
+
+            auto clipResult = appModel.addMidiClipToTrack(
+                newTrackIndex,
+                position,
+                std::move(convertResult.umpEvents),
+                std::move(convertResult.umpEventTicksStamps),
+                convertResult.tickResolution,
+                convertResult.detectedTempo,
+                clipName
+            );
+
+            if (!clipResult.success) {
+                pfd::message("Import Warning",
+                            std::format("Failed to add clip for track {}:\n{}", trackIdx + 1, clipResult.error),
+                            pfd::choice::ok,
+                            pfd::icon::warning);
+                // Track was created but clip failed - should we remove the track?
+                // For now, leave the empty track
+                continue;
+            }
+
+            // Refresh the sequence editor for this track
+            refreshSequenceEditorForTrack(newTrackIndex);
+        }
+
+        pfd::message("Import Complete",
+                    std::format("Successfully imported {} track(s) from {}",
+                               music.tracks.size(),
+                               baseFilename),
+                    pfd::choice::ok,
+                    pfd::icon::info);
+
+    } catch (const std::exception& ex) {
+        pfd::message("Import Failed",
+                    std::format("Exception during SMF import:\n{}", ex.what()),
+                    pfd::choice::ok,
+                    pfd::icon::error);
+    }
 }
 
 }

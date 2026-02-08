@@ -108,6 +108,10 @@ namespace uapmd {
         return true;
     }
 
+    SourceNode* TimelineTrack::getSourceNode(int32_t instanceId) {
+        return findSourceNode(instanceId);
+    }
+
     void TimelineTrack::ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount) {
         // Resize buffers if needed
         if (mixed_source_buffers_.size() != numChannels ||

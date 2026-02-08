@@ -154,6 +154,7 @@ class MainWindow {
         void moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds);
         void showMidiClipDump(int32_t trackIndex, int32_t clipId);
         MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);
+        void importSmfTracks();
 
         void renderDeviceSettingsWindow();
         void renderPlayerSettingsWindow();

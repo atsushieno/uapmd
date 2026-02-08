@@ -15,14 +15,15 @@ namespace uapmd {
         double targetSampleRate
     ) : instance_id_(instanceId),
         ump_events_(std::move(umpEvents)),
+        event_timestamps_ticks_(umpTickTimestamps),  // Store original tick timestamps
         tick_resolution_(tickResolution),
         clip_tempo_(clipTempo),
         target_sample_rate_(targetSampleRate)
     {
         // Pre-process event timestamps (ticks → samples) using provided tick timestamps
-        event_timestamps_samples_.reserve(umpTickTimestamps.size());
+        event_timestamps_samples_.reserve(event_timestamps_ticks_.size());
 
-        for (uint64_t ticks : umpTickTimestamps) {
+        for (uint64_t ticks : event_timestamps_ticks_) {
             // Convert ticks → samples
             // samples = (ticks / tickResolution) * (60.0 / tempo) * sampleRate
             double beats = static_cast<double>(ticks) / tick_resolution_;

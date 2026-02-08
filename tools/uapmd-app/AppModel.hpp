@@ -265,6 +265,17 @@ namespace uapmd {
             const std::string& filepath
         );
 
+        // Add MIDI clip with pre-converted UMP data (for multi-track SMF import)
+        ClipAddResult addMidiClipToTrack(
+            int32_t trackIndex,
+            const uapmd::TimelinePosition& position,
+            std::vector<uapmd_ump_t> umpEvents,
+            std::vector<uint64_t> umpTickTimestamps,
+            uint32_t tickResolution,
+            double clipTempo,
+            const std::string& clipName = ""
+        );
+
         bool removeClipFromTrack(int32_t trackIndex, int32_t clipId);
 
         // Device input routing

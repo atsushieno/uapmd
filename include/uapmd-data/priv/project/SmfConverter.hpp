@@ -25,6 +25,10 @@ namespace uapmd {
         // Handles SMF Format 0 and Format 1 (merges tracks)
         static ConvertResult convertToUmp(const std::filesystem::path& smfFile);
 
+        // Convert a single track from an SMF file to UMP
+        // trackIndex: 0-based index of the track to convert
+        static ConvertResult convertTrackToUmp(const std::filesystem::path& smfFile, size_t trackIndex);
+
     private:
         // Extract tempo from SMF meta-events (0xFF 0x51)
         // Returns tempo in BPM

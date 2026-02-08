@@ -790,6 +790,68 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     return result;
 }
 
+uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
+    int32_t trackIndex,
+    const uapmd::TimelinePosition& position,
+    std::vector<uapmd_ump_t> umpEvents,
+    std::vector<uint64_t> umpTickTimestamps,
+    uint32_t tickResolution,
+    double clipTempo,
+    const std::string& clipName
+) {
+    ClipAddResult result;
+
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
+        result.error = "Invalid track index";
+        return result;
+    }
+
+    try {
+        // Create MIDI source node with provided UMP data
+        int32_t sourceNodeId = next_source_node_id_++;
+        auto sourceNode = std::make_unique<uapmd::MidiClipSourceNode>(
+            sourceNodeId,
+            std::move(umpEvents),
+            std::move(umpTickTimestamps),
+            tickResolution,
+            clipTempo,
+            static_cast<double>(sample_rate_)
+        );
+
+        // Get duration from source node
+        int64_t durationSamples = sourceNode->totalLength();
+
+        // Create MIDI clip data
+        uapmd::ClipData clip;
+        clip.clipType = uapmd::ClipType::Midi;
+        clip.position = position;
+        clip.durationSamples = durationSamples;
+        clip.sourceNodeInstanceId = sourceNodeId;
+        clip.filepath = "";  // No file associated with programmatically created clips
+        clip.tickResolution = tickResolution;
+        clip.clipTempo = clipTempo;
+        clip.gain = 1.0;
+        clip.muted = false;
+        clip.name = clipName.empty() ? "MIDI Clip" : clipName;
+
+        // Add clip to track
+        int32_t clipId = timeline_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
+
+        if (clipId >= 0) {
+            result.success = true;
+            result.clipId = clipId;
+            result.sourceNodeId = sourceNodeId;
+        } else {
+            result.error = "Failed to add MIDI clip to track";
+        }
+
+    } catch (const std::exception& ex) {
+        result.error = std::format("Failed to create MIDI clip: {}", ex.what());
+    }
+
+    return result;
+}
+
 bool uapmd::AppModel::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size()))
         return false;

@@ -34,6 +34,7 @@ namespace uapmd {
         // Source node management
         bool addDeviceInputSource(std::unique_ptr<DeviceInputSourceNode> sourceNode);
         bool removeSource(int32_t sourceId);
+        SourceNode* getSourceNode(int32_t instanceId);
 
         // Timeline-aware processing
         // Writes mixed audio to AudioProcessContext output buffers
