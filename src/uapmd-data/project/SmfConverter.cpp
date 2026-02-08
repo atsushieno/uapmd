@@ -38,7 +38,7 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
         hasEmittedEvent = true;
 
         auto deltaBytes = umppi::Midi1Event::encode7BitLength(deltaTime);
-        midi1Bytes.insert(midi1Bytes.end(), deltaBytes.rbegin(), deltaBytes.rend());
+        midi1Bytes.insert(midi1Bytes.end(), deltaBytes.begin(), deltaBytes.end());
 
         uint8_t status = msg->getStatusByte();
 
