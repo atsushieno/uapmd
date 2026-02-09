@@ -76,6 +76,7 @@ bool Smf2ClipReaderWriter::validateClipBody(const Smf2Clip& clip, std::string* e
     }
     ++it;
 
+    bool foundEndOfClip = false;
     while (it != clip.end()) {
         if (!it->isDeltaClockstamp()) {
             setError(errorMessage, "DeltaClockstamp expected before every event");
@@ -86,7 +87,22 @@ bool Smf2ClipReaderWriter::validateClipBody(const Smf2Clip& clip, std::string* e
             setError(errorMessage, "DeltaClockstamp without following event");
             return false;
         }
+        if (it->isEndOfClip()) {
+            foundEndOfClip = true;
+            ++it;
+            if (it != clip.end()) {
+                setError(errorMessage, "EndOfClip must be the final event");
+                return false;
+            }
+            break;
+        }
+
         ++it;
+    }
+
+    if (!foundEndOfClip) {
+        setError(errorMessage, "SMF2 Clip missing EndOfClip marker");
+        return false;
     }
 
     return true;

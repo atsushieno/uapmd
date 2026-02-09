@@ -11,6 +11,8 @@
 #include <exception>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -29,6 +31,11 @@ struct ScheduledUmp {
     uint64_t tick{0};
     int priority{0};
     umppi::Ump message{};
+};
+
+struct GatheredClipEvents {
+    std::vector<ScheduledUmp> events;
+    uint64_t endTick{0};
 };
 
 std::filesystem::path makeRelativePath(const std::filesystem::path& baseDir, const std::filesystem::path& target) {
@@ -73,36 +80,179 @@ uint64_t secondsToTicks(double seconds, double bpm, uint32_t ticksPerQuarter) {
     return static_cast<uint64_t>(std::llround(ticks));
 }
 
-std::vector<ScheduledUmp> gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
-    std::vector<ScheduledUmp> scheduled;
-    const auto& eventTicks = node.eventTimestampsTicks();
-    const auto& events = node.umpEvents();
+class SerializedProjectPluginGraph final : public uapmd::UapmdProjectPluginGraphData {
+public:
+    std::filesystem::path external_file;
+    std::vector<uapmd::UapmdProjectPluginNodeData> nodes;
+
+    std::filesystem::path externalFile() override { return external_file; }
+    std::vector<uapmd::UapmdProjectPluginNodeData> plugins() override { return nodes; }
+    void externalFile(const std::filesystem::path& f) override { external_file = f; }
+
+    void setPlugins(std::vector<uapmd::UapmdProjectPluginNodeData>&& newNodes) {
+        nodes = std::move(newNodes);
+    }
+};
+
+std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
+    uapmd::SequencerTrack* sequencerTrack,
+    uapmd::SequencerEngine* engine)
+{
+    if (!sequencerTrack)
+        return nullptr;
+
+    std::vector<uapmd::UapmdProjectPluginNodeData> pluginNodes;
+    const auto& orderedIds = sequencerTrack->orderedInstanceIds();
+    pluginNodes.reserve(orderedIds.size());
+
+    for (int32_t instanceId : orderedIds) {
+        if (instanceId < 0)
+            continue;
+
+        uapmd::AudioPluginInstanceAPI* instance = nullptr;
+        if (auto* node = sequencerTrack->graph().getPluginNode(instanceId))
+            instance = node->instance();
+        if (!instance && engine)
+            instance = engine->getPluginInstance(instanceId);
+        if (!instance)
+            continue;
+
+        uapmd::UapmdProjectPluginNodeData nodeData;
+        nodeData.plugin_id = instance->pluginId();
+        nodeData.format = instance->formatName();
+        pluginNodes.push_back(std::move(nodeData));
+    }
+
+    auto graph = std::make_unique<SerializedProjectPluginGraph>();
+    graph->setPlugins(std::move(pluginNodes));
+    return graph;
+}
+
+GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
+    GatheredClipEvents result;
+    const auto& eventWords = node.umpEvents();
     const auto& tempoChanges = node.tempoChanges();
     const auto& timeSigChanges = node.timeSignatureChanges();
 
-    const size_t totalReserve = events.size() + tempoChanges.size() + timeSigChanges.size();
-    scheduled.reserve(totalReserve);
+    auto priorityFor = [](const umppi::Ump& message) {
+        if (message.isTempo())
+            return 0;
+        if (message.isTimeSignature())
+            return 1;
+        return 2;
+    };
 
-    for (size_t i = 0; i < events.size() && i < eventTicks.size(); ++i) {
+    std::unordered_set<uint64_t> tempoTicks;
+    std::unordered_set<uint64_t> timeSigTicks;
+
+    size_t wordIndex = 0;
+    auto readNextUmp = [&](umppi::Ump& message) -> bool {
+        if (wordIndex >= eventWords.size())
+            return false;
+        const uint32_t word = eventWords[wordIndex];
+        const auto messageType = static_cast<uint8_t>((word >> 28) & 0xF);
+        const int wordCount = umppi::umpSizeInInts(messageType);
+        if (wordCount <= 0)
+            return false;
+        if (wordIndex + static_cast<size_t>(wordCount) > eventWords.size())
+            return false;
+
+        switch (wordCount) {
+            case 1:
+                message = umppi::Ump(word);
+                break;
+            case 2:
+                message = umppi::Ump(word, eventWords[wordIndex + 1]);
+                break;
+            case 4:
+                message = umppi::Ump(
+                    word,
+                    eventWords[wordIndex + 1],
+                    eventWords[wordIndex + 2],
+                    eventWords[wordIndex + 3]);
+                break;
+            default:
+                return false;
+        }
+
+        wordIndex += static_cast<size_t>(wordCount);
+        return true;
+    };
+
+    uint64_t currentTick = 0;
+    uint64_t pendingDelta = 0;
+    bool seenStart = false;
+    bool reachedEnd = false;
+
+    while (wordIndex < eventWords.size()) {
+        umppi::Ump message;
+        if (!readNextUmp(message))
+            break;
+
+        if (message.isDeltaClockstamp()) {
+            pendingDelta += message.getDeltaClockstamp();
+            continue;
+        }
+
+        if (!seenStart) {
+            if (message.isStartOfClip()) {
+                seenStart = true;
+                pendingDelta = 0;
+                continue;
+            }
+            if (message.isDCTPQ())
+                continue;
+            seenStart = true;
+        }
+
+        if (message.isEndOfClip()) {
+            currentTick += pendingDelta;
+            pendingDelta = 0;
+            result.endTick = currentTick;
+            reachedEnd = true;
+            break;
+        }
+
+        currentTick += pendingDelta;
+        pendingDelta = 0;
+
         ScheduledUmp entry;
-        entry.tick = eventTicks[i];
-        entry.priority = 2;
-        entry.message = umppi::Ump(events[i]);
-        scheduled.push_back(entry);
+        entry.tick = currentTick;
+        entry.priority = priorityFor(message);
+        entry.message = message;
+        result.events.push_back(entry);
+
+        if (message.isTempo())
+            tempoTicks.insert(entry.tick);
+        else if (message.isTimeSignature())
+            timeSigTicks.insert(entry.tick);
     }
 
+    if (!reachedEnd)
+        result.endTick = currentTick + pendingDelta;
+
     for (const auto& tempo : tempoChanges) {
+        if (tempoTicks.contains(tempo.tickPosition))
+            continue;
+
         ScheduledUmp entry;
         entry.tick = tempo.tickPosition;
         entry.priority = 0;
+        const double bpm = tempo.bpm > 0.0 ? tempo.bpm : 120.0;
         entry.message = umppi::UmpFactory::tempo(
             kTempoGroup,
             kTempoChannel,
-            bpmToTenNanoseconds(tempo.bpm > 0.0 ? tempo.bpm : 120.0));
-        scheduled.push_back(entry);
+            bpmToTenNanoseconds(bpm));
+        result.events.push_back(entry);
+        tempoTicks.insert(entry.tick);
+        if (entry.tick > result.endTick)
+            result.endTick = entry.tick;
     }
 
     for (const auto& sig : timeSigChanges) {
+        if (timeSigTicks.contains(sig.tickPosition))
+            continue;
+
         ScheduledUmp entry;
         entry.tick = sig.tickPosition;
         entry.priority = 1;
@@ -112,16 +262,22 @@ std::vector<ScheduledUmp> gatherMidiClipEvents(const uapmd::MidiClipSourceNode& 
             sig.numerator,
             sig.denominator,
             0);
-        scheduled.push_back(entry);
+        result.events.push_back(entry);
+        timeSigTicks.insert(entry.tick);
+        if (entry.tick > result.endTick)
+            result.endTick = entry.tick;
     }
 
-    std::sort(scheduled.begin(), scheduled.end(), [](const ScheduledUmp& a, const ScheduledUmp& b) {
+    std::stable_sort(result.events.begin(), result.events.end(), [](const ScheduledUmp& a, const ScheduledUmp& b) {
         if (a.tick != b.tick)
             return a.tick < b.tick;
         return a.priority < b.priority;
     });
 
-    return scheduled;
+    if (!result.events.empty() && result.events.back().tick > result.endTick)
+        result.endTick = result.events.back().tick;
+
+    return result;
 }
 
 std::vector<umppi::Ump> buildSmf2ClipFromMidiNode(const uapmd::MidiClipSourceNode& node) {
@@ -131,14 +287,18 @@ std::vector<umppi::Ump> buildSmf2ClipFromMidiNode(const uapmd::MidiClipSourceNod
     clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(0)));
     clip.push_back(umppi::UmpFactory::startOfClip());
 
-    auto scheduled = gatherMidiClipEvents(node);
+    auto gathered = gatherMidiClipEvents(node);
     uint64_t previousTick = 0;
-    for (const auto& entry : scheduled) {
+    for (const auto& entry : gathered.events) {
         uint64_t delta = entry.tick >= previousTick ? entry.tick - previousTick : 0;
         clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(static_cast<uint32_t>(delta))));
         clip.push_back(entry.message);
         previousTick = entry.tick;
     }
+
+    uint64_t tailDelta = gathered.endTick > previousTick ? gathered.endTick - previousTick : 0;
+    clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(static_cast<uint32_t>(tailDelta))));
+    clip.push_back(umppi::UmpFactory::endOfClip());
 
     return clip;
 }
@@ -204,6 +364,9 @@ std::vector<umppi::Ump> buildMasterTrackSmf2Clip(const uapmd::AppModel::MasterTr
         }
     }
 
+    clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(0)));
+    clip.push_back(umppi::UmpFactory::endOfClip());
+
     return clip;
 }
 
@@ -225,13 +388,34 @@ bool parseSmf2ClipFile(const std::filesystem::path& file, ParsedSmf2Clip& parsed
     }
 
     auto it = clip->begin();
-    ++it; // DCTPQ
-    parsed.tickResolution = it->isDCTPQ() ? it->getDCTPQ() : kDefaultDctpq;
-    ++it; // DeltaClockstamp(0)
-    ++it; // Start of clip
+    if (!it->isDeltaClockstamp() || it->getDeltaClockstamp() != 0) {
+        error = "SMF2 clip missing initial DeltaClockstamp(0)";
+        return false;
+    }
+    ++it;
+
+    if (!it->isDCTPQ()) {
+        error = "SMF2 clip missing DCTPQ after header";
+        return false;
+    }
+    parsed.tickResolution = it->getDCTPQ();
+    ++it;
+
+    if (!it->isDeltaClockstamp() || it->getDeltaClockstamp() != 0) {
+        error = "SMF2 clip missing DeltaClockstamp before StartOfClip";
+        return false;
+    }
+    ++it;
+
+    if (!it->isStartOfClip()) {
+        error = "SMF2 clip missing StartOfClip marker";
+        return false;
+    }
+    ++it;
 
     uint64_t currentTick = 0;
     bool expectDelta = true;
+    bool endOfClipSeen = false;
     for (; it != clip->end(); ++it) {
         if (expectDelta) {
             if (!it->isDeltaClockstamp()) {
@@ -241,7 +425,17 @@ bool parseSmf2ClipFile(const std::filesystem::path& file, ParsedSmf2Clip& parsed
             currentTick += it->getDeltaClockstamp();
             expectDelta = false;
         } else {
-            if (it->isTempo()) {
+            if (it->isEndOfClip()) {
+                auto after = it;
+                ++after;
+                if (after != clip->end()) {
+                    error = "EndOfClip must be the final event in SMF2 clip";
+                    return false;
+                }
+                endOfClipSeen = true;
+                expectDelta = true;
+                break;
+            } else if (it->isTempo()) {
                 double bpm = 120.0;
                 uint32_t rawTempo = it->getTempo();
                 if (rawTempo > 0) {
@@ -260,6 +454,11 @@ bool parseSmf2ClipFile(const std::filesystem::path& file, ParsedSmf2Clip& parsed
             }
             expectDelta = true;
         }
+    }
+
+    if (!endOfClipSeen) {
+        error = "SMF2 clip missing EndOfClip marker";
+        return false;
     }
 
     if (!expectDelta) {
@@ -1300,6 +1499,8 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
         auto clipDir = projectDir / "clips";
 
         auto project = uapmd::UapmdProjectData::create();
+        auto* sequencerEngine = sequencer_.engine();
+        auto sequencerTracks = sequencerEngine ? sequencerEngine->tracks() : std::vector<uapmd::SequencerTrack*>{};
         auto timelineTracks = getTimelineTracks();
 
         size_t midiExportCounter = 0;
@@ -1381,6 +1582,11 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
                 it->second->position(pos);
             }
 
+            uapmd::SequencerTrack* sequencerTrack = (sequencerEngine && trackIndex < sequencerTracks.size())
+                ? sequencerTracks[trackIndex]
+                : nullptr;
+            if (auto graphData = createSerializedPluginGraph(sequencerTrack, sequencerEngine))
+                projectTrack->graph(std::move(graphData));
             project->addTrack(std::move(projectTrack));
         }
 
@@ -1407,6 +1613,12 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
             masterClip->tempo(timeline_.tempo);
             masterClip->file(masterFile);
             masterTrack->clips().push_back(std::move(masterClip));
+
+            if (auto graphData = createSerializedPluginGraph(
+                    sequencerEngine ? sequencerEngine->masterTrack() : nullptr,
+                    sequencerEngine)) {
+                masterTrack->graph(std::move(graphData));
+            }
         }
 
         if (!uapmd::UapmdProjectDataWriter::write(project.get(), projectFile)) {

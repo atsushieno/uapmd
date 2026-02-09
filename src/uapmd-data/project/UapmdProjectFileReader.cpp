@@ -272,34 +272,36 @@ namespace uapmd {
                     size_t clipIdx = 0;
                     std::vector<size_t> invalidClipIndices;
 
-                    for (const auto& clipObj : masterTrackObj["clips"]) {
-                        auto* clipImpl = clips[clipIdx].get();
+                    if (auto clipsArr = masterTrackObj["clips"]; clipsArr.size() == 0) {
+                        for (const auto& clipObj : clipsArr) {
+                            auto* clipImpl = clips[clipIdx].get();
 
-                        if (clipImpl && clipObj.hasObjectMember("anchor")) {
-                            auto anchor_view = clipObj["anchor"].getString();
-                            std::string anchor_str(anchor_view);
+                            if (clipImpl && clipObj.hasObjectMember("anchor")) {
+                                auto anchor_view = clipObj["anchor"].getString();
+                                std::string anchor_str(anchor_view);
 
-                            // Validate anchor
-                            if (!resolver.isValidAnchor(anchor_str, clipImpl)) {
-                                auto* anchorPtr = resolver.resolve(anchor_str);
-                                if (!anchorPtr) {
-                                    std::cerr << "Warning: Invalid anchor '" << anchor_str
-                                              << "' in master track clip " << clipIdx
-                                              << " - anchor not found. Clip will be removed.\n";
+                                // Validate anchor
+                                if (!resolver.isValidAnchor(anchor_str, clipImpl)) {
+                                    auto* anchorPtr = resolver.resolve(anchor_str);
+                                    if (!anchorPtr) {
+                                        std::cerr << "Warning: Invalid anchor '" << anchor_str
+                                                  << "' in master track clip " << clipIdx
+                                                  << " - anchor not found. Clip will be removed.\n";
+                                    } else {
+                                        std::cerr << "Warning: Invalid anchor '" << anchor_str
+                                                  << "' in master track clip " << clipIdx
+                                                  << " - creates recursive reference. Clip will be removed.\n";
+                                    }
+                                    invalidClipIndices.push_back(clipIdx);
                                 } else {
-                                    std::cerr << "Warning: Invalid anchor '" << anchor_str
-                                              << "' in master track clip " << clipIdx
-                                              << " - creates recursive reference. Clip will be removed.\n";
+                                    // Valid anchor - update position
+                                    UapmdTimelinePosition pos = clipImpl->position();
+                                    pos.anchor = resolver.resolve(anchor_str);
+                                    clipImpl->position(pos);
                                 }
-                                invalidClipIndices.push_back(clipIdx);
-                            } else {
-                                // Valid anchor - update position
-                                UapmdTimelinePosition pos = clipImpl->position();
-                                pos.anchor = resolver.resolve(anchor_str);
-                                clipImpl->position(pos);
                             }
+                            ++clipIdx;
                         }
-                        ++clipIdx;
                     }
 
                     // Remove invalid clips (in reverse order to maintain indices)
