@@ -59,6 +59,15 @@ jobs:
       run: |
         brew install sdl3
 
+    - name: prepare dependency cache directories on Windows
+      if: matrix.os == 'windows-latest'
+      run: cmake -E make_directory build/_deps
+    - name: cache Windows dependencies
+      if: matrix.os == 'windows-latest'
+      uses: actions/cache@v4
+      with:
+        path: build/_deps
+        key: ${{ runner.os }}-deps-${{ hashFiles('cmake/UapmdVcpkgSDL3.cmake', 'tools/uapmd-app/CMakeLists.txt') }}
     - name: setup build on Windows
       if: matrix.os == 'windows-latest'
       run: |

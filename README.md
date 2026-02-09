@@ -44,6 +44,8 @@ Windows builds expect the Windows MIDI Services runtime to be available and use 
 - Override `UAPMD_WINMIDI_HEADERS_ARCHIVE` if you want to point at a different package file.
 - Set `LIBREMIDI_WINMIDI_HEADERS_ZIP` manually to a local `.nupkg` if you need offline builds; the automatic download is skipped when this variable is provided.
 
+For desktop GUI builds on Windows we try to reuse SDL3 from a prebuilt vcpkg package to avoid building GLFW locally. During CMake configure we either reuse `VCPKG_ROOT` or download a vcpkg snapshot, bootstrap it, install `sdl3` for the detected triplet, and extend `CMAKE_PREFIX_PATH` so that `find_package(SDL3)` succeeds. Override `UAPMD_VCPKG_URL`, `UAPMD_VCPKG_URL_HASH`, `UAPMD_VCPKG_TRIPLET`, or `UAPMD_VCPKG_ROOT` when pointing to a mirror or a different architecture. If SDL3 still cannot be provided automatically the build falls back to SDL2 or GLFW as before.
+
 
 ## Screenshots
 
