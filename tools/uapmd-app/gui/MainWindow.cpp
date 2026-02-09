@@ -109,6 +109,8 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     });
 
     refreshDeviceList();
+    // Force the runtime audio device to match the UI defaults (sample rate, buffer) immediately.
+    handleAudioDeviceChange();
     refreshInstances();
     refreshPluginList();
 
