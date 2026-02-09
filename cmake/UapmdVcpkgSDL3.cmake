@@ -32,7 +32,7 @@ macro(uapmd_prepare_vcpkg_sdl3)
         set(_uapmd_vcpkg_root "$ENV{VCPKG_ROOT}")
     else()
         set(_uapmd_vcpkg_default_url
-            "https://github.com/microsoft/vcpkg/archive/refs/tags/2024.05.24.tar.gz")
+            "https://github.com/microsoft/vcpkg/archive/refs/tags/2026.01.16.zip")
         if(NOT DEFINED UAPMD_VCPKG_URL OR UAPMD_VCPKG_URL STREQUAL "")
             set(UAPMD_VCPKG_URL "${_uapmd_vcpkg_default_url}")
         endif()
