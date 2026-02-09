@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <vector>
 #include <string>
 #include <array>
@@ -23,8 +24,11 @@ public:
     // State
     void setScanning(bool scanning);
     bool getForceRescan() const { return forceRescan_; }
-    void setTargetTrackIndex(int32_t trackIndex) { targetTrackIndex_ = trackIndex; }
+    void setTargetTrackIndex(int32_t trackIndex);
+    void setTargetNewTrack();
+    void setTargetMasterTrack(int32_t masterTrackIndex);
     int32_t targetTrackIndex() const { return targetTrackIndex_; }
+    bool isMasterTrackTarget() const { return targetIsMasterTrack_; }
 
     // Access to input fields
     const char* getDeviceNameInput() const { return deviceNameInput_; }
@@ -37,6 +41,7 @@ private:
 
     // Track selection for plugin instantiation
     int32_t targetTrackIndex_ = -1;
+    bool targetIsMasterTrack_ = false;
     char deviceNameInput_[128] = "";  // Empty by default, will use plugin name if not filled
     char apiInput_[64] = "default";
 

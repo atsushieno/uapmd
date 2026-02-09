@@ -49,7 +49,9 @@ void PluginSelector::render() {
         ImGui::EndDisabled();
     }
 
-    if (targetTrackIndex_ < 0) {
+    if (targetIsMasterTrack_) {
+        ImGui::TextUnformatted("Destination: Master Track");
+    } else if (targetTrackIndex_ < 0) {
         ImGui::TextUnformatted("Destination: New Track (new UMP device)");
         // Show device configuration for new track
         ImGui::AlignTextToFramePadding();
@@ -81,6 +83,21 @@ void PluginSelector::setOnScanPlugins(std::function<void(bool forceRescan)> call
 
 void PluginSelector::setScanning(bool scanning) {
     isScanning_ = scanning;
+}
+
+void PluginSelector::setTargetTrackIndex(int32_t trackIndex) {
+    targetTrackIndex_ = trackIndex;
+    targetIsMasterTrack_ = false;
+}
+
+void PluginSelector::setTargetNewTrack() {
+    targetTrackIndex_ = -1;
+    targetIsMasterTrack_ = false;
+}
+
+void PluginSelector::setTargetMasterTrack(int32_t masterTrackIndex) {
+    targetTrackIndex_ = masterTrackIndex;
+    targetIsMasterTrack_ = true;
 }
 
 }

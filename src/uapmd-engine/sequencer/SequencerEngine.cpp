@@ -18,6 +18,8 @@ namespace uapmd {
         uint32_t default_input_channels_{2};
         uint32_t default_output_channels_{2};
         std::vector<std::unique_ptr<SequencerTrack>> tracks_{};
+        std::unique_ptr<SequencerTrack> master_track_;
+        std::unique_ptr<AudioProcessContext> master_track_context_;
         SequenceProcessContext sequence{};
         int32_t sampleRate;
         std::unique_ptr<AudioPluginHostingAPI> plugin_host;
@@ -65,6 +67,7 @@ namespace uapmd {
         SequenceProcessContext& data() override { return sequence; }
 
         std::vector<SequencerTrack*>& tracks() const override;
+        SequencerTrack* masterTrack() override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         uapmd_track_index_t addEmptyTrack() override;
@@ -144,6 +147,12 @@ namespace uapmd {
         ump_buffer_size_in_ints(umpBufferSizeInInts),
         plugin_host(AudioPluginHostingAPI::create()),
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
+        master_track_ = SequencerTrack::create(umpBufferSizeInInts);
+        master_track_context_ = std::make_unique<AudioProcessContext>(sequence.masterContext(), ump_buffer_size_in_ints);
+        if (master_track_context_) {
+            master_track_context_->configureMainBus(default_output_channels_, default_output_channels_, audio_buffer_size_in_frames);
+        }
+        configureTrackRouting(master_track_.get());
     }
 
     std::vector<SequencerTrack*> &SequencerEngineImpl::tracks() const {
@@ -154,6 +163,10 @@ namespace uapmd {
         for (const auto& track : tracks_)
             track_ptrs.push_back(track.get());
         return track_ptrs;
+    }
+
+    SequencerTrack* SequencerEngineImpl::masterTrack() {
+        return master_track_.get();
     }
 
     int32_t SequencerEngineImpl::processAudio(AudioProcessContext& process) {
@@ -241,6 +254,44 @@ namespace uapmd {
             }
         }
 
+        // Process master track plugins if present
+        if (master_track_ && master_track_context_ && !master_track_->orderedInstanceIds().empty()) {
+            auto* masterCtx = master_track_context_.get();
+            masterCtx->frameCount(process.frameCount());
+            masterCtx->eventIn().position(0);
+            masterCtx->eventOut().position(0);
+
+            if (masterCtx->audioInBusCount() > 0 && process.audioOutBusCount() > 0) {
+                uint32_t channels = std::min(
+                    static_cast<uint32_t>(masterCtx->inputChannelCount(0)),
+                    static_cast<uint32_t>(process.outputChannelCount(0))
+                );
+                for (uint32_t ch = 0; ch < channels; ++ch) {
+                    float* dst = masterCtx->getFloatInBuffer(0, ch);
+                    const float* src = process.getFloatOutBuffer(0, ch);
+                    if (dst && src) {
+                        std::memcpy(dst, src, process.frameCount() * sizeof(float));
+                    }
+                }
+            }
+
+            master_track_->graph().processAudio(*masterCtx);
+
+            if (masterCtx->audioOutBusCount() > 0 && process.audioOutBusCount() > 0) {
+                uint32_t channels = std::min(
+                    static_cast<uint32_t>(masterCtx->outputChannelCount(0)),
+                    static_cast<uint32_t>(process.outputChannelCount(0))
+                );
+                for (uint32_t ch = 0; ch < channels; ++ch) {
+                    float* dst = process.getFloatOutBuffer(0, ch);
+                    const float* src = masterCtx->getFloatOutBuffer(0, ch);
+                    if (dst && src) {
+                        std::memcpy(dst, src, process.frameCount() * sizeof(float));
+                    }
+                }
+            }
+        }
+
         // Apply soft clipping to prevent harsh distortion
         if (process.audioOutBusCount() > 0) {
             for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++) {
@@ -318,6 +369,9 @@ namespace uapmd {
     void SequencerEngineImpl::setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) {
         default_input_channels_ = inputChannels;
         default_output_channels_ = outputChannels;
+        if (master_track_context_) {
+            master_track_context_->configureMainBus(default_output_channels_, default_output_channels_, audio_buffer_size_in_frames);
+        }
     }
 
     uapmd_track_index_t SequencerEngineImpl::addEmptyTrack() {
@@ -344,26 +398,35 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) {
-        // Validate track index
-        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size()) {
-            callback(-1, -1, std::format("Invalid track index {}", trackIndex));
-            return;
+        const bool targetMaster = (trackIndex == kMasterTrackIndex);
+        if (!targetMaster) {
+            // Validate track index
+            if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size()) {
+                callback(-1, -1, std::format("Invalid track index {}", trackIndex));
+                return;
+            }
         }
 
-        plugin_host->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, callback](int32_t instanceId, std::string error) {
+        plugin_host->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, targetMaster, callback](int32_t instanceId, std::string error) {
             if (instanceId < 0) {
-                callback(-1, -1, "Could not create plugin: " + error);
+                callback(-1, targetMaster ? kMasterTrackIndex : trackIndex, "Could not create plugin: " + error);
                 return;
             }
 
             // Re-validate track (may have been removed during async operation)
-            if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size()) {
-                callback(-1, -1, std::format("Track {} no longer exists", trackIndex));
-                return;
+            if (!targetMaster) {
+                if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size()) {
+                    callback(-1, -1, std::format("Track {} no longer exists", trackIndex));
+                    return;
+                }
             }
 
             auto instance = plugin_host->getInstance(instanceId);
-            auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+            auto* track = targetMaster ? master_track_.get() : tracks_[static_cast<size_t>(trackIndex)].get();
+            if (!track) {
+                callback(-1, targetMaster ? kMasterTrackIndex : trackIndex, "Track unavailable for plugin insertion");
+                return;
+            }
 
             // Append to track's graph
             auto status = track->graph().appendNodeSimple(instanceId, instance, [this,instanceId] {
@@ -394,7 +457,7 @@ namespace uapmd {
 
             instance->bypassed(false);
 
-            callback(instanceId, trackIndex, "");
+            callback(instanceId, targetMaster ? kMasterTrackIndex : trackIndex, "");
         });
     }
 
@@ -428,6 +491,10 @@ namespace uapmd {
                 refreshFunctionBlockMappings();
                 return true;
             }
+        }
+        if (master_track_ && master_track_->graph().removeNodeSimple(instanceId)) {
+            refreshFunctionBlockMappings();
+            return true;
         }
         return false;
     }
@@ -517,6 +584,7 @@ namespace uapmd {
     void SequencerEngineImpl::refreshFunctionBlockMappings() {
         for (auto& track : tracks_)
             configureTrackRouting(track.get());
+        configureTrackRouting(master_track_.get());
     }
 
     int32_t SequencerEngineImpl::findTrackIndexForInstance(int32_t instanceId) const {
@@ -526,6 +594,11 @@ namespace uapmd {
                 std::ranges::find(ids.begin(), ids.end(), instanceId) != tracksRef[i]->orderedInstanceIds().end()
             )
                 return static_cast<int32_t>(i);
+        }
+        if (master_track_) {
+            const auto& ids = master_track_->orderedInstanceIds();
+            if (std::ranges::find(ids.begin(), ids.end(), instanceId) != ids.end())
+                return kMasterTrackIndex;
         }
         return -1;
     }
@@ -573,11 +646,18 @@ namespace uapmd {
                 double value = static_cast<double>(value32) / 4294967295.0;
 
                 // Find the AudioPluginNode and notify parameter update
+                bool handled = false;
                 for (const auto& track : tracks()) {
                     auto node = track->graph().getPluginNode(instanceId);
                     if (node) {
                         node->parameterUpdateEvent().notify(paramId, value);
+                        handled = true;
                         break;
+                    }
+                }
+                if (!handled && master_track_) {
+                    if (auto* node = master_track_->graph().getPluginNode(instanceId)) {
+                        node->parameterUpdateEvent().notify(paramId, value);
                     }
                 }
             }
@@ -616,6 +696,10 @@ namespace uapmd {
         for (const auto& track : tracks())
             if (const auto node = track->graph().getPluginNode(instanceId))
                 node->scheduleEvents(timestamp, ump, sizeInBytes);
+        if (master_track_) {
+            if (const auto node = master_track_->graph().getPluginNode(instanceId))
+                node->scheduleEvents(timestamp, ump, sizeInBytes);
+        }
     }
 
     void SequencerEngineImpl::sendNoteOn(int32_t instanceId, int32_t note) {

@@ -158,43 +158,51 @@ void InstanceDetails::showWindow(int32_t instanceId) {
 
         // Register parameter update listener
         auto& seq = uapmd::AppModel::instance().sequencer();
-        for (const auto& track : seq.engine()->tracks()) {
+        auto attachListeners = [this, instanceId, &state](SequencerTrack* track) -> bool {
+            if (!track)
+                return false;
             auto node = track->graph().getPluginNode(instanceId);
-            if (node) {
-                state.parameterListenerId = node->parameterUpdateEvent().addListener([this, instanceId](int32_t paramIndex, double value) {
-                    auto windowIt = windows_.find(instanceId);
-                    if (windowIt == windows_.end())
-                        return;
+            if (!node)
+                return false;
+            state.parameterListenerId = node->parameterUpdateEvent().addListener([this, instanceId](int32_t paramIndex, double value) {
+                auto windowIt = windows_.find(instanceId);
+                if (windowIt == windows_.end())
+                    return;
 
-                    auto& detailsState = windowIt->second;
-                    if (detailsState.parameterList.context() != ParameterList::ParameterContext::Global)
-                        return;
+                auto& detailsState = windowIt->second;
+                if (detailsState.parameterList.context() != ParameterList::ParameterContext::Global)
+                    return;
 
-                    auto& seq = uapmd::AppModel::instance().sequencer();
-                    auto* pal = seq.engine()->getPluginInstance(instanceId);
-                    if (!pal)
-                        return;
+                auto& seq = uapmd::AppModel::instance().sequencer();
+                auto* pal = seq.engine()->getPluginInstance(instanceId);
+                if (!pal)
+                    return;
 
-                    const auto& parameters = detailsState.parameterList.getParameters();
-                    for (size_t i = 0; i < parameters.size(); ++i) {
-                        if (parameters[i].index == paramIndex) {
-                            detailsState.parameterList.setParameterValue(i, static_cast<float>(value));
-                            auto valueString = pal->getParameterValueString(parameters[i].index, value);
-                            detailsState.parameterList.setParameterValueString(i, valueString);
-                            break;
-                        }
+                const auto& parameters = detailsState.parameterList.getParameters();
+                for (size_t i = 0; i < parameters.size(); ++i) {
+                    if (parameters[i].index == paramIndex) {
+                        detailsState.parameterList.setParameterValue(i, static_cast<float>(value));
+                        auto valueString = pal->getParameterValueString(parameters[i].index, value);
+                        detailsState.parameterList.setParameterValueString(i, valueString);
+                        break;
                     }
-                });
+                }
+            });
 
-                state.metadataListenerId = node->parameterMetadataRefreshEvent().addListener([this, instanceId]() {
-                    auto windowIt = windows_.find(instanceId);
-                    if (windowIt == windows_.end())
-                        return;
-                    refreshParameters(instanceId, windowIt->second);
-                });
-
+            state.metadataListenerId = node->parameterMetadataRefreshEvent().addListener([this, instanceId]() {
+                auto windowIt = windows_.find(instanceId);
+                if (windowIt == windows_.end())
+                    return;
+                refreshParameters(instanceId, windowIt->second);
+            });
+            return true;
+        };
+        for (const auto& track : seq.engine()->tracks()) {
+            if (attachListeners(track))
                 break;
-            }
+        }
+        if (state.parameterListenerId == 0 && state.metadataListenerId == 0) {
+            attachListeners(seq.engine()->masterTrack());
         }
 
         windows_[instanceId] = std::move(state);
@@ -215,15 +223,27 @@ void InstanceDetails::removeInstance(int32_t instanceId) {
     auto it = windows_.find(instanceId);
     if (it != windows_.end() && (it->second.parameterListenerId != 0 || it->second.metadataListenerId != 0)) {
         auto& seq = uapmd::AppModel::instance().sequencer();
-        for (const auto& track : seq.engine()->tracks()) {
+        auto detachListeners = [this, &it, instanceId](SequencerTrack* track) -> bool {
+            if (!track)
+                return false;
             auto node = track->graph().getPluginNode(instanceId);
-            if (node) {
-                if (it->second.parameterListenerId != 0)
-                    node->parameterUpdateEvent().removeListener(it->second.parameterListenerId);
-                if (it->second.metadataListenerId != 0)
-                    node->parameterMetadataRefreshEvent().removeListener(it->second.metadataListenerId);
+            if (!node)
+                return false;
+            if (it->second.parameterListenerId != 0)
+                node->parameterUpdateEvent().removeListener(it->second.parameterListenerId);
+            if (it->second.metadataListenerId != 0)
+                node->parameterMetadataRefreshEvent().removeListener(it->second.metadataListenerId);
+            return true;
+        };
+        bool removed = false;
+        for (const auto& track : seq.engine()->tracks()) {
+            if (detachListeners(track)) {
+                removed = true;
                 break;
             }
+        }
+        if (!removed) {
+            detachListeners(seq.engine()->masterTrack());
         }
     }
     windows_.erase(instanceId);

@@ -1,9 +1,11 @@
 #pragma once
+#include <limits>
 #include <memory>
 
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
+    inline constexpr int32_t kMasterTrackIndex = std::numeric_limits<int32_t>::min();
     typedef int32_t uapmd_track_index_t;
 
     class AudioPluginHostingAPI;
@@ -29,6 +31,7 @@ namespace uapmd {
         virtual int32_t findTrackIndexForInstance(int32_t instanceId) const = 0;
 
         virtual std::vector<SequencerTrack *> & tracks() const = 0;
+        virtual SequencerTrack* masterTrack() = 0;
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
         virtual uapmd_track_index_t addEmptyTrack() = 0;
         // Add plugin to existing track

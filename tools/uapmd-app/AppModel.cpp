@@ -132,6 +132,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const std::string& pluginId,
                                                  int32_t trackIndex,
                                                  const PluginInstanceConfig& config) {
+    const bool targetMasterTrack = (trackIndex == kMasterTrackIndex);
     // Get plugin name from catalog
     std::string pluginName;
     for (auto plugins = sequencer_.engine()->pluginHost()->pluginCatalogEntries(); auto& plugin : plugins) {
@@ -206,21 +207,23 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         }
     };
 
-    if (trackIndex < 0) {
-        trackIndex = addTrack();
+    if (!targetMasterTrack) {
         if (trackIndex < 0) {
-            instantiateCallback(-1, -1, "Failed to add track for new plugin instance");
-            return;
-        }
-    } else {
-        auto& tracks = sequencer_.engine()->tracks();
-        if (trackIndex >= static_cast<int32_t>(tracks.size())) {
-            instantiateCallback(-1, -1, std::format("Invalid track index {}", trackIndex));
-            return;
+            trackIndex = addTrack();
+            if (trackIndex < 0) {
+                instantiateCallback(-1, -1, "Failed to add track for new plugin instance");
+                return;
+            }
+        } else {
+            auto& tracks = sequencer_.engine()->tracks();
+            if (trackIndex >= static_cast<int32_t>(tracks.size())) {
+                instantiateCallback(-1, -1, std::format("Invalid track index {}", trackIndex));
+                return;
+            }
         }
     }
 
-    sequencer_.engine()->addPluginToTrack(trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
+    sequencer_.engine()->addPluginToTrack(targetMasterTrack ? kMasterTrackIndex : trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
 }
 
 void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
@@ -308,8 +311,17 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
 
         auto fbDeviceIndex = fbManager->create();
         auto fbDevice = fbManager->getFunctionDeviceByIndex(fbDeviceIndex);
-        const auto track = sequencer_.engine()->tracks()[sequencer_.engine()->findTrackIndexForInstance(instanceId)];
-        const auto pluginNode = track ? track->graph().getPluginNode(instanceId) : nullptr;
+        SequencerTrack* targetTrack = nullptr;
+        const auto targetIndex = sequencer_.engine()->findTrackIndexForInstance(instanceId);
+        if (targetIndex == kMasterTrackIndex) {
+            targetTrack = sequencer_.engine()->masterTrack();
+        } else if (targetIndex >= 0) {
+            auto& trackRefs = sequencer_.engine()->tracks();
+            if (static_cast<size_t>(targetIndex) < trackRefs.size()) {
+                targetTrack = trackRefs[static_cast<size_t>(targetIndex)];
+            }
+        }
+        const auto pluginNode = targetTrack ? targetTrack->graph().getPluginNode(instanceId) : nullptr;
         if (!fbDevice->createFunctionBlock(deviceState->apiName, pluginNode, instanceId,
                                                deviceName.empty() ? deviceState->label : deviceName,
                                                "UAPMD Project",

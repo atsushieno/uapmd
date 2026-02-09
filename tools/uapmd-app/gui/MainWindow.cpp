@@ -29,7 +29,6 @@
 namespace uapmd::gui {
 
 namespace {
-constexpr int32_t kMasterTrackIndex = -1;
 constexpr int32_t kMasterTrackClipId = -1000;
 }
 
@@ -456,7 +455,7 @@ void MainWindow::render(void* window) {
             }
 
             if (ImGui::Button("Plugins")) {
-                pluginSelector_.setTargetTrackIndex(-1);
+                pluginSelector_.setTargetNewTrack();
                 showPluginSelectorWindow_ = !showPluginSelectorWindow_;
             }
             ImGui::SameLine();
@@ -683,7 +682,7 @@ void MainWindow::renderMasterTrackRow(const SequenceEditor::RenderContext& conte
         row.customPreview = createMasterMetaPreview(std::move(tempoPoints), std::move(sigPoints), durationSeconds);
         rows.push_back(std::move(row));
 
-        sequenceEditor_.refreshClips(kMasterTrackIndex, rows);
+        sequenceEditor_.refreshClips(uapmd::kMasterTrackIndex, rows);
     } else {
         masterTrackSnapshot_ = snapshot;
     }
@@ -699,12 +698,87 @@ void MainWindow::renderMasterTrackRow(const SequenceEditor::RenderContext& conte
         ImGui::TextUnformatted("Master Track");
         ImGui::Spacing();
         if (ImGui::Button("Clips...")) {
-            sequenceEditor_.showWindow(kMasterTrackIndex);
+            sequenceEditor_.showWindow(uapmd::kMasterTrackIndex);
+        }
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto* masterTrack = sequencer.engine()->masterTrack();
+        std::vector<int32_t> validInstances;
+        if (masterTrack) {
+            auto& ids = masterTrack->orderedInstanceIds();
+            validInstances.reserve(ids.size());
+            for (int32_t instanceId : ids) {
+                if (sequencer.engine()->getPluginInstance(instanceId)) {
+                    validInstances.push_back(instanceId);
+                }
+            }
+        }
+
+        std::string pluginLabel = "Add Plugin";
+        if (!validInstances.empty()) {
+            if (auto* instance = sequencer.engine()->getPluginInstance(validInstances.front())) {
+                pluginLabel = instance->displayName();
+            }
+        }
+
+        std::string pluginPopupId = "MasterTrackActions";
+        if (ImGui::Button(std::format("{}...", pluginLabel).c_str())) {
+            ImGui::OpenPopup(pluginPopupId.c_str());
+        }
+        if (ImGui::BeginPopup(pluginPopupId.c_str())) {
+            if (masterTrack) {
+                for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
+                    int32_t instanceId = validInstances[static_cast<size_t>(i)];
+                    auto* instance = sequencer.engine()->getPluginInstance(instanceId);
+                    if (!instance)
+                        continue;
+                    std::string pluginName = instance->displayName();
+
+                    bool detailsVisible = instanceDetails_.isVisible(instanceId);
+                    std::string detailsLabel = std::format("{} {} Details##details{}",
+                                                           detailsVisible ? "Hide" : "Show",
+                                                           pluginName,
+                                                           instanceId);
+                    if (ImGui::MenuItem(detailsLabel.c_str())) {
+                        if (detailsVisible) {
+                            instanceDetails_.hideWindow(instanceId);
+                        } else {
+                            instanceDetails_.showWindow(instanceId);
+                        }
+                    }
+                }
+
+                if (!validInstances.empty()) {
+                    ImGui::Separator();
+                    for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
+                        int32_t instanceId = validInstances[static_cast<size_t>(i)];
+                        auto* instance = sequencer.engine()->getPluginInstance(instanceId);
+                        if (!instance)
+                            continue;
+                        std::string pluginName = instance->displayName();
+
+                        std::string deleteLabel = std::format("Delete {} (at [{}])##delete{}",
+                                                              pluginName,
+                                                              i + 1,
+                                                              instanceId);
+                        if (ImGui::MenuItem(deleteLabel.c_str())) {
+                            handleRemoveInstance(instanceId);
+                        }
+                    }
+                    ImGui::Separator();
+                }
+            }
+
+            if (ImGui::MenuItem("Add Plugin")) {
+                pluginSelector_.setTargetMasterTrack(uapmd::kMasterTrackIndex);
+                showPluginSelectorWindow_ = true;
+            }
+            ImGui::EndPopup();
         }
 
         ImGui::TableSetColumnIndex(1);
-        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(kMasterTrackIndex, context.uiScale);
-        sequenceEditor_.renderTimelineInline(kMasterTrackIndex, context, timelineHeight);
+        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(uapmd::kMasterTrackIndex, context.uiScale);
+        sequenceEditor_.renderTimelineInline(uapmd::kMasterTrackIndex, context, timelineHeight);
 
         ImGui::EndTable();
     }
@@ -723,7 +797,7 @@ void MainWindow::renderTrackRow(int32_t trackIndex, const SequenceEditor::Render
         ImGui::Separator();
         auto& sequencer = uapmd::AppModel::instance().sequencer();
         auto tracksRef = sequencer.engine()->tracks();
-        auto* track = (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracksRef.size()))
+        SequencerTrack* track = (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracksRef.size()))
             ? tracksRef[trackIndex]
             : nullptr;
         std::vector<int32_t> validInstances;
