@@ -253,13 +253,13 @@ TEST_F(UapmdProjectFileTest, PluginGraphSerialization) {
     plugin1.plugin_id = "com.example.reverb";
     plugin1.format = "VST3";
     plugin1.state_file = "/presets/reverb.vstpreset";
-    graph->plugins().push_back(plugin1);
+    graph->addPlugin(plugin1);
 
     uapmd::UapmdProjectPluginNodeData plugin2;
     plugin2.plugin_id = "com.example.eq";
     plugin2.format = "AU";
     plugin2.state_file = "";
-    graph->plugins().push_back(plugin2);
+    graph->addPlugin(plugin2);
 
     track->graph(std::move(graph));
     project->addTrack(std::move(track));
@@ -302,7 +302,7 @@ TEST_F(UapmdProjectFileTest, MasterTrack) {
     uapmd::UapmdProjectPluginNodeData limiter;
     limiter.plugin_id = "com.example.limiter";
     limiter.format = "VST3";
-    graph->plugins().push_back(limiter);
+    graph->addPlugin(limiter);
     master->graph(std::move(graph));
 
     // Write and read

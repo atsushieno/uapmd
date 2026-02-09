@@ -52,6 +52,9 @@ namespace uapmd {
         std::vector<UapmdProjectPluginNodeData> plugins() override { return plugins_; }
 
         void externalFile(const std::filesystem::path& f) override { external_file_ = f; }
+        void addPlugin(UapmdProjectPluginNodeData node) override { plugins_.push_back(std::move(node)); }
+        void setPlugins(std::vector<UapmdProjectPluginNodeData> nodes) override { plugins_ = std::move(nodes); }
+        void clearPlugins() override { plugins_.clear(); }
     };
 
     std::unique_ptr<UapmdProjectPluginGraphData> UapmdProjectPluginGraphData::create() {

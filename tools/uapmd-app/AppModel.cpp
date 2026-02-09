@@ -88,10 +88,9 @@ public:
     std::filesystem::path externalFile() override { return external_file; }
     std::vector<uapmd::UapmdProjectPluginNodeData> plugins() override { return nodes; }
     void externalFile(const std::filesystem::path& f) override { external_file = f; }
-
-    void setPlugins(std::vector<uapmd::UapmdProjectPluginNodeData>&& newNodes) {
-        nodes = std::move(newNodes);
-    }
+    void addPlugin(uapmd::UapmdProjectPluginNodeData node) override { nodes.push_back(std::move(node)); }
+    void setPlugins(std::vector<uapmd::UapmdProjectPluginNodeData> newNodes) override { nodes = std::move(newNodes); }
+    void clearPlugins() override { nodes.clear(); }
 };
 
 std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(

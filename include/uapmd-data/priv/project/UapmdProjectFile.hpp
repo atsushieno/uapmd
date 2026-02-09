@@ -75,6 +75,9 @@ namespace uapmd {
         virtual std::vector<UapmdProjectPluginNodeData> plugins() = 0;
 
         virtual void externalFile(const std::filesystem::path& f) = 0;
+        virtual void addPlugin(UapmdProjectPluginNodeData node) = 0;
+        virtual void setPlugins(std::vector<UapmdProjectPluginNodeData> nodes) = 0;
+        virtual void clearPlugins() = 0;
 
         static std::unique_ptr<UapmdProjectPluginGraphData> create();
     };
