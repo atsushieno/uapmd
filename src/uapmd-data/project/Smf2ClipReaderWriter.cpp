@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <iterator>
 #include <vector>
@@ -16,12 +17,25 @@ std::vector<uint8_t> readRemainingBytes(std::ifstream& stream) {
 }
 
 bool writeUmp(std::ofstream& stream, const umppi::Ump& ump) {
-    const auto bytes = ump.toBytes();
-    if (bytes.empty())
+    const int byteCount = ump.getSizeInBytes();
+    if (byteCount <= 0)
         return true;
 
-    stream.write(reinterpret_cast<const char*>(bytes.data()),
-                 static_cast<std::streamsize>(bytes.size()));
+    const int wordCount = byteCount / static_cast<int>(sizeof(uint32_t));
+    std::array<uint8_t, 16> buffer{};
+    const auto ints = ump.toInts();
+
+    for (int word = 0; word < wordCount; ++word) {
+        const uint32_t value = ints[word];
+        const int offset = word * 4;
+        buffer[offset] = static_cast<uint8_t>((value >> 24) & 0xFF);
+        buffer[offset + 1] = static_cast<uint8_t>((value >> 16) & 0xFF);
+        buffer[offset + 2] = static_cast<uint8_t>((value >> 8) & 0xFF);
+        buffer[offset + 3] = static_cast<uint8_t>(value & 0xFF);
+    }
+
+    stream.write(reinterpret_cast<const char*>(buffer.data()),
+                 static_cast<std::streamsize>(byteCount));
     return stream.good();
 }
 
