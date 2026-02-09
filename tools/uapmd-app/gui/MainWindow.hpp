@@ -8,6 +8,7 @@
 #include <chrono>
 #include <optional>
 #include <array>
+#include <filesystem>
 #include <imgui.h>
 #include <uapmd/uapmd.hpp>
 #include "PluginList.hpp"
@@ -155,6 +156,8 @@ class MainWindow {
         MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);
         MidiDumpWindow::ClipDumpData buildMasterMetaDumpData();
         void importSmfTracks();
+        void handleSaveProject();
+        void handleLoadProject();
 
         void renderDeviceSettingsWindow();
         void renderPluginSelectorWindow();

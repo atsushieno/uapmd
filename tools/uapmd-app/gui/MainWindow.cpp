@@ -472,6 +472,19 @@ void MainWindow::render(void* window) {
                 importSmfTracks();
             }
             ImGui::SameLine();
+            if (ImGui::Button("Project")) {
+                ImGui::OpenPopup("ProjectActions");
+            }
+            if (ImGui::BeginPopup("ProjectActions")) {
+                if (ImGui::MenuItem("Load Project")) {
+                    handleLoadProject();
+                }
+                if (ImGui::MenuItem("Save Project")) {
+                    handleSaveProject();
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::SameLine();
 
             // Spectrum analyzers - shrunken to half size
             ImVec2 spectrumSize = ImVec2(80.0f * uiScale_, 32.0f * uiScale_);
@@ -2151,6 +2164,67 @@ void MainWindow::importSmfTracks() {
                     pfd::choice::ok,
                     pfd::icon::error);
     }
+}
+
+void MainWindow::handleSaveProject() {
+    auto saveDialog = pfd::save_file(
+        "Save Project",
+        "project.uapmd",
+        {"UAPMD Project", "*.uapmd", "JSON", "*.json", "All Files", "*"}
+    );
+
+    auto selected = saveDialog.result();
+    if (selected.empty())
+        return;
+
+    std::filesystem::path projectPath(selected);
+    if (!projectPath.has_extension())
+        projectPath.replace_extension(".uapmd");
+
+    auto result = uapmd::AppModel::instance().saveProject(projectPath);
+    if (!result.success) {
+        pfd::message("Save Failed",
+                     result.error,
+                     pfd::choice::ok,
+                     pfd::icon::error);
+        return;
+    }
+
+    pfd::message("Project Saved",
+                 std::format("Saved project to {}", projectPath.string()),
+                 pfd::choice::ok,
+                 pfd::icon::info);
+}
+
+void MainWindow::handleLoadProject() {
+    auto openDialog = pfd::open_file(
+        "Load Project",
+        ".",
+        {"UAPMD Project", "*.uapmd", "JSON", "*.json", "All Files", "*"}
+    );
+
+    auto selection = openDialog.result();
+    if (selection.empty())
+        return;
+
+    std::filesystem::path projectPath(selection[0]);
+
+    auto result = uapmd::AppModel::instance().loadProject(projectPath);
+    if (!result.success) {
+        pfd::message("Load Failed",
+                     result.error,
+                     pfd::choice::ok,
+                     pfd::icon::error);
+        return;
+    }
+
+    refreshAllSequenceEditorTracks();
+    masterTrackSignature_.clear();
+
+    pfd::message("Project Loaded",
+                 std::format("Loaded project from {}", projectPath.string()),
+                 pfd::choice::ok,
+                 pfd::icon::info);
 }
 
 }

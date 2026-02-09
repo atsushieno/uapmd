@@ -1,6 +1,7 @@
 #pragma once
 
 #include <format>
+#include <filesystem>
 #include <thread>
 #include <string>
 #include <unordered_map>
@@ -299,6 +300,14 @@ namespace uapmd {
 
         // Sample rate access
         int32_t sampleRate() const { return sample_rate_; }
+
+        struct ProjectResult {
+            bool success{false};
+            std::string error;
+        };
+
+        ProjectResult saveProject(const std::filesystem::path& file);
+        ProjectResult loadProject(const std::filesystem::path& file);
 
         struct MasterTrackSnapshot {
             struct TempoPoint {
