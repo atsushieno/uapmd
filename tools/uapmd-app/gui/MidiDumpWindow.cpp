@@ -1,6 +1,6 @@
-#include "MidiDumpWindow.hpp"
-
+#include <cstdint>
 #include <format>
+#include "MidiDumpWindow.hpp"
 
 namespace uapmd::gui {
 
