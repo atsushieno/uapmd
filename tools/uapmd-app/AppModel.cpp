@@ -131,6 +131,7 @@ std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
 GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
     GatheredClipEvents result;
     const auto& eventWords = node.umpEvents();
+    const auto& eventTicks = node.eventTimestampsTicks();
     const auto& tempoChanges = node.tempoChanges();
     const auto& timeSigChanges = node.timeSignatureChanges();
 
@@ -146,7 +147,7 @@ GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
     std::unordered_set<uint64_t> timeSigTicks;
 
     size_t wordIndex = 0;
-    auto readNextUmp = [&](umppi::Ump& message) -> bool {
+    auto readNextUmp = [&](umppi::Ump& message, uint64_t& eventTick) -> bool {
         if (wordIndex >= eventWords.size())
             return false;
         const uint32_t word = eventWords[wordIndex];
@@ -175,52 +176,36 @@ GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
                 return false;
         }
 
+        eventTick = (!eventTicks.empty() && wordIndex < eventTicks.size())
+            ? eventTicks[wordIndex]
+            : 0;
         wordIndex += static_cast<size_t>(wordCount);
         return true;
     };
 
-    uint64_t currentTick = 0;
-    uint64_t pendingDelta = 0;
-    bool seenStart = false;
     bool reachedEnd = false;
-
     while (wordIndex < eventWords.size()) {
         umppi::Ump message;
-        if (!readNextUmp(message))
+        uint64_t absoluteTick = 0;
+        if (!readNextUmp(message, absoluteTick))
             break;
 
-        if (message.isDeltaClockstamp()) {
-            pendingDelta += message.getDeltaClockstamp();
+        if (message.isDeltaClockstamp() || message.isDCTPQ() || message.isStartOfClip())
             continue;
-        }
-
-        if (!seenStart) {
-            if (message.isStartOfClip()) {
-                seenStart = true;
-                pendingDelta = 0;
-                continue;
-            }
-            if (message.isDCTPQ())
-                continue;
-            seenStart = true;
-        }
 
         if (message.isEndOfClip()) {
-            currentTick += pendingDelta;
-            pendingDelta = 0;
-            result.endTick = currentTick;
+            result.endTick = std::max(result.endTick, absoluteTick);
             reachedEnd = true;
             break;
         }
 
-        currentTick += pendingDelta;
-        pendingDelta = 0;
-
         ScheduledUmp entry;
-        entry.tick = currentTick;
+        entry.tick = absoluteTick;
         entry.priority = priorityFor(message);
         entry.message = message;
         result.events.push_back(entry);
+        if (entry.tick > result.endTick)
+            result.endTick = entry.tick;
 
         if (message.isTempo())
             tempoTicks.insert(entry.tick);
@@ -228,8 +213,8 @@ GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
             timeSigTicks.insert(entry.tick);
     }
 
-    if (!reachedEnd)
-        result.endTick = currentTick + pendingDelta;
+    if (!reachedEnd && !eventTicks.empty())
+        result.endTick = std::max(result.endTick, eventTicks.back());
 
     for (const auto& tempo : tempoChanges) {
         if (tempoTicks.contains(tempo.tickPosition))
@@ -1658,6 +1643,23 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
 
         removeAllTracks();
 
+        auto restorePluginsForTrack = [this](uapmd::UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
+            if (!projectTrack)
+                return;
+
+            auto* graphData = projectTrack->graph();
+            if (!graphData)
+                return;
+
+            auto plugins = graphData->plugins();
+            for (const auto& plugin : plugins) {
+                if (plugin.plugin_id.empty() || plugin.format.empty())
+                    continue;
+                PluginInstanceConfig config{};
+                createPluginInstanceAsync(plugin.format, plugin.plugin_id, trackIndex, config);
+            }
+        };
+
         auto& tracks = project->tracks();
         std::vector<int32_t> createdTrackIndices;
         createdTrackIndices.reserve(tracks.size());
@@ -1672,6 +1674,8 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
             auto* timelineTrack = timeline_tracks_[trackIndex].get();
             if (!timelineTrack)
                 continue;
+
+            restorePluginsForTrack(tracks[i], trackIndex);
 
             auto& projectClips = tracks[i]->clips();
             std::unordered_map<uapmd::UapmdProjectClipData*, int32_t> clipIdMap;
@@ -1779,6 +1783,7 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
         }
 
         if (auto* master = project->masterTrack()) {
+            restorePluginsForTrack(master, uapmd::kMasterTrackIndex);
             for (auto& clip : master->clips()) {
                 if (!clip)
                     continue;
