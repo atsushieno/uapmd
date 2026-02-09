@@ -1801,7 +1801,7 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
                     }
                     newClipId = loadResult.clipId;
                 } else {
-                    auto reader = uapmd::createAudioFileReaderFromPath(resolvedPath);
+                    auto reader = uapmd::createAudioFileReaderFromPath(resolvedPath.string());
                     if (!reader) {
                         result.error = std::format("Failed to open audio clip {}", resolvedPath.string());
                         return result;
