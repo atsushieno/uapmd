@@ -132,6 +132,7 @@ namespace uapmd {
             std::string deviceName;  // Empty = auto-generate from plugin name
             std::string manufacturer = "UAPMD Project";
             std::string version = "0.1";
+            std::filesystem::path stateFile;
         };
 
         // Result from plugin instance creation

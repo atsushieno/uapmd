@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <functional>
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -93,9 +94,12 @@ public:
     void clearPlugins() override { nodes.clear(); }
 };
 
+using PluginStateWriter = std::function<std::string(int32_t, size_t, uapmd::AudioPluginInstanceAPI*)>;
+
 std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
     uapmd::SequencerTrack* sequencerTrack,
-    uapmd::SequencerEngine* engine)
+    uapmd::SequencerEngine* engine,
+    PluginStateWriter stateWriter = {})
 {
     if (!sequencerTrack)
         return nullptr;
@@ -103,6 +107,7 @@ std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
     std::vector<uapmd::UapmdProjectPluginNodeData> pluginNodes;
     const auto& orderedIds = sequencerTrack->orderedInstanceIds();
     pluginNodes.reserve(orderedIds.size());
+    size_t pluginIndex = 0;
 
     for (int32_t instanceId : orderedIds) {
         if (instanceId < 0)
@@ -119,7 +124,16 @@ std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
         uapmd::UapmdProjectPluginNodeData nodeData;
         nodeData.plugin_id = instance->pluginId();
         nodeData.format = instance->formatName();
+        if (stateWriter) {
+            try {
+                nodeData.state_file = stateWriter(instanceId, pluginIndex, instance);
+            } catch (const std::exception& ex) {
+                std::cerr << "Failed to save plugin state for instance " << instanceId
+                          << ": " << ex.what() << std::endl;
+            }
+        }
         pluginNodes.push_back(std::move(nodeData));
+        ++pluginIndex;
     }
 
     auto graph = std::make_unique<SerializedProjectPluginGraph>();
@@ -625,6 +639,14 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         {
             std::lock_guard lock(devicesMutex_);
             devices_.push_back(DeviceEntry{nextDeviceId_++, state});
+        }
+
+        if (!config.stateFile.empty()) {
+            auto stateResult = this->loadPluginState(instanceId, config.stateFile.string());
+            if (!stateResult.success) {
+                std::cerr << "Automatic plugin state load failed for " << pluginName
+                          << ": " << stateResult.error << std::endl;
+            }
         }
 
         // Reuse the dedicated logic for MIDI device initialization when supported.
@@ -1481,6 +1503,49 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
         if (!projectDir.empty())
             std::filesystem::create_directories(projectDir);
         auto clipDir = projectDir / "clips";
+        auto pluginStateDir = projectDir / "plugin_states";
+
+        auto makePluginStateWriter = [&](const std::string& scopeLabel) -> PluginStateWriter {
+            return [&, scopeLabel](int32_t instanceId, size_t pluginOrder, uapmd::AudioPluginInstanceAPI* instance) -> std::string {
+                if (!instance)
+                    return {};
+
+                auto stateData = instance->saveState();
+                if (stateData.empty())
+                    return {};
+
+                std::error_code createDirEc;
+                std::filesystem::create_directories(pluginStateDir, createDirEc);
+                if (createDirEc) {
+                    std::cerr << "Failed to create plugin state directory: "
+                              << pluginStateDir << " (" << createDirEc.message() << ")\n";
+                    return {};
+                }
+
+                auto filename = std::format("{}_plugin{}_instance{}.state",
+                                            scopeLabel,
+                                            pluginOrder,
+                                            instanceId);
+                auto targetPath = pluginStateDir / filename;
+
+                try {
+                    std::ofstream out(targetPath, std::ios::binary);
+                    if (!out)
+                        throw std::runtime_error("Failed to open state file for writing");
+                    out.write(reinterpret_cast<const char*>(stateData.data()),
+                              static_cast<std::streamsize>(stateData.size()));
+                } catch (const std::exception& ex) {
+                    std::cerr << "Failed to write plugin state to " << targetPath
+                              << ": " << ex.what() << std::endl;
+                    return {};
+                }
+
+                auto recordedPath = targetPath;
+                if (!projectDir.empty())
+                    recordedPath = makeRelativePath(projectDir, recordedPath);
+                return recordedPath.generic_string();
+            };
+        };
 
         auto project = uapmd::UapmdProjectData::create();
         auto* sequencerEngine = sequencer_.engine();
@@ -1569,7 +1634,8 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
             uapmd::SequencerTrack* sequencerTrack = (sequencerEngine && trackIndex < sequencerTracks.size())
                 ? sequencerTracks[trackIndex]
                 : nullptr;
-            if (auto graphData = createSerializedPluginGraph(sequencerTrack, sequencerEngine))
+            auto trackStateWriter = makePluginStateWriter(std::format("track{}", trackIndex));
+            if (auto graphData = createSerializedPluginGraph(sequencerTrack, sequencerEngine, trackStateWriter))
                 projectTrack->graph(std::move(graphData));
             project->addTrack(std::move(projectTrack));
         }
@@ -1598,9 +1664,11 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
             masterClip->file(masterFile);
             masterTrack->clips().push_back(std::move(masterClip));
 
+            auto masterStateWriter = makePluginStateWriter("master");
             if (auto graphData = createSerializedPluginGraph(
                     sequencerEngine ? sequencerEngine->masterTrack() : nullptr,
-                    sequencerEngine)) {
+                    sequencerEngine,
+                    masterStateWriter)) {
                 masterTrack->graph(std::move(graphData));
             }
         }
@@ -1642,7 +1710,7 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
 
         removeAllTracks();
 
-        auto restorePluginsForTrack = [this](uapmd::UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
+        auto restorePluginsForTrack = [this, &projectDir](uapmd::UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
             if (!projectTrack)
                 return;
 
@@ -1655,6 +1723,10 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
                 if (plugin.plugin_id.empty() || plugin.format.empty())
                     continue;
                 PluginInstanceConfig config{};
+                if (!plugin.state_file.empty()) {
+                    auto resolvedState = makeAbsolutePath(projectDir, plugin.state_file);
+                    config.stateFile = resolvedState;
+                }
                 createPluginInstanceAsync(plugin.format, plugin.plugin_id, trackIndex, config);
             }
         };
