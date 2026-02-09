@@ -33,8 +33,11 @@ namespace uapmd {
     }
 
     int32_t AudioPluginGraphImpl::processAudio(AudioProcessContext& process) {
-        if (nodes_.empty())
+        if (nodes_.empty()) {
+            // No plugins to process, simply route timeline/device input straight to output.
+            process.copyInputsToOutputs();
             return 0;
+        }
 
         process.clearAudioOutputs();
 
