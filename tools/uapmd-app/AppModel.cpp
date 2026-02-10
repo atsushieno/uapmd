@@ -1575,7 +1575,6 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
                 auto projectClip = uapmd::UapmdProjectClipData::create();
                 projectClip->clipType(clip->clipType == uapmd::ClipType::Midi ? "midi" : "audio");
                 projectClip->tickResolution(clip->tickResolution);
-                projectClip->tempo(clip->clipTempo);
 
                 std::filesystem::path clipPath = clip->filepath;
                 if (clip->clipType == uapmd::ClipType::Midi) {
@@ -1660,7 +1659,6 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
             masterClip->position(pos);
             masterClip->clipType("midi");
             masterClip->tickResolution(kDefaultDctpq);
-            masterClip->tempo(timeline_.tempo);
             masterClip->file(masterFile);
             masterTrack->clips().push_back(std::move(masterClip));
 
@@ -1777,9 +1775,7 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
                         return result;
                     }
 
-                    double clipTempo = clip->tempo();
-                    if (clipTempo <= 0.0 && !parsed.tempoChanges.empty())
-                        clipTempo = parsed.tempoChanges.front().bpm;
+                    double clipTempo = parsed.tempoChanges.empty() ? 0.0 : parsed.tempoChanges.front().bpm;
                     if (clipTempo <= 0.0)
                         clipTempo = 120.0;
 

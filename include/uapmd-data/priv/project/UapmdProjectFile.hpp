@@ -51,9 +51,6 @@ namespace uapmd {
         virtual uint32_t tickResolution() = 0;
         virtual void tickResolution(uint32_t ticks) = 0;
 
-        virtual double tempo() = 0;
-        virtual void tempo(double bpm) = 0;
-
         static std::unique_ptr<UapmdProjectClipData> create();
     };
 

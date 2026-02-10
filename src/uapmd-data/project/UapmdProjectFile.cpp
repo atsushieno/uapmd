@@ -13,7 +13,6 @@ namespace uapmd {
         std::string mime_type_{};
         std::string clip_type_{"audio"};  // Default to audio for backward compatibility
         uint32_t tick_resolution_{480};
-        double tempo_{120.0};
 
     public:
         UapmdProjectClipDataImpl() = default;
@@ -32,8 +31,6 @@ namespace uapmd {
         uint32_t tickResolution() override { return tick_resolution_; }
         void tickResolution(uint32_t ticks) override { tick_resolution_ = ticks; }
 
-        double tempo() override { return tempo_; }
-        void tempo(double bpm) override { tempo_ = bpm; }
     };
 
     std::unique_ptr<UapmdProjectClipData> UapmdProjectClipData::create() {

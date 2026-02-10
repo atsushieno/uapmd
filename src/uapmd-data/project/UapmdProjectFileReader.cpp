@@ -120,9 +120,6 @@ namespace uapmd {
         if (clipObj.hasObjectMember("tick_resolution")) {
             clip->tickResolution(clipObj["tick_resolution"].getWithDefault<uint32_t>(480));
         }
-        if (clipObj.hasObjectMember("tempo")) {
-            clip->tempo(clipObj["tempo"].getWithDefault<double>(120.0));
-        }
 
         return clip;
     }
