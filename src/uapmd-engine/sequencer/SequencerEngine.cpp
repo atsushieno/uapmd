@@ -532,6 +532,18 @@ namespace uapmd {
     void uapmd::SequencerEngineImpl::stopPlayback() {
         is_playback_active_.store(false, std::memory_order_release);
         playback_position_samples_.store(0, std::memory_order_release);
+        auto flushTrackNotes = [](SequencerTrack* track) {
+            if (!track)
+                return;
+            auto plugin_nodes = track->graph().plugins();
+            for (auto& entry : plugin_nodes) {
+                if (entry.second)
+                    entry.second->sendAllNotesOff();
+            }
+        };
+        for (auto& track : tracks_)
+            flushTrackNotes(track.get());
+        flushTrackNotes(master_track_.get());
     }
 
     void uapmd::SequencerEngineImpl::pausePlayback() {

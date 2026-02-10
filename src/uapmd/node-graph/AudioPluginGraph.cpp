@@ -58,6 +58,7 @@ namespace uapmd {
             // Fill event buffer with events for this group
             auto& eventIn = process.eventIn();
             node->fillEventBufferForGroup(eventIn, group);
+            node->trackEventsFromBuffer(eventIn, group);
 
             // Process audio
             auto status = node->instance()->processAudio(process);

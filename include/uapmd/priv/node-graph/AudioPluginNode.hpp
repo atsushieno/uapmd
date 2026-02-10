@@ -76,6 +76,9 @@ namespace uapmd {
         // Schedule UMP events to this plugin instance's queue
         virtual bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) = 0;
 
+        // Flush any active note-ons by enqueueing the necessary note-off messages
+        virtual void sendAllNotesOff() = 0;
+
         // Parameter update event - allows multiple consumers to listen for parameter changes
         virtual ParameterUpdateEvent& parameterUpdateEvent() = 0;
 
