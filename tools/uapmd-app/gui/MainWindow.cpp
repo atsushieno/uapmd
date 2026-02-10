@@ -761,6 +761,28 @@ void MainWindow::renderMasterTrackRow(const SequenceEditor::RenderContext& conte
                             instanceDetails_.showWindow(instanceId);
                         }
                     }
+
+                    // Show|Hide GUI button
+                    if (auto trackInstance = buildTrackInstanceInfo(instanceId)) {
+                        bool disableShowUIButton = !trackInstance->hasUI;
+                        if (disableShowUIButton) {
+                            ImGui::BeginDisabled();
+                        }
+                        std::string uiLabel = std::format("{} {} GUI##gui{}",
+                                                          trackInstance->uiVisible ? "Hide" : "Show",
+                                                          pluginName,
+                                                          instanceId);
+                        if (ImGui::MenuItem(uiLabel.c_str())) {
+                            if (trackInstance->uiVisible) {
+                                uapmd::AppModel::instance().hidePluginUI(instanceId);
+                            } else {
+                                uapmd::AppModel::instance().requestShowPluginUI(instanceId);
+                            }
+                        }
+                        if (disableShowUIButton) {
+                            ImGui::EndDisabled();
+                        }
+                    }
                 }
 
                 if (!validInstances.empty()) {
@@ -877,6 +899,28 @@ void MainWindow::renderTrackRow(int32_t trackIndex, const SequenceEditor::Render
                             instanceDetails_.hideWindow(instanceId);
                         } else {
                             instanceDetails_.showWindow(instanceId);
+                        }
+                    }
+
+                    // Show|Hide GUI button
+                    if (auto trackInstance = buildTrackInstanceInfo(instanceId)) {
+                        bool disableShowUIButton = !trackInstance->hasUI;
+                        if (disableShowUIButton) {
+                            ImGui::BeginDisabled();
+                        }
+                        std::string uiLabel = std::format("{} {} GUI##gui{}",
+                                                          trackInstance->uiVisible ? "Hide" : "Show",
+                                                          pluginName,
+                                                          instanceId);
+                        if (ImGui::MenuItem(uiLabel.c_str())) {
+                            if (trackInstance->uiVisible) {
+                                uapmd::AppModel::instance().hidePluginUI(instanceId);
+                            } else {
+                                uapmd::AppModel::instance().requestShowPluginUI(instanceId);
+                            }
+                        }
+                        if (disableShowUIButton) {
+                            ImGui::EndDisabled();
                         }
                     }
                 }
