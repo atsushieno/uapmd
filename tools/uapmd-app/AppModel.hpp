@@ -169,10 +169,12 @@ namespace uapmd {
 
         // Create plugin instance with virtual MIDI device
         // Notifies all registered callbacks when complete
+        // Optional completionCallback is called after successful creation, before global callbacks
         void createPluginInstanceAsync(const std::string& format,
                                        const std::string& pluginId,
                                        int32_t trackIndex,
-                                       const PluginInstanceConfig& config);
+                                       const PluginInstanceConfig& config,
+                                       std::function<void(const PluginInstanceResult&)> completionCallback = nullptr);
 
         // Remove plugin instance and its virtual MIDI device
         // Notifies all registered callbacks when complete

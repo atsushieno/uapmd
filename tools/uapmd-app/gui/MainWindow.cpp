@@ -1516,9 +1516,15 @@ void MainWindow::createPluginInstance(const std::string& format, const std::stri
     }
     config.deviceName = std::string(pluginSelector_.getDeviceNameInput());  // Empty = auto-generate
 
-    // Use AppModel's unified creation method
-    // The global callback registered in constructor will handle UI updates
-    uapmd::AppModel::instance().createPluginInstanceAsync(format, pluginId, trackIndex, config);
+    // Use AppModel's unified creation method with a completion callback
+    // to show details window for GUI-initiated creation
+    uapmd::AppModel::instance().createPluginInstanceAsync(format, pluginId, trackIndex, config,
+        [this](const uapmd::AppModel::PluginInstanceResult& result) {
+            // Only show details on successful creation
+            if (result.error.empty() && result.instanceId >= 0) {
+                instanceDetails_.showWindow(result.instanceId);
+            }
+        });
 }
 
 

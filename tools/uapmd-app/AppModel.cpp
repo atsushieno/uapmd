@@ -582,7 +582,8 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan) {
 void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const std::string& pluginId,
                                                  int32_t trackIndex,
-                                                 const PluginInstanceConfig& config) {
+                                                 const PluginInstanceConfig& config,
+                                                 std::function<void(const PluginInstanceResult&)> completionCallback) {
     const bool targetMasterTrack = (trackIndex == kMasterTrackIndex);
     // Get plugin name from catalog
     std::string pluginName;
@@ -607,13 +608,17 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
     std::string formatCopy = format;
     std::string pluginIdCopy = pluginId;
 
-    auto instantiateCallback = [this, config, deviceLabel, pluginName, format, pluginId](int32_t instanceId, int32_t trackIndex, std::string error) {
+    auto instantiateCallback = [this, config, deviceLabel, pluginName, format, pluginId, completionCallback](int32_t instanceId, int32_t trackIndex, std::string error) {
         PluginInstanceResult result;
         result.instanceId = instanceId;
         result.pluginName = pluginName;
         result.error = std::move(error);
 
         if (!result.error.empty() || instanceId < 0) {
+            // Notify completion callback first (even on error)
+            if (completionCallback) {
+                completionCallback(result);
+            }
             // Notify all registered callbacks
             for (auto& cb : instanceCreated) {
                 cb(result);
@@ -659,6 +664,11 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         }
 
         result.device = state->device;
+
+        // Call completion callback first
+        if (completionCallback) {
+            completionCallback(result);
+        }
 
         // Notify all registered callbacks
         for (auto& cb : instanceCreated) {
@@ -1555,6 +1565,10 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
         size_t midiExportCounter = 0;
 
         for (size_t trackIndex = 0; trackIndex < timelineTracks.size(); ++trackIndex) {
+            // Skip hidden tracks (logically removed tracks)
+            if (hidden_tracks_.contains(static_cast<int32_t>(trackIndex)))
+                continue;
+
             auto* timelineTrack = timelineTracks[trackIndex];
             if (!timelineTrack)
                 continue;
@@ -1636,6 +1650,13 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
             auto trackStateWriter = makePluginStateWriter(std::format("track{}", trackIndex));
             if (auto graphData = createSerializedPluginGraph(sequencerTrack, sequencerEngine, trackStateWriter))
                 projectTrack->graph(std::move(graphData));
+
+            // Skip completely empty tracks (no clips and no plugins)
+            bool hasClips = !projectTrack->clips().empty();
+            bool hasPlugins = projectTrack->graph() && !projectTrack->graph()->plugins().empty();
+            if (!hasClips && !hasPlugins)
+                continue;
+
             project->addTrack(std::move(projectTrack));
         }
 

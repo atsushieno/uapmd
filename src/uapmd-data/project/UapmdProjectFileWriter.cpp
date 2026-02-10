@@ -99,9 +99,13 @@ namespace uapmd {
     {
         auto obj = choc::value::createObject("UapmdTrack");
 
-        // Serialize plugin graph
-        if (track->graph())
-            obj.addMember("graph", serializePluginGraph(track->graph()));
+        // Serialize plugin graph (only if it has plugins or external file)
+        if (track->graph()) {
+            auto plugins = track->graph()->plugins();
+            auto extFile = track->graph()->externalFile();
+            if (!plugins.empty() || !extFile.empty())
+                obj.addMember("graph", serializePluginGraph(track->graph()));
+        }
 
         // Serialize clips
         auto& clips = track->clips();
