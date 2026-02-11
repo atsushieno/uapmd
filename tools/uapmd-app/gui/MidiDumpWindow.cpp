@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <cstring>
 #include <format>
 #include "MidiDumpWindow.hpp"
 
@@ -107,7 +108,7 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
                 ImGuiTableFlags_ScrollY | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable;
 
             if (ImGui::BeginTable("MidiDumpTable", 3, tableFlags, ImVec2(0, 0))) {
-                ImGui::TableSetupColumn("Time (s)", ImGuiTableColumnFlags_WidthFixed, 120.0f * context.uiScale);
+                ImGui::TableSetupColumn("Time [Tick]", ImGuiTableColumnFlags_WidthFixed, 120.0f * context.uiScale);
                 ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, 80.0f * context.uiScale);
                 ImGui::TableSetupColumn("Message Bytes", ImGuiTableColumnFlags_WidthStretch);
                 ImGui::TableHeadersRow();
@@ -123,7 +124,20 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
                         ImGui::TableSetColumnIndex(1);
                         ImGui::Text("%zu", row.lengthBytes);
                         ImGui::TableSetColumnIndex(2);
-                        ImGui::TextUnformatted(row.hexBytes.c_str());
+
+                        // Make hex bytes selectable and copyable
+                        char hexBuffer[512];
+                        size_t copyLen = std::min(row.hexBytes.size(), sizeof(hexBuffer) - 1);
+                        std::memcpy(hexBuffer, row.hexBytes.c_str(), copyLen);
+                        hexBuffer[copyLen] = '\0';
+
+                        ImGui::PushID(rowIndex);
+                        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+                        ImGui::SetNextItemWidth(-FLT_MIN);
+                        ImGui::InputText("##hex", hexBuffer, sizeof(hexBuffer),
+                            ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AutoSelectAll);
+                        ImGui::PopStyleVar();
+                        ImGui::PopID();
                     }
                 }
 

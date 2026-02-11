@@ -315,10 +315,12 @@ namespace uapmd {
         struct MasterTrackSnapshot {
             struct TempoPoint {
                 double timeSeconds{0.0};
+                uint64_t tickPosition{0};
                 double bpm{0.0};
             };
             struct TimeSignaturePoint {
                 double timeSeconds{0.0};
+                uint64_t tickPosition{0};
                 MidiTimeSignatureChange signature{};
             };
 

@@ -1415,6 +1415,7 @@ uapmd::AppModel::MasterTrackSnapshot uapmd::AppModel::buildMasterTrackSnapshot()
             for (size_t i = 0; i < tempoCount; ++i) {
                 MasterTrackSnapshot::TempoPoint point;
                 point.timeSeconds = (clipStartSamples + static_cast<double>(tempoSamples[i])) / sampleRate;
+                point.tickPosition = tempoEvents[i].tickPosition;
                 point.bpm = tempoEvents[i].bpm;
                 snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
                 snapshot.tempoPoints.push_back(point);
@@ -1426,6 +1427,7 @@ uapmd::AppModel::MasterTrackSnapshot uapmd::AppModel::buildMasterTrackSnapshot()
             for (size_t i = 0; i < sigCount; ++i) {
                 MasterTrackSnapshot::TimeSignaturePoint point;
                 point.timeSeconds = (clipStartSamples + static_cast<double>(sigSamples[i])) / sampleRate;
+                point.tickPosition = sigEvents[i].tickPosition;
                 point.signature = sigEvents[i];
                 snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
                 snapshot.timeSignaturePoints.push_back(point);

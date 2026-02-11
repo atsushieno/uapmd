@@ -68,7 +68,7 @@ std::vector<MidiDumpWindow::EventRow> buildMidiDumpRows(
         row.timeSeconds = seconds;
         row.tickPosition = static_cast<uint64_t>(ticks);
         row.lengthBytes = byteLength;
-        row.timeLabel = std::format("{:.3f}s", seconds);
+        row.timeLabel = std::format("{:.3f}s [{}]", seconds, row.tickPosition);
 
         bool firstByte = true;
         for (size_t offset = 0; offset < wordCount; ++offset) {
@@ -2056,7 +2056,8 @@ MidiDumpWindow::ClipDumpData MainWindow::buildMasterMetaDumpData() {
             continue;
         MidiDumpWindow::EventRow row;
         row.timeSeconds = point.timeSeconds;
-        row.timeLabel = std::format("{:.6f}", row.timeSeconds);
+        row.tickPosition = point.tickPosition;
+        row.timeLabel = std::format("{:.6f}s [{}]", row.timeSeconds, row.tickPosition);
         row.lengthBytes = 6;
 
         double clampedBpm = std::clamp(point.bpm, 1.0, 1000.0);
@@ -2077,7 +2078,8 @@ MidiDumpWindow::ClipDumpData MainWindow::buildMasterMetaDumpData() {
     for (const auto& point : snapshot->timeSignaturePoints) {
         MidiDumpWindow::EventRow row;
         row.timeSeconds = point.timeSeconds;
-        row.timeLabel = std::format("{:.6f}", row.timeSeconds);
+        row.tickPosition = point.tickPosition;
+        row.timeLabel = std::format("{:.6f}s [{}]", row.timeSeconds, row.tickPosition);
         row.lengthBytes = 7;
 
         uint8_t denominator = std::max<uint8_t>(1, point.signature.denominator);

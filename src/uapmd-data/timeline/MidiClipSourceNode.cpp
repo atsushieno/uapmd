@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <cstring>
+#include <iostream>
+#include <iomanip>
 #include <umppi/umppi.hpp>
 #include <remidy/remidy.hpp>
 #include <uapmd-data/uapmd-data.hpp>
@@ -18,8 +20,6 @@ namespace uapmd {
     ) : instance_id_(instanceId),
         ump_events_(std::move(umpEvents)),
         event_timestamps_ticks_(std::move(umpTickTimestamps)),
-        tempo_changes_(std::move(tempoChanges)),
-        time_signature_changes_(std::move(timeSignatureChanges)),
         tick_resolution_(tickResolution == 0 ? 480 : tickResolution),
         clip_tempo_(clipTempo <= 0.0 ? 120.0 : clipTempo),
         target_sample_rate_(targetSampleRate)
@@ -121,6 +121,7 @@ namespace uapmd {
         // Emit all events within [currentPos, windowEnd)
         while (eventIdx < ump_events_.size()) {
             uint64_t eventSamples = event_timestamps_samples_[eventIdx];
+            uint64_t eventTicks = event_timestamps_ticks_[eventIdx];
 
             // Beyond current window
             if (eventSamples >= static_cast<uint64_t>(windowEnd))
