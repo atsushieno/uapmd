@@ -126,6 +126,14 @@ add_subdirectory(src/uapmd-engine)
 
 add_subdirectory(tools)
 
+# Tests
+if (NOT ANDROID)
+option(UAPMD_BUILD_TESTS "Build uapmd tests" ON)
+if(UAPMD_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
+endif()
+
 
 # INSTALL AND UNINSTALL targets
 if (NOT ANDROID)

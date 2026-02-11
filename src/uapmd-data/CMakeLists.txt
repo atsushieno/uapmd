@@ -25,11 +25,3 @@ target_sources(uapmd-data PRIVATE
         timeline/ClipManager.cpp
         timeline/TimelineTrack.cpp
 )
-
-# Add tests subdirectory
-if (NOT ANDROID)
-option(UAPMD_BUILD_TESTS "Build uapmd-data tests" ON)
-if(UAPMD_BUILD_TESTS)
-    add_subdirectory(tests)
-endif()
-endif()
