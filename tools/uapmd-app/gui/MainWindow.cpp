@@ -2147,26 +2147,23 @@ void MainWindow::importSmfTracks() {
         std::filesystem::path smfPath(selectedFile);
         std::string baseFilename = smfPath.stem().string();
 
+        // Collect import failures to show once at the end
+        std::vector<std::string> failures;
+
         // Import each track as a new timeline track with a MIDI clip
         for (size_t trackIdx = 0; trackIdx < music.tracks.size(); ++trackIdx) {
             // Convert this track to UMP
             auto convertResult = uapmd::SmfConverter::convertTrackToUmp(selectedFile, trackIdx);
 
             if (!convertResult.success) {
-                pfd::message("Import Warning",
-                            std::format("Failed to import track {}:\n{}", trackIdx + 1, convertResult.error),
-                            pfd::choice::ok,
-                            pfd::icon::warning);
+                failures.push_back(std::format("Track {}: {}", trackIdx + 1, convertResult.error));
                 continue;
             }
 
             // Create a new timeline track
             int32_t newTrackIndex = appModel.addTrack();
             if (newTrackIndex < 0) {
-                pfd::message("Import Error",
-                            std::format("Failed to create track for SMF track {}", trackIdx + 1),
-                            pfd::choice::ok,
-                            pfd::icon::error);
+                failures.push_back(std::format("Track {}: Failed to create track", trackIdx + 1));
                 continue;
             }
 
@@ -2190,10 +2187,7 @@ void MainWindow::importSmfTracks() {
             );
 
             if (!clipResult.success) {
-                pfd::message("Import Warning",
-                            std::format("Failed to add clip for track {}:\n{}", trackIdx + 1, clipResult.error),
-                            pfd::choice::ok,
-                            pfd::icon::warning);
+                failures.push_back(std::format("Track {}: {}", trackIdx + 1, clipResult.error));
                 // Track was created but clip failed - should we remove the track?
                 // For now, leave the empty track
                 continue;
@@ -2203,12 +2197,17 @@ void MainWindow::importSmfTracks() {
             refreshSequenceEditorForTrack(newTrackIndex);
         }
 
-        pfd::message("Import Complete",
-                    std::format("Successfully imported {} track(s) from {}",
-                               music.tracks.size(),
-                               baseFilename),
-                    pfd::choice::ok,
-                    pfd::icon::info);
+        // Show a single dialog if there were any failures
+        if (!failures.empty()) {
+            std::string message = "The following tracks failed to import:\n\n";
+            for (const auto& failure : failures)
+                message += failure + "\n";
+
+            pfd::message("Import Warning",
+                        message,
+                        pfd::choice::ok,
+                        pfd::icon::warning);
+        }
 
     } catch (const std::exception& ex) {
         pfd::message("Import Failed",
@@ -2272,11 +2271,6 @@ void MainWindow::handleLoadProject() {
 
     refreshAllSequenceEditorTracks();
     masterTrackSignature_.clear();
-
-    pfd::message("Project Loaded",
-                 std::format("Loaded project from {}", projectPath.string()),
-                 pfd::choice::ok,
-                 pfd::icon::info);
 }
 
 }
