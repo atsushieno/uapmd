@@ -8,7 +8,7 @@
 
 namespace uapmd {
     // SMF2 Clip File reader according to M2-116-U v1.0 MIDI Clip File Specification
-    class Smf2ClipReader {
+    class MidiClipReader {
     public:
         struct ClipInfo {
             uint32_t tick_resolution{};  // Ticks per quarter note
@@ -20,9 +20,6 @@ namespace uapmd {
             bool success{true};          // Conversion success flag
             std::string error;           // Error message if failed
         };
-
-        // Read an SMF2 clip file and return UMP data
-        static ClipInfo read(const std::filesystem::path& file);
 
         // Auto-detect SMF format and convert to UMP
         // Handles SMF0, SMF1, and SMF2 (MIDI Clip File) formats

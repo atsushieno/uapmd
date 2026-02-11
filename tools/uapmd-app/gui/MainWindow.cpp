@@ -33,7 +33,7 @@ constexpr int32_t kMasterTrackClipId = -1000;
 }
 
 std::vector<MidiDumpWindow::EventRow> buildMidiDumpRows(
-    const uapmd::Smf2ClipReader::ClipInfo& clipInfo,
+    const uapmd::MidiClipReader::ClipInfo& clipInfo,
     uint32_t tickResolution,
     double tempo
 ) {
@@ -2010,7 +2010,7 @@ MidiDumpWindow::ClipDumpData MainWindow::buildMidiClipDumpData(int32_t trackInde
     dump.tempo = midiSourceNode->clipTempo();
 
     // Build ClipInfo structure from source node data
-    uapmd::Smf2ClipReader::ClipInfo clipInfo;
+    uapmd::MidiClipReader::ClipInfo clipInfo;
     clipInfo.success = true;
     clipInfo.ump_data = midiSourceNode->umpEvents();
     clipInfo.ump_tick_timestamps = midiSourceNode->eventTimestampsTicks();

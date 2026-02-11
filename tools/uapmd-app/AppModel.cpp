@@ -1,7 +1,7 @@
 
 #include "uapmd/uapmd.hpp"
 #include "AppModel.hpp"
-#include <uapmd-data/priv/project/Smf2ClipReader.hpp>
+#include <uapmd-data/priv/project/MidiClipReader.hpp>
 #include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
 #include <umppi/umppi.hpp>
 #include <iostream>
@@ -1221,7 +1221,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
 
     try {
         // Convert SMF to UMP using Smf2ClipReader
-        auto clipInfo = uapmd::Smf2ClipReader::readAnyFormat(filepath);
+        auto clipInfo = uapmd::MidiClipReader::readAnyFormat(filepath);
         if (!clipInfo.success) {
             result.error = clipInfo.error;
             return result;

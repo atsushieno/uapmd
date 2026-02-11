@@ -3,15 +3,7 @@
 
 namespace uapmd {
 
-    Smf2ClipReader::ClipInfo Smf2ClipReader::read(const std::filesystem::path& file) {
-        ClipInfo result;
-
-        // TODO: Implement SMF2 (MIDI Clip File) reading using umppi
-        // For now, delegate to readAnyFormat which handles all formats
-        return readAnyFormat(file);
-    }
-
-    Smf2ClipReader::ClipInfo Smf2ClipReader::readAnyFormat(const std::filesystem::path& file) {
+    MidiClipReader::ClipInfo MidiClipReader::readAnyFormat(const std::filesystem::path& file) {
         ClipInfo result;
 
         if (!std::filesystem::exists(file)) {
@@ -69,7 +61,7 @@ namespace uapmd {
         return result;
     }
 
-    bool Smf2ClipReader::isValidSmf2Clip(const std::filesystem::path& file) {
+    bool MidiClipReader::isValidSmf2Clip(const std::filesystem::path& file) {
         std::ifstream f(file, std::ios::binary);
         if (!f.is_open())
             return false;
@@ -88,7 +80,7 @@ namespace uapmd {
         return format == 2;
     }
 
-    bool Smf2ClipReader::isValidSmfFile(const std::filesystem::path& file) {
+    bool MidiClipReader::isValidSmfFile(const std::filesystem::path& file) {
         std::ifstream f(file, std::ios::binary);
         if (!f.is_open())
             return false;

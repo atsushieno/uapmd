@@ -5,7 +5,7 @@
 #include "priv/audio/AudioFileReader.hpp"
 #include "priv/audio/AudioFileFactory.hpp"
 #include "priv/project/SmfConverter.hpp"
-#include "priv/project/Smf2ClipReader.hpp"
+#include "priv/project/MidiClipReader.hpp"
 #include "priv/project/Smf2ClipReaderWriter.hpp"
 #include "priv/project/UapmdProjectFile.hpp"
 #include "priv/project/UapmdSequence.hpp"
