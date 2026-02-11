@@ -329,6 +329,7 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         }
 
         int32_t requestedContextClip = -1;
+        bool requestedAddClipMenu = false;
         const ImVec2 mousePos = ImGui::GetMousePos();
         const bool mouseInClipArea =
             mousePos.x >= clipAreaMinX && mousePos.x <= clipAreaMaxX &&
@@ -338,6 +339,17 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             auto clipIt = state.sectionToClip.find(hoveredSection);
             if (clipIt != state.sectionToClip.end() && clipIt->second != -1) {
                 requestedContextClip = clipIt->second;
+            } else {
+                // Double-clicked on empty timeline area - calculate position for new clip
+                const float scale = state.timeline->GetScale();
+                const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
+                if (scale > 0.0f && clipAreaMaxX > clipAreaMinX) {
+                    const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
+                    const double maxFrame = static_cast<double>(state.timeline->GetMaxFrame());
+                    const double timestamp = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
+                    state.requestedAddPosition = std::clamp(timestamp, 0.0, maxFrame);
+                    requestedAddClipMenu = true;
+                }
             }
         }
 
@@ -420,6 +432,22 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
                 }
             }
 
+            ImGui::EndPopup();
+        }
+
+        // Context menu for adding new clip at specific position
+        std::string addClipPopupId = std::format("TimelineAddClipContext##{}", trackIndex);
+        if (requestedAddClipMenu) {
+            ImGui::OpenPopup(addClipPopupId.c_str());
+        }
+
+        if (ImGui::BeginPopup(addClipPopupId.c_str())) {
+            if (ImGui::MenuItem("Add new clip here...")) {
+                if (context.addClipAtPosition) {
+                    context.addClipAtPosition(trackIndex, "", state.requestedAddPosition);
+                }
+                ImGui::CloseCurrentPopup();
+            }
             ImGui::EndPopup();
         }
     }

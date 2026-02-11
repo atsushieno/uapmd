@@ -38,6 +38,7 @@ public:
     struct RenderContext {
         std::function<void(int32_t trackIndex)> refreshClips;
         std::function<void(int32_t trackIndex, const std::string& filepath)> addClip;
+        std::function<void(int32_t trackIndex, const std::string& filepath, double positionSeconds)> addClipAtPosition;
         std::function<void(int32_t trackIndex, int32_t clipId)> removeClip;
         std::function<void(int32_t trackIndex)> clearAllClips;
         std::function<void(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position)> updateClip;
@@ -79,6 +80,7 @@ private:
         std::unordered_map<int32_t, uint64_t> sectionToNodeId;  // Maps section ID to NodeID
         int32_t activeDragSection = -1;
         int32_t contextMenuClipId = -1;
+        double requestedAddPosition = -1.0;  // Timeline position for "Add clip here" context menu
         std::unordered_map<int32_t, std::shared_ptr<ClipPreview>> clipPreviews;
     };
 

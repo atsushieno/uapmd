@@ -1188,6 +1188,9 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
         clip.gain = 1.0;
         clip.muted = false;
         clip.filepath = filepath;
+        clip.anchorClipId = -1;
+        clip.anchorOrigin = uapmd::AnchorOrigin::Start;
+        clip.anchorOffset = position;
 
         // Add clip to track
         int32_t clipId = timeline_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
@@ -1255,6 +1258,9 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
         clip.gain = 1.0;
         clip.muted = false;
         clip.name = std::filesystem::path(filepath).stem().string();
+        clip.anchorClipId = -1;
+        clip.anchorOrigin = uapmd::AnchorOrigin::Start;
+        clip.anchorOffset = position;
 
         // Add clip to track
         int32_t clipId = timeline_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
@@ -1321,6 +1327,9 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
         clip.gain = 1.0;
         clip.muted = false;
         clip.name = clipName.empty() ? "MIDI Clip" : clipName;
+        clip.anchorClipId = -1;
+        clip.anchorOrigin = uapmd::AnchorOrigin::Start;
+        clip.anchorOffset = position;
 
         // Add clip to track
         int32_t clipId = timeline_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));

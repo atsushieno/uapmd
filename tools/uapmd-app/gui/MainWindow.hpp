@@ -145,6 +145,7 @@ class MainWindow {
         // Sequence Editor helpers
         void refreshSequenceEditorForTrack(int32_t trackIndex);
         void addClipToTrack(int32_t trackIndex, const std::string& filepath);
+        void addClipToTrackAtPosition(int32_t trackIndex, const std::string& filepath, double positionSeconds);
         void removeClipFromTrack(int32_t trackIndex, int32_t clipId);
         void clearAllClipsFromTrack(int32_t trackIndex);
         void updateClip(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position);
