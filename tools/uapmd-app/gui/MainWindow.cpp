@@ -2153,7 +2153,7 @@ void MainWindow::importSmfTracks() {
         // Import each track as a new timeline track with a MIDI clip
         for (size_t trackIdx = 0; trackIdx < music.tracks.size(); ++trackIdx) {
             // Convert this track to UMP
-            auto convertResult = uapmd::SmfConverter::convertTrackToUmp(selectedFile, trackIdx);
+            auto convertResult = uapmd::SmfConverter::convertTrackToUmp(music, trackIdx);
 
             if (!convertResult.success) {
                 failures.push_back(std::format("Track {}: {}", trackIdx + 1, convertResult.error));

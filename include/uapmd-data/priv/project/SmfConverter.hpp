@@ -7,6 +7,10 @@
 #include <uapmd/uapmd.hpp>
 #include "../midi/MidiTimelineEvents.hpp"
 
+namespace umppi {
+    struct Midi1Music;
+}
+
 namespace uapmd {
 
     // SMF (Standard MIDI File) to UMP converter
@@ -31,6 +35,11 @@ namespace uapmd {
         // Convert a single track from an SMF file to UMP
         // trackIndex: 0-based index of the track to convert
         static ConvertResult convertTrackToUmp(const std::filesystem::path& smfFile, size_t trackIndex);
+
+        // Convert a single track from already-loaded MIDI music to UMP
+        // music: Already loaded Midi1Music object
+        // trackIndex: 0-based index of the track to convert
+        static ConvertResult convertTrackToUmp(const umppi::Midi1Music& music, size_t trackIndex);
 
     private:
         // Extract tempo from SMF meta-events (0xFF 0x51)

@@ -135,32 +135,24 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
         return result;
     }
 
-    std::vector<uint8_t> midi1Bytes;
-    midi1Bytes.reserve(events.size() * 4);
+    std::vector<umppi::Ump> midi1Umps;
     std::vector<uint64_t> eventTicks;
+    midi1Umps.reserve(events.size());
     eventTicks.reserve(events.size());
 
-    int absoluteTicks = 0;
-    int previousMessageTick = 0;
-    bool hasEmittedEvent = false;
+    uint64_t absoluteTicks = 0;
 
     bool tempoDetected = false;
     bool timeSignatureDetected = false;
     bool initialTempoSet = false;
 
+    constexpr uint8_t group = 0;
+
     for (const auto& event : events) {
         absoluteTicks += event.deltaTime;
         const auto& msg = event.message;
-        if (!msg) {
+        if (!msg)
             continue;
-        }
-
-        int deltaTime = hasEmittedEvent ? absoluteTicks - previousMessageTick : absoluteTicks;
-        previousMessageTick = absoluteTicks;
-        hasEmittedEvent = true;
-
-        auto deltaBytes = umppi::Midi1Event::encode7BitLength(deltaTime);
-        midi1Bytes.insert(midi1Bytes.end(), deltaBytes.begin(), deltaBytes.end());
 
         uint8_t status = msg->getStatusByte();
 
@@ -169,54 +161,72 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
                              tempoDetected, initialTempoSet, timeSignatureDetected);
         }
 
-        midi1Bytes.push_back(status);
-
         if (status == umppi::Midi1Status::META ||
             status == umppi::Midi1Status::SYSEX ||
             status == umppi::Midi1Status::SYSEX_END) {
-            if (auto* compound = dynamic_cast<umppi::Midi1CompoundMessage*>(msg.get())) {
-                if (status == umppi::Midi1Status::META) {
-                    midi1Bytes.push_back(msg->getMsb());
-                }
-                const auto& extraData = compound->getExtraData();
-                auto lenBytes = umppi::Midi1Event::encode7BitLength(static_cast<int>(extraData.size()));
-                midi1Bytes.insert(midi1Bytes.end(), lenBytes.rbegin(), lenBytes.rend());
-                midi1Bytes.insert(midi1Bytes.end(), extraData.begin(), extraData.end());
-            }
-        } else {
-            uint8_t dataSize = umppi::Midi1Message::fixedDataSize(status);
-            if (dataSize >= 1) midi1Bytes.push_back(msg->getMsb());
-            if (dataSize >= 2) midi1Bytes.push_back(msg->getLsb());
+            continue;
         }
 
-        eventTicks.push_back(static_cast<uint64_t>(absoluteTicks));
+        uint8_t statusCode = msg->getStatusCode();
+        uint8_t channel = msg->getChannel();
+        uint8_t msb = msg->getMsb();
+        uint8_t lsb = msg->getLsb();
+
+        uint32_t umpInt1 = 0;
+
+        switch (statusCode) {
+            case umppi::MidiChannelStatus::NOTE_OFF:
+                umpInt1 = umppi::UmpFactory::midi1NoteOff(group, channel, msb, lsb);
+                break;
+            case umppi::MidiChannelStatus::NOTE_ON:
+                umpInt1 = umppi::UmpFactory::midi1NoteOn(group, channel, msb, lsb);
+                break;
+            case umppi::MidiChannelStatus::PAF:
+                umpInt1 = umppi::UmpFactory::midi1PAf(group, channel, msb, lsb);
+                break;
+            case umppi::MidiChannelStatus::CC:
+                umpInt1 = umppi::UmpFactory::midi1CC(group, channel, msb, lsb);
+                break;
+            case umppi::MidiChannelStatus::PROGRAM:
+                umpInt1 = umppi::UmpFactory::midi1Program(group, channel, msb);
+                break;
+            case umppi::MidiChannelStatus::CAF:
+                umpInt1 = umppi::UmpFactory::midi1CAf(group, channel, msb);
+                break;
+            case umppi::MidiChannelStatus::PITCH_BEND: {
+                uint16_t pitchData = msb | (lsb << 7);
+                umpInt1 = umppi::UmpFactory::midi1PitchBendDirect(group, channel, pitchData);
+                break;
+            }
+            default:
+                if ((status & 0xF0) == 0xF0) {
+                    umpInt1 = umppi::UmpFactory::systemMessage(group, status, msb, lsb);
+                } else {
+                    continue;
+                }
+                break;
+        }
+
+        if (umpInt1 != 0) {
+            midi1Umps.push_back(umppi::Ump(umpInt1));
+            eventTicks.push_back(absoluteTicks);
+        }
     }
 
-    if (midi1Bytes.empty()) {
+    if (midi1Umps.empty()) {
         result.success = true;
+        if (captureMetaEvents) {
+            ensureDefaultMetaEvents(result, tempoDetected, timeSignatureDetected);
+        }
         return result;
     }
 
-    umppi::Midi1ToUmpTranslatorContext context(
-        midi1Bytes, 0, false,
-        static_cast<int>(umppi::MidiTransportProtocol::MIDI1), false, true);
+    result.umpEvents.reserve(midi1Umps.size() * 4);
+    result.umpEventTicksStamps.reserve(midi1Umps.size() * 4);
 
-    int translateResult = umppi::UmpTranslator::translateMidi1BytesToUmp(context);
-
-    if (translateResult != umppi::UmpTranslationResult::OK) {
-        result.error = std::format("UMP translation failed with code: {}", translateResult);
-        return result;
-    }
-
-    result.umpEvents.reserve(context.output.size() * 4);
-    result.umpEventTicksStamps.reserve(context.output.size() * 4);
-
-    size_t umpIndex = 0;
-    for (size_t eventIdx = 0;
-         eventIdx < eventTicks.size() && umpIndex < context.output.size();
-         ++eventIdx, ++umpIndex) {
-        uint64_t absTime = eventTicks[eventIdx];
-        const auto& ump = context.output[umpIndex];
+    for (size_t i = 0; i < midi1Umps.size(); ++i) {
+        const auto& ump = midi1Umps[i];
+        uint64_t absTime = eventTicks[i];
 
         result.umpEvents.push_back(static_cast<uapmd_ump_t>(ump.int1));
         result.umpEventTicksStamps.push_back(absTime);
@@ -301,12 +311,10 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
         return bpm;
     }
 
-    SmfConverter::ConvertResult SmfConverter::convertTrackToUmp(const std::filesystem::path& smfFile, size_t trackIndex) {
+    SmfConverter::ConvertResult SmfConverter::convertTrackToUmp(const umppi::Midi1Music& music, size_t trackIndex) {
         ConvertResult result;
 
         try {
-            umppi::Midi1Music music = umppi::readMidi1File(smfFile.string());
-
             result.tickResolution = music.deltaTimeSpec;
 
             if (result.tickResolution & 0x8000) {
@@ -323,6 +331,21 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
 
             // Tempo/time-signature events may reside on any track, so collect them
             collectMetaEventsFromMusic(music, result);
+
+        } catch (const std::exception& e) {
+            result.error = std::string("Exception during SMF track conversion: ") + e.what();
+            result.success = false;
+        }
+
+        return result;
+    }
+
+    SmfConverter::ConvertResult SmfConverter::convertTrackToUmp(const std::filesystem::path& smfFile, size_t trackIndex) {
+        ConvertResult result;
+
+        try {
+            umppi::Midi1Music music = umppi::readMidi1File(smfFile.string());
+            return convertTrackToUmp(music, trackIndex);
 
         } catch (const std::exception& e) {
             result.error = std::string("Exception during SMF track conversion: ") + e.what();
