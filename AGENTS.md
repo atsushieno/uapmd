@@ -9,10 +9,10 @@ You have to follow our [Developers Guide](docs/DEVELOPERS.md) that is written fo
 - Configure (Ninja on Linux/macOS): `cmake -B cmake-build-debug -G Ninja`
 - Configure (Windows/MSVC): `cmake -B build -G "Visual Studio 17 2022" -DBUILD_SHARED_LIBS=OFF`
 - Build: `cmake --build cmake-build-debug`
-- Example runs (after build):
-  - Scan plugins: `cmake-build-debug/tools/remidy-scan/remidy-scan`
-  - Start service: `cmake-build-debug/tools/uapmd-app/uapmd-app`
+- Run: `cmake-build-debug/tools/uapmd-app/uapmd-app`
 - CI builds on Ubuntu, macOS, and Windows (see `.github/workflows/actions.yml`).
+
+**IMPORTANT** you are strictly prohibited to run `cmake -B` command (including above) without explicit permission from me, as well as `rm -rf `cmake-build-debug`.
 
 ## Coding Style & Naming Conventions
 
@@ -23,16 +23,16 @@ You have to follow our [Developers Guide](docs/DEVELOPERS.md) that is written fo
   - PascalCase for types/classes;
   - camelCase for methods/functions;
   - snake_case for fields (add `_` as suffix for conflicts);
-  - ALL_CAPS for macros;
+  - ALL_CAPS and enums (excluding `enum class`-es) for macros;
   - C interop retains library naming.
 - Headers: public `.hpp` in `include/`; keep private APIs under `src/*`.
-- Prefer RAII, `std::` facilities, and lock‑free or non‑blocking patterns in audio paths.
+- Prefer RAII, `std::` facilities
+- You must follow lock‑free or non‑blocking patterns in audio thread, and if you cannot you have to report back.
 
 ## Testing Guidelines
 
-- No dedicated unit tests yet; CI ensures cross‑platform builds.
+- We don't expect you to write tests much. When we need, we may shoot separate requests.
 - Add small, focused tests alongside modules using CTest/GoogleTest when practical.
-- Use smoke tests: run `remidy-scan`, then launch `uapmd-app` with a known plugin and verify audio/MIDI routing.
 
 ## Commit & Pull Request Guidelines
 
