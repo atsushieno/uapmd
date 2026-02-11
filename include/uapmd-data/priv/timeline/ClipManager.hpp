@@ -19,8 +19,8 @@ namespace uapmd {
         bool removeClip(int32_t clipId);
         ClipData* getClip(int32_t clipId);
         const ClipData* getClip(int32_t clipId) const;
-        std::vector<ClipData*> getAllClips();
-        std::vector<const ClipData*> getAllClips() const;
+        std::vector<ClipData> getAllClips();
+        std::vector<ClipData> getAllClips() const;
 
         // Clip modifications (UI thread)
         bool moveClip(int32_t clipId, const TimelinePosition& newPosition);
@@ -32,8 +32,8 @@ namespace uapmd {
         bool setClipAnchor(int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset);
 
         // Query clips at timeline position (RT-safe after initial query)
-        std::vector<ClipData*> getActiveClipsAt(const TimelinePosition& position);
-        std::vector<const ClipData*> getActiveClipsAt(const TimelinePosition& position) const;
+        std::vector<ClipData> getActiveClipsAt(const TimelinePosition& position);
+        std::vector<ClipData> getActiveClipsAt(const TimelinePosition& position) const;
 
         // Clear all clips
         void clearAll();

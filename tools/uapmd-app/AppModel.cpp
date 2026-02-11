@@ -1401,21 +1401,20 @@ uapmd::AppModel::MasterTrackSnapshot uapmd::AppModel::buildMasterTrackSnapshot()
 
         std::unordered_map<int32_t, const uapmd::ClipData*> clipMap;
         clipMap.reserve(clips.size());
-        for (auto* clip : clips) {
-            if (clip)
-                clipMap[clip->clipId] = clip;
+        for (auto& clip : clips) {
+            clipMap[clip.clipId] = &clip;
         }
 
-        for (auto* clip : clips) {
-            if (!clip || clip->clipType != uapmd::ClipType::Midi)
+        for (const auto& clip : clips) {
+            if (clip.clipType != uapmd::ClipType::Midi)
                 continue;
 
-            auto* sourceNode = trackPtr->getSourceNode(clip->sourceNodeInstanceId);
-            auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode);
+            auto sourceNode = trackPtr->getSourceNode(clip.sourceNodeInstanceId);
+            auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
             if (!midiNode)
                 continue;
 
-            const auto absolutePosition = clip->getAbsolutePosition(clipMap);
+            const auto absolutePosition = clip.getAbsolutePosition(clipMap);
             const double clipStartSamples = static_cast<double>(absolutePosition.samples);
 
             const auto& tempoSamples = midiNode->tempoChangeSamples();
@@ -1586,36 +1585,33 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
 
             auto projectTrack = uapmd::UapmdProjectTrackData::create();
             auto clips = timelineTrack->clipManager().getAllClips();
-            std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData* a, const uapmd::ClipData* b) {
-                return a->clipId < b->clipId;
+            std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
+                return a.clipId < b.clipId;
             });
 
             std::unordered_map<int32_t, uapmd::UapmdProjectClipData*> clipLookup;
             clipLookup.reserve(clips.size());
 
-            for (const auto* clip : clips) {
-                if (!clip)
-                    continue;
-
+            for (const auto& clip : clips) {
                 auto projectClip = uapmd::UapmdProjectClipData::create();
-                projectClip->clipType(clip->clipType == uapmd::ClipType::Midi ? "midi" : "audio");
-                projectClip->tickResolution(clip->tickResolution);
+                projectClip->clipType(clip.clipType == uapmd::ClipType::Midi ? "midi" : "audio");
+                projectClip->tickResolution(clip.tickResolution);
 
-                std::filesystem::path clipPath = clip->filepath;
-                if (clip->clipType == uapmd::ClipType::Midi) {
+                std::filesystem::path clipPath = clip.filepath;
+                if (clip.clipType == uapmd::ClipType::Midi) {
                     bool needsExport = clipPath.empty() || !std::filesystem::exists(clipPath);
                     if (needsExport) {
                         std::filesystem::create_directories(clipDir);
                         auto exportName = std::format("track{}_clip_{}_{}.midi2",
                                                       trackIndex,
-                                                      clip->clipId,
+                                                      clip.clipId,
                                                       midiExportCounter++);
                         auto exportPath = clipDir / exportName;
 
-                        auto* sourceNode = timelineTrack->getSourceNode(clip->sourceNodeInstanceId);
-                        auto* midiNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode);
+                        auto sourceNode = timelineTrack->getSourceNode(clip.sourceNodeInstanceId);
+                        auto* midiNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
                         if (!midiNode) {
-                            result.error = std::format("Clip {} on track {} is missing MIDI data", clip->clipId, trackIndex);
+                            result.error = std::format("Clip {} on track {} is missing MIDI data", clip.clipId, trackIndex);
                             return result;
                         }
 
@@ -1633,25 +1629,25 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
 
                 projectClip->file(clipPath);
 
-                clipLookup[clip->clipId] = projectClip.get();
+                clipLookup[clip.clipId] = projectClip.get();
                 projectTrack->clips().push_back(std::move(projectClip));
             }
 
-            for (const auto* clip : clips) {
-                auto it = clipLookup.find(clip->clipId);
+            for (const auto& clip : clips) {
+                auto it = clipLookup.find(clip.clipId);
                 if (it == clipLookup.end())
                     continue;
 
                 uapmd::UapmdTimelinePosition pos{};
-                if (clip->anchorClipId >= 0) {
-                    auto anchorIt = clipLookup.find(clip->anchorClipId);
+                if (clip.anchorClipId >= 0) {
+                    auto anchorIt = clipLookup.find(clip.anchorClipId);
                     if (anchorIt != clipLookup.end())
                         pos.anchor = anchorIt->second;
                 }
-                pos.origin = (clip->anchorOrigin == uapmd::AnchorOrigin::End)
+                pos.origin = (clip.anchorOrigin == uapmd::AnchorOrigin::End)
                     ? uapmd::UapmdAnchorOrigin::End
                     : uapmd::UapmdAnchorOrigin::Start;
-                pos.samples = static_cast<uint64_t>(std::max<int64_t>(0, clip->anchorOffset.samples));
+                pos.samples = static_cast<uint64_t>(std::max<int64_t>(0, clip.anchorOffset.samples));
                 it->second->position(pos);
             }
 

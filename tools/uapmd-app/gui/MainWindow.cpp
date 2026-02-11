@@ -1637,15 +1637,15 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
     auto clips = track->clipManager().getAllClips();
 
     // Sort clips by clipId to ensure chronological order (oldest first)
-    std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData* a, const uapmd::ClipData* b) {
-        return a->clipId < b->clipId;
+    std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
+        return a.clipId < b.clipId;
     });
 
     std::vector<SequenceEditor::ClipRow> displayClips;
     std::unordered_map<int32_t, const uapmd::ClipData*> clipLookup;
     clipLookup.reserve(clips.size());
-    for (const auto* clip : clips) {
-        clipLookup[clip->clipId] = clip;
+    for (auto& clip : clips) {
+        clipLookup[clip.clipId] = &clip;
     }
     const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
     auto secondsToTimelineUnits = [](double seconds) -> int32_t {
@@ -1660,45 +1660,45 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
         return static_cast<int32_t>(std::llround(seconds));
     };
 
-    for (auto* clip : clips) {
+    for (const auto& clip : clips) {
         SequenceEditor::ClipRow row;
-        row.clipId = clip->clipId;
-        row.anchorClipId = clip->anchorClipId;
+        row.clipId = clip.clipId;
+        row.anchorClipId = clip.anchorClipId;
 
         // Format anchor origin
-        row.anchorOrigin = (clip->anchorOrigin == uapmd::AnchorOrigin::Start) ? "Start" : "End";
+        row.anchorOrigin = (clip.anchorOrigin == uapmd::AnchorOrigin::Start) ? "Start" : "End";
 
         // Format position display
-        double positionSeconds = clip->anchorOffset.toSeconds(appModel.sampleRate());
+        double positionSeconds = clip.anchorOffset.toSeconds(appModel.sampleRate());
         row.position = std::format("{:+.3f}s", positionSeconds);
 
         // Format duration (needed when End anchor is selected)
-        double durationSeconds = static_cast<double>(clip->durationSamples) / appModel.sampleRate();
+        double durationSeconds = static_cast<double>(clip.durationSamples) / appModel.sampleRate();
         row.duration = std::format("{:.3f}s", durationSeconds);
 
         // Set name and filename (extract just filename from path)
-        row.name = clip->name.empty() ? std::format("Clip {}", clip->clipId) : clip->name;
-        row.filepath = clip->filepath;
-        if (clip->filepath.empty()) {
+        row.name = clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
+        row.filepath = clip.filepath;
+        if (clip.filepath.empty()) {
             row.filename = "(no file)";
         } else {
             // Extract filename from full path
-            size_t lastSlash = clip->filepath.find_last_of("/\\");
+            size_t lastSlash = clip.filepath.find_last_of("/\\");
             row.filename = (lastSlash != std::string::npos)
-                ? clip->filepath.substr(lastSlash + 1)
-                : clip->filepath;
+                ? clip.filepath.substr(lastSlash + 1)
+                : clip.filepath;
         }
 
         // Set MIME type based on clip type
-        row.isMidiClip = (clip->clipType == uapmd::ClipType::Midi);
+        row.isMidiClip = (clip.clipType == uapmd::ClipType::Midi);
         if (row.isMidiClip) {
             row.mimeType = "audio/midi";
         } else {
             row.mimeType = "";  // Audio clip
         }
-        auto absolutePosition = clip->getAbsolutePosition(clipLookup);
+        auto absolutePosition = clip.getAbsolutePosition(clipLookup);
         double absoluteStartSeconds = static_cast<double>(absolutePosition.samples) / sampleRate;
-        double durationSecondsExact = static_cast<double>(clip->durationSamples) / sampleRate;
+        double durationSecondsExact = static_cast<double>(clip.durationSamples) / sampleRate;
         row.timelineStart = secondsToTimelineUnits(absoluteStartSeconds);
         int32_t durationUnits = std::max(1, secondsToTimelineUnits(durationSecondsExact));
         int64_t computedEnd = static_cast<int64_t>(row.timelineStart) + durationUnits;
@@ -2062,14 +2062,14 @@ MidiDumpWindow::ClipDumpData MainWindow::buildMidiClipDumpData(int32_t trackInde
     }
 
     // Get the source node
-    auto* sourceNode = track->getSourceNode(clip->sourceNodeInstanceId);
+    auto sourceNode = track->getSourceNode(clip->sourceNodeInstanceId);
     if (!sourceNode) {
         dump.error = "Source node not found";
         return dump;
     }
 
     // Cast to MidiClipSourceNode
-    auto* midiSourceNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode);
+    auto* midiSourceNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
     if (!midiSourceNode) {
         dump.error = "Source node is not a MIDI clip source";
         return dump;

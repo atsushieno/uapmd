@@ -50,24 +50,68 @@ namespace uapmd {
         return &it->second;
     }
 
-    std::vector<ClipData*> ClipManager::getAllClips() {
-        std::lock_guard<std::mutex> lock(clips_mutex_);
-        std::vector<ClipData*> result;
-        result.reserve(clips_.size());
-        for (auto& pair : clips_) {
-            result.push_back(&pair.second);
+    namespace {
+        template <typename ClipsMap>
+        std::vector<ClipData> collectClipCopies(const ClipsMap& source) {
+            std::vector<ClipData> result;
+            result.reserve(source.size());
+            for (const auto& pair : source) {
+                result.push_back(pair.second);
+            }
+            return result;
         }
-        return result;
+
+        template <typename ClipsMap>
+        std::vector<ClipData> collectActiveClipCopies(const ClipsMap& source, const TimelinePosition& position) {
+            if (source.empty())
+                return {};
+
+            std::vector<ClipData> clipCopies;
+            clipCopies.reserve(source.size());
+            for (const auto& pair : source) {
+                clipCopies.push_back(pair.second);
+            }
+
+            std::unordered_map<int32_t, const ClipData*> clipMap;
+            clipMap.reserve(clipCopies.size());
+            for (auto& clip : clipCopies) {
+                clipMap[clip.clipId] = &clip;
+            }
+
+            std::vector<const ClipData*> activeClips;
+            activeClips.reserve(clipCopies.size());
+            for (auto& clip : clipCopies) {
+                TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
+                if (position.samples >= absPos.samples &&
+                    position.samples < absPos.samples + clip.durationSamples) {
+                    activeClips.push_back(&clip);
+                }
+            }
+
+            std::sort(activeClips.begin(), activeClips.end(), [&clipMap](const ClipData* a, const ClipData* b) {
+                TimelinePosition aPosAbs = a->getAbsolutePosition(clipMap);
+                TimelinePosition bPosAbs = b->getAbsolutePosition(clipMap);
+                return aPosAbs.samples < bPosAbs.samples;
+            });
+
+            std::vector<ClipData> result;
+            result.reserve(activeClips.size());
+            for (const auto* clipPtr : activeClips) {
+                result.push_back(*clipPtr);
+            }
+
+            return result;
+        }
+    } // namespace
+
+    std::vector<ClipData> ClipManager::getAllClips() {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        return collectClipCopies(clips_);
     }
 
-    std::vector<const ClipData*> ClipManager::getAllClips() const {
+    std::vector<ClipData> ClipManager::getAllClips() const {
         std::lock_guard<std::mutex> lock(clips_mutex_);
-        std::vector<const ClipData*> result;
-        result.reserve(clips_.size());
-        for (const auto& pair : clips_) {
-            result.push_back(&pair.second);
-        }
-        return result;
+        return collectClipCopies(clips_);
     }
 
     bool ClipManager::moveClip(int32_t clipId, const TimelinePosition& newPosition) {
@@ -142,68 +186,14 @@ namespace uapmd {
         return true;
     }
 
-    std::vector<ClipData*> ClipManager::getActiveClipsAt(const TimelinePosition& position) {
+    std::vector<ClipData> ClipManager::getActiveClipsAt(const TimelinePosition& position) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
-        std::vector<ClipData*> result;
-
-        // Build clip map for absolute position calculation
-        std::unordered_map<int32_t, const ClipData*> clipMap;
-        for (const auto& pair : clips_) {
-            clipMap[pair.first] = &pair.second;
-        }
-
-        for (auto& pair : clips_) {
-            ClipData& clip = pair.second;
-            // Calculate absolute position for this clip
-            TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
-
-            // Check if the given position falls within this clip's range
-            if (position.samples >= absPos.samples &&
-                position.samples < absPos.samples + clip.durationSamples) {
-                result.push_back(&clip);
-            }
-        }
-
-        // Sort by absolute position (earlier clips first)
-        std::sort(result.begin(), result.end(), [&clipMap](const ClipData* a, const ClipData* b) {
-            TimelinePosition aPosAbs = a->getAbsolutePosition(clipMap);
-            TimelinePosition bPosAbs = b->getAbsolutePosition(clipMap);
-            return aPosAbs.samples < bPosAbs.samples;
-        });
-
-        return result;
+        return collectActiveClipCopies(clips_, position);
     }
 
-    std::vector<const ClipData*> ClipManager::getActiveClipsAt(const TimelinePosition& position) const {
+    std::vector<ClipData> ClipManager::getActiveClipsAt(const TimelinePosition& position) const {
         std::lock_guard<std::mutex> lock(clips_mutex_);
-        std::vector<const ClipData*> result;
-
-        // Build clip map for absolute position calculation
-        std::unordered_map<int32_t, const ClipData*> clipMap;
-        for (const auto& pair : clips_) {
-            clipMap[pair.first] = &pair.second;
-        }
-
-        for (const auto& pair : clips_) {
-            const ClipData& clip = pair.second;
-            // Calculate absolute position for this clip
-            TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
-
-            // Check if the given position falls within this clip's range
-            if (position.samples >= absPos.samples &&
-                position.samples < absPos.samples + clip.durationSamples) {
-                result.push_back(&clip);
-            }
-        }
-
-        // Sort by absolute position (earlier clips first)
-        std::sort(result.begin(), result.end(), [&clipMap](const ClipData* a, const ClipData* b) {
-            TimelinePosition aPosAbs = a->getAbsolutePosition(clipMap);
-            TimelinePosition bPosAbs = b->getAbsolutePosition(clipMap);
-            return aPosAbs.samples < bPosAbs.samples;
-        });
-
-        return result;
+        return collectActiveClipCopies(clips_, position);
     }
 
     void ClipManager::clearAll() {

@@ -1,19 +1,27 @@
 #include <algorithm>
+#include <atomic>
 #include <cstring>
+#include <mutex>
 #include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd {
 
     TimelineTrack::TimelineTrack(uint32_t channelCount, double sampleRate)
         : channel_count_(channelCount), sample_rate_(sampleRate) {
+        source_nodes_snapshot_ = std::make_shared<SourceNodeList>();
     }
 
     int32_t TimelineTrack::addClip(const ClipData& clip, std::unique_ptr<AudioFileSourceNode> sourceNode) {
         if (!sourceNode)
             return -1;
 
-        // Add the source node to our collection
-        source_nodes_.push_back(std::move(sourceNode));
+        auto sharedNode = std::shared_ptr<AudioFileSourceNode>(std::move(sourceNode));
+
+        {
+            std::lock_guard<std::mutex> lock(source_nodes_mutex_);
+            source_nodes_.push_back(sharedNode);
+            rebuildSourceNodeSnapshotLocked();
+        }
 
         // Add the clip to the clip manager
         return clip_manager_.addClip(clip);
@@ -23,8 +31,13 @@ namespace uapmd {
         if (!sourceNode)
             return -1;
 
-        // Add the source node to our collection
-        source_nodes_.push_back(std::move(sourceNode));
+        auto sharedNode = std::shared_ptr<MidiSourceNode>(std::move(sourceNode));
+
+        {
+            std::lock_guard<std::mutex> lock(source_nodes_mutex_);
+            source_nodes_.push_back(sharedNode);
+            rebuildSourceNodeSnapshotLocked();
+        }
 
         // Add the clip to the clip manager
         return clip_manager_.addClip(clip);
@@ -42,14 +55,17 @@ namespace uapmd {
         if (!clip_manager_.removeClip(clipId))
             return false;
 
-        // Remove the associated source node
-        auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [sourceNodeId](const std::unique_ptr<SourceNode>& node) {
-                return node->instanceId() == sourceNodeId;
-            });
+        {
+            std::lock_guard<std::mutex> lock(source_nodes_mutex_);
+            auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
+                [sourceNodeId](const std::shared_ptr<SourceNode>& node) {
+                    return node && node->instanceId() == sourceNodeId;
+                });
 
-        if (it != source_nodes_.end()) {
-            source_nodes_.erase(it);
+            if (it != source_nodes_.end()) {
+                source_nodes_.erase(it);
+                rebuildSourceNodeSnapshotLocked();
+            }
         }
 
         return true;
@@ -67,18 +83,21 @@ namespace uapmd {
         int32_t oldSourceNodeId = clip->sourceNodeInstanceId;
         int32_t newSourceNodeId = newSourceNode->instanceId();
 
-        // Find and replace the source node
-        auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [oldSourceNodeId](const std::unique_ptr<SourceNode>& node) {
-                return node->instanceId() == oldSourceNodeId;
-            });
+        auto sharedNode = std::shared_ptr<AudioFileSourceNode>(std::move(newSourceNode));
 
-        if (it != source_nodes_.end()) {
-            // Replace the old source node with the new one
-            *it = std::move(newSourceNode);
-        } else {
-            // Old source node not found, just add the new one
-            source_nodes_.push_back(std::move(newSourceNode));
+        {
+            std::lock_guard<std::mutex> lock(source_nodes_mutex_);
+            auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
+                [oldSourceNodeId](const std::shared_ptr<SourceNode>& node) {
+                    return node && node->instanceId() == oldSourceNodeId;
+                });
+
+            if (it != source_nodes_.end()) {
+                *it = sharedNode;
+            } else {
+                source_nodes_.push_back(sharedNode);
+            }
+            rebuildSourceNodeSnapshotLocked();
         }
 
         // Update the clip's source node reference
@@ -91,24 +110,31 @@ namespace uapmd {
         if (!sourceNode)
             return false;
 
-        source_nodes_.push_back(std::move(sourceNode));
+        auto sharedNode = std::shared_ptr<DeviceInputSourceNode>(std::move(sourceNode));
+        {
+            std::lock_guard<std::mutex> lock(source_nodes_mutex_);
+            source_nodes_.push_back(sharedNode);
+            rebuildSourceNodeSnapshotLocked();
+        }
         return true;
     }
 
     bool TimelineTrack::removeSource(int32_t sourceId) {
+        std::lock_guard<std::mutex> lock(source_nodes_mutex_);
         auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [sourceId](const std::unique_ptr<SourceNode>& node) {
-                return node->instanceId() == sourceId;
+            [sourceId](const std::shared_ptr<SourceNode>& node) {
+                return node && node->instanceId() == sourceId;
             });
 
         if (it == source_nodes_.end())
             return false;
 
         source_nodes_.erase(it);
+        rebuildSourceNodeSnapshotLocked();
         return true;
     }
 
-    SourceNode* TimelineTrack::getSourceNode(int32_t instanceId) {
+    std::shared_ptr<SourceNode> TimelineTrack::getSourceNode(int32_t instanceId) {
         return findSourceNode(instanceId);
     }
 
@@ -133,13 +159,26 @@ namespace uapmd {
         }
     }
 
-    SourceNode* TimelineTrack::findSourceNode(int32_t instanceId) {
-        auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
-            [instanceId](const std::unique_ptr<SourceNode>& node) {
-                return node->instanceId() == instanceId;
+    std::shared_ptr<SourceNode> TimelineTrack::findSourceNode(int32_t instanceId) const {
+        auto snapshot = std::atomic_load_explicit(&source_nodes_snapshot_, std::memory_order_acquire);
+        if (!snapshot)
+            return nullptr;
+
+        auto it = std::find_if(snapshot->begin(), snapshot->end(),
+            [instanceId](const std::shared_ptr<SourceNode>& node) {
+                return node && node->instanceId() == instanceId;
             });
 
-        return (it != source_nodes_.end()) ? it->get() : nullptr;
+        if (it == snapshot->end())
+            return nullptr;
+
+        return *it;
+    }
+
+    void TimelineTrack::rebuildSourceNodeSnapshotLocked() {
+        auto snapshot = std::make_shared<SourceNodeList>(source_nodes_);
+        std::shared_ptr<const SourceNodeList> constSnapshot = snapshot;
+        std::atomic_store_explicit(&source_nodes_snapshot_, constSnapshot, std::memory_order_release);
     }
 
     void TimelineTrack::processAudio(
@@ -164,32 +203,33 @@ namespace uapmd {
         // Step 1: Build clip map for absolute position calculations
         auto allClips = clip_manager_.getAllClips();
         std::unordered_map<int32_t, const ClipData*> clipMap;
-        for (auto* clip : allClips) {
-            clipMap[clip->clipId] = clip;
+        clipMap.reserve(allClips.size());
+        for (auto& clip : allClips) {
+            clipMap[clip.clipId] = &clip;
         }
 
         // Step 2: Query active clips at current timeline position
         auto activeClips = clip_manager_.getActiveClipsAt(timeline.playheadPosition);
 
         // Step 3: Process audio source nodes for each active clip
-        for (auto* clip : activeClips) {
-            if (clip->clipType != ClipType::Audio)
+        for (const auto& clip : activeClips) {
+            if (clip.clipType != ClipType::Audio)
                 continue;  // Skip MIDI clips in this loop
 
-            if (clip->muted)
+            if (clip.muted)
                 continue;
 
             // Find the source node for this clip
-            auto* sourceNode = findSourceNode(clip->sourceNodeInstanceId);
+            auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
             if (!sourceNode || sourceNode->nodeType() != SourceNodeType::AudioFileSource)
                 continue;
 
-            auto* audioSourceNode = dynamic_cast<AudioSourceNode*>(sourceNode);
+            auto* audioSourceNode = dynamic_cast<AudioSourceNode*>(sourceNode.get());
             if (!audioSourceNode)
                 continue;
 
             // Calculate position within the source file using anchor-aware calculation
-            int64_t sourcePosition = clip->getSourcePosition(timeline.playheadPosition, clipMap);
+            int64_t sourcePosition = clip.getSourcePosition(timeline.playheadPosition, clipMap);
             if (sourcePosition < 0)
                 continue;
 
@@ -215,30 +255,30 @@ namespace uapmd {
             // Mix into our mixed source buffer with gain applied
             for (uint32_t ch = 0; ch < numChannels; ++ch) {
                 for (int32_t frame = 0; frame < frameCount; ++frame) {
-                    mixed_source_buffers_[ch][frame] += tempBuffers[ch][frame] * static_cast<float>(clip->gain);
+                    mixed_source_buffers_[ch][frame] += tempBuffers[ch][frame] * static_cast<float>(clip.gain);
                 }
             }
         }
 
         // Step 3.5: Process MIDI clips (NEW)
-        for (auto* clip : activeClips) {
-            if (clip->clipType != ClipType::Midi)
+        for (const auto& clip : activeClips) {
+            if (clip.clipType != ClipType::Midi)
                 continue;  // Skip audio clips in this loop
 
-            if (clip->muted)
+            if (clip.muted)
                 continue;
 
             // Find the MIDI source node for this clip
-            auto* sourceNode = findSourceNode(clip->sourceNodeInstanceId);
+            auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
             if (!sourceNode || sourceNode->nodeType() != SourceNodeType::MidiClipSource)
                 continue;
 
-            auto* midiNode = dynamic_cast<MidiSourceNode*>(sourceNode);
+            auto* midiNode = dynamic_cast<MidiSourceNode*>(sourceNode.get());
             if (!midiNode)
                 continue;
 
             // Calculate position within the source using anchor-aware calculation
-            int64_t sourcePosition = clip->getSourcePosition(timeline.playheadPosition, clipMap);
+            int64_t sourcePosition = clip.getSourcePosition(timeline.playheadPosition, clipMap);
             if (sourcePosition < 0)
                 continue;
 
@@ -261,8 +301,12 @@ namespace uapmd {
             process.audioInBusCount() > 0 ? process.inputChannelCount(0) : 0;
 
         if (deviceChannelCount > 0) {
-            for (auto& sourceNode : source_nodes_) {
-                if (sourceNode->nodeType() == SourceNodeType::DeviceInput) {
+            auto snapshot = std::atomic_load_explicit(&source_nodes_snapshot_, std::memory_order_acquire);
+            if (snapshot) {
+                for (const auto& sourceNode : *snapshot) {
+                    if (!sourceNode || sourceNode->nodeType() != SourceNodeType::DeviceInput)
+                        continue;
+
                     auto* deviceInputNode = dynamic_cast<DeviceInputSourceNode*>(sourceNode.get());
                     if (deviceInputNode) {
                         // Get device input buffer pointers from AudioProcessContext

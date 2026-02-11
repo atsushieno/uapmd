@@ -419,8 +419,8 @@ std::shared_ptr<ClipPreview> createMidiClipPreview(
         return preview;
     }
 
-    auto* sourceNode = track->getSourceNode(clipData.sourceNodeInstanceId);
-    auto* midiSource = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode);
+    auto sourceNode = track->getSourceNode(clipData.sourceNodeInstanceId);
+    auto* midiSource = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
     if (!midiSource) {
         preview->hasError = true;
         preview->errorMessage = "Missing MIDI source";

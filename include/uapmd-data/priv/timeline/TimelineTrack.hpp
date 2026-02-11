@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
+#include <mutex>
 #include <vector>
 #include "TimelineTypes.hpp"
 #include "ClipManager.hpp"
@@ -34,7 +36,7 @@ namespace uapmd {
         // Source node management
         bool addDeviceInputSource(std::unique_ptr<DeviceInputSourceNode> sourceNode);
         bool removeSource(int32_t sourceId);
-        SourceNode* getSourceNode(int32_t instanceId);
+        std::shared_ptr<SourceNode> getSourceNode(int32_t instanceId);
 
         // Timeline-aware processing
         // Writes mixed audio to AudioProcessContext output buffers
@@ -52,7 +54,10 @@ namespace uapmd {
         double sample_rate_;
 
         ClipManager clip_manager_;
-        std::vector<std::unique_ptr<SourceNode>> source_nodes_;  // Changed to SourceNode for polymorphism
+        using SourceNodeList = std::vector<std::shared_ptr<SourceNode>>;
+        SourceNodeList source_nodes_;
+        mutable std::mutex source_nodes_mutex_;
+        std::shared_ptr<const SourceNodeList> source_nodes_snapshot_;
 
         // Temporary buffers for mixing sources
         std::vector<std::vector<float>> mixed_source_buffers_;  // [channel][samples]
@@ -61,8 +66,9 @@ namespace uapmd {
         // Helper to ensure buffers are allocated
         void ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount);
 
-        // Helper to find source node by instance ID
-        SourceNode* findSourceNode(int32_t instanceId);
+        // Source node snapshot helpers
+        void rebuildSourceNodeSnapshotLocked();
+        std::shared_ptr<SourceNode> findSourceNode(int32_t instanceId) const;
     };
 
 } // namespace uapmd
