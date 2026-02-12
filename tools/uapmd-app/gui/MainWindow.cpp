@@ -2,6 +2,7 @@
 #include <cstring>
 #include <algorithm>
 #include <map>
+#include <set>
 #include <format>
 #include <iostream>
 #include <fstream>
@@ -719,6 +720,16 @@ void MainWindow::renderMasterTrackRow(const SequenceEditor::RenderContext& conte
         rows.push_back(std::move(row));
 
         sequenceEditor_.refreshClips(uapmd::kMasterTrackIndex, rows);
+
+        // Refresh all regular tracks since tempo segments changed and their
+        // timeline positions (which depend on secondsToTimelineUnits) need updating.
+        auto& appModel = uapmd::AppModel::instance();
+        auto tracks = appModel.getTimelineTracks();
+        for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
+            if (!appModel.isTrackHidden(i)) {
+                refreshSequenceEditorForTrack(i);
+            }
+        }
     } else {
         masterTrackSnapshot_ = snapshot;
     }
@@ -1143,6 +1154,16 @@ void MainWindow::rebuildTempoSegments(const std::shared_ptr<uapmd::AppModel::Mas
         accumulatedBeats
     });
     timelineUnitsLabel_ = "beats";
+
+    // Debug: log tempo segments
+    std::cerr << "[TEMPO SEGMENTS] Built " << tempoSegments_.size() << " segments:" << std::endl;
+    for (size_t i = 0; i < tempoSegments_.size(); ++i) {
+        const auto& seg = tempoSegments_[i];
+        std::cerr << "  [" << i << "] time=[" << seg.startTime << ", "
+                  << (std::isfinite(seg.endTime) ? std::to_string(seg.endTime) : "inf")
+                  << ") bpm=" << seg.bpm
+                  << " accumulatedBeats=" << seg.accumulatedBeats << std::endl;
+    }
 }
 
 double MainWindow::secondsToTimelineUnits(double seconds) const {
@@ -1721,6 +1742,16 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
         return;
     }
     auto& appModel = uapmd::AppModel::instance();
+
+    // Ensure tempo segments are built before computing clip positions.
+    // This is critical because secondsToTimelineUnits() falls back to returning
+    // seconds directly if tempoSegments_ is empty, which would cause clips to be
+    // positioned incorrectly relative to the playhead.
+    if (tempoSegments_.empty()) {
+        auto snapshot = std::make_shared<uapmd::AppModel::MasterTrackSnapshot>(
+            appModel.buildMasterTrackSnapshot());
+        rebuildTempoSegments(snapshot);
+    }
     auto tracks = appModel.getTimelineTracks();
 
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
@@ -1790,6 +1821,22 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
             endFrame = row.timelineStart + 1;
         }
         row.timelineEnd = endFrame;
+
+        // Debug: log clip position calculation (once per clip)
+        static std::set<int32_t> loggedClips;
+        if (loggedClips.find(clip.clipId) == loggedClips.end()) {
+            loggedClips.insert(clip.clipId);
+            std::cerr << "[CLIP " << clip.clipId << "] sampleRate=" << sampleRate
+                      << " startSamples=" << absolutePosition.samples
+                      << " durationSamples=" << clip.durationSamples
+                      << " startSec=" << absoluteStartSeconds
+                      << " durationSec=" << durationSecondsExact
+                      << " startUnits=" << startUnits
+                      << " endUnits=" << endUnits
+                      << " timelineStart=" << row.timelineStart
+                      << " timelineEnd=" << row.timelineEnd
+                      << std::endl;
+        }
 
         displayClips.push_back(row);
     }

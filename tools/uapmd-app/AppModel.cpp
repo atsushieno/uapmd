@@ -1871,11 +1871,27 @@ void uapmd::AppModel::processAppTracksAudio(AudioProcessContext& process) {
                         if (sourcePos >= 0) {
                             // Find the tempo that applies at this position (last tempo change before sourcePos)
                             double currentTempo = tempoChanges[0].bpm;
+                            size_t tempoIdx = 0;
                             for (size_t i = 0; i < tempoChangeSamples.size(); ++i) {
-                                if (static_cast<int64_t>(tempoChangeSamples[i]) <= sourcePos)
+                                if (static_cast<int64_t>(tempoChangeSamples[i]) <= sourcePos) {
                                     currentTempo = tempoChanges[i].bpm;
-                                else
+                                    tempoIdx = i;
+                                } else {
                                     break;
+                                }
+                            }
+                            // Debug: log tempo changes (throttled to ~1 per second)
+                            static int64_t lastLoggedSample = -sample_rate_;
+                            if (timeline_.playheadPosition.samples - lastLoggedSample >= sample_rate_) {
+                                std::cerr << "[TEMPO] playhead=" << timeline_.playheadPosition.samples
+                                          << " sourcePos=" << sourcePos
+                                          << " tempoIdx=" << tempoIdx << "/" << tempoChanges.size()
+                                          << " tempo=" << currentTempo << " BPM"
+                                          << " (next change at sample "
+                                          << (tempoIdx + 1 < tempoChangeSamples.size() ?
+                                              static_cast<int64_t>(tempoChangeSamples[tempoIdx + 1]) : -1)
+                                          << ")" << std::endl;
+                                lastLoggedSample = timeline_.playheadPosition.samples;
                             }
                             timeline_.tempo = currentTempo;
                         }
