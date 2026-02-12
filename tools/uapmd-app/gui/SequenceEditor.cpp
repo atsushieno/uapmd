@@ -335,21 +335,47 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             mousePos.x >= clipAreaMinX && mousePos.x <= clipAreaMaxX &&
             mousePos.y >= clipAreaMinY && mousePos.y <= clipAreaMaxY;
         if (timelineHovered && mouseInClipArea && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            int hoveredSection = state.timeline->GetSelectedSection();
-            auto clipIt = state.sectionToClip.find(hoveredSection);
-            if (clipIt != state.sectionToClip.end() && clipIt->second != -1) {
-                requestedContextClip = clipIt->second;
-            } else {
-                // Double-clicked on empty timeline area - calculate position for new clip
-                const float scale = state.timeline->GetScale();
-                const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
-                if (scale > 0.0f && clipAreaMaxX > clipAreaMinX) {
-                    const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
-                    const double maxFrame = static_cast<double>(state.timeline->GetMaxFrame());
-                    const double timestamp = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
-                    state.requestedAddPosition = std::clamp(timestamp, 0.0, maxFrame);
-                    requestedAddClipMenu = true;
+            const float scale = state.timeline->GetScale();
+            const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
+            const double maxFrame = static_cast<double>(state.timeline->GetMaxFrame());
+
+            bool clipUnderMouse = false;
+            if (scale > 0.0f) {
+                const int hoveredSection = state.timeline->GetSelectedSection();
+                auto clipIt = state.sectionToClip.find(hoveredSection);
+                if (clipIt != state.sectionToClip.end() && clipIt->second != -1) {
+                    const int32_t hoveredClipId = clipIt->second;
+                    auto clipRowIt = std::find_if(
+                        state.displayClips.begin(),
+                        state.displayClips.end(),
+                        [hoveredClipId](const ClipRow& row) { return row.clipId == hoveredClipId; }
+                    );
+                    if (clipRowIt != state.displayClips.end()) {
+                        const double clipStartFrame = static_cast<double>(clipRowIt->timelineStart);
+                        const double clipEndFrame = static_cast<double>(clipRowIt->timelineEnd);
+                        const float clipMinX = clipAreaMinX +
+                            static_cast<float>((clipStartFrame - startFrame) * static_cast<double>(scale));
+                        const float clipMaxX = clipAreaMinX +
+                            static_cast<float>((clipEndFrame - startFrame) * static_cast<double>(scale));
+                        const float orderedClipMinX = std::min(clipMinX, clipMaxX);
+                        const float orderedClipMaxX = std::max(clipMinX, clipMaxX);
+                        const float visibleClipMinX = std::max(orderedClipMinX, clipAreaMinX);
+                        const float visibleClipMaxX = std::min(orderedClipMaxX, clipAreaMaxX);
+                        if (visibleClipMinX <= visibleClipMaxX &&
+                            mousePos.x >= visibleClipMinX && mousePos.x <= visibleClipMaxX) {
+                            clipUnderMouse = true;
+                            requestedContextClip = hoveredClipId;
+                        }
+                    }
                 }
+            }
+
+            if (!clipUnderMouse && scale > 0.0f && clipAreaMaxX > clipAreaMinX) {
+                // Double-clicked on empty timeline area - calculate position for new clip
+                const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
+                const double timestamp = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
+                state.requestedAddPosition = std::clamp(timestamp, 0.0, maxFrame);
+                requestedAddClipMenu = true;
             }
         }
 
