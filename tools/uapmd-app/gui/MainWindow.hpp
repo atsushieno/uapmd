@@ -94,6 +94,14 @@ class MainWindow {
         MidiDumpWindow midiDumpWindow_;
         std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot> masterTrackSnapshot_;
         std::string masterTrackSignature_;
+        struct TempoSegment {
+            double startTime{0.0};
+            double endTime{0.0};
+            double bpm{120.0};
+            double accumulatedBeats{0.0};
+        };
+        std::vector<TempoSegment> tempoSegments_;
+        std::string timelineUnitsLabel_ = "seconds";
 
     public:
         explicit MainWindow(GuiDefaults defaults = {});
@@ -168,5 +176,8 @@ class MainWindow {
         void applyFontScaling();
         void setNextChildWindowSize(const std::string& id, ImVec2 defaultBaseSize);
         void updateChildWindowSizeState(const std::string& id);
+        void rebuildTempoSegments(const std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot>& snapshot);
+        double secondsToTimelineUnits(double seconds) const;
+        double timelineUnitsToSeconds(double units) const;
     };
 }

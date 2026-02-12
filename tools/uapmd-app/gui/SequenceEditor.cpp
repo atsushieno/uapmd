@@ -22,6 +22,27 @@ constexpr int32_t kTimelineSectionId = 0;
 constexpr float kTimelineSectionSpacing = 5.0f; // Matches Timeline::DrawTimeline spacing
 constexpr float kTimelineChildPadding = 8.0f;   // Matches Timeline::DrawTimeline padding
 constexpr ImU32 kTimelinePlayheadColor = IM_COL32(255, 230, 0, 255);
+
+double secondsToUnits(const SequenceEditor::RenderContext& context, double seconds) {
+    if (context.secondsToTimelineUnits) {
+        return context.secondsToTimelineUnits(seconds);
+    }
+    return seconds;
+}
+
+double unitsToSeconds(const SequenceEditor::RenderContext& context, double units) {
+    if (context.timelineUnitsToSeconds) {
+        return context.timelineUnitsToSeconds(units);
+    }
+    return units;
+}
+
+const char* timelineUnitsLabel(const SequenceEditor::RenderContext& context) {
+    if (context.timelineUnitsLabel && context.timelineUnitsLabel[0] != '\0') {
+        return context.timelineUnitsLabel;
+    }
+    return "seconds";
+}
 } // namespace
 
 SequenceEditor::~SequenceEditor() = default;
@@ -245,7 +266,7 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         const float infoHeight = ImGui::GetTextLineHeightWithSpacing();
         timelineHeight -= infoHeight + ImGui::GetStyle().ItemSpacing.y;
         timelineHeight = std::max(timelineHeight, 0.0f);
-        ImGui::TextDisabled("Timeline units: seconds");
+        ImGui::TextDisabled("Timeline units: %s", timelineUnitsLabel(context));
         ImGui::Spacing();
     }
 
@@ -312,7 +333,7 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         const float headerMinY = childWindowPos.y;
         const float headerMaxY = clipAreaMinY;
         if (headerMaxX > headerMinX && headerMaxY > headerMinY) {
-            drawPlayheadIndicator(state, headerMinX, headerMinY, headerMaxX, headerMaxY);
+            drawPlayheadIndicator(state, context, headerMinX, headerMinY, headerMaxX, headerMaxY);
         }
 
         // Only start tracking drag if no popup is blocking and timeline is hovered
@@ -337,7 +358,6 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         if (timelineHovered && mouseInClipArea && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             const float scale = state.timeline->GetScale();
             const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
-            const double maxFrame = static_cast<double>(state.timeline->GetMaxFrame());
 
             bool clipUnderMouse = false;
             if (scale > 0.0f) {
@@ -373,8 +393,10 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             if (!clipUnderMouse && scale > 0.0f && clipAreaMaxX > clipAreaMinX) {
                 // Double-clicked on empty timeline area - calculate position for new clip
                 const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
-                const double timestamp = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
-                state.requestedAddPosition = std::clamp(timestamp, 0.0, maxFrame);
+                const double timestampUnits = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
+                const double maxFrameSeconds = unitsToSeconds(context, static_cast<double>(state.timeline->GetMaxFrame()));
+                const double timestampSeconds = unitsToSeconds(context, timestampUnits);
+                state.requestedAddPosition = std::clamp(timestampSeconds, 0.0, maxFrameSeconds);
                 requestedAddClipMenu = true;
             }
         }
@@ -392,11 +414,10 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
                 auto nodeIdIt = state.sectionToNodeId.find(section);
                 if (nodeIdIt != state.sectionToNodeId.end()) {
                     auto* node = state.timeline->FindNodeByNodeID(nodeIdIt->second);
-                    if (node) {
-                        double newStart = static_cast<double>(node->start);
-                        if (context.moveClipAbsolute) {
-                            context.moveClipAbsolute(trackIndex, it->second, newStart);
-                        }
+                    if (node && context.moveClipAbsolute) {
+                        double newStartUnits = static_cast<double>(node->start);
+                        double newStartSeconds = unitsToSeconds(context, newStartUnits);
+                        context.moveClipAbsolute(trackIndex, it->second, newStartSeconds);
                     }
                 }
             }
@@ -755,6 +776,7 @@ std::vector<int32_t> SequenceEditor::getAnchorOptions(int32_t trackIndex, int32_
 
 void SequenceEditor::drawPlayheadIndicator(
     const SequenceEditorState& state,
+    const RenderContext& context,
     float headerMinX,
     float headerMinY,
     float headerMaxX,
@@ -781,7 +803,8 @@ void SequenceEditor::drawPlayheadIndicator(
         return;
     }
 
-    const double clampedFrame = std::clamp(playheadSeconds, 0.0, static_cast<double>(maxFrame));
+    const double playheadUnits = secondsToUnits(context, playheadSeconds);
+    const double clampedFrame = std::clamp(playheadUnits, 0.0, static_cast<double>(maxFrame));
     const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
     if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame)) {
         return;

@@ -30,6 +30,16 @@ namespace uapmd::gui {
 
 namespace {
 constexpr int32_t kMasterTrackClipId = -1000;
+constexpr double kDisplayDefaultBpm = 120.0;
+
+int32_t toTimelineFrame(double units) {
+    if (!std::isfinite(units)) {
+        return 0;
+    }
+    const double maxUnits = static_cast<double>(std::numeric_limits<int32_t>::max() - 1);
+    const double clamped = std::clamp(units, 0.0, maxUnits);
+    return static_cast<int32_t>(std::llround(clamped));
+}
 }
 
 std::vector<MidiDumpWindow::EventRow> buildMidiDumpRows(
@@ -386,6 +396,13 @@ void MainWindow::render(void* window) {
         .updateChildWindowSizeState = [this](const std::string& id) {
             updateChildWindowSizeState(id);
         },
+        .secondsToTimelineUnits = [this](double seconds) {
+            return secondsToTimelineUnits(seconds);
+        },
+        .timelineUnitsToSeconds = [this](double units) {
+            return timelineUnitsToSeconds(units);
+        },
+        .timelineUnitsLabel = timelineUnitsLabel_.c_str(),
         .uiScale = uiScale_,
     };
 
@@ -667,6 +684,7 @@ void MainWindow::renderMasterTrackRow(const SequenceEditor::RenderContext& conte
     if (signature != masterTrackSignature_) {
         masterTrackSignature_ = signature;
         masterTrackSnapshot_ = snapshot;
+        rebuildTempoSegments(masterTrackSnapshot_);
 
         std::vector<SequenceEditor::ClipRow> rows;
         SequenceEditor::ClipRow row;
@@ -681,8 +699,8 @@ void MainWindow::renderMasterTrackRow(const SequenceEditor::RenderContext& conte
         row.filepath = "";
         const double durationSeconds = std::max(1.0, snapshot->maxTimeSeconds);
         row.duration = std::format("{:.3f}s", durationSeconds);
-        row.timelineStart = 0;
-        row.timelineEnd = static_cast<int32_t>(std::llround(durationSeconds));
+        row.timelineStart = toTimelineFrame(secondsToTimelineUnits(0.0));
+        row.timelineEnd = std::max(row.timelineStart + 1, toTimelineFrame(secondsToTimelineUnits(durationSeconds)));
         std::vector<ClipPreview::TempoPoint> tempoPoints;
         tempoPoints.reserve(snapshot->tempoPoints.size());
         for (const auto& point : snapshot->tempoPoints) {
@@ -1090,6 +1108,82 @@ void MainWindow::updateChildWindowSizeState(const std::string& id) {
         }
     }
     state.lastSize = size;
+}
+
+void MainWindow::rebuildTempoSegments(const std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot>& snapshot) {
+    tempoSegments_.clear();
+    if (!snapshot || snapshot->tempoPoints.empty()) {
+        timelineUnitsLabel_ = "seconds";
+        return;
+    }
+
+    const auto& tempoPoints = snapshot->tempoPoints;
+    double currentBpm = tempoPoints.front().bpm > 0.0 ? tempoPoints.front().bpm : kDisplayDefaultBpm;
+    double lastTime = 0.0;
+    double accumulatedBeats = 0.0;
+
+    for (const auto& point : tempoPoints) {
+        double eventTime = std::max(0.0, point.timeSeconds);
+        if (eventTime > lastTime) {
+            const double bpmToUse = currentBpm > 0.0 ? currentBpm : kDisplayDefaultBpm;
+            tempoSegments_.push_back(TempoSegment{lastTime, eventTime, bpmToUse, accumulatedBeats});
+            accumulatedBeats += (eventTime - lastTime) * (bpmToUse / 60.0);
+            lastTime = eventTime;
+        }
+        if (point.bpm > 0.0) {
+            currentBpm = point.bpm;
+        }
+    }
+
+    const double bpmToUse = currentBpm > 0.0 ? currentBpm : kDisplayDefaultBpm;
+    tempoSegments_.push_back(TempoSegment{
+        lastTime,
+        std::numeric_limits<double>::infinity(),
+        bpmToUse,
+        accumulatedBeats
+    });
+    timelineUnitsLabel_ = "beats";
+}
+
+double MainWindow::secondsToTimelineUnits(double seconds) const {
+    if (tempoSegments_.empty()) {
+        return std::max(0.0, seconds);
+    }
+
+    const double clampedSeconds = std::max(0.0, seconds);
+    for (const auto& segment : tempoSegments_) {
+        if (clampedSeconds < segment.endTime) {
+            const double bpm = segment.bpm > 0.0 ? segment.bpm : kDisplayDefaultBpm;
+            return segment.accumulatedBeats + (clampedSeconds - segment.startTime) * (bpm / 60.0);
+        }
+    }
+
+    const auto& last = tempoSegments_.back();
+    const double bpm = last.bpm > 0.0 ? last.bpm : kDisplayDefaultBpm;
+    return last.accumulatedBeats + (clampedSeconds - last.startTime) * (bpm / 60.0);
+}
+
+double MainWindow::timelineUnitsToSeconds(double units) const {
+    if (tempoSegments_.empty()) {
+        return std::max(0.0, units);
+    }
+
+    const double clampedUnits = std::max(0.0, units);
+    for (const auto& segment : tempoSegments_) {
+        const double bpm = segment.bpm > 0.0 ? segment.bpm : kDisplayDefaultBpm;
+        double segmentEndBeats = std::numeric_limits<double>::infinity();
+        if (std::isfinite(segment.endTime)) {
+            segmentEndBeats = segment.accumulatedBeats +
+                (segment.endTime - segment.startTime) * (bpm / 60.0);
+        }
+        if (clampedUnits < segmentEndBeats) {
+            return segment.startTime + (clampedUnits - segment.accumulatedBeats) * (60.0 / bpm);
+        }
+    }
+
+    const auto& last = tempoSegments_.back();
+    const double bpm = last.bpm > 0.0 ? last.bpm : kDisplayDefaultBpm;
+    return last.startTime + (clampedUnits - last.accumulatedBeats) * (60.0 / bpm);
 }
 
 bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height) {
@@ -1648,17 +1742,6 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
         clipLookup[clip.clipId] = &clip;
     }
     const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
-    auto secondsToTimelineUnits = [](double seconds) -> int32_t {
-        if (!std::isfinite(seconds)) {
-            return 0;
-        }
-        seconds = std::max(0.0, seconds);
-        const double maxSeconds = static_cast<double>(std::numeric_limits<int32_t>::max() - 1);
-        if (seconds > maxSeconds) {
-            seconds = maxSeconds;
-        }
-        return static_cast<int32_t>(std::llround(seconds));
-    };
 
     for (const auto& clip : clips) {
         SequenceEditor::ClipRow row;
@@ -1699,13 +1782,14 @@ void MainWindow::refreshSequenceEditorForTrack(int32_t trackIndex) {
         auto absolutePosition = clip.getAbsolutePosition(clipLookup);
         double absoluteStartSeconds = static_cast<double>(absolutePosition.samples) / sampleRate;
         double durationSecondsExact = static_cast<double>(clip.durationSamples) / sampleRate;
-        row.timelineStart = secondsToTimelineUnits(absoluteStartSeconds);
-        int32_t durationUnits = std::max(1, secondsToTimelineUnits(durationSecondsExact));
-        int64_t computedEnd = static_cast<int64_t>(row.timelineStart) + durationUnits;
-        if (computedEnd > std::numeric_limits<int32_t>::max()) {
-            computedEnd = std::numeric_limits<int32_t>::max();
+        const double startUnits = secondsToTimelineUnits(absoluteStartSeconds);
+        const double endUnits = secondsToTimelineUnits(absoluteStartSeconds + durationSecondsExact);
+        row.timelineStart = toTimelineFrame(startUnits);
+        int32_t endFrame = toTimelineFrame(endUnits);
+        if (endFrame <= row.timelineStart) {
+            endFrame = row.timelineStart + 1;
         }
-        row.timelineEnd = static_cast<int32_t>(computedEnd);
+        row.timelineEnd = endFrame;
 
         displayClips.push_back(row);
     }
