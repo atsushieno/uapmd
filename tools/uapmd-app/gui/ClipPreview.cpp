@@ -259,17 +259,31 @@ private:
         }
 
         const ImU32 tempoColor = IM_COL32(112, 202, 255, 255);
+        const float tempoStroke = 2.0f * uiScale_;
         for (size_t i = 0; i < preview_->tempoPoints.size(); ++i) {
             const auto& point = preview_->tempoPoints[i];
             if (point.bpm <= 0.0)
                 continue;
-            ImVec2 current(toX(point.timeSeconds), toY(point.bpm));
-            if (i > 0) {
-                const auto& prev = preview_->tempoPoints[i - 1];
-                ImVec2 prevPos(toX(prev.timeSeconds), toY(prev.bpm));
-                drawList->AddLine(prevPos, current, tempoColor, 2.0f * uiScale_);
+
+            const float startX = toX(point.timeSeconds);
+            const float y = toY(point.bpm);
+            float endX = toX(preview_->clipDurationSeconds);
+            if (i + 1 < preview_->tempoPoints.size()) {
+                endX = toX(preview_->tempoPoints[i + 1].timeSeconds);
             }
-            drawList->AddCircleFilled(current, 3.0f * uiScale_, tempoColor);
+
+            if (endX > startX) {
+                drawList->AddLine(ImVec2(startX, y), ImVec2(endX, y), tempoColor, tempoStroke);
+            }
+            drawList->AddCircleFilled(ImVec2(startX, y), 3.0f * uiScale_, tempoColor);
+
+            if (i + 1 < preview_->tempoPoints.size()) {
+                const auto& nextPoint = preview_->tempoPoints[i + 1];
+                if (nextPoint.bpm > 0.0) {
+                    const float nextY = toY(nextPoint.bpm);
+                    drawList->AddLine(ImVec2(endX, y), ImVec2(endX, nextY), tempoColor, tempoStroke);
+                }
+            }
         }
 
         const ImU32 sigColor = IM_COL32(214, 143, 255, 200);
