@@ -20,6 +20,8 @@ namespace uapmd {
     ) : instance_id_(instanceId),
         ump_events_(std::move(umpEvents)),
         event_timestamps_ticks_(std::move(umpTickTimestamps)),
+        tempo_changes_(std::move(tempoChanges)),
+        time_signature_changes_(std::move(timeSignatureChanges)),
         tick_resolution_(tickResolution == 0 ? 480 : tickResolution),
         clip_tempo_(clipTempo <= 0.0 ? 120.0 : clipTempo),
         target_sample_rate_(targetSampleRate)
