@@ -53,10 +53,10 @@ namespace remidy {
             return StatusCode::OK;
         }
 
-        uint16_t tempo() {
+        uint32_t tempo() {
             return tempo_;
         }
-        StatusCode tempo(uint16_t newValue) {
+        StatusCode tempo(uint32_t newValue) {
             tempo_ = newValue;
             return StatusCode::OK;
         }
@@ -78,9 +78,9 @@ namespace remidy {
 
     class TrackContext {
         MasterContext& master_context;
-        // in case they are overriden...
+        // in case they are overridden...
         std::optional<uint16_t> dctpq_override{};
-        std::optional<uint32_t> tempo_override{};
+        std::optional<uint32_t> tempo_override{};  // microseconds per quarter note
 
     public:
         explicit TrackContext(MasterContext& masterContext) :
@@ -98,10 +98,10 @@ namespace remidy {
             return StatusCode::OK;
         }
 
-        uint16_t tempo() {
+        uint32_t tempo() {
             return tempo_override.has_value() ? tempo_override.value() : master_context.tempo();
         }
-        StatusCode tempo(uint16_t newValue) {
+        StatusCode tempo(uint32_t newValue) {
             tempo_override = newValue;
             return StatusCode::OK;
         }

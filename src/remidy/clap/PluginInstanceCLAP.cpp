@@ -271,9 +271,9 @@ namespace remidy {
             double seconds = static_cast<double>(masterContext.playbackPositionSamples()) / masterContext.sampleRate();
             transport.song_pos_beats = (seconds * tempoBPM) / 60.0;
 
-            // Time signature (default 4/4)
-            transport.tsig_num = 4;
-            transport.tsig_denom = 4;
+            // Time signature from MasterContext
+            transport.tsig_num = static_cast<uint16_t>(masterContext.timeSignatureNumerator());
+            transport.tsig_denom = static_cast<uint16_t>(masterContext.timeSignatureDenominator());
         }
 
         const bool useDouble = src.trackContext()->masterContext().audioDataType() == AudioContentType::Float64;

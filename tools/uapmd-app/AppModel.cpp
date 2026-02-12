@@ -1844,6 +1844,72 @@ void uapmd::AppModel::processAppTracksAudio(AudioProcessContext& process) {
             }
         }
 
+        // Update tempo/time signature from master track (track 0) if it has MIDI clips
+        // This propagates tempo changes from the MIDI clip to global timeline state
+        if (!timeline_tracks_.empty()) {
+            auto* masterTrack = timeline_tracks_[0].get();
+            if (masterTrack) {
+                auto activeClips = masterTrack->clipManager().getActiveClipsAt(timeline_.playheadPosition);
+                for (const auto& clip : activeClips) {
+                    if (clip.clipType != ClipType::Midi || clip.muted)
+                        continue;
+                    auto sourceNode = masterTrack->getSourceNode(clip.sourceNodeInstanceId);
+                    auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
+                    if (!midiNode)
+                        continue;
+
+                    // Find tempo at current playback position within the clip
+                    const auto& tempoChanges = midiNode->tempoChanges();
+                    const auto& tempoChangeSamples = midiNode->tempoChangeSamples();
+                    if (!tempoChanges.empty() && tempoChanges.size() == tempoChangeSamples.size()) {
+                        // Calculate position within the source clip
+                        std::unordered_map<int32_t, const ClipData*> clipMap;
+                        auto allClips = masterTrack->clipManager().getAllClips();
+                        for (auto& c : allClips)
+                            clipMap[c.clipId] = &c;
+                        int64_t sourcePos = clip.getSourcePosition(timeline_.playheadPosition, clipMap);
+                        if (sourcePos >= 0) {
+                            // Find the tempo that applies at this position (last tempo change before sourcePos)
+                            double currentTempo = tempoChanges[0].bpm;
+                            for (size_t i = 0; i < tempoChangeSamples.size(); ++i) {
+                                if (static_cast<int64_t>(tempoChangeSamples[i]) <= sourcePos)
+                                    currentTempo = tempoChanges[i].bpm;
+                                else
+                                    break;
+                            }
+                            timeline_.tempo = currentTempo;
+                        }
+                    }
+
+                    // Find time signature at current playback position
+                    const auto& timeSigChanges = midiNode->timeSignatureChanges();
+                    const auto& timeSigChangeSamples = midiNode->timeSignatureChangeSamples();
+                    if (!timeSigChanges.empty() && timeSigChanges.size() == timeSigChangeSamples.size()) {
+                        std::unordered_map<int32_t, const ClipData*> clipMap;
+                        auto allClips = masterTrack->clipManager().getAllClips();
+                        for (auto& c : allClips)
+                            clipMap[c.clipId] = &c;
+                        int64_t sourcePos = clip.getSourcePosition(timeline_.playheadPosition, clipMap);
+                        if (sourcePos >= 0) {
+                            uint8_t currentNum = timeSigChanges[0].numerator;
+                            uint8_t currentDenom = timeSigChanges[0].denominator;
+                            for (size_t i = 0; i < timeSigChangeSamples.size(); ++i) {
+                                if (static_cast<int64_t>(timeSigChangeSamples[i]) <= sourcePos) {
+                                    currentNum = timeSigChanges[i].numerator;
+                                    currentDenom = timeSigChanges[i].denominator;
+                                } else {
+                                    break;
+                                }
+                            }
+                            timeline_.timeSignatureNumerator = currentNum;
+                            timeline_.timeSignatureDenominator = currentDenom;
+                        }
+                    }
+                    break;  // Only use the first active MIDI clip for tempo
+                }
+            }
+        }
+
         // Update legacy_beats (keep for backwards compatibility with serialization)
         double secondsPerBeat = 60.0 / timeline_.tempo;
         int64_t samplesPerBeat = static_cast<int64_t>(secondsPerBeat * sample_rate_);
@@ -1856,7 +1922,9 @@ void uapmd::AppModel::processAppTracksAudio(AudioProcessContext& process) {
         auto& masterCtx = process.trackContext()->masterContext();
         masterCtx.playbackPositionSamples(timeline_.playheadPosition.samples);
         masterCtx.isPlaying(timeline_.isPlaying);
-        masterCtx.tempo(static_cast<uint16_t>(timeline_.tempo));
+        // Convert BPM to microseconds per quarter note (MIDI standard tempo format)
+        uint32_t tempoMicros = static_cast<uint32_t>(60000000.0 / timeline_.tempo);
+        masterCtx.tempo(tempoMicros);
         masterCtx.timeSignatureNumerator(timeline_.timeSignatureNumerator);
         masterCtx.timeSignatureDenominator(timeline_.timeSignatureDenominator);
     }
