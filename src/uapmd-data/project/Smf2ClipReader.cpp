@@ -3,6 +3,127 @@
 
 namespace uapmd {
 
+namespace {
+
+double tempoFromRawUmpValue(uint32_t rawTempo) {
+    if (rawTempo == 0)
+        return 120.0;
+    return 6000000000.0 / static_cast<double>(rawTempo);
+}
+
+void ensureDefaultTempo(MidiClipReader::ClipInfo& clipInfo) {
+    if (clipInfo.tempo_changes.empty()) {
+        double fallbackBpm = clipInfo.tempo > 0.0 ? clipInfo.tempo : 120.0;
+        clipInfo.tempo_changes.push_back(MidiTempoChange{0, fallbackBpm});
+    }
+
+    if (clipInfo.tempo_changes.front().bpm <= 0.0) {
+        clipInfo.tempo_changes.front().bpm = 120.0;
+    }
+
+    if (clipInfo.tempo <= 0.0)
+        clipInfo.tempo = clipInfo.tempo_changes.front().bpm;
+}
+
+void ensureDefaultTimeSignature(MidiClipReader::ClipInfo& clipInfo) {
+    if (clipInfo.time_signature_changes.empty()) {
+        clipInfo.time_signature_changes.push_back(MidiTimeSignatureChange{0, 4, 4});
+    }
+}
+
+bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
+                                  MidiClipReader::ClipInfo& result,
+                                  std::string& errorMessage) {
+    auto fail = [&](const char* message) {
+        errorMessage = message;
+        return false;
+    };
+
+    if (clip.size() < 4)
+        return fail("SMF2 clip is incomplete");
+
+    auto it = clip.begin();
+    if (!it->isDeltaClockstamp() || it->getDeltaClockstamp() != 0)
+        return fail("SMF2 clip missing initial DeltaClockstamp(0)");
+    ++it;
+
+    if (!it->isDCTPQ())
+        return fail("SMF2 clip missing DCTPQ after header");
+    result.tick_resolution = it->getDCTPQ();
+    ++it;
+
+    if (!it->isDeltaClockstamp() || it->getDeltaClockstamp() != 0)
+        return fail("SMF2 clip missing DeltaClockstamp before StartOfClip");
+    ++it;
+
+    if (!it->isStartOfClip())
+        return fail("SMF2 clip missing StartOfClip marker");
+    ++it;
+
+    result.ump_data.clear();
+    result.ump_tick_timestamps.clear();
+    result.tempo_changes.clear();
+    result.time_signature_changes.clear();
+    result.tempo = 120.0;
+
+    uint64_t currentTick = 0;
+    bool expectDelta = true;
+    bool endOfClipSeen = false;
+
+    for (; it != clip.end(); ++it) {
+        if (expectDelta) {
+            if (!it->isDeltaClockstamp())
+                return fail("SMF2 clip missing delta clockstamp");
+            currentTick += it->getDeltaClockstamp();
+            expectDelta = false;
+            continue;
+        }
+
+        if (it->isEndOfClip()) {
+            auto after = it;
+            ++after;
+            if (after != clip.end())
+                return fail("EndOfClip must be the final event in SMF2 clip");
+            endOfClipSeen = true;
+            break;
+        }
+
+        if (it->isTempo()) {
+            double bpm = tempoFromRawUmpValue(it->getTempo());
+            result.tempo_changes.push_back(MidiTempoChange{currentTick, bpm});
+            if (result.tempo_changes.size() == 1)
+                result.tempo = bpm;
+        } else if (it->isTimeSignature()) {
+            MidiTimeSignatureChange sig{};
+            sig.tickPosition = currentTick;
+            sig.numerator = it->getTimeSignatureNumerator();
+            sig.denominator = it->getTimeSignatureDenominator();
+            result.time_signature_changes.push_back(sig);
+        } else {
+            const int byteCount = it->getSizeInBytes();
+            const int words = byteCount / 4;
+            const auto ints = it->toInts();
+            for (int word = 0; word < words; ++word) {
+                result.ump_data.push_back(ints[word]);
+                result.ump_tick_timestamps.push_back(currentTick);
+            }
+        }
+
+        expectDelta = true;
+    }
+
+    if (!endOfClipSeen)
+        return fail("SMF2 clip missing EndOfClip marker");
+
+    ensureDefaultTempo(result);
+    ensureDefaultTimeSignature(result);
+    result.success = true;
+    result.error.clear();
+    return true;
+}
+
+} // namespace
+
     MidiClipReader::ClipInfo MidiClipReader::readAnyFormat(const std::filesystem::path& file) {
         ClipInfo result;
 
@@ -42,16 +163,10 @@ namespace uapmd {
                 return result;
             }
 
-            // Convert Smf2Clip to ClipInfo format
-            // TODO: Extract tick resolution and tempo from clip header
-            result.success = true;
-            result.tick_resolution = 480; // Default, should be extracted from DCTPQ
-            result.tempo = 120.0; // Default, should be extracted from tempo events
-            for (const auto& ump : *clipData) {
-                auto ints = ump.toInts();
-                int words = ump.getSizeInBytes() / 4;
-                for (int i = 0; i < words; ++i)
-                    result.ump_data.push_back(ints[i]);
+            if (!populateClipInfoFromSmf2Clip(*clipData, result, errorMessage)) {
+                result.success = false;
+                result.error = errorMessage;
+                return result;
             }
             return result;
         }

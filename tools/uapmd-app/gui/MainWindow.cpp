@@ -1720,9 +1720,9 @@ void MainWindow::addClipToTrack(int32_t trackIndex, const std::string& filepath)
         auto selection = pfd::open_file(
             "Select Audio or MIDI File",
             ".",
-            { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf",
+            { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf *.midi2",
               "Audio Files", "*.wav *.flac *.ogg",
-              "MIDI Files", "*.mid *.midi *.smf",
+              "MIDI Files", "*.mid *.midi *.smf *.midi2",
               "WAV Files", "*.wav",
               "FLAC Files", "*.flac",
               "OGG Files", "*.ogg",
@@ -1740,7 +1740,7 @@ void MainWindow::addClipToTrack(int32_t trackIndex, const std::string& filepath)
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-    if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
+    if (ext == ".mid" || ext == ".midi" || ext == ".smf" || ext == ".midi2") {
         // MIDI file - pass directly to AppModel (no reader needed)
         uapmd::TimelinePosition position;
         position.samples = 0;
@@ -1798,9 +1798,9 @@ void MainWindow::addClipToTrackAtPosition(int32_t trackIndex, const std::string&
         auto selection = pfd::open_file(
             "Select Audio or MIDI File",
             ".",
-            { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf",
+            { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf *.midi2",
               "Audio Files", "*.wav *.flac *.ogg",
-              "MIDI Files", "*.mid *.midi *.smf",
+              "MIDI Files", "*.mid *.midi *.smf *.midi2",
               "WAV Files", "*.wav",
               "FLAC Files", "*.flac",
               "OGG Files", "*.ogg",
@@ -1827,7 +1827,7 @@ void MainWindow::addClipToTrackAtPosition(int32_t trackIndex, const std::string&
     position.samples = static_cast<int64_t>(std::llround(clampedPositionSeconds * sampleRate));
     position.legacy_beats = 0.0;
 
-    if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
+    if (ext == ".mid" || ext == ".midi" || ext == ".smf" || ext == ".midi2") {
         // MIDI file - pass directly to AppModel (no reader needed)
         auto result = appModel.addClipToTrack(trackIndex, position, nullptr, selectedFile);
 

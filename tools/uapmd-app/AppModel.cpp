@@ -377,93 +377,17 @@ struct ParsedSmf2Clip {
 };
 
 bool parseSmf2ClipFile(const std::filesystem::path& file, ParsedSmf2Clip& parsed, std::string& error) {
-    auto clip = uapmd::Smf2ClipReaderWriter::read(file, &error);
-    if (!clip)
-        return false;
-    if (clip->size() < 4) {
-        error = "SMF2 clip is incomplete";
+    auto clipInfo = uapmd::MidiClipReader::readAnyFormat(file);
+    if (!clipInfo.success) {
+        error = clipInfo.error.empty() ? "Failed to parse SMF2 clip" : clipInfo.error;
         return false;
     }
 
-    auto it = clip->begin();
-    if (!it->isDeltaClockstamp() || it->getDeltaClockstamp() != 0) {
-        error = "SMF2 clip missing initial DeltaClockstamp(0)";
-        return false;
-    }
-    ++it;
-
-    if (!it->isDCTPQ()) {
-        error = "SMF2 clip missing DCTPQ after header";
-        return false;
-    }
-    parsed.tickResolution = it->getDCTPQ();
-    ++it;
-
-    if (!it->isDeltaClockstamp() || it->getDeltaClockstamp() != 0) {
-        error = "SMF2 clip missing DeltaClockstamp before StartOfClip";
-        return false;
-    }
-    ++it;
-
-    if (!it->isStartOfClip()) {
-        error = "SMF2 clip missing StartOfClip marker";
-        return false;
-    }
-    ++it;
-
-    uint64_t currentTick = 0;
-    bool expectDelta = true;
-    bool endOfClipSeen = false;
-    for (; it != clip->end(); ++it) {
-        if (expectDelta) {
-            if (!it->isDeltaClockstamp()) {
-                error = "SMF2 clip missing delta clockstamp";
-                return false;
-            }
-            currentTick += it->getDeltaClockstamp();
-            expectDelta = false;
-        } else {
-            if (it->isEndOfClip()) {
-                auto after = it;
-                ++after;
-                if (after != clip->end()) {
-                    error = "EndOfClip must be the final event in SMF2 clip";
-                    return false;
-                }
-                endOfClipSeen = true;
-                expectDelta = true;
-                break;
-            } else if (it->isTempo()) {
-                double bpm = 120.0;
-                uint32_t rawTempo = it->getTempo();
-                if (rawTempo > 0) {
-                    bpm = 6000000000.0 / static_cast<double>(rawTempo);
-                }
-                parsed.tempoChanges.push_back(uapmd::MidiTempoChange{currentTick, bpm});
-            } else if (it->isTimeSignature()) {
-                uapmd::MidiTimeSignatureChange sig{};
-                sig.tickPosition = currentTick;
-                sig.numerator = it->getTimeSignatureNumerator();
-                sig.denominator = it->getTimeSignatureDenominator();
-                parsed.timeSignatureChanges.push_back(sig);
-            } else {
-                parsed.events.push_back(static_cast<uapmd_ump_t>(it->int1));
-                parsed.eventTicks.push_back(currentTick);
-            }
-            expectDelta = true;
-        }
-    }
-
-    if (!endOfClipSeen) {
-        error = "SMF2 clip missing EndOfClip marker";
-        return false;
-    }
-
-    if (!expectDelta) {
-        error = "Dangling delta clockstamp without event";
-        return false;
-    }
-
+    parsed.tickResolution = clipInfo.tick_resolution;
+    parsed.events = clipInfo.ump_data;
+    parsed.eventTicks = clipInfo.ump_tick_timestamps;
+    parsed.tempoChanges = clipInfo.tempo_changes;
+    parsed.timeSignatureChanges = clipInfo.time_signature_changes;
     return true;
 }
 
@@ -1157,7 +1081,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
         std::string ext = path.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-        if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
+        if (ext == ".mid" || ext == ".midi" || ext == ".smf" || ext == ".midi2") {
             // MIDI file - route to MIDI clip handler
             return addMidiClipToTrack(trackIndex, position, filepath);
         }
