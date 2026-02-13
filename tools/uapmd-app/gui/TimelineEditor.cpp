@@ -1277,6 +1277,10 @@ void TimelineEditor::importSmfTracks() {
                 continue;
             }
 
+            // Skip tracks with no MIDI events (empty tracks)
+            if (convertResult.umpEvents.empty())
+                continue;
+
             int32_t newTrackIndex = appModel.addTrack();
             if (newTrackIndex < 0) {
                 failures.push_back(std::format("Track {}: Failed to create track", trackIdx + 1));
