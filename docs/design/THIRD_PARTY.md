@@ -50,6 +50,12 @@ midicci's umppi module provides the UMP processing helpers we rely on (ni-midi2 
 
 ## GUI
 
-- We use ImGui for now
+- We prefer declarative UI but there is no good (or freely available) option for now.
+- We use ImGui for now.
 - We used to use Web UI, but gave up for rapid development that does not involve message marshaling between the model and the UI.
   - Now that we also have to deal with the plugin UIs, it will be even more complicated.
+- We consider host-as-a-plugin use of uapmd-app, and in that sense neither Gtk nor Qt are feasible.
+  - Strictly speaking, Web UI is no-go for the same reason as there is no good-for-embedding X11 WebView library...
+- Anything that does not support Android (e.g. visage) is not preferred.
+- Anything that does not support text input methods on all platforms (especially on Linux) is not preferred.
+- Non-widget toolkits (e.g. pugl) are out of questions.
