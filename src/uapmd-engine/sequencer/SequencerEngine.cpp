@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <chrono>
 #include <umppi/umppi.hpp>
 #include <unordered_set>
 
@@ -170,6 +171,9 @@ namespace uapmd {
     }
 
     int32_t SequencerEngineImpl::processAudio(AudioProcessContext& process) {
+        // Record start time for deadline tracking
+        auto startTime = std::chrono::steady_clock::now();
+
         if (tracks_.size() != sequence.tracks.size())
             // FIXME: define status codes
             return 1;
@@ -361,6 +365,26 @@ namespace uapmd {
 
         if (isPlaybackActive)
             playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
+
+        // Check for missed audio processing deadline
+        auto endTime = std::chrono::steady_clock::now();
+        auto elapsedMicros = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+
+        // Calculate available time for this buffer
+        double availableTimeMicros = (static_cast<double>(process.frameCount()) / static_cast<double>(sampleRate)) * 1000000.0;
+
+        // Log warning if we exceeded the deadline
+        //if (elapsedMicros > availableTimeMicros) {
+        if (elapsedMicros > availableTimeMicros) {
+            double cpuLoad = (static_cast<double>(elapsedMicros) / availableTimeMicros) * 100.0;
+            remidy::Logger::global()->logWarning(
+                "Audio deadline missed: processed %d frames in %.2f μs (available: %.2f μs, CPU load: %.1f%%)",
+                process.frameCount(),
+                static_cast<double>(elapsedMicros),
+                availableTimeMicros,
+                cpuLoad
+            );
+        }
 
         // FIXME: define status codes
         return 0;

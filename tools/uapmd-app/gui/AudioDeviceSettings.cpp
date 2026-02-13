@@ -48,7 +48,7 @@ void AudioDeviceSettings::setSelectedOutputDevice(int index) {
 void AudioDeviceSettings::setBufferSize(int size) {
     bufferSize_ = size;
     // Try to find the buffer size in the available list and set the index
-    selectedBufferSizeIndex_ = 3; // Default to 512 (index 3)
+    selectedBufferSizeIndex_ = 4; // Default to 256 (index 4)
     for (size_t i = 0; i < availableBufferSizes_.size(); i++) {
         if (availableBufferSizes_[i] == size) {
             selectedBufferSizeIndex_ = static_cast<int>(i);
