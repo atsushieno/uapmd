@@ -308,11 +308,6 @@ void MainWindow::render(void* window) {
             if (!transport.isPlaying())
                 ImGui::EndDisabled();
             ImGui::SameLine();
-
-            if (ImGui::Button("Rec")) {
-                transport.record();
-            }
-            ImGui::SameLine();
             if (ImGui::Button("Audio Graph")) {
                 showAudioGraphWindow_ = !showAudioGraphWindow_;
             }
