@@ -805,17 +805,6 @@ void SequenceEditor::drawPlayheadIndicator(
 
     const double playheadUnits = secondsToUnits(context, playheadSeconds);
 
-    // Debug: log playhead position calculation (throttled)
-    static double lastLoggedSeconds = -1.0;
-    if (timelineState.isPlaying && playheadSeconds - lastLoggedSeconds >= 1.0) {
-        std::cerr << "[PLAYHEAD] sampleRate=" << sampleRate
-                  << " samples=" << timelineState.playheadPosition.samples
-                  << " seconds=" << playheadSeconds
-                  << " units(beats)=" << playheadUnits
-                  << " tempo=" << timelineState.tempo << " BPM"
-                  << std::endl;
-        lastLoggedSeconds = playheadSeconds;
-    }
     const double clampedFrame = std::clamp(playheadUnits, 0.0, static_cast<double>(maxFrame));
     const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
     if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame)) {

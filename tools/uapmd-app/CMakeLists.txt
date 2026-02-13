@@ -291,6 +291,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/ScriptEditor.cpp
         gui/SpectrumAnalyzer.cpp
         gui/SequenceEditor.cpp
+        gui/TimelineEditor.cpp
         gui/ClipPreview.cpp
         gui/MidiDumpWindow.cpp
         gui/FontLoader.cpp
