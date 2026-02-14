@@ -79,9 +79,8 @@ private:
         std::unique_ptr<ImTimeline::Timeline> timeline;
         ImTimelineStyle timelineStyle{};
         bool timelineDirty = true;
-        std::unordered_map<int32_t, int32_t> sectionToClip;
-        std::unordered_map<int32_t, uint64_t> sectionToNodeId;  // Maps section ID to NodeID
-        int32_t activeDragSection = -1;
+        std::unordered_map<NodeID, int32_t> nodeToClip; // Maps node IDs to clip IDs
+        NodeID activeDragNodeId = InvalidNodeID;
         int32_t contextMenuClipId = -1;
         double requestedAddPosition = -1.0;  // Timeline position for "Add clip here" context menu
         std::unordered_map<int32_t, std::shared_ptr<ClipPreview>> clipPreviews;

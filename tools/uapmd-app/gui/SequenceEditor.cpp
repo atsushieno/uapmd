@@ -101,7 +101,6 @@ float SequenceEditor::getInlineTimelineHeight(int32_t trackIndex, float uiScale)
     ImTimelineStyle style;
     auto it = windows_.find(trackIndex);
     if (it != windows_.end()) {
-        sectionCount = std::max<size_t>(1, it->second.displayClips.size());
         style = it->second.timelineStyle;
     } else {
         style.LegendWidth = 140.0f * uiScale;
@@ -338,16 +337,18 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
 
         // Only start tracking drag if no popup is blocking and timeline is hovered
         if (state.timeline->mDragData.DragState == eDragState::DragNode &&
-            state.activeDragSection == -1 &&
+            state.activeDragNodeId == InvalidNodeID &&
             !popupBlocking &&
             timelineHovered) {
-            state.activeDragSection = state.timeline->mDragData.DragNode.GetSection();
+            state.activeDragNodeId = state.timeline->mDragData.DragNode.GetID();
         }
 
         // Cancel active drag if a popup appeared on top
-        if (state.activeDragSection != -1 && popupBlocking) {
-            state.activeDragSection = -1;
+        if (state.activeDragNodeId != InvalidNodeID && popupBlocking) {
+            state.activeDragNodeId = InvalidNodeID;
         }
+
+        TimelineNode* selectedNode = state.timeline->GetSelectedNode();
 
         int32_t requestedContextClip = -1;
         bool requestedAddClipMenu = false;
@@ -360,32 +361,24 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
 
             bool clipUnderMouse = false;
-            if (scale > 0.0f) {
-                const int hoveredSection = state.timeline->GetSelectedSection();
-                auto clipIt = state.sectionToClip.find(hoveredSection);
-                if (clipIt != state.sectionToClip.end() && clipIt->second != -1) {
-                    const int32_t hoveredClipId = clipIt->second;
-                    auto clipRowIt = std::find_if(
-                        state.displayClips.begin(),
-                        state.displayClips.end(),
-                        [hoveredClipId](const ClipRow& row) { return row.clipId == hoveredClipId; }
-                    );
-                    if (clipRowIt != state.displayClips.end()) {
-                        const double clipStartFrame = static_cast<double>(clipRowIt->timelineStart);
-                        const double clipEndFrame = static_cast<double>(clipRowIt->timelineEnd);
-                        const float clipMinX = clipAreaMinX +
-                            static_cast<float>((clipStartFrame - startFrame) * static_cast<double>(scale));
-                        const float clipMaxX = clipAreaMinX +
-                            static_cast<float>((clipEndFrame - startFrame) * static_cast<double>(scale));
-                        const float orderedClipMinX = std::min(clipMinX, clipMaxX);
-                        const float orderedClipMaxX = std::max(clipMinX, clipMaxX);
-                        const float visibleClipMinX = std::max(orderedClipMinX, clipAreaMinX);
-                        const float visibleClipMaxX = std::min(orderedClipMaxX, clipAreaMaxX);
-                        if (visibleClipMinX <= visibleClipMaxX &&
-                            mousePos.x >= visibleClipMinX && mousePos.x <= visibleClipMaxX) {
-                            clipUnderMouse = true;
-                            requestedContextClip = hoveredClipId;
-                        }
+            if (scale > 0.0f && selectedNode) {
+                auto nodeToClip = state.nodeToClip.find(selectedNode->GetID());
+                if (nodeToClip != state.nodeToClip.end()) {
+                    const int32_t hoveredClipId = nodeToClip->second;
+                    const double clipStartFrame = static_cast<double>(selectedNode->start);
+                    const double clipEndFrame = static_cast<double>(selectedNode->end);
+                    const float clipMinX = clipAreaMinX +
+                        static_cast<float>((clipStartFrame - startFrame) * static_cast<double>(scale));
+                    const float clipMaxX = clipAreaMinX +
+                        static_cast<float>((clipEndFrame - startFrame) * static_cast<double>(scale));
+                    const float orderedClipMinX = std::min(clipMinX, clipMaxX);
+                    const float orderedClipMaxX = std::max(clipMinX, clipMaxX);
+                    const float visibleClipMinX = std::max(orderedClipMinX, clipAreaMinX);
+                    const float visibleClipMaxX = std::min(orderedClipMaxX, clipAreaMaxX);
+                    if (visibleClipMinX <= visibleClipMaxX &&
+                        mousePos.x >= visibleClipMinX && mousePos.x <= visibleClipMaxX) {
+                        clipUnderMouse = true;
+                        requestedContextClip = hoveredClipId;
                     }
                 }
             }
@@ -402,23 +395,19 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         }
 
 
-        if (state.activeDragSection != -1 &&
+        if (state.activeDragNodeId != InvalidNodeID &&
             state.timeline->mDragData.DragState == eDragState::None &&
             !state.timeline->IsDragging()) {
-            int section = state.activeDragSection;
-            state.activeDragSection = -1;
+            const NodeID nodeId = state.activeDragNodeId;
+            state.activeDragNodeId = InvalidNodeID;
 
-            auto it = state.sectionToClip.find(section);
-            if (it != state.sectionToClip.end() && it->second >= 0) {
-                // Use stored NodeID to find the node and get its new position
-                auto nodeIdIt = state.sectionToNodeId.find(section);
-                if (nodeIdIt != state.sectionToNodeId.end()) {
-                    auto* node = state.timeline->FindNodeByNodeID(nodeIdIt->second);
-                    if (node && context.moveClipAbsolute) {
-                        double newStartUnits = static_cast<double>(node->start);
-                        double newStartSeconds = unitsToSeconds(context, newStartUnits);
-                        context.moveClipAbsolute(trackIndex, it->second, newStartSeconds);
-                    }
+            auto clipIt = state.nodeToClip.find(nodeId);
+            if (clipIt != state.nodeToClip.end() && clipIt->second >= 0) {
+                auto* node = state.timeline->FindNodeByNodeID(nodeId);
+                if (node && context.moveClipAbsolute) {
+                    double newStartUnits = static_cast<double>(node->start);
+                    double newStartSeconds = unitsToSeconds(context, newStartUnits);
+                    context.moveClipAbsolute(trackIndex, clipIt->second, newStartSeconds);
                 }
             }
         }
@@ -510,6 +499,8 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
         return;
     }
 
+    state.timeline->mFlags.set(TimelineFlags_SkipTimelineRebuild, true);
+
     ImTimelineStyle style;
     style.LegendWidth = 140.0f * context.uiScale;
     style.HeaderHeight = static_cast<int>(24.0f * context.uiScale);
@@ -521,51 +512,50 @@ void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorStat
 
     const float baseHeight = std::max(80.0f * context.uiScale, 40.0f);
     int32_t maxFrame = 0;
-    int sectionId = 0;
-    state.sectionToClip.clear();
-    state.sectionToNodeId.clear();
-    state.activeDragSection = -1;
+    state.nodeToClip.clear();
+    state.activeDragNodeId = InvalidNodeID;
+
+    const int sectionIndex = 0;
+    std::string sectionName = (trackIndex < 0) ? std::string("Master Track")
+                                              : std::format("Track {}", trackIndex + 1);
+    state.timeline->InitializeTimelineSection(sectionIndex, sectionName);
+    state.timeline->SetTimelineName(sectionIndex, sectionName);
+
+    auto& props = state.timeline->GetSectionDisplayProperties(sectionIndex);
+    props.mHeight = baseHeight;
+    props.mBackgroundColor = IM_COL32(63, 76, 107, 200);
+    props.mBackgroundColorTwo = IM_COL32(43, 54, 86, 200);
+    props.mForegroundColor = IM_COL32(255, 255, 255, 255);
+    props.BorderRadius = 6.0f * context.uiScale;
+    props.BorderThickness = 1.0f;
+    props.AccentThickness = 8;
+    state.timeline->SetTimelineHeight(sectionIndex, props.mHeight);
 
     for (const auto& clip : state.displayClips) {
-        const int currentSection = sectionId++;
-        std::string sectionName = (trackIndex < 0) ? std::string("Master Track")
-                                                  : std::format("Track {}", trackIndex + 1);
-        state.timeline->InitializeTimelineSection(currentSection, sectionName);
-        state.timeline->SetTimelineName(currentSection, sectionName);
-
-        auto& props = state.timeline->GetSectionDisplayProperties(currentSection);
-        props.mHeight = baseHeight;
-        props.mBackgroundColor = IM_COL32(63, 76, 107, 200);
-        props.mBackgroundColorTwo = IM_COL32(43, 54, 86, 200);
-        props.mForegroundColor = IM_COL32(255, 255, 255, 255);
-        props.BorderRadius = 6.0f * context.uiScale;
-        props.BorderThickness = 1.0f;
-        props.AccentThickness = 8;
-        state.timeline->SetTimelineHeight(currentSection, props.mHeight);
 
         TimelineNode node;
-        node.Setup(currentSection, clip.timelineStart, clip.timelineEnd, sectionName);
+        node.Setup(sectionIndex, clip.timelineStart, clip.timelineEnd, sectionName);
         node.displayProperties = props;
+        node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_UseSectionBackground, true);
+        node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_AutofitHeight, true);
+        node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MoveSurroundingNodesToTheRight, false);
+        node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MovedToDifferentTimeline, true);
+
         auto preview = ensureClipPreview(trackIndex, clip, state);
         auto clipLabel = clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
         auto customNode = createClipContentNode(preview, context.uiScale, clipLabel);
         if (customNode) {
             node.InitalizeCustomNode(customNode);
         }
+
         auto* addedNode = state.timeline->AddNewNode(&node);
         if (addedNode) {
-            state.sectionToNodeId[currentSection] = addedNode->GetID();
+            addedNode->mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MovedToDifferentTimeline, false);
+            addedNode->mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MoveSurroundingNodesToTheRight, false);
+            state.nodeToClip[addedNode->GetID()] = clip.clipId;
         }
 
         maxFrame = std::max(maxFrame, clip.timelineEnd);
-        state.sectionToClip[currentSection] = clip.clipId;
-    }
-
-    if (sectionId == 0) {
-        state.timeline->InitializeTimelineSection(0, (trackIndex < 0) ? "Master Track"
-                                                                       : std::format("Track {}", trackIndex + 1));
-        state.timeline->SetTimelineHeight(0, baseHeight);
-        state.sectionToClip[0] = -1;
     }
 
     if (maxFrame <= 0) {

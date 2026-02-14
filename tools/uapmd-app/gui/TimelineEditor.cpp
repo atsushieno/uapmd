@@ -740,7 +740,7 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
 
     // Sort clips by clipId to ensure chronological order
     std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
-        return a.clipId < b.clipId;
+        return a.clipId > b.clipId;
     });
 
     std::vector<SequenceEditor::ClipRow> displayClips;
