@@ -53,25 +53,25 @@
     <!-- Outer ring -->
     <circle cx="0" cy="0" r="150" fill="none" stroke="white" stroke-width="30" opacity="0.3"/>
 
-    <!-- Main U-shape representing audio/MIDI connectivity -->
-    <path d="M -80 -120 L -80 0 Q -80 80 0 80 Q 80 80 80 0 L 80 -120"
+    <!-- Main u-shape representing audio/MIDI connectivity -->
+    <path d="M -55 -70 L -55 35 Q -55 70 0 70 Q 55 70 55 10 L 55 -70"
           fill="none"
           stroke="white"
-          stroke-width="40"
+          stroke-width="35"
           stroke-linecap="round"
           stroke-linejoin="round"
           opacity="0.95"/>
 
     <!-- Top connection points (like MIDI/audio ports) -->
-    <circle cx="-80" cy="-120" r="25" fill="white" opacity="0.95"/>
-    <circle cx="80" cy="-120" r="25" fill="white" opacity="0.95"/>
+    <circle cx="-55" cy="-70" r="22" fill="white" opacity="0.95"/>
+    <circle cx="55" cy="-70" r="22" fill="white" opacity="0.95"/>
 
     <!-- Inner detail circles -->
-    <circle cx="-80" cy="-120" r="12" fill="#667EEA" opacity="0.8"/>
-    <circle cx="80" cy="-120" r="12" fill="#667EEA" opacity="0.8"/>
+    <circle cx="-55" cy="-70" r="11" fill="#667EEA" opacity="0.8"/>
+    <circle cx="55" cy="-70" r="11" fill="#667EEA" opacity="0.8"/>
 
-    <!-- Center accent -->
-    <circle cx="0" cy="40" r="20" fill="white" opacity="0.6"/>
-    <circle cx="0" cy="40" r="10" fill="white" opacity="0.95"/>
+    <!-- Knob indicator outside bottom-right -->
+    <circle cx="75" cy="55" r="16" fill="white" opacity="0.6"/>
+    <circle cx="75" cy="55" r="8" fill="white" opacity="0.95"/>
   </g>
 </svg>
