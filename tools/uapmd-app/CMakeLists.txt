@@ -314,6 +314,11 @@ else()
     )
 endif()
 
+# Add Windows icon resource
+if(WIN32)
+    list(APPEND UAPMD_APP_SOURCE_FILES ${CMAKE_SOURCE_DIR}/resources/uapmd.rc)
+endif()
+
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     target_sources(${app_target} PRIVATE ${UAPMD_APP_SOURCE_FILES})
 endforeach()
@@ -338,7 +343,10 @@ if(APPLE)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/js
             "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources/js"
-        COMMENT "Copying js resources into the macOS bundle"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_SOURCE_DIR}/resources/uapmd.icns
+            "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources/uapmd.icns"
+        COMMENT "Copying resources into the macOS bundle"
     )
 endif()
 
