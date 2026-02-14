@@ -164,26 +164,18 @@ void remidy::PluginFormatAUImpl::createInstance(
         __block auto formatLogger = logger;
 
         if (!isV3) {
-            AudioComponentInstantiationOptions auOptions = kAudioComponentInstantiation_LoadInProcess;
-            __block PluginInstance* createdInstanceRaw = nullptr;
-            __block std::string instantiationError;
-
-            AudioComponentInstantiate(component, auOptions, ^(AudioComponentInstance instance, OSStatus cbStatus) {
-                if (cbStatus == noErr) {
-                    createdInstanceRaw = new PluginInstanceAUv2(self, options, formatLogger, info, component, instance);
-                } else {
-                    instantiationError = std::format("Failed to instantiate AudioUnit {} (status {})",
-                                                     info->displayName(), cbStatus);
-                }
-            });
-
-            if (createdInstanceRaw) {
-                cb(std::unique_ptr<PluginInstance>(createdInstanceRaw), "");
-            } else {
-                if (instantiationError.empty())
-                    instantiationError = "AudioUnit instantiation did not complete";
-                cb(nullptr, instantiationError);
+            // FIXME: As of 2026 we use the legacy synchronous API to ensure Apple's Rosetta bridge spins up when the AU is Intel-only.
+            //  This makes plugins like Absynth 5 successfully loaded on arm64 macOS.
+            //  Also, Kontakt 6/7/8 GUI does not crash if we do not explicitly require
+            //  kAudioComponentInstantiation_LoadInProcess somehow (because that is how their multi-out instances work?)
+            AudioComponentInstance instance{nullptr};
+            auto instantiationStatus = AudioComponentInstanceNew(component, &instance);
+            if (instantiationStatus != noErr || instance == nullptr) {
+                cb(nullptr, std::format("Failed to instantiate AudioUnit {} (status {})",
+                                        info->displayName(), instantiationStatus));
+                return;
             }
+            cb(std::unique_ptr<PluginInstance>(new PluginInstanceAUv2(self, options, formatLogger, info, component, instance)), "");
             return;
         }
 
