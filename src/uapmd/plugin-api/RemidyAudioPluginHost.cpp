@@ -10,8 +10,6 @@ namespace uapmd {
     int32_t instanceIdSerial{0};
 
     class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
-        std::function<void()> on_delete_instance;
-
         bool bypassed_{true};
         std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
@@ -32,8 +30,8 @@ namespace uapmd {
         }
 
     public:
-        explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance, const std::function<void()>&& onDeleteInstance)
-          : on_delete_instance(onDeleteInstance), instancing(instancing), instance(instance) {
+        explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance)
+          : instancing(instancing), instance(instance) {
             ump_input_mapper = std::make_unique<UapmdNodeUmpInputMapper>(this);
             bypassed_ = false;
         }
@@ -48,7 +46,6 @@ namespace uapmd {
                 uiCreated = false;
                 uiFloating = true;
             }
-            on_delete_instance();
         }
 
         void bypassed(bool value) override {
@@ -353,9 +350,7 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
             if (error.empty())
                 instancing->withInstance([this,instancing,cb](remidy::PluginInstance* instance) {
                     auto instanceId = instanceIdSerial++;
-                    auto api = std::make_unique<RemidyAudioPluginInstance>(instancing, instance, [&,instanceId] {
-                        deletePluginInstance(instanceId);
-                    });
+                    auto api = std::make_unique<RemidyAudioPluginInstance>(instancing, instance);
                     instances[instanceId] = std::move(api);
                     cb(instanceId, "");
                 });
