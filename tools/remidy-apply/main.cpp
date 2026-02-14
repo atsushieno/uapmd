@@ -276,7 +276,7 @@ class RemidyApply {
             std::cerr << "  remidy-apply needs existing plugin list cache first. Run `remidy-scan` first." << std::endl;
             return 1;
         }
-        result = scanner.performPluginScanning();
+        result = scanner.performPluginScanning(false);
 
         if (!parsedOpts.contains("p") || !parsedOpts.contains("f") || parsedOpts.contains("h")) {
             std::cerr << options.help();

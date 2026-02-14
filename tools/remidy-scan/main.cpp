@@ -171,9 +171,9 @@ int run(int argc, const char* argv[]) {
         std::cerr << "Trying to load plugin list cache from " << scanner.pluginListCacheFile() << std::endl;
 
     if (rescan)
-        result = scanner.performPluginScanning(emptyPath);
+        result = scanner.performPluginScanning(false, emptyPath);
     else
-        result = scanner.performPluginScanning();
+        result = scanner.performPluginScanning(false);
 
     scanner.savePluginListCache();
     std::cerr << "Scanning completed and saved plugin list cache: " << scanner.pluginListCacheFile() << std::endl;
