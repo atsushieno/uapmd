@@ -14,6 +14,12 @@ NOTE: we are still not at the stage where API stability matters.
 - Not sure how much we consider as C++ is not for maintaining ABI compatibility, but we may start adding C API for
   ABI compatibility and cross-language usability.
 
+## Choice of languages
+
+- We won't switch to Rust at least until there is Tier-1 support for Android and [support in NDK](https://github.com/android/ndk/issues/1742).
+- Nn macOS-specific code there is not likely Swift adoption as its interop is still complicating.
+  - We use Objective-C++ for now, but might switch to C++ using `choc::objc` for better coding experience (namely on CLion).
+
 ## Include path stability
 
 There are frontend header files such as `remidy/remidy.hpp` and `uapmd/uapmd.hpp`, and only those file paths are stable.
