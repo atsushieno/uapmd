@@ -69,7 +69,7 @@ namespace remidy {
         }
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerCLAP::scanAllAvailablePlugins() {
+    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerCLAP::scanAllAvailablePlugins(bool requireFastScanning) {
         std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
         for (auto &path: getDefaultSearchPaths())
             scanAllAvailablePluginsInPath(path, ret);

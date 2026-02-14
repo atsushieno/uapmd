@@ -24,7 +24,7 @@ namespace remidy {
         virtual ScanningStrategyValue scanRequiresInstantiation() = 0;
         // Implements plugin scanning. You might want to use this functionality in a separate process as
         // some bad behaving plugins may crash the process.
-        virtual std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() = 0;
+        virtual std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins(bool requireFastScanning) = 0;
 
     };
 

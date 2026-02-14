@@ -37,11 +37,11 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
 #endif
 }
 
-int remidy_tooling::PluginScanTool::performPluginScanning() {
-    return performPluginScanning(plugin_list_cache_file);
+int remidy_tooling::PluginScanTool::performPluginScanning(bool requireFastScanning) {
+    return performPluginScanning(requireFastScanning, plugin_list_cache_file);
 }
 
-int remidy_tooling::PluginScanTool::performPluginScanning(std::filesystem::path& pluginListCacheFile) {
+int remidy_tooling::PluginScanTool::performPluginScanning(bool requireFastScanning, std::filesystem::path& pluginListCacheFile) {
     if (std::filesystem::exists(pluginListCacheFile)) {
         catalog.load(pluginListCacheFile);
         plugin_list_cache_file = pluginListCacheFile;
@@ -51,7 +51,7 @@ int remidy_tooling::PluginScanTool::performPluginScanning(std::filesystem::path&
     for (auto& format : formats()) {
         auto plugins = filterByFormat(catalog.getPlugins(), format->name());
         if (!format->scanning()->scanningMayBeSlow() || plugins.empty())
-            for (auto& info : format->scanning()->scanAllAvailablePlugins())
+            for (auto& info : format->scanning()->scanAllAvailablePlugins(requireFastScanning))
                 if (!catalog.contains(info->format(), info->pluginId()))
                     catalog.add(std::move(info));
     }

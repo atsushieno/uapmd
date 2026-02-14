@@ -17,7 +17,7 @@ namespace remidy {
         lilv_free(world);
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginScannerLV2::scanAllAvailablePlugins() {
+    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginScannerLV2::scanAllAvailablePlugins(bool /*requireFastScanning*/) {
         std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
 
         auto plugins = lilv_world_get_all_plugins(world);

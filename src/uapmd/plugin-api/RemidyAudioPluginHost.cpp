@@ -301,7 +301,7 @@ std::unique_ptr<uapmd::AudioPluginHostingAPI> uapmd::AudioPluginHostingAPI::crea
 }
 
 uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
-    scanning.performPluginScanning();
+    scanning.performPluginScanning(true);
     if (!exists(scanning.pluginListCacheFile()))
         scanning.savePluginListCache();
 }
@@ -321,10 +321,10 @@ std::filesystem::path empty_path{""};
 void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
     scanning.catalog.clear();
     if (rescan) {
-        scanning.performPluginScanning(empty_path);
+        scanning.performPluginScanning(false, empty_path);
     }
     else
-        scanning.performPluginScanning();
+        scanning.performPluginScanning(false);
 }
 
 void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(int32_t instanceId, std::string error)>&& callback) {

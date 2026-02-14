@@ -258,22 +258,22 @@ namespace remidy {
     PluginScanning::ScanningStrategyValue
     PluginScannerVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
 
-    void PluginScannerVST3::scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos) {
+    void PluginScannerVST3::scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos, bool requireFastScanning) {
         std::filesystem::path dir{path};
         if (is_directory(dir)) {
             for (auto &entry: std::filesystem::directory_iterator(dir)) {
                 if (!remidy_strcasecmp(entry.path().extension().string().c_str(), ".vst3"))
-                    scanAllAvailablePluginsFromLibrary(entry.path(), infos);
+                    scanAllAvailablePluginsFromLibrary(entry.path(), infos, requireFastScanning);
                 else
-                    scanAllAvailablePluginsInPath(entry.path(), infos);
+                    scanAllAvailablePluginsInPath(entry.path(), infos, requireFastScanning);
             }
         }
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerVST3::scanAllAvailablePlugins() {
+    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerVST3::scanAllAvailablePlugins(bool requireFastScanning) {
         std::vector<PluginClassInfo> infos;
         for (auto &path: getDefaultSearchPaths())
-            scanAllAvailablePluginsInPath(path, infos);
+            scanAllAvailablePluginsInPath(path, infos, requireFastScanning);
         std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
         for (auto &info: infos)
             ret.emplace_back(createPluginInformation(info));
@@ -281,7 +281,8 @@ namespace remidy {
     }
 
     void PluginScannerVST3::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir,
-                                                                    std::vector<PluginClassInfo> &results) {
+        std::vector<PluginClassInfo> &results,
+        bool requireFastScanning) {
         owner->getLogger()->logInfo("VST3: scanning %s ", vst3Dir.c_str());
         // fast path scanning using moduleinfo.json
         if (remidy_vst3::hasModuleInfo(vst3Dir)) {
@@ -289,6 +290,8 @@ namespace remidy {
                 results.emplace_back(e);
             return;
         }
+        if (requireFastScanning)
+            return;
 
         owner->forEachPlugin(vst3Dir, [&](void *module, IPluginFactory *factory, PluginClassInfo &pluginInfo) {
             results.emplace_back(pluginInfo);

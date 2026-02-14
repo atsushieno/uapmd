@@ -36,8 +36,8 @@ namespace remidy_tooling {
         void addFormat(PluginFormat* item) { formats_.emplace_back(item); }
 
         std::filesystem::path& pluginListCacheFile() { return plugin_list_cache_file; }
-        int performPluginScanning();
-        int performPluginScanning(std::filesystem::path& pluginListCacheFile);
+        int performPluginScanning(bool requireFastScanning);
+        int performPluginScanning(bool requireFastScanning, std::filesystem::path& pluginListCacheFile);
 
         void savePluginListCache() { savePluginListCache(pluginListCacheFile()); }
         void savePluginListCache(std::filesystem::path& fileToSave) {

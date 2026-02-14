@@ -464,10 +464,10 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan) {
 
             if (forceRescan) {
                 // Force rescan - ignore existing cache
-                result = pluginScanTool_.performPluginScanning(emptyPath);
+                result = pluginScanTool_.performPluginScanning(false, emptyPath);
             } else {
                 // Normal scan - use existing cache if available
-                result = pluginScanTool_.performPluginScanning();
+                result = pluginScanTool_.performPluginScanning(false);
             }
 
             // Save the updated cache

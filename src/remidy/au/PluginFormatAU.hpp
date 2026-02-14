@@ -17,7 +17,7 @@ namespace remidy {
     class PluginScannerAU : public PluginScanning {
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins(bool requireFastScanning) override;
     };
 
     class PluginFormatAUImpl : public PluginFormatAU {

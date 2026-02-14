@@ -32,7 +32,7 @@ namespace remidy {
 
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
 
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins(bool requireFastScanning) override;
     };
 
     class PluginFormatLV2Impl : public PluginFormatLV2 {

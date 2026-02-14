@@ -112,7 +112,7 @@ std::vector<AUPluginEntry> scanAllAvailableAUPluginsV3() {
     return ret;
 }
 
-std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::PluginScannerAU::scanAllAvailablePlugins() {
+std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::PluginScannerAU::scanAllAvailablePlugins(bool /*requireFastScanning*/) {
     std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
     auto plugins = scanAllAvailableAUPluginsV3();
     ret.reserve(plugins.size());

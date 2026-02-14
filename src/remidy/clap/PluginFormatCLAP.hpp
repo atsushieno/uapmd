@@ -39,7 +39,7 @@ namespace remidy {
         std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         ScanningStrategyValue scanRequiresInstantiation() override;
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins(bool requireFastScanning) override;
 
         virtual bool isBlocklistedAsBundle(std::filesystem::path path) {
             return false;

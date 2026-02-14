@@ -15,8 +15,8 @@ namespace remidy {
     class PluginFormatVST3Impl;
 
     class PluginScannerVST3 : public FileBasedPluginScanning {
-        void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos);
-        void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results);
+        void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos, bool requireFastScanning);
+        void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results, bool requireFastScanning);
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
 
         PluginFormatVST3Impl* owner{};
@@ -29,7 +29,7 @@ namespace remidy {
         std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         ScanningStrategyValue scanRequiresInstantiation() override;
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins() override;
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins(bool requireFastScanning) override;
     };
 
     class PluginFormatVST3Impl : public PluginFormatVST3 {
