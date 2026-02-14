@@ -21,6 +21,7 @@
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
 #include "../AppModel.hpp"
+#include "SharedTheme.hpp"
 
 // Forward declarations for different window types
 struct SDL_Window;
@@ -71,6 +72,7 @@ class MainWindow {
         ImGuiStyle baseStyle_{};
         float uiScale_ = 1.0f;
         bool uiScaleDirty_ = false;
+        ThemeMode currentTheme_ = ThemeMode::Dark;
         ImVec2 baseWindowSize_ = ImVec2(800.0f, 800.0f);
         ImVec2 lastWindowSize_ = ImVec2(0.0f, 0.0f);
         bool windowSizeRequestPending_ = false;
@@ -141,5 +143,7 @@ class MainWindow {
         void applyFontScaling();
         void setNextChildWindowSize(const std::string& id, ImVec2 defaultBaseSize);
         void updateChildWindowSizeState(const std::string& id);
+        void toggleTheme();
+        void applyTheme(ThemeMode mode);
     };
 }

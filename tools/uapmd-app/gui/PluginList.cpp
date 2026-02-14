@@ -17,13 +17,8 @@ void PluginList::render() {
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Search:");
     ImGui::SameLine();
-    const ImVec4 searchBg(0.22f, 0.22f, 0.22f, 1.0f);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, searchBg);
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, searchBg);
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, searchBg);
     ImGui::SetNextItemWidth(-FLT_MIN);
     ImGui::InputText("##PluginSearch", searchFilter_, sizeof(searchFilter_));
-    ImGui::PopStyleColor(3);
 
     if (ImGui::BeginTable("PluginTable", 4,
                           ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY |

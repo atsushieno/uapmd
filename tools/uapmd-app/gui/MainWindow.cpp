@@ -308,7 +308,7 @@ void MainWindow::render(void* window) {
             if (!transport.isPlaying())
                 ImGui::EndDisabled();
             ImGui::SameLine();
-            if (ImGui::Button("Audio Graph")) {
+            if (ImGui::Button("Plugin Instances")) {
                 showAudioGraphWindow_ = !showAudioGraphWindow_;
             }
             ImGui::SameLine();
@@ -341,6 +341,13 @@ void MainWindow::render(void* window) {
             if (selectedIndex != currentScaleIndex) {
                 applyUiScale(scaleOptions[selectedIndex]);
                 requestWindowResize();
+            }
+            ImGui::SameLine();
+
+            // Theme toggle
+            const char* themeLabel = (currentTheme_ == ThemeMode::Dark) ? "> Light" : "> Dark";
+            if (ImGui::Button(themeLabel)) {
+                toggleTheme();
             }
 
             if (ImGui::Button("Plugins")) {
@@ -1122,6 +1129,18 @@ void MainWindow::handleLoadProject() {
     timelineEditor_.refreshAllSequenceEditorTracks();
     timelineEditor_.invalidateMasterTrackSnapshot();
     trackList_.markDirty();
+}
+
+void MainWindow::toggleTheme() {
+    currentTheme_ = (currentTheme_ == ThemeMode::Dark) ? ThemeMode::Light : ThemeMode::Dark;
+    applyTheme(currentTheme_);
+}
+
+void MainWindow::applyTheme(ThemeMode mode) {
+    currentTheme_ = mode;
+    SetupImGuiStyle(mode);
+    baseStyle_ = ImGui::GetStyle();
+    applyUiScale(uiScale_);
 }
 
 }  // namespace uapmd::gui
