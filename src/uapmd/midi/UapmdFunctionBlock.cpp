@@ -5,6 +5,7 @@
 #include <iostream>
 #include <memory>
 
+#include <midicci/midicci.hpp>
 #include "uapmd/uapmd.hpp"
 
 using namespace midicci::commonproperties;
@@ -18,7 +19,7 @@ namespace uapmd {
                                      std::string versionString)
       : plugin_node(pluginNode),
         midi_device(std::move(midiDevice)) {
-        uapmd_sessions = std::make_unique<UapmdMidiCISession>(this, pluginNode->instance(), deviceName, manufacturerName, versionString);
+        uapmd_sessions = UapmdMidiCISession::create(this, pluginNode->instance(), deviceName, manufacturerName, versionString);
         if (midi_device)
             midi_device->addInputHandler(umpReceived, this);
     }

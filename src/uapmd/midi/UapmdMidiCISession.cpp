@@ -2,12 +2,51 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <midicci/midicci.hpp>
 #include <umppi/umppi.hpp>
+#include <utility>
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
-    void UapmdMidiCISession::interceptUmpInput(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+    namespace {
+        class UapmdMidiCISessionImpl : public UapmdMidiCISession {
+            UapmdFunctionBlock* device;
+            AudioPluginInstanceAPI* instance;
+
+            std::string device_name{};
+            std::string manufacturer{};
+            std::string version{};
+
+            std::unique_ptr<midicci::musicdevice::MidiCISession> ci_session{};
+
+            std::vector<midicci::musicdevice::MidiInputCallback> ci_input_forwarders{};
+
+            std::function<void()> on_process_midi_message_report{};
+
+        public:
+            UapmdMidiCISessionImpl(
+                UapmdFunctionBlock* device,
+                AudioPluginInstanceAPI* instance,
+                std::string deviceName,
+                std::string manufacturerName,
+                std::string versionString
+            ) : device(device),
+                instance(instance),
+                device_name(std::move(deviceName)),
+                manufacturer(std::move(manufacturerName)),
+                version(std::move(versionString)) {
+            }
+
+            void setupMidiCISession() override;
+            void interceptUmpInput(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) override;
+            void setMidiMessageReportHandler(std::function<void()>&& onProcessMidiMessageReport) override {
+                on_process_midi_message_report = std::move(onProcessMidiMessageReport);
+            }
+        };
+    }
+
+    void UapmdMidiCISessionImpl::interceptUmpInput(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
 
         for (auto& forwarder : ci_input_forwarders)
             forwarder(reinterpret_cast<uint8_t*>(static_cast<void*>(ump)), 0, sizeInBytes, timestamp);
@@ -54,7 +93,7 @@ namespace uapmd {
         }
     }
 
-    void UapmdMidiCISession::setupMidiCISession() {
+    void UapmdMidiCISessionImpl::setupMidiCISession() {
         auto instance_id = device->instanceId();
 
         midicci::MidiCIDeviceConfiguration ci_config{
@@ -216,5 +255,19 @@ namespace uapmd {
                     on_process_midi_message_report();
             }
         });
+    }
+
+    std::unique_ptr<UapmdMidiCISession> UapmdMidiCISession::create(
+        UapmdFunctionBlock* device,
+        AudioPluginInstanceAPI* instance,
+        std::string deviceName,
+        std::string manufacturerName,
+        std::string versionString) {
+        return std::make_unique<UapmdMidiCISessionImpl>(
+            device,
+            instance,
+            std::move(deviceName),
+            std::move(manufacturerName),
+            std::move(versionString));
     }
 }

@@ -27,13 +27,13 @@ target_include_directories(uapmd PRIVATE
         ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
         ${concurrentqueue_SOURCE_DIR}
-        PUBLIC
         ${midicci_SOURCE_DIR}/include
 )
 
 target_link_libraries(uapmd PUBLIC
         remidy::remidy
         remidy::remidy-tooling
+        PRIVATE
         midicci_static
 )
 

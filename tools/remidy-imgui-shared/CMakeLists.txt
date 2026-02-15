@@ -9,7 +9,7 @@ add_library(remidy-imgui-shared STATIC
     MidiKeyboard.cpp
 )
 
-target_include_directories(remidy-imgui-shared PUBLIC
+target_include_directories(remidy-imgui-shared PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${choc_SOURCE_DIR}
 )

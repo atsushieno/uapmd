@@ -3,6 +3,7 @@ add_library(uapmd-data STATIC)
 
 target_include_directories(uapmd-data PRIVATE
         ${choc_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
         ../../include
 )
 

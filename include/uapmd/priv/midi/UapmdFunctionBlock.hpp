@@ -6,7 +6,6 @@
 #include <memory>
 #include <string>
 
-#include "midicci/midicci.hpp"
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
