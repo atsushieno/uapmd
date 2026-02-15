@@ -4,7 +4,7 @@ project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
-set(UAPMD_VERSION "0.2.0" CACHE STRING "Project version for packaging")
+set(UAPMD_VERSION "0.2.1" CACHE STRING "Project version for packaging")
 
 option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (Windows only)" ${WIN32})
 option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integration (Windows only)" OFF)
