@@ -20,6 +20,20 @@ include(cmake/CPM.cmake)
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME uapmd)
 
+function(uapmd_disable_dependency_install package_name)
+    if(NOT DEFINED ${package_name}_BINARY_DIR)
+        message(WARNING "Cannot disable install rules for ${package_name}: binary dir undefined")
+        return()
+    endif()
+    set(_binary_dir "${${package_name}_BINARY_DIR}")
+    if(NOT _binary_dir)
+        return()
+    endif()
+    file(MAKE_DIRECTORY "${_binary_dir}")
+    file(WRITE "${_binary_dir}/cmake_install.cmake"
+            "# Install disabled by uapmd for dependency ${package_name}\nreturn()\n")
+endfunction()
+
 set(LIBREMIDI_HEADER_ONLY ON CACHE BOOL "Build libremidi as header-only" FORCE)
 if(MSVC)
     # MSVC debug flags: /Zi for debug info, /Od for no optimization
@@ -30,35 +44,34 @@ else()
 endif()
 set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
 
-set(_UAPMD_PREV_SKIP_INSTALL_RULES "${CMAKE_SKIP_INSTALL_RULES}")
-set(CMAKE_SKIP_INSTALL_RULES OFF)
 CPMAddPackage(
         NAME            cpptrace
         GIT_REPOSITORY  https://github.com/jeremy-rifkin/cpptrace.git
         GIT_TAG         v1.0.4
         EXCLUDE_FROM_ALL
+        OPTIONS         "CMAKE_SKIP_INSTALL_RULES ON"
 )
 # Force a static build of cpptrace regardless of parent defaults
 set(BUILD_SHARED_LIBS OFF)
-if(DEFINED _UAPMD_PREV_SKIP_INSTALL_RULES AND NOT "${_UAPMD_PREV_SKIP_INSTALL_RULES}" STREQUAL "")
-    set(CMAKE_SKIP_INSTALL_RULES "${_UAPMD_PREV_SKIP_INSTALL_RULES}")
-else()
-    unset(CMAKE_SKIP_INSTALL_RULES)
-endif()
+uapmd_disable_dependency_install(cpptrace)
 
 CPMAddPackage(
         NAME           readerwriterqueue
         GIT_TAG        v1.0.7
         GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue
         EXCLUDE_FROM_ALL
+        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
+uapmd_disable_dependency_install(readerwriterqueue)
 
 CPMAddPackage(
         NAME            choc
         GIT_TAG         68a63dd
         GIT_REPOSITORY  https://github.com/Tracktion/choc
         DOWNLOAD_ONLY YES
+        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
+uapmd_disable_dependency_install(choc)
 
 if (NOT ANDROID)
 CPMAddPackage(cpplocate
@@ -66,7 +79,9 @@ CPMAddPackage(cpplocate
         GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
         GIT_REPOSITORY https://github.com/cginternals/cpplocate
         EXCLUDE_FROM_ALL
+        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
+uapmd_disable_dependency_install(cpplocate)
 set (cpplocate_LIBRARIES cpplocate::cpplocate)
 endif (NOT ANDROID)
 
@@ -87,30 +102,36 @@ CPMAddPackage(midicci
         NAME            midicci
         GIT_TAG         0af2b4f
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
-        OPTIONS         "MIDICCI_SKIP_TOOLS ON"
+        OPTIONS
+            "MIDICCI_SKIP_TOOLS ON"
+            "CMAKE_SKIP_INSTALL_RULES ON"
         EXCLUDE_FROM_ALL
 )
+uapmd_disable_dependency_install(midicci)
 # Restore previous BUILD_SHARED_LIBS setting
 if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
     set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS}")
 else()
     unset(BUILD_SHARED_LIBS)
 endif()
-set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 CPMAddPackage(
         NAME portable-file-dialogs
         GIT_TAG c12ea8c
         GIT_REPOSITORY https://github.com/samhocevar/portable-file-dialogs
         DOWNLOAD_ONLY YES
+        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
+uapmd_disable_dependency_install(portable-file-dialogs)
 
 CPMAddPackage(
         NAME           concurrentqueue
         GIT_TAG        2f09da73d22a47dc8a89cdd4fc4c3bfae07f4284
         GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
         DOWNLOAD_ONLY YES
+        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
+uapmd_disable_dependency_install(concurrentqueue)
 
 
 #add_compile_options("-fsanitize=address")
