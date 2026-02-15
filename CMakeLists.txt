@@ -7,6 +7,11 @@ set(CMAKE_CXX_STANDARD 23)
 set(UAPMD_VERSION "0.2.0" CACHE STRING "Project version for packaging")
 
 option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (Windows only)" ${WIN32})
+set(_UAPMD_CPPTRACE_DWARF_DEFAULT ON)
+if(ANDROID)
+    set(_UAPMD_CPPTRACE_DWARF_DEFAULT OFF)
+endif()
+option(UAPMD_ENABLE_CPPTRACE_DWARF_SUPPORT "Enable cpptrace stack traces resolved via libdwarf" ${_UAPMD_CPPTRACE_DWARF_DEFAULT})
 set(UAPMD_WINMIDI_HEADERS_ARCHIVE "${CMAKE_CURRENT_LIST_DIR}/external/Microsoft.Windows.Devices.Midi2.1.0.14-rc.1.209.nupkg"
         CACHE FILEPATH "Path to the Windows MIDI Services header package used by libremidi")
 
@@ -44,12 +49,18 @@ else()
 endif()
 set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
 
+set(_UAPMD_CPPTRACE_OPTIONS "CMAKE_SKIP_INSTALL_RULES ON")
+if(UAPMD_ENABLE_CPPTRACE_DWARF_SUPPORT)
+    list(APPEND _UAPMD_CPPTRACE_OPTIONS
+            "CPPTRACE_GET_SYMBOLS_WITH_LIBDWARF ON"
+            "CPPTRACE_DEMANGLE_WITH_CXXABI ON")
+endif()
 CPMAddPackage(
         NAME            cpptrace
         GIT_REPOSITORY  https://github.com/jeremy-rifkin/cpptrace.git
         GIT_TAG         v1.0.4
         EXCLUDE_FROM_ALL
-        OPTIONS         "CMAKE_SKIP_INSTALL_RULES ON"
+        OPTIONS         ${_UAPMD_CPPTRACE_OPTIONS}
 )
 # Force a static build of cpptrace regardless of parent defaults
 set(BUILD_SHARED_LIBS OFF)
