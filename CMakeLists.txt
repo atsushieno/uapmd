@@ -4,7 +4,7 @@ project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
-set(UAPMD_VERSION "0.1.4" CACHE STRING "Project version for packaging")
+set(UAPMD_VERSION "0.2.0" CACHE STRING "Project version for packaging")
 
 option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (Windows only)" ${WIN32})
 set(UAPMD_WINMIDI_HEADERS_ARCHIVE "${CMAKE_CURRENT_LIST_DIR}/external/Microsoft.Windows.Devices.Midi2.1.0.14-rc.1.209.nupkg"
