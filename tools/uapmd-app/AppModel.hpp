@@ -8,6 +8,8 @@
 #include <optional>
 #include <set>
 #include <mutex>
+#undef None
+#undef PropertyNotify
 #include <midicci/midicci.hpp>
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <uapmd/uapmd.hpp>

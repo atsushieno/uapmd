@@ -7,7 +7,11 @@ set(CMAKE_CXX_STANDARD 23)
 set(UAPMD_VERSION "0.2.0" CACHE STRING "Project version for packaging")
 
 option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (Windows only)" ${WIN32})
-set(_UAPMD_CPPTRACE_DWARF_DEFAULT ON)
+option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integration (Windows only)" OFF)
+
+if (UNIX) # N/A on Windows
+set(_UAPMD_CPPTRACE_DWARF_DEFAULT ${UAPMD_CPPTRACE_DWARF_DEFAULT})
+endif()
 if(ANDROID)
     set(_UAPMD_CPPTRACE_DWARF_DEFAULT OFF)
 endif()
