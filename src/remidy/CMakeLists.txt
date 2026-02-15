@@ -78,7 +78,7 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
         OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(vst3sdk)
+#uapmd_disable_dependency_install(vst3sdk)
 
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/moduleinfo)
 
