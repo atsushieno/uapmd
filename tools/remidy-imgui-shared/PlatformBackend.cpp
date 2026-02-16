@@ -605,8 +605,13 @@ public:
 #if defined(__ANDROID__)
         // Android: Use OpenGL ES 3.0 with GLSL ES 3.00
         return ImGui_ImplOpenGL3_Init("#version 300 es");
+#elif defined(_WIN32)
+        // Windows: Use nullptr to let ImGui auto-detect GLSL version
+        // This enables ImGui's built-in GL loader and works with older drivers
+        // Passing nullptr uses GLSL 1.30 which is more compatible than 1.50
+        return ImGui_ImplOpenGL3_Init(nullptr);
 #else
-        // Desktop: Use OpenGL 3.2 with GLSL 1.50
+        // Desktop (macOS/Linux): Use OpenGL 3.2 with GLSL 1.50
         return ImGui_ImplOpenGL3_Init("#version 150");
 #endif
     }
