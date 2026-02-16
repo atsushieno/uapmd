@@ -1933,11 +1933,20 @@ void uapmd::AppModel::processAppTracksAudio(AudioProcessContext& process) {
     }
 
     // Get the sequence process context from engine
-    auto& sequenceData = sequencer_.engine()->data();
+    auto* engine = sequencer_.engine();
+    if (!engine) {
+        // Engine not initialized yet or already destroyed during shutdown
+        return;
+    }
+    auto& sequenceData = engine->data();
 
     // Process each timeline track
     for (size_t i = 0; i < timeline_tracks_.size() && i < sequenceData.tracks.size(); ++i) {
         auto* trackContext = sequenceData.tracks[i];
+        if (!trackContext) {
+            // Track not initialized yet
+            continue;
+        }
 
         // Copy device inputs from main process context to track context
         if (process.audioInBusCount() > 0 && trackContext->audioInBusCount() > 0) {
