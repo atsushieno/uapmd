@@ -138,7 +138,8 @@ namespace remidy {
                     owned_frame_capacity(bufferSizeInFrames) {
                 const uint32_t channels = channelCount > 0 ? channelCount : 1;
                 const uint32_t frames = bufferSizeInFrames > 0 ? bufferSizeInFrames : 1;
-                owned_data = calloc(sizeof(double) * frames, channels);
+                // Allocate (frames * channels) elements of sizeof(double) bytes each
+                owned_data = calloc(frames * channels, sizeof(double));
                 data_view = owned_data;
             }
             ~AudioBusBufferList() {
@@ -173,7 +174,8 @@ namespace remidy {
                     return;
                 const uint32_t frames = owned_frame_capacity > 0 ? owned_frame_capacity : 1;
                 const uint32_t channels = newCount > 0 ? newCount : 1;
-                auto* newData = calloc(sizeof(double) * frames, channels);
+                // Allocate (frames * channels) elements of sizeof(double) bytes each
+                auto* newData = calloc(frames * channels, sizeof(double));
                 if (owned_data) {
                     auto toCopy = std::min(owned_channel_count, newCount);
                     if (toCopy > 0)

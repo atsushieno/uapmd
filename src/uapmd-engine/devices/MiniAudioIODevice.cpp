@@ -2,6 +2,8 @@
 #include "uapmd/uapmd.hpp"
 #include "MiniAudioIODevice.hpp"
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <choc/audio/choc_SampleBuffers.h>
 
 // MiniAudioIODeviceManager
@@ -233,6 +235,22 @@ uapmd::MiniAudioIODevice::MiniAudioIODevice(
 }
 
 uapmd::MiniAudioIODevice::~MiniAudioIODevice() {
+    // Ensure the engine is fully stopped before uninitializing
+    // This prevents race conditions where the audio callback might still be running
+    if (isPlaying()) {
+        stop();
+    }
+
+    // Wait for any pending audio callbacks to complete
+    // The ma_engine_uninit will stop the underlying device, but we need to ensure
+    // callbacks are done before we destroy the AudioProcessContext member
+    ma_device* device = ma_engine_get_device(&engine);
+    if (device) {
+        ma_device_stop(device);
+        // Give the device time to fully stop and drain callbacks
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
     ma_engine_uninit(&engine);
 }
 
