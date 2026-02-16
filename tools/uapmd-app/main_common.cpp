@@ -1,6 +1,7 @@
 #include "main_common.hpp"
 #include "AppModel.hpp"
 #include "gui/MainWindow.hpp"
+#include "gui/FontLoader.hpp"
 #include <ImGuiEventLoop.hpp>
 #include <PlatformBackend.hpp>
 #include <algorithm>
@@ -153,6 +154,10 @@ int runMainLoop(int argc, char** argv) {
         ImGuiStyle& style = ImGui::GetStyle();
         style.ScaleAllSizes(dpi_scale);
     }
+
+    // Load application font BEFORE initializing renderer
+    // The renderer initialization builds and uploads the font atlas to GPU
+    uapmd::gui::ensureApplicationFont();
 
     // Create ImGui platform and renderer backends
     auto imguiPlatformBackend = uapmd::gui::ImGuiPlatformBackend::create(window);

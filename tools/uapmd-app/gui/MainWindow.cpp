@@ -19,7 +19,7 @@ namespace uapmd::gui {
 
 MainWindow::MainWindow(GuiDefaults defaults) {
     SetupImGuiStyle();
-    ensureApplicationFont();
+    // Font is already loaded in main_common.cpp before renderer initialization
     baseStyle_ = ImGui::GetStyle();
     captureFontScales();
     applyUiScale(uiScale_);
