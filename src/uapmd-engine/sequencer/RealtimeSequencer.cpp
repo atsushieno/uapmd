@@ -1,11 +1,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <format>
 #include <iostream>
 #include <optional>
+#include <thread>
 #include <utility>
 #include "uapmd-engine/uapmd-engine.hpp"
 
@@ -42,7 +44,13 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
 }
 
 uapmd::RealtimeSequencer::~RealtimeSequencer() {
+    // Stop audio and wait for callbacks to complete before destroying sequencer
     stopAudio();
+
+    // Give the audio system time to fully stop and drain any pending callbacks
+    // This prevents race conditions where the audio callback might still be
+    // accessing the SequencerEngine's AudioProcessContext during destruction
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 std::string uapmd::RealtimeSequencer::getPluginFormat(int32_t instanceId) {
