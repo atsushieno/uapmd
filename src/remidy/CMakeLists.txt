@@ -64,9 +64,7 @@ CPMAddPackage(
         NAME            vst3sdk
         GIT_REPOSITORY  https://github.com/steinbergmedia/vst3sdk
         GIT_TAG         v3.8.0_build_66
-        PATCH_COMMAND   git apply --reverse --check ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-mac-terminate.patch || git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-mac-terminate.patch || ${CMAKE_COMMAND} -E echo "Patch already applied or not applicable"
-            COMMAND git apply --reverse --check ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-remove-stdcxxfs.patch || git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-remove-stdcxxfs.patch || ${CMAKE_COMMAND} -E echo "Patch already applied or not applicable"
-        EXCLUDE_FROM_ALL
+        DOWNLOAD_ONLY   YES
 )
 
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/moduleinfo)
@@ -79,6 +77,8 @@ set(VST3_SUPPORT_SOURCES
         ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/conststringtable.cpp
         ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/vstinitiids.cpp
         ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/commoniids.cpp
+        ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/commonstringconvert.cpp
+        ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/utility/stringconvert.cpp
 
         vst3/VST3Helper.cpp
         vst3/HostClasses.cpp
@@ -148,9 +148,7 @@ target_link_libraries(remidy PRIVATE
         ${cpplocate_LIBRARIES}
         ${lv2kit_LIBRARY}
         midicci_static
-        ${vst3sdk_LIBRARY}
         ${remidy_LIBS_PLAT}
-        ${GTK3_LIBRARIES}
         ${androidndk_LIBRARIES}
 )
 

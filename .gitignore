@@ -2,4 +2,5 @@
 cmake-build-*
 apidocs
 .DS_Store
+.claude
 
