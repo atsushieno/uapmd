@@ -41,16 +41,14 @@ else()
 endif()
 set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
 
+set(_UAPMD_CPPTRACE_OPTIONS "CMAKE_SKIP_INSTALL_RULES ON")
 if(UAPMD_ENABLE_CPPTRACE_DWARF_SUPPORT)
     message("WARNING: enabling DWARF support somehow results in bringing in extraneous installation files")
     list(APPEND _UAPMD_CPPTRACE_OPTIONS
             "CPPTRACE_GET_SYMBOLS_WITH_LIBDWARF ON"
             "CPPTRACE_DEMANGLE_WITH_CXXABI ON")
 endif()
-# cpptrace drags in various extraneous dependencies that we could not exclude from installation.
-# The only viable way to achieve that was to resort to this...
-# https://stackoverflow.com/questions/79019168/how-to-exclude-dependencies-in-cmake-install-rules-run-for-all-components
-install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY TRUE)" ALL_COMPONENTS)
+# CPM with CMAKE_SKIP_INSTALL_RULES prevents cpptrace dependencies from polluting installation
 CPMAddPackage(
         NAME           cpptrace
         GIT_TAG        v1.0.4
@@ -67,6 +65,7 @@ CPMAddPackage(
         GIT_TAG        v1.0.7
         GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue
         EXCLUDE_FROM_ALL
+        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
 
 CPMAddPackage(
@@ -82,6 +81,7 @@ CPMAddPackage(cpplocate
         GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
         GIT_REPOSITORY https://github.com/cginternals/cpplocate
         EXCLUDE_FROM_ALL
+        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
 set (cpplocate_LIBRARIES cpplocate::cpplocate)
 endif (NOT ANDROID)
@@ -103,7 +103,7 @@ CPMAddPackage(midicci
         NAME            midicci
         GIT_TAG         0af2b4f
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
-        OPTIONS         "MIDICCI_SKIP_TOOLS ON"
+        OPTIONS         "MIDICCI_SKIP_TOOLS ON" "CMAKE_SKIP_INSTALL_RULES ON"
         EXCLUDE_FROM_ALL
 )
 # Restore previous BUILD_SHARED_LIBS setting
