@@ -20,8 +20,8 @@ namespace uapmd {
         std::vector<ump_receiver_t> receivers;
         std::vector<void*> receiver_user_data;
 
-        std::unique_ptr<libremidi::midi_in> midiIn;
-        std::unique_ptr<libremidi::midi_out> midiOut;
+        std::unique_ptr<libremidi::midi_in> midiIn{};
+        std::unique_ptr<libremidi::midi_out> midiOut{};
 
         void inputCallback(libremidi::ump&& message);
 
