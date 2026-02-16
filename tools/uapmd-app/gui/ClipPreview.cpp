@@ -67,10 +67,11 @@ private:
             return;
         }
 
-        const char* title = clipName_.empty()
-            ? (preview_ && !preview_->displayName.empty() ? preview_->displayName.c_str() : "Clip")
-            : clipName_.c_str();
-        drawList->AddText(padded.Min, IM_COL32(255, 255, 255, 220), title);
+        // Copy the title string to avoid dangling pointer if preview_ is modified during render
+        std::string titleStr = clipName_.empty()
+            ? (preview_ && !preview_->displayName.empty() ? preview_->displayName : "Clip")
+            : clipName_;
+        drawList->AddText(padded.Min, IM_COL32(255, 255, 255, 220), titleStr.c_str());
 
         std::string typeLabel = (preview_ && preview_->isMidiClip) ? "MIDI" : "Audio";
         ImVec2 labelSize = ImGui::CalcTextSize(typeLabel.c_str());
