@@ -67,8 +67,8 @@ CPMAddPackage(
         NAME            vst3sdk
         GIT_REPOSITORY  https://github.com/steinbergmedia/vst3sdk
         GIT_TAG         v3.8.0_build_66
-        PATCH_COMMAND   git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-mac-terminate.patch || true
-            COMMAND git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-remove-stdcxxfs.patch || true
+        PATCH_COMMAND   git apply --reverse --check ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-mac-terminate.patch || git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-mac-terminate.patch || ${CMAKE_COMMAND} -E echo "Patch already applied or not applicable"
+            COMMAND git apply --reverse --check ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-remove-stdcxxfs.patch || git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-remove-stdcxxfs.patch || ${CMAKE_COMMAND} -E echo "Patch already applied or not applicable"
         EXCLUDE_FROM_ALL
         OPTIONS "CMAKE_SKIP_INSTALL_RULES ON"
 )
