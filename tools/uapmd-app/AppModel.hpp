@@ -107,6 +107,7 @@ namespace uapmd {
         uapmd::TimelineState timeline_;
         std::vector<std::unique_ptr<uapmd::TimelineTrack>> timeline_tracks_;
         int32_t sample_rate_;
+        uint32_t audio_buffer_size_;
         int32_t next_source_node_id_ = 1;
         std::set<int32_t> hidden_tracks_;
 

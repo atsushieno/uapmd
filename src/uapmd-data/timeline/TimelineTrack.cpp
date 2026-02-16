@@ -6,9 +6,12 @@
 
 namespace uapmd {
 
-    TimelineTrack::TimelineTrack(uint32_t channelCount, double sampleRate)
+    TimelineTrack::TimelineTrack(uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames)
         : channel_count_(channelCount), sample_rate_(sampleRate) {
         source_nodes_snapshot_ = std::make_shared<SourceNodeList>();
+
+        // Pre-allocate buffers to avoid real-time allocations
+        reconfigureBuffers(channelCount, bufferSizeInFrames);
     }
 
     int32_t TimelineTrack::addClip(const ClipData& clip, std::unique_ptr<AudioFileSourceNode> sourceNode) {
@@ -138,16 +141,51 @@ namespace uapmd {
         return findSourceNode(instanceId);
     }
 
+    void TimelineTrack::reconfigureBuffers(uint32_t channelCount, uint32_t bufferSizeInFrames) {
+        // This should ONLY be called from non-audio thread (e.g., during initialization or config change)
+        mixed_source_buffers_.clear();
+        mixed_source_buffers_.resize(channelCount);
+
+        for (auto& channelBuffer : mixed_source_buffers_) {
+            channelBuffer.resize(bufferSizeInFrames);
+        }
+
+        // Update buffer pointers
+        mixed_source_buffer_ptrs_.clear();
+        mixed_source_buffer_ptrs_.reserve(channelCount);
+        for (auto& channelBuffer : mixed_source_buffers_) {
+            mixed_source_buffer_ptrs_.push_back(channelBuffer.data());
+        }
+    }
+
     void TimelineTrack::ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount) {
-        // Resize buffers if needed
-        if (mixed_source_buffers_.size() != numChannels ||
-            (numChannels > 0 && mixed_source_buffers_[0].size() < static_cast<size_t>(frameCount))) {
+        // Defensive check: If buffers were pre-allocated correctly, this should be a no-op
+        // Only resize if buffers are insufficient (shouldn't happen in normal operation)
 
-            mixed_source_buffers_.clear();
+        // Check if buffers are already adequate
+        if (mixed_source_buffers_.size() == numChannels &&
+            (numChannels == 0 || (!mixed_source_buffers_.empty() &&
+             mixed_source_buffers_[0].size() >= static_cast<size_t>(frameCount)))) {
+            // Buffers are already adequate - fast path (no allocation)
+            return;
+        }
+
+        // If we get here, buffers weren't pre-allocated correctly
+        // This shouldn't happen but we handle it defensively
+        // WARNING: This allocates memory in the audio thread (not real-time safe!)
+        // Use reconfigureBuffers() from non-audio thread to avoid this!
+        try {
+            // Only grow, never shrink (to avoid repeated allocations)
+            const size_t targetFrames = std::max(
+                mixed_source_buffers_.empty() ? 0 : mixed_source_buffers_[0].size(),
+                static_cast<size_t>(frameCount)
+            );
+
             mixed_source_buffers_.resize(numChannels);
-
             for (auto& channelBuffer : mixed_source_buffers_) {
-                channelBuffer.resize(frameCount);
+                if (channelBuffer.size() < targetFrames) {
+                    channelBuffer.resize(targetFrames);
+                }
             }
 
             // Update buffer pointers
@@ -156,6 +194,11 @@ namespace uapmd {
             for (auto& channelBuffer : mixed_source_buffers_) {
                 mixed_source_buffer_ptrs_.push_back(channelBuffer.data());
             }
+        } catch (const std::bad_alloc&) {
+            // Memory allocation failed - clear buffers and fail gracefully
+            // Audio will be silent for this callback but won't crash
+            mixed_source_buffers_.clear();
+            mixed_source_buffer_ptrs_.clear();
         }
     }
 

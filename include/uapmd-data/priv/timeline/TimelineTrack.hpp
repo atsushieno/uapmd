@@ -21,7 +21,7 @@ namespace uapmd {
     // Independent of SequencerEngine for maximum reusability
     class TimelineTrack {
     public:
-        explicit TimelineTrack(uint32_t channelCount, double sampleRate);
+        explicit TimelineTrack(uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames);
         ~TimelineTrack() = default;
 
         // Clip management
@@ -48,6 +48,10 @@ namespace uapmd {
         // Channel information
         uint32_t channelCount() const { return channel_count_; }
         double sampleRate() const { return sample_rate_; }
+
+        // Configuration changes (call from non-audio thread only!)
+        // Pre-allocates buffers to avoid real-time allocations during processAudio
+        void reconfigureBuffers(uint32_t channelCount, uint32_t bufferSizeInFrames);
 
     private:
         uint32_t channel_count_;

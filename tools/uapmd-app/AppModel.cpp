@@ -417,7 +417,8 @@ void uapmd::AppModel::cleanupInstance() {
 uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
         sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
         transportController_(std::make_unique<TransportController>(this, &sequencer_)),
-        sample_rate_(sampleRate) {
+        sample_rate_(sampleRate),
+        audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)) {
     sequencer_.engine()->functionBlockManager()->setMidiIOManager(this);
 
     // Initialize timeline state
@@ -430,7 +431,11 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     // Initialize timeline tracks (independent of SequencerTracks)
     auto& uapmdTracks = sequencer_.engine()->tracks();
     for (size_t i = 0; i < uapmdTracks.size(); ++i) {
-        timeline_tracks_.push_back(std::make_unique<uapmd::TimelineTrack>(FIXED_CHANNEL_COUNT, static_cast<double>(sampleRate)));
+        timeline_tracks_.push_back(std::make_unique<uapmd::TimelineTrack>(
+            FIXED_CHANNEL_COUNT,
+            static_cast<double>(sampleRate),
+            audio_buffer_size_
+        ));
     }
 
     // Start with a few empty tracks for the DAW layout
@@ -1401,7 +1406,11 @@ int32_t uapmd::AppModel::addTrack() {
 
     while (timeline_tracks_.size() <= static_cast<size_t>(trackIndex)) {
         timeline_tracks_.push_back(
-            std::make_unique<uapmd::TimelineTrack>(FIXED_CHANNEL_COUNT, static_cast<double>(sample_rate_))
+            std::make_unique<uapmd::TimelineTrack>(
+                FIXED_CHANNEL_COUNT,
+                static_cast<double>(sample_rate_),
+                audio_buffer_size_
+            )
         );
     }
     notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, trackIndex});
