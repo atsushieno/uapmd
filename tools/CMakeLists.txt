@@ -4,9 +4,7 @@ CPMAddPackage(
         GIT_TAG        dbf4c6a66816f6c3872b46cc6af119ad227e04e1
         GIT_REPOSITORY https://github.com/jarro2783/cxxopts.git
         EXCLUDE_FROM_ALL
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(cxxopts)
 
 if (NOT ANDROID)
     add_subdirectory(remidy-scan)

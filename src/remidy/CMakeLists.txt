@@ -32,35 +32,26 @@ elseif(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     endif()
 endif()
 
-# FIXME: it would be slightly nicer if we could migrate to CPM (failed to resolve farbot if we actually do so. Also see https://github.com/hogliux/farbot/pull/15 )
-# <rtlog>
 CPMAddPackage(
         NAME rtlog-cpp
         GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
         GIT_TAG 36381f9b2d64f7852590dd0c2564dbfdee90e116
         EXCLUDE_FROM_ALL
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(rtlog-cpp)
-# </rtlog>
 
 CPMAddPackage(
         NAME clap
         GIT_REPOSITORY https://github.com/free-audio/clap
         GIT_TAG 1.2.6
         EXCLUDE_FROM_ALL
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(clap)
 
 CPMAddPackage(
         NAME clap-helpers
         GIT_REPOSITORY https://github.com/free-audio/clap-helpers
         GIT_TAG 58ab81b1dc8219e859529c1306f364bb3aedf7d5
         EXCLUDE_FROM_ALL
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(clap-helpers)
 
 if (NOT ANDROID)
 # it requires gtkmm-3.0 but we don't need it
@@ -76,9 +67,7 @@ CPMAddPackage(
         PATCH_COMMAND   git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-mac-terminate.patch || true
             COMMAND git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-remove-stdcxxfs.patch || true
         EXCLUDE_FROM_ALL
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(vst3sdk)
 
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/moduleinfo)
 

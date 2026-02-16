@@ -7,7 +7,6 @@ if(DEFINED _REMIDY_TOOLING_OLD_BUILD_SHARED_LIBS AND NOT "${_REMIDY_TOOLING_OLD_
 else()
     unset(BUILD_SHARED_LIBS)
 endif()
-set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 target_include_directories(remidy-tooling PRIVATE
         ../../include

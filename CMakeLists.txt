@@ -1,13 +1,15 @@
-cmake_minimum_required(VERSION 3.18)
-
+cmake_minimum_required(VERSION 3.28)
 project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX)
-
 set(CMAKE_CXX_STANDARD 23)
 
-set(UAPMD_VERSION "0.2.1" CACHE STRING "Project version for packaging")
+#### Build options ####
 
 option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (Windows only)" ${WIN32})
 option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integration (Windows only)" OFF)
+
+#### end of section ####
+
+set(UAPMD_VERSION "0.2.1" CACHE STRING "UAPMD version for packaging")
 
 if (UNIX) # N/A on Windows
 set(_UAPMD_CPPTRACE_DWARF_DEFAULT ${UAPMD_CPPTRACE_DWARF_DEFAULT})
@@ -29,20 +31,6 @@ include(cmake/CPM.cmake)
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME uapmd)
 
-function(uapmd_disable_dependency_install package_name)
-    if(NOT DEFINED ${package_name}_BINARY_DIR)
-        message(WARNING "Cannot disable install rules for ${package_name}: binary dir undefined")
-        return()
-    endif()
-    set(_binary_dir "${${package_name}_BINARY_DIR}")
-    if(NOT _binary_dir)
-        return()
-    endif()
-    file(MAKE_DIRECTORY "${_binary_dir}")
-    file(WRITE "${_binary_dir}/cmake_install.cmake"
-            "# Install disabled by uapmd for dependency ${package_name}\n")
-endfunction()
-
 set(LIBREMIDI_HEADER_ONLY ON CACHE BOOL "Build libremidi as header-only" FORCE)
 if(MSVC)
     # MSVC debug flags: /Zi for debug info, /Od for no optimization
@@ -53,40 +41,40 @@ else()
 endif()
 set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
 
-set(_UAPMD_CPPTRACE_OPTIONS "CMAKE_SKIP_INSTALL_RULES ON")
 if(UAPMD_ENABLE_CPPTRACE_DWARF_SUPPORT)
+    message("WARNING: enabling DWARF support somehow results in bringing in extraneous installation files")
     list(APPEND _UAPMD_CPPTRACE_OPTIONS
             "CPPTRACE_GET_SYMBOLS_WITH_LIBDWARF ON"
             "CPPTRACE_DEMANGLE_WITH_CXXABI ON")
 endif()
+# cpptrace drags in various extraneous dependencies that we could not exclude from installation.
+# The only viable way to achieve that was to resort to this...
+# https://stackoverflow.com/questions/79019168/how-to-exclude-dependencies-in-cmake-install-rules-run-for-all-components
+install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY TRUE)" ALL_COMPONENTS)
 CPMAddPackage(
-        NAME            cpptrace
-        GIT_REPOSITORY  https://github.com/jeremy-rifkin/cpptrace.git
-        GIT_TAG         v1.0.4
+        NAME           cpptrace
+        GIT_TAG        v1.0.4
+        GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
         EXCLUDE_FROM_ALL
-        OPTIONS         ${_UAPMD_CPPTRACE_OPTIONS}
+        OPTIONS        ${_UAPMD_CPPTRACE_OPTIONS}
 )
+
 # Force a static build of cpptrace regardless of parent defaults
 set(BUILD_SHARED_LIBS OFF)
-uapmd_disable_dependency_install(cpptrace)
 
 CPMAddPackage(
         NAME           readerwriterqueue
         GIT_TAG        v1.0.7
         GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue
         EXCLUDE_FROM_ALL
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(readerwriterqueue)
 
 CPMAddPackage(
         NAME            choc
         GIT_TAG         68a63dd
         GIT_REPOSITORY  https://github.com/Tracktion/choc
         DOWNLOAD_ONLY YES
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(choc)
 
 if (NOT ANDROID)
 CPMAddPackage(cpplocate
@@ -94,9 +82,7 @@ CPMAddPackage(cpplocate
         GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
         GIT_REPOSITORY https://github.com/cginternals/cpplocate
         EXCLUDE_FROM_ALL
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(cpplocate)
 set (cpplocate_LIBRARIES cpplocate::cpplocate)
 endif (NOT ANDROID)
 
@@ -117,12 +103,9 @@ CPMAddPackage(midicci
         NAME            midicci
         GIT_TAG         0af2b4f
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
-        OPTIONS
-            "MIDICCI_SKIP_TOOLS ON"
-            "CMAKE_SKIP_INSTALL_RULES ON"
+        OPTIONS         "MIDICCI_SKIP_TOOLS ON"
         EXCLUDE_FROM_ALL
 )
-uapmd_disable_dependency_install(midicci)
 # Restore previous BUILD_SHARED_LIBS setting
 if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}" STREQUAL "")
     set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS}")
@@ -135,19 +118,16 @@ CPMAddPackage(
         GIT_TAG c12ea8c
         GIT_REPOSITORY https://github.com/samhocevar/portable-file-dialogs
         DOWNLOAD_ONLY YES
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(portable-file-dialogs)
 
 CPMAddPackage(
         NAME           concurrentqueue
         GIT_TAG        2f09da73d22a47dc8a89cdd4fc4c3bfae07f4284
         GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
         DOWNLOAD_ONLY YES
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(concurrentqueue)
 
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 #add_compile_options("-fsanitize=address")
 #link_libraries("-fsanitize=address")

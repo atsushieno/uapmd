@@ -75,9 +75,7 @@ if(NOT BACKEND_FOUND)
                 "GLFW_BUILD_EXAMPLES OFF"
                 "GLFW_BUILD_TESTS OFF"
                 "GLFW_BUILD_DOCS OFF"
-                "CMAKE_SKIP_INSTALL_RULES ON"
         )
-        uapmd_disable_dependency_install(glfw)
         if(glfw_ADDED)
             set(BACKEND_FOUND TRUE)
             set(BACKEND_TYPE "GLFW")
@@ -111,9 +109,7 @@ if(NOT DEFINED imgui_SOURCE_DIR)
             GIT_TAG v1.92.3
             GIT_REPOSITORY https://github.com/ocornut/imgui
             DOWNLOAD_ONLY YES
-            OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
     )
-    uapmd_disable_dependency_install(imgui)
 endif()
 
 # ImTimeline for SequenceEditor timeline view
@@ -122,9 +118,7 @@ CPMAddPackage(
     GIT_TAG fixes
     GIT_REPOSITORY https://github.com/triplejam/ImTimeline
     DOWNLOAD_ONLY YES
-    OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(ImTimeline)
 
 if(NOT TARGET imgui)
     # Base ImGui sources

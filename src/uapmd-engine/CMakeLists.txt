@@ -24,18 +24,14 @@ CPMAddPackage(
         GIT_TAG        v5.4.3
         GIT_REPOSITORY https://github.com/celtera/libremidi
         EXCLUDE_FROM_ALL
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(libremidi)
 
 CPMAddPackage(
         NAME           miniaudio
         GIT_TAG        0.11.23
         GIT_REPOSITORY https://github.com/mackron/miniaudio
         DOWNLOAD_ONLY YES
-        OPTIONS        "CMAKE_SKIP_INSTALL_RULES ON"
 )
-uapmd_disable_dependency_install(miniaudio)
 
 target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
@@ -67,3 +63,4 @@ target_sources(uapmd-engine PRIVATE
         sequencer/SequencerEngine.cpp
         sequencer/SequencerTrack.cpp
 )
+
