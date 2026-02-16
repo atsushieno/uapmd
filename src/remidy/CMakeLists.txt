@@ -37,23 +37,20 @@ CPMAddPackage(
         GIT_REPOSITORY https://github.com/cjappl/rtlog-cpp
         GIT_TAG 36381f9b2d64f7852590dd0c2564dbfdee90e116
         EXCLUDE_FROM_ALL
-        OPTIONS "CMAKE_SKIP_INSTALL_RULES ON"
 )
 
 CPMAddPackage(
         NAME clap
         GIT_REPOSITORY https://github.com/free-audio/clap
         GIT_TAG 1.2.6
-        EXCLUDE_FROM_ALL
-        OPTIONS "CMAKE_SKIP_INSTALL_RULES ON"
+        DOWNLOAD_ONLY YES
 )
 
 CPMAddPackage(
         NAME clap-helpers
         GIT_REPOSITORY https://github.com/free-audio/clap-helpers
         GIT_TAG 58ab81b1dc8219e859529c1306f364bb3aedf7d5
-        EXCLUDE_FROM_ALL
-        OPTIONS "CMAKE_SKIP_INSTALL_RULES ON"
+        DOWNLOAD_ONLY YES
 )
 
 if (NOT ANDROID)
@@ -70,7 +67,6 @@ CPMAddPackage(
         PATCH_COMMAND   git apply --reverse --check ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-mac-terminate.patch || git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-mac-terminate.patch || ${CMAKE_COMMAND} -E echo "Patch already applied or not applicable"
             COMMAND git apply --reverse --check ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-remove-stdcxxfs.patch || git apply --ignore-whitespace ${CMAKE_CURRENT_LIST_DIR}/../../cmake/vst3sdk-remove-stdcxxfs.patch || ${CMAKE_COMMAND} -E echo "Patch already applied or not applicable"
         EXCLUDE_FROM_ALL
-        OPTIONS "CMAKE_SKIP_INSTALL_RULES ON"
 )
 
 set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/moduleinfo)
