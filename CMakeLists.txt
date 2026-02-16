@@ -40,7 +40,7 @@ function(uapmd_disable_dependency_install package_name)
     endif()
     file(MAKE_DIRECTORY "${_binary_dir}")
     file(WRITE "${_binary_dir}/cmake_install.cmake"
-            "# Install disabled by uapmd for dependency ${package_name}\nreturn()\n")
+            "# Install disabled by uapmd for dependency ${package_name}\n")
 endfunction()
 
 set(LIBREMIDI_HEADER_ONLY ON CACHE BOOL "Build libremidi as header-only" FORCE)
