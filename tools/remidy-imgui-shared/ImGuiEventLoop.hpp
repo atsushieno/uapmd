@@ -25,6 +25,7 @@ private:
 protected:
     void initializeOnUIThreadImpl() override {
         // ImGui loop is already initialized on main thread
+        mainThreadId_ = std::this_thread::get_id();
     }
 
     bool runningOnMainThreadImpl() override {

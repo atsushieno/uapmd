@@ -3,6 +3,11 @@ if (ANDROID)
     set(AAP_SUPPORT_SOURCES
             aap/PluginFormatAAP.cpp
             aap/PluginInstanceAAP.cpp
+            aap/PluginInstanceAAP.Buses.cpp
+            aap/PluginInstanceAAP.Parameters.cpp
+            aap/PluginInstanceAAP.Presets.cpp
+            aap/PluginInstanceAAP.States.cpp
+            aap/PluginInstanceAAP.UI.cpp
     )
     set(AAP_LIBRARIES
         androidaudioplugin::androidaudioplugin
