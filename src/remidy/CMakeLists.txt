@@ -1,5 +1,19 @@
 
-if (NOT ANDROID)
+if (ANDROID)
+    set(AAP_SUPPORT_SOURCES
+            aap/PluginFormatAAP.cpp
+            aap/PluginInstanceAAP.cpp
+    )
+    set(AAP_LIBRARIES
+        androidaudioplugin::androidaudioplugin
+    )
+
+    if ("${AAP_DIR}" STREQUAL "")
+        error("AAP_DIR is not defined")
+    else ()
+        message("AAP_DIR:${AAP_DIR}")
+    endif ()
+else ()
     include("../../external/LV2Kit.cmake")
     set(lv2kit_LIBRARY lv2kit)
     set(lv2kit_SOURCES
@@ -18,6 +32,9 @@ endif ()
 
 if(ANDROID)
     set(androidndk_LIBRARIES android)
+    set(aap_LIBRARIES androidaudioplugin)
+
+    find_package(androidaudioplugin REQUIRED)
 elseif(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     find_package(PkgConfig REQUIRED)
     find_package(X11 REQUIRED)
@@ -117,6 +134,7 @@ if (UNIX AND NOT APPLE AND WAYLAND_CLIENT_FOUND)
 endif ()
 
 target_include_directories(remidy PRIVATE
+        ${AAP_DIR}/include
         ${vst3sdk_SOURCE_DIR}
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ${choc_SOURCE_DIR}
@@ -150,6 +168,7 @@ target_link_libraries(remidy PRIVATE
         midicci_static
         ${remidy_LIBS_PLAT}
         ${androidndk_LIBRARIES}
+        ${AAP_LIBRARIES}
 )
 
 target_compile_options(remidy PRIVATE
@@ -189,6 +208,7 @@ target_sources(remidy PRIVATE
         EventLoop.cpp
 
         ${VST3_SUPPORT_SOURCES}
+        ${AAP_SUPPORT_SOURCES}
 
         Logger.cpp
         AudioBufferList.cpp

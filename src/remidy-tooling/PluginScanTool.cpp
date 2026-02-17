@@ -16,7 +16,8 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
             "plugin-list-cache.json");
 
 #if ANDROID
-    formats_ = {};
+    aap = remidy::PluginFormatAAP::create();
+    formats_ = { aap.get() };
 #else
     vst3 = remidy::PluginFormatVST3::create(vst3SearchPaths);
     lv2 = remidy::PluginFormatLV2::create(lv2SearchPaths);

@@ -18,6 +18,7 @@
 #include "priv/plugin-instance.hpp"
 
 #include "priv/plugin-format.hpp"
+#include "priv/plugin-format-aap.hpp"
 #include "priv/plugin-format-vst3.hpp"
 #include "priv/plugin-format-au.hpp"
 #include "priv/plugin-format-lv2.hpp"
