@@ -4,22 +4,34 @@
 // Saves and restores the current OpenGL context to protect against plugins that
 // might change the active GL context without restoring it (e.g., Kontakt 8)
 
-#if defined(__ANDROID__)
-    #include <GLES3/gl3.h>
-    #include <GLES3/gl3ext.h>
-    #include <SDL3/SDL_opengl.h>
-#elif defined(__APPLE__)
-    #include <OpenGL/OpenGL.h>
-#elif defined(_WIN32)
-    #include <windows.h>
-    #include <wingdi.h>
-#elif defined(__linux__) && !defined(__ANDROID__)
-    #include <GL/glx.h>
+// When using DirectX renderer, OpenGL context management is not needed
+#ifndef USE_DIRECTX11_RENDERER
+    #if defined(__ANDROID__)
+        #include <GLES3/gl3.h>
+        #include <GLES3/gl3ext.h>
+        #include <SDL3/SDL_opengl.h>
+    #elif defined(__APPLE__)
+        #include <OpenGL/OpenGL.h>
+    #elif defined(_WIN32)
+        #include <windows.h>
+        #include <wingdi.h>
+    #elif defined(__linux__) && !defined(__ANDROID__)
+        #include <GL/glx.h>
+    #endif
 #endif
 
 namespace remidy::gui {
 
-    #if defined(__APPLE__)
+    #if defined(USE_DIRECTX11_RENDERER)
+        // No-op implementation for DirectX 11 renderer (no OpenGL context to guard)
+        class GLContextGuard {
+        public:
+            GLContextGuard() {}
+            ~GLContextGuard() {}
+            GLContextGuard(const GLContextGuard&) = delete;
+            GLContextGuard& operator=(const GLContextGuard&) = delete;
+        };
+    #elif defined(__APPLE__)
         class GLContextGuard {
         private:
             CGLContextObj saved_context;

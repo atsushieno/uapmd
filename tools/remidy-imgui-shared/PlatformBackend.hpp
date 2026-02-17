@@ -6,6 +6,10 @@
 // Forward declarations for different windowing systems
 struct GLFWwindow;
 struct SDL_Window;
+#ifdef _WIN32
+struct HWND__;
+typedef HWND__* HWND;
+#endif
 
 namespace uapmd {
 namespace gui {
@@ -14,19 +18,25 @@ namespace gui {
  * Window handle that can contain different types of windows
  */
 struct WindowHandle {
-    enum Type { GLFW, SDL2, SDL3 } type;
+    enum Type { GLFW, SDL2, SDL3, Win32 } type;
     union {
         GLFWwindow* glfwWindow;
         SDL_Window* sdlWindow;
+#ifdef _WIN32
+        HWND hwnd;
+#endif
     };
 
     WindowHandle(GLFWwindow* window) : type(GLFW), glfwWindow(window) {}
     WindowHandle(SDL_Window* window, Type t) : type(t), sdlWindow(window) {}
+#ifdef _WIN32
+    WindowHandle(HWND window) : type(Win32), hwnd(window) {}
+#endif
 };
 
 /**
  * Abstract interface for windowing system backends
- * Supports SDL3, SDL2, and GLFW with automatic selection
+ * Supports Win32 (Windows), SDL3, SDL2, and GLFW with automatic selection
  */
 class WindowingBackend {
 public:

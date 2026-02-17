@@ -19,6 +19,8 @@
     #include <GLFW/glfw3.h>
 #endif
 
+// OpenGL headers only needed when not using DirectX 11
+#ifndef USE_DIRECTX11_RENDERER
 // Ensure GL prototypes for framebuffer functions on Linux
 #if defined(__ANDROID__)
     #include <GLES3/gl3.h>
@@ -56,6 +58,7 @@
 #if defined(__linux__) || defined(_WIN32)
 #define REMIDY_SKIP_GL_FRAMEBUFFER_BIND 1
 #endif
+#endif // !USE_DIRECTX11_RENDERER
 
 namespace uapmd {
 
@@ -226,6 +229,7 @@ int runMainLoop(int argc, char** argv) {
         // Process queued tasks from remidy
         eventLoopPtr->processQueuedTasks();
 
+#ifndef USE_DIRECTX11_RENDERER
         // CRITICAL: Make our GL context current BEFORE any ImGui/GL operations
         // Plugins may have grabbed the context during event processing or callbacks
         windowingBackend->makeContextCurrent(window);
@@ -251,6 +255,7 @@ int runMainLoop(int argc, char** argv) {
         glReadBuffer(GL_BACK);
 #endif
 #endif
+#endif // !USE_DIRECTX11_RENDERER
 
         // Start the Dear ImGui frame
         imguiRenderer->newFrame();
@@ -258,7 +263,9 @@ int runMainLoop(int argc, char** argv) {
         ImGui::NewFrame();
 
         // Render main window (pass the raw window pointer for DPI calculations)
-        #ifdef USE_SDL2_BACKEND
+        #ifdef USE_WIN32_BACKEND
+            mainWindow.render(window->hwnd);
+        #elif defined(USE_SDL2_BACKEND)
             mainWindow.render(window->sdlWindow);
         #elif defined(USE_SDL3_BACKEND)
             mainWindow.render(window->sdlWindow);
@@ -279,6 +286,7 @@ int runMainLoop(int argc, char** argv) {
         // Rendering
         ImGui::Render();
 
+#ifndef USE_DIRECTX11_RENDERER
         // Reassert before we execute GL commands in case a plugin reclaimed it mid-frame
         windowingBackend->makeContextCurrent(window);
         #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
@@ -310,9 +318,13 @@ int runMainLoop(int argc, char** argv) {
         glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w,
                      clear_color.z * clear_color.w, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT);
+#endif // !USE_DIRECTX11_RENDERER
+
         imguiRenderer->renderDrawData();
 
+#ifndef USE_DIRECTX11_RENDERER
         windowingBackend->swapBuffers(window);
+#endif
     }
 
     // Final guard: ensure audio is stopped before teardown

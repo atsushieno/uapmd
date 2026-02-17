@@ -12,35 +12,51 @@ if(APPLE)
     list(APPEND UAPMD_APP_TARGETS uapmd-app-bundle)
 endif()
 
-# Provide SDL3 via vcpkg on Windows to avoid building GLFW manually
-include(${CMAKE_SOURCE_DIR}/cmake/UapmdVcpkgSDL3.cmake)
-if(WIN32)
-    uapmd_prepare_vcpkg_sdl3()
-endif()
-
-# Backend selection with priority: SDL3 > SDL2 > GLFW
+# Backend selection with priority: Win32+DX11 (Windows) > SDL3 > SDL2 > GLFW
 set(BACKEND_FOUND FALSE)
 set(BACKEND_TYPE "")
 set(BACKEND_LIBRARIES "")
 set(BACKEND_INCLUDE_DIRS "")
 
-# Try SDL3 first
-find_package(SDL3 QUIET)
-if(SDL3_FOUND)
-    set(BACKEND_FOUND TRUE)
-    set(BACKEND_TYPE "SDL3")
-    if(TARGET SDL3::SDL3-static)
-        set(BACKEND_LIBRARIES SDL3::SDL3-static)
-    elseif(TARGET SDL3::SDL3-shared)
-        set(BACKEND_LIBRARIES SDL3::SDL3-shared)
-    else()
-        set(BACKEND_LIBRARIES SDL3::SDL3)
+# Windows-specific: Offer Win32 + DirectX 11 backend
+if(WIN32)
+    option(USE_WIN32_DIRECTX11_BACKEND "Use native Win32 + DirectX 11 backend (Windows only)" ON)
+
+    if(USE_WIN32_DIRECTX11_BACKEND)
+        set(BACKEND_FOUND TRUE)
+        set(BACKEND_TYPE "Win32")
+        set(BACKEND_LIBRARIES "")  # No external windowing library needed
+        set(DX11_LIBRARIES d3d11 dxgi d3dcompiler)
+        add_compile_definitions(USE_WIN32_BACKEND USE_DIRECTX11_RENDERER)
+        message(STATUS "Using Win32 + DirectX 11 backend")
     endif()
-    if(TARGET SDL3::SDL3main)
-        list(APPEND BACKEND_LIBRARIES SDL3::SDL3main)
+endif()
+
+# Provide SDL3 via vcpkg on Windows only if not using Win32 backend
+include(${CMAKE_SOURCE_DIR}/cmake/UapmdVcpkgSDL3.cmake)
+if(WIN32 AND NOT BACKEND_FOUND)
+    uapmd_prepare_vcpkg_sdl3()
+endif()
+
+# Try SDL3 if Win32 not selected
+if(NOT BACKEND_FOUND)
+    find_package(SDL3 QUIET)
+    if(SDL3_FOUND)
+        set(BACKEND_FOUND TRUE)
+        set(BACKEND_TYPE "SDL3")
+        if(TARGET SDL3::SDL3-static)
+            set(BACKEND_LIBRARIES SDL3::SDL3-static)
+        elseif(TARGET SDL3::SDL3-shared)
+            set(BACKEND_LIBRARIES SDL3::SDL3-shared)
+        else()
+            set(BACKEND_LIBRARIES SDL3::SDL3)
+        endif()
+        if(TARGET SDL3::SDL3main)
+            list(APPEND BACKEND_LIBRARIES SDL3::SDL3main)
+        endif()
+        add_compile_definitions(USE_SDL3_BACKEND)
+        message(STATUS "Using SDL3 backend")
     endif()
-    add_compile_definitions(USE_SDL3_BACKEND)
-    message(STATUS "Using SDL3 backend")
 endif()
 
 # Try SDL2 if SDL3 not found
@@ -128,10 +144,20 @@ if(NOT TARGET imgui)
             ${imgui_SOURCE_DIR}/imgui_draw.cpp
             ${imgui_SOURCE_DIR}/imgui_tables.cpp
             ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-            ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
     )
 
-    # Add backend-specific ImGui implementation
+    # Add renderer-specific backend
+    if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
+        list(APPEND IMGUI_SOURCES
+            ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp
+            ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+        )
+    else()
+        # OpenGL renderer for non-Win32 backends
+        list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
+    endif()
+
+    # Add windowing backend-specific ImGui implementation (for SDL/GLFW)
     if(BACKEND_TYPE STREQUAL "SDL3")
         list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
     elseif(BACKEND_TYPE STREQUAL "SDL2")
@@ -150,8 +176,12 @@ if(NOT TARGET imgui)
     # Link backend library to ImGui so backends can find headers
     target_link_libraries(imgui PUBLIC ${BACKEND_LIBRARIES})
 
-    # Platform-specific OpenGL and windowing
-    if(ANDROID)
+    # Platform-specific rendering libraries
+    if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
+        # Link DirectX 11 libraries
+        target_link_libraries(imgui PUBLIC ${DX11_LIBRARIES})
+        target_compile_definitions(imgui PUBLIC USE_DIRECTX11_RENDERER USE_WIN32_BACKEND)
+    elseif(ANDROID)
         target_link_libraries(imgui PUBLIC GLESv3 EGL)
         target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_ES3)
     elseif(APPLE)
@@ -161,6 +191,7 @@ if(NOT TARGET imgui)
         find_package(OpenGL REQUIRED)
         target_link_libraries(imgui PUBLIC OpenGL::GL)
     elseif(WIN32)
+        # Windows OpenGL fallback
         target_link_libraries(imgui PUBLIC opengl32)
     endif()
 endif()
@@ -204,7 +235,12 @@ endif()
 target_link_libraries(remidy-imgui-shared PUBLIC imgui ${BACKEND_LIBRARIES})
 
 # Add backend compile definition to both targets
-if(BACKEND_TYPE STREQUAL "SDL3")
+if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
+    target_compile_definitions(remidy-imgui-shared PUBLIC USE_WIN32_BACKEND USE_DIRECTX11_RENDERER)
+    foreach(app_target IN LISTS UAPMD_APP_TARGETS)
+        target_compile_definitions(${app_target} PRIVATE USE_WIN32_BACKEND USE_DIRECTX11_RENDERER)
+    endforeach()
+elseif(BACKEND_TYPE STREQUAL "SDL3")
     target_compile_definitions(remidy-imgui-shared PUBLIC USE_SDL3_BACKEND)
     foreach(app_target IN LISTS UAPMD_APP_TARGETS)
         target_compile_definitions(${app_target} PRIVATE USE_SDL3_BACKEND)
@@ -265,6 +301,11 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             zlib-ng
             ${uapmd_LIBS_PLAT}
     )
+
+    # Add DirectX 11 libraries on Windows when using DX11 renderer
+    if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
+        target_link_libraries(${app_target} PRIVATE ${DX11_LIBRARIES})
+    endif()
 
     # Create a .dSYM file on macOS
     if(APPLE)
