@@ -57,6 +57,7 @@ namespace remidy {
 
         public:
             ParameterSupport(PluginInstanceAAP* owner);
+            ~ParameterSupport() override;
 
             std::vector<PluginParameter *> &parameters() override {
                 return parameter_list;
@@ -181,22 +182,22 @@ namespace remidy {
         public:
             StateSupport(remidy::PluginInstanceAAP* owner) : owner(owner) {}
 
-            std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override {
-                // FIXME: implement
-                return {};
-            }
-            void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override {
-                // FIXME: implement
-            }
+            std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override;
+            void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
         };
 
         PluginFormatAAPImpl* format;
-        PluginBusesAAP buses{this};
-        ParameterSupport params{this};
-        PresetsSupport presets_{this};
-        StateSupport state_{this};
-        UISupport ui_{this};
+        std::unique_ptr<PluginBusesAAP> buses{};
+        std::unique_ptr<ParameterSupport> params{};
+        std::unique_ptr<PresetsSupport> presets_{};
+        std::unique_ptr<StateSupport> state_{};
+        std::unique_ptr<UISupport> ui_{};
         aap::PluginInstance* instance;
+
+        std::vector<int32_t> remidy_to_aap_port_index_map_audio_in{};
+        std::vector<int32_t> remidy_to_aap_port_index_map_audio_out{};
+        int32_t aap_port_midi2_in{-1};
+        int32_t aap_port_midi2_out{-1};
 
     public:
         PluginInstanceAAP(PluginFormatAAPImpl* format, PluginCatalogEntry* entry, aap::PluginInstance* aapInstance);
@@ -213,16 +214,25 @@ namespace remidy {
 
         StatusCode process(AudioProcessContext &process) override;
 
-        PluginAudioBuses *audioBuses() override { return &buses; }
+        PluginAudioBuses *audioBuses() override {
+            return (buses ? buses : buses = std::make_unique<PluginBusesAAP>(this)).get();
+        }
 
-        PluginParameterSupport *parameters() override { return &params; }
+        PluginParameterSupport *parameters() override {
+            return (params ? params : params = std::make_unique<ParameterSupport>(this)).get();
+        }
 
-        PluginStateSupport *states() override { return &state_; }
+        PluginStateSupport *states() override {
+            return (state_ ? state_ : state_ = std::make_unique<StateSupport>(this)).get();
+        }
 
-        PluginPresetsSupport *presets() override { return &presets_; }
+        PluginPresetsSupport *presets() override {
+            return (presets_ ? presets_ : presets_ = std::make_unique<PresetsSupport>(this)).get();
+        }
 
-        PluginUISupport *ui() override { return &ui_; }
-
+        PluginUISupport *ui() override {
+            return (ui_ ? ui_ : ui_ = std::make_unique<UISupport>(this)).get();
+        }
     };
 
     class PluginFormatAAPImpl : public PluginFormatAAP {
