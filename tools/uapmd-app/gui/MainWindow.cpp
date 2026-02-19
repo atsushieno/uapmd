@@ -13,6 +13,8 @@
 #include "FontLoader.hpp"
 
 #include "MainWindow.hpp"
+
+#include "FontIcons.hpp"
 #include "../AppModel.hpp"
 
 namespace uapmd::gui {
@@ -287,7 +289,7 @@ void MainWindow::render(void* window) {
 
             // Transport controls
             auto& transport = uapmd::AppModel::instance().transport();
-            const char* playStopLabel = transport.isPlaying() ? "Stop" : "Play";
+            const char* playStopLabel = transport.isPlaying() ? icons::Stop : icons::Play;
             if (ImGui::Button(playStopLabel)) {
                 if (transport.isPlaying())
                     transport.stop();
@@ -298,7 +300,7 @@ void MainWindow::render(void* window) {
 
             if (!transport.isPlaying())
                 ImGui::BeginDisabled();
-            const char* pauseResumeLabel = transport.isPaused() ? "Resume" : "Pause";
+            const char* pauseResumeLabel = transport.isPaused() ? icons::Play : icons::Pause;
             if (ImGui::Button(pauseResumeLabel)) {
                 if (transport.isPaused())
                     transport.resume();
@@ -345,7 +347,7 @@ void MainWindow::render(void* window) {
             ImGui::SameLine();
 
             // Theme toggle
-            const char* themeLabel = (currentTheme_ == ThemeMode::Dark) ? "> Light" : "> Dark";
+            const char* themeLabel = icons::LightDarkSwitch;
             if (ImGui::Button(themeLabel)) {
                 toggleTheme();
             }

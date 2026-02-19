@@ -10,6 +10,7 @@
 #include <remidy-gui/remidy-gui.hpp>
 
 #include "../AppModel.hpp"
+#include "FontIcons.hpp"
 
 namespace {
 using ParameterContext = uapmd::gui::ParameterList::ParameterContext;
@@ -340,7 +341,9 @@ void InstanceDetails::render(const RenderContext& context) {
                         bool pluginBypassed = instance->bypassed();
                         if (pluginBypassed)
                             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                        if (ImGui::Button(pluginBypassed ? "Bypassed" : "Bypass"))
+                        const char* toggleIcon = pluginBypassed ? uapmd::gui::icons::ToggleOff : uapmd::gui::icons::ToggleOn;
+                        std::string toggleLabel = std::format("{}##InstanceBypass{}", toggleIcon, instanceId);
+                        if (ImGui::Button(toggleLabel.c_str()))
                             instance->bypassed(!pluginBypassed);
                         if (pluginBypassed)
                             ImGui::PopStyleColor();

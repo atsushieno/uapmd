@@ -278,7 +278,7 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
         ImGui::Spacing();
     }
 
-    if (ImGui::Button("Add New Track")) {
+    if (ImGui::Button(icons::Plus)) {
         int32_t newIndex = appModel.addTrack();
         if (newIndex >= 0)
             refreshSequenceEditorForTrack(newIndex);
@@ -507,23 +507,23 @@ void TimelineEditor::renderTrackRow(int32_t trackIndex, const SequenceEditor::Re
 
         if (ImGui::Button("Clips..."))
             ImGui::OpenPopup(clipPopupId.c_str());
-        ImGui::SameLine();
-        const char* deleteIcon = uapmd::gui::icons::kDeleteTrack;
-        const bool hasDeleteIcon = deleteIcon && deleteIcon[0] != '\0';
-        const std::string deleteButtonLabel = hasDeleteIcon
-            ? std::format("{} DEL", deleteIcon)
-            : "DEL";
-        if (ImGui::Button(deleteButtonLabel.c_str()))
-            deleteTrack(trackIndex);
         if (track) {
             bool bypassed = track->bypassed();
             if (bypassed)
                 ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-            if (ImGui::Button(bypassed ? "bypassed" : "bypass"))
+            const char* toggleIcon = bypassed ? uapmd::gui::icons::ToggleOff : uapmd::gui::icons::ToggleOn;
+            std::string toggleLabel = std::format("{}##TrackBypass{}", toggleIcon, trackIndex);
+            if (ImGui::Button(toggleLabel.c_str()))
                 track->bypassed(!bypassed);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(bypassed ? "Track bypassed (click to enable)" : "Bypass track");
             if (bypassed)
                 ImGui::PopStyleColor();
+            ImGui::SameLine();
         }
+        if (ImGui::Button(uapmd::gui::icons::DeleteTrack))
+            deleteTrack(trackIndex);
+
         if (ImGui::Button(std::format("{}...", pluginLabel).c_str()))
             ImGui::OpenPopup(popupId.c_str());
         if (ImGui::BeginPopup(clipPopupId.c_str())) {
