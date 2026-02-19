@@ -92,37 +92,35 @@ namespace remidy {
             PresetsSupport(remidy::PluginInstanceAAP* owner) : owner(owner) {}
 
             bool isIndexStable() override {
-                // FIXME: implement
-                return false;
+                return true;
             }
 
             bool isIndexId() override {
-                // FIXME: implement
-                return false;
+                return true;
             }
 
             int32_t getPresetIndexForId(std::string &id) override {
-                // FIXME: implement
-                return 0;
+                return std::stol(id);
             }
 
             int32_t getPresetCount() override {
-                // FIXME: implement
-                return 0;
+                return owner->aapInstance()->getStandardExtensions().getPresetCount();
             }
 
             PresetInfo getPresetInfo(int32_t index) override {
-                // FIXME: implement
-                return PresetInfo{"", "", 0, 0};
+                aap_preset_t preset;
+                owner->aapInstance()->getStandardExtensions().getPreset(index, preset);
+                return PresetInfo{std::to_string(preset.id), preset.name, 0, index};
             }
 
             void loadPreset(int32_t index) override {
-                // FIXME: implement
+                owner->aapInstance()->getStandardExtensions().setCurrentPresetIndex(index);
             }
         };
 
         class UISupport : public PluginUISupport {
             remidy::PluginInstanceAAP* owner;
+            aap_gui_instance_id  gui_instance_id{-1};
 
         public:
             UISupport(remidy::PluginInstanceAAP* owner) : owner(owner) {}
@@ -133,45 +131,67 @@ namespace remidy {
             }
 
             bool create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
-                // FIXME: implement
-                return false;
+                // FIXME: support parameters.
+
+                if (gui_instance_id >= 0)
+                    return false;
+                auto aap = owner->aapInstance();
+                gui_instance_id = aap->getStandardExtensions().createGui(aap->getPluginInformation()->getPluginID(), aap->getInstanceId(), parentHandle);
+                return gui_instance_id >= 0;
             }
+
             void destroy() override {
-                // FIXME: implement
+                if (gui_instance_id < 0)
+                    return;
+
+                auto aap = owner->aapInstance();
+                aap->getStandardExtensions().destroyGui(gui_instance_id);
+                gui_instance_id = -1;
             }
 
             bool show() override {
-                // FIXME: implement
-                return false;
+                if (gui_instance_id < 0)
+                    return false;
+                auto aap = owner->aapInstance();
+                aap->getStandardExtensions().showGui(gui_instance_id);
+                return true;
             }
+
             void hide() override {
-                // FIXME: implement
+                if (gui_instance_id < 0)
+                    return;
+                auto aap = owner->aapInstance();
+                aap->getStandardExtensions().hideGui(gui_instance_id);
             }
 
             void setWindowTitle(std::string title) override {
-                // FIXME: implement
+                // AAP does not support it
             }
 
             bool canResize()  override {
-                // FIXME: implement
-                return false;
+                return true; // AAP has no option
             }
 
             bool getSize(uint32_t &width, uint32_t &height)  override {
-                // FIXME: implement
+                // AAP does not support it
                 return false;
             }
+
             bool setSize(uint32_t width, uint32_t height)  override {
-                // FIXME: implement
-                return false;
+                if (gui_instance_id < 0)
+                    return false;
+                auto aap = owner->aapInstance();
+                aap->getStandardExtensions().resizeGui(gui_instance_id, width, height);
+                return true;
             }
+
             bool suggestSize(uint32_t &width, uint32_t &height)  override {
-                // FIXME: implement
+                // AAP does not support it
                 return false;
             }
 
             bool setScale(double scale)  override {
-                // FIXME: implement
+                // AAP does not support it
                 return false;
             }
         };

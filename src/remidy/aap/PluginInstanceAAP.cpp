@@ -17,15 +17,15 @@ remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationReques
     for (auto i = 0, n = aapInstance()->getNumPorts(); i < n; i++) {
         auto port = aapInstance()->getPort(i);
         if (port->getContentType() == AAP_CONTENT_TYPE_AUDIO) {
-            if (port->getPortDirection() & AAP_PORT_DIRECTION_INPUT)
+            if (port->getPortDirection() == AAP_PORT_DIRECTION_INPUT)
                 remidy_to_aap_port_index_map_audio_in.push_back(i);
-            if (port->getPortDirection() & AAP_PORT_DIRECTION_OUTPUT)
+            if (port->getPortDirection() == AAP_PORT_DIRECTION_OUTPUT)
                 remidy_to_aap_port_index_map_audio_out.push_back(i);
         }
         if (port->getContentType() == AAP_CONTENT_TYPE_MIDI2) {
-            if (port->getPortDirection() & AAP_PORT_DIRECTION_INPUT)
+            if (port->getPortDirection() == AAP_PORT_DIRECTION_INPUT)
                 aap_port_midi2_in = i;
-            if (port->getPortDirection() & AAP_PORT_DIRECTION_OUTPUT)
+            if (port->getPortDirection() == AAP_PORT_DIRECTION_OUTPUT)
                 aap_port_midi2_out = i;
         }
     }
@@ -65,8 +65,7 @@ remidy::StatusCode remidy::PluginInstanceAAP::process(remidy::AudioProcessContex
     }
     if (aap_port_midi2_in >= 0) {
         auto& eIn = process.eventIn();
-        auto dst = buffer->get_buffer(*buffer, aap_port_midi2_in);
-        memcpy(dst, eIn.getMessages(), eIn.position());
+        instance->addEventUmpInput(eIn.getMessages(), eIn.position());
     }
 
     instance->process(process.frameCount(), 0);

@@ -4,6 +4,7 @@ namespace remidy::gui {
 
     class AndroidContainerWindow : public ContainerWindow {
     public:
+        AndroidContainerWindow(const char* title, int width, int height, std::function<void()> closeCallback) {}
         ~AndroidContainerWindow() override = default;
 
         void show(bool visible) override {}
@@ -15,6 +16,6 @@ namespace remidy::gui {
     };
 
     std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height, std::function<void()> closeCallback) {
-        throw std::runtime_error("AndroidContainerWindow::create not implemented");
+        return std::make_unique<AndroidContainerWindow>(title, width, height, closeCallback);
     }
 }
