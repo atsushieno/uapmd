@@ -136,6 +136,22 @@ CPMAddPackage(
     DOWNLOAD_ONLY YES
 )
 
+# IconFontCppHeaders provides Fontaudio glyph definitions used in the GUI
+CPMAddPackage(
+    NAME IconFontCppHeaders
+    GIT_TAG master
+    GIT_REPOSITORY https://github.com/juliettef/IconFontCppHeaders
+    DOWNLOAD_ONLY YES
+)
+
+# Fontaudio repository (contains canonical font files)
+CPMAddPackage(
+    NAME fontaudio
+    GIT_TAG master
+    GIT_REPOSITORY https://github.com/fefanto/fontaudio
+    DOWNLOAD_ONLY YES
+)
+
 if(NOT TARGET imgui)
     # Base ImGui sources
     set(IMGUI_SOURCES
@@ -268,6 +284,7 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             ${cpplocate_BINARY_DIR}/source/cpplocate/include
             ${cpplocate_BINARY_DIR}/source/liblocate/include
             ../remidy-imgui-shared
+            ${IconFontCppHeaders_SOURCE_DIR}
     )
 endforeach()
 

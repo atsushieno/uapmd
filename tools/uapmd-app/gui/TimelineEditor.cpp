@@ -20,6 +20,7 @@
 
 #include "TimelineEditor.hpp"
 #include "ClipPreview.hpp"
+#include "FontaudioIcons.hpp"
 #include "../AppModel.hpp"
 #include <uapmd-data/priv/project/SmfConverter.hpp>
 #include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
@@ -507,7 +508,12 @@ void TimelineEditor::renderTrackRow(int32_t trackIndex, const SequenceEditor::Re
         if (ImGui::Button("Clips..."))
             ImGui::OpenPopup(clipPopupId.c_str());
         ImGui::SameLine();
-        if (ImGui::Button("DEL"))
+        const char* deleteIcon = uapmd::gui::icons::kDeleteTrack;
+        const bool hasDeleteIcon = deleteIcon && deleteIcon[0] != '\0';
+        const std::string deleteButtonLabel = hasDeleteIcon
+            ? std::format("{} DEL", deleteIcon)
+            : "DEL";
+        if (ImGui::Button(deleteButtonLabel.c_str()))
             deleteTrack(trackIndex);
         if (track) {
             bool bypassed = track->bypassed();

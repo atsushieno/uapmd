@@ -1,13 +1,17 @@
 #include "FontLoader.hpp"
 #include "EmbeddedFont.hpp"
+#include "FontaudioEmbedded.hpp"
+#include "FontaudioIcons.hpp"
 #include <imgui.h>
 #include <zlib.h>
-#include <vector>
 #include <cstdio>
+#include <vector>
 
 namespace uapmd::gui {
 
 namespace {
+
+constexpr float kBaseFontSize = 16.0f;
 
 std::vector<uint8_t> extractTtfFromZip(const uint8_t* zip_data, size_t zip_size) {
     constexpr uint32_t kEndOfCentralDirSig = 0x06054b50;
@@ -79,6 +83,39 @@ std::vector<uint8_t> extractTtfFromZip(const uint8_t* zip_data, size_t zip_size)
     return {};
 }
 
+const std::vector<uint8_t>& fontaudioTtfData() {
+    static std::vector<uint8_t> blob = extractTtfFromZip(
+        uapmd::fontaudio::kFontaudioZipData,
+        uapmd::fontaudio::kFontaudioZipSize
+    );
+    return blob;
+}
+
+void mergeFontaudioIconFont(ImGuiIO& io, float baseFontSize) {
+    static_assert(ICON_MIN_FAD <= ICON_MAX_FAD, "Invalid Fontaudio icon range");
+    const auto& fontData = fontaudioTtfData();
+    if (fontData.empty())
+        return;
+
+    ImFontConfig iconConfig{};
+    iconConfig.MergeMode = true;
+    iconConfig.PixelSnapH = true;
+    iconConfig.FontDataOwnedByAtlas = false;
+    iconConfig.OversampleH = 1;
+    iconConfig.OversampleV = 1;
+    iconConfig.GlyphMinAdvanceX = baseFontSize * 0.65f;
+    iconConfig.GlyphOffset = ImVec2(0.0f, baseFontSize * 0.05f);
+
+    static const ImWchar fontaudioRanges[] = { ICON_MIN_FAD, ICON_MAX_FAD, 0 };
+    io.Fonts->AddFontFromMemoryTTF(
+        const_cast<uint8_t*>(fontData.data()),
+        static_cast<int>(fontData.size()),
+        baseFontSize,
+        &iconConfig,
+        fontaudioRanges
+    );
+}
+
 } // namespace
 
 void ensureApplicationFont() {
@@ -91,7 +128,6 @@ void ensureApplicationFont() {
         uapmd::app::kEmbeddedFontSize
     );
     if (!ttf_data.empty()) {
-        constexpr float kBaseFontSize = 16.0f;
         ImFontConfig config;
         config.OversampleH = 2;
         config.OversampleV = 1;
@@ -105,6 +141,7 @@ void ensureApplicationFont() {
         );
         if (font != nullptr) {
             io.FontDefault = font;
+            mergeFontaudioIconFont(io, kBaseFontSize);
             return;
         }
     }
@@ -112,6 +149,7 @@ void ensureApplicationFont() {
     std::fprintf(stderr, "uapmd-app: failed to load embedded font\n");
     ImFont* fallback = io.Fonts->AddFontDefault();
     io.FontDefault = fallback;
+    mergeFontaudioIconFont(io, kBaseFontSize);
 }
 
 } // namespace uapmd::gui
