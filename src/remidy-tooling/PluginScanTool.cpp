@@ -49,6 +49,7 @@ int remidy_tooling::PluginScanTool::performPluginScanning(bool requireFastScanni
     }
 
     // build catalog
+    auto savedCwd = std::filesystem::current_path();
     for (auto& format : formats()) {
         auto plugins = filterByFormat(catalog.getPlugins(), format->name());
         if (!format->scanning()->scanningMayBeSlow() || plugins.empty())
@@ -56,6 +57,7 @@ int remidy_tooling::PluginScanTool::performPluginScanning(bool requireFastScanni
                 if (!catalog.contains(info->format(), info->pluginId()))
                     catalog.add(std::move(info));
     }
+    std::filesystem::current_path(savedCwd);
 
     return 0;
 }
