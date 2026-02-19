@@ -103,12 +103,9 @@ namespace uapmd {
         std::vector<DeviceEntry> devices_;
         int32_t nextDeviceId_ = 1;
 
-        // Timeline and timeline tracks
-        uapmd::TimelineState timeline_;
-        std::vector<std::unique_ptr<uapmd::TimelineTrack>> timeline_tracks_;
         int32_t sample_rate_;
         uint32_t audio_buffer_size_;
-        int32_t next_source_node_id_ = 1;
+        int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
 
 
@@ -249,8 +246,8 @@ namespace uapmd {
         PluginStateResult savePluginState(int32_t instanceId, const std::string& filepath);
 
         // Timeline access
-        uapmd::TimelineState& timeline() { return timeline_; }
-        const uapmd::TimelineState& timeline() const { return timeline_; }
+        uapmd::TimelineState& timeline() { return sequencer_.engine()->timeline(); }
+        const uapmd::TimelineState& timeline() const { return const_cast<AppModel*>(this)->sequencer_.engine()->timeline(); }
 
         // Clip management
         struct ClipAddResult {

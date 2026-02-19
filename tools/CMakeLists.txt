@@ -9,6 +9,7 @@ CPMAddPackage(
 if (NOT ANDROID)
     add_subdirectory(remidy-scan)
     add_subdirectory(remidy-apply)
+    add_subdirectory(uapmd-apply)
 endif (NOT ANDROID)
 add_subdirectory(uapmd-app)
 

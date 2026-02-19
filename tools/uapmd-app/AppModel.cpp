@@ -421,35 +421,12 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
         audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)) {
     sequencer_.engine()->functionBlockManager()->setMidiIOManager(this);
 
-    // Initialize timeline state
-    timeline_.tempo = 120.0;
-    timeline_.timeSignatureNumerator = 4;
-    timeline_.timeSignatureDenominator = 4;
-    timeline_.isPlaying = false;
-    timeline_.loopEnabled = false;
-
-    // Initialize timeline tracks (independent of SequencerTracks)
-    auto& uapmdTracks = sequencer_.engine()->tracks();
-    for (size_t i = 0; i < uapmdTracks.size(); ++i) {
-        timeline_tracks_.push_back(std::make_unique<uapmd::TimelineTrack>(
-            FIXED_CHANNEL_COUNT,
-            static_cast<double>(sampleRate),
-            audio_buffer_size_
-        ));
-    }
-
     // Start with a few empty tracks for the DAW layout
+    // (Timeline state and preprocess callback are now managed by SequencerEngine)
     constexpr int kInitialTrackCount = 3;
     for (int i = 0; i < kInitialTrackCount; ++i) {
         addTrack();
     }
-
-    // Register audio preprocessing callback for timeline-based source processing
-    sequencer_.engine()->setAudioPreprocessCallback(
-        [this](uapmd::AudioProcessContext& process) {
-            this->processAppTracksAudio(process);
-        }
-    );
 }
 
 void uapmd::AppModel::performPluginScanning(bool forceRescan) {
@@ -1075,67 +1052,20 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
 ) {
     ClipAddResult result;
 
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
-        result.error = "Invalid track index";
-        return result;
-    }
-
     // Detect MIDI files by extension and route to addMidiClipToTrack
     if (!filepath.empty()) {
         std::filesystem::path path(filepath);
         std::string ext = path.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-        if (ext == ".mid" || ext == ".midi" || ext == ".smf" || ext == ".midi2") {
-            // MIDI file - route to MIDI clip handler
+        if (ext == ".mid" || ext == ".midi" || ext == ".smf" || ext == ".midi2")
             return addMidiClipToTrack(trackIndex, position, filepath);
-        }
     }
 
-    if (!reader) {
-        result.error = "Invalid audio file reader";
-        return result;
-    }
-
-    try {
-        // Create source node for this audio file
-        int32_t sourceNodeId = next_source_node_id_++;
-        auto sourceNode = std::make_unique<uapmd::AudioFileSourceNode>(
-            sourceNodeId,
-            std::move(reader),
-            static_cast<double>(sample_rate_)
-        );
-
-        // Get the duration of the audio file
-        int64_t durationSamples = sourceNode->totalLength();
-
-        // Create clip data
-        uapmd::ClipData clip;
-        clip.position = position;
-        clip.durationSamples = durationSamples;
-        clip.sourceNodeInstanceId = sourceNodeId;
-        clip.gain = 1.0;
-        clip.muted = false;
-        clip.filepath = filepath;
-        clip.anchorClipId = -1;
-        clip.anchorOrigin = uapmd::AnchorOrigin::Start;
-        clip.anchorOffset = position;
-
-        // Add clip to track
-        int32_t clipId = timeline_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
-
-        if (clipId >= 0) {
-            result.success = true;
-            result.clipId = clipId;
-            result.sourceNodeId = sourceNodeId;
-        } else {
-            result.error = "Failed to add clip to track";
-        }
-
-    } catch (const std::exception& ex) {
-        result.error = std::format("Exception adding clip: {}", ex.what());
-    }
-
+    auto engineResult = sequencer_.engine()->addClipToTrack(trackIndex, position, std::move(reader), filepath);
+    result.clipId = engineResult.clipId;
+    result.sourceNodeId = engineResult.sourceNodeId;
+    result.success = engineResult.success;
+    result.error = engineResult.error;
     return result;
 }
 
@@ -1145,67 +1075,11 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     const std::string& filepath
 ) {
     ClipAddResult result;
-
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
-        result.error = "Invalid track index";
-        return result;
-    }
-
-    try {
-        // Convert SMF to UMP using Smf2ClipReader
-        auto clipInfo = uapmd::MidiClipReader::readAnyFormat(filepath);
-        if (!clipInfo.success) {
-            result.error = clipInfo.error;
-            return result;
-        }
-
-        // Create MIDI source node
-        int32_t sourceNodeId = next_source_node_id_++;
-        auto sourceNode = std::make_unique<uapmd::MidiClipSourceNode>(
-            sourceNodeId,
-            std::move(clipInfo.ump_data),
-            std::move(clipInfo.ump_tick_timestamps),
-            clipInfo.tick_resolution,
-            clipInfo.tempo,
-            static_cast<double>(sample_rate_),
-            std::move(clipInfo.tempo_changes),
-            std::move(clipInfo.time_signature_changes)
-        );
-
-        // Get duration from source node
-        int64_t durationSamples = sourceNode->totalLength();
-
-        // Create MIDI clip data
-        uapmd::ClipData clip;
-        clip.clipType = uapmd::ClipType::Midi;
-        clip.position = position;
-        clip.durationSamples = durationSamples;
-        clip.sourceNodeInstanceId = sourceNodeId;
-        clip.filepath = filepath;
-        clip.tickResolution = clipInfo.tick_resolution;
-        clip.clipTempo = clipInfo.tempo;
-        clip.gain = 1.0;
-        clip.muted = false;
-        clip.name = std::filesystem::path(filepath).stem().string();
-        clip.anchorClipId = -1;
-        clip.anchorOrigin = uapmd::AnchorOrigin::Start;
-        clip.anchorOffset = position;
-
-        // Add clip to track
-        int32_t clipId = timeline_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
-
-        if (clipId >= 0) {
-            result.success = true;
-            result.clipId = clipId;
-            result.sourceNodeId = sourceNodeId;
-        } else {
-            result.error = "Failed to add MIDI clip to track";
-        }
-
-    } catch (const std::exception& ex) {
-        result.error = std::format("Failed to load MIDI file: {}", ex.what());
-    }
-
+    auto engineResult = sequencer_.engine()->addMidiClipToTrack(trackIndex, position, filepath);
+    result.clipId = engineResult.clipId;
+    result.sourceNodeId = engineResult.sourceNodeId;
+    result.success = engineResult.success;
+    result.error = engineResult.error;
     return result;
 }
 
@@ -1221,77 +1095,34 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     const std::string& clipName
 ) {
     ClipAddResult result;
-
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
-        result.error = "Invalid track index";
-        return result;
-    }
-
-    try {
-        // Create MIDI source node with provided UMP data
-        int32_t sourceNodeId = next_source_node_id_++;
-        auto sourceNode = std::make_unique<uapmd::MidiClipSourceNode>(
-            sourceNodeId,
-            std::move(umpEvents),
-            std::move(umpTickTimestamps),
-            tickResolution,
-            clipTempo,
-            static_cast<double>(sample_rate_),
-            std::move(tempoChanges),
-            std::move(timeSignatureChanges)
-        );
-
-        // Get duration from source node
-        int64_t durationSamples = sourceNode->totalLength();
-
-        // Create MIDI clip data
-        uapmd::ClipData clip;
-        clip.clipType = uapmd::ClipType::Midi;
-        clip.position = position;
-        clip.durationSamples = durationSamples;
-        clip.sourceNodeInstanceId = sourceNodeId;
-        clip.filepath = "";  // No file associated with programmatically created clips
-        clip.tickResolution = tickResolution;
-        clip.clipTempo = clipTempo;
-        clip.gain = 1.0;
-        clip.muted = false;
-        clip.name = clipName.empty() ? "MIDI Clip" : clipName;
-        clip.anchorClipId = -1;
-        clip.anchorOrigin = uapmd::AnchorOrigin::Start;
-        clip.anchorOffset = position;
-
-        // Add clip to track
-        int32_t clipId = timeline_tracks_[trackIndex]->addClip(clip, std::move(sourceNode));
-
-        if (clipId >= 0) {
-            result.success = true;
-            result.clipId = clipId;
-            result.sourceNodeId = sourceNodeId;
-        } else {
-            result.error = "Failed to add MIDI clip to track";
-        }
-
-    } catch (const std::exception& ex) {
-        result.error = std::format("Failed to create MIDI clip: {}", ex.what());
-    }
+    auto engineResult = sequencer_.engine()->addMidiClipToTrack(
+        trackIndex, position,
+        std::move(umpEvents), std::move(umpTickTimestamps),
+        tickResolution, clipTempo,
+        std::move(tempoChanges), std::move(timeSignatureChanges),
+        clipName);
+    result.clipId = engineResult.clipId;
+    result.sourceNodeId = engineResult.sourceNodeId;
+    result.success = engineResult.success;
+    result.error = engineResult.error;
 
     return result;
 }
 
 bool uapmd::AppModel::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size()))
-        return false;
-
-    return timeline_tracks_[trackIndex]->removeClip(clipId);
+    return sequencer_.engine()->removeClipFromTrack(trackIndex, clipId);
 }
 
 int32_t uapmd::AppModel::addDeviceInputToTrack(
     int32_t trackIndex,
     const std::vector<uint32_t>& channelIndices
 ) {
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size()))
+    auto timelineTracks = sequencer_.engine()->timelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timelineTracks.size()))
         return -1;
 
+    // Engine doesn't expose a next_source_node_id_ for DeviceInput nodes yet;
+    // use a local counter for device input nodes in AppModel scope.
     int32_t sourceNodeId = next_source_node_id_++;
     uint32_t channelCount = channelIndices.empty() ? 2 : static_cast<uint32_t>(channelIndices.size());
 
@@ -1301,87 +1132,34 @@ int32_t uapmd::AppModel::addDeviceInputToTrack(
         channelIndices
     );
 
-    if (timeline_tracks_[trackIndex]->addDeviceInputSource(std::move(sourceNode)))
+    if (timelineTracks[trackIndex]->addDeviceInputSource(std::move(sourceNode)))
         return sourceNodeId;
 
     return -1;
 }
 
 std::vector<uapmd::TimelineTrack*> uapmd::AppModel::getTimelineTracks() {
-    std::vector<uapmd::TimelineTrack*> tracks;
-    tracks.reserve(timeline_tracks_.size());
-    for (auto& track : timeline_tracks_) {
-        tracks.push_back(track.get());
-    }
-    return tracks;
+    return sequencer_.engine()->timelineTracks();
 }
 
 uapmd::AppModel::MasterTrackSnapshot uapmd::AppModel::buildMasterTrackSnapshot() {
+    auto engineSnapshot = sequencer_.engine()->buildMasterTrackSnapshot();
     MasterTrackSnapshot snapshot;
-    const double sampleRate = std::max(1.0, static_cast<double>(sample_rate_));
-
-    for (const auto& trackPtr : timeline_tracks_) {
-        if (!trackPtr)
-            continue;
-
-        auto clips = trackPtr->clipManager().getAllClips();
-        if (clips.empty())
-            continue;
-
-        std::unordered_map<int32_t, const uapmd::ClipData*> clipMap;
-        clipMap.reserve(clips.size());
-        for (auto& clip : clips) {
-            clipMap[clip.clipId] = &clip;
-        }
-
-        for (const auto& clip : clips) {
-            if (clip.clipType != uapmd::ClipType::Midi)
-                continue;
-
-            auto sourceNode = trackPtr->getSourceNode(clip.sourceNodeInstanceId);
-            auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
-            if (!midiNode)
-                continue;
-
-            const auto absolutePosition = clip.getAbsolutePosition(clipMap);
-            const double clipStartSamples = static_cast<double>(absolutePosition.samples);
-
-            const auto& tempoSamples = midiNode->tempoChangeSamples();
-            const auto& tempoEvents = midiNode->tempoChanges();
-            const size_t tempoCount = std::min(tempoSamples.size(), tempoEvents.size());
-            for (size_t i = 0; i < tempoCount; ++i) {
-                MasterTrackSnapshot::TempoPoint point;
-                point.timeSeconds = (clipStartSamples + static_cast<double>(tempoSamples[i])) / sampleRate;
-                point.tickPosition = tempoEvents[i].tickPosition;
-                point.bpm = tempoEvents[i].bpm;
-                snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
-                snapshot.tempoPoints.push_back(point);
-            }
-
-            const auto& sigSamples = midiNode->timeSignatureChangeSamples();
-            const auto& sigEvents = midiNode->timeSignatureChanges();
-            const size_t sigCount = std::min(sigSamples.size(), sigEvents.size());
-            for (size_t i = 0; i < sigCount; ++i) {
-                MasterTrackSnapshot::TimeSignaturePoint point;
-                point.timeSeconds = (clipStartSamples + static_cast<double>(sigSamples[i])) / sampleRate;
-                point.tickPosition = sigEvents[i].tickPosition;
-                point.signature = sigEvents[i];
-                snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
-                snapshot.timeSignaturePoints.push_back(point);
-            }
-        }
+    snapshot.maxTimeSeconds = engineSnapshot.maxTimeSeconds;
+    for (auto& p : engineSnapshot.tempoPoints) {
+        MasterTrackSnapshot::TempoPoint point;
+        point.timeSeconds = p.timeSeconds;
+        point.tickPosition = p.tickPosition;
+        point.bpm = p.bpm;
+        snapshot.tempoPoints.push_back(point);
     }
-
-    std::sort(snapshot.tempoPoints.begin(), snapshot.tempoPoints.end(),
-        [](const MasterTrackSnapshot::TempoPoint& a, const MasterTrackSnapshot::TempoPoint& b) {
-            return a.timeSeconds < b.timeSeconds;
-        });
-
-    std::sort(snapshot.timeSignaturePoints.begin(), snapshot.timeSignaturePoints.end(),
-        [](const MasterTrackSnapshot::TimeSignaturePoint& a, const MasterTrackSnapshot::TimeSignaturePoint& b) {
-            return a.timeSeconds < b.timeSeconds;
-        });
-
+    for (auto& p : engineSnapshot.timeSignaturePoints) {
+        MasterTrackSnapshot::TimeSignaturePoint point;
+        point.timeSeconds = p.timeSeconds;
+        point.tickPosition = p.tickPosition;
+        point.signature = p.signature;
+        snapshot.timeSignaturePoints.push_back(point);
+    }
     return snapshot;
 }
 
@@ -1404,15 +1182,6 @@ int32_t uapmd::AppModel::addTrack() {
     if (trackIndex < 0)
         return -1;
 
-    while (timeline_tracks_.size() <= static_cast<size_t>(trackIndex)) {
-        timeline_tracks_.push_back(
-            std::make_unique<uapmd::TimelineTrack>(
-                FIXED_CHANNEL_COUNT,
-                static_cast<double>(sample_rate_),
-                audio_buffer_size_
-            )
-        );
-    }
     notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, trackIndex});
     return trackIndex;
 }
@@ -1427,8 +1196,10 @@ bool uapmd::AppModel::removeTrack(int32_t trackIndex) {
         removePluginInstance(instanceId);
     }
 
-    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())) {
-        timeline_tracks_[trackIndex]->clipManager().clearAll();
+    // Clear clips via engine (which owns the timeline tracks)
+    auto timelineTracks = sequencer_.engine()->timelineTracks();
+    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timelineTracks.size())) {
+        timelineTracks[trackIndex]->clipManager().clearAll();
     }
 
     hidden_tracks_.insert(trackIndex);
@@ -1647,336 +1418,41 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
 
 uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesystem::path& projectFile) {
     ProjectResult result;
-    if (projectFile.empty()) {
-        result.error = "Project path is empty";
+
+    // Delegate project loading to SequencerEngine (which owns timeline tracks and plugins)
+    auto engineResult = sequencer_.engine()->loadProject(projectFile);
+    if (!engineResult.success) {
+        result.error = engineResult.error;
         return result;
     }
 
-    try {
-        auto project = uapmd::UapmdProjectDataReader::read(projectFile);
-        if (!project) {
-            result.error = "Failed to parse project file";
-            return result;
+    // Notify UI about all tracks that were created
+    hidden_tracks_.clear();
+    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
+    auto numTracks = static_cast<int32_t>(sequencer_.engine()->tracks().size());
+    for (int32_t i = 0; i < numTracks; ++i)
+        notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, i});
+
+    // Also notify instanceCreated for each plugin loaded
+    for (int32_t trackIdx = 0; trackIdx < numTracks; ++trackIdx) {
+        auto* track = sequencer_.engine()->tracks()[trackIdx];
+        if (!track) continue;
+        for (int32_t instanceId : track->orderedInstanceIds()) {
+            auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
+            std::string name = instance ? instance->displayName() : "";
+            PluginInstanceResult r;
+            r.instanceId = instanceId;
+            r.pluginName = name;
+            for (auto& cb : instanceCreated) cb(r);
         }
-
-        auto projectDir = projectFile.parent_path();
-
-        timeline_.isPlaying = false;
-        timeline_.playheadPosition = uapmd::TimelinePosition{};
-        timeline_.loopEnabled = false;
-        timeline_.loopStart = uapmd::TimelinePosition{};
-        timeline_.loopEnd = uapmd::TimelinePosition{};
-
-        removeAllTracks();
-
-        auto restorePluginsForTrack = [this, &projectDir](uapmd::UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
-            if (!projectTrack)
-                return;
-
-            auto* graphData = projectTrack->graph();
-            if (!graphData)
-                return;
-
-            auto plugins = graphData->plugins();
-            for (const auto& plugin : plugins) {
-                if (plugin.plugin_id.empty() || plugin.format.empty())
-                    continue;
-                PluginInstanceConfig config{};
-                if (!plugin.state_file.empty()) {
-                    auto resolvedState = makeAbsolutePath(projectDir, plugin.state_file);
-                    config.stateFile = resolvedState;
-                }
-                createPluginInstanceAsync(plugin.format, plugin.plugin_id, trackIndex, config);
-            }
-        };
-
-        auto& tracks = project->tracks();
-        std::vector<int32_t> createdTrackIndices;
-        createdTrackIndices.reserve(tracks.size());
-        for (size_t i = 0; i < tracks.size(); ++i) {
-            int32_t trackIndex = addTrack();
-            if (trackIndex < 0) {
-                result.error = "Failed to create track for project data";
-                return result;
-            }
-            createdTrackIndices.push_back(trackIndex);
-
-            auto* timelineTrack = timeline_tracks_[trackIndex].get();
-            if (!timelineTrack)
-                continue;
-
-            restorePluginsForTrack(tracks[i], trackIndex);
-
-            auto& projectClips = tracks[i]->clips();
-            std::unordered_map<uapmd::UapmdProjectClipData*, int32_t> clipIdMap;
-            clipIdMap.reserve(projectClips.size());
-
-            for (auto& clip : projectClips) {
-                if (!clip)
-                    continue;
-
-                auto absoluteSamples = static_cast<int64_t>(clip->absolutePositionInSamples());
-                uapmd::TimelinePosition position;
-                position.samples = absoluteSamples;
-
-                int32_t newClipId = -1;
-                const auto clipFile = clip->file();
-                const auto clipType = clip->clipType();
-                std::filesystem::path resolvedPath = clipFile;
-                if (!resolvedPath.empty())
-                    resolvedPath = makeAbsolutePath(projectDir, resolvedPath);
-
-                if (clipType == "midi") {
-                    ParsedSmf2Clip parsed;
-                    if (!resolvedPath.empty()) {
-                        if (!parseSmf2ClipFile(resolvedPath, parsed, result.error))
-                            return result;
-                    } else {
-                        result.error = "MIDI clip is missing file path";
-                        return result;
-                    }
-
-                    double clipTempo = parsed.tempoChanges.empty() ? 0.0 : parsed.tempoChanges.front().bpm;
-                    if (clipTempo <= 0.0)
-                        clipTempo = 120.0;
-
-                    auto loadResult = addMidiClipToTrack(
-                        trackIndex,
-                        position,
-                        std::move(parsed.events),
-                        std::move(parsed.eventTicks),
-                        parsed.tickResolution,
-                        clipTempo,
-                        std::move(parsed.tempoChanges),
-                        std::move(parsed.timeSignatureChanges),
-                        resolvedPath.filename().string());
-                    if (!loadResult.success) {
-                        result.error = loadResult.error.empty()
-                            ? "Failed to load MIDI clip"
-                            : loadResult.error;
-                        return result;
-                    }
-                    newClipId = loadResult.clipId;
-                } else {
-                    auto reader = uapmd::createAudioFileReaderFromPath(resolvedPath.string());
-                    if (!reader) {
-                        result.error = std::format("Failed to open audio clip {}", resolvedPath.string());
-                        return result;
-                    }
-                    auto loadResult = addClipToTrack(trackIndex, position, std::move(reader), resolvedPath.string());
-                    if (!loadResult.success) {
-                        result.error = loadResult.error.empty()
-                            ? "Failed to load audio clip"
-                            : loadResult.error;
-                        return result;
-                    }
-                    newClipId = loadResult.clipId;
-                }
-
-                if (newClipId >= 0)
-                    clipIdMap[clip.get()] = newClipId;
-            }
-
-            for (auto& clip : projectClips) {
-                if (!clip)
-                    continue;
-                auto itClip = clipIdMap.find(clip.get());
-                if (itClip == clipIdMap.end())
-                    continue;
-
-                int32_t newClipId = itClip->second;
-                int32_t anchorId = -1;
-                uapmd::AnchorOrigin anchorOrigin = uapmd::AnchorOrigin::Start;
-                const auto position = clip->position();
-                if (position.anchor) {
-                    if (auto* anchorClip = dynamic_cast<uapmd::UapmdProjectClipData*>(position.anchor)) {
-                        auto anchorIt = clipIdMap.find(anchorClip);
-                        if (anchorIt != clipIdMap.end())
-                            anchorId = anchorIt->second;
-                    }
-                }
-                if (position.origin == uapmd::UapmdAnchorOrigin::End)
-                    anchorOrigin = uapmd::AnchorOrigin::End;
-
-                uapmd::TimelinePosition offset = uapmd::TimelinePosition::fromSamples(
-                    static_cast<int64_t>(position.samples),
-                    sample_rate_);
-
-                timelineTrack->clipManager().setClipAnchor(newClipId, anchorId, anchorOrigin, offset);
-            }
-        }
-
-        if (tracks.empty()) {
-            addTrack();
-        }
-
-        if (auto* master = project->masterTrack()) {
-            restorePluginsForTrack(master, uapmd::kMasterTrackIndex);
-            for (auto& clip : master->clips()) {
-                if (!clip)
-                    continue;
-                auto masterPath = clip->file();
-                if (masterPath.empty())
-                    continue;
-                auto resolved = makeAbsolutePath(projectDir, masterPath);
-                ParsedSmf2Clip parsed;
-                if (parseSmf2ClipFile(resolved, parsed, result.error)) {
-                    if (!parsed.tempoChanges.empty())
-                        timeline_.tempo = parsed.tempoChanges.front().bpm;
-                    if (!parsed.timeSignatureChanges.empty()) {
-                        timeline_.timeSignatureNumerator = parsed.timeSignatureChanges.front().numerator;
-                        timeline_.timeSignatureDenominator = parsed.timeSignatureChanges.front().denominator;
-                    }
-                }
-                break;
-            }
-        }
-
-        result.success = true;
-        return result;
-    } catch (const std::exception& e) {
-        result.error = e.what();
-        return result;
     }
+
+    result.success = true;
+    return result;
 }
 
-// Audio processing callback - processes app tracks with timeline
-void uapmd::AppModel::processAppTracksAudio(AudioProcessContext& process) {
-    // Update timeline state if playing
-    if (timeline_.isPlaying) {
-        timeline_.playheadPosition.samples += process.frameCount();
-
-        // Handle loop region
-        if (timeline_.loopEnabled) {
-            if (timeline_.playheadPosition.samples >= timeline_.loopEnd.samples) {
-                timeline_.playheadPosition.samples = timeline_.loopStart.samples;
-            }
-        }
-
-        // Update tempo/time signature from master track (track 0) if it has MIDI clips
-        // This propagates tempo changes from the MIDI clip to global timeline state
-        if (!timeline_tracks_.empty()) {
-            auto* masterTrack = timeline_tracks_[0].get();
-            if (masterTrack) {
-                auto activeClips = masterTrack->clipManager().getActiveClipsAt(timeline_.playheadPosition);
-                for (const auto& clip : activeClips) {
-                    if (clip.clipType != ClipType::Midi || clip.muted)
-                        continue;
-                    auto sourceNode = masterTrack->getSourceNode(clip.sourceNodeInstanceId);
-                    auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
-                    if (!midiNode)
-                        continue;
-
-                    // Find tempo at current playback position within the clip
-                    const auto& tempoChanges = midiNode->tempoChanges();
-                    const auto& tempoChangeSamples = midiNode->tempoChangeSamples();
-                    if (!tempoChanges.empty() && tempoChanges.size() == tempoChangeSamples.size()) {
-                        // Calculate position within the source clip
-                        std::unordered_map<int32_t, const ClipData*> clipMap;
-                        auto allClips = masterTrack->clipManager().getAllClips();
-                        for (auto& c : allClips)
-                            clipMap[c.clipId] = &c;
-                        int64_t sourcePos = clip.getSourcePosition(timeline_.playheadPosition, clipMap);
-                        if (sourcePos >= 0) {
-                            // Find the tempo that applies at this position (last tempo change before sourcePos)
-                            double currentTempo = tempoChanges[0].bpm;
-                            size_t tempoIdx = 0;
-                            for (size_t i = 0; i < tempoChangeSamples.size(); ++i) {
-                                if (static_cast<int64_t>(tempoChangeSamples[i]) <= sourcePos) {
-                                    currentTempo = tempoChanges[i].bpm;
-                                    tempoIdx = i;
-                                } else {
-                                    break;
-                                }
-                            }
-                            timeline_.tempo = currentTempo;
-                        }
-                    }
-
-                    // Find time signature at current playback position
-                    const auto& timeSigChanges = midiNode->timeSignatureChanges();
-                    const auto& timeSigChangeSamples = midiNode->timeSignatureChangeSamples();
-                    if (!timeSigChanges.empty() && timeSigChanges.size() == timeSigChangeSamples.size()) {
-                        std::unordered_map<int32_t, const ClipData*> clipMap;
-                        auto allClips = masterTrack->clipManager().getAllClips();
-                        for (auto& c : allClips)
-                            clipMap[c.clipId] = &c;
-                        int64_t sourcePos = clip.getSourcePosition(timeline_.playheadPosition, clipMap);
-                        if (sourcePos >= 0) {
-                            uint8_t currentNum = timeSigChanges[0].numerator;
-                            uint8_t currentDenom = timeSigChanges[0].denominator;
-                            for (size_t i = 0; i < timeSigChangeSamples.size(); ++i) {
-                                if (static_cast<int64_t>(timeSigChangeSamples[i]) <= sourcePos) {
-                                    currentNum = timeSigChanges[i].numerator;
-                                    currentDenom = timeSigChanges[i].denominator;
-                                } else {
-                                    break;
-                                }
-                            }
-                            timeline_.timeSignatureNumerator = currentNum;
-                            timeline_.timeSignatureDenominator = currentDenom;
-                        }
-                    }
-                    break;  // Only use the first active MIDI clip for tempo
-                }
-            }
-        }
-
-        // Update legacy_beats (keep for backwards compatibility with serialization)
-        double secondsPerBeat = 60.0 / timeline_.tempo;
-        int64_t samplesPerBeat = static_cast<int64_t>(secondsPerBeat * sample_rate_);
-        if (samplesPerBeat > 0) {
-            timeline_.playheadPosition.legacy_beats =
-                static_cast<double>(timeline_.playheadPosition.samples) / samplesPerBeat;
-        }
-
-        // Sync timeline state to MasterContext
-        auto& masterCtx = process.trackContext()->masterContext();
-        masterCtx.playbackPositionSamples(timeline_.playheadPosition.samples);
-        masterCtx.isPlaying(timeline_.isPlaying);
-        // Convert BPM to microseconds per quarter note (MIDI standard tempo format)
-        uint32_t tempoMicros = static_cast<uint32_t>(60000000.0 / timeline_.tempo);
-        masterCtx.tempo(tempoMicros);
-        masterCtx.timeSignatureNumerator(timeline_.timeSignatureNumerator);
-        masterCtx.timeSignatureDenominator(timeline_.timeSignatureDenominator);
-    }
-
-    // Get the sequence process context from engine
-    auto* engine = sequencer_.engine();
-    if (!engine) {
-        // Engine not initialized yet or already destroyed during shutdown
-        return;
-    }
-    auto& sequenceData = engine->data();
-
-    // Process each timeline track
-    for (size_t i = 0; i < timeline_tracks_.size() && i < sequenceData.tracks.size(); ++i) {
-        auto* trackContext = sequenceData.tracks[i];
-        if (!trackContext) {
-            // Track not initialized yet
-            continue;
-        }
-
-        // Copy device inputs from main process context to track context
-        if (process.audioInBusCount() > 0 && trackContext->audioInBusCount() > 0) {
-            const uint32_t deviceChannels = std::min(
-                static_cast<uint32_t>(process.inputChannelCount(0)),
-                static_cast<uint32_t>(trackContext->inputChannelCount(0))
-            );
-
-            for (uint32_t ch = 0; ch < deviceChannels; ++ch) {
-                const float* src = process.getFloatInBuffer(0, ch);
-                float* dst = trackContext->getFloatInBuffer(0, ch);
-                if (src && dst) {
-                    std::memcpy(dst, src, process.frameCount() * sizeof(float));
-                }
-            }
-        }
-
-        // Process timeline track
-        // Timeline writes to trackContext->audio_in[0]
-        // Then sequencer track's plugins process input->output
-        // SequencerEngine will mix track outputs into main output
-        timeline_tracks_[i]->processAudio(*trackContext, timeline_);
-    }
+// Timeline audio processing is now handled directly by SequencerEngineImpl::processTracksAudio().
+// This stub is kept for binary compatibility during the transition.
+void uapmd::AppModel::processAppTracksAudio(AudioProcessContext&) {
+    // No-op: SequencerEngine owns timeline tracks and registers its own preprocess callback.
 }
