@@ -295,17 +295,20 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             clipAreaMaxY -= static_cast<float>(state.timelineStyle.ScrollbarThickness);
         }
 
-        // Block mouse input to ImTimeline when there's a popup/modal window on top
-        // ImTimeline reads directly from ImGui::GetIO(), so we temporarily clear mouse state
-        // Check if any popup is open that could be blocking this timeline
+        // Block mouse input to ImTimeline when there's a popup/modal window on top,
+        // or when the timeline child window is not hovered (another overlay window has focus).
+        // ImTimeline reads directly from ImGui::GetIO(), so we temporarily clear mouse state.
         const bool popupBlocking = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+        // Suppress input if another window (overlay/dragged) has captured the mouse
+        const bool overlayBlocking = !timelineHovered && ImGui::GetIO().MouseDown[0];
+        const bool shouldBlockInput = popupBlocking || overlayBlocking;
 
         ImGuiIO& io = ImGui::GetIO();
         bool savedMouseDown[5];
         float savedMouseWheel = 0.0f;
         float savedMouseWheelH = 0.0f;
 
-        if (popupBlocking) {
+        if (shouldBlockInput) {
             // Save and clear mouse state to prevent ImTimeline from reacting
             for (int i = 0; i < 5; ++i) {
                 savedMouseDown[i] = io.MouseDown[i];
@@ -320,7 +323,7 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         state.timeline->DrawTimeline();
 
         // Restore mouse state
-        if (popupBlocking) {
+        if (shouldBlockInput) {
             for (int i = 0; i < 5; ++i)
                 io.MouseDown[i] = savedMouseDown[i];
             io.MouseWheel = savedMouseWheel;
@@ -335,16 +338,16 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             drawPlayheadIndicator(state, context, headerMinX, headerMinY, headerMaxX, headerMaxY);
         }
 
-        // Only start tracking drag if no popup is blocking and timeline is hovered
+        // Only start tracking drag if no popup/overlay is blocking and timeline is hovered
         if (state.timeline->mDragData.DragState == eDragState::DragNode &&
             state.activeDragNodeId == InvalidNodeID &&
-            !popupBlocking &&
+            !shouldBlockInput &&
             timelineHovered) {
             state.activeDragNodeId = state.timeline->mDragData.DragNode.GetID();
         }
 
-        // Cancel active drag if a popup appeared on top
-        if (state.activeDragNodeId != InvalidNodeID && popupBlocking) {
+        // Cancel active drag if a popup or overlay window captured mouse focus
+        if (state.activeDragNodeId != InvalidNodeID && shouldBlockInput) {
             state.activeDragNodeId = InvalidNodeID;
         }
 
