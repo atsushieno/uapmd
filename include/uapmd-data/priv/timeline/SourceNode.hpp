@@ -23,8 +23,8 @@ namespace uapmd {
         virtual SourceNodeType nodeType() const = 0;
 
         // Bypass control
-        virtual bool bypassed() const = 0;
-        virtual void bypassed(bool value) = 0;
+        virtual bool disabled() const = 0;
+        virtual void disabled(bool value) = 0;
 
         // State management
         virtual std::vector<uint8_t> saveState() = 0;

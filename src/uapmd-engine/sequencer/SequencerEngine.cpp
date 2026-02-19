@@ -49,7 +49,6 @@ namespace uapmd {
 
         // Plugin instance management
         std::unordered_map<int32_t, AudioPluginInstanceAPI*> plugin_instances_;
-        std::unordered_map<int32_t, bool> plugin_bypassed_;
         std::mutex instance_map_mutex_;
 
 
@@ -97,8 +96,6 @@ namespace uapmd {
 
         // Plugin instance queries
         AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) override;
-        bool isPluginBypassed(int32_t instanceId) override;
-        void setPluginBypassed(int32_t instanceId, bool bypassed) override;
 
         UapmdFunctionBlockManager *functionBlockManager() override { return &function_block_manager; }
         int32_t findTrackIndexForInstance(int32_t instanceId) const override;
@@ -222,7 +219,8 @@ namespace uapmd {
             track_processing_flags_[i]->store(true, std::memory_order_release);
 
             auto& tp = *sequence.tracks[i];
-            tracks_[i]->graph().processAudio(tp);
+            if (!tracks_[i]->bypassed())
+                tracks_[i]->graph().processAudio(tp);
             tp.eventIn().position(0); // reset
 
             // Clear processing flag AFTER we're done with the track context
@@ -472,7 +470,6 @@ namespace uapmd {
             {
                 std::lock_guard<std::mutex> lock(instance_map_mutex_);
                 plugin_instances_[instanceId] = instance;
-                plugin_bypassed_[instanceId] = false;
             }
 
             // Parameter metadata change events are now handled in AudioPluginNode directly
@@ -500,7 +497,6 @@ namespace uapmd {
         {
             std::lock_guard<std::mutex> lock(instance_map_mutex_);
             plugin_instances_.erase(instanceId);
-            plugin_bypassed_.erase(instanceId);
         }
 
         // Remove from track graph
@@ -712,19 +708,6 @@ namespace uapmd {
         if (it != plugin_instances_.end())
             return it->second;
         return nullptr;
-    }
-
-    bool SequencerEngineImpl::isPluginBypassed(int32_t instanceId) {
-        std::lock_guard<std::mutex> lock(instance_map_mutex_);
-        auto it = plugin_bypassed_.find(instanceId);
-        if (it != plugin_bypassed_.end())
-            return it->second;
-        return false;
-    }
-
-    void SequencerEngineImpl::setPluginBypassed(int32_t instanceId, bool bypassed) {
-        std::lock_guard<std::mutex> lock(instance_map_mutex_);
-        plugin_bypassed_[instanceId] = bypassed;
     }
 
     // UMP routing

@@ -521,8 +521,8 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             return choc::value::createBool (false);
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto bypassed = sequencer.engine()->isPluginBypassed (instanceId);
-        return choc::value::createBool (bypassed);
+        auto* instance = sequencer.engine()->getPluginInstance (instanceId);
+        return choc::value::createBool (instance ? instance->bypassed() : false);
     });
 
     jsContext_.registerFunction ("__remidy_sequencer_setPluginBypassed", [] (choc::javascript::ArgumentList args) -> choc::value::Value
@@ -533,7 +533,8 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
         if (instanceId >= 0)
         {
             auto& sequencer = uapmd::AppModel::instance().sequencer();
-            sequencer.engine()->setPluginBypassed (instanceId, bypassed);
+            if (auto* instance = sequencer.engine()->getPluginInstance (instanceId))
+                instance->bypassed (bypassed);
         }
         return choc::value::Value();
     });

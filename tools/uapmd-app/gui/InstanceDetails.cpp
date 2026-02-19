@@ -336,6 +336,18 @@ void InstanceDetails::render(const RenderContext& context) {
                         }
 
                         ImGui::SameLine();
+
+                        bool pluginBypassed = instance->bypassed();
+                        if (pluginBypassed)
+                            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+                        if (ImGui::Button(pluginBypassed ? "Bypassed" : "Bypass"))
+                            instance->bypassed(!pluginBypassed);
+                        if (pluginBypassed)
+                            ImGui::PopStyleColor();
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip(pluginBypassed ? "Plugin bypassed (click to enable)" : "Bypass plugin");
+
+                        ImGui::SameLine();
                     }
                 }
 

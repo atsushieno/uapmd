@@ -60,6 +60,14 @@ namespace uapmd {
             node->fillEventBufferForGroup(eventIn, group);
             node->trackEventsFromBuffer(eventIn, group);
 
+            bool bypassed = node->instance()->bypassed();
+            if (bypassed) {
+                // Pass audio through without processing; advance so next node receives input
+                if (i + 1 < nodes_.size())
+                    process.advanceToNextNode();
+                continue;
+            }
+
             // Process audio
             auto status = node->instance()->processAudio(process);
             if (status != 0)

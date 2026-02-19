@@ -67,11 +67,6 @@ namespace uapmd {
         virtual void getInputSpectrum(float* outSpectrum, int numBars) const = 0;
         virtual void getOutputSpectrum(float* outSpectrum, int numBars) const = 0;
 
-        // Plugin instance queries
-        // FIXME: they should be replaced by direct access to AudioPluginNode.
-        virtual bool isPluginBypassed(int32_t instanceId) = 0;
-        virtual void setPluginBypassed(int32_t instanceId, bool bypassed) = 0;
-
         // Convenience methods for sending MIDI events
         virtual void sendNoteOn(int32_t instanceId, int32_t note) = 0;
         virtual void sendNoteOff(int32_t instanceId, int32_t note) = 0;

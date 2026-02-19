@@ -509,6 +509,15 @@ void TimelineEditor::renderTrackRow(int32_t trackIndex, const SequenceEditor::Re
         ImGui::SameLine();
         if (ImGui::Button("DEL"))
             deleteTrack(trackIndex);
+        if (track) {
+            bool bypassed = track->bypassed();
+            if (bypassed)
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+            if (ImGui::Button(bypassed ? "bypassed" : "bypass"))
+                track->bypassed(!bypassed);
+            if (bypassed)
+                ImGui::PopStyleColor();
+        }
         if (ImGui::Button(std::format("{}...", pluginLabel).c_str()))
             ImGui::OpenPopup(popupId.c_str());
         if (ImGui::BeginPopup(clipPopupId.c_str())) {

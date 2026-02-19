@@ -43,6 +43,7 @@ namespace uapmd {
         virtual std::string& displayName() const = 0;
         virtual std::string& formatName() const = 0;
         virtual std::string& pluginId() const = 0;
+        virtual bool bypassed() const = 0;
         virtual void bypassed(bool value) = 0;
         virtual uapmd_status_t processAudio(AudioProcessContext &process) = 0;
         virtual bool requiresReplacingProcess() const = 0;

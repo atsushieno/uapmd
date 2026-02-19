@@ -35,8 +35,8 @@ namespace uapmd {
         // SourceNode interface
         int32_t instanceId() const override { return instance_id_; }
         SourceNodeType nodeType() const override { return SourceNodeType::MidiClipSource; }
-        bool bypassed() const override { return bypassed_; }
-        void bypassed(bool value) override { bypassed_ = value; }
+        bool disabled() const override { return bypassed_; }
+        void disabled(bool value) override { bypassed_ = value; }
         std::vector<uint8_t> saveState() override;
         void loadState(const std::vector<uint8_t>& state) override;
 

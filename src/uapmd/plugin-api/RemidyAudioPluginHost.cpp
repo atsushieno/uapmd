@@ -48,9 +48,8 @@ namespace uapmd {
             }
         }
 
-        void bypassed(bool value) override {
-            bypassed_ = value;
-        }
+        bool bypassed() const override { return bypassed_; }
+        void bypassed(bool value) override { bypassed_ = value; }
 
         uapmd_status_t processAudio(AudioProcessContext &process) override {
             if (bypassed_)
