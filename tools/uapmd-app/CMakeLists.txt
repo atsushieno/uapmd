@@ -139,7 +139,7 @@ CPMAddPackage(
 # IconFontCppHeaders provides Fontaudio glyph definitions used in the GUI
 CPMAddPackage(
     NAME IconFontCppHeaders
-    GIT_TAG master
+    GIT_TAG main
     GIT_REPOSITORY https://github.com/juliettef/IconFontCppHeaders
     DOWNLOAD_ONLY YES
 )
