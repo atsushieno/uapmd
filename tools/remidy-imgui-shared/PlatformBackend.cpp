@@ -959,8 +959,15 @@ public:
             // Resize swap chain if dimensions don't match
             if (desc.Width != targetWidth || desc.Height != targetHeight) {
                 CleanupRenderTarget();
-                g_pSwapChain->ResizeBuffers(0, targetWidth, targetHeight, DXGI_FORMAT_UNKNOWN, 0);
-                CreateRenderTarget();
+                // Unbind all render targets and flush before ResizeBuffers;
+                // any lingering OM references to swap chain buffers will cause
+                // ResizeBuffers to return DXGI_ERROR_INVALID_CALL and leave the
+                // swap chain broken, crashing Present on the next frame.
+                g_pd3dDeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
+                g_pd3dDeviceContext->Flush();
+                HRESULT resizeHr = g_pSwapChain->ResizeBuffers(0, targetWidth, targetHeight, DXGI_FORMAT_UNKNOWN, 0);
+                if (SUCCEEDED(resizeHr))
+                    CreateRenderTarget();
             }
         }
 
