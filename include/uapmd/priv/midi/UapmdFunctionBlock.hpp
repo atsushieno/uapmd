@@ -9,6 +9,8 @@
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
+    class UapmdMidiCISession;
+
     class UapmdFunctionBlock {
         AudioPluginNode* plugin_node;
         uint8_t ump_group{0xFF}; // invalid

@@ -7,6 +7,7 @@
 
 #include <midicci/midicci.hpp>
 #include "uapmd/uapmd.hpp"
+#include "UapmdMidiCISession.hpp"
 
 using namespace midicci::commonproperties;
 

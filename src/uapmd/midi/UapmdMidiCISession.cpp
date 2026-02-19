@@ -7,6 +7,7 @@
 #include <umppi/umppi.hpp>
 #include <utility>
 #include "uapmd/uapmd.hpp"
+#include "UapmdMidiCISession.hpp"
 
 namespace uapmd {
     namespace {

@@ -14,6 +14,9 @@ namespace uapmd {
     // AllCtrlList, CtrlMapList, ProgramList, and State.
     //
     // There is no "output interceptor" as it will be handled by MidiCISession and its registered `MidiIODevice`.
+    //
+    // It used to be part of the public API and therefore everything is pure virtual, but we don't really expose
+    //  the type anymore. We didn't go back to direct implementation only because we don't have to...
     class UapmdMidiCISession {
     public:
         virtual ~UapmdMidiCISession() = default;
