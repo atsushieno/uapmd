@@ -67,7 +67,7 @@ int run(int argc, const char* argv[]) {
         // ---- Load project (blocks until all plugins are instantiated) ----
         std::cerr << "Loading project: " << projectPath << std::endl;
 
-        auto result = engine->loadProject(projectPath);
+        auto result = engine->timeline().loadProject(projectPath);
 
         if (!result.success) {
             std::cerr << "Failed to load project: " << result.error << std::endl;
@@ -83,7 +83,7 @@ int run(int argc, const char* argv[]) {
         if (durationOverride.has_value()) {
             totalSeconds = *durationOverride;
         } else {
-            auto snapshot = engine->buildMasterTrackSnapshot();
+            auto snapshot = engine->timeline().buildMasterTrackSnapshot();
             if (!snapshot.empty())
                 totalSeconds = snapshot.maxTimeSeconds;
         }

@@ -110,7 +110,6 @@ namespace uapmd {
 
 
         // Audio processing callback (called by SequencerEngine)
-        void processAppTracksAudio(AudioProcessContext& process);
         void notifyTrackLayoutChanged(const TrackLayoutChange& change);
 
     public:
@@ -246,8 +245,8 @@ namespace uapmd {
         PluginStateResult savePluginState(int32_t instanceId, const std::string& filepath);
 
         // Timeline access
-        uapmd::TimelineState& timeline() { return sequencer_.engine()->timeline(); }
-        const uapmd::TimelineState& timeline() const { return const_cast<AppModel*>(this)->sequencer_.engine()->timeline(); }
+        uapmd::TimelineState& timeline() { return sequencer_.engine()->timeline().state(); }
+        const uapmd::TimelineState& timeline() const { return const_cast<AppModel*>(this)->sequencer_.engine()->timeline().state(); }
 
         // Clip management
         struct ClipAddResult {

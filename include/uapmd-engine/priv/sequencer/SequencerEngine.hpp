@@ -1,11 +1,10 @@
 #pragma once
-#include <filesystem>
 #include <limits>
 #include <memory>
 #include <vector>
 
 #include <uapmd/uapmd.hpp>
-#include <uapmd-data/uapmd-data.hpp>
+#include "TimelineFacade.hpp"
 
 namespace uapmd {
     inline constexpr int32_t kMasterTrackIndex = std::numeric_limits<int32_t>::min();
@@ -77,56 +76,8 @@ namespace uapmd {
         virtual void sendChannelPressure(int32_t instanceId, float pressure) = 0;
         virtual void setParameterValue(int32_t instanceId, int32_t index, double value) = 0;
 
-        // Timeline track management
-        virtual TimelineState& timeline() = 0;
-        virtual std::vector<TimelineTrack*> timelineTracks() = 0;
-
-        // Clip management
-        struct ClipAddResult {
-            int32_t clipId{-1};
-            int32_t sourceNodeId{-1};
-            bool success{false};
-            std::string error;
-        };
-        virtual ClipAddResult addClipToTrack(int32_t trackIndex, const TimelinePosition& position,
-            std::unique_ptr<AudioFileReader> reader, const std::string& filepath = "") = 0;
-        virtual ClipAddResult addMidiClipToTrack(int32_t trackIndex, const TimelinePosition& position,
-            const std::string& filepath) = 0;
-        virtual ClipAddResult addMidiClipToTrack(int32_t trackIndex, const TimelinePosition& position,
-            std::vector<uapmd_ump_t> umpEvents, std::vector<uint64_t> umpTickTimestamps,
-            uint32_t tickResolution, double clipTempo,
-            std::vector<MidiTempoChange> tempoChanges,
-            std::vector<MidiTimeSignatureChange> timeSignatureChanges,
-            const std::string& clipName = "") = 0;
-        virtual bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) = 0;
-
-        // Project loading
-        struct ProjectResult {
-            bool success{false};
-            std::string error;
-        };
-        virtual ProjectResult loadProject(const std::filesystem::path& file) = 0;
-
-        // Master track metadata (tempo map and time signatures across all MIDI clips)
-        struct MasterTrackSnapshot {
-            struct TempoPoint {
-                double timeSeconds{0.0};
-                uint64_t tickPosition{0};
-                double bpm{0.0};
-            };
-            struct TimeSignaturePoint {
-                double timeSeconds{0.0};
-                uint64_t tickPosition{0};
-                MidiTimeSignatureChange signature{};
-            };
-            std::vector<TempoPoint> tempoPoints;
-            std::vector<TimeSignaturePoint> timeSignaturePoints;
-            double maxTimeSeconds{0.0};
-            bool empty() const {
-                return tempoPoints.empty() && timeSignaturePoints.empty();
-            }
-        };
-        virtual MasterTrackSnapshot buildMasterTrackSnapshot() = 0;
+        // Timeline clip management and project loading
+        virtual TimelineFacade& timeline() = 0;
 
         static std::unique_ptr<SequencerEngine> create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
     };

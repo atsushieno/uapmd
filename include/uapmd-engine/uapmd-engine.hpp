@@ -7,5 +7,6 @@
 #include "priv/devices/DeviceIODispatcher.hpp"
 #include "priv/sequencer/SequencerTrack.hpp"
 #include "priv/sequencer/SequenceProcessContext.hpp"
+#include "priv/sequencer/TimelineFacade.hpp"
 #include "priv/sequencer/SequencerEngine.hpp"
 #include "priv/sequencer/RealtimeSequencer.hpp"

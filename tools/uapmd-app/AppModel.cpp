@@ -1061,7 +1061,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
             return addMidiClipToTrack(trackIndex, position, filepath);
     }
 
-    auto engineResult = sequencer_.engine()->addClipToTrack(trackIndex, position, std::move(reader), filepath);
+    auto engineResult = sequencer_.engine()->timeline().addClipToTrack(trackIndex, position, std::move(reader), filepath);
     result.clipId = engineResult.clipId;
     result.sourceNodeId = engineResult.sourceNodeId;
     result.success = engineResult.success;
@@ -1075,7 +1075,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     const std::string& filepath
 ) {
     ClipAddResult result;
-    auto engineResult = sequencer_.engine()->addMidiClipToTrack(trackIndex, position, filepath);
+    auto engineResult = sequencer_.engine()->timeline().addMidiClipToTrack(trackIndex, position, filepath);
     result.clipId = engineResult.clipId;
     result.sourceNodeId = engineResult.sourceNodeId;
     result.success = engineResult.success;
@@ -1095,7 +1095,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     const std::string& clipName
 ) {
     ClipAddResult result;
-    auto engineResult = sequencer_.engine()->addMidiClipToTrack(
+    auto engineResult = sequencer_.engine()->timeline().addMidiClipToTrack(
         trackIndex, position,
         std::move(umpEvents), std::move(umpTickTimestamps),
         tickResolution, clipTempo,
@@ -1110,14 +1110,14 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
 }
 
 bool uapmd::AppModel::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
-    return sequencer_.engine()->removeClipFromTrack(trackIndex, clipId);
+    return sequencer_.engine()->timeline().removeClipFromTrack(trackIndex, clipId);
 }
 
 int32_t uapmd::AppModel::addDeviceInputToTrack(
     int32_t trackIndex,
     const std::vector<uint32_t>& channelIndices
 ) {
-    auto timelineTracks = sequencer_.engine()->timelineTracks();
+    auto timelineTracks = sequencer_.engine()->timeline().tracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timelineTracks.size()))
         return -1;
 
@@ -1139,11 +1139,11 @@ int32_t uapmd::AppModel::addDeviceInputToTrack(
 }
 
 std::vector<uapmd::TimelineTrack*> uapmd::AppModel::getTimelineTracks() {
-    return sequencer_.engine()->timelineTracks();
+    return sequencer_.engine()->timeline().tracks();
 }
 
 uapmd::AppModel::MasterTrackSnapshot uapmd::AppModel::buildMasterTrackSnapshot() {
-    auto engineSnapshot = sequencer_.engine()->buildMasterTrackSnapshot();
+    auto engineSnapshot = sequencer_.engine()->timeline().buildMasterTrackSnapshot();
     MasterTrackSnapshot snapshot;
     snapshot.maxTimeSeconds = engineSnapshot.maxTimeSeconds;
     for (auto& p : engineSnapshot.tempoPoints) {
@@ -1197,7 +1197,7 @@ bool uapmd::AppModel::removeTrack(int32_t trackIndex) {
     }
 
     // Clear clips via engine (which owns the timeline tracks)
-    auto timelineTracks = sequencer_.engine()->timelineTracks();
+    auto timelineTracks = sequencer_.engine()->timeline().tracks();
     if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timelineTracks.size())) {
         timelineTracks[trackIndex]->clipManager().clearAll();
     }
@@ -1420,7 +1420,7 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
     ProjectResult result;
 
     // Delegate project loading to SequencerEngine (which owns timeline tracks and plugins)
-    auto engineResult = sequencer_.engine()->loadProject(projectFile);
+    auto engineResult = sequencer_.engine()->timeline().loadProject(projectFile);
     if (!engineResult.success) {
         result.error = engineResult.error;
         return result;
@@ -1449,10 +1449,4 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
 
     result.success = true;
     return result;
-}
-
-// Timeline audio processing is now handled directly by SequencerEngineImpl::processTracksAudio().
-// This stub is kept for binary compatibility during the transition.
-void uapmd::AppModel::processAppTracksAudio(AudioProcessContext&) {
-    // No-op: SequencerEngine owns timeline tracks and registers its own preprocess callback.
 }

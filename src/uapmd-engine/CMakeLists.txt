@@ -62,5 +62,6 @@ target_sources(uapmd-engine PRIVATE
         sequencer/RealtimeSequencer.cpp
         sequencer/SequencerEngine.cpp
         sequencer/SequencerTrack.cpp
+        sequencer/TimelineFacade.cpp
 )
 
