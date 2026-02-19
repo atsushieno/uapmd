@@ -20,7 +20,7 @@
 
 #include "TimelineEditor.hpp"
 #include "ClipPreview.hpp"
-#include "FontaudioIcons.hpp"
+#include "FontIcons.hpp"
 #include "../AppModel.hpp"
 #include <uapmd-data/priv/project/SmfConverter.hpp>
 #include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>

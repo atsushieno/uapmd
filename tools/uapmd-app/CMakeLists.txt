@@ -152,6 +152,14 @@ CPMAddPackage(
     DOWNLOAD_ONLY YES
 )
 
+# Font Awesome 7.x assets
+CPMAddPackage(
+    NAME FontAwesome
+    GIT_TAG 7.x
+    GIT_REPOSITORY https://github.com/FortAwesome/Font-Awesome
+    DOWNLOAD_ONLY YES
+)
+
 if(NOT TARGET imgui)
     # Base ImGui sources
     set(IMGUI_SOURCES

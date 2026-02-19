@@ -1,7 +1,10 @@
 #include "FontLoader.hpp"
 #include "EmbeddedFont.hpp"
 #include "FontaudioEmbedded.hpp"
-#include "FontaudioIcons.hpp"
+#include "FontAwesomeEmbedded.hpp"
+#include "FontIcons.hpp"
+
+#include <IconsFontAwesome7.h>
 #include <imgui.h>
 #include <zlib.h>
 #include <cstdio>
@@ -116,6 +119,39 @@ void mergeFontaudioIconFont(ImGuiIO& io, float baseFontSize) {
     );
 }
 
+const std::vector<uint8_t>& fontawesomeOtfData() {
+    static std::vector<uint8_t> blob = extractTtfFromZip(
+        uapmd::fontawesome::kFontAwesomeZipData,
+        uapmd::fontawesome::kFontAwesomeZipSize
+    );
+    return blob;
+}
+
+void mergeFontAwesomeIconFont(ImGuiIO& io, float baseFontSize) {
+    static_assert(ICON_MIN_FA <= ICON_MAX_FA, "Invalid Font Awesome icon range");
+    const auto& fontData = fontawesomeOtfData();
+    if (fontData.empty())
+        return;
+
+    ImFontConfig iconConfig{};
+    iconConfig.MergeMode = true;
+    iconConfig.PixelSnapH = true;
+    iconConfig.FontDataOwnedByAtlas = false;
+    iconConfig.OversampleH = 1;
+    iconConfig.OversampleV = 1;
+    iconConfig.GlyphMinAdvanceX = baseFontSize * 0.65f;
+    iconConfig.GlyphOffset = ImVec2(0.0f, baseFontSize * 0.05f);
+
+    static const ImWchar fontAwesomeRanges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
+    io.Fonts->AddFontFromMemoryTTF(
+        const_cast<uint8_t*>(fontData.data()),
+        static_cast<int>(fontData.size()),
+        baseFontSize,
+        &iconConfig,
+        fontAwesomeRanges
+    );
+}
+
 } // namespace
 
 void ensureApplicationFont() {
@@ -141,6 +177,7 @@ void ensureApplicationFont() {
         );
         if (font != nullptr) {
             io.FontDefault = font;
+            mergeFontAwesomeIconFont(io, kBaseFontSize);
             mergeFontaudioIconFont(io, kBaseFontSize);
             return;
         }
@@ -149,6 +186,7 @@ void ensureApplicationFont() {
     std::fprintf(stderr, "uapmd-app: failed to load embedded font\n");
     ImFont* fallback = io.Fonts->AddFontDefault();
     io.FontDefault = fallback;
+    mergeFontAwesomeIconFont(io, kBaseFontSize);
     mergeFontaudioIconFont(io, kBaseFontSize);
 }
 
