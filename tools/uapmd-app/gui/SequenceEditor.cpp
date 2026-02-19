@@ -299,11 +299,15 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         // or when the timeline child window is not hovered (another overlay window has focus).
         // ImTimeline reads directly from ImGui::GetIO(), so we temporarily clear mouse state.
         const bool popupBlocking = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
-        // Suppress input if another window (overlay/dragged) has captured the mouse
-        const bool overlayBlocking = !timelineHovered && ImGui::GetIO().MouseDown[0];
+        // Suppress input if another window (overlay/dragged) has captured the mouse.
+        // Check for any mouse activity (click/drag or scroll) so that scrolling an overlay
+        // window does not pan the inline timeline's horizontal position.
+        ImGuiIO& io = ImGui::GetIO();
+        const bool anyMouseActivity = io.MouseDown[0] || io.MouseDown[1] ||
+                                      io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
+        const bool overlayBlocking = !timelineHovered && anyMouseActivity;
         const bool shouldBlockInput = popupBlocking || overlayBlocking;
 
-        ImGuiIO& io = ImGui::GetIO();
         bool savedMouseDown[5];
         float savedMouseWheel = 0.0f;
         float savedMouseWheelH = 0.0f;

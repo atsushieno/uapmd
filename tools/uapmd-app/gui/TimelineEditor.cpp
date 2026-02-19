@@ -523,6 +523,8 @@ void TimelineEditor::renderTrackRow(int32_t trackIndex, const SequenceEditor::Re
         }
         if (ImGui::Button(uapmd::gui::icons::DeleteTrack))
             deleteTrack(trackIndex);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Delete track");
 
         if (ImGui::Button(std::format("{}...", pluginLabel).c_str()))
             ImGui::OpenPopup(popupId.c_str());
