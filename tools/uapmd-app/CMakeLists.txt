@@ -160,6 +160,25 @@ CPMAddPackage(
     DOWNLOAD_ONLY YES
 )
 
+# ResEmbed: build-time resource/font embedding
+CPMAddPackage(
+    NAME ResEmbed
+    GIT_TAG main
+    GIT_REPOSITORY https://github.com/eyalamirmusic/ResEmbed
+)
+
+# Embed font files into each app binary at build time
+foreach(app_target IN LISTS UAPMD_APP_TARGETS)
+    res_embed_add(${app_target}
+        FILES
+            "${CMAKE_SOURCE_DIR}/external/font/static/Roboto-SemiBold.ttf"
+            "${fontaudio_SOURCE_DIR}/font/fontaudio.ttf"
+            "${FontAwesome_SOURCE_DIR}/otfs/Font Awesome 7 Free-Solid-900.otf"
+        NAMESPACE AppFonts
+        CATEGORY AppFonts
+    )
+endforeach()
+
 if(NOT TARGET imgui)
     # Base ImGui sources
     set(IMGUI_SOURCES
@@ -324,6 +343,7 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             libremidi::libremidi
             midicci_static
             zlib-ng
+            ResEmbed
             ${uapmd_LIBS_PLAT}
     )
 

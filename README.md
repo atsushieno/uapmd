@@ -147,7 +147,8 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
 - [ocornut/imgui](https://github.com/ocornut/imgui) - MIT
 - [unevens/ImTimeline](https://github.com/triplejam/ImTimeline) (a well-maintained and buildable fork of NickVanheer/ImTimeline) - MIT
-- [IconFontCppHelpers](https://github.com/juliettef/IconFontCppHeaders) - Zlib license.
+- [juliettef/IconFontCppHelpers](https://github.com/juliettef/IconFontCppHeaders) - Zlib license.
+- [eyalamirmusic/ResEmbed](https://github.com/eyalamirmusic/ResEmbed) - MIT
 - [Roboto font](https://fonts.google.com/specimen/Roboto) - the SIL Open Font License v1.1
 - [FontAwesome](https://github.com/FortAwesome/Font-Awesome) - CC-BY 4.0 + SIL OFL 1.1
 - [fontaudio](https://github.com/fefanto/fontaudio) - MIT
