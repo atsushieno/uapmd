@@ -117,6 +117,7 @@ namespace uapmd {
         static AppModel& instance();
         static void cleanupInstance();
         AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
+        ~AppModel() override = default;
 
         RealtimeSequencer& sequencer() { return sequencer_; }
         remidy_tooling::PluginScanTool& pluginScanTool() { return pluginScanTool_; }

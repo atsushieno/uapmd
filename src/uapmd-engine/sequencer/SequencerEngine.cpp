@@ -64,6 +64,7 @@ namespace uapmd {
 
     public:
         explicit SequencerEngineImpl(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts);
+        ~SequencerEngineImpl() override;
 
         AudioPluginHostingAPI* pluginHost() override;
 
@@ -163,6 +164,11 @@ namespace uapmd {
         audio_preprocess_callback_ = [this](AudioProcessContext& process) {
             timeline_->processTracksAudio(process);
         };
+    }
+
+    SequencerEngineImpl::~SequencerEngineImpl() {
+        // make sure to clean up tracks before plugin_host so that we don't release plugin instances ahead of these.
+        tracks_.clear();
     }
 
     std::vector<SequencerTrack*> &SequencerEngineImpl::tracks() const {

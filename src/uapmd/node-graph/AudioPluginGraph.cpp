@@ -14,6 +14,7 @@ namespace uapmd {
         explicit AudioPluginGraphImpl(size_t eventBufferSizeInBytes)
             : event_buffer_size_in_bytes_(eventBufferSizeInBytes) {
         }
+        ~AudioPluginGraphImpl() override = default;
 
         uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
         bool removeNodeSimple(int32_t instanceId) override;

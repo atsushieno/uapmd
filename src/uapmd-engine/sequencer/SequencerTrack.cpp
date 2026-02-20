@@ -13,6 +13,7 @@ namespace uapmd {
 
     public:
         explicit SequencerTrackImpl(size_t eventBufferSizeInBytes);
+        ~SequencerTrackImpl() override = default;
 
         AudioPluginGraph& graph() override { return *graph_; }
 
