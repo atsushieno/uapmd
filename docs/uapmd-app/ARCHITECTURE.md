@@ -48,3 +48,13 @@ We split DAW features like this:
   - non-UI features
     - scripting runtime
   - player
+
+## Data flow
+
+- Platform Audio In (mixed)
+- Platform Midi In (mixed, TBD)
+- for each SequencerTrack:
+  - TimelineTrack
+  - AudioGraph (-> AudioPluginInstanceAPI)
+- Platform Audio Out
+- Platform MIDI Out (TBD)

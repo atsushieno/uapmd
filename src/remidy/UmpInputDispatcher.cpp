@@ -13,7 +13,7 @@ inline uint16_t midi2NoteAttributeData(const umppi::Ump& ump) {
 
 void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
     _timestamp = 0;
-    track_context = src.trackContext();
+    master_context = &src.masterContext();
 
     onProcessStart(src);
 
@@ -36,8 +36,9 @@ void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
         switch (ump.getMessageType()) {
             case umppi::MessageType::UTILITY:
                 switch (static_cast<uint8_t>(ump.getStatusCode())) {
+                    // FIXME: we should make this optional. A sequencer engine might not want have tracks update this value.
                     case umppi::MidiUtilityStatus::DCTPQ:
-                        track_context->deltaClockstampTicksPerQuarterNotes(ump.getDCTPQ());
+                        master_context->deltaClockstampTicksPerQuarterNotes(ump.getDCTPQ());
                         break;
                     case umppi::MidiUtilityStatus::JR_TIMESTAMP:
                         // FIXME: convert to sample-based timestamp (here?)
@@ -157,5 +158,5 @@ void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
 
     onProcessEnd(src);
 
-    track_context = nullptr;
+    master_context = nullptr;
 }

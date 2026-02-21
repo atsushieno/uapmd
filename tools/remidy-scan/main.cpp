@@ -75,7 +75,6 @@ int testInstancing() {
                     size_t numAudioIn = inputBuses.size();
                     size_t numAudioOut = outputBuses.size();
                     remidy::MasterContext masterContext;
-                    remidy::TrackContext trackContext{masterContext};
                     remidy::AudioProcessContext ctx{masterContext, 4096};
                     constexpr size_t bufferCapacityFrames = 1024;
                     auto audioBuses = instance->audioBuses();

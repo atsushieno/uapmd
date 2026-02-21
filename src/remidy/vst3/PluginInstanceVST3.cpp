@@ -423,13 +423,12 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     const auto &ctx = processData.processContext;
 
     // Update ProcessContext with transport info from MasterContext
-    auto* trackContext = process.trackContext();
-    auto& masterContext = trackContext->masterContext();
+    auto& masterContext = process.masterContext();
 
     process_context.projectTimeSamples = masterContext.playbackPositionSamples();
     process_context.continousTimeSamples = masterContext.playbackPositionSamples();
     process_context.sampleRate = masterContext.sampleRate();
-    processData.symbolicSampleSize = process.trackContext()->masterContext().audioDataType() == AudioContentType::Float64 ? kSample64 : kSample32;
+    processData.symbolicSampleSize = process.masterContext().audioDataType() == AudioContentType::Float64 ? kSample64 : kSample32;
 
     // Update state flags
     uint32_t state = ProcessContext::kTempoValid | ProcessContext::kTimeSigValid;

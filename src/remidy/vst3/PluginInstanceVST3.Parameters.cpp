@@ -182,7 +182,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
-    double ppqPosition = owner->ump_input_dispatcher.trackContext()->ppqPosition(); // I guess only either of those time options are needed.
+    double ppqPosition = owner->ump_input_dispatcher.masterContext()->ppqPosition(); // I guess only either of those time options are needed.
     uint16_t flags = owner->processData.processMode == kRealtime ? Event::kIsLive : 0; // am I right?
     Event evt{};
     evt.busIndex = static_cast<int32_t>(context.group);

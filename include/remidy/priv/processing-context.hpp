@@ -53,6 +53,14 @@ namespace remidy {
             return StatusCode::OK;
         }
 
+        double ppqPosition() {
+            // Calculate PPQ from samples, like VST3 does
+            // PPQ = (samples / sampleRate) * (tempo_bpm / 60)
+            double tempoBPM = 60000000.0 / tempo();
+            double seconds = static_cast<double>(playbackPositionSamples()) / sampleRate();
+            return (seconds * tempoBPM) / 60.0;
+        }
+
         uint32_t tempo() {
             return tempo_;
         }
@@ -74,46 +82,6 @@ namespace remidy {
 
         int32_t timeSignatureDenominator() const { return time_signature_denominator_; }
         void timeSignatureDenominator(int32_t newValue) { time_signature_denominator_ = newValue; }
-    };
-
-    class TrackContext {
-        MasterContext& master_context;
-        // in case they are overridden...
-        std::optional<uint16_t> dctpq_override{};
-        std::optional<uint32_t> tempo_override{};  // microseconds per quarter note
-
-    public:
-        explicit TrackContext(MasterContext& masterContext) :
-            master_context(masterContext) {
-
-        }
-
-        MasterContext& masterContext() { return master_context; }
-
-        uint16_t deltaClockstampTicksPerQuarterNotes() {
-            return dctpq_override.has_value() ? dctpq_override.value() : master_context.deltaClockstampTicksPerQuarterNotes();
-        }
-        StatusCode deltaClockstampTicksPerQuarterNotes(uint16_t newValue) {
-            dctpq_override = newValue;
-            return StatusCode::OK;
-        }
-
-        uint32_t tempo() {
-            return tempo_override.has_value() ? tempo_override.value() : master_context.tempo();
-        }
-        StatusCode tempo(uint32_t newValue) {
-            tempo_override = newValue;
-            return StatusCode::OK;
-        }
-
-        double ppqPosition() {
-            // Calculate PPQ from samples, like VST3 does
-            // PPQ = (samples / sampleRate) * (tempo_bpm / 60)
-            double tempoBPM = 60000000.0 / master_context.tempo();
-            double seconds = static_cast<double>(master_context.playbackPositionSamples()) /
-                           master_context.sampleRate();
-            return (seconds * tempoBPM) / 60.0;
-        }
     };
 
     // Represents a set of realtime-safe input and output of audio processing.
@@ -200,7 +168,7 @@ namespace remidy {
             uint32_t bufferCapacityInFrames() const { return frame_capacity; }
         };
 
-        TrackContext track_context;
+        MasterContext& master_context;
         std::vector<AudioBusBufferList*> audio_in{};
         std::vector<AudioBusBufferList*> audio_out{};
         EventSequence event_in;
@@ -213,7 +181,7 @@ namespace remidy {
         AudioProcessContext(
             MasterContext& masterContext,
             const uint32_t eventBufferSizeBytes
-        ) : track_context(masterContext),
+        ) : master_context(masterContext),
             event_in(eventBufferSizeBytes),
             event_out(eventBufferSizeBytes),
             audio_buffer_capacity_frames(0) {
@@ -247,7 +215,7 @@ namespace remidy {
             audio_out.emplace_back(new AudioBusBufferList(channels, audioBufferCapacityInFrames));
         }
 
-        TrackContext* trackContext() { return &track_context; }
+        MasterContext& masterContext() { return master_context; }
 
         size_t audioBufferCapacityInFrames() { return audio_buffer_capacity_frames; }
 
@@ -287,7 +255,7 @@ namespace remidy {
         };
 
         void copyInputsToOutputs() {
-            auto dataType = track_context.masterContext().audioDataType();
+            auto dataType = master_context.audioDataType();
             size_t busCount = std::min(audio_in.size(), audio_out.size());
             for (size_t i = 0; i < busCount; ++i) {
                 auto* inBus = audio_in[i];
@@ -343,7 +311,7 @@ namespace remidy {
         }
 
         void advanceToNextNode() {
-            auto dataType = track_context.masterContext().audioDataType();
+            auto dataType = master_context.audioDataType();
             // Copy audio output to input for the next node
             for (size_t i = 0; i < std::min(audio_in.size(), audio_out.size()); ++i) {
                 auto* inBus = audio_in[i];

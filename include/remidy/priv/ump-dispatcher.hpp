@@ -14,7 +14,7 @@ namespace remidy {
 
     class TypedUmpInputDispatcher : public UmpInputDispatcher {
         uint64_t _timestamp{0};
-        TrackContext* track_context{}; // set every time process() is invoked
+        MasterContext* master_context;
 
     protected:
         // 80h
@@ -46,6 +46,6 @@ namespace remidy {
         void process(AudioProcessContext& src) override;
 
         uint64_t timestamp() { return _timestamp; }
-        TrackContext* trackContext() { return track_context; }
+        MasterContext* masterContext() { return master_context; }
     };
 }

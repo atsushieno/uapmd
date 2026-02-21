@@ -519,7 +519,7 @@ namespace uapmd {
             }
 
             // Sync to MasterContext
-            auto& masterCtx = process.trackContext()->masterContext();
+            auto& masterCtx = process.masterContext();
             masterCtx.playbackPositionSamples(timeline_.playheadPosition.samples);
             masterCtx.isPlaying(timeline_.isPlaying);
             uint32_t tempoMicros = static_cast<uint32_t>(60000000.0 / timeline_.tempo);

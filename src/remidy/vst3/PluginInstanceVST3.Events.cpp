@@ -21,7 +21,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOn(remidy::uint4_
     Event e{};
     e.busIndex = group;
     e.sampleOffset = static_cast<int32_t>(timestamp());
-    e.ppqPosition = trackContext()->ppqPosition();
+    e.ppqPosition = masterContext()->ppqPosition();
     e.flags = 0;
     e.type = Event::kNoteOnEvent;
     e.noteOn.channel = channel;
@@ -42,7 +42,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onNoteOff(remidy::uint4
     Event e{};
     e.busIndex = group;
     e.sampleOffset = static_cast<int32_t>(timestamp());
-    e.ppqPosition = trackContext()->ppqPosition();
+    e.ppqPosition = masterContext()->ppqPosition();
     e.flags = 0;
     e.type = Event::kNoteOffEvent;
     e.noteOff.channel = channel;
@@ -274,7 +274,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPressure(remidy::uint
         Event e{};
         e.busIndex = group;
         e.sampleOffset = static_cast<int32_t>(timestamp());
-        e.ppqPosition = trackContext()->ppqPosition();
+        e.ppqPosition = masterContext()->ppqPosition();
         e.flags = 0;
         e.type = Event::kPolyPressureEvent;
         e.polyPressure.channel = channel;

@@ -209,8 +209,7 @@ remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &proc
         }
 
         // Update transport info from MasterContext
-        auto* trackContext = process.trackContext();
-        auto& masterContext = trackContext->masterContext();
+        auto& masterContext = process.masterContext();
 
         host_transport_info.isPlaying = masterContext.isPlaying();
         host_transport_info.transportStateChanged = false;

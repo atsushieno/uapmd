@@ -240,8 +240,7 @@ namespace remidy {
         dst.steady_time = -1;
 
         // Update transport information from MasterContext
-        auto* trackContext = src.trackContext();
-        auto& masterContext = trackContext->masterContext();
+        auto& masterContext = src.masterContext();
 
         if (!transports_events.empty()) {
             auto& transport = transports_events[0];
@@ -276,7 +275,7 @@ namespace remidy {
             transport.tsig_denom = static_cast<uint16_t>(masterContext.timeSignatureDenominator());
         }
 
-        const bool useDouble = src.trackContext()->masterContext().audioDataType() == AudioContentType::Float64;
+        const bool useDouble = src.masterContext().audioDataType() == AudioContentType::Float64;
         const size_t numFrames = static_cast<size_t>(src.frameCount());
 
         auto zeroInputFallback = [&](size_t bus, size_t channel) -> std::pair<float*, double*> {

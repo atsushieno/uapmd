@@ -260,8 +260,7 @@ remidy::StatusCode remidy::PluginInstanceAUv2::process(AudioProcessContext &proc
     }
 
     // Update transport info from MasterContext
-    auto* trackContext = process.trackContext();
-    auto& masterContext = trackContext->masterContext();
+    auto& masterContext = process.masterContext();
 
     // process_timestamp.mSampleTime is maintained locally and advances continuously
     // This is critical: AU plugins need to see time advancing to process MIDI events,

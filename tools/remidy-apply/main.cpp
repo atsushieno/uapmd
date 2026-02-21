@@ -26,7 +26,6 @@ class RemidyApply {
         uint32_t numAudioIn = inputBuses.size();
         uint32_t numAudioOut = outputBuses.size();
         remidy::MasterContext masterContext{};
-        remidy::TrackContext trackContext{masterContext};
         remidy::AudioProcessContext ctx{masterContext, 4096};
         ctx.configureMainBus(numAudioIn > 0 ? inputBuses[0]->channelLayout().channels() : 0,
                 numAudioOut > 0 ? outputBuses[0]->channelLayout().channels() : 0,
