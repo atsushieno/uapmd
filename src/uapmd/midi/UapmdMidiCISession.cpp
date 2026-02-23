@@ -49,8 +49,22 @@ namespace uapmd {
 
     void UapmdMidiCISessionImpl::interceptUmpInput(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
 
+        if (ci_input_forwarders.empty() || !ump || sizeInBytes == 0)
+            return;
+
+        if (sizeInBytes % sizeof(uapmd_ump_t) != 0)
+            return;
+
+        const auto word_count = sizeInBytes / sizeof(uapmd_ump_t);
+        if (word_count == 0)
+            return;
+
+        auto* words = reinterpret_cast<const uint32_t*>(ump);
+        umppi::UmpWordSpan word_span{words, word_count};
+        const auto timestamp_ns = static_cast<uint64_t>(timestamp);
+
         for (auto& forwarder : ci_input_forwarders)
-            forwarder(reinterpret_cast<uint8_t*>(static_cast<void*>(ump)), 0, sizeInBytes, timestamp);
+            forwarder(word_span, timestamp_ns);
 
     }
 
@@ -115,21 +129,25 @@ namespace uapmd {
         auto input_listener_adder = [&](midicci::musicdevice::MidiInputCallback callback) {
             ci_input_forwarders.push_back(std::move(callback));
         };
-        auto sender = [&](const uint8_t* data, size_t offset, size_t length, uint64_t timestamp) {
+        auto sender = [&](umppi::UmpWordSpan words, uint64_t timestamp_ns) {
             if (!device->midiIO())
                 return;
-            device->midiIO()->send(const_cast<uapmd_ump_t*>(reinterpret_cast<const uapmd_ump_t*>(data + offset)),
-                                 length,
-                                 static_cast<uapmd_timestamp_t>(timestamp));
+            if (words.empty())
+                return;
+
+            auto* data = reinterpret_cast<const uapmd_ump_t*>(words.data());
+            const auto length_in_bytes = words.size() * sizeof(uapmd_ump_t);
+            device->midiIO()->send(const_cast<uapmd_ump_t*>(data),
+                                   length_in_bytes,
+                                   static_cast<uapmd_timestamp_t>(timestamp_ns));
         };
 
         midicci::musicdevice::MidiCISessionSource source{
-            midicci::musicdevice::MidiTransportProtocol::UMP,
             input_listener_adder,
             sender
         };
 
-        ci_session = createMidiCiSession(source, muid, std::move(ci_config), [&](const LogData& log) {
+        ci_session = createMidiCiSession(source, muid, ci_config, [&](const LogData& log) {
             auto msg = std::get_if<std::reference_wrapper<const Message>>(&log.data);
             if (msg)
                 std::cerr << "[UAPMD LOG " << (log.is_outgoing ? "OUT] " : "IN] ") << msg->get().getLogMessage() << std::endl;
