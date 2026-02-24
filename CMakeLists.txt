@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (Windows only)" ${WIN32})
 option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integration (Windows only)" OFF)
+option(UAPMD_ENABLE_ASAN "Enable AddressSanitizer (MSVC: /fsanitize=address, GCC/Clang: -fsanitize=address)" OFF)
 
 #### end of section ####
 
@@ -34,10 +35,25 @@ set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME uapmd)
 set(LIBREMIDI_HEADER_ONLY ON CACHE BOOL "Build libremidi as header-only" FORCE)
 if(MSVC)
     # MSVC debug flags: /Zi for debug info, /Od for no optimization
+    # Note: /Zi is required (not /ZI) when ASAN is enabled. /RTC1 must be absent (it conflicts with ASAN).
     set(CMAKE_CXX_FLAGS_DEBUG "/Zi /Od /MDd" CACHE STRING "" FORCE)
     set(CMAKE_C_FLAGS_DEBUG "/Zi /Od /MDd" CACHE STRING "" FORCE)
 else()
     # we do not mess platforms that works totally well
+endif()
+
+if(UAPMD_ENABLE_ASAN)
+    if(MSVC)
+        add_compile_options(/fsanitize=address)
+        # MSVC auto-links the ASAN runtime; no separate add_link_options needed.
+        # The ASAN DLL (clang_rt.asan_dynamic-x86_64.dll / clang_rt.asan_dbg_dynamic-x86_64.dll)
+        # must be on PATH or copied next to the executable at runtime.
+        # Find it under: %VSINSTALLDIR%\VC\Tools\MSVC\<ver>\bin\Hostx64\x64\
+    else()
+        add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address)
+    endif()
+    message(STATUS "AddressSanitizer enabled")
 endif()
 set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
 
