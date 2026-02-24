@@ -20,7 +20,16 @@ namespace uapmd {
         int32_t sampleRate_;
         uint32_t bufferSizeInFrames_;
 
-        std::vector<std::unique_ptr<TimelineTrack>> timeline_tracks_;
+        using TrackList = std::vector<std::shared_ptr<TimelineTrack>>;
+        TrackList timeline_tracks_;                          // UI-thread owned
+        std::shared_ptr<const TrackList> timeline_tracks_snapshot_; // RT-thread read via atomic
+
+        void rebuildTrackSnapshot() {
+            auto snap = std::make_shared<TrackList>(timeline_tracks_);
+            std::atomic_store_explicit(&timeline_tracks_snapshot_,
+                std::shared_ptr<const TrackList>(snap), std::memory_order_release);
+        }
+
         TimelineState timeline_;
         int32_t next_source_node_id_{1};
 
@@ -446,6 +455,12 @@ namespace uapmd {
         }
 
         void processTracksAudio(AudioProcessContext& process) override {
+            // Hold a snapshot reference for the duration of this callback so that
+            // tracks added or removed on the UI thread cannot destroy TrackList
+            // elements while we are iterating them.
+            auto snapshot = std::atomic_load_explicit(
+                &timeline_tracks_snapshot_, std::memory_order_acquire);
+
             // Advance playhead and sync MasterContext
             if (timeline_.isPlaying) {
                 timeline_.playheadPosition.samples += process.frameCount();
@@ -455,8 +470,8 @@ namespace uapmd {
                     timeline_.playheadPosition.samples = timeline_.loopStart.samples;
 
                 // Update tempo from MIDI clips on track 0 (if any)
-                if (!timeline_tracks_.empty()) {
-                    auto* t = timeline_tracks_[0].get();
+                if (snapshot && !snapshot->empty()) {
+                    auto* t = (*snapshot)[0].get();
                     if (t) {
                         auto activeClips = t->clipManager().getActiveClipsAt(timeline_.playheadPosition);
                         for (const auto& clip : activeClips) {
@@ -529,7 +544,8 @@ namespace uapmd {
 
             // Process each timeline track into its sequencer track context
             auto& sequenceData = engine_.data();
-            for (size_t i = 0; i < timeline_tracks_.size() && i < sequenceData.tracks.size(); ++i) {
+            if (!snapshot) return;
+            for (size_t i = 0; i < snapshot->size() && i < sequenceData.tracks.size(); ++i) {
                 auto* trackContext = sequenceData.tracks[i];
                 if (!trackContext)
                     continue;
@@ -548,20 +564,23 @@ namespace uapmd {
                     }
                 }
 
-                timeline_tracks_[i]->processAudio(*trackContext, timeline_);
+                (*snapshot)[i]->processAudio(*trackContext, timeline_);
             }
         }
 
         void onTrackAdded(uint32_t outputChannels, double sampleRate, uint32_t bufferSizeInFrames) override {
             sampleRate_ = static_cast<int32_t>(sampleRate);
             bufferSizeInFrames_ = bufferSizeInFrames;
-            timeline_tracks_.emplace_back(std::make_unique<TimelineTrack>(
+            timeline_tracks_.emplace_back(std::make_shared<TimelineTrack>(
                 outputChannels, sampleRate, bufferSizeInFrames));
+            rebuildTrackSnapshot();
         }
 
         void onTrackRemoved(size_t trackIndex) override {
-            if (trackIndex < timeline_tracks_.size())
+            if (trackIndex < timeline_tracks_.size()) {
                 timeline_tracks_.erase(timeline_tracks_.begin() + static_cast<long>(trackIndex));
+                rebuildTrackSnapshot();
+            }
         }
 
     private:
