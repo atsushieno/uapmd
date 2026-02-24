@@ -43,13 +43,17 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     refreshInstances();
     refreshPluginList();
 
-    // Register callback for when plugin scanning completes
+    // Register callback for when plugin scanning completes.
+    // NOTE: this callback fires from the background scanning thread, so the UI
+    // update must be dispatched to the main thread to avoid a data race with
+    // render() reading availablePlugins_ at the same time.
     uapmd::AppModel::instance().scanningCompleted.push_back(
         [this](bool success, std::string error) {
             if (success) {
-                // Scanning successful, refresh the plugin list
-                refreshPluginList();
-                std::cout << "Plugin list refreshed after scanning" << std::endl;
+                remidy::EventLoop::runTaskOnMainThread([this]() {
+                    refreshPluginList();
+                    std::cout << "Plugin list refreshed after scanning" << std::endl;
+                });
             } else {
                 std::cout << "Plugin scanning failed: " << error << std::endl;
             }

@@ -17,7 +17,7 @@ public:
     };
 
 private:
-    std::vector<PluginEntry> availablePlugins_;
+    std::vector<PluginEntry> availablePlugins_{};
     std::string selectedPluginFormat_;
     std::string selectedPluginId_;
     char searchFilter_[256] = "";
