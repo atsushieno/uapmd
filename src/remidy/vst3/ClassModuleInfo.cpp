@@ -156,7 +156,7 @@ namespace remidy_vst3 {
 
     int32_t initializeModule(void* module) {
 #if _WIN32
-        auto initDll = (vst3_init_dll_func) GetProcAddress((HMODULE) module, "initDll");
+        auto initDll = (vst3_init_dll_func) GetProcAddress((HMODULE) module, "InitDll");
         if (initDll) // optional
             initDll();
 #elif __APPLE__
@@ -193,7 +193,7 @@ namespace remidy_vst3 {
     void unloadModule(void* moduleBundle) {
 #if _WIN32
         auto module = (HMODULE) moduleBundle;
-        auto exitDll = (vst3_exit_dll_func) GetProcAddress(module, "exitDll");
+        auto exitDll = (vst3_exit_dll_func) GetProcAddress(module, "ExitDll");
         if (exitDll) // optional
             exitDll();
         FreeLibrary(module);
