@@ -20,7 +20,7 @@ set(BACKEND_INCLUDE_DIRS "")
 
 # Windows-specific: Offer Win32 + DirectX 11 backend
 if(WIN32)
-    option(USE_WIN32_DIRECTX11_BACKEND "Use native Win32 + DirectX 11 backend (Windows only)" ON)
+    option(USE_WIN32_DIRECTX11_BACKEND "Use native Win32 + DirectX 11 backend (Windows only)" OFF)
 
     if(USE_WIN32_DIRECTX11_BACKEND)
         set(BACKEND_FOUND TRUE)
@@ -56,6 +56,12 @@ if(NOT BACKEND_FOUND)
         endif()
         add_compile_definitions(USE_SDL3_BACKEND)
         message(STATUS "Using SDL3 backend")
+        if(WIN32)
+            message(STATUS "uapmd: SDL3 config dir: ${SDL3_DIR}")
+            if(SDL3_VERSION)
+                message(STATUS "uapmd: SDL3 version: ${SDL3_VERSION}")
+            endif()
+        endif()
     endif()
 endif()
 

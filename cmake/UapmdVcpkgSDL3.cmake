@@ -8,10 +8,12 @@ macro(uapmd_prepare_vcpkg_sdl3)
     endif()
 
     if(TARGET SDL3::SDL3 OR TARGET SDL3::SDL3-static OR TARGET SDL3::SDL3-shared)
+        message(STATUS "uapmd: SDL3 target already defined, skipping vcpkg setup")
         return()
     endif()
 
     if(DEFINED SDL3_DIR AND EXISTS "${SDL3_DIR}/SDL3Config.cmake")
+        message(STATUS "uapmd: SDL3_DIR already set to '${SDL3_DIR}', skipping vcpkg setup")
         return()
     endif()
 
@@ -26,10 +28,12 @@ macro(uapmd_prepare_vcpkg_sdl3)
     endif()
     set(UAPMD_VCPKG_TRIPLET "${UAPMD_VCPKG_TRIPLET}"
         CACHE STRING "vcpkg triplet used when fetching SDL3 automatically" FORCE)
+    message(STATUS "uapmd: SDL3 vcpkg triplet: ${UAPMD_VCPKG_TRIPLET}")
 
     set(_uapmd_vcpkg_root "")
     if(DEFINED ENV{VCPKG_ROOT} AND EXISTS "$ENV{VCPKG_ROOT}/vcpkg.exe")
         set(_uapmd_vcpkg_root "$ENV{VCPKG_ROOT}")
+        message(STATUS "uapmd: Using existing vcpkg at '$ENV{VCPKG_ROOT}'")
     else()
         set(_uapmd_vcpkg_default_url
             "https://github.com/microsoft/vcpkg/archive/refs/tags/2026.01.16.zip")
@@ -38,6 +42,7 @@ macro(uapmd_prepare_vcpkg_sdl3)
         endif()
         set(UAPMD_VCPKG_URL "${UAPMD_VCPKG_URL}"
             CACHE STRING "URL used to download vcpkg for SDL3 on Windows" FORCE)
+        message(STATUS "uapmd: Downloading vcpkg from: ${UAPMD_VCPKG_URL}")
         if(NOT DEFINED UAPMD_VCPKG_URL_HASH)
             set(UAPMD_VCPKG_URL_HASH "")
         endif()
@@ -104,6 +109,7 @@ macro(uapmd_prepare_vcpkg_sdl3)
                 "uapmd-app: failed to install SDL3 via vcpkg (${_uapmd_vcpkg_install_result}), falling back to other backends")
             return()
         endif()
+        message(STATUS "uapmd: SDL3 installed via vcpkg into '${_uapmd_vcpkg_triplet_dir}'")
     endif()
 
     if(NOT EXISTS "${_uapmd_vcpkg_sdl3_config}")
@@ -114,4 +120,5 @@ macro(uapmd_prepare_vcpkg_sdl3)
     list(APPEND CMAKE_PREFIX_PATH "${_uapmd_vcpkg_triplet_dir}")
     set(SDL3_DIR "${_uapmd_vcpkg_triplet_dir}/share/SDL3"
         CACHE PATH "SDL3 config directory supplied by vcpkg" FORCE)
+    message(STATUS "uapmd: SDL3_DIR set to '${_uapmd_vcpkg_triplet_dir}/share/SDL3'")
 endmacro()
