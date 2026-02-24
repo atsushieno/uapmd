@@ -20,6 +20,7 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         PluginCatalogEntry *info,
         void *module,
         IPluginFactory *factory,
+        ComponentHandlerImpl *handler,
         IComponent *component,
         IAudioProcessor *processor,
         IEditController *controller,
@@ -31,8 +32,7 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
 
     pluginName = info->displayName();
 
-    handler = std::make_unique<ComponentHandlerImpl>(this);
-    auto result = controller->setComponentHandler(handler.get());
+    auto result = controller->setComponentHandler(handler);
     if (result != kResultOk && result != kNoInterface)
         owner->getLogger()->logError(
                 "%s: IEditController failed to set IComponentHandler. Result: %d",
@@ -176,12 +176,6 @@ void remidy::PluginInstanceVST3::refreshMidiMappings() {
 
 remidy::PluginInstanceVST3::~PluginInstanceVST3() {
     auto logger = owner->getLogger();
-
-    // Unregister parameter edit handler
-    handler->setParameterEditHandler(nullptr);
-
-    // Unregister restart component handler
-    handler->setRestartComponentHandler(nullptr);
 
     auto result = processor->setProcessing(false);
     if (result == kResultOk)
@@ -784,7 +778,7 @@ void remidy::PluginInstanceVST3::synchronizeControllerState() {
 }
 
 // ComponentHandlerImpl
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::queryInterface(const TUID _iid, void** obj) {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::queryInterface(const TUID _iid, void** obj) {
     QUERY_INTERFACE(_iid, obj, FUnknown::iid, IComponentHandler)
     QUERY_INTERFACE(_iid, obj, IComponentHandler::iid, IComponentHandler)
     QUERY_INTERFACE(_iid, obj, IComponentHandler2::iid, IComponentHandler2)
@@ -794,26 +788,26 @@ tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::queryInterf
     return kNoInterface;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::beginEdit(ParamID id) {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::beginEdit(ParamID id) {
     // Begin parameter edit - currently not implemented
     remidy::Logger::global()->logWarning("ComponentHandler::beginEdit invoked (not implemented in this host)");
     return kResultOk;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::performEdit(ParamID id, ParamValue valueNormalized) {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::performEdit(ParamID id, ParamValue valueNormalized) {
     // Find and invoke parameter edit handler if registered
     if (parameter_edit_handler)
         parameter_edit_handler(id, valueNormalized);
     return kResultOk;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::endEdit(ParamID id) {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::endEdit(ParamID id) {
     // End parameter edit - currently not implemented
     remidy::Logger::global()->logWarning("ComponentHandler::endEdit invoked (not implemented in this host)");
     return kResultOk;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::restartComponent(int32 flags) {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::restartComponent(int32 flags) {
     if (flags == 0)
         return kResultOk; // Nothing to do
     Logger::global()->logInfo("ComponentHandler::restartComponent invoked with flags: 0x%x", flags);
@@ -822,37 +816,37 @@ tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::restartComp
     return kResultOk;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::setDirty(TBool state) {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::setDirty(TBool state) {
     remidy::Logger::global()->logWarning("ComponentHandler2::setDirty invoked (not implemented in this host)");
     // Set dirty state - currently not implemented
     return kResultOk;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::requestOpenEditor(FIDString name) {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::requestOpenEditor(FIDString name) {
     // Request open editor - currently not implemented
     remidy::Logger::global()->logWarning("ComponentHandler2::requestOpenEditor invoked (not implemented in this host)");
     return kResultOk;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::startGroupEdit() {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::startGroupEdit() {
     // Start group edit - currently not implemented
     remidy::Logger::global()->logWarning("ComponentHandler2::startGroupEdit invoked (not implemented in this host)");
     return kResultOk;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::finishGroupEdit() {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::finishGroupEdit() {
     // Finish group edit - currently not implemented
     remidy::Logger::global()->logWarning("ComponentHandler2::finishGroupEdit invoked (not implemented in this host)");
     return kResultOk;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::notifyUnitSelection(UnitID unitId) {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::notifyUnitSelection(UnitID unitId) {
     // Notify unit selection - currently not implemented
     remidy::Logger::global()->logWarning("IUnitHandler::notifyUnitSelection invoked (not implemented in this host)");
     return kResultOk;
 }
 
-tresult PLUGIN_API remidy::PluginInstanceVST3::ComponentHandlerImpl::notifyProgramListChange(ProgramListID listId, int32 programIndex) {
+tresult PLUGIN_API remidy::ComponentHandlerImpl::notifyProgramListChange(ProgramListID listId, int32 programIndex) {
     // Notify program list change - currently not implemented
     remidy::Logger::global()->logWarning("IUnitHandler::notifyProgramListChange invoked (not implemented in this host)");
     return kResultOk;

@@ -66,7 +66,8 @@ namespace remidy {
             IPluginFactory3 *factory3{nullptr};
             auto result = factory->queryInterface(IPluginFactory3::iid, (void **) &factory3);
             if (result == kResultOk) {
-                result = factory3->setHostContext((FUnknown *) &host);
+                IComponentHandler *h = handler.get();
+                result = factory3->setHostContext(h);
                 factory3->release(); // balance the addRef from queryInterface
                 if (result != kResultOk) {
                     // It seems common that a plugin often "implements IPluginFactory3" and then returns kNotImplemented...
@@ -183,7 +184,7 @@ namespace remidy {
             }
             if (controllerValid) {
                 if (result == kResultOk) {
-                    ret = std::make_unique<PluginInstanceVST3>(this, entry, module, factory, component, processor,
+                    ret = std::make_unique<PluginInstanceVST3>(this, entry, module, factory, handler.get(), component, processor,
                                                                     controller, distinctControllerInstance, instance);
                     return;
                 }
