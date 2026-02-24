@@ -67,10 +67,10 @@ namespace remidy {
             auto result = factory->queryInterface(IPluginFactory3::iid, (void **) &factory3);
             if (result == kResultOk) {
                 result = factory3->setHostContext((FUnknown *) &host);
+                factory3->release(); // balance the addRef from queryInterface
                 if (result != kResultOk) {
                     // It seems common that a plugin often "implements IPluginFactory3" and then returns kNotImplemented...
                     // In that case, it is not callable anyway, so treat it as if IPluginFactory3 were not queryable.
-                    factory3->release();
                     if (((Extensibility *) getExtensibility())->reportNotImplemented())
                         logger->logWarning("Failed to set HostApplication to IPluginFactory3: %s result: %d",
                                            name.c_str(), result);
@@ -131,7 +131,8 @@ namespace remidy {
                 logger->logError("Could not query vst3 IAudioProcessor interface: %s (status: %d ", name.c_str(),
                                  result);
                 error = "Could not query vst3 IAudioProcessor interface";
-                component->release();
+                if (component)
+                    component->release();
                 instance->release();
                 return;
             }
