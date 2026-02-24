@@ -1,5 +1,5 @@
 
-#if !ANDROID
+#if !ANDROID && !defined(__EMSCRIPTEN__)
 #include <cpplocate/cpplocate.h>
 #endif
 #include "remidy-tooling/PluginScanTool.hpp"
@@ -8,6 +8,8 @@ const char* TOOLING_DIR_NAME= "remidy-tooling";
 
 remidy_tooling::PluginScanTool::PluginScanTool() {
 #if ANDROID
+    std::filesystem::path dir{};
+#elif defined(__EMSCRIPTEN__)
     std::filesystem::path dir{};
 #else
     auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
@@ -18,6 +20,8 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
 #if ANDROID
     aap = remidy::PluginFormatAAP::create();
     formats_ = { aap.get() };
+#elif defined(__EMSCRIPTEN__)
+    formats_.clear();
 #else
     vst3 = remidy::PluginFormatVST3::create(vst3SearchPaths);
     lv2 = remidy::PluginFormatLV2::create(lv2SearchPaths);

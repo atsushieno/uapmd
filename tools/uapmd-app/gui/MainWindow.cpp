@@ -6,7 +6,7 @@
 #include <optional>
 #include <ranges>
 #include <cmath>
-#include <portable-file-dialogs.h>
+#include "../dialogs/FileDialogs.hpp"
 
 #include <imgui.h>
 #include "SharedTheme.hpp"
@@ -916,51 +916,52 @@ void MainWindow::savePluginState(int32_t instanceId) {
                                               instance->formatName());
     std::ranges::replace(defaultFilename, ' ', '_');
 
-    auto save = pfd::save_file(
+    auto save = dialog::saveFile(
         "Save Plugin State",
         defaultFilename,
-        {"Plugin State Files", "*.state", "All Files", "*"}
+        dialog::makeFilters({"Plugin State Files", "*.state", "All Files", "*"})
     );
 
-    std::string filepath = save.result();
-    if (filepath.empty())
-        return; // User cancelled
+    if (!save)
+        return;
+
+    std::string filepath = save.filepath().string();
 
     // Delegate to AppModel for non-UI logic
     auto result = uapmd::AppModel::instance().savePluginState(instanceId, filepath);
 
     // Handle UI feedback based on result
     if (!result.success) {
-        pfd::message("Save Failed",
+        dialog::showMessage("Save Failed",
             std::format("Failed to save plugin state:\n{}", result.error),
-            pfd::choice::ok,
-            pfd::icon::error);
+            dialog::MessageIcon::Error);
+        return;
     }
+
+    save.complete();
 }
 
 void MainWindow::loadPluginState(int32_t instanceId) {
     // Show open file dialog
-    auto open = pfd::open_file(
+    auto open = dialog::openFile(
         "Load Plugin State",
         "",
-        {"Plugin State Files", "*.state", "All Files", "*"}
+        dialog::makeFilters({"Plugin State Files", "*.state", "All Files", "*"})
     );
 
-    auto filepaths = open.result();
-    if (filepaths.empty())
+    if (open.empty())
         return; // User cancelled
 
-    std::string filepath = filepaths[0];
+    std::string filepath = open[0].string();
 
     // Delegate to AppModel for non-UI logic
     auto result = uapmd::AppModel::instance().loadPluginState(instanceId, filepath);
 
     // Handle UI feedback based on result
     if (!result.success) {
-        pfd::message("Load Failed",
+        dialog::showMessage("Load Failed",
             std::format("Failed to load plugin state:\n{}", result.error),
-            pfd::choice::ok,
-            pfd::icon::error);
+            dialog::MessageIcon::Error);
         return;
     }
 
@@ -1081,54 +1082,50 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
 
 // Sequence Editor helpers
 void MainWindow::handleSaveProject() {
-    auto saveDialog = pfd::save_file(
+    auto saveDialog = dialog::saveFile(
         "Save Project",
         "project.uapmd",
-        {"UAPMD Project", "*.uapmd", "JSON", "*.json", "All Files", "*"}
+        dialog::makeFilters({"UAPMD Project", "*.uapmd", "JSON", "*.json", "All Files", "*"})
     );
 
-    auto selected = saveDialog.result();
-    if (selected.empty())
+    if (!saveDialog)
         return;
 
-    std::filesystem::path projectPath(selected);
+    std::filesystem::path projectPath(saveDialog.filepath());
     if (!projectPath.has_extension())
         projectPath.replace_extension(".uapmd");
 
     auto result = uapmd::AppModel::instance().saveProject(projectPath);
     if (!result.success) {
-        pfd::message("Save Failed",
+        dialog::showMessage("Save Failed",
                      result.error,
-                     pfd::choice::ok,
-                     pfd::icon::error);
+                     dialog::MessageIcon::Error);
         return;
     }
 
-    pfd::message("Project Saved",
+    saveDialog.complete();
+    dialog::showMessage("Project Saved",
                  std::format("Saved project to {}", projectPath.string()),
-                 pfd::choice::ok,
-                 pfd::icon::info);
+                 dialog::MessageIcon::Info);
 }
 
 void MainWindow::handleLoadProject() {
-    auto openDialog = pfd::open_file(
+    auto openDialog = dialog::openFile(
         "Load Project",
         ".",
-        {"UAPMD Project", "*.uapmd", "JSON", "*.json", "All Files", "*"}
+        dialog::makeFilters({"UAPMD Project", "*.uapmd", "JSON", "*.json", "All Files", "*"})
     );
 
-    auto selection = openDialog.result();
-    if (selection.empty())
+    if (openDialog.empty())
         return;
 
-    std::filesystem::path projectPath(selection[0]);
+    std::filesystem::path projectPath(openDialog[0]);
 
     auto result = uapmd::AppModel::instance().loadProject(projectPath);
     if (!result.success) {
-        pfd::message("Load Failed",
+        dialog::showMessage("Load Failed",
                      result.error,
-                     pfd::choice::ok,
-                     pfd::icon::error);
+                     dialog::MessageIcon::Error);
         return;
     }
 

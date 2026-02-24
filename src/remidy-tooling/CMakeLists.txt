@@ -11,11 +11,15 @@ endif()
 target_include_directories(remidy-tooling PRIVATE
         ../../include
         ${choc_SOURCE_DIR}
-        ${cpplocate_SOURCE_DIR}/source/cpplocate/include
-        ${cpplocate_BINARY_DIR}/source/cpplocate/include
-        ${cpplocate_BINARY_DIR}/source/liblocate/include
         .
 )
+if(UAPMD_ENABLE_CPPLOCATE)
+    target_include_directories(remidy-tooling PRIVATE
+            ${cpplocate_SOURCE_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/liblocate/include
+    )
+endif()
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     set(remidy-tooling_LIBS_PLAT
@@ -27,10 +31,14 @@ endif ()
 
 target_link_libraries(remidy-tooling PRIVATE
         remidy::remidy
-        ${cpplocate_LIBRARIES}
-        cpptrace::cpptrace
         ${remidy-tooling_LIBS_PLAT}
 )
+if(UAPMD_ENABLE_CPPTRACE)
+    target_link_libraries(remidy-tooling PRIVATE cpptrace::cpptrace)
+endif()
+if(UAPMD_ENABLE_CPPLOCATE)
+    target_link_libraries(remidy-tooling PRIVATE ${cpplocate_LIBRARIES})
+endif()
 
 target_sources(remidy-tooling PRIVATE
         PluginScanTool.cpp

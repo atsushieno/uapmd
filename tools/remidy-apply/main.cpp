@@ -4,7 +4,9 @@
 #include <ostream>
 #include <ranges>
 
+#if UAPMD_HAS_CPPTRACE
 #include <cpptrace/from_current.hpp>
+#endif
 #include <remidy/remidy.hpp>
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <remidy-tooling/PluginInstancing.hpp>
@@ -301,13 +303,26 @@ class RemidyApply {
 };
 
 int main(int argc, const char* argv[]) {
+    auto runApply = [&](int argcValue, const char* const* argvValue) {
+        RemidyApply apply{};
+        return apply.run(argcValue, argvValue);
+    };
+#if UAPMD_HAS_CPPTRACE
     int result{0};
     CPPTRACE_TRY {
-        RemidyApply apply{};
-        result = apply.run(argc, argv);
+        result = runApply(argc, argv);
     } CPPTRACE_CATCH(const std::exception& e) {
         std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
         cpptrace::from_current_exception().print();
+        result = EXIT_FAILURE;
     }
     return result;
+#else
+    try {
+        return runApply(argc, argv);
+    } catch (const std::exception& e) {
+        std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
+#endif
 }

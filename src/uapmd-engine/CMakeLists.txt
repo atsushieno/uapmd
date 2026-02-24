@@ -26,13 +26,6 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 
-CPMAddPackage(
-        NAME           miniaudio
-        GIT_TAG        0.11.23
-        GIT_REPOSITORY https://github.com/mackron/miniaudio
-        DOWNLOAD_ONLY YES
-)
-
 target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
         ${libremidi_SOURCE_DIR}
@@ -64,4 +57,3 @@ target_sources(uapmd-engine PRIVATE
         sequencer/SequencerTrack.cpp
         sequencer/TimelineFacade.cpp
 )
-

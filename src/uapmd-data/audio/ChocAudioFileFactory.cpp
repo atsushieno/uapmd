@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cctype>
+#include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -14,6 +16,33 @@
 namespace uapmd {
 
     namespace {
+#if defined(__EMSCRIPTEN__)
+        std::vector<char> loadFileIntoMemoryBuffer(const std::string& filepath) {
+            std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+            if (!file)
+                return {};
+
+            const auto size = file.tellg();
+            if (size <= 0)
+                return {};
+
+            std::vector<char> buffer(static_cast<size_t>(size));
+            file.seekg(0, std::ios::beg);
+            if (!file.read(buffer.data(), static_cast<std::streamsize>(buffer.size())))
+                return {};
+
+            return buffer;
+        }
+
+        std::shared_ptr<std::istream> makeStreamFromBuffer(const std::vector<char>& buffer) {
+            auto stream = std::make_shared<std::stringstream>(std::ios::in | std::ios::binary);
+            stream->write(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+            stream->seekg(0, std::ios::beg);
+            stream->clear();
+            return stream;
+        }
+#endif
+
         class ChocAudioFileReaderAdapter : public AudioFileReader {
         public:
             explicit ChocAudioFileReaderAdapter(std::unique_ptr<choc::audio::AudioFileReader>&& reader)
@@ -43,6 +72,20 @@ namespace uapmd {
     }
 
     std::unique_ptr<AudioFileReader> createAudioFileReaderFromPath(const std::string& filepath) {
+#if defined(__EMSCRIPTEN__)
+        const auto wasmBuffer = loadFileIntoMemoryBuffer(filepath);
+        if (wasmBuffer.empty())
+            return nullptr;
+
+        auto createReaderForTarget = [&](auto format) -> std::unique_ptr<choc::audio::AudioFileReader> {
+            return format.createReader(makeStreamFromBuffer(wasmBuffer));
+        };
+#else
+        auto createReaderForTarget = [&](auto format) -> std::unique_ptr<choc::audio::AudioFileReader> {
+            return format.createReader(filepath);
+        };
+#endif
+
         std::string ext;
         auto dot = filepath.find_last_of('.');
         if (dot != std::string::npos)
@@ -52,18 +95,18 @@ namespace uapmd {
         std::unique_ptr<choc::audio::AudioFileReader> reader;
 
         if (ext == "wav") {
-            reader = choc::audio::WAVAudioFileFormat<true>().createReader(filepath);
+            reader = createReaderForTarget(choc::audio::WAVAudioFileFormat<true>());
         } else if (ext == "flac") {
-            reader = choc::audio::FLACAudioFileFormat<true>().createReader(filepath);
+            reader = createReaderForTarget(choc::audio::FLACAudioFileFormat<true>());
         } else if (ext == "ogg") {
-            reader = choc::audio::OggAudioFileFormat<true>().createReader(filepath);
+            reader = createReaderForTarget(choc::audio::OggAudioFileFormat<true>());
         } else {
             // Try all formats as fallback
-            reader = choc::audio::WAVAudioFileFormat<true>().createReader(filepath);
+            reader = createReaderForTarget(choc::audio::WAVAudioFileFormat<true>());
             if (!reader)
-                reader = choc::audio::FLACAudioFileFormat<true>().createReader(filepath);
+                reader = createReaderForTarget(choc::audio::FLACAudioFileFormat<true>());
             if (!reader)
-                reader = choc::audio::OggAudioFileFormat<true>().createReader(filepath);
+                reader = createReaderForTarget(choc::audio::OggAudioFileFormat<true>());
         }
 
         if (!reader)
@@ -72,4 +115,3 @@ namespace uapmd {
     }
 
 }
-

@@ -1,6 +1,6 @@
 #include "ScriptEditor.hpp"
 #include <imgui.h>
-#if !ANDROID
+#if !ANDROID && !defined(__EMSCRIPTEN__)
 #include <cpplocate/cpplocate.h>
 #endif
 #include <filesystem>
@@ -298,6 +298,8 @@ std::string ScriptEditor::getJsLibraryPath (const std::string& modulePath) const
         cleanPath = cleanPath.substr (1);
 
 #if ANDROID
+    std::filesystem::path exeDir{};
+#elif defined(__EMSCRIPTEN__)
     std::filesystem::path exeDir{};
 #else
     // Use cpplocate to find the executable directory

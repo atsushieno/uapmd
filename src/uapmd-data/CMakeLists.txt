@@ -4,6 +4,7 @@ add_library(uapmd-data STATIC)
 target_include_directories(uapmd-data PRIVATE
         ${choc_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include
+        ${miniaudio_SOURCE_DIR}
         ../../include
 )
 
@@ -12,8 +13,13 @@ target_link_libraries(uapmd-data
         uapmd
 )
 
+set(_UAPMD_AUDIO_FACTORY_SRC audio/ChocAudioFileFactory.cpp)
+if(EMSCRIPTEN)
+    set(_UAPMD_AUDIO_FACTORY_SRC audio/MiniAudioFileFactory.cpp)
+endif()
+
 target_sources(uapmd-data PRIVATE
-        audio/ChocAudioFileFactory.cpp
+        ${_UAPMD_AUDIO_FACTORY_SRC}
         project/UapmdProjectFileReader.cpp
         project/UapmdProjectFileWriter.cpp
         project/UapmdProjectFile.cpp

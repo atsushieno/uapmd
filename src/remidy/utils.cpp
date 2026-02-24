@@ -9,7 +9,7 @@
 #include <Windows.h>
 #elif __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
-#elif defined(__linux__)
+#elif defined(__linux__) && !defined(EMSCRIPTEN)
 #include <dlfcn.h>
 #endif
 
@@ -55,10 +55,13 @@ void* loadLibraryFromBinary(std::filesystem::path& pluginDirOrFile) {
     auto ret = CFBundleCreate(kCFAllocatorDefault, cfUrl);
     CFRelease(cfUrl);
     CFRelease(cfStringRef);
-#else
+#elif defined(__linux__) && !defined(EMSCRIPTEN)
     auto ret = dlopen(pluginDirOrFile.c_str(), RTLD_LAZY | RTLD_LOCAL);
     //if (errno)
     //    defaultLogError("dlopen resulted in error: %s", dlerror());
+#else
+    (void)pluginDirOrFile;
+    void* ret = nullptr;
 #endif
     return ret;
 }

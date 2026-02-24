@@ -26,6 +26,12 @@
     #include <GLES3/gl3.h>
     #include <GLES3/gl3ext.h>
     #include <SDL3/SDL_opengl.h>
+#elif defined(__EMSCRIPTEN__)
+    #include <GLES3/gl3.h>
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    #include <SDL3/SDL_opengles2.h>
+#pragma clang diagnostic pop
 #elif defined(__APPLE__)
     #include <OpenGL/gl3.h>
 #elif defined(_WIN32)
@@ -247,11 +253,12 @@ int runMainLoop(int argc, char** argv) {
         #endif
 #endif
 #if ANDROID
-        // glDrawBuffer does not exist in GLES3; default framebuffer renders to back buffer automatically
         glReadBuffer(GL_BACK);
 #else
 #ifdef GL_BACK
+    #ifndef __EMSCRIPTEN__
         glDrawBuffer(GL_BACK);
+    #endif
         glReadBuffer(GL_BACK);
 #endif
 #endif
@@ -302,14 +309,16 @@ int runMainLoop(int argc, char** argv) {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
         #endif
 #endif
-#if ANDROID
-        // glDrawBuffer does not exist in GLES3; default framebuffer renders to back buffer automatically
+#if ANDROID || defined(__EMSCRIPTEN__)
+        // GLES3/WebGL default framebuffer renders to the back buffer; glDrawBuffer is unavailable
+#  ifdef GL_BACK
         glReadBuffer(GL_BACK);
+#  endif
 #else
-#ifdef GL_BACK
+#  ifdef GL_BACK
         glDrawBuffer(GL_BACK);
         glReadBuffer(GL_BACK);
-#endif
+#  endif
 #endif
 
         int display_w, display_h;

@@ -17,9 +17,11 @@ endif ()
 target_link_libraries(remidy-apply PRIVATE
         uapmd
         uapmd-engine
-        cpptrace::cpptrace
         ${remidy-apply_LIBS_PLAT}
 )
+if(UAPMD_ENABLE_CPPTRACE)
+    target_link_libraries(remidy-apply PRIVATE cpptrace::cpptrace)
+endif()
 
 target_sources(remidy-apply PRIVATE
         main.cpp

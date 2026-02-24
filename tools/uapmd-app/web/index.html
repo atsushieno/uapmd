@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>uapmd-app (WebAssembly)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; background: #101014; color: #f9f9f9; font-family: system-ui, sans-serif; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        canvas { display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+<div id="loading">Loading uapmd-app...</div>
+<canvas id="canvas"></canvas>
+<script>
+    var Module = {
+        canvas: document.getElementById('canvas'),
+        preRun: [() => document.getElementById('loading').style.display = 'none'],
+        print: (text) => console.log('[uapmd]', text),
+        printErr: (text) => console.error('[uapmd]', text)
+    };
+</script>
+<script src="uapmd-app.js"></script>
+</body>
+</html>

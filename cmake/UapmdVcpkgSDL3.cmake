@@ -3,7 +3,7 @@ include_guard(GLOBAL)
 include(FetchContent)
 
 macro(uapmd_prepare_vcpkg_sdl3)
-    if(NOT WIN32)
+    if(NOT WIN32 AND NOT EMSCRIPTEN)
         return()
     endif()
 
@@ -18,7 +18,9 @@ macro(uapmd_prepare_vcpkg_sdl3)
     endif()
 
     if(NOT DEFINED UAPMD_VCPKG_TRIPLET OR UAPMD_VCPKG_TRIPLET STREQUAL "")
-        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm].*64$")
+        if(EMSCRIPTEN)
+            set(UAPMD_VCPKG_TRIPLET "wasm32-emscripten")
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm].*64$")
             set(UAPMD_VCPKG_TRIPLET "arm64-windows-static")
         elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
             set(UAPMD_VCPKG_TRIPLET "x86-windows-static")
@@ -31,7 +33,12 @@ macro(uapmd_prepare_vcpkg_sdl3)
     message(STATUS "uapmd: SDL3 vcpkg triplet: ${UAPMD_VCPKG_TRIPLET}")
 
     set(_uapmd_vcpkg_root "")
-    if(DEFINED ENV{VCPKG_ROOT} AND EXISTS "$ENV{VCPKG_ROOT}/vcpkg.exe")
+    set(_uapmd_vcpkg_exe_name "vcpkg")
+    if(WIN32)
+        set(_uapmd_vcpkg_exe_name "vcpkg.exe")
+    endif()
+
+    if(DEFINED ENV{VCPKG_ROOT} AND EXISTS "$ENV{VCPKG_ROOT}/${_uapmd_vcpkg_exe_name}")
         set(_uapmd_vcpkg_root "$ENV{VCPKG_ROOT}")
         message(STATUS "uapmd: Using existing vcpkg at '$ENV{VCPKG_ROOT}'")
     else()
@@ -73,8 +80,12 @@ macro(uapmd_prepare_vcpkg_sdl3)
     set(UAPMD_VCPKG_ROOT "${_uapmd_vcpkg_root}" CACHE PATH
         "Path to the vcpkg tree used to supply SDL3" FORCE)
 
-    set(_uapmd_vcpkg_exe "${_uapmd_vcpkg_root}/vcpkg.exe")
-    set(_uapmd_vcpkg_bootstrap "${_uapmd_vcpkg_root}/bootstrap-vcpkg.bat")
+    set(_uapmd_vcpkg_exe "${_uapmd_vcpkg_root}/${_uapmd_vcpkg_exe_name}")
+    if(WIN32)
+        set(_uapmd_vcpkg_bootstrap "${_uapmd_vcpkg_root}/bootstrap-vcpkg.bat")
+    else()
+        set(_uapmd_vcpkg_bootstrap "${_uapmd_vcpkg_root}/bootstrap-vcpkg.sh")
+    endif()
 
     if(NOT EXISTS "${_uapmd_vcpkg_exe}")
         if(NOT EXISTS "${_uapmd_vcpkg_bootstrap}")
@@ -82,11 +93,22 @@ macro(uapmd_prepare_vcpkg_sdl3)
                 "uapmd-app: bootstrap script missing in ${_uapmd_vcpkg_root}, SDL3 auto-download skipped")
             return()
         endif()
-        execute_process(
-            COMMAND cmd /c "${_uapmd_vcpkg_bootstrap}" -disableMetrics
-            WORKING_DIRECTORY "${_uapmd_vcpkg_root}"
-            RESULT_VARIABLE _uapmd_vcpkg_bootstrap_result
-        )
+        if(NOT WIN32)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E chmod +x "${_uapmd_vcpkg_bootstrap}")
+        endif()
+        if(WIN32)
+            execute_process(
+                COMMAND cmd /c "${_uapmd_vcpkg_bootstrap}" -disableMetrics
+                WORKING_DIRECTORY "${_uapmd_vcpkg_root}"
+                RESULT_VARIABLE _uapmd_vcpkg_bootstrap_result
+            )
+        else()
+            execute_process(
+                COMMAND bash "${_uapmd_vcpkg_bootstrap}" -disableMetrics
+                WORKING_DIRECTORY "${_uapmd_vcpkg_root}"
+                RESULT_VARIABLE _uapmd_vcpkg_bootstrap_result
+            )
+        endif()
         if(NOT _uapmd_vcpkg_bootstrap_result EQUAL 0)
             message(WARNING
                 "uapmd-app: vcpkg bootstrap failed (${_uapmd_vcpkg_bootstrap_result}), SDL3 auto-download skipped")

@@ -1,0 +1,12 @@
+{
+  "name": "uapmd-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "serve": "npx serve -s ../../cmake-build-wasm-imgui -l 8080",
+    "serve-stub": "npx serve -s dist -l 8080"
+  },
+  "devDependencies": {
+    "serve": "14.2.4"
+  }
+}

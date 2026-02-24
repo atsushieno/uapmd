@@ -21,14 +21,20 @@ elseif(WIN32)
         ContainerWindow_Win32.cpp
     )
     # Win32 libraries linked automatically via pragma comment
+elseif(EMSCRIPTEN)
+    add_library(remidy-gui STATIC
+        ContainerWindow_Emscripten.cpp
+    )
 elseif(UNIX)
     add_library(remidy-gui STATIC
         ContainerWindow_X11.cpp
     )
-    find_package(X11 REQUIRED)
-    target_link_libraries(remidy-gui PUBLIC
-        X11::X11
-    )
+    if (NOT EMSCRIPTEN)
+        find_package(X11 REQUIRED)
+        target_link_libraries(remidy-gui PUBLIC
+            X11::X11
+        )
+    endif()
 endif()
 
 # Include directories

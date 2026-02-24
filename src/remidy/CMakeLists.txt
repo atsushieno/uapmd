@@ -18,7 +18,7 @@ if (ANDROID)
     else ()
         message("AAP_DIR:${AAP_DIR}")
     endif ()
-else ()
+elseif(NOT EMSCRIPTEN)
     include("../../external/LV2Kit.cmake")
     set(lv2kit_LIBRARY lv2kit)
     set(lv2kit_SOURCES
@@ -61,21 +61,23 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 
-CPMAddPackage(
-        NAME clap
-        GIT_REPOSITORY https://github.com/free-audio/clap
-        GIT_TAG 1.2.6
-        DOWNLOAD_ONLY YES
-)
+if(NOT EMSCRIPTEN)
+    CPMAddPackage(
+            NAME clap
+            GIT_REPOSITORY https://github.com/free-audio/clap
+            GIT_TAG 1.2.6
+            DOWNLOAD_ONLY YES
+    )
 
-CPMAddPackage(
-        NAME clap-helpers
-        GIT_REPOSITORY https://github.com/free-audio/clap-helpers
-        GIT_TAG 58ab81b1dc8219e859529c1306f364bb3aedf7d5
-        DOWNLOAD_ONLY YES
-)
+    CPMAddPackage(
+            NAME clap-helpers
+            GIT_REPOSITORY https://github.com/free-audio/clap-helpers
+            GIT_TAG 58ab81b1dc8219e859529c1306f364bb3aedf7d5
+            DOWNLOAD_ONLY YES
+    )
+endif()
 
-if (NOT ANDROID)
+if (NOT ANDROID AND NOT EMSCRIPTEN)
 # it requires gtkmm-3.0 but we don't need it
 set(SMTG_ENABLE_VSTGUI_SUPPORT OFF)
 set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF)
@@ -117,7 +119,7 @@ set(VST3_SUPPORT_SOURCES
 )
 set(vst3sdk_LIBRARY sdk) # pretty bad naming from vst3sdk (shrug)
 
-endif (NOT ANDROID)
+endif ()
 
 add_library(remidy STATIC)
 
@@ -140,18 +142,22 @@ endif ()
 
 target_include_directories(remidy PRIVATE
         ${AAP_DIR}/include
-        ${vst3sdk_SOURCE_DIR}
-        ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ${choc_SOURCE_DIR}
         ${concurrentqueue_SOURCE_DIR}
-        ${LV2KIT_INCLUDE_DIRS}
-        ${clap_SOURCE_DIR}/include
-        ${clap-helpers_SOURCE_DIR}/include
         ${midicci_SOURCE_DIR}/include
         ../../include
         ../../include/remidy # FIXME: this should be removed
         ${CMAKE_BINARY_DIR}/generated/include
 )
+if(NOT EMSCRIPTEN)
+    target_include_directories(remidy PRIVATE
+            ${vst3sdk_SOURCE_DIR}
+            ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
+            ${LV2KIT_INCLUDE_DIRS}
+            ${clap_SOURCE_DIR}/include
+            ${clap-helpers_SOURCE_DIR}/include
+    )
+endif()
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     set(remidy_LIBS_PLAT
@@ -166,15 +172,19 @@ if (WIN32)
     target_link_libraries(remidy PRIVATE ws2_32)
 endif()
 
-target_link_libraries(remidy PRIVATE
+set(_remidy_link_libs
         rtlog::rtlog
         ${cpplocate_LIBRARIES}
-        ${lv2kit_LIBRARY}
         midicci_static
         ${remidy_LIBS_PLAT}
         ${androidndk_LIBRARIES}
         ${AAP_LIBRARIES}
 )
+if(NOT EMSCRIPTEN)
+    list(APPEND _remidy_link_libs ${lv2kit_LIBRARY})
+endif()
+
+target_link_libraries(remidy PRIVATE ${_remidy_link_libs})
 
 target_compile_options(remidy PRIVATE
         #-fsanitize=address
@@ -212,7 +222,6 @@ target_sources(remidy PRIVATE
         utils.cpp
         EventLoop.cpp
 
-        ${VST3_SUPPORT_SOURCES}
         ${AAP_SUPPORT_SOURCES}
 
         Logger.cpp
@@ -226,8 +235,12 @@ target_sources(remidy PRIVATE
         au/AUv2Helper.cpp
         ${remidy_OBJC_SOURCES}
 
-        ${lv2kit_SOURCES}
+        AudioProcessContext.cpp
+        PluginInstance.cpp
+        UmpInputDispatcher.cpp
+)
 
+set(_remidy_clap_sources
         clap/CLAPHelper.cpp
         clap/HostClasses.cpp
         clap/PluginFormatCLAP.cpp
@@ -238,10 +251,14 @@ target_sources(remidy PRIVATE
         clap/PluginInstanceCLAP.Presets.cpp
         clap/PluginInstanceCLAP.States.cpp
         clap/PluginInstanceCLAP.UI.cpp
-
-        AudioProcessContext.cpp
-        PluginInstance.cpp
-        UmpInputDispatcher.cpp
 )
+
+if(NOT EMSCRIPTEN)
+    target_sources(remidy PRIVATE
+            ${VST3_SUPPORT_SOURCES}
+            ${lv2kit_SOURCES}
+            ${_remidy_clap_sources}
+    )
+endif()
 
 add_library(remidy::remidy ALIAS remidy)

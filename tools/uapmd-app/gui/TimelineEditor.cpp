@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <cmath>
 #include <limits>
-#include <portable-file-dialogs.h>
+#include "../dialogs/FileDialogs.hpp"
 
 #include <imgui.h>
 #include <umppi/umppi.hpp>
@@ -26,6 +26,23 @@
 #include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
 
 namespace uapmd::gui {
+
+class TimelineRenderSuspender {
+public:
+    explicit TimelineRenderSuspender(TimelineEditor& editor)
+        : editor_(editor)
+        , previous_(editor.timelineRenderSuspended_) {
+        editor.timelineRenderSuspended_ = true;
+    }
+
+    ~TimelineRenderSuspender() {
+        editor_.timelineRenderSuspended_ = previous_;
+    }
+
+private:
+    TimelineEditor& editor_;
+    bool previous_;
+};
 
 namespace {
 constexpr int32_t kMasterTrackClipId = -1000;
@@ -184,7 +201,9 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
 void TimelineEditor::render(float uiScale) {
     auto context = buildRenderContext(uiScale);
     renderTrackList(context);
-    sequenceEditor_.render(context);
+    if (!timelineRenderSuspended_) {
+        sequenceEditor_.render(context);
+    }
 
     // Render InstanceDetails with context
     InstanceDetails::RenderContext detailsContext{
@@ -464,8 +483,12 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         }
 
         ImGui::TableSetColumnIndex(1);
-        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(uapmd::kMasterTrackIndex, context.uiScale);
-        sequenceEditor_.renderTimelineInline(uapmd::kMasterTrackIndex, context, timelineHeight);
+        if (timelineRenderSuspended_) {
+            ImGui::TextUnformatted("Loading audio clip...");
+        } else {
+            const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(uapmd::kMasterTrackIndex, context.uiScale);
+            sequenceEditor_.renderTimelineInline(uapmd::kMasterTrackIndex, context, timelineHeight);
+        }
 
         ImGui::EndTable();
     }
@@ -614,8 +637,12 @@ void TimelineEditor::renderTrackRow(int32_t trackIndex, const SequenceEditor::Re
 
         // Timeline column
         ImGui::TableSetColumnIndex(1);
-        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(trackIndex, context.uiScale);
-        sequenceEditor_.renderTimelineInline(trackIndex, context, timelineHeight);
+        if (timelineRenderSuspended_) {
+            ImGui::TextUnformatted("Loading audio clip...");
+        } else {
+            const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(trackIndex, context.uiScale);
+            sequenceEditor_.renderTimelineInline(trackIndex, context, timelineHeight);
+        }
 
         ImGui::EndTable();
     }
@@ -817,22 +844,23 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
 void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filepath) {
     std::string selectedFile = filepath;
     if (selectedFile.empty()) {
-        auto selection = pfd::open_file(
+        auto selection = dialog::openFile(
             "Select Audio or MIDI File",
             ".",
-            { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf *.midi2",
-              "Audio Files", "*.wav *.flac *.ogg",
-              "MIDI Files", "*.mid *.midi *.smf *.midi2",
-              "WAV Files", "*.wav",
-              "FLAC Files", "*.flac",
-              "OGG Files", "*.ogg",
-              "All Files", "*" }
+            dialog::makeFilters(
+                { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf *.midi2",
+                  "Audio Files", "*.wav *.flac *.ogg",
+                  "MIDI Files", "*.mid *.midi *.smf *.midi2",
+                  "WAV Files", "*.wav",
+                  "FLAC Files", "*.flac",
+                  "OGG Files", "*.ogg",
+                  "All Files", "*" })
         );
 
-        if (selection.result().empty())
+        if (selection.empty())
             return;
 
-        selectedFile = selection.result()[0];
+        selectedFile = selection[0].string();
     }
 
     std::filesystem::path path(selectedFile);
@@ -848,10 +876,9 @@ void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filep
         auto result = appModel.addClipToTrack(trackIndex, position, nullptr, selectedFile);
 
         if (!result.success) {
-            pfd::message("Add MIDI Clip Failed",
+            dialog::showMessage("Add MIDI Clip Failed",
                         "Could not add MIDI clip to track: " + result.error,
-                        pfd::choice::ok,
-                        pfd::icon::error);
+                        dialog::MessageIcon::Error);
             return;
         }
 
@@ -859,12 +886,13 @@ void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filep
         return;
     }
 
+    TimelineRenderSuspender renderSuspender(*this);
+
     auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
     if (!reader) {
-        pfd::message("Load Failed",
+        dialog::showMessage("Load Failed",
                     "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG",
-                    pfd::choice::ok,
-                    pfd::icon::error);
+                    dialog::MessageIcon::Error);
         return;
     }
 
@@ -876,10 +904,9 @@ void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filep
     auto result = appModel.addClipToTrack(trackIndex, position, std::move(reader), selectedFile);
 
     if (!result.success) {
-        pfd::message("Add Clip Failed",
+        dialog::showMessage("Add Clip Failed",
                     "Could not add clip to track: " + result.error,
-                    pfd::choice::ok,
-                    pfd::icon::error);
+                    dialog::MessageIcon::Error);
         return;
     }
 
@@ -889,22 +916,23 @@ void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filep
 void TimelineEditor::addClipToTrackAtPosition(int32_t trackIndex, const std::string& filepath, double positionSeconds) {
     std::string selectedFile = filepath;
     if (selectedFile.empty()) {
-        auto selection = pfd::open_file(
+        auto selection = dialog::openFile(
             "Select Audio or MIDI File",
             ".",
-            { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf *.midi2",
-              "Audio Files", "*.wav *.flac *.ogg",
-              "MIDI Files", "*.mid *.midi *.smf *.midi2",
-              "WAV Files", "*.wav",
-              "FLAC Files", "*.flac",
-              "OGG Files", "*.ogg",
-              "All Files", "*" }
+            dialog::makeFilters(
+                { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf *.midi2",
+                  "Audio Files", "*.wav *.flac *.ogg",
+                  "MIDI Files", "*.mid *.midi *.smf *.midi2",
+                  "WAV Files", "*.wav",
+                  "FLAC Files", "*.flac",
+                  "OGG Files", "*.ogg",
+                  "All Files", "*" })
         );
 
-        if (selection.result().empty())
+        if (selection.empty())
             return;
 
-        selectedFile = selection.result()[0];
+        selectedFile = selection[0].string();
     }
 
     std::filesystem::path path(selectedFile);
@@ -923,10 +951,9 @@ void TimelineEditor::addClipToTrackAtPosition(int32_t trackIndex, const std::str
         auto result = appModel.addClipToTrack(trackIndex, position, nullptr, selectedFile);
 
         if (!result.success) {
-            pfd::message("Add MIDI Clip Failed",
+            dialog::showMessage("Add MIDI Clip Failed",
                         "Could not add MIDI clip to track: " + result.error,
-                        pfd::choice::ok,
-                        pfd::icon::error);
+                        dialog::MessageIcon::Error);
             return;
         }
 
@@ -934,22 +961,22 @@ void TimelineEditor::addClipToTrackAtPosition(int32_t trackIndex, const std::str
         return;
     }
 
+    TimelineRenderSuspender renderSuspender(*this);
+
     auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
     if (!reader) {
-        pfd::message("Load Failed",
+        dialog::showMessage("Load Failed",
                     "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG",
-                    pfd::choice::ok,
-                    pfd::icon::error);
+                    dialog::MessageIcon::Error);
         return;
     }
 
     auto result = appModel.addClipToTrack(trackIndex, position, std::move(reader), selectedFile);
 
     if (!result.success) {
-        pfd::message("Add Clip Failed",
+        dialog::showMessage("Add Clip Failed",
                     "Could not add clip to track: " + result.error,
-                    pfd::choice::ok,
-                    pfd::icon::error);
+                    dialog::MessageIcon::Error);
         return;
     }
 
@@ -1018,36 +1045,35 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return;
 
-    auto selection = pfd::open_file(
+    auto selection = dialog::openFile(
         "Select Audio File",
         ".",
-        { "Audio Files", "*.wav *.flac *.ogg",
-          "WAV Files", "*.wav",
-          "FLAC Files", "*.flac",
-          "OGG Files", "*.ogg",
-          "All Files", "*" }
+        dialog::makeFilters(
+            { "Audio Files", "*.wav *.flac *.ogg",
+              "WAV Files", "*.wav",
+              "FLAC Files", "*.flac",
+              "OGG Files", "*.ogg",
+              "All Files", "*" })
     );
 
-    if (selection.result().empty())
+    if (selection.empty())
         return;
 
-    std::string selectedFile = selection.result()[0];
+    std::string selectedFile = selection[0].string();
 
     auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
     if (!reader) {
-        pfd::message("Load Failed",
+        dialog::showMessage("Load Failed",
                     "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG",
-                    pfd::choice::ok,
-                    pfd::icon::error);
+                    dialog::MessageIcon::Error);
         return;
     }
 
     auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
     if (!clip) {
-        pfd::message("Error",
+        dialog::showMessage("Error",
                     "Could not find clip",
-                    pfd::choice::ok,
-                    pfd::icon::error);
+                    dialog::MessageIcon::Error);
         return;
     }
 
@@ -1062,10 +1088,9 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
     int64_t durationSamples = sourceNode->totalLength();
 
     if (!tracks[trackIndex]->replaceClipSourceNode(clipId, std::move(sourceNode))) {
-        pfd::message("Replace Failed",
+        dialog::showMessage("Replace Failed",
                     "Could not replace clip source node",
-                    pfd::choice::ok,
-                    pfd::icon::error);
+                    dialog::MessageIcon::Error);
         return;
     }
 
@@ -1257,26 +1282,25 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
 }
 
 void TimelineEditor::importSmfTracks() {
-    auto selection = pfd::open_file(
+    auto selection = dialog::openFile(
         "Import SMF Tracks",
         ".",
-        { "MIDI Files", "*.mid *.midi *.smf",
-          "All Files", "*" }
+        dialog::makeFilters({ "MIDI Files", "*.mid *.midi *.smf",
+          "All Files", "*" })
     );
 
-    if (selection.result().empty())
+    if (selection.empty())
         return;
 
-    std::string selectedFile = selection.result()[0];
+    std::string selectedFile = selection[0].string();
 
     try {
         umppi::Midi1Music music = umppi::readMidi1File(selectedFile);
 
         if (music.tracks.empty()) {
-            pfd::message("Import Failed",
+            dialog::showMessage("Import Failed",
                         "The selected MIDI file contains no tracks.",
-                        pfd::choice::ok,
-                        pfd::icon::error);
+                        dialog::MessageIcon::Error);
             return;
         }
 
@@ -1335,17 +1359,15 @@ void TimelineEditor::importSmfTracks() {
             for (const auto& failure : failures)
                 message += failure + "\n";
 
-            pfd::message("Import Warning",
+            dialog::showMessage("Import Warning",
                         message,
-                        pfd::choice::ok,
-                        pfd::icon::warning);
+                        dialog::MessageIcon::Warning);
         }
 
     } catch (const std::exception& ex) {
-        pfd::message("Import Failed",
+        dialog::showMessage("Import Failed",
                     std::format("Exception during SMF import:\n{}", ex.what()),
-                    pfd::choice::ok,
-                    pfd::icon::error);
+                    dialog::MessageIcon::Error);
     }
 }
 

@@ -3,12 +3,13 @@
 // Shared application logic is in main_common.cpp
 
 #include "main_common.hpp"
+#if UAPMD_HAS_CPPTRACE
 #include <cpptrace/cpptrace.hpp>
 #include <cpptrace/from_current.hpp>
+#include "cpptrace/utils.hpp"
+#endif
 #include <iostream>
 #include <cstring>
-
-#include "cpptrace/utils.hpp"
 
 #if defined(__unix__) || defined(__APPLE__)
     #include <signal.h>
@@ -16,7 +17,7 @@
 #endif
 
 namespace {
-#if defined(__unix__) || defined(__APPLE__)
+#if UAPMD_HAS_CPPTRACE && (defined(__unix__) || defined(__APPLE__))
 [[noreturn]] void bestEffortSegvHandler(int signo, siginfo_t* info, void* context) {
     (void)signo;
     (void)info;
@@ -53,6 +54,7 @@ void installSignalTraceHandler() {}
  * Desktop entry point with exception handling and crash reporting.
  */
 int main(int argc, char** argv) {
+#if UAPMD_HAS_CPPTRACE
     cpptrace::register_terminate_handler();
     installSignalTraceHandler();
     int ret;
@@ -64,4 +66,7 @@ int main(int argc, char** argv) {
         ret = EXIT_FAILURE;
     }
     return ret;
+#else
+    return uapmd::runMainLoop(argc, argv);
+#endif
 }

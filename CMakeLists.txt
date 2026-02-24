@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 option(UAPMD_ENABLE_WINMIDI "Enable Windows MIDI Services backend integration (Windows only)" ${WIN32})
 option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integration (Windows only)" OFF)
+option(UAPMD_TARGET_WASM "Build the WebAssembly variant of uapmd-app (requires emcmake/emscripten)" OFF)
 
 #### end of section ####
 
@@ -18,6 +19,12 @@ if(ANDROID)
     set(_UAPMD_CPPTRACE_DWARF_DEFAULT OFF)
 endif()
 option(UAPMD_ENABLE_CPPTRACE_DWARF_SUPPORT "Enable cpptrace stack traces resolved via libdwarf" ${_UAPMD_CPPTRACE_DWARF_DEFAULT})
+if(UAPMD_TARGET_WASM AND NOT EMSCRIPTEN)
+    message(FATAL_ERROR "UAPMD_TARGET_WASM=ON requires configuring with the Emscripten toolchain (use emcmake cmake).")
+endif()
+if(EMSCRIPTEN)
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+endif()
 set(UAPMD_WINMIDI_HEADERS_ARCHIVE "${CMAKE_CURRENT_LIST_DIR}/external/Microsoft.Windows.Devices.Midi2.1.0.14-rc.1.209.nupkg"
         CACHE FILEPATH "Path to the Windows MIDI Services header package used by libremidi")
 
@@ -32,6 +39,20 @@ include(GNUInstallDirs)
 set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME uapmd)
 
 set(LIBREMIDI_HEADER_ONLY ON CACHE BOOL "Build libremidi as header-only" FORCE)
+if(EMSCRIPTEN)
+    add_compile_definitions(LIBLOCATE_DISABLE_DLOPEN)
+    set(WITH_RUNTIME_CPU_DETECTION OFF CACHE BOOL "Disable zlib-ng SIMD dispatch for Emscripten" FORCE)
+endif()
+
+set(UAPMD_ENABLE_CPPTRACE ON)
+if(EMSCRIPTEN)
+    set(UAPMD_ENABLE_CPPTRACE OFF)
+endif()
+if(UAPMD_ENABLE_CPPTRACE)
+    add_compile_definitions(UAPMD_HAS_CPPTRACE=1)
+else()
+    add_compile_definitions(UAPMD_HAS_CPPTRACE=0)
+endif()
 if(MSVC)
     # MSVC debug flags: /Zi for debug info, /Od for no optimization
     set(CMAKE_CXX_FLAGS_DEBUG "/Zi /Od /MDd" CACHE STRING "" FORCE)
@@ -45,23 +66,33 @@ set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # I don't approve GoogleTest warnaserror
 # This prevents third-party dependencies from polluting the installation
 install(CODE "set(CMAKE_INSTALL_LOCAL_ONLY TRUE)" ALL_COMPONENTS)
 
-set(_UAPMD_CPPTRACE_OPTIONS)
-if(UAPMD_ENABLE_CPPTRACE_DWARF_SUPPORT)
-    message("WARNING: enabling DWARF support somehow results in bringing in extraneous installation files")
-    list(APPEND _UAPMD_CPPTRACE_OPTIONS
-            "CPPTRACE_GET_SYMBOLS_WITH_LIBDWARF ON"
-            "CPPTRACE_DEMANGLE_WITH_CXXABI ON")
-endif()
-CPMAddPackage(
-        NAME           cpptrace
-        GIT_TAG        v1.0.4
-        GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
-        EXCLUDE_FROM_ALL
-        OPTIONS        ${_UAPMD_CPPTRACE_OPTIONS}
-)
+if(UAPMD_ENABLE_CPPTRACE)
+    set(_UAPMD_CPPTRACE_OPTIONS)
+    if(UAPMD_ENABLE_CPPTRACE_DWARF_SUPPORT)
+        message("WARNING: enabling DWARF support somehow results in bringing in extraneous installation files")
+        list(APPEND _UAPMD_CPPTRACE_OPTIONS
+                "CPPTRACE_GET_SYMBOLS_WITH_LIBDWARF ON"
+                "CPPTRACE_DEMANGLE_WITH_CXXABI ON")
+    endif()
+    if(EMSCRIPTEN)
+        list(APPEND _UAPMD_CPPTRACE_OPTIONS
+                "CPPTRACE_UNWIND_WITH_NOTHING ON"
+                "CPPTRACE_DISABLE_SIGNAL_HANDLERS ON")
+    endif()
+    CPMAddPackage(
+            NAME           cpptrace
+            GIT_TAG        v1.0.4
+            GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
+            EXCLUDE_FROM_ALL
+            OPTIONS        ${_UAPMD_CPPTRACE_OPTIONS}
+    )
+    if(EMSCRIPTEN)
+        set_property(TARGET cpptrace-lib PROPERTY CXX_SCAN_FOR_MODULES OFF)
+    endif()
 
-# Force a static build of cpptrace regardless of parent defaults
-set(BUILD_SHARED_LIBS OFF)
+    # Force a static build of cpptrace regardless of parent defaults
+    set(BUILD_SHARED_LIBS OFF)
+endif()
 
 CPMAddPackage(
         NAME           readerwriterqueue
@@ -77,24 +108,32 @@ CPMAddPackage(
         DOWNLOAD_ONLY YES
 )
 
-if (NOT ANDROID)
-CPMAddPackage(cpplocate
-        NAME           cpplocate
-        GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
-        GIT_REPOSITORY https://github.com/cginternals/cpplocate
-        EXCLUDE_FROM_ALL
-)
-set (cpplocate_LIBRARIES cpplocate::cpplocate)
-endif (NOT ANDROID)
+set(UAPMD_ENABLE_CPPLOCATE ON)
+if(ANDROID OR EMSCRIPTEN)
+    set(UAPMD_ENABLE_CPPLOCATE OFF)
+endif()
+set(cpplocate_LIBRARIES "")
 
-# Force static build for cpplocate
-set(_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL "${BUILD_SHARED_LIBS}")
-set(BUILD_SHARED_LIBS OFF)
-# Restore previous BUILD_SHARED_LIBS setting
-if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS_CPPL AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL}" STREQUAL "")
-    set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL}")
-else()
-    unset(BUILD_SHARED_LIBS)
+if (UAPMD_ENABLE_CPPLOCATE)
+    CPMAddPackage(cpplocate
+            NAME           cpplocate
+            GIT_TAG        b796990d8df747758dbd6217b6315b7bdbb0c27e
+            GIT_REPOSITORY https://github.com/cginternals/cpplocate
+            EXCLUDE_FROM_ALL
+    )
+    set (cpplocate_LIBRARIES cpplocate::cpplocate)
+endif ()
+
+if(UAPMD_ENABLE_CPPLOCATE)
+    # Force static build for cpplocate
+    set(_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL "${BUILD_SHARED_LIBS}")
+    set(BUILD_SHARED_LIBS OFF)
+    # Restore previous BUILD_SHARED_LIBS setting
+    if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS_CPPL AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL}" STREQUAL "")
+        set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS_CPPL}")
+    else()
+        unset(BUILD_SHARED_LIBS)
+    endif()
 endif()
 
 # Ensure we use a static build of midicci regardless of parent defaults
@@ -113,6 +152,14 @@ if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}
 else()
     unset(BUILD_SHARED_LIBS)
 endif()
+if(EMSCRIPTEN)
+    if(TARGET umppi_static)
+        set_target_properties(umppi_static PROPERTIES OUTPUT_NAME umppi_static)
+    endif()
+    if(TARGET midicci_static)
+        set_target_properties(midicci_static PROPERTIES OUTPUT_NAME midicci_static)
+    endif()
+endif()
 
 CPMAddPackage(
         NAME portable-file-dialogs
@@ -125,6 +172,13 @@ CPMAddPackage(
         NAME           concurrentqueue
         GIT_TAG        2f09da73d22a47dc8a89cdd4fc4c3bfae07f4284
         GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
+        DOWNLOAD_ONLY YES
+)
+
+CPMAddPackage(
+        NAME           miniaudio
+        GIT_TAG        0.11.23
+        GIT_REPOSITORY https://github.com/mackron/miniaudio
         DOWNLOAD_ONLY YES
 )
 
@@ -141,6 +195,9 @@ add_subdirectory(src/remidy-tooling)
 add_subdirectory(src/uapmd)
 add_subdirectory(src/uapmd-data)
 add_subdirectory(src/uapmd-engine)
+if(EMSCRIPTEN AND TARGET liblocate)
+    target_compile_definitions(liblocate PRIVATE LIBLOCATE_DISABLE_DLOPEN)
+endif()
 
 add_subdirectory(tools)
 

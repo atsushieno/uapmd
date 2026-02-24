@@ -430,6 +430,16 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
 }
 
 void uapmd::AppModel::performPluginScanning(bool forceRescan) {
+#if defined(__EMSCRIPTEN__)
+    // Native plugin formats (VST3/LV2/CLAP) are not available in the browser build,
+    // so skip scanning entirely and notify the UI that nothing happened.
+    std::cout << "Plugin scanning is not supported on the WebAssembly build. Skipping request." << std::endl;
+    for (auto& callback : scanningCompleted) {
+        callback(false, "Plugin scanning is unavailable on the WebAssembly build.");
+    }
+    return;
+#endif
+
     if (isScanning_) {
         std::cout << "Plugin scanning already in progress" << std::endl;
         return;

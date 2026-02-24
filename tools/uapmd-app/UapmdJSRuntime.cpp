@@ -1,5 +1,6 @@
 #include "UapmdJSRuntime.hpp"
 #include "AppModel.hpp"
+#include <sys/time.h>
 #include <choc/javascript/choc_javascript_QuickJS.h>
 #include <iostream>
 #include <thread>

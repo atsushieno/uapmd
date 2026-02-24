@@ -16,6 +16,8 @@
 
 namespace uapmd::gui {
 
+class TimelineRenderSuspender;
+
 // Callbacks to parent window for plugin-related UI operations
 struct TimelineEditorCallbacks {
     std::function<std::optional<TrackInstance>(int32_t instanceId)> buildTrackInstanceInfo;
@@ -122,6 +124,10 @@ private:
 
     // Build render context
     SequenceEditor::RenderContext buildRenderContext(float uiScale);
+
+    bool timelineRenderSuspended_{false};
+
+    friend class TimelineRenderSuspender;
 };
 
 }  // namespace uapmd::gui

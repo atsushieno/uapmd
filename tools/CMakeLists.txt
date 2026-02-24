@@ -6,15 +6,15 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 
-if (NOT ANDROID)
+if (NOT ANDROID AND NOT EMSCRIPTEN)
     add_subdirectory(remidy-scan)
     add_subdirectory(remidy-apply)
     add_subdirectory(uapmd-apply)
-endif (NOT ANDROID)
+endif ()
 add_subdirectory(uapmd-app)
 
 # Install the CLI tools as executables
-if (NOT ANDROID)
+if (NOT ANDROID AND NOT EMSCRIPTEN)
 install(TARGETS remidy-scan
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT uapmd)
@@ -26,4 +26,4 @@ if(APPLE AND TARGET uapmd-app-bundle)
             BUNDLE DESTINATION .
             COMPONENT uapmd_app)
 endif()
-endif (NOT ANDROID)
+endif ()

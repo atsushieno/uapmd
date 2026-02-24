@@ -18,9 +18,11 @@ target_link_libraries(uapmd-apply PRIVATE
         uapmd
         uapmd-engine
         uapmd-data
-        cpptrace::cpptrace
         ${uapmd-apply_LIBS_PLAT}
 )
+if(UAPMD_ENABLE_CPPTRACE)
+    target_link_libraries(uapmd-apply PRIVATE cpptrace::cpptrace)
+endif()
 
 target_sources(uapmd-apply PRIVATE
         main.cpp

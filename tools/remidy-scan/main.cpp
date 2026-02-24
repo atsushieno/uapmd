@@ -6,7 +6,9 @@
 #include <ranges>
 #include <mutex>
 
+#if UAPMD_HAS_CPPTRACE
 #include <cpptrace/from_current.hpp>
+#endif
 #include <remidy/remidy.hpp>
 #include <remidy-tooling/PluginScanTool.hpp>
 #include <remidy-tooling/PluginInstancing.hpp>
@@ -184,20 +186,32 @@ int run(int argc, const char* argv[]) {
 
     std::cerr << "Start testing instantiation... " << std::endl;
 
+    auto runInstancing = [&]() {
+        // Instancing CLAP plugins involve audio thread check.
+        // Therefore, it must be set as if the processing thread is the audio thread.
+        remidy::audioThreadIds().push_back(std::this_thread::get_id());
+
+        result = testInstancing();
+        remidy::EventLoop::stop();
+
+        std::cerr << "Completed " << std::endl;
+    };
+
     std::thread thread([&] {
+#if UAPMD_HAS_CPPTRACE
         CPPTRACE_TRY {
-            // Instancing CLAP plugins involve audio thread check.
-            // Therefore, it must be set as if the processing thread is the audio thread.
-            remidy::audioThreadIds().push_back(std::this_thread::get_id());
-
-            result = testInstancing();
-            remidy::EventLoop::stop();
-
-            std::cerr << "Completed " << std::endl;
+            runInstancing();
         } CPPTRACE_CATCH(const std::exception& e) {
             std::cerr << "Exception in main: " << e.what() << std::endl;
             cpptrace::from_current_exception().print();
         }
+#else
+        try {
+            runInstancing();
+        } catch (const std::exception& e) {
+            std::cerr << "Exception in main: " << e.what() << std::endl;
+        }
+#endif
     });
     remidy::EventLoop::start();
 
@@ -207,14 +221,26 @@ int run(int argc, const char* argv[]) {
 };
 
 int main(int argc, const char* argv[]) {
+    auto runScanner = [&](int argcValue, const char* const* argvValue) {
+        RemidyScan scanner{};
+        return scanner.run(argcValue, argvValue);
+    };
+#if UAPMD_HAS_CPPTRACE
     int ret;
     CPPTRACE_TRY {
-        RemidyScan scanner{};
-        ret = scanner.run(argc, argv);
+        ret = runScanner(argc, argv);
     } CPPTRACE_CATCH(const std::exception& e) {
         std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
         cpptrace::from_current_exception().print();
         ret = EXIT_FAILURE;
     }
     return ret;
+#else
+    try {
+        return runScanner(argc, argv);
+    } catch (const std::exception& e) {
+        std::cerr << "Exception in testCreateInstance: " << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
+#endif
 }

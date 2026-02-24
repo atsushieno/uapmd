@@ -1,14 +1,121 @@
+set(UAPMD_BUILDING_WASM OFF)
+if(UAPMD_TARGET_WASM)
+    if(NOT EMSCRIPTEN)
+        message(FATAL_ERROR "UAPMD_TARGET_WASM=ON requires configuring with the Emscripten toolchain (use emcmake).")
+    endif()
+    set(UAPMD_BUILDING_WASM ON)
+    add_compile_definitions(EMSCRIPTEN DISABLE_VST3 DISABLE_AU DISABLE_LV2 DISABLE_CLAP)
+    set(_UAPMD_WASM_ASYNC_IMPORTS "['uapmd_web_open_file_dialog','uapmd_web_save_file_dialog']")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
+        -s WASM=1 \
+        -s ALLOW_MEMORY_GROWTH=1 \
+        -s MAXIMUM_MEMORY=512MB \
+        -s USE_SDL=3 \
+        -s USE_WEBGL2=1 \
+        -s FULL_ES3=1 \
+        -s MIN_WEBGL_VERSION=2 \
+        -s DISABLE_EXCEPTION_CATCHING=0 \
+        -s NO_EXIT_RUNTIME=1 \
+        -s ASSERTIONS=1 \
+        -s ASYNCIFY=1 \
+        -s ASYNCIFY_IMPORTS=${_UAPMD_WASM_ASYNC_IMPORTS} \
+        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8']")
+endif()
+
+set(UAPMD_WASM_SYSROOT "")
+if(UAPMD_BUILDING_WASM)
+    if(CMAKE_SYSROOT)
+        set(UAPMD_WASM_SYSROOT "${CMAKE_SYSROOT}")
+    elseif(DEFINED EMSCRIPTEN_ROOT_PATH AND EMSCRIPTEN_ROOT_PATH)
+        set(UAPMD_WASM_SYSROOT "${EMSCRIPTEN_ROOT_PATH}/cache/sysroot")
+    elseif(DEFINED ENV{EMSDK} AND EXISTS "$ENV{EMSDK}/upstream/emscripten/cache/sysroot")
+        set(UAPMD_WASM_SYSROOT "$ENV{EMSDK}/upstream/emscripten/cache/sysroot")
+    endif()
+endif()
+
+# Common application sources
+set(UAPMD_APP_COMMON_SOURCE_FILES
+        main_common.cpp
+        AppModel.cpp
+        UapmdJSRuntime.cpp
+        gui/MainWindow.cpp
+        gui/PluginList.cpp
+        gui/InstanceDetails.cpp
+        gui/PluginSelector.cpp
+        gui/ParameterList.cpp
+        gui/TrackList.cpp
+        gui/AudioDeviceSettings.cpp
+        gui/ScriptEditor.cpp
+        gui/SpectrumAnalyzer.cpp
+        gui/SequenceEditor.cpp
+        gui/TimelineEditor.cpp
+        gui/ClipPreview.cpp
+        gui/MidiDumpWindow.cpp
+        gui/FontLoader.cpp
+        dialogs/FileDialogs.cpp
+        Configuration/AudioDeviceConfiguration.cpp
+        Configuration/VirtualMidiDeviceConfiguration.cpp
+)
+
+# Platform-specific entrypoints
+if(ANDROID)
+    set(UAPMD_APP_SOURCE_FILES
+            ${UAPMD_APP_COMMON_SOURCE_FILES}
+            android_main.cpp
+    )
+elseif(UAPMD_BUILDING_WASM)
+    set(UAPMD_APP_SOURCE_FILES
+            ${UAPMD_APP_COMMON_SOURCE_FILES}
+            web_main.cpp
+    )
+    set(_UAPMD_WASM_WEB_SRC "${CMAKE_CURRENT_SOURCE_DIR}/web")
+    set(_UAPMD_WASM_WEB_DST "${CMAKE_BINARY_DIR}/tools/uapmd-app")
+    file(GLOB_RECURSE _UAPMD_WASM_WEB_FILES
+            RELATIVE "${_UAPMD_WASM_WEB_SRC}"
+            "${_UAPMD_WASM_WEB_SRC}/*")
+    list(FILTER _UAPMD_WASM_WEB_FILES EXCLUDE REGEX "^\\.")
+    set(_UAPMD_WASM_WEB_STAMP "${_UAPMD_WASM_WEB_DST}/.web-assets.stamp")
+    set(_UAPMD_WASM_WEB_SOURCE_FILES)
+    foreach(_web_file IN LISTS _UAPMD_WASM_WEB_FILES)
+        list(APPEND _UAPMD_WASM_WEB_SOURCE_FILES "${_UAPMD_WASM_WEB_SRC}/${_web_file}")
+    endforeach()
+    add_custom_command(
+            OUTPUT "${_UAPMD_WASM_WEB_STAMP}"
+            COMMAND ${CMAKE_COMMAND}
+                -DSRC="${_UAPMD_WASM_WEB_SRC}"
+                -DDST="${_UAPMD_WASM_WEB_DST}"
+                -P "${CMAKE_SOURCE_DIR}/cmake/CopyWebAssets.cmake"
+            COMMAND ${CMAKE_COMMAND} -E touch "${_UAPMD_WASM_WEB_STAMP}"
+            DEPENDS ${_UAPMD_WASM_WEB_SOURCE_FILES}
+    )
+    add_custom_target(uapmd-app-web-assets ALL DEPENDS "${_UAPMD_WASM_WEB_STAMP}")
+else()
+    set(UAPMD_APP_SOURCE_FILES
+            ${UAPMD_APP_COMMON_SOURCE_FILES}
+            main.cpp
+    )
+endif()
+
+if(WIN32 AND NOT UAPMD_BUILDING_WASM)
+    list(APPEND UAPMD_APP_SOURCE_FILES ${CMAKE_SOURCE_DIR}/resources/uapmd.rc)
+endif()
+
 if (ANDROID)
 # SDL3 on Android expects the library to be named "main"
-add_library(main SHARED)
+add_library(main SHARED ${UAPMD_APP_SOURCE_FILES})
 set(UAPMD_APP_TARGETS main)
+elseif(UAPMD_BUILDING_WASM)
+add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
+set(UAPMD_APP_TARGETS uapmd-app)
+add_dependencies(uapmd-app uapmd-app-web-assets)
+target_link_options(uapmd-app PRIVATE --bind)
 else ()
-add_executable(uapmd-app)
+add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
 set(UAPMD_APP_TARGETS uapmd-app)
 endif ()
 
-if(APPLE)
-    add_executable(uapmd-app-bundle MACOSX_BUNDLE)
+if(APPLE AND NOT UAPMD_BUILDING_WASM)
+    add_executable(uapmd-app-bundle MACOSX_BUNDLE ${UAPMD_APP_SOURCE_FILES})
     list(APPEND UAPMD_APP_TARGETS uapmd-app-bundle)
 endif()
 
@@ -18,27 +125,34 @@ set(BACKEND_TYPE "")
 set(BACKEND_LIBRARIES "")
 set(BACKEND_INCLUDE_DIRS "")
 
-# Windows-specific: Offer Win32 + DirectX 11 backend
-if(WIN32)
-    option(USE_WIN32_DIRECTX11_BACKEND "Use native Win32 + DirectX 11 backend (Windows only)" ON)
+set(_UAPMD_REQUIRE_SDL3 OFF)
+if(UAPMD_BUILDING_WASM)
+    set(_UAPMD_REQUIRE_SDL3 ON)
+endif()
 
-    if(USE_WIN32_DIRECTX11_BACKEND)
-        set(BACKEND_FOUND TRUE)
-        set(BACKEND_TYPE "Win32")
-        set(BACKEND_LIBRARIES "")  # No external windowing library needed
-        set(DX11_LIBRARIES d3d11 dxgi d3dcompiler)
-        add_compile_definitions(USE_WIN32_BACKEND USE_DIRECTX11_RENDERER)
-        message(STATUS "Using Win32 + DirectX 11 backend")
+if(NOT UAPMD_BUILDING_WASM)
+    # Windows-specific: Offer Win32 + DirectX 11 backend
+    if(WIN32)
+        option(USE_WIN32_DIRECTX11_BACKEND "Use native Win32 + DirectX 11 backend (Windows only)" ON)
+
+        if(USE_WIN32_DIRECTX11_BACKEND)
+            set(BACKEND_FOUND TRUE)
+            set(BACKEND_TYPE "Win32")
+            set(BACKEND_LIBRARIES "")  # No external windowing library needed
+            set(DX11_LIBRARIES d3d11 dxgi d3dcompiler)
+            add_compile_definitions(USE_WIN32_BACKEND USE_DIRECTX11_RENDERER)
+            message(STATUS "Using Win32 + DirectX 11 backend")
+        endif()
     endif()
 endif()
 
-# Provide SDL3 via vcpkg on Windows only if not using Win32 backend
+# Provide SDL3 via vcpkg when needed
 include(${CMAKE_SOURCE_DIR}/cmake/UapmdVcpkgSDL3.cmake)
-if(WIN32 AND NOT BACKEND_FOUND)
+if((WIN32 OR EMSCRIPTEN) AND NOT BACKEND_FOUND)
     uapmd_prepare_vcpkg_sdl3()
 endif()
 
-# Try SDL3 if Win32 not selected
+# Try SDL3 if not already selected
 if(NOT BACKEND_FOUND)
     find_package(SDL3 QUIET)
     if(SDL3_FOUND)
@@ -48,6 +162,8 @@ if(NOT BACKEND_FOUND)
             set(BACKEND_LIBRARIES SDL3::SDL3-static)
         elseif(TARGET SDL3::SDL3-shared)
             set(BACKEND_LIBRARIES SDL3::SDL3-shared)
+        elseif(TARGET SDL3::SDL3)
+            set(BACKEND_LIBRARIES SDL3::SDL3)
         else()
             set(BACKEND_LIBRARIES SDL3::SDL3)
         endif()
@@ -65,54 +181,61 @@ if(NOT BACKEND_FOUND)
     endif()
 endif()
 
-# Try SDL2 if SDL3 not found
-if(NOT BACKEND_FOUND)
-    find_package(SDL2 QUIET)
-    if(SDL2_FOUND)
-        set(BACKEND_FOUND TRUE)
-        set(BACKEND_TYPE "SDL2")
-        set(BACKEND_LIBRARIES SDL2::SDL2)
-        add_compile_definitions(USE_SDL2_BACKEND)
-        message(STATUS "Using SDL2 backend")
-    endif()
+# Require SDL3 for wasm builds
+if(_UAPMD_REQUIRE_SDL3 AND NOT BACKEND_FOUND)
+    message(FATAL_ERROR "SDL3 backend is required for WebAssembly builds. Please ensure SDL3 is available (e.g., via vcpkg with triplet wasm32-emscripten).")
 endif()
 
-# Fallback to GLFW if neither SDL3 nor SDL2 found
-if(NOT BACKEND_FOUND)
-    find_package(glfw3 QUIET)
-    if(glfw3_FOUND)
-        set(BACKEND_FOUND TRUE)
-        set(BACKEND_TYPE "GLFW")
-        set(BACKEND_LIBRARIES glfw)
-        add_compile_definitions(USE_GLFW_BACKEND)
-        message(STATUS "Using GLFW backend")
-    else()
-        # Add GLFW via CPM as final fallback
-        message(STATUS "No system GLFW found, adding via CPM")
-        CPMAddPackage(
-            NAME glfw
-            GIT_TAG 3.4
-            GIT_REPOSITORY https://github.com/glfw/glfw
-            OPTIONS
-                "GLFW_BUILD_EXAMPLES OFF"
-                "GLFW_BUILD_TESTS OFF"
-                "GLFW_BUILD_DOCS OFF"
-        )
-        if(glfw_ADDED)
+if(NOT _UAPMD_REQUIRE_SDL3)
+    # Try SDL2 if SDL3 not found
+    if(NOT BACKEND_FOUND)
+        find_package(SDL2 QUIET)
+        if(SDL2_FOUND)
+            set(BACKEND_FOUND TRUE)
+            set(BACKEND_TYPE "SDL2")
+            set(BACKEND_LIBRARIES SDL2::SDL2)
+            add_compile_definitions(USE_SDL2_BACKEND)
+            message(STATUS "Using SDL2 backend")
+        endif()
+    endif()
+
+    # Fallback to GLFW if neither SDL3 nor SDL2 found
+    if(NOT BACKEND_FOUND)
+        find_package(glfw3 QUIET)
+        if(glfw3_FOUND)
             set(BACKEND_FOUND TRUE)
             set(BACKEND_TYPE "GLFW")
             set(BACKEND_LIBRARIES glfw)
             add_compile_definitions(USE_GLFW_BACKEND)
-            message(STATUS "Using GLFW backend (via CPM)")
+            message(STATUS "Using GLFW backend")
         else()
-            if(TARGET glfw)
-                message(WARNING "GLFW CPM: glfw_ADDED not set but target glfw exists")
+            # Add GLFW via CPM as final fallback
+            message(STATUS "No system GLFW found, adding via CPM")
+            CPMAddPackage(
+                NAME glfw
+                GIT_TAG 3.4
+                GIT_REPOSITORY https://github.com/glfw/glfw
+                OPTIONS
+                    "GLFW_BUILD_EXAMPLES OFF"
+                    "GLFW_BUILD_TESTS OFF"
+                    "GLFW_BUILD_DOCS OFF"
+            )
+            if(glfw_ADDED)
                 set(BACKEND_FOUND TRUE)
                 set(BACKEND_TYPE "GLFW")
                 set(BACKEND_LIBRARIES glfw)
                 add_compile_definitions(USE_GLFW_BACKEND)
+                message(STATUS "Using GLFW backend (via CPM)")
             else()
-                message(WARNING "GLFW CPM failed: glfw_ADDED=${glfw_ADDED}, no glfw target")
+                if(TARGET glfw)
+                    message(WARNING "GLFW CPM: glfw_ADDED not set but target glfw exists")
+                    set(BACKEND_FOUND TRUE)
+                    set(BACKEND_TYPE "GLFW")
+                    set(BACKEND_LIBRARIES glfw)
+                    add_compile_definitions(USE_GLFW_BACKEND)
+                else()
+                    message(WARNING "GLFW CPM failed: glfw_ADDED=${glfw_ADDED}, no glfw target")
+                endif()
             endif()
         endif()
     endif()
@@ -221,6 +344,12 @@ if(NOT TARGET imgui)
             ${imgui_SOURCE_DIR}
             ${imgui_SOURCE_DIR}/backends
     )
+    if(UAPMD_WASM_SYSROOT)
+        target_include_directories(imgui PRIVATE
+                ${UAPMD_WASM_SYSROOT}/include
+                ${UAPMD_WASM_SYSROOT}/include/SDL3
+        )
+    endif()
 
     # Link backend library to ImGui so backends can find headers
     target_link_libraries(imgui PUBLIC ${BACKEND_LIBRARIES})
@@ -313,12 +442,22 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             ${midicci_SOURCE_DIR}/include
             ../../include
             ${libremidi_SOURCE_DIR}/include
-            ${cpplocate_SOURCE_DIR}/source/cpplocate/include
-            ${cpplocate_BINARY_DIR}/source/cpplocate/include
-            ${cpplocate_BINARY_DIR}/source/liblocate/include
             ../remidy-imgui-shared
             ${IconFontCppHeaders_SOURCE_DIR}
     )
+    if(UAPMD_WASM_SYSROOT)
+        target_include_directories(${app_target} PRIVATE
+                ${UAPMD_WASM_SYSROOT}/include
+                ${UAPMD_WASM_SYSROOT}/include/SDL3
+        )
+    endif()
+    if(UAPMD_ENABLE_CPPLOCATE)
+        target_include_directories(${app_target} PRIVATE
+                ${cpplocate_SOURCE_DIR}/source/cpplocate/include
+                ${cpplocate_BINARY_DIR}/source/cpplocate/include
+                ${cpplocate_BINARY_DIR}/source/liblocate/include
+        )
+    endif()
 endforeach()
 
 # Enable ImGui vector operators for all app translation units
@@ -336,22 +475,34 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     )
 endif ()
 
+set(_uapmd_app_link_libraries
+        imgui
+        imtimeline
+        remidy
+        uapmd
+        remidy-gui
+        remidy-imgui-shared
+        remidy-tooling
+        midicci_static
+        ResEmbed
+)
+if(UAPMD_ENABLE_CPPTRACE)
+    list(APPEND _uapmd_app_link_libraries cpptrace::cpptrace)
+endif()
+list(APPEND _uapmd_app_link_libraries
+        uapmd-engine
+        libremidi::libremidi
+        zlib-ng
+)
+if(NOT UAPMD_BUILDING_WASM)
+    list(APPEND _uapmd_app_link_libraries ${uapmd_LIBS_PLAT})
+endif()
+if(UAPMD_ENABLE_CPPLOCATE)
+    list(APPEND _uapmd_app_link_libraries ${cpplocate_LIBRARIES})
+endif()
+
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-    target_link_libraries(${app_target} PRIVATE
-            imgui
-            imtimeline
-            cpptrace::cpptrace
-            uapmd
-            uapmd-engine
-            remidy-gui
-            remidy-imgui-shared
-            ${cpplocate_LIBRARIES}
-            libremidi::libremidi
-            midicci_static
-            zlib-ng
-            ResEmbed
-            ${uapmd_LIBS_PLAT}
-    )
+    target_link_libraries(${app_target} PRIVATE ${_uapmd_app_link_libraries})
 
     # Add DirectX 11 libraries on Windows when using DX11 renderer
     if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
@@ -359,7 +510,7 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     endif()
 
     # Create a .dSYM file on macOS
-    if(APPLE)
+    if(APPLE AND NOT UAPMD_BUILDING_WASM)
         add_custom_command(
                 TARGET ${app_target}
                 POST_BUILD
@@ -368,58 +519,11 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     endif()
 endforeach()
 
-# Common source files shared by desktop and Android
-set(UAPMD_APP_COMMON_SOURCE_FILES
-        main_common.cpp
-        AppModel.cpp
-        UapmdJSRuntime.cpp
-        gui/MainWindow.cpp
-        gui/PluginList.cpp
-        gui/InstanceDetails.cpp
-        gui/PluginSelector.cpp
-        gui/ParameterList.cpp
-        gui/TrackList.cpp
-        gui/AudioDeviceSettings.cpp
-        gui/ScriptEditor.cpp
-        gui/SpectrumAnalyzer.cpp
-        gui/SequenceEditor.cpp
-        gui/TimelineEditor.cpp
-        gui/ClipPreview.cpp
-        gui/MidiDumpWindow.cpp
-        gui/FontLoader.cpp
-        Configuration/AudioDeviceConfiguration.cpp
-        Configuration/VirtualMidiDeviceConfiguration.cpp
-)
-
-# Platform-specific entrypoint files
-if(ANDROID)
-    # Android: Use android_main.cpp
-    set(UAPMD_APP_SOURCE_FILES
-        ${UAPMD_APP_COMMON_SOURCE_FILES}
-        android_main.cpp
-    )
-else()
-    # Desktop: Use main.cpp
-    set(UAPMD_APP_SOURCE_FILES
-        ${UAPMD_APP_COMMON_SOURCE_FILES}
-        main.cpp
-    )
-endif()
-
-# Add Windows icon resource
-if(WIN32)
-    list(APPEND UAPMD_APP_SOURCE_FILES ${CMAKE_SOURCE_DIR}/resources/uapmd.rc)
-endif()
-
-foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-    target_sources(${app_target} PRIVATE ${UAPMD_APP_SOURCE_FILES})
-endforeach()
-
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     target_compile_features(${app_target} PRIVATE cxx_std_23)
 endforeach()
 
-if(APPLE)
+if(APPLE AND NOT UAPMD_BUILDING_WASM)
     set(UAPMD_APP_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/UapmdApp-Info.plist")
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in ${UAPMD_APP_INFO_PLIST} @ONLY)
     set_target_properties(uapmd-app-bundle PROPERTIES
@@ -444,7 +548,7 @@ endif()
 
 # Create symbolic link to js directory for script editor module resolution
 # (Not applicable on Android - files would be in APK assets)
-if(NOT ANDROID)
+if(NOT ANDROID AND NOT UAPMD_BUILDING_WASM)
     add_custom_command(TARGET uapmd-app POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/js

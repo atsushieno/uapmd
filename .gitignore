@@ -4,3 +4,10 @@ apidocs
 .DS_Store
 .claude
 
+# wasm build artifacts
+cmake-build-wasm-imgui/
+tools/uapmd-app/web/.emsdk/
+tools/uapmd-app/web/.emsdk-info
+tools/uapmd-app/web/dist/
+tools/uapmd-app/web/node_modules/
+external/emsdk/

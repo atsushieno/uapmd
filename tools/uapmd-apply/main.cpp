@@ -1,7 +1,9 @@
 #include <iostream>
 #include <thread>
 
+#if UAPMD_HAS_CPPTRACE
 #include <cpptrace/from_current.hpp>
+#endif
 #include <cxxopts.hpp>
 
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
@@ -164,6 +166,7 @@ int run(int argc, const char* argv[]) {
 }
 
 int main(int argc, const char* argv[]) {
+#if UAPMD_HAS_CPPTRACE
     int result = EXIT_SUCCESS;
     CPPTRACE_TRY {
         result = run(argc, argv);
@@ -173,4 +176,12 @@ int main(int argc, const char* argv[]) {
         result = EXIT_FAILURE;
     }
     return result;
+#else
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        std::cerr << "Exception: " << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
+#endif
 }

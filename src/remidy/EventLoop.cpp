@@ -1,16 +1,20 @@
 #include <assert.h>
 #include <iostream>
+#include <queue>
+#include <mutex>
 #include "remidy.hpp"
 #if ANDROID
 #include <android/looper.h>
-#elif (defined(__linux__) || defined(__unix__)) && !ANDROID && !EMSCRIPTEN
+#elif EMSCRIPTEN
+#include <emscripten/emscripten.h>
+#elif (defined(__linux__) || defined(__unix__))
 #include "EventLoopLinux.hpp"
 #else
 #include <choc/gui/choc_MessageLoop.h>
 #endif
 
 namespace remidy {
-#if ANDROID || EMSCRIPTEN
+#if ANDROID
     EventLoop* eventLoop{getEventLoop()};
 
     class EventLoopAndroid : public EventLoop {
@@ -39,6 +43,67 @@ namespace remidy {
     EventLoop* getEventLoop() {
         if (!eventLoop)
             eventLoop = &androidEventLoop;
+        return eventLoop;
+    }
+#elif EMSCRIPTEN
+    class EventLoopEmscripten : public EventLoop {
+    public:
+        EventLoopEmscripten() = default;
+
+    protected:
+        void initializeOnUIThreadImpl() override {
+            running_ = true;
+        }
+
+        bool runningOnMainThreadImpl() override {
+            return true;
+        }
+
+        void enqueueTaskOnMainThreadImpl(std::function<void()>&& func) override {
+            {
+                std::lock_guard<std::mutex> lock(queueMutex_);
+                taskQueue_.emplace(std::move(func));
+            }
+            emscripten_async_call(&EventLoopEmscripten::drainTasksThunk, this, 0);
+        }
+
+        void startImpl() override {
+            running_ = true;
+        }
+
+        void stopImpl() override {
+            running_ = false;
+        }
+
+    private:
+        static void drainTasksThunk(void* ctx) {
+            static_cast<EventLoopEmscripten*>(ctx)->drainTasks();
+        }
+
+        void drainTasks() {
+            std::queue<std::function<void()>> localQueue;
+            {
+                std::lock_guard<std::mutex> lock(queueMutex_);
+                std::swap(localQueue, taskQueue_);
+            }
+            while (!localQueue.empty()) {
+                auto task = std::move(localQueue.front());
+                localQueue.pop();
+                if (task)
+                    task();
+            }
+        }
+
+        std::mutex queueMutex_;
+        std::queue<std::function<void()>> taskQueue_;
+        bool running_{false};
+    };
+
+    EventLoopEmscripten wasmEventLoop{};
+    EventLoop* eventLoop{getEventLoop()};
+    EventLoop* getEventLoop() {
+        if (!eventLoop)
+            eventLoop = &wasmEventLoop;
         return eventLoop;
     }
 #elif (defined(__linux__) || defined(__unix__))
