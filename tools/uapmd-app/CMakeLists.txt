@@ -20,7 +20,7 @@ set(BACKEND_INCLUDE_DIRS "")
 
 # Windows-specific: Offer Win32 + DirectX 11 backend
 if(WIN32)
-    option(USE_WIN32_DIRECTX11_BACKEND "Use native Win32 + DirectX 11 backend (Windows only)" OFF)
+    option(USE_WIN32_DIRECTX11_BACKEND "Use native Win32 + DirectX 11 backend (Windows only)" ON)
 
     if(USE_WIN32_DIRECTX11_BACKEND)
         set(BACKEND_FOUND TRUE)
