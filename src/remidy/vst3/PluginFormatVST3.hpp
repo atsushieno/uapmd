@@ -54,6 +54,13 @@ namespace remidy {
             unloadFunc([&](std::filesystem::path &vst3Dir, void* module)->StatusCode { return doUnload(vst3Dir, module); }),
             library_pool(loadFunc,unloadFunc),
             host(logger) {
+            // Keep VST3 DLLs loaded after scanning. With UnloadImmediately (the
+            // default), each scan removes the DLL from the pool, so instantiation
+            // reloads it and calls initDll/exitDll again. Many VST3 plugins (NI,
+            // JUCE-based, etc.) do not survive this unload/reload cycle within the
+            // same process: global state torn down by exitDll is not fully restored
+            // by a second initDll, causing factory->createInstance to crash.
+            library_pool.setRetentionPolicy(PluginBundlePool::Retain);
         }
 
         Logger* getLogger() { return logger; }

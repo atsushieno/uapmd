@@ -11,9 +11,6 @@
 DEF_CLASS_IID (Steinberg::IWaylandHost)
 DEF_CLASS_IID (Steinberg::IWaylandFrame)
 #endif
-#if WIN32
-#include <Windows.h>
-#endif
 
 #include <algorithm>
 
@@ -33,11 +30,6 @@ namespace remidy_vst3 {
     const std::basic_string<char16_t> HostApplication::name16t{Steinberg::Vst::StringConvert::convert("remidy")};
 
     HostApplication::HostApplication(remidy::Logger* logger): logger(logger) {
-#if WIN32
-        HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-        if (hr == RPC_E_CHANGED_MODE)
-            logger->logWarning("HostApplication: COM already initialized with a different apartment model; VST3 plugins using COM (e.g. NI) may crash");
-#endif
         // Instantiate nested implementation classes
         support = new PlugInterfaceSupportImpl(this);
 #ifdef HAVE_WAYLAND
@@ -50,9 +42,6 @@ namespace remidy_vst3 {
         if (support) support->release();
 #ifdef HAVE_WAYLAND
         if (wayland_host) wayland_host->release();
-#endif
-#if WIN32
-        CoUninitialize();
 #endif
     }
 

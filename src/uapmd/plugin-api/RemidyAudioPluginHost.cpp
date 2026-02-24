@@ -2,6 +2,9 @@
 #include "RemidyAudioPluginHost.hpp"
 #include <functional>
 #include <ranges>
+#if _WIN32
+#include <Windows.h>
+#endif
 
 #include "remidy-tooling/PluginInstancing.hpp"
 #include "../midi/UapmdNodeUmpMapper.hpp"
@@ -297,9 +300,26 @@ std::unique_ptr<uapmd::AudioPluginHostingAPI> uapmd::AudioPluginHostingAPI::crea
 }
 
 uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
+#if _WIN32
+    // VST3 plugins (especially NI and JUCE-based ones) use COM and require STA.
+    // Initialize COM before any DLL loading so initDll / GetPluginFactory run
+    // inside a properly-initialized apartment.
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (SUCCEEDED(hr))
+        comInitialized = true;
+    else if (hr == RPC_E_CHANGED_MODE)
+        remidy::Logger::global()->logWarning("RemidyAudioPluginHost: COM already initialized with a different apartment model; VST3 plugins using COM (e.g. NI) may crash");
+#endif
     scanning.performPluginScanning(true);
     if (!exists(scanning.pluginListCacheFile()))
         scanning.savePluginListCache();
+}
+
+uapmd::RemidyAudioPluginHost::~RemidyAudioPluginHost() {
+#if _WIN32
+    if (comInitialized)
+        CoUninitialize();
+#endif
 }
 
 std::vector<remidy::PluginCatalogEntry> uapmd::RemidyAudioPluginHost::pluginCatalogEntries() {

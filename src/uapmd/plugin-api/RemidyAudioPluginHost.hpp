@@ -11,10 +11,13 @@ namespace uapmd {
     class RemidyAudioPluginHost : public AudioPluginHostingAPI {
         remidy_tooling::PluginScanTool scanning{};
         std::map<int32_t,std::unique_ptr<AudioPluginInstanceAPI>> instances{};
+#if _WIN32
+        bool comInitialized{false};
+#endif
 
     public:
         RemidyAudioPluginHost();
-        ~RemidyAudioPluginHost() override = default;
+        ~RemidyAudioPluginHost() override;
 
         std::vector<remidy::PluginCatalogEntry> pluginCatalogEntries() override;
         void savePluginCatalogToFile(std::filesystem::path path) override;
