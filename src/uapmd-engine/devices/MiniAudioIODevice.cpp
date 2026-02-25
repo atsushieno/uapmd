@@ -301,10 +301,9 @@ bool uapmd::MiniAudioIODevice::reconfigure(const ma_device_id* inputDeviceId, co
     // Restore callbacks
     callbacks = savedCallbacks;
 
-    // Restart if it was running
-    if (wasRunning) {
-        start();
-    }
+    // Always start after reinit: noAutoStart = MA_TRUE means ma_engine_init
+    // never auto-starts, so we must call start() explicitly here.
+    start();
 
     return true;
 }
@@ -338,6 +337,10 @@ bool uapmd::MiniAudioIODevice::initializeDuplexDevice(const ma_device_id* inputD
     if (sampleRate > 0) {
         config.sampleRate = sampleRate;
     }
+    // Prevent ma_engine_init from auto-starting the device so that callers can
+    // configure AudioProcessContext buffers (e.g. configureMainBus) before any
+    // data callbacks fire, avoiding a data race on those buffers.
+    config.noAutoStart = MA_TRUE;
 
     if (ma_engine_init(&config, &engine) != MA_SUCCESS) {
         remidy::Logger::global()->logError("Failed to initialize audio engine");

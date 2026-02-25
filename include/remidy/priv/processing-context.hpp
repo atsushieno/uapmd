@@ -199,8 +199,13 @@ namespace remidy {
 
         void configureMainBus(int32_t inChannels, int32_t outChannels, size_t audioBufferCapacityInFrames) {
             audio_buffer_capacity_frames = audioBufferCapacityInFrames;
-            audio_in.emplace_back(new AudioBusBufferList(inChannels, audioBufferCapacityInFrames));
-            audio_out.emplace_back(new AudioBusBufferList(outChannels, audioBufferCapacityInFrames));
+            // Replace the main bus (index 0) rather than accumulating.
+            // Repeated calls to configureMainBus must not keep appending buses,
+            // as that causes processAudio to iterate over stale, wrong-sized buffers.
+            if (!audio_in.empty()) { delete audio_in[0]; audio_in[0] = new AudioBusBufferList(inChannels, audioBufferCapacityInFrames); }
+            else                   { audio_in.emplace_back(new AudioBusBufferList(inChannels, audioBufferCapacityInFrames)); }
+            if (!audio_out.empty()) { delete audio_out[0]; audio_out[0] = new AudioBusBufferList(outChannels, audioBufferCapacityInFrames); }
+            else                    { audio_out.emplace_back(new AudioBusBufferList(outChannels, audioBufferCapacityInFrames)); }
         }
 
         void addAudioIn(int32_t channels, size_t audioBufferCapacityInFrames) {
