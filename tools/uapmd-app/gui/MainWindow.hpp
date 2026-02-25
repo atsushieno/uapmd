@@ -95,7 +95,6 @@ class MainWindow {
         void render(void* window);  // Generic window pointer
         void update();
         bool& isOpen() { return isOpen_; }
-        TimelineEditor& timelineEditor() { return timelineEditor_; }
         bool consumePendingWindowResize(ImVec2& size);
 
     private:

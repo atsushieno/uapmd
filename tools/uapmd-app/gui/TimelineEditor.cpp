@@ -27,23 +27,6 @@
 
 namespace uapmd::gui {
 
-class TimelineRenderSuspender {
-public:
-    explicit TimelineRenderSuspender(TimelineEditor& editor)
-        : editor_(editor)
-        , previous_(editor.timelineRenderSuspended_) {
-        editor.timelineRenderSuspended_ = true;
-    }
-
-    ~TimelineRenderSuspender() {
-        editor_.timelineRenderSuspended_ = previous_;
-    }
-
-private:
-    TimelineEditor& editor_;
-    bool previous_;
-};
-
 namespace {
 constexpr int32_t kMasterTrackClipId = -1000;
 constexpr double kDisplayDefaultBpm = 120.0;
@@ -201,9 +184,7 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
 void TimelineEditor::render(float uiScale) {
     auto context = buildRenderContext(uiScale);
     renderTrackList(context);
-    if (!timelineRenderSuspended_) {
-        sequenceEditor_.render(context);
-    }
+    sequenceEditor_.render(context);
 
     // Render InstanceDetails with context
     InstanceDetails::RenderContext detailsContext{
@@ -483,12 +464,8 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         }
 
         ImGui::TableSetColumnIndex(1);
-        if (timelineRenderSuspended_) {
-            ImGui::TextUnformatted("Loading audio clip...");
-        } else {
-            const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(uapmd::kMasterTrackIndex, context.uiScale);
-            sequenceEditor_.renderTimelineInline(uapmd::kMasterTrackIndex, context, timelineHeight);
-        }
+        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(uapmd::kMasterTrackIndex, context.uiScale);
+        sequenceEditor_.renderTimelineInline(uapmd::kMasterTrackIndex, context, timelineHeight);
 
         ImGui::EndTable();
     }
@@ -637,12 +614,8 @@ void TimelineEditor::renderTrackRow(int32_t trackIndex, const SequenceEditor::Re
 
         // Timeline column
         ImGui::TableSetColumnIndex(1);
-        if (timelineRenderSuspended_) {
-            ImGui::TextUnformatted("Loading audio clip...");
-        } else {
-            const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(trackIndex, context.uiScale);
-            sequenceEditor_.renderTimelineInline(trackIndex, context, timelineHeight);
-        }
+        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(trackIndex, context.uiScale);
+        sequenceEditor_.renderTimelineInline(trackIndex, context, timelineHeight);
 
         ImGui::EndTable();
     }
@@ -886,8 +859,6 @@ void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filep
         return;
     }
 
-    TimelineRenderSuspender renderSuspender(*this);
-
     auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
     if (!reader) {
         dialog::showMessage("Load Failed",
@@ -960,8 +931,6 @@ void TimelineEditor::addClipToTrackAtPosition(int32_t trackIndex, const std::str
         refreshSequenceEditorForTrack(trackIndex);
         return;
     }
-
-    TimelineRenderSuspender renderSuspender(*this);
 
     auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
     if (!reader) {
