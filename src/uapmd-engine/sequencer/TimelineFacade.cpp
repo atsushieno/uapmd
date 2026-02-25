@@ -245,9 +245,14 @@ namespace uapmd {
             timeline_.loopEnabled = false;
 
             // Clear all existing tracks via engine (which calls onTrackRemoved for each)
-            auto& engineTracks = engine_.tracks();
-            while (!engineTracks.empty())
-                engine_.removeTrack(0);
+            // NOTE: SequencerEngine::tracks() returns a transient snapshot, so refresh it
+            // every iteration to ensure we see the latest state.
+            while (true) {
+                auto& snapshot = engine_.tracks();
+                if (snapshot.empty())
+                    break;
+                engine_.removeTrack(static_cast<uapmd_track_index_t>(snapshot.size() - 1));
+            }
 
             std::atomic<int> pending_plugins{0};
 
