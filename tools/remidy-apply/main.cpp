@@ -258,7 +258,7 @@ class RemidyApply {
     }
 
     public:
-    int run(int argc, const char* argv[]) {
+    int run(int argc, const char* const* argv) {
         int result{0};
         cxxopts::Options options("remidy-apply", "generate audio file from audio and MIDI inputs.");
         options.add_options()

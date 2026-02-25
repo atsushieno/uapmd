@@ -140,7 +140,7 @@ int testInstancing() {
 }
 
 public:
-int run(int argc, const char* argv[]) {
+int run(int argc, const char* const* argv) {
     int result{EXIT_SUCCESS};
 
     bool help = false;
