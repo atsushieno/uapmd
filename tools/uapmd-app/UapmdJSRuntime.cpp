@@ -1,6 +1,10 @@
 #include "UapmdJSRuntime.hpp"
 #include "AppModel.hpp"
+#if defined(_WIN32)
+#include <winsock2.h>
+#else
 #include <sys/time.h>
+#endif
 #include <choc/javascript/choc_javascript_QuickJS.h>
 #include <iostream>
 #include <thread>

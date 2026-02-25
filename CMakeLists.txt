@@ -119,7 +119,7 @@ CPMAddPackage(
 
 CPMAddPackage(
         NAME            choc
-        GIT_TAG         68a63dd
+        GIT_TAG         1857a38
         GIT_REPOSITORY  https://github.com/Tracktion/choc
         DOWNLOAD_ONLY YES
 )
