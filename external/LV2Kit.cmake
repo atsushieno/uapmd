@@ -81,24 +81,33 @@ target_include_directories(lv2kit PRIVATE ${LV2KIT_INCLUDE_DIRS})
 
 target_sources(lv2kit PRIVATE
 		${LV2KIT_SRC_DIR}/lilv/src/collections.c
-		${LV2KIT_SRC_DIR}/lilv/src/instance.c
 		${LV2KIT_SRC_DIR}/lilv/src/dylib.c
+		${LV2KIT_SRC_DIR}/lilv/src/instance.c
 		${LV2KIT_SRC_DIR}/lilv/src/lib.c
+		${LV2KIT_SRC_DIR}/lilv/src/load_skimmer.c
 		${LV2KIT_SRC_DIR}/lilv/src/node.c
+		${LV2KIT_SRC_DIR}/lilv/src/node_hash.c
+		${LV2KIT_SRC_DIR}/lilv/src/node_skimmer.c
 		${LV2KIT_SRC_DIR}/lilv/src/plugin.c
 		${LV2KIT_SRC_DIR}/lilv/src/pluginclass.c
 		${LV2KIT_SRC_DIR}/lilv/src/port.c
 		${LV2KIT_SRC_DIR}/lilv/src/query.c
 		${LV2KIT_SRC_DIR}/lilv/src/scalepoint.c
 		${LV2KIT_SRC_DIR}/lilv/src/state.c
+		${LV2KIT_SRC_DIR}/lilv/src/string_util.c
+		${LV2KIT_SRC_DIR}/lilv/src/syntax_skimmer.c
+		${LV2KIT_SRC_DIR}/lilv/src/sys_util.c
+		${LV2KIT_SRC_DIR}/lilv/src/type_skimmer.c
 		${LV2KIT_SRC_DIR}/lilv/src/ui.c
-		${LV2KIT_SRC_DIR}/lilv/src/util.c
+		${LV2KIT_SRC_DIR}/lilv/src/uris.c
 		${LV2KIT_SRC_DIR}/lilv/src/world.c
+
 		${LV2KIT_SRC_DIR}/serd/src/base64.c
 		${LV2KIT_SRC_DIR}/serd/src/byte_source.c
 		${LV2KIT_SRC_DIR}/serd/src/env.c
 		${LV2KIT_SRC_DIR}/serd/src/n3.c
 		${LV2KIT_SRC_DIR}/serd/src/node.c
+		${LV2KIT_SRC_DIR}/serd/src/read_utf8.c
 		${LV2KIT_SRC_DIR}/serd/src/reader.c
 		#${LV2KIT_SRC_DIR}/serd/src/serdi.c
 		${LV2KIT_SRC_DIR}/serd/src/string.c
