@@ -251,7 +251,7 @@ uapmd::MiniAudioIODevice::MiniAudioIODevice(
         manager_(manager) {
     config.pContext = &manager->maContext();
     config.dataCallback = data_callback;
-    config.periodSizeInFrames = 1024; // FIXME: provide audio buffer size
+    config.periodSizeInFrames = 256; // FIXME: provide audio buffer size
     config.noAutoStart = true;
     config.notificationCallback = MiniAudioIODeviceManager::on_ma_device_notification;
 
