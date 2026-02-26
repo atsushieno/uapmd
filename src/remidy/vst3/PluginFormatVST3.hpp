@@ -35,11 +35,12 @@ namespace remidy {
 
     class ComponentHandlerImpl : public IComponentHandler, public IComponentHandler2, public IUnitHandler {
         std::atomic<uint32_t> refCount{1};
+        remidy_vst3::HostApplication* host{nullptr};
         std::function<void(int32)> restart_component_handler{};
         std::function<void(ParamID, double)> parameter_edit_handler{};
 
     public:
-        explicit ComponentHandlerImpl() {}
+        explicit ComponentHandlerImpl(remidy_vst3::HostApplication* host) : host(host) {}
         virtual ~ComponentHandlerImpl() = default;
 
         tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
@@ -109,7 +110,7 @@ namespace remidy {
             // by a second initDll, causing factory->createInstance to crash.
             library_pool.setRetentionPolicy(PluginBundlePool::Retain);
 
-            handler = std::make_unique<ComponentHandlerImpl>();
+            handler = std::make_unique<ComponentHandlerImpl>(&host);
         }
 
         Logger* getLogger() { return logger; }
@@ -296,52 +297,8 @@ namespace remidy {
                 xdg_toplevel* parent_xdg_toplevel{nullptr};
 #endif
 
-                // IRunLoop timer management
-                struct TimerInfo {
-                    ITimerHandler* handler;
-                    uint64_t interval_ms;
-                    std::atomic<bool> active{true};
-                };
-                std::vector<std::shared_ptr<TimerInfo>> timers{};
-                std::mutex timers_mutex{};
-
-                // IRunLoop event handler management
-                struct EventHandlerInfo {
-                    IEventHandler* handler;
-                    int fd;
-                    std::atomic<bool> active{true};
-                };
-                std::vector<std::shared_ptr<EventHandlerInfo>> event_handlers{};
-                std::mutex event_handlers_mutex{};
-
-                // Nested IRunLoop implementation
-                struct RunLoopImpl : public IRunLoop {
-                    std::atomic<uint32_t> refCount{1};
-                    PlugFrameImpl* owner;
-
-                    explicit RunLoopImpl(PlugFrameImpl* owner) : owner(owner) {}
-                    virtual ~RunLoopImpl() = default;
-
-                    tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
-                    uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
-                    uint32 PLUGIN_API release() SMTG_OVERRIDE {
-                        uint32 newCount = --refCount;
-                        if (newCount == 0) delete this;
-                        return newCount;
-                    }
-                    tresult PLUGIN_API registerEventHandler(IEventHandler* handler, FileDescriptor fd) SMTG_OVERRIDE;
-                    tresult PLUGIN_API unregisterEventHandler(IEventHandler* handler) SMTG_OVERRIDE;
-                    tresult PLUGIN_API registerTimer(ITimerHandler* handler, TimerInterval milliseconds) SMTG_OVERRIDE;
-                    tresult PLUGIN_API unregisterTimer(ITimerHandler* handler) SMTG_OVERRIDE;
-                };
-                RunLoopImpl* run_loop{nullptr};
-
-                explicit PlugFrameImpl(UISupport* owner) : owner(owner) {
-                    run_loop = new RunLoopImpl(this);
-                }
-                virtual ~PlugFrameImpl() {
-                    if (run_loop) run_loop->release();
-                }
+                explicit PlugFrameImpl(UISupport* owner) : owner(owner) {}
+                virtual ~PlugFrameImpl() = default;
 
                 tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
                 uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }

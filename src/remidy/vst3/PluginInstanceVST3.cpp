@@ -783,6 +783,13 @@ tresult PLUGIN_API remidy::ComponentHandlerImpl::queryInterface(const TUID _iid,
     QUERY_INTERFACE(_iid, obj, IComponentHandler::iid, IComponentHandler)
     QUERY_INTERFACE(_iid, obj, IComponentHandler2::iid, IComponentHandler2)
     QUERY_INTERFACE(_iid, obj, IUnitHandler::iid, IUnitHandler)
+    // Delegate IRunLoop to the host-global HostApplication
+    if (FUnknownPrivate::iidEqual(_iid, IRunLoop::iid)) {
+        auto* rl = host ? host->getRunLoop() : nullptr;
+        if (rl) rl->addRef();
+        *obj = rl;
+        return rl ? kResultOk : kNoInterface;
+    }
     logNoInterface("IComponentHandler::queryInterface", _iid);
     *obj = nullptr;
     return kNoInterface;

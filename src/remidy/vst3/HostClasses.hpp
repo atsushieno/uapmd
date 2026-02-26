@@ -552,7 +552,44 @@ namespace remidy_vst3 {
         };
 #endif
 
+        struct RunLoopImpl : public IRunLoop {
+            std::atomic<uint32_t> refCount{1};
+            HostApplication* owner;
+
+            struct TimerInfo {
+                ITimerHandler* handler;
+                uint64_t interval_ms;
+                std::atomic<bool> active{true};
+            };
+            std::vector<std::shared_ptr<TimerInfo>> timers{};
+            std::mutex timers_mutex{};
+
+            struct EventHandlerInfo {
+                IEventHandler* handler;
+                int fd;
+                std::atomic<bool> active{true};
+            };
+            std::vector<std::shared_ptr<EventHandlerInfo>> event_handlers{};
+            std::mutex event_handlers_mutex{};
+
+            explicit RunLoopImpl(HostApplication* owner) : owner(owner) {}
+            virtual ~RunLoopImpl() = default;
+
+            tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
+            uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
+            uint32 PLUGIN_API release() SMTG_OVERRIDE {
+                uint32 newCount = --refCount;
+                if (newCount == 0) delete this;
+                return newCount;
+            }
+            tresult PLUGIN_API registerEventHandler(IEventHandler* handler, FileDescriptor fd) SMTG_OVERRIDE;
+            tresult PLUGIN_API unregisterEventHandler(IEventHandler* handler) SMTG_OVERRIDE;
+            tresult PLUGIN_API registerTimer(ITimerHandler* handler, TimerInterval milliseconds) SMTG_OVERRIDE;
+            tresult PLUGIN_API unregisterTimer(ITimerHandler* handler) SMTG_OVERRIDE;
+        };
+
         PlugInterfaceSupportImpl* support{nullptr};
+        RunLoopImpl* run_loop{nullptr};
 #ifdef HAVE_WAYLAND
         WaylandHostImpl* wayland_host{nullptr};
 #endif
@@ -576,6 +613,7 @@ namespace remidy_vst3 {
         tresult PLUGIN_API createInstance(TUID cid, TUID _iid, void** obj) SMTG_OVERRIDE;
 
         inline IPlugInterfaceSupport* getPlugInterfaceSupport() { return support; }
+        inline IRunLoop* getRunLoop() { return run_loop; }
 #ifdef HAVE_WAYLAND
         inline IWaylandHost* getWaylandHost() { return wayland_host; }
 #endif
