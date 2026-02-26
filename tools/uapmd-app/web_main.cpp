@@ -302,9 +302,6 @@ void uapmd_debug_import_audio(const char* path) {
     }
 
     std::cout << "[wasm-debug] import_audio: clip " << result.clipId << " added\n";
-    if (g_ctx.mainWindow) {
-        g_ctx.mainWindow->timelineEditor().refreshSequenceEditorForTrack(0);
-    }
 }
 }
 
