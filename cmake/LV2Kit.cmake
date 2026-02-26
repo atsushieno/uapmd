@@ -1,7 +1,7 @@
 
 add_library(lv2kit STATIC)
 
-set(LV2KIT_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/lv2kit/subprojects")
+#set(LV2KIT_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/lv2kit/subprojects")
 
 if(WIN32)
 	set(lv2kit_COMPILE_OPTIONS_PLAT
