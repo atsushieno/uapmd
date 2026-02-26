@@ -1,4 +1,7 @@
 
+if(APPLE)
+    set(REMIDY_SUPPORT_AU ON)
+endif()
 if(NOT ANDROID AND NOT EMSCRIPTEN)
     set(REMIDY_SUPPORT_VST3 ON)
     set(REMIDY_SUPPORT_LV2 ON)
@@ -10,21 +13,15 @@ endif ()
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     set (REMIDY_LINUX_DESKTOP ON)
 endif ()
-
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-    target_compile_definitions(remidy PRIVATE
-            V3_COM_COMPAT=1
-    )
-endif ()
-
 if (UNIX AND NOT APPLE AND WAYLAND_CLIENT_FOUND)
     target_compile_definitions(remidy PRIVATE
             HAVE_WAYLAND=1
     )
 endif ()
 
+
 if (${REMIDY_SUPPORT_AAP})
-    set(AAP_SUPPORT_SOURCES
+    set(REMIDY_AAP_SUPPORT_SOURCES
             aap/PluginFormatAAP.cpp
             aap/PluginInstanceAAP.cpp
             aap/PluginInstanceAAP.Buses.cpp
@@ -76,10 +73,10 @@ if(${REMIDY_SUPPORT_LV2})
             GIT_TAG 0c612fa
             DOWNLOAD_ONLY YES
     )
-    set(LV2KIT_SRC_DIR ${lv2kit_SOURCE_DIR}/subprojects)
+    set(LV2KIT_SRC_DIR ${lv2kit_SOURCE_DIR}/subprojects) # used by LV2Kit.cmake
     include("../../cmake/LV2Kit.cmake")
     set(lv2kit_LIBRARY lv2kit)
-    set(lv2kit_SOURCES
+    set(REMIDY_LV2_SUPPORT_SOURCES
             lv2/LV2Helper.cpp
             lv2/symap.cpp
             lv2/PluginFormatLV2.cpp
@@ -108,9 +105,43 @@ if (${REMIDY_SUPPORT_CLAP})
             DOWNLOAD_ONLY YES
     )
 
-    set(CLAP_SUPPORT_INCLUDE_DIRS
+    set(REMIDY_CLAP_SUPPORT_INCLUDE_DIRS
             ${clap_SOURCE_DIR}/include
             ${clap-helpers_SOURCE_DIR}/include
+    )
+
+    set(REMIDY_CLAP_SUPPORT_SOURCES
+            clap/CLAPHelper.cpp
+            clap/HostClasses.cpp
+            clap/PluginFormatCLAP.cpp
+            clap/PluginInstanceCLAP.cpp
+            clap/PluginInstanceCLAP.Buses.cpp
+            clap/PluginInstanceCLAP.Events.cpp
+            clap/PluginInstanceCLAP.Parameters.cpp
+            clap/PluginInstanceCLAP.Presets.cpp
+            clap/PluginInstanceCLAP.States.cpp
+            clap/PluginInstanceCLAP.UI.cpp
+    )
+endif ()
+
+if (REMIDY_SUPPORT_AU)
+    set(REMIDY_AU_SUPPORT_SOURCES
+            au/AUv2Helper.cpp
+            au/PluginFormatAU.mm
+            au/PluginInstanceAUv2.mm
+            au/PluginInstanceAUv2.Buses.mm
+            au/PluginInstanceAUv2.Events.mm
+            au/PluginInstanceAUv2.Parameters.mm
+            au/PluginInstanceAUv2.Presets.mm
+            au/PluginInstanceAUv2.States.mm
+            au/PluginInstanceAUv2.UI.mm
+            au/PluginInstanceAUv3.mm
+            au/PluginInstanceAUv3.Buses.mm
+            au/PluginInstanceAUv3.Events.mm
+            au/PluginInstanceAUv3.Parameters.mm
+            au/PluginInstanceAUv3.States.mm
+            au/PluginInstanceAUv3.Presets.mm
+            au/PluginInstanceAUv3.UI.mm
     )
 endif ()
 
@@ -130,7 +161,7 @@ if (${REMIDY_SUPPORT_VST3})
 
     set(VST3_PUBLIC_SDK_MODULE_INFO_DIR ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/moduleinfo)
 
-    set(VST3_SUPPORT_SOURCES
+    set(REMIDY_VST3_SUPPORT_SOURCES
             ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}/moduleinfoparser.cpp
             ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/funknown.cpp
             ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/coreiids.cpp
@@ -186,12 +217,12 @@ target_include_directories(remidy PRIVATE
         ${vst3sdk_SOURCE_DIR}
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ${LV2KIT_INCLUDE_DIRS}
-        ${CLAP_SUPPORT_INCLUDE_DIRS}
+        ${REMIDY_CLAP_SUPPORT_INCLUDE_DIRS}
         ../../include
         ../../include/remidy # FIXME: this should be removed
 )
 
-set(_remidy_link_libs
+target_link_libraries(remidy PRIVATE
         rtlog::rtlog
         ${cpplocate_LIBRARIES}
         midicci_static
@@ -201,81 +232,37 @@ set(_remidy_link_libs
         ${lv2kit_LIBRARY}
 )
 
-target_link_libraries(remidy PRIVATE ${_remidy_link_libs})
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+    target_compile_definitions(remidy PRIVATE
+            V3_COM_COMPAT=1
+    )
+endif ()
 
 target_compile_options(remidy PRIVATE
-        #-fsanitize=address
         $<$<COMPILE_LANGUAGE:ObjCXX>:-framework CoreAudio -framework CoreFoundation>
         $<$<COMPILE_LANGUAGE:Swift>:-cxx-interoperability-mode=default -emit-clang-header-path ${CMAKE_BINARY_DIR}/generated/include/swift-interop/remidy-Swift.h>
         -DLILV_STATIC
         -DZIX_STATIC
 )
 
-if (APPLE)
-    set(remidy_OBJC_SOURCES
-            au/PluginFormatAU.mm
-            au/PluginInstanceAUv2.mm
-            au/PluginInstanceAUv2.Buses.mm
-            au/PluginInstanceAUv2.Events.mm
-            au/PluginInstanceAUv2.Parameters.mm
-            au/PluginInstanceAUv2.Presets.mm
-            au/PluginInstanceAUv2.States.mm
-            au/PluginInstanceAUv2.UI.mm
-            au/PluginInstanceAUv3.mm
-            au/PluginInstanceAUv3.Buses.mm
-            au/PluginInstanceAUv3.Events.mm
-            au/PluginInstanceAUv3.Parameters.mm
-            au/PluginInstanceAUv3.States.mm
-            au/PluginInstanceAUv3.Presets.mm
-            au/PluginInstanceAUv3.UI.mm
-    )
-endif ()
-
 target_sources(remidy PRIVATE
-
-        # swift sources generate C++ header files in use later, so compile them first.
-        #src/auv2/AUv2Helper.swift
-
         utils.cpp
         EventLoop.cpp
-
-        ${AAP_SUPPORT_SOURCES}
-
         Logger.cpp
         AudioBufferList.cpp
         EventSequence.cpp
-
         PluginCatalog.cpp
         PluginBundlePool.cpp
         PluginFormat.cpp
-
-        au/AUv2Helper.cpp
-        ${remidy_OBJC_SOURCES}
-
         AudioProcessContext.cpp
         PluginInstance.cpp
         UmpInputDispatcher.cpp
-)
 
-set(_remidy_clap_sources
-        clap/CLAPHelper.cpp
-        clap/HostClasses.cpp
-        clap/PluginFormatCLAP.cpp
-        clap/PluginInstanceCLAP.cpp
-        clap/PluginInstanceCLAP.Buses.cpp
-        clap/PluginInstanceCLAP.Events.cpp
-        clap/PluginInstanceCLAP.Parameters.cpp
-        clap/PluginInstanceCLAP.Presets.cpp
-        clap/PluginInstanceCLAP.States.cpp
-        clap/PluginInstanceCLAP.UI.cpp
+        ${REMIDY_VST3_SUPPORT_SOURCES}
+        ${REMIDY_AU_SUPPORT_SOURCES}
+        ${REMIDY_LV2_SUPPORT_SOURCES}
+        ${REMIDY_CLAP_SUPPORT_SOURCES}
+        ${REMIDY_AAP_SUPPORT_SOURCES}
 )
-
-if(NOT EMSCRIPTEN)
-    target_sources(remidy PRIVATE
-            ${VST3_SUPPORT_SOURCES}
-            ${lv2kit_SOURCES}
-            ${_remidy_clap_sources}
-    )
-endif()
 
 add_library(remidy::remidy ALIAS remidy)
