@@ -20,7 +20,7 @@ It works like the only facade for the entire audio engine.
 
 It was supposed to be a static audio engine that can process audio without time constraints.
 
-It is still used by remidy-apply, but the console tool is not really functional for now.
+It is still used by uapmd-apply, but the console tool is not really functional for now.
 
 ### `DeviceIODispatcher`, `AudioIODevice`, and `MidiIODevice`
 
