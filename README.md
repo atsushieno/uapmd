@@ -152,5 +152,6 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [Roboto font](https://fonts.google.com/specimen/Roboto) - the SIL Open Font License v1.1
 - [FontAwesome](https://github.com/FortAwesome/Font-Awesome) - CC-BY 4.0 + SIL OFL 1.1
 - [fontaudio](https://github.com/fefanto/fontaudio) - MIT
+- [sevagh/demucs.cpp](https://github.com/sevagh/demucs.cpp) - MIT
 
 Note that while they might look comprehensive, I'm listing those to clarify the licenses that matter. For example, libraries like choc depend on other third-party libraries but we don't use them.

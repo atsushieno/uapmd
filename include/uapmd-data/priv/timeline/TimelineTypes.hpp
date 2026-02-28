@@ -105,6 +105,7 @@ namespace uapmd {
         bool muted{false};
         std::string name;                   // User-editable clip name
         std::string filepath;               // Source audio file path
+        bool needsFileSave{false};          // True when the source file must be copied into the project
 
         // Clip type and MIDI-specific fields
         ClipType clipType{ClipType::Audio};

@@ -17,13 +17,12 @@
 
 #include <imgui.h>
 #include <umppi/umppi.hpp>
+#include <uapmd-data/uapmd-data.hpp>
 
 #include "TimelineEditor.hpp"
 #include "ClipPreview.hpp"
 #include "FontIcons.hpp"
 #include "../AppModel.hpp"
-#include <uapmd-data/priv/project/SmfConverter.hpp>
-#include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
 
 namespace uapmd::gui {
 
@@ -1250,94 +1249,244 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
     return dump;
 }
 
-void TimelineEditor::importSmfTracks() {
+void TimelineEditor::importTracks() {
     auto selection = dialog::openFile(
-        "Import SMF Tracks",
+        "Import Tracks",
         ".",
-        dialog::makeFilters({ "MIDI Files", "*.mid *.midi *.smf",
-          "All Files", "*" })
+        dialog::makeFilters({
+            "Supported Files", "*.mid *.midi *.smf *.wav *.flac *.ogg",
+            "MIDI Files", "*.mid *.midi *.smf",
+            "Audio Files", "*.wav *.flac *.ogg",
+            "All Files", "*"
+        })
     );
 
     if (selection.empty())
         return;
 
-    std::string selectedFile = selection[0].string();
+    const std::string selectedFile = selection[0].string();
+    std::filesystem::path filePath(selectedFile);
+    std::string ext = filePath.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
 
-    try {
-        umppi::Midi1Music music = umppi::readMidi1File(selectedFile);
-
-        if (music.tracks.empty()) {
-            dialog::showMessage("Import Failed",
-                        "The selected MIDI file contains no tracks.",
-                        dialog::MessageIcon::Error);
-            return;
-        }
-
-        auto& appModel = uapmd::AppModel::instance();
-        std::filesystem::path smfPath(selectedFile);
-        std::string baseFilename = smfPath.stem().string();
-
-        std::vector<std::string> failures;
-
-        for (size_t trackIdx = 0; trackIdx < music.tracks.size(); ++trackIdx) {
-            auto convertResult = uapmd::SmfConverter::convertTrackToUmp(music, trackIdx);
-
-            if (!convertResult.success) {
-                failures.push_back(std::format("Track {}: {}", trackIdx + 1, convertResult.error));
-                continue;
-            }
-
-            // Skip tracks with no MIDI events (empty tracks)
-            if (convertResult.umpEvents.empty())
-                continue;
-
-            int32_t newTrackIndex = appModel.addTrack();
-            if (newTrackIndex < 0) {
-                failures.push_back(std::format("Track {}: Failed to create track", trackIdx + 1));
-                continue;
-            }
-
-            uapmd::TimelinePosition position;
-            position.samples = 0;
-            position.legacy_beats = 0.0;
-
-            std::string clipName = std::format("{} - Track {}", baseFilename, trackIdx + 1);
-
-            auto clipResult = appModel.addMidiClipToTrack(
-                newTrackIndex,
-                position,
-                std::move(convertResult.umpEvents),
-                std::move(convertResult.umpEventTicksStamps),
-                convertResult.tickResolution,
-                convertResult.detectedTempo,
-                std::move(convertResult.tempoChanges),
-                std::move(convertResult.timeSignatureChanges),
-                clipName
-            );
-
-            if (!clipResult.success) {
-                failures.push_back(std::format("Track {}: {}", trackIdx + 1, clipResult.error));
-                continue;
-            }
-
-            refreshSequenceEditorForTrack(newTrackIndex);
-        }
-
-        if (!failures.empty()) {
-            std::string message = "The following tracks failed to import:\n\n";
-            for (const auto& failure : failures)
-                message += failure + "\n";
-
-            dialog::showMessage("Import Warning",
-                        message,
-                        dialog::MessageIcon::Warning);
-        }
-
-    } catch (const std::exception& ex) {
-        dialog::showMessage("Import Failed",
-                    std::format("Exception during SMF import:\n{}", ex.what()),
-                    dialog::MessageIcon::Error);
+    if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
+        importMidiTracks(selectedFile);
+    } else if (ext == ".wav" || ext == ".flac" || ext == ".ogg") {
+        importAudioTracks(selectedFile);
+    } else {
+        dialog::showMessage("Unsupported File",
+                            std::format("Cannot import files with extension {}", ext),
+                            dialog::MessageIcon::Warning);
     }
+}
+
+void TimelineEditor::importMidiTracks(const std::string& filepath) {
+    auto importResult = uapmd::import::TrackImporter::importMidiFile(filepath);
+    auto warnings = importResult.warnings;
+
+    if (!importResult.success) {
+        std::string message = importResult.error.empty()
+            ? "Failed to import MIDI tracks."
+            : importResult.error;
+        if (!warnings.empty()) {
+            message += "\n\nWarnings:\n";
+            for (const auto& warning : warnings)
+                message += warning + "\n";
+        }
+        dialog::showMessage("Import Failed", message, dialog::MessageIcon::Error);
+        return;
+    }
+
+    auto& appModel = uapmd::AppModel::instance();
+    size_t importedCount = 0;
+
+    for (auto& track : importResult.tracks) {
+        int32_t newTrackIndex = appModel.addTrack();
+        if (newTrackIndex < 0) {
+            warnings.push_back(std::format("{}: Failed to create track", track.clipName));
+            continue;
+        }
+
+        uapmd::TimelinePosition position;
+        position.samples = 0;
+        position.legacy_beats = 0.0;
+
+        auto clipResult = appModel.addMidiClipToTrack(
+            newTrackIndex,
+            position,
+            std::move(track.umpEvents),
+            std::move(track.umpTickTimestamps),
+            track.tickResolution,
+            track.detectedTempo,
+            std::move(track.tempoChanges),
+            std::move(track.timeSignatureChanges),
+            track.clipName
+        );
+
+        if (!clipResult.success) {
+            warnings.push_back(std::format("{}: {}", track.clipName, clipResult.error));
+            continue;
+        }
+
+        refreshSequenceEditorForTrack(newTrackIndex);
+        ++importedCount;
+    }
+
+    if (importedCount == 0) {
+        std::string message = "No MIDI tracks were imported.";
+        if (!warnings.empty()) {
+            message += "\n\nWarnings:\n";
+            for (const auto& warning : warnings)
+                message += warning + "\n";
+        }
+        dialog::showMessage("Import Failed", message, dialog::MessageIcon::Error);
+        return;
+    }
+
+    std::string summary = std::format("Imported {} track(s) from {}",
+                                      importedCount,
+                                      std::filesystem::path(filepath).filename().string());
+    auto icon = dialog::MessageIcon::Info;
+    if (!warnings.empty()) {
+        summary += "\n\nWarnings:\n";
+        for (const auto& warning : warnings)
+            summary += warning + "\n";
+        icon = dialog::MessageIcon::Warning;
+    }
+    dialog::showMessage("Import Complete", summary, icon);
+}
+
+void TimelineEditor::importAudioTracks(const std::string& filepath) {
+    if (!ensureDemucsModelSelected())
+        return;
+
+    uapmd::import::TrackImporter::AudioImportOptions options;
+    options.modelPath = demucsModelPath_;
+
+    auto importResult = uapmd::import::TrackImporter::importAudioFile(filepath, options);
+    auto warnings = importResult.warnings;
+
+    if (!importResult.success) {
+        std::string message = importResult.error.empty()
+            ? "Failed to import audio stems."
+            : importResult.error;
+        if (!warnings.empty()) {
+            message += "\n\nWarnings:\n";
+            for (const auto& warning : warnings)
+                message += warning + "\n";
+        }
+        dialog::showMessage("Import Failed", message, dialog::MessageIcon::Error);
+        return;
+    }
+
+    auto& appModel = uapmd::AppModel::instance();
+    size_t importedCount = 0;
+
+    for (const auto& stem : importResult.stems) {
+        int32_t newTrackIndex = appModel.addTrack();
+        if (newTrackIndex < 0) {
+            warnings.push_back(std::format("{}: Failed to create track", stem.clipDisplayName));
+            continue;
+        }
+
+        auto reader = uapmd::createAudioFileReaderFromPath(stem.filepath.string());
+        if (!reader) {
+            warnings.push_back(std::format("{}: Failed to open stem audio", stem.clipDisplayName));
+            continue;
+        }
+
+        uapmd::TimelinePosition position;
+        position.samples = 0;
+        position.legacy_beats = 0.0;
+
+        auto clipResult = appModel.addClipToTrack(
+            newTrackIndex,
+            position,
+            std::move(reader),
+            stem.filepath.string()
+        );
+
+        if (!clipResult.success) {
+            warnings.push_back(std::format("{}: {}", stem.clipDisplayName, clipResult.error));
+            continue;
+        }
+
+        auto tracks = appModel.getTimelineTracks();
+        if (newTrackIndex >= 0 && newTrackIndex < static_cast<int32_t>(tracks.size())) {
+            auto& clipManager = tracks[newTrackIndex]->clipManager();
+            clipManager.setClipName(clipResult.clipId, stem.clipDisplayName);
+            clipManager.setClipNeedsFileSave(clipResult.clipId, true);
+        }
+
+        refreshSequenceEditorForTrack(newTrackIndex);
+        ++importedCount;
+    }
+
+    if (importedCount == 0) {
+        std::string message = "No stems were imported.";
+        if (!warnings.empty()) {
+            message += "\n\nWarnings:\n";
+            for (const auto& warning : warnings)
+                message += warning + "\n";
+        }
+        dialog::showMessage("Import Failed", message, dialog::MessageIcon::Error);
+        return;
+    }
+
+    std::string summary = std::format("Created {} stem track(s) from {}",
+                                      importedCount,
+                                      std::filesystem::path(filepath).stem().string());
+    auto icon = dialog::MessageIcon::Info;
+    if (!warnings.empty()) {
+        summary += "\n\nWarnings:\n";
+        for (const auto& warning : warnings)
+            summary += warning + "\n";
+        icon = dialog::MessageIcon::Warning;
+    }
+
+    dialog::showMessage("Import Complete", summary, icon);
+}
+
+bool TimelineEditor::ensureDemucsModelSelected() {
+    if (!demucsModelPath_.empty() && std::filesystem::exists(demucsModelPath_))
+        return true;
+    return requestDemucsModelSelection();
+}
+
+bool TimelineEditor::requestDemucsModelSelection() {
+    auto selection = dialog::openFile(
+        "Select Demucs Model",
+        ".",
+        dialog::makeFilters({
+            "Demucs ggml Model", "*.bin",
+            "All Files", "*"
+        })
+    );
+
+    if (selection.empty())
+        return false;
+
+    demucsModelPath_ = selection[0].string();
+    return true;
+}
+
+void TimelineEditor::clearDemucsModel() {
+    demucsModelPath_.clear();
+}
+
+bool TimelineEditor::hasDemucsModel() const {
+    return !demucsModelPath_.empty();
+}
+
+std::string TimelineEditor::demucsModelLabel() const {
+    if (demucsModelPath_.empty())
+        return {};
+    auto label = std::filesystem::path(demucsModelPath_).filename().string();
+    if (label.empty())
+        label = demucsModelPath_;
+    return label;
 }
 
 }  // namespace uapmd::gui

@@ -29,6 +29,8 @@ namespace uapmd {
         bool setClipMuted(int32_t clipId, bool muted);
         bool setClipName(int32_t clipId, const std::string& name);
         bool setClipFilepath(int32_t clipId, const std::string& filepath);
+        bool setClipNeedsFileSave(int32_t clipId, bool needsSave);
+        bool clipNeedsFileSave(int32_t clipId) const;
         bool setClipAnchor(int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset);
 
         // Query clips at timeline position (RT-safe after initial query)

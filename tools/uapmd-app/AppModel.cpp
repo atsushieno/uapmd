@@ -1336,6 +1336,49 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
                     } else {
                         clipPath = std::filesystem::absolute(clipPath);
                     }
+                } else {
+                    if (clip.needsFileSave) {
+                        if (clipPath.empty()) {
+                            result.error = std::format("Clip {} on track {} has no source audio to save", clip.clipId, trackIndex);
+                            return result;
+                        }
+
+                        auto sourcePath = std::filesystem::absolute(clipPath);
+                        if (!std::filesystem::exists(sourcePath)) {
+                            result.error = std::format("Clip {} on track {} is missing its audio file", clip.clipId, trackIndex);
+                            return result;
+                        }
+
+                        std::error_code dirEc;
+                        std::filesystem::create_directories(clipDir, dirEc);
+                        if (dirEc) {
+                            result.error = std::format("Failed to create clip directory: {}", dirEc.message());
+                            return result;
+                        }
+
+                        auto originalName = sourcePath.filename().string();
+                        if (originalName.empty())
+                            originalName = std::format("clip{}_audio.wav", clip.clipId);
+                        auto destPath = clipDir / std::format("track{}_{}", trackIndex, originalName);
+
+                        std::error_code copyEc;
+                        std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing, copyEc);
+                        if (copyEc) {
+                            result.error = std::format("Failed to store audio clip {}: {}", clip.clipId, copyEc.message());
+                            return result;
+                        }
+
+                        clipPath = destPath;
+                        timelineTrack->clipManager().setClipFilepath(clip.clipId, clipPath.string());
+                        timelineTrack->clipManager().setClipNeedsFileSave(clip.clipId, false);
+
+                        if (sourcePath != destPath) {
+                            std::error_code removeEc;
+                            std::filesystem::remove(sourcePath, removeEc);
+                        }
+                    } else if (!clipPath.empty()) {
+                        clipPath = std::filesystem::absolute(clipPath);
+                    }
                 }
 
                 if (!clipPath.empty() && !projectDir.empty())

@@ -174,6 +174,24 @@ namespace uapmd {
         return true;
     }
 
+    bool ClipManager::setClipNeedsFileSave(int32_t clipId, bool needsSave) {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        it->second.needsFileSave = needsSave;
+        return true;
+    }
+
+    bool ClipManager::clipNeedsFileSave(int32_t clipId) const {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+        return it->second.needsFileSave;
+    }
+
     bool ClipManager::setClipAnchor(int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);

@@ -370,7 +370,32 @@ void MainWindow::render(void* window) {
             }
             ImGui::SameLine();
             if (ImGui::Button("Import Tracks")) {
-                timelineEditor_.importSmfTracks();
+                timelineEditor_.importTracks();
+            }
+            ImGui::SameLine();
+            bool openStemsPopup = false;
+            if (ImGui::Button("Stems Model")) {
+                openStemsPopup = true;
+            }
+            if (openStemsPopup) {
+                ImGui::OpenPopup("StemsModelActions");
+            }
+            if (ImGui::BeginPopup("StemsModelActions")) {
+                if (ImGui::MenuItem("Load Model...")) {
+                    timelineEditor_.requestDemucsModelSelection();
+                    ImGui::CloseCurrentPopup();
+                }
+                if (timelineEditor_.hasDemucsModel()) {
+                    auto label = timelineEditor_.demucsModelLabel();
+                    std::string unloadLabel = label.empty()
+                        ? "Unload Model"
+                        : std::format("Unload {}", label);
+                    if (ImGui::MenuItem(unloadLabel.c_str())) {
+                        timelineEditor_.clearDemucsModel();
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+                ImGui::EndPopup();
             }
             ImGui::SameLine();
             if (ImGui::Button("Project")) {

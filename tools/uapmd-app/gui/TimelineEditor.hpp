@@ -68,8 +68,12 @@ public:
     void showMidiClipDump(int32_t trackIndex, int32_t clipId);
     void showMasterMetaDump();
 
-    // Import
-    void importSmfTracks();
+    // Track import
+    void importTracks();
+    bool requestDemucsModelSelection();
+    void clearDemucsModel();
+    bool hasDemucsModel() const;
+    std::string demucsModelLabel() const;
 
     // Track layout change handler
     void handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChange& change);
@@ -107,6 +111,8 @@ private:
     std::function<void(const std::string&, ImVec2)> setNextChildWindowSize_;
     std::function<void(const std::string&)> updateChildWindowSizeState_;
 
+    std::string demucsModelPath_;
+
     // Internal rendering
     void renderTrackList(const SequenceEditor::RenderContext& context);
     void renderMasterTrackRow(const SequenceEditor::RenderContext& context);
@@ -119,6 +125,9 @@ private:
     // MIDI dump helpers
     MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);
     MidiDumpWindow::ClipDumpData buildMasterMetaDumpData();
+    void importMidiTracks(const std::string& filepath);
+    void importAudioTracks(const std::string& filepath);
+    bool ensureDemucsModelSelected();
 
     // Build render context
     SequenceEditor::RenderContext buildRenderContext(float uiScale);
