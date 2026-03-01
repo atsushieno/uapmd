@@ -1664,6 +1664,7 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
     bool statePrepared = false;
     bool audioWasRunning = false;
     bool previousOffline = false;
+    bool transportWasPlaying = false;
     int64_t previousPlaybackPosition = 0;
     TimelinePosition previousPlayhead{};
     TimelinePosition previousLoopStart{};
@@ -1673,26 +1674,30 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
     int32_t previousTimelineSampleRate = 0;
 
     auto restoreState = [&]() {
-        if (!statePrepared)
-            return;
+        if (statePrepared) {
+            auto* engine = sequencer_.engine();
+            auto& timelineState = engine->timeline().state();
 
-        auto* engine = sequencer_.engine();
-        auto& timelineState = engine->timeline().state();
+            engine->pausePlayback();
+            engine->playbackPosition(previousPlaybackPosition);
+            timelineState.isPlaying = previousTimelinePlaying;
+            timelineState.playheadPosition = previousPlayhead;
+            timelineState.loopEnabled = previousLoopEnabled;
+            timelineState.loopStart = previousLoopStart;
+            timelineState.loopEnd = previousLoopEnd;
+            timelineState.sample_rate = previousTimelineSampleRate;
+            engine->offlineRendering(previousOffline);
 
-        engine->pausePlayback();
-        engine->playbackPosition(previousPlaybackPosition);
-        timelineState.isPlaying = previousTimelinePlaying;
-        timelineState.playheadPosition = previousPlayhead;
-        timelineState.loopEnabled = previousLoopEnabled;
-        timelineState.loopStart = previousLoopStart;
-        timelineState.loopEnd = previousLoopEnd;
-        timelineState.sample_rate = previousTimelineSampleRate;
-        engine->offlineRendering(previousOffline);
+            if (audioWasRunning)
+                sequencer_.startAudio();
 
-        if (audioWasRunning)
-            sequencer_.startAudio();
+            statePrepared = false;
+        }
 
-        statePrepared = false;
+        if (transportWasPlaying) {
+            transportController_->resume();
+            transportWasPlaying = false;
+        }
     };
 
     try {
@@ -1708,7 +1713,9 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
         previousLoopEnd = timelineState.loopEnd;
         previousTimelineSampleRate = timelineState.sample_rate;
 
-        transportController_->stop();
+        transportWasPlaying = transportController_->isPlaying();
+        if (transportWasPlaying)
+            transportController_->pause();
         audioWasRunning = sequencer_.isAudioPlaying() != 0;
         if (audioWasRunning)
             sequencer_.stopAudio();
