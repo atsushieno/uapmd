@@ -1,13 +1,13 @@
 #include <iostream>
 #include <thread>
+#include <format>
+#include <filesystem>
+#include <optional>
 
 #if UAPMD_HAS_CPPTRACE
 #include <cpptrace/from_current.hpp>
 #endif
 #include <cxxopts.hpp>
-
-#include <choc/audio/choc_AudioFileFormat_WAV.h>
-#include <choc/audio/choc_SampleBuffers.h>
 
 #include <remidy/remidy.hpp>
 #include <uapmd/uapmd.hpp>
@@ -80,82 +80,66 @@ int run(int argc, const char* argv[]) {
 
         std::cerr << "Project loaded. " << engine->tracks().size() << " track(s)." << std::endl;
 
-        // ---- Determine render duration ----
-        double totalSeconds = 0.0;
-        if (durationOverride.has_value()) {
-            totalSeconds = *durationOverride;
-        } else {
-            auto snapshot = engine->timeline().buildMasterTrackSnapshot();
-            if (!snapshot.empty())
-                totalSeconds = snapshot.maxTimeSeconds;
-        }
+        auto bounds = engine->timeline().calculateContentBounds();
 
-        if (totalSeconds <= 0.0) {
+        uapmd::OfflineRenderSettings renderSettings{};
+        renderSettings.outputPath = outPath;
+        renderSettings.sampleRate = sampleRate;
+        renderSettings.bufferSize = bufferSize;
+        renderSettings.outputChannels = OUTPUT_CHANNELS;
+        renderSettings.umpBufferSize = DEFAULT_UMP_BUFFER_SIZE;
+        renderSettings.startSeconds = bounds.hasContent ? bounds.firstSeconds : 0.0;
+        renderSettings.contentBoundsValid = bounds.hasContent;
+        renderSettings.contentStartSeconds = bounds.firstSeconds;
+        renderSettings.contentEndSeconds = bounds.lastSeconds;
+        renderSettings.useContentFallback = !durationOverride.has_value();
+        if (durationOverride.has_value()) {
+            renderSettings.endSeconds = renderSettings.startSeconds + std::max(0.0, *durationOverride);
+        } else if (!bounds.hasContent) {
             std::cerr << "Cannot determine project duration. Use --duration to specify it." << std::endl;
             exitCode = EXIT_FAILURE;
             remidy::EventLoop::stop();
             return;
         }
 
-        int64_t totalFrames = static_cast<int64_t>(std::ceil(totalSeconds * sampleRate));
-        std::cerr << "Rendering " << totalSeconds << " s (" << totalFrames << " frames) at "
-                  << sampleRate << " Hz..." << std::endl;
+        std::cerr << "Rendering to " << outPath << " ..." << std::endl;
 
-        // ---- Allocate device-level AudioProcessContext ----
-        remidy::MasterContext masterContext;
-        masterContext.sampleRate(sampleRate);
-        masterContext.isPlaying(true);
-        masterContext.playbackPositionSamples(0);
+        uapmd::OfflineRenderCallbacks callbacks{};
+        callbacks.onProgress = [](const uapmd::OfflineRenderProgress& progress) {
+            std::cerr << std::format(
+                "\rProgress: {0:.2f}s / {1:.2f}s ({2:.1f}%)",
+                progress.renderedSeconds,
+                progress.totalSeconds,
+                progress.progress * 100.0);
+            std::cerr.flush();
+        };
+        callbacks.shouldCancel = []() { return false; };
 
-        remidy::AudioProcessContext deviceCtx(masterContext, DEFAULT_UMP_BUFFER_SIZE);
-        deviceCtx.configureMainBus(OUTPUT_CHANNELS, OUTPUT_CHANNELS, bufferSize);
+        auto renderResult = uapmd::renderOfflineProject(*engine, renderSettings, callbacks);
+        std::cerr << std::endl;
 
-        // ---- Open WAV writer ----
-        choc::audio::AudioFileProperties wavProps;
-        wavProps.sampleRate   = static_cast<double>(sampleRate);
-        wavProps.numChannels  = OUTPUT_CHANNELS;
-        wavProps.bitDepth     = choc::audio::BitDepth::int16;
-
-        auto writer = choc::audio::WAVAudioFileFormat<true>().createWriter(outPath, wavProps);
-        if (!writer) {
-            std::cerr << "Failed to open output file: " << outPath << std::endl;
+        if (renderResult.canceled) {
+            std::cerr << "Render canceled." << std::endl;
             exitCode = EXIT_FAILURE;
             remidy::EventLoop::stop();
             return;
         }
 
-        // ---- Render loop ----
-        int64_t currentSample = 0;
-        while (currentSample < totalFrames) {
-            uint32_t framesToRender = static_cast<uint32_t>(
-                std::min(static_cast<int64_t>(bufferSize), totalFrames - currentSample));
-
-            deviceCtx.frameCount(framesToRender);
-            masterContext.playbackPositionSamples(currentSample);
-
-            // Clear output bus before processing
-            for (uint32_t ch = 0; ch < OUTPUT_CHANNELS; ch++)
-                memset(deviceCtx.getFloatOutBuffer(0, ch), 0, framesToRender * sizeof(float));
-
-            engine->processAudio(deviceCtx);
-
-            // Write output frames to WAV
-            // Collect non-owning pointers to each channel's output buffer
-            std::vector<const float*> channelPtrs(OUTPUT_CHANNELS);
-            for (uint32_t ch = 0; ch < OUTPUT_CHANNELS; ch++)
-                channelPtrs[ch] = deviceCtx.getFloatOutBuffer(0, ch);
-
-            auto view = choc::buffer::createChannelArrayView(
-                channelPtrs.data(),
-                OUTPUT_CHANNELS,
-                framesToRender);
-            writer->appendFrames(view);
-
-            currentSample += framesToRender;
+        if (!renderResult.success) {
+            std::string error = renderResult.errorMessage.empty()
+                ? "Render failed."
+                : renderResult.errorMessage;
+            if (!bounds.hasContent && !durationOverride.has_value())
+                error += " (Try passing --duration when the project has no content bounds.)";
+            std::cerr << error << std::endl;
+            exitCode = EXIT_FAILURE;
+            remidy::EventLoop::stop();
+            return;
         }
 
-        writer->flush();
-        std::cerr << "Done. Output written to: " << absolute(std::filesystem::path{outPath}) << std::endl;
+        std::cerr << "Done. Output written to: "
+                  << absolute(std::filesystem::path{outPath})
+                  << " (" << renderResult.renderedSeconds << " s)" << std::endl;
 
         remidy::EventLoop::stop();
     });

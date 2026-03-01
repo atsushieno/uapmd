@@ -1,8 +1,6 @@
 
 #include "uapmd/uapmd.hpp"
 #include "AppModel.hpp"
-#include <uapmd-data/priv/project/MidiClipReader.hpp>
-#include <uapmd-data/priv/timeline/MidiClipSourceNode.hpp>
 #include <umppi/umppi.hpp>
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_SampleBuffers.h>
@@ -1599,241 +1597,80 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
         return;
     }
 
-    const auto makePositiveSeconds = [](double value) -> double {
-        if (!std::isfinite(value))
-            return 0.0;
-        return std::max(0.0, value);
-    };
-
     const int32_t sampleRate = sample_rate_;
     const uint32_t bufferSize = audio_buffer_size_;
     constexpr uint32_t outputChannels = FIXED_CHANNEL_COUNT;
 
-    double startSeconds = makePositiveSeconds(settings.startSeconds);
-    int64_t startSample = static_cast<int64_t>(std::llround(startSeconds * static_cast<double>(sampleRate)));
+    bool resumeAudio = false;
+    bool resumeTransport = false;
 
-    std::optional<int64_t> explicitEndSample;
-    if (settings.endSeconds.has_value()) {
-        double endSeconds = makePositiveSeconds(*settings.endSeconds);
-        if (endSeconds < startSeconds)
-            endSeconds = startSeconds;
-        explicitEndSample = static_cast<int64_t>(std::llround(endSeconds * static_cast<double>(sampleRate)));
-    }
-
-    int64_t contentEndSample = startSample;
-    if (explicitEndSample) {
-        contentEndSample = *explicitEndSample;
-    } else if (settings.useContentFallback && settings.contentBoundsValid) {
-        double fallbackSeconds = std::max(makePositiveSeconds(settings.contentEndSeconds), startSeconds);
-        contentEndSample = static_cast<int64_t>(std::llround(fallbackSeconds * static_cast<double>(sampleRate)));
-    } else {
-        fail("Unable to determine render length. Specify a custom range or add timeline content.");
-        return;
-    }
-
-    if (contentEndSample <= startSample) {
-        fail("Render range must be greater than zero.");
-        return;
-    }
-
-    const int64_t guardFrames = settings.tailSeconds > 0.0
-        ? static_cast<int64_t>(std::llround(settings.tailSeconds * static_cast<double>(sampleRate)))
-        : 0;
-    const int64_t hardStopSample = contentEndSample + guardFrames;
-    const int64_t totalRenderFrames = std::max<int64_t>(1, hardStopSample - startSample);
-    const double totalRenderSeconds = static_cast<double>(totalRenderFrames) / static_cast<double>(sampleRate);
-
-    const bool silenceStopEnabled = settings.enableSilenceStop && settings.silenceDurationSeconds > 0.0;
-    const int64_t silenceStartSample = std::max(contentEndSample, startSample);
-    const int64_t silenceHoldFrames = silenceStopEnabled
-        ? static_cast<int64_t>(std::llround(settings.silenceDurationSeconds * static_cast<double>(sampleRate)))
-        : 0;
-    const float silenceThreshold = silenceStopEnabled
-        ? static_cast<float>(std::pow(10.0, settings.silenceThresholdDb / 20.0))
-        : 0.0f;
-
-    if (!settings.outputPath.parent_path().empty()) {
-        std::error_code dirEc;
-        std::filesystem::create_directories(settings.outputPath.parent_path(), dirEc);
-        if (dirEc) {
-            fail(std::format("Cannot create output directory: {}", dirEc.message()));
-            return;
+    auto restoreRealtime = [&]() {
+        if (resumeAudio) {
+            sequencer_.startAudio();
+            resumeAudio = false;
         }
-    }
-
-    bool statePrepared = false;
-    bool audioWasRunning = false;
-    bool previousOffline = false;
-    bool transportWasPlaying = false;
-    int64_t previousPlaybackPosition = 0;
-    TimelinePosition previousPlayhead{};
-    TimelinePosition previousLoopStart{};
-    TimelinePosition previousLoopEnd{};
-    bool previousTimelinePlaying = false;
-    bool previousLoopEnabled = false;
-    int32_t previousTimelineSampleRate = 0;
-
-    auto restoreState = [&]() {
-        if (statePrepared) {
-            auto* engine = sequencer_.engine();
-            auto& timelineState = engine->timeline().state();
-
-            engine->pausePlayback();
-            engine->playbackPosition(previousPlaybackPosition);
-            timelineState.isPlaying = previousTimelinePlaying;
-            timelineState.playheadPosition = previousPlayhead;
-            timelineState.loopEnabled = previousLoopEnabled;
-            timelineState.loopStart = previousLoopStart;
-            timelineState.loopEnd = previousLoopEnd;
-            timelineState.sample_rate = previousTimelineSampleRate;
-            engine->offlineRendering(previousOffline);
-
-            if (audioWasRunning)
-                sequencer_.startAudio();
-
-            statePrepared = false;
-        }
-
-        if (transportWasPlaying) {
+        if (resumeTransport) {
             transportController_->resume();
-            transportWasPlaying = false;
+            resumeTransport = false;
         }
     };
 
     try {
-        auto* engine = sequencer_.engine();
-        previousPlaybackPosition = engine->playbackPosition();
-        previousOffline = engine->offlineRendering();
-
-        auto& timelineState = engine->timeline().state();
-        previousTimelinePlaying = timelineState.isPlaying;
-        previousPlayhead = timelineState.playheadPosition;
-        previousLoopEnabled = timelineState.loopEnabled;
-        previousLoopStart = timelineState.loopStart;
-        previousLoopEnd = timelineState.loopEnd;
-        previousTimelineSampleRate = timelineState.sample_rate;
-
-        transportWasPlaying = transportController_->isPlaying();
-        if (transportWasPlaying)
+        if (transportController_->isPlaying()) {
             transportController_->pause();
-        audioWasRunning = sequencer_.isAudioPlaying() != 0;
-        if (audioWasRunning)
+            resumeTransport = true;
+        }
+        if (sequencer_.isAudioPlaying() != 0) {
             sequencer_.stopAudio();
+            resumeAudio = true;
+        }
 
-        engine->offlineRendering(true);
-        timelineState.isPlaying = true;
-        timelineState.loopEnabled = false;
-        timelineState.sample_rate = sampleRate;
-        timelineState.playheadPosition = TimelinePosition::fromSamples(startSample, sampleRate, timelineState.tempo);
-        timelineState.loopStart = timelineState.playheadPosition;
-        timelineState.loopEnd = timelineState.playheadPosition;
-        engine->playbackPosition(startSample);
-        engine->resumePlayback();
-        statePrepared = true;
+        OfflineRenderSettings renderSettings{};
+        renderSettings.outputPath = settings.outputPath;
+        renderSettings.startSeconds = settings.startSeconds;
+        renderSettings.endSeconds = settings.endSeconds;
+        renderSettings.useContentFallback = settings.useContentFallback;
+        renderSettings.contentBoundsValid = settings.contentBoundsValid;
+        renderSettings.contentStartSeconds = settings.contentStartSeconds;
+        renderSettings.contentEndSeconds = settings.contentEndSeconds;
+        renderSettings.tailSeconds = settings.tailSeconds;
+        renderSettings.enableSilenceStop = settings.enableSilenceStop;
+        renderSettings.silenceDurationSeconds = settings.silenceDurationSeconds;
+        renderSettings.silenceThresholdDb = settings.silenceThresholdDb;
+        renderSettings.sampleRate = sampleRate;
+        renderSettings.bufferSize = bufferSize;
+        renderSettings.outputChannels = outputChannels;
+        renderSettings.umpBufferSize = DEFAULT_UMP_BUFFER_SIZE;
 
-        remidy::MasterContext masterContext;
-        masterContext.sampleRate(sampleRate);
-        masterContext.isPlaying(true);
-        masterContext.playbackPositionSamples(startSample);
+        OfflineRenderCallbacks callbacks{};
+        callbacks.onProgress = [&](const OfflineRenderProgress& progress) {
+            updateStatus([&](auto& status) {
+                status.progress = progress.progress;
+                status.renderedSeconds = progress.renderedSeconds;
+                status.message = std::format("{:.2f}s / {:.2f}s", progress.renderedSeconds, progress.totalSeconds);
+            });
+        };
+        callbacks.shouldCancel = [&]() {
+            return job->cancel.load(std::memory_order_acquire);
+        };
 
-        remidy::AudioProcessContext deviceContext(masterContext, DEFAULT_UMP_BUFFER_SIZE);
-        deviceContext.configureMainBus(outputChannels, outputChannels, bufferSize);
+        auto result = renderOfflineProject(*sequencer_.engine(), renderSettings, callbacks);
+        restoreRealtime();
 
-        choc::audio::AudioFileProperties props;
-        props.sampleRate = static_cast<double>(sampleRate);
-        props.numChannels = outputChannels;
-        props.bitDepth = choc::audio::BitDepth::float32;
-
-        auto writer = choc::audio::WAVAudioFileFormat<true>().createWriter(settings.outputPath.string(), props);
-        if (!writer) {
-            restoreState();
-            fail("Failed to open output file for writing.");
+        if (result.canceled) {
+            fail("Render canceled.");
             return;
         }
 
-        int64_t currentSample = startSample;
-        int64_t silenceFramesAccumulated = 0;
-        bool canceled = false;
-
-        std::array<const float*, outputChannels> channelPtrs{};
-
-        while (currentSample < hardStopSample) {
-            if (job->cancel.load(std::memory_order_acquire)) {
-                canceled = true;
-                break;
-            }
-
-            const int64_t framesRemaining = hardStopSample - currentSample;
-            const uint32_t framesToRender = static_cast<uint32_t>(std::min<int64_t>(framesRemaining, bufferSize));
-            if (framesToRender == 0)
-                break;
-
-            masterContext.playbackPositionSamples(currentSample);
-            deviceContext.frameCount(framesToRender);
-
-            for (uint32_t ch = 0; ch < outputChannels; ++ch) {
-                float* out = deviceContext.getFloatOutBuffer(0, ch);
-                if (out)
-                    std::memset(out, 0, framesToRender * sizeof(float));
-                float* in = deviceContext.getFloatInBuffer(0, ch);
-                if (in)
-                    std::memset(in, 0, framesToRender * sizeof(float));
-            }
-
-            engine->processAudio(deviceContext);
-
-            float peak = 0.0f;
-            for (uint32_t ch = 0; ch < outputChannels; ++ch) {
-                const float* buffer = deviceContext.getFloatOutBuffer(0, ch);
-                channelPtrs[ch] = buffer;
-                if (!buffer)
-                    continue;
-                for (uint32_t frame = 0; frame < framesToRender; ++frame)
-                    peak = std::max(peak, std::fabs(buffer[frame]));
-            }
-
-            if (silenceStopEnabled) {
-                if (peak > silenceThreshold)
-                    silenceFramesAccumulated = 0;
-                else
-                    silenceFramesAccumulated += framesToRender;
-            }
-
-            auto view = choc::buffer::createChannelArrayView(channelPtrs.data(), outputChannels, framesToRender);
-            writer->appendFrames(view);
-
-            currentSample += framesToRender;
-
-            updateStatus([&](auto& status) {
-                status.progress = std::clamp(
-                    static_cast<double>(currentSample - startSample) / static_cast<double>(totalRenderFrames),
-                    0.0,
-                    1.0);
-                status.renderedSeconds = static_cast<double>(currentSample - startSample) / static_cast<double>(sampleRate);
-                status.message = std::format("{:.2f}s / {:.2f}s", status.renderedSeconds, totalRenderSeconds);
-            });
-
-            if (settings.enableSilenceStop &&
-                currentSample >= silenceStartSample &&
-                silenceFramesAccumulated >= silenceHoldFrames &&
-                silenceHoldFrames > 0) {
-                break;
-            }
-        }
-
-        writer->flush();
-        restoreState();
-
-        if (canceled) {
-            std::error_code removeEc;
-            std::filesystem::remove(settings.outputPath, removeEc);
-            fail("Render canceled.");
+        if (!result.success) {
+            std::string message = result.errorMessage.empty() ? "Render failed." : result.errorMessage;
+            fail(message);
             return;
         }
 
         updateStatus([&](auto& status) {
             status.progress = 1.0;
-            status.renderedSeconds = static_cast<double>(std::max<int64_t>(0, currentSample - startSample)) / static_cast<double>(sampleRate);
+            status.renderedSeconds = result.renderedSeconds;
         });
 
         updateStatus([&](auto& status) {
@@ -1845,9 +1682,7 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
 
         releaseJob();
     } catch (const std::exception& e) {
-        restoreState();
-        std::error_code removeEc;
-        std::filesystem::remove(settings.outputPath, removeEc);
+        restoreRealtime();
         fail(e.what());
     }
 }

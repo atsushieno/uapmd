@@ -52,6 +52,7 @@ target_sources(uapmd-engine PRIVATE
         devices/LibreMidiIODevice.cpp
         devices/MidiIODevice.cpp
         devices/MiniAudioIODevice.cpp
+        sequencer/OfflineRenderer.cpp
         sequencer/RealtimeSequencer.cpp
         sequencer/SequencerEngine.cpp
         sequencer/SequencerTrack.cpp
