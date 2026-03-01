@@ -279,6 +279,12 @@ namespace uapmd {
             return instance->parameters();
         }
 
+        remidy::PluginAudioBuses* audioBuses() override {
+            if (!instance)
+                return nullptr;
+            return instance->audioBuses();
+        }
+
         void assignMidiDeviceToPlugin(MidiIOFeature* device) override {
             if (!device)
                 return;

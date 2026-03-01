@@ -65,7 +65,7 @@ namespace remidy {
 
         std::string name() { return bus_name; }
 
-        AudioBusRole role() { return bus_role; }
+        AudioBusRole role() const { return bus_role; }
 
         bool operator==(AudioBusDefinition & other) const {
             // assumes layouts are consistent where name and role are identical.
@@ -83,6 +83,9 @@ namespace remidy {
     public:
         AudioBusConfiguration(AudioBusDefinition& definition) : def(definition) {
         }
+
+        const AudioBusDefinition& definition() const { return def; }
+        AudioBusRole role() const { return def.role(); }
 
         bool enabled() { return is_enabled; }
         StatusCode enabled(bool newValue) {

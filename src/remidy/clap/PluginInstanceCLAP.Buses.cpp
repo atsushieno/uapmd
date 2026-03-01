@@ -111,6 +111,10 @@ namespace remidy {
         // Check for surround extension
         auto* surroundExt = rawPlugin ?
             (const clap_plugin_surround_t*)rawPlugin->get_extension(rawPlugin, CLAP_EXT_SURROUND) : nullptr;
+        auto* portsConfigInfoExt = rawPlugin ?
+            (const clap_plugin_audio_ports_config_info_t*) rawPlugin->get_extension(rawPlugin, CLAP_EXT_AUDIO_PORTS_CONFIG_INFO) : nullptr;
+        if (!portsConfigInfoExt && rawPlugin)
+            portsConfigInfoExt = (const clap_plugin_audio_ports_config_info_t*) rawPlugin->get_extension(rawPlugin, CLAP_EXT_AUDIO_PORTS_CONFIG_INFO_COMPAT);
 
         if (plugin && plugin->canUseAudioPorts()) {
             std::vector<clap_audio_port_info_t> inputPortInfos;
@@ -165,6 +169,85 @@ namespace remidy {
 
             buildBusDefs(inputPortInfos, input_bus_defs, ret.numAudioIn, true);
             buildBusDefs(outputPortInfos, output_bus_defs, ret.numAudioOut, false);
+        } else if (portsConfigExt && portsConfigInfoExt) {
+            auto selectConfigId = [&]() -> std::optional<clap_id> {
+                if (!rawPlugin)
+                    return std::nullopt;
+                const auto current = portsConfigInfoExt->current_config(rawPlugin);
+                if (current != CLAP_INVALID_ID)
+                    return current;
+                uint32_t configCount = portsConfigExt->count(rawPlugin);
+                for (uint32_t i = 0; i < configCount; ++i) {
+                    clap_audio_ports_config_t cfg{};
+                    if (portsConfigExt->get(rawPlugin, i, &cfg))
+                        return cfg.id;
+                }
+                return std::nullopt;
+            };
+
+            auto configId = selectConfigId();
+            if (configId.has_value()) {
+                clap_audio_ports_config_t cfg{};
+                uint32_t configCount = portsConfigExt->count(rawPlugin);
+                for (uint32_t i = 0; i < configCount; ++i) {
+                    clap_audio_ports_config_t tmp{};
+                    if (portsConfigExt->get(rawPlugin, i, &tmp) && tmp.id == configId.value()) {
+                        cfg = tmp;
+                        break;
+                    }
+                }
+
+                auto buildFromConfig = [&](uint32_t portCount,
+                                           bool isInput,
+                                           std::vector<AudioBusDefinition>& busDefs,
+                                           uint32_t& busCounter) {
+                    for (uint32_t port = 0; port < portCount; ++port) {
+                        clap_audio_port_info_t info{};
+                        if (!portsConfigInfoExt->get(rawPlugin, configId.value(), port, isInput, &info))
+                            continue;
+
+                        std::string layoutName = getLayoutNameFromPortInfo(info);
+                        if (surroundExt && info.port_type && strcmp(info.port_type, CLAP_PORT_SURROUND) == 0) {
+                            std::vector<uint8_t> channelMap(info.channel_count);
+                            uint32_t retrieved = surroundExt->get_channel_map(rawPlugin, isInput, port,
+                                                                              channelMap.data(), info.channel_count);
+                            if (retrieved == info.channel_count) {
+                                std::string surroundLayoutName = getLayoutNameFromChannelMap(channelMap);
+                                if (!surroundLayoutName.empty())
+                                    layoutName = surroundLayoutName;
+                            }
+                        }
+
+                        std::vector<AudioChannelLayout> layouts{};
+                        layouts.emplace_back(AudioChannelLayout{layoutName, info.channel_count});
+                        AudioBusDefinition def{info.name,
+                                               info.flags & CLAP_AUDIO_PORT_IS_MAIN ? AudioBusRole::Main : AudioBusRole::Aux,
+                                               layouts};
+                        busDefs.emplace_back(def);
+                        ++busCounter;
+                    }
+                };
+
+                buildFromConfig(cfg.input_port_count, true, input_bus_defs, ret.numAudioIn);
+                buildFromConfig(cfg.output_port_count, false, output_bus_defs, ret.numAudioOut);
+
+                if (input_bus_defs.empty() && cfg.has_main_input) {
+                    std::string name = cfg.name;
+                    if (!name.empty())
+                        name += " Main Input";
+                    std::vector<AudioChannelLayout> layouts{AudioChannelLayout{"", cfg.main_input_channel_count}};
+                    input_bus_defs.emplace_back(AudioBusDefinition{name.empty() ? "Main Input" : name, AudioBusRole::Main, layouts});
+                    ret.numAudioIn++;
+                }
+                if (output_bus_defs.empty() && cfg.has_main_output) {
+                    std::string name = cfg.name;
+                    if (!name.empty())
+                        name += " Main Output";
+                    std::vector<AudioChannelLayout> layouts{AudioChannelLayout{"", cfg.main_output_channel_count}};
+                    output_bus_defs.emplace_back(AudioBusDefinition{name.empty() ? "Main Output" : name, AudioBusRole::Main, layouts});
+                    ret.numAudioOut++;
+                }
+            }
         }
 
         // FIXME: we need decent support for event buses

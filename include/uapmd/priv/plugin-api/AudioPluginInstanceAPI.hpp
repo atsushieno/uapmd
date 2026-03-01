@@ -74,6 +74,8 @@ namespace uapmd {
 
         virtual void assignMidiDeviceToPlugin(MidiIOFeature* device) = 0;
         virtual void clearMidiDeviceFromPlugin() = 0;
+
+        virtual remidy::PluginAudioBuses* audioBuses() = 0;
     };
 
 }

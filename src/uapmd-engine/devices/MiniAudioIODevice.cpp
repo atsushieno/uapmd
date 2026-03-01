@@ -490,13 +490,27 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
         memcpy(bbb->getFloatBufferForChannel(1), out, data.frameCount() * sizeof(float));
     }*/
 
-    if (data.audioOutBusCount() > 0) {
-        // FIXME: it should be pre-allocated elsewhere
-        size_t outChannels = data.outputChannelCount(mainBus);
-        for (int i = 0, n = data.outputChannelCount(mainBus); i < n; i++)
-            dataOutPtrs[i] = data.getFloatOutBuffer(mainBus, i);
-        auto outcomeView = choc::buffer::createChannelArrayView(dataOutPtrs.data(), outChannels, frameCount);
-        auto outputView = choc::buffer::createInterleavedView((float*) output, outChannels, frameCount);
+    if (data.audioOutBusCount() > 0 && !dataOutPtrs.empty()) {
+        const size_t pluginChannels = static_cast<size_t>(data.outputChannelCount(mainBus));
+        const size_t hardwareChannels = dataOutPtrs.size();
+        const size_t mappedChannels = std::min(pluginChannels, hardwareChannels);
+
+        for (size_t i = 0; i < mappedChannels; ++i)
+            dataOutPtrs[i] = data.getFloatOutBuffer(mainBus, static_cast<uint32_t>(i));
+
+        auto outcomeView = choc::buffer::createChannelArrayView(dataOutPtrs.data(), mappedChannels, frameCount);
+        auto outputView = choc::buffer::createInterleavedView(static_cast<float*>(output), mappedChannels, frameCount);
         choc::buffer::copyRemappingChannels(outputView, outcomeView);
+
+        if (pluginChannels > hardwareChannels && hardwareChannels > 0) {
+            auto* mixDown = data.getFloatOutBuffer(mainBus, 0);
+            for (size_t ch = hardwareChannels; ch < pluginChannels; ++ch) {
+                auto* extra = data.getFloatOutBuffer(mainBus, static_cast<uint32_t>(ch));
+                if (!extra || !mixDown)
+                    continue;
+                for (uint32_t frame = 0; frame < frameCount; ++frame)
+                    mixDown[frame] += extra[frame];
+            }
+        }
     }
 }
