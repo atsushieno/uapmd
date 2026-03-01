@@ -53,7 +53,6 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/ClipPreview.cpp
         gui/MidiDumpWindow.cpp
         gui/FontLoader.cpp
-        dialogs/FileDialogs.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
 )
@@ -479,22 +478,21 @@ endif ()
 set(_uapmd_app_link_libraries
         imgui
         imtimeline
+        ResEmbed
         remidy
-        uapmd
         remidy-gui
         remidy-imgui-shared
         remidy-tooling
+        uapmd
+        uapmd-file
         midicci_static
-        ResEmbed
-)
-if(UAPMD_ENABLE_CPPTRACE)
-    list(APPEND _uapmd_app_link_libraries cpptrace::cpptrace)
-endif()
-list(APPEND _uapmd_app_link_libraries
         uapmd-engine
         libremidi::libremidi
         zlib-ng
 )
+if(UAPMD_ENABLE_CPPTRACE)
+    list(APPEND _uapmd_app_link_libraries cpptrace::cpptrace)
+endif()
 if(NOT UAPMD_BUILDING_WASM)
     list(APPEND _uapmd_app_link_libraries ${uapmd_LIBS_PLAT})
 endif()

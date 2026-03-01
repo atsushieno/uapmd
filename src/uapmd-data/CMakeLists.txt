@@ -49,6 +49,7 @@ target_sources(uapmd-data PRIVATE
         project/Smf2ClipReaderWriter.cpp
         project/DemucsStemSeparator.cpp
         project/TrackImporter.cpp
+        project/ProjectArchive.cpp
         timeline/AudioFileSourceNode.cpp
         timeline/DeviceInputSourceNode.cpp
         timeline/MidiClipSourceNode.cpp

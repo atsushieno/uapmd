@@ -184,6 +184,15 @@ CPMAddPackage(
         DOWNLOAD_ONLY YES
 )
 
+if(ANDROID)
+    CPMAddPackage(
+            NAME jmi
+            GIT_TAG 7ef486e71ef2f34467775a5e3d05a7b5767c0547
+            GIT_REPOSITORY https://github.com/wang-bin/JMI
+            DOWNLOAD_ONLY YES
+    )
+endif()
+
 CPMAddPackage(
         NAME           concurrentqueue
         GIT_TAG        2f09da73d22a47dc8a89cdd4fc4c3bfae07f4284
@@ -209,6 +218,7 @@ add_subdirectory(src/remidy)
 add_subdirectory(src/remidy-gui)
 add_subdirectory(src/remidy-tooling)
 add_subdirectory(src/uapmd)
+add_subdirectory(src/uapmd-file)
 add_subdirectory(src/uapmd-data)
 add_subdirectory(src/uapmd-engine)
 if(EMSCRIPTEN AND TARGET liblocate)

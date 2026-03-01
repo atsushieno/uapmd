@@ -1,10 +1,6 @@
 
-#include "uapmd/uapmd.hpp"
-#include "AppModel.hpp"
-#include <umppi/umppi.hpp>
-#include <choc/audio/choc_AudioFileFormat_WAV.h>
-#include <choc/audio/choc_SampleBuffers.h>
 #include <iostream>
+#include <chrono>
 #include <fstream>
 #include <filesystem>
 #include <limits>
@@ -16,6 +12,11 @@
 #include <vector>
 #include <functional>
 #include <cmath>
+#include <choc/audio/choc_AudioFileFormat_WAV.h>
+#include <choc/audio/choc_SampleBuffers.h>
+#include <umppi/umppi.hpp>
+#include "uapmd/uapmd.hpp"
+#include "AppModel.hpp"
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -81,6 +82,47 @@ uint64_t secondsToTicks(double seconds, double bpm, uint32_t ticksPerQuarter) {
     if (!std::isfinite(ticks) || ticks < 0.0)
         return 0;
     return static_cast<uint64_t>(std::llround(ticks));
+}
+
+struct ScopedTempDir {
+    explicit ScopedTempDir(std::filesystem::path dir)
+        : path(std::move(dir)) {}
+
+    ~ScopedTempDir() {
+        if (!path.empty()) {
+            std::error_code ec;
+            std::filesystem::remove_all(path, ec);
+        }
+    }
+
+    const std::filesystem::path& get() const { return path; }
+
+private:
+    std::filesystem::path path;
+};
+
+std::optional<std::filesystem::path> createTempProjectDirectory(std::string& error)
+{
+    try {
+        auto base = std::filesystem::temp_directory_path() / "uapmd";
+        std::filesystem::create_directories(base);
+        auto seed = std::chrono::steady_clock::now().time_since_epoch().count();
+        for (int attempt = 0; attempt < 32; ++attempt) {
+            auto candidate = base / std::filesystem::path(std::format("project-{}-{}", seed, attempt));
+            std::error_code ec;
+            if (std::filesystem::create_directories(candidate, ec))
+                return candidate;
+            if (ec && ec != std::errc::file_exists) {
+                error = ec.message();
+                return std::nullopt;
+            }
+        }
+        error = "Unable to allocate a temporary project directory.";
+        return std::nullopt;
+    } catch (const std::exception& ex) {
+        error = ex.what();
+        return std::nullopt;
+    }
 }
 
 class SerializedProjectPluginGraph final : public uapmd::UapmdProjectPluginGraphData {
@@ -429,6 +471,16 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     for (int i = 0; i < kInitialTrackCount; ++i) {
         addTrack();
     }
+}
+
+uapmd::IDocumentProvider* uapmd::AppModel::documentProvider() {
+    if (!documentProvider_) {
+        documentProvider_ = createDocumentProvider();
+        if (!documentProvider_) {
+            std::cerr << "Document provider unavailable; dialogs disabled." << std::endl;
+        }
+    }
+    return documentProvider_.get();
 }
 
 void uapmd::AppModel::performPluginScanning(bool forceRescan) {
@@ -1235,6 +1287,77 @@ void uapmd::AppModel::removeAllTracks() {
         removeTrack(i);
     }
     notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
+}
+
+void uapmd::AppModel::saveProjectToDocument(DocumentHandle handle,
+                                            IDocumentProvider::WriteCallback callback)
+{
+    auto* provider = documentProvider();
+    if (!provider) {
+        if (callback)
+            callback({false, "Document provider unavailable"});
+        return;
+    }
+
+    std::string tempDirError;
+    auto tempDir = createTempProjectDirectory(tempDirError);
+    if (!tempDir) {
+        if (callback)
+            callback({false, tempDirError});
+        return;
+    }
+    ScopedTempDir stage(std::move(*tempDir));
+
+    const auto stagePath = stage.get() / std::filesystem::path("project.uapmd");
+
+    auto saveResult = saveProject(stagePath);
+    if (!saveResult.success) {
+        if (callback)
+            callback({false, saveResult.error});
+        return;
+    }
+
+    std::vector<uint8_t> archive;
+    std::string archiveError;
+    if (!ProjectArchive::createArchive(stage.get(), archive, archiveError)) {
+        if (callback)
+            callback({false, archiveError});
+        return;
+    }
+
+    provider->writeDocument(std::move(handle), std::move(archive),
+        [callback = std::move(callback)](DocumentIOResult ioResult) mutable {
+            if (callback)
+                callback(ioResult);
+        });
+}
+
+uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromResolvedPath(
+    const std::filesystem::path& projectFile)
+{
+    std::error_code existsEc;
+    if (projectFile.empty() || !std::filesystem::exists(projectFile, existsEc)) {
+        return {false, existsEc ? existsEc.message() : "Project file is unavailable."};
+    }
+
+    if (!ProjectArchive::isArchive(projectFile)) {
+        return loadProject(projectFile);
+    }
+
+    std::string tempDirError;
+    auto tempDir = createTempProjectDirectory(tempDirError);
+    if (!tempDir) {
+        return {false, tempDirError};
+    }
+    ScopedTempDir stage(std::move(*tempDir));
+
+    auto extract = ProjectArchive::extractArchive(projectFile, stage.get());
+    if (!extract.success)
+        return {false, extract.error};
+    if (extract.projectFile.empty())
+        return {false, "Project archive missing .uapmd file."};
+
+    return loadProject(extract.projectFile);
 }
 
 uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesystem::path& projectFile) {

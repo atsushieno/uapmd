@@ -12,6 +12,7 @@
 #include "priv/project/UapmdProjectFile.hpp"
 #include "priv/project/UapmdSequence.hpp"
 #include "priv/project/UapmdPluginGraphBuilder.hpp"
+#include "priv/project/ProjectArchive.hpp"
 #include "priv/timeline/TimelineTypes.hpp"
 #include "priv/timeline/AudioFileSourceNode.hpp"
 #include "priv/timeline/TimelineTrack.hpp"
