@@ -57,7 +57,30 @@ EM_JS(int, uapmd_web_open_file_dialog, (int allowMultiple, const char* acceptPtr
     if (accept.length > 0) input.accept = accept;
     document.body.appendChild(input);
     const files = await new Promise((resolve) => {
-        input.addEventListener("change", () => resolve(input.files), { once: true });
+        let settled = false;
+        const cleanup = () => {
+            input.removeEventListener("change", onChange);
+            input.removeEventListener("cancel", onCancel);
+            window.removeEventListener("focus", onWindowFocus, true);
+        };
+        const resolveOnce = (value) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(value);
+        };
+        const onChange = () => resolveOnce(input.files);
+        const onCancel = () => resolveOnce(null);
+        const onWindowFocus = () => {
+            setTimeout(() => {
+                if (!settled && (!input.files || input.files.length === 0)) {
+                    resolveOnce(null);
+                }
+            }, 0);
+        };
+        input.addEventListener("change", onChange, { once: true });
+        input.addEventListener("cancel", onCancel, { once: true });
+        window.addEventListener("focus", onWindowFocus, { once: true, capture: true });
         input.click();
     });
     document.body.removeChild(input);
