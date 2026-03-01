@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-#include "../dialogs/FileDialogs.hpp"
+#include "PlatformDialogs.hpp"
 #include "../AppModel.hpp"
 
 namespace uapmd::gui {
@@ -53,17 +53,24 @@ void ExporterWindow::render(float uiScale) {
     ImGui::InputText("##RenderOutputPath", state_.outputPath.data(), state_.outputPath.size());
     ImGui::SameLine();
     if (ImGui::Button("Browse...")) {
-        auto saveDialog = dialog::saveFile(
-            "Render Output",
-            "render.wav",
-            dialog::makeFilters({"WAV", "*.wav", "All Files", "*"})
-        );
-        if (saveDialog) {
-            auto pathStr = saveDialog.filepath().string();
-            std::strncpy(state_.outputPath.data(), pathStr.c_str(), state_.outputPath.size() - 1);
-            state_.outputPath[state_.outputPath.size() - 1] = '\0';
-            lastRenderPath_ = saveDialog.filepath();
-            saveDialog.complete();
+        std::vector<uapmd::DocumentFilter> filters{
+            {"WAV", {}, {"*.wav"}},
+            {"All Files", {}, {"*"}}
+        };
+
+        if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+            provider->pickSaveDocument(
+                "render.wav",
+                filters,
+                [this](uapmd::DocumentPickResult result) {
+                    if (!result.success || result.handles.empty())
+                        return;
+                    auto pathStr = result.handles[0].id;
+                    std::strncpy(state_.outputPath.data(), pathStr.c_str(), state_.outputPath.size() - 1);
+                    state_.outputPath[state_.outputPath.size() - 1] = '\0';
+                    lastRenderPath_ = std::filesystem::path(pathStr);
+                }
+            );
         }
     }
 
@@ -161,7 +168,7 @@ void ExporterWindow::render(float uiScale) {
         }
 
         if (!app.startRenderToFile(settings)) {
-            dialog::showMessage("Render To File", "Unable to start render job.", dialog::MessageIcon::Error);
+            platformError("Render To File", "Unable to start render job.");
         } else {
             lastRenderPath_ = settings.outputPath;
         }
@@ -217,4 +224,3 @@ void ExporterWindow::ensureDefaultPath() {
 }
 
 } // namespace uapmd::gui
-

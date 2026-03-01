@@ -9,6 +9,7 @@
 #include <optional>
 #include <set>
 #include <mutex>
+#include <memory>
 #undef None
 #undef PropertyNotify
 #include <midicci/midicci.hpp>
@@ -16,6 +17,7 @@
 #include <uapmd/uapmd.hpp>
 #include <uapmd-data/uapmd-data.hpp>
 #include <uapmd-engine/uapmd-engine.hpp>
+#include <uapmd-file/IDocumentProvider.hpp>
 
 namespace uapmd {
     // Forward declarations
@@ -106,6 +108,7 @@ namespace uapmd {
 
         int32_t sample_rate_;
         uint32_t audio_buffer_size_;
+        std::unique_ptr<IDocumentProvider> documentProvider_;
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
 
@@ -123,6 +126,11 @@ namespace uapmd {
         RealtimeSequencer& sequencer() { return sequencer_; }
         remidy_tooling::PluginScanTool& pluginScanTool() { return pluginScanTool_; }
         TransportController& transport() { return *transportController_; }
+        IDocumentProvider* documentProvider() {
+            if (!documentProvider_)
+                documentProvider_ = createDocumentProvider();
+            return documentProvider_.get();
+        }
         bool isScanning() const { return isScanning_; }
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};

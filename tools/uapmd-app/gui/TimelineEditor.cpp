@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <cmath>
 #include <limits>
-#include "../dialogs/FileDialogs.hpp"
+#include "PlatformDialogs.hpp"
 
 #include <imgui.h>
 #include <umppi/umppi.hpp>
@@ -90,6 +90,39 @@ std::vector<MidiDumpWindow::EventRow> buildMidiDumpRows(
     }
 
     return rows;
+}
+
+bool hasExtension(std::string_view ext, std::initializer_list<std::string_view> expected) {
+    for (auto candidate : expected) {
+        if (ext == candidate)
+            return true;
+    }
+    return false;
+}
+
+std::string lowerCaseExtension(const std::string& path) {
+    std::filesystem::path p(path);
+    std::string ext = p.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return ext;
+}
+
+bool looksLikeMidiFile(const std::string& path, std::string_view ext) {
+    if (hasExtension(ext, {".mid", ".midi", ".smf", ".midi2"}))
+        return true;
+
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        return false;
+    char header[4]{};
+    file.read(header, sizeof(header));
+    return file.gcount() == 4 && std::memcmp(header, "MThd", 4) == 0;
+}
+
+bool looksLikeAudioFile(std::string_view ext) {
+    return hasExtension(ext, {".wav", ".flac", ".ogg"});
 }
 }  // namespace
 
@@ -814,141 +847,148 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
 }
 
 void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filepath) {
-    std::string selectedFile = filepath;
-    if (selectedFile.empty()) {
-        auto selection = dialog::openFile(
-            "Select Audio or MIDI File",
-            ".",
-            dialog::makeFilters(
-                { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf *.midi2",
-                  "Audio Files", "*.wav *.flac *.ogg",
-                  "MIDI Files", "*.mid *.midi *.smf *.midi2",
-                  "WAV Files", "*.wav",
-                  "FLAC Files", "*.flac",
-                  "OGG Files", "*.ogg",
-                  "All Files", "*" })
-        );
+    auto handleFile = [this, trackIndex](const std::string& selectedFile) {
+        std::filesystem::path path(selectedFile);
+        std::string ext = path.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-        if (selection.empty())
+        if (ext == ".mid" || ext == ".midi" || ext == ".smf" || ext == ".midi2") {
+            uapmd::TimelinePosition position;
+            position.samples = 0;
+            position.legacy_beats = 0.0;
+
+            auto& appModel = uapmd::AppModel::instance();
+            auto result = appModel.addClipToTrack(trackIndex, position, nullptr, selectedFile);
+
+            if (!result.success) {
+                platformError("Add MIDI Clip Failed",
+                              "Could not add MIDI clip to track: " + result.error);
+                return;
+            }
+
+            refreshSequenceEditorForTrack(trackIndex);
             return;
+        }
 
-        selectedFile = selection[0].string();
-    }
+        auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
+        if (!reader) {
+            platformError("Load Failed",
+                          "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG");
+            return;
+        }
 
-    std::filesystem::path path(selectedFile);
-    std::string ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-    if (ext == ".mid" || ext == ".midi" || ext == ".smf" || ext == ".midi2") {
         uapmd::TimelinePosition position;
         position.samples = 0;
         position.legacy_beats = 0.0;
 
         auto& appModel = uapmd::AppModel::instance();
-        auto result = appModel.addClipToTrack(trackIndex, position, nullptr, selectedFile);
+        auto result = appModel.addClipToTrack(trackIndex, position, std::move(reader), selectedFile);
 
         if (!result.success) {
-            dialog::showMessage("Add MIDI Clip Failed",
-                        "Could not add MIDI clip to track: " + result.error,
-                        dialog::MessageIcon::Error);
+            platformError("Add Clip Failed",
+                          "Could not add clip to track: " + result.error);
             return;
         }
 
         refreshSequenceEditorForTrack(trackIndex);
+    };
+
+    if (!filepath.empty()) {
+        handleFile(filepath);
         return;
     }
 
-    auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
-    if (!reader) {
-        dialog::showMessage("Load Failed",
-                    "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG",
-                    dialog::MessageIcon::Error);
-        return;
+    std::vector<uapmd::DocumentFilter> filters{
+        {"All Supported", {}, {"*.wav", "*.flac", "*.ogg", "*.mid", "*.midi", "*.smf", "*.midi2"}},
+        {"Audio Files",   {}, {"*.wav", "*.flac", "*.ogg"}},
+        {"MIDI Files",    {}, {"*.mid", "*.midi", "*.smf", "*.midi2"}},
+        {"WAV Files",     {}, {"*.wav"}},
+        {"FLAC Files",    {}, {"*.flac"}},
+        {"OGG Files",     {}, {"*.ogg"}},
+        {"All Files",     {}, {"*"}}
+    };
+
+    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        provider->pickOpenDocuments(
+            filters,
+            false,
+            [handleFile = std::move(handleFile)](uapmd::DocumentPickResult result) mutable {
+                if (!result.success || result.handles.empty())
+                    return;
+                handleFile(result.handles[0].id);
+            }
+        );
     }
-
-    uapmd::TimelinePosition position;
-    position.samples = 0;
-    position.legacy_beats = 0.0;
-
-    auto& appModel = uapmd::AppModel::instance();
-    auto result = appModel.addClipToTrack(trackIndex, position, std::move(reader), selectedFile);
-
-    if (!result.success) {
-        dialog::showMessage("Add Clip Failed",
-                    "Could not add clip to track: " + result.error,
-                    dialog::MessageIcon::Error);
-        return;
-    }
-
-    refreshSequenceEditorForTrack(trackIndex);
 }
 
 void TimelineEditor::addClipToTrackAtPosition(int32_t trackIndex, const std::string& filepath, double positionSeconds) {
-    std::string selectedFile = filepath;
-    if (selectedFile.empty()) {
-        auto selection = dialog::openFile(
-            "Select Audio or MIDI File",
-            ".",
-            dialog::makeFilters(
-                { "All Supported", "*.wav *.flac *.ogg *.mid *.midi *.smf *.midi2",
-                  "Audio Files", "*.wav *.flac *.ogg",
-                  "MIDI Files", "*.mid *.midi *.smf *.midi2",
-                  "WAV Files", "*.wav",
-                  "FLAC Files", "*.flac",
-                  "OGG Files", "*.ogg",
-                  "All Files", "*" })
-        );
+    auto handleFile = [this, trackIndex, positionSeconds](const std::string& selectedFile) {
+        std::filesystem::path path(selectedFile);
+        std::string ext = path.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-        if (selection.empty())
+        auto& appModel = uapmd::AppModel::instance();
+        const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
+
+        uapmd::TimelinePosition position;
+        double clampedPositionSeconds = std::max(0.0, positionSeconds);
+        position.samples = static_cast<int64_t>(std::llround(clampedPositionSeconds * sampleRate));
+        position.legacy_beats = 0.0;
+
+        if (ext == ".mid" || ext == ".midi" || ext == ".smf" || ext == ".midi2") {
+            auto result = appModel.addClipToTrack(trackIndex, position, nullptr, selectedFile);
+            if (!result.success) {
+                platformError("Add MIDI Clip Failed",
+                              "Could not add MIDI clip to track: " + result.error);
+                return;
+            }
+            refreshSequenceEditorForTrack(trackIndex);
             return;
+        }
 
-        selectedFile = selection[0].string();
-    }
+        auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
+        if (!reader) {
+            platformError("Load Failed",
+                          "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG");
+            return;
+        }
 
-    std::filesystem::path path(selectedFile);
-    std::string ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-    auto& appModel = uapmd::AppModel::instance();
-    const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
-
-    uapmd::TimelinePosition position;
-    double clampedPositionSeconds = std::max(0.0, positionSeconds);
-    position.samples = static_cast<int64_t>(std::llround(clampedPositionSeconds * sampleRate));
-    position.legacy_beats = 0.0;
-
-    if (ext == ".mid" || ext == ".midi" || ext == ".smf" || ext == ".midi2") {
-        auto result = appModel.addClipToTrack(trackIndex, position, nullptr, selectedFile);
-
+        auto result = appModel.addClipToTrack(trackIndex, position, std::move(reader), selectedFile);
         if (!result.success) {
-            dialog::showMessage("Add MIDI Clip Failed",
-                        "Could not add MIDI clip to track: " + result.error,
-                        dialog::MessageIcon::Error);
+            platformError("Add Clip Failed",
+                          "Could not add clip to track: " + result.error);
             return;
         }
 
         refreshSequenceEditorForTrack(trackIndex);
+    };
+
+    if (!filepath.empty()) {
+        handleFile(filepath);
         return;
     }
 
-    auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
-    if (!reader) {
-        dialog::showMessage("Load Failed",
-                    "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG",
-                    dialog::MessageIcon::Error);
-        return;
+    std::vector<uapmd::DocumentFilter> filters{
+        {"All Supported", {}, {"*.wav", "*.flac", "*.ogg", "*.mid", "*.midi", "*.smf", "*.midi2"}},
+        {"Audio Files",   {}, {"*.wav", "*.flac", "*.ogg"}},
+        {"MIDI Files",    {}, {"*.mid", "*.midi", "*.smf", "*.midi2"}},
+        {"WAV Files",     {}, {"*.wav"}},
+        {"FLAC Files",    {}, {"*.flac"}},
+        {"OGG Files",     {}, {"*.ogg"}},
+        {"All Files",     {}, {"*"}}
+    };
+
+    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        provider->pickOpenDocuments(
+            filters,
+            false,
+            [handleFile = std::move(handleFile)](uapmd::DocumentPickResult result) mutable {
+                if (!result.success || result.handles.empty())
+                    return;
+                handleFile(result.handles[0].id);
+            }
+        );
     }
-
-    auto result = appModel.addClipToTrack(trackIndex, position, std::move(reader), selectedFile);
-
-    if (!result.success) {
-        dialog::showMessage("Add Clip Failed",
-                    "Could not add clip to track: " + result.error,
-                    dialog::MessageIcon::Error);
-        return;
-    }
-
-    refreshSequenceEditorForTrack(trackIndex);
 }
 
 void TimelineEditor::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
@@ -1007,64 +1047,65 @@ void TimelineEditor::updateClipName(int32_t trackIndex, int32_t clipId, const st
 }
 
 void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
-    auto& appModel = uapmd::AppModel::instance();
-    auto tracks = appModel.getTimelineTracks();
+    auto requestChange = [this, trackIndex, clipId](const std::string& selectedFile) {
+        auto& appModel = uapmd::AppModel::instance();
+        auto tracks = appModel.getTimelineTracks();
 
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
-        return;
+        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
+            return;
 
-    auto selection = dialog::openFile(
-        "Select Audio File",
-        ".",
-        dialog::makeFilters(
-            { "Audio Files", "*.wav *.flac *.ogg",
-              "WAV Files", "*.wav",
-              "FLAC Files", "*.flac",
-              "OGG Files", "*.ogg",
-              "All Files", "*" })
-    );
+        auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
+        if (!reader) {
+            platformError("Load Failed",
+                          "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG");
+            return;
+        }
 
-    if (selection.empty())
-        return;
+        auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+        if (!clip) {
+            platformError("Error", "Could not find clip");
+            return;
+        }
 
-    std::string selectedFile = selection[0].string();
+        int32_t sourceNodeId = clip->sourceNodeInstanceId;
 
-    auto reader = uapmd::createAudioFileReaderFromPath(selectedFile);
-    if (!reader) {
-        dialog::showMessage("Load Failed",
-                    "Could not load audio file: " + selectedFile + "\nSupported formats: WAV, FLAC, OGG",
-                    dialog::MessageIcon::Error);
-        return;
+        auto sourceNode = std::make_unique<uapmd::AudioFileSourceNode>(
+            sourceNodeId,
+            std::move(reader),
+            static_cast<double>(appModel.sampleRate())
+        );
+
+        int64_t durationSamples = sourceNode->totalLength();
+
+        if (!tracks[trackIndex]->replaceClipSourceNode(clipId, std::move(sourceNode))) {
+            platformError("Replace Failed", "Could not replace clip source node");
+            return;
+        }
+
+        tracks[trackIndex]->clipManager().setClipFilepath(clipId, selectedFile);
+        tracks[trackIndex]->clipManager().resizeClip(clipId, durationSamples);
+        refreshSequenceEditorForTrack(trackIndex);
+    };
+
+    std::vector<uapmd::DocumentFilter> filters{
+        {"Audio Files", {}, {"*.wav", "*.flac", "*.ogg"}},
+        {"WAV Files",   {}, {"*.wav"}},
+        {"FLAC Files",  {}, {"*.flac"}},
+        {"OGG Files",   {}, {"*.ogg"}},
+        {"All Files",   {}, {"*"}}
+    };
+
+    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        provider->pickOpenDocuments(
+            filters,
+            false,
+            [requestChange = std::move(requestChange)](uapmd::DocumentPickResult result) mutable {
+                if (!result.success || result.handles.empty())
+                    return;
+                requestChange(result.handles[0].id);
+            }
+        );
     }
-
-    auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
-    if (!clip) {
-        dialog::showMessage("Error",
-                    "Could not find clip",
-                    dialog::MessageIcon::Error);
-        return;
-    }
-
-    int32_t sourceNodeId = clip->sourceNodeInstanceId;
-
-    auto sourceNode = std::make_unique<uapmd::AudioFileSourceNode>(
-        sourceNodeId,
-        std::move(reader),
-        static_cast<double>(appModel.sampleRate())
-    );
-
-    int64_t durationSamples = sourceNode->totalLength();
-
-    if (!tracks[trackIndex]->replaceClipSourceNode(clipId, std::move(sourceNode))) {
-        dialog::showMessage("Replace Failed",
-                    "Could not replace clip source node",
-                    dialog::MessageIcon::Error);
-        return;
-    }
-
-    tracks[trackIndex]->clipManager().setClipFilepath(clipId, selectedFile);
-    tracks[trackIndex]->clipManager().resizeClip(clipId, durationSamples);
-    refreshSequenceEditorForTrack(trackIndex);
 }
 
 void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds) {
@@ -1250,35 +1291,40 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
 }
 
 void TimelineEditor::importTracks() {
-    auto selection = dialog::openFile(
-        "Import Tracks",
-        ".",
-        dialog::makeFilters({
-            "Supported Files", "*.mid *.midi *.smf *.wav *.flac *.ogg",
-            "MIDI Files", "*.mid *.midi *.smf",
-            "Audio Files", "*.wav *.flac *.ogg",
-            "All Files", "*"
-        })
-    );
+    auto handleFile = [this](const std::string& selectedFile) {
+        std::filesystem::path filePath(selectedFile);
+        std::string ext = filePath.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
 
-    if (selection.empty())
-        return;
+        if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
+            importMidiTracks(selectedFile);
+        } else if (ext == ".wav" || ext == ".flac" || ext == ".ogg") {
+            importAudioTracks(selectedFile);
+        } else {
+            platformWarning("Unsupported File",
+                            std::format("Cannot import files with extension {}", ext));
+        }
+    };
 
-    const std::string selectedFile = selection[0].string();
-    std::filesystem::path filePath(selectedFile);
-    std::string ext = filePath.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
+    std::vector<uapmd::DocumentFilter> filters{
+        {"Supported Files", {}, {"*.mid", "*.midi", "*.smf", "*.wav", "*.flac", "*.ogg"}},
+        {"MIDI Files",    {}, {"*.mid", "*.midi", "*.smf"}},
+        {"Audio Files",   {}, {"*.wav", "*.flac", "*.ogg"}},
+        {"All Files",     {}, {"*"}}
+    };
 
-    if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
-        importMidiTracks(selectedFile);
-    } else if (ext == ".wav" || ext == ".flac" || ext == ".ogg") {
-        importAudioTracks(selectedFile);
-    } else {
-        dialog::showMessage("Unsupported File",
-                            std::format("Cannot import files with extension {}", ext),
-                            dialog::MessageIcon::Warning);
+    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        provider->pickOpenDocuments(
+            filters,
+            false,
+            [handleFile = std::move(handleFile)](uapmd::DocumentPickResult result) mutable {
+                if (!result.success || result.handles.empty())
+                    return;
+                handleFile(result.handles[0].id);
+            }
+        );
     }
 }
 
@@ -1295,7 +1341,7 @@ void TimelineEditor::importMidiTracks(const std::string& filepath) {
             for (const auto& warning : warnings)
                 message += warning + "\n";
         }
-        dialog::showMessage("Import Failed", message, dialog::MessageIcon::Error);
+        platformError("Import Failed", message);
         return;
     }
 
@@ -1341,21 +1387,23 @@ void TimelineEditor::importMidiTracks(const std::string& filepath) {
             for (const auto& warning : warnings)
                 message += warning + "\n";
         }
-        dialog::showMessage("Import Failed", message, dialog::MessageIcon::Error);
+        platformError("Import Failed", message);
         return;
     }
 
     std::string summary = std::format("Imported {} track(s) from {}",
                                       importedCount,
                                       std::filesystem::path(filepath).filename().string());
-    auto icon = dialog::MessageIcon::Info;
-    if (!warnings.empty()) {
+    bool hasWarnings = !warnings.empty();
+    if (hasWarnings) {
         summary += "\n\nWarnings:\n";
         for (const auto& warning : warnings)
             summary += warning + "\n";
-        icon = dialog::MessageIcon::Warning;
     }
-    dialog::showMessage("Import Complete", summary, icon);
+    if (hasWarnings)
+        platformWarning("Import Complete", summary);
+    else
+        platformInfo("Import Complete", summary);
 }
 
 void TimelineEditor::importAudioTracks(const std::string& filepath) {
@@ -1377,7 +1425,7 @@ void TimelineEditor::importAudioTracks(const std::string& filepath) {
             for (const auto& warning : warnings)
                 message += warning + "\n";
         }
-        dialog::showMessage("Import Failed", message, dialog::MessageIcon::Error);
+        platformError("Import Failed", message);
         return;
     }
 
@@ -1431,22 +1479,24 @@ void TimelineEditor::importAudioTracks(const std::string& filepath) {
             for (const auto& warning : warnings)
                 message += warning + "\n";
         }
-        dialog::showMessage("Import Failed", message, dialog::MessageIcon::Error);
+        platformError("Import Failed", message);
         return;
     }
 
     std::string summary = std::format("Created {} stem track(s) from {}",
                                       importedCount,
                                       std::filesystem::path(filepath).stem().string());
-    auto icon = dialog::MessageIcon::Info;
-    if (!warnings.empty()) {
+    bool hasWarnings = !warnings.empty();
+    if (hasWarnings) {
         summary += "\n\nWarnings:\n";
         for (const auto& warning : warnings)
             summary += warning + "\n";
-        icon = dialog::MessageIcon::Warning;
     }
 
-    dialog::showMessage("Import Complete", summary, icon);
+    if (hasWarnings)
+        platformWarning("Import Complete", summary);
+    else
+        platformInfo("Import Complete", summary);
 }
 
 bool TimelineEditor::ensureDemucsModelSelected() {
@@ -1456,20 +1506,31 @@ bool TimelineEditor::ensureDemucsModelSelected() {
 }
 
 bool TimelineEditor::requestDemucsModelSelection() {
-    auto selection = dialog::openFile(
-        "Select Demucs Model",
-        ".",
-        dialog::makeFilters({
-            "Demucs ggml Model", "*.bin",
-            "All Files", "*"
-        })
-    );
+    std::vector<uapmd::DocumentFilter> filters{
+        {"Demucs ggml Model", {}, {"*.bin"}},
+        {"All Files", {}, {"*"}}
+    };
 
-    if (selection.empty())
-        return false;
+    bool requested = false;
+    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        requested = true;
+        provider->pickOpenDocuments(
+            filters,
+            false,
+            [this](uapmd::DocumentPickResult result) {
+                if (!result.success || result.handles.empty())
+                    return;
+                demucsModelPath_ = result.handles[0].id;
+            }
+        );
+    }
 
-    demucsModelPath_ = selection[0].string();
-    return true;
+    if (!requested)
+        platformError("Demucs Model", "Document provider unavailable. Cannot load model.");
+    else
+        platformInfo("Demucs Model", "Select a Demucs ggml model. Re-run the import after choosing.");
+
+    return false;
 }
 
 void TimelineEditor::clearDemucsModel() {

@@ -6,7 +6,8 @@
 #include <optional>
 #include <ranges>
 #include <cmath>
-#include "../dialogs/FileDialogs.hpp"
+
+#include "PlatformDialogs.hpp"
 
 #include <imgui.h>
 #include "SharedTheme.hpp"
@@ -492,6 +493,8 @@ void MainWindow::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChang
     trackList_.markDirty();
 }
 void MainWindow::update() {
+    if (auto* provider = uapmd::AppModel::instance().documentProvider())
+        provider->tick();
 }
 
 void MainWindow::applyUiScale(float scale) {
@@ -953,57 +956,48 @@ void MainWindow::savePluginState(int32_t instanceId) {
                                               instance->formatName());
     std::ranges::replace(defaultFilename, ' ', '_');
 
-    auto save = dialog::saveFile(
-        "Save Plugin State",
+    std::vector<uapmd::DocumentFilter> filters{
+        {"Plugin State Files", {}, {"*.state"}},
+        {"All Files", {}, {"*"}}
+    };
+
+    uapmd::AppModel::instance().documentProvider()->pickSaveDocument(
         defaultFilename,
-        dialog::makeFilters({"Plugin State Files", "*.state", "All Files", "*"})
+        filters,
+        [instanceId](uapmd::DocumentPickResult pickResult) {
+            if (!pickResult.success || pickResult.handles.empty())
+                return;
+            auto result = uapmd::AppModel::instance().savePluginState(
+                instanceId, pickResult.handles[0].id);
+            if (!result.success)
+                platformError("Save Failed",
+                              std::format("Failed to save plugin state:\n{}", result.error));
+        }
     );
-
-    if (!save)
-        return;
-
-    std::string filepath = save.filepath().string();
-
-    // Delegate to AppModel for non-UI logic
-    auto result = uapmd::AppModel::instance().savePluginState(instanceId, filepath);
-
-    // Handle UI feedback based on result
-    if (!result.success) {
-        dialog::showMessage("Save Failed",
-            std::format("Failed to save plugin state:\n{}", result.error),
-            dialog::MessageIcon::Error);
-        return;
-    }
-
-    save.complete();
 }
 
 void MainWindow::loadPluginState(int32_t instanceId) {
-    // Show open file dialog
-    auto open = dialog::openFile(
-        "Load Plugin State",
-        "",
-        dialog::makeFilters({"Plugin State Files", "*.state", "All Files", "*"})
+    std::vector<uapmd::DocumentFilter> filters{
+        {"Plugin State Files", {}, {"*.state"}},
+        {"All Files", {}, {"*"}}
+    };
+
+    uapmd::AppModel::instance().documentProvider()->pickOpenDocuments(
+        filters,
+        false,
+        [this, instanceId](uapmd::DocumentPickResult pickResult) {
+            if (!pickResult.success || pickResult.handles.empty())
+                return;
+            auto result = uapmd::AppModel::instance().loadPluginState(
+                instanceId, pickResult.handles[0].id);
+            if (!result.success) {
+                platformError("Load Failed",
+                              std::format("Failed to load plugin state:\n{}", result.error));
+                return;
+            }
+            timelineEditor_.instanceDetails().refreshParametersForInstance(instanceId);
+        }
     );
-
-    if (open.empty())
-        return; // User cancelled
-
-    std::string filepath = open[0].string();
-
-    // Delegate to AppModel for non-UI logic
-    auto result = uapmd::AppModel::instance().loadPluginState(instanceId, filepath);
-
-    // Handle UI feedback based on result
-    if (!result.success) {
-        dialog::showMessage("Load Failed",
-            std::format("Failed to load plugin state:\n{}", result.error),
-            dialog::MessageIcon::Error);
-        return;
-    }
-
-    // Refresh parameters to reflect the loaded state if details window is open
-    timelineEditor_.instanceDetails().refreshParametersForInstance(instanceId);
 }
 
 void MainWindow::createPluginInstance(const std::string& format, const std::string& pluginId, int32_t trackIndex) {
@@ -1119,56 +1113,56 @@ void MainWindow::handleRemoveInstance(int32_t instanceId) {
 
 // Sequence Editor helpers
 void MainWindow::handleSaveProject() {
-    auto saveDialog = dialog::saveFile(
-        "Save Project",
+    std::vector<uapmd::DocumentFilter> filters{
+        {"UAPMD Project", {}, {"*.uapmd"}},
+        {"JSON", {}, {"*.json"}},
+        {"All Files", {}, {"*"}}
+    };
+
+    uapmd::AppModel::instance().documentProvider()->pickSaveDocument(
         "project.uapmd",
-        dialog::makeFilters({"UAPMD Project", "*.uapmd", "JSON", "*.json", "All Files", "*"})
+        filters,
+        [](uapmd::DocumentPickResult pickResult) {
+            if (!pickResult.success || pickResult.handles.empty())
+                return;
+            std::filesystem::path projectPath(pickResult.handles[0].id);
+            if (!projectPath.has_extension())
+                projectPath.replace_extension(".uapmd");
+            auto result = uapmd::AppModel::instance().saveProject(projectPath);
+            if (!result.success) {
+                platformError("Save Failed", result.error);
+                return;
+            }
+            platformInfo("Project Saved",
+                         std::format("Saved project to {}", projectPath.string()));
+        }
     );
-
-    if (!saveDialog)
-        return;
-
-    std::filesystem::path projectPath(saveDialog.filepath());
-    if (!projectPath.has_extension())
-        projectPath.replace_extension(".uapmd");
-
-    auto result = uapmd::AppModel::instance().saveProject(projectPath);
-    if (!result.success) {
-        dialog::showMessage("Save Failed",
-                     result.error,
-                     dialog::MessageIcon::Error);
-        return;
-    }
-
-    saveDialog.complete();
-    dialog::showMessage("Project Saved",
-                 std::format("Saved project to {}", projectPath.string()),
-                 dialog::MessageIcon::Info);
 }
 
 void MainWindow::handleLoadProject() {
-    auto openDialog = dialog::openFile(
-        "Load Project",
-        ".",
-        dialog::makeFilters({"UAPMD Project", "*.uapmd", "JSON", "*.json", "All Files", "*"})
+    std::vector<uapmd::DocumentFilter> filters{
+        {"UAPMD Project", {}, {"*.uapmd"}},
+        {"JSON", {}, {"*.json"}},
+        {"All Files", {}, {"*"}}
+    };
+
+    uapmd::AppModel::instance().documentProvider()->pickOpenDocuments(
+        filters,
+        false,
+        [this](uapmd::DocumentPickResult pickResult) {
+            if (!pickResult.success || pickResult.handles.empty())
+                return;
+            std::filesystem::path projectPath(pickResult.handles[0].id);
+            auto result = uapmd::AppModel::instance().loadProject(projectPath);
+            if (!result.success) {
+                platformError("Load Failed", result.error);
+                return;
+            }
+            timelineEditor_.refreshAllSequenceEditorTracks();
+            timelineEditor_.invalidateMasterTrackSnapshot();
+            trackList_.markDirty();
+        }
     );
-
-    if (openDialog.empty())
-        return;
-
-    std::filesystem::path projectPath(openDialog[0]);
-
-    auto result = uapmd::AppModel::instance().loadProject(projectPath);
-    if (!result.success) {
-        dialog::showMessage("Load Failed",
-                     result.error,
-                     dialog::MessageIcon::Error);
-        return;
-    }
-
-    timelineEditor_.refreshAllSequenceEditorTracks();
-    timelineEditor_.invalidateMasterTrackSnapshot();
-    trackList_.markDirty();
 }
 
 void MainWindow::toggleTheme() {
