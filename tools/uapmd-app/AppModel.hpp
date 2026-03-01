@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <format>
 #include <filesystem>
 #include <thread>
@@ -333,5 +334,55 @@ namespace uapmd {
         };
 
         MasterTrackSnapshot buildMasterTrackSnapshot();
+
+        struct TimelineContentBounds {
+            bool hasContent{false};
+            double startSeconds{0.0};
+            double endSeconds{0.0};
+            double durationSeconds{0.0};
+        };
+
+        TimelineContentBounds timelineContentBounds() const;
+
+        struct RenderToFileSettings {
+            std::filesystem::path outputPath;
+            double startSeconds{0.0};
+            std::optional<double> endSeconds;
+            bool useContentFallback{false};
+            bool contentBoundsValid{false};
+            double contentStartSeconds{0.0};
+            double contentEndSeconds{0.0};
+            double tailSeconds{2.0};
+            bool enableSilenceStop{false};
+            double silenceDurationSeconds{5.0};
+            double silenceThresholdDb{-80.0};
+        };
+
+        struct RenderToFileStatus {
+            bool running{false};
+            bool completed{false};
+            bool success{false};
+            double progress{0.0};
+            double renderedSeconds{0.0};
+            std::string message;
+            std::filesystem::path outputPath;
+        };
+
+        bool startRenderToFile(const RenderToFileSettings& settings);
+        void cancelRenderToFile();
+        RenderToFileStatus getRenderToFileStatus() const;
+        void clearCompletedRenderStatus();
+
+    private:
+        struct RenderJobState {
+            std::atomic<bool> cancel{false};
+        };
+
+        void runRenderToFile(RenderToFileSettings settings, std::shared_ptr<RenderJobState> job);
+
+        mutable std::mutex renderStatusMutex_;
+        RenderToFileStatus renderStatus_;
+        mutable std::mutex renderJobMutex_;
+        std::shared_ptr<RenderJobState> activeRenderJob_;
     };
 }

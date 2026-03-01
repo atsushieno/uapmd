@@ -243,6 +243,11 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         [this](const std::string& id, ImVec2 size) { setNextChildWindowSize(id, size); },
         [this](const std::string& id) { updateChildWindowSizeState(id); }
     );
+
+    exporterWindow_.setCallbacks({
+        .setChildSize = [this](const std::string& id, ImVec2 size) { setNextChildWindowSize(id, size); },
+        .updateChildSizeState = [this](const std::string& id) { updateChildWindowSizeState(id); }
+    });
 }
 
 void MainWindow::render(void* window) {
@@ -408,6 +413,10 @@ void MainWindow::render(void* window) {
                 if (ImGui::MenuItem("Save Project")) {
                     handleSaveProject();
                 }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Render To File")) {
+                    exporterWindow_.open();
+                }
                 ImGui::EndPopup();
             }
             ImGui::SameLine();
@@ -440,6 +449,7 @@ void MainWindow::render(void* window) {
     timelineEditor_.renderPluginSelectorWindow(uiScale_);
     renderDeviceSettingsWindow();
     renderAudioGraphEditorWindow();
+    exporterWindow_.render(uiScale_);
 
     scriptEditor_.render();
 
@@ -475,6 +485,7 @@ void MainWindow::renderAudioGraphEditorWindow() {
     }
     ImGui::End();
 }
+
 
 void MainWindow::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChange& change) {
     timelineEditor_.handleTrackLayoutChange(change);
@@ -575,6 +586,7 @@ void MainWindow::updateChildWindowSizeState(const std::string& id) {
     }
     state.lastSize = size;
 }
+
 bool MainWindow::handlePluginResizeRequest(int32_t instanceId, uint32_t width, uint32_t height) {
     auto windowIt = pluginWindows_.find(instanceId);
     if (windowIt == pluginWindows_.end())

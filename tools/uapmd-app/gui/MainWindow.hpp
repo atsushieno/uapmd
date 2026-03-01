@@ -14,6 +14,7 @@
 #include "PluginList.hpp"
 #include "TimelineEditor.hpp"
 #include "TrackList.hpp"
+#include "ExporterWindow.hpp"
 #include "AudioDeviceSettings.hpp"
 #include "ScriptEditor.hpp"
 #include "SpectrumAnalyzer.hpp"
@@ -50,6 +51,7 @@ class MainWindow {
         SpectrumAnalyzer outputSpectrumAnalyzer_;
 
         TrackList trackList_;
+        ExporterWindow exporterWindow_;
 
         // Plugin selection
 

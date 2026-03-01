@@ -45,6 +45,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/ParameterList.cpp
         gui/TrackList.cpp
         gui/AudioDeviceSettings.cpp
+        gui/ExporterWindow.cpp
         gui/ScriptEditor.cpp
         gui/SpectrumAnalyzer.cpp
         gui/SequenceEditor.cpp

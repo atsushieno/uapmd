@@ -459,6 +459,51 @@ namespace uapmd {
             return snapshot;
         }
 
+        ContentBounds calculateContentBounds() const override {
+            ContentBounds bounds;
+            const double sr = std::max(1.0, static_cast<double>(sampleRate_));
+            bool initialized = false;
+
+            for (const auto& trackPtr : timeline_tracks_) {
+                if (!trackPtr)
+                    continue;
+
+                auto clips = trackPtr->clipManager().getAllClips();
+                if (clips.empty())
+                    continue;
+
+                std::unordered_map<int32_t, const ClipData*> clipMap;
+                clipMap.reserve(clips.size());
+                for (auto& clip : clips)
+                    clipMap[clip.clipId] = &clip;
+
+                for (const auto& clip : clips) {
+                    auto absolute = clip.getAbsolutePosition(clipMap);
+                    const int64_t startSample = absolute.samples;
+                    const int64_t endSample = startSample + std::max<int64_t>(0, clip.durationSamples);
+
+                    if (!initialized || startSample < bounds.firstSample) {
+                        bounds.firstSample = startSample;
+                        bounds.firstSeconds = static_cast<double>(startSample) / sr;
+                    }
+                    if (!initialized || endSample > bounds.lastSample) {
+                        bounds.lastSample = endSample;
+                        bounds.lastSeconds = static_cast<double>(endSample) / sr;
+                    }
+                    initialized = true;
+                }
+            }
+
+            bounds.hasContent = initialized;
+            if (!initialized) {
+                bounds.firstSample = 0;
+                bounds.lastSample = 0;
+                bounds.firstSeconds = 0.0;
+                bounds.lastSeconds = 0.0;
+            }
+            return bounds;
+        }
+
         void processTracksAudio(AudioProcessContext& process) override {
             // Hold a snapshot reference for the duration of this callback so that
             // tracks added or removed on the UI thread cannot destroy TrackList

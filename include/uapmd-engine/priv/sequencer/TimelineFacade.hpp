@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -87,6 +88,20 @@ public:
     };
 
     virtual MasterTrackSnapshot buildMasterTrackSnapshot() = 0;
+
+    struct ContentBounds {
+        bool hasContent{false};
+        int64_t firstSample{0};
+        int64_t lastSample{0};
+        double firstSeconds{0.0};
+        double lastSeconds{0.0};
+
+        double durationSeconds() const {
+            return hasContent ? std::max(0.0, lastSeconds - firstSeconds) : 0.0;
+        }
+    };
+
+    virtual ContentBounds calculateContentBounds() const = 0;
 
     // Audio preprocess callback — feeds clip source nodes into track input buffers.
     // Called by SequencerEngineImpl via the registered AudioPreprocessCallback.
