@@ -1,0 +1,6 @@
+[submodule "external/uapmd"]
+	path = external/uapmd
+	url = https://github.com/atsushieno/uapmd
+[submodule "external/aap-core"]
+	path = external/aap-core
+	url = https://github.com/atsushieno/aap-core.git

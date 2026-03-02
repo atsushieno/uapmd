@@ -97,7 +97,7 @@ else()
 endif()
 
 if(WIN32 AND NOT UAPMD_BUILDING_WASM)
-    list(APPEND UAPMD_APP_SOURCE_FILES ${CMAKE_SOURCE_DIR}/resources/uapmd.rc)
+    list(APPEND UAPMD_APP_SOURCE_FILES ${UAPMD_RESOURCES_DIR}/uapmd.rc)
 endif()
 
 if (ANDROID)
@@ -300,7 +300,7 @@ CPMAddPackage(
 foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     res_embed_add(${app_target}
         FILES
-            "${CMAKE_SOURCE_DIR}/external/font/static/Roboto-SemiBold.ttf"
+            "${UAPMD_EXTERNAL_DIR}/font/static/Roboto-SemiBold.ttf"
             "${fontaudio_SOURCE_DIR}/font/fontaudio.ttf"
             "${FontAwesome_SOURCE_DIR}/otfs/Font Awesome 7 Free-Solid-900.otf"
         NAMESPACE AppFonts
@@ -539,7 +539,7 @@ if(APPLE AND NOT UAPMD_BUILDING_WASM)
             ${UAPMD_JS_DIR}
             "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources/js"
         COMMAND ${CMAKE_COMMAND} -E copy
-            ${CMAKE_SOURCE_DIR}/resources/uapmd.icns
+            ${UAPMD_RESOURCES_DIR}/uapmd.icns
             "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources/uapmd.icns"
         COMMENT "Copying resources into the macOS bundle"
     )

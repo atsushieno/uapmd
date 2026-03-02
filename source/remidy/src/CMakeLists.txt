@@ -219,6 +219,7 @@ target_include_directories(remidy PRIVATE
         ${LV2KIT_INCLUDE_DIRS}
         ${REMIDY_CLAP_SUPPORT_INCLUDE_DIRS}
         ${CMAKE_CURRENT_LIST_DIR}/../include
+        ${CMAKE_CURRENT_LIST_DIR}/../include/remidy
 )
 
 target_link_libraries(remidy PRIVATE

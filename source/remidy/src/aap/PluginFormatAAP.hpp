@@ -1,6 +1,6 @@
 #pragma once
 
-#include "remidy.hpp"
+#include "remidy/remidy.hpp"
 #include <aap/core/host/plugin-connections.h>
 #include <aap/core/host/plugin-host.h>
 
