@@ -100,23 +100,29 @@ if(WIN32 AND NOT UAPMD_BUILDING_WASM)
     list(APPEND UAPMD_APP_SOURCE_FILES ${UAPMD_RESOURCES_DIR}/uapmd.rc)
 endif()
 
-if (ANDROID)
-# SDL3 on Android expects the library to be named "main"
-add_library(main SHARED ${UAPMD_APP_SOURCE_FILES})
-set(UAPMD_APP_TARGETS main)
+if(ANDROID)
+    # SDL3 on Android expects the library to be named "main"
+    add_library(main SHARED ${UAPMD_APP_SOURCE_FILES})
+    set(UAPMD_COMPILE_TARGET main)
+    set(UAPMD_APP_TARGETS main)
 elseif(UAPMD_BUILDING_WASM)
-add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
-set(UAPMD_APP_TARGETS uapmd-app)
-add_dependencies(uapmd-app uapmd-app-web-assets)
-target_link_options(uapmd-app PRIVATE --bind)
-else ()
-add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
-set(UAPMD_APP_TARGETS uapmd-app)
-endif ()
-
-if(APPLE AND NOT UAPMD_BUILDING_WASM)
-    add_executable(uapmd-app-bundle MACOSX_BUNDLE ${UAPMD_APP_SOURCE_FILES})
-    list(APPEND UAPMD_APP_TARGETS uapmd-app-bundle)
+    add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
+    set(UAPMD_COMPILE_TARGET uapmd-app)
+    set(UAPMD_APP_TARGETS uapmd-app)
+    add_dependencies(uapmd-app uapmd-app-web-assets)
+    target_link_options(uapmd-app PRIVATE --bind)
+else()
+    # Compile all sources once into a shared OBJECT library.
+    # Both uapmd-app and uapmd-app-bundle link against it, avoiding duplicate
+    # compilation of the same translation units on macOS.
+    add_library(uapmd-app-objects OBJECT ${UAPMD_APP_SOURCE_FILES})
+    set(UAPMD_COMPILE_TARGET uapmd-app-objects)
+    add_executable(uapmd-app)
+    set(UAPMD_APP_TARGETS uapmd-app)
+    if(APPLE)
+        add_executable(uapmd-app-bundle MACOSX_BUNDLE)
+        list(APPEND UAPMD_APP_TARGETS uapmd-app-bundle)
+    endif()
 endif()
 
 # Backend selection with priority: Win32+DX11 (Windows) > SDL3 > SDL2 > GLFW
@@ -296,17 +302,17 @@ CPMAddPackage(
     GIT_REPOSITORY https://github.com/eyalamirmusic/ResEmbed
 )
 
-# Embed font files into each app binary at build time
-foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-    res_embed_add(${app_target}
-        FILES
-            "${UAPMD_EXTERNAL_DIR}/font/static/Roboto-SemiBold.ttf"
-            "${fontaudio_SOURCE_DIR}/font/fontaudio.ttf"
-            "${FontAwesome_SOURCE_DIR}/otfs/Font Awesome 7 Free-Solid-900.otf"
-        NAMESPACE AppFonts
-        CATEGORY AppFonts
-    )
-endforeach()
+# Embed font files into the app binary at build time.
+# Sources compile once through UAPMD_COMPILE_TARGET; both executables share
+# the resulting font-embedding object files.
+res_embed_add(${UAPMD_COMPILE_TARGET}
+    FILES
+        "${UAPMD_EXTERNAL_DIR}/font/static/Roboto-SemiBold.ttf"
+        "${fontaudio_SOURCE_DIR}/font/fontaudio.ttf"
+        "${FontAwesome_SOURCE_DIR}/otfs/Font Awesome 7 Free-Solid-900.otf"
+    NAMESPACE AppFonts
+    CATEGORY AppFonts
+)
 
 if(NOT TARGET imgui)
     # Base ImGui sources
@@ -412,64 +418,53 @@ if(NOT TARGET remidy-imgui-shared)
 endif()
 target_link_libraries(remidy-imgui-shared PUBLIC imgui ${BACKEND_LIBRARIES})
 
-# Add backend compile definition to both targets
+# Add backend compile definition to the compile target (propagates to both
+# executables via the OBJECT library link) and to remidy-imgui-shared.
 if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
     target_compile_definitions(remidy-imgui-shared PUBLIC USE_WIN32_BACKEND USE_DIRECTX11_RENDERER)
-    foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-        target_compile_definitions(${app_target} PRIVATE USE_WIN32_BACKEND USE_DIRECTX11_RENDERER)
-    endforeach()
+    target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE USE_WIN32_BACKEND USE_DIRECTX11_RENDERER)
 elseif(BACKEND_TYPE STREQUAL "SDL3")
     target_compile_definitions(remidy-imgui-shared PUBLIC USE_SDL3_BACKEND)
-    foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-        target_compile_definitions(${app_target} PRIVATE USE_SDL3_BACKEND)
-    endforeach()
+    target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE USE_SDL3_BACKEND)
 elseif(BACKEND_TYPE STREQUAL "SDL2")
     target_compile_definitions(remidy-imgui-shared PUBLIC USE_SDL2_BACKEND)
-    foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-        target_compile_definitions(${app_target} PRIVATE USE_SDL2_BACKEND)
-    endforeach()
+    target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE USE_SDL2_BACKEND)
 elseif(BACKEND_TYPE STREQUAL "GLFW")
     target_compile_definitions(remidy-imgui-shared PUBLIC USE_GLFW_BACKEND)
-    foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-        target_compile_definitions(${app_target} PRIVATE USE_GLFW_BACKEND)
-    endforeach()
+    target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE USE_GLFW_BACKEND)
 endif()
 
-foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-    target_include_directories(${app_target} PRIVATE
-            ${choc_SOURCE_DIR}
-            ${portable-file-dialogs_SOURCE_DIR}
-            ${midicci_SOURCE_DIR}/include
-            ${libremidi_SOURCE_DIR}/include
-            ../../remidy/include
-            ../../remidy-tooling/include
-            ../../uapmd/include
-            ../../uapmd-file/include
-            ../../uapmd-data/include
-            ../../uapmd-engine/include
-            ../remidy-imgui-shared
-            ${IconFontCppHeaders_SOURCE_DIR}
+target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
+        ${choc_SOURCE_DIR}
+        ${portable-file-dialogs_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
+        ${libremidi_SOURCE_DIR}/include
+        ../../remidy/include
+        ../../remidy-tooling/include
+        ../../uapmd/include
+        ../../uapmd-file/include
+        ../../uapmd-data/include
+        ../../uapmd-engine/include
+        ../remidy-imgui-shared
+        ${IconFontCppHeaders_SOURCE_DIR}
+)
+if(UAPMD_WASM_SYSROOT)
+    target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
+            ${UAPMD_WASM_SYSROOT}/include
+            ${UAPMD_WASM_SYSROOT}/include/SDL3
     )
-    if(UAPMD_WASM_SYSROOT)
-        target_include_directories(${app_target} PRIVATE
-                ${UAPMD_WASM_SYSROOT}/include
-                ${UAPMD_WASM_SYSROOT}/include/SDL3
-        )
-    endif()
-    if(UAPMD_ENABLE_CPPLOCATE)
-        target_include_directories(${app_target} PRIVATE
-                ${cpplocate_SOURCE_DIR}/source/cpplocate/include
-                ${cpplocate_BINARY_DIR}/source/cpplocate/include
-                ${cpplocate_BINARY_DIR}/source/liblocate/include
-        )
-    endif()
-endforeach()
+endif()
+if(UAPMD_ENABLE_CPPLOCATE)
+    target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
+            ${cpplocate_SOURCE_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/cpplocate/include
+            ${cpplocate_BINARY_DIR}/source/liblocate/include
+    )
+endif()
 
 # Enable ImGui vector operators for all app translation units
 target_compile_definitions(remidy-imgui-shared PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
-foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-    target_compile_definitions(${app_target} PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
-endforeach()
+target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
 
 set(uapmd_LIBS_PLAT)
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
@@ -505,12 +500,20 @@ if(UAPMD_ENABLE_CPPLOCATE)
     list(APPEND _uapmd_app_link_libraries ${cpplocate_LIBRARIES})
 endif()
 
-foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-    target_link_libraries(${app_target} PRIVATE ${_uapmd_app_link_libraries})
+# Link the compile target (OBJECT library on desktop, direct executable on
+# Android/WASM) against all app libraries.  PUBLIC scope causes both
+# uapmd-app and uapmd-app-bundle to inherit every library transitively when
+# they link against uapmd-app-objects below.
+target_link_libraries(${UAPMD_COMPILE_TARGET} PUBLIC ${_uapmd_app_link_libraries})
+if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
+    target_link_libraries(${UAPMD_COMPILE_TARGET} PUBLIC ${DX11_LIBRARIES})
+endif()
 
-    # Add DirectX 11 libraries on Windows when using DX11 renderer
-    if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
-        target_link_libraries(${app_target} PRIVATE ${DX11_LIBRARIES})
+foreach(app_target IN LISTS UAPMD_APP_TARGETS)
+    if(NOT app_target STREQUAL UAPMD_COMPILE_TARGET)
+        # Wire each final executable to the OBJECT library.  This pulls in the
+        # compiled object files AND all PUBLIC link dependencies in one call.
+        target_link_libraries(${app_target} PRIVATE ${UAPMD_COMPILE_TARGET})
     endif()
 
     # Create a .dSYM file on macOS
@@ -523,9 +526,7 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
     endif()
 endforeach()
 
-foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-    target_compile_features(${app_target} PRIVATE cxx_std_23)
-endforeach()
+target_compile_features(${UAPMD_COMPILE_TARGET} PRIVATE cxx_std_23)
 
 if(APPLE AND NOT UAPMD_BUILDING_WASM)
     set(UAPMD_APP_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/UapmdApp-Info.plist")
