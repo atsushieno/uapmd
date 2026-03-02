@@ -153,5 +153,6 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [FontAwesome](https://github.com/FortAwesome/Font-Awesome) - CC-BY 4.0 + SIL OFL 1.1
 - [fontaudio](https://github.com/fefanto/fontaudio) - MIT
 - [sevagh/demucs.cpp](https://github.com/sevagh/demucs.cpp) - MIT
+- [wang-bin/JMI](https://github.com/wang-bin/JMI) - MIT
 
 Note that while they might look comprehensive, I'm listing those to clarify the licenses that matter. For example, libraries like choc depend on other third-party libraries but we don't use them.
