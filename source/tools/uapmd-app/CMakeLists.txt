@@ -104,11 +104,9 @@ if(ANDROID)
     # SDL3 on Android expects the library to be named "main"
     add_library(main SHARED ${UAPMD_APP_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET main)
-    set(UAPMD_APP_TARGETS main)
 elseif(UAPMD_BUILDING_WASM)
     add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET uapmd-app)
-    set(UAPMD_APP_TARGETS uapmd-app)
     add_dependencies(uapmd-app uapmd-app-web-assets)
     target_link_options(uapmd-app PRIVATE --bind)
 else()
@@ -118,10 +116,8 @@ else()
     add_library(uapmd-app-objects OBJECT ${UAPMD_APP_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET uapmd-app-objects)
     add_executable(uapmd-app)
-    set(UAPMD_APP_TARGETS uapmd-app)
     if(APPLE)
         add_executable(uapmd-app-bundle MACOSX_BUNDLE)
-        list(APPEND UAPMD_APP_TARGETS uapmd-app-bundle)
     endif()
 endif()
 
@@ -509,22 +505,22 @@ if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
     target_link_libraries(${UAPMD_COMPILE_TARGET} PUBLIC ${DX11_LIBRARIES})
 endif()
 
-foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-    if(NOT app_target STREQUAL UAPMD_COMPILE_TARGET)
-        # Wire each final executable to the OBJECT library.  This pulls in the
-        # compiled object files AND all PUBLIC link dependencies in one call.
-        target_link_libraries(${app_target} PRIVATE ${UAPMD_COMPILE_TARGET})
+# Wire executables to the OBJECT library (desktop only; on Android/WASM the
+# compile target is already the final executable).
+if(NOT ANDROID AND NOT UAPMD_BUILDING_WASM)
+    target_link_libraries(uapmd-app PRIVATE ${UAPMD_COMPILE_TARGET})
+    if(APPLE)
+        target_link_libraries(uapmd-app-bundle PRIVATE ${UAPMD_COMPILE_TARGET})
     endif()
+endif()
 
-    # Create a .dSYM file on macOS
-    if(APPLE AND NOT UAPMD_BUILDING_WASM)
-        add_custom_command(
-                TARGET ${app_target}
-                POST_BUILD
-                COMMAND dsymutil $<TARGET_FILE:${app_target}>
-        )
-    endif()
-endforeach()
+# Create a .dSYM file on macOS for each executable
+if(APPLE AND NOT UAPMD_BUILDING_WASM)
+    add_custom_command(TARGET uapmd-app POST_BUILD
+            COMMAND dsymutil $<TARGET_FILE:uapmd-app>)
+    add_custom_command(TARGET uapmd-app-bundle POST_BUILD
+            COMMAND dsymutil $<TARGET_FILE:uapmd-app-bundle>)
+endif()
 
 target_compile_features(${UAPMD_COMPILE_TARGET} PRIVATE cxx_std_23)
 
@@ -564,23 +560,15 @@ endif()
 
 # Android-specific configuration
 if(ANDROID)
-    # Link Android system libraries
-    foreach(app_target IN LISTS UAPMD_APP_TARGETS)
-        target_link_libraries(${app_target} PRIVATE
-            android  # Android native APIs
-            log      # Android logging
-        )
-
-        # Android compile definitions
-        target_compile_definitions(${app_target} PRIVATE
-            IMGUI_IMPL_OPENGL_ES3  # Use OpenGL ES 3.0 instead of desktop GL
-            __ANDROID__=1          # Android platform marker
-        )
-
-        # Link SDL3 from prefab (provided by SDL3 AAR dependency)
-        find_package(SDL3 REQUIRED CONFIG)
-        target_link_libraries(${app_target} PRIVATE SDL3::SDL3)
-    endforeach()
-
+    target_link_libraries(main PRIVATE
+        android  # Android native APIs
+        log      # Android logging
+    )
+    target_compile_definitions(main PRIVATE
+        IMGUI_IMPL_OPENGL_ES3  # Use OpenGL ES 3.0 instead of desktop GL
+        __ANDROID__=1          # Android platform marker
+    )
+    find_package(SDL3 REQUIRED CONFIG)
+    target_link_libraries(main PRIVATE SDL3::SDL3)
     message(STATUS "Android build configured with SDL3 support")
 endif()
