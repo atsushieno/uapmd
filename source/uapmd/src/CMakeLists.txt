@@ -1,0 +1,45 @@
+
+add_library(uapmd STATIC)
+
+if(WIN32 AND UAPMD_ENABLE_WINMIDI)
+    if(NOT LIBREMIDI_WINMIDI_HEADERS_ZIP)
+        if(NOT UAPMD_WINMIDI_HEADERS_ARCHIVE)
+            message(FATAL_ERROR "UAPMD_ENABLE_WINMIDI is ON but UAPMD_WINMIDI_HEADERS_ARCHIVE is not specified.")
+        endif()
+        set(_uapmd_winmidi_archive "${UAPMD_WINMIDI_HEADERS_ARCHIVE}")
+        if(NOT IS_ABSOLUTE "${_uapmd_winmidi_archive}")
+            cmake_path(SET _uapmd_winmidi_archive NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/../../${_uapmd_winmidi_archive}")
+        endif()
+        if(NOT EXISTS "${_uapmd_winmidi_archive}")
+            message(FATAL_ERROR
+                    "Expected Windows MIDI Services package at ${_uapmd_winmidi_archive}.\n"
+                    "Place the NuGet archive under external/ or set UAPMD_WINMIDI_HEADERS_ARCHIVE accordingly.")
+        endif()
+        set(LIBREMIDI_WINMIDI_HEADERS_ZIP "${_uapmd_winmidi_archive}" CACHE FILEPATH "Path to the Windows MIDI Services header package used by libremidi" FORCE)
+    endif()
+endif()
+
+target_include_directories(uapmd PRIVATE
+        ../../../include
+        ${miniaudio_SOURCE_DIR}
+        ${choc_SOURCE_DIR}
+        ${concurrentqueue_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
+)
+
+target_link_libraries(uapmd PUBLIC
+        remidy::remidy
+        remidy::remidy-tooling
+        PRIVATE
+        midicci_static
+)
+
+target_sources(uapmd PRIVATE
+        midi/UapmdFunctionBlock.cpp
+        midi/UapmdMidiCISession.cpp
+        midi/UapmdUmpMapper.cpp
+        midi/UapmdNodeUmpMapper.cpp
+        plugin-api/RemidyAudioPluginHost.cpp
+        node-graph/AudioPluginGraph.cpp
+        node-graph/AudioPluginNode.cpp
+)

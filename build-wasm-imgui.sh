@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="${REPO_ROOT}/cmake-build-wasm"
-WASM_ASSETS_DIR="${REPO_ROOT}/tools/uapmd-app/web"
+WASM_ASSETS_DIR="${REPO_ROOT}/source/tools/uapmd-app/web"
 EMSDK_INFO_FILE="${WASM_ASSETS_DIR}/.emsdk-info"
 USE_SYSTEM_EMSDK=false
 
@@ -97,5 +97,5 @@ configure_and_build() {
 ensure_emsdk
 configure_and_build
 
-echo "✓ Build artifacts ready in ${BUILD_DIR}/tools/uapmd-app" 
+echo "✓ Build artifacts ready in ${BUILD_DIR}/source/tools/uapmd-app" 
 echo "  - Look for uapmd-app.{html,js,wasm} created by the Emscripten linker"

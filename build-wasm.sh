@@ -2,8 +2,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
-WASM_ASSETS_DIR="${REPO_ROOT}/tools/uapmd-app/web"
-WASM_STUB_DIR="${REPO_ROOT}/tools/uapmd-app"
+WASM_ASSETS_DIR="${REPO_ROOT}/source/tools/uapmd-app/web"
+WASM_STUB_DIR="${REPO_ROOT}/source/tools/uapmd-app"
 DIST_DIR="${WASM_ASSETS_DIR}/dist"
 EMSDK_INFO_FILE="${WASM_ASSETS_DIR}/.emsdk-info"
 USE_SYSTEM_EMSDK=${UAPMD_USE_SYSTEM_EMSDK:-false}
@@ -17,7 +17,7 @@ ensure_emsdk() {
         return
     fi
 
-    cmake -P "${REPO_ROOT}/cmake/FetchEmsdk.cmake" \
+    cmake -P "${REPO_ROOT}/source/cmake/FetchEmsdk.cmake" \
         -DUAPMD_EMSDK_INSTALL_TARGET="${UAPMD_EMSDK_VERSION:-latest}" \
         -DUAPMD_EMSDK_GIT_TAG="${UAPMD_EMSDK_GIT_TAG:-main}" \
         -DUAPMD_EMSDK_INFO_FILE="${EMSDK_INFO_FILE}" >/dev/null

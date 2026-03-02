@@ -9,7 +9,7 @@ You have to follow our [Developers Guide](docs/DEVELOPERS.md) that is written fo
 - Configure (Ninja on Linux/macOS): `cmake -B cmake-build-debug -G Ninja`
 - Configure (Windows/MSVC): `cmake -B build -G "Visual Studio 17 2022" -DBUILD_SHARED_LIBS=OFF`
 - Build: `cmake --build cmake-build-debug`
-- Run: `cmake-build-debug/tools/uapmd-app/uapmd-app`
+- Run: `cmake-build-debug/source/tools/uapmd-app/uapmd-app`
 - CI builds on Ubuntu, macOS, and Windows (see `.github/workflows/actions.yml`).
 
 **IMPORTANT** you are strictly prohibited to run `cmake -B` command (including above) without explicit permission from me, as well as `rm -rf `cmake-build-debug`.

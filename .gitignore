@@ -6,6 +6,11 @@ apidocs
 
 # wasm build artifacts
 cmake-build-wasm-imgui/
+source/tools/uapmd-app/web/.emsdk/
+source/tools/uapmd-app/web/.emsdk-info
+source/tools/uapmd-app/web/dist/
+source/tools/uapmd-app/web/node_modules/
+# Legacy path before the source/ relocation (safe to keep ignored)
 tools/uapmd-app/web/.emsdk/
 tools/uapmd-app/web/.emsdk-info
 tools/uapmd-app/web/dist/
