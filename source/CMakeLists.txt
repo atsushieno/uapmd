@@ -65,8 +65,13 @@ endif()
 if(MSVC)
     # MSVC debug flags: /Zi for debug info, /Od for no optimization
     # Note: /Zi is required (not /ZI) when ASAN is enabled. /RTC1 must be absent (it conflicts with ASAN).
-    set(CMAKE_CXX_FLAGS_DEBUG "/Zi /Od /MDd" CACHE STRING "" FORCE)
-    set(CMAKE_C_FLAGS_DEBUG "/Zi /Od /MDd" CACHE STRING "" FORCE)
+    set(CMAKE_CXX_FLAGS_DEBUG "/Zi /Od" CACHE STRING "" FORCE)
+    set(CMAKE_C_FLAGS_DEBUG "/Zi /Od" CACHE STRING "" FORCE)
+    # Set the MSVC runtime library consistently for all targets (including dependencies).
+    # Without this, cmake leaves <RuntimeLibrary> empty in vcxproj files which causes CRT
+    # mismatches: zlib-ng is compiled with /MDd but midicci/umppi default to /MT, making
+    # the linker unable to resolve __imp__wassert from static CRT libraries.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" CACHE STRING "" FORCE)
 else()
     # we do not mess platforms that works totally well
 endif()
@@ -175,6 +180,19 @@ if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}
     set(BUILD_SHARED_LIBS "${_UAPMD_OLD_BUILD_SHARED_LIBS}")
 else()
     unset(BUILD_SHARED_LIBS)
+endif()
+if(MSVC)
+    # midicci's CMakeLists.txt overrides CMAKE_CXX_FLAGS_DEBUG in its own scope,
+    # stripping /MDd from the compile flags. This causes umppi.dll and midicci.dll
+    # to link the static CRT (/MT), conflicting with zlib-ng which was compiled
+    # with the dynamic debug CRT (/MDd). Explicitly set MSVC_RUNTIME_LIBRARY on
+    # the midicci and umppi targets to ensure they use the same CRT as zlib-ng.
+    foreach(_midicci_target midicci midicci_static umppi umppi_static)
+        if(TARGET ${_midicci_target})
+            set_target_properties(${_midicci_target} PROPERTIES
+                MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+        endif()
+    endforeach()
 endif()
 if(EMSCRIPTEN)
     if(TARGET umppi_static)

@@ -1,7 +1,10 @@
 add_executable(uapmd-apply)
 
 target_include_directories(uapmd-apply PRIVATE
-        ../../../include
+        ../../remidy/include
+        ../../uapmd/include
+        ../../uapmd-engine/include
+        ../../uapmd-data/include
         ${choc_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include
         ${cxxopts_SOURCE_DIR}/include
