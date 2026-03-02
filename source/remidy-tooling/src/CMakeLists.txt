@@ -9,9 +9,9 @@ else()
 endif()
 
 target_include_directories(remidy-tooling PRIVATE
-        ../../../include
+        ../../../source/remidy/include
+        ../include
         ${choc_SOURCE_DIR}
-        .
 )
 if(UAPMD_ENABLE_CPPLOCATE)
     target_include_directories(remidy-tooling PRIVATE

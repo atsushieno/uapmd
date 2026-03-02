@@ -1,8 +1,8 @@
 add_executable(remidy-scan)
 
 target_include_directories(remidy-scan PRIVATE
-        ../../../include
-        ../../src/remidy-tooling
+        ../../remidy/include
+        ../../remidy-tooling/include
         ${choc_SOURCE_DIR}
 )
 if(UAPMD_ENABLE_CPPLOCATE)

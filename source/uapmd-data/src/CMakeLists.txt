@@ -24,7 +24,9 @@ target_include_directories(uapmd-data PRIVATE
         ${choc_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include
         ${miniaudio_SOURCE_DIR}
-        ../../../include
+        ../../../source/remidy/include
+        ../../../source/uapmd/include
+        ../include
 )
 
 target_link_libraries(uapmd-data

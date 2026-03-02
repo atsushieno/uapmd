@@ -1,7 +1,9 @@
 add_library(uapmd-file STATIC)
 
 target_include_directories(uapmd-file PUBLIC
-        ../../../include
+        ../../../source/remidy/include
+        ../../../source/uapmd/include
+        ../include
 )
 
 if(ANDROID)

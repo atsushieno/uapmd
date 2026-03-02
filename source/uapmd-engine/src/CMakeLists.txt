@@ -32,7 +32,11 @@ target_include_directories(uapmd-engine PRIVATE
         ${choc_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include
         ${concurrentqueue_SOURCE_DIR}
-        ../../../include
+        ../../../source/remidy/include
+        ../../../source/uapmd/include
+        ../../../source/uapmd-file/include
+        ../../../source/uapmd-data/include
+        ../include
 )
 
 target_link_libraries(uapmd-engine

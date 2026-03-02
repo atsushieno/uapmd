@@ -440,8 +440,13 @@ foreach(app_target IN LISTS UAPMD_APP_TARGETS)
             ${choc_SOURCE_DIR}
             ${portable-file-dialogs_SOURCE_DIR}
             ${midicci_SOURCE_DIR}/include
-            ${UAPMD_INCLUDE_FACADE_DIR}
             ${libremidi_SOURCE_DIR}/include
+            ../../remidy/include
+            ../../remidy-tooling/include
+            ../../uapmd/include
+            ../../uapmd-file/include
+            ../../uapmd-data/include
+            ../../uapmd-engine/include
             ../remidy-imgui-shared
             ${IconFontCppHeaders_SOURCE_DIR}
     )

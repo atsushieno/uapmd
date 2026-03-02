@@ -20,9 +20,14 @@ add_executable(uapmd-project-file-tests
 )
 
 target_include_directories(uapmd-project-file-tests PRIVATE
-    ${UAPMD_INCLUDE_FACADE_DIR}
-    ${choc_SOURCE_DIR}
-    ${midicci_SOURCE_DIR}/include
+        ../remidy/include
+        ../remidy-tooling/include
+        ../uapmd/include
+        ../uapmd-file/include
+        ../uapmd-data/include
+        ../uapmd-engine/include
+        ${choc_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
 )
 
 target_link_libraries(uapmd-project-file-tests

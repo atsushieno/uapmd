@@ -39,7 +39,8 @@ endif()
 
 # Include directories
 target_include_directories(remidy-gui PUBLIC
-    ../../../include
+        ../../../source/remidy/include
+        ../include
 )
 
 # Set C++ standard

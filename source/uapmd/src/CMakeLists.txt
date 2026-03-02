@@ -20,7 +20,9 @@ if(WIN32 AND UAPMD_ENABLE_WINMIDI)
 endif()
 
 target_include_directories(uapmd PRIVATE
-        ../../../include
+        ../../../source/remidy/include
+        ../../../source/remidy-tooling/include
+        ../include
         ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
         ${concurrentqueue_SOURCE_DIR}

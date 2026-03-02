@@ -1,6 +1,6 @@
 #include <thread>
 #include <chrono>
-#if !SMTG_OS_WINDOWS
+#if !WIN32
 #include <sys/select.h>
 #endif
 #if defined(__linux__) || defined(__unix__)
