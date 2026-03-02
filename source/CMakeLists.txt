@@ -309,6 +309,8 @@ install(TARGETS
         remidy-gui
         uapmd
         uapmd-engine
+        uapmd-data
+        uapmd-file
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         COMPONENT uapmd)
