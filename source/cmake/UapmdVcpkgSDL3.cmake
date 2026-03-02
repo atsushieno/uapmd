@@ -2,7 +2,7 @@ include_guard(GLOBAL)
 
 include(FetchContent)
 
-macro(uapmd_prepare_vcpkg_sdl3)
+function(uapmd_prepare_vcpkg_sdl3)
     if(NOT WIN32 AND NOT EMSCRIPTEN)
         return()
     endif()
@@ -140,7 +140,8 @@ macro(uapmd_prepare_vcpkg_sdl3)
     endif()
 
     list(APPEND CMAKE_PREFIX_PATH "${_uapmd_vcpkg_triplet_dir}")
+    set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" PARENT_SCOPE)
     set(SDL3_DIR "${_uapmd_vcpkg_triplet_dir}/share/SDL3"
         CACHE PATH "SDL3 config directory supplied by vcpkg" FORCE)
     message(STATUS "uapmd: SDL3_DIR set to '${_uapmd_vcpkg_triplet_dir}/share/SDL3'")
-endmacro()
+endfunction()
