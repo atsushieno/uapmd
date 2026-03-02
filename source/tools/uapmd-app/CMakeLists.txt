@@ -58,12 +58,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
 )
 
 # Platform-specific entrypoints
-if(ANDROID)
-    set(UAPMD_APP_SOURCE_FILES
-            ${UAPMD_APP_COMMON_SOURCE_FILES}
-            android_main.cpp
-    )
-elseif(UAPMD_BUILDING_WASM)
+if(UAPMD_BUILDING_WASM)
     set(UAPMD_APP_SOURCE_FILES
             ${UAPMD_APP_COMMON_SOURCE_FILES}
             web_main.cpp
@@ -89,7 +84,7 @@ elseif(UAPMD_BUILDING_WASM)
             DEPENDS ${_UAPMD_WASM_WEB_SOURCE_FILES}
     )
     add_custom_target(uapmd-app-web-assets ALL DEPENDS "${_UAPMD_WASM_WEB_STAMP}")
-else()
+elseif(NOT ANDROID)
     set(UAPMD_APP_SOURCE_FILES
             ${UAPMD_APP_COMMON_SOURCE_FILES}
             main.cpp
@@ -101,9 +96,11 @@ if(WIN32 AND NOT UAPMD_BUILDING_WASM)
 endif()
 
 if(ANDROID)
-    # SDL3 on Android expects the library to be named "main"
-    add_library(main SHARED ${UAPMD_APP_SOURCE_FILES})
-    set(UAPMD_COMPILE_TARGET main)
+    # All app sources compile into libuapmd-app.so; libmain.so is the thin
+    # SDL3 JNI entry point (SDL3 requires System.loadLibrary("main")).
+    add_library(uapmd-app SHARED ${UAPMD_APP_COMMON_SOURCE_FILES})
+    set(UAPMD_COMPILE_TARGET uapmd-app)
+    add_library(main SHARED android_main.cpp)
 elseif(UAPMD_BUILDING_WASM)
     add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET uapmd-app)
@@ -505,9 +502,12 @@ if(WIN32 AND USE_WIN32_DIRECTX11_BACKEND)
     target_link_libraries(${UAPMD_COMPILE_TARGET} PUBLIC ${DX11_LIBRARIES})
 endif()
 
-# Wire executables to the OBJECT library (desktop only; on Android/WASM the
-# compile target is already the final executable).
-if(NOT ANDROID AND NOT UAPMD_BUILDING_WASM)
+# Wire entry-point targets to the compile target.
+# Android: thin libmain.so links libuapmd-app.so (SDL3 JNI entry point).
+# Desktop: thin executables link the OBJECT library.
+if(ANDROID)
+    target_link_libraries(main PRIVATE uapmd-app)
+elseif(NOT UAPMD_BUILDING_WASM)
     target_link_libraries(uapmd-app PRIVATE ${UAPMD_COMPILE_TARGET})
     if(APPLE)
         target_link_libraries(uapmd-app-bundle PRIVATE ${UAPMD_COMPILE_TARGET})
@@ -558,17 +558,17 @@ if(NOT ANDROID AND NOT UAPMD_BUILDING_WASM)
     )
 endif()
 
-# Android-specific configuration
+# Android-specific configuration (targets uapmd-app, not main)
 if(ANDROID)
-    target_link_libraries(main PRIVATE
+    target_link_libraries(uapmd-app PUBLIC
         android  # Android native APIs
         log      # Android logging
     )
-    target_compile_definitions(main PRIVATE
+    target_compile_definitions(uapmd-app PRIVATE
         IMGUI_IMPL_OPENGL_ES3  # Use OpenGL ES 3.0 instead of desktop GL
         __ANDROID__=1          # Android platform marker
     )
     find_package(SDL3 REQUIRED CONFIG)
-    target_link_libraries(main PRIVATE SDL3::SDL3)
+    target_link_libraries(uapmd-app PUBLIC SDL3::SDL3)
     message(STATUS "Android build configured with SDL3 support")
 endif()
