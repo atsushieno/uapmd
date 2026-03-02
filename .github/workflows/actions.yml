@@ -112,9 +112,57 @@ jobs:
         path: |
           build
 
+  build-wasm:
+    name: 'build wasm (Emscripten / macOS)'
+    runs-on: macos-15
+    steps:
+    - name: checkout
+      uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    # The build script clones emsdk here and installs the toolchain inside it.
+    # Caching avoids the multi-minute download on every run; the script still
+    # runs `git pull` + `emsdk install` on a hit, which is fast when unchanged.
+    - name: restore emsdk cache
+      uses: actions/cache@v4
+      with:
+        path: source/tools/uapmd-app/web/.emsdk
+        key: emsdk-${{ runner.os }}-${{ hashFiles('build-wasm-imgui.sh') }}
+        restore-keys: emsdk-${{ runner.os }}-
+
+    # CPM downloads package sources once into the shared cache directory.
+    - name: restore CPM package cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/CPM/uapmd
+        key: cpm-wasm-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
+        restore-keys: cpm-wasm-${{ runner.os }}-
+
+    - name: build
+      run: bash build-wasm-imgui.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd
+
+    - name: upload artifacts
+      if: success()
+      uses: actions/upload-artifact@v6
+      env:
+        NODE_OPTIONS: --max_old_space_size=4096
+      with:
+        name: build-wasm
+        path: cmake-build-wasm/source/tools/uapmd-app/uapmd-app.*
+
+    - name: upload build failure logs
+      if: failure()
+      uses: actions/upload-artifact@v6
+      env:
+        NODE_OPTIONS: --max_old_space_size=4096
+      with:
+        name: build-wasm
+        path: cmake-build-wasm
+
   release:
     if: github.event_name == 'workflow_dispatch'
-    needs: build
+    needs: [build, build-wasm]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
