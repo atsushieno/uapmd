@@ -3,7 +3,6 @@ project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 23)
 get_filename_component(_UAPMD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" REALPATH)
 get_filename_component(UAPMD_REPO_ROOT "${_UAPMD_SOURCE_DIR}" DIRECTORY)
-set(UAPMD_INCLUDE_FACADE_DIR "${UAPMD_REPO_ROOT}/include")
 set(UAPMD_FLATPAK_DIR "${UAPMD_REPO_ROOT}/flatpak")
 set(UAPMD_EXTERNAL_DIR "${UAPMD_REPO_ROOT}/external")
 set(UAPMD_RESOURCES_DIR "${UAPMD_REPO_ROOT}/resources")
@@ -277,10 +276,32 @@ if(NOT TARGET uninstall)
 endif()
 
 # Install public headers and in-tree libraries only
-install(DIRECTORY "${UAPMD_INCLUDE_FACADE_DIR}/"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-        COMPONENT uapmd
-        PATTERN "remidy-gui/outdated/*" EXCLUDE)
+set(_UAPMD_PUBLIC_INCLUDE_SUBDIRS
+        remidy
+        remidy-gui
+        remidy-tooling
+        uapmd
+        uapmd-data
+        uapmd-engine
+        uapmd-file)
+
+foreach(_subdir IN LISTS _UAPMD_PUBLIC_INCLUDE_SUBDIRS)
+    set(_include_dir "${CMAKE_CURRENT_SOURCE_DIR}/${_subdir}/include")
+    if(EXISTS "${_include_dir}")
+        set(_install_patterns)
+        if(_subdir STREQUAL "remidy-gui")
+            list(APPEND _install_patterns
+                    PATTERN "remidy-gui/outdated" EXCLUDE
+                    PATTERN "remidy-gui/outdated/*" EXCLUDE)
+        endif()
+        install(DIRECTORY "${_include_dir}/"
+                DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+                COMPONENT uapmd
+                ${_install_patterns})
+    else()
+        message(WARNING "Skipping install of '${_include_dir}' because it does not exist")
+    endif()
+endforeach()
 
 install(TARGETS
         remidy
