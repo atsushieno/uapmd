@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <X11/Xlib.h>
 #include <poll.h>
+#undef None // X11...
 #ifdef HAVE_WAYLAND
 #include <wayland-client.h>
 #endif
