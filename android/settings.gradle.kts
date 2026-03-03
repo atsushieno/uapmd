@@ -23,6 +23,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "uapmd-android"
+rootProject.name = "uapmd"
 include(":app")
  

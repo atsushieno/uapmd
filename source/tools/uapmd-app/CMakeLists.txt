@@ -300,6 +300,22 @@ CPMAddPackage(
 )
 
 # ResEmbed: build-time resource/font embedding
+if(UAPMD_BUILDING_WASM AND NOT DEFINED RES_EMBED_HOST_CXX)
+    if(DEFINED ENV{UAPMD_HOST_CXX})
+        set(RES_EMBED_HOST_CXX "$ENV{UAPMD_HOST_CXX}" CACHE STRING
+            "Host C++ compiler used to build the ResEmbed Generator when cross-compiling" FORCE)
+    else()
+        find_program(_uapmd_host_cxx NAMES clang++ g++ c++ cl)
+        if(_uapmd_host_cxx AND NOT _uapmd_host_cxx MATCHES "em(\\+\\+|cc|configure)")
+            set(RES_EMBED_HOST_CXX "${_uapmd_host_cxx}" CACHE STRING
+                "Host C++ compiler used to build the ResEmbed Generator when cross-compiling" FORCE)
+        else()
+            message(WARNING "uapmd: Cannot detect a host C++ compiler for ResEmbed's Generator. "
+                "Pass -DRES_EMBED_HOST_CXX=<host-cxx> to cmake or set UAPMD_HOST_CXX in the environment.")
+        endif()
+        unset(_uapmd_host_cxx CACHE)
+    endif()
+endif()
 CPMAddPackage(
     NAME ResEmbed
     GIT_TAG main
