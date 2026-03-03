@@ -3,7 +3,7 @@
 ![UAPMD v0.2 example screenshot](docs/images/uapmd-app-v0.2-sshot.png)
 ![UAPMD v0.1 example screenshot](docs/images/uapmd-app-v0.1-sshot.png)
 
-UAPMD (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that serves audio plugin instances and exposes their control points as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
+UAPMD (Ubiquitous Audio Plugin MIDI Device) is a multi-track audio plugin host sequencer that exposes their control points as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
 
 - play MIDI 2.0 instruments with 32-bit precision; use Assignable Controllers (NRPNs) to change plugin parameters in 32-bit values (velocity in 16-bit).
 - retrieve parameter list as Assignable Controllers and presets as Program List, as long as they are exposed via the plugin APIs. Thus you don't have to remember which controller index maps to the parameter you want, or which program number maps to the tone you need.
@@ -11,7 +11,24 @@ UAPMD (Ubiquitous Audio Plugin MIDI Device) is an audio plugin host that serves 
 
 We also develop [midicci](https://github.com/atsushieno/midicci), an fully featured MIDI 2.0 software keyboard that leverages the full potential of this project.
 
-UAPMD targets macOS and Linux desktop. Windows builds are experimental and currently rely on the [Windows MIDI Services developer preview](https://github.com/microsoft/MIDI).
+The sequencer is capable of:
+
+- managing a master track and multiple tracks, where
+- each track has a linear list of audio plugins, and
+- contains audio clips and MIDI clips together
+- importing SMF into multiple tracks
+- importing audio file into multiple tracks using STEM separator (Demucs so far)
+- save and load them as a project
+
+UAPMD targets the following platforms:
+
+| platform | missing features |
+|-|-|
+| macOS | |
+| Linux desktop | |
+| Windows | MIDI 2.0 virtual devices (WIP) |
+| Android | Audio plugins (WIP) |
+| Web (Emscripten) | Audio plugins |
 
 We support VST3, AudioUnit, LV2, and CLAP plugin formats.
 
@@ -32,21 +49,38 @@ There is an application `uapmd-app` that performs almost all features UAPMD prov
 This `uapmd` Git repository provides the simple normative `cmake` build:
 
 ```
-$ cmake -B build # -G Ninja
+$ cmake -B build -G Ninja -DCPM_SOURCE_CACHE=~/.cache/CPM/uapmd    # you can skip -DCPM_SOURCE_CACHE
 $ cmake --build build
-$ cmake --install build # --prefix=/usr/local
+$ cmake --build build --target package # if you prefer package files
 ```
 
-### Windows MIDI Services support
+If you are using Windows:
 
-Windows builds expect the Windows MIDI Services runtime to be available and use libremidi's WinMIDI backend. During configuration the build uses the NuGet package `Microsoft.Windows.Devices.Midi2.1.0.14-rc.1.209.nupkg` stored under `external/` and forwards it to libremidi as `LIBREMIDI_WINMIDI_HEADERS_ZIP`.
+```
+$ cmake -B build -G "Visual Studio 17 2022" -DBUILD_SHARED_LIBS=OFF -DREMIDY_BUILD_CONFIG=Release -DUAPMD_ENABLE_WINMIDI=ON -DCPM_SOURCE_CACHE=%HOME%\.cache\CPM\uapmd    # you can skip -DCPM_SOURCE_CACHE
+$ cmake --build build
+$ cmake --build build --target package # if you prefer package files
+```
 
-- `UAPMD_ENABLE_WINMIDI` (defaults to `ON` on Windows, `OFF` elsewhere) toggles this integration.
-- Override `UAPMD_WINMIDI_HEADERS_ARCHIVE` if you want to point at a different package file.
-- Set `LIBREMIDI_WINMIDI_HEADERS_ZIP` manually to a local `.nupkg` if you need offline builds; the automatic download is skipped when this variable is provided.
+After successful build on those desktop platforms, the artifacts are found like: `*.deb`, `*.rpm`, `*.tar.xz`, `uapmd-*.zip`, or `*.dmg` (under `build` directory)
 
-For desktop GUI builds on Windows we try to reuse SDL3 from a prebuilt vcpkg package to avoid building GLFW locally. During CMake configure we either reuse `VCPKG_ROOT` or download a vcpkg snapshot, bootstrap it, install `sdl3` for the detected triplet, and extend `CMAKE_PREFIX_PATH` so that `find_package(SDL3)` succeeds. Override `UAPMD_VCPKG_URL`, `UAPMD_VCPKG_URL_HASH`, `UAPMD_VCPKG_TRIPLET`, or `UAPMD_VCPKG_ROOT` when pointing to a mirror or a different architecture. If SDL3 still cannot be provided automatically the build falls back to SDL2 or GLFW as before.
+If you target Android:
 
+```
+$ cd android && ./gradlew build
+```
+
+If you target Web:
+
+```
+$ bash build-wasm-imgui.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd   # you can skip CPM_SOURCE_CACHE
+```
+
+Then you can run it like:
+
+```
+npx http-server cmake-build-wasm/source/tools/uapmd-app
+```
 
 ## Screenshots
 
@@ -107,11 +141,15 @@ There are two primary libraries in this repository:
 `remidy-tooling` offers higher level API to build audio plugin hosting tools like plugin scanning and instancing in the common manner.
 What this layer introduces in practice is a set of filters; various existing specific plugin products and vendors are filtered by "safe for multithreaded access to the plugin API," "plugin scanning requires the UI thread," or "crashes remidy" kind of information.
 
-### uapmd and uapmd-engine
+### uapmd, uapmd-file, uapmd-data, and uapmd-engine
 
 `uapmd` and `uapmd-engine` provide reusable foundation for constructing virtual MIDI 2.0 devices upon plugin hosting layer (only remidy so far). `uapmd` serves `AllCtrlList` MIDI-CI standard property for plugin parameters as Assignable Controllers (NRPNs), `ProgramList` MIDI-CI standard property for the indexed presets as Program Change, and saves and loads states in MIDI-CI property manner.
 
 `uapmd` itself contains core engine behind MIDI-CI processing for audio plugin hosting and instancing API without implementation and usable backends. `uapmd-engine` goes one step further to establish the premise that there is single audio processing backend, multiple MIDI 2.0 devices, audio graphs, and so on to make everything in usable form.
+
+`uapmd-file` implements supplemental cross-platform file/document API.
+
+`uapmd-data` defines the sequencer model such as tracks and clips, then implements audio processing data provider for realtime processing.
 
 ### uapmd-app
 
