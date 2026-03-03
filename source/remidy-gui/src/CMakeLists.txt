@@ -6,6 +6,16 @@ if(ANDROID)
     target_link_libraries(remidy-gui PUBLIC
             GLESv3
     )
+elseif(IOS)
+    add_library(remidy-gui STATIC
+        ContainerWindow_iOS.mm
+    )
+    target_compile_options(remidy-gui PRIVATE
+        -fobjc-arc
+    )
+    target_link_libraries(remidy-gui PUBLIC
+        "-framework UIKit"
+    )
 elseif(APPLE)
     add_library(remidy-gui STATIC
         ContainerWindow_Cocoa.mm

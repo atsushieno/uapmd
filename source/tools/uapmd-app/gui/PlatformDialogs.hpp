@@ -3,7 +3,9 @@
 #include <string>
 #include <iostream>
 
-#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+// portable-file-dialogs is a desktop-only library: exclude it on mobile/browser/Metal-renderer platforms.
+// USE_SDL_RENDERER is defined on iOS (Metal backend); it is the canonical "no desktop file dialogs" flag.
+#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__) && !defined(USE_SDL_RENDERER)
 #include <portable-file-dialogs.h>
 #endif
 
@@ -18,7 +20,7 @@ enum class PlatformDialogIcon {
 inline void showPlatformDialog(const std::string& title,
                                const std::string& message,
                                PlatformDialogIcon icon) {
-#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__) && !defined(USE_SDL_RENDERER)
     pfd::icon dialogIcon = pfd::icon::info;
     switch (icon) {
         case PlatformDialogIcon::Warning: dialogIcon = pfd::icon::warning; break;

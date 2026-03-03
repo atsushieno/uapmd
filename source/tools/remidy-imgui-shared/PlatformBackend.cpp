@@ -39,8 +39,10 @@
     #include <imgui_impl_glfw.h>
 #endif
 
-#ifndef USE_DIRECTX11_RENDERER
-#include <imgui_impl_opengl3.h>
+#if defined(USE_SDL_RENDERER) && defined(USE_SDL3_BACKEND)
+    #include <imgui_impl_sdlrenderer3.h>
+#elif !defined(USE_DIRECTX11_RENDERER)
+    #include <imgui_impl_opengl3.h>
 #endif
 #include <imgui.h>
 
@@ -255,6 +257,7 @@ private:
     bool initialized = false;
     WindowHandle* currentWindow = nullptr;
     SDL_GLContext glContext = nullptr;
+    SDL_Renderer* sdlRenderer = nullptr;  // Used on iOS (SDL_Renderer → Metal)
 #ifdef __APPLE__
     id originalView = nil;
 #endif
@@ -275,6 +278,13 @@ public:
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 
         __android_log_print(ANDROID_LOG_INFO, "UAPMD", "SDL3 initialized for Android/GLES3");
+#elif defined(USE_SDL_RENDERER)
+        // iOS: Use SDL_Renderer (backed by Metal). No GL context attributes needed.
+        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+            SDL_Log("SDL3 Init Error: %s", SDL_GetError());
+            return false;
+        }
+        SDL_Log("SDL3 initialized for iOS (SDL_Renderer/Metal)");
 #else
         // Desktop: Initialize SDL3 with OpenGL 3.2
         if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -299,7 +309,58 @@ public:
     WindowHandle* createWindow(const char* title, int width, int height) override {
         if (!initialized) return nullptr;
 
-#if defined(__ANDROID__)
+#if defined(USE_SDL_RENDERER)
+        // iOS: Create a fullscreen Metal-capable window via SDL_Renderer.
+        // SDL_WINDOW_FULLSCREEN ensures the window fills the screen and SDL reports
+        // the correct logical dimensions via SDL_GetWindowSize().
+        // SDL_WINDOW_HIGH_PIXEL_DENSITY ensures correct Retina resolution.
+        SDL_Window* window = SDL_CreateWindow(
+            title, width, height,
+            SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY
+        );
+        if (!window) {
+            SDL_Log("SDL3 Window Error: %s", SDL_GetError());
+            return nullptr;
+        }
+
+        // SDL_CreateRenderer selects Metal automatically on iOS.
+        sdlRenderer = SDL_CreateRenderer(window, nullptr);
+        if (!sdlRenderer) {
+            SDL_Log("SDL3 Renderer Error: %s", SDL_GetError());
+            SDL_DestroyWindow(window);
+            return nullptr;
+        }
+        SDL_SetRenderVSync(sdlRenderer, 1);
+        SDL_Log("SDL3 renderer created: %s", SDL_GetRendererName(sdlRenderer));
+
+        // On Retina/HiDPI displays the renderer output is in physical pixels while
+        // SDL_GetWindowSize() (and therefore ImGui's io.DisplaySize) is in logical
+        // points.  imgui_impl_sdlrenderer3 scales clip-rects via FramebufferScale
+        // but does NOT call SDL_SetRenderScale(), so vertex positions stay at
+        // logical-point coordinates inside the physical-pixel surface — producing
+        // content that only fills 1/N of the screen.
+        //
+        // Fix: permanently set the renderer scale to the display's pixel ratio so
+        // SDL maps every logical-point vertex and clip-rect to physical pixels.
+        // imgui_impl_sdlrenderer3 detects a pre-existing scale != 1.0, skips its
+        // own clip-rect upscaling (render_scale falls back to {1,1}), and defers
+        // the logical→physical mapping entirely to SDL — which is correct.
+        {
+            int lw = 0, lh = 0, pw = 0, ph = 0, rw = 0, rh = 0;
+            SDL_GetWindowSize(window, &lw, &lh);
+            SDL_GetWindowSizeInPixels(window, &pw, &ph);
+            SDL_GetCurrentRenderOutputSize(sdlRenderer, &rw, &rh);
+            float dscale = SDL_GetWindowDisplayScale(window);
+            SDL_Log("uapmd window logical=%dx%d  pixel=%dx%d  render_output=%dx%d  display_scale=%.3f",
+                    lw, lh, pw, ph, rw, rh, dscale);
+            if (dscale > 1.0f)
+                SDL_SetRenderScale(sdlRenderer, dscale, dscale);
+        }
+
+        currentWindow = new WindowHandle(window, WindowHandle::SDL3);
+        currentWindow->sdlRenderer = sdlRenderer;
+        return currentWindow;
+#elif defined(__ANDROID__)
         // Android: Create fullscreen window
         #include <android/log.h>
         SDL_Window* window = SDL_CreateWindow(
@@ -323,6 +384,7 @@ public:
         }
 #endif
 
+#if !defined(USE_SDL_RENDERER)
         // Create GL context (works for both desktop and Android)
         glContext = SDL_GL_CreateContext(window);
         if (!glContext) {
@@ -354,6 +416,7 @@ public:
 
         currentWindow = new WindowHandle(window, WindowHandle::SDL3);
         return currentWindow;
+#endif // !USE_SDL_RENDERER
     }
 
     void destroyWindow(WindowHandle* window) override {
@@ -376,7 +439,12 @@ public:
 
     void swapBuffers(WindowHandle* window) override {
         if (window && window->type == WindowHandle::SDL3) {
+#if defined(USE_SDL_RENDERER)
+            if (sdlRenderer)
+                SDL_RenderPresent(sdlRenderer);
+#else
             SDL_GL_SwapWindow(window->sdlWindow);
+#endif
         }
     }
 
@@ -410,14 +478,21 @@ public:
 
     void shutdown() override {
         if (initialized) {
+#if defined(USE_SDL_RENDERER)
+            if (sdlRenderer) {
+                SDL_DestroyRenderer(sdlRenderer);
+                sdlRenderer = nullptr;
+            }
+#else
             if (glContext) {
                 SDL_GL_DestroyContext(glContext);
                 glContext = nullptr;
             }
+#endif
             SDL_Quit();
             initialized = false;
         }
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(USE_SDL_RENDERER)
         if (originalView) {
             choc::objc::call<void>(originalView, "release");
             originalView = nil;
@@ -438,7 +513,11 @@ public:
     bool initialize(WindowHandle* win) override {
         if (!win || win->type != WindowHandle::SDL3) return false;
         window = win;
+#if defined(USE_SDL_RENDERER)
+        return ImGui_ImplSDL3_InitForSDLRenderer(win->sdlWindow, win->sdlRenderer);
+#else
         return ImGui_ImplSDL3_InitForOpenGL(win->sdlWindow, SDL_GL_GetCurrentContext());
+#endif
     }
 
     void processEvents() override {
@@ -1019,9 +1098,43 @@ public:
 #endif // USE_DIRECTX11_RENDERER
 
 // =============================================================================
+// SDL_Renderer Renderer Implementation (iOS: Metal-backed)
+// =============================================================================
+#if defined(USE_SDL_RENDERER) && defined(USE_SDL3_BACKEND)
+
+class SDLRendererRenderer : public ImGuiRenderer {
+    SDL_Renderer* renderer_ = nullptr;
+public:
+    bool initialize(WindowHandle* window) override {
+        if (!window || !window->sdlRenderer) return false;
+        renderer_ = window->sdlRenderer;
+        return ImGui_ImplSDLRenderer3_Init(renderer_);
+    }
+
+    void newFrame() override {
+        ImGui_ImplSDLRenderer3_NewFrame();
+    }
+
+    void renderDrawData() override {
+        ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer_);
+    }
+
+    void shutdown() override {
+        ImGui_ImplSDLRenderer3_Shutdown();
+        renderer_ = nullptr;
+    }
+
+    const char* getName() const override {
+        return "SDLRenderer3 (Metal)";
+    }
+};
+
+#endif // USE_SDL_RENDERER && USE_SDL3_BACKEND
+
+// =============================================================================
 // OpenGL3 Renderer Implementation
 // =============================================================================
-#ifndef USE_DIRECTX11_RENDERER
+#if !defined(USE_DIRECTX11_RENDERER) && !defined(USE_SDL_RENDERER)
 
 class OpenGL3Renderer : public ImGuiRenderer {
 public:
@@ -1057,7 +1170,7 @@ public:
     }
 };
 
-#endif // !USE_DIRECTX11_RENDERER
+#endif // !USE_DIRECTX11_RENDERER && !USE_SDL_RENDERER
 
 // =============================================================================
 // Factory Methods
@@ -1105,6 +1218,8 @@ std::unique_ptr<ImGuiPlatformBackend> ImGuiPlatformBackend::create(WindowHandle*
 std::unique_ptr<ImGuiRenderer> ImGuiRenderer::create() {
 #ifdef USE_DIRECTX11_RENDERER
     return std::make_unique<DirectX11Renderer>();
+#elif defined(USE_SDL_RENDERER) && defined(USE_SDL3_BACKEND)
+    return std::make_unique<SDLRendererRenderer>();
 #else
     return std::make_unique<OpenGL3Renderer>();
 #endif

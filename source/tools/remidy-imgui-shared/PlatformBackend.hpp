@@ -6,6 +6,7 @@
 // Forward declarations for different windowing systems
 struct GLFWwindow;
 struct SDL_Window;
+struct SDL_Renderer;
 #ifdef _WIN32
 struct HWND__;
 typedef HWND__* HWND;
@@ -26,6 +27,9 @@ struct WindowHandle {
         HWND hwnd;
 #endif
     };
+    // SDL_Renderer used alongside sdlWindow on iOS (SDL_Renderer → Metal).
+    // Null on all other platforms.
+    SDL_Renderer* sdlRenderer = nullptr;
 
     WindowHandle(GLFWwindow* window) : type(GLFW), glfwWindow(window) {}
     WindowHandle(SDL_Window* window, Type t) : type(t), sdlWindow(window) {}

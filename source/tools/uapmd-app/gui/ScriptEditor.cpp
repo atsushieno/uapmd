@@ -1,6 +1,10 @@
 #include "ScriptEditor.hpp"
 #include <imgui.h>
-#if !ANDROID && !defined(__EMSCRIPTEN__)
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+// cpplocate is desktop-only: excluded on Android, Emscripten, and iOS.
+#if !ANDROID && !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
 #include <cpplocate/cpplocate.h>
 #endif
 #include <filesystem>
@@ -297,7 +301,8 @@ std::string ScriptEditor::getJsLibraryPath (const std::string& modulePath) const
     else if (cleanPath.starts_with ("/"))
         cleanPath = cleanPath.substr (1);
 
-#if ANDROID
+#if ANDROID || (defined(__APPLE__) && TARGET_OS_IPHONE)
+    // No cpplocate on mobile platforms; JS module resolution is not supported here.
     std::filesystem::path exeDir{};
 #elif defined(__EMSCRIPTEN__)
     std::filesystem::path exeDir{};

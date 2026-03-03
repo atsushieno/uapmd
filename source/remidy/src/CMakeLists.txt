@@ -2,7 +2,7 @@
 if(APPLE)
     set(REMIDY_SUPPORT_AU ON)
 endif()
-if(NOT ANDROID AND NOT EMSCRIPTEN)
+if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT IOS)
     set(REMIDY_SUPPORT_VST3 ON)
     set(REMIDY_SUPPORT_LV2 ON)
     set(REMIDY_SUPPORT_CLAP ON)
@@ -125,16 +125,9 @@ if (${REMIDY_SUPPORT_CLAP})
 endif ()
 
 if (REMIDY_SUPPORT_AU)
+    # AUv3 sources: available on both macOS and iOS
     set(REMIDY_AU_SUPPORT_SOURCES
-            au/AUv2Helper.cpp
             au/PluginFormatAU.mm
-            au/PluginInstanceAUv2.mm
-            au/PluginInstanceAUv2.Buses.mm
-            au/PluginInstanceAUv2.Events.mm
-            au/PluginInstanceAUv2.Parameters.mm
-            au/PluginInstanceAUv2.Presets.mm
-            au/PluginInstanceAUv2.States.mm
-            au/PluginInstanceAUv2.UI.mm
             au/PluginInstanceAUv3.mm
             au/PluginInstanceAUv3.Buses.mm
             au/PluginInstanceAUv3.Events.mm
@@ -143,6 +136,19 @@ if (REMIDY_SUPPORT_AU)
             au/PluginInstanceAUv3.Presets.mm
             au/PluginInstanceAUv3.UI.mm
     )
+    # AUv2 sources: macOS only (AUv2 does not exist on iOS)
+    if(NOT IOS)
+        list(APPEND REMIDY_AU_SUPPORT_SOURCES
+                au/AUv2Helper.cpp
+                au/PluginInstanceAUv2.mm
+                au/PluginInstanceAUv2.Buses.mm
+                au/PluginInstanceAUv2.Events.mm
+                au/PluginInstanceAUv2.Parameters.mm
+                au/PluginInstanceAUv2.Presets.mm
+                au/PluginInstanceAUv2.States.mm
+                au/PluginInstanceAUv2.UI.mm
+        )
+    endif()
 endif ()
 
 if (${REMIDY_SUPPORT_VST3})
@@ -194,6 +200,14 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
             "-framework CoreAudio"
             "-framework Foundation"
             "-framework AVFoundation"
+    )
+elseif(IOS)
+    set(remidy_LIBS_PLAT
+            "-framework CoreFoundation"
+            "-framework CoreAudio"
+            "-framework Foundation"
+            "-framework AVFoundation"
+            "-framework AudioToolbox"
     )
 endif ()
 

@@ -62,3 +62,14 @@ target_sources(uapmd-engine PRIVATE
         sequencer/SequencerTrack.cpp
         sequencer/TimelineFacade.cpp
 )
+
+if(IOS)
+    # miniaudio.h on Apple pulls in AVFoundation (an ObjC framework).
+    # Files that include MiniAudioIODevice.hpp (which includes miniaudio.h) must
+    # be compiled as Objective-C++ so the ObjC runtime is available.
+    set_source_files_properties(
+        devices/AudioIODevice.cpp
+        devices/MiniAudioIODevice.cpp
+        PROPERTIES LANGUAGE OBJCXX
+    )
+endif()

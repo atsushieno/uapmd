@@ -4,13 +4,20 @@
 // Saves and restores the current OpenGL context to protect against plugins that
 // might change the active GL context without restoring it (e.g., Kontakt 8)
 
+// TargetConditionals.h provides TARGET_OS_IPHONE, which is used below to
+// exclude the CGL (CoreGL) path on iOS where CGL does not exist.
+#if defined(__APPLE__)
+    #include <TargetConditionals.h>
+#endif
+
 // When using DirectX renderer, OpenGL context management is not needed
 #ifndef USE_DIRECTX11_RENDERER
     #if defined(__ANDROID__)
         #include <GLES3/gl3.h>
         #include <GLES3/gl3ext.h>
         #include <SDL3/SDL_opengl.h>
-    #elif defined(__APPLE__)
+    #elif defined(__APPLE__) && !TARGET_OS_IPHONE
+        // macOS only: CGL is not available on iOS (which uses Metal/SDL_Renderer).
         #include <OpenGL/OpenGL.h>
     #elif defined(_WIN32)
         #include <windows.h>
@@ -31,7 +38,9 @@ namespace remidy::gui {
             GLContextGuard(const GLContextGuard&) = delete;
             GLContextGuard& operator=(const GLContextGuard&) = delete;
         };
-    #elif defined(__APPLE__)
+    #elif defined(__APPLE__) && !TARGET_OS_IPHONE
+        // macOS only: save/restore the CGL context so plugins cannot steal it.
+        // On iOS the Metal/SDL_Renderer path has no OpenGL context to guard.
         class GLContextGuard {
         private:
             CGLContextObj saved_context;
@@ -87,6 +96,8 @@ namespace remidy::gui {
             GLContextGuard& operator=(const GLContextGuard&) = delete;
         };
     #else
+        // No-op for platforms without an OpenGL context to save/restore
+        // (iOS with Metal/SDL_Renderer, Android, Emscripten, etc.)
         class GLContextGuard {
         public:
             GLContextGuard() {}

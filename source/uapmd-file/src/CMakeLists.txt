@@ -26,6 +26,14 @@ elseif(EMSCRIPTEN)
             -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$allocateUTF8
             -sEXPORTED_RUNTIME_METHODS=ccall,allocateUTF8
     )
+elseif(IOS)
+    target_sources(uapmd-file PRIVATE
+            DocumentProviderIOS.mm
+    )
+    target_link_libraries(uapmd-file PUBLIC
+            "-framework UIKit"
+            "-framework UniformTypeIdentifiers"
+    )
 else()
     target_sources(uapmd-file PRIVATE
             DocumentProviderDesktop.cpp
