@@ -315,27 +315,55 @@ function(uapmd_detect_host_cxx OUTPUT_VAR)
         return()
     endif()
 
-    # Bypass CMAKE_FIND_ROOT_PATH so the probe sees the system clang++/g++.
-    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+    set(_uapmd_result "")
+    set(_uapmd_known_host_dirs /usr/bin /usr/local/bin /opt/homebrew/bin)
     find_program(_uapmd_probe_host_cxx
-        NAMES clang++ g++ c++
-        HINTS /usr/bin /usr/local/bin /opt/homebrew/bin)
-    if(NOT _uapmd_probe_host_cxx AND APPLE)
+        NAMES clang++ g++
+        PATHS ${_uapmd_known_host_dirs}
+        NO_DEFAULT_PATH
+        NO_CMAKE_FIND_ROOT_PATH)
+    if(_uapmd_probe_host_cxx AND NOT _uapmd_probe_host_cxx MATCHES "-NOTFOUND$")
+        set(_uapmd_result "${_uapmd_probe_host_cxx}")
+    endif()
+
+    if(NOT _uapmd_result AND APPLE)
         execute_process(
             COMMAND xcrun --find clang++
             OUTPUT_VARIABLE _uapmd_xcrun_host_cxx
             RESULT_VARIABLE _uapmd_xcrun_status
             OUTPUT_STRIP_TRAILING_WHITESPACE)
         if(_uapmd_xcrun_status EQUAL 0 AND EXISTS "${_uapmd_xcrun_host_cxx}")
-            set(_uapmd_probe_host_cxx "${_uapmd_xcrun_host_cxx}")
+            set(_uapmd_result "${_uapmd_xcrun_host_cxx}")
         endif()
     endif()
 
-    if(_uapmd_probe_host_cxx AND NOT _uapmd_probe_host_cxx MATCHES "-NOTFOUND$")
-        set(${OUTPUT_VAR} "${_uapmd_probe_host_cxx}" PARENT_SCOPE)
-    else()
-        set(${OUTPUT_VAR} "" PARENT_SCOPE)
+    if(NOT _uapmd_result)
+        find_program(_uapmd_probe_host_cxx
+            NAMES clang++ g++ c++
+            NO_CMAKE_FIND_ROOT_PATH)
+        if(_uapmd_probe_host_cxx AND NOT _uapmd_probe_host_cxx MATCHES "-NOTFOUND$")
+            set(_uapmd_result "${_uapmd_probe_host_cxx}")
+        endif()
     endif()
+
+    if(NOT _uapmd_result AND WIN32)
+        find_program(_uapmd_probe_host_cxx
+            NAMES cl CL)
+        if(_uapmd_probe_host_cxx AND NOT _uapmd_probe_host_cxx MATCHES "-NOTFOUND$")
+            set(_uapmd_result "${_uapmd_probe_host_cxx}")
+        endif()
+    endif()
+
+    if(_uapmd_result MATCHES "\\.emsdk/" OR _uapmd_result MATCHES "emscripten")
+        set(_uapmd_result "")
+    endif()
+
+    unset(_uapmd_known_host_dirs)
+    unset(_uapmd_probe_host_cxx CACHE)
+    unset(_uapmd_xcrun_host_cxx)
+    unset(_uapmd_xcrun_status)
+
+    set(${OUTPUT_VAR} "${_uapmd_result}" PARENT_SCOPE)
 endfunction()
 
 if(UAPMD_BUILDING_WASM)
