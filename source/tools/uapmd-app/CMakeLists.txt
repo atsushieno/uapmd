@@ -392,7 +392,17 @@ CPMAddPackage(
     NAME ResEmbed
     GIT_TAG main
     GIT_REPOSITORY https://github.com/eyalamirmusic/ResEmbed
+    PATCH_COMMAND ${CMAKE_COMMAND}
+        -DPATCH_FILE:FILEPATH=${UAPMD_REPO_ROOT}/external/patches/resembed-host-toolchain.patch
+        -P ${UAPMD_CMAKE_DIR}/ApplyGitPatch.cmake
 )
+if(DEFINED ResEmbed_SOURCE_DIR AND EXISTS "${ResEmbed_SOURCE_DIR}")
+    execute_process(
+        COMMAND ${CMAKE_COMMAND}
+            -DPATCH_FILE:FILEPATH=${UAPMD_REPO_ROOT}/external/patches/resembed-host-toolchain.patch
+            -P ${UAPMD_CMAKE_DIR}/ApplyGitPatch.cmake
+        WORKING_DIRECTORY "${ResEmbed_SOURCE_DIR}")
+endif()
 
 # Embed font files into the app binary at build time.
 # Sources compile once through UAPMD_COMPILE_TARGET; both executables share
