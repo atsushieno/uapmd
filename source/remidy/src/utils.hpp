@@ -13,5 +13,8 @@ CFStringRef createCFString(const char* s);
 // string-to-and-from-hex converters
 std::string hexBinaryToString(const char* s, const size_t size, const bool capital = false);
 std::string stringToHexBinary(std::string s);
+// VST3 TUID (GUID-like) helpers
+std::string vst3TuidToString(const char* s, const size_t size, const bool capital = true);
+std::string stringToVst3Tuid(std::string s);
 
 void* loadLibraryFromBinary(std::filesystem::path& vst3Dir);

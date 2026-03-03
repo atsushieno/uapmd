@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <algorithm>
 #include "ClassModuleInfo.hpp"
 
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
@@ -56,9 +57,10 @@ namespace remidy_vst3 {
         for (auto& cls : moduleInfo.value().classes) {
             if (strcmp(cls.category.c_str(), kVstAudioEffectClass))
                 continue;
-            std::string cid = stringToHexBinary(cls.cid);
+            std::string cid = stringToVst3Tuid(cls.cid);
             Steinberg::TUID tuid{};
-            memcpy(tuid, cid.c_str(), cid.length());
+            const auto bytesToCopy = std::min<size_t>(cid.size(), sizeof(Steinberg::TUID));
+            memcpy(tuid, cid.data(), bytesToCopy);
             std::string name = cls.name;
             std::string vendor = cls.vendor;
             auto entry = PluginClassInfo{bundlePath, cls.vendor, factoryInfo.url, cls.name, tuid};

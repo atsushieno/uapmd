@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <algorithm>
 
 #include "remidy/remidy.hpp"
 #include "../utils.hpp"
@@ -54,8 +55,9 @@ namespace remidy {
         std::unique_ptr<PluginInstanceVST3> ret{nullptr};
         std::string error{};
         TUID tuid{};
-        auto decodedBytes = stringToHexBinary(entry->pluginId());
-        memcpy(&tuid, decodedBytes.c_str(), decodedBytes.size());
+        auto decodedBytes = stringToVst3Tuid(entry->pluginId());
+        const auto bytesToCopy = std::min<size_t>(decodedBytes.size(), sizeof(TUID));
+        memcpy(&tuid, decodedBytes.data(), bytesToCopy);
         std::string name = entry->displayName();
 
         auto bundle = entry->bundlePath();
@@ -243,7 +245,7 @@ namespace remidy {
         auto ret = std::make_unique<PluginCatalogEntry>();
         static std::string format{"VST3"};
         ret->format(format);
-        auto idString = hexBinaryToString((char *) info.tuid, sizeof(TUID));
+        auto idString = vst3TuidToString((char *) info.tuid, sizeof(TUID), true);
         ret->bundlePath(info.bundlePath);
         ret->pluginId(idString);
         ret->displayName(info.name);
