@@ -4,13 +4,15 @@ if(UAPMD_TARGET_WASM)
         message(FATAL_ERROR "UAPMD_TARGET_WASM=ON requires configuring with the Emscripten toolchain (use emcmake).")
     endif()
     set(UAPMD_BUILDING_WASM ON)
+    option(UAPMD_WASM_USE_VCPKG_SDL3
+        "Use vcpkg to provide SDL3 for WASM builds (OFF: Emscripten port via -s USE_SDL=3; ON: vcpkg SDL3::SDL3)"
+        ON)
     add_compile_definitions(EMSCRIPTEN DISABLE_VST3 DISABLE_AU DISABLE_LV2 DISABLE_CLAP)
     set(_UAPMD_WASM_ASYNC_IMPORTS "['uapmd_web_open_file_dialog','uapmd_web_save_file_dialog']")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
         -s WASM=1 \
         -s ALLOW_MEMORY_GROWTH=1 \
         -s MAXIMUM_MEMORY=512MB \
-        -s USE_SDL=3 \
         -s USE_WEBGL2=1 \
         -s FULL_ES3=1 \
         -s MIN_WEBGL_VERSION=2 \
@@ -20,16 +22,9 @@ if(UAPMD_TARGET_WASM)
         -s ASYNCIFY=1 \
         -s ASYNCIFY_IMPORTS=${_UAPMD_WASM_ASYNC_IMPORTS} \
         -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8']")
-endif()
-
-set(UAPMD_WASM_SYSROOT "")
-if(UAPMD_BUILDING_WASM)
-    if(CMAKE_SYSROOT)
-        set(UAPMD_WASM_SYSROOT "${CMAKE_SYSROOT}")
-    elseif(DEFINED EMSCRIPTEN_ROOT_PATH AND EMSCRIPTEN_ROOT_PATH)
-        set(UAPMD_WASM_SYSROOT "${EMSCRIPTEN_ROOT_PATH}/cache/sysroot")
-    elseif(DEFINED ENV{EMSDK} AND EXISTS "$ENV{EMSDK}/upstream/emscripten/cache/sysroot")
-        set(UAPMD_WASM_SYSROOT "$ENV{EMSDK}/upstream/emscripten/cache/sysroot")
+    if(NOT UAPMD_WASM_USE_VCPKG_SDL3)
+        # Emscripten port: the linker flag activates the bundled SDL3 port at link time.
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " -s USE_SDL=3")
     endif()
 endif()
 
@@ -145,13 +140,26 @@ if(NOT UAPMD_BUILDING_WASM)
     endif()
 endif()
 
-# Provide SDL3 via vcpkg when needed
+# Provide SDL3 via vcpkg (Windows always; Emscripten when UAPMD_WASM_USE_VCPKG_SDL3=ON)
 include(${UAPMD_CMAKE_DIR}/UapmdVcpkgSDL3.cmake)
-if((WIN32 OR EMSCRIPTEN) AND NOT BACKEND_FOUND)
+if((WIN32 OR (EMSCRIPTEN AND UAPMD_WASM_USE_VCPKG_SDL3)) AND NOT BACKEND_FOUND)
     uapmd_prepare_vcpkg_sdl3()
 endif()
 
-# Try SDL3 if not already selected
+# Emscripten port path (UAPMD_WASM_USE_VCPKG_SDL3=OFF):
+# emcc manages SDL3 entirely when -sUSE_SDL=3 is a compile flag — it builds the
+# port on first use and injects the include path automatically.  No find_package,
+# no manual sysroot wiring, and no embuilder pre-step required.
+if(UAPMD_BUILDING_WASM AND NOT UAPMD_WASM_USE_VCPKG_SDL3 AND NOT BACKEND_FOUND)
+    set(BACKEND_FOUND TRUE)
+    set(BACKEND_TYPE "SDL3")
+    set(BACKEND_LIBRARIES "")
+    add_compile_definitions(USE_SDL3_BACKEND)
+    add_compile_options("-sUSE_SDL=3")
+    message(STATUS "Using SDL3 backend (Emscripten port via -sUSE_SDL=3)")
+endif()
+
+# Try SDL3 via find_package (vcpkg on Windows/Emscripten-vcpkg, or system install)
 if(NOT BACKEND_FOUND)
     find_package(SDL3 QUIET)
     if(SDL3_FOUND)
@@ -171,7 +179,7 @@ if(NOT BACKEND_FOUND)
         endif()
         add_compile_definitions(USE_SDL3_BACKEND)
         message(STATUS "Using SDL3 backend")
-        if(WIN32)
+        if(WIN32 OR EMSCRIPTEN)
             message(STATUS "uapmd: SDL3 config dir: ${SDL3_DIR}")
             if(SDL3_VERSION)
                 message(STATUS "uapmd: SDL3 version: ${SDL3_VERSION}")
@@ -180,9 +188,12 @@ if(NOT BACKEND_FOUND)
     endif()
 endif()
 
-# Require SDL3 for wasm builds
+# Require SDL3 for wasm builds (only reachable when UAPMD_WASM_USE_VCPKG_SDL3=ON and vcpkg failed)
 if(_UAPMD_REQUIRE_SDL3 AND NOT BACKEND_FOUND)
-    message(FATAL_ERROR "SDL3 backend is required for WebAssembly builds. Please ensure SDL3 is available (e.g., via vcpkg with triplet wasm32-emscripten).")
+    message(FATAL_ERROR
+        "UAPMD_WASM_USE_VCPKG_SDL3=ON but SDL3 was not found via vcpkg.\n"
+        "Ensure vcpkg can build sdl3:wasm32-emscripten and that the Emscripten "
+        "toolchain is active when cmake is invoked (use emcmake).")
 endif()
 
 if(NOT _UAPMD_REQUIRE_SDL3)
@@ -343,13 +354,6 @@ if(NOT TARGET imgui)
             ${imgui_SOURCE_DIR}
             ${imgui_SOURCE_DIR}/backends
     )
-    if(UAPMD_WASM_SYSROOT)
-        target_include_directories(imgui PRIVATE
-                ${UAPMD_WASM_SYSROOT}/include
-                ${UAPMD_WASM_SYSROOT}/include/SDL3
-        )
-    endif()
-
     # Link backend library to ImGui so backends can find headers
     target_link_libraries(imgui PUBLIC ${BACKEND_LIBRARIES})
 
@@ -441,12 +445,6 @@ target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
         ../remidy-imgui-shared
         ${IconFontCppHeaders_SOURCE_DIR}
 )
-if(UAPMD_WASM_SYSROOT)
-    target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
-            ${UAPMD_WASM_SYSROOT}/include
-            ${UAPMD_WASM_SYSROOT}/include/SDL3
-    )
-endif()
 if(UAPMD_ENABLE_CPPLOCATE)
     target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
             ${cpplocate_SOURCE_DIR}/source/cpplocate/include
