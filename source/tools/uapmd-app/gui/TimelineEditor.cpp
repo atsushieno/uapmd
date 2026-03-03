@@ -1312,42 +1312,49 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
     return dump;
 }
 
-void TimelineEditor::importTracks() {
-    auto handleFile = [this](const std::string& selectedFile) {
-        std::filesystem::path filePath(selectedFile);
-        std::string ext = filePath.extension().string();
-        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
-            return static_cast<char>(std::tolower(c));
-        });
-
-        if (ext == ".mid" || ext == ".midi" || ext == ".smf") {
-            importMidiTracks(selectedFile);
-        } else if (ext == ".wav" || ext == ".flac" || ext == ".ogg") {
-            importAudioTracks(selectedFile);
-        } else {
-            platformWarning("Unsupported File",
-                            std::format("Cannot import files with extension {}", ext));
-        }
-    };
-
+void TimelineEditor::importMidiTracksWithPicker() {
     std::vector<uapmd::DocumentFilter> filters{
-        {"Supported Files", {}, {"*.mid", "*.midi", "*.smf", "*.wav", "*.flac", "*.ogg"}},
-        {"MIDI Files",    {}, {"*.mid", "*.midi", "*.smf"}},
-        {"Audio Files",   {}, {"*.wav", "*.flac", "*.ogg"}},
-        {"All Files",     {}, {"*"}}
+        {"MIDI Files", {}, {"*.mid", "*.midi", "*.smf"}},
+        {"All Files",  {}, {"*"}}
     };
 
     if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters,
             false,
-            [handleFile = std::move(handleFile)](uapmd::DocumentPickResult result) mutable {
+            [this](uapmd::DocumentPickResult result) {
                 if (!result.success || result.handles.empty())
                     return;
                 resolveDocumentHandle(
                     result.handles[0],
-                    [handleFile = std::move(handleFile)](const std::filesystem::path& resolved) mutable {
-                        handleFile(resolved.string());
+                    [this](const std::filesystem::path& resolved) {
+                        importMidiTracks(resolved.string());
+                    },
+                    [](const std::string& error) {
+                        platformError("Import Failed", error);
+                    });
+            }
+        );
+    }
+}
+
+void TimelineEditor::importAudioTracksWithPicker() {
+    std::vector<uapmd::DocumentFilter> filters{
+        {"Audio Files", {}, {"*.wav", "*.flac", "*.ogg"}},
+        {"All Files",   {}, {"*"}}
+    };
+
+    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        provider->pickOpenDocuments(
+            filters,
+            false,
+            [this](uapmd::DocumentPickResult result) {
+                if (!result.success || result.handles.empty())
+                    return;
+                resolveDocumentHandle(
+                    result.handles[0],
+                    [this](const std::filesystem::path& resolved) {
+                        importAudioTracks(resolved.string());
                     },
                     [](const std::string& error) {
                         platformError("Import Failed", error);
@@ -1417,22 +1424,7 @@ void TimelineEditor::importMidiTracks(const std::string& filepath) {
                 message += warning + "\n";
         }
         platformError("Import Failed", message);
-        return;
     }
-
-    std::string summary = std::format("Imported {} track(s) from {}",
-                                      importedCount,
-                                      std::filesystem::path(filepath).filename().string());
-    bool hasWarnings = !warnings.empty();
-    if (hasWarnings) {
-        summary += "\n\nWarnings:\n";
-        for (const auto& warning : warnings)
-            summary += warning + "\n";
-    }
-    if (hasWarnings)
-        platformWarning("Import Complete", summary);
-    else
-        platformInfo("Import Complete", summary);
 }
 
 void TimelineEditor::importAudioTracks(const std::string& filepath) {
@@ -1509,23 +1501,7 @@ void TimelineEditor::importAudioTracks(const std::string& filepath) {
                 message += warning + "\n";
         }
         platformError("Import Failed", message);
-        return;
     }
-
-    std::string summary = std::format("Created {} stem track(s) from {}",
-                                      importedCount,
-                                      std::filesystem::path(filepath).stem().string());
-    bool hasWarnings = !warnings.empty();
-    if (hasWarnings) {
-        summary += "\n\nWarnings:\n";
-        for (const auto& warning : warnings)
-            summary += warning + "\n";
-    }
-
-    if (hasWarnings)
-        platformWarning("Import Complete", summary);
-    else
-        platformInfo("Import Complete", summary);
 }
 
 bool TimelineEditor::ensureDemucsModelSelected() {
@@ -1563,8 +1539,6 @@ bool TimelineEditor::requestDemucsModelSelection() {
 
     if (!requested)
         platformError("Demucs Model", "Document provider unavailable. Cannot load model.");
-    else
-        platformInfo("Demucs Model", "Select a Demucs ggml model. Re-run the import after choosing.");
 
     return false;
 }

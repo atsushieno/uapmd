@@ -69,7 +69,8 @@ public:
     void showMasterMetaDump();
 
     // Track import
-    void importTracks();
+    void importMidiTracksWithPicker();
+    void importAudioTracksWithPicker();
     bool requestDemucsModelSelection();
     void clearDemucsModel();
     bool hasDemucsModel() const;

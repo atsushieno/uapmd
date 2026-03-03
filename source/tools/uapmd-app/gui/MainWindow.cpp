@@ -376,19 +376,23 @@ void MainWindow::render(void* window) {
                     scriptEditor_.show();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Import Tracks")) {
-                timelineEditor_.importTracks();
+            bool openImportPopup = false;
+            if (ImGui::Button("Import")) {
+                openImportPopup = true;
             }
-            ImGui::SameLine();
-            bool openStemsPopup = false;
-            if (ImGui::Button("Stems Model")) {
-                openStemsPopup = true;
-            }
-            if (openStemsPopup) {
-                ImGui::OpenPopup("StemsModelActions");
-            }
-            if (ImGui::BeginPopup("StemsModelActions")) {
-                if (ImGui::MenuItem("Load Model...")) {
+            if (openImportPopup)
+                ImGui::OpenPopup("ImportActions");
+            if (ImGui::BeginPopup("ImportActions")) {
+                if (ImGui::MenuItem("Import MIDI Tracks (SMF)")) {
+                    timelineEditor_.importMidiTracksWithPicker();
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Import Split Audio Tracks (Demucs)", nullptr, false, timelineEditor_.hasDemucsModel())) {
+                    timelineEditor_.importAudioTracksWithPicker();
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Load Stems Model")) {
                     timelineEditor_.requestDemucsModelSelection();
                     ImGui::CloseCurrentPopup();
                 }
