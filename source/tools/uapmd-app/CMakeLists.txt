@@ -300,20 +300,39 @@ CPMAddPackage(
 )
 
 # ResEmbed: build-time resource/font embedding
+#
+# When cross-compiling for WASM, ResEmbed's Generator must run on the host ABI.
+# UAPMD_HOST_CXX_COMPILER identifies that compiler. It is auto-detected when
+# possible; set it explicitly via -DUAPMD_HOST_CXX_COMPILER=<path> for toolchains
+# not discoverable by the probe below (e.g. ICC, or MSVC without a VS dev prompt).
+if(UAPMD_BUILDING_WASM AND NOT DEFINED UAPMD_HOST_CXX_COMPILER)
+    if(NOT CMAKE_CXX_COMPILER MATCHES "em(\\+\\+|cc)")
+        # The active compiler is already a native host compiler (MSVC, ICC, clang, g++…).
+        set(UAPMD_HOST_CXX_COMPILER "${CMAKE_CXX_COMPILER}" CACHE FILEPATH
+            "Host C++ compiler for build-time tools when cross-compiling" FORCE)
+    else()
+        # CMAKE_CXX_COMPILER is an Emscripten wrapper; probe for a native host compiler.
+        # clang++/g++: search fixed system paths that emsdk never shadows.
+        find_program(_uapmd_probe_host_cxx NAMES clang++ g++ c++
+            PATHS /usr/bin /usr/local/bin
+            NO_DEFAULT_PATH)
+        if(NOT _uapmd_probe_host_cxx)
+            # cl.exe (MSVC) has no fixed path but emsdk never ships a fake cl,
+            # so a plain PATH search is safe.
+            find_program(_uapmd_probe_host_cxx NAMES cl)
+        endif()
+        set(UAPMD_HOST_CXX_COMPILER "${_uapmd_probe_host_cxx}" CACHE FILEPATH
+            "Host C++ compiler for build-time tools when cross-compiling")
+        unset(_uapmd_probe_host_cxx CACHE)
+    endif()
+endif()
 if(UAPMD_BUILDING_WASM AND NOT DEFINED RES_EMBED_HOST_CXX)
-    if(DEFINED ENV{UAPMD_HOST_CXX})
-        set(RES_EMBED_HOST_CXX "$ENV{UAPMD_HOST_CXX}" CACHE STRING
+    if(UAPMD_HOST_CXX_COMPILER)
+        set(RES_EMBED_HOST_CXX "${UAPMD_HOST_CXX_COMPILER}" CACHE STRING
             "Host C++ compiler used to build the ResEmbed Generator when cross-compiling" FORCE)
     else()
-        find_program(_uapmd_host_cxx NAMES clang++ g++ c++ cl)
-        if(_uapmd_host_cxx AND NOT _uapmd_host_cxx MATCHES "em(\\+\\+|cc|configure)")
-            set(RES_EMBED_HOST_CXX "${_uapmd_host_cxx}" CACHE STRING
-                "Host C++ compiler used to build the ResEmbed Generator when cross-compiling" FORCE)
-        else()
-            message(WARNING "uapmd: Cannot detect a host C++ compiler for ResEmbed's Generator. "
-                "Pass -DRES_EMBED_HOST_CXX=<host-cxx> to cmake or set UAPMD_HOST_CXX in the environment.")
-        endif()
-        unset(_uapmd_host_cxx CACHE)
+        message(WARNING "uapmd: UAPMD_HOST_CXX_COMPILER is unset; ResEmbed's Generator may fail. "
+            "Pass -DUAPMD_HOST_CXX_COMPILER=<path> to cmake.")
     endif()
 endif()
 CPMAddPackage(
