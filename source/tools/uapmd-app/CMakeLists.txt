@@ -395,10 +395,8 @@ if(NOT GIT_FOUND)
 endif()
 CPMAddPackage(
     NAME ResEmbed
-    GIT_TAG main
+    GIT_TAG 23ba82c
     GIT_REPOSITORY https://github.com/eyalamirmusic/ResEmbed
-    PATCH_COMMAND
-        ${GIT_EXECUTABLE} apply --ignore-whitespace ${_resembed_patch}
 )
 unset(_resembed_patch)
 
