@@ -302,38 +302,63 @@ CPMAddPackage(
 # ResEmbed: build-time resource/font embedding
 #
 # When cross-compiling for WASM, ResEmbed's Generator must run on the host ABI.
-# UAPMD_HOST_CXX_COMPILER identifies that compiler. It is auto-detected when
-# possible; set it explicitly via -DUAPMD_HOST_CXX_COMPILER=<path> for toolchains
-# not discoverable by the probe below (e.g. ICC, or MSVC without a VS dev prompt).
-if(UAPMD_BUILDING_WASM AND NOT DEFINED UAPMD_HOST_CXX_COMPILER)
-    if(NOT CMAKE_CXX_COMPILER MATCHES "em(\\+\\+|cc)")
-        # The active compiler is already a native host compiler (MSVC, ICC, clang, g++…).
-        set(UAPMD_HOST_CXX_COMPILER "${CMAKE_CXX_COMPILER}" CACHE FILEPATH
-            "Host C++ compiler for build-time tools when cross-compiling" FORCE)
-    else()
-        # CMAKE_CXX_COMPILER is an Emscripten wrapper; probe for a native host compiler.
-        # clang++/g++: search fixed system paths that emsdk never shadows.
-        find_program(_uapmd_probe_host_cxx NAMES clang++ g++ c++
-            PATHS /usr/bin /usr/local/bin
-            NO_DEFAULT_PATH)
-        if(NOT _uapmd_probe_host_cxx)
-            # cl.exe (MSVC) has no fixed path but emsdk never ships a fake cl,
-            # so a plain PATH search is safe.
-            find_program(_uapmd_probe_host_cxx NAMES cl)
-        endif()
-        set(UAPMD_HOST_CXX_COMPILER "${_uapmd_probe_host_cxx}" CACHE FILEPATH
-            "Host C++ compiler for build-time tools when cross-compiling")
-        unset(_uapmd_probe_host_cxx CACHE)
+# Define a helper that locates a usable host compiler even when the active
+# toolchain is Emscripten (whose wrappers live inside the emsdk sysroot).
+function(uapmd_detect_host_cxx OUTPUT_VAR)
+    set(_uapmd_candidate "")
+    if(ARGC GREATER 1)
+        set(_uapmd_candidate "${ARGV1}")
     endif()
-endif()
-if(UAPMD_BUILDING_WASM AND NOT DEFINED RES_EMBED_HOST_CXX)
-    if(UAPMD_HOST_CXX_COMPILER)
-        set(RES_EMBED_HOST_CXX "${UAPMD_HOST_CXX_COMPILER}" CACHE STRING
-            "Host C++ compiler used to build the ResEmbed Generator when cross-compiling" FORCE)
+    if(_uapmd_candidate AND NOT _uapmd_candidate STREQUAL "" AND
+            NOT _uapmd_candidate MATCHES "-NOTFOUND$")
+        set(${OUTPUT_VAR} "${_uapmd_candidate}" PARENT_SCOPE)
+        return()
+    endif()
+
+    # Bypass CMAKE_FIND_ROOT_PATH so the probe sees the system clang++/g++.
+    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+    find_program(_uapmd_probe_host_cxx
+        NAMES clang++ g++ c++
+        HINTS /usr/bin /usr/local/bin /opt/homebrew/bin)
+    if(NOT _uapmd_probe_host_cxx AND APPLE)
+        execute_process(
+            COMMAND xcrun --find clang++
+            OUTPUT_VARIABLE _uapmd_xcrun_host_cxx
+            RESULT_VARIABLE _uapmd_xcrun_status
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(_uapmd_xcrun_status EQUAL 0 AND EXISTS "${_uapmd_xcrun_host_cxx}")
+            set(_uapmd_probe_host_cxx "${_uapmd_xcrun_host_cxx}")
+        endif()
+    endif()
+
+    if(_uapmd_probe_host_cxx AND NOT _uapmd_probe_host_cxx MATCHES "-NOTFOUND$")
+        set(${OUTPUT_VAR} "${_uapmd_probe_host_cxx}" PARENT_SCOPE)
     else()
+        set(${OUTPUT_VAR} "" PARENT_SCOPE)
+    endif()
+endfunction()
+
+if(UAPMD_BUILDING_WASM)
+    uapmd_detect_host_cxx(_uapmd_host_cxx "${UAPMD_HOST_CXX_COMPILER}")
+    if(_uapmd_host_cxx)
+        set(UAPMD_HOST_CXX_COMPILER "${_uapmd_host_cxx}" CACHE FILEPATH
+            "Host C++ compiler for build-time tools when cross-compiling" FORCE)
+    endif()
+
+    set(_uapmd_resembed_host "${RES_EMBED_HOST_CXX}")
+    if(NOT _uapmd_resembed_host OR _uapmd_resembed_host STREQUAL "" OR _uapmd_resembed_host MATCHES "-NOTFOUND$")
+        set(_uapmd_resembed_host "${_uapmd_host_cxx}")
+        if(_uapmd_resembed_host)
+            set(RES_EMBED_HOST_CXX "${_uapmd_resembed_host}" CACHE FILEPATH
+                "Host C++ compiler used to build the ResEmbed Generator when cross-compiling" FORCE)
+        endif()
+    endif()
+    if(NOT _uapmd_resembed_host OR _uapmd_resembed_host STREQUAL "" OR _uapmd_resembed_host MATCHES "-NOTFOUND$")
         message(WARNING "uapmd: UAPMD_HOST_CXX_COMPILER is unset; ResEmbed's Generator may fail. "
             "Pass -DUAPMD_HOST_CXX_COMPILER=<path> to cmake.")
     endif()
+    unset(_uapmd_host_cxx)
+    unset(_uapmd_resembed_host)
 endif()
 CPMAddPackage(
     NAME ResEmbed
