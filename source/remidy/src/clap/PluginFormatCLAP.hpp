@@ -260,6 +260,7 @@ namespace remidy {
         std::atomic<bool> flush_requested_{false};
         std::atomic<bool> is_processing{false};
         bool processing_active_{false};
+        std::shared_ptr<std::atomic<bool>> callbacks_alive_{std::make_shared<std::atomic<bool>>(true)};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
         void clapProcessToRemidyProcessContext(AudioProcessContext& dst, clap_process_t& src);

@@ -78,5 +78,6 @@ namespace remidy {
         void attachInstance(PluginInstanceCLAP* instance) noexcept;
         void detachInstance(PluginInstanceCLAP* instance) noexcept;
         PluginInstanceCLAP* attachedInstance() const noexcept { return attached_instance.load(); }
+        void shutdownTimers() noexcept;
     };
 }

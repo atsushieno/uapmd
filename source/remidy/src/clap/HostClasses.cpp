@@ -21,10 +21,15 @@ namespace remidy {
     }
 
     void RemidyCLAPHost::requestCallback() noexcept {
-        EventLoop::enqueueTaskOnMainThread([&]{
-            auto* instance = attached_instance.load();
-            if (instance)
-                instance->plugin->onMainThread();
+        auto* instance = attached_instance.load();
+        if (!instance || !instance->plugin)
+            return;
+        auto callbacksAlive = instance->callbacks_alive_;
+        auto* pluginPtr = instance->plugin.get();
+        EventLoop::enqueueTaskOnMainThread([callbacksAlive, pluginPtr]{
+            if (!callbacksAlive->load(std::memory_order_acquire))
+                return;
+            pluginPtr->onMainThread();
         });
     }
 
@@ -88,7 +93,10 @@ namespace remidy {
                 instance->flush_requested_.store(true, std::memory_order_release);
             } else {
                 // If process() is not running, we can't defer - schedule on main thread
-                EventLoop::enqueueTaskOnMainThread([instance]{
+                auto callbacksAlive = instance->callbacks_alive_;
+                EventLoop::enqueueTaskOnMainThread([instance, callbacksAlive]{
+                    if (!callbacksAlive->load(std::memory_order_acquire))
+                        return;
                     instance->processParamsFlush();
                 });
             }
@@ -100,7 +108,10 @@ namespace remidy {
         } else {
             // Even if processing is not active, we should schedule paramsFlush on main thread
             // rather than calling it directly from whatever thread request_flush was called from
-            EventLoop::enqueueTaskOnMainThread([instance]{
+            auto callbacksAlive = instance->callbacks_alive_;
+            EventLoop::enqueueTaskOnMainThread([instance, callbacksAlive]{
+                if (!callbacksAlive->load(std::memory_order_acquire))
+                    return;
                 instance->processParamsFlush();
             });
         }
@@ -165,19 +176,27 @@ namespace remidy {
     }
 
     RemidyCLAPHost::~RemidyCLAPHost() {
-        // Stop and join any outstanding timer threads to avoid keeping process alive
+        shutdownTimers();
+    }
+
+    void RemidyCLAPHost::shutdownTimers() noexcept {
         std::unordered_map<clap_id, std::unique_ptr<Timer>> timersCopy;
         {
             std::lock_guard<std::mutex> lock(timersMutex);
             timersCopy.swap(timers_);
         }
-        for (auto &kv : timersCopy) {
-            auto &t = kv.second;
-            if (!t) continue;
-            t->running.store(false);
+        for (auto& kv : timersCopy) {
+            auto& t = kv.second;
+            if (!t)
+                continue;
+            t->running.store(false, std::memory_order_release);
             t->cv.notify_all();
-            // On shutdown, don't risk blocking forever: detach if thread doesn't exit promptly
-            if (t->worker.joinable()) t->worker.detach();
+            if (t->worker.joinable()) {
+                if (t->worker.get_id() == std::this_thread::get_id())
+                    t->worker.detach();
+                else
+                    t->worker.join();
+            }
         }
     }
 
@@ -223,11 +242,10 @@ namespace remidy {
             timers_.erase(it);
         }
         if (t) {
-            t->running.store(false);
+            t->running.store(false, std::memory_order_release);
             t->cv.notify_all();
             if (t->worker.joinable()) {
-                // Avoid blocking the main/UI thread: detach instead of join if called from it
-                if (EventLoop::runningOnMainThread())
+                if (t->worker.get_id() == std::this_thread::get_id())
                     t->worker.detach();
                 else
                     t->worker.join();

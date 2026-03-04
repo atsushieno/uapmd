@@ -22,6 +22,8 @@ namespace remidy {
     }
 
     PluginInstanceCLAP::~PluginInstanceCLAP() {
+        callbacks_alive_->store(false, std::memory_order_release);
+
         // Destroy UI first to ensure GUI timers are stopped before plugin destruction
         if (_ui) {
             EventLoop::runTaskOnMainThread([&] {
@@ -30,7 +32,15 @@ namespace remidy {
             delete _ui;
         }
 
+        if (host)
+            host->shutdownTimers();
+
         is_processing.store(false, std::memory_order_release);
+        // We can only call clap_plugin.stop_processing() from the audio thread.
+        // During teardown, audio callbacks may already be detached, so force local state
+        // to inactive and continue destruction without issuing stop_processing() here.
+        processing_active_ = false;
+
         // Stop processing first (audio thread is expected to honour the request before buffers change)
         cleanupBuffers(); // cleanup, optionally stop processing in prior.
 
@@ -621,11 +631,15 @@ namespace remidy {
     }
 
     void PluginInstanceCLAP::dispatchTimer(clap_id timerId) {
-        if (!plugin || !plugin->canUseTimerSupport())
+        auto* pluginPtr = plugin.get();
+        if (!pluginPtr || !pluginPtr->canUseTimerSupport())
             return;
+        auto callbacksAlive = callbacks_alive_;
         // Ensure timer callback happens on the main/UI thread per CLAP expectations
-        EventLoop::runTaskOnMainThread([this, timerId](){
-            plugin->timerSupportOnTimer(timerId);
+        EventLoop::runTaskOnMainThread([callbacksAlive, pluginPtr, timerId](){
+            if (!callbacksAlive->load(std::memory_order_acquire))
+                return;
+            pluginPtr->timerSupportOnTimer(timerId);
         });
     }
 
