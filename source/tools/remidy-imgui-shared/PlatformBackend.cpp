@@ -346,13 +346,7 @@ public:
         // own clip-rect upscaling (render_scale falls back to {1,1}), and defers
         // the logical→physical mapping entirely to SDL — which is correct.
         {
-            int lw = 0, lh = 0, pw = 0, ph = 0, rw = 0, rh = 0;
-            SDL_GetWindowSize(window, &lw, &lh);
-            SDL_GetWindowSizeInPixels(window, &pw, &ph);
-            SDL_GetCurrentRenderOutputSize(sdlRenderer, &rw, &rh);
             float dscale = SDL_GetWindowDisplayScale(window);
-            SDL_Log("uapmd window logical=%dx%d  pixel=%dx%d  render_output=%dx%d  display_scale=%.3f",
-                    lw, lh, pw, ph, rw, rh, dscale);
             if (dscale > 1.0f)
                 SDL_SetRenderScale(sdlRenderer, dscale, dscale);
         }
