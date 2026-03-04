@@ -128,7 +128,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: source/tools/uapmd-app/web/.emsdk
-        key: emsdk-${{ runner.os }}-${{ hashFiles('build-wasm-imgui.sh') }}
+        key: emsdk-${{ runner.os }}-${{ hashFiles('build-wasm.sh') }}
         restore-keys: emsdk-${{ runner.os }}-
 
     # CPM downloads package sources once into the shared cache directory.
@@ -140,7 +140,7 @@ jobs:
         restore-keys: cpm-wasm-${{ runner.os }}-
 
     - name: build
-      run: bash build-wasm-imgui.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd
+      run: bash build-wasm.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd
 
     - name: upload artifacts
       if: success()
