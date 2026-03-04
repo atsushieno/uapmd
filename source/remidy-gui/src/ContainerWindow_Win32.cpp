@@ -9,6 +9,29 @@ namespace remidy::gui {
 
 static const wchar_t* kClassName = L"RemidyContainerWindow";
 
+namespace {
+
+SIZE clientSizeToWindowSize(HWND hwnd, int clientWidth, int clientHeight) {
+    RECT rect{0, 0, clientWidth, clientHeight};
+    DWORD style = static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_STYLE));
+    DWORD exStyle = static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_EXSTYLE));
+    BOOL hasMenu = GetMenu(hwnd) != nullptr;
+    if (!AdjustWindowRectEx(&rect, style, hasMenu, exStyle))
+        return SIZE{clientWidth, clientHeight};
+
+    return SIZE{rect.right - rect.left, rect.bottom - rect.top};
+}
+
+SIZE clientSizeToWindowSize(DWORD style, DWORD exStyle, int clientWidth, int clientHeight) {
+    RECT rect{0, 0, clientWidth, clientHeight};
+    if (!AdjustWindowRectEx(&rect, style, FALSE, exStyle))
+        return SIZE{clientWidth, clientHeight};
+
+    return SIZE{rect.right - rect.left, rect.bottom - rect.top};
+}
+
+} // namespace
+
 class Win32ContainerWindow : public ContainerWindow {
 public:
     explicit Win32ContainerWindow(const char* title, int w, int h, std::function<void()> closeCallback)
@@ -21,8 +44,11 @@ public:
         } else {
             wtitle = L"Plugin UI";
         }
-        hwnd_ = CreateWindowExW(0, kClassName, wtitle.c_str(), WS_OVERLAPPEDWINDOW,
-                                CW_USEDEFAULT, CW_USEDEFAULT, w, h, nullptr, nullptr,
+        constexpr DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+        constexpr DWORD exStyle = 0;
+        const SIZE initialWindowSize = clientSizeToWindowSize(style, exStyle, w, h);
+        hwnd_ = CreateWindowExW(exStyle, kClassName, wtitle.c_str(), style,
+                                CW_USEDEFAULT, CW_USEDEFAULT, initialWindowSize.cx, initialWindowSize.cy, nullptr, nullptr,
                                 GetModuleHandleW(nullptr), this);
         // Store 'this' pointer for window proc
         SetWindowLongPtrW(hwnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
@@ -43,7 +69,8 @@ public:
         if (!hwnd_) return;
         b_.width = width;
         b_.height = height;
-        SetWindowPos(hwnd_, nullptr, 0, 0, width, height,
+        const SIZE windowSize = clientSizeToWindowSize(hwnd_, width, height);
+        SetWindowPos(hwnd_, nullptr, 0, 0, windowSize.cx, windowSize.cy,
                      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
     Bounds getBounds() const override { return b_; }
@@ -80,6 +107,8 @@ public:
         if (msg == WM_SIZE && window && window->resizeCallback_) {
             int width = LOWORD(lParam);
             int height = HIWORD(lParam);
+            window->b_.width = width;
+            window->b_.height = height;
             window->resizeCallback_(width, height);
         }
 
