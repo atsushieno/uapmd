@@ -406,7 +406,38 @@ public:
 
     std::vector<remidy::PluginParameter*> remidyParams{};
     std::map<const std::string, int32_t> remidyParamIdToEnumIndex{};
+    std::map<const std::string, int32_t> remidyParamIdToEnumCount{};
     std::vector<remidy::ParameterEnumeration*> remidyEnums{};
+
+    int32_t appendEnumerationsFromScalePoints(const LilvPort* port) {
+        int32_t appended = 0;
+        LilvNodes* scalePoints = lilv_port_get_value(plugin, port, statics->scale_point_uri_node);
+        if (!scalePoints)
+            return 0;
+
+        LILV_FOREACH(nodes, spi, scalePoints) {
+            const LilvNode* scalePointNode = lilv_nodes_get(scalePoints, spi);
+            LilvNodes* labels = lilv_world_find_nodes(
+                world, scalePointNode, statics->rdfs_label_node, nullptr);
+            LilvNodes* values = lilv_world_find_nodes(
+                world, scalePointNode, statics->rdf_value_node, nullptr);
+            const LilvNode* labelNode = labels ? lilv_nodes_get_first(labels) : nullptr;
+            const LilvNode* valueNode = values ? lilv_nodes_get_first(values) : nullptr;
+            if (labelNode && valueNode) {
+                std::string label{lilv_node_as_string(labelNode)};
+                auto value = lilv_node_as_float(valueNode);
+                remidy::ParameterEnumeration e{label, value};
+                remidyEnums.emplace_back(new remidy::ParameterEnumeration(e));
+                appended++;
+            }
+            if (labels)
+                lilv_nodes_free(labels);
+            if (values)
+                lilv_nodes_free(values);
+        }
+        lilv_nodes_free(scalePoints);
+        return appended;
+    }
 
     void registerPortAsParameter(const LilvPlugin* plugin, const LilvPort* port) {
         std::string emptyString{};
@@ -446,21 +477,11 @@ public:
                                      // should we determine automatability based on some properties such as `expensive` ... ?
                                      true, true, false, isDiscreteEnum};
 
-        LilvScalePoints* scalePoints = lilv_port_get_scale_points(plugin, port);
-        if (scalePoints != nullptr) {
-            remidyParamIdToEnumIndex[info.stableId()] = remidyEnums.size();
-
-            LILV_FOREACH(scale_points, spi, scalePoints) {
-                auto sp = lilv_scale_points_get(scalePoints, spi);
-                auto labelNode = lilv_scale_point_get_label(sp);
-                auto valueNode = lilv_scale_point_get_value(sp);
-                std::string label{lilv_node_as_string(labelNode)};
-                auto value = lilv_node_as_float(valueNode);
-
-                remidy::ParameterEnumeration e{label, value};
-                remidyEnums.emplace_back(new remidy::ParameterEnumeration(e));
-            }
-            lilv_scale_points_free(scalePoints);
+        int32_t enumBase = remidyEnums.size();
+        auto enumCount = appendEnumerationsFromScalePoints(port);
+        if (enumCount > 0) {
+            remidyParamIdToEnumIndex[info.stableId()] = enumBase;
+            remidyParamIdToEnumCount[info.stableId()] = enumCount;
         } else if (isToggled) {
             remidyParamIdToEnumIndex[info.stableId()] = remidyEnums.size();
             static std::string trueValue{"true"};
@@ -470,6 +491,7 @@ public:
             static std::string falseValue{"false"};
             remidy::ParameterEnumeration f{falseValue, 0};
             remidyEnums.emplace_back(new remidy::ParameterEnumeration(f));
+            remidyParamIdToEnumCount[info.stableId()] = 2;
         }
         remidyParams.emplace_back(new remidy::PluginParameter(info));
 
@@ -495,6 +517,7 @@ public:
     void buildParameterList() {
         remidyParams.clear();
         remidyParamIdToEnumIndex.clear();
+        remidyParamIdToEnumCount.clear();
         remidyEnums.clear();
 
         for (uint32_t p = 0; p < lilv_plugin_get_num_ports(plugin); p++) {
@@ -508,9 +531,9 @@ public:
     int32_t getRemidyParameterCount() { return remidyParams.size(); }
     remidy::PluginParameter getRemidyParameterInfo(int index) { return *remidyParams[index]; }
     int32_t getRemidyEnumerationCount(int32_t parameterId) {
-        auto port = lilv_plugin_get_port_by_index(plugin, parameterId);
-        LilvScalePoints* scalePoints = lilv_port_get_scale_points(plugin, port);
-        return scalePoints != nullptr ? lilv_scale_points_size(scalePoints) : 0;
+        std::string idString = std::to_string(parameterId);
+        auto it = remidyParamIdToEnumCount.find(idString);
+        return it != remidyParamIdToEnumCount.end() ? it->second : 0;
     }
     remidy::ParameterEnumeration getRemidyEnumeration(int32_t parameterId, int32_t enumIndex) {
         // FIXME: should we build something to get around string objects here?

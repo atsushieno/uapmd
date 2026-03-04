@@ -261,19 +261,28 @@ void remidy::PluginInstanceLV2::ParameterSupport::inspectParameters() {
             maxValue = maxNode ? lilv_node_as_float(maxNode) : 1.0;
         }
 
-        // Get scale points (enumerations)
+        // Get scale points (enumerations). Avoid lilv_port_get_scale_points() because
+        // Lilv asserts if malformed scalePoint entries exist.
         std::vector<ParameterEnumeration> enums{};
-        auto scalePoints = lilv_port_get_scale_points(plugin, port);
+        auto scalePoints = lilv_port_get_value(plugin, port, implContext.statics->scale_point_uri_node);
         if (scalePoints) {
-            LILV_FOREACH(scale_points, spi, scalePoints) {
-                auto sp = lilv_scale_points_get(scalePoints, spi);
-                auto labelNode = lilv_scale_point_get_label(sp);
-                auto valueNode = lilv_scale_point_get_value(sp);
+            LILV_FOREACH(nodes, spi, scalePoints) {
+                const LilvNode* scalePointNode = lilv_nodes_get(scalePoints, spi);
+                auto labels = lilv_world_find_nodes(
+                    implContext.world, scalePointNode, implContext.statics->rdfs_label_node, nullptr);
+                auto values = lilv_world_find_nodes(
+                    implContext.world, scalePointNode, implContext.statics->rdf_value_node, nullptr);
+                const LilvNode* labelNode = labels ? lilv_nodes_get_first(labels) : nullptr;
+                const LilvNode* valueNode = values ? lilv_nodes_get_first(values) : nullptr;
                 if (labelNode && valueNode) {
                     auto label = std::string{lilv_node_as_string(labelNode)};
                     auto value = lilv_node_as_float(valueNode);
                     enums.emplace_back(ParameterEnumeration{label, value});
                 }
+                if (labels)
+                    lilv_nodes_free(labels);
+                if (values)
+                    lilv_nodes_free(values);
             }
             lilv_nodes_free(scalePoints);
         } else if (isToggled) {
