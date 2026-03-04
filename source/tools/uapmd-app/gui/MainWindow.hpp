@@ -14,6 +14,7 @@
 #include "PluginList.hpp"
 #include "TimelineEditor.hpp"
 #include "TrackList.hpp"
+#include "AudioImportWindow.hpp"
 #include "ExporterWindow.hpp"
 #include "AudioDeviceSettings.hpp"
 #include "ScriptEditor.hpp"
@@ -52,6 +53,7 @@ class MainWindow {
 
         TrackList trackList_;
         ExporterWindow exporterWindow_;
+        AudioImportWindow audioImportWindow_;
 
         // Plugin selection
 

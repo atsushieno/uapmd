@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,7 @@ struct AudioStemImport {
 
 struct AudioImportResult {
     bool success{false};
+    bool canceled{false};
     std::string error;
     std::vector<std::string> warnings;
     std::vector<AudioStemImport> stems;
@@ -47,6 +49,8 @@ public:
     struct AudioImportOptions {
         std::string modelPath;
         std::filesystem::path outputDirectory;
+        std::function<void(float /*progress*/, const std::string& /*message*/)> progressCallback;
+        std::function<bool()> shouldCancel;
     };
 
     static AudioImportResult importAudioFile(const std::string& filepath,

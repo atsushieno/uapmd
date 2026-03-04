@@ -26,6 +26,18 @@ namespace {
 constexpr uint32_t kTargetChannels = 2;
 constexpr size_t kWriteBlockFrames = 8192;
 
+struct SeparationCanceled : std::exception {
+    const char* what() const noexcept override {
+        return "Demucs separation canceled";
+    }
+};
+
+void checkShouldCancel(const uapmd::import::DemucsStemSeparator::ShouldCancelCallback& shouldCancel) {
+    if (shouldCancel && shouldCancel()) {
+        throw SeparationCanceled{};
+    }
+}
+
 std::pair<std::vector<float>, std::vector<float>> convertToStereo(
     const std::vector<std::vector<float>>& channels)
 {
@@ -182,7 +194,9 @@ DemucsStemSeparator::DemucsStemSeparator(std::string modelPath)
 
 DemucsStemSeparator::Result DemucsStemSeparator::separate(
     const std::string& audioFile,
-    const std::filesystem::path& outputDir) const
+    const std::filesystem::path& outputDir,
+    ProgressCallback progressCallback,
+    ShouldCancelCallback shouldCancel) const
 {
     Result result;
     if (modelPath_.empty()) {
@@ -214,7 +228,20 @@ DemucsStemSeparator::Result DemucsStemSeparator::separate(
     left = resampleChannel(left, props.sampleRate);
     right = resampleChannel(right, props.sampleRate);
 
+    auto emitProgress = [&](float progressValue, const std::string& message) {
+        checkShouldCancel(shouldCancel);
+        if (progressCallback) {
+            if (!progressCallback(progressValue, message)) {
+                throw SeparationCanceled{};
+            }
+        } else {
+            std::cout << std::format("[Demucs {:>5.1f}%] {}\n", progressValue * 100.0f, message);
+        }
+    };
+
     try {
+        checkShouldCancel(shouldCancel);
+
         auto waveform = buildEigenWaveform(left, right);
         if (waveform.size() == 0) {
             result.error = "Failed to prepare input audio";
@@ -227,8 +254,8 @@ DemucsStemSeparator::Result DemucsStemSeparator::separate(
             return result;
         }
 
-        demucscpp::ProgressCallback progress = [](float progressValue, const std::string& message) {
-            std::cout << std::format("[Demucs {:>5.1f}%] {}\n", progressValue * 100.0f, message);
+        demucscpp::ProgressCallback progress = [emitProgress](float progressValue, const std::string& message) {
+            emitProgress(progressValue, message);
         };
 
         auto separation = demucscpp::demucs_inference(model, waveform, progress);
@@ -241,6 +268,8 @@ DemucsStemSeparator::Result DemucsStemSeparator::separate(
             return result;
         }
 
+        checkShouldCancel(shouldCancel);
+
         std::error_code ec;
         std::filesystem::create_directories(outputDir, ec);
         if (ec) {
@@ -252,6 +281,7 @@ DemucsStemSeparator::Result DemucsStemSeparator::separate(
         const int stemsToWrite = std::min(static_cast<int>(stemLabels.size()), nbSources);
 
         for (int target = 0; target < stemsToWrite; ++target) {
+            checkShouldCancel(shouldCancel);
             Eigen::MatrixXf stemData(kTargetChannels, nbFrames);
             for (int channel = 0; channel < nbChannels; ++channel) {
                 for (int frame = 0; frame < nbFrames; ++frame) {
@@ -275,6 +305,10 @@ DemucsStemSeparator::Result DemucsStemSeparator::separate(
         if (!result.success && result.error.empty()) {
             result.error = "No stems were generated";
         }
+        return result;
+    } catch (const SeparationCanceled&) {
+        result.canceled = true;
+        result.success = false;
         return result;
     } catch (const std::exception& ex) {
         result.error = std::format("Demucs failed: {}", ex.what());

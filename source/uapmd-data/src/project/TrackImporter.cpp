@@ -75,6 +75,18 @@ AudioImportResult TrackImporter::importAudioFile(const std::string& filepath,
         return result;
     }
 
+    auto reportProgress = [&](float value, const std::string& message) {
+        if (options.progressCallback)
+            options.progressCallback(value, message);
+    };
+    auto checkCanceled = [&]() -> bool {
+        if (options.shouldCancel && options.shouldCancel()) {
+            result.canceled = true;
+            return true;
+        }
+        return false;
+    };
+
     std::filesystem::path outputDir = options.outputDirectory;
     if (outputDir.empty()) {
         const auto timestamp = std::chrono::system_clock::now();
@@ -86,8 +98,25 @@ AudioImportResult TrackImporter::importAudioFile(const std::string& filepath,
         outputDir = std::filesystem::temp_directory_path() / "uapmd-demucs" / std::format("{}-{}", baseName, folderTag);
     }
 
+    if (checkCanceled())
+        return result;
+
     DemucsStemSeparator separator(options.modelPath);
-    auto separation = separator.separate(filepath, outputDir);
+    reportProgress(0.0f, "Preparing Demucs input...");
+    auto separation = separator.separate(
+        filepath,
+        outputDir,
+        [reportProgress](float value, const std::string& message) {
+            reportProgress(value, message);
+            return true;
+        },
+        options.shouldCancel);
+
+    if (separation.canceled) {
+        result.canceled = true;
+        return result;
+    }
+
     if (!separation.success) {
         result.error = separation.error.empty() ? "Demucs failed to separate stems." : separation.error;
         return result;
@@ -99,6 +128,10 @@ AudioImportResult TrackImporter::importAudioFile(const std::string& filepath,
     }
 
     for (const auto& stem : separation.stems) {
+        if (checkCanceled()) {
+            result.stems.clear();
+            return result;
+        }
         AudioStemImport import;
         import.stemName = stem.name;
         import.filepath = stem.filepath;
@@ -109,6 +142,8 @@ AudioImportResult TrackImporter::importAudioFile(const std::string& filepath,
     result.success = !result.stems.empty();
     if (!result.success) {
         result.error = "No stems were imported.";
+    } else {
+        reportProgress(1.0f, "Import ready");
     }
     return result;
 }

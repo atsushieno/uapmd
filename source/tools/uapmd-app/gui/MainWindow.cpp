@@ -250,6 +250,14 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         .setChildSize = [this](const std::string& id, ImVec2 size) { setNextChildWindowSize(id, size); },
         .updateChildSizeState = [this](const std::string& id) { updateChildWindowSizeState(id); }
     });
+
+    audioImportWindow_.setCallbacks({
+        .setChildSize = [this](const std::string& id, ImVec2 size) { setNextChildWindowSize(id, size); },
+        .updateChildSizeState = [this](const std::string& id) { updateChildWindowSizeState(id); },
+        .applyImportResult = [this](uapmd::import::AudioImportResult&& result) {
+            timelineEditor_.applyAudioImportResult(std::move(result));
+        }
+    });
 }
 
 void MainWindow::render(void* window) {
@@ -387,24 +395,9 @@ void MainWindow::render(void* window) {
                     timelineEditor_.importMidiTracksWithPicker();
                     ImGui::CloseCurrentPopup();
                 }
-                if (ImGui::MenuItem("Import Split Audio Tracks (Demucs)", nullptr, false, timelineEditor_.hasDemucsModel())) {
-                    timelineEditor_.importAudioTracksWithPicker();
+                if (ImGui::MenuItem("Import Split Audio Tracks (Demucs)")) {
+                    audioImportWindow_.open();
                     ImGui::CloseCurrentPopup();
-                }
-                ImGui::Separator();
-                if (ImGui::MenuItem("Load Stems Model")) {
-                    timelineEditor_.requestDemucsModelSelection();
-                    ImGui::CloseCurrentPopup();
-                }
-                if (timelineEditor_.hasDemucsModel()) {
-                    auto label = timelineEditor_.demucsModelLabel();
-                    std::string unloadLabel = label.empty()
-                        ? "Unload Model"
-                        : std::format("Unload {}", label);
-                    if (ImGui::MenuItem(unloadLabel.c_str())) {
-                        timelineEditor_.clearDemucsModel();
-                        ImGui::CloseCurrentPopup();
-                    }
                 }
                 ImGui::EndPopup();
             }
@@ -456,6 +449,7 @@ void MainWindow::render(void* window) {
     renderDeviceSettingsWindow();
     renderAudioGraphEditorWindow();
     exporterWindow_.render(uiScale_);
+    audioImportWindow_.render(uiScale_);
 
     scriptEditor_.render();
 

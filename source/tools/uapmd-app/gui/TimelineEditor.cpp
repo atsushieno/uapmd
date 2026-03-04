@@ -1338,32 +1338,6 @@ void TimelineEditor::importMidiTracksWithPicker() {
     }
 }
 
-void TimelineEditor::importAudioTracksWithPicker() {
-    std::vector<uapmd::DocumentFilter> filters{
-        {"Audio Files", {}, {"*.wav", "*.flac", "*.ogg"}},
-        {"All Files",   {}, {"*"}}
-    };
-
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
-        provider->pickOpenDocuments(
-            filters,
-            false,
-            [this](uapmd::DocumentPickResult result) {
-                if (!result.success || result.handles.empty())
-                    return;
-                resolveDocumentHandle(
-                    result.handles[0],
-                    [this](const std::filesystem::path& resolved) {
-                        importAudioTracks(resolved.string());
-                    },
-                    [](const std::string& error) {
-                        platformError("Import Failed", error);
-                    });
-            }
-        );
-    }
-}
-
 void TimelineEditor::importMidiTracks(const std::string& filepath) {
     auto importResult = uapmd::import::TrackImporter::importMidiFile(filepath);
     auto warnings = importResult.warnings;
@@ -1427,20 +1401,14 @@ void TimelineEditor::importMidiTracks(const std::string& filepath) {
     }
 }
 
-void TimelineEditor::importAudioTracks(const std::string& filepath) {
-    if (!ensureDemucsModelSelected())
+void TimelineEditor::applyAudioImportResult(uapmd::import::AudioImportResult result) {
+    auto warnings = result.warnings;
+    if (result.canceled)
         return;
-
-    uapmd::import::TrackImporter::AudioImportOptions options;
-    options.modelPath = demucsModelPath_;
-
-    auto importResult = uapmd::import::TrackImporter::importAudioFile(filepath, options);
-    auto warnings = importResult.warnings;
-
-    if (!importResult.success) {
-        std::string message = importResult.error.empty()
+    if (!result.success) {
+        std::string message = result.error.empty()
             ? "Failed to import audio stems."
-            : importResult.error;
+            : result.error;
         if (!warnings.empty()) {
             message += "\n\nWarnings:\n";
             for (const auto& warning : warnings)
@@ -1453,7 +1421,7 @@ void TimelineEditor::importAudioTracks(const std::string& filepath) {
     auto& appModel = uapmd::AppModel::instance();
     size_t importedCount = 0;
 
-    for (const auto& stem : importResult.stems) {
+    for (const auto& stem : result.stems) {
         int32_t newTrackIndex = appModel.addTrack();
         if (newTrackIndex < 0) {
             warnings.push_back(std::format("{}: Failed to create track", stem.clipDisplayName));
@@ -1502,62 +1470,6 @@ void TimelineEditor::importAudioTracks(const std::string& filepath) {
         }
         platformError("Import Failed", message);
     }
-}
-
-bool TimelineEditor::ensureDemucsModelSelected() {
-    if (!demucsModelPath_.empty() && std::filesystem::exists(demucsModelPath_))
-        return true;
-    return requestDemucsModelSelection();
-}
-
-bool TimelineEditor::requestDemucsModelSelection() {
-    std::vector<uapmd::DocumentFilter> filters{
-        {"Demucs ggml Model", {}, {"*.bin"}},
-        {"All Files", {}, {"*"}}
-    };
-
-    bool requested = false;
-    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
-        requested = true;
-        provider->pickOpenDocuments(
-            filters,
-            false,
-            [this](uapmd::DocumentPickResult result) {
-                if (!result.success || result.handles.empty())
-                    return;
-                resolveDocumentHandle(
-                    result.handles[0],
-                    [this](const std::filesystem::path& resolved) {
-                        demucsModelPath_ = resolved.string();
-                    },
-                    [](const std::string& error) {
-                        platformError("Demucs Model", error);
-                    });
-            }
-        );
-    }
-
-    if (!requested)
-        platformError("Demucs Model", "Document provider unavailable. Cannot load model.");
-
-    return false;
-}
-
-void TimelineEditor::clearDemucsModel() {
-    demucsModelPath_.clear();
-}
-
-bool TimelineEditor::hasDemucsModel() const {
-    return !demucsModelPath_.empty();
-}
-
-std::string TimelineEditor::demucsModelLabel() const {
-    if (demucsModelPath_.empty())
-        return {};
-    auto label = std::filesystem::path(demucsModelPath_).filename().string();
-    if (label.empty())
-        label = demucsModelPath_;
-    return label;
 }
 
 }  // namespace uapmd::gui
