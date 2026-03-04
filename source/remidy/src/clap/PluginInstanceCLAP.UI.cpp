@@ -229,6 +229,8 @@ namespace remidy {
     bool PluginInstanceCLAP::UISupport::setSize(uint32_t width, uint32_t height) {
         if (!created || !owner || !owner->plugin)
             return false;
+        if (!canResize())
+            return false;
         bool success = false;
         withGui([&] {
             success = owner->plugin->guiSetSize(width, height);
@@ -269,6 +271,9 @@ namespace remidy {
 
         if (!hostResized)
             return false;
+
+        if (!canResize())
+            return true;
 
         return setSize(width, height);
     }
