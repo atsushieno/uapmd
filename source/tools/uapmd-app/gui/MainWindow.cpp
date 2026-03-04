@@ -823,7 +823,7 @@ std::optional<TrackInstance> MainWindow::buildTrackInstanceInfo(int32_t instance
         deviceExists = true;
         deviceRunning = (*deviceState)->running;
         deviceInstantiating = (*deviceState)->instantiating;
-        deviceSupported = uapmd::midiApiSupportsUmp((*deviceState)->apiName);
+        deviceSupported = uapmd::midiApiSupportsDynamicUmpEndpoints((*deviceState)->apiName);
     }
 
     TrackInstance ti;

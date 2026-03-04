@@ -625,12 +625,12 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         }
 
         // Reuse the dedicated logic for MIDI device initialization when supported.
-        if (midiApiSupportsUmp(config.apiName)) {
+        if (midiApiSupportsDynamicUmpEndpoints(config.apiName)) {
             enableUmpDevice(instanceId, deviceLabel);
         } else {
             state->running = false;
             state->hasError = true;
-            state->statusMessage = "Virtual MIDI 2.0 devices are unavailable on this platform.";
+            state->statusMessage = "Dynamic Virtual MIDI 2.0 devices are unavailable on this platform.";
         }
 
         result.device = state->device;
@@ -731,7 +731,7 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
     // Lock the device state for modifications
     std::lock_guard guard(deviceState->mutex);
 
-    if (!midiApiSupportsUmp(deviceState->apiName)) {
+    if (!midiApiSupportsDynamicUmpEndpoints(deviceState->apiName)) {
         deviceState->running = false;
         deviceState->hasError = true;
         deviceState->statusMessage = "Virtual MIDI 2.0 devices are unavailable on this platform.";

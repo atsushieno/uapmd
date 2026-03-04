@@ -129,8 +129,12 @@ std::optional<libremidi::API> uapmd::resolveLibreMidiUmpApi(const std::string& a
     return pick_default_api(apis);
 }
 
-bool uapmd::midiApiSupportsUmp(const std::string& apiName) {
+bool uapmd::midiApiSupportsDynamicUmpEndpoints(const std::string& apiName) {
+#if ANDROID
+    return false;
+#else
     return resolveLibreMidiUmpApi(apiName).has_value();
+#endif
 }
 
 uapmd::MidiIODevice *uapmd::MidiIODevice::instance(std::string driverName) {

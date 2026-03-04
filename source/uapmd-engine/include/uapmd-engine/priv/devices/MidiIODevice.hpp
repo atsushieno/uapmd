@@ -27,5 +27,5 @@ namespace uapmd {
 #endif
                                                           );
 
-    bool midiApiSupportsUmp(const std::string& apiName);
+    bool midiApiSupportsDynamicUmpEndpoints(const std::string& apiName);
 }
