@@ -1,11 +1,13 @@
 #include <cstring>
 #include <algorithm>
+#include <array>
 #include <format>
 #include <iostream>
 #include <filesystem>
 #include <optional>
 #include <ranges>
 #include <cmath>
+#include <limits>
 
 #include "PlatformDialogs.hpp"
 
@@ -18,6 +20,24 @@
 #include "FontIcons.hpp"
 #include "../AppModel.hpp"
 #include "../DocumentProviderHelpers.hpp"
+
+namespace {
+constexpr std::array<float, 7> kUiScaleOptions{0.5f, 0.8f, 1.0f, 1.2f, 1.5f, 2.0f, 4.0f};
+constexpr std::array<const char*, 7> kUiScaleLabels{"x0.5", "x0.8", "x1.0", "x1.2", "x1.5", "x2.0", "x4.0"};
+
+float snapScaleToOption(float scale) {
+    float snapped = kUiScaleOptions.front();
+    float bestDiff = std::numeric_limits<float>::max();
+    for (float option : kUiScaleOptions) {
+        float optionDiff = std::fabs(option - scale);
+        if (optionDiff < bestDiff) {
+            bestDiff = optionDiff;
+            snapped = option;
+        }
+    }
+    return snapped;
+}
+} // namespace
 
 namespace uapmd::gui {
 
@@ -336,21 +356,19 @@ void MainWindow::render(void* window) {
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted("Scale:");
             ImGui::SameLine();
-            static constexpr float scaleOptions[] = {0.5f, 0.8f, 1.0f, 1.2f, 1.5f, 2.0f, 4.0f};
-            static constexpr const char* scaleLabels[] = {"x0.5", "x0.8", "x1.0", "x1.2", "x1.5", "x2.0", "x4.0"};
             int currentScaleIndex = 0;
-            for (size_t i = 0; i < std::size(scaleOptions); ++i) {
-                if (std::fabs(uiScale_ - scaleOptions[i]) < 0.001f) {
+            for (size_t i = 0; i < kUiScaleOptions.size(); ++i) {
+                if (std::fabs(uiScale_ - kUiScaleOptions[i]) < 0.001f) {
                     currentScaleIndex = static_cast<int>(i);
                     break;
                 }
             }
             int selectedIndex = currentScaleIndex;
             ImGui::SetNextItemWidth(100.0f * uiScale_);
-            if (ImGui::BeginCombo("##UiScaleCombo", scaleLabels[currentScaleIndex])) {
-                for (int i = 0; i < static_cast<int>(std::size(scaleOptions)); ++i) {
+            if (ImGui::BeginCombo("##UiScaleCombo", kUiScaleLabels[currentScaleIndex])) {
+                for (int i = 0; i < static_cast<int>(kUiScaleOptions.size()); ++i) {
                     bool isSelected = (selectedIndex == i);
-                    if (ImGui::Selectable(scaleLabels[i], isSelected)) {
+                    if (ImGui::Selectable(kUiScaleLabels[i], isSelected)) {
                         selectedIndex = i;
                     }
                     if (isSelected) {
@@ -360,7 +378,7 @@ void MainWindow::render(void* window) {
                 ImGui::EndCombo();
             }
             if (selectedIndex != currentScaleIndex) {
-                applyUiScale(scaleOptions[selectedIndex]);
+                applyUiScale(kUiScaleOptions[selectedIndex]);
                 requestWindowResize();
             }
             ImGui::SameLine();
@@ -494,6 +512,17 @@ void MainWindow::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChang
 void MainWindow::update() {
     if (auto* provider = uapmd::AppModel::instance().documentProvider())
         provider->tick();
+}
+
+void MainWindow::applySystemUiScale(float scale) {
+    if (scale <= 0.0f)
+        return;
+    const float clamped = std::clamp(scale, 0.5f, 4.0f);
+    const float snapped = snapScaleToOption(clamped);
+    if (std::fabs(snapped - uiScale_) < 0.01f)
+        return;
+    applyUiScale(snapped);
+    requestWindowResize();
 }
 
 void MainWindow::applyUiScale(float scale) {

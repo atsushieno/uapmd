@@ -359,7 +359,7 @@ public:
         #include <android/log.h>
         SDL_Window* window = SDL_CreateWindow(
             title, width, height,
-            SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN
+            SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY
         );
 
         if (!window) {

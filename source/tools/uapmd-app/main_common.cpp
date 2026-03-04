@@ -19,7 +19,7 @@
     #include <GLFW/glfw3.h>
 #endif
 
-#if defined(USE_SDL_RENDERER) && defined(USE_SDL3_BACKEND)
+#if defined(USE_SDL3_BACKEND)
     #include <SDL3/SDL.h>
 #endif
 
@@ -156,23 +156,21 @@ int runMainLoop(int argc, char** argv) {
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 
-    // Apply DPI scaling
-    float dpi_scale = 1.0f;
-
-#if defined(__ANDROID__)
-    // Android: Scale UI for touch interactions (mobile DPI)
-    dpi_scale = 3.0f;
-#elif defined(__APPLE__) && defined(USE_SDL_RENDERER)
-    // iOS: query the display's logical→physical pixel ratio from SDL3.
-    // SDL_GetWindowDisplayScale returns e.g. 2.0 on Retina / 3.0 on high-DPI iPhone.
-    if (window && window->sdlWindow)
-        dpi_scale = SDL_GetWindowDisplayScale(window->sdlWindow);
+    auto recommendUiScale = [](uapmd::gui::WindowHandle* handle) -> float {
+#if defined(__ANDROID__) && defined(USE_SDL3_BACKEND)
+        if (handle && handle->sdlWindow) {
+            float displayScale = SDL_GetWindowDisplayScale(handle->sdlWindow);
+            if (displayScale <= 0.0f) {
+                if (SDL_DisplayID display = SDL_GetDisplayForWindow(handle->sdlWindow)) {
+                    displayScale = SDL_GetDisplayContentScale(display);
+                }
+            }
+            if (displayScale > 0.0f)
+                return std::clamp(displayScale * 0.75f, 1.1f, 2.0f);
+        }
 #endif
-
-    if (dpi_scale > 1.1f && dpi_scale <= 3.0f) {
-        ImGuiStyle& style = ImGui::GetStyle();
-        style.ScaleAllSizes(dpi_scale);
-    }
+        return 1.0f;
+    };
 
     // Load application font BEFORE initializing renderer
     // The renderer initialization builds and uploads the font atlas to GPU
@@ -224,6 +222,10 @@ int runMainLoop(int argc, char** argv) {
 
     // Create main window controller
     uapmd::gui::MainWindow mainWindow(defaults);
+    float suggestedUiScale = recommendUiScale(window);
+    if (suggestedUiScale > 1.01f) {
+        mainWindow.applySystemUiScale(suggestedUiScale);
+    }
 
     // Start audio
     uapmd::AppModel::instance().sequencer().startAudio();

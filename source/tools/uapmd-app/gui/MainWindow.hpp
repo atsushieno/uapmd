@@ -100,6 +100,7 @@ class MainWindow {
         void update();
         bool& isOpen() { return isOpen_; }
         bool consumePendingWindowResize(ImVec2& size);
+        void applySystemUiScale(float scale);
 
     private:
         // No native embedding; we use dedicated windows for plugin UIs
