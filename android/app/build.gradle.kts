@@ -2,7 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
-val cpmSourceCacheDir = System.getenv("HOME") + "/.cache/CPM/uapmdandroid"
+val cpmSourceCacheDir = System.getenv("HOME") + "/.cache/CPM/uapmd"
 
 val aapDir = project.projectDir.parentFile.listFiles {
     it.name == "external" }.firstOrNull()?.listFiles { it.name == "aap-core" }?.firstOrNull()

@@ -543,6 +543,13 @@ if(NOT TARGET imtimeline)
     # ImTimeline depends on ImGui
     target_link_libraries(imtimeline PUBLIC imgui)
     target_compile_definitions(imtimeline PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
+
+    # Timeline.cpp calls ImGui::Text(variable) without a format string literal,
+    # triggering -Wformat-security.  We suppress it here rather than patching the
+    # third-party source.
+    target_compile_options(imtimeline PRIVATE
+        $<$<CXX_COMPILER_ID:Clang,AppleClang,GNU>:-Wno-format-security>
+    )
 endif()
 
 # Add shared ImGui platform backend library
