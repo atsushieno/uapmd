@@ -6,6 +6,11 @@ cmake_minimum_required(VERSION 3.18)
 
 add_library(remidy-imgui-shared STATIC
     PlatformBackend.cpp
+    PlatformBackend_Win32.cpp
+    PlatformBackend_SDL3.cpp
+    PlatformBackend_SDL2.cpp
+    PlatformBackend_GLFW.cpp
+    PlatformBackend_OpenGL.cpp
     MidiKeyboard.cpp
 )
 
