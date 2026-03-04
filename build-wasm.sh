@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --help|-h)
             cat <<HELP
-Usage: ./build-wasm-imgui.sh [--use-system]
+Usage: ./build-wasm.sh [--use-system]
 
 Options:
   --use-system   Skip automatic emsdk checkout and expect emcmake/emcc in PATH.

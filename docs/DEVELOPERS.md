@@ -3,6 +3,8 @@
 
 ## Project Structure & Module Organization
 
+In the latest source tree, the following description applies to the `source` directory.
+
 - `include/`: the library public API (`include/{module}`)
   - They are split under `include/{module}/priv` (direct references to those files may break at any version)
 - `src/`: the library sources.
