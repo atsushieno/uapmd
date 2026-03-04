@@ -70,13 +70,20 @@ static void swapGuidByteOrder(std::array<unsigned char, 16>& bytes) {
     std::reverse(bytes.begin() + 6, bytes.begin() + 8);
 }
 
+static void normalizeVst3TuidByteOrder(std::array<unsigned char, 16>& bytes) {
+#if _WIN32
+    // VST3 uses COM-compatible GUID byte ordering on Windows only.
+    swapGuidByteOrder(bytes);
+#endif
+}
+
 std::string vst3TuidToString(const char* s, const size_t size, const bool capital) {
     if (size < 16)
         return hexBinaryToString(s, size, capital);
 
     std::array<unsigned char, 16> bytes{};
     memcpy(bytes.data(), s, 16);
-    swapGuidByteOrder(bytes);
+    normalizeVst3TuidByteOrder(bytes);
     return hexBinaryToString(reinterpret_cast<const char*>(bytes.data()), bytes.size(), capital);
 }
 
@@ -87,7 +94,7 @@ std::string stringToVst3Tuid(std::string s) {
 
     std::array<unsigned char, 16> ret{};
     memcpy(ret.data(), bytes.data(), ret.size());
-    swapGuidByteOrder(ret);
+    normalizeVst3TuidByteOrder(ret);
     return std::string(reinterpret_cast<const char*>(ret.data()), ret.size());
 }
 
