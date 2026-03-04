@@ -163,6 +163,10 @@ void remidy::PluginFormatAUImpl::createInstance(
         __block auto self = this;
         __block auto formatLogger = logger;
 
+#if !TARGET_OS_IPHONE
+        // AUv2 fallback: macOS only. iOS supports AUv3 exclusively; all components
+        // have kAudioComponentFlag_IsV3AudioUnit set, so this branch is never reached
+        // on iOS. Guard it at compile time to avoid linking against excluded AUv2 sources.
         if (!isV3) {
             // FIXME: As of 2026 we use the legacy synchronous API to ensure Apple's Rosetta bridge spins up when the AU is Intel-only.
             //  This makes plugins like Absynth 5 successfully loaded on arm64 macOS.
@@ -178,9 +182,16 @@ void remidy::PluginFormatAUImpl::createInstance(
             cb(std::unique_ptr<PluginInstance>(new PluginInstanceAUv2(self, options, formatLogger, info, component, instance)), "");
             return;
         }
+#endif // !TARGET_OS_IPHONE
 
-        // Use AUAudioUnit API for native AUv3s
+        // Use AUAudioUnit API for native AUv3s.
+        // On iOS, AUv3 plugins always run out-of-process (extension sandbox).
+        // kAudioComponentInstantiation_LoadInProcess is macOS-only.
+#if TARGET_OS_IPHONE
+        AudioComponentInstantiationOptions auOptions = kAudioComponentInstantiation_LoadOutOfProcess;
+#else
         AudioComponentInstantiationOptions auOptions = kAudioComponentInstantiation_LoadInProcess;
+#endif
 
         __block bool instantiationCompleted = false;
         __block PluginInstance* createdInstanceRaw = nullptr;

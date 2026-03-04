@@ -19,6 +19,10 @@
     #include <GLFW/glfw3.h>
 #endif
 
+#if defined(USE_SDL_RENDERER) && defined(USE_SDL3_BACKEND)
+    #include <SDL3/SDL.h>
+#endif
+
 // OpenGL headers only needed when not using DirectX 11
 #ifndef USE_DIRECTX11_RENDERER
 // Ensure GL prototypes for framebuffer functions on Linux
@@ -32,7 +36,9 @@
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     #include <SDL3/SDL_opengles2.h>
 #pragma clang diagnostic pop
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && !defined(USE_SDL_RENDERER)
+    // macOS only: OpenGL is unavailable on iOS Simulator (Apple Silicon).
+    // iOS uses SDL_Renderer (Metal-backed) via imgui_impl_sdlrenderer3.
     #include <OpenGL/gl3.h>
 #elif defined(_WIN32)
     // Windows: only include basic OpenGL 1.1 headers
@@ -150,13 +156,17 @@ int runMainLoop(int argc, char** argv) {
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 
-    // Apply DPI scaling (simplified for now)
+    // Apply DPI scaling
     float dpi_scale = 1.0f;
-    // TODO: Add platform-specific DPI detection through backend abstraction
 
 #if defined(__ANDROID__)
     // Android: Scale UI for touch interactions (mobile DPI)
     dpi_scale = 3.0f;
+#elif defined(__APPLE__) && defined(USE_SDL_RENDERER)
+    // iOS: query the display's logical→physical pixel ratio from SDL3.
+    // SDL_GetWindowDisplayScale returns e.g. 2.0 on Retina / 3.0 on high-DPI iPhone.
+    if (window && window->sdlWindow)
+        dpi_scale = SDL_GetWindowDisplayScale(window->sdlWindow);
 #endif
 
     if (dpi_scale > 1.1f && dpi_scale <= 3.0f) {
@@ -235,7 +245,7 @@ int runMainLoop(int argc, char** argv) {
         // Process queued tasks from remidy
         eventLoopPtr->processQueuedTasks();
 
-#ifndef USE_DIRECTX11_RENDERER
+#if !defined(USE_DIRECTX11_RENDERER) && !defined(USE_SDL_RENDERER)
         // CRITICAL: Make our GL context current BEFORE any ImGui/GL operations
         // Plugins may have grabbed the context during event processing or callbacks
         windowingBackend->makeContextCurrent(window);
@@ -262,7 +272,7 @@ int runMainLoop(int argc, char** argv) {
         glReadBuffer(GL_BACK);
 #endif
 #endif
-#endif // !USE_DIRECTX11_RENDERER
+#endif // !USE_DIRECTX11_RENDERER && !USE_SDL_RENDERER
 
         // Start the Dear ImGui frame
         imguiRenderer->newFrame();
@@ -293,7 +303,7 @@ int runMainLoop(int argc, char** argv) {
         // Rendering
         ImGui::Render();
 
-#ifndef USE_DIRECTX11_RENDERER
+#if !defined(USE_DIRECTX11_RENDERER) && !defined(USE_SDL_RENDERER)
         // Reassert before we execute GL commands in case a plugin reclaimed it mid-frame
         windowingBackend->makeContextCurrent(window);
         #if !defined(REMIDY_SKIP_GL_FRAMEBUFFER_BIND)
@@ -327,7 +337,18 @@ int runMainLoop(int argc, char** argv) {
         glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w,
                      clear_color.z * clear_color.w, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT);
-#endif // !USE_DIRECTX11_RENDERER
+#elif defined(USE_SDL_RENDERER)
+        // Metal path (iOS): clear the SDL_Renderer framebuffer before drawing.
+        if (window->sdlRenderer) {
+            SDL_SetRenderDrawColor(
+                window->sdlRenderer,
+                static_cast<Uint8>(clear_color.x * clear_color.w * 255),
+                static_cast<Uint8>(clear_color.y * clear_color.w * 255),
+                static_cast<Uint8>(clear_color.z * clear_color.w * 255),
+                static_cast<Uint8>(clear_color.w * 255));
+            SDL_RenderClear(window->sdlRenderer);
+        }
+#endif // !USE_DIRECTX11_RENDERER && !USE_SDL_RENDERER
 
         imguiRenderer->renderDrawData();
 

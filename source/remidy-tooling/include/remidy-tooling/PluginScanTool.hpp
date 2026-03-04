@@ -1,5 +1,8 @@
 #pragma once
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #include "remidy/remidy.hpp"
 
 namespace remidy_tooling {
@@ -14,6 +17,10 @@ namespace remidy_tooling {
         std::vector<std::string> clapSearchPaths{};
 #if ANDROID
         std::unique_ptr<PluginFormatAAP> aap;
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+        // iOS: AUv3 is the only supported plugin format.
+        // VST3, LV2, and CLAP are desktop-only and excluded from the iOS build.
+        std::unique_ptr<PluginFormatAU> au;
 #else
         std::unique_ptr<PluginFormatVST3> vst3;
         std::unique_ptr<PluginFormatLV2> lv2;

@@ -79,6 +79,11 @@ if(UAPMD_BUILDING_WASM)
             DEPENDS ${_UAPMD_WASM_WEB_SOURCE_FILES}
     )
     add_custom_target(uapmd-app-web-assets ALL DEPENDS "${_UAPMD_WASM_WEB_STAMP}")
+elseif(IOS)
+    set(UAPMD_APP_SOURCE_FILES
+            ${UAPMD_APP_COMMON_SOURCE_FILES}
+            ios_main.mm
+    )
 elseif(NOT ANDROID)
     set(UAPMD_APP_SOURCE_FILES
             ${UAPMD_APP_COMMON_SOURCE_FILES}
@@ -96,6 +101,10 @@ if(ANDROID)
     add_library(uapmd-app SHARED ${UAPMD_APP_COMMON_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET uapmd-app)
     add_library(main SHARED android_main.cpp)
+elseif(IOS)
+    # iOS: standard app bundle; SDL3 provides UIApplicationDelegate.
+    add_executable(uapmd-app MACOSX_BUNDLE ${UAPMD_APP_SOURCE_FILES})
+    set(UAPMD_COMPILE_TARGET uapmd-app)
 elseif(UAPMD_BUILDING_WASM)
     add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET uapmd-app)
@@ -120,7 +129,7 @@ set(BACKEND_LIBRARIES "")
 set(BACKEND_INCLUDE_DIRS "")
 
 set(_UAPMD_REQUIRE_SDL3 OFF)
-if(UAPMD_BUILDING_WASM)
+if(UAPMD_BUILDING_WASM OR IOS)
     set(_UAPMD_REQUIRE_SDL3 ON)
 endif()
 
@@ -185,6 +194,31 @@ if(NOT BACKEND_FOUND)
                 message(STATUS "uapmd: SDL3 version: ${SDL3_VERSION}")
             endif()
         endif()
+    endif()
+endif()
+
+# iOS: SDL3 is required (Metal/SDL_Renderer path). Build from source via CPM if not found.
+if(IOS AND NOT BACKEND_FOUND)
+    message(STATUS "SDL3 not found for iOS; fetching from source via CPM")
+    CPMAddPackage(
+        NAME SDL3
+        GIT_TAG release-3.2.10
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL
+        OPTIONS
+            "SDL_STATIC ON"
+            "SDL_SHARED OFF"
+            "SDL_TEST_LIBRARY OFF"
+            "SDL_TESTS OFF"
+            "SDL_EXAMPLES OFF"
+    )
+    if(TARGET SDL3::SDL3-static)
+        set(BACKEND_FOUND TRUE)
+        set(BACKEND_TYPE "SDL3")
+        set(BACKEND_LIBRARIES SDL3::SDL3-static)
+        add_compile_definitions(USE_SDL3_BACKEND)
+        message(STATUS "Using SDL3 backend for iOS (via CPM)")
+    else()
+        message(FATAL_ERROR "Failed to build SDL3 from source for iOS via CPM.")
     endif()
 endif()
 
@@ -428,8 +462,12 @@ if(NOT TARGET imgui)
             ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp
             ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
         )
+    elseif(IOS)
+        # iOS: SDL_Renderer backend (SDL3 picks Metal automatically on iOS).
+        # OpenGL ES is unavailable on iOS Simulator (Apple Silicon).
+        list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_sdlrenderer3.cpp)
     else()
-        # OpenGL renderer for non-Win32 backends
+        # OpenGL renderer for non-Win32, non-iOS backends
         list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
     endif()
 
@@ -459,6 +497,10 @@ if(NOT TARGET imgui)
     elseif(ANDROID)
         target_link_libraries(imgui PUBLIC GLESv3 EGL)
         target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_ES3)
+    elseif(IOS)
+        # SDL_Renderer on iOS maps to Metal; link Metal and MetalKit frameworks.
+        target_link_libraries(imgui PUBLIC "-framework Metal" "-framework MetalKit")
+        target_compile_definitions(imgui PUBLIC USE_SDL_RENDERER)
     elseif(APPLE)
         find_package(OpenGL REQUIRED)
         target_link_libraries(imgui PUBLIC OpenGL::GL)
@@ -558,6 +600,13 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
             "-framework AppKit"
             "-framework Cocoa"
     )
+elseif(IOS)
+    set(uapmd_LIBS_PLAT
+            "-framework AudioToolbox"
+            "-framework UIKit"
+            "-framework Metal"
+            "-framework MetalKit"
+    )
 endif ()
 
 set(_uapmd_app_link_libraries
@@ -599,6 +648,8 @@ endif()
 # Desktop: thin executables link the OBJECT library.
 if(ANDROID)
     target_link_libraries(main PRIVATE uapmd-app)
+elseif(IOS)
+    # iOS: uapmd-app is built directly from UAPMD_COMPILE_TARGET (no OBJECT indirection)
 elseif(NOT UAPMD_BUILDING_WASM)
     target_link_libraries(uapmd-app PRIVATE ${UAPMD_COMPILE_TARGET})
     if(APPLE)
@@ -606,8 +657,8 @@ elseif(NOT UAPMD_BUILDING_WASM)
     endif()
 endif()
 
-# Create a .dSYM file on macOS for each executable
-if(APPLE AND NOT UAPMD_BUILDING_WASM)
+# Create a .dSYM file on macOS for each executable (Xcode handles this for iOS)
+if(APPLE AND NOT UAPMD_BUILDING_WASM AND NOT IOS)
     add_custom_command(TARGET uapmd-app POST_BUILD
             COMMAND dsymutil $<TARGET_FILE:uapmd-app>)
     add_custom_command(TARGET uapmd-app-bundle POST_BUILD
@@ -616,7 +667,16 @@ endif()
 
 target_compile_features(${UAPMD_COMPILE_TARGET} PRIVATE cxx_std_23)
 
-if(APPLE AND NOT UAPMD_BUILDING_WASM)
+if(IOS)
+    set(UAPMD_APP_IOS_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/UapmdApp-iOS-Info.plist")
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Info-iOS.plist.in ${UAPMD_APP_IOS_INFO_PLIST} @ONLY)
+    set_target_properties(uapmd-app PROPERTIES
+            MACOSX_BUNDLE_INFO_PLIST ${UAPMD_APP_IOS_INFO_PLIST}
+            XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+    )
+elseif(APPLE AND NOT UAPMD_BUILDING_WASM)
     set(UAPMD_APP_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/UapmdApp-Info.plist")
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in ${UAPMD_APP_INFO_PLIST} @ONLY)
     set_target_properties(uapmd-app-bundle PROPERTIES
@@ -640,8 +700,8 @@ if(APPLE AND NOT UAPMD_BUILDING_WASM)
 endif()
 
 # Create symbolic link to js directory for script editor module resolution
-# (Not applicable on Android - files would be in APK assets)
-if(NOT ANDROID AND NOT UAPMD_BUILDING_WASM)
+# (Not applicable on Android or iOS - files would be in app bundle assets)
+if(NOT ANDROID AND NOT UAPMD_BUILDING_WASM AND NOT IOS)
     add_custom_command(TARGET uapmd-app POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${UAPMD_JS_DIR}
@@ -663,4 +723,14 @@ if(ANDROID)
     find_package(SDL3 REQUIRED CONFIG)
     target_link_libraries(uapmd-app PUBLIC SDL3::SDL3)
     message(STATUS "Android build configured with SDL3 support")
+endif()
+
+# iOS-specific configuration
+if(IOS)
+    target_compile_definitions(uapmd-app PRIVATE
+        USE_SDL_RENDERER       # Use SDL_Renderer (Metal-backed) instead of OpenGL
+    )
+    # BACKEND_LIBRARIES was resolved above (find_package or CPM); use it directly.
+    target_link_libraries(uapmd-app PUBLIC ${BACKEND_LIBRARIES})
+    message(STATUS "iOS build configured with SDL3 + SDL_Renderer (Metal) support")
 endif()

@@ -1,5 +1,10 @@
 
-#if !ANDROID && !defined(__EMSCRIPTEN__)
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+// cpplocate is a desktop-only library: excluded on Android, Emscripten, and iOS.
+// CMake sets UAPMD_ENABLE_CPPLOCATE=OFF for those platforms; guard the include here too.
+#if !ANDROID && !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
 #include <cpplocate/cpplocate.h>
 #endif
 #include "remidy-tooling/PluginScanTool.hpp"
@@ -9,7 +14,8 @@ const char* TOOLING_DIR_NAME= "remidy-tooling";
 remidy_tooling::PluginScanTool::PluginScanTool() {
 #if ANDROID
     std::filesystem::path dir{};
-#elif defined(__EMSCRIPTEN__)
+#elif defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+    // No filesystem-based plugin cache path on iOS (sandboxed app bundle).
     std::filesystem::path dir{};
 #else
     auto dir = cpplocate::localDir(TOOLING_DIR_NAME);
@@ -22,12 +28,16 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
     formats_ = { aap.get() };
 #elif defined(__EMSCRIPTEN__)
     formats_.clear();
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+    // iOS: AUv3 is the only supported plugin format.
+    // VST3, LV2, and CLAP source files are excluded on iOS via CMake (NOT IOS guards).
+    au = remidy::PluginFormatAU::create();
+    formats_ = { au.get() };
 #else
     vst3 = remidy::PluginFormatVST3::create(vst3SearchPaths);
     lv2 = remidy::PluginFormatLV2::create(lv2SearchPaths);
     clap = remidy::PluginFormatCLAP::create(clapSearchPaths);
 #if __APPLE__
-    //au = remidy::PluginFormatAU::create();
     au = remidy::PluginFormatAU::create();
 #endif
 

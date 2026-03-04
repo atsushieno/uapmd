@@ -1,5 +1,10 @@
 #include <cmath>
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+#import <CoreAudioKit/AUViewController.h>
+#else
 #import <Cocoa/Cocoa.h>
+#endif
 #import <AudioToolbox/AUAudioUnit.h>
 #include "remidy/remidy.hpp"
 #include "PluginFormatAU.hpp"
@@ -26,8 +31,6 @@ namespace remidy {
 
         is_floating = isFloating;
         host_resize_handler = resizeHandler;
-        // NOTE: some non-trivial replacement during AUv2->AUv3 migration
-        // Can't use __block in lambda captures, use regular bool
         bool success = false;
 
         EventLoop::runTaskOnMainThread([&] {
@@ -38,6 +41,52 @@ namespace remidy {
                 // Use a semaphore to wait for async completion
                 dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
 
+#if TARGET_OS_IPHONE
+                // On iOS, the block receives UIViewController*.
+                [owner->audioUnit requestViewControllerWithCompletionHandler:^(UIViewController * _Nullable viewController) {
+                    @autoreleasepool {
+                        if (viewController == nil) {
+                            dispatch_semaphore_signal(semaphore);
+                            return;
+                        }
+
+                        ns_view_controller = (__bridge void*)[viewController retain];
+                        UIView* view = viewController.view;
+
+                        if (view == nil) {
+                            [viewController release];
+                            ns_view_controller = nullptr;
+                            dispatch_semaphore_signal(semaphore);
+                            return;
+                        }
+
+                        ns_view = (__bridge void*)[view retain];
+
+                        // Embed as a child view controller into the container VC.
+                        // parentHandle is a UIViewController* from IOSContainerWindow::getHandle().
+                        if (parentHandle) {
+                            UIViewController* parentVC = (__bridge UIViewController*)parentHandle;
+                            [parentVC addChildViewController:viewController];
+                            view.frame = parentVC.view.bounds;
+                            view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                            [parentVC.view addSubview:view];
+                            [viewController didMoveToParentViewController:parentVC];
+
+                            CGSize preferred = viewController.preferredContentSize;
+                            if (host_resize_handler && preferred.width > 0 && preferred.height > 0)
+                                host_resize_handler((uint32_t)preferred.width, (uint32_t)preferred.height);
+
+                            attached = true;
+                        }
+
+                        created = true;
+                        visible = false;
+                        success = true;
+                        dispatch_semaphore_signal(semaphore);
+                    }
+                }];
+#else
+                // On macOS, the block receives NSViewController*.
                 // NOTE: some non-trivial replacement during AUv2->AUv3 migration
                 [owner->audioUnit requestViewControllerWithCompletionHandler:^(NSViewController * _Nullable viewController) {
                     @autoreleasepool {
@@ -120,6 +169,7 @@ namespace remidy {
                         dispatch_semaphore_signal(semaphore);
                     }
                 }];
+#endif
 
                 // Wait for completion (with timeout)
                 dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC);
@@ -140,6 +190,17 @@ namespace remidy {
 
         EventLoop::runTaskOnMainThread([&] {
             @autoreleasepool {
+#if TARGET_OS_IPHONE
+                if (ns_view_controller) {
+                    AUViewController* vc = (__bridge AUViewController*)ns_view_controller;
+                    [vc willMoveToParentViewController:nil];
+                    [vc.view removeFromSuperview];
+                    [vc removeFromParentViewController];
+                    [vc release];
+                    ns_view_controller = nullptr;
+                    ns_view = nullptr; // view is owned by vc; cleared above
+                }
+#else
                 if (ns_window) {
                     NSWindow* window = (__bridge NSWindow*)ns_window;
                     [window close];
@@ -161,7 +222,7 @@ namespace remidy {
                     [vc release];
                     ns_view_controller = nullptr;
                 }
-
+#endif
                 created = false;
                 visible = false;
                 attached = false;
@@ -177,6 +238,13 @@ namespace remidy {
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
             @autoreleasepool {
+#if TARGET_OS_IPHONE
+                if (ns_view) {
+                    UIView* view = (__bridge UIView*)ns_view;
+                    view.hidden = NO;
+                    success = true;
+                }
+#else
                 if (is_floating && ns_window) {
                     NSWindow* window = (__bridge NSWindow*)ns_window;
                     [window makeKeyAndOrderFront:nil];
@@ -186,6 +254,7 @@ namespace remidy {
                     [view setHidden:NO];
                     success = true;
                 }
+#endif
             }
         });
 
@@ -201,6 +270,12 @@ namespace remidy {
 
         EventLoop::runTaskOnMainThread([&] {
             @autoreleasepool {
+#if TARGET_OS_IPHONE
+                if (ns_view) {
+                    UIView* view = (__bridge UIView*)ns_view;
+                    view.hidden = YES;
+                }
+#else
                 if (is_floating && ns_window) {
                     NSWindow* window = (__bridge NSWindow*)ns_window;
                     [window orderOut:nil];
@@ -208,6 +283,7 @@ namespace remidy {
                     NSView* view = (__bridge NSView*)ns_view;
                     [view setHidden:YES];
                 }
+#endif
             }
         });
 
@@ -215,6 +291,17 @@ namespace remidy {
     }
 
     void PluginInstanceAUv3::UISupport::setWindowTitle(std::string title) {
+#if TARGET_OS_IPHONE
+        if (!created || !ns_view_controller)
+            return;
+
+        EventLoop::runTaskOnMainThread([&] {
+            @autoreleasepool {
+                AUViewController* vc = (__bridge AUViewController*)ns_view_controller;
+                vc.title = [NSString stringWithUTF8String:title.c_str()];
+            }
+        });
+#else
         if (!created || !is_floating || !ns_window)
             return;
 
@@ -225,6 +312,7 @@ namespace remidy {
                 [window setTitle:nsTitle];
             }
         });
+#endif
     }
 
     bool PluginInstanceAUv3::UISupport::canResize() {
@@ -238,6 +326,15 @@ namespace remidy {
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
             @autoreleasepool {
+#if TARGET_OS_IPHONE
+                if (ns_view) {
+                    UIView* view = (__bridge UIView*)ns_view;
+                    CGSize size = view.frame.size;
+                    width = (uint32_t)size.width;
+                    height = (uint32_t)size.height;
+                    success = true;
+                }
+#else
                 NSSize size;
 
                 if (is_floating && ns_window) {
@@ -254,6 +351,7 @@ namespace remidy {
                 width = (uint32_t)size.width;
                 height = (uint32_t)size.height;
                 success = true;
+#endif
             }
         });
 
@@ -267,6 +365,20 @@ namespace remidy {
         bool success = false;
         EventLoop::runTaskOnMainThread([&] {
             @autoreleasepool {
+#if TARGET_OS_IPHONE
+                if (ns_view) {
+                    UIView* view = (__bridge UIView*)ns_view;
+                    CGRect frame = view.frame;
+                    frame.size = CGSizeMake(width, height);
+                    ignore_view_notifications = true;
+                    view.frame = frame;
+                    ignore_view_notifications = false;
+                    last_view_width = width;
+                    last_view_height = height;
+                    last_view_size_valid = true;
+                    success = true;
+                }
+#else
                 if (is_floating && ns_window) {
                     NSWindow* window = (__bridge NSWindow*)ns_window;
                     NSSize contentSize = NSMakeSize(width, height);
@@ -288,6 +400,7 @@ namespace remidy {
                     last_view_size_valid = true;
                     success = true;
                 }
+#endif
             }
         });
 
@@ -305,6 +418,12 @@ namespace remidy {
         return false;
     }
 
+#if TARGET_OS_IPHONE
+    // View resize observation is not needed for modal UIViewController presentation on iOS.
+    void PluginInstanceAUv3::UISupport::startViewResizeObservation(void*) {}
+    void PluginInstanceAUv3::UISupport::stopViewResizeObservation() {}
+    void PluginInstanceAUv3::UISupport::handleViewSizeChange() {}
+#else
     void PluginInstanceAUv3::UISupport::startViewResizeObservation(void* viewHandle) {
         if (!viewHandle || view_resize_observer)
             return;
@@ -365,6 +484,7 @@ namespace remidy {
         uint32_t height = static_cast<uint32_t>(std::round(size.height));
         host_resize_handler(width, height);
     }
+#endif // !TARGET_OS_IPHONE
 
     bool PluginInstanceAUv3::UISupport::setScale(double scale) {
         (void)scale;
