@@ -228,7 +228,7 @@ int runMainLoop(int argc, char** argv) {
     }
 
     // Start audio
-    uapmd::AppModel::instance().sequencer().startAudio();
+    uapmd::AppModel::instance().setAudioEngineEnabled(true);
 
     // Main loop
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -360,10 +360,9 @@ int runMainLoop(int argc, char** argv) {
     }
 
     // Final guard: ensure audio is stopped before teardown
-    uapmd::AppModel::instance().sequencer().stopAudio();
+    uapmd::AppModel::instance().setAudioEngineEnabled(false);
 
     // Cleanup
-    uapmd::AppModel::instance().sequencer().stopAudio();
     imguiRenderer->shutdown();
     imguiPlatformBackend->shutdown();
     ImGui::DestroyContext();

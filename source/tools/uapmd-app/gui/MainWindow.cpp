@@ -321,13 +321,39 @@ void MainWindow::render(void* window) {
 
     if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
         if (ImGui::BeginChild("MainToolbar", ImVec2(0, 90.0f * uiScale_), false, ImGuiWindowFlags_NoScrollbar)) {
+            auto& appModel = uapmd::AppModel::instance();
+            const bool audioEngineEnabled = appModel.isAudioEngineEnabled();
+            const char* audioEngineLabel = audioEngineEnabled ? "Audio Engine: On" : "Audio Engine: Off";
+            const ImVec4 onColor(0.25f, 0.58f, 0.33f, 1.0f);
+            const ImVec4 onHoverColor(0.30f, 0.66f, 0.39f, 1.0f);
+            const ImVec4 onActiveColor(0.20f, 0.50f, 0.26f, 1.0f);
+            const ImVec4 offColor(0.58f, 0.27f, 0.21f, 1.0f);
+            const ImVec4 offHoverColor(0.67f, 0.32f, 0.26f, 1.0f);
+            const ImVec4 offActiveColor(0.48f, 0.20f, 0.19f, 1.0f);
+            const ImVec4& baseColor = audioEngineEnabled ? onColor : offColor;
+            const ImVec4& hoverColor = audioEngineEnabled ? onHoverColor : offHoverColor;
+            const ImVec4& activeColor = audioEngineEnabled ? onActiveColor : offActiveColor;
+            ImGui::PushStyleColor(ImGuiCol_Button, baseColor);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoverColor);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
+            if (ImGui::Button(audioEngineLabel)) {
+                appModel.setAudioEngineEnabled(!audioEngineEnabled);
+            }
+            ImGui::PopStyleColor(3);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(audioEngineEnabled ? "Click to turn off the audio engine" : "Click to turn on the audio engine");
+            }
+            ImGui::SameLine();
+
             if (ImGui::Button("Device Settings")) {
                 showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
             }
             ImGui::SameLine();
 
             // Transport controls
-            auto& transport = uapmd::AppModel::instance().transport();
+            auto& transport = appModel.transport();
+            if (!audioEngineEnabled)
+                ImGui::BeginDisabled();
             const char* playStopLabel = transport.isPlaying() ? icons::Stop : icons::Play;
             if (ImGui::Button(playStopLabel)) {
                 if (transport.isPlaying())
@@ -347,6 +373,8 @@ void MainWindow::render(void* window) {
                     transport.pause();
             }
             if (!transport.isPlaying())
+                ImGui::EndDisabled();
+            if (!audioEngineEnabled)
                 ImGui::EndDisabled();
             ImGui::SameLine();
             if (ImGui::Button("Plugin Instances")) {

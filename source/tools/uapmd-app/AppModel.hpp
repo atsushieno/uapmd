@@ -102,6 +102,7 @@ namespace uapmd {
         remidy_tooling::PluginScanTool pluginScanTool_;
         std::unique_ptr<TransportController> transportController_;
         std::atomic<bool> isScanning_{false};
+        std::atomic<bool> audioEngineEnabled_{false};
         mutable std::mutex devicesMutex_;
         std::vector<DeviceEntry> devices_;
         int32_t nextDeviceId_ = 1;
@@ -128,6 +129,9 @@ namespace uapmd {
         TransportController& transport() { return *transportController_; }
         IDocumentProvider* documentProvider();
         bool isScanning() const { return isScanning_; }
+        bool isAudioEngineEnabled() const { return audioEngineEnabled_.load(std::memory_order_acquire); }
+        void setAudioEngineEnabled(bool enabled);
+        void toggleAudioEngine();
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
 

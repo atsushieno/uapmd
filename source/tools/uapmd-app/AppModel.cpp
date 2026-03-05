@@ -549,6 +549,27 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan) {
     scanningThread.detach();
 }
 
+void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
+    audioEngineEnabled_.store(enabled, std::memory_order_release);
+
+    const bool isPlaying = sequencer_.isAudioPlaying() != 0;
+    if (enabled) {
+        if (!isPlaying) {
+            if (sequencer_.startAudio() != 0) {
+                std::cerr << "Failed to start audio engine" << std::endl;
+                audioEngineEnabled_.store(false, std::memory_order_release);
+            }
+        }
+    } else if (isPlaying) {
+        sequencer_.stopAudio();
+    }
+}
+
+void uapmd::AppModel::toggleAudioEngine() {
+    bool desired = !audioEngineEnabled_.load(std::memory_order_acquire);
+    setAudioEngineEnabled(desired);
+}
+
 void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const std::string& pluginId,
                                                  int32_t trackIndex,
@@ -953,6 +974,8 @@ void uapmd::AppModel::hidePluginUI(int32_t instanceId) {
 }
 
 void uapmd::TransportController::play() {
+    if (!appModel_->isAudioEngineEnabled())
+        return;
     sequencer_->engine()->startPlayback();
     appModel_->timeline().isPlaying = true;
     isPlaying_ = true;
@@ -975,6 +998,8 @@ void uapmd::TransportController::pause() {
 }
 
 void uapmd::TransportController::resume() {
+    if (!appModel_->isAudioEngineEnabled())
+        return;
     sequencer_->engine()->resumePlayback();
     appModel_->timeline().isPlaying = true;
     isPaused_ = false;

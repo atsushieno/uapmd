@@ -254,13 +254,13 @@ static int runWasmApp() {
     uapmd::AppModel::instantiate();
     uapmd::gui::GuiDefaults defaults;
     g_ctx.mainWindow = new uapmd::gui::MainWindow(defaults);
-    uapmd::AppModel::instance().sequencer().startAudio();
+    uapmd::AppModel::instance().setAudioEngineEnabled(true);
 
     maybeScheduleAutoImport();
 
     emscripten_set_main_loop(mainLoopIteration, 0, 1);
 
-    uapmd::AppModel::instance().sequencer().stopAudio();
+    uapmd::AppModel::instance().setAudioEngineEnabled(false);
     cleanup();
     uapmd::AppModel::cleanupInstance();
     return EXIT_SUCCESS;
