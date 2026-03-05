@@ -12,6 +12,7 @@
 #include <vector>
 #include <functional>
 #include <cmath>
+#include <future>
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_SampleBuffers.h>
 #include <umppi/umppi.hpp>
@@ -1665,7 +1666,7 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
 }
 
 bool uapmd::AppModel::startRenderToFile(const RenderToFileSettings& settings) {
-    if (settings.outputPath.empty())
+    if (settings.outputPath.empty() && !settings.outputHandle)
         return false;
 
     auto job = std::make_shared<RenderJobState>();
@@ -1740,6 +1741,26 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
         releaseJob();
     };
 
+    std::unique_ptr<ScopedTempDir> renderTempDir;
+    std::filesystem::path rendererOutputPath = settings.outputPath;
+
+    if (settings.outputHandle) {
+        std::string tempDirError;
+        auto tempDir = createTempProjectDirectory(tempDirError);
+        if (!tempDir) {
+            std::string err = tempDirError.empty()
+                ? "Unable to allocate temporary render directory."
+                : std::format("Unable to allocate temporary render directory: {}", tempDirError);
+            fail(err);
+            return;
+        }
+        renderTempDir = std::make_unique<ScopedTempDir>(std::move(*tempDir));
+        std::filesystem::path fileName = rendererOutputPath.filename();
+        if (fileName.empty() || fileName.string().empty() || fileName == ".")
+            fileName = std::filesystem::path("render.wav");
+        rendererOutputPath = renderTempDir->get() / fileName;
+    }
+
     if (job->cancel.load(std::memory_order_acquire)) {
         fail("Render canceled.");
         return;
@@ -1774,7 +1795,7 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
         }
 
         OfflineRenderSettings renderSettings{};
-        renderSettings.outputPath = settings.outputPath;
+        renderSettings.outputPath = rendererOutputPath;
         renderSettings.startSeconds = settings.startSeconds;
         renderSettings.endSeconds = settings.endSeconds;
         renderSettings.useContentFallback = settings.useContentFallback;
@@ -1814,6 +1835,56 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
             std::string message = result.errorMessage.empty() ? "Render failed." : result.errorMessage;
             fail(message);
             return;
+        }
+
+        if (settings.outputHandle) {
+            auto* provider = documentProvider();
+            if (!provider) {
+                fail("Document provider unavailable.");
+                return;
+            }
+
+            std::error_code sizeEc;
+            auto fileSize = std::filesystem::file_size(rendererOutputPath, sizeEc);
+            if (sizeEc) {
+                fail(std::format("Unable to read rendered file: {}", sizeEc.message()));
+                return;
+            }
+            if (fileSize > static_cast<int64_t>(std::numeric_limits<size_t>::max())) {
+                fail("Rendered file is too large to save.");
+                return;
+            }
+
+            std::vector<uint8_t> renderedData(static_cast<size_t>(fileSize));
+            {
+                std::ifstream in(rendererOutputPath, std::ios::binary);
+                if (!in) {
+                    fail("Unable to open rendered file for transfer.");
+                    return;
+                }
+                if (!in.read(reinterpret_cast<char*>(renderedData.data()),
+                             static_cast<std::streamsize>(renderedData.size()))) {
+                    fail("Unable to read rendered file for transfer.");
+                    return;
+                }
+            }
+
+            auto writePromise = std::make_shared<std::promise<DocumentIOResult>>();
+            auto writeFuture = writePromise->get_future();
+            provider->writeDocument(
+                *settings.outputHandle,
+                std::move(renderedData),
+                [p = std::move(writePromise)](DocumentIOResult ioResult) mutable {
+                    p->set_value(ioResult);
+                });
+            DocumentIOResult ioResult = writeFuture.get();
+            if (!ioResult.success) {
+                std::string message = ioResult.error.empty()
+                    ? "Failed to save rendered audio."
+                    : ioResult.error;
+                fail(message);
+                return;
+            }
         }
 
         updateStatus([&](auto& status) {

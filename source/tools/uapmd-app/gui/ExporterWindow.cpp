@@ -51,7 +51,12 @@ void ExporterWindow::render(float uiScale) {
     ImGui::Separator();
 
     ImGui::TextUnformatted("Output");
-    ImGui::InputText("##RenderOutputPath", state_.outputPath.data(), state_.outputPath.size());
+    bool pathEdited = ImGui::InputText(
+        "##RenderOutputPath",
+        state_.outputPath.data(),
+        state_.outputPath.size());
+    if (pathEdited)
+        state_.outputHandle.reset();
     ImGui::SameLine();
     if (ImGui::Button("Browse...")) {
         std::vector<uapmd::DocumentFilter> filters{
@@ -66,10 +71,13 @@ void ExporterWindow::render(float uiScale) {
                 [this](uapmd::DocumentPickResult result) {
                     if (!result.success || result.handles.empty())
                         return;
-                    auto pathStr = result.handles[0].id;
-                    std::strncpy(state_.outputPath.data(), pathStr.c_str(), state_.outputPath.size() - 1);
+                    state_.outputHandle = result.handles[0];
+                    std::string label = state_.outputHandle->display_name;
+                    if (label.empty())
+                        label = state_.outputHandle->id;
+                    std::strncpy(state_.outputPath.data(), label.c_str(), state_.outputPath.size() - 1);
                     state_.outputPath[state_.outputPath.size() - 1] = '\0';
-                    lastRenderPath_ = std::filesystem::path(pathStr);
+                    lastRenderPath_.clear();
                 }
             );
         }
@@ -144,6 +152,7 @@ void ExporterWindow::render(float uiScale) {
     if (ImGui::Button("Start Render")) {
         uapmd::AppModel::RenderToFileSettings settings{};
         settings.outputPath = std::filesystem::path(state_.outputPath.data());
+        settings.outputHandle = state_.outputHandle;
         settings.tailSeconds = state_.guardSeconds;
         settings.enableSilenceStop = state_.silenceStopEnabled;
         settings.silenceDurationSeconds = state_.silenceHoldSeconds;
@@ -222,6 +231,7 @@ void ExporterWindow::ensureDefaultPath() {
     auto pathStr = defaultPath.string();
     std::strncpy(state_.outputPath.data(), pathStr.c_str(), state_.outputPath.size() - 1);
     state_.outputPath[state_.outputPath.size() - 1] = '\0';
+    state_.outputHandle.reset();
 }
 
 } // namespace uapmd::gui

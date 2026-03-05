@@ -3,9 +3,11 @@
 #include <array>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 
 #include <imgui.h>
+#include <uapmd-file/IDocumentProvider.hpp>
 
 namespace uapmd::gui {
 
@@ -49,6 +51,7 @@ private:
         double loopStartSeconds{0.0};
         double loopEndSeconds{0.0};
         std::array<char, 512> outputPath{};
+        std::optional<uapmd::DocumentHandle> outputHandle;
     };
 
     RenderDialogState state_{};
@@ -59,4 +62,3 @@ private:
 };
 
 } // namespace uapmd::gui
-

@@ -356,6 +356,7 @@ namespace uapmd {
 
         struct RenderToFileSettings {
             std::filesystem::path outputPath;
+            std::optional<DocumentHandle> outputHandle;
             double startSeconds{0.0};
             std::optional<double> endSeconds;
             bool useContentFallback{false};
