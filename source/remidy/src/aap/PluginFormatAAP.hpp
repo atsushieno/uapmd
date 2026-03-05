@@ -54,6 +54,7 @@ namespace remidy {
             PluginInstanceAAP* owner;
             std::vector<remidy::PluginParameter *> parameter_list{};
             std::vector<remidy::PluginParameter *> per_note_controller_list{};
+            std::vector<double> parameter_values{};
 
         public:
             ParameterSupport(PluginInstanceAAP* owner);
@@ -82,6 +83,8 @@ namespace remidy {
 
             std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index,
                                              double value) override;
+
+            void ingestPluginParameterUpdates(const uint8_t* data, size_t lengthInBytes);
 
         };
 

@@ -1,3 +1,7 @@
+#include <algorithm>
+#include <cstring>
+#include <aap/ext/midi.h>
+
 #include "PluginFormatAAP.hpp"
 
 remidy::PluginInstanceAAP::PluginInstanceAAP(
@@ -83,14 +87,29 @@ remidy::StatusCode remidy::PluginInstanceAAP::process(remidy::AudioProcessContex
         // FIXME: we should iterate non-main buses too once AAP is ready for that.
         break;
     }
-    // FIXME: we need some API fixes so that we can get reliable event out size
-    /*
     if (aap_port_midi2_out >= 0) {
-        auto& eIn = process.eventOut();
+        auto& eOut = process.eventOut();
         auto src = buffer->get_buffer(*buffer, aap_port_midi2_out);
         auto size = buffer->get_buffer_size(*buffer, aap_port_midi2_out);
-        memcpy(eIn.getMessages(), src, size);
-    }*/
+        if (src && size > static_cast<int32_t>(sizeof(AAPMidiBufferHeader))) {
+            auto* header = reinterpret_cast<AAPMidiBufferHeader*>(src);
+            auto* payload = reinterpret_cast<uint8_t*>(header + 1);
+            const auto payloadBytes = std::min<size_t>(header->length, eOut.maxMessagesInBytes());
+            if (payloadBytes > 0) {
+                std::memcpy(eOut.getMessages(), payload, payloadBytes);
+                eOut.position(payloadBytes);
+                if (auto* params = dynamic_cast<PluginInstanceAAP::ParameterSupport*>(parameters()))
+                    params->ingestPluginParameterUpdates(payload, header->length);
+            } else {
+                eOut.position(0);
+            }
+            header->length = 0;
+        } else {
+            eOut.position(0);
+        }
+    } else {
+        process.eventOut().position(0);
+    }
 
     return StatusCode::OK;
 }
