@@ -80,7 +80,7 @@ remidy::StatusCode remidy::PluginInstanceAAP::process(remidy::AudioProcessContex
             if (remidy_to_aap_port_index_map_audio_out.size() <= aapIdx)
                 break;
             auto aapPortIdx = remidy_to_aap_port_index_map_audio_out[aapIdx++];
-            auto dst = process.getFloatInBuffer(iBus, iCh);
+            auto dst = process.getFloatOutBuffer(iBus, iCh);
             auto src = buffer->get_buffer(*buffer, aapPortIdx);
             memcpy(dst, src, sizeof(float) * process.frameCount());
         }
