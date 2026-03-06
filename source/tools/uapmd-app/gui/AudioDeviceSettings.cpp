@@ -65,6 +65,16 @@ void AudioDeviceSettings::setOutputSampleRate(int rate) {
     outputSampleRate_ = rate;
 }
 
+void AudioDeviceSettings::setPlatformProvidesAutoBufferSize(bool available) {
+    platformProvidesAutoBufferSize_ = available;
+    if (!platformProvidesAutoBufferSize_)
+        useAutoBufferSize_ = false;
+}
+
+void AudioDeviceSettings::setUseAutoBufferSize(bool enabled) {
+    useAutoBufferSize_ = platformProvidesAutoBufferSize_ && enabled;
+}
+
 int AudioDeviceSettings::getSelectedInputDevice() const {
     return selectedInputDevice_;
 }
@@ -122,6 +132,18 @@ void AudioDeviceSettings::render() {
         ImGui::EndCombo();
     }
 
+    if (platformProvidesAutoBufferSize_) {
+        bool autoSelected = useAutoBufferSize_;
+        if (ImGui::Checkbox("Use Platform Buffer Size", &autoSelected)) {
+            useAutoBufferSize_ = autoSelected;
+            if (onDeviceChanged_)
+                onDeviceChanged_();
+        }
+    }
+
+    if (platformProvidesAutoBufferSize_ && useAutoBufferSize_)
+        ImGui::BeginDisabled();
+
     // Buffer size dropdown - fixed values only, no text editing
     std::string bufferSizeLabel = selectedBufferSizeIndex_ < static_cast<int>(availableBufferSizes_.size())
         ? std::to_string(availableBufferSizes_[selectedBufferSizeIndex_])
@@ -144,6 +166,9 @@ void AudioDeviceSettings::render() {
         }
         ImGui::EndCombo();
     }
+
+    if (platformProvidesAutoBufferSize_ && useAutoBufferSize_)
+        ImGui::EndDisabled();
 
     // Input sample rate dropdown
     std::string inputSampleRateLabel = selectedInputSampleRateIndex_ < static_cast<int>(inputAvailableSampleRates_.size())

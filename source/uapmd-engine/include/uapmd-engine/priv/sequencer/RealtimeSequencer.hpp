@@ -18,6 +18,7 @@ namespace uapmd {
         size_t buffer_size_in_frames;
         const size_t ump_buffer_size_in_bytes;
         int32_t sample_rate;
+        bool auto_buffer_size_enabled_{false};
 
         DeviceIODispatcher* dispatcher{};
         std::unique_ptr<SequencerEngine> sequencer;
@@ -39,6 +40,8 @@ namespace uapmd {
 
         int32_t sampleRate();
         bool sampleRate(int32_t newSampleRate);
+        void setUseAutoBufferSize(bool enabled);
+        bool useAutoBufferSize() const { return auto_buffer_size_enabled_; }
 
         // Reconfigure audio device (stops audio, reconfigures, restarts)
         // Use -1 for default device, 0 for no sample rate change, 0 for no buffer size change

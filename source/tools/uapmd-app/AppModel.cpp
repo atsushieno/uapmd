@@ -463,7 +463,8 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
         sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
         transportController_(std::make_unique<TransportController>(this, &sequencer_)),
         sample_rate_(sampleRate),
-        audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)) {
+        audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)),
+        auto_buffer_size_enabled_(sequencer_.useAutoBufferSize()) {
     sequencer_.engine()->functionBlockManager()->setMidiIOManager(this);
 
     // Start with a few empty tracks for the DAW layout
@@ -576,6 +577,11 @@ void uapmd::AppModel::updateAudioDeviceSettings(int32_t sampleRate, uint32_t buf
         sample_rate_ = sampleRate;
     if (bufferSize > 0)
         audio_buffer_size_ = bufferSize;
+}
+
+void uapmd::AppModel::setAutoBufferSizeEnabled(bool enabled) {
+    sequencer_.setUseAutoBufferSize(enabled);
+    auto_buffer_size_enabled_ = sequencer_.useAutoBufferSize();
 }
 
 void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,

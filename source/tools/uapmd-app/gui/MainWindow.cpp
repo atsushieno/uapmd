@@ -244,6 +244,8 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 
     // Register device change listener with AudioIODeviceManager
     auto audioManager = uapmd::AudioIODeviceManager::instance();
+    audioDeviceSettings_.setPlatformProvidesAutoBufferSize(audioManager->platformProvidesAutoBufferSize());
+    audioDeviceSettings_.setUseAutoBufferSize(uapmd::AppModel::instance().autoBufferSizeEnabled());
     audioManager->setDeviceChangeCallback([this](int32_t deviceId, AudioIODeviceChange change) {
         // Refresh device list when devices are added or removed
         refreshDeviceList();
@@ -763,6 +765,7 @@ bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t
 void MainWindow::updateAudioDeviceSettingsData() {
     // Update sample rates for the selected devices
     auto manager = uapmd::AudioIODeviceManager::instance();
+    audioDeviceSettings_.setUseAutoBufferSize(uapmd::AppModel::instance().autoBufferSizeEnabled());
 
     // Get selected device indices
     int selectedInput = audioDeviceSettings_.getSelectedInputDevice();
@@ -916,8 +919,13 @@ void MainWindow::handleAudioDeviceChange() {
     // Get selected sample rate (use output sample rate as the primary)
     uint32_t sampleRate = static_cast<uint32_t>(audioDeviceSettings_.getOutputSampleRate());
 
-    // Get selected buffer size
-    uint32_t bufferSize = static_cast<uint32_t>(audioDeviceSettings_.getBufferSize());
+    const bool useAutoBuffer = audioDeviceSettings_.isAutoBufferSizeEnabled();
+    uapmd::AppModel::instance().setAutoBufferSizeEnabled(useAutoBuffer);
+
+    // Get selected buffer size (ignored when auto buffer mode is enabled)
+    uint32_t bufferSize = useAutoBuffer
+        ? 0u
+        : static_cast<uint32_t>(audioDeviceSettings_.getBufferSize());
 
     // Update the UI with sample rates for the newly selected device
     updateAudioDeviceSettingsData();

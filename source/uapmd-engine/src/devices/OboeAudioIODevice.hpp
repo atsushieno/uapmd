@@ -35,6 +35,7 @@ namespace uapmd {
         uint32_t buffer_capacity_frames_{0};
         double sample_rate_{48000.0};
         bool playing_{false};
+        bool auto_buffer_size_{true};
 
         bool openStream();
         void closeStream();
@@ -55,6 +56,8 @@ namespace uapmd {
         uapmd_status_t start() override;
         uapmd_status_t stop() override;
         bool isPlaying() override { return playing_; }
+        bool useAutoBufferSize() override;
+        bool useAutoBufferSize(bool value) override;
 
         bool reconfigure(uint32_t sampleRateHint, uint32_t channelCountHint = 2, uint32_t bufferSizeHint = 0);
 
@@ -82,6 +85,7 @@ namespace uapmd {
         void initialize(Configuration& config) override;
         std::vector<uint32_t> getDeviceSampleRates(const std::string& deviceName,
                                                    AudioIODirections direction) override;
+        bool platformProvidesAutoBufferSize() const override { return true; }
     };
 }
 

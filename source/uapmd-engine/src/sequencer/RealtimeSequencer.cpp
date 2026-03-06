@@ -33,9 +33,12 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
     auto logger = remidy::Logger::global();
     AudioIODeviceManager::Configuration audioConfig{ .logger = logger };
     manager->initialize(audioConfig);
+    auto_buffer_size_enabled_ = manager->platformProvidesAutoBufferSize();
 
     // FIXME: enable MIDI devices
     auto* audioDevice = manager->open(-1, -1, static_cast<uint32_t>(sample_rate), static_cast<uint32_t>(buffer_size_in_frames));
+    if (audioDevice)
+        audioDevice->useAutoBufferSize(auto_buffer_size_enabled_);
     dispatcher->configure(umpBufferSizeInBytes, audioDevice);
 
     dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
@@ -91,6 +94,9 @@ bool uapmd::RealtimeSequencer::reconfigureAudioDevice(int inputDeviceIndex, int 
 
     // Get a new audio device from the manager with specific device indices
     auto manager = AudioIODeviceManager::instance();
+    const bool supportsAuto = manager->platformProvidesAutoBufferSize();
+    if (!supportsAuto)
+        auto_buffer_size_enabled_ = false;
     const uint32_t requestedBuffer = bufferSize > 0
         ? bufferSize
         : static_cast<uint32_t>(buffer_size_in_frames);
@@ -99,6 +105,7 @@ bool uapmd::RealtimeSequencer::reconfigureAudioDevice(int inputDeviceIndex, int 
         remidy::Logger::global()->logError("Failed to open audio device with indices: input={}, output={}, sampleRate={}", inputDeviceIndex, outputDeviceIndex, sampleRate);
         return false;
     }
+    newDevice->useAutoBufferSize(auto_buffer_size_enabled_ && supportsAuto);
 
     // Update the sample rate if specified
     if (sampleRate > 0) {
@@ -149,4 +156,12 @@ bool uapmd::RealtimeSequencer::reconfigureAudioDevice(int inputDeviceIndex, int 
     }
 
     return true;
+}
+
+void uapmd::RealtimeSequencer::setUseAutoBufferSize(bool enabled) {
+    auto manager = AudioIODeviceManager::instance();
+    const bool supportsAuto = manager->platformProvidesAutoBufferSize();
+    auto_buffer_size_enabled_ = supportsAuto && enabled;
+    if (auto* device = dispatcher->audio())
+        device->useAutoBufferSize(auto_buffer_size_enabled_);
 }

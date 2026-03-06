@@ -21,6 +21,7 @@ namespace uapmd {
         ~MiniAudioIODeviceManager() override;
         void initialize(Configuration& config) override;
         std::vector<uint32_t> getDeviceSampleRates(const std::string& deviceName, AudioIODirections direction) override;
+        bool platformProvidesAutoBufferSize() const override { return false; }
 
         ma_context& maContext() { return context; }
 
@@ -58,6 +59,8 @@ namespace uapmd {
         uapmd_status_t start() override;
         uapmd_status_t stop() override;
         bool isPlaying() override;
+        bool useAutoBufferSize() override { return false; }
+        bool useAutoBufferSize(bool) override { return false; }
 
         // Reconfigure the device with new device IDs and sample rate
         bool reconfigure(const ma_device_id* inputDeviceId, const ma_device_id* outputDeviceId, uint32_t sampleRate = 0);

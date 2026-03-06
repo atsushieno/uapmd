@@ -33,6 +33,15 @@ namespace uapmd {
         return { requested_sample_rate_, 48000 };
     }
 
+    bool OboeAudioIODevice::useAutoBufferSize() {
+        return auto_buffer_size_;
+    }
+
+    bool OboeAudioIODevice::useAutoBufferSize(bool value) {
+        auto_buffer_size_ = value;
+        return auto_buffer_size_;
+    }
+
     bool OboeAudioIODevice::reconfigure(uint32_t sampleRateHint, uint32_t channelCountHint, uint32_t bufferSizeHint) {
         if (sampleRateHint > 0)
             requested_sample_rate_ = sampleRateHint;
@@ -146,7 +155,8 @@ namespace uapmd {
         // Internal buffer capacity: sized to handle the engine's processing
         // block size (requested_buffer_size_).  Falls back to a multiple of
         // framesPerBurst or 512 when the caller didn't specify a size.
-        if (requested_buffer_size_ > 0)
+        const bool manualBufferRequest = !auto_buffer_size_ && requested_buffer_size_ > 0;
+        if (manualBufferRequest)
             buffer_capacity_frames_ = requested_buffer_size_;
         else if (framesPerBurst > 0)
             buffer_capacity_frames_ = framesPerBurst * 2u;
@@ -164,9 +174,11 @@ namespace uapmd {
         // only the user's requested_buffer_size_ can starve the hardware
         // when framesPerBurst > requested_buffer_size_.
         const uint32_t minLatencyFrames = framesPerBurst > 0 ? framesPerBurst * 2u : 512u;
-        const uint32_t latencyFrames = std::max(requested_buffer_size_, minLatencyFrames);
+        const uint32_t latencyFrames = manualBufferRequest
+            ? std::max(requested_buffer_size_, minLatencyFrames)
+            : minLatencyFrames;
         uint32_t appliedBufferSize = 0;
-        {
+        if (manualBufferRequest) {
             const auto setResult = stream_->setBufferSizeInFrames(
                 static_cast<int32_t>(latencyFrames));
             if (setResult)
@@ -191,7 +203,7 @@ namespace uapmd {
             stream_->getChannelCount(),
             stream_->getFramesPerBurst(),
             buffer_capacity_frames_,
-            requested_buffer_size_,
+            manualBufferRequest ? requested_buffer_size_ : 0u,
             latencyFrames,
             appliedBufferSize,
             hardwareCapacity);

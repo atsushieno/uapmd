@@ -109,6 +109,7 @@ namespace uapmd {
 
         int32_t sample_rate_;
         uint32_t audio_buffer_size_;
+        bool auto_buffer_size_enabled_{false};
         std::unique_ptr<IDocumentProvider> documentProvider_;
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
@@ -133,6 +134,8 @@ namespace uapmd {
         void setAudioEngineEnabled(bool enabled);
         void toggleAudioEngine();
         void updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize);
+        void setAutoBufferSizeEnabled(bool enabled);
+        bool autoBufferSizeEnabled() const { return auto_buffer_size_enabled_; }
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
 

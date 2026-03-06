@@ -27,6 +27,8 @@ private:
     int bufferSize_ = 256;
     int selectedBufferSizeIndex_ = 4; // Default to 256
 #endif
+    bool platformProvidesAutoBufferSize_ = false;
+    bool useAutoBufferSize_ = false;
     int inputSampleRate_ = 48000;
     int outputSampleRate_ = 48000;
     int selectedInputSampleRateIndex_ = 0;
@@ -52,6 +54,10 @@ public:
     int getBufferSize() const;
     int getInputSampleRate() const;
     int getOutputSampleRate() const;
+    void setPlatformProvidesAutoBufferSize(bool available);
+    bool platformProvidesAutoBufferSize() const { return platformProvidesAutoBufferSize_; }
+    void setUseAutoBufferSize(bool enabled);
+    bool isAutoBufferSizeEnabled() const { return platformProvidesAutoBufferSize_ && useAutoBufferSize_; }
 
     void render();
 

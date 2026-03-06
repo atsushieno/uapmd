@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,8 @@ namespace uapmd {
         virtual uapmd_status_t start() = 0;
         virtual uapmd_status_t stop() = 0;
         virtual bool isPlaying() = 0;
+        virtual bool useAutoBufferSize() = 0;
+        virtual bool useAutoBufferSize(bool value) = 0;
     };
 
     class AudioIODeviceManager {
@@ -81,6 +84,8 @@ namespace uapmd {
         void setDeviceChangeCallback(DeviceChangeCallback callback) {
             deviceChangeCallback_ = std::move(callback);
         }
+
+        virtual bool platformProvidesAutoBufferSize() const = 0;
 
     protected:
         bool initialized{false};
