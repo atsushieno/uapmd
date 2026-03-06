@@ -520,25 +520,35 @@ namespace uapmd {
                     timeline_.playheadPosition.samples = timeline_.loopStart.samples;
 
                 // Update tempo from MIDI clips on track 0 (if any)
+                // Uses RT-safe snapshot — no mutex, no heap allocation.
                 if (snapshot && !snapshot->empty()) {
                     auto* t = (*snapshot)[0].get();
                     if (t) {
-                        auto activeClips = t->clipManager().getActiveClipsAt(timeline_.playheadPosition);
-                        for (const auto& clip : activeClips) {
-                            if (clip.clipType != ClipType::Midi || clip.muted)
-                                continue;
-                            auto sourceNode = t->getSourceNode(clip.sourceNodeInstanceId);
-                            auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
-                            if (!midiNode)
-                                continue;
-                            const auto& tempoSamples = midiNode->tempoChangeSamples();
-                            const auto& tempoEvents = midiNode->tempoChanges();
-                            if (!tempoEvents.empty() && tempoEvents.size() == tempoSamples.size()) {
-                                std::unordered_map<int32_t, const ClipData*> clipMap;
-                                auto allClips = t->clipManager().getAllClips();
-                                for (auto& c : allClips) clipMap[c.clipId] = &c;
-                                int64_t sourcePos = clip.getSourcePosition(timeline_.playheadPosition, clipMap);
-                                if (sourcePos >= 0) {
+                        auto clipSnap = t->clipManager().getSnapshotRT();
+                        if (clipSnap) {
+                            const auto& clips = clipSnap->clips;
+                            const auto& clipMap = clipSnap->clipMap;
+                            for (const auto& clip : clips) {
+                                if (clip.clipType != ClipType::Midi || clip.muted)
+                                    continue;
+
+                                TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
+                                if (timeline_.playheadPosition.samples < absPos.samples ||
+                                    timeline_.playheadPosition.samples >= absPos.samples + clip.durationSamples)
+                                    continue;
+
+                                auto sourceNode = t->getSourceNode(clip.sourceNodeInstanceId);
+                                auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
+                                if (!midiNode)
+                                    continue;
+
+                                int64_t sourcePos = timeline_.playheadPosition.samples - absPos.samples;
+                                if (sourcePos < 0)
+                                    continue;
+
+                                const auto& tempoSamples = midiNode->tempoChangeSamples();
+                                const auto& tempoEvents = midiNode->tempoChanges();
+                                if (!tempoEvents.empty() && tempoEvents.size() == tempoSamples.size()) {
                                     double currentTempo = tempoEvents[0].bpm;
                                     for (size_t i = 0; i < tempoSamples.size(); ++i) {
                                         if (static_cast<int64_t>(tempoSamples[i]) <= sourcePos)
@@ -548,15 +558,10 @@ namespace uapmd {
                                     }
                                     timeline_.tempo = currentTempo;
                                 }
-                            }
-                            const auto& sigSamples = midiNode->timeSignatureChangeSamples();
-                            const auto& sigEvents = midiNode->timeSignatureChanges();
-                            if (!sigEvents.empty() && sigEvents.size() == sigSamples.size()) {
-                                std::unordered_map<int32_t, const ClipData*> clipMap;
-                                auto allClips = t->clipManager().getAllClips();
-                                for (auto& c : allClips) clipMap[c.clipId] = &c;
-                                int64_t sourcePos = clip.getSourcePosition(timeline_.playheadPosition, clipMap);
-                                if (sourcePos >= 0) {
+
+                                const auto& sigSamples = midiNode->timeSignatureChangeSamples();
+                                const auto& sigEvents = midiNode->timeSignatureChanges();
+                                if (!sigEvents.empty() && sigEvents.size() == sigSamples.size()) {
                                     uint8_t num = sigEvents[0].numerator;
                                     uint8_t den = sigEvents[0].denominator;
                                     for (size_t i = 0; i < sigSamples.size(); ++i) {
@@ -568,8 +573,8 @@ namespace uapmd {
                                     timeline_.timeSignatureNumerator = num;
                                     timeline_.timeSignatureDenominator = den;
                                 }
+                                break;
                             }
-                            break;
                         }
                     }
                 }
