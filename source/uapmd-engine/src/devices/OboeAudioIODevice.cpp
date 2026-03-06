@@ -96,11 +96,11 @@ namespace uapmd {
         // callback size based on the hardware's framesPerBurst.
         // The chunking loop in onAudioReady handles any mismatch with
         // our internal buffer capacity.
-        auto attemptOpen = [&](bool exclusive) -> bool {
+        auto attemptOpen = [&](SharingMode sharing, PerformanceMode perf) -> bool {
             AudioStreamBuilder builder;
             builder.setDirection(Direction::Output);
-            builder.setPerformanceMode(exclusive ? PerformanceMode::LowLatency : PerformanceMode::None);
-            builder.setSharingMode(exclusive ? SharingMode::Exclusive : SharingMode::Shared);
+            builder.setPerformanceMode(perf);
+            builder.setSharingMode(sharing);
             builder.setFormat(AudioFormat::Float);
             builder.setFormatConversionAllowed(true);
             builder.setChannelConversionAllowed(true);
@@ -116,8 +116,10 @@ namespace uapmd {
             AudioStream* rawStream = nullptr;
             const auto result = builder.openStream(&rawStream);
             if (result != Result::OK) {
-                logger_->logWarning("OboeAudioIODevice: openStream (exclusive=%d) failed: %s",
-                                    exclusive ? 1 : 0, convertToText(result));
+                logger_->logWarning("OboeAudioIODevice: openStream (sharing=%s perf=%s) failed: %s",
+                                    toString(sharing), toString(perf), convertToText(result));
+                if (rawStream)
+                    rawStream->close();
                 return false;
             }
             stream_.reset(rawStream);
@@ -127,9 +129,9 @@ namespace uapmd {
         const bool runningOnEmulator = isProbablyEmulator();
         bool opened = false;
         if (!runningOnEmulator)
-            opened = attemptOpen(true);
+            opened = attemptOpen(SharingMode::Shared, PerformanceMode::LowLatency);
         if (!opened)
-            opened = attemptOpen(false);
+            opened = attemptOpen(SharingMode::Shared, PerformanceMode::None);
         if (!opened) {
             logger_->logError("OboeAudioIODevice: failed to open any audio stream (emulator=%d)", runningOnEmulator ? 1 : 0);
             return false;
@@ -157,18 +159,21 @@ namespace uapmd {
                               buffer_capacity_frames_);
         dataOutPtrs.resize(output_channels_);
 
-        // Use requested_buffer_size_ as a latency hint via setBufferSizeInFrames
-        // (the Oboe ring-buffer between app and hardware).
-        // This is clamped to [0, bufferCapacityInFrames] by Oboe automatically.
+        // Set Oboe ring-buffer (latency buffer between app and hardware).
+        // Must be at least 2 * framesPerBurst for reliable playback — using
+        // only the user's requested_buffer_size_ can starve the hardware
+        // when framesPerBurst > requested_buffer_size_.
+        const uint32_t minLatencyFrames = framesPerBurst > 0 ? framesPerBurst * 2u : 512u;
+        const uint32_t latencyFrames = std::max(requested_buffer_size_, minLatencyFrames);
         uint32_t appliedBufferSize = 0;
-        if (requested_buffer_size_ > 0) {
+        {
             const auto setResult = stream_->setBufferSizeInFrames(
-                static_cast<int32_t>(requested_buffer_size_));
+                static_cast<int32_t>(latencyFrames));
             if (setResult)
                 appliedBufferSize = static_cast<uint32_t>(std::max(setResult.value(), 0));
             else
                 logger_->logWarning("OboeAudioIODevice: setBufferSizeInFrames(%u) failed: %s",
-                                    requested_buffer_size_,
+                                    latencyFrames,
                                     convertToText(setResult.error()));
         }
 
@@ -178,7 +183,7 @@ namespace uapmd {
 
         logger_->logInfo(
             "OboeAudioIODevice: opened stream api=%s sharing=%s perf=%s sr=%d ch=%d "
-            "framesPerBurst=%d internalCapacity=%u requestedLatency=%u appliedLatency=%u hwCapacity=%u",
+            "framesPerBurst=%d internalCapacity=%u userBufferSize=%u latencyHint=%u appliedLatency=%u hwCapacity=%u",
             toString(stream_->getAudioApi()),
             toString(stream_->getSharingMode()),
             toString(stream_->getPerformanceMode()),
@@ -187,6 +192,7 @@ namespace uapmd {
             stream_->getFramesPerBurst(),
             buffer_capacity_frames_,
             requested_buffer_size_,
+            latencyFrames,
             appliedBufferSize,
             hardwareCapacity);
         return true;
@@ -293,10 +299,25 @@ namespace uapmd {
     }
 
     bool OboeAudioIODevice::onError(AudioStream *audioStream, Result error) {
-        (void) audioStream;
-        logger_->logError("OboeAudioIODevice: stream error %s", convertToText(error));
+        const auto xruns = audioStream ? audioStream->getXRunCount() : ResultWithValue<int32_t>{-1};
+        logger_->logError("OboeAudioIODevice: stream error %s (xrunCount=%d)",
+                          convertToText(error), xruns);
         playing_ = false;
-        closeStream();
+        closeStream(); // safe — Oboe close() is idempotent
+
+        // Attempt to restart the stream so audio recovers from
+        // transient HAL errors and device disconnections.
+        if (openStream()) {
+            const auto startResult = stream_->requestStart();
+            if (startResult == Result::OK) {
+                playing_ = true;
+                logger_->logInfo("OboeAudioIODevice: stream restarted after error");
+                return true;
+            }
+            logger_->logError("OboeAudioIODevice: restart failed: %s",
+                              convertToText(startResult));
+            closeStream();
+        }
         return false;
     }
 

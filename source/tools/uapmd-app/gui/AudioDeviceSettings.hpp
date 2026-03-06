@@ -20,8 +20,13 @@ private:
     std::vector<int> availableBufferSizes_ = {64, 96, 128, 192, 256, 384, 512, 1024, 2048, 4096, 8192, 16384};
     int selectedInputDevice_ = 0;
     int selectedOutputDevice_ = 0;
+#if defined(__ANDROID__)
+    int bufferSize_ = 2048;
+    int selectedBufferSizeIndex_ = 8; // Default to 2048
+#else
     int bufferSize_ = 256;
     int selectedBufferSizeIndex_ = 4; // Default to 256
+#endif
     int inputSampleRate_ = 48000;
     int outputSampleRate_ = 48000;
     int selectedInputSampleRateIndex_ = 0;
