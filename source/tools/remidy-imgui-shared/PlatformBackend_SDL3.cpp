@@ -225,6 +225,21 @@ public:
         }
     }
 
+    void getSafeAreaInsets(WindowHandle* window, float outInsets[4]) override {
+        outInsets[0] = outInsets[1] = outInsets[2] = outInsets[3] = 0.0f;
+        if (!window || window->type != WindowHandle::SDL3)
+            return;
+        SDL_Rect safeArea;
+        if (!SDL_GetWindowSafeArea(window->sdlWindow, &safeArea))
+            return;
+        int winW, winH;
+        SDL_GetWindowSize(window->sdlWindow, &winW, &winH);
+        outInsets[0] = std::max(0.0f, static_cast<float>(safeArea.x));
+        outInsets[1] = std::max(0.0f, static_cast<float>(safeArea.y));
+        outInsets[2] = std::max(0.0f, static_cast<float>(winW - safeArea.x - safeArea.w));
+        outInsets[3] = std::max(0.0f, static_cast<float>(winH - safeArea.y - safeArea.h));
+    }
+
     void makeContextCurrent(WindowHandle* window) override {
         if (window && window->type == WindowHandle::SDL3 && glContext) {
             SDL_GL_MakeCurrent(window->sdlWindow, glContext);

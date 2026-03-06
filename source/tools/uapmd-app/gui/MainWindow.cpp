@@ -283,36 +283,45 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 }
 
 void MainWindow::render(void* window) {
-    // Use the entire screen space as the main window (no nested window)
+    // Use the entire screen space as the main window (no nested window).
+    // On platforms with system UI overlays (Android 15+, iOS notch/home indicator),
+    // safeAreaInsets_ shrinks the content area so interactive elements stay reachable.
     ImGuiIO& io = ImGui::GetIO();
     ImVec2 displaySize = io.DisplaySize;
+
+    // Content area = display minus safe-area insets (zero on desktop)
+    ImVec2 contentPos(safeAreaInsets_[0], safeAreaInsets_[1]);
+    ImVec2 contentSize(
+        displaySize.x - safeAreaInsets_[0] - safeAreaInsets_[2],
+        displaySize.y - safeAreaInsets_[1] - safeAreaInsets_[3]);
+
     constexpr float kWindowSizeEpsilon = 1.0f;
-    if (displaySize.x > 0.0f && displaySize.y > 0.0f) {
+    if (contentSize.x > 0.0f && contentSize.y > 0.0f) {
         if (lastWindowSize_.x == 0.0f && lastWindowSize_.y == 0.0f) {
-            baseWindowSize_.x = displaySize.x / uiScale_;
-            baseWindowSize_.y = displaySize.y / uiScale_;
+            baseWindowSize_.x = contentSize.x / uiScale_;
+            baseWindowSize_.y = contentSize.y / uiScale_;
         }
 
-        const float deltaX = std::fabs(displaySize.x - lastWindowSize_.x);
-        const float deltaY = std::fabs(displaySize.y - lastWindowSize_.y);
+        const float deltaX = std::fabs(contentSize.x - lastWindowSize_.x);
+        const float deltaY = std::fabs(contentSize.y - lastWindowSize_.y);
 
         if (waitingForWindowResize_) {
-            const bool reachedTarget = std::fabs(displaySize.x - requestedWindowSize_.x) < kWindowSizeEpsilon &&
-                                       std::fabs(displaySize.y - requestedWindowSize_.y) < kWindowSizeEpsilon;
+            const bool reachedTarget = std::fabs(contentSize.x - requestedWindowSize_.x) < kWindowSizeEpsilon &&
+                                       std::fabs(contentSize.y - requestedWindowSize_.y) < kWindowSizeEpsilon;
             if (reachedTarget || (deltaX > kWindowSizeEpsilon || deltaY > kWindowSizeEpsilon)) {
                 waitingForWindowResize_ = false;
-                baseWindowSize_.x = displaySize.x / uiScale_;
-                baseWindowSize_.y = displaySize.y / uiScale_;
+                baseWindowSize_.x = contentSize.x / uiScale_;
+                baseWindowSize_.y = contentSize.y / uiScale_;
             }
         } else if (deltaX > kWindowSizeEpsilon || deltaY > kWindowSizeEpsilon) {
-            baseWindowSize_.x = displaySize.x / uiScale_;
-            baseWindowSize_.y = displaySize.y / uiScale_;
+            baseWindowSize_.x = contentSize.x / uiScale_;
+            baseWindowSize_.y = contentSize.y / uiScale_;
         }
 
-        lastWindowSize_ = displaySize;
+        lastWindowSize_ = contentSize;
     }
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(displaySize);
+    ImGui::SetNextWindowPos(contentPos);
+    ImGui::SetNextWindowSize(contentSize);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * uiScale_, 8.0f * uiScale_));
@@ -553,6 +562,13 @@ void MainWindow::applySystemUiScale(float scale) {
         return;
     applyUiScale(snapped);
     requestWindowResize();
+}
+
+void MainWindow::setSafeAreaInsets(const float insets[4]) {
+    safeAreaInsets_[0] = insets[0];
+    safeAreaInsets_[1] = insets[1];
+    safeAreaInsets_[2] = insets[2];
+    safeAreaInsets_[3] = insets[3];
 }
 
 void MainWindow::applyUiScale(float scale) {

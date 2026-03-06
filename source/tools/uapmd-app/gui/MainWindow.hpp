@@ -79,6 +79,9 @@ class MainWindow {
         ThemeMode currentTheme_ = ThemeMode::Dark;
         ImVec2 baseWindowSize_ = ImVec2(800.0f, 800.0f);
         ImVec2 lastWindowSize_ = ImVec2(0.0f, 0.0f);
+        // Safe area insets (left, top, right, bottom) in logical points.
+        // Non-zero on platforms with system UI overlays (Android 15+, iOS).
+        float safeAreaInsets_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         bool windowSizeRequestPending_ = false;
         bool waitingForWindowResize_ = false;
         ImVec2 requestedWindowSize_ = ImVec2(0.0f, 0.0f);
@@ -101,6 +104,7 @@ class MainWindow {
         bool& isOpen() { return isOpen_; }
         bool consumePendingWindowResize(ImVec2& size);
         void applySystemUiScale(float scale);
+        void setSafeAreaInsets(const float insets[4]);
 
     private:
         // No native embedding; we use dedicated windows for plugin UIs

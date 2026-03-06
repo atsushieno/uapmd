@@ -290,6 +290,13 @@ int runMainLoop(int argc, char** argv) {
         imguiPlatformBackend->newFrame();
         ImGui::NewFrame();
 
+        // Update safe area insets each frame (non-zero on mobile for system UI overlays)
+        {
+            float safeInsets[4];
+            windowingBackend->getSafeAreaInsets(window, safeInsets);
+            mainWindow.setSafeAreaInsets(safeInsets);
+        }
+
         // Render main window (pass the raw window pointer for DPI calculations)
         #ifdef USE_WIN32_BACKEND
             mainWindow.render(window->hwnd);

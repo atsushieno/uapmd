@@ -93,6 +93,16 @@ public:
     virtual void makeContextCurrent(WindowHandle* window) = 0;
 
     /**
+     * Get safe area insets (left, top, right, bottom) in logical points.
+     * Content within these insets may be obscured by system UI (status bar,
+     * navigation bar, display cutouts). Returns all zeros on platforms
+     * without safe area constraints.
+     */
+    virtual void getSafeAreaInsets(WindowHandle* window, float outInsets[4]) {
+        outInsets[0] = outInsets[1] = outInsets[2] = outInsets[3] = 0.0f;
+    }
+
+    /**
      * Shutdown the windowing system
      */
     virtual void shutdown() = 0;

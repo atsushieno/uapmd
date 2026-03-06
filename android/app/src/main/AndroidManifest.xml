@@ -17,7 +17,6 @@
             android:name=".MainActivity"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:configChanges="orientation|keyboardHidden|screenSize"
-            android:screenOrientation="unspecified"
             android:exported="true">
 
             <intent-filter>
