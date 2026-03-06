@@ -92,6 +92,10 @@ namespace uapmd {
         if (stream_)
             return true;
 
+        // Do NOT call setFramesPerCallback — let Oboe pick the optimal
+        // callback size based on the hardware's framesPerBurst.
+        // The chunking loop in onAudioReady handles any mismatch with
+        // our internal buffer capacity.
         auto attemptOpen = [&](bool exclusive) -> bool {
             AudioStreamBuilder builder;
             builder.setDirection(Direction::Output);
@@ -108,8 +112,6 @@ namespace uapmd {
             builder.setContentType(ContentType::Music);
             if (requested_sample_rate_ > 0)
                 builder.setSampleRate(requested_sample_rate_);
-            if (requested_buffer_size_ > 0)
-                builder.setFramesPerCallback(static_cast<int32_t>(requested_buffer_size_));
 
             AudioStream* rawStream = nullptr;
             const auto result = builder.openStream(&rawStream);
@@ -139,19 +141,15 @@ namespace uapmd {
             ? static_cast<uint32_t>(stream_->getFramesPerBurst())
             : 0u;
 
-        const auto hardwareCapacity = stream_->getBufferCapacityInFrames() > 0
-            ? static_cast<uint32_t>(stream_->getBufferCapacityInFrames())
-            : 0u;
-        uint32_t desiredCapacity = hardwareCapacity;
+        // Internal buffer capacity: sized to handle the engine's processing
+        // block size (requested_buffer_size_).  Falls back to a multiple of
+        // framesPerBurst or 512 when the caller didn't specify a size.
         if (requested_buffer_size_ > 0)
-            desiredCapacity = std::max(desiredCapacity, requested_buffer_size_);
-        if (desiredCapacity == 0) {
-            if (framesPerBurst > 0)
-                desiredCapacity = framesPerBurst * 2u;
-            else
-                desiredCapacity = 512u;
-        }
-        buffer_capacity_frames_ = desiredCapacity;
+            buffer_capacity_frames_ = requested_buffer_size_;
+        else if (framesPerBurst > 0)
+            buffer_capacity_frames_ = framesPerBurst * 2u;
+        else
+            buffer_capacity_frames_ = 512u;
 
         master_context.sampleRate(static_cast<int32_t>(sample_rate_));
         data.configureMainBus(static_cast<int32_t>(input_channels_),
@@ -159,39 +157,37 @@ namespace uapmd {
                               buffer_capacity_frames_);
         dataOutPtrs.resize(output_channels_);
 
-        uint32_t appliedBuffer = buffer_capacity_frames_;
-        if (buffer_capacity_frames_ > 0) {
-            const int32_t requestedFrames = static_cast<int32_t>(buffer_capacity_frames_);
-            const auto setResult = stream_->setBufferSizeInFrames(requestedFrames);
-            if (setResult) {
-                appliedBuffer = static_cast<uint32_t>(std::max(setResult.value(), 0));
-            } else {
-                logger_->logWarning("OboeAudioIODevice: setBufferSizeInFrames(%d) failed: %s",
-                                    requestedFrames,
+        // Use requested_buffer_size_ as a latency hint via setBufferSizeInFrames
+        // (the Oboe ring-buffer between app and hardware).
+        // This is clamped to [0, bufferCapacityInFrames] by Oboe automatically.
+        uint32_t appliedBufferSize = 0;
+        if (requested_buffer_size_ > 0) {
+            const auto setResult = stream_->setBufferSizeInFrames(
+                static_cast<int32_t>(requested_buffer_size_));
+            if (setResult)
+                appliedBufferSize = static_cast<uint32_t>(std::max(setResult.value(), 0));
+            else
+                logger_->logWarning("OboeAudioIODevice: setBufferSizeInFrames(%u) failed: %s",
+                                    requested_buffer_size_,
                                     convertToText(setResult.error()));
-                const int32_t currentSize = stream_->getBufferSizeInFrames();
-                if (currentSize > 0)
-                    appliedBuffer = static_cast<uint32_t>(currentSize);
-            }
-
-            if (appliedBuffer > buffer_capacity_frames_) {
-                buffer_capacity_frames_ = appliedBuffer;
-                data.configureMainBus(static_cast<int32_t>(input_channels_),
-                                      static_cast<int32_t>(output_channels_),
-                                      buffer_capacity_frames_);
-            }
         }
 
+        const auto hardwareCapacity = stream_->getBufferCapacityInFrames() > 0
+            ? static_cast<uint32_t>(stream_->getBufferCapacityInFrames())
+            : 0u;
+
         logger_->logInfo(
-            "OboeAudioIODevice: opened stream api=%s sharing=%s perf=%s sr=%d ch=%d framesPerBurst=%d requestedBuffer=%u appliedBuffer=%u hwCapacity=%u",
+            "OboeAudioIODevice: opened stream api=%s sharing=%s perf=%s sr=%d ch=%d "
+            "framesPerBurst=%d internalCapacity=%u requestedLatency=%u appliedLatency=%u hwCapacity=%u",
             toString(stream_->getAudioApi()),
             toString(stream_->getSharingMode()),
             toString(stream_->getPerformanceMode()),
             stream_->getSampleRate(),
             stream_->getChannelCount(),
             stream_->getFramesPerBurst(),
+            buffer_capacity_frames_,
             requested_buffer_size_,
-            appliedBuffer,
+            appliedBufferSize,
             hardwareCapacity);
         return true;
     }

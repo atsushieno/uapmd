@@ -600,6 +600,11 @@ namespace uapmd {
                 if (!trackContext)
                     continue;
 
+                // Clamp against the track's buffer capacity to prevent overruns
+                const auto safeFrames = static_cast<int32_t>(std::min(
+                    static_cast<size_t>(process.frameCount()),
+                    trackContext->audioBufferCapacityInFrames()));
+
                 // Copy device input channels
                 if (process.audioInBusCount() > 0 && trackContext->audioInBusCount() > 0) {
                     const uint32_t deviceChannels = std::min(
@@ -610,7 +615,7 @@ namespace uapmd {
                         const float* src = process.getFloatInBuffer(0, ch);
                         float* dst = trackContext->getFloatInBuffer(0, ch);
                         if (src && dst)
-                            std::memcpy(dst, src, process.frameCount() * sizeof(float));
+                            std::memcpy(dst, src, safeFrames * sizeof(float));
                     }
                 }
 

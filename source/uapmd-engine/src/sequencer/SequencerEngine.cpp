@@ -264,6 +264,12 @@ namespace uapmd {
         auto& data = sequence;
         auto& masterContext = data.masterContext();
 
+        // Clamp frame count to what track/master buffers can hold.
+        // Normally buffer_capacity_frames (Oboe) == audio_buffer_size_in_frames
+        // (engine), but clamp defensively to prevent buffer overruns.
+        const auto trackFrameCount = static_cast<int32_t>(
+            std::min(static_cast<size_t>(process.frameCount()), audio_buffer_size_in_frames));
+
         // Update playback position if playback is active
         bool isPlaybackActive = is_playback_active_.load(std::memory_order_acquire);
 
@@ -278,7 +284,7 @@ namespace uapmd {
                 continue; // buffer not ready
             auto ctx = data.tracks[t];
             ctx->eventOut().position(0); // clean up *out* events here.
-            ctx->frameCount(process.frameCount());
+            ctx->frameCount(trackFrameCount);
 
             // Copy device input to track input buffers
             for (uint32_t i = 0; i < ctx->audioInBusCount(); i++) {
@@ -286,9 +292,9 @@ namespace uapmd {
                     float* trackDst = ctx->getFloatInBuffer(i, ch);
                     // Copy from device input if available
                     if (process.audioInBusCount() > 0 && ch < process.inputChannelCount(0)) {
-                        memcpy(trackDst, (void*)process.getFloatInBuffer(0, ch), process.frameCount() * sizeof(float));
+                        memcpy(trackDst, (void*)process.getFloatInBuffer(0, ch), trackFrameCount * sizeof(float));
                     } else {
-                        memset(trackDst, 0, process.frameCount() * sizeof(float));
+                        memset(trackDst, 0, trackFrameCount * sizeof(float));
                     }
                 }
             }
@@ -329,13 +335,14 @@ namespace uapmd {
 
             // Mix only main bus (bus 0)
             if (process.audioOutBusCount() > 0 && ctx->audioOutBusCount() > 0) {
-                // Mix matching channels only
+                // Mix matching channels only — use trackFrameCount to
+                // stay within the track output buffer bounds.
                 uint32_t numChannels = std::min(ctx->outputChannelCount(0), process.outputChannelCount(0));
                 for (uint32_t ch = 0; ch < numChannels; ch++) {
                     float* dst = process.getFloatOutBuffer(0, ch);
                     const float* src = ctx->getFloatOutBuffer(0, ch);
                     // Additive mixing
-                    for (uint32_t frame = 0; frame < process.frameCount(); frame++) {
+                    for (int32_t frame = 0; frame < trackFrameCount; frame++) {
                         dst[frame] += src[frame];
                     }
                 }
@@ -345,7 +352,7 @@ namespace uapmd {
         // Process master track plugins if present
         if (master_track_ && master_track_context_ && !master_track_->orderedInstanceIds().empty()) {
             auto* masterCtx = master_track_context_.get();
-            masterCtx->frameCount(process.frameCount());
+            masterCtx->frameCount(trackFrameCount);
             masterCtx->eventIn().position(0);
             masterCtx->eventOut().position(0);
 
@@ -357,9 +364,8 @@ namespace uapmd {
                 for (uint32_t ch = 0; ch < channels; ++ch) {
                     float* dst = masterCtx->getFloatInBuffer(0, ch);
                     const float* src = process.getFloatOutBuffer(0, ch);
-                    if (dst && src) {
-                        std::memcpy(dst, src, process.frameCount() * sizeof(float));
-                    }
+                    if (dst && src)
+                        std::memcpy(dst, src, trackFrameCount * sizeof(float));
                 }
             }
 
@@ -373,9 +379,8 @@ namespace uapmd {
                 for (uint32_t ch = 0; ch < channels; ++ch) {
                     float* dst = process.getFloatOutBuffer(0, ch);
                     const float* src = masterCtx->getFloatOutBuffer(0, ch);
-                    if (dst && src) {
-                        std::memcpy(dst, src, process.frameCount() * sizeof(float));
-                    }
+                    if (dst && src)
+                        std::memcpy(dst, src, trackFrameCount * sizeof(float));
                 }
             }
         }
