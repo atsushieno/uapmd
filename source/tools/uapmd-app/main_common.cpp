@@ -10,6 +10,8 @@
 #include <cstring>
 #include <iostream>
 #include <optional>
+#include <chrono>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -234,7 +236,14 @@ int runMainLoop(int argc, char** argv) {
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     bool done = false;
 
+#if defined(__ANDROID__)
+    const auto targetFrameDuration = std::chrono::milliseconds(100);
+#endif
+
     while (!done && mainWindow.isOpen()) {
+#if defined(__ANDROID__)
+        const auto frameStart = std::chrono::steady_clock::now();
+#endif
         // Process events and forward to ImGui
         // SDL3 handles all platform events including Android lifecycle
         imguiPlatformBackend->processEvents();
@@ -356,6 +365,14 @@ int runMainLoop(int argc, char** argv) {
 
 #ifndef USE_DIRECTX11_RENDERER
         windowingBackend->swapBuffers(window);
+#endif
+#if defined(__ANDROID__)
+        const auto frameEnd = std::chrono::steady_clock::now();
+        const auto frameDuration = std::chrono::duration_cast<std::chrono::milliseconds>(frameEnd - frameStart);
+        // This feels stupid, but kinda works... (beyond io.DeltaTime)
+        if (frameDuration < targetFrameDuration) {
+            std::this_thread::sleep_for(targetFrameDuration - frameDuration);
+        }
 #endif
     }
 

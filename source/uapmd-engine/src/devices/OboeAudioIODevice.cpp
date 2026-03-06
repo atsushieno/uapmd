@@ -115,7 +115,7 @@ namespace uapmd {
             builder.setChannelConversionAllowed(true);
             builder.setSampleRateConversionQuality(SampleRateConversionQuality::Medium);
             builder.setChannelCount(requested_output_channels_);
-            builder.setCallback(this);
+            builder.setDataCallback(this);
             builder.setErrorCallback(this);
             builder.setUsage(Usage::Media);
             builder.setContentType(ContentType::Music);
