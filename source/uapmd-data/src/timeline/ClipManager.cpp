@@ -1,10 +1,28 @@
 #include <algorithm>
+#include <atomic>
 #include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
 
     int32_t ClipManager::generateClipId() {
         return next_clip_id_++;
+    }
+
+    void ClipManager::rebuildSnapshotLocked() {
+        auto snap = std::make_shared<ClipSnapshot>();
+        snap->clips.reserve(clips_.size());
+        for (const auto& pair : clips_)
+            snap->clips.push_back(pair.second);
+        snap->clipMap.reserve(snap->clips.size());
+        for (auto& clip : snap->clips)
+            snap->clipMap[clip.clipId] = &clip;
+        std::atomic_store_explicit(&clip_snapshot_,
+            std::shared_ptr<const ClipSnapshot>(snap),
+            std::memory_order_release);
+    }
+
+    std::shared_ptr<const ClipManager::ClipSnapshot> ClipManager::getSnapshotRT() const {
+        return std::atomic_load_explicit(&clip_snapshot_, std::memory_order_acquire);
     }
 
     int32_t ClipManager::addClip(const ClipData& clip) {
@@ -21,6 +39,7 @@ namespace uapmd {
         }
 
         clips_[newClip.clipId] = newClip;
+        rebuildSnapshotLocked();
         return newClip.clipId;
     }
 
@@ -31,6 +50,7 @@ namespace uapmd {
             return false;
 
         clips_.erase(it);
+        rebuildSnapshotLocked();
         return true;
     }
 
@@ -121,6 +141,7 @@ namespace uapmd {
             return false;
 
         it->second.position = newPosition;
+        rebuildSnapshotLocked();
         return true;
     }
 
@@ -131,6 +152,7 @@ namespace uapmd {
             return false;
 
         it->second.durationSamples = newDuration;
+        rebuildSnapshotLocked();
         return true;
     }
 
@@ -141,6 +163,7 @@ namespace uapmd {
             return false;
 
         it->second.gain = gain;
+        rebuildSnapshotLocked();
         return true;
     }
 
@@ -151,6 +174,7 @@ namespace uapmd {
             return false;
 
         it->second.muted = muted;
+        rebuildSnapshotLocked();
         return true;
     }
 
@@ -161,6 +185,7 @@ namespace uapmd {
             return false;
 
         it->second.name = name;
+        rebuildSnapshotLocked();
         return true;
     }
 
@@ -171,6 +196,7 @@ namespace uapmd {
             return false;
 
         it->second.filepath = filepath;
+        rebuildSnapshotLocked();
         return true;
     }
 
@@ -181,6 +207,7 @@ namespace uapmd {
             return false;
 
         it->second.needsFileSave = needsSave;
+        rebuildSnapshotLocked();
         return true;
     }
 
@@ -201,6 +228,7 @@ namespace uapmd {
         it->second.anchorClipId = anchorClipId;
         it->second.anchorOrigin = anchorOrigin;
         it->second.anchorOffset = anchorOffset;
+        rebuildSnapshotLocked();
         return true;
     }
 
@@ -217,6 +245,7 @@ namespace uapmd {
     void ClipManager::clearAll() {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         clips_.clear();
+        rebuildSnapshotLocked();
     }
 
     size_t ClipManager::clipCount() const {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TimelineTypes.hpp"
+#include <memory>
 #include <unordered_map>
 #include <vector>
 #include <mutex>
@@ -11,6 +12,12 @@ namespace uapmd {
     // Thread-safe for concurrent UI and RT thread access
     class ClipManager {
     public:
+        // Immutable snapshot of all clips — built on UI thread, read lock-free on RT thread
+        struct ClipSnapshot {
+            std::vector<ClipData> clips;
+            std::unordered_map<int32_t, const ClipData*> clipMap; // pointers into clips
+        };
+
         ClipManager() = default;
         ~ClipManager() = default;
 
@@ -43,6 +50,9 @@ namespace uapmd {
         // Get number of clips
         size_t clipCount() const;
 
+        // RT-safe: returns immutable snapshot without locking (atomic_load)
+        std::shared_ptr<const ClipSnapshot> getSnapshotRT() const;
+
     private:
         mutable std::mutex clips_mutex_;  // Protects clips_ map
         std::unordered_map<int32_t, ClipData> clips_;
@@ -50,6 +60,10 @@ namespace uapmd {
 
         // Helper to generate unique clip IDs
         int32_t generateClipId();
+
+        // Atomic snapshot for RT-safe access (rebuilt on every mutation under clips_mutex_)
+        std::shared_ptr<const ClipSnapshot> clip_snapshot_;
+        void rebuildSnapshotLocked();
     };
 
 } // namespace uapmd

@@ -67,6 +67,10 @@ namespace uapmd {
         std::vector<std::vector<float>> mixed_source_buffers_;  // [channel][samples]
         std::vector<float*> mixed_source_buffer_ptrs_;  // Pointers to buffer channels
 
+        // Scratch buffers for per-source processing (reused for each source node)
+        std::vector<std::vector<float>> temp_source_buffers_;   // [channel][samples]
+        std::vector<float*> temp_source_buffer_ptrs_;
+
         // Helper to ensure buffers are allocated
         void ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount);
 

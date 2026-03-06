@@ -145,60 +145,62 @@ namespace uapmd {
         // This should ONLY be called from non-audio thread (e.g., during initialization or config change)
         mixed_source_buffers_.clear();
         mixed_source_buffers_.resize(channelCount);
-
-        for (auto& channelBuffer : mixed_source_buffers_) {
+        for (auto& channelBuffer : mixed_source_buffers_)
             channelBuffer.resize(bufferSizeInFrames);
-        }
 
-        // Update buffer pointers
         mixed_source_buffer_ptrs_.clear();
         mixed_source_buffer_ptrs_.reserve(channelCount);
-        for (auto& channelBuffer : mixed_source_buffers_) {
+        for (auto& channelBuffer : mixed_source_buffers_)
             mixed_source_buffer_ptrs_.push_back(channelBuffer.data());
-        }
+
+        // Also allocate scratch buffers for per-source processing
+        temp_source_buffers_.clear();
+        temp_source_buffers_.resize(channelCount);
+        for (auto& channelBuffer : temp_source_buffers_)
+            channelBuffer.resize(bufferSizeInFrames);
+
+        temp_source_buffer_ptrs_.clear();
+        temp_source_buffer_ptrs_.reserve(channelCount);
+        for (auto& channelBuffer : temp_source_buffers_)
+            temp_source_buffer_ptrs_.push_back(channelBuffer.data());
     }
 
     void TimelineTrack::ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount) {
         // Defensive check: If buffers were pre-allocated correctly, this should be a no-op
         // Only resize if buffers are insufficient (shouldn't happen in normal operation)
+        const auto needed = static_cast<size_t>(frameCount);
 
-        // Check if buffers are already adequate
-        if (mixed_source_buffers_.size() == numChannels &&
-            (numChannels == 0 || (!mixed_source_buffers_.empty() &&
-             mixed_source_buffers_[0].size() >= static_cast<size_t>(frameCount)))) {
-            // Buffers are already adequate - fast path (no allocation)
+        auto isAdequate = [&](const std::vector<std::vector<float>>& bufs) {
+            return bufs.size() == numChannels &&
+                   (numChannels == 0 || bufs[0].size() >= needed);
+        };
+
+        if (isAdequate(mixed_source_buffers_) && isAdequate(temp_source_buffers_))
             return;
-        }
 
-        // If we get here, buffers weren't pre-allocated correctly
-        // This shouldn't happen but we handle it defensively
         // WARNING: This allocates memory in the audio thread (not real-time safe!)
         // Use reconfigureBuffers() from non-audio thread to avoid this!
         try {
-            // Only grow, never shrink (to avoid repeated allocations)
-            const size_t targetFrames = std::max(
-                mixed_source_buffers_.empty() ? 0 : mixed_source_buffers_[0].size(),
-                static_cast<size_t>(frameCount)
-            );
-
-            mixed_source_buffers_.resize(numChannels);
-            for (auto& channelBuffer : mixed_source_buffers_) {
-                if (channelBuffer.size() < targetFrames) {
-                    channelBuffer.resize(targetFrames);
-                }
-            }
-
-            // Update buffer pointers
-            mixed_source_buffer_ptrs_.clear();
-            mixed_source_buffer_ptrs_.reserve(numChannels);
-            for (auto& channelBuffer : mixed_source_buffers_) {
-                mixed_source_buffer_ptrs_.push_back(channelBuffer.data());
-            }
+            auto growBuffers = [&](std::vector<std::vector<float>>& bufs,
+                                   std::vector<float*>& ptrs) {
+                const size_t targetFrames = std::max(
+                    bufs.empty() ? size_t{0} : bufs[0].size(), needed);
+                bufs.resize(numChannels);
+                for (auto& ch : bufs)
+                    if (ch.size() < targetFrames)
+                        ch.resize(targetFrames);
+                ptrs.clear();
+                ptrs.reserve(numChannels);
+                for (auto& ch : bufs)
+                    ptrs.push_back(ch.data());
+            };
+            growBuffers(mixed_source_buffers_, mixed_source_buffer_ptrs_);
+            growBuffers(temp_source_buffers_, temp_source_buffer_ptrs_);
         } catch (const std::bad_alloc&) {
-            // Memory allocation failed - clear buffers and fail gracefully
-            // Audio will be silent for this callback but won't crash
             mixed_source_buffers_.clear();
             mixed_source_buffer_ptrs_.clear();
+            temp_source_buffers_.clear();
+            temp_source_buffer_ptrs_.clear();
         }
     }
 
@@ -239,160 +241,133 @@ namespace uapmd {
         ensureBuffersAllocated(numChannels, frameCount);
 
         // Clear mixed source buffers
-        for (auto& channelBuffer : mixed_source_buffers_) {
-            std::memset(channelBuffer.data(), 0, frameCount * sizeof(float));
-        }
+        for (uint32_t ch = 0; ch < numChannels && ch < mixed_source_buffers_.size(); ++ch)
+            std::memset(mixed_source_buffers_[ch].data(), 0, frameCount * sizeof(float));
 
-        // Step 1: Build clip map for absolute position calculations
-        auto allClips = clip_manager_.getAllClips();
-        std::unordered_map<int32_t, const ClipData*> clipMap;
-        clipMap.reserve(allClips.size());
-        for (auto& clip : allClips) {
-            clipMap[clip.clipId] = &clip;
-        }
+        // Get RT-safe clip snapshot (lock-free atomic load)
+        auto clipSnapshot = clip_manager_.getSnapshotRT();
 
-        // Step 2: Query active clips at current timeline position
-        auto activeClips = clip_manager_.getActiveClipsAt(timeline.playheadPosition);
+        if (clipSnapshot) {
+            const auto& clips = clipSnapshot->clips;
+            const auto& clipMap = clipSnapshot->clipMap;
 
-        // Step 3: Process audio source nodes for each active clip
-        for (const auto& clip : activeClips) {
-            if (clip.clipType != ClipType::Audio)
-                continue;  // Skip MIDI clips in this loop
+            // Process audio source nodes — iterate all clips, skip inactive ones inline
+            for (const auto& clip : clips) {
+                if (clip.clipType != ClipType::Audio || clip.muted)
+                    continue;
 
-            if (clip.muted)
-                continue;
+                // Check if clip is active at current playhead (anchor-aware)
+                TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
+                if (timeline.playheadPosition.samples < absPos.samples ||
+                    timeline.playheadPosition.samples >= absPos.samples + clip.durationSamples)
+                    continue;
 
-            // Find the source node for this clip
-            auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
-            if (!sourceNode || sourceNode->nodeType() != SourceNodeType::AudioFileSource)
-                continue;
+                auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
+                if (!sourceNode || sourceNode->nodeType() != SourceNodeType::AudioFileSource)
+                    continue;
 
-            auto* audioSourceNode = dynamic_cast<AudioSourceNode*>(sourceNode.get());
-            if (!audioSourceNode)
-                continue;
+                auto* audioSourceNode = dynamic_cast<AudioSourceNode*>(sourceNode.get());
+                if (!audioSourceNode)
+                    continue;
 
-            // Calculate position within the source file using anchor-aware calculation
-            int64_t sourcePosition = clip.getSourcePosition(timeline.playheadPosition, clipMap);
-            if (sourcePosition < 0)
-                continue;
+                int64_t sourcePosition = timeline.playheadPosition.samples - absPos.samples;
+                if (sourcePosition < 0)
+                    continue;
 
-            // Seek source node to correct position
-            audioSourceNode->seek(sourcePosition);
+                audioSourceNode->seek(sourcePosition);
+                audioSourceNode->setPlaying(timeline.isPlaying);
 
-            // Set playing state
-            audioSourceNode->setPlaying(timeline.isPlaying);
+                // Zero pre-allocated scratch buffers and process
+                for (uint32_t ch = 0; ch < numChannels && ch < temp_source_buffers_.size(); ++ch)
+                    std::memset(temp_source_buffers_[ch].data(), 0, frameCount * sizeof(float));
 
-            // Create temporary buffers for this source
-            std::vector<std::vector<float>> tempBuffers(numChannels);
-            std::vector<float*> tempBufferPtrs;
-            tempBufferPtrs.reserve(numChannels);
+                audioSourceNode->processAudio(temp_source_buffer_ptrs_.data(), numChannels, frameCount);
 
-            for (auto& buf : tempBuffers) {
-                buf.resize(frameCount);
-                tempBufferPtrs.push_back(buf.data());
+                // Mix into mixed source buffer with gain
+                const float gain = static_cast<float>(clip.gain);
+                for (uint32_t ch = 0; ch < numChannels; ++ch)
+                    for (int32_t frame = 0; frame < frameCount; ++frame)
+                        mixed_source_buffers_[ch][frame] += temp_source_buffers_[ch][frame] * gain;
             }
 
-            // Process the source node
-            audioSourceNode->processAudio(tempBufferPtrs.data(), numChannels, frameCount);
+            // Process MIDI clips
+            for (const auto& clip : clips) {
+                if (clip.clipType != ClipType::Midi || clip.muted)
+                    continue;
 
-            // Mix into our mixed source buffer with gain applied
-            for (uint32_t ch = 0; ch < numChannels; ++ch) {
-                for (int32_t frame = 0; frame < frameCount; ++frame) {
-                    mixed_source_buffers_[ch][frame] += tempBuffers[ch][frame] * static_cast<float>(clip.gain);
-                }
+                TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
+                if (timeline.playheadPosition.samples < absPos.samples ||
+                    timeline.playheadPosition.samples >= absPos.samples + clip.durationSamples)
+                    continue;
+
+                auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
+                if (!sourceNode || sourceNode->nodeType() != SourceNodeType::MidiClipSource)
+                    continue;
+
+                auto* midiNode = dynamic_cast<MidiSourceNode*>(sourceNode.get());
+                if (!midiNode)
+                    continue;
+
+                int64_t sourcePosition = timeline.playheadPosition.samples - absPos.samples;
+                if (sourcePosition < 0)
+                    continue;
+
+                midiNode->seek(sourcePosition);
+                midiNode->setPlaying(timeline.isPlaying);
+
+                midiNode->processEvents(
+                    process.eventIn(),
+                    frameCount,
+                    static_cast<int32_t>(sample_rate_),
+                    timeline.tempo
+                );
             }
         }
 
-        // Step 3.5: Process MIDI clips (NEW)
-        for (const auto& clip : activeClips) {
-            if (clip.clipType != ClipType::Midi)
-                continue;  // Skip audio clips in this loop
-
-            if (clip.muted)
-                continue;
-
-            // Find the MIDI source node for this clip
-            auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
-            if (!sourceNode || sourceNode->nodeType() != SourceNodeType::MidiClipSource)
-                continue;
-
-            auto* midiNode = dynamic_cast<MidiSourceNode*>(sourceNode.get());
-            if (!midiNode)
-                continue;
-
-            // Calculate position within the source using anchor-aware calculation
-            int64_t sourcePosition = clip.getSourcePosition(timeline.playheadPosition, clipMap);
-            if (sourcePosition < 0)
-                continue;
-
-            // Seek MIDI source to correct position
-            midiNode->seek(sourcePosition);
-            midiNode->setPlaying(timeline.isPlaying);
-
-            // Generate MIDI events into AudioProcessContext event_in
-            midiNode->processEvents(
-                process.eventIn(),
-                frameCount,
-                static_cast<int32_t>(sample_rate_),
-                timeline.tempo
-            );
-        }
-
-        // Step 4: Process device input sources
-        // Get device input buffer info from AudioProcessContext
+        // Process device input sources
         const uint32_t deviceChannelCount =
             process.audioInBusCount() > 0 ? process.inputChannelCount(0) : 0;
 
         if (deviceChannelCount > 0) {
-            auto snapshot = std::atomic_load_explicit(&source_nodes_snapshot_, std::memory_order_acquire);
-            if (snapshot) {
-                for (const auto& sourceNode : *snapshot) {
+            auto srcSnapshot = std::atomic_load_explicit(&source_nodes_snapshot_, std::memory_order_acquire);
+            if (srcSnapshot) {
+                for (const auto& sourceNode : *srcSnapshot) {
                     if (!sourceNode || sourceNode->nodeType() != SourceNodeType::DeviceInput)
                         continue;
 
                     auto* deviceInputNode = dynamic_cast<DeviceInputSourceNode*>(sourceNode.get());
-                    if (deviceInputNode) {
-                        // Get device input buffer pointers from AudioProcessContext
-                        std::vector<float*> deviceInputPtrs;
-                        deviceInputPtrs.reserve(deviceChannelCount);
-                        for (uint32_t ch = 0; ch < deviceChannelCount; ++ch) {
-                            deviceInputPtrs.push_back(const_cast<float*>(process.getFloatInBuffer(0, ch)));
-                        }
+                    if (!deviceInputNode)
+                        continue;
 
-                        deviceInputNode->setDeviceInputBuffers(deviceInputPtrs.data(), deviceChannelCount);
-                        deviceInputNode->setPlaying(timeline.isPlaying);
+                    // Stack-allocated pointer array (no heap alloc)
+                    constexpr uint32_t kMaxDeviceChannels = 16;
+                    float* devicePtrs[kMaxDeviceChannels];
+                    const uint32_t usableChannels = std::min(deviceChannelCount, kMaxDeviceChannels);
+                    for (uint32_t ch = 0; ch < usableChannels; ++ch)
+                        devicePtrs[ch] = const_cast<float*>(process.getFloatInBuffer(0, ch));
 
-                        // Create temporary buffers for device input
-                        std::vector<std::vector<float>> tempBuffers(numChannels);
-                        std::vector<float*> tempBufferPtrs;
-                        tempBufferPtrs.reserve(numChannels);
+                    deviceInputNode->setDeviceInputBuffers(devicePtrs, usableChannels);
+                    deviceInputNode->setPlaying(timeline.isPlaying);
 
-                        for (auto& buf : tempBuffers) {
-                            buf.resize(frameCount);
-                            tempBufferPtrs.push_back(buf.data());
-                        }
+                    // Zero and reuse pre-allocated scratch buffers
+                    for (uint32_t ch = 0; ch < numChannels && ch < temp_source_buffers_.size(); ++ch)
+                        std::memset(temp_source_buffers_[ch].data(), 0, frameCount * sizeof(float));
 
-                        // Process device input
-                        deviceInputNode->processAudio(tempBufferPtrs.data(), numChannels, frameCount);
+                    deviceInputNode->processAudio(temp_source_buffer_ptrs_.data(), numChannels, frameCount);
 
-                        // Mix into our mixed source buffer
-                        for (uint32_t ch = 0; ch < numChannels; ++ch) {
-                            for (int32_t frame = 0; frame < frameCount; ++frame) {
-                                mixed_source_buffers_[ch][frame] += tempBuffers[ch][frame];
-                            }
-                        }
-                    }
+                    for (uint32_t ch = 0; ch < numChannels; ++ch)
+                        for (int32_t frame = 0; frame < frameCount; ++frame)
+                            mixed_source_buffers_[ch][frame] += temp_source_buffers_[ch][frame];
                 }
             }
         }
 
-        // Step 5: Write mixed source buffer to AudioProcessContext INPUT
+        // Write mixed source buffer to AudioProcessContext INPUT
         // Timeline track writes to sequencer track's input, then plugins process input->output
         for (uint32_t ch = 0; ch < numChannels && ch < mixed_source_buffer_ptrs_.size(); ++ch) {
             float* inBuffer = process.getFloatInBuffer(0, ch);
-            if (inBuffer) {
+            if (inBuffer)
                 std::memcpy(inBuffer, mixed_source_buffer_ptrs_[ch], frameCount * sizeof(float));
-            }
         }
     }
 
