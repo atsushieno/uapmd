@@ -932,6 +932,7 @@ void MainWindow::handleAudioDeviceChange() {
                                 selectedOutput,
                                 sampleRate,
                                 bufferSize) << std::endl;
+        uapmd::AppModel::instance().updateAudioDeviceSettings(static_cast<int32_t>(sampleRate), bufferSize);
     }
 }
 

@@ -13,7 +13,7 @@ namespace uapmd {
         static void on_ma_log(void* userData, uint32_t logLevel, const char* message);
 
     protected:
-        AudioIODevice* onOpen(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) override;
+        AudioIODevice* onOpen(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate, uint32_t bufferSize) override;
 
     public:
         static void on_ma_device_notification(const ma_device_notification* pNotification);

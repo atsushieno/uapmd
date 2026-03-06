@@ -1,9 +1,17 @@
 #include "uapmd/uapmd.hpp"
-#include "MiniAudioIODevice.hpp"
 
+#if defined(__ANDROID__)
+#include "OboeAudioIODevice.hpp"
+#else
+#include "MiniAudioIODevice.hpp"
+#endif
 
 uapmd::AudioIODeviceManager* uapmd::AudioIODeviceManager::instance(const std::string &driverName) {
-    // We do not support anything but miniaudio, so driverName is not respected here...
+    (void) driverName;
+#if defined(__ANDROID__)
+    static uapmd::OboeAudioIODeviceManager impl{};
+#else
     static uapmd::MiniAudioIODeviceManager impl{};
+#endif
     return &impl;
 }

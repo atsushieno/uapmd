@@ -70,8 +70,11 @@ namespace uapmd {
             return onDevices();
         }
 
-        AudioIODevice* open(int inputDeviceIndex = -1, int outputDeviceIndex = -1, uint32_t sampleRate = 0) {
-            return onOpen(inputDeviceIndex, outputDeviceIndex, sampleRate);
+        AudioIODevice* open(int inputDeviceIndex = -1,
+                            int outputDeviceIndex = -1,
+                            uint32_t sampleRate = 0,
+                            uint32_t bufferSize = 0) {
+            return onOpen(inputDeviceIndex, outputDeviceIndex, sampleRate, bufferSize);
         }
         virtual std::vector<uint32_t> getDeviceSampleRates(const std::string& deviceName, AudioIODirections direction) = 0;
 
@@ -85,7 +88,10 @@ namespace uapmd {
 
         explicit AudioIODeviceManager(const std::string& driverName) : driver_name(driverName) {}
         virtual std::vector<AudioIODeviceInfo> onDevices() = 0;
-        virtual AudioIODevice* onOpen(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) = 0;
+        virtual AudioIODevice* onOpen(int inputDeviceIndex,
+                                      int outputDeviceIndex,
+                                      uint32_t sampleRate,
+                                      uint32_t bufferSize) = 0;
 
         void notifyDeviceChange(int32_t deviceId, AudioIODeviceChange change) const {
             if (deviceChangeCallback_) {

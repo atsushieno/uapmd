@@ -132,6 +132,7 @@ namespace uapmd {
         bool isAudioEngineEnabled() const { return audioEngineEnabled_.load(std::memory_order_acquire); }
         void setAudioEngineEnabled(bool enabled);
         void toggleAudioEngine();
+        void updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize);
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
 

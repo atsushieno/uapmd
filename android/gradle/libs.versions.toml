@@ -8,6 +8,7 @@ espressoCore = "3.7.0"
 appcompat = "1.7.1"
 material = "1.10.0"
 startup-runtime = "1.2.0"
+oboe = "1.10.0"
 
 [libraries]
 androidaudioplugin = { module = "org.androidaudioplugin:androidaudioplugin", version.ref = "androidaudioplugin" }
@@ -19,7 +20,7 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 startup-runtime = { module = "androidx.startup:startup-runtime", version.ref = "startup-runtime" }
+oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-

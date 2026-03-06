@@ -571,6 +571,13 @@ void uapmd::AppModel::toggleAudioEngine() {
     setAudioEngineEnabled(desired);
 }
 
+void uapmd::AppModel::updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize) {
+    if (sampleRate > 0)
+        sample_rate_ = sampleRate;
+    if (bufferSize > 0)
+        audio_buffer_size_ = bufferSize;
+}
+
 void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const std::string& pluginId,
                                                  int32_t trackIndex,

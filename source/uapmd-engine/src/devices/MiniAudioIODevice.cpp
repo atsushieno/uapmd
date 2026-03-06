@@ -146,8 +146,12 @@ std::vector<uapmd::AudioIODeviceInfo> uapmd::MiniAudioIODeviceManager::onDevices
 }
 
 // The entire API is hacky so far...
-uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::onOpen(int inputDeviceIndex, int outputDeviceIndex, uint32_t sampleRate) {
+uapmd::AudioIODevice *uapmd::MiniAudioIODeviceManager::onOpen(int inputDeviceIndex,
+                                                              int outputDeviceIndex,
+                                                              uint32_t sampleRate,
+                                                              uint32_t bufferSize) {
     static uapmd::MiniAudioIODevice audio{this};
+    (void) bufferSize;
 
 #if defined(__EMSCRIPTEN__)
     // Web builds always use the default playback device exposed via WebAudio.
@@ -495,13 +499,8 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
         const size_t hardwareChannels = dataOutPtrs.size();
         const size_t mappedChannels = std::min(pluginChannels, hardwareChannels);
 
-        for (size_t i = 0; i < mappedChannels; ++i)
-            dataOutPtrs[i] = data.getFloatOutBuffer(mainBus, static_cast<uint32_t>(i));
-
-        auto outcomeView = choc::buffer::createChannelArrayView(dataOutPtrs.data(), mappedChannels, frameCount);
-        auto outputView = choc::buffer::createInterleavedView(static_cast<float*>(output), mappedChannels, frameCount);
-        choc::buffer::copyRemappingChannels(outputView, outcomeView);
-
+        // If the plugin outputs more channels than the device can play, fold the
+        // extra channels down into channel 0 before we hand buffers to miniaudio.
         if (pluginChannels > hardwareChannels && hardwareChannels > 0) {
             auto* mixDown = data.getFloatOutBuffer(mainBus, 0);
             for (size_t ch = hardwareChannels; ch < pluginChannels; ++ch) {
@@ -510,6 +509,26 @@ void uapmd::MiniAudioIODevice::dataCallback(void *output, const void *input, ma_
                     continue;
                 for (uint32_t frame = 0; frame < frameCount; ++frame)
                     mixDown[frame] += extra[frame];
+            }
+        }
+
+        auto* deviceOut = static_cast<float*>(output);
+        if (!deviceOut || hardwareChannels == 0) {
+            return;
+        }
+
+        for (size_t i = 0; i < mappedChannels; ++i)
+            dataOutPtrs[i] = data.getFloatOutBuffer(mainBus, static_cast<uint32_t>(i));
+
+        for (uint32_t frame = 0; frame < frameCount; ++frame) {
+            for (size_t ch = 0; ch < hardwareChannels; ++ch) {
+                float sample = 0.0f;
+                if (ch < mappedChannels) {
+                    auto* channelPtr = dataOutPtrs[ch];
+                    if (channelPtr)
+                        sample = channelPtr[frame];
+                }
+                deviceOut[frame * hardwareChannels + ch] = sample;
             }
         }
     }

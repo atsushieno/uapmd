@@ -24,9 +24,9 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
     dispatcher(dispatcher),
     sequencer(SequencerEngine::create(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes)) {
     // Configure default channels based on audio device
-    auto audioDevice = dispatcher->audio();
-    const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
-    const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
+    auto* initialAudioDevice = dispatcher->audio();
+    const auto inputChannels = initialAudioDevice ? std::max(initialAudioDevice->inputChannels(), 2u) : 2;
+    const auto outputChannels = initialAudioDevice ? initialAudioDevice->outputChannels() : 2;
     sequencer->setDefaultChannels(inputChannels, outputChannels);
 
     auto manager = AudioIODeviceManager::instance();
@@ -35,7 +35,8 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
     manager->initialize(audioConfig);
 
     // FIXME: enable MIDI devices
-    dispatcher->configure(umpBufferSizeInBytes, manager->open());
+    auto* audioDevice = manager->open(-1, -1, static_cast<uint32_t>(sample_rate), static_cast<uint32_t>(buffer_size_in_frames));
+    dispatcher->configure(umpBufferSizeInBytes, audioDevice);
 
     dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
         // Delegate all master audio processing to SequencerEngine
@@ -90,7 +91,10 @@ bool uapmd::RealtimeSequencer::reconfigureAudioDevice(int inputDeviceIndex, int 
 
     // Get a new audio device from the manager with specific device indices
     auto manager = AudioIODeviceManager::instance();
-    auto* newDevice = manager->open(inputDeviceIndex, outputDeviceIndex, sampleRate);
+    const uint32_t requestedBuffer = bufferSize > 0
+        ? bufferSize
+        : static_cast<uint32_t>(buffer_size_in_frames);
+    auto* newDevice = manager->open(inputDeviceIndex, outputDeviceIndex, sampleRate, requestedBuffer);
     if (!newDevice) {
         remidy::Logger::global()->logError("Failed to open audio device with indices: input={}, output={}, sampleRate={}", inputDeviceIndex, outputDeviceIndex, sampleRate);
         return false;

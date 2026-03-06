@@ -27,6 +27,7 @@ android {
         externalNativeBuild {
             cmake {
                 arguments.addAll(listOf(
+                    "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
                     "-DAAP_DIR=$aapDir",
                     "-DMIDICCI_SKIP_TOOLS=ON",
                     "-DCPM_SOURCE_CACHE=$cpmSourceCacheDir",
@@ -72,6 +73,7 @@ dependencies {
     implementation(files("../external/SDL3-3.4.0.aar"))
     implementation(libs.androidaudioplugin)
     implementation(libs.androidaudioplugin.manager)
+    implementation(libs.oboe)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

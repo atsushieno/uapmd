@@ -56,12 +56,18 @@ target_sources(uapmd-engine PRIVATE
         devices/LibreMidiIODevice.cpp
         devices/MidiIODevice.cpp
         devices/MiniAudioIODevice.cpp
+        devices/OboeAudioIODevice.cpp
         sequencer/OfflineRenderer.cpp
         sequencer/RealtimeSequencer.cpp
         sequencer/SequencerEngine.cpp
         sequencer/SequencerTrack.cpp
         sequencer/TimelineFacade.cpp
 )
+
+if(ANDROID)
+    find_package(oboe REQUIRED CONFIG)
+    target_link_libraries(uapmd-engine PRIVATE oboe::oboe)
+endif()
 
 if(IOS)
     # miniaudio.h on Apple pulls in AVFoundation (an ObjC framework).

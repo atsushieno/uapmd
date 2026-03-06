@@ -1,6 +1,9 @@
 #include <iostream>
 #include <rtlog/rtlog.h>
 #include "remidy/remidy.hpp"
+#if ANDROID
+#include <android/log.h>
+#endif
 
 constexpr auto MAX_NUM_LOG_MESSAGES = 128;
 constexpr auto MAX_LOG_MESSAGE_LENGTH = 1024;
@@ -104,6 +107,18 @@ static const char* levelString(remidy::Logger::LogLevel level) {
     return "";
 }
 
+#if ANDROID
+int convertLogLevel(remidy::Logger::LogLevel level) {
+    switch (level) {
+        case remidy::Logger::LogLevel::INFO: return ANDROID_LOG_INFO;
+        case remidy::Logger::LogLevel::WARNING: return ANDROID_LOG_WARN;
+        case remidy::Logger::LogLevel::ERROR: return ANDROID_LOG_ERROR;
+        case remidy::Logger::LogLevel::DIAGNOSTIC: return ANDROID_LOG_DEBUG;
+        default: return ANDROID_LOG_INFO;
+    }
+}
+#endif
+
 void remidy::Logger::Impl::initializeGlobalLogger() {
     static std::atomic<bool> loggerInitialized{false};
 
@@ -113,7 +128,11 @@ void remidy::Logger::Impl::initializeGlobalLogger() {
                 // too much by default
                 case LogLevel::DIAGNOSTIC: break;
                 default:
+#if ANDROID
+                    __android_log_print(convertLogLevel(level), "remidy", "[remidy #%zu (%s)]: %s", serial, levelString(level), s);
+#else
                     std::cerr << "[remidy #" << serial << " (" << levelString(level) << ")]: " << s << std::endl;
+#endif
                     break;
             }
         });
