@@ -1,21 +1,204 @@
-#include "remidy-gui/priv/ContainerWindow.hpp"
+#if defined(__ANDROID__)
+
+#include <utility>
+#include <string>
+#include <jni.h>
+#include "remidy-gui/remidy-gui.hpp"
+
+namespace {
+
+extern "C" void* SDL_GetAndroidJNIEnv();
+
+JNIEnv* getEnv() {
+    return static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+}
+
+jclass getOverlayManagerClass(JNIEnv* env) {
+    static jclass cached = nullptr;
+    if (!env)
+        return nullptr;
+    if (!cached) {
+        auto local = env->FindClass("dev/atsushieno/uapmd/ui/PluginUiOverlayManager");
+        if (!local)
+            return nullptr;
+        cached = static_cast<jclass>(env->NewGlobalRef(local));
+        env->DeleteLocalRef(local);
+    }
+    return cached;
+}
+
+void callCreateOverlay(JNIEnv* env, jlong handle, jstring title, jint width, jint height) {
+    auto cls = getOverlayManagerClass(env);
+    if (!cls)
+        return;
+    auto mid = env->GetStaticMethodID(cls, "createOverlay", "(JLjava/lang/String;II)V");
+    if (!mid)
+        return;
+    env->CallStaticVoidMethod(cls, mid, handle, title, width, height);
+}
+
+void callDestroyOverlay(JNIEnv* env, jlong handle) {
+    auto cls = getOverlayManagerClass(env);
+    if (!cls)
+        return;
+    auto mid = env->GetStaticMethodID(cls, "destroyOverlay", "(J)V");
+    if (!mid)
+        return;
+    env->CallStaticVoidMethod(cls, mid, handle);
+}
+
+void callSetVisible(JNIEnv* env, jlong handle, bool visible) {
+    auto cls = getOverlayManagerClass(env);
+    if (!cls)
+        return;
+    auto mid = env->GetStaticMethodID(cls, "setOverlayVisible", "(JZ)V");
+    if (!mid)
+        return;
+    env->CallStaticVoidMethod(cls, mid, handle, static_cast<jboolean>(visible));
+}
+
+void callResize(JNIEnv* env, jlong handle, jint width, jint height) {
+    auto cls = getOverlayManagerClass(env);
+    if (!cls)
+        return;
+    auto mid = env->GetStaticMethodID(cls, "resizeOverlay", "(JII)V");
+    if (!mid)
+        return;
+    env->CallStaticVoidMethod(cls, mid, handle, width, height);
+}
+
+void callAttachSurfaceView(JNIEnv* env, jlong handle, jobject surfaceView) {
+    auto cls = getOverlayManagerClass(env);
+    if (!cls)
+        return;
+    auto mid = env->GetStaticMethodID(cls, "attachSurfaceView", "(JLandroid/view/View;)V");
+    if (!mid)
+        return;
+    env->CallStaticVoidMethod(cls, mid, handle, surfaceView);
+}
+
+}
 
 namespace remidy::gui {
 
-    class AndroidContainerWindow : public ContainerWindow {
-    public:
-        AndroidContainerWindow(const char* title, int width, int height, std::function<void()> closeCallback) {}
-        ~AndroidContainerWindow() override = default;
+namespace {
+constexpr float kAndroidUiScale = 2.0f;
+constexpr int kFallbackDimension = 200;
 
-        void show(bool visible) override {}
-        void resize(int width, int height) override {}
-        void setResizeCallback(std::function<void(int, int)> callback) override {}
-        void setResizable(bool resizable) override {}
-        Bounds getBounds() const override { return {}; }
-        void* getHandle() const override { return nullptr; }
-    };
-
-    std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height, std::function<void()> closeCallback) {
-        return std::make_unique<AndroidContainerWindow>(title, width, height, closeCallback);
-    }
+int scaledDimension(int value) {
+    int base = value > 0 ? value : kFallbackDimension;
+    return static_cast<int>(base * kAndroidUiScale);
 }
+} // namespace
+
+class AndroidContainerWindow : public ContainerWindow {
+public:
+    AndroidContainerWindow(const char* title, int width, int height, std::function<void()> closeCallback)
+        : title_(title ? title : "Plugin UI"),
+          width_(scaledDimension(width)),
+          height_(scaledDimension(height)),
+          overlayHandle_(reinterpret_cast<jlong>(this)) {
+        (void)closeCallback;
+        if (auto* env = getEnv()) {
+            auto jTitle = env->NewStringUTF(title_.c_str());
+            callCreateOverlay(env, overlayHandle_, jTitle, width_, height_);
+            env->DeleteLocalRef(jTitle);
+        }
+    }
+
+    ~AndroidContainerWindow() override {
+        if (auto* env = getEnv()) {
+            detachSurface();
+            callDestroyOverlay(env, overlayHandle_);
+        }
+    }
+
+    void show(bool visible) override {
+        if (visible_ == visible)
+            return;
+        visible_ = visible;
+        if (auto* env = getEnv())
+            callSetVisible(env, overlayHandle_, visible);
+    }
+
+    void resize(int width, int height) override {
+        width_ = scaledDimension(width);
+        height_ = scaledDimension(height);
+        if (auto* env = getEnv())
+            callResize(env, overlayHandle_, width_, height_);
+        if (resizeCallback_)
+            resizeCallback_(width_, height_);
+    }
+
+    void setResizeCallback(std::function<void(int, int)> callback) override {
+        resizeCallback_ = std::move(callback);
+    }
+
+    void setResizable(bool) override {
+        // Surface-based overlays do not currently support host-driven resize handles.
+    }
+
+    Bounds getBounds() const override {
+        return Bounds{0, 0, width_, height_};
+    }
+
+    void* getHandle() const override {
+        return reinterpret_cast<void*>(const_cast<AndroidContainerWindow*>(this));
+    }
+
+    void attachSurface(jobject surfaceView) {
+        attachedView_ = surfaceView;
+        if (auto* env = getEnv())
+            callAttachSurfaceView(env, overlayHandle_, surfaceView);
+    }
+
+    void detachSurface() {
+        if (auto* env = getEnv())
+            callAttachSurfaceView(env, overlayHandle_, nullptr);
+        attachedView_ = nullptr;
+    }
+
+private:
+    std::string title_;
+    int width_{0};
+    int height_{0};
+    std::function<void(int, int)> resizeCallback_{};
+    bool visible_{false};
+    jlong overlayHandle_{0};
+    jobject attachedView_{nullptr};
+};
+
+std::unique_ptr<ContainerWindow> ContainerWindow::create(const char* title, int width, int height, std::function<void()> closeCallback) {
+    return std::make_unique<AndroidContainerWindow>(title, width, height, std::move(closeCallback));
+}
+
+} // namespace remidy::gui
+
+namespace remidy::gui::android {
+
+void attachSurfaceView(void* windowHandle, jobject surfaceView) {
+    if (!windowHandle)
+        return;
+    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    window->attachSurface(surfaceView);
+}
+
+void detachSurfaceView(void* windowHandle) {
+    if (!windowHandle)
+        return;
+    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    window->detachSurface();
+}
+
+void queryDimensions(void* windowHandle, int& width, int& height) {
+    if (!windowHandle)
+        return;
+    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    auto bounds = window->getBounds();
+    width = bounds.width;
+    height = bounds.height;
+}
+
+} // namespace remidy::gui::android
+
+#endif // __ANDROID__

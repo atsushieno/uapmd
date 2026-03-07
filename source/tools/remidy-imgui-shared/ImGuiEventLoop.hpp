@@ -61,7 +61,9 @@ public:
         while (!localQueue.empty()) {
             auto task = std::move(localQueue.front());
             localQueue.pop();
+#if !defined(__ANDROID__)
             remidy::gui::GLContextGuard glGuard;
+#endif
             task();
         }
     }

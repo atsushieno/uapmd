@@ -9,6 +9,9 @@ class MainActivity : SDLActivity() {
         @JvmStatic external fun nativeHandleActivityResult(requestCode: Int, resultCode: Int, data: Intent?)
 
         @JvmStatic
+        fun getInstance(): SDLActivity? = SDLActivity.mSingleton
+
+        @JvmStatic
         fun postNativeUiTask(token: Long) {
             val activity = SDLActivity.mSingleton
             if (activity != null) {

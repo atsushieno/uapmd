@@ -3,6 +3,16 @@
 #include "remidy/remidy.hpp"
 #include <aap/core/host/plugin-connections.h>
 #include <aap/core/host/plugin-host.h>
+#include <aap/core/host/plugin-instance.h>
+
+#if defined(__ANDROID__)
+#include <jni.h>
+namespace remidy::gui::android {
+    void attachSurfaceView(void* windowHandle, jobject surfaceView);
+    void detachSurfaceView(void* windowHandle);
+    void queryDimensions(void* windowHandle, int& width, int& height);
+}
+#endif
 
 namespace remidy {
     class PluginFormatAAPImpl;
@@ -124,6 +134,13 @@ namespace remidy {
         class UISupport : public PluginUISupport {
             remidy::PluginInstanceAAP* owner;
             aap_gui_instance_id  gui_instance_id{-1};
+            void* parent_handle_{nullptr};
+            std::function<bool(uint32_t, uint32_t)> host_resize_handler_{};
+#if defined(__ANDROID__)
+            bool surface_attached_{false};
+            uint32_t surface_width_{800};
+            uint32_t surface_height_{600};
+#endif
 
         public:
             UISupport(remidy::PluginInstanceAAP* owner) : owner(owner) {}
@@ -133,38 +150,80 @@ namespace remidy {
                 return true;
             }
 
-            bool create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
-                // FIXME: support parameters.
-
+            bool create(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) override {
+                (void)isFloating;
                 if (gui_instance_id >= 0)
                     return false;
+                parent_handle_ = parentHandle;
+                host_resize_handler_ = std::move(resizeHandler);
                 auto aap = owner->aapInstance();
+                if (!aap)
+                    return false;
+#if defined(__ANDROID__)
+                auto remote = dynamic_cast<aap::RemotePluginInstance*>(aap);
+                if (!remote || parent_handle_ == nullptr)
+                    return false;
+                remote->prepareSurfaceControlForRemoteNativeUI();
+                auto nativeView = static_cast<jobject>(remote->getRemoteNativeView());
+                if (!nativeView)
+                    return false;
+                remidy::gui::android::attachSurfaceView(parent_handle_, nativeView);
+                surface_attached_ = true;
+                int width = static_cast<int>(surface_width_);
+                int height = static_cast<int>(surface_height_);
+                remidy::gui::android::queryDimensions(parent_handle_, width, height);
+                surface_width_ = static_cast<uint32_t>(width);
+                surface_height_ = static_cast<uint32_t>(height);
+                remote->connectRemoteNativeView(width, height);
+                gui_instance_id = 0;
+                return true;
+#else
                 gui_instance_id = aap->getStandardExtensions().createGui(aap->getPluginInformation()->getPluginID(), aap->getInstanceId(), parentHandle);
                 return gui_instance_id >= 0;
+#endif
             }
 
             void destroy() override {
+#if defined(__ANDROID__)
+                if (surface_attached_ && parent_handle_) {
+                    remidy::gui::android::detachSurfaceView(parent_handle_);
+                    surface_attached_ = false;
+                }
+                parent_handle_ = nullptr;
+                host_resize_handler_ = {};
+                gui_instance_id = -1;
+#else
                 if (gui_instance_id < 0)
                     return;
 
                 auto aap = owner->aapInstance();
                 aap->getStandardExtensions().destroyGui(gui_instance_id);
                 gui_instance_id = -1;
+#endif
             }
 
             bool show() override {
+#if defined(__ANDROID__)
+                return gui_instance_id >= 0;
+#else
                 if (gui_instance_id < 0)
                     return false;
                 auto aap = owner->aapInstance();
                 aap->getStandardExtensions().showGui(gui_instance_id);
                 return true;
+#endif
             }
 
             void hide() override {
+#if defined(__ANDROID__)
+                // Visibility is controlled by the host container window.
+                (void)0;
+#else
                 if (gui_instance_id < 0)
                     return;
                 auto aap = owner->aapInstance();
                 aap->getStandardExtensions().hideGui(gui_instance_id);
+#endif
             }
 
             void setWindowTitle(std::string title) override {
@@ -176,16 +235,27 @@ namespace remidy {
             }
 
             bool getSize(uint32_t &width, uint32_t &height)  override {
-                // AAP does not support it
+#if defined(__ANDROID__)
+                width = surface_width_;
+                height = surface_height_;
+                return true;
+#else
                 return false;
+#endif
             }
 
             bool setSize(uint32_t width, uint32_t height)  override {
+#if defined(__ANDROID__)
+                surface_width_ = width;
+                surface_height_ = height;
+                return true;
+#else
                 if (gui_instance_id < 0)
                     return false;
                 auto aap = owner->aapInstance();
                 aap->getStandardExtensions().resizeGui(gui_instance_id, width, height);
                 return true;
+#endif
             }
 
             bool suggestSize(uint32_t &width, uint32_t &height)  override {
