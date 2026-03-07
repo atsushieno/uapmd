@@ -39,7 +39,7 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
     auto* audioDevice = manager->open(-1, -1, static_cast<uint32_t>(sample_rate), static_cast<uint32_t>(buffer_size_in_frames));
     if (audioDevice)
         audioDevice->useAutoBufferSize(auto_buffer_size_enabled_);
-    dispatcher->configure(umpBufferSizeInBytes, audioDevice);
+    dispatcher->configure(umpBufferSizeInBytes, audioDevice, nullptr, nullptr, static_cast<uint32_t>(buffer_size_in_frames));
 
     dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
         // Delegate all master audio processing to SequencerEngine
@@ -136,7 +136,7 @@ bool uapmd::RealtimeSequencer::reconfigureAudioDevice(int inputDeviceIndex, int 
     }
 
     // Reconfigure the dispatcher with the new device
-    if (dispatcher->configure(ump_buffer_size_in_bytes, newDevice) != 0) {
+    if (dispatcher->configure(ump_buffer_size_in_bytes, newDevice, nullptr, nullptr, static_cast<uint32_t>(buffer_size_in_frames)) != 0) {
         remidy::Logger::global()->logError("Failed to reconfigure dispatcher with new audio device");
         return false;
     }

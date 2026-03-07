@@ -11,6 +11,19 @@ using namespace oboe;
 
 namespace uapmd {
 
+    // Background: current AAP instrument hosting expects the DAW/host to render a fixed
+    // block size per callback. Some plugins (and AAP’s MIDI plumbing) assume each call
+    // produces exactly that many frames, so we keep the sequencer block length equal to
+    // the user/UI “buffer size” even when the HAL reports a different framesPerBurst.
+    // Oboe still decides the hardware callback cadence; we bridge the gap by rendering
+    // the host-sized block into a FIFO (stabilized_buffer_) and draining however many
+    // frames the HAL asks for. This compromises between AAP’s current expectations and
+    // devices that require small bursts while preserving acceptable CPU load.
+    //
+    // Oboe's stabilized callback is an anti-pattern and not recommended, so we will
+    // end up making changes to the AAP processing model. At the same time, we could
+    // make use of `oboe::AudioStreamPartialDataCallback` once Android 17 is set in stone.
+
     OboeAudioIODevice::OboeAudioIODevice(Logger* logger)
         : logger_(logger ? logger : Logger::global()),
           data(master_context, 0) {}
@@ -25,6 +38,17 @@ namespace uapmd {
 
     void OboeAudioIODevice::clearAudioCallbacks() {
         callbacks.clear();
+        stabilized_buffer_.clear();
+        stabilized_render_scratch_.clear();
+        stabilized_buffered_frames_ = 0;
+    }
+
+    void OboeAudioIODevice::setPreferredCallbackSize(uint32_t framesPerCallback) {
+        preferred_callback_frames_ = framesPerCallback;
+        stabilized_buffer_.clear();
+        stabilized_render_scratch_.clear();
+        stabilized_buffered_frames_ = 0;
+        stabilized_block_frames_ = framesPerCallback;
     }
 
     std::vector<uint32_t> OboeAudioIODevice::getNativeSampleRates() {
@@ -101,10 +125,10 @@ namespace uapmd {
         if (stream_)
             return true;
 
-        // Do NOT call setFramesPerCallback — let Oboe pick the optimal
-        // callback size based on the hardware's framesPerBurst.
-        // The chunking loop in onAudioReady handles any mismatch with
-        // our internal buffer capacity.
+        // We deliberately avoid setFramesPerCallback() so the HAL can choose whatever
+        // framesPerBurst it needs. The sequencer always renders the host-requested
+        // block size into an internal FIFO and we drain that FIFO inside onAudioReady(),
+        // so hardware callbacks can be smaller or larger without forcing plugin changes.
         auto attemptOpen = [&](SharingMode sharing, PerformanceMode perf) -> bool {
             AudioStreamBuilder builder;
             builder.setDirection(Direction::Output);
@@ -151,23 +175,30 @@ namespace uapmd {
         const auto framesPerBurst = stream_->getFramesPerBurst() > 0
             ? static_cast<uint32_t>(stream_->getFramesPerBurst())
             : 0u;
+        if (!needsStabilizedMode() && framesPerBurst > 0)
+            stabilized_block_frames_ = framesPerBurst;
 
-        // Internal buffer capacity: sized to handle the engine's processing
-        // block size (requested_buffer_size_).  Falls back to a multiple of
-        // framesPerBurst or 512 when the caller didn't specify a size.
+        // Internal buffer capacity: if the host asked for a stabilized callback size
+        // we need to hold at least that many frames in the FIFO. Otherwise we fall
+        // back to either the user-requested HAL buffer size or a multiple of the
+        // hardware framesPerBurst (defaulting to 512 when unknown).
         const bool manualBufferRequest = !auto_buffer_size_ && requested_buffer_size_ > 0;
-        if (manualBufferRequest)
-            buffer_capacity_frames_ = requested_buffer_size_;
-        else if (framesPerBurst > 0)
-            buffer_capacity_frames_ = framesPerBurst * 2u;
+        const uint32_t fallbackFrames = manualBufferRequest
+            ? requested_buffer_size_
+            : (framesPerBurst > 0 ? framesPerBurst * 2u : 512u);
+        if (needsStabilizedMode())
+            buffer_capacity_frames_ = std::max(fallbackFrames, stabilized_block_frames_);
         else
-            buffer_capacity_frames_ = 512u;
+            buffer_capacity_frames_ = fallbackFrames;
 
         master_context.sampleRate(static_cast<int32_t>(sample_rate_));
         data.configureMainBus(static_cast<int32_t>(input_channels_),
                               static_cast<int32_t>(output_channels_),
                               buffer_capacity_frames_);
         dataOutPtrs.resize(output_channels_);
+        stabilized_buffer_.clear();
+        stabilized_render_scratch_.clear();
+        stabilized_buffered_frames_ = 0;
 
         // Set Oboe ring-buffer (latency buffer between app and hardware).
         // Must be at least 2 * framesPerBurst for reliable playback — using
@@ -195,7 +226,7 @@ namespace uapmd {
 
         logger_->logInfo(
             "OboeAudioIODevice: opened stream api=%s sharing=%s perf=%s sr=%d ch=%d "
-            "framesPerBurst=%d internalCapacity=%u userBufferSize=%u latencyHint=%u appliedLatency=%u hwCapacity=%u",
+            "framesPerBurst=%d internalCapacity=%u stabilizedBlock=%u userBufferSize=%u latencyHint=%u appliedLatency=%u hwCapacity=%u",
             toString(stream_->getAudioApi()),
             toString(stream_->getSharingMode()),
             toString(stream_->getPerformanceMode()),
@@ -203,6 +234,7 @@ namespace uapmd {
             stream_->getChannelCount(),
             stream_->getFramesPerBurst(),
             buffer_capacity_frames_,
+            stabilized_block_frames_,
             manualBufferRequest ? requested_buffer_size_ : 0u,
             latencyFrames,
             appliedBufferSize,
@@ -220,6 +252,7 @@ namespace uapmd {
     uapmd_status_t OboeAudioIODevice::start() {
         if (!openStream())
             return -1;
+        primeStabilizedBuffer();
         const auto result = stream_->requestStart();
         if (result != Result::OK) {
             logger_->logError("OboeAudioIODevice: requestStart failed: %s", convertToText(result));
@@ -245,11 +278,19 @@ namespace uapmd {
         if (!audioData || numFrames <= 0)
             return DataCallbackResult::Stop;
 
+        if (preferred_callback_frames_ == 0)
+            return processImmediate(audioStream, static_cast<float*>(audioData), numFrames);
+        return processStabilized(audioStream, static_cast<float*>(audioData), numFrames);
+    }
+
+    DataCallbackResult OboeAudioIODevice::processImmediate(AudioStream* audioStream,
+                                                           float* audioData,
+                                                           int32_t numFrames) {
         const int32_t capacity = static_cast<int32_t>(data.audioBufferCapacityInFrames());
         if (capacity <= 0)
             return DataCallbackResult::Stop;
 
-        auto* out = static_cast<float*>(audioData);
+        auto* out = audioData;
         const size_t hardwareChannels = static_cast<size_t>(audioStream->getChannelCount());
         if (hardwareChannels == 0)
             return DataCallbackResult::Continue;
@@ -261,14 +302,7 @@ namespace uapmd {
             const int32_t framesThisBlock = std::min(capacity, numFrames - framesProcessed);
             data.frameCount(framesThisBlock);
 
-            // Zero outputs before handing to callbacks
-            if (data.audioOutBusCount() > 0) {
-                const uint32_t outChannels = static_cast<uint32_t>(data.outputChannelCount(0));
-                for (uint32_t ch = 0; ch < outChannels; ++ch) {
-                    if (float* dst = data.getFloatOutBuffer(0, ch))
-                        std::fill_n(dst, framesThisBlock, 0.0f);
-                }
-            }
+            zeroOutputBuses(framesThisBlock);
 
             for (auto& cb : callbacks)
                 cb(data);
@@ -295,18 +329,141 @@ namespace uapmd {
                     : nullptr;
             }
 
-            for (int32_t frame = 0; frame < framesThisBlock; ++frame) {
-                for (size_t ch = 0; ch < hardwareChannels; ++ch) {
-                    float sample = 0.0f;
-                    if (auto* src = dataOutPtrs[ch])
-                        sample = src[frame];
-                    out[(framesProcessed + frame) * hardwareChannels + ch] = sample;
-                }
-            }
+            mixToInterleaved(out + static_cast<size_t>(framesProcessed) * hardwareChannels,
+                             framesThisBlock,
+                             hardwareChannels);
 
             framesProcessed += framesThisBlock;
         }
 
+        return DataCallbackResult::Continue;
+    }
+
+    void OboeAudioIODevice::zeroOutputBuses(int32_t frames) {
+        if (data.audioOutBusCount() == 0)
+            return;
+        const uint32_t outChannels = static_cast<uint32_t>(data.outputChannelCount(0));
+        for (uint32_t ch = 0; ch < outChannels; ++ch) {
+            if (float* dst = data.getFloatOutBuffer(0, ch))
+                std::fill(dst, dst + frames, 0.0f);
+        }
+    }
+
+    void OboeAudioIODevice::mixToInterleaved(float* dst, int32_t frames, size_t hardwareChannels) {
+        for (int32_t frame = 0; frame < frames; ++frame) {
+            for (size_t ch = 0; ch < hardwareChannels; ++ch) {
+                float sample = 0.0f;
+                if (auto* src = dataOutPtrs[ch])
+                    sample = src[frame];
+                dst[frame * hardwareChannels + ch] = sample;
+            }
+        }
+    }
+
+    bool OboeAudioIODevice::renderEngineBlock(int32_t frames, size_t hardwareChannels) {
+        data.frameCount(frames);
+        zeroOutputBuses(frames);
+
+        for (auto& cb : callbacks)
+            cb(data);
+
+        const size_t pluginChannels = data.audioOutBusCount() > 0
+            ? static_cast<size_t>(data.outputChannelCount(0))
+            : 0;
+        const size_t mappedChannels = std::min(pluginChannels, hardwareChannels);
+
+        if (pluginChannels > hardwareChannels && hardwareChannels > 0) {
+            if (auto* mixDown = data.getFloatOutBuffer(0, 0)) {
+                for (size_t ch = hardwareChannels; ch < pluginChannels; ++ch) {
+                    if (auto* extra = data.getFloatOutBuffer(0, static_cast<uint32_t>(ch))) {
+                        for (int32_t frame = 0; frame < frames; ++frame)
+                            mixDown[frame] += extra[frame];
+                    }
+                }
+            }
+        }
+
+        if (dataOutPtrs.size() < hardwareChannels)
+            dataOutPtrs.resize(hardwareChannels);
+        for (size_t ch = 0; ch < hardwareChannels; ++ch) {
+            dataOutPtrs[ch] = (ch < mappedChannels)
+                ? data.getFloatOutBuffer(0, static_cast<uint32_t>(ch))
+                : nullptr;
+        }
+
+        const size_t samples = static_cast<size_t>(frames) * hardwareChannels;
+        stabilized_render_scratch_.resize(samples);
+        mixToInterleaved(stabilized_render_scratch_.data(), frames, hardwareChannels);
+        appendStabilizedBlock(stabilized_render_scratch_.data(), static_cast<size_t>(frames), hardwareChannels);
+        return true;
+    }
+
+    void OboeAudioIODevice::appendStabilizedBlock(const float* interleaved, size_t frames, size_t hardwareChannels) {
+        const size_t samples = frames * hardwareChannels;
+        const size_t existingSamples = stabilized_buffered_frames_ * hardwareChannels;
+        stabilized_buffer_.resize(existingSamples + samples);
+        std::memcpy(stabilized_buffer_.data() + existingSamples, interleaved, samples * sizeof(float));
+        stabilized_buffered_frames_ += frames;
+    }
+
+    void OboeAudioIODevice::consumeStabilizedFrames(float* dst, size_t frames, size_t hardwareChannels) {
+        const size_t samples = frames * hardwareChannels;
+        if (stabilized_buffer_.size() < samples)
+            return;
+        std::memcpy(dst, stabilized_buffer_.data(), samples * sizeof(float));
+        const size_t remainingSamples = stabilized_buffer_.size() - samples;
+        if (remainingSamples > 0)
+            std::memmove(stabilized_buffer_.data(), stabilized_buffer_.data() + samples, remainingSamples * sizeof(float));
+        stabilized_buffer_.resize(remainingSamples);
+        stabilized_buffered_frames_ -= frames;
+    }
+
+    // Called on start() to make sure the FIFO already contains at least one full
+    // host-sized render block before the HAL begins draining it. Prevents the first
+    // AAudio callback from running short when preferred_callback_frames_ > numFrames.
+    void OboeAudioIODevice::primeStabilizedBuffer() {
+        if (!needsStabilizedMode() || callbacks.empty())
+            return;
+        if (output_channels_ == 0)
+            return;
+        const uint32_t targetFrames = std::max<uint32_t>(stabilized_block_frames_, preferred_callback_frames_);
+        if (targetFrames == 0)
+            return;
+        size_t safetyCounter = 0;
+        constexpr size_t kMaxPrimeIterations = 4;
+        while (stabilized_buffered_frames_ < targetFrames && safetyCounter++ < kMaxPrimeIterations) {
+            if (!renderEngineBlock(static_cast<int32_t>(targetFrames), static_cast<size_t>(output_channels_)))
+                break;
+        }
+    }
+
+    DataCallbackResult OboeAudioIODevice::processStabilized(AudioStream* audioStream,
+                                                            float* audioData,
+                                                            int32_t numFrames) {
+        const size_t hardwareChannels = static_cast<size_t>(audioStream->getChannelCount());
+        if (hardwareChannels == 0)
+            return DataCallbackResult::Continue;
+        const uint32_t renderFrames = std::max<uint32_t>(
+            preferred_callback_frames_, static_cast<uint32_t>(numFrames));
+        if (renderFrames == 0)
+            return processImmediate(audioStream, audioData, numFrames);
+
+        size_t safetyCounter = 0;
+        constexpr size_t kMaxRenderAttempts = 8;
+        while (stabilized_buffered_frames_ < static_cast<size_t>(numFrames)) {
+            if (!renderEngineBlock(static_cast<int32_t>(renderFrames), hardwareChannels))
+                return DataCallbackResult::Stop;
+            if (++safetyCounter >= kMaxRenderAttempts)
+                break;
+        }
+
+        if (stabilized_buffered_frames_ < static_cast<size_t>(numFrames)) {
+            logger_->logWarning("OboeAudioIODevice: stabilized buffer underrun (need=%d have=%zu)",
+                                numFrames, stabilized_buffered_frames_);
+            return DataCallbackResult::Stop;
+        }
+
+        consumeStabilizedFrames(audioData, static_cast<size_t>(numFrames), hardwareChannels);
         return DataCallbackResult::Continue;
     }
 

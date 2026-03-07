@@ -21,8 +21,8 @@ private:
     int selectedInputDevice_ = 0;
     int selectedOutputDevice_ = 0;
 #if defined(__ANDROID__)
-    int bufferSize_ = 2048;
-    int selectedBufferSizeIndex_ = 8; // Default to 2048
+    int bufferSize_ = 512;
+    int selectedBufferSizeIndex_ = 6; // Default to 512
 #else
     int bufferSize_ = 256;
     int selectedBufferSizeIndex_ = 4; // Default to 256

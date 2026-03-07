@@ -29,7 +29,11 @@ namespace uapmd {
         DefaultDeviceIODispatcher();
         ~DefaultDeviceIODispatcher() override;
 
-        uapmd_status_t configure(size_t umpBufferSizeInBytes, AudioIODevice* audio = nullptr, MidiIODevice* midiIn = nullptr, MidiIODevice* midiOut = nullptr) override;
+        uapmd_status_t configure(size_t umpBufferSizeInBytes,
+                                 AudioIODevice* audio = nullptr,
+                                 MidiIODevice* midiIn = nullptr,
+                                 MidiIODevice* midiOut = nullptr,
+                                 uint32_t preferredCallbackFrames = 0) override;
 
         AudioIODevice* audio() override;
         MidiIODevice* midiIn() override;

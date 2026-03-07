@@ -25,10 +25,15 @@ namespace uapmd {
         std::vector<std::function<uapmd_status_t(AudioProcessContext&)>> callbacks{};
         std::vector<float*> dataOutPtrs{};
         std::unique_ptr<oboe::AudioStream, StreamCloser> stream_{};
+        std::vector<float> stabilized_buffer_;
+        std::vector<float> stabilized_render_scratch_;
+        size_t stabilized_buffered_frames_{0};
+        uint32_t stabilized_block_frames_{0};
 
         uint32_t requested_sample_rate_{48000};
         uint32_t requested_output_channels_{2};
         uint32_t requested_buffer_size_{0};
+        uint32_t preferred_callback_frames_{0};
 
         uint32_t input_channels_{0};
         uint32_t output_channels_{2};
@@ -39,6 +44,19 @@ namespace uapmd {
 
         bool openStream();
         void closeStream();
+        oboe::DataCallbackResult processImmediate(oboe::AudioStream* audioStream,
+                                                  float* audioData,
+                                                  int32_t numFrames);
+        oboe::DataCallbackResult processStabilized(oboe::AudioStream* audioStream,
+                                                   float* audioData,
+                                                   int32_t numFrames);
+        bool renderEngineBlock(int32_t frames, size_t hardwareChannels);
+        void zeroOutputBuses(int32_t frames);
+        void mixToInterleaved(float* dst, int32_t frames, size_t hardwareChannels);
+        void appendStabilizedBlock(const float* interleaved, size_t frames, size_t hardwareChannels);
+        void consumeStabilizedFrames(float* dst, size_t frames, size_t hardwareChannels);
+        void primeStabilizedBuffer();
+        bool needsStabilizedMode() const { return preferred_callback_frames_ > 0; }
 
     public:
         explicit OboeAudioIODevice(Logger* logger);
@@ -46,6 +64,8 @@ namespace uapmd {
 
         void addAudioCallback(std::function<uapmd_status_t(AudioProcessContext&)> &&callback) override;
         void clearAudioCallbacks() override;
+        void setPreferredCallbackSize(uint32_t framesPerCallback) override;
+        uint32_t preferredCallbackSize() const override { return preferred_callback_frames_; }
 
         double sampleRate() override { return sample_rate_; }
         uint32_t channels() override { return output_channels_; }

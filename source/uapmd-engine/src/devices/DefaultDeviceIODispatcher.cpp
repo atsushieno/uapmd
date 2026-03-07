@@ -49,7 +49,8 @@ namespace uapmd {
     }
 
     uapmd_status_t DefaultDeviceIODispatcher::configure(size_t umpBufferSizeInBytes, AudioIODevice *audio,
-                                                        MidiIODevice *midiIn, MidiIODevice *midiOut) {
+                                                        MidiIODevice *midiIn, MidiIODevice *midiOut,
+                                                        uint32_t preferredCallbackFrames) {
         ump_buffer_size_in_bytes = umpBufferSizeInBytes;
         if (queued_inputs) {
             free(queued_inputs);
@@ -68,10 +69,12 @@ namespace uapmd {
         audio_ = audio;
         midi_in = midiIn;
         midi_out = midiOut;
-        if (audio_)
+        if (audio_) {
+            audio_->setPreferredCallbackSize(preferredCallbackFrames);
             audio_->addAudioCallback([this](auto& data) {
                 return runCallbacks(data);
             });
+        }
         if (midi_in) {
             midi_in->addInputHandler(midiInputTrampoline, this);
             midi_input_handler_registered = true;

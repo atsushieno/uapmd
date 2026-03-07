@@ -573,6 +573,10 @@ void uapmd::AppModel::toggleAudioEngine() {
 }
 
 void uapmd::AppModel::updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize) {
+    // These UI settings are forwarded to RealtimeSequencer -> DeviceIODispatcher,
+    // which ultimately sets OboeAudioIODevice::preferred_callback_frames_.  That
+    // value is the block size the sequencer renders for every plugin regardless
+    // of the device's framesPerBurst, so edits here change the host buffer size.
     if (sampleRate > 0)
         sample_rate_ = sampleRate;
     if (bufferSize > 0)
