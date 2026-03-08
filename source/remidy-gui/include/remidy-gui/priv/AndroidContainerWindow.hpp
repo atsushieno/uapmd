@@ -15,6 +15,9 @@ namespace remidy::gui::android {
     // Retrieves the current size of the Android container window.
     void queryDimensions(void* windowHandle, int& width, int& height);
 
+    // Called when the Kotlin overlay close button is pressed.
+    void notifyOverlayClosed(void* windowHandle);
+
 }
 
 #endif

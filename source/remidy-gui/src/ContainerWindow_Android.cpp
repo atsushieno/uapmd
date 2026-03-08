@@ -97,8 +97,8 @@ public:
         : title_(title ? title : "Plugin UI"),
           width_(scaledDimension(width)),
           height_(scaledDimension(height)),
+          closeCallback_(std::move(closeCallback)),
           overlayHandle_(reinterpret_cast<jlong>(this)) {
-        (void)closeCallback;
         if (auto* env = getEnv()) {
             auto jTitle = env->NewStringUTF(title_.c_str());
             callCreateOverlay(env, overlayHandle_, jTitle, width_, height_);
@@ -158,11 +158,17 @@ public:
         attachedView_ = nullptr;
     }
 
+    void requestCloseFromOverlay() {
+        if (closeCallback_)
+            closeCallback_();
+    }
+
 private:
     std::string title_;
     int width_{0};
     int height_{0};
     std::function<void(int, int)> resizeCallback_{};
+    std::function<void()> closeCallback_{};
     bool visible_{false};
     jlong overlayHandle_{0};
     jobject attachedView_{nullptr};
@@ -199,6 +205,20 @@ void queryDimensions(void* windowHandle, int& width, int& height) {
     height = bounds.height;
 }
 
+void notifyOverlayClosed(void* windowHandle) {
+    if (!windowHandle)
+        return;
+    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    window->requestCloseFromOverlay();
+}
+
 } // namespace remidy::gui::android
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_atsushieno_uapmd_MainActivity_nativeOnOverlayClosed(
+    JNIEnv*, jclass, jlong handle)
+{
+    remidy::gui::android::notifyOverlayClosed(reinterpret_cast<void*>(handle));
+}
 
 #endif // __ANDROID__

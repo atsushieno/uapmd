@@ -7,6 +7,7 @@ class MainActivity : SDLActivity() {
     companion object {
         @JvmStatic external fun nativeExecuteUiThreadTask(token: Long)
         @JvmStatic external fun nativeHandleActivityResult(requestCode: Int, resultCode: Int, data: Intent?)
+        @JvmStatic external fun nativeOnOverlayClosed(handle: Long)
 
         @JvmStatic
         fun getInstance(): SDLActivity? = SDLActivity.mSingleton

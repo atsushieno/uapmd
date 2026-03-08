@@ -762,12 +762,9 @@ void MainWindow::onPluginWindowResized(int32_t instanceId) {
 }
 
 void MainWindow::onPluginWindowClosed(int32_t instanceId) {
-    auto& sequencer = uapmd::AppModel::instance().sequencer();
-    // Just update the visible flag in the plugin - don't touch the window or embedded state
-    sequencer.engine()->getPluginInstance(instanceId)->hideUI();
-
-    // Update our visibility tracking so the button text is correct
-    pluginWindowVisible_[instanceId] = false;
+    // Route the close request through AppModel so that all hide callbacks run
+    // and our ContainerWindow visibility state stays in sync with the overlay.
+    uapmd::AppModel::instance().hidePluginUI(instanceId);
 }
 
 bool MainWindow::fetchPluginUISize(int32_t instanceId, uint32_t &width, uint32_t &height) {

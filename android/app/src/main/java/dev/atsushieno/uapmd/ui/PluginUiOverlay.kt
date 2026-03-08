@@ -79,6 +79,7 @@ private class PluginUiOverlay(
             contentDescription = "Close Plugin UI"
             setOnClickListener {
                 PluginUiOverlayManager.setOverlayVisible(handle, false)
+                PluginUiOverlayManager.notifyOverlayClosed(handle)
             }
         }
 
@@ -211,5 +212,10 @@ object PluginUiOverlayManager {
         handler.post {
             overlays[handle]?.setSurfaceView(surfaceView)
         }
+    }
+
+    @JvmStatic
+    fun notifyOverlayClosed(handle: Long) {
+        MainActivity.nativeOnOverlayClosed(handle)
     }
 }
