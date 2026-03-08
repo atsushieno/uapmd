@@ -20,7 +20,8 @@ You have to follow our [Developers Guide](docs/DEVELOPERS.md) that is written fo
 
 **IMPORTANT** you are strictly prohibited to run the following build related commands without explicit permission from me:
 
-- `cmake -B` (including further arguments)
+- `cmake -B` (including further arguments).
+  - Note that you are still supposed to run `cmake --build ...` build commands. The prohibition is about `-B`.
 - `rm -rf (per-target/platform directory)`
 - `git clean -xd` (including further arguments)
 - `rm -rf ~/.cache/CPM/uapmd`
