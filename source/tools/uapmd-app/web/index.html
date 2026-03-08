@@ -4,15 +4,69 @@
     <meta charset="utf-8">
     <title>uapmd-app (WebAssembly)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
     <style>
-        body { margin: 0; background: #101014; color: #f9f9f9; font-family: system-ui, sans-serif; }
+        :root {
+            color-scheme: dark;
+        }
+        body { margin: 0; background: #101014; color: #f9f9f9; font-family: system-ui, sans-serif; min-height: 100vh; }
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
         canvas { display: block; margin: 0 auto; }
+        #gesture-gate {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.76);
+            transition: opacity 150ms ease;
+            z-index: 10;
+        }
+        #gesture-gate[aria-hidden="true"] {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #gesture-panel {
+            padding: 2rem;
+            background: #181821;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            max-width: 420px;
+            text-align: center;
+            box-shadow: 0 0 24px rgba(0,0,0,0.55);
+        }
+        #gesture-panel h1 {
+            font-size: 1.25rem;
+            margin: 0 0 0.5rem;
+        }
+        #gesture-panel p {
+            margin: 0 0 1.25rem;
+            line-height: 1.4;
+        }
+        #gesture-panel button {
+            appearance: none;
+            border: none;
+            border-radius: 999px;
+            padding: 0.85rem 1.75rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: #39a0ff;
+            color: #08101c;
+        }
     </style>
 </head>
 <body>
 <div id="loading">Loading uapmd-app...</div>
 <canvas id="canvas"></canvas>
+<div id="gesture-gate" role="dialog" aria-modal="true">
+    <div id="gesture-panel">
+        <h1>Enable Audio + Plugins</h1>
+        <p>Click below to start audio and unlock SharedArrayBuffer access required by WebCLAP plugins.</p>
+        <button id="gesture-button" type="button">Start Session</button>
+    </div>
+</div>
 <script>
     var Module = {
         canvas: document.getElementById('canvas'),
@@ -20,7 +74,33 @@
         print: (text) => console.log('[uapmd]', text),
         printErr: (text) => console.error('[uapmd]', text)
     };
+
+    (function setupGestureGate() {
+        const gate = document.getElementById('gesture-gate');
+        const button = document.getElementById('gesture-button');
+        if (!gate || !button) return;
+
+        let unlocked = false;
+        const liftGate = () => {
+            if (unlocked) return;
+            unlocked = true;
+            gate.setAttribute('aria-hidden', 'true');
+            Module.print?.('[GUI] User gesture received; resuming audio context.');
+            if (typeof Module.resumeAudioContext === 'function') {
+                Module.resumeAudioContext();
+            }
+        };
+
+        button.addEventListener('click', liftGate);
+        document.addEventListener('keydown', liftGate, { once: true });
+        document.addEventListener('pointerdown', (event) => {
+            if (event.target === button || unlocked) return;
+            liftGate();
+        }, { once: true });
+
+        Module.__uapmdUnlockAudio = liftGate;
+    })();
 </script>
-<script src="uapmd-app.js"></script>
+<script type="module" src="uapmd-webclap.js"></script>
 </body>
 </html>

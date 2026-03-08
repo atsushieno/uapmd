@@ -17,6 +17,8 @@ namespace remidy_tooling {
         std::vector<std::string> clapSearchPaths{};
 #if ANDROID
         std::unique_ptr<PluginFormatAAP> aap;
+#elif defined(__EMSCRIPTEN__)
+        std::unique_ptr<PluginFormatWebCLAP> webclap;
 #elif defined(__APPLE__) && TARGET_OS_IPHONE
         // iOS: AUv3 is the only supported plugin format.
         // VST3, LV2, and CLAP are desktop-only and excluded from the iOS build.

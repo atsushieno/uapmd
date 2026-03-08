@@ -9,6 +9,7 @@ if(UAPMD_TARGET_WASM)
         OFF)
     add_compile_definitions(EMSCRIPTEN DISABLE_VST3 DISABLE_AU DISABLE_LV2 DISABLE_CLAP)
     set(_UAPMD_WASM_ASYNC_IMPORTS "['uapmd_web_open_file_dialog','uapmd_web_save_file_dialog']")
+    set(_UAPMD_WASM_EXPORTED_FUNCTIONS "['_main','_malloc','_free','_wclapInstanceCreate','_wclapInstanceSetPath','_wclapInstanceGetNextIndex','_wclapNextThreadId','_wclapStartInstanceThread','_uapmd_webclap_native_process','_uapmd_debug_spawn_webclap_instance']")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
         -s WASM=1 \
         -s ALLOW_MEMORY_GROWTH=1 \
@@ -21,10 +22,19 @@ if(UAPMD_TARGET_WASM)
         -s ASSERTIONS=1 \
         -s ASYNCIFY=1 \
         -s ASYNCIFY_IMPORTS=${_UAPMD_WASM_ASYNC_IMPORTS} \
-        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8']")
+        -s EXPORTED_FUNCTIONS=${_UAPMD_WASM_EXPORTED_FUNCTIONS} \
+        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8','wasmTable']")
     if(NOT UAPMD_WASM_USE_VCPKG_SDL3)
         # Emscripten port: the linker flag activates the bundled SDL3 port at link time.
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -s USE_SDL=3")
+    endif()
+
+    if(DEFINED UAPMD_WEBCLAP_HOST_INCLUDE_DIR)
+        set(UAPMD_WEBCLAP_HOST_DIR "${UAPMD_WEBCLAP_HOST_INCLUDE_DIR}")
+    endif()
+    set(UAPMD_WEBCLAP_JS_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/web/js/webclap-imports.js")
+    if(DEFINED UAPMD_WEBCLAP_CPP_INCLUDE_DIR)
+        set(UAPMD_WEBCLAP_CPP_INCLUDE "${UAPMD_WEBCLAP_CPP_INCLUDE_DIR}")
     endif()
 endif()
 
@@ -59,6 +69,12 @@ if(UAPMD_BUILDING_WASM)
             ${UAPMD_APP_COMMON_SOURCE_FILES}
             web_main.cpp
     )
+    if(DEFINED UAPMD_WEBCLAP_HOST_DIR)
+        set(_UAPMD_WEBCLAP_SOURCE "${UAPMD_WEBCLAP_HOST_DIR}/wclap-js-instance.cpp")
+        if(EXISTS "${_UAPMD_WEBCLAP_SOURCE}")
+            list(APPEND UAPMD_APP_SOURCE_FILES "${_UAPMD_WEBCLAP_SOURCE}")
+        endif()
+    endif()
     set(_UAPMD_WASM_WEB_SRC "${CMAKE_CURRENT_SOURCE_DIR}/web")
     set(_UAPMD_WASM_WEB_DST "${CMAKE_CURRENT_BINARY_DIR}")
     file(GLOB_RECURSE _UAPMD_WASM_WEB_FILES
@@ -70,12 +86,50 @@ if(UAPMD_BUILDING_WASM)
     foreach(_web_file IN LISTS _UAPMD_WASM_WEB_FILES)
         list(APPEND _UAPMD_WASM_WEB_SOURCE_FILES "${_UAPMD_WASM_WEB_SRC}/${_web_file}")
     endforeach()
-    add_custom_command(
-            OUTPUT "${_UAPMD_WASM_WEB_STAMP}"
+    if(DEFINED UAPMD_WEBCLAP_VENDOR_MJS)
+        list(APPEND _UAPMD_WASM_WEB_SOURCE_FILES "${UAPMD_WEBCLAP_VENDOR_MJS}")
+    endif()
+    if(DEFINED UAPMD_WEBCLAP_VENDOR_WASI_DIR)
+        file(GLOB_RECURSE _UAPMD_WEBCLAP_WASI_FILES
+                RELATIVE "${UAPMD_WEBCLAP_VENDOR_WASI_DIR}"
+                "${UAPMD_WEBCLAP_VENDOR_WASI_DIR}/*")
+        foreach(_wasi_file IN LISTS _UAPMD_WEBCLAP_WASI_FILES)
+            list(APPEND _UAPMD_WASM_WEB_SOURCE_FILES "${UAPMD_WEBCLAP_VENDOR_WASI_DIR}/${_wasi_file}")
+        endforeach()
+    endif()
+    if(DEFINED UAPMD_WEBCLAP_VENDOR_ES6_DIR)
+        file(GLOB_RECURSE _UAPMD_WEBCLAP_ES6_FILES
+                RELATIVE "${UAPMD_WEBCLAP_VENDOR_ES6_DIR}"
+                "${UAPMD_WEBCLAP_VENDOR_ES6_DIR}/*")
+        foreach(_es6_file IN LISTS _UAPMD_WEBCLAP_ES6_FILES)
+            list(APPEND _UAPMD_WASM_WEB_SOURCE_FILES "${UAPMD_WEBCLAP_VENDOR_ES6_DIR}/${_es6_file}")
+        endforeach()
+    endif()
+    set(_UAPMD_WEB_ASSET_COMMANDS
             COMMAND ${CMAKE_COMMAND}
                 -DSRC="${_UAPMD_WASM_WEB_SRC}"
                 -DDST="${_UAPMD_WASM_WEB_DST}"
                 -P "${UAPMD_CMAKE_DIR}/CopyWebAssets.cmake"
+    )
+    if(DEFINED UAPMD_WEBCLAP_VENDOR_MJS OR DEFINED UAPMD_WEBCLAP_VENDOR_WASI_DIR)
+        list(APPEND _UAPMD_WEB_ASSET_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${_UAPMD_WASM_WEB_DST}/vendor/webclap")
+        if(DEFINED UAPMD_WEBCLAP_VENDOR_MJS)
+            list(APPEND _UAPMD_WEB_ASSET_COMMANDS
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${UAPMD_WEBCLAP_VENDOR_MJS}" "${_UAPMD_WASM_WEB_DST}/vendor/webclap/wclap.mjs")
+        endif()
+        if(DEFINED UAPMD_WEBCLAP_VENDOR_WASI_DIR)
+            list(APPEND _UAPMD_WEB_ASSET_COMMANDS
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory "${UAPMD_WEBCLAP_VENDOR_WASI_DIR}" "${_UAPMD_WASM_WEB_DST}/vendor/webclap/wasi")
+        endif()
+        if(DEFINED UAPMD_WEBCLAP_VENDOR_ES6_DIR)
+            list(APPEND _UAPMD_WEB_ASSET_COMMANDS
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory "${UAPMD_WEBCLAP_VENDOR_ES6_DIR}" "${_UAPMD_WASM_WEB_DST}/vendor/webclap/es6")
+        endif()
+    endif()
+    add_custom_command(
+            OUTPUT "${_UAPMD_WASM_WEB_STAMP}"
+            ${_UAPMD_WEB_ASSET_COMMANDS}
             COMMAND ${CMAKE_COMMAND} -E touch "${_UAPMD_WASM_WEB_STAMP}"
             DEPENDS ${_UAPMD_WASM_WEB_SOURCE_FILES}
     )
@@ -110,7 +164,11 @@ elseif(UAPMD_BUILDING_WASM)
     add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET uapmd-app)
     add_dependencies(uapmd-app uapmd-app-web-assets)
-    target_link_options(uapmd-app PRIVATE --bind)
+    if(EXISTS "${UAPMD_WEBCLAP_JS_LIBRARY}")
+        target_link_options(uapmd-app PRIVATE --bind --js-library ${UAPMD_WEBCLAP_JS_LIBRARY})
+    else()
+        target_link_options(uapmd-app PRIVATE --bind)
+    endif()
 else()
     # Compile all sources once into a shared OBJECT library.
     # Both uapmd-app and uapmd-app-bundle link against it, avoiding duplicate
@@ -589,6 +647,16 @@ target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
         ../remidy-imgui-shared
         ${IconFontCppHeaders_SOURCE_DIR}
 )
+if(UAPMD_BUILDING_WASM AND DEFINED UAPMD_WEBCLAP_HOST_DIR)
+    target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
+            ${UAPMD_WEBCLAP_HOST_DIR}
+    )
+endif()
+if(UAPMD_BUILDING_WASM AND DEFINED UAPMD_WEBCLAP_CPP_INCLUDE)
+    target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
+            ${UAPMD_WEBCLAP_CPP_INCLUDE}
+    )
+endif()
 if(UAPMD_ENABLE_CPPLOCATE)
     target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
             ${cpplocate_SOURCE_DIR}/source/cpplocate/include

@@ -254,7 +254,7 @@ static int runWasmApp() {
     uapmd::AppModel::instantiate();
     uapmd::gui::GuiDefaults defaults;
     g_ctx.mainWindow = new uapmd::gui::MainWindow(defaults);
-    uapmd::AppModel::instance().setAudioEngineEnabled(true);
+    // Leave the audio engine disabled until the UI explicitly asks for it (user gesture).
 
     maybeScheduleAutoImport();
 
@@ -302,6 +302,30 @@ void uapmd_debug_import_audio(const char* path) {
     }
 
     std::cout << "[wasm-debug] import_audio: clip " << result.clipId << " added\n";
+}
+
+EMSCRIPTEN_KEEPALIVE
+int32_t uapmd_debug_spawn_webclap_instance() {
+    auto& appModel = uapmd::AppModel::instance();
+    auto& sequencer = appModel.sequencer();
+    auto* pluginHost = sequencer.engine()->pluginHost();
+    if (pluginHost == nullptr) {
+        std::cout << "[wasm-debug] webclap: plugin host unavailable\n";
+        return -1;
+    }
+    auto entries = pluginHost->pluginCatalogEntries();
+    for (auto entry : entries) {
+        if (entry.format() != "WebCLAP")
+            continue;
+        auto format = entry.format();
+        auto pluginId = entry.pluginId();
+        uapmd::AppModel::PluginInstanceConfig config;
+        appModel.createPluginInstanceAsync(format, pluginId, -1, config);
+        std::cout << "[wasm-debug] webclap: requested instance for " << pluginId << "\n";
+        return 0;
+    }
+    std::cout << "[wasm-debug] webclap: no WebCLAP plugins are registered\n";
+    return -2;
 }
 }
 

@@ -186,6 +186,31 @@ if(DEFINED _UAPMD_OLD_BUILD_SHARED_LIBS AND NOT "${_UAPMD_OLD_BUILD_SHARED_LIBS}
 else()
     unset(BUILD_SHARED_LIBS)
 endif()
+
+if(EMSCRIPTEN)
+    CPMAddPackage(
+            NAME wclap_host_js
+            GIT_REPOSITORY https://github.com/WebCLAP/wclap-host-js.git
+            GIT_TAG c9ffa8cb112b441e74e90a2d98b9d1c66d0a7619
+            DOWNLOAD_ONLY YES
+    )
+    CPMAddPackage(
+            NAME wclap_cpp
+            GIT_REPOSITORY https://github.com/WebCLAP/wclap-cpp.git
+            GIT_TAG c5e5223fe964f079903995062edfbf1131bbb480
+            DOWNLOAD_ONLY YES
+    )
+    if(DEFINED wclap_host_js_SOURCE_DIR)
+        set(UAPMD_WEBCLAP_HOST_JS_DIR "${wclap_host_js_SOURCE_DIR}" CACHE PATH "WebCLAP host-js checkout" FORCE)
+        set(UAPMD_WEBCLAP_HOST_INCLUDE_DIR "${wclap_host_js_SOURCE_DIR}/cpp" CACHE PATH "WebCLAP host include dir" FORCE)
+        set(UAPMD_WEBCLAP_VENDOR_MJS "${wclap_host_js_SOURCE_DIR}/wclap.mjs" CACHE FILEPATH "WebCLAP top-level ES module" FORCE)
+        set(UAPMD_WEBCLAP_VENDOR_ES6_DIR "${wclap_host_js_SOURCE_DIR}/es6" CACHE PATH "WebCLAP ES6 module directory" FORCE)
+        set(UAPMD_WEBCLAP_VENDOR_WASI_DIR "${wclap_host_js_SOURCE_DIR}/es6/wasi" CACHE PATH "WebCLAP WASI helper directory" FORCE)
+    endif()
+    if(DEFINED wclap_cpp_SOURCE_DIR)
+        set(UAPMD_WEBCLAP_CPP_INCLUDE_DIR "${wclap_cpp_SOURCE_DIR}/include" CACHE PATH "WebCLAP C++ headers" FORCE)
+    endif()
+endif()
 if(MSVC)
     # midicci's CMakeLists.txt overrides CMAKE_CXX_FLAGS_DEBUG in its own scope,
     # stripping /MDd from the compile flags. This causes umppi.dll and midicci.dll

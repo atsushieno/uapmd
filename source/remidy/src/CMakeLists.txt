@@ -215,6 +215,15 @@ if (WIN32)
     set(remidy_LIBS_PLAT ws2_32)
 endif()
 
+if(EMSCRIPTEN)
+    set(REMIDY_WEBCLAP_SUPPORT_SOURCES
+            webclap/PluginFormatWebCLAP.cpp
+            webclap/PluginFormatWebCLAP.InstanceBridge.cpp
+            webclap/PluginFormatWebCLAP.Manifest.cpp
+            webclap/PluginInstanceWebCLAP.cpp
+    )
+endif()
+
 
 add_library(remidy STATIC)
 
@@ -235,6 +244,18 @@ target_include_directories(remidy PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/../include
         ${CMAKE_CURRENT_LIST_DIR}/../include/remidy
 )
+if(EMSCRIPTEN)
+    if(DEFINED UAPMD_WEBCLAP_HOST_INCLUDE_DIR)
+        target_include_directories(remidy PRIVATE
+                ${UAPMD_WEBCLAP_HOST_INCLUDE_DIR}
+        )
+    endif()
+    if(DEFINED UAPMD_WEBCLAP_CPP_INCLUDE_DIR)
+        target_include_directories(remidy PRIVATE
+                ${UAPMD_WEBCLAP_CPP_INCLUDE_DIR}
+        )
+    endif()
+endif()
 
 target_link_libraries(remidy PRIVATE
         rtlog::rtlog
@@ -273,6 +294,7 @@ target_sources(remidy PRIVATE
         ${REMIDY_LV2_SUPPORT_SOURCES}
         ${REMIDY_CLAP_SUPPORT_SOURCES}
         ${REMIDY_AAP_SUPPORT_SOURCES}
+        ${REMIDY_WEBCLAP_SUPPORT_SOURCES}
 )
 
 add_library(remidy::remidy ALIAS remidy)

@@ -38,6 +38,7 @@ You have to follow our [Developers Guide](docs/DEVELOPERS.md) that is written fo
 - Headers: public `.hpp` in `include/`; keep private APIs under `src/*`.
 - Prefer RAII, `std::` facilities
 - You must follow lock‑free or non‑blocking patterns in audio thread, and if you cannot you have to report back.
+- You must not include INDIVIDUAL C++ headers under `priv` DIRECTLY. Always use the top header file `#include "xxx/xxx.hpp"` instead. And when you need a new public header, add it to the per-module top header file.
 
 ## Scope of work
 

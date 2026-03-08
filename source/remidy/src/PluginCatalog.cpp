@@ -75,7 +75,14 @@ void remidy::PluginCatalog::load(std::filesystem::path& path) {
     std::ifstream ifs{path.string()};
     ss << ifs.rdbuf();
 
-    auto j = choc::json::parse(ss.str());
+    loadFromJsonString(ss.str());
+}
+
+void remidy::PluginCatalog::loadFromJsonString(const std::string& jsonPayload) {
+    if (jsonPayload.empty())
+        return;
+
+    auto j = choc::json::parse(jsonPayload);
 
     for (auto& entry : fromJson(j.getView()))
         entries.emplace_back(std::move(entry));
@@ -119,4 +126,3 @@ void remidy::PluginCatalog::save(std::filesystem::path& path) {
     ofs << choc::json::toString(j, true);
     ofs.close();
 }
-

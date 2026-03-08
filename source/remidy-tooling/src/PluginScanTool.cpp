@@ -14,7 +14,9 @@ const char* TOOLING_DIR_NAME= "remidy-tooling";
 remidy_tooling::PluginScanTool::PluginScanTool() {
 #if ANDROID
     std::filesystem::path dir{};
-#elif defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+#elif defined(__EMSCRIPTEN__)
+    std::filesystem::path dir{"/tmp/uapmd"};
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
     // No filesystem-based plugin cache path on iOS (sandboxed app bundle).
     std::filesystem::path dir{};
 #else
@@ -27,7 +29,8 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
     aap = remidy::PluginFormatAAP::create();
     formats_ = { aap.get() };
 #elif defined(__EMSCRIPTEN__)
-    formats_.clear();
+    webclap = remidy::PluginFormatWebCLAP::create();
+    formats_ = { webclap.get() };
 #elif defined(__APPLE__) && TARGET_OS_IPHONE
     // iOS: AUv3 is the only supported plugin format.
     // VST3, LV2, and CLAP source files are excluded on iOS via CMake (NOT IOS guards).

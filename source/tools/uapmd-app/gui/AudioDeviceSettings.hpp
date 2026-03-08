@@ -21,12 +21,17 @@ private:
     int selectedInputDevice_ = 0;
     int selectedOutputDevice_ = 0;
 #if defined(__ANDROID__)
-    int bufferSize_ = 512;
-    int selectedBufferSizeIndex_ = 6; // Default to 512
+    static constexpr int kDefaultBufferSize = 512;
+    static constexpr int kDefaultBufferSizeIndex = 6;
+#elif defined(__EMSCRIPTEN__)
+    static constexpr int kDefaultBufferSize = 1024;
+    static constexpr int kDefaultBufferSizeIndex = 7;
 #else
-    int bufferSize_ = 256;
-    int selectedBufferSizeIndex_ = 4; // Default to 256
+    static constexpr int kDefaultBufferSize = 256;
+    static constexpr int kDefaultBufferSizeIndex = 4;
 #endif
+    int bufferSize_ = kDefaultBufferSize;
+    int selectedBufferSizeIndex_ = kDefaultBufferSizeIndex;
     bool platformProvidesAutoBufferSize_ = false;
     bool useAutoBufferSize_ = false;
     int inputSampleRate_ = 48000;

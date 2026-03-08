@@ -69,6 +69,7 @@ namespace remidy {
         void merge(PluginCatalog&& other);
         void clear();
         void load(std::filesystem::path& path);
+        void loadFromJsonString(const std::string& jsonPayload);
         void save(std::filesystem::path& path);
     };
 

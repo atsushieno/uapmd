@@ -229,8 +229,7 @@ int runMainLoop(int argc, char** argv) {
         mainWindow.applySystemUiScale(suggestedUiScale);
     }
 
-    // Start audio
-    uapmd::AppModel::instance().setAudioEngineEnabled(true);
+    // Audio engine stays disabled until the user explicitly enables it from the toolbar.
 
     // Main loop
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
