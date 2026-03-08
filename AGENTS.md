@@ -36,6 +36,9 @@ You have to follow our [Developers Guide](docs/DEVELOPERS.md) that is written fo
   - ALL_CAPS and enums (excluding `enum class`-es) for macros;
   - C interop retains library naming.
 - Headers: public `.hpp` in `include/`; keep private APIs under `src/*`.
+- You must not include individual C++ headers under `priv` DIRECTLY.
+  Always use the top header file `#include "xxx/xxx.hpp"` instead.
+  And when you need a new public header, add it to the per-module top header file.
 - Prefer RAII, `std::` facilities
 - You must follow lock‑free or non‑blocking patterns in audio thread, and if you cannot you have to report back.
 
