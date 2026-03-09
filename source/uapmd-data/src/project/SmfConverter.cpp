@@ -135,17 +135,14 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
         return result;
     }
 
-    std::vector<umppi::Ump> midi1Umps;
-    std::vector<uint64_t> eventTicks;
-    midi1Umps.reserve(events.size());
-    eventTicks.reserve(events.size());
+    // MIDI 2.0 channel voice messages are 64-bit (2 words each)
+    result.umpEvents.reserve(events.size() * 2);
+    result.umpEventTicksStamps.reserve(events.size() * 2);
 
     uint64_t absoluteTicks = 0;
-
     bool tempoDetected = false;
     bool timeSignatureDetected = false;
     bool initialTempoSet = false;
-
     constexpr uint8_t group = 0;
 
     for (const auto& event : events) {
@@ -156,98 +153,81 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
 
         uint8_t status = msg->getStatusByte();
 
-        if (captureMetaEvents) {
+        if (captureMetaEvents)
             collectMetaEvent(msg, absoluteTicks, result,
                              tempoDetected, initialTempoSet, timeSignatureDetected);
-        }
 
         if (status == umppi::Midi1Status::META ||
             status == umppi::Midi1Status::SYSEX ||
-            status == umppi::Midi1Status::SYSEX_END) {
+            status == umppi::Midi1Status::SYSEX_END)
             continue;
-        }
 
         uint8_t statusCode = msg->getStatusCode();
         uint8_t channel = msg->getChannel();
         uint8_t msb = msg->getMsb();
         uint8_t lsb = msg->getLsb();
 
-        uint32_t umpInt1 = 0;
+        // Build a MIDI 2.0 64-bit UMP.
+        // Scaling conventions (matching UmpInputDispatcher reverse conversions):
+        //   7-bit → 16-bit velocity : val << 9
+        //   7-bit → 32-bit data     : val << 25
+        //  14-bit → 32-bit pitchbend: val << 18
+        uint64_t ump2 = 0;
 
         switch (statusCode) {
             case umppi::MidiChannelStatus::NOTE_OFF:
-                umpInt1 = umppi::UmpFactory::midi1NoteOff(group, channel, msb, lsb);
+                ump2 = umppi::UmpFactory::midi2NoteOff(group, channel, msb, 0,
+                    static_cast<uint16_t>(lsb) << 9, 0);
                 break;
             case umppi::MidiChannelStatus::NOTE_ON:
-                umpInt1 = umppi::UmpFactory::midi1NoteOn(group, channel, msb, lsb);
+                // MIDI 1.0 convention: note-on velocity=0 means note-off
+                if (lsb == 0)
+                    ump2 = umppi::UmpFactory::midi2NoteOff(group, channel, msb, 0, 0, 0);
+                else
+                    ump2 = umppi::UmpFactory::midi2NoteOn(group, channel, msb, 0,
+                        static_cast<uint16_t>(lsb) << 9, 0);
                 break;
             case umppi::MidiChannelStatus::PAF:
-                umpInt1 = umppi::UmpFactory::midi1PAf(group, channel, msb, lsb);
+                ump2 = umppi::UmpFactory::midi2PAf(group, channel, msb,
+                    static_cast<uint32_t>(lsb) << 25);
                 break;
             case umppi::MidiChannelStatus::CC:
-                umpInt1 = umppi::UmpFactory::midi1CC(group, channel, msb, lsb);
+                ump2 = umppi::UmpFactory::midi2CC(group, channel, msb,
+                    static_cast<uint32_t>(lsb) << 25);
                 break;
             case umppi::MidiChannelStatus::PROGRAM:
-                umpInt1 = umppi::UmpFactory::midi1Program(group, channel, msb);
+                ump2 = umppi::UmpFactory::midi2Program(group, channel, 0, msb, 0, 0);
                 break;
             case umppi::MidiChannelStatus::CAF:
-                umpInt1 = umppi::UmpFactory::midi1CAf(group, channel, msb);
+                ump2 = umppi::UmpFactory::midi2CAf(group, channel,
+                    static_cast<uint32_t>(msb) << 25);
                 break;
             case umppi::MidiChannelStatus::PITCH_BEND: {
-                uint16_t pitchData = msb | (lsb << 7);
-                umpInt1 = umppi::UmpFactory::midi1PitchBendDirect(group, channel, pitchData);
+                uint32_t pitchData14 = static_cast<uint32_t>(msb) | (static_cast<uint32_t>(lsb) << 7);
+                ump2 = umppi::UmpFactory::midi2PitchBendDirect(group, channel, pitchData14 << 18);
                 break;
             }
             default:
                 if ((status & 0xF0) == 0xF0) {
-                    umpInt1 = umppi::UmpFactory::systemMessage(group, status, msb, lsb);
-                } else {
-                    continue;
+                    // System real-time stays as a 32-bit MIDI 1.0 system UMP (type 1)
+                    uint32_t sysRt = umppi::UmpFactory::systemMessage(group, status, msb, lsb);
+                    result.umpEvents.push_back(static_cast<uapmd_ump_t>(sysRt));
+                    result.umpEventTicksStamps.push_back(absoluteTicks);
                 }
-                break;
+                continue;
         }
 
-        if (umpInt1 != 0) {
-            midi1Umps.push_back(umppi::Ump(umpInt1));
-            eventTicks.push_back(absoluteTicks);
-        }
-    }
-
-    if (midi1Umps.empty()) {
-        result.success = true;
-        if (captureMetaEvents) {
-            ensureDefaultMetaEvents(result, tempoDetected, timeSignatureDetected);
-        }
-        return result;
-    }
-
-    result.umpEvents.reserve(midi1Umps.size() * 4);
-    result.umpEventTicksStamps.reserve(midi1Umps.size() * 4);
-
-    for (size_t i = 0; i < midi1Umps.size(); ++i) {
-        const auto& ump = midi1Umps[i];
-        uint64_t absTime = eventTicks[i];
-
-        result.umpEvents.push_back(static_cast<uapmd_ump_t>(ump.int1));
-        result.umpEventTicksStamps.push_back(absTime);
-
-        if (ump.getSizeInBytes() >= 8) {
-            result.umpEvents.push_back(static_cast<uapmd_ump_t>(ump.int2));
-            result.umpEventTicksStamps.push_back(absTime);
-        }
-        if (ump.getSizeInBytes() >= 12) {
-            result.umpEvents.push_back(static_cast<uapmd_ump_t>(ump.int3));
-            result.umpEventTicksStamps.push_back(absTime);
-        }
-        if (ump.getSizeInBytes() >= 16) {
-            result.umpEvents.push_back(static_cast<uapmd_ump_t>(ump.int4));
-            result.umpEventTicksStamps.push_back(absTime);
+        if (ump2 != 0) {
+            // Factory packs (word0 << 32) | word1; emit both words with same tick
+            result.umpEvents.push_back(static_cast<uapmd_ump_t>(ump2 >> 32));
+            result.umpEventTicksStamps.push_back(absoluteTicks);
+            result.umpEvents.push_back(static_cast<uapmd_ump_t>(ump2 & 0xFFFFFFFFU));
+            result.umpEventTicksStamps.push_back(absoluteTicks);
         }
     }
 
-    if (captureMetaEvents) {
+    if (captureMetaEvents)
         ensureDefaultMetaEvents(result, tempoDetected, timeSignatureDetected);
-    }
 
     result.success = true;
     return result;
