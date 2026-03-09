@@ -120,8 +120,10 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
         if (!implContext.IS_AUDIO_PORT(plugin, port)) {
             const LilvNode* minSizeNode = lilv_port_get(plugin, port, implContext.statics->resize_port_minimum_size_node);
             const int minSize = minSizeNode ? lilv_node_as_int(minSizeNode) : 0;
-            // If minSize is not specified, it is interpreted as to contain one single float control value.
-            lv2Port.buffer_size = minSize ? minSize : sizeof(float);
+            // Atom ports need a large buffer to hold event sequences; fall back to 65536 when the
+            // plugin does not advertise resize:minimumSize.  Control ports hold a single float.
+            const size_t defaultSize = implContext.IS_ATOM_PORT(plugin, port) ? 65536 : sizeof(float);
+            lv2Port.buffer_size = minSize ? static_cast<size_t>(minSize) : defaultSize;
             auto buffer = calloc(lv2Port.buffer_size, 1);
             lv2Port.port_buffer = buffer;
             lilv_instance_connect_port(instance, i, buffer);
