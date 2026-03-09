@@ -329,6 +329,8 @@ namespace uapmd {
             auto& tp = *sequence.tracks[i];
             if (!tracks_[i]->bypassed())
                 tracks_[i]->graph().processAudio(tp);
+            else
+                tp.clearAudioOutputs();
             tp.eventIn().position(0); // reset
 
             // Clear processing flag AFTER we're done with the track context

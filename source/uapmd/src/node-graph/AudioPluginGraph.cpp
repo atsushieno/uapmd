@@ -63,9 +63,12 @@ namespace uapmd {
 
             bool bypassed = node->instance()->bypassed();
             if (bypassed) {
-                // Pass audio through without processing; advance so next node receives input
-                if (i + 1 < nodes_.size())
+                if (i + 1 < nodes_.size()) {
+                    // Not the last node: pass audio through so the next plugin receives the signal
+                    process.copyInputsToOutputs();
                     process.advanceToNextNode();
+                }
+                // Last bypassed node: leave output zeroed (silence from this track)
                 continue;
             }
 
