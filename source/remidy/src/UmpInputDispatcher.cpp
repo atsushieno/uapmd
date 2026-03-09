@@ -73,6 +73,7 @@ void remidy::TypedUmpInputDispatcher::process(AudioProcessContext &src) {
                         onPitchBend(0, channel, -1, ump.getMidi1PitchBendData() << 18);
                         break;
                 }
+                break;
             case umppi::MessageType::MIDI2:
                 group = ump.getGroup();
                 channel = ump.getChannelInGroup();
