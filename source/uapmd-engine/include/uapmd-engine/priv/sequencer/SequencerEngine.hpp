@@ -48,6 +48,8 @@ namespace uapmd {
         virtual bool offlineRendering() const = 0;
         virtual void offlineRendering(bool enabled) = 0;
 
+        virtual void setEngineActive(bool active) = 0;
+
         // Audio preprocessing callback (called before track processing)
         using AudioPreprocessCallback = std::function<void(AudioProcessContext& process)>;
         virtual void setAudioPreprocessCallback(AudioPreprocessCallback callback) = 0;

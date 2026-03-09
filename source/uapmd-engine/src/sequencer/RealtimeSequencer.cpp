@@ -74,6 +74,12 @@ uapmd_status_t uapmd::RealtimeSequencer::isAudioPlaying() {
     return dispatcher->isPlaying();
 }
 
+void uapmd::RealtimeSequencer::clearOutputBuffers() {
+    for (auto* ctx : sequencer->data().tracks)
+        if (ctx) ctx->clearAudioOutputs();
+    dispatcher->clearOutputBuffers();
+}
+
 int32_t uapmd::RealtimeSequencer::sampleRate() { return sample_rate; }
 bool uapmd::RealtimeSequencer::sampleRate(int32_t newSampleRate) {
     if (dispatcher->isPlaying())

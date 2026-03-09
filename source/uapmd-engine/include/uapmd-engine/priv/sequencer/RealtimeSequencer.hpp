@@ -37,6 +37,7 @@ namespace uapmd {
         uapmd_status_t startAudio();
         uapmd_status_t stopAudio();
         uapmd_status_t isAudioPlaying();
+        void clearOutputBuffers();
 
         int32_t sampleRate();
         bool sampleRate(int32_t newSampleRate);

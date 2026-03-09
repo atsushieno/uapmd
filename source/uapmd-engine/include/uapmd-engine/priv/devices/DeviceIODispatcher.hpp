@@ -21,6 +21,7 @@ namespace uapmd {
         virtual MidiIODevice* midiOut() = 0;
 
         virtual void addCallback(std::function<uapmd_status_t(AudioProcessContext& data)>&& callback) = 0;
+        virtual void clearOutputBuffers() = 0;
         virtual uapmd_status_t start() = 0;
         virtual uapmd_status_t stop() = 0;
 

@@ -40,6 +40,7 @@ namespace uapmd {
         MidiIODevice* midiOut() override;
 
         void addCallback(std::function<uapmd_status_t(AudioProcessContext& data)>&& callback) override;
+        void clearOutputBuffers() override { if (audio_) audio_->clearOutputBuffers(); }
         uapmd_status_t start() override;
         uapmd_status_t stop() override;
 

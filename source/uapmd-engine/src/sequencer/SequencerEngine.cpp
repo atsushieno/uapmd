@@ -55,6 +55,9 @@ namespace uapmd {
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
 
+        // Engine active flag: when false, processAudio outputs silence without invoking plugins
+        std::atomic<bool> engine_active_{true};
+
         // Track processing flags for safe deletion (parallel to tracks_ vector)
         // Note: std::atomic is not copyable, so we use unique_ptr
         std::vector<std::unique_ptr<std::atomic<bool>>> track_processing_flags_;
@@ -122,6 +125,10 @@ namespace uapmd {
 
         bool offlineRendering() const override;
         void offlineRendering(bool enabled) override;
+
+        void setEngineActive(bool active) override {
+            engine_active_.store(active, std::memory_order_release);
+        }
 
         void cleanupEmptyTracks() override;
 
@@ -269,6 +276,15 @@ namespace uapmd {
         // (engine), but clamp defensively to prevent buffer overruns.
         const auto trackFrameCount = static_cast<int32_t>(
             std::min(static_cast<size_t>(process.frameCount()), audio_buffer_size_in_frames));
+
+        // When engine is inactive, output silence and return - device keeps running cleanly.
+        if (!engine_active_.load(std::memory_order_acquire)) {
+            if (process.audioOutBusCount() > 0) {
+                for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++)
+                    memset(process.getFloatOutBuffer(0, ch), 0, process.frameCount() * sizeof(float));
+            }
+            return 0;
+        }
 
         // Update playback position if playback is active
         bool isPlaybackActive = is_playback_active_.load(std::memory_order_acquire);

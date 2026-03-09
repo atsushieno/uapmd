@@ -49,6 +49,7 @@ namespace uapmd {
 
         virtual std::vector<uint32_t> getNativeSampleRates() = 0;
 
+        virtual void clearOutputBuffers() {}
         virtual uapmd_status_t start() = 0;
         virtual uapmd_status_t stop() = 0;
         virtual bool isPlaying() = 0;

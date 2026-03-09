@@ -56,6 +56,7 @@ namespace uapmd {
         uint32_t inputChannels() override;
         uint32_t outputChannels() override;
         std::vector<uint32_t> getNativeSampleRates() override;
+        void clearOutputBuffers() override { data.clearAudioOutputs(); }
         uapmd_status_t start() override;
         uapmd_status_t stop() override;
         bool isPlaying() override;

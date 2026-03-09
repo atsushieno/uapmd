@@ -54,6 +54,18 @@ namespace uapmd {
         bool bypassed() const override { return bypassed_; }
         void bypassed(bool value) override { bypassed_ = value; }
 
+        uapmd_status_t startProcessing() override {
+            if (!instance)
+                return -1;
+            return static_cast<uapmd_status_t>(instance->startProcessing());
+        }
+
+        uapmd_status_t stopProcessing() override {
+            if (!instance)
+                return -1;
+            return static_cast<uapmd_status_t>(instance->stopProcessing());
+        }
+
         uapmd_status_t processAudio(AudioProcessContext &process) override {
             if (bypassed_)
                 return 0;

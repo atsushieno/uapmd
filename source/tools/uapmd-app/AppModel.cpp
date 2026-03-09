@@ -13,6 +13,7 @@
 #include <functional>
 #include <cmath>
 #include <future>
+#include <thread>
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_SampleBuffers.h>
 #include <umppi/umppi.hpp>
@@ -554,16 +555,28 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan) {
 void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
     audioEngineEnabled_.store(enabled, std::memory_order_release);
 
+    auto* host = sequencer_.engine()->pluginHost();
     const bool isPlaying = sequencer_.isAudioPlaying() != 0;
     if (enabled) {
+        for (auto id : host->instanceIds())
+            host->getInstance(id)->startProcessing();
+        sequencer_.engine()->setEngineActive(true);
         if (!isPlaying) {
             if (sequencer_.startAudio() != 0) {
                 std::cerr << "Failed to start audio engine" << std::endl;
                 audioEngineEnabled_.store(false, std::memory_order_release);
+                sequencer_.engine()->setEngineActive(false);
             }
         }
     } else if (isPlaying) {
+        transportController_->stop();
+        // Silence the output first, then let the audio callback run for a couple
+        // of cycles so the hardware ring buffer drains with silence before we stop.
+        sequencer_.engine()->setEngineActive(false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
         sequencer_.stopAudio();
+        for (auto id : host->instanceIds())
+            host->getInstance(id)->stopProcessing();
     }
 }
 
