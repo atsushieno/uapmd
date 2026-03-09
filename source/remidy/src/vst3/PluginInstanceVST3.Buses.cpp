@@ -279,6 +279,10 @@ void remidy::PluginInstanceVST3::AudioBuses::configure(remidy::PluginInstance::C
         const bool active = audio_out_buses[i]->enabled() && audio_out_buses[i]->channelLayout().channels() > 0;
         component->activateBus(kAudio, kOutput, static_cast<int32_t>(i), active);
     }
+    for (int32_t i = 0; i < busesInfo.numEventIn; ++i)
+        component->activateBus(kEvent, kInput, i, true);
+    for (int32_t i = 0; i < busesInfo.numEventOut; ++i)
+        component->activateBus(kEvent, kOutput, i, true);
 }
 
 void remidy::PluginInstanceVST3::AudioBuses::deactivateAllBuses() {
