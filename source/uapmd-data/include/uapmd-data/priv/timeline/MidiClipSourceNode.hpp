@@ -86,15 +86,14 @@ namespace uapmd {
         // Playback state
         std::atomic<size_t> next_event_index_{0};  // Next event to emit
 
-        // Helper: append UMP to EventSequence
+        // Helper: append one complete UMP message (all its words) to EventSequence.
+        // words[0..wordCount-1] must be the consecutive uint32_t words of a single UMP message.
         void appendUmpToEventSequence(
             remidy::EventSequence& seq,
-            uapmd_ump_t ump,
+            const uapmd_ump_t* words,
+            size_t wordCount,
             uint32_t frameOffset
         );
-
-        // Helper: get UMP message size in bytes
-        static size_t getUmpMessageSizeInBytes(uapmd_ump_t ump);
 
         // Pre-compute sample timestamps using tempo change map
         void rebuildSampleTimelines();

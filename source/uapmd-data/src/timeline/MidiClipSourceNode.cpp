@@ -123,19 +123,28 @@ namespace uapmd {
         // Emit all events within [currentPos, windowEnd)
         while (eventIdx < ump_events_.size()) {
             uint64_t eventSamples = event_timestamps_samples_[eventIdx];
-            uint64_t eventTicks = event_timestamps_ticks_[eventIdx];
 
             // Beyond current window
             if (eventSamples >= static_cast<uint64_t>(windowEnd))
                 break;
 
-            // Within window - emit event
+            // Determine how many 32-bit words this UMP message occupies.
+            // All words of one message share the same tick timestamp in ump_events_.
+            uint8_t messageType = static_cast<uint8_t>((ump_events_[eventIdx] >> 28) & 0xF);
+            size_t wordsNeeded = static_cast<size_t>(umppi::umpSizeInInts(messageType));
+            if (wordsNeeded == 0) wordsNeeded = 1;
+
+            // Guard against reading past the end of the event buffer
+            if (eventIdx + wordsNeeded > ump_events_.size())
+                break;
+
+            // Within window - emit the complete multi-word message
             if (eventSamples >= static_cast<uint64_t>(currentPos)) {
                 uint32_t frameOffset = static_cast<uint32_t>(eventSamples - currentPos);
-                appendUmpToEventSequence(eventOut, ump_events_[eventIdx], frameOffset);
+                appendUmpToEventSequence(eventOut, &ump_events_[eventIdx], wordsNeeded, frameOffset);
             }
 
-            eventIdx++;
+            eventIdx += wordsNeeded;
         }
 
         next_event_index_.store(eventIdx, std::memory_order_release);
@@ -144,7 +153,8 @@ namespace uapmd {
 
     void MidiClipSourceNode::appendUmpToEventSequence(
         remidy::EventSequence& seq,
-        uapmd_ump_t ump,
+        const uapmd_ump_t* words,
+        size_t wordCount,
         uint32_t frameOffset
     ) {
         size_t pos = seq.position();
@@ -153,56 +163,22 @@ namespace uapmd {
         size_t umpPosition = pos / sizeof(uint32_t);
         size_t umpCapacity = maxSize / sizeof(uint32_t);
 
-        // Write JR_TIMESTAMP message for sample-accurate timing
-        // JR_TIMESTAMP uses 31250 ticks per second, so convert frame offset to JR ticks
-        // For now, use a simple approach: write the frame offset directly as ticks
-        // (This assumes the receiver will convert appropriately)
+        // Write JR_TIMESTAMP utility message for sample-accurate timing
+        // MessageType=0 (utility), Status=0x20 (JR_TIMESTAMP), Data=frameOffset (16-bit)
         if (frameOffset > 0 && umpPosition < umpCapacity) {
-            // Create JR_TIMESTAMP utility message (0x00 20 xxxx)
-            // MessageType=0 (utility), Status=0x20 (JR_TIMESTAMP), Data=frameOffset (16-bit)
             uint32_t jrTimestamp = (0x0 << 28) | (0x20 << 16) | (frameOffset & 0xFFFF);
             buffer[umpPosition++] = jrTimestamp;
         }
 
-        // Get UMP message size in words
-        size_t umpSizeInWords = getUmpMessageSizeInBytes(ump) / sizeof(uint32_t);
-
-        // Check buffer space
-        if (umpPosition + umpSizeInWords > umpCapacity)
+        // Check that we have room for all words before writing any
+        if (umpPosition + wordCount > umpCapacity)
             return; // Buffer full - drop event
 
-        // Write UMP data as uint32_t words
-        // Convert uapmd_ump_t (128-bit) to individual uint32_t words
-        const auto* umpWords = reinterpret_cast<const uint32_t*>(&ump);
-        for (size_t i = 0; i < umpSizeInWords; i++) {
-            buffer[umpPosition++] = umpWords[i];
-        }
+        // Write all words of the complete UMP message
+        for (size_t i = 0; i < wordCount; i++)
+            buffer[umpPosition++] = words[i];
 
         seq.position(umpPosition * sizeof(uint32_t));
-    }
-
-    size_t MidiClipSourceNode::getUmpMessageSizeInBytes(uapmd_ump_t ump) {
-        // Determine UMP message size from message type (high nibble)
-        uint8_t messageType = (ump >> 28) & 0xF;
-
-        switch (messageType) {
-            case 0: // Utility messages (32-bit)
-            case 1: // System Real Time messages (32-bit)
-            case 2: // MIDI 1.0 Channel Voice messages (32-bit)
-                return 4;
-
-            case 3: // Data messages (64-bit)
-            case 4: // MIDI 2.0 Channel Voice messages (64-bit)
-                return 8;
-
-            case 5: // Data messages (128-bit)
-            case 0xD: // Flex Data messages (128-bit)
-            case 0xF: // Stream messages (128-bit)
-                return 16;
-
-            default:
-                return 4; // Default to 32-bit
-        }
     }
 
     void MidiClipSourceNode::rebuildSampleTimelines() {
