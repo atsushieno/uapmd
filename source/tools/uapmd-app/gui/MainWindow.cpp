@@ -1220,10 +1220,7 @@ void MainWindow::handleSaveProject() {
                 [label = std::move(label)](uapmd::DocumentIOResult ioResult) {
                     if (!ioResult.success) {
                         platformError("Save Failed", ioResult.error);
-                        return;
                     }
-                    platformInfo("Project Saved",
-                                 std::format("Saved project to {}", label));
                 });
         }
     );
