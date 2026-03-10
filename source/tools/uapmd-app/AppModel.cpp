@@ -27,8 +27,6 @@
 
 std::unique_ptr<uapmd::AppModel> model{};
 
-namespace {
-
 constexpr uint32_t kDefaultDctpq = 480;
 constexpr uint8_t kTempoGroup = 0;
 constexpr uint8_t kTempoChannel = 0;
@@ -86,6 +84,8 @@ uint64_t secondsToTicks(double seconds, double bpm, uint32_t ticksPerQuarter) {
     return static_cast<uint64_t>(std::llround(ticks));
 }
 
+namespace uapmd {
+
 struct ScopedTempDir {
     explicit ScopedTempDir(std::filesystem::path dir)
         : path(std::move(dir)) {}
@@ -102,6 +102,8 @@ struct ScopedTempDir {
 private:
     std::filesystem::path path;
 };
+
+} // namespace uapmd
 
 std::optional<std::filesystem::path> createTempProjectDirectory(std::string& error)
 {
@@ -437,7 +439,6 @@ bool parseSmf2ClipFile(const std::filesystem::path& file, ParsedSmf2Clip& parsed
     return true;
 }
 
-} // namespace
 uapmd::TransportController::TransportController(AppModel* appModel, RealtimeSequencer* sequencer)
     : appModel_(appModel), sequencer_(sequencer) {
 }
@@ -475,6 +476,8 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
         addTrack();
     }
 }
+
+uapmd::AppModel::~AppModel() = default;
 
 uapmd::IDocumentProvider* uapmd::AppModel::documentProvider() {
     if (!documentProvider_) {
@@ -1432,29 +1435,45 @@ void uapmd::AppModel::saveProjectToDocument(DocumentHandle handle,
 uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromResolvedPath(
     const std::filesystem::path& projectFile)
 {
+    ProjectResult failureResult;
+    // Keep the previously loaded archive data alive unless we successfully load a new project.
     std::error_code existsEc;
     if (projectFile.empty() || !std::filesystem::exists(projectFile, existsEc)) {
-        return {false, existsEc ? existsEc.message() : "Project file is unavailable."};
+        failureResult.error = existsEc ? existsEc.message() : "Project file is unavailable.";
+        return failureResult;
     }
 
     if (!ProjectArchive::isArchive(projectFile)) {
-        return loadProject(projectFile);
+        auto result = loadProject(projectFile);
+        if (result.success) {
+            activeProjectTempDir_.reset();
+        }
+        return result;
     }
 
     std::string tempDirError;
     auto tempDir = createTempProjectDirectory(tempDirError);
     if (!tempDir) {
-        return {false, tempDirError};
+        failureResult.error = tempDirError;
+        return failureResult;
     }
-    ScopedTempDir stage(std::move(*tempDir));
+    auto stage = std::make_unique<ScopedTempDir>(std::move(*tempDir));
 
-    auto extract = ProjectArchive::extractArchive(projectFile, stage.get());
-    if (!extract.success)
-        return {false, extract.error};
-    if (extract.projectFile.empty())
-        return {false, "Project archive missing .uapmd file."};
+    auto extract = ProjectArchive::extractArchive(projectFile, stage->get());
+    if (!extract.success) {
+        failureResult.error = extract.error;
+        return failureResult;
+    }
+    if (extract.projectFile.empty()) {
+        failureResult.error = "Project archive missing .uapmd file.";
+        return failureResult;
+    }
 
-    return loadProject(extract.projectFile);
+    auto result = loadProject(extract.projectFile);
+    if (result.success) {
+        activeProjectTempDir_ = std::move(stage);
+    }
+    return result;
 }
 
 uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesystem::path& projectFile) {

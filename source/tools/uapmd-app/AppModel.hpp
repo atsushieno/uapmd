@@ -20,6 +20,7 @@
 #include <uapmd-file/IDocumentProvider.hpp>
 
 namespace uapmd {
+    struct ScopedTempDir;
     // Forward declarations
     class AppModel;
 
@@ -116,6 +117,7 @@ namespace uapmd {
         std::unique_ptr<IDocumentProvider> documentProvider_;
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
+        std::unique_ptr<ScopedTempDir> activeProjectTempDir_;
 
 
         // Audio processing callback (called by SequencerEngine)
@@ -129,7 +131,7 @@ namespace uapmd {
         static AppModel& instance();
         static void cleanupInstance();
         AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
-        ~AppModel() override = default;
+        ~AppModel() override;
 
         RealtimeSequencer& sequencer() { return sequencer_; }
         remidy_tooling::PluginScanTool& pluginScanTool() { return pluginScanTool_; }
