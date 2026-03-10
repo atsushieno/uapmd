@@ -620,79 +620,34 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
         pluginName = "Unknown Plugin";
     }
 
-    // Determine device name
-    std::string deviceLabel = config.deviceName.empty()
-        ? std::format("{} [{}]", pluginName, format)
-        : config.deviceName;
-
     // This is the same logic as VirtualMidiDeviceController::createDevice
     // but we call the callback instead of managing state
     std::string formatCopy = format;
     std::string pluginIdCopy = pluginId;
 
-    auto instantiateCallback = [this, config, deviceLabel, pluginName, format, pluginId, completionCallback](int32_t instanceId, int32_t trackIndex, std::string error) {
+    auto instantiateCallback = [this, config, pluginName, completionCallback](int32_t instanceId, int32_t trackIndex, std::string error) {
         PluginInstanceResult result;
         result.instanceId = instanceId;
         result.pluginName = pluginName;
         result.error = std::move(error);
 
         if (!result.error.empty() || instanceId < 0) {
-            // Notify completion callback first (even on error)
             if (completionCallback) {
                 completionCallback(result);
             }
-            // Notify all registered callbacks
             for (auto& cb : instanceCreated) {
                 cb(result);
             }
             return;
         }
 
-        // Create DeviceState and add to devices_ vector
-        auto state = std::make_shared<DeviceState>();
-        state->label = deviceLabel;
-        state->apiName = config.apiName;
-        state->instantiating = false;
+        std::optional<PluginInstanceConfig> configOverride{config};
+        result = registerPluginInstanceInternal(instanceId, configOverride);
 
-        auto& pluginNode = state->pluginInstances[instanceId];
-        pluginNode.instanceId = instanceId;
-        pluginNode.pluginName = pluginName;
-        pluginNode.pluginFormat = format;
-        pluginNode.pluginId = pluginId;
-        pluginNode.statusMessage = std::format("Plugin ready (instance {})", instanceId);
-        pluginNode.instantiating = false;
-        pluginNode.hasError = false;
-
-        {
-            std::lock_guard lock(devicesMutex_);
-            devices_.push_back(DeviceEntry{nextDeviceId_++, state});
-        }
-
-        if (!config.stateFile.empty()) {
-            auto stateResult = this->loadPluginState(instanceId, config.stateFile.string());
-            if (!stateResult.success) {
-                std::cerr << "Automatic plugin state load failed for " << pluginName
-                          << ": " << stateResult.error << std::endl;
-            }
-        }
-
-        // Reuse the dedicated logic for MIDI device initialization when supported.
-        if (midiApiSupportsDynamicUmpEndpoints(config.apiName)) {
-            enableUmpDevice(instanceId, deviceLabel);
-        } else {
-            state->running = false;
-            state->hasError = true;
-            state->statusMessage = "Dynamic Virtual MIDI 2.0 devices are unavailable on this platform.";
-        }
-
-        result.device = state->device;
-
-        // Call completion callback first
         if (completionCallback) {
             completionCallback(result);
         }
 
-        // Notify all registered callbacks
         for (auto& cb : instanceCreated) {
             cb(result);
         }
@@ -715,6 +670,92 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
     }
 
     sequencer_.engine()->addPluginToTrack(targetMasterTrack ? kMasterTrackIndex : trackIndex, formatCopy, pluginIdCopy, instantiateCallback);
+}
+
+uapmd::AppModel::PluginInstanceResult uapmd::AppModel::registerPluginInstanceInternal(
+    int32_t instanceId,
+    const std::optional<PluginInstanceConfig>& configOverride) {
+    PluginInstanceResult result;
+    result.instanceId = instanceId;
+
+    auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
+    if (!instance) {
+        result.error = "Plugin instance not found";
+        return result;
+    }
+
+    std::string pluginName = instance->displayName();
+    std::string pluginFormat = instance->formatName();
+    std::string pluginIdentifier = instance->pluginId();
+
+    result.pluginName = pluginName;
+
+    PluginInstanceConfig config = configOverride.value_or(PluginInstanceConfig{});
+    if (config.apiName.empty()) {
+        config.apiName = "default";
+    }
+    if (config.manufacturer.empty()) {
+        config.manufacturer = "UAPMD Project";
+    }
+    if (config.version.empty()) {
+        config.version = "0.1";
+    }
+
+    std::string deviceLabel = config.deviceName.empty()
+        ? std::format("{} [{}]", pluginName, pluginFormat)
+        : config.deviceName;
+
+    auto state = std::make_shared<DeviceState>();
+    state->label = deviceLabel;
+    state->apiName = config.apiName;
+    state->instantiating = false;
+
+    auto& pluginNode = state->pluginInstances[instanceId];
+    pluginNode.instanceId = instanceId;
+    pluginNode.pluginName = pluginName;
+    pluginNode.pluginFormat = pluginFormat;
+    pluginNode.pluginId = pluginIdentifier;
+    pluginNode.statusMessage = std::format("Plugin ready (instance {})", instanceId);
+    pluginNode.instantiating = false;
+    pluginNode.hasError = false;
+
+    {
+        std::lock_guard lock(devicesMutex_);
+        for (auto it = devices_.begin(); it != devices_.end();) {
+            auto existingState = it->state;
+            if (existingState && existingState->pluginInstances.count(instanceId) > 0) {
+                it = devices_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        devices_.push_back(DeviceEntry{nextDeviceId_++, state});
+    }
+
+    if (configOverride && !configOverride->stateFile.empty()) {
+        auto stateResult = loadPluginState(instanceId, configOverride->stateFile.string());
+        if (!stateResult.success) {
+            std::cerr << "Automatic plugin state load failed for " << pluginName
+                      << ": " << stateResult.error << std::endl;
+        }
+    }
+
+    if (midiApiSupportsDynamicUmpEndpoints(config.apiName)) {
+        enableUmpDevice(instanceId, deviceLabel);
+    } else {
+        state->running = false;
+        state->hasError = true;
+        state->statusMessage = "Dynamic Virtual MIDI 2.0 devices are unavailable on this platform.";
+    }
+
+    result.device = state->device;
+    return result;
+}
+
+void uapmd::AppModel::clearDeviceEntries() {
+    std::lock_guard lock(devicesMutex_);
+    devices_.clear();
+    nextDeviceId_ = 1;
 }
 
 void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
@@ -1677,17 +1718,19 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
     for (int32_t i = 0; i < numTracks; ++i)
         notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, i});
 
-    // Also notify instanceCreated for each plugin loaded
-    for (int32_t trackIdx = 0; trackIdx < numTracks; ++trackIdx) {
-        auto* track = sequencer_.engine()->tracks()[trackIdx];
-        if (!track) continue;
-        for (int32_t instanceId : track->orderedInstanceIds()) {
-            auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
-            std::string name = instance ? instance->displayName() : "";
-            PluginInstanceResult r;
-            r.instanceId = instanceId;
-            r.pluginName = name;
-            for (auto& cb : instanceCreated) cb(r);
+    // Rebuild device entries and notify listeners for each plugin instance
+    clearDeviceEntries();
+    sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
+
+    auto instanceIds = sequencer_.engine()->pluginHost()->instanceIds();
+    for (int32_t instanceId : instanceIds) {
+        auto result = registerPluginInstanceInternal(instanceId, std::nullopt);
+        if (!result.error.empty()) {
+            std::cerr << "Failed to register plugin instance " << instanceId
+                      << ": " << result.error << std::endl;
+        }
+        for (auto& cb : instanceCreated) {
+            cb(result);
         }
     }
 

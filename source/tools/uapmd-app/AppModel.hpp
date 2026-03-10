@@ -86,6 +86,9 @@ namespace uapmd {
             std::shared_ptr<DeviceState> state;
         };
 
+        struct PluginInstanceConfig;
+        struct PluginInstanceResult;
+
         struct TrackLayoutChange {
             enum class Type {
                 Added,
@@ -117,6 +120,9 @@ namespace uapmd {
 
         // Audio processing callback (called by SequencerEngine)
         void notifyTrackLayoutChanged(const TrackLayoutChange& change);
+        PluginInstanceResult registerPluginInstanceInternal(int32_t instanceId,
+                                                            const std::optional<PluginInstanceConfig>& configOverride);
+        void clearDeviceEntries();
 
     public:
         static void instantiate();
