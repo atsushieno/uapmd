@@ -18,6 +18,7 @@
 #include <imgui.h>
 #include <umppi/umppi.hpp>
 #include <uapmd-data/uapmd-data.hpp>
+#include "uapmd-data/priv/timeline/MidiClipSourceNode.hpp"
 
 #include "TimelineEditor.hpp"
 #include "ClipPreview.hpp"
@@ -71,7 +72,8 @@ std::vector<MidiDumpWindow::EventRow> buildMidiDumpRows(
         MidiDumpWindow::EventRow row;
         row.timeSeconds = seconds;
         row.tickPosition = static_cast<uint64_t>(ticks);
-        row.lengthBytes = byteLength;
+        const uint64_t prevTick = rows.empty() ? 0 : rows.back().tickPosition;
+        row.deltaTicks = row.tickPosition > prevTick ? row.tickPosition - prevTick : 0;
         row.timeLabel = std::format("{:.3f}s [{}]", seconds, row.tickPosition);
 
         bool firstByte = true;
@@ -266,6 +268,9 @@ void TimelineEditor::render(float uiScale) {
         .updateChildWindowSizeState = [this](const std::string& id) {
             if (updateChildWindowSizeState_)
                 updateChildWindowSizeState_(id);
+        },
+        .applyEdits = [this](const MidiDumpWindow::EditPayload& payload, std::string& error) {
+            return applyMidiClipEdits(payload, error);
         },
         .uiScale = uiScale,
     };
@@ -1254,7 +1259,6 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
         row.timeSeconds = point.timeSeconds;
         row.tickPosition = point.tickPosition;
         row.timeLabel = std::format("{:.6f}s [{}]", row.timeSeconds, row.tickPosition);
-        row.lengthBytes = 6;
 
         double clampedBpm = std::clamp(point.bpm, 1.0, 1000.0);
         uint64_t usec = static_cast<uint64_t>(std::llround(60000000.0 / clampedBpm));
@@ -1276,7 +1280,6 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
         row.timeSeconds = point.timeSeconds;
         row.tickPosition = point.tickPosition;
         row.timeLabel = std::format("{:.6f}s [{}]", row.timeSeconds, row.tickPosition);
-        row.lengthBytes = 7;
 
         uint8_t denominator = std::max<uint8_t>(1, point.signature.denominator);
         uint8_t exponent = 0;
@@ -1304,12 +1307,99 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
         });
 
     dump.events.reserve(rows.size());
-    for (auto& row : rows)
+    uint64_t prevTick = 0;
+    for (auto& row : rows) {
+        row.row.deltaTicks = row.row.tickPosition > prevTick ? row.row.tickPosition - prevTick : 0;
+        prevTick = row.row.tickPosition;
         dump.events.push_back(std::move(row.row));
+    }
 
     dump.success = true;
     dump.error.clear();
     return dump;
+}
+
+bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& payload, std::string& error) {
+    if (payload.trackIndex < 0) {
+        error = "Editing master track meta events is not supported.";
+        return false;
+    }
+
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    if (payload.trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[payload.trackIndex]) {
+        error = "Track is unavailable.";
+        return false;
+    }
+
+    auto& track = tracks[payload.trackIndex];
+    auto* clip = track->clipManager().getClip(payload.clipId);
+    if (!clip) {
+        error = "Clip not found.";
+        return false;
+    }
+    if (clip->clipType != uapmd::ClipType::Midi) {
+        error = "Selected clip is not a MIDI clip.";
+        return false;
+    }
+
+    auto sourceNode = track->getSourceNode(clip->sourceNodeInstanceId);
+    auto midiNode = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(sourceNode);
+    if (!midiNode) {
+        error = "MIDI source node is not available.";
+        return false;
+    }
+
+    std::vector<uapmd_ump_t> newEvents;
+    std::vector<uint64_t> newTicks;
+    size_t totalWords = 0;
+    for (const auto& evt : payload.events) {
+        if (evt.words.empty()) {
+            error = "Event has empty data.";
+            return false;
+        }
+        totalWords += evt.words.size();
+    }
+    newEvents.reserve(totalWords);
+    newTicks.reserve(totalWords);
+
+    uint64_t prevTick = 0;
+    for (const auto& evt : payload.events) {
+        if (!newEvents.empty() && evt.tickPosition < prevTick) {
+            error = "Events must be ordered by tick.";
+            return false;
+        }
+        prevTick = evt.tickPosition;
+        for (auto word : evt.words) {
+            newEvents.push_back(static_cast<uapmd_ump_t>(word));
+            newTicks.push_back(evt.tickPosition);
+        }
+    }
+
+    auto tempoChanges = midiNode->tempoChanges();
+    auto timeSignatureChanges = midiNode->timeSignatureChanges();
+    double clipTempo = midiNode->clipTempo();
+    uint32_t tickResolution = clip->tickResolution > 0 ? clip->tickResolution : midiNode->tickResolution();
+    auto newNode = std::make_unique<uapmd::MidiClipSourceNode>(
+        midiNode->instanceId(),
+        std::move(newEvents),
+        std::move(newTicks),
+        tickResolution,
+        clipTempo,
+        static_cast<double>(appModel.sampleRate()),
+        tempoChanges,
+        timeSignatureChanges
+    );
+
+    const int64_t newDuration = newNode->totalLength();
+    if (!track->replaceClipSourceNode(clip->clipId, std::move(newNode))) {
+        error = "Failed to replace MIDI clip data.";
+        return false;
+    }
+
+    track->clipManager().resizeClip(clip->clipId, newDuration);
+    refreshSequenceEditorForTrack(payload.trackIndex);
+    return true;
 }
 
 void TimelineEditor::importMidiTracksWithPicker() {

@@ -121,6 +121,7 @@ private:
     MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);
     MidiDumpWindow::ClipDumpData buildMasterMetaDumpData();
     void importMidiTracks(const std::string& filepath);
+    bool applyMidiClipEdits(const MidiDumpWindow::EditPayload& payload, std::string& error);
 
     // Build render context
     SequenceEditor::RenderContext buildRenderContext(float uiScale);

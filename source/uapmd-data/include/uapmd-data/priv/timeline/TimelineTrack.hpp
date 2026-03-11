@@ -32,6 +32,7 @@ namespace uapmd {
         int32_t addClip(const ClipData& clip, std::unique_ptr<MidiSourceNode> sourceNode);  // NEW
         bool removeClip(int32_t clipId);
         bool replaceClipSourceNode(int32_t clipId, std::unique_ptr<AudioFileSourceNode> newSourceNode);
+        bool replaceClipSourceNode(int32_t clipId, std::unique_ptr<MidiSourceNode> newSourceNode);
 
         // Source node management
         bool addDeviceInputSource(std::unique_ptr<DeviceInputSourceNode> sourceNode);

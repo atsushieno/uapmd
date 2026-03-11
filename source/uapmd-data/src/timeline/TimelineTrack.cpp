@@ -109,6 +109,38 @@ namespace uapmd {
         return true;
     }
 
+    bool TimelineTrack::replaceClipSourceNode(int32_t clipId, std::unique_ptr<MidiSourceNode> newSourceNode) {
+        if (!newSourceNode)
+            return false;
+
+        auto* clip = clip_manager_.getClip(clipId);
+        if (!clip)
+            return false;
+
+        int32_t oldSourceNodeId = clip->sourceNodeInstanceId;
+        int32_t newSourceNodeId = newSourceNode->instanceId();
+
+        auto sharedNode = std::shared_ptr<MidiSourceNode>(std::move(newSourceNode));
+
+        {
+            std::lock_guard<std::mutex> lock(source_nodes_mutex_);
+            auto it = std::find_if(source_nodes_.begin(), source_nodes_.end(),
+                [oldSourceNodeId](const std::shared_ptr<SourceNode>& node) {
+                    return node && node->instanceId() == oldSourceNodeId;
+                });
+
+            if (it != source_nodes_.end()) {
+                *it = sharedNode;
+            } else {
+                source_nodes_.push_back(sharedNode);
+            }
+            rebuildSourceNodeSnapshotLocked();
+        }
+
+        clip->sourceNodeInstanceId = newSourceNodeId;
+        return true;
+    }
+
     bool TimelineTrack::addDeviceInputSource(std::unique_ptr<DeviceInputSourceNode> sourceNode) {
         if (!sourceNode)
             return false;
