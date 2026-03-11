@@ -45,11 +45,6 @@ namespace remidy {
         // when our use app changes the sample rate.
         bool instantiateRequiresSampleRate();
 
-        struct InvokeResult {
-            std::unique_ptr<PluginInstance> instance;
-            std::string error;
-        };
-
         struct PluginInstantiationOptions {
             PluginUIThreadRequirement uiThreadRequirement;
         };
