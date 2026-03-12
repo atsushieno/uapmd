@@ -30,7 +30,7 @@ midicci's umppi module provides the UMP processing helpers we rely on (ni-midi2 
 
 - We have our own multi-format hosting library `remidy`, as no one built such one in a liberal license.
   - We use vst3sdk for VST3.
-    - We used to use Travesty from DPF, but we have no reason to avoid vst3sdk anymore since it is relicensed to MIT at v3.8.0.
+    - We used to use Travesty from DPF, but we have no reason to avoid vst3sdk anymore since it is relicensed to MIT at v3.8.0. (and our code is written in C++, not C)
   - We use lv2kit (lilv, serd, sord, sratom, zix) for LV2.
     - LVTK3 might bring in benefits, I just did not make decision to depend on "under heavily development" status of the library (also no desire to migrate from its meson to our CMake, I'm tired of doing that at lv2kit).
   - We use the API headers and clap-helpers for CLAP.
@@ -56,6 +56,6 @@ midicci's umppi module provides the UMP processing helpers we rely on (ni-midi2 
   - Now that we also have to deal with the plugin UIs, it will be even more complicated.
 - We consider host-as-a-plugin use of uapmd-app, and in that sense neither Gtk nor Qt are feasible.
   - Strictly speaking, Web UI is no-go for the same reason as there is no good-for-embedding X11 WebView library...
-- Anything that does not support Android (e.g. visage) is not preferred.
+- Anything that does not support Android (e.g. visage) is no-go.
 - Anything that does not support text input methods on all platforms (especially on Linux) is not preferred.
 - Non-widget toolkits (e.g. pugl) are out of questions.

@@ -39,3 +39,11 @@ VST3, AU, LV2 presets can be loaded as states.
 The same principle goes for CLAP, but CLAP presets needs to be loaded using preset-load extension, because the factory API provides different identification for factory presets and user presets, and thus requires different arguments: https://github.com/free-audio/clap/blob/main/include/clap/ext/preset-load.h
 
 VST3 UnitInfo-based program changes are settable via parameters API.
+
+## Things to improve
+
+The ideal presets API should have:
+
+- expose different characteristics for factory presets vs. user presets
+  - factory presets can be identified by stable ID / cannot change later
+  - user presets can be dynamically created and saved / have to save and load full reproducible resources

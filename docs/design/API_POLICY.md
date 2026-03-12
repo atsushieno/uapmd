@@ -17,7 +17,7 @@ NOTE: we are still not at the stage where API stability matters.
 ## Choice of languages
 
 - We won't switch to Rust at least until there is Tier-1 support for Android and [support in NDK](https://github.com/android/ndk/issues/1742).
-- Nn macOS-specific code there is not likely Swift adoption as its interop is still complicating.
+- No macOS-specific code there is not likely Swift adoption as its interop is still complicating.
   - We use Objective-C++ for now, but might switch to C++ using `choc::objc` for better coding experience (namely on CLion).
 
 ## Include path stability
