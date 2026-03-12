@@ -1,9 +1,9 @@
-# UAPMD: next-gen, multi-format, liberally licensed audio plugin host engine with fully equipped MIDI 2.0 frontend
+# UAPMD: next-gen, cross-platform, multi-format, liberally licensed audio plugin host engine with fully equipped virtual MIDI 2.0 devices provider
 
 ![UAPMD v0.2 example screenshot](docs/images/uapmd-app-v0.2-sshot.png)
 ![UAPMD v0.1 example screenshot](docs/images/uapmd-app-v0.1-sshot.png)
 
-UAPMD (Ubiquitous Audio Plugin MIDI Device) is a multi-track audio plugin host sequencer that exposes their control points as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
+UAPMD (Ubiquitous Audio Plugin MIDI Device) is a cross-platform, multi-track audio plugin host sequencer that exposes their control points as virtual MIDI 2.0 devices. Your can use arbitrary MIDI 2.0 client apps to:
 
 - play MIDI 2.0 instruments with 32-bit precision; use Assignable Controllers (NRPNs) to change plugin parameters in 32-bit values (velocity in 16-bit).
 - retrieve parameter list as Assignable Controllers and presets as Program List, as long as they are exposed via the plugin APIs. Thus you don't have to remember which controller index maps to the parameter you want, or which program number maps to the tone you need.
@@ -11,7 +11,7 @@ UAPMD (Ubiquitous Audio Plugin MIDI Device) is a multi-track audio plugin host s
 
 We also develop [midicci](https://github.com/atsushieno/midicci), an fully featured MIDI 2.0 software keyboard that leverages the full potential of this project.
 
-The sequencer is capable of:
+`uapmd-app`, our proof-of-concept sequencer application, and its engine `uapmd-engine`, is currently capable of:
 
 - managing a master track and multiple tracks, where
 - each track has a linear list of audio plugins, and
@@ -24,15 +24,16 @@ UAPMD targets the following platforms:
 
 | platform | missing features |
 |-|-|
-| macOS | |
 | Linux desktop | |
+| macOS | |
 | Windows | MIDI 2.0 virtual devices (WIP) |
 | Android | Audio plugins (WIP) |
+| iOS | (not verified much) |
 | Web (Emscripten) | Audio plugins |
 
-We support VST3, AudioUnit, LV2, and CLAP plugin formats.
+We support VST3, AudioUnit (v2 and v3), LV2, and CLAP plugin formats.
 
-UAPMD is based on its own plugin hosting foundation and released under the MIT license.
+UAPMD is based on its own plugin hosting foundation `remidy`, and released under the MIT license (except for Android which brings in a lot of ApacheV2-licensed libraries). `uapmd-app` is built strictly on the libraries with liberal licenses.
 
 ## Build or Install
 
@@ -43,6 +44,7 @@ There is an application `uapmd-app` that performs almost all features UAPMD prov
 `uapmd` offers Linux packages on the release pages and GitHub Actions build artifacts, in `.deb`, `.rpm` and `.tar.xz` (They are based on CPack packaging tasks). On macOS the `package` target generates a DMG image ready to distribute and the build also emits a standalone `uapmd-app.app` bundle you can drag to Applications. On Windows, running the same target produces a ZIP archive, and if [NSIS](https://nsis.sourceforge.io/Main_Page) is installed you also get a standard installer executable.
 
 `uapmd` offers Homebrew package as well. You can install it as: `brew install atsushieno/oss/uapmd` then run `/opt/homebrew/bin/uapmd-app` or use those libraries the package offers.
+Our package settings are stored at [atsushieno/homebrew-oss](https://github.com/atsushieno/homebrew-oss).
 
 ### building from source
 
@@ -68,6 +70,12 @@ If you target Android:
 
 ```
 $ cd android && ./gradlew build
+```
+
+If you target iOS:
+
+```
+$ bash build-ios-sim.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd   # you can skip CPM_SOURCE_CACHE
 ```
 
 If you target Web:
@@ -110,9 +118,11 @@ The virtual MIDI 2.0 device service controller. Currently the command line optio
 
 `api-name` so far accepts only `PIPEWIRE` (on Linux) to use PipeWire, and uses default available API otherwise.
 
+We have some [users guide documentation](docs/users/USERS_GUIDE.md).
+
 ### remidy-scan
 
-`remidy-scan` is a tool to query and enumerate locally installed plugins, and stores the results to `(local app data)/remidy-tooling/plugin-list-cache.json` (`local app data` depends on the platform).
+`remidy-scan` is a tool to query and enumerate locally installed plugins, and stores the results to `(local app data)/remidy-tooling/plugin-list-cache.json` (`local app data` [depends on the platform](https://github.com/cginternals/cpplocate)).
 
 ## Documentation
 
@@ -173,8 +183,8 @@ There are third-party (and first party) dependency libraries (git submodules, CM
   - [xiph/vorbis](https://github.com/xiph/vorbis) - BSD (3-clause)
   - [xiph/flac](https://github.com/xiph/flac) - BSD-like (libraries only)
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
+- [zlib-ng/zlib-ng](https://github.com/zlib-ng/zlib-ng) - Zlib license.
 - [atsushieno/midicci](https://github.com/atsushieno/midicci) - MIT
-  - [zlib-ng/zlib-ng](https://github.com/zlib-ng/zlib-ng) - Zlib license.
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)
 - [cginternals/cpplocate](https://github.com/cginternals/cpplocate): MIT
 - [jeremy-rifkin/cpptrace](https://github.com/jeremy-rifkin/cpptrace) - MIT
@@ -187,11 +197,14 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [triplejam/ImTimeline](https://github.com/triplejam/ImTimeline) (a well-maintained and buildable fork of NickVanheer/ImTimeline) - MIT
 - [juliettef/IconFontCppHelpers](https://github.com/juliettef/IconFontCppHeaders) - Zlib license.
 - [eyalamirmusic/ResEmbed](https://github.com/eyalamirmusic/ResEmbed) - MIT
-- [Roboto font](https://fonts.google.com/specimen/Roboto) - the SIL Open Font License v1.1
-- [FontAwesome](https://github.com/FortAwesome/Font-Awesome) - CC-BY 4.0 + SIL OFL 1.1
-- [fontaudio](https://github.com/fefanto/fontaudio) - MIT
 - [sevagh/demucs.cpp](https://github.com/sevagh/demucs.cpp) - MIT
 - [OpenMathLib/OpenBLAS](https://github.com/OpenMathLib/OpenBLAS) - BSD (3-clause)  (optional for demucs.cpp acceleration; disabled by default)
 - [wang-bin/JMI](https://github.com/wang-bin/JMI) - MIT
+
+Fonts used:
+
+- [Roboto font](https://fonts.google.com/specimen/Roboto) - the SIL Open Font License v1.1
+- [FontAwesome](https://github.com/FortAwesome/Font-Awesome) - CC-BY 4.0 + SIL OFL 1.1
+- [fontaudio](https://github.com/fefanto/fontaudio) - MIT
 
 Note that while they might look comprehensive, I'm listing those to clarify the licenses that matter. For example, libraries like choc depend on other third-party libraries but we don't use them.
