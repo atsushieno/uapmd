@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <remidy/remidy.hpp>
+#include "uapmd/priv/plugin-api/PluginSupportView.hpp"
 
 namespace uapmd {
     class UapmdNodeUmpInputMapper :
@@ -25,12 +26,12 @@ namespace uapmd {
     class UapmdNodeUmpOutputMapper : public UapmdUmpOutputMapper {
         MidiIOFeature* device;
         AudioPluginInstanceAPI* plugin;
-        remidy::PluginParameterSupport* parameter_support;
-        remidy::EventListenerId param_change_listener_id;
-        remidy::EventListenerId per_note_change_listener_id;
+        ParameterSupportView parameter_support_;
+        ParameterListenerId param_change_listener_id;
+        ParameterListenerId per_note_change_listener_id;
 
         double normalizeParameterValue(uint16_t index, double plainValue) const;
-        double normalizePerNoteControllerValue(remidy::PerNoteControllerContextTypes types, uint32_t context, uint32_t parameterIndex, double plainValue) const;
+        double normalizePerNoteControllerValue(PerNoteContextFlags types, PerNoteContext context, uint32_t parameterIndex, double plainValue) const;
 
     public:
         explicit UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin);

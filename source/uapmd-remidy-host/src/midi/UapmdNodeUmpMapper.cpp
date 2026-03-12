@@ -41,33 +41,33 @@ namespace uapmd {
       : UapmdUmpOutputMapper(),
         device(device),
         plugin(plugin),
-        parameter_support(plugin ? plugin->parameterSupport() : nullptr),
-        param_change_listener_id(-1),
-        per_note_change_listener_id(-1) {
-        if (!parameter_support)
+        parameter_support_(plugin ? plugin->parameterSupport() : ParameterSupportView{}),
+        param_change_listener_id(0),
+        per_note_change_listener_id(0) {
+        if (!parameter_support_.valid())
             return;
-        param_change_listener_id = parameter_support->parameterChangeEvent().addListener([this](uint32_t index, double value) {
+        param_change_listener_id = parameter_support_.addParameterValueListener([this](uint32_t index, double value) {
             sendParameterValue(index, value);
         });
-        per_note_change_listener_id = parameter_support->perNoteControllerChangeEvent().addListener(
-            [this](remidy::PerNoteControllerContextTypes types, uint32_t context, uint32_t parameterIndex, double value) {
-                if ((types & remidy::PER_NOTE_CONTROLLER_PER_NOTE) == 0)
+        per_note_change_listener_id = parameter_support_.addPerNoteControllerListener(
+            [this](PerNoteContextFlags flags, PerNoteContext context, uint32_t parameterIndex, double value) {
+                if ((flags & PerNoteContextFlags::PerNote) == PerNoteContextFlags::None)
                     return;
-                const double normalized = normalizePerNoteControllerValue(types, context, parameterIndex, value);
+                const double normalized = normalizePerNoteControllerValue(flags, context, parameterIndex, value);
                 sendPerNoteControllerValue(
-                    static_cast<uint8_t>(context),
+                    static_cast<uint8_t>(context.note),
                     static_cast<uint8_t>(parameterIndex),
                     normalized);
             });
     }
 
     UapmdNodeUmpOutputMapper::~UapmdNodeUmpOutputMapper() {
-        if (plugin && parameter_support) {
-            if (param_change_listener_id >= 0)
-                parameter_support->parameterChangeEvent().removeListener(param_change_listener_id);
-            if (per_note_change_listener_id >= 0)
-                parameter_support->perNoteControllerChangeEvent().removeListener(per_note_change_listener_id);
-        }
+        if (!parameter_support_.valid())
+            return;
+        if (param_change_listener_id != 0)
+            parameter_support_.removeParameterValueListener(param_change_listener_id);
+        if (per_note_change_listener_id != 0)
+            parameter_support_.removePerNoteControllerListener(per_note_change_listener_id);
     }
 
     void UapmdNodeUmpOutputMapper::sendParameterValue(uint16_t index, double value) {
@@ -130,32 +130,18 @@ namespace uapmd {
     }
 
     double UapmdNodeUmpOutputMapper::normalizeParameterValue(uint16_t index, double plainValue) const {
-        if (!parameter_support)
+        if (!parameter_support_.valid())
             return plainValue;
-        auto& params = parameter_support->parameters();
-        if (index >= params.size())
-            return plainValue;
-        auto* param = params[index];
-        if (!param)
-            return plainValue;
-        double normalized = param->normalizedValue(plainValue);
+        double normalized = parameter_support_.normalizedParameterValue(index, plainValue);
         if (!std::isfinite(normalized))
             return 0.0;
         return normalized;
     }
 
-    double UapmdNodeUmpOutputMapper::normalizePerNoteControllerValue(remidy::PerNoteControllerContextTypes types, uint32_t context, uint32_t parameterIndex, double plainValue) const {
-        if (!parameter_support)
+    double UapmdNodeUmpOutputMapper::normalizePerNoteControllerValue(PerNoteContextFlags flags, PerNoteContext context, uint32_t parameterIndex, double plainValue) const {
+        if (!parameter_support_.valid())
             return plainValue;
-        remidy::PerNoteControllerContext ctx{};
-        ctx.note = context;
-        auto& controllers = parameter_support->perNoteControllers(types, ctx);
-        if (parameterIndex >= controllers.size())
-            return plainValue;
-        auto* param = controllers[parameterIndex];
-        if (!param)
-            return plainValue;
-        double normalized = param->normalizedValue(plainValue);
+        double normalized = parameter_support_.normalizedPerNoteControllerValue(flags, context, parameterIndex, plainValue);
         if (!std::isfinite(normalized))
             return 0.0;
         return normalized;

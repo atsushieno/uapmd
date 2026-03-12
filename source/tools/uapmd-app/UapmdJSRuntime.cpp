@@ -82,16 +82,16 @@ void UapmdJSRuntime::registerPluginCatalogAPI()
             return choc::value::Value();
 
         auto entry = plugins[static_cast<size_t>(index)];
-        if (entry.pluginId().empty())
+        if (entry.pluginId.empty())
             return choc::value::Value();
 
         auto obj = choc::value::createObject ("PluginCatalogEntry");
-        obj.setMember ("format", entry.format());
-        obj.setMember ("pluginId", entry.pluginId());
-        obj.setMember ("displayName", entry.displayName());
-        obj.setMember ("vendorName", entry.vendorName());
-        obj.setMember ("productUrl", entry.productUrl());
-        obj.setMember ("bundlePath", entry.bundlePath().string());
+        obj.setMember ("format", entry.format);
+        obj.setMember ("pluginId", entry.pluginId);
+        obj.setMember ("displayName", entry.displayName);
+        obj.setMember ("vendorName", entry.vendorName);
+        obj.setMember ("productUrl", entry.productUrl);
+        obj.setMember ("bundlePath", entry.bundlePath.string());
         return obj;
     });
 

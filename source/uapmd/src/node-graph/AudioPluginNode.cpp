@@ -21,8 +21,9 @@ namespace uapmd {
         std::function<void()> on_delete_;
         ParameterUpdateEvent parameter_update_event_;
         ParameterMetadataRefreshEvent parameter_metadata_refresh_event_;
-        remidy::EventListenerId parameter_listener_token_{0};
-        remidy::EventListenerId metadata_listener_token_{0};
+        ParameterSupportView parameter_support_;
+        ParameterListenerId parameter_listener_token_{0};
+        ParameterListenerId metadata_listener_token_{0};
         std::mutex active_notes_mutex_;
         std::unordered_map<uint16_t, uint32_t> active_notes_;
 
@@ -41,28 +42,25 @@ namespace uapmd {
             instance_(instance),
             queue_(eventBufferSizeInBytes),
             on_delete_(std::move(onDelete)) {
-            // Register parameter change listener directly with the plugin
-            if (instance_ && instance_->parameterSupport()) {
-                parameter_listener_token_ = instance_->parameterSupport()->parameterChangeEvent().addListener(
+            parameter_support_ = instance_ ? instance_->parameterSupport() : ParameterSupportView{};
+            if (parameter_support_.valid()) {
+                parameter_listener_token_ = parameter_support_.addParameterValueListener(
                     [this](uint32_t paramIndex, double plainValue) {
                         parameter_update_event_.notify(static_cast<int32_t>(paramIndex), plainValue);
-                    }
-                );
-                metadata_listener_token_ = instance_->parameterSupport()->parameterMetadataChangeEvent().addListener(
+                    });
+                metadata_listener_token_ = parameter_support_.addParameterMetadataListener(
                     [this]() {
                         parameter_metadata_refresh_event_.notify();
-                    }
-                );
+                    });
             }
         }
 
         ~AudioPluginNodeImpl() override {
-            // Unregister parameter listeners
-            if (instance_ && instance_->parameterSupport()) {
+            if (parameter_support_.valid()) {
                 if (parameter_listener_token_ != 0)
-                    instance_->parameterSupport()->parameterChangeEvent().removeListener(parameter_listener_token_);
+                    parameter_support_.removeParameterValueListener(parameter_listener_token_);
                 if (metadata_listener_token_ != 0)
-                    instance_->parameterSupport()->parameterMetadataChangeEvent().removeListener(metadata_listener_token_);
+                    parameter_support_.removeParameterMetadataListener(metadata_listener_token_);
             }
             if (on_delete_)
                 on_delete_();

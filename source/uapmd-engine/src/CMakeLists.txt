@@ -46,6 +46,7 @@ target_link_libraries(uapmd-engine
         PUBLIC
         remidy::remidy
         remidy::remidy-tooling
+        uapmd-remidy-host
         uapmd
         uapmd-data
 )

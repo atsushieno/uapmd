@@ -16,62 +16,29 @@ namespace {
 using ParameterContext = uapmd::gui::ParameterList::ParameterContext;
 
 struct PerNoteSelection {
-    remidy::PerNoteControllerContextTypes type{remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_NONE};
-    remidy::PerNoteControllerContext context{};
+    uapmd::PerNoteContextFlags type{uapmd::PerNoteContextFlags::None};
+    uapmd::PerNoteContext context{};
 };
 
 std::optional<PerNoteSelection> buildPerNoteSelection(const uapmd::gui::ParameterList& list) {
     PerNoteSelection selection{};
-    selection.context = remidy::PerNoteControllerContext{};
     switch (list.context()) {
     case ParameterContext::Global:
         return std::nullopt;
     case ParameterContext::Group:
-        selection.type = remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_GROUP;
+        selection.type = uapmd::PerNoteContextFlags::PerGroup;
         selection.context.group = list.contextValue();
         break;
     case ParameterContext::Channel:
-        selection.type = remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_CHANNEL;
+        selection.type = uapmd::PerNoteContextFlags::PerChannel;
         selection.context.channel = list.contextValue();
         break;
     case ParameterContext::Key:
-        selection.type = remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE;
+        selection.type = uapmd::PerNoteContextFlags::PerNote;
         selection.context.note = list.contextValue();
         break;
     }
     return selection;
-}
-
-std::vector<uapmd::ParameterMetadata> toParameterMetadata(const std::vector<remidy::PluginParameter*>& pluginParams) {
-    std::vector<uapmd::ParameterMetadata> metadata;
-    metadata.reserve(pluginParams.size());
-    for (auto* param : pluginParams) {
-        if (!param) {
-            continue;
-        }
-        std::vector<uapmd::ParameterNamedValue> namedValues;
-        namedValues.reserve(param->enums().size());
-        for (const auto& enumeration : param->enums()) {
-            namedValues.push_back(uapmd::ParameterNamedValue{
-                .value = enumeration.value,
-                .name = enumeration.label
-            });
-        }
-        metadata.push_back(uapmd::ParameterMetadata{
-            .index = param->index(),
-            .stableId = param->stableId(),
-            .name = param->name(),
-            .path = param->path(),
-            .defaultPlainValue = param->defaultPlainValue(),
-            .minPlainValue = param->minPlainValue(),
-            .maxPlainValue = param->maxPlainValue(),
-            .automatable = param->automatable(),
-            .hidden = param->hidden(),
-            .discrete = param->discrete(),
-            .namedValues = std::move(namedValues)
-        });
-    }
-    return metadata;
 }
 }
 
@@ -112,15 +79,16 @@ void InstanceDetails::showWindow(int32_t instanceId) {
             if (!pal) {
                 return;
             }
-            if (perNoteSelection->type == remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE) {
+            if ((perNoteSelection->type & uapmd::PerNoteContextFlags::PerNote) != uapmd::PerNoteContextFlags::None) {
                 pal->setPerNoteControllerValue(
                     static_cast<uint8_t>(perNoteSelection->context.note),
                     static_cast<uint8_t>(parameterIndex),
                     value);
                 return;
             }
-            if (auto* parameterSupport = pal->parameterSupport())
-                parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value, 0);
+            auto parameterSupport = pal->parameterSupport();
+            if (parameterSupport.valid())
+                parameterSupport.setPerNoteControllerValue(perNoteSelection->context, parameterIndex, value, 0);
         });
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
@@ -468,19 +436,18 @@ void InstanceDetails::refreshParameters(int32_t instanceId, DetailsWindowState& 
         return;
     }
 
-    auto* parameterSupport = pal->parameterSupport();
+    auto parameterSupport = pal->parameterSupport();
     auto perNoteSelection = buildPerNoteSelection(state.parameterList);
     const bool usingPerNoteControllers = perNoteSelection.has_value();
 
-    if (usingPerNoteControllers && !parameterSupport) {
+    if (usingPerNoteControllers && !parameterSupport.valid()) {
         state.parameterList.setParameters({});
         return;
     }
 
     std::vector<uapmd::ParameterMetadata> parameters;
     if (usingPerNoteControllers) {
-        auto pluginParams = parameterSupport->perNoteControllers(perNoteSelection->type, perNoteSelection->context);
-        parameters = toParameterMetadata(pluginParams);
+        parameters = parameterSupport.perNoteControllerMetadata(perNoteSelection->type, perNoteSelection->context);
     } else {
         parameters = pal->parameterMetadataList();
     }
@@ -491,12 +458,12 @@ void InstanceDetails::refreshParameters(int32_t instanceId, DetailsWindowState& 
 
     for (size_t i = 0; i < parameters.size(); ++i) {
         double initialValue = parameters[i].defaultPlainValue;
-        if (parameterSupport) {
+        if (parameterSupport.valid()) {
             double queriedValue = initialValue;
             auto status = usingPerNoteControllers
-                              ? parameterSupport->getPerNoteController(perNoteSelection->context, parameters[i].index, &queriedValue)
-                              : parameterSupport->getParameter(parameters[i].index, &queriedValue);
-            if (status == remidy::StatusCode::OK) {
+                              ? parameterSupport.getPerNoteControllerValue(perNoteSelection->context, parameters[i].index, queriedValue)
+                              : parameterSupport.getParameterValue(parameters[i].index, queriedValue);
+            if (status == uapmd::ParameterValueStatus::Ok) {
                 initialValue = queriedValue;
             }
         }

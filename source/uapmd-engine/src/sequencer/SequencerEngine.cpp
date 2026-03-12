@@ -62,10 +62,10 @@ namespace uapmd {
         // Note: std::atomic is not copyable, so we use unique_ptr
         std::vector<std::unique_ptr<std::atomic<bool>>> track_processing_flags_;
 
-        void ensureTrackBusConfiguration(int32_t trackIndex, remidy::PluginAudioBuses* pluginBuses);
-        void ensureContextBusConfiguration(AudioProcessContext* ctx, remidy::PluginAudioBuses* pluginBuses);
+        void ensureTrackBusConfiguration(int32_t trackIndex, const AudioBusesView& pluginBuses);
+        void ensureContextBusConfiguration(AudioProcessContext* ctx, const AudioBusesView& pluginBuses);
         std::vector<remidy::AudioBusSpec> mergeBusSpecs(const std::vector<remidy::AudioBusSpec>& current,
-                                                        const std::vector<remidy::AudioBusConfiguration*>& pluginBuses);
+                                                        const AudioBusList& pluginBuses);
 
         // Timeline facade (owns timeline tracks, clips, project loading)
         std::unique_ptr<TimelineFacade> timeline_;
@@ -185,15 +185,15 @@ namespace uapmd {
 
     std::vector<remidy::AudioBusSpec> SequencerEngineImpl::mergeBusSpecs(
         const std::vector<remidy::AudioBusSpec>& current,
-        const std::vector<remidy::AudioBusConfiguration*>& pluginBuses) {
+        const AudioBusList& pluginBuses) {
         auto merged = current;
         for (size_t i = 0; i < pluginBuses.size(); ++i) {
-            auto* bus = pluginBuses[i];
-            if (!bus || !bus->enabled())
+            const auto& bus = pluginBuses[i];
+            if (!bus.enabled)
                 continue;
             remidy::AudioBusSpec required{
-                bus->role(),
-                bus->channelLayout().channels(),
+                bus.role == AudioBusRole::Main ? remidy::AudioBusRole::Main : remidy::AudioBusRole::Aux,
+                bus.channels,
                 audio_buffer_size_in_frames
             };
             if (i >= merged.size()) {
@@ -209,15 +209,15 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::ensureContextBusConfiguration(AudioProcessContext* ctx,
-                                                            remidy::PluginAudioBuses* pluginBuses) {
-        if (!ctx || !pluginBuses)
+                                                            const AudioBusesView& pluginBuses) {
+        if (!ctx || !pluginBuses.valid())
             return;
         const auto& inputSpecsRef = ctx->audioInputSpecs();
         const auto& outputSpecsRef = ctx->audioOutputSpecs();
         auto currentInput = std::vector<remidy::AudioBusSpec>(inputSpecsRef.begin(), inputSpecsRef.end());
         auto currentOutput = std::vector<remidy::AudioBusSpec>(outputSpecsRef.begin(), outputSpecsRef.end());
-        auto mergedInput = mergeBusSpecs(currentInput, pluginBuses->audioInputBuses());
-        auto mergedOutput = mergeBusSpecs(currentOutput, pluginBuses->audioOutputBuses());
+        auto mergedInput = mergeBusSpecs(currentInput, pluginBuses.audioInputBuses());
+        auto mergedOutput = mergeBusSpecs(currentOutput, pluginBuses.audioOutputBuses());
 
         if (!mergedInput.empty() && mergedInput != currentInput)
             ctx->configureAudioInputBuses(mergedInput);
@@ -226,8 +226,8 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::ensureTrackBusConfiguration(int32_t trackIndex,
-                                                          remidy::PluginAudioBuses* pluginBuses) {
-        if (!pluginBuses)
+                                                          const AudioBusesView& pluginBuses) {
+        if (!pluginBuses.valid())
             return;
         if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= sequence.tracks.size())
             return;
@@ -567,10 +567,11 @@ namespace uapmd {
                 return;
             }
 
+            auto pluginBuses = instance->audioBuses();
             if (targetMaster) {
-                ensureContextBusConfiguration(master_track_context_.get(), instance->audioBuses());
+                ensureContextBusConfiguration(master_track_context_.get(), pluginBuses);
             } else {
-                ensureTrackBusConfiguration(trackIndex, instance->audioBuses());
+                ensureTrackBusConfiguration(trackIndex, pluginBuses);
             }
 
             // Append to track's graph

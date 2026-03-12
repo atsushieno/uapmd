@@ -19,7 +19,7 @@ namespace uapmd {
         RemidyAudioPluginHost();
         ~RemidyAudioPluginHost() override;
 
-        std::vector<remidy::PluginCatalogEntry> pluginCatalogEntries() override;
+        std::vector<PluginCatalogEntryInfo> pluginCatalogEntries() override;
         void savePluginCatalogToFile(std::filesystem::path path) override;
         void performPluginScanning(bool rescan) override;
         void createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &format, std::string &pluginId, std::function<void(int32_t instanceId, std::string error)>&& callback) override;

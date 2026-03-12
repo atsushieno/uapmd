@@ -4,38 +4,13 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include "remidy/remidy.hpp"
+#include "ParameterTypes.hpp"
+#include "PluginSupportView.hpp"
 #include "../CommonTypes.hpp"
 #include "../midi/UapmdUmpMapper.hpp"
 #include "../midi/MidiIOFeature.hpp"
 
 namespace uapmd {
-    struct ParameterNamedValue {
-        double value;
-        std::string name;
-    };
-
-    struct ParameterMetadata {
-        uint32_t index;
-        std::string stableId;
-        std::string name;
-        std::string path;
-        double defaultPlainValue;
-        double minPlainValue;
-        double maxPlainValue;
-        bool automatable;
-        bool hidden;
-        bool discrete;
-        std::vector<ParameterNamedValue> namedValues{};
-    };
-
-    struct PresetsMetadata {
-        uint8_t bank;
-        uint32_t index;
-        std::string stableId;
-        std::string name;
-        std::string path;
-    };
 
     class AudioPluginInstanceAPI {
     public:
@@ -50,7 +25,7 @@ namespace uapmd {
         virtual uapmd_status_t processAudio(AudioProcessContext &process) = 0;
         virtual bool requiresReplacingProcess() const = 0;
         virtual std::vector<ParameterMetadata> parameterMetadataList() = 0;
-        virtual std::vector<ParameterMetadata> perNoteControllerMetadataList(remidy::PerNoteControllerContextTypes contextType, uint32_t context) = 0;
+        virtual std::vector<ParameterMetadata> perNoteControllerMetadataList(PerNoteContextFlags contextFlags, PerNoteContext context) = 0;
         virtual std::vector<PresetsMetadata> presetMetadataList() = 0;
         virtual void loadPreset(int32_t presetIndex) = 0;
 
@@ -61,7 +36,7 @@ namespace uapmd {
         virtual void setParameterValue(int32_t index, double value) = 0;
         virtual std::string getParameterValueString(int32_t index, double value) = 0;
         virtual void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) = 0;
-        virtual std::string getPerNoteControllerValueString(uint8_t node, uint8_t index, double value) = 0;
+        virtual std::string getPerNoteControllerValueString(uint8_t note, uint8_t index, double value) = 0;
 
         virtual bool hasUISupport() = 0;
         virtual bool createUI(bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) = 0;
@@ -72,12 +47,12 @@ namespace uapmd {
         virtual bool setUISize(uint32_t width, uint32_t height) = 0;
         virtual bool getUISize(uint32_t &width, uint32_t &height) = 0;
         virtual bool canUIResize() = 0;
-        virtual remidy::PluginParameterSupport* parameterSupport() = 0;
+        virtual ParameterSupportView parameterSupport() const = 0;
 
         virtual void assignMidiDeviceToPlugin(MidiIOFeature* device) = 0;
         virtual void clearMidiDeviceFromPlugin() = 0;
 
-        virtual remidy::PluginAudioBuses* audioBuses() = 0;
+        virtual AudioBusesView audioBuses() const = 0;
     };
 
 }

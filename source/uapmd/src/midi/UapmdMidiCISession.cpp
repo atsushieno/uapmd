@@ -172,7 +172,9 @@ namespace uapmd {
         auto parameterList = instance->parameterMetadataList();
         setupParameterList(MidiCIControlType::NRPN, allCtrlList, parameterList, ciDevice);
         // FIXME: we need some way to indicate the context key (it is impossible so far, by design).
-        auto perNoteControllerList = instance->perNoteControllerMetadataList(remidy::PER_NOTE_CONTROLLER_PER_NOTE, 64);
+        uapmd::PerNoteContext perNoteContext{};
+        perNoteContext.note = 64;
+        auto perNoteControllerList = instance->perNoteControllerMetadataList(uapmd::PerNoteContextFlags::PerNote, perNoteContext);
         setupParameterList(MidiCIControlType::PNAC, allCtrlList, perNoteControllerList, ciDevice);
 
         StandardPropertiesExtensions::setAllCtrlList(ciDevice, allCtrlList);
