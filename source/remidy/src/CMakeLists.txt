@@ -260,7 +260,9 @@ target_compile_options(remidy PRIVATE
 )
 
 target_sources(remidy PRIVATE
+        common.cpp
         utils.cpp
+        AudioProcessContext.cpp
         EventLoop.cpp
         Logger.cpp
         PluginCatalog.cpp

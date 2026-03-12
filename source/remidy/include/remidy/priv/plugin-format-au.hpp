@@ -2,7 +2,7 @@
 
 #if __APPLE__
 
-#include "../remidy.hpp"
+#include "remidy/priv/plugin-format.hpp"
 
 namespace remidy {
     class PluginFormatAU : public PluginFormat {

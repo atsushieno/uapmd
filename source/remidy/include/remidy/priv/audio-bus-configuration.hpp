@@ -1,9 +1,6 @@
 #pragma once
 
-// WIP WIP WIP
-
 #include <string>
-#include "../remidy.hpp"
 
 namespace remidy {
 

@@ -16,7 +16,7 @@
 
 #include <lv2/ui/ui.h>
 
-// De-facto standard URIs for Wayland support
+// tentative unofficial URIs for Wayland support
 // Used by falkTX's wayland-audio-plugin-test and other implementations
 #define LV2_UI__WaylandSurfaceUI LV2_UI_PREFIX "WaylandSurfaceUI"
 #define LV2_WAYLAND_DISPLAY_URI "urn:wayland:display"

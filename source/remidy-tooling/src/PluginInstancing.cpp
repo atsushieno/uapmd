@@ -1,6 +1,5 @@
 #include "remidy-tooling/PluginInstancing.hpp"
 
-#include <cassert>
 #include <iostream>
 #include <format>
 

@@ -440,6 +440,8 @@ namespace remidy {
         // ui
         PluginUISupport* ui() override;
 
+        bool requiresReplacingProcess() const override { return false; }
+
     private:
         void handleRestartComponent(int32 flags);
         void synchronizeControllerState();

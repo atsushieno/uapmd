@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../remidy.hpp"
+#include "remidy/remidy.hpp"
 #include <optional>
 
 namespace remidy {
@@ -61,7 +61,7 @@ namespace remidy {
 
         // Some plugin APIs (e.g. CLAP in-place pairs) require the host to provide replacing buffers.
         // Hosts can query this flag to prepare AudioProcessContext inputs accordingly.
-        virtual bool requiresReplacingProcess() const { return false; }
+        virtual bool requiresReplacingProcess() const = 0;
     };
 
 }

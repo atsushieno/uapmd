@@ -428,6 +428,8 @@ namespace remidy {
 
         // ui
         PluginUISupport *ui() override;
+
+        bool requiresReplacingProcess() const override { return false; }
     };
 
     inline StatusCode PluginInstanceLV2::LV2AtomParameterHandler::setParameter(double value, remidy_timestamp_t timestamp) {

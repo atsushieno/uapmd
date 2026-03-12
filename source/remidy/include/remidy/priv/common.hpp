@@ -5,9 +5,6 @@
 #include <functional>
 #include <thread>
 #include <vector>
-#if !WIN32
-#include <pthread.h>
-#endif
 
 typedef uint32_t remidy_ump_t;
 typedef int64_t remidy_timestamp_t;
@@ -20,6 +17,9 @@ typedef int64_t remidy_timestamp_t;
 #endif
 
 namespace remidy {
+
+    // FIXME: we should remove this from the public API if we aim for perfect API...
+    void setCurrentThreadNameIfPossible(const std::string& threadName);
 
     enum class StatusCode {
         OK,
@@ -81,14 +81,6 @@ namespace remidy {
         }
         virtual ~PluginExtensibility() = default;
     };
-
-    inline void setCurrentThreadNameIfPossible(std::string const threadName) {
-#if __APPLE__
-        pthread_setname_np(threadName.c_str());
-#elif defined(__unix__) && !defined(__EMSCRIPTEN__)
-        pthread_setname_np(pthread_self(), threadName.c_str());
-#endif
-    }
 
     std::vector<std::thread::id>& audioThreadIds();
 }

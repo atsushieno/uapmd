@@ -254,6 +254,8 @@ namespace remidy {
         }
 
         AudioBuses* audioBuses() override { return audio_buses; }
+
+        bool requiresReplacingProcess() const override { return false; }
     };
 
     // AUv2
@@ -487,6 +489,8 @@ namespace remidy {
         }
 
         AudioBuses* audioBuses() override { return audio_buses; }
+
+        bool requiresReplacingProcess() const override { return false; }
     };
 
 }

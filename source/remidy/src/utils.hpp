@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <functional>
 #include <filesystem>
 
 #if __APPLE__

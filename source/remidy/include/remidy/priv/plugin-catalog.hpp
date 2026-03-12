@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <vector>
 
-#include "../remidy.hpp"
+#include "common.hpp"
 
 namespace remidy {
 

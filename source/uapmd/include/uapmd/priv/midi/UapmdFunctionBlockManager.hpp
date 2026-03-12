@@ -11,41 +11,14 @@ namespace uapmd {
     public:
         explicit UapmdFunctionDevice(MidiIOManagerFeature* midiIoManager) : midi_io_manager(midiIoManager) {}
 
-        std::vector<UapmdFunctionBlock*> devices() {
-            std::vector<UapmdFunctionBlock*> result{};
-            for (auto &val: blocks | std::views::values)
-                if (val)  // Skip null shared_ptrs
-                    result.push_back(val.get());
-            return result;
-        }
+        std::vector<UapmdFunctionBlock*> devices();
 
         bool createFunctionBlock(const std::string& apiName,
-                        AudioPluginNode* pluginNode,
-                        int32_t instanceId,
-                        std::string deviceName,
-                        std::string manufacturer,
-                        std::string version) {
-            uint8_t group = 0;
-            while (group < 16) {
-                bool conflict = false;
-                for (const auto& block : blocks | std::views::values)
-                    if (block && block->group() == group) {
-                        conflict = true;
-                        group++;
-                    }
-                if (!conflict)
-                    break;
-            }
-            if (group >= 16) // no room anymore
-                return false;
-            std::shared_ptr<MidiIOFeature> midiDevice  = midi_io_manager->createMidiIOFeature(apiName, deviceName, manufacturer, version);
-            if (!midiDevice) return false;
-
-            const auto fb = std::make_shared<UapmdFunctionBlock>(midiDevice, pluginNode, deviceName, manufacturer, version);
-            fb->group(group);
-            blocks[instanceId] = fb;
-            return true;
-        }
+                AudioPluginNode* pluginNode,
+                int32_t instanceId,
+                std::string deviceName,
+                std::string manufacturer,
+                std::string version);
 
         // FIXME: we should not really return shared_ptr here...
         std::shared_ptr<UapmdFunctionBlock> getDeviceByInstanceId(int32_t instanceId) {
