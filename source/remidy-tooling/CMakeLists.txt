@@ -9,8 +9,8 @@ else()
 endif()
 
 target_include_directories(remidy-tooling PRIVATE
-        ../../../source/remidy/include
-        ../include
+        ../remidy/include
+        include
         ${choc_SOURCE_DIR}
 )
 if(UAPMD_ENABLE_CPPLOCATE)
@@ -41,8 +41,8 @@ if(UAPMD_ENABLE_CPPLOCATE)
 endif()
 
 target_sources(remidy-tooling PRIVATE
-        PluginScanTool.cpp
-        PluginInstancing.cpp
+        src/PluginScanTool.cpp
+        src/PluginInstancing.cpp
 )
 
 add_library(remidy::remidy-tooling ALIAS remidy-tooling)

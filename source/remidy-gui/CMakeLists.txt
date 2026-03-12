@@ -1,14 +1,14 @@
 # Platform-specific container window implementations
 if(ANDROID)
     add_library(remidy-gui STATIC
-        ContainerWindow_Android.cpp
+        src/ContainerWindow_Android.cpp
     )
     target_link_libraries(remidy-gui PUBLIC
             GLESv3
     )
 elseif(IOS)
     add_library(remidy-gui STATIC
-        ContainerWindow_iOS.mm
+        src/ContainerWindow_iOS.mm
     )
     target_compile_options(remidy-gui PRIVATE
         -fobjc-arc
@@ -18,7 +18,7 @@ elseif(IOS)
     )
 elseif(APPLE)
     add_library(remidy-gui STATIC
-        ContainerWindow_Cocoa.mm
+        src/ContainerWindow_Cocoa.mm
     )
     target_compile_options(remidy-gui PRIVATE
         -fobjc-arc
@@ -28,16 +28,16 @@ elseif(APPLE)
     )
 elseif(WIN32)
     add_library(remidy-gui STATIC
-        ContainerWindow_Win32.cpp
+        src/ContainerWindow_Win32.cpp
     )
     # Win32 libraries linked automatically via pragma comment
 elseif(EMSCRIPTEN)
     add_library(remidy-gui STATIC
-        ContainerWindow_Emscripten.cpp
+        src/ContainerWindow_Emscripten.cpp
     )
 elseif(UNIX)
     add_library(remidy-gui STATIC
-        ContainerWindow_X11.cpp
+        src/ContainerWindow_X11.cpp
     )
     if (NOT EMSCRIPTEN)
         find_package(X11 REQUIRED)
@@ -49,8 +49,8 @@ endif()
 
 # Include directories
 target_include_directories(remidy-gui PUBLIC
-        ../../../source/remidy/include
-        ../include
+        ../remidy/include
+        include
 )
 
 # Set C++ standard

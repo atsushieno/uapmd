@@ -8,7 +8,7 @@ if(WIN32 AND UAPMD_ENABLE_WINMIDI)
         endif()
         set(_uapmd_winmidi_archive "${UAPMD_WINMIDI_HEADERS_ARCHIVE}")
         if(NOT IS_ABSOLUTE "${_uapmd_winmidi_archive}")
-            cmake_path(SET _uapmd_winmidi_archive NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/../../${_uapmd_winmidi_archive}")
+            cmake_path(SET _uapmd_winmidi_archive NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/../${_uapmd_winmidi_archive}")
         endif()
         if(NOT EXISTS "${_uapmd_winmidi_archive}")
             message(FATAL_ERROR
@@ -32,11 +32,11 @@ target_include_directories(uapmd-engine PRIVATE
         ${choc_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include
         ${concurrentqueue_SOURCE_DIR}
-        ../../../source/remidy/include
-        ../../../source/uapmd/include
-        ../../../source/uapmd-file/include
-        ../../../source/uapmd-data/include
-        ../include
+        ../remidy/include
+        ../uapmd/include
+        ../uapmd-file/include
+        ../uapmd-data/include
+        include
 )
 
 target_link_libraries(uapmd-engine
@@ -51,17 +51,17 @@ target_link_libraries(uapmd-engine
 )
 
 target_sources(uapmd-engine PRIVATE
-        devices/AudioIODevice.cpp
-        devices/DefaultDeviceIODispatcher.cpp
-        devices/LibreMidiIODevice.cpp
-        devices/MidiIODevice.cpp
-        devices/MiniAudioIODevice.cpp
-        devices/OboeAudioIODevice.cpp
-        sequencer/OfflineRenderer.cpp
-        sequencer/RealtimeSequencer.cpp
-        sequencer/SequencerEngine.cpp
-        sequencer/SequencerTrack.cpp
-        sequencer/TimelineFacade.cpp
+        src/devices/AudioIODevice.cpp
+        src/devices/DefaultDeviceIODispatcher.cpp
+        src/devices/LibreMidiIODevice.cpp
+        src/devices/MidiIODevice.cpp
+        src/devices/MiniAudioIODevice.cpp
+        src/devices/OboeAudioIODevice.cpp
+        src/sequencer/OfflineRenderer.cpp
+        src/sequencer/RealtimeSequencer.cpp
+        src/sequencer/SequencerEngine.cpp
+        src/sequencer/SequencerTrack.cpp
+        src/sequencer/TimelineFacade.cpp
 )
 
 if(ANDROID)
@@ -74,8 +74,8 @@ if(IOS)
     # Files that include MiniAudioIODevice.hpp (which includes miniaudio.h) must
     # be compiled as Objective-C++ so the ObjC runtime is available.
     set_source_files_properties(
-        devices/AudioIODevice.cpp
-        devices/MiniAudioIODevice.cpp
+        src/devices/AudioIODevice.cpp
+        src/devices/MiniAudioIODevice.cpp
         PROPERTIES LANGUAGE OBJCXX
     )
 endif()

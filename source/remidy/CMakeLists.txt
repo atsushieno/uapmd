@@ -22,13 +22,13 @@ endif ()
 
 if (${REMIDY_SUPPORT_AAP})
     set(REMIDY_AAP_SUPPORT_SOURCES
-            aap/PluginFormatAAP.cpp
-            aap/PluginInstanceAAP.cpp
-            aap/PluginInstanceAAP.Buses.cpp
-            aap/PluginInstanceAAP.Parameters.cpp
-            aap/PluginInstanceAAP.Presets.cpp
-            aap/PluginInstanceAAP.States.cpp
-            aap/PluginInstanceAAP.UI.cpp
+            src/aap/PluginFormatAAP.cpp
+            src/aap/PluginInstanceAAP.cpp
+            src/aap/PluginInstanceAAP.Buses.cpp
+            src/aap/PluginInstanceAAP.Parameters.cpp
+            src/aap/PluginInstanceAAP.Presets.cpp
+            src/aap/PluginInstanceAAP.States.cpp
+            src/aap/PluginInstanceAAP.UI.cpp
     )
     set(AAP_LIBRARIES
         androidaudioplugin::androidaudioplugin
@@ -74,19 +74,19 @@ if(${REMIDY_SUPPORT_LV2})
             DOWNLOAD_ONLY YES
     )
     set(LV2KIT_SRC_DIR ${lv2kit_SOURCE_DIR}/subprojects) # used by LV2Kit.cmake
-    include("../../cmake/LV2Kit.cmake")
+    include("../cmake/LV2Kit.cmake")
     set(lv2kit_LIBRARY lv2kit)
     set(REMIDY_LV2_SUPPORT_SOURCES
-            lv2/LV2Helper.cpp
-            lv2/symap.cpp
-            lv2/PluginFormatLV2.cpp
-            lv2/PluginInstanceLV2.cpp
-            lv2/PluginInstanceLV2.Buses.cpp
-            lv2/PluginInstanceLV2.Events.cpp
-            lv2/PluginInstanceLV2.Parameters.cpp
-            lv2/PluginInstanceLV2.Presets.cpp
-            lv2/PluginInstanceLV2.States.cpp
-            lv2/PluginInstanceLV2.UI.cpp
+            src/lv2/LV2Helper.cpp
+            src/lv2/symap.cpp
+            src/lv2/PluginFormatLV2.cpp
+            src/lv2/PluginInstanceLV2.cpp
+            src/lv2/PluginInstanceLV2.Buses.cpp
+            src/lv2/PluginInstanceLV2.Events.cpp
+            src/lv2/PluginInstanceLV2.Parameters.cpp
+            src/lv2/PluginInstanceLV2.Presets.cpp
+            src/lv2/PluginInstanceLV2.States.cpp
+            src/lv2/PluginInstanceLV2.UI.cpp
     )
 endif()
 
@@ -111,42 +111,42 @@ if (${REMIDY_SUPPORT_CLAP})
     )
 
     set(REMIDY_CLAP_SUPPORT_SOURCES
-            clap/CLAPHelper.cpp
-            clap/HostClasses.cpp
-            clap/PluginFormatCLAP.cpp
-            clap/PluginInstanceCLAP.cpp
-            clap/PluginInstanceCLAP.Buses.cpp
-            clap/PluginInstanceCLAP.Events.cpp
-            clap/PluginInstanceCLAP.Parameters.cpp
-            clap/PluginInstanceCLAP.Presets.cpp
-            clap/PluginInstanceCLAP.States.cpp
-            clap/PluginInstanceCLAP.UI.cpp
+            src/clap/CLAPHelper.cpp
+            src/clap/HostClasses.cpp
+            src/clap/PluginFormatCLAP.cpp
+            src/clap/PluginInstanceCLAP.cpp
+            src/clap/PluginInstanceCLAP.Buses.cpp
+            src/clap/PluginInstanceCLAP.Events.cpp
+            src/clap/PluginInstanceCLAP.Parameters.cpp
+            src/clap/PluginInstanceCLAP.Presets.cpp
+            src/clap/PluginInstanceCLAP.States.cpp
+            src/clap/PluginInstanceCLAP.UI.cpp
     )
 endif ()
 
 if (REMIDY_SUPPORT_AU)
     # AUv3 sources: available on both macOS and iOS
     set(REMIDY_AU_SUPPORT_SOURCES
-            au/PluginFormatAU.mm
-            au/PluginInstanceAUv3.mm
-            au/PluginInstanceAUv3.Buses.mm
-            au/PluginInstanceAUv3.Events.mm
-            au/PluginInstanceAUv3.Parameters.mm
-            au/PluginInstanceAUv3.States.mm
-            au/PluginInstanceAUv3.Presets.mm
-            au/PluginInstanceAUv3.UI.mm
+            src/au/PluginFormatAU.mm
+            src/au/PluginInstanceAUv3.mm
+            src/au/PluginInstanceAUv3.Buses.mm
+            src/au/PluginInstanceAUv3.Events.mm
+            src/au/PluginInstanceAUv3.Parameters.mm
+            src/au/PluginInstanceAUv3.States.mm
+            src/au/PluginInstanceAUv3.Presets.mm
+            src/au/PluginInstanceAUv3.UI.mm
     )
     # AUv2 sources: macOS only (AUv2 does not exist on iOS)
     if(NOT IOS)
         list(APPEND REMIDY_AU_SUPPORT_SOURCES
-                au/AUv2Helper.cpp
-                au/PluginInstanceAUv2.mm
-                au/PluginInstanceAUv2.Buses.mm
-                au/PluginInstanceAUv2.Events.mm
-                au/PluginInstanceAUv2.Parameters.mm
-                au/PluginInstanceAUv2.Presets.mm
-                au/PluginInstanceAUv2.States.mm
-                au/PluginInstanceAUv2.UI.mm
+                src/au/AUv2Helper.cpp
+                src/au/PluginInstanceAUv2.mm
+                src/au/PluginInstanceAUv2.Buses.mm
+                src/au/PluginInstanceAUv2.Events.mm
+                src/au/PluginInstanceAUv2.Parameters.mm
+                src/au/PluginInstanceAUv2.Presets.mm
+                src/au/PluginInstanceAUv2.States.mm
+                src/au/PluginInstanceAUv2.UI.mm
         )
     endif()
 endif ()
@@ -178,18 +178,18 @@ if (${REMIDY_SUPPORT_VST3})
             ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/commonstringconvert.cpp
             ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/utility/stringconvert.cpp
 
-            vst3/VST3Helper.cpp
-            vst3/HostClasses.cpp
-            vst3/ClassModuleInfo.cpp
-            vst3/LinuxRunLoopIIDs.cpp
-            vst3/PluginFormatVST3.cpp
-            vst3/PluginInstanceVST3.cpp
-            vst3/PluginInstanceVST3.Buses.cpp
-            vst3/PluginInstanceVST3.Events.cpp
-            vst3/PluginInstanceVST3.Parameters.cpp
-            vst3/PluginInstanceVST3.Presets.cpp
-            vst3/PluginInstanceVST3.States.cpp
-            vst3/PluginInstanceVST3.UI.cpp
+            src/vst3/VST3Helper.cpp
+            src/vst3/HostClasses.cpp
+            src/vst3/ClassModuleInfo.cpp
+            src/vst3/LinuxRunLoopIIDs.cpp
+            src/vst3/PluginFormatVST3.cpp
+            src/vst3/PluginInstanceVST3.cpp
+            src/vst3/PluginInstanceVST3.Buses.cpp
+            src/vst3/PluginInstanceVST3.Events.cpp
+            src/vst3/PluginInstanceVST3.Parameters.cpp
+            src/vst3/PluginInstanceVST3.Presets.cpp
+            src/vst3/PluginInstanceVST3.States.cpp
+            src/vst3/PluginInstanceVST3.UI.cpp
     )
     set(vst3sdk_LIBRARY sdk) # pretty bad naming from vst3sdk (shrug)
 endif ()
@@ -232,8 +232,8 @@ target_include_directories(remidy PRIVATE
         ${VST3_PUBLIC_SDK_MODULE_INFO_DIR}
         ${LV2KIT_INCLUDE_DIRS}
         ${REMIDY_CLAP_SUPPORT_INCLUDE_DIRS}
-        ${CMAKE_CURRENT_LIST_DIR}/../include
-        ${CMAKE_CURRENT_LIST_DIR}/../include/remidy
+        ${CMAKE_CURRENT_LIST_DIR}/include
+        ${CMAKE_CURRENT_LIST_DIR}/include/remidy
 )
 
 target_link_libraries(remidy PRIVATE
@@ -260,15 +260,15 @@ target_compile_options(remidy PRIVATE
 )
 
 target_sources(remidy PRIVATE
-        common.cpp
-        utils.cpp
-        AudioProcessContext.cpp
-        EventLoop.cpp
-        Logger.cpp
-        PluginCatalog.cpp
-        PluginBundlePool.cpp
-        PluginFormat.cpp
-        UmpInputDispatcher.cpp
+        src/common.cpp
+        src/utils.cpp
+        src/AudioProcessContext.cpp
+        src/EventLoop.cpp
+        src/Logger.cpp
+        src/PluginCatalog.cpp
+        src/PluginBundlePool.cpp
+        src/PluginFormat.cpp
+        src/UmpInputDispatcher.cpp
 
         ${REMIDY_VST3_SUPPORT_SOURCES}
         ${REMIDY_AU_SUPPORT_SOURCES}

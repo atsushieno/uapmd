@@ -98,9 +98,9 @@ target_include_directories(uapmd-data PRIVATE
         ${choc_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include
         ${miniaudio_SOURCE_DIR}
-        ../../../source/remidy/include
-        ../../../source/uapmd/include
-        ../include
+        ../remidy/include
+        ../uapmd/include
+        include
 )
 
 target_link_libraries(uapmd-data
@@ -110,25 +110,25 @@ target_link_libraries(uapmd-data
         demucs-cpp
 )
 
-set(_UAPMD_AUDIO_FACTORY_SRC audio/ChocAudioFileFactory.cpp)
+set(_UAPMD_AUDIO_FACTORY_SRC src/audio/ChocAudioFileFactory.cpp)
 if(EMSCRIPTEN)
-    set(_UAPMD_AUDIO_FACTORY_SRC audio/MiniAudioFileFactory.cpp)
+    set(_UAPMD_AUDIO_FACTORY_SRC src/audio/MiniAudioFileFactory.cpp)
 endif()
 
 target_sources(uapmd-data PRIVATE
         ${_UAPMD_AUDIO_FACTORY_SRC}
-        project/UapmdProjectFileReader.cpp
-        project/UapmdProjectFileWriter.cpp
-        project/UapmdProjectFile.cpp
-        project/SmfConverter.cpp
-        project/Smf2ClipReader.cpp
-        project/Smf2ClipReaderWriter.cpp
-        project/DemucsStemSeparator.cpp
-        project/TrackImporter.cpp
-        project/ProjectArchive.cpp
-        timeline/AudioFileSourceNode.cpp
-        timeline/DeviceInputSourceNode.cpp
-        timeline/MidiClipSourceNode.cpp
-        timeline/ClipManager.cpp
-        timeline/TimelineTrack.cpp
+        src/project/UapmdProjectFileReader.cpp
+        src/project/UapmdProjectFileWriter.cpp
+        src/project/UapmdProjectFile.cpp
+        src/project/SmfConverter.cpp
+        src/project/Smf2ClipReader.cpp
+        src/project/Smf2ClipReaderWriter.cpp
+        src/project/DemucsStemSeparator.cpp
+        src/project/TrackImporter.cpp
+        src/project/ProjectArchive.cpp
+        src/timeline/AudioFileSourceNode.cpp
+        src/timeline/DeviceInputSourceNode.cpp
+        src/timeline/MidiClipSourceNode.cpp
+        src/timeline/ClipManager.cpp
+        src/timeline/TimelineTrack.cpp
 )

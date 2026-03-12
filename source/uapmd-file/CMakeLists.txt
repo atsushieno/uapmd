@@ -1,14 +1,14 @@
 add_library(uapmd-file STATIC)
 
 target_include_directories(uapmd-file PUBLIC
-        ../../../source/remidy/include
-        ../../../source/uapmd/include
-        ../include
+        ../remidy/include
+        ../uapmd/include
+        include
 )
 
 if(ANDROID)
     target_sources(uapmd-file PRIVATE
-            DocumentProviderAndroid.cpp
+            src/DocumentProviderAndroid.cpp
     )
     target_include_directories(uapmd-file PRIVATE
             ${jmi_SOURCE_DIR}
@@ -20,7 +20,7 @@ if(ANDROID)
     )
 elseif(EMSCRIPTEN)
     target_sources(uapmd-file PRIVATE
-            DocumentProviderEmscripten.cpp
+            src/DocumentProviderEmscripten.cpp
     )
     target_link_options(uapmd-file PUBLIC
             -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$allocateUTF8
@@ -28,7 +28,7 @@ elseif(EMSCRIPTEN)
     )
 elseif(IOS)
     target_sources(uapmd-file PRIVATE
-            DocumentProviderIOS.mm
+            src/DocumentProviderIOS.mm
     )
     target_link_libraries(uapmd-file PUBLIC
             "-framework UIKit"
@@ -36,7 +36,7 @@ elseif(IOS)
     )
 else()
     target_sources(uapmd-file PRIVATE
-            DocumentProviderDesktop.cpp
+            src/DocumentProviderDesktop.cpp
     )
     target_include_directories(uapmd-file PRIVATE
             ${portable-file-dialogs_SOURCE_DIR}

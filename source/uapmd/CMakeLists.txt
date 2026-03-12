@@ -8,7 +8,7 @@ if(WIN32 AND UAPMD_ENABLE_WINMIDI)
         endif()
         set(_uapmd_winmidi_archive "${UAPMD_WINMIDI_HEADERS_ARCHIVE}")
         if(NOT IS_ABSOLUTE "${_uapmd_winmidi_archive}")
-            cmake_path(SET _uapmd_winmidi_archive NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/../../${_uapmd_winmidi_archive}")
+            cmake_path(SET _uapmd_winmidi_archive NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/../${_uapmd_winmidi_archive}")
         endif()
         if(NOT EXISTS "${_uapmd_winmidi_archive}")
             message(FATAL_ERROR
@@ -20,9 +20,9 @@ if(WIN32 AND UAPMD_ENABLE_WINMIDI)
 endif()
 
 target_include_directories(uapmd PRIVATE
-        ../../../source/remidy/include
-        ../../../source/remidy-tooling/include
-        ../include
+        ../remidy/include
+        ../remidy-tooling/include
+        include
         ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
         ${concurrentqueue_SOURCE_DIR}
@@ -37,11 +37,11 @@ target_link_libraries(uapmd PUBLIC
 )
 
 target_sources(uapmd PRIVATE
-        midi/UapmdFunctionBlock.cpp
-        midi/UapmdMidiCISession.cpp
-        midi/UapmdUmpMapper.cpp
-        midi/UapmdNodeUmpMapper.cpp
-        plugin-api/RemidyAudioPluginHost.cpp
-        node-graph/AudioPluginGraph.cpp
-        node-graph/AudioPluginNode.cpp
+        src/midi/UapmdFunctionBlock.cpp
+        src/midi/UapmdMidiCISession.cpp
+        src/midi/UapmdUmpMapper.cpp
+        src/midi/UapmdNodeUmpMapper.cpp
+        src/plugin-api/RemidyAudioPluginHost.cpp
+        src/node-graph/AudioPluginGraph.cpp
+        src/node-graph/AudioPluginNode.cpp
 )
