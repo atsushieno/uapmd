@@ -5,7 +5,8 @@
 #include <string>
 #include <vector>
 
-#include <uapmd/uapmd.hpp>
+// FIXME: we should reference top-level header (I dare to opt-out from it to reduce dependency to plugin API)
+#include <uapmd/priv/CommonTypes.hpp>
 
 #include "../midi/MidiTimelineEvents.hpp"
 

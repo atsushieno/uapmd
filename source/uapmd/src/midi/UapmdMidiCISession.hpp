@@ -23,7 +23,7 @@ namespace uapmd {
 
         static std::unique_ptr<UapmdMidiCISession> create(
             UapmdFunctionBlock* device,
-            AudioPluginInstanceAPI* instance,
+            AudioPluginInstanceFeature* instance,
             std::string deviceName,
             std::string manufacturerName,
             std::string versionString);

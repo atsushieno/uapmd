@@ -560,7 +560,7 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
                 auto p = track->graph().getPluginNode(instanceId);
                 if (!p)
                     continue;
-                auto node = p->instance();
+                auto node = dynamic_cast<AudioPluginInstanceAPI*>(p->instance());
                 auto nodeObj = choc::value::createObject ("PluginNodeInfo");
                 nodeObj.setMember ("instanceId", instanceId);
                 nodeObj.setMember ("pluginId", node->pluginId());

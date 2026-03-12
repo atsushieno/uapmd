@@ -1,7 +1,7 @@
 #pragma once
 
 #include <functional>
-#include "../plugin-api/AudioPluginInstanceAPI.hpp"
+#include "AudioPluginInstanceAPI.hpp"
 
 namespace uapmd {
     // a Plugin hosting API Abstraction Layer.

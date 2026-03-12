@@ -21,7 +21,6 @@ endif()
 
 target_include_directories(uapmd PRIVATE
         ../remidy/include
-        ../remidy-tooling/include
         include
         ${miniaudio_SOURCE_DIR}
         ${choc_SOURCE_DIR}
@@ -31,7 +30,6 @@ target_include_directories(uapmd PRIVATE
 
 target_link_libraries(uapmd PUBLIC
         remidy::remidy
-        remidy::remidy-tooling
         PRIVATE
         midicci_static
 )
@@ -40,8 +38,6 @@ target_sources(uapmd PRIVATE
         src/midi/UapmdFunctionBlock.cpp
         src/midi/UapmdMidiCISession.cpp
         src/midi/UapmdUmpMapper.cpp
-        src/midi/UapmdNodeUmpMapper.cpp
-        src/plugin-api/RemidyAudioPluginHost.cpp
         src/node-graph/AudioPluginGraph.cpp
         src/node-graph/AudioPluginNode.cpp
 )

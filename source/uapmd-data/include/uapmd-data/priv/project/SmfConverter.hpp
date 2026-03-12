@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <cstdint>
 #include <string>
-#include <uapmd/uapmd.hpp>
 #include "../midi/MidiTimelineEvents.hpp"
 
 namespace umppi {

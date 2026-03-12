@@ -1,5 +1,4 @@
 
-#include "RemidyAudioPluginHost.hpp"
 #include <functional>
 #include <ranges>
 #if _WIN32
@@ -7,16 +6,55 @@
 #endif
 
 #include "remidy-tooling/PluginInstancing.hpp"
-#include "../midi/UapmdNodeUmpMapper.hpp"
+#include "uapmd/uapmd.hpp"
+#include "RemidyAudioPluginHost.hpp"
+#include "../plugin-api/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
     int32_t instanceIdSerial{0};
 
     class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
+        class RemidyParameterSupport : public PluginParameterFeature {
+            remidy::PluginParameterSupport* impl;
+
+        public:
+            RemidyParameterSupport(remidy::PluginParameterSupport* impl) : impl(impl) {}
+            ~RemidyParameterSupport() override {}
+
+            remidy::EventListenerId addParameterChangeListener(std::function<void(uint32_t paramIndex, double plainValue)> listener) override {
+                return impl->parameterChangeEvent().addListener(listener);
+            }
+            remidy::EventListenerId addParameterMetadataChangeListener(std::function<void()> listener) override {
+                return impl->parameterMetadataChangeEvent().addListener(listener);
+            }
+            void removeParameterChangeListener(remidy::EventListenerId listenerId) override {
+                impl->parameterChangeEvent().removeListener(listenerId);
+            }
+            void removeParameterMetadataChangeListener(remidy::EventListenerId listenerId) override {
+                impl->parameterMetadataChangeEvent().removeListener(listenerId);
+            }
+            remidy::EventListenerId addPerNoteControllerChangeListener(std::function<void(remidy::PerNoteControllerContextTypes types, uint32_t context, uint32_t parameterIndex, double value)> listener) override {
+                return impl->perNoteControllerChangeEvent().addListener(listener);
+            }
+            void removePerNoteControllerChangeListener(remidy::EventListenerId listenerId) override {
+                impl->perNoteControllerChangeEvent().removeListener(listenerId);
+            }
+
+            double normalizeParameterValue(int32_t parameterIndex, double plainValue) override {
+                return impl->parameters()[parameterIndex]->normalizedValue(plainValue);
+            }
+
+            double normalizePerNoteControllerValue(int32_t parameterIndex, remidy::PerNoteControllerContextTypes types, remidy::PerNoteControllerContext context,
+                double plainValue) override {
+                return impl->perNoteControllers(types, context) [parameterIndex]->normalizedValue(plainValue);
+            }
+        };
+
         bool bypassed_{true};
         std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
         remidy::PluginUISupport* ui_support{nullptr};
+        RemidyParameterSupport parameter_support;
         bool uiCreated{false};
         bool uiVisible{false};
         bool uiFloating{true};
@@ -34,7 +72,7 @@ namespace uapmd {
 
     public:
         explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance)
-          : instancing(instancing), instance(instance) {
+          : instancing(instancing), instance(instance), parameter_support(instance->parameters()) {
             ump_input_mapper = std::make_unique<UapmdNodeUmpInputMapper>(this);
             bypassed_ = false;
         }
@@ -185,12 +223,18 @@ namespace uapmd {
             instance->parameters()->setParameter(index, value, 0);
         }
 
+        double getPerNoteControllerValue(remidy::PerNoteControllerContext context, uint8_t index) override {
+            double value;
+            instance->parameters()->getPerNoteController(context, index, &value);
+            return value;
+        }
+
         std::string getParameterValueString(int32_t index, double value) override {
             return instance->parameters()->valueToString(index, value);
         }
 
-        void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override {
-            instance->parameters()->setPerNoteController({.note = note }, index, value, 0);
+        void setPerNoteControllerValue(remidy::PerNoteControllerContext context, uint8_t index, double value) override {
+            instance->parameters()->setPerNoteController(context, index, value, 0);
         }
 
         std::string getPerNoteControllerValueString(uint8_t note, uint8_t index, double value) override {
@@ -285,10 +329,10 @@ namespace uapmd {
         }
 
 
-        remidy::PluginParameterSupport* parameterSupport() override {
+        PluginParameterFeature* parameterSupport() override {
             if (!instance)
                 return nullptr;
-            return instance->parameters();
+            return &parameter_support;
         }
 
         remidy::PluginAudioBuses* audioBuses() override {

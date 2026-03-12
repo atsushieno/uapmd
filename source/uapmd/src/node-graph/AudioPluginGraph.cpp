@@ -16,7 +16,7 @@ namespace uapmd {
         }
         ~AudioPluginGraphImpl() override = default;
 
-        uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
+        uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceFeature* instance, std::function<void()>&& onDelete) override;
         bool removeNodeSimple(int32_t instanceId) override;
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
@@ -97,7 +97,7 @@ namespace uapmd {
         return 0;
     }
 
-    uapmd_status_t AudioPluginGraphImpl::appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) {
+    uapmd_status_t AudioPluginGraphImpl::appendNodeSimple(int32_t instanceId, AudioPluginInstanceFeature* instance, std::function<void()>&& onDelete) {
         auto node = std::make_unique<AudioPluginNodeImpl>(instanceId, instance, event_buffer_size_in_bytes_, std::move(onDelete));
         nodes_.push_back(std::move(node));
         // FIXME: define return codes

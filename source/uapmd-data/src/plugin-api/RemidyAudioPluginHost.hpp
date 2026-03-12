@@ -5,6 +5,7 @@
 #include "remidy/remidy.hpp"
 #include "remidy-tooling/PluginScanTool.hpp"
 #include "uapmd/uapmd.hpp"
+#include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
 

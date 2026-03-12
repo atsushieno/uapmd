@@ -7,7 +7,7 @@
 #include "UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
-    UapmdNodeUmpInputMapper::UapmdNodeUmpInputMapper(AudioPluginInstanceAPI* plugin)
+    UapmdNodeUmpInputMapper::UapmdNodeUmpInputMapper(AudioPluginInstanceFeature* plugin)
       : UapmdUmpInputMapper(),
         plugin(plugin) {
     }
@@ -29,7 +29,7 @@ namespace uapmd {
     }
 
     void UapmdNodeUmpInputMapper::setPerNoteControllerValue(uint8_t note, uint8_t index, double value) {
-        plugin->setPerNoteControllerValue(note, index, value);
+        plugin->setPerNoteControllerValue({.note = note}, index, value);
     }
 
     // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
@@ -37,7 +37,7 @@ namespace uapmd {
         plugin->loadPreset(index);
     }
 
-    UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin)
+    UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceFeature* plugin)
       : UapmdUmpOutputMapper(),
         device(device),
         plugin(plugin),
@@ -46,10 +46,10 @@ namespace uapmd {
         per_note_change_listener_id(-1) {
         if (!parameter_support)
             return;
-        param_change_listener_id = parameter_support->parameterChangeEvent().addListener([this](uint32_t index, double value) {
+        param_change_listener_id = parameter_support->addParameterChangeListener([this](uint32_t index, double value) {
             sendParameterValue(index, value);
         });
-        per_note_change_listener_id = parameter_support->perNoteControllerChangeEvent().addListener(
+        per_note_change_listener_id = parameter_support->addPerNoteControllerChangeListener(
             [this](remidy::PerNoteControllerContextTypes types, uint32_t context, uint32_t parameterIndex, double value) {
                 if ((types & remidy::PER_NOTE_CONTROLLER_PER_NOTE) == 0)
                     return;
@@ -64,9 +64,9 @@ namespace uapmd {
     UapmdNodeUmpOutputMapper::~UapmdNodeUmpOutputMapper() {
         if (plugin && parameter_support) {
             if (param_change_listener_id >= 0)
-                parameter_support->parameterChangeEvent().removeListener(param_change_listener_id);
+                parameter_support->removeParameterChangeListener(param_change_listener_id);
             if (per_note_change_listener_id >= 0)
-                parameter_support->perNoteControllerChangeEvent().removeListener(per_note_change_listener_id);
+                parameter_support->removePerNoteControllerChangeListener(per_note_change_listener_id);
         }
     }
 
@@ -132,16 +132,7 @@ namespace uapmd {
     double UapmdNodeUmpOutputMapper::normalizeParameterValue(uint16_t index, double plainValue) const {
         if (!parameter_support)
             return plainValue;
-        auto& params = parameter_support->parameters();
-        if (index >= params.size())
-            return plainValue;
-        auto* param = params[index];
-        if (!param)
-            return plainValue;
-        double normalized = param->normalizedValue(plainValue);
-        if (!std::isfinite(normalized))
-            return 0.0;
-        return normalized;
+        return parameter_support->normalizeParameterValue(index, plainValue);
     }
 
     double UapmdNodeUmpOutputMapper::normalizePerNoteControllerValue(remidy::PerNoteControllerContextTypes types, uint32_t context, uint32_t parameterIndex, double plainValue) const {
@@ -149,15 +140,6 @@ namespace uapmd {
             return plainValue;
         remidy::PerNoteControllerContext ctx{};
         ctx.note = context;
-        auto& controllers = parameter_support->perNoteControllers(types, ctx);
-        if (parameterIndex >= controllers.size())
-            return plainValue;
-        auto* param = controllers[parameterIndex];
-        if (!param)
-            return plainValue;
-        double normalized = param->normalizedValue(plainValue);
-        if (!std::isfinite(normalized))
-            return 0.0;
-        return normalized;
+        return parameter_support->normalizePerNoteControllerValue(parameterIndex, types, ctx, plainValue);
     }
 }

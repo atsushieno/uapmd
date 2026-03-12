@@ -2,6 +2,8 @@
 
 #include "uapmd/uapmd.hpp"
 #include "priv/midi/MidiTimelineEvents.hpp"
+#include "priv/plugin-api/AudioPluginHostingAPI.hpp"
+#include "priv/plugin-api/AudioPluginInstanceAPI.hpp"
 #include "priv/audio/AudioFileReader.hpp"
 #include "priv/audio/AudioFileFactory.hpp"
 #include "priv/project/SmfConverter.hpp"

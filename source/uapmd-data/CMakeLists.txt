@@ -99,6 +99,7 @@ target_include_directories(uapmd-data PRIVATE
         ${midicci_SOURCE_DIR}/include
         ${miniaudio_SOURCE_DIR}
         ../remidy/include
+        ../remidy-tooling/include
         ../uapmd/include
         include
 )
@@ -117,6 +118,8 @@ endif()
 
 target_sources(uapmd-data PRIVATE
         ${_UAPMD_AUDIO_FACTORY_SRC}
+        src/plugin-api/UapmdNodeUmpMapper.cpp
+        src/plugin-api/RemidyAudioPluginHost.cpp
         src/project/UapmdProjectFileReader.cpp
         src/project/UapmdProjectFileWriter.cpp
         src/project/UapmdProjectFile.cpp

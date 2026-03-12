@@ -29,7 +29,7 @@ namespace uapmd {
     public:
         virtual ~AudioPluginGraph() = default;
 
-        virtual uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) = 0;
+        virtual uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceFeature* instance, std::function<void()>&& onDelete) = 0;
         virtual bool removeNodeSimple(int32_t instanceId) = 0;
 
         virtual std::map<int32_t, AudioPluginNode*> plugins() = 0;

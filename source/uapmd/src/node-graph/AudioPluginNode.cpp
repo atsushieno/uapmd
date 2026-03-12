@@ -14,7 +14,7 @@ namespace uapmd {
 
     class AudioPluginNodeImpl : public AudioPluginNode {
         int32_t instance_id_;
-        AudioPluginInstanceAPI* instance_;
+        AudioPluginInstanceFeature* instance_;
         moodycamel::ConcurrentQueue<umppi::Ump> queue_;
         std::vector<umppi::Ump> pending_events_;
         std::atomic<bool> queue_reading_{false};
@@ -34,7 +34,7 @@ namespace uapmd {
     public:
         AudioPluginNodeImpl(
             int32_t instanceId,
-            AudioPluginInstanceAPI* instance,
+            AudioPluginInstanceFeature* instance,
             size_t eventBufferSizeInBytes,
             std::function<void()>&& onDelete
         ) : instance_id_(instanceId),
@@ -43,12 +43,12 @@ namespace uapmd {
             on_delete_(std::move(onDelete)) {
             // Register parameter change listener directly with the plugin
             if (instance_ && instance_->parameterSupport()) {
-                parameter_listener_token_ = instance_->parameterSupport()->parameterChangeEvent().addListener(
+                parameter_listener_token_ = instance_->parameterSupport()->addParameterChangeListener(
                     [this](uint32_t paramIndex, double plainValue) {
                         parameter_update_event_.notify(static_cast<int32_t>(paramIndex), plainValue);
                     }
                 );
-                metadata_listener_token_ = instance_->parameterSupport()->parameterMetadataChangeEvent().addListener(
+                metadata_listener_token_ = instance_->parameterSupport()->addParameterMetadataChangeListener(
                     [this]() {
                         parameter_metadata_refresh_event_.notify();
                     }
@@ -60,9 +60,9 @@ namespace uapmd {
             // Unregister parameter listeners
             if (instance_ && instance_->parameterSupport()) {
                 if (parameter_listener_token_ != 0)
-                    instance_->parameterSupport()->parameterChangeEvent().removeListener(parameter_listener_token_);
+                    instance_->parameterSupport()->removeParameterChangeListener(parameter_listener_token_);
                 if (metadata_listener_token_ != 0)
-                    instance_->parameterSupport()->parameterMetadataChangeEvent().removeListener(metadata_listener_token_);
+                    instance_->parameterSupport()->removeParameterMetadataChangeListener(metadata_listener_token_);
             }
             if (on_delete_)
                 on_delete_();
@@ -72,7 +72,7 @@ namespace uapmd {
             return instance_id_;
         }
 
-        AudioPluginInstanceAPI* instance() override {
+        AudioPluginInstanceFeature* instance() override {
             return instance_;
         }
 

@@ -7,7 +7,7 @@
 #include <mutex>
 #include <vector>
 
-#include "../plugin-api/AudioPluginInstanceAPI.hpp"
+#include "../plugins/AudioPluginInstanceFeature.hpp"
 
 namespace uapmd {
 
@@ -71,7 +71,7 @@ namespace uapmd {
         virtual ~AudioPluginNode() = default;
 
         virtual int32_t instanceId() const = 0;
-        virtual AudioPluginInstanceAPI* instance() = 0;
+        virtual AudioPluginInstanceFeature* instance() = 0;
 
         // Schedule UMP events to this plugin instance's queue
         virtual bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) = 0;

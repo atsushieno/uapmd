@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <vector>
-#include <uapmd/uapmd.hpp>
+#include <uapmd/priv/CommonTypes.hpp>
 #include "../audio/AudioFileReader.hpp"
 #include "UapmdProjectFile.hpp"
 #undef Success // X11...!

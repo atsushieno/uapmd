@@ -13,7 +13,7 @@ namespace uapmd {
     namespace {
         class UapmdMidiCISessionImpl : public UapmdMidiCISession {
             UapmdFunctionBlock* device;
-            AudioPluginInstanceAPI* instance;
+            AudioPluginInstanceFeature* instance;
 
             std::string device_name{};
             std::string manufacturer{};
@@ -28,7 +28,7 @@ namespace uapmd {
         public:
             UapmdMidiCISessionImpl(
                 UapmdFunctionBlock* device,
-                AudioPluginInstanceAPI* instance,
+                AudioPluginInstanceFeature* instance,
                 std::string deviceName,
                 std::string manufacturerName,
                 std::string versionString
@@ -279,7 +279,7 @@ namespace uapmd {
 
     std::unique_ptr<UapmdMidiCISession> UapmdMidiCISession::create(
         UapmdFunctionBlock* device,
-        AudioPluginInstanceAPI* instance,
+        AudioPluginInstanceFeature* instance,
         std::string deviceName,
         std::string manufacturerName,
         std::string versionString) {

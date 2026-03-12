@@ -163,7 +163,7 @@ std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
 
         uapmd::AudioPluginInstanceAPI* instance = nullptr;
         if (auto* node = sequencerTrack->graph().getPluginNode(instanceId))
-            instance = node->instance();
+            instance = dynamic_cast<uapmd::AudioPluginInstanceAPI*>(node->instance());
         if (!instance && engine)
             instance = engine->getPluginInstance(instanceId);
         if (!instance)

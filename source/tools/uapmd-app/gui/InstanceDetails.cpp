@@ -114,13 +114,14 @@ void InstanceDetails::showWindow(int32_t instanceId) {
             }
             if (perNoteSelection->type == remidy::PerNoteControllerContextTypes::PER_NOTE_CONTROLLER_PER_NOTE) {
                 pal->setPerNoteControllerValue(
-                    static_cast<uint8_t>(perNoteSelection->context.note),
+                    { .note = static_cast<uint8_t>(perNoteSelection->context.note) },
                     static_cast<uint8_t>(parameterIndex),
                     value);
                 return;
             }
-            if (auto* parameterSupport = pal->parameterSupport())
-                parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value, 0);
+            // FIXME: verify we are fine without this
+            //if (auto* parameterSupport = pal->parameterSupport())
+            //    parameterSupport->setPerNoteControllerValue(perNoteSelection->context, parameterIndex, value, 0);
         });
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {
@@ -479,8 +480,8 @@ void InstanceDetails::refreshParameters(int32_t instanceId, DetailsWindowState& 
 
     std::vector<uapmd::ParameterMetadata> parameters;
     if (usingPerNoteControllers) {
-        auto pluginParams = parameterSupport->perNoteControllers(perNoteSelection->type, perNoteSelection->context);
-        parameters = toParameterMetadata(pluginParams);
+        // FIXME: pass correct context value
+        parameters = pal->perNoteControllerMetadataList(perNoteSelection->type, perNoteSelection->context.note);
     } else {
         parameters = pal->parameterMetadataList();
     }
@@ -492,13 +493,10 @@ void InstanceDetails::refreshParameters(int32_t instanceId, DetailsWindowState& 
     for (size_t i = 0; i < parameters.size(); ++i) {
         double initialValue = parameters[i].defaultPlainValue;
         if (parameterSupport) {
-            double queriedValue = initialValue;
-            auto status = usingPerNoteControllers
-                              ? parameterSupport->getPerNoteController(perNoteSelection->context, parameters[i].index, &queriedValue)
-                              : parameterSupport->getParameter(parameters[i].index, &queriedValue);
-            if (status == remidy::StatusCode::OK) {
-                initialValue = queriedValue;
-            }
+            if (usingPerNoteControllers)
+                initialValue = pal->getPerNoteControllerValue(perNoteSelection->context, parameters[i].index);
+            else
+                initialValue = pal->getParameterValue(parameters[i].index);
         }
         state.parameterList.setParameterValue(i, static_cast<float>(initialValue));
 
