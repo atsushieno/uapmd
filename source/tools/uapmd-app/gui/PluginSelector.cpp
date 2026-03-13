@@ -14,10 +14,12 @@ void PluginSelector::render() {
 
     if (ImGui::Button("Scan Plugins")) {
         if (onScanPlugins_) {
-            onScanPlugins_(forceRescan_);
+            onScanPlugins_(forceRescan_, useRemoteScanner_);
         }
         std::cout << "Starting plugin scanning" << std::endl;
     }
+    ImGui::SameLine();
+    ImGui::Checkbox("Remote scanner process", &useRemoteScanner_);
 
     if (isScanning_) {
         ImGui::EndDisabled();
@@ -77,7 +79,7 @@ void PluginSelector::setOnInstantiatePlugin(std::function<void(const std::string
     onInstantiatePlugin_ = callback;
 }
 
-void PluginSelector::setOnScanPlugins(std::function<void(bool forceRescan)> callback) {
+void PluginSelector::setOnScanPlugins(std::function<void(bool forceRescan, bool useRemoteProcess)> callback) {
     onScanPlugins_ = callback;
 }
 

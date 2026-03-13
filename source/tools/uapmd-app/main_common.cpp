@@ -1,5 +1,6 @@
 #include "main_common.hpp"
 #include "AppModel.hpp"
+#include "ScanOnlyMode.hpp"
 #include "gui/MainWindow.hpp"
 #include "gui/FontLoader.hpp"
 #include <ImGuiEventLoop.hpp>
@@ -89,9 +90,27 @@ int runMainLoop(int argc, char** argv) {
     };
 
     std::optional<Mode> requestedMode;
+    struct CommandLineOptions {
+        bool scanOnly = false;
+        bool forceRescan = false;
+        bool fullVerification = false;
+    };
+    CommandLineOptions cliOptions{};
     std::vector<std::string> positional;
     positional.reserve(args.size());
     for (const auto& arg : args) {
+        if (arg == "--scan-only") {
+            cliOptions.scanOnly = true;
+            continue;
+        }
+        if (arg == "--force-rescan" || arg == "--rescan") {
+            cliOptions.forceRescan = true;
+            continue;
+        }
+        if (arg == "--full") {
+            cliOptions.fullVerification = true;
+            continue;
+        }
         /*if (arg == "--shell" || arg == "--cli" || arg == "--no-gui" || arg == "--headless") {
             requestedMode = Mode::Headless;
             continue;
@@ -102,6 +121,25 @@ int runMainLoop(int argc, char** argv) {
         }*/
         positional.push_back(arg);
     }
+
+#if defined(__EMSCRIPTEN__)
+    if (cliOptions.scanOnly) {
+        std::cerr << "--scan-only mode is unavailable on this build." << std::endl;
+        return EXIT_FAILURE;
+    }
+#else
+    if (cliOptions.fullVerification && !cliOptions.scanOnly) {
+        std::cerr << "--full requires --scan-only" << std::endl;
+        return EXIT_FAILURE;
+    }
+    if (cliOptions.scanOnly) {
+        ScanOnlyOptions options{
+            .forceRescan = cliOptions.forceRescan,
+            .fullVerification = cliOptions.fullVerification
+        };
+        return runScanOnlyMode(options);
+    }
+#endif
 
     bool guiAvailable = true;
 

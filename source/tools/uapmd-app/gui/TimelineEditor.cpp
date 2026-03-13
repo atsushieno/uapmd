@@ -139,8 +139,12 @@ TimelineEditor::TimelineEditor() {
         showPluginSelectorWindow_ = false;
     });
 
-    pluginSelector_.setOnScanPlugins([](bool forceRescan) {
-        uapmd::AppModel::instance().performPluginScanning(forceRescan);
+    pluginSelector_.setOnScanPlugins([](bool forceRescan, bool useRemoteProcess) {
+        uapmd::AppModel::instance().performPluginScanning(
+            forceRescan,
+            useRemoteProcess
+                ? uapmd::AppModel::PluginScanRequest::RemoteProcess
+                : uapmd::AppModel::PluginScanRequest::InProcess);
     });
 
     refreshAllSequenceEditorTracks();

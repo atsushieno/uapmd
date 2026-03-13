@@ -57,6 +57,11 @@ namespace uapmd {
             std::string apiName, std::string deviceName, std::string manufacturer, std::string version) override;
 
     public:
+        enum class PluginScanRequest {
+            InProcess,
+            RemoteProcess
+        };
+
         // Plugin instance metadata
         struct PluginInstanceState {
             std::string pluginName;
@@ -125,6 +130,14 @@ namespace uapmd {
         PluginInstanceResult registerPluginInstanceInternal(int32_t instanceId,
                                                             const std::optional<PluginInstanceConfig>& configOverride);
         void clearDeviceEntries();
+        int performInProcessPluginScanning(bool forceRescan);
+        struct RemoteScanOutcome {
+            bool success{false};
+            std::string error;
+            std::filesystem::path cacheFile;
+        };
+        RemoteScanOutcome performRemotePluginScanning(bool forceRescan);
+        void reloadPluginCatalogFromCache(const std::filesystem::path& cacheFile);
 
     public:
         static void instantiate();
@@ -247,7 +260,8 @@ namespace uapmd {
         // Notifies all registered callbacks when complete
         void hidePluginUI(int32_t instanceId);
 
-        void performPluginScanning(bool forceRescan = false);
+        void performPluginScanning(bool forceRescan = false,
+                                   PluginScanRequest request = PluginScanRequest::InProcess);
 
         // Plugin state save/load operations
         // These handle the file I/O and plugin state manipulation, but not UI dialogs
