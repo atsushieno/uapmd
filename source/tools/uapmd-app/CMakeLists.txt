@@ -543,7 +543,6 @@ if(NOT TARGET imtimeline)
 
     # ImTimeline depends on ImGui
     target_link_libraries(imtimeline PUBLIC imgui)
-    target_compile_definitions(imtimeline PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 
     # Timeline.cpp calls ImGui::Text(variable) without a format string literal,
     # triggering -Wformat-security.  We suppress it here rather than patching the
@@ -596,10 +595,6 @@ if(UAPMD_ENABLE_CPPLOCATE)
             ${cpplocate_BINARY_DIR}/source/liblocate/include
     )
 endif()
-
-# Enable ImGui vector operators for all app translation units
-target_compile_definitions(remidy-imgui-shared PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
-target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
 
 set(uapmd_LIBS_PLAT)
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
