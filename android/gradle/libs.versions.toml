@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.0-alpha02"
+agp = "9.2.0-alpha04"
 androidaudioplugin = "0.9.4"
 coreKtx = "1.17.0"
 junit = "4.13.2"
