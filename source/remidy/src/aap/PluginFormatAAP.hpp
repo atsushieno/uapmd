@@ -326,6 +326,8 @@ namespace remidy {
         PluginUISupport *ui() override {
             return (ui_ ? ui_ : ui_ = std::make_unique<UISupport>(this)).get();
         }
+
+        bool requiresReplacingProcess() const override { return false; }
     };
 
     class PluginFormatAAPImpl : public PluginFormatAAP {
