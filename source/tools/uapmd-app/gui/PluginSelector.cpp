@@ -1,6 +1,17 @@
 #include "PluginSelector.hpp"
 #include <format>
 #include <iostream>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+namespace {
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+constexpr bool kRemoteScannerSupported = false;
+#else
+constexpr bool kRemoteScannerSupported = true;
+#endif
+}
 
 namespace uapmd::gui {
 
@@ -18,8 +29,6 @@ void PluginSelector::render() {
         }
         std::cout << "Starting plugin scanning" << std::endl;
     }
-    ImGui::SameLine();
-    ImGui::Checkbox("Remote scanner process", &useRemoteScanner_);
 
     if (isScanning_) {
         ImGui::EndDisabled();
@@ -28,6 +37,17 @@ void PluginSelector::render() {
     } else {
         ImGui::SameLine();
         ImGui::Checkbox("Force Rescan", &forceRescan_);
+    }
+
+    if constexpr (kRemoteScannerSupported) {
+        ImGui::SameLine();
+        if (isScanning_)
+            ImGui::BeginDisabled();
+        ImGui::Checkbox("Remote scanner process", &useRemoteScanner_);
+        if (isScanning_)
+            ImGui::EndDisabled();
+    } else {
+        useRemoteScanner_ = false;
     }
 
     ImGui::Separator();
