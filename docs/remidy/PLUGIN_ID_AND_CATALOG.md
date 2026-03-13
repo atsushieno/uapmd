@@ -50,8 +50,7 @@ Regarding #4, it is also inappropriate if the name of the product does not chang
 
 Including the product name or the vendor name into the plugin ID is sometimes unsafe either, because they are not always persistent and your plugin users should not be messed their track-making effort by the plugin vendor's company name changes e.g. by acquisition.
 
-A related issue is that there is no reliable identifier in Apple AudioUnit. There are only 3 fields of 4-bytes (`manufacturerName`, `componentType`, 
-and `componentSubtype`). If we include `name` of the plugin from `AudioComponentDescription`, it will become practically identifying (less fear of conflicts), but plugin vendors may change it at any time. Thus it is not a good idea to use it, and we can only resort to those 12 bytes at best.
+A related issue is that there is no reliable identifier in Apple AudioUnit. There are only 3 fields of 4-bytes (`manufacturerName`, `componentType`, and `componentSubtype`).　If we include `name` of the plugin from `AudioComponentDescription`, it will become practically identifying (less fear of conflicts), but plugin vendors may change it at any time. Thus it is not a good idea to use it, and we can only resort to those 12 bytes at best.
 
 ### limited metadata for fast scanning
 

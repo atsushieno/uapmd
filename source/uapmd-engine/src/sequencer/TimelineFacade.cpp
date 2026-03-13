@@ -3,15 +3,13 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iostream>
 #include <thread>
 #include <unordered_map>
 
+#include "remidy/remidy.hpp"
+#include "uapmd-data/uapmd-data.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
-#include "uapmd-data/priv/timeline/AudioFileSourceNode.hpp"
-#include "uapmd-data/priv/timeline/MidiClipSourceNode.hpp"
-#include "uapmd-data/priv/audio/AudioFileFactory.hpp"
-#include "uapmd-data/priv/project/UapmdProjectFile.hpp"
-#include "uapmd-data/priv/project/MidiClipReader.hpp"
 
 namespace uapmd {
 
@@ -262,20 +260,89 @@ namespace uapmd {
                 auto* graphData = projectTrack->graph();
                 if (!graphData)
                     return;
-                for (const auto& plugin : graphData->plugins()) {
-                    if (plugin.plugin_id.empty() || plugin.format.empty())
+                auto plugins = graphData->plugins();
+                auto* pluginHost = engine_.pluginHost();
+                std::vector<remidy::PluginCatalogEntry> catalogEntries;
+                bool catalogLoaded = false;
+                auto ensureCatalogLoaded = [&]() -> std::vector<remidy::PluginCatalogEntry>& {
+                    if (!catalogLoaded && pluginHost) {
+                        catalogEntries = pluginHost->pluginCatalogEntries();
+                        catalogLoaded = true;
+                    }
+                    return catalogEntries;
+                };
+                auto catalogHasPlugin = [&](const std::string& format, const std::string& pluginId) -> bool {
+                    if (!pluginHost)
+                        return true; // Cannot verify without host; assume valid
+                    if (pluginId.empty())
+                        return false;
+                    auto& entries = ensureCatalogLoaded();
+                    return std::any_of(entries.begin(), entries.end(),
+                        [&](remidy::PluginCatalogEntry& entry) {
+                            return entry.format() == format && entry.pluginId() == pluginId;
+                        });
+                };
+                auto catalogFindByName = [&](const std::string& format, const std::string& displayName) -> std::string {
+                    if (!pluginHost || displayName.empty())
+                        return {};
+                    auto& entries = ensureCatalogLoaded();
+                    std::string resolvedId;
+                    for (auto& entry : entries) {
+                        if (entry.format() == format && entry.displayName() == displayName) {
+                            if (resolvedId.empty())
+                                resolvedId = entry.pluginId();
+                            else if (resolvedId != entry.pluginId())
+                                return {}; // Ambiguous
+                        }
+                    }
+                    return resolvedId;
+                };
+
+                for (const auto& plugin : plugins) {
+                    if (plugin.format.empty()) {
+                        std::cerr << "Warning: Skipping plugin node with missing format while loading project." << std::endl;
                         continue;
+                    }
                     std::string format = plugin.format;
                     std::string pluginId = plugin.plugin_id;
                     std::string stateFile = plugin.state_file;
+                    const std::string pluginName = plugin.display_name;
+
+                    if (pluginId.empty()) {
+                        auto fallbackId = catalogFindByName(format, pluginName);
+                        if (!fallbackId.empty()) {
+                            std::cerr << "Info: Plugin \"" << pluginName
+                                      << "\" missing ID; resolved using catalog entry ID " << fallbackId << "." << std::endl;
+                            pluginId = fallbackId;
+                        }
+                    } else if (!catalogHasPlugin(format, pluginId)) {
+                        auto fallbackId = catalogFindByName(format, pluginName);
+                        if (!fallbackId.empty()) {
+                            std::cerr << "Info: Plugin \"" << (pluginName.empty() ? pluginId : pluginName)
+                                      << "\" not found by ID; substituting catalog entry ID " << fallbackId << "." << std::endl;
+                            pluginId = fallbackId;
+                        }
+                    }
+
+                    if (pluginId.empty()) {
+                        std::cerr << "Warning: Unable to resolve plugin entry (format=" << format
+                                  << ", name=" << pluginName << "). Plugin will be skipped." << std::endl;
+                        continue;
+                    }
+
                     std::filesystem::path resolvedState;
                     if (!stateFile.empty())
                         resolvedState = makeAbsolutePath(projectDir, stateFile);
 
+                    const std::string pluginLabel = pluginName.empty() ? pluginId : pluginName;
+
                     pending_plugins.fetch_add(1, std::memory_order_relaxed);
                     engine_.addPluginToTrack(trackIndex, format, pluginId,
-                        [this, resolvedState, &pending_plugins](int32_t instanceId, int32_t, std::string error) {
-                            if (error.empty() && instanceId >= 0 && !resolvedState.empty()) {
+                        [this, resolvedState, &pending_plugins, pluginLabel, pluginId, format](int32_t instanceId, int32_t, std::string error) {
+                            if (!error.empty()) {
+                                std::cerr << "Warning: Failed to instantiate plugin " << pluginLabel
+                                          << " (" << format << ", ID=" << pluginId << "): " << error << std::endl;
+                            } else if (instanceId >= 0 && !resolvedState.empty()) {
                                 auto* instance = engine_.getPluginInstance(instanceId);
                                 if (instance) {
                                     std::ifstream f(resolvedState, std::ios::binary);

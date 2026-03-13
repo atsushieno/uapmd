@@ -172,6 +172,7 @@ std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
         uapmd::UapmdProjectPluginNodeData nodeData;
         nodeData.plugin_id = instance->pluginId();
         nodeData.format = instance->formatName();
+        nodeData.display_name = instance->displayName();
         if (stateWriter) {
             try {
                 nodeData.state_file = stateWriter(instanceId, pluginIndex, instance);

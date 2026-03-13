@@ -89,6 +89,7 @@ Defines an audio processing chain for a track.
     {
       "plugin_id": "com.example.reverb",
       "format": "VST3",
+      "display_name": "Studio Reverb",
       "state_file": "/path/to/state.vstpreset"
     }
   ]
@@ -111,6 +112,7 @@ Defines an audio processing chain for a track.
 {
   "plugin_id": "com.example.plugin.id",
   "format": "VST3",
+  "display_name": "Plugin Display Name",
   "state_file": "/path/to/state.vstpreset"
 }
 ```
@@ -123,6 +125,10 @@ Defines an audio processing chain for a track.
 
 - **`format`** (string, required): Plugin format
   - Supported values: `"VST3"`, `"AU"`, `"LV2"`, `"CLAP"`
+
+- **`display_name`** (string, optional but recommended): Human-readable plugin name
+  - Stored alongside `plugin_id` to make project files easier to inspect
+  - Used when reloading projects as a fallback hint if the original `plugin_id` is no longer available (e.g., plugin was renamed or moved); see `docs/remidy/PLUGIN_ID_AND_CATALOG.md`
 
 - **`state_file`** (string, optional): Path to plugin state/preset file
   - Format-specific preset/state file
@@ -198,17 +204,19 @@ Clip starts 0.5 seconds before the anchor point (crossfade scenario):
     {
       "graph": {
         "plugins": [
-          {
-            "plugin_id": "com.fabfilter.proq3",
-            "format": "VST3",
-            "state_file": "/presets/vocal_eq.vstpreset"
-          },
-          {
-            "plugin_id": "com.fabfilter.proc2",
-            "format": "VST3",
-            "state_file": "/presets/vocal_comp.vstpreset"
-          }
-        ]
+        {
+          "plugin_id": "com.fabfilter.proq3",
+          "format": "VST3",
+          "display_name": "FabFilter Pro-Q 3",
+          "state_file": "/presets/vocal_eq.vstpreset"
+        },
+        {
+          "plugin_id": "com.fabfilter.proc2",
+          "format": "VST3",
+          "display_name": "FabFilter Pro-C 2",
+          "state_file": "/presets/vocal_comp.vstpreset"
+        }
+      ]
       },
       "clips": [
         {
@@ -242,6 +250,7 @@ Clip starts 0.5 seconds before the anchor point (crossfade scenario):
         {
           "plugin_id": "com.fabfilter.prol2",
           "format": "VST3",
+          "display_name": "FabFilter Pro-L 2",
           "state_file": "/presets/mastering_limiter.vstpreset"
         }
       ]
@@ -306,4 +315,3 @@ The `.midi2` files referenced in clips should conform to the **MIDI 2.0 Clip Fil
 - MIDI 2.0 Container: Future format for complete project files with embedded clips
 
 Note that we ONLY support `.midi2`. These formats explained above are for clarification.
-

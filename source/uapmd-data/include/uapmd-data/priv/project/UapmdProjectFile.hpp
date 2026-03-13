@@ -57,6 +57,7 @@ namespace uapmd {
     struct UapmdProjectPluginNodeData {
         std::string plugin_id{};
         std::string format{};
+        std::string display_name{};
         std::string state_file{};
     };
 

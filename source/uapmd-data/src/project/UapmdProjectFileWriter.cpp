@@ -84,6 +84,7 @@ namespace uapmd {
                 auto pluginObj = choc::value::createObject("Plugin");
                 pluginObj.addMember("plugin_id", plugin.plugin_id);
                 pluginObj.addMember("format", plugin.format);
+                pluginObj.addMember("display_name", plugin.display_name);
                 pluginObj.addMember("state_file", plugin.state_file);
                 pluginsArray.addArrayElement(pluginObj);
             }
