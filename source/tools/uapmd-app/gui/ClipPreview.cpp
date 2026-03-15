@@ -198,7 +198,7 @@ private:
             float y2 = y1 + std::max(kMinimumNoteHeight * uiScale_, laneHeight * 0.8f);
             y2 = std::min(y2, rect.Max.y);
 
-            float intensity = static_cast<float>(note.velocity) / 127.0f;
+            float intensity = note.velocity;
             ImU32 fillColor = ImGui::GetColorU32(ImVec4(0.2f + 0.5f * intensity,
                                                         0.4f + 0.3f * intensity,
                                                         0.9f - 0.4f * intensity,
@@ -442,6 +442,16 @@ std::shared_ptr<ClipPreview> createMidiClipPreview(
         return preview;
     }
 
+    // Capture raw UMP data for piano-roll write-back before parsing into notes.
+    auto rawData = std::make_shared<ClipPreview::RawMidiData>();
+    rawData->umpEvents       = midiSource->umpEvents();
+    rawData->tickTimestamps  = midiSource->eventTimestampsTicks();
+    rawData->tickResolution  = clipData.tickResolution > 0
+                               ? clipData.tickResolution
+                               : midiSource->tickResolution();
+    rawData->clipTempo       = midiSource->clipTempo();
+    preview->rawMidiData = rawData;
+
     const auto& events = midiSource->umpEvents();
     const auto& timestamps = midiSource->eventTimestampsSamples();
     if (events.empty() || timestamps.empty()) {
@@ -451,62 +461,101 @@ std::shared_ptr<ClipPreview> createMidiClipPreview(
 
     const double safeSampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
     const size_t eventCount = std::min(events.size(), timestamps.size());
-    std::unordered_map<uint32_t, ClipPreview::MidiNote> activeNotes;
-    activeNotes.reserve(64);
+    // Maps (group<<12|channel<<7|note) -> index in preview->midiNotes for in-flight notes.
+    std::unordered_map<uint32_t, size_t> activeNoteIndices;
+    activeNoteIndices.reserve(64);
+
+    // Iterate messages, advancing by getSizeInInts() to handle multi-word MIDI2 messages.
+    // Only NoteOn/NoteOff are processed here; automation events are parsed on-demand
+    // by the piano-roll editor directly from rawMidiData.
+    size_t i = 0;
+    while (i < eventCount) {
+        umppi::Ump ump1(events[i]);
+        const int wordCount = ump1.getSizeInInts();
+        const size_t safeCount = std::min(static_cast<size_t>(wordCount), eventCount - i);
+        umppi::Ump ump = (safeCount >= 2) ? umppi::Ump(events[i], events[i + 1]) : ump1;
+
+        const double eventSeconds = static_cast<double>(timestamps[i]) / safeSampleRate;
+        const auto msgType = ump.getMessageType();
+
+        if (msgType == umppi::MessageType::MIDI1) {
+            const uint8_t status = ump.getStatusCode();
+            const uint8_t channel = ump.getChannelInGroup();
+            const uint8_t group = ump.getGroup();
+
+            if (status == umppi::MidiChannelStatus::NOTE_ON || status == umppi::MidiChannelStatus::NOTE_OFF) {
+                const uint8_t noteNum = ump.getMidi1Note();
+                const uint8_t velocity = ump.getMidi1Velocity();
+                const uint32_t key = (static_cast<uint32_t>(group) << 12) |
+                                     (static_cast<uint32_t>(channel) << 7) | noteNum;
+                const bool isNoteOn = (status == umppi::MidiChannelStatus::NOTE_ON) && velocity > 0;
+                if (isNoteOn) {
+                    ClipPreview::MidiNote note{};
+                    note.startSeconds  = eventSeconds;
+                    note.note          = noteNum;
+                    note.velocity      = velocity / 127.0f;
+                    note.channel       = channel;
+                    note.isMidi2       = false;
+                    note.noteOnWordIdx = i;
+                    activeNoteIndices[key] = preview->midiNotes.size();
+                    preview->midiNotes.push_back(std::move(note));
+                } else {
+                    auto it = activeNoteIndices.find(key);
+                    if (it != activeNoteIndices.end()) {
+                        auto& n = preview->midiNotes[it->second];
+                        n.durationSeconds = std::max(kMinimumNoteDuration, eventSeconds - n.startSeconds);
+                        n.noteOffWordIdx  = i;
+                        activeNoteIndices.erase(it);
+                    }
+                }
+            }
+        } else if (msgType == umppi::MessageType::MIDI2) {
+            const uint8_t status = ump.getStatusCode();
+            const uint8_t channel = ump.getChannelInGroup();
+            const uint8_t group = ump.getGroup();
+
+            if (status == umppi::MidiChannelStatus::NOTE_ON || status == umppi::MidiChannelStatus::NOTE_OFF) {
+                const uint8_t  noteNum = ump.getMidi2Note();
+                const uint16_t vel16   = ump.getMidi2Velocity16();
+                const uint32_t key = (static_cast<uint32_t>(group) << 12) |
+                                     (static_cast<uint32_t>(channel) << 7) | noteNum;
+                const bool isNoteOn = (status == umppi::MidiChannelStatus::NOTE_ON) && vel16 > 0;
+                if (isNoteOn) {
+                    ClipPreview::MidiNote note{};
+                    note.startSeconds  = eventSeconds;
+                    note.note          = noteNum;
+                    note.velocity      = vel16 / 65535.0f;
+                    note.channel       = channel;
+                    note.isMidi2       = true;
+                    note.noteOnWordIdx = i;
+                    activeNoteIndices[key] = preview->midiNotes.size();
+                    preview->midiNotes.push_back(std::move(note));
+                } else {
+                    auto it = activeNoteIndices.find(key);
+                    if (it != activeNoteIndices.end()) {
+                        auto& n = preview->midiNotes[it->second];
+                        n.durationSeconds = std::max(kMinimumNoteDuration, eventSeconds - n.startSeconds);
+                        n.noteOffWordIdx  = i;
+                        activeNoteIndices.erase(it);
+                    }
+                }
+            }
+        }
+
+        i += static_cast<size_t>(std::max(1, wordCount));
+    }
+
+    // Finalize any notes that had no matching NoteOff.
+    for (auto& [key, idx] : activeNoteIndices) {
+        auto& n = preview->midiNotes[idx];
+        n.durationSeconds = std::max(kMinimumNoteDuration, preview->clipDurationSeconds - n.startSeconds);
+    }
 
     uint8_t minNote = 127;
     uint8_t maxNote = 0;
-
-    for (size_t i = 0; i < eventCount; ++i) {
-        umppi::Ump ump(events[i]);
-        if (ump.getMessageType() != umppi::MessageType::MIDI1) {
-            continue;
-        }
-
-        uint8_t status = static_cast<uint8_t>(ump.getStatusCode());
-        if (status != umppi::MidiChannelStatus::NOTE_ON && status != umppi::MidiChannelStatus::NOTE_OFF) {
-            continue;
-        }
-
-        const uint8_t channel = ump.getChannelInGroup();
-        const uint8_t noteNumber = ump.getMidi1Note();
-        const uint8_t velocity = ump.getMidi1Velocity();
-        const uint8_t group = ump.getGroup();
-        const uint32_t key = (static_cast<uint32_t>(group) << 12) |
-                             (static_cast<uint32_t>(channel) << 7) |
-                             noteNumber;
-        const double eventSeconds = static_cast<double>(timestamps[i]) / safeSampleRate;
-
-        const bool isNoteOn = (status == umppi::MidiChannelStatus::NOTE_ON) && velocity > 0;
-        if (isNoteOn) {
-            ClipPreview::MidiNote note{};
-            note.startSeconds = eventSeconds;
-            note.note = noteNumber;
-            note.velocity = velocity;
-            note.channel = channel;
-            activeNotes[key] = note;
-            continue;
-        }
-
-        auto it = activeNotes.find(key);
-        if (it == activeNotes.end()) {
-            continue;
-        }
-
-        ClipPreview::MidiNote finished = it->second;
-        finished.durationSeconds = std::max(kMinimumNoteDuration, eventSeconds - finished.startSeconds);
-        preview->midiNotes.push_back(finished);
-        minNote = std::min(minNote, finished.note);
-        maxNote = std::max(maxNote, finished.note);
-        activeNotes.erase(it);
-    }
-
-    for (auto& entry : activeNotes) {
-        auto& unfinished = entry.second;
-        unfinished.durationSeconds = std::max(kMinimumNoteDuration, preview->clipDurationSeconds - unfinished.startSeconds);
-        preview->midiNotes.push_back(unfinished);
-        minNote = std::min(minNote, unfinished.note);
-        maxNote = std::max(maxNote, unfinished.note);
+    for (const auto& note : preview->midiNotes) {
+        minNote = std::min(minNote, note.note);
+        maxNote = std::max(maxNote, note.note);
     }
 
     if (!preview->midiNotes.empty()) {

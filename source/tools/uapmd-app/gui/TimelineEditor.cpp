@@ -177,6 +177,18 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .addClipAtPosition = [this](int32_t trackIndex, const std::string& filepath, double positionSeconds) {
             addClipToTrackAtPosition(trackIndex, filepath, positionSeconds);
         },
+        .addAudioClip = [this](int32_t trackIndex) {
+            addAudioClipToTrack(trackIndex);
+        },
+        .addSmfClip = [this](int32_t trackIndex) {
+            addSmfClipToTrack(trackIndex);
+        },
+        .addSmf2Clip = [this](int32_t trackIndex) {
+            addSmf2ClipToTrack(trackIndex);
+        },
+        .addBlankMidiClipAtPosition = [this](int32_t trackIndex, double positionSeconds) {
+            addBlankMidi2ClipToTrackAtPosition(trackIndex, positionSeconds);
+        },
         .removeClip = [this](int32_t trackIndex, int32_t clipId) {
             removeClipFromTrack(trackIndex, clipId);
         },
@@ -197,6 +209,9 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         },
         .showMidiClipDump = [this](int32_t trackIndex, int32_t clipId) {
             showMidiClipDump(trackIndex, clipId);
+        },
+        .showPianoRoll = [this](int32_t trackIndex, int32_t clipId) {
+            showPianoRoll(trackIndex, clipId);
         },
         .showMasterTrackDump = [this]() {
             showMasterMetaDump();
@@ -279,6 +294,50 @@ void TimelineEditor::render(float uiScale) {
         .uiScale = uiScale,
     };
     midiDumpWindow_.render(midiDumpContext);
+
+    PianoRollEditor::RenderContext pianoCtx;
+    pianoCtx.uiScale = uiScale;
+    pianoCtx.applyEdits = [this](int32_t trackIndex, int32_t clipId,
+                                  std::vector<uapmd_ump_t> newEvents,
+                                  std::vector<uint64_t>    newTicks,
+                                  std::string&             error) -> bool {
+        return applyPianoRollEdits(trackIndex, clipId,
+                                   std::move(newEvents), std::move(newTicks), error);
+    };
+    pianoCtx.reloadPreview = [](int32_t trackIndex, int32_t clipId) -> std::shared_ptr<ClipPreview> {
+        auto& appModel = uapmd::AppModel::instance();
+        auto tracks = appModel.getTimelineTracks();
+        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) ||
+                !tracks[trackIndex])
+            return nullptr;
+        auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+        if (!clip) return nullptr;
+        return createMidiClipPreview(trackIndex, *clip, 0.0);
+    };
+    pianoCtx.previewNoteOn = [](int32_t trackIndex, int midiNote) {
+        auto& seq = uapmd::AppModel::instance().sequencer();
+        auto tracksRef = seq.engine()->tracks();
+        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracksRef.size())) return;
+        auto* track = tracksRef[trackIndex];
+        if (!track) return;
+        for (int32_t instanceId : track->orderedInstanceIds())
+            if (seq.engine()->getPluginInstance(instanceId))
+                seq.engine()->sendNoteOn(instanceId, midiNote);
+    };
+    pianoCtx.previewNoteOff = [](int32_t trackIndex, int midiNote) {
+        auto& seq = uapmd::AppModel::instance().sequencer();
+        auto tracksRef = seq.engine()->tracks();
+        if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracksRef.size())) return;
+        auto* track = tracksRef[trackIndex];
+        if (!track) return;
+        for (int32_t instanceId : track->orderedInstanceIds())
+            if (seq.engine()->getPluginInstance(instanceId))
+                seq.engine()->sendNoteOff(instanceId, midiNote);
+    };
+    pianoCtx.getTrackPluginParameters = [this](int32_t trackIndex) {
+        return getPluginParametersForTrack(trackIndex);
+    };
+    pianoRollEditor_.render(pianoCtx);
 }
 
 void TimelineEditor::renderPluginSelectorWindow(float uiScale) {
@@ -575,8 +634,17 @@ void TimelineEditor::renderTrackRow(int32_t trackIndex, const SequenceEditor::Re
                 sequenceEditor_.showWindow(trackIndex);
                 refreshSequenceEditorForTrack(trackIndex);
             }
+            ImGui::Separator();
             if (ImGui::MenuItem("New Clip"))
-                context.addClip(trackIndex, "");
+                addBlankMidi2ClipToTrack(trackIndex);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Import Audio Clip..."))
+                addAudioClipToTrack(trackIndex);
+            if (ImGui::MenuItem("Import SMF as Clip..."))
+                addSmfClipToTrack(trackIndex);
+            if (ImGui::MenuItem("Import SMF2Clip..."))
+                addSmf2ClipToTrack(trackIndex);
+            ImGui::Separator();
             if (ImGui::MenuItem("Clear All"))
                 context.clearAllClips(trackIndex);
             ImGui::EndPopup();
@@ -1156,6 +1224,29 @@ void TimelineEditor::showMidiClipDump(int32_t trackIndex, int32_t clipId) {
     midiDumpWindow_.showClipDump(buildMidiClipDumpData(trackIndex, clipId));
 }
 
+void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
+        return;
+    auto* track = tracks[trackIndex];
+    if (!track)
+        return;
+    const auto* clipData = track->clipManager().getClip(clipId);
+    if (!clipData)
+        return;
+    if (clipData->clipType != uapmd::ClipType::Midi)
+        return;
+
+    // createMidiClipPreview will determine duration from MIDI events;
+    // pass 0.0 as fallback — it's only used when the clip has no events.
+    const double fallbackDuration = 0.0;
+    auto preview = createMidiClipPreview(trackIndex, *clipData, fallbackDuration);
+    std::string clipName = clipData->name.empty()
+        ? std::format("Clip {}", clipId) : clipData->name;
+    pianoRollEditor_.showClip(trackIndex, clipId, clipName, std::move(preview));
+}
+
 void TimelineEditor::showMasterMetaDump() {
     midiDumpWindow_.showClipDump(buildMasterMetaDumpData());
 }
@@ -1404,6 +1495,215 @@ bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& paylo
     track->clipManager().resizeClip(clip->clipId, newDuration);
     refreshSequenceEditorForTrack(payload.trackIndex);
     return true;
+}
+
+bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
+                                          std::vector<uapmd_ump_t> newUmpEvents,
+                                          std::vector<uint64_t>    newTickTimestamps,
+                                          std::string&             error) {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) ||
+            !tracks[trackIndex]) {
+        error = "Track unavailable.";
+        return false;
+    }
+    auto& track = tracks[trackIndex];
+    auto* clip = track->clipManager().getClip(clipId);
+    if (!clip) {
+        error = "Clip not found.";
+        return false;
+    }
+    auto sourceNode = track->getSourceNode(clip->sourceNodeInstanceId);
+    auto midiNode = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(sourceNode);
+    if (!midiNode) {
+        error = "MIDI source node unavailable.";
+        return false;
+    }
+    uint32_t tickResolution = clip->tickResolution > 0
+                              ? clip->tickResolution
+                              : midiNode->tickResolution();
+    auto newNode = std::make_unique<uapmd::MidiClipSourceNode>(
+        midiNode->instanceId(),
+        std::move(newUmpEvents),
+        std::move(newTickTimestamps),
+        tickResolution,
+        midiNode->clipTempo(),
+        static_cast<double>(appModel.sampleRate()),
+        midiNode->tempoChanges(),
+        midiNode->timeSignatureChanges()
+    );
+    const int64_t newDuration = newNode->totalLength();
+    if (!track->replaceClipSourceNode(clipId, std::move(newNode))) {
+        error = "Failed to replace MIDI clip data.";
+        return false;
+    }
+    track->clipManager().resizeClip(clipId, newDuration);
+    refreshSequenceEditorForTrack(trackIndex);
+    return true;
+}
+
+// ── Plugin parameter query ────────────────────────────────────────────────────
+
+std::vector<std::pair<uint16_t,std::string>>
+TimelineEditor::getPluginParametersForTrack(int32_t trackIndex) const {
+    std::vector<std::pair<uint16_t,std::string>> result;
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto tracksRef = sequencer.engine()->tracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracksRef.size()) || !tracksRef[trackIndex])
+        return result;
+    for (int32_t instanceId : tracksRef[trackIndex]->orderedInstanceIds()) {
+        auto* pal = sequencer.engine()->getPluginInstance(instanceId);
+        if (!pal) continue;
+        for (const auto& p : pal->parameterMetadataList()) {
+            if (p.index >= 16384u) continue; // exceeds 14-bit addressable range
+            const auto msb = static_cast<uint16_t>(p.index / 0x80u);
+            const auto lsb = static_cast<uint16_t>(p.index % 0x80u);
+            result.emplace_back(static_cast<uint16_t>((msb << 7u) | lsb), p.name);
+        }
+    }
+    return result;
+}
+
+// ── Per-type clip import helpers ──────────────────────────────────────────────
+
+void TimelineEditor::addBlankMidi2ClipToTrack(int32_t trackIndex) {
+    uapmd::TimelinePosition position;
+    position.samples      = 0;
+    position.legacy_beats = 0.0;
+    auto& appModel = uapmd::AppModel::instance();
+    auto result = appModel.addMidiClipToTrack(
+        trackIndex, position,
+        {},        // empty UMP events
+        {},        // empty tick timestamps
+        480,       // standard PPQ
+        120.0,     // default BPM
+        {},        // no tempo changes
+        {},        // no time-signature changes
+        "New Clip"
+    );
+    if (!result.success)
+        platformError("New Clip Failed", "Could not create blank MIDI clip: " + result.error);
+    else
+        refreshSequenceEditorForTrack(trackIndex);
+}
+
+void TimelineEditor::addBlankMidi2ClipToTrackAtPosition(int32_t trackIndex, double positionSeconds) {
+    auto& appModel = uapmd::AppModel::instance();
+    const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
+    uapmd::TimelinePosition position;
+    position.samples      = static_cast<int64_t>(std::llround(std::max(0.0, positionSeconds) * sampleRate));
+    position.legacy_beats = 0.0;
+    auto result = appModel.addMidiClipToTrack(
+        trackIndex, position,
+        {},        // empty UMP events
+        {},        // empty tick timestamps
+        480,       // standard PPQ
+        120.0,     // default BPM
+        {},        // no tempo changes
+        {},        // no time-signature changes
+        "New Clip"
+    );
+    if (!result.success)
+        platformError("New Clip Failed", "Could not create blank MIDI clip: " + result.error);
+    else
+        refreshSequenceEditorForTrack(trackIndex);
+}
+
+void TimelineEditor::addAudioClipToTrack(int32_t trackIndex) {
+    std::vector<uapmd::DocumentFilter> filters{
+        {"Audio Files", {}, {"*.wav", "*.flac", "*.ogg"}},
+        {"WAV Files",   {}, {"*.wav"}},
+        {"FLAC Files",  {}, {"*.flac"}},
+        {"OGG Files",   {}, {"*.ogg"}},
+        {"All Files",   {}, {"*"}}
+    };
+    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        provider->pickOpenDocuments(
+            filters, false,
+            [this, trackIndex](uapmd::DocumentPickResult result) {
+                if (!result.success || result.handles.empty()) return;
+                resolveDocumentHandle(
+                    result.handles[0],
+                    [this, trackIndex](const std::filesystem::path& resolved) {
+                        auto reader = uapmd::createAudioFileReaderFromPath(resolved.string());
+                        if (!reader) {
+                            platformError("Load Failed",
+                                          "Could not load audio file: " + resolved.string());
+                            return;
+                        }
+                        uapmd::TimelinePosition pos;
+                        pos.samples = 0;
+                        pos.legacy_beats = 0.0;
+                        auto r = uapmd::AppModel::instance().addClipToTrack(
+                            trackIndex, pos, std::move(reader), resolved.string());
+                        if (!r.success)
+                            platformError("Add Clip Failed", r.error);
+                        else
+                            refreshSequenceEditorForTrack(trackIndex);
+                    },
+                    [](const std::string& error) { platformError("Open Failed", error); });
+            }
+        );
+    }
+}
+
+void TimelineEditor::addSmfClipToTrack(int32_t trackIndex) {
+    std::vector<uapmd::DocumentFilter> filters{
+        {"SMF Files", {}, {"*.mid", "*.midi", "*.smf"}},
+        {"All Files", {}, {"*"}}
+    };
+    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        provider->pickOpenDocuments(
+            filters, false,
+            [this, trackIndex](uapmd::DocumentPickResult result) {
+                if (!result.success || result.handles.empty()) return;
+                resolveDocumentHandle(
+                    result.handles[0],
+                    [this, trackIndex](const std::filesystem::path& resolved) {
+                        uapmd::TimelinePosition pos;
+                        pos.samples = 0;
+                        pos.legacy_beats = 0.0;
+                        auto r = uapmd::AppModel::instance().addClipToTrack(
+                            trackIndex, pos, nullptr, resolved.string());
+                        if (!r.success)
+                            platformError("Add Clip Failed", r.error);
+                        else
+                            refreshSequenceEditorForTrack(trackIndex);
+                    },
+                    [](const std::string& error) { platformError("Open Failed", error); });
+            }
+        );
+    }
+}
+
+void TimelineEditor::addSmf2ClipToTrack(int32_t trackIndex) {
+    std::vector<uapmd::DocumentFilter> filters{
+        {"MIDI 2.0 Files", {}, {"*.midi2"}},
+        {"All Files",      {}, {"*"}}
+    };
+    if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
+        provider->pickOpenDocuments(
+            filters, false,
+            [this, trackIndex](uapmd::DocumentPickResult result) {
+                if (!result.success || result.handles.empty()) return;
+                resolveDocumentHandle(
+                    result.handles[0],
+                    [this, trackIndex](const std::filesystem::path& resolved) {
+                        uapmd::TimelinePosition pos;
+                        pos.samples = 0;
+                        pos.legacy_beats = 0.0;
+                        auto r = uapmd::AppModel::instance().addClipToTrack(
+                            trackIndex, pos, nullptr, resolved.string());
+                        if (!r.success)
+                            platformError("Add Clip Failed", r.error);
+                        else
+                            refreshSequenceEditorForTrack(trackIndex);
+                    },
+                    [](const std::string& error) { platformError("Open Failed", error); });
+            }
+        );
+    }
 }
 
 void TimelineEditor::importMidiTracksWithPicker() {

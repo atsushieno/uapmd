@@ -1242,7 +1242,13 @@ void MainWindow::handleLoadProject() {
             resolveDocumentHandle(
                 pickResult.handles[0],
                 [this](const std::filesystem::path& projectPath) {
-                    auto result = uapmd::AppModel::instance().loadProjectFromResolvedPath(projectPath);
+                    auto& appModel = uapmd::AppModel::instance();
+                    const bool wasEnabled = appModel.isAudioEngineEnabled();
+                    if (wasEnabled)
+                        appModel.setAudioEngineEnabled(false);
+                    auto result = appModel.loadProjectFromResolvedPath(projectPath);
+                    if (wasEnabled)
+                        appModel.setAudioEngineEnabled(true);
                     if (!result.success) {
                         platformError("Load Failed", result.error);
                         return;

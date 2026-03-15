@@ -355,8 +355,6 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             state.activeDragNodeId = InvalidNodeID;
         }
 
-        TimelineNode* selectedNode = state.timeline->GetSelectedNode();
-
         int32_t requestedContextClip = -1;
         bool requestedAddClipMenu = false;
         const ImVec2 mousePos = ImGui::GetMousePos();
@@ -368,24 +366,27 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
             const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
 
             bool clipUnderMouse = false;
-            if (scale > 0.0f && selectedNode) {
-                auto nodeToClip = state.nodeToClip.find(selectedNode->GetID());
-                if (nodeToClip != state.nodeToClip.end()) {
-                    const int32_t hoveredClipId = nodeToClip->second;
-                    const double clipStartFrame = static_cast<double>(selectedNode->start);
-                    const double clipEndFrame = static_cast<double>(selectedNode->end);
-                    const float clipMinX = clipAreaMinX +
-                        static_cast<float>((clipStartFrame - startFrame) * static_cast<double>(scale));
-                    const float clipMaxX = clipAreaMinX +
-                        static_cast<float>((clipEndFrame - startFrame) * static_cast<double>(scale));
-                    const float orderedClipMinX = std::min(clipMinX, clipMaxX);
-                    const float orderedClipMaxX = std::max(clipMinX, clipMaxX);
-                    const float visibleClipMinX = std::max(orderedClipMinX, clipAreaMinX);
-                    const float visibleClipMaxX = std::min(orderedClipMaxX, clipAreaMaxX);
+            if (scale > 0.0f) {
+                // ImTimeline's HorizontalNodeView uses s32 (integer-truncated) scale for node
+                // x-positions but float scale for the mStartFrame scroll offset.  We must
+                // mirror that exactly or non-zero node.start values produce large X errors.
+                const float intScaleF = static_cast<float>(static_cast<int32_t>(scale));
+                // sfOffset == timelinePanelRect.Min.x inside ImTimeline
+                const float sfOffset = clipAreaMinX - static_cast<float>(startFrame) * scale;
+                for (const auto& [nodeId, clipId] : state.nodeToClip) {
+                    auto* node = state.timeline->FindNodeByNodeID(nodeId);
+                    if (!node) continue;
+                    // slotP1.x = sfOffset + node.start * intScale
+                    // slotP2.x = sfOffset + (node.end + 1) * intScale  (ImTimeline adds +scale)
+                    const float clipMinX = sfOffset + static_cast<float>(node->start) * intScaleF;
+                    const float clipMaxX = sfOffset + static_cast<float>(node->end + 1) * intScaleF;
+                    const float visibleClipMinX = std::max(clipMinX, clipAreaMinX);
+                    const float visibleClipMaxX = std::min(clipMaxX, clipAreaMaxX);
                     if (visibleClipMinX <= visibleClipMaxX &&
                         mousePos.x >= visibleClipMinX && mousePos.x <= visibleClipMaxX) {
                         clipUnderMouse = true;
-                        requestedContextClip = hoveredClipId;
+                        requestedContextClip = clipId;
+                        break;
                     }
                 }
             }
@@ -460,6 +461,18 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
                     ImGui::EndDisabled();
                 }
 
+                const bool canOpenPianoRoll = contextClip->isMidiClip &&
+                                              static_cast<bool>(context.showPianoRoll);
+                if (!canOpenPianoRoll)
+                    ImGui::BeginDisabled();
+                if (ImGui::MenuItem("Open Piano Roll")) {
+                    if (context.showPianoRoll)
+                        context.showPianoRoll(trackIndex, contextClip->clipId);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (!canOpenPianoRoll)
+                    ImGui::EndDisabled();
+
                 const bool canDelete = !contextClip->isMasterTrack && static_cast<bool>(context.removeClip);
                 if (!canDelete) {
                     ImGui::BeginDisabled();
@@ -485,10 +498,38 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
         }
 
         if (ImGui::BeginPopup(addClipPopupId.c_str())) {
-            if (ImGui::MenuItem("Add new clip here...")) {
-                if (context.addClipAtPosition) {
-                    context.addClipAtPosition(trackIndex, "", state.requestedAddPosition);
-                }
+            if (ImGui::MenuItem("Edit Clips...", nullptr, isVisible(trackIndex))) {
+                showWindow(trackIndex);
+                if (context.refreshClips)
+                    context.refreshClips(trackIndex);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("New Clip")) {
+                if (context.addBlankMidiClipAtPosition)
+                    context.addBlankMidiClipAtPosition(trackIndex, state.requestedAddPosition);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Import Audio Clip...")) {
+                if (context.addAudioClip)
+                    context.addAudioClip(trackIndex);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Import SMF as Clip...")) {
+                if (context.addSmfClip)
+                    context.addSmfClip(trackIndex);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Import SMF2Clip...")) {
+                if (context.addSmf2Clip)
+                    context.addSmf2Clip(trackIndex);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Clear All")) {
+                if (context.clearAllClips)
+                    context.clearAllClips(trackIndex);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();

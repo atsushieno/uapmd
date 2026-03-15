@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -17,12 +18,45 @@ struct ClipPreview {
         bool hasData{false};
     };
 
+    // Automation event attached to a note (per-note) or to the clip (channel-level).
+    struct AutomationEvent {
+        enum class Type : uint8_t {
+            PitchBend,          // Channel pitch bend (MIDI2: 32-bit)
+            PerNotePitchBend,   // Per-note pitch bend (MIDI2 PER_NOTE_PITCH_BEND)
+            ChannelPressure,    // Channel aftertouch (CAF, MIDI2: 32-bit)
+            PolyPressure,       // Poly aftertouch / per-note pressure (PAF, MIDI2: 32-bit)
+            ControlChange,      // CC — paramIndex = CC# (0-127); value: MIDI2 32-bit
+            RPN,                // Registered Controller — paramIndex = (MSB<<7)|LSB
+            NRPN,               // Assignable Controller — paramIndex = (MSB<<7)|LSB; maps to plugin param via index=MSB*128+LSB
+            PerNoteParameter,   // Per-note RCC / ACC (MIDI2)
+        };
+        double timeSeconds{0.0};    // Absolute time within the clip
+        double normalizedValue{0.0}; // Value in [0, 1]
+        Type type{Type::ControlChange};
+        uint8_t channel{0};
+        uint8_t noteNumber{0};  // For per-note event types
+        uint16_t paramIndex{0}; // CC number / RPN number / NRPN number
+        size_t rawEventIdx{SIZE_MAX}; // first-word index in RawMidiData::umpEvents (SIZE_MAX = new/synthetic)
+    };
+
     struct MidiNote {
         double startSeconds{0.0};
         double durationSeconds{0.0};
         uint8_t note{0};
-        uint8_t velocity{0};
+        float   velocity{0.0f};             // normalized 0.0–1.0 (MIDI1→/127, MIDI2→/65535)
         uint8_t channel{0};
+        bool    isMidi2{false};             // true if from a 2-word MIDI2 UMP
+        bool    deleted{false};             // marked for removal on next write-back
+        size_t  noteOnWordIdx{SIZE_MAX};    // index of NoteOn first word in RawMidiData
+        size_t  noteOffWordIdx{SIZE_MAX};   // index of NoteOff first word in RawMidiData
+    };
+
+    // Raw MIDI source data retained for piano-roll write-back.
+    struct RawMidiData {
+        std::vector<uapmd_ump_t> umpEvents;     // word-per-entry (same layout as MidiClipSourceNode)
+        std::vector<uint64_t>    tickTimestamps; // tick per word (original SMF ticks)
+        uint32_t tickResolution{480};            // PPQ from SMF header
+        double   clipTempo{120.0};               // original clip BPM
     };
 
     bool isMidiClip{false};
@@ -48,6 +82,8 @@ struct ClipPreview {
     };
     std::vector<TempoPoint> tempoPoints;
     std::vector<TimeSignaturePoint> timeSignaturePoints;
+    // Raw MIDI source data for piano-roll write-back (null for audio / master-meta clips).
+    std::shared_ptr<RawMidiData> rawMidiData;
 };
 
 std::shared_ptr<ClipPreview> createAudioClipPreview(

@@ -39,6 +39,10 @@ public:
         std::function<void(int32_t trackIndex)> refreshClips;
         std::function<void(int32_t trackIndex, const std::string& filepath)> addClip;
         std::function<void(int32_t trackIndex, const std::string& filepath, double positionSeconds)> addClipAtPosition;
+        std::function<void(int32_t trackIndex)> addAudioClip;
+        std::function<void(int32_t trackIndex)> addSmfClip;
+        std::function<void(int32_t trackIndex)> addSmf2Clip;
+        std::function<void(int32_t trackIndex, double positionSeconds)> addBlankMidiClipAtPosition;
         std::function<void(int32_t trackIndex, int32_t clipId)> removeClip;
         std::function<void(int32_t trackIndex)> clearAllClips;
         std::function<void(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position)> updateClip;
@@ -46,6 +50,7 @@ public:
         std::function<void(int32_t trackIndex, int32_t clipId)> changeClipFile;
         std::function<void(int32_t trackIndex, int32_t clipId, double seconds)> moveClipAbsolute;
         std::function<void(int32_t trackIndex, int32_t clipId)> showMidiClipDump;
+        std::function<void(int32_t trackIndex, int32_t clipId)> showPianoRoll;
         std::function<void()> showMasterTrackDump;
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;

@@ -10,6 +10,7 @@
 #include <uapmd/uapmd.hpp>
 #include "SequenceEditor.hpp"
 #include "MidiDumpWindow.hpp"
+#include "PianoRollEditor.hpp"
 #include "PluginSelector.hpp"
 #include "InstanceDetails.hpp"
 #include "../AppModel.hpp"
@@ -68,6 +69,9 @@ public:
     void showMidiClipDump(int32_t trackIndex, int32_t clipId);
     void showMasterMetaDump();
 
+    // Piano roll
+    void showPianoRoll(int32_t trackIndex, int32_t clipId);
+
     // Track import
     void importMidiTracksWithPicker();
     void applyAudioImportResult(uapmd::import::AudioImportResult result);
@@ -82,6 +86,7 @@ public:
 private:
     SequenceEditor sequenceEditor_;
     MidiDumpWindow midiDumpWindow_;
+    PianoRollEditor pianoRollEditor_;
     PluginSelector pluginSelector_;
     InstanceDetails instanceDetails_;
 
@@ -122,6 +127,22 @@ private:
     MidiDumpWindow::ClipDumpData buildMasterMetaDumpData();
     void importMidiTracks(const std::string& filepath);
     bool applyMidiClipEdits(const MidiDumpWindow::EditPayload& payload, std::string& error);
+
+    // Piano roll write-back
+    bool applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
+                              std::vector<uapmd_ump_t> newUmpEvents,
+                              std::vector<uint64_t>    newTickTimestamps,
+                              std::string&             error);
+
+    // Per-type clip import helpers (called from Clips... popup)
+    void addBlankMidi2ClipToTrack(int32_t trackIndex);
+    void addBlankMidi2ClipToTrackAtPosition(int32_t trackIndex, double positionSeconds);
+    void addAudioClipToTrack(int32_t trackIndex);
+    void addSmfClipToTrack(int32_t trackIndex);
+    void addSmf2ClipToTrack(int32_t trackIndex);
+
+    // Returns {combinedParamIndex=(MSB<<7)|LSB, displayName} for all plugin parameters on a track.
+    std::vector<std::pair<uint16_t,std::string>> getPluginParametersForTrack(int32_t trackIndex) const;
 
     // Build render context
     SequenceEditor::RenderContext buildRenderContext(float uiScale);

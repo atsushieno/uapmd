@@ -49,6 +49,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/TimelineEditor.cpp
         gui/ClipPreview.cpp
         gui/MidiDumpWindow.cpp
+        gui/PianoRollEditor.cpp
         gui/FontLoader.cpp
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
