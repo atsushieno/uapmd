@@ -1269,23 +1269,12 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
     // MIDI "switch" CCs — value is logically on/off (sustain, portamento, …)
     auto isSwitchCC = [](uint16_t p) { return p >= 64 && p <= 69; };
 
-    int pendingDelete     = -1;
-    int pendingDeleteClip = -1;
+    int pendingDelete      = -1;
+    int pendingDeleteClip  = -1;
+    int pendingInsertNote  = -1;
+    int pendingInsertClip  = -1;
 
-    // Add event button sits above the table so it's always visible without scrolling.
-    if (ImGui::Button(std::format("{} Add Event##pr_add", icons::Plus).c_str())) {
-        ClipPreview::AutomationEvent newEvt{};
-        newEvt.timeSeconds     = note.startSeconds;
-        newEvt.normalizedValue = 0.0;
-        newEvt.type            = ClipPreview::AutomationEvent::Type::ControlChange;
-        newEvt.channel         = note.channel;
-        newEvt.noteNumber      = note.note;
-        newEvt.rawEventIdx     = SIZE_MAX; // synthetic — no original raw event
-        note.automationEvents.push_back(std::move(newEvt));
-        state.dirtyAfterEdit   = true;
-    }
-
-    // Square delete button: button width = GetFrameHeight().
+    // Context-menu column: same square width as before.
     // Column must be wider by 2*CellPadding.x so the inner content area equals the button width.
     const float delBtnW = ImGui::GetFrameHeight();
     const float delColW = delBtnW + 2.0f * ImGui::GetStyle().CellPadding.x;
@@ -1312,11 +1301,25 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
             ImGui::PushID(ei);
             ImGui::TableNextRow();
 
-            // Delete button (col 0 — always visible, never clipped)
+            // Context-menu button (col 0 — always visible, never clipped)
             ImGui::TableSetColumnIndex(0);
-            if (ImGui::Button(icons::DeleteTrack,
-                    ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight())))
-                pendingDelete = ei;
+            {
+                const std::string menuId = std::format("RowActionsN##{}", ei);
+                if (ImGui::Button(std::format("{}##N{}", icons::ContextMenu, ei).c_str(),
+                        ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight())))
+                    ImGui::OpenPopup(menuId.c_str());
+                if (ImGui::BeginPopup(menuId.c_str())) {
+                    if (ImGui::MenuItem("Insert Event Before")) {
+                        pendingInsertNote = ei;
+                        ImGui::CloseCurrentPopup();
+                    }
+                    if (ImGui::MenuItem("Delete Event")) {
+                        pendingDelete = ei;
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::EndPopup();
+                }
+            }
 
             // Time
             ImGui::TableSetColumnIndex(1);
@@ -1452,11 +1455,25 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
             ImGui::TableNextRow();
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.85f, 1.0f, 1.0f));
 
-            // Delete button (col 0 — always visible, never clipped)
+            // Context-menu button (col 0 — always visible, never clipped)
             ImGui::TableSetColumnIndex(0);
-            if (ImGui::Button(icons::DeleteTrack,
-                    ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight())))
-                pendingDeleteClip = ci;
+            {
+                const std::string menuId = std::format("RowActionsC##{}", ci);
+                if (ImGui::Button(std::format("{}##C{}", icons::ContextMenu, ci).c_str(),
+                        ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight())))
+                    ImGui::OpenPopup(menuId.c_str());
+                if (ImGui::BeginPopup(menuId.c_str())) {
+                    if (ImGui::MenuItem("Insert Event Before")) {
+                        pendingInsertClip = ci;
+                        ImGui::CloseCurrentPopup();
+                    }
+                    if (ImGui::MenuItem("Delete Event")) {
+                        pendingDeleteClip = ci;
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::EndPopup();
+                }
+            }
 
             // Time
             ImGui::TableSetColumnIndex(1);
@@ -1584,10 +1601,39 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
         ImGui::EndTable();
     }
 
-    // Apply deferred row deletions (must be outside the table loop)
+    // Apply deferred row operations (must be outside the table loop)
+    if (pendingInsertNote >= 0 &&
+            pendingInsertNote <= static_cast<int>(note.automationEvents.size())) {
+        const auto& ref = note.automationEvents[pendingInsertNote];
+        ClipPreview::AutomationEvent newEvt{};
+        newEvt.timeSeconds     = ref.timeSeconds;
+        newEvt.normalizedValue = 0.0;
+        newEvt.type            = ClipPreview::AutomationEvent::Type::ControlChange;
+        newEvt.channel         = ref.channel;
+        newEvt.noteNumber      = ref.noteNumber;
+        newEvt.umpGroup        = ref.umpGroup;
+        newEvt.rawEventIdx     = SIZE_MAX; // synthetic — no original raw event
+        note.automationEvents.insert(
+            note.automationEvents.begin() + pendingInsertNote, std::move(newEvt));
+        state.dirtyAfterEdit = true;
+    }
     if (pendingDelete >= 0) {
         state.deletedRawIdxs.push_back(note.automationEvents[pendingDelete].rawEventIdx);
         note.automationEvents.erase(note.automationEvents.begin() + pendingDelete);
+        state.dirtyAfterEdit = true;
+    }
+    if (pendingInsertClip >= 0 &&
+            pendingInsertClip <= static_cast<int>(state.editClipEvents.size())) {
+        const auto& ref = state.editClipEvents[pendingInsertClip];
+        ClipPreview::AutomationEvent newEvt{};
+        newEvt.timeSeconds     = ref.timeSeconds;
+        newEvt.normalizedValue = 0.0;
+        newEvt.type            = ClipPreview::AutomationEvent::Type::ControlChange;
+        newEvt.channel         = ref.channel;
+        newEvt.umpGroup        = ref.umpGroup;
+        newEvt.rawEventIdx     = SIZE_MAX; // synthetic — no original raw event
+        state.editClipEvents.insert(
+            state.editClipEvents.begin() + pendingInsertClip, std::move(newEvt));
         state.dirtyAfterEdit = true;
     }
     if (pendingDeleteClip >= 0) {
