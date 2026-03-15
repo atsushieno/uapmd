@@ -36,6 +36,7 @@ public:
     struct PluginParamEntry {
         int32_t     instanceId{-1};
         std::string pluginName;
+        uint8_t     group{0};   // UMP group (0–15) assigned to this instance
         struct Param {
             uint16_t    nrpnIndex{0}; // (bank << 7) | lsb — 14-bit NRPN address
             std::string path;
@@ -147,11 +148,13 @@ private:
                                        std::vector<ClipPreview::AutomationEvent>& clipEvents);
 
     // Two-pane NRPN parameter picker popup (no trigger button — caller must call
-    // ImGui::OpenPopup(popupId) before this). Left pane shows plugin names; right
-    // pane is a scrollable 3-column table. Returns true when a parameter is picked.
+    // ImGui::OpenPopup(popupId) before this). Left pane shows plugin names (with
+    // group prefix "[N] Name"); right pane is a scrollable 3-column table.
+    // Returns true when a parameter is picked; umpGroup is set to the selected entry's group.
     // popupId must be unique per call site (scoped under the current ImGui ID stack).
     static bool renderNrpnPicker(const char* popupId,
                                   uint16_t& paramIndex,
+                                  uint8_t&  umpGroup,
                                   int& hoveredPlugin,
                                   const std::vector<PluginParamEntry>& entries);
 

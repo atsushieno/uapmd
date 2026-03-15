@@ -434,6 +434,56 @@ void InstanceDetails::render(const RenderContext& context) {
                     }
                 }
 
+                // ── UMP Group assignment ──────────────────────────────────────
+                ImGui::Separator();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted("UMP Group:");
+                ImGui::SameLine();
+                {
+                    auto& appModel = uapmd::AppModel::instance();
+                    const uint8_t currentGroup = appModel.getInstanceGroup(instanceId);
+
+                    // Collect groups used by other instances on the same track.
+                    std::unordered_set<uint8_t> usedGroups;
+                    auto* engine = appModel.sequencer().engine();
+                    int32_t trackIdx = engine->findTrackIndexForInstance(instanceId);
+                    uapmd::SequencerTrack* seqTrack = nullptr;
+                    if (trackIdx == uapmd::kMasterTrackIndex)
+                        seqTrack = engine->masterTrack();
+                    else if (trackIdx >= 0 && trackIdx < static_cast<int32_t>(engine->tracks().size()))
+                        seqTrack = engine->tracks()[trackIdx];
+                    if (seqTrack) {
+                        for (int32_t otherId : seqTrack->orderedInstanceIds())
+                            if (otherId != instanceId) {
+                                uint8_t g = seqTrack->getInstanceGroup(otherId);
+                                if (g <= 15) usedGroups.insert(g);
+                            }
+                    }
+
+                    // Show current group as preview label ("0xFF" means unassigned).
+                    char groupPreview[16];
+                    if (currentGroup <= 15)
+                        snprintf(groupPreview, sizeof(groupPreview), "%u", currentGroup);
+                    else
+                        snprintf(groupPreview, sizeof(groupPreview), "—");
+
+                    ImGui::SetNextItemWidth(80.0f);
+                    if (ImGui::BeginCombo("##UmpGroup", groupPreview)) {
+                        for (uint8_t g = 0; g < 16; ++g) {
+                            const bool inUse = usedGroups.count(g) > 0;
+                            if (inUse) ImGui::BeginDisabled();
+                            char itemLabel[8];
+                            snprintf(itemLabel, sizeof(itemLabel), "%u", g);
+                            if (ImGui::Selectable(itemLabel, g == currentGroup))
+                                appModel.setInstanceGroup(instanceId, g);
+                            if (inUse) ImGui::EndDisabled();
+                        }
+                        ImGui::EndCombo();
+                    }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("UMP group (0-15) used to target this plugin from MIDI clips.\nGreyed-out groups are already assigned to other plugins on this track.");
+                }
+
                 ImGui::Separator();
 
                 ImGui::Text("Parameters:");

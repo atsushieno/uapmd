@@ -61,6 +61,7 @@ namespace uapmd {
         std::string format{};
         std::string display_name{};
         std::string state_file{};
+        int32_t group_index{-1}; // UMP group assignment (0–15); -1 = auto-assign on load
     };
 
     class UapmdProjectPluginGraphData {

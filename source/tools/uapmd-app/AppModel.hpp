@@ -330,6 +330,11 @@ namespace uapmd {
         std::vector<uapmd::TimelineTrack*> getTimelineTracks();
         size_t trackCount() const { return sequencer_.engine()->tracks().size(); }
 
+        // UMP group assignment for plugin instances (delegates to SequencerEngine)
+        uint8_t getInstanceGroup(int32_t instanceId) const { return sequencer_.engine()->getInstanceGroup(instanceId); }
+        // Returns false if the group is already taken by another instance on the same track
+        bool setInstanceGroup(int32_t instanceId, uint8_t group) { return sequencer_.engine()->setInstanceGroup(instanceId, group); }
+
         // Track management
         int32_t addTrack();
         bool removeTrack(int32_t trackIndex);

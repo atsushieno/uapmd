@@ -40,6 +40,12 @@ namespace uapmd {
         virtual void addPluginToTrack(uapmd_track_index_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
         virtual bool removePluginInstance(int32_t instanceId) = 0;
         virtual bool removeTrack(uapmd_track_index_t trackIndex) = 0;
+
+        // UMP group assignment helpers — search all tracks for the given instanceId.
+        // getInstanceGroup returns 0xFF if the instance is not found.
+        // setInstanceGroup returns false if the requested group is already taken on that track.
+        virtual uint8_t getInstanceGroup(int32_t instanceId) const = 0;
+        virtual bool    setInstanceGroup(int32_t instanceId, uint8_t group) = 0;
         // Clean up empty tracks (must be called from non-audio thread)
         virtual void cleanupEmptyTracks() = 0;
 

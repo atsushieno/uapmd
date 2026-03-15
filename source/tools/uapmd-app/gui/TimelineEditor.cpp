@@ -1558,6 +1558,7 @@ TimelineEditor::getPluginParametersForTrack(int32_t trackIndex) const {
         PianoRollEditor::PluginParamEntry entry;
         entry.instanceId = instanceId;
         entry.pluginName = pal->displayName();
+        entry.group = tracksRef[trackIndex]->getInstanceGroup(instanceId);
         for (const auto& p : pal->parameterMetadataList()) {
             if (!p.automatable) continue;
             if (p.index >= 16384u) continue; // exceeds 14-bit addressable range

@@ -147,6 +147,8 @@ namespace uapmd {
                     node.display_name = std::string(pluginObj["display_name"].getString());
                 if (pluginObj.hasObjectMember("state_file"))
                     node.state_file = std::string(pluginObj["state_file"].getString());
+                if (pluginObj.hasObjectMember("group_index"))
+                    node.group_index = pluginObj["group_index"].getWithDefault<int32_t>(-1);
                 graph->addPlugin(std::move(node));
             }
         }

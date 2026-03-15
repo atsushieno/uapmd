@@ -35,6 +35,7 @@ struct ClipPreview {
         Type type{Type::ControlChange};
         uint8_t channel{0};
         uint8_t noteNumber{0};  // For per-note event types
+        uint8_t umpGroup{0};    // UMP group (0–15); for NRPN selects which plugin instance on the track
         uint16_t paramIndex{0}; // CC number / RPN number / NRPN number
         size_t rawEventIdx{SIZE_MAX}; // first-word index in RawMidiData::umpEvents (SIZE_MAX = new/synthetic)
     };

@@ -55,7 +55,7 @@ namespace uapmd {
         // When set, MidiClipSourceNodes with nrpnToParameterMapping==true route Assignable
         // Controller events to this callback instead of forwarding them as raw UMP.
         // Must be called from non-audio thread before playback begins.
-        using NrpnParameterCallback = std::function<void(uint32_t parameterIndex, uint32_t rawValue, bool isRelative)>;
+        using NrpnParameterCallback = std::function<void(uint8_t group, uint32_t parameterIndex, uint32_t rawValue, bool isRelative)>;
         void setNrpnParameterCallback(NrpnParameterCallback cb);
 
         // Configuration changes (call from non-audio thread only!)

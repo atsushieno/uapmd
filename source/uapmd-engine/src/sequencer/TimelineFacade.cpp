@@ -311,6 +311,7 @@ namespace uapmd {
                     std::string pluginId = plugin.plugin_id;
                     std::string stateFile = plugin.state_file;
                     const std::string pluginName = plugin.display_name;
+                    const int32_t groupIndex = plugin.group_index;
 
                     if (pluginId.empty()) {
                         auto fallbackId = catalogFindByName(format, pluginName);
@@ -342,19 +343,24 @@ namespace uapmd {
 
                     pending_plugins.fetch_add(1, std::memory_order_relaxed);
                     engine_.addPluginToTrack(trackIndex, format, pluginId,
-                        [this, resolvedState, &pending_plugins, pluginLabel, pluginId, format](int32_t instanceId, int32_t, std::string error) {
+                        [this, resolvedState, groupIndex, &pending_plugins, pluginLabel, pluginId, format](int32_t instanceId, int32_t, std::string error) {
                             if (!error.empty()) {
                                 std::cerr << "Warning: Failed to instantiate plugin " << pluginLabel
                                           << " (" << format << ", ID=" << pluginId << "): " << error << std::endl;
-                            } else if (instanceId >= 0 && !resolvedState.empty()) {
-                                auto* instance = engine_.getPluginInstance(instanceId);
-                                if (instance) {
-                                    std::ifstream f(resolvedState, std::ios::binary);
-                                    if (f) {
-                                        std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), {});
-                                        instance->loadState(data);
+                            } else if (instanceId >= 0) {
+                                if (!resolvedState.empty()) {
+                                    auto* instance = engine_.getPluginInstance(instanceId);
+                                    if (instance) {
+                                        std::ifstream f(resolvedState, std::ios::binary);
+                                        if (f) {
+                                            std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), {});
+                                            instance->loadState(data);
+                                        }
                                     }
                                 }
+                                // Restore saved group assignment (overrides auto-assigned group)
+                                if (groupIndex >= 0 && groupIndex <= 15)
+                                    engine_.setInstanceGroup(instanceId, static_cast<uint8_t>(groupIndex));
                             }
                             pending_plugins.fetch_sub(1, std::memory_order_release);
                         });
@@ -712,7 +718,7 @@ namespace uapmd {
             const int32_t trackIndex = static_cast<int32_t>(timeline_tracks_.size());
 
             newTrack->setNrpnParameterCallback(
-                [this, trackIndex](uint32_t paramIdx, uint32_t rawValue, bool isRelative) {
+                [this, trackIndex](uint8_t group, uint32_t paramIdx, uint32_t rawValue, bool isRelative) {
                     auto& seqTracks = engine_.tracks();
                     if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= seqTracks.size())
                         return;
@@ -720,6 +726,9 @@ namespace uapmd {
                     if (!seqTrack)
                         return;
                     for (int32_t instanceId : seqTrack->orderedInstanceIds()) {
+                        // Only target the instance whose UMP group matches the event.
+                        if (seqTrack->getInstanceGroup(instanceId) != group)
+                            continue;
                         double value;
                         if (isRelative) {
                             auto* inst = engine_.getPluginInstance(instanceId);

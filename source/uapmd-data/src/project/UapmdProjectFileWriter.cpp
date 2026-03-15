@@ -89,6 +89,7 @@ namespace uapmd {
                 pluginObj.addMember("format", plugin.format);
                 pluginObj.addMember("display_name", plugin.display_name);
                 pluginObj.addMember("state_file", plugin.state_file);
+                pluginObj.addMember("group_index", static_cast<int64_t>(plugin.group_index));
                 pluginsArray.addArrayElement(pluginObj);
             }
             obj.addMember("plugins", pluginsArray);

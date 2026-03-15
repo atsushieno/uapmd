@@ -87,6 +87,37 @@ namespace uapmd {
         void addPluginToTrack(int32_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, int32_t trackIndex, std::string error)> callback) override;
         bool removePluginInstance(int32_t instanceId) override;
 
+        uint8_t getInstanceGroup(int32_t instanceId) const override {
+            for (const auto& t : tracks_)
+                if (t) {
+                    auto g = t->getInstanceGroup(instanceId);
+                    if (g != 0xFFu) return g;
+                }
+            if (master_track_)
+                return master_track_->getInstanceGroup(instanceId);
+            return 0xFFu;
+        }
+
+        bool setInstanceGroup(int32_t instanceId, uint8_t group) override {
+            // Find which track owns this instance and set the group there.
+            auto setOnTrack = [&](SequencerTrack* t) -> bool {
+                if (!t) return false;
+                for (int32_t id : t->orderedInstanceIds()) {
+                    if (id != instanceId) continue;
+                    // Check for conflicts (another instance already using this group).
+                    for (int32_t otherId : t->orderedInstanceIds())
+                        if (otherId != instanceId && t->getInstanceGroup(otherId) == group)
+                            return false; // conflict
+                    t->setInstanceGroup(instanceId, group);
+                    return true;
+                }
+                return false;
+            };
+            for (const auto& t : tracks_)
+                if (setOnTrack(t.get())) return true;
+            return setOnTrack(master_track_.get());
+        }
+
         void setAudioPreprocessCallback(AudioPreprocessCallback callback) override {
             audio_preprocess_callback_ = std::move(callback);
         }
@@ -585,6 +616,11 @@ namespace uapmd {
             }
 
             track->orderedInstanceIds().push_back(instanceId);
+
+            // Auto-assign the lowest available UMP group (0–15) on this track.
+            uint8_t autoGroup = track->findAvailableGroup();
+            if (autoGroup <= 15)
+                track->setInstanceGroup(instanceId, autoGroup);
 
             // Function block setup
             configureTrackRouting(track);

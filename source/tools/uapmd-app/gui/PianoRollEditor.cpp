@@ -222,6 +222,7 @@ void PianoRollEditor::parseAutomationFromRaw(
                 evt.normalizedValue = ump.getMidi2NrpnData() / static_cast<double>(0xFFFFFFFFu);
                 evt.type            = ClipPreview::AutomationEvent::Type::NRPN;
                 evt.channel         = channel;
+                evt.umpGroup        = group;
                 evt.paramIndex      = static_cast<uint16_t>((ump.getMidi2NrpnMsb() << 7) | ump.getMidi2NrpnLsb());
                 evt.rawEventIdx     = i;
                 clipEvents.push_back(evt);
@@ -521,7 +522,7 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
                 const auto msb = static_cast<uint8_t>(ae.paramIndex >> 7);
                 const auto lsb = static_cast<uint8_t>(ae.paramIndex & 0x7Fu);
                 const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-                const uint64_t u2 = umppi::UmpFactory::midi2NRPN(grp, ch, msb, lsb, d32);
+                const uint64_t u2 = umppi::UmpFactory::midi2NRPN(ae.umpGroup, ch, msb, lsb, d32);
                 newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
                 newTicks.push_back(aeTick);
                 newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
@@ -598,7 +599,7 @@ void PianoRollEditor::applyNoteEdits(WindowState& state, const RenderContext& ct
             const auto msb = static_cast<uint8_t>(ae.paramIndex >> 7);
             const auto lsb = static_cast<uint8_t>(ae.paramIndex & 0x7Fu);
             const auto d32 = static_cast<uint32_t>(std::round(v * 4294967295.0));
-            const uint64_t u2 = umppi::UmpFactory::midi2NRPN(defaultGroup, ae.channel, msb, lsb, d32);
+            const uint64_t u2 = umppi::UmpFactory::midi2NRPN(ae.umpGroup, ae.channel, msb, lsb, d32);
             newEvents.push_back(static_cast<uint32_t>(u2 >> 32));
             newTicks.push_back(aeTick);
             newEvents.push_back(static_cast<uint32_t>(u2 & 0xFFFFFFFFu));
@@ -1072,6 +1073,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
 bool PianoRollEditor::renderNrpnPicker(
     const char* popupId,
     uint16_t& paramIndex,
+    uint8_t&  umpGroup,
     int& hoveredPlugin,
     const std::vector<PluginParamEntry>& entries)
 {
@@ -1090,12 +1092,16 @@ bool PianoRollEditor::renderNrpnPicker(
 
     const float leftW = 160.0f;
 
-    // ── Left pane: plugin list ───────────────────────────────────────────────
+    // ── Left pane: plugin list (labelled "[group] PluginName") ───────────────
     ImGui::BeginChild("##nrpn_plugins", ImVec2(leftW, 0.0f), true,
                        ImGuiWindowFlags_None);
     for (int pi = 0; pi < static_cast<int>(entries.size()); ++pi) {
+        char label[256];
+        snprintf(label, sizeof(label), "[%u] %s",
+                 static_cast<unsigned>(entries[pi].group),
+                 entries[pi].pluginName.c_str());
         const bool sel = (pi == hoveredPlugin);
-        if (ImGui::Selectable(entries[pi].pluginName.c_str(), sel))
+        if (ImGui::Selectable(label, sel))
             hoveredPlugin = pi;
         if (ImGui::IsItemHovered())
             hoveredPlugin = pi;
@@ -1130,10 +1136,11 @@ bool PianoRollEditor::renderNrpnPicker(
                 ImGui::TableSetColumnIndex(0);
                 char idxBuf[16];
                 snprintf(idxBuf, sizeof(idxBuf), "%u", static_cast<unsigned>(p.nrpnIndex));
-                const bool rowSel = (p.nrpnIndex == paramIndex);
+                const bool rowSel = (p.nrpnIndex == paramIndex && entry.group == umpGroup);
                 if (ImGui::Selectable(idxBuf, rowSel,
                         ImGuiSelectableFlags_SpanAllColumns)) {
                     paramIndex = p.nrpnIndex;
+                    umpGroup   = entry.group;
                     changed = true;
                     ImGui::CloseCurrentPopup();
                 }
@@ -1348,14 +1355,21 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 if (ae.type == T::NRPN && ctx.getTrackPluginParameters) {
                     nrpnEntries = ctx.getTrackPluginParameters(state.trackIndex);
                     for (const auto& entry : nrpnEntries)
-                        for (const auto& p : entry.params)
-                            if (p.nrpnIndex == ae.paramIndex) { boundName = p.name.c_str(); break; }
+                        if (entry.group == ae.umpGroup)
+                            for (const auto& p : entry.params)
+                                if (p.nrpnIndex == ae.paramIndex) { boundName = p.name.c_str(); break; }
                 }
 
-                // Slider label: bound param name (% escaped) or "MSB:x / LSB:y"
+                // Slider label: bound param name (% escaped, with group prefix when
+                // multiple plugin entries exist to help disambiguation) or "MSB:x / LSB:y"
                 char sliderLabel[256] = {};
                 if (boundName) {
                     char* dst = sliderLabel;
+                    // Prefix "[G:N] " when ≥2 plugins share the track
+                    if (nrpnEntries.size() >= 2) {
+                        int prefixLen = snprintf(dst, sizeof(sliderLabel), "[G:%u] ", ae.umpGroup);
+                        if (prefixLen > 0) dst += prefixLen;
+                    }
                     const char* src = boundName;
                     while (*src && dst < sliderLabel + sizeof(sliderLabel) - 2) {
                         if (*src == '%') *dst++ = '%';
@@ -1397,7 +1411,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                     ImGui::SameLine();
                     if (ImGui::ArrowButton("##nrpnpick", ImGuiDir_Down))
                         ImGui::OpenPopup("##nrpnpicker");
-                    if (renderNrpnPicker("##nrpnpicker", ae.paramIndex,
+                    if (renderNrpnPicker("##nrpnpicker", ae.paramIndex, ae.umpGroup,
                             state.nrpnPickerHoveredPlugin, nrpnEntries))
                         state.dirtyAfterEdit = true;
                 }
@@ -1480,14 +1494,21 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 if (ae.type == T::NRPN && ctx.getTrackPluginParameters) {
                     nrpnEntries = ctx.getTrackPluginParameters(state.trackIndex);
                     for (const auto& entry : nrpnEntries)
-                        for (const auto& p : entry.params)
-                            if (p.nrpnIndex == ae.paramIndex) { boundName = p.name.c_str(); break; }
+                        if (entry.group == ae.umpGroup)
+                            for (const auto& p : entry.params)
+                                if (p.nrpnIndex == ae.paramIndex) { boundName = p.name.c_str(); break; }
                 }
 
-                // Slider label: bound param name (% escaped) or "MSB:x / LSB:y"
+                // Slider label: bound param name (% escaped, with group prefix when
+                // multiple plugin entries exist to help disambiguation) or "MSB:x / LSB:y"
                 char sliderLabel[256] = {};
                 if (boundName) {
                     char* dst = sliderLabel;
+                    // Prefix "[G:N] " when ≥2 plugins share the track
+                    if (nrpnEntries.size() >= 2) {
+                        int prefixLen = snprintf(dst, sizeof(sliderLabel), "[G:%u] ", ae.umpGroup);
+                        if (prefixLen > 0) dst += prefixLen;
+                    }
                     const char* src = boundName;
                     while (*src && dst < sliderLabel + sizeof(sliderLabel) - 2) {
                         if (*src == '%') *dst++ = '%';
@@ -1529,7 +1550,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                     ImGui::SameLine();
                     if (ImGui::ArrowButton("##nrpnpick", ImGuiDir_Down))
                         ImGui::OpenPopup("##nrpnpicker");
-                    if (renderNrpnPicker("##nrpnpicker", ae.paramIndex,
+                    if (renderNrpnPicker("##nrpnpicker", ae.paramIndex, ae.umpGroup,
                             state.nrpnPickerHoveredPlugin, nrpnEntries))
                         state.dirtyAfterEdit = true;
                 }

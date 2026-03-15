@@ -150,9 +150,10 @@ namespace uapmd {
                     if (statusCode == umppi::MidiChannelStatus::NRPN ||
                         statusCode == umppi::MidiChannelStatus::RELATIVE_NRPN) {
                         const bool isRelative = (statusCode == umppi::MidiChannelStatus::RELATIVE_NRPN);
+                        const uint8_t  group = ump.getGroup();
                         const uint32_t parameterIndex =
                             ump.getMidi2NrpnMsb() * 0x80u + ump.getMidi2NrpnLsb();
-                        nrpn_intercept_callback_(parameterIndex, ump.getMidi2NrpnData(), isRelative);
+                        nrpn_intercept_callback_(group, parameterIndex, ump.getMidi2NrpnData(), isRelative);
                         intercepted = true;
                     }
                 }

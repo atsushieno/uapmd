@@ -57,7 +57,7 @@ namespace uapmd {
         // NRPN intercept: when set, Assignable Controller (NRPN) events in this clip
         // are routed to the callback instead of being forwarded as raw UMP.
         // Call this from non-audio thread before playback begins.
-        using NrpnInterceptCallback = std::function<void(uint32_t parameterIndex, uint32_t rawValue, bool isRelative)>;
+        using NrpnInterceptCallback = std::function<void(uint8_t group, uint32_t parameterIndex, uint32_t rawValue, bool isRelative)>;
         void setNrpnInterceptCallback(NrpnInterceptCallback cb) { nrpn_intercept_callback_ = std::move(cb); }
 
         // Access to clip data for UI/dump purposes
