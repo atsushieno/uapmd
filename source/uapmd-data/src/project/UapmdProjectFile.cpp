@@ -11,6 +11,7 @@ namespace uapmd {
         std::string mime_type_{};
         std::string clip_type_{"audio"};  // Default to audio for backward compatibility
         uint32_t tick_resolution_{480};
+        bool nrpn_to_parameter_mapping_{false};
 
     public:
         UapmdProjectClipDataImpl() = default;
@@ -28,6 +29,9 @@ namespace uapmd {
 
         uint32_t tickResolution() override { return tick_resolution_; }
         void tickResolution(uint32_t ticks) override { tick_resolution_ = ticks; }
+
+        bool nrpnToParameterMapping() override { return nrpn_to_parameter_mapping_; }
+        void nrpnToParameterMapping(bool enabled) override { nrpn_to_parameter_mapping_ = enabled; }
 
     };
 

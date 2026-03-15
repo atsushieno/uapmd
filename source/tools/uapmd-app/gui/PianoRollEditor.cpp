@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <format>
 #include <unordered_map>
 
@@ -1066,6 +1067,92 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
     dl->PopClipRect();
 }
 
+// ── NRPN parameter picker popup ───────────────────────────────────────────────
+
+bool PianoRollEditor::renderNrpnPicker(
+    const char* popupId,
+    uint16_t& paramIndex,
+    int& hoveredPlugin,
+    const std::vector<PluginParamEntry>& entries)
+{
+    if (entries.empty())
+        return false;
+
+    bool changed = false;
+
+    ImGui::SetNextWindowSize(ImVec2(560.0f, 320.0f), ImGuiCond_Always);
+    if (!ImGui::BeginPopup(popupId))
+        return false;
+
+    // Clamp hoveredPlugin to valid range (entries may have changed since last open).
+    if (hoveredPlugin < 0 || hoveredPlugin >= static_cast<int>(entries.size()))
+        hoveredPlugin = 0;
+
+    const float leftW = 160.0f;
+
+    // ── Left pane: plugin list ───────────────────────────────────────────────
+    ImGui::BeginChild("##nrpn_plugins", ImVec2(leftW, 0.0f), true,
+                       ImGuiWindowFlags_None);
+    for (int pi = 0; pi < static_cast<int>(entries.size()); ++pi) {
+        const bool sel = (pi == hoveredPlugin);
+        if (ImGui::Selectable(entries[pi].pluginName.c_str(), sel))
+            hoveredPlugin = pi;
+        if (ImGui::IsItemHovered())
+            hoveredPlugin = pi;
+    }
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    // ── Right pane: parameter table ──────────────────────────────────────────
+    ImGui::BeginChild("##nrpn_params", ImVec2(0.0f, 0.0f), true,
+                       ImGuiWindowFlags_None);
+    const auto& entry = entries[hoveredPlugin];
+
+    if (ImGui::BeginTable("##nrpn_pt", 3,
+            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+            ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit,
+            ImGui::GetContentRegionAvail()))
+    {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed, 45.0f);
+        ImGui::TableSetupColumn("Path",  ImGuiTableColumnFlags_WidthStretch, 0.4f);
+        ImGui::TableSetupColumn("Name",  ImGuiTableColumnFlags_WidthStretch, 0.6f);
+        ImGui::TableHeadersRow();
+
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(entry.params.size()));
+        while (clipper.Step()) {
+            for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+                const auto& p = entry.params[row];
+                ImGui::PushID(row);
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                char idxBuf[16];
+                snprintf(idxBuf, sizeof(idxBuf), "%u", static_cast<unsigned>(p.nrpnIndex));
+                const bool rowSel = (p.nrpnIndex == paramIndex);
+                if (ImGui::Selectable(idxBuf, rowSel,
+                        ImGuiSelectableFlags_SpanAllColumns)) {
+                    paramIndex = p.nrpnIndex;
+                    changed = true;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(p.path.c_str());
+                ImGui::TableSetColumnIndex(2);
+                ImGui::TextUnformatted(p.name.c_str());
+                ImGui::PopID();
+            }
+        }
+        clipper.End();
+        ImGui::EndTable();
+    }
+    ImGui::EndChild();
+
+    ImGui::EndPopup();
+    return changed;
+}
+
 // ── automation event list ─────────────────────────────────────────────────────
 
 void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderContext& ctx) const {
@@ -1255,43 +1342,64 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 if (ImGui::IsItemDeactivatedAfterEdit())
                     state.dirtyAfterEdit = true;
             } else if (ae.type == T::RPN || ae.type == T::NRPN) {
-                int msb = ae.paramIndex >> 7;
-                int lsb = ae.paramIndex & 0x7F;
-                ImGui::SetNextItemWidth(50.0f * uiScale);
-                if (ImGui::InputInt("##msb", &msb, 0, 0)) {
-                    msb = std::clamp(msb, 0, 127);
-                    ae.paramIndex = static_cast<uint16_t>((msb << 7) | lsb);
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit()) state.dirtyAfterEdit = true;
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(50.0f * uiScale);
-                if (ImGui::InputInt("##lsb", &lsb, 0, 0)) {
-                    lsb = std::clamp(lsb, 0, 127);
-                    ae.paramIndex = static_cast<uint16_t>((msb << 7) | lsb);
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit()) state.dirtyAfterEdit = true;
+                // For NRPN, fetch plugin entries for bound-name display and picker.
+                std::vector<PluginParamEntry> nrpnEntries;
+                const char* boundName = nullptr;
                 if (ae.type == T::NRPN && ctx.getTrackPluginParameters) {
-                    const auto& params = ctx.getTrackPluginParameters(state.trackIndex);
-                    if (!params.empty()) {
-                        ImGui::SameLine();
-                        const uint16_t combined = ae.paramIndex;
-                        int selIdx = -1;
-                        for (int pi = 0; pi < static_cast<int>(params.size()); ++pi)
-                            if (params[static_cast<size_t>(pi)].first == combined) { selIdx = pi; break; }
-                        const char* preview = selIdx >= 0 ? params[static_cast<size_t>(selIdx)].second.c_str() : "—";
-                        ImGui::SetNextItemWidth(-1.0f);
-                        if (ImGui::BeginCombo("##nrpnparam", preview)) {
-                            for (int pi = 0; pi < static_cast<int>(params.size()); ++pi) {
-                                const bool sel = (pi == selIdx);
-                                if (ImGui::Selectable(params[static_cast<size_t>(pi)].second.c_str(), sel)) {
-                                    ae.paramIndex = params[static_cast<size_t>(pi)].first;
-                                    state.dirtyAfterEdit = true;
-                                }
-                                if (sel) ImGui::SetItemDefaultFocus();
-                            }
-                            ImGui::EndCombo();
-                        }
+                    nrpnEntries = ctx.getTrackPluginParameters(state.trackIndex);
+                    for (const auto& entry : nrpnEntries)
+                        for (const auto& p : entry.params)
+                            if (p.nrpnIndex == ae.paramIndex) { boundName = p.name.c_str(); break; }
+                }
+
+                // Slider label: bound param name (% escaped) or "MSB:x / LSB:y"
+                char sliderLabel[256] = {};
+                if (boundName) {
+                    char* dst = sliderLabel;
+                    const char* src = boundName;
+                    while (*src && dst < sliderLabel + sizeof(sliderLabel) - 2) {
+                        if (*src == '%') *dst++ = '%';
+                        *dst++ = *src++;
                     }
+                } else {
+                    snprintf(sliderLabel, sizeof(sliderLabel), "MSB:%d / LSB:%d",
+                             ae.paramIndex >> 7, ae.paramIndex & 0x7F);
+                }
+
+                const bool hasPickerBtn = !nrpnEntries.empty();
+                const float frameH  = ImGui::GetFrameHeight();
+                const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                const float nBtns   = hasPickerBtn ? 3.0f : 2.0f;
+                const float sliderW = std::max(
+                    ImGui::GetContentRegionAvail().x - nBtns * (frameH + spacing),
+                    20.0f * uiScale);
+
+                // [−] decrement
+                if (ImGui::Button("-##dec", ImVec2(frameH, frameH)))
+                    if (ae.paramIndex > 0) { --ae.paramIndex; state.dirtyAfterEdit = true; }
+                ImGui::SameLine();
+
+                // Slider (0 – 16383 combined NRPN index)
+                int combined = static_cast<int>(ae.paramIndex);
+                ImGui::SetNextItemWidth(sliderW);
+                if (ImGui::SliderInt("##nrpn", &combined, 0, 16383, sliderLabel)) {
+                    ae.paramIndex = static_cast<uint16_t>(combined);
+                    state.dirtyAfterEdit = true;
+                }
+                ImGui::SameLine();
+
+                // [+] increment
+                if (ImGui::Button("+##inc", ImVec2(frameH, frameH)))
+                    if (ae.paramIndex < 16383) { ++ae.paramIndex; state.dirtyAfterEdit = true; }
+
+                // [▼] picker arrow (NRPN only, when entries are available)
+                if (hasPickerBtn) {
+                    ImGui::SameLine();
+                    if (ImGui::ArrowButton("##nrpnpick", ImGuiDir_Down))
+                        ImGui::OpenPopup("##nrpnpicker");
+                    if (renderNrpnPicker("##nrpnpicker", ae.paramIndex,
+                            state.nrpnPickerHoveredPlugin, nrpnEntries))
+                        state.dirtyAfterEdit = true;
                 }
             } else {
                 ImGui::TextDisabled("—");
@@ -1366,43 +1474,64 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 if (ImGui::IsItemDeactivatedAfterEdit())
                     state.dirtyAfterEdit = true;
             } else if (ae.type == T::RPN || ae.type == T::NRPN) {
-                int msb = ae.paramIndex >> 7;
-                int lsb = ae.paramIndex & 0x7F;
-                ImGui::SetNextItemWidth(50.0f * uiScale);
-                if (ImGui::InputInt("##msb", &msb, 0, 0)) {
-                    msb = std::clamp(msb, 0, 127);
-                    ae.paramIndex = static_cast<uint16_t>((msb << 7) | lsb);
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit()) state.dirtyAfterEdit = true;
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(50.0f * uiScale);
-                if (ImGui::InputInt("##lsb", &lsb, 0, 0)) {
-                    lsb = std::clamp(lsb, 0, 127);
-                    ae.paramIndex = static_cast<uint16_t>((msb << 7) | lsb);
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit()) state.dirtyAfterEdit = true;
+                // For NRPN, fetch plugin entries for bound-name display and picker.
+                std::vector<PluginParamEntry> nrpnEntries;
+                const char* boundName = nullptr;
                 if (ae.type == T::NRPN && ctx.getTrackPluginParameters) {
-                    const auto& params = ctx.getTrackPluginParameters(state.trackIndex);
-                    if (!params.empty()) {
-                        ImGui::SameLine();
-                        const uint16_t combined = ae.paramIndex;
-                        int selIdx = -1;
-                        for (int pi = 0; pi < static_cast<int>(params.size()); ++pi)
-                            if (params[static_cast<size_t>(pi)].first == combined) { selIdx = pi; break; }
-                        const char* preview = selIdx >= 0 ? params[static_cast<size_t>(selIdx)].second.c_str() : "—";
-                        ImGui::SetNextItemWidth(-1.0f);
-                        if (ImGui::BeginCombo("##nrpnparam", preview)) {
-                            for (int pi = 0; pi < static_cast<int>(params.size()); ++pi) {
-                                const bool sel = (pi == selIdx);
-                                if (ImGui::Selectable(params[static_cast<size_t>(pi)].second.c_str(), sel)) {
-                                    ae.paramIndex = params[static_cast<size_t>(pi)].first;
-                                    state.dirtyAfterEdit = true;
-                                }
-                                if (sel) ImGui::SetItemDefaultFocus();
-                            }
-                            ImGui::EndCombo();
-                        }
+                    nrpnEntries = ctx.getTrackPluginParameters(state.trackIndex);
+                    for (const auto& entry : nrpnEntries)
+                        for (const auto& p : entry.params)
+                            if (p.nrpnIndex == ae.paramIndex) { boundName = p.name.c_str(); break; }
+                }
+
+                // Slider label: bound param name (% escaped) or "MSB:x / LSB:y"
+                char sliderLabel[256] = {};
+                if (boundName) {
+                    char* dst = sliderLabel;
+                    const char* src = boundName;
+                    while (*src && dst < sliderLabel + sizeof(sliderLabel) - 2) {
+                        if (*src == '%') *dst++ = '%';
+                        *dst++ = *src++;
                     }
+                } else {
+                    snprintf(sliderLabel, sizeof(sliderLabel), "MSB:%d / LSB:%d",
+                             ae.paramIndex >> 7, ae.paramIndex & 0x7F);
+                }
+
+                const bool hasPickerBtn = !nrpnEntries.empty();
+                const float frameH  = ImGui::GetFrameHeight();
+                const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                const float nBtns   = hasPickerBtn ? 3.0f : 2.0f;
+                const float sliderW = std::max(
+                    ImGui::GetContentRegionAvail().x - nBtns * (frameH + spacing),
+                    20.0f * uiScale);
+
+                // [−] decrement
+                if (ImGui::Button("-##dec", ImVec2(frameH, frameH)))
+                    if (ae.paramIndex > 0) { --ae.paramIndex; state.dirtyAfterEdit = true; }
+                ImGui::SameLine();
+
+                // Slider (0 – 16383 combined NRPN index)
+                int combined = static_cast<int>(ae.paramIndex);
+                ImGui::SetNextItemWidth(sliderW);
+                if (ImGui::SliderInt("##nrpn", &combined, 0, 16383, sliderLabel)) {
+                    ae.paramIndex = static_cast<uint16_t>(combined);
+                    state.dirtyAfterEdit = true;
+                }
+                ImGui::SameLine();
+
+                // [+] increment
+                if (ImGui::Button("+##inc", ImVec2(frameH, frameH)))
+                    if (ae.paramIndex < 16383) { ++ae.paramIndex; state.dirtyAfterEdit = true; }
+
+                // [▼] picker arrow (NRPN only, when entries are available)
+                if (hasPickerBtn) {
+                    ImGui::SameLine();
+                    if (ImGui::ArrowButton("##nrpnpick", ImGuiDir_Down))
+                        ImGui::OpenPopup("##nrpnpicker");
+                    if (renderNrpnPicker("##nrpnpicker", ae.paramIndex,
+                            state.nrpnPickerHoveredPlugin, nrpnEntries))
+                        state.dirtyAfterEdit = true;
                 }
             } else {
                 ImGui::TextDisabled("—");

@@ -120,6 +120,8 @@ namespace uapmd {
         if (clipObj.hasObjectMember("tick_resolution")) {
             clip->tickResolution(clipObj["tick_resolution"].getWithDefault<uint32_t>(480));
         }
+        if (clipObj.hasObjectMember("nrpn_to_parameter_mapping"))
+            clip->nrpnToParameterMapping(clipObj["nrpn_to_parameter_mapping"].getWithDefault<bool>(false));
 
         return clip;
     }

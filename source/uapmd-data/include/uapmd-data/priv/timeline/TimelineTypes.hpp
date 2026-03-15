@@ -111,6 +111,10 @@ namespace uapmd {
         ClipType clipType{ClipType::Audio};
         uint32_t tickResolution{480};       // Ticks per quarter note from SMF (only valid for MIDI clips)
         double clipTempo{120.0};            // Original tempo for time-stretching (only valid for MIDI clips)
+        // When true, MIDI2 Assignable Controller (NRPN) messages in this clip are intercepted
+        // at playback time and remapped to plugin parameter changes instead of being forwarded
+        // as raw UMP to the plugin.  Plugins that consume NRPNs natively should leave this false.
+        bool nrpnToParameterMapping{false};
 
         // Anchor support (NEW)
         int32_t anchorClipId{-1};          // -1 = track anchor (absolute position), >= 0 = clip ID

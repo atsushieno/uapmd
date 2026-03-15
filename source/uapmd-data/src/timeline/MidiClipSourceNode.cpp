@@ -138,10 +138,27 @@ namespace uapmd {
             if (eventIdx + wordsNeeded > ump_events_.size())
                 break;
 
-            // Within window - emit the complete multi-word message
+            // Within window - emit or intercept the complete multi-word message
             if (eventSamples >= static_cast<uint64_t>(currentPos)) {
                 uint32_t frameOffset = static_cast<uint32_t>(eventSamples - currentPos);
-                appendUmpToEventSequence(eventOut, &ump_events_[eventIdx], wordsNeeded, frameOffset);
+
+                // NRPN intercept: MIDI2 channel voice messages (messageType==4) with 2 words
+                bool intercepted = false;
+                if (nrpn_intercept_callback_ && messageType == 4 && wordsNeeded >= 2) {
+                    umppi::Ump ump(ump_events_[eventIdx], ump_events_[eventIdx + 1], 0, 0);
+                    auto statusCode = static_cast<uint8_t>(ump.getStatusCode());
+                    if (statusCode == umppi::MidiChannelStatus::NRPN ||
+                        statusCode == umppi::MidiChannelStatus::RELATIVE_NRPN) {
+                        const bool isRelative = (statusCode == umppi::MidiChannelStatus::RELATIVE_NRPN);
+                        const uint32_t parameterIndex =
+                            ump.getMidi2NrpnMsb() * 0x80u + ump.getMidi2NrpnLsb();
+                        nrpn_intercept_callback_(parameterIndex, ump.getMidi2NrpnData(), isRelative);
+                        intercepted = true;
+                    }
+                }
+
+                if (!intercepted)
+                    appendUmpToEventSequence(eventOut, &ump_events_[eventIdx], wordsNeeded, frameOffset);
             }
 
             eventIdx += wordsNeeded;

@@ -34,6 +34,12 @@ namespace uapmd {
         if (!sourceNode)
             return -1;
 
+        // Apply NRPN intercept callback if the clip opts in
+        if (clip.nrpnToParameterMapping && nrpn_parameter_callback_) {
+            if (auto* clipNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get()))
+                clipNode->setNrpnInterceptCallback(nrpn_parameter_callback_);
+        }
+
         auto sharedNode = std::shared_ptr<MidiSourceNode>(std::move(sourceNode));
 
         {
@@ -44,6 +50,10 @@ namespace uapmd {
 
         // Add the clip to the clip manager
         return clip_manager_.addClip(clip);
+    }
+
+    void TimelineTrack::setNrpnParameterCallback(NrpnParameterCallback cb) {
+        nrpn_parameter_callback_ = std::move(cb);
     }
 
     bool TimelineTrack::removeClip(int32_t clipId) {

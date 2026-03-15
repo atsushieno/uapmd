@@ -106,7 +106,8 @@ namespace uapmd {
         ClipAddResult addMidiClipToTrack(
             int32_t trackIndex,
             const TimelinePosition& position,
-            const std::string& filepath) override
+            const std::string& filepath,
+            bool nrpnToParameterMapping = false) override
         {
             ClipAddResult result;
             if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
@@ -148,6 +149,7 @@ namespace uapmd {
             clip.anchorClipId = -1;
             clip.anchorOrigin = AnchorOrigin::Start;
             clip.anchorOffset = position;
+            clip.nrpnToParameterMapping = nrpnToParameterMapping;
 
             int32_t clipId = timeline_tracks_[static_cast<size_t>(trackIndex)]->addClip(clip, std::move(sourceNode));
             if (clipId >= 0) {
@@ -169,7 +171,8 @@ namespace uapmd {
             double clipTempo,
             std::vector<MidiTempoChange> tempoChanges,
             std::vector<MidiTimeSignatureChange> timeSignatureChanges,
-            const std::string& clipName) override
+            const std::string& clipName,
+            bool nrpnToParameterMapping) override
         {
             ClipAddResult result;
             if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
@@ -205,6 +208,7 @@ namespace uapmd {
             clip.anchorClipId = -1;
             clip.anchorOrigin = AnchorOrigin::Start;
             clip.anchorOffset = position;
+            clip.nrpnToParameterMapping = nrpnToParameterMapping;
 
             int32_t clipId = timeline_tracks_[static_cast<size_t>(trackIndex)]->addClip(clip, std::move(sourceNode));
             if (clipId >= 0) {
@@ -401,7 +405,8 @@ namespace uapmd {
                             clipTempo,
                             std::move(clipInfo.tempo_changes),
                             std::move(clipInfo.time_signature_changes),
-                            resolvedPath.filename().string());
+                            resolvedPath.filename().string(),
+                            clip->nrpnToParameterMapping());
                         if (!loadResult.success) {
                             result.error = loadResult.error.empty() ? "Failed to load MIDI clip" : loadResult.error;
                             return result;
@@ -448,7 +453,8 @@ namespace uapmd {
                             clipTempo,
                             std::move(clipInfo.tempo_changes),
                             std::move(clipInfo.time_signature_changes),
-                            resolvedPath.filename().string());
+                            resolvedPath.filename().string(),
+                            clip->nrpnToParameterMapping());
                     }
                 }
             }
@@ -698,8 +704,37 @@ namespace uapmd {
         void onTrackAdded(uint32_t outputChannels, double sampleRate, uint32_t bufferSizeInFrames) override {
             sampleRate_ = static_cast<int32_t>(sampleRate);
             bufferSizeInFrames_ = bufferSizeInFrames;
-            timeline_tracks_.emplace_back(std::make_shared<TimelineTrack>(
-                outputChannels, sampleRate, bufferSizeInFrames));
+
+            auto newTrack = std::make_shared<TimelineTrack>(outputChannels, sampleRate, bufferSizeInFrames);
+
+            // Capture the index this track will occupy (current size = future index after push_back)
+            // Note: this index is stable as long as no tracks before it are removed.
+            const int32_t trackIndex = static_cast<int32_t>(timeline_tracks_.size());
+
+            newTrack->setNrpnParameterCallback(
+                [this, trackIndex](uint32_t paramIdx, uint32_t rawValue, bool isRelative) {
+                    auto& seqTracks = engine_.tracks();
+                    if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= seqTracks.size())
+                        return;
+                    auto* seqTrack = seqTracks[static_cast<size_t>(trackIndex)];
+                    if (!seqTrack)
+                        return;
+                    for (int32_t instanceId : seqTrack->orderedInstanceIds()) {
+                        double value;
+                        if (isRelative) {
+                            auto* inst = engine_.getPluginInstance(instanceId);
+                            if (!inst)
+                                continue;
+                            value = inst->getParameterValue(static_cast<int32_t>(paramIdx))
+                                    + static_cast<double>(static_cast<int32_t>(rawValue)) / INT32_MAX;
+                        } else {
+                            value = static_cast<double>(rawValue) / UINT32_MAX;
+                        }
+                        engine_.setParameterValue(instanceId, static_cast<int32_t>(paramIdx), value);
+                    }
+                });
+
+            timeline_tracks_.emplace_back(std::move(newTrack));
             rebuildTrackSnapshot();
         }
 

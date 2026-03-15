@@ -141,8 +141,9 @@ private:
     void addSmfClipToTrack(int32_t trackIndex);
     void addSmf2ClipToTrack(int32_t trackIndex);
 
-    // Returns {combinedParamIndex=(MSB<<7)|LSB, displayName} for all plugin parameters on a track.
-    std::vector<std::pair<uint16_t,std::string>> getPluginParametersForTrack(int32_t trackIndex) const;
+    // Returns one PluginParamEntry per plugin instance on the track.
+    // Used to populate the NRPN parameter picker in the piano roll.
+    std::vector<PianoRollEditor::PluginParamEntry> getPluginParametersForTrack(int32_t trackIndex) const;
 
     // Build render context
     SequenceEditor::RenderContext buildRenderContext(float uiScale);

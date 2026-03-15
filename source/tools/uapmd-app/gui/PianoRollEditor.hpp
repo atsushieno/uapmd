@@ -32,6 +32,18 @@ struct EditNote : ClipPreview::MidiNote {
 //   - Per-note and channel-level automation event list
 class PianoRollEditor {
 public:
+    // One entry per plugin instance on the track; contains all addressable parameters.
+    struct PluginParamEntry {
+        int32_t     instanceId{-1};
+        std::string pluginName;
+        struct Param {
+            uint16_t    nrpnIndex{0}; // (bank << 7) | lsb — 14-bit NRPN address
+            std::string path;
+            std::string name;
+        };
+        std::vector<Param> params;
+    };
+
     // Passed each frame to render(); carries per-frame scale and write-back callbacks.
     struct RenderContext {
         float uiScale{1.0f};
@@ -47,9 +59,9 @@ public:
         // Called when the user presses/slides on a piano key (for live note preview).
         std::function<void(int32_t trackIndex, int midiNote)> previewNoteOn;
         std::function<void(int32_t trackIndex, int midiNote)> previewNoteOff;
-        // Returns {parameterIndex, displayName} for all plugin parameters on the track.
-        // Used to populate the NRPN "plugin param" selector. May return empty.
-        std::function<std::vector<std::pair<uint16_t,std::string>>(int32_t trackIndex)> getTrackPluginParameters;
+        // Returns one PluginParamEntry per plugin instance on the track.
+        // Used to populate the NRPN "plugin param" picker. May return empty.
+        std::function<std::vector<PluginParamEntry>(int32_t trackIndex)> getTrackPluginParameters;
     };
 
     void showClip(int32_t trackIndex, int32_t clipId,
@@ -99,6 +111,8 @@ private:
         // Used to hit-test the content area before Begin() to lock window movement.
         ImVec2 lastWindowPos{0.0f, 0.0f};
         ImVec2 lastWindowSize{0.0f, 0.0f};
+        // Last-hovered plugin index inside the NRPN parameter picker popup.
+        int nrpnPickerHoveredPlugin{0};
     };
 
     std::map<std::pair<int32_t, int32_t>, WindowState> windows_;
@@ -131,6 +145,15 @@ private:
     static void parseAutomationFromRaw(const ClipPreview::RawMidiData& raw,
                                        std::vector<EditNote>& editNotes,
                                        std::vector<ClipPreview::AutomationEvent>& clipEvents);
+
+    // Two-pane NRPN parameter picker popup (no trigger button — caller must call
+    // ImGui::OpenPopup(popupId) before this). Left pane shows plugin names; right
+    // pane is a scrollable 3-column table. Returns true when a parameter is picked.
+    // popupId must be unique per call site (scoped under the current ImGui ID stack).
+    static bool renderNrpnPicker(const char* popupId,
+                                  uint16_t& paramIndex,
+                                  int& hoveredPlugin,
+                                  const std::vector<PluginParamEntry>& entries);
 
     static bool isBlackKey(int midiNote) noexcept;
     static const char* noteNameCStr(int midiNote) noexcept;

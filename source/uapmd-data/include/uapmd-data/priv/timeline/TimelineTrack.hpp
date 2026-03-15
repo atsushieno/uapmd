@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -50,6 +51,13 @@ namespace uapmd {
         uint32_t channelCount() const { return channel_count_; }
         double sampleRate() const { return sample_rate_; }
 
+        // NRPN parameter mapping callback.
+        // When set, MidiClipSourceNodes with nrpnToParameterMapping==true route Assignable
+        // Controller events to this callback instead of forwarding them as raw UMP.
+        // Must be called from non-audio thread before playback begins.
+        using NrpnParameterCallback = std::function<void(uint32_t parameterIndex, uint32_t rawValue, bool isRelative)>;
+        void setNrpnParameterCallback(NrpnParameterCallback cb);
+
         // Configuration changes (call from non-audio thread only!)
         // Pre-allocates buffers to avoid real-time allocations during processAudio
         void reconfigureBuffers(uint32_t channelCount, uint32_t bufferSizeInFrames);
@@ -71,6 +79,8 @@ namespace uapmd {
         // Scratch buffers for per-source processing (reused for each source node)
         std::vector<std::vector<float>> temp_source_buffers_;   // [channel][samples]
         std::vector<float*> temp_source_buffer_ptrs_;
+
+        NrpnParameterCallback nrpn_parameter_callback_{};
 
         // Helper to ensure buffers are allocated
         void ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount);

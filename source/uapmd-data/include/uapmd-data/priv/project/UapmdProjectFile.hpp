@@ -50,6 +50,8 @@ namespace uapmd {
         // MIDI-specific metadata (only valid when clipType == "midi")
         virtual uint32_t tickResolution() = 0;
         virtual void tickResolution(uint32_t ticks) = 0;
+        virtual bool nrpnToParameterMapping() = 0;
+        virtual void nrpnToParameterMapping(bool enabled) = 0;
 
         static std::unique_ptr<UapmdProjectClipData> create();
     };

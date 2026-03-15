@@ -64,8 +64,11 @@ namespace uapmd {
             obj.addMember("clip_type", clipType);
 
         // Serialize MIDI-specific metadata (only for MIDI clips)
-        if (clipType == "midi")
+        if (clipType == "midi") {
             obj.addMember("tick_resolution", static_cast<int64_t>(clip->tickResolution()));
+            if (clip->nrpnToParameterMapping())
+                obj.addMember("nrpn_to_parameter_mapping", true);
+        }
 
         return obj;
     }

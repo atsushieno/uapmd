@@ -1545,9 +1545,9 @@ bool TimelineEditor::applyPianoRollEdits(int32_t trackIndex, int32_t clipId,
 
 // ── Plugin parameter query ────────────────────────────────────────────────────
 
-std::vector<std::pair<uint16_t,std::string>>
+std::vector<PianoRollEditor::PluginParamEntry>
 TimelineEditor::getPluginParametersForTrack(int32_t trackIndex) const {
-    std::vector<std::pair<uint16_t,std::string>> result;
+    std::vector<PianoRollEditor::PluginParamEntry> result;
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     auto tracksRef = sequencer.engine()->tracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracksRef.size()) || !tracksRef[trackIndex])
@@ -1555,12 +1555,21 @@ TimelineEditor::getPluginParametersForTrack(int32_t trackIndex) const {
     for (int32_t instanceId : tracksRef[trackIndex]->orderedInstanceIds()) {
         auto* pal = sequencer.engine()->getPluginInstance(instanceId);
         if (!pal) continue;
+        PianoRollEditor::PluginParamEntry entry;
+        entry.instanceId = instanceId;
+        entry.pluginName = pal->displayName();
         for (const auto& p : pal->parameterMetadataList()) {
+            if (!p.automatable) continue;
             if (p.index >= 16384u) continue; // exceeds 14-bit addressable range
-            const auto msb = static_cast<uint16_t>(p.index / 0x80u);
-            const auto lsb = static_cast<uint16_t>(p.index % 0x80u);
-            result.emplace_back(static_cast<uint16_t>((msb << 7u) | lsb), p.name);
+            PianoRollEditor::PluginParamEntry::Param param;
+            param.nrpnIndex = static_cast<uint16_t>(
+                ((p.index / 0x80u) << 7u) | (p.index % 0x80u));
+            param.path = p.path;
+            param.name = p.name;
+            entry.params.push_back(std::move(param));
         }
+        if (!entry.params.empty())
+            result.push_back(std::move(entry));
     }
     return result;
 }

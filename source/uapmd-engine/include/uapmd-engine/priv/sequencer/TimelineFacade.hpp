@@ -44,7 +44,8 @@ public:
     virtual ClipAddResult addMidiClipToTrack(
         int32_t trackIndex,
         const TimelinePosition& position,
-        const std::string& filepath) = 0;
+        const std::string& filepath,
+        bool nrpnToParameterMapping = false) = 0;
 
     virtual ClipAddResult addMidiClipToTrack(
         int32_t trackIndex,
@@ -55,7 +56,8 @@ public:
         double clipTempo,
         std::vector<MidiTempoChange> tempoChanges,
         std::vector<MidiTimeSignatureChange> timeSignatureChanges,
-        const std::string& clipName = "") = 0;
+        const std::string& clipName = "",
+        bool nrpnToParameterMapping = false) = 0;
 
     virtual bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) = 0;
 

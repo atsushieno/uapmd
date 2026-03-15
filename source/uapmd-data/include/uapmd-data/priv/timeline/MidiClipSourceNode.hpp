@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <vector>
 #include <atomic>
 #include <cstdint>
@@ -53,6 +54,12 @@ namespace uapmd {
             double tempo
         ) override;
 
+        // NRPN intercept: when set, Assignable Controller (NRPN) events in this clip
+        // are routed to the callback instead of being forwarded as raw UMP.
+        // Call this from non-audio thread before playback begins.
+        using NrpnInterceptCallback = std::function<void(uint32_t parameterIndex, uint32_t rawValue, bool isRelative)>;
+        void setNrpnInterceptCallback(NrpnInterceptCallback cb) { nrpn_intercept_callback_ = std::move(cb); }
+
         // Access to clip data for UI/dump purposes
         const std::vector<uapmd_ump_t>& umpEvents() const { return ump_events_; }
         const std::vector<uint64_t>& eventTimestampsSamples() const { return event_timestamps_samples_; }
@@ -85,6 +92,9 @@ namespace uapmd {
 
         // Playback state
         std::atomic<size_t> next_event_index_{0};  // Next event to emit
+
+        // Optional NRPN intercept callback (set once from non-audio thread)
+        NrpnInterceptCallback nrpn_intercept_callback_{};
 
         // Helper: append one complete UMP message (all its words) to EventSequence.
         // words[0..wordCount-1] must be the consecutive uint32_t words of a single UMP message.
