@@ -32,6 +32,7 @@
 #include <umppi/umppi.hpp>
 #include "uapmd/uapmd.hpp"
 #include "AppModel.hpp"
+#include <uapmd-ipc/uapmd-ipc.hpp>
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -464,7 +465,26 @@ std::shared_ptr<uapmd::MidiIOFeature> uapmd::AppModel::createMidiIOFeature(
 
 
 void uapmd::AppModel::instantiate() {
-    model = std::make_unique<uapmd::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());
+    instantiate(InstantiateOptions{});
+}
+
+void uapmd::AppModel::instantiate(InstantiateOptions opts) {
+    if (opts.isolatedEngine && !opts.executablePath.empty()) {
+        auto proxy = uapmd::ipc::RemoteEngineProxy::launch(
+            opts.executablePath, DEFAULT_SAMPLE_RATE,
+            DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE);
+        if (proxy) {
+            model = std::make_unique<uapmd::AppModel>(
+                DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE,
+                DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher(),
+                std::move(proxy));
+            return;
+        }
+        std::cerr << "[AppModel] RemoteEngineProxy::launch failed; falling back to threaded mode\n";
+    }
+    model = std::make_unique<uapmd::AppModel>(
+        DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE,
+        DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());
 }
 
 uapmd::AppModel& uapmd::AppModel::instance() {
@@ -476,7 +496,12 @@ void uapmd::AppModel::cleanupInstance() {
 }
 
 uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
-        sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
+        sequencer_(
+            std::make_unique<uapmd::ipc::ThreadedEngineProxy>(
+                SequencerEngine::create(sampleRate, audioBufferSizeInFrames, umpBufferSizeInBytes)
+            ),
+            audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher
+        ),
         transportController_(std::make_unique<TransportController>(this, &sequencer_)),
         sample_rate_(sampleRate),
         audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)),
@@ -489,6 +514,23 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     for (int i = 0; i < kInitialTrackCount; ++i) {
         addTrack();
     }
+}
+
+uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher, std::unique_ptr<SequencerEngine> engine) :
+        sequencer_(
+            std::move(engine),
+            audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher
+        ),
+        transportController_(std::make_unique<TransportController>(this, &sequencer_)),
+        sample_rate_(sampleRate),
+        audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)),
+        auto_buffer_size_enabled_(sequencer_.useAutoBufferSize()) {
+    if (auto* fbm = sequencer_.engine()->functionBlockManager())
+        fbm->setMidiIOManager(this);
+
+    constexpr int kInitialTrackCount = 3;
+    for (int i = 0; i < kInitialTrackCount; ++i)
+        addTrack();
 }
 
 uapmd::AppModel::~AppModel() = default;

@@ -24,7 +24,13 @@ namespace uapmd {
         std::unique_ptr<SequencerEngine> sequencer;
 
     public:
+        // Construct with a default SequencerEngineImpl.
         RealtimeSequencer(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
+
+        // Construct with an externally created engine (e.g. a ThreadedEngineProxy
+        // or RemoteEngineProxy).  The engine must already be fully constructed;
+        // audio device initialisation happens inside this constructor.
+        RealtimeSequencer(std::unique_ptr<SequencerEngine> engine, size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
         ~RealtimeSequencer();
 
         SequencerEngine* engine() const { return sequencer.get(); }

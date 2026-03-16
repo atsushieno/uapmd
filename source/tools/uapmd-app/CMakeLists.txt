@@ -654,6 +654,7 @@ set(_uapmd_app_link_libraries
         uapmd-file
         midicci_static
         uapmd-engine
+        uapmd-ipc
         libremidi::libremidi
         zlib-ng
 )

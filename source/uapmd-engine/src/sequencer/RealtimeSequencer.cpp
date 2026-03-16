@@ -19,10 +19,21 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
     size_t umpBufferSizeInBytes,
     int32_t sampleRate,
     DeviceIODispatcher* dispatcher
+) : RealtimeSequencer(
+    SequencerEngine::create(sampleRate, audioBufferSizeInFrames, umpBufferSizeInBytes),
+    audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher
+) {}
+
+uapmd::RealtimeSequencer::RealtimeSequencer(
+    std::unique_ptr<SequencerEngine> engine,
+    size_t audioBufferSizeInFrames,
+    size_t umpBufferSizeInBytes,
+    int32_t sampleRate,
+    DeviceIODispatcher* dispatcher
 ) : buffer_size_in_frames(audioBufferSizeInFrames),
     ump_buffer_size_in_bytes(umpBufferSizeInBytes), sample_rate(sampleRate),
     dispatcher(dispatcher),
-    sequencer(SequencerEngine::create(sampleRate, buffer_size_in_frames, umpBufferSizeInBytes)) {
+    sequencer(std::move(engine)) {
     // Configure default channels based on audio device
     auto* initialAudioDevice = dispatcher->audio();
     const auto inputChannels = initialAudioDevice ? std::max(initialAudioDevice->inputChannels(), 2u) : 2;
@@ -42,7 +53,6 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
     dispatcher->configure(umpBufferSizeInBytes, audioDevice, nullptr, nullptr, static_cast<uint32_t>(buffer_size_in_frames));
 
     dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
-        // Delegate all master audio processing to SequencerEngine
         return sequencer->processAudio(process);
     });
 }

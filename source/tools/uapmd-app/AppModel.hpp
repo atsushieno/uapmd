@@ -140,10 +140,19 @@ namespace uapmd {
         void reloadPluginCatalogFromCache(const std::filesystem::path& cacheFile);
 
     public:
+        // Options for AppModel::instantiate().
+        struct InstantiateOptions {
+            bool        isolatedEngine{false};
+            std::string executablePath;      // argv[0]; required when isolatedEngine is true
+        };
+
         static void instantiate();
+        static void instantiate(InstantiateOptions opts);
         static AppModel& instance();
         static void cleanupInstance();
         AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher);
+        // Construct with a pre-built engine (e.g. RemoteEngineProxy).
+        AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher, std::unique_ptr<SequencerEngine> engine);
         ~AppModel() override;
 
         RealtimeSequencer& sequencer() { return sequencer_; }

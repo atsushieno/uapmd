@@ -1,6 +1,7 @@
 #include "main_common.hpp"
 #include "AppModel.hpp"
 #include "ScanOnlyMode.hpp"
+#include <uapmd-ipc/uapmd-ipc.hpp>
 #include "gui/MainWindow.hpp"
 #include "gui/FontLoader.hpp"
 #include <ImGuiEventLoop.hpp>
@@ -84,6 +85,27 @@ int runMainLoop(int argc, char** argv) {
         args.emplace_back(argv[i]);
     }
 
+    // ── Engine-mode early exit (desktop-only) ─────────────────────────────
+    // When the host process spawns us as an isolated engine worker it passes:
+    //   --engine-mode <shmName> <shmSize> <socketPath>
+    //                 <sampleRate> <bufferSize> <umpBufferSize>
+    // We skip all GUI initialisation and run the engine server until the
+    // parent closes the connection.
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !(defined(__APPLE__) && defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+    if (args.size() >= 7 && args[0] == "--engine-mode") {
+        const std::string& shmName    = args[1];
+        size_t  shmSize  = static_cast<size_t>(std::stoull(args[2]));
+        const std::string& socketPath = args[3];
+        int32_t sampleRate            = static_cast<int32_t>(std::stoi(args[4]));
+        size_t  bufferSize            = static_cast<size_t>(std::stoull(args[5]));
+        size_t  umpSize               = static_cast<size_t>(std::stoull(args[6]));
+        uapmd::ipc::EngineServer server(shmName, shmSize, socketPath,
+                                        sampleRate, bufferSize, umpSize);
+        server.run();
+        return EXIT_SUCCESS;
+    }
+#endif
+
     enum class Mode {
         Gui,
         Headless
@@ -94,6 +116,7 @@ int runMainLoop(int argc, char** argv) {
         bool scanOnly = false;
         bool forceRescan = false;
         bool fullVerification = false;
+        bool isolatedEngine = false;
     };
     CommandLineOptions cliOptions{};
     std::vector<std::string> positional;
@@ -109,6 +132,10 @@ int runMainLoop(int argc, char** argv) {
         }
         if (arg == "--full") {
             cliOptions.fullVerification = true;
+            continue;
+        }
+        if (arg == "--isolated-engine") {
+            cliOptions.isolatedEngine = true;
             continue;
         }
         /*if (arg == "--shell" || arg == "--cli" || arg == "--no-gui" || arg == "--headless") {
@@ -245,8 +272,11 @@ int runMainLoop(int argc, char** argv) {
     remidy::setEventLoop(eventLoop.release());
     remidy::EventLoop::initializeOnUIThread();
 
-    // Initialize application model
-    uapmd::AppModel::instantiate();
+    // Initialize application model (optionally using an isolated engine process)
+    uapmd::AppModel::instantiate({
+        .isolatedEngine = cliOptions.isolatedEngine,
+        .executablePath = (argc > 0 && argv[0]) ? std::string(argv[0]) : std::string{}
+    });
 
     // Initialize audio device manager
     auto audioManager = uapmd::AudioIODeviceManager::instance();
