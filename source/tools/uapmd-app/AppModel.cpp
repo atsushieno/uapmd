@@ -469,6 +469,7 @@ void uapmd::AppModel::instantiate() {
 }
 
 void uapmd::AppModel::instantiate(InstantiateOptions opts) {
+#if UAPMD_HAS_REMOTE_ENGINE
     if (opts.isolatedEngine && !opts.executablePath.empty()) {
         auto proxy = uapmd::ipc::RemoteEngineProxy::launch(
             opts.executablePath, DEFAULT_SAMPLE_RATE,
@@ -482,6 +483,9 @@ void uapmd::AppModel::instantiate(InstantiateOptions opts) {
         }
         std::cerr << "[AppModel] RemoteEngineProxy::launch failed; falling back to threaded mode\n";
     }
+#else
+    (void)opts;
+#endif
     model = std::make_unique<uapmd::AppModel>(
         DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE,
         DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());

@@ -1,5 +1,13 @@
 add_library(uapmd-ipc STATIC)
 
+# Remote (isolated) engine is desktop-only for now. Enable it unless we are
+# targeting mobile/web platforms where POSIX shared memory or fork/exec aren't
+# available.
+set(UAPMD_IPC_REMOTE_ENGINE TRUE)
+if(ANDROID OR IOS OR EMSCRIPTEN)
+    set(UAPMD_IPC_REMOTE_ENGINE FALSE)
+endif()
+
 target_include_directories(uapmd-ipc
     PUBLIC
         include
@@ -18,16 +26,29 @@ target_include_directories(uapmd-ipc
 
 target_link_libraries(uapmd-ipc PUBLIC uapmd-engine)
 
-target_sources(uapmd-ipc PRIVATE
+set(_UAPMD_IPC_SOURCES
     src/ThreadedEngineProxy.cpp
-    src/RemoteEngineProxy.cpp
-    src/EngineServer.cpp
-    src/platform/SharedMemory.cpp
     src/platform/IpcSocket.cpp
 )
 
-# Unix domain socket on POSIX needs rt on Linux for shm_open
-if(UNIX AND NOT APPLE)
+if(UAPMD_IPC_REMOTE_ENGINE)
+    list(APPEND _UAPMD_IPC_SOURCES
+        src/RemoteEngineProxy.cpp
+        src/EngineServer.cpp
+        src/platform/SharedMemory.cpp
+    )
+endif()
+
+target_sources(uapmd-ipc PRIVATE ${_UAPMD_IPC_SOURCES})
+
+if(UAPMD_IPC_REMOTE_ENGINE)
+    target_compile_definitions(uapmd-ipc PUBLIC UAPMD_HAS_REMOTE_ENGINE=1)
+else()
+    target_compile_definitions(uapmd-ipc PUBLIC UAPMD_HAS_REMOTE_ENGINE=0)
+endif()
+
+# Unix domain socket on POSIX needs librt only on glibc-based Linux.
+if(UNIX AND NOT APPLE AND NOT ANDROID)
     target_link_libraries(uapmd-ipc PRIVATE rt)
 endif()
 

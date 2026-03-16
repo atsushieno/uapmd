@@ -85,13 +85,13 @@ int runMainLoop(int argc, char** argv) {
         args.emplace_back(argv[i]);
     }
 
-    // ── Engine-mode early exit (desktop-only) ─────────────────────────────
-    // When the host process spawns us as an isolated engine worker it passes:
-    //   --engine-mode <shmName> <shmSize> <socketPath>
-    //                 <sampleRate> <bufferSize> <umpBufferSize>
-    // We skip all GUI initialisation and run the engine server until the
-    // parent closes the connection.
-#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !(defined(__APPLE__) && defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+// ── Engine-mode early exit (desktop-only) ─────────────────────────────
+// When the host process spawns us as an isolated engine worker it passes:
+//   --engine-mode <shmName> <shmSize> <socketPath>
+//                 <sampleRate> <bufferSize> <umpBufferSize>
+// We skip all GUI initialisation and run the engine server until the
+// parent closes the connection.
+#if UAPMD_HAS_REMOTE_ENGINE
     if (args.size() >= 7 && args[0] == "--engine-mode") {
         const std::string& shmName    = args[1];
         size_t  shmSize  = static_cast<size_t>(std::stoull(args[2]));
