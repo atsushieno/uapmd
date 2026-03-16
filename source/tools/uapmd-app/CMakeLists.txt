@@ -449,6 +449,16 @@ res_embed_add(${UAPMD_COMPILE_TARGET}
     CATEGORY AppFonts
 )
 
+# Embed built-in script presets into the app binary at build time.
+# Add new preset .js files here; each becomes accessible at runtime via
+# ResEmbed::get("<filename>", "AppScripts").
+res_embed_add(${UAPMD_COMPILE_TARGET}
+    FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/Demo.js"
+    NAMESPACE AppScripts
+    CATEGORY AppScripts
+)
+
 if(NOT TARGET imgui)
     # Base ImGui sources
     set(IMGUI_SOURCES
