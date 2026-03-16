@@ -1,4 +1,5 @@
 #include "ScriptEditor.hpp"
+#include "../AppModel.hpp"
 #include <imgui.h>
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
@@ -7,21 +8,132 @@
 #if !ANDROID && !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
 #include <cpplocate/cpplocate.h>
 #endif
+#include <choc/text/choc_JSON.h>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <algorithm>
 #include <thread>
 #include <chrono>
 #include <cstring>
 
 namespace uapmd::gui {
 
+static const char* DEMO_SCRIPT = R"(// JavaScript Evaluation Engine for UAPMD
+// Import the remidy bridge module for plugin access
+import { PluginScanTool, sequencer } from 'remidy-bridge';
+
+// The public API is available via the global 'uapmd' object:
+//   uapmd.catalog.*      - Plugin discovery and management
+//   uapmd.scanTool.*     - Plugin scanning and caching
+//   uapmd.instancing.*   - Plugin instance creation
+//   uapmd.instance(id)   - Get PluginInstance wrapper (getParameters, setParameterValue, etc.)
+//   uapmd.sequencer.*    - Audio engine, MIDI, and transport
+//
+// You can use either the OO wrapper (PluginScanTool, sequencer) or
+// the direct uapmd.* API. Both approaches work!
+//
+// Example using uapmd API:
+//   const id = uapmd.instancing.create("VST3", pluginId);
+//   const instance = uapmd.instance(id);
+//   instance.showUI();
+//   instance.setParameterValue(0, 0.5);
+
+// Example: Create tracks for VST3 Dexed, LV2 RipplerX, CLAP Six Sines, AU Surge XT, and AUv3 Mela FX
+const scanTool = new PluginScanTool();
+const catalog = scanTool.catalog;
+
+// Helper function to find a plugin by name and format
+// First tries exact match (case-insensitive), then falls back to includes()
+function findPlugin(displayName, format) {
+    const plugins = catalog.getPlugins();
+    const lowerName = displayName.toLowerCase();
+
+    // Try exact match first
+    let plugin = plugins.find(p =>
+        p.displayName.toLowerCase() === lowerName &&
+        p.format === format
+    );
+
+    // Fall back to includes() if exact match not found
+    if (!plugin) {
+        plugin = plugins.find(p =>
+            p.displayName.toLowerCase().includes(lowerName) &&
+            p.format === format
+        );
+    }
+
+    return plugin;
+}
+
+// Start from a clean slate
+log("Removing existing tracks...");
+sequencer.clearTracks();
+
+// Create five tracks with specific plugins
+const tracksToCreate = [
+    { name: 'Dexed', format: 'VST3' },
+    { name: 'RipplerX', format: 'LV2' },
+    { name: 'OctaSine', format: 'CLAP' },
+    { name: 'Surge XT', format: 'AU' },
+    { name: 'Mela FX', format: 'AU' }
+];
+
+const instanceIds = [];
+
+for (const trackConfig of tracksToCreate) {
+    const plugin = findPlugin(trackConfig.name, trackConfig.format);
+
+    if (plugin) {
+        // Use the low-level sequencer API directly, matching the C++ AppModel::instantiatePlugin pattern
+        const trackIndex = sequencer.addTrack();
+        if (trackIndex < 0) {
+            log(`Failed to create track for ${plugin.displayName}`);
+            continue;
+        }
+
+        const instanceId = sequencer.createPluginInstance(plugin.format, plugin.pluginId, trackIndex);
+        if (instanceId >= 0) {
+            instanceIds.push(instanceId);
+            sequencer.showPluginUI(instanceId);
+        } else {
+            log(`Failed to create ${plugin.displayName}`);
+        }
+    } else {
+        log(`Plugin not found: ${trackConfig.name} (${trackConfig.format})`);
+    }
+}
+
+// List all active tracks
+const tracks = sequencer.getTrackInfos();
+log(`Created ${instanceIds.length} track(s):`);
+for (const track of tracks) {
+    for (const node of track.nodes) {
+        log(`  Track ${track.trackIndex}: ${node.displayName} (${node.format})`);
+    }
+}
+
+// Example: Send MIDI notes to all created instances
+// Uncomment to test MIDI functionality
+// log('\nSending test MIDI notes to all instances...');
+// for (const instanceId of instanceIds) {
+//     sequencer.sendNoteOn(instanceId, 60);  // C4
+//     sequencer.sendNoteOn(instanceId, 64);  // E4
+//     sequencer.sendNoteOn(instanceId, 67);  // G4
+// }
+)";
+
 ScriptEditor::ScriptEditor()
 {
     // Initialize buffer with a large size for the text editor
     scriptBuffer_.resize(65536, '\0');
-    setDefaultScript();
+
+    // Register built-in presets
+    presets_.push_back({"Demo", DEMO_SCRIPT});
+
+    // Restore file history from settings
+    loadSettings();
 }
 
 void ScriptEditor::show()
@@ -57,16 +169,49 @@ void ScriptEditor::render()
 
         // Run button
         if (ImGui::Button ("Run"))
-        {
             executeScript();
+
+        ImGui::SameLine();
+
+        // Preset menu button — loads a built-in script preset into the editor
+        if (ImGui::Button ("Preset"))
+            ImGui::OpenPopup ("preset_popup");
+
+        if (ImGui::BeginPopup ("preset_popup"))
+        {
+            for (auto& preset : presets_)
+            {
+                if (ImGui::MenuItem (preset.title.c_str()))
+                {
+                    auto len = std::min (preset.content.size(), scriptBuffer_.size() - 1);
+                    std::memcpy (scriptBuffer_.data(), preset.content.c_str(), len);
+                    scriptBuffer_[len] = '\0';
+                    errorMessage_.clear();
+                }
+            }
+            ImGui::EndPopup();
         }
 
         ImGui::SameLine();
 
-        // Reset button
-        if (ImGui::Button ("Reset to Default"))
+        // Load menu button — opens a file or picks from recent file history
+        if (ImGui::Button ("Load"))
+            ImGui::OpenPopup ("load_popup");
+
+        if (ImGui::BeginPopup ("load_popup"))
         {
-            setDefaultScript();
+            if (ImGui::MenuItem ("Open File..."))
+                loadScriptFromFile();
+
+            if (! fileHistory_.empty())
+            {
+                ImGui::Separator();
+                for (size_t i = 0; i < fileHistory_.size(); ++i)
+                    if (ImGui::MenuItem (fileHistory_[i].displayName.c_str()))
+                        loadScriptFromHistoryEntry (i);
+            }
+
+            ImGui::EndPopup();
         }
 
         // Display error message if any
@@ -181,115 +326,185 @@ void ScriptEditor::executeScript()
 
 void ScriptEditor::setDefaultScript()
 {
-    std::string defaultScript = R"(// JavaScript Evaluation Engine for UAPMD
-// Import the remidy bridge module for plugin access
-import { PluginScanTool, sequencer } from 'remidy-bridge';
-
-// The public API is available via the global 'uapmd' object:
-//   uapmd.catalog.*      - Plugin discovery and management
-//   uapmd.scanTool.*     - Plugin scanning and caching
-//   uapmd.instancing.*   - Plugin instance creation
-//   uapmd.instance(id)   - Get PluginInstance wrapper (getParameters, setParameterValue, etc.)
-//   uapmd.sequencer.*    - Audio engine, MIDI, and transport
-//
-// You can use either the OO wrapper (PluginScanTool, sequencer) or
-// the direct uapmd.* API. Both approaches work!
-//
-// Example using uapmd API:
-//   const id = uapmd.instancing.create("VST3", pluginId);
-//   const instance = uapmd.instance(id);
-//   instance.showUI();
-//   instance.setParameterValue(0, 0.5);
-
-// Example: Create tracks for VST3 Dexed, LV2 RipplerX, CLAP Six Sines, AU Surge XT, and AUv3 Mela FX
-const scanTool = new PluginScanTool();
-const catalog = scanTool.catalog;
-
-// Helper function to find a plugin by name and format
-// First tries exact match (case-insensitive), then falls back to includes()
-function findPlugin(displayName, format) {
-    const plugins = catalog.getPlugins();
-    const lowerName = displayName.toLowerCase();
-
-    // Try exact match first
-    let plugin = plugins.find(p =>
-        p.displayName.toLowerCase() === lowerName &&
-        p.format === format
-    );
-
-    // Fall back to includes() if exact match not found
-    if (!plugin) {
-        plugin = plugins.find(p =>
-            p.displayName.toLowerCase().includes(lowerName) &&
-            p.format === format
-        );
-    }
-
-    return plugin;
-}
-
-// Start from a clean slate
-log("Removing existing tracks...");
-sequencer.clearTracks();
-
-// Create five tracks with specific plugins
-const tracksToCreate = [
-    { name: 'Dexed', format: 'VST3' },
-    { name: 'RipplerX', format: 'LV2' },
-    { name: 'OctaSine', format: 'CLAP' },
-    { name: 'Surge XT', format: 'AU' },
-    { name: 'Mela FX', format: 'AU' }
-];
-
-const instanceIds = [];
-
-for (const trackConfig of tracksToCreate) {
-    const plugin = findPlugin(trackConfig.name, trackConfig.format);
-
-    if (plugin) {
-        // Use the low-level sequencer API directly, matching the C++ AppModel::instantiatePlugin pattern
-        const trackIndex = sequencer.addTrack();
-        if (trackIndex < 0) {
-            log(`Failed to create track for ${plugin.displayName}`);
-            continue;
-        }
-
-        const instanceId = sequencer.createPluginInstance(plugin.format, plugin.pluginId, trackIndex);
-        if (instanceId >= 0) {
-            instanceIds.push(instanceId);
-            sequencer.showPluginUI(instanceId);
-        } else {
-            log(`Failed to create ${plugin.displayName}`);
-        }
-    } else {
-        log(`Plugin not found: ${trackConfig.name} (${trackConfig.format})`);
-    }
-}
-
-// List all active tracks
-const tracks = sequencer.getTrackInfos();
-log(`Created ${instanceIds.length} track(s):`);
-for (const track of tracks) {
-    for (const node of track.nodes) {
-        log(`  Track ${track.trackIndex}: ${node.displayName} (${node.format})`);
-    }
-}
-
-// Example: Send MIDI notes to all created instances
-// Uncomment to test MIDI functionality
-// log('\nSending test MIDI notes to all instances...');
-// for (const instanceId of instanceIds) {
-//     sequencer.sendNoteOn(instanceId, 60);  // C4
-//     sequencer.sendNoteOn(instanceId, 64);  // E4
-//     sequencer.sendNoteOn(instanceId, 67);  // G4
-// }
-
-)";
-
-    // Copy default script to buffer
-    size_t len = std::min(defaultScript.length(), scriptBuffer_.size() - 1);
-    std::memcpy(scriptBuffer_.data(), defaultScript.c_str(), len);
+    if (presets_.empty())
+        return;
+    auto& content = presets_[0].content;
+    auto len = std::min (content.size(), scriptBuffer_.size() - 1);
+    std::memcpy (scriptBuffer_.data(), content.c_str(), len);
     scriptBuffer_[len] = '\0';
+}
+
+void ScriptEditor::loadScriptFromFile()
+{
+    auto* provider = uapmd::AppModel::instance().documentProvider();
+    if (! provider)
+        return;
+
+    std::vector<uapmd::DocumentFilter> filters{
+        {"JavaScript Files", {}, {"*.js"}},
+        {"All Files",        {}, {"*"}}
+    };
+
+    provider->pickOpenDocuments (filters, false,
+        [this, provider] (uapmd::DocumentPickResult result)
+        {
+            if (! result.success || result.handles.empty())
+                return;
+
+            auto handle = result.handles[0];
+
+            provider->readDocument (handle,
+                [this, provider, handle] (uapmd::DocumentIOResult ioResult, std::vector<uint8_t> data)
+                {
+                    if (! ioResult.success)
+                    {
+                        errorMessage_ = "Failed to read file: " + ioResult.error;
+                        return;
+                    }
+
+                    auto len = std::min (data.size(), scriptBuffer_.size() - 1);
+                    std::memcpy (scriptBuffer_.data(), data.data(), len);
+                    scriptBuffer_[len] = '\0';
+                    errorMessage_.clear();
+
+                    auto token = provider->persistHandle (handle);
+                    if (! token.empty())
+                        addToHistory (token, handle.display_name);
+                });
+        });
+}
+
+void ScriptEditor::loadScriptFromHistoryEntry (size_t index)
+{
+    if (index >= fileHistory_.size())
+        return;
+
+    auto token = fileHistory_[index].token;
+
+    auto* provider = uapmd::AppModel::instance().documentProvider();
+    if (! provider)
+        return;
+
+    auto handle = provider->restoreHandle (token);
+    if (! handle)
+    {
+        // File is no longer accessible — remove stale entry
+        fileHistory_.erase (fileHistory_.begin() + static_cast<ptrdiff_t> (index));
+        saveSettings();
+        return;
+    }
+
+    provider->readDocument (*handle,
+        [this, token] (uapmd::DocumentIOResult ioResult, std::vector<uint8_t> data)
+        {
+            if (! ioResult.success)
+            {
+                // Remove entry whose read failed
+                std::erase_if (fileHistory_,
+                    [&token] (const ScriptFileEntry& e) { return e.token == token; });
+                saveSettings();
+                errorMessage_ = "Failed to read file: " + ioResult.error;
+                return;
+            }
+
+            auto len = std::min (data.size(), scriptBuffer_.size() - 1);
+            std::memcpy (scriptBuffer_.data(), data.data(), len);
+            scriptBuffer_[len] = '\0';
+            errorMessage_.clear();
+        });
+}
+
+void ScriptEditor::addToHistory (const std::string& token, const std::string& displayName)
+{
+    // Deduplicate — remove any existing entry with the same token
+    std::erase_if (fileHistory_,
+        [&token] (const ScriptFileEntry& e) { return e.token == token; });
+
+    // Insert at the front (most-recently-used ordering)
+    fileHistory_.insert (fileHistory_.begin(), {token, displayName});
+
+    // Cap at 20 entries
+    if (fileHistory_.size() > 20)
+        fileHistory_.resize (20);
+
+    saveSettings();
+}
+
+// ── Settings persistence (desktop only) ──────────────────────────────────────
+
+std::string ScriptEditor::getSettingsFilePath()
+{
+#if !ANDROID && !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
+    auto dir = cpplocate::localDir ("uapmd-app");
+    if (dir.empty())
+        return {};
+    auto dirPath = std::filesystem::path{dir};
+    std::error_code ec;
+    std::filesystem::create_directories (dirPath, ec);
+    return (dirPath / "settings.json").string();
+#else
+    return {};
+#endif
+}
+
+void ScriptEditor::loadSettings()
+{
+    auto path = getSettingsFilePath();
+    if (path.empty())
+        return;
+
+    std::ifstream f (path);
+    if (! f.is_open())
+        return;
+
+    std::stringstream ss;
+    ss << f.rdbuf();
+
+    try
+    {
+        auto root = choc::json::parse (ss.str());
+        auto historyView = root["scriptFileHistory"];
+        if (! historyView.isArray())
+            return;
+
+        for (uint32_t i = 0; i < historyView.size() && fileHistory_.size() < 20; ++i)
+        {
+            auto entry = historyView[i];
+            if (! entry.isObject())
+                continue;
+            auto tokenVal = entry["token"];
+            auto displayVal = entry["displayName"];
+            if (! tokenVal.isString() || ! displayVal.isString())
+                continue;
+            auto token = std::string (tokenVal.getString());
+            if (token.empty())
+                continue;
+            fileHistory_.push_back ({token, std::string (displayVal.getString())});
+        }
+    }
+    catch (...) {}
+}
+
+void ScriptEditor::saveSettings()
+{
+    auto path = getSettingsFilePath();
+    if (path.empty())
+        return;
+
+    auto arr = choc::value::createEmptyArray();
+    for (auto& entry : fileHistory_)
+        arr.addArrayElement (choc::value::createObject (
+            "HistoryEntry",
+            "token",       entry.token,
+            "displayName", entry.displayName));
+
+    auto root = choc::value::createObject (
+        "ScriptEditorSettings",
+        "scriptFileHistory", arr);
+
+    std::ofstream f (path);
+    if (f.is_open())
+        f << choc::json::toString (root, true);
 }
 
 std::string ScriptEditor::getJsLibraryPath (const std::string& modulePath) const
