@@ -6,7 +6,6 @@ get_filename_component(UAPMD_REPO_ROOT "${_UAPMD_SOURCE_DIR}" DIRECTORY)
 set(UAPMD_FLATPAK_DIR "${UAPMD_REPO_ROOT}/flatpak")
 set(UAPMD_EXTERNAL_DIR "${UAPMD_REPO_ROOT}/external")
 set(UAPMD_RESOURCES_DIR "${UAPMD_REPO_ROOT}/resources")
-set(UAPMD_JS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/js")
 set(UAPMD_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 #### Build options ####

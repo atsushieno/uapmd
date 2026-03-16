@@ -10,6 +10,7 @@
 #endif
 #include <choc/text/choc_JSON.h>
 #include <AppScripts.h>
+#include <AppJsLib.h>
 #include <ResEmbed/ResEmbed.h>
 #include <filesystem>
 #include <fstream>
@@ -29,15 +30,15 @@ ScriptEditor::ScriptEditor()
 
     // Register built-in script presets from embedded resources.
     // To add a new preset: add the .js file to scripts/ and list it in CMakeLists.txt
-    // under the AppScripts res_embed_add block, then add an entry here.
-    struct { const char* filename; const char* title; } scriptEntries[] = {
-        {"Demo.js", "Demo"},
-    };
-    for (auto& entry : scriptEntries)
+    // under the AppScripts res_embed_add block. No code change needed here.
+    for (auto& [filename, data] : ResEmbed::getCategory ("AppScripts"))
     {
-        if (auto data = ResEmbed::get (entry.filename, "AppScripts"))
-            presets_.push_back ({entry.title,
-                std::string (reinterpret_cast<const char*> (data.data()), data.size())});
+        // Strip the .js extension to form the display title
+        auto title = filename.ends_with (".js")
+            ? filename.substr (0, filename.size() - 3)
+            : filename;
+        presets_.push_back ({title,
+            std::string (reinterpret_cast<const char*> (data.data()), data.size())});
     }
 
     // Restore file history from settings
@@ -154,10 +155,18 @@ void ScriptEditor::executeScript()
             choc::value::Value lastResult;
 
             jsContext.runModule (scriptText,
-                // Module resolver function
+                // Module resolver — tries embedded libraries first (all platforms),
+                // then falls back to the filesystem on desktop for dev convenience.
                 [this] (std::string_view modulePath) -> std::optional<std::string>
                 {
-                    auto fullPath = getJsLibraryPath (std::string (modulePath));
+                    auto name = std::string (modulePath);
+                    auto withExt = name.ends_with (".js") ? name : name + ".js";
+
+                    if (auto data = ResEmbed::get (withExt, "AppJsLib"))
+                        return std::string (reinterpret_cast<const char*> (data.data()), data.size());
+
+                    // Fallback: load from filesystem (desktop dev workflow)
+                    auto fullPath = getJsLibraryPath (name);
 
                     if (fullPath.empty())
                     {

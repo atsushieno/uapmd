@@ -455,8 +455,21 @@ res_embed_add(${UAPMD_COMPILE_TARGET}
 res_embed_add(${UAPMD_COMPILE_TARGET}
     FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/Demo.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/PluginState.js"
     NAMESPACE AppScripts
     CATEGORY AppScripts
+)
+
+# Embed the JS bridge library modules so the module resolver works on all
+# platforms (Android, iOS, Emscripten) without requiring filesystem access.
+# The desktop fallback (cpplocate-based filesystem search) is kept for
+# development convenience when iterating on the JS sources without rebuilding.
+res_embed_add(${UAPMD_COMPILE_TARGET}
+    FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/remidy-bridge.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/uapmd-api.js"
+    NAMESPACE AppJsLib
+    CATEGORY AppJsLib
 )
 
 if(NOT TARGET imgui)
@@ -707,11 +720,6 @@ elseif(APPLE AND NOT UAPMD_BUILDING_WASM)
     add_custom_command(TARGET uapmd-app-bundle POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
             "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources"
-        COMMAND ${CMAKE_COMMAND} -E remove_directory
-            "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources/js"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${UAPMD_JS_DIR}
-            "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources/js"
         COMMAND ${CMAKE_COMMAND} -E copy
             ${UAPMD_RESOURCES_DIR}/uapmd.icns
             "$<TARGET_BUNDLE_CONTENT_DIR:uapmd-app-bundle>/Resources/uapmd.icns"
@@ -719,16 +727,6 @@ elseif(APPLE AND NOT UAPMD_BUILDING_WASM)
     )
 endif()
 
-# Create symbolic link to js directory for script editor module resolution
-# (Not applicable on Android or iOS - files would be in app bundle assets)
-if(NOT ANDROID AND NOT UAPMD_BUILDING_WASM AND NOT IOS)
-    add_custom_command(TARGET uapmd-app POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${UAPMD_JS_DIR}
-            $<TARGET_FILE_DIR:uapmd-app>/js
-        COMMENT "Creating symbolic link to js directory for module resolution"
-    )
-endif()
 
 # Android-specific configuration (targets uapmd-app, not main)
 if(ANDROID)
