@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "serve": "npx serve -s ../../cmake-build-wasm-imgui -l 8080",
-    "serve-stub": "npx serve -s dist -l 8080"
+    "serve": "npx serve -s ../../../../cmake-build-wasm/source/tools/uapmd-app -l 8080",
+    "serve-stub": "npx serve -s dist -l 8080",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "serve": "14.2.4"
+    "serve": "14.2.4",
+    "@playwright/test": "^1.45.1"
   }
 }

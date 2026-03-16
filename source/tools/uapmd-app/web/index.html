@@ -13,14 +13,92 @@
 <body>
 <div id="loading">Loading uapmd-app...</div>
 <canvas id="canvas"></canvas>
+
+<!-- ── Cross-Origin Isolation ─────────────────────────────────────────────
+     SharedArrayBuffer (needed by -sSHARED_MEMORY=1 / AudioWorklet) requires
+     the page to be cross-origin isolated:
+       Cross-Origin-Opener-Policy: same-origin
+       Cross-Origin-Embedder-Policy: require-corp
+     On hosts that don't set these headers the service worker below intercepts
+     every fetch and injects them, then triggers one transparent reload.
+     On properly configured servers crossOriginIsolated is already true and
+     the SW is a no-op.                                                      -->
 <script>
-    var Module = {
-        canvas: document.getElementById('canvas'),
-        preRun: [() => document.getElementById('loading').style.display = 'none'],
-        print: (text) => console.log('[uapmd]', text),
-        printErr: (text) => console.error('[uapmd]', text)
-    };
+    // ── Service-worker COOP/COEP injection ──────────────────────────────────
+    // On the very first load (no SW yet):
+    //   register() resolves while the SW is still *installing* → reg.active is
+    //   null at that point.  skipWaiting() activates it immediately after, but
+    //   nobody was watching.  Fix: also listen for the installing→activated
+    //   transition and reload then.
+    // On subsequent loads (SW already active):
+    //   crossOriginIsolated is already true, so we skip the reload entirely.
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./coop-coep-sw.js').then((reg) => {
+            if (crossOriginIsolated) return; // already isolated — nothing to do
+
+            function reloadWhenActivated(sw) {
+                sw.addEventListener('statechange', function () {
+                    if (sw.state === 'activated') window.location.reload();
+                });
+            }
+
+            if (reg.active) {
+                // SW was already active from a previous session but the page
+                // was somehow loaded without COOP/COEP — reload to apply them.
+                window.location.reload();
+            } else if (reg.installing) {
+                // First-ever registration: SW is installing right now.
+                // skipWaiting() will fire activated very shortly — wait for it.
+                reloadWhenActivated(reg.installing);
+            } else if (reg.waiting) {
+                reloadWhenActivated(reg.waiting);
+            }
+        }).catch((err) => {
+            console.warn('[uapmd] Service worker registration failed:', err);
+        });
+    }
 </script>
-<script src="uapmd-app.js"></script>
+
+<script>
+    // Only initialise the WASM module once the page is cross-origin isolated.
+    // On the first (un-isolated) load the SW registers itself; the reload it
+    // triggers will re-run this block with crossOriginIsolated === true.
+    if (typeof crossOriginIsolated === 'undefined' || crossOriginIsolated) {
+        // Intercept AudioWorklet.addModule() to log the real rejection reason.
+        // Emscripten's generated catch() swallows the error silently; this
+        // reveals exactly why addModule() failed (eval error, URL error, etc.).
+        if (typeof AudioWorklet !== 'undefined') {
+            const _origAddModule = AudioWorklet.prototype.addModule;
+            AudioWorklet.prototype.addModule = function (url, opts) {
+                window._uapmdAudioWorkletErrors = window._uapmdAudioWorkletErrors || [];
+                console.log('[uapmd] audioWorklet.addModule →', url);
+                return _origAddModule.call(this, url, opts).catch(e => {
+                    const reason = e && (e.stack || e.message || e);
+                    window._uapmdAudioWorkletErrors.push(String(reason));
+                    console.error('[uapmd] audioWorklet.addModule FAILED:', reason);
+                    throw e;
+                });
+            };
+        }
+
+        var s = document.createElement('script');
+        s.src = 'uapmd-app.js';
+        // Module.js must be set to the script's own URL so that Emscripten's
+        // _emscripten_start_wasm_audio_worklet_thread_async can resolve the
+        // AudioWorklet module path even if document.currentScript is null when
+        // the async callback fires.
+        s.onload = () => { if (typeof Module !== 'undefined') Module.js ??= s.src; };
+        var Module = {
+            canvas:   document.getElementById('canvas'),
+            preRun:   [() => document.getElementById('loading').style.display = 'none'],
+            print:    (text) => console.log('[uapmd]', text),
+            printErr: (text) => console.error('[uapmd]', text)
+        };
+        document.body.appendChild(s);
+    } else {
+        document.getElementById('loading').textContent =
+            'Enabling cross-origin isolation\u2026 (reloading)';
+    }
+</script>
 </body>
 </html>

@@ -26,6 +26,18 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 
+if(EMSCRIPTEN AND TARGET libremidi)
+    get_target_property(_libremidi_link_opts libremidi INTERFACE_LINK_OPTIONS)
+    if(_libremidi_link_opts AND _libremidi_link_opts MATCHES "EXPORTED_FUNCTIONS")
+        list(FILTER _libremidi_link_opts EXCLUDE REGEX "EXPORTED_FUNCTIONS")
+        if(_libremidi_link_opts)
+            set_property(TARGET libremidi PROPERTY INTERFACE_LINK_OPTIONS "${_libremidi_link_opts}")
+        else()
+            set_property(TARGET libremidi PROPERTY INTERFACE_LINK_OPTIONS "")
+        endif()
+    endif()
+endif()
+
 target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
         ${libremidi_SOURCE_DIR}
@@ -55,14 +67,22 @@ target_sources(uapmd-engine PRIVATE
         src/devices/DefaultDeviceIODispatcher.cpp
         src/devices/LibreMidiIODevice.cpp
         src/devices/MidiIODevice.cpp
-        src/devices/MiniAudioIODevice.cpp
-        src/devices/OboeAudioIODevice.cpp
         src/sequencer/OfflineRenderer.cpp
         src/sequencer/RealtimeSequencer.cpp
         src/sequencer/SequencerEngine.cpp
         src/sequencer/SequencerTrack.cpp
         src/sequencer/TimelineFacade.cpp
 )
+
+# Platform-specific audio backends.
+# Phase 3: WASM uses the native Emscripten AudioWorklet API.
+if(EMSCRIPTEN)
+    target_sources(uapmd-engine PRIVATE src/devices/WebAudioWorkletIODevice.cpp)
+elseif(ANDROID)
+    target_sources(uapmd-engine PRIVATE src/devices/OboeAudioIODevice.cpp)
+else()
+    target_sources(uapmd-engine PRIVATE src/devices/MiniAudioIODevice.cpp)
+endif()
 
 if(ANDROID)
     find_package(oboe REQUIRED CONFIG)

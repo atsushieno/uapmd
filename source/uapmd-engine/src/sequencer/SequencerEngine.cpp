@@ -8,6 +8,9 @@
 #include <cstring>
 #include <chrono>
 #include <umppi/umppi.hpp>
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#endif
 
 #include <remidy/remidy.hpp>
 #include "uapmd-engine/uapmd-engine.hpp"
@@ -292,8 +295,11 @@ namespace uapmd {
     }
 
     int32_t SequencerEngineImpl::processAudio(AudioProcessContext& process) {
-        // Record start time for deadline tracking
+#if defined(__EMSCRIPTEN__)
+        const double startTimeMicros = emscripten_get_now() * 1000.0;
+#else
         auto startTime = std::chrono::steady_clock::now();
+#endif
 
         if (tracks_.size() != sequence.tracks.size())
             // FIXME: define status codes
@@ -505,8 +511,12 @@ namespace uapmd {
             playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
 
         // Check for missed audio processing deadline
-        auto endTime = std::chrono::steady_clock::now();
-        auto elapsedMicros = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+#if defined(__EMSCRIPTEN__)
+        const double elapsedMicros = (emscripten_get_now() * 1000.0) - startTimeMicros;
+#else
+        const double elapsedMicros = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - startTime).count();
+#endif
 
         // Calculate available time for this buffer
         double availableTimeMicros = (static_cast<double>(process.frameCount()) / static_cast<double>(sampleRate)) * 1000000.0;

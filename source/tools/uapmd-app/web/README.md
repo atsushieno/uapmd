@@ -1,5 +1,7 @@
 # uapmd WebAssembly Target
 
+AI agents: DO NOT TRUST THIS OUTDATED DOC.
+
 This directory hosts the experimental WebAssembly build for `uapmd-app`. The goal is to reuse the existing ImGui+SDL2 desktop UI and compile it with Emscripten so that the exact same interface can run inside a browser canvas.
 
 > **Status**: the build scripts and CMake glue are in place; functionality parity still depends on how quickly we can pull changes from `main` into the wasm runtime.
@@ -7,7 +9,7 @@ This directory hosts the experimental WebAssembly build for `uapmd-app`. The goa
 ## Quick Start
 
 ```bash
-./build-wasm-imgui.sh
+./build-wasm.sh
 ```
 
 The top-level script will:
@@ -42,21 +44,20 @@ cmake --build cmake-build-wasm --target uapmd-app
 | `../uapmd_wasm.cpp` / `../uapmd_wasm_api.h` | Minimal C ABI shim used by `build-wasm.sh` to exercise the JS bridge. |
 | `README.md` | This document. |
 | `../web_main*.cpp` | Browser entry points that live next to other platform sources. |
-| `../../../build-wasm-imgui.sh` | Root-level orchestration script that drives the build. |
-| `../../../build-wasm.sh` | Minimal stub builder for experimenting with the lightweight FFI surface. |
+| `../../../build-wasm.sh` | Root-level orchestration script that drives the build. |
 
 ## Controlling the SDK Version
 
 The helper script defaults to `latest`. Override with environment variables:
 
 ```bash
-UAPMD_EMSDK_VERSION=3.1.62 ./build-wasm-imgui.sh
+UAPMD_EMSDK_VERSION=3.1.62 ./build-wasm.sh
 ```
 
 You can also skip the automatic checkout and use an existing emsdk install:
 
 ```bash
-./build-wasm-imgui.sh --use-system
+./build-wasm.sh --use-system
 ```
 
 Set `UAPMD_USE_SYSTEM_EMSDK=true ./build-wasm.sh` if you want the stub builder to do the same.

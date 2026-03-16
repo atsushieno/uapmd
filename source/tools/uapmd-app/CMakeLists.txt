@@ -8,20 +8,28 @@ if(UAPMD_TARGET_WASM)
         "Use vcpkg to provide SDL3 for WASM builds (OFF: Emscripten port via -s USE_SDL=3; ON: vcpkg SDL3::SDL3)"
         OFF)
     add_compile_definitions(EMSCRIPTEN DISABLE_VST3 DISABLE_AU DISABLE_LV2 DISABLE_CLAP)
-    set(_UAPMD_WASM_ASYNC_IMPORTS "['uapmd_web_open_file_dialog','uapmd_web_save_file_dialog']")
+    # Note: ASYNCIFY is omitted because ASYNCIFY is incompatible with
+    # SHARED_MEMORY (required for AudioWorklet).  The uapmd_web_open/save_file_dialog
+    # stubs listed in the old ASYNCIFY_IMPORTS were never implemented; file dialogs
+    # will be redesigned using JSPI or callbacks in a future phase.
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
         -s WASM=1 \
         -s ALLOW_MEMORY_GROWTH=1 \
-        -s MAXIMUM_MEMORY=512MB \
+        -s MAXIMUM_MEMORY=2048MB \
         -s USE_WEBGL2=1 \
         -s FULL_ES3=1 \
         -s MIN_WEBGL_VERSION=2 \
         -s DISABLE_EXCEPTION_CATCHING=0 \
         -s NO_EXIT_RUNTIME=1 \
-        -s ASSERTIONS=1 \
-        -s ASYNCIFY=1 \
-        -s ASYNCIFY_IMPORTS=${_UAPMD_WASM_ASYNC_IMPORTS} \
-        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8']")
+        -s ASSERTIONS=2 \
+        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8'] \
+        -s WASM_WORKERS=1 \
+        -s AUDIO_WORKLET=1 \
+        -s SHARED_MEMORY=1 \
+        -pthread \
+        -gsource-map \
+        --profiling-funcs \
+        --emit-symbol-map")
     if(NOT UAPMD_WASM_USE_VCPKG_SDL3)
         # Emscripten port: the linker flag activates the bundled SDL3 port at link time.
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -s USE_SDL=3")
@@ -113,6 +121,10 @@ elseif(UAPMD_BUILDING_WASM)
     set(UAPMD_COMPILE_TARGET uapmd-app)
     add_dependencies(uapmd-app uapmd-app-web-assets)
     target_link_options(uapmd-app PRIVATE --bind)
+    target_link_options(uapmd-app PRIVATE
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/web/audioworklet-env-fix.js")
+    target_link_options(uapmd-app PRIVATE
+        "SHELL:-sEXPORTED_FUNCTIONS=['_main','_free','_libremidi_devices_poll','_libremidi_devices_input','_uapmd_start_audio']")
 else()
     # Compile all sources once into a shared OBJECT library.
     # Both uapmd-app and uapmd-app-bundle link against it, avoiding duplicate

@@ -254,7 +254,16 @@ static int runWasmApp() {
     uapmd::AppModel::instantiate();
     uapmd::gui::GuiDefaults defaults;
     g_ctx.mainWindow = new uapmd::gui::MainWindow(defaults);
-    uapmd::AppModel::instance().setAudioEngineEnabled(true);
+    // Do NOT enable audio at startup — browsers block AudioContext creation
+    // without a prior user gesture.  Instead register a one-shot click
+    // listener: the first click anywhere on the page counts as the gesture.
+    EM_ASM({
+        document.addEventListener('click', function _startAudio() {
+            document.removeEventListener('click', _startAudio);
+            if (typeof Module !== 'undefined')
+                Module.ccall('uapmd_start_audio', null, [], []);
+        });
+    });
 
     maybeScheduleAutoImport();
 
@@ -267,6 +276,11 @@ static int runWasmApp() {
 }
 
 extern "C" {
+EMSCRIPTEN_KEEPALIVE
+void uapmd_start_audio() {
+    uapmd::AppModel::instance().setAudioEngineEnabled(true);
+}
+
 EMSCRIPTEN_KEEPALIVE
 void uapmd_debug_import_audio(const char* path) {
     if (!path || !*path) {

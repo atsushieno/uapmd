@@ -1,5 +1,12 @@
 #if defined(__EMSCRIPTEN__)
 
+// On WASM, MiniAudioIODevice.cpp (the normal provider of MINIAUDIO_IMPLEMENTATION)
+// is replaced by WebAudioWorkletIODevice.cpp which does not include miniaudio at all.
+// Supply the decoder-only implementation here; MA_NO_DEVICE_IO excludes the playback
+// device backends (handled by the AudioWorklet backend instead).
+#define MINIAUDIO_IMPLEMENTATION
+#define MA_NO_DEVICE_IO
+
 #include <algorithm>
 #include <fstream>
 #include <iostream>

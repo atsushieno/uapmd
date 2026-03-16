@@ -55,6 +55,17 @@ set(LIBREMIDI_HEADER_ONLY ON CACHE BOOL "Build libremidi as header-only" FORCE)
 if(EMSCRIPTEN)
     add_compile_definitions(LIBLOCATE_DISABLE_DLOPEN)
     set(WITH_RUNTIME_CPU_DETECTION OFF CACHE BOOL "Disable zlib-ng SIMD dispatch for Emscripten" FORCE)
+    # Phase 3: SharedArrayBuffer is required for the AudioWorklet WASM Worker to
+    # share the engine's C++ objects with the main thread.  This flag must be set
+    # at both compile time and link time.  The link-time counterpart is
+    # -sSHARED_MEMORY=1 in source/tools/uapmd-app/CMakeLists.txt.
+    add_compile_options(-sSHARED_MEMORY=1)
+    # Enabling SHARED_MEMORY implies atomics + pthreads support everywhere.
+    # Propagate -pthread so every TU is compiled with atomics/bulk-memory and
+    # ensure linkers know about pthread usage (modern emscripten derives the
+    # PTHREADS setting automatically from -pthread).
+    add_compile_options(-pthread)
+    add_link_options(-pthread)
 endif()
 
 set(UAPMD_ENABLE_CPPTRACE ON)
