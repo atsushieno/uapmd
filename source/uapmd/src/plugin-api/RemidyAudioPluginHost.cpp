@@ -6,7 +6,7 @@
 #include <Windows.h>
 #endif
 
-#include "remidy-tooling/PluginInstancing.hpp"
+#include "remidy-tooling/remidy-tooling.hpp"
 #include "../midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {

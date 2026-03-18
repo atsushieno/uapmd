@@ -7,7 +7,7 @@
 #if !ANDROID && !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
 #include <cpplocate/cpplocate.h>
 #endif
-#include "remidy-tooling/PluginScanTool.hpp"
+#include "remidy-tooling/remidy-tooling.hpp"
 
 const char* TOOLING_DIR_NAME= "remidy-tooling";
 

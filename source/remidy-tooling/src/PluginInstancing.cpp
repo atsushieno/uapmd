@@ -1,4 +1,4 @@
-#include "remidy-tooling/PluginInstancing.hpp"
+#include "remidy-tooling/remidy-tooling.hpp"
 
 #include <iostream>
 #include <format>

@@ -3,7 +3,7 @@
 #include <atomic>
 
 #include "remidy/remidy.hpp"
-#include "remidy-tooling/PluginScanTool.hpp"
+#include "remidy-tooling/remidy-tooling.hpp"
 #include "uapmd/uapmd.hpp"
 
 namespace uapmd {
