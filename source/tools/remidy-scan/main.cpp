@@ -10,8 +10,7 @@
 #include <cpptrace/from_current.hpp>
 #endif
 #include <remidy/remidy.hpp>
-#include <remidy-tooling/PluginScanTool.hpp>
-#include <remidy-tooling/PluginInstancing.hpp>
+#include <remidy-tooling/remidy-tooling.hpp>
 
 // -------- instancing --------
 
