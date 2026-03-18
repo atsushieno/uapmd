@@ -1,6 +1,7 @@
 #pragma once
 
 #include <future>
+#include <string>
 #include "../remidy.hpp"
 
 namespace remidy {

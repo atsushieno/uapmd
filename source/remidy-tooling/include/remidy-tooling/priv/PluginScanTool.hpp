@@ -1,64 +1,89 @@
 #pragma once
 
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
+#include <chrono>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "remidy/remidy.hpp"
 
 namespace remidy_tooling {
     using namespace remidy;
 
+    enum class ScanMode {
+        InProcess,
+        Remote
+    };
+    struct PluginScanObserver {
+        std::function<void(uint32_t totalBundles)> slowScanStarted{};
+        std::function<void(const std::filesystem::path& bundlePath)> bundleScanStarted{};
+        std::function<void(const std::filesystem::path& bundlePath)> bundleScanCompleted{};
+        std::function<void(bool success)> slowScanCompleted{};
+        std::function<void(const std::string& message)> errorOccurred{};
+        std::function<bool()> shouldCancel{};
+    };
+
+    struct BlocklistEntry {
+        std::string id;
+        std::string format;
+        std::string pluginId;
+        std::string reason;
+        std::chrono::system_clock::time_point timestamp;
+    };
+
     class PluginScanTool {
-
-        // -------- scanning --------
-
-        std::vector<std::string> vst3SearchPaths{};
-        std::vector<std::string> lv2SearchPaths{};
-        std::vector<std::string> clapSearchPaths{};
-#if ANDROID
-        std::unique_ptr<PluginFormatAAP> aap;
-#elif defined(__APPLE__) && TARGET_OS_IPHONE
-        // iOS: AUv3 is the only supported plugin format.
-        // VST3, LV2, and CLAP are desktop-only and excluded from the iOS build.
-        std::unique_ptr<PluginFormatAU> au;
-#else
-        std::unique_ptr<PluginFormatVST3> vst3;
-        std::unique_ptr<PluginFormatLV2> lv2;
-        std::unique_ptr<PluginFormatCLAP> clap;
-#if __APPLE__
-        std::unique_ptr<PluginFormatAU> au;
-#endif
-#endif
-        std::filesystem::path plugin_list_cache_file{};
-
-        std::vector<PluginFormat*> formats_;
     public:
-        PluginScanTool();
+        virtual ~PluginScanTool() = default;
+        static std::unique_ptr<PluginScanTool> create();
 
-        PluginCatalog catalog{};
+        virtual PluginCatalog& catalog() = 0;
+        virtual const PluginCatalog& catalog() const = 0;
 
-        auto filterByFormat(std::vector<PluginCatalogEntry*> entries, std::string format) {
-            erase_if(entries, [format](PluginCatalogEntry* entry) { return entry->format() != format; });
-            return entries;
-        }
+        virtual std::vector<PluginCatalogEntry*> filterByFormat(std::vector<PluginCatalogEntry*> entries,
+                                                                std::string format) = 0;
 
-        std::vector<PluginFormat*> formats() { return formats_; }
-        void addFormat(PluginFormat* item) { formats_.emplace_back(item); }
+        virtual std::vector<PluginFormat*> formats() = 0;
+        virtual void addFormat(PluginFormat* item) = 0;
 
-        std::filesystem::path& pluginListCacheFile() { return plugin_list_cache_file; }
-        int performPluginScanning(bool requireFastScanning);
-        int performPluginScanning(bool requireFastScanning, std::filesystem::path& pluginListCacheFile);
+        virtual std::filesystem::path& pluginListCacheFile() = 0;
+        virtual int performPluginScanning(bool requireFastScanning,
+                                          ScanMode mode = ScanMode::InProcess,
+                                          bool forceRescan = false,
+                                          double bundleTimeoutSeconds = 0.0,
+                                          PluginScanObserver* observer = nullptr) = 0;
+        virtual int performPluginScanning(bool requireFastScanning,
+                                          std::filesystem::path& pluginListCacheFile,
+                                          ScanMode mode = ScanMode::InProcess,
+                                          bool forceRescan = false,
+                                          double bundleTimeoutSeconds = 0.0,
+                                          PluginScanObserver* observer = nullptr) = 0;
+        virtual void savePluginListCache() = 0;
+        virtual void savePluginListCache(std::filesystem::path& fileToSave) = 0;
 
-        void savePluginListCache() { savePluginListCache(pluginListCacheFile()); }
-        void savePluginListCache(std::filesystem::path& fileToSave) {
-            catalog.save(fileToSave);
-        }
+        virtual std::vector<BlocklistEntry> blocklistEntries() const = 0;
+        virtual bool unblockBundle(const std::string& entryId) = 0;
+        virtual void clearBlocklist() = 0;
+        virtual void addToBlocklist(const std::string& formatName, const std::string& pluginId, const std::string& reason) = 0;
+        virtual std::string lastScanError() const = 0;
 
-        // We have some plugins that cause either freezes or runtime crashes that prevents our business logic.
-        // That does not necessarily mean that the plugin cannot be instantiated in general. It's a scan-time-only thing.
-        // We enumerate catalog entries but skip instancing validation.
-        bool safeToInstantiate(PluginFormat* format, PluginCatalogEntry* entry);
+        virtual bool safeToInstantiate(PluginFormat* format, PluginCatalogEntry* entry) = 0;
+        virtual bool shouldCreateInstanceOnUIThread(PluginFormat* format, PluginCatalogEntry* entry) = 0;
+        virtual bool isBundleBlocklisted(const std::string& formatName, const std::filesystem::path& bundlePath) const = 0;
 
-        bool shouldCreateInstanceOnUIThread(PluginFormat* format, PluginCatalogEntry* entry);
+        friend class InProcessScanSessionManager;
+        friend class RemoteScanSessionManager;
+
+    protected:
+        virtual void mergeScanResults(std::vector<std::unique_ptr<PluginCatalogEntry>> results) = 0;
+        virtual void notifyBundleScanStarted(const std::filesystem::path& bundlePath,
+                                             PluginScanObserver* observer) const = 0;
+        virtual void notifyBundleScanCompleted(const std::filesystem::path& bundlePath,
+                                               PluginScanObserver* observer) const = 0;
+        virtual void notifySlowScanStarted(uint32_t totalBundles, PluginScanObserver* observer) const = 0;
+        virtual void notifySlowScanCompleted(bool success, PluginScanObserver* observer) const = 0;
+        virtual void notifyScanError(const std::string& message, PluginScanObserver* observer) = 0;
+        virtual bool isScanCancellationRequested(PluginScanObserver* observer) const = 0;
     };
 }

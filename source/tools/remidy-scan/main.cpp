@@ -14,13 +14,13 @@
 
 // -------- instancing --------
 
-remidy_tooling::PluginScanTool scanner{};
+std::unique_ptr<remidy_tooling::PluginScanTool> scanner = remidy_tooling::PluginScanTool::create();
 
 class RemidyScan {
 
 int testInstancing() {
-    for (auto format : scanner.formats()) {
-        auto plugins = scanner.filterByFormat(scanner.catalog.getPlugins(), format->name());
+    for (auto format : scanner->formats()) {
+        auto plugins = scanner->filterByFormat(scanner->catalog().getPlugins(), format->name());
 
         int i= 0;
         for (auto info : plugins) {
@@ -30,14 +30,14 @@ int testInstancing() {
 
             std::cerr << "[" << ++i << "/" << plugins.size() << "] (" << info->format() << ") " << displayName << " : " << vendor << " (" << url << ")" << std::endl;
 
-            if (!scanner.safeToInstantiate(format, info)) {
+            if (!scanner->safeToInstantiate(format, info)) {
                 std::cerr << "  Plugin (" << info->format() << ") " << displayName << " is skipped." << std::endl;
                 continue;
             }
             bool successful = false;
             {
                 // scoped object
-                remidy_tooling::PluginInstancing instancing{scanner, format, info};
+                remidy_tooling::PluginInstancing instancing{*scanner, format, info};
                 // ...
                 // you could adjust configuration here
                 // ...
@@ -168,15 +168,15 @@ int run(int argc, const char* const* argv) {
     if (rescan)
         std::cerr << "Full scanning, ignoring existing plugin list cache..." << std::endl;
     else
-        std::cerr << "Trying to load plugin list cache from " << scanner.pluginListCacheFile() << std::endl;
+        std::cerr << "Trying to load plugin list cache from " << scanner->pluginListCacheFile() << std::endl;
 
     if (rescan)
-        result = scanner.performPluginScanning(false, emptyPath);
+        result = scanner->performPluginScanning(false, emptyPath, remidy_tooling::ScanMode::InProcess, true, 0.0);
     else
-        result = scanner.performPluginScanning(false);
+        result = scanner->performPluginScanning(false, remidy_tooling::ScanMode::InProcess, false, 0.0);
 
-    scanner.savePluginListCache();
-    std::cerr << "Scanning completed and saved plugin list cache: " << scanner.pluginListCacheFile() << std::endl;
+    scanner->savePluginListCache();
+    std::cerr << "Scanning completed and saved plugin list cache: " << scanner->pluginListCacheFile() << std::endl;
 
     if (!performInstantVerification) {
         std::cerr << "To perform full instance scanning, pass `-full` argument." << std::endl;

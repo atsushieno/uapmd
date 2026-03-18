@@ -1,6 +1,7 @@
 #pragma once
 
 #include "remidy/remidy.hpp"
+#include <stdexcept>
 #include <aap/core/host/plugin-connections.h>
 #include <aap/core/host/plugin-host.h>
 #include <aap/core/host/plugin-instance.h>
@@ -19,13 +20,14 @@ namespace remidy {
     class PluginInstanceAAP;
 
     class PluginScanningAAP : public PluginScanning {
-        PluginFormatAAPImpl* owner;
+        PluginFormatAAP* owner;
 
     public:
-        PluginScanningAAP(PluginFormatAAPImpl* owner) : owner(owner) {}
+        PluginScanningAAP(PluginFormatAAP* owner) : owner(owner) {}
         ~PluginScanningAAP() override = default;
 
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
+        bool scanRequiresLoadLibrary(const std::filesystem::path&) override { return false; }
 
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
 

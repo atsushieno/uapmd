@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstring>
 #include <unordered_map>
+#include <map>
 #include <unordered_set>
 #include <vector>
 #include <functional>
@@ -15,18 +16,13 @@
 #include <future>
 #include <thread>
 #include <string>
+#include <sstream>
 #include <optional>
 #include <format>
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
-#if !ANDROID && !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
-#include <choc/platform/choc_Execute.h>
-#endif
 #include <choc/text/choc_JSON.h>
-#if !ANDROID && !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
-#include <cpplocate/cpplocate.h>
-#endif
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_SampleBuffers.h>
 #include <umppi/umppi.hpp>
@@ -95,6 +91,13 @@ uint64_t secondsToTicks(double seconds, double bpm, uint32_t ticksPerQuarter) {
     if (!std::isfinite(ticks) || ticks < 0.0)
         return 0;
     return static_cast<uint64_t>(std::llround(ticks));
+}
+
+std::string bundleDisplayName(const std::filesystem::path& bundlePath) {
+    auto name = bundlePath.filename().string();
+    if (!name.empty())
+        return name;
+    return bundlePath.string();
 }
 
 namespace uapmd {
@@ -477,6 +480,7 @@ void uapmd::AppModel::cleanupInstance() {
 
 uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
         sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
+        pluginScanTool_(remidy_tooling::PluginScanTool::create()),
         transportController_(std::make_unique<TransportController>(this, &sequencer_)),
         sample_rate_(sampleRate),
         audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)),
@@ -488,6 +492,35 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     constexpr int kInitialTrackCount = 3;
     for (int i = 0; i < kInitialTrackCount; ++i) {
         addTrack();
+    }
+
+    auto& scanCache = pluginScanTool_->pluginListCacheFile();
+    bool loadedFromCache = false;
+    if (!scanCache.empty()) {
+        std::error_code ec;
+        if (std::filesystem::exists(scanCache, ec) && ec.value() == 0) {
+            try {
+                pluginScanTool_->catalog().load(scanCache);
+                loadedFromCache = true;
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to load plugin list cache: " << e.what() << std::endl;
+            }
+        }
+    }
+    if (!loadedFromCache || pluginScanTool_->catalog().getPlugins().empty()) {
+        auto hostEntries = sequencer_.engine()->pluginHost()->pluginCatalogEntries();
+        for (auto& plugin : hostEntries) {
+            auto entry = std::make_unique<remidy::PluginCatalogEntry>();
+            auto fmt = plugin.format();
+            entry->format(fmt);
+            auto id = plugin.pluginId();
+            entry->pluginId(id);
+            entry->displayName(plugin.displayName());
+            entry->vendorName(plugin.vendorName());
+            entry->productUrl(plugin.productUrl());
+            entry->bundlePath(plugin.bundlePath());
+            pluginScanTool_->catalog().add(std::move(entry));
+        }
     }
 }
 
@@ -503,161 +536,13 @@ uapmd::IDocumentProvider* uapmd::AppModel::documentProvider() {
     return documentProvider_.get();
 }
 
-int uapmd::AppModel::performInProcessPluginScanning(bool forceRescan) {
-    static std::filesystem::path emptyPath{};
-    int result = forceRescan
-                     ? pluginScanTool_.performPluginScanning(false, emptyPath)
-                     : pluginScanTool_.performPluginScanning(false);
-    if (result == 0) {
-        pluginScanTool_.savePluginListCache();
-    }
-    return result;
-}
-
-void uapmd::AppModel::reloadPluginCatalogFromCache(const std::filesystem::path& cacheFile) {
-    if (cacheFile.empty())
+void uapmd::AppModel::cancelPluginScanning() {
+    if (!isScanning_)
         return;
-    std::error_code ec;
-    if (!std::filesystem::exists(cacheFile, ec))
-        return;
-    auto cacheCopy = cacheFile;
-    pluginScanTool_.catalog.clear();
-    pluginScanTool_.catalog.load(cacheCopy);
-    pluginScanTool_.pluginListCacheFile() = cacheCopy;
+    scanCancelRequested_.store(true, std::memory_order_release);
 }
 
-uapmd::AppModel::RemoteScanOutcome uapmd::AppModel::performRemotePluginScanning(bool forceRescan) {
-#if ANDROID || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
-    RemoteScanOutcome outcome{};
-    outcome.error = "Remote scanning is unavailable on this platform.";
-    return outcome;
-#else
-    auto extractJsonPayload = [](const std::string& text) -> std::optional<std::string> {
-        auto locate = [](char openChar, char closeChar, size_t startIdx, const std::string& input) -> std::optional<std::string> {
-            if (startIdx == std::string::npos)
-                return std::nullopt;
-            int depth = 0;
-            bool inString = false;
-            bool escape = false;
-            for (size_t i = startIdx; i < input.size(); ++i) {
-                char c = input[i];
-                if (inString) {
-                    if (escape) {
-                        escape = false;
-                        continue;
-                    }
-                    if (c == '\\') {
-                        escape = true;
-                        continue;
-                    }
-                    if (c == '"')
-                        inString = false;
-                    continue;
-                }
-                if (c == '"') {
-                    inString = true;
-                    continue;
-                }
-                if (c == openChar) {
-                    ++depth;
-                    continue;
-                }
-                if (c == closeChar) {
-                    --depth;
-                    if (depth == 0) {
-                        return input.substr(startIdx, i - startIdx + 1);
-                    }
-                    continue;
-                }
-            }
-            return std::nullopt;
-        };
-
-        auto objectStart = text.find('{');
-        auto arrayStart = text.find('[');
-        bool useArray = false;
-        size_t startIdx = std::string::npos;
-        if (arrayStart != std::string::npos &&
-            (objectStart == std::string::npos || arrayStart < objectStart)) {
-            useArray = true;
-            startIdx = arrayStart;
-        } else {
-            startIdx = objectStart;
-        }
-
-        if (useArray)
-            return locate('[', ']', startIdx, text);
-        return locate('{', '}', startIdx, text);
-    };
-
-    RemoteScanOutcome outcome{};
-    try {
-        auto exePathString = cpplocate::getExecutablePath();
-        if (exePathString.empty()) {
-            outcome.error = "Unable to determine executable path for remote scanning.";
-            return outcome;
-        }
-        std::filesystem::path exePath{exePathString};
-        std::string command;
-        const auto exeString = exePath.string();
-        command.reserve(exeString.size() + 32);
-        command.push_back('\"');
-        command += exeString;
-        command.push_back('\"');
-        command += " --scan-only";
-        if (forceRescan)
-            command += " --force-rescan";
-
-        auto processResult = choc::execute(command, false);
-        if (processResult.statusCode != 0) {
-            outcome.error = std::format("Remote scanner exited with code {}", processResult.statusCode);
-            if (!processResult.output.empty()) {
-                outcome.error += std::string(": ") + processResult.output;
-            }
-            return outcome;
-        }
-
-        auto jsonPayload = extractJsonPayload(processResult.output);
-        if (!jsonPayload) {
-            outcome.error = "Remote scanner did not produce parseable JSON output.";
-            if (!processResult.output.empty()) {
-                constexpr size_t kMaxSnippet = 512;
-                auto snippet = processResult.output.substr(0, std::min(processResult.output.size(), kMaxSnippet));
-                outcome.error += std::string{" Output snippet: "} + snippet;
-            }
-            return outcome;
-        }
-
-        choc::value::Value parsed;
-        try {
-            parsed = choc::json::parse(*jsonPayload);
-        } catch (const std::exception& e) {
-            outcome.error = std::string{"Failed to parse remote scanning output: "} + e.what();
-            if (!processResult.output.empty()) {
-                constexpr size_t kMaxSnippet = 512;
-                auto snippet = processResult.output.substr(0, std::min(processResult.output.size(), kMaxSnippet));
-                outcome.error += std::string{" ("} + snippet + ')';
-            }
-            return outcome;
-        }
-        auto view = parsed.getView();
-        outcome.success = view["success"].getBool();
-        auto cacheValue = view["cacheFile"];
-        if (!cacheValue.isVoid()) {
-            outcome.cacheFile = std::filesystem::path(cacheValue.toString());
-        }
-        auto errorValue = view["error"];
-        if (!errorValue.isVoid()) {
-            outcome.error = errorValue.toString();
-        }
-    } catch (const std::exception& e) {
-        outcome.error = std::string{"Remote scanning failed: "} + e.what();
-    }
-    return outcome;
-#endif
-}
-
-void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest request) {
+void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest request, double remoteTimeoutSeconds) {
 #if defined(__EMSCRIPTEN__)
     // Native plugin formats (VST3/LV2/CLAP) are not available in the browser build,
     // so skip scanning entirely and notify the UI that nothing happened.
@@ -677,32 +562,103 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest 
     const char* modeStr = request == PluginScanRequest::RemoteProcess ? "remote process" : "in-process";
     std::cout << "Starting plugin scanning (" << modeStr << ", forceRescan: " << forceRescan << ")" << std::endl;
 
+    scanCancelRequested_.store(false, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lock(slowScanMutex_);
+        slowScanProgress_ = {};
+    }
+
     // Run scanning in a separate thread to avoid blocking the UI
-    std::thread scanningThread([this, forceRescan, request]() {
+    std::thread scanningThread([this, forceRescan, request, remoteTimeoutSeconds]() {
         try {
             bool success = false;
             std::string errorMsg;
+            int result = 0;
+            std::string reportText;
 
-            if (request == PluginScanRequest::RemoteProcess) {
-                auto outcome = performRemotePluginScanning(forceRescan);
-                success = outcome.success;
-                if (success) {
-                    reloadPluginCatalogFromCache(outcome.cacheFile);
-                } else {
-                    errorMsg = outcome.error.empty()
-                                   ? "Remote scanning failed."
-                                   : outcome.error;
+            auto& cacheFile = pluginScanTool_->pluginListCacheFile();
+            double bundleTimeoutSeconds = (request == PluginScanRequest::RemoteProcess && remoteTimeoutSeconds > 0.0)
+                                          ? remoteTimeoutSeconds
+                                          : 0.0;
+            {
+                std::lock_guard<std::mutex> metricsLock(scanMetricsMutex_);
+                lastScanBundleDurations_.clear();
+            }
+
+            std::unordered_map<std::string, std::chrono::steady_clock::time_point> bundleStartTimes;
+            std::unordered_map<std::string, double> bundleDurationsSeconds;
+            auto recordBundleStart = [&bundleStartTimes](const std::filesystem::path& bundlePath) {
+                bundleStartTimes[bundlePath.string()] = std::chrono::steady_clock::now();
+            };
+            auto recordBundleEnd = [&bundleStartTimes, &bundleDurationsSeconds](const std::filesystem::path& bundlePath) {
+                auto key = bundlePath.string();
+                auto it = bundleStartTimes.find(key);
+                if (it != bundleStartTimes.end()) {
+                    auto elapsed = std::chrono::steady_clock::now() - it->second;
+                    bundleDurationsSeconds[key] = std::chrono::duration<double>(elapsed).count();
+                    bundleStartTimes.erase(it);
                 }
-            } else {
-                int result = performInProcessPluginScanning(forceRescan);
-                success = (result == 0);
-                if (!success) {
-                    errorMsg = "Plugin scanning failed with error code " + std::to_string(result);
-                }
+            };
+
+            remidy_tooling::PluginScanObserver observer;
+            observer.slowScanStarted = [this](uint32_t totalBundles) {
+                std::lock_guard<std::mutex> lock(slowScanMutex_);
+                slowScanProgress_.running = true;
+                slowScanProgress_.processedBundles = 0;
+                slowScanProgress_.totalBundles = totalBundles;
+                slowScanProgress_.currentBundle.clear();
+            };
+            observer.bundleScanStarted = [this, recordBundleStart](const std::filesystem::path& bundlePath) {
+                recordBundleStart(bundlePath);
+                std::lock_guard<std::mutex> lock(slowScanMutex_);
+                slowScanProgress_.running = true;
+                slowScanProgress_.currentBundle = bundleDisplayName(bundlePath);
+            };
+            observer.bundleScanCompleted = [this, recordBundleEnd](const std::filesystem::path& bundlePath) {
+                recordBundleEnd(bundlePath);
+                std::lock_guard<std::mutex> lock(slowScanMutex_);
+                slowScanProgress_.running = true;
+                slowScanProgress_.processedBundles += 1;
+                slowScanProgress_.currentBundle = bundleDisplayName(bundlePath);
+            };
+            observer.slowScanCompleted = [this](bool) {
+                std::lock_guard<std::mutex> lock(slowScanMutex_);
+                slowScanProgress_.running = false;
+                slowScanProgress_.currentBundle.clear();
+                if (slowScanProgress_.processedBundles > slowScanProgress_.totalBundles)
+                    slowScanProgress_.totalBundles = slowScanProgress_.processedBundles;
+            };
+            observer.errorOccurred = [this](const std::string&) {};
+            observer.shouldCancel = [this]() {
+                return scanCancelRequested_.load(std::memory_order_acquire);
+            };
+            auto mode = (request == PluginScanRequest::RemoteProcess)
+                        ? remidy_tooling::ScanMode::Remote
+                        : remidy_tooling::ScanMode::InProcess;
+            result = pluginScanTool_->performPluginScanning(false,
+                                                           cacheFile,
+                                                           mode,
+                                                           forceRescan,
+                                                           bundleTimeoutSeconds,
+                                                           &observer);
+
+            success = (result == 0);
+            if (!success) {
+                auto scanError = pluginScanTool_->lastScanError();
+                errorMsg = scanError.empty()
+                               ? "Plugin scanning failed with error code " + std::to_string(result)
+                               : scanError;
+            }
+
+            {
+                std::lock_guard<std::mutex> metricsLock(scanMetricsMutex_);
+                lastScanBundleDurations_ = bundleDurationsSeconds;
             }
 
             if (success) {
+                pluginScanTool_->savePluginListCache();
                 sequencer_.engine()->pluginHost()->performPluginScanning(false); // Load from cache, don't rescan
+                reportText = generateScanReport();
             }
 
             std::cout << "Plugin scanning completed " << (success ? "successfully" : "with errors") << std::endl;
@@ -710,8 +666,14 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest 
             for (auto& callback : scanningCompleted) {
                 callback(success, errorMsg);
             }
+            if (success) {
+                for (auto& callback : scanReportReady) {
+                    callback(reportText);
+                }
+            }
 
             isScanning_ = false;
+            scanCancelRequested_.store(false, std::memory_order_release);
         } catch (const std::exception& e) {
             std::cout << "Plugin scanning failed with exception: " << e.what() << std::endl;
 
@@ -721,10 +683,46 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest 
             }
 
             isScanning_ = false;
+            scanCancelRequested_.store(false, std::memory_order_release);
         }
     });
 
     scanningThread.detach();
+}
+
+uapmd::AppModel::SlowScanProgressState uapmd::AppModel::slowScanProgress() const {
+    std::lock_guard<std::mutex> lock(slowScanMutex_);
+    return slowScanProgress_;
+}
+
+std::vector<remidy_tooling::BlocklistEntry> uapmd::AppModel::pluginBlocklist() const {
+    return pluginScanTool_->blocklistEntries();
+}
+
+bool uapmd::AppModel::unblockPluginFromBlocklist(const std::string& entryId) {
+    return pluginScanTool_->unblockBundle(entryId);
+}
+
+void uapmd::AppModel::clearPluginBlocklist() {
+    pluginScanTool_->clearBlocklist();
+}
+
+std::string uapmd::AppModel::lastPluginScanError() const {
+    return pluginScanTool_->lastScanError();
+}
+
+uint8_t uapmd::AppModel::getInstanceGroup(int32_t instanceId) const {
+    auto* engine = sequencer_.engine();
+    if (!engine)
+        return 0xFF;
+    return engine->getInstanceGroup(instanceId);
+}
+
+bool uapmd::AppModel::setInstanceGroup(int32_t instanceId, uint8_t group) {
+    auto* engine = sequencer_.engine();
+    if (!engine)
+        return false;
+    return engine->setInstanceGroup(instanceId, group);
 }
 
 void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
@@ -2168,4 +2166,87 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
         restoreRealtime();
         fail(e.what());
     }
+}
+std::string uapmd::AppModel::generateScanReport() {
+    auto& scanner = *pluginScanTool_;
+    std::unordered_map<std::string, double> bundleDurations;
+    {
+        std::lock_guard<std::mutex> lock(scanMetricsMutex_);
+        bundleDurations = lastScanBundleDurations_;
+    }
+
+    struct BundleRow {
+        std::string path;
+        std::vector<std::string> pluginDescriptions;
+    };
+    std::map<std::string, BundleRow> bundleRows;
+
+    auto escapeCell = [](const std::string& text) {
+        std::string escaped;
+        escaped.reserve(text.size());
+        for (char c : text) {
+            switch (c) {
+                case '|': escaped += "\\|"; break;
+                case '\n': escaped += "<br>"; break;
+                default: escaped.push_back(c); break;
+            }
+        }
+        return escaped;
+    };
+
+    std::ostringstream report;
+    report << "# Plugin Scan Report\n\n";
+    auto formats = scanner.formats();
+    for (auto* format : formats) {
+        auto entries = scanner.filterByFormat(scanner.catalog().getPlugins(), format->name());
+        if (entries.empty())
+            continue;
+        for (auto* entry : entries) {
+            auto bundle = entry->bundlePath().string();
+            auto& row = bundleRows[bundle];
+            row.path = bundle;
+            row.pluginDescriptions.push_back(std::format("{} ({} - {})",
+                                                         entry->displayName(),
+                                                         format->name(),
+                                                         entry->pluginId()));
+        }
+    }
+
+    std::vector<std::string> timedBundles;
+    timedBundles.reserve(bundleDurations.size());
+    for (const auto& [bundlePath, duration] : bundleDurations) {
+        (void) duration;
+        timedBundles.push_back(bundlePath);
+    }
+    std::sort(timedBundles.begin(), timedBundles.end());
+    timedBundles.erase(std::unique(timedBundles.begin(), timedBundles.end()), timedBundles.end());
+
+    if (timedBundles.empty()) {
+        report << "No slow-scan bundle timings were recorded.\n";
+        return report.str();
+    }
+
+    report << "| Bundle | Scan Time (s) | Plugins |\n";
+    report << "| --- | --- | --- |\n";
+    for (const auto& bundlePath : timedBundles) {
+        auto rowIt = bundleRows.find(bundlePath);
+        if (rowIt == bundleRows.end())
+            continue;
+        const auto& row = rowIt->second;
+        std::string pluginCell;
+        for (size_t i = 0; i < row.pluginDescriptions.size(); ++i) {
+            if (i > 0)
+                pluginCell += "<br>";
+            pluginCell += row.pluginDescriptions[i];
+        }
+        std::string timeCell = "N/A";
+        if (auto it = bundleDurations.find(bundlePath); it != bundleDurations.end() && it->second > 0.0)
+            timeCell = std::format("{:.2f}", it->second);
+        report << "| " << escapeCell(bundlePath)
+               << " | " << escapeCell(timeCell)
+               << " | " << escapeCell(pluginCell)
+               << " |\n";
+    }
+    report << "\nSlow-scan bundles: " << timedBundles.size() << "\n";
+    return report.str();
 }

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <optional>
+#include <stdexcept>
 #include <unordered_map>
 
 #include "remidy/remidy.hpp"
@@ -19,16 +20,13 @@
 namespace remidy {
     class PluginFormatLV2Impl;
 
-    class AudioPluginScannerLV2 : public FileBasedPluginScanning {
+    class PluginScannerLV2 : public PluginScanning {
         LilvWorld *world;
     public:
-        explicit AudioPluginScannerLV2(LilvWorld *world) : world(world) {}
-
-        bool usePluginSearchPaths() override { return true; }
-
-        std::vector<std::filesystem::path> &getDefaultSearchPaths() override;
+        explicit PluginScannerLV2(LilvWorld *world) : world(world) {}
 
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
+        bool scanRequiresLoadLibrary(const std::filesystem::path&) override { return false; }
 
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
 
@@ -38,7 +36,7 @@ namespace remidy {
     class PluginFormatLV2Impl : public PluginFormatLV2 {
         Logger *logger;
         PluginFormatLV2::Extensibility extensibility;
-        AudioPluginScannerLV2 scanning_{nullptr};
+        PluginScannerLV2 scanning_{nullptr};
 
     public:
         explicit PluginFormatLV2Impl(std::vector<std::string>& overrideSearchPaths);

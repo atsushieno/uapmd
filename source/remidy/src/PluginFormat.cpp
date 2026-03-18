@@ -13,10 +13,5 @@ namespace remidy {
     PluginFormat::PluginFormat() {
         impl = new Impl(this);
     }
-
-    bool PluginScanning::scanningMayBeSlow() {
-        return scanRequiresInstantiation() != ScanningStrategyValue::NEVER;
-    }
-
     PluginFormat::Impl::Impl(PluginFormat* owner) : owner(owner) {}
 }

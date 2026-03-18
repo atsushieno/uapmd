@@ -3,6 +3,7 @@
 // Shared application logic is in main_common.cpp
 
 #include "main_common.hpp"
+#include <remidy-tooling/remidy-tooling.hpp>
 #if UAPMD_HAS_CPPTRACE
 #include <cpptrace/cpptrace.hpp>
 #include <cpptrace/from_current.hpp>
@@ -54,12 +55,18 @@ void installSignalTraceHandler() {}
  * Desktop entry point with exception handling and crash reporting.
  */
 int main(int argc, char** argv) {
+    auto runPrimary = [&](int argcIn, char** argvIn) {
+        remidy_tooling::RemotePluginScannerProcess remoteScanner(argcIn, argvIn);
+        if (remoteScanner.matches())
+            return remoteScanner.process();
+        return uapmd::runMainLoop(argcIn, argvIn);
+    };
 #if UAPMD_HAS_CPPTRACE
     cpptrace::register_terminate_handler();
     installSignalTraceHandler();
     int ret;
     CPPTRACE_TRY {
-        ret = uapmd::runMainLoop(argc, argv);
+        ret = runPrimary(argc, argv);
     } CPPTRACE_CATCH(...) {
         std::cerr << "Runtime Error in uapmd-app: " << std::endl;
         cpptrace::from_current_exception().print();
@@ -67,6 +74,6 @@ int main(int argc, char** argv) {
     }
     return ret;
 #else
-    return uapmd::runMainLoop(argc, argv);
+    return runPrimary(argc, argv);
 #endif
 }

@@ -30,8 +30,7 @@ int runScanOnlyMode(const ScanOnlyOptions&) {
 
 #include <choc/text/choc_JSON.h>
 #include <remidy/remidy.hpp>
-#include <remidy-tooling/PluginScanTool.hpp>
-#include <remidy-tooling/PluginInstancing.hpp>
+#include <remidy-tooling/remidy-tooling.hpp>
 
 namespace uapmd {
 namespace {
@@ -56,7 +55,7 @@ VerificationReport runFullVerification(remidy_tooling::PluginScanTool& scanner) 
         remidy::audioThreadIds().push_back(std::this_thread::get_id());
 
         for (auto format : scanner.formats()) {
-            auto plugins = scanner.filterByFormat(scanner.catalog.getPlugins(), format->name());
+            auto plugins = scanner.filterByFormat(scanner.catalog().getPlugins(), format->name());
             size_t index = 0;
             for (auto info : plugins) {
                 ++index;
@@ -191,7 +190,7 @@ VerificationReport runFullVerification(remidy_tooling::PluginScanTool& scanner) 
 }
 
 choc::value::Value buildPluginArray(remidy_tooling::PluginScanTool& scanner) {
-    auto catalogEntries = scanner.catalog.getPlugins();
+    auto catalogEntries = scanner.catalog().getPlugins();
     std::vector<choc::value::Value> plugins;
     plugins.reserve(catalogEntries.size());
     for (auto entry : catalogEntries) {
@@ -213,22 +212,20 @@ choc::value::Value buildPluginArray(remidy_tooling::PluginScanTool& scanner) {
 int runScanOnlyMode(const ScanOnlyOptions& options) {
     remidy::EventLoop::initializeOnUIThread();
 
-    remidy_tooling::PluginScanTool scanner{};
+    auto scanner = remidy_tooling::PluginScanTool::create();
     static std::filesystem::path emptyPath{};
 
-    int scanResult = options.forceRescan
-                         ? scanner.performPluginScanning(false, emptyPath)
-                         : scanner.performPluginScanning(false);
+    int scanResult = scanner->performPluginScanning(false, remidy_tooling::ScanMode::InProcess, options.forceRescan, 0.0);
 
-    choc::value::Value pluginArray = buildPluginArray(scanner);
+    choc::value::Value pluginArray = buildPluginArray(*scanner);
     bool success = (scanResult == 0);
 
     if (success)
-        scanner.savePluginListCache();
+        scanner->savePluginListCache();
 
     choc::value::Value fullVerificationJson;
     if (options.fullVerification) {
-        auto report = runFullVerification(scanner);
+        auto report = runFullVerification(*scanner);
         bool verificationSuccess = report.failures.empty();
         success = success && verificationSuccess;
 
@@ -269,7 +266,7 @@ int runScanOnlyMode(const ScanOnlyOptions& options) {
             "PluginScanResult",
             "success", true,
             "forceRescan", options.forceRescan,
-            "cacheFile", std::string{scanner.pluginListCacheFile().string()},
+            "cacheFile", std::string{scanner->pluginListCacheFile().string()},
             "plugins", pluginArray,
             "fullVerification", fullVerificationJson
         );
@@ -281,7 +278,7 @@ int runScanOnlyMode(const ScanOnlyOptions& options) {
             "PluginScanResult",
             "success", false,
             "forceRescan", options.forceRescan,
-            "cacheFile", std::string{scanner.pluginListCacheFile().string()},
+            "cacheFile", std::string{scanner->pluginListCacheFile().string()},
             "plugins", pluginArray,
             "fullVerification", fullVerificationJson,
             "error", error

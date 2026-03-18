@@ -19,7 +19,7 @@ public:
 
     // Callbacks
     void setOnInstantiatePlugin(std::function<void(const std::string& format, const std::string& pluginId, int32_t trackIndex)> callback);
-    void setOnScanPlugins(std::function<void(bool forceRescan, bool useRemoteProcess)> callback);
+    void setOnScanPlugins(std::function<void(bool forceRescan, bool useRemoteProcess, double remoteTimeoutSeconds)> callback);
 
     // State
     void setScanning(bool scanning);
@@ -38,7 +38,11 @@ private:
     PluginList pluginList_;
     bool forceRescan_ = true;
     bool isScanning_ = false;
-    bool useRemoteScanner_ = false;
+    bool useRemoteScanner_ = true;
+    double remoteScanTimeoutSeconds_ = 20.0;
+    bool reportWindowOpen_ = false;
+    std::string scanReportText_;
+    std::vector<char> scanReportBuffer_{1, '\0'};
 
     // Track selection for plugin instantiation
     int32_t targetTrackIndex_ = -1;
@@ -48,7 +52,9 @@ private:
 
     // Callbacks
     std::function<void(const std::string& format, const std::string& pluginId, int32_t trackIndex)> onInstantiatePlugin_;
-    std::function<void(bool forceRescan, bool useRemoteProcess)> onScanPlugins_;
+    std::function<void(bool forceRescan, bool useRemoteProcess, double remoteTimeoutSeconds)> onScanPlugins_;
+
+    void refreshReportBuffer();
 };
 
 }

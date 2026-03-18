@@ -21,6 +21,7 @@ namespace remidy {
         std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
 
         PluginFormatVST3Impl* owner{};
+        std::vector<std::filesystem::path> pendingSlowBundles_{};
 
     public:
         explicit PluginScannerVST3(PluginFormatVST3Impl* owner)
@@ -30,7 +31,12 @@ namespace remidy {
         std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         ScanningStrategyValue scanRequiresInstantiation() override;
+        bool scanRequiresLoadLibrary(const std::filesystem::path& bundlePath) override;
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins(bool requireFastScanning) override;
+        std::vector<std::unique_ptr<PluginCatalogEntry>> scanBundle(const std::filesystem::path& bundlePath,
+                                                                    bool requireFastScanning,
+                                                                    double timeoutSeconds) override;
+        std::vector<std::filesystem::path> enumerateCandidateBundles(bool requireFastScanning) override;
     };
 
     class ComponentHandlerImpl : public IComponentHandler, public IComponentHandler2, public IUnitHandler {

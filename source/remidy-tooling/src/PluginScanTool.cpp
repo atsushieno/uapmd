@@ -1,4 +1,12 @@
 
+#include <algorithm>
+#include <fstream>
+#include <format>
+#include <optional>
+#include <iostream>
+#include <stdexcept>
+#include <sstream>
+#include <cstring>
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
@@ -6,12 +14,163 @@
 // CMake sets UAPMD_ENABLE_CPPLOCATE=OFF for those platforms; guard the include here too.
 #if !ANDROID && !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
 #include <cpplocate/cpplocate.h>
+#include <choc/platform/choc_Execute.h>
 #endif
+#include <choc/text/choc_JSON.h>
 #include "remidy-tooling/remidy-tooling.hpp"
+#include "remidy-tooling/priv/PluginFormatManager.hpp"
+#include "ScanConstants.hpp"
+#include "ipc/ScanSessionManager.hpp"
+#include "ipc/InProcessScanSessionManager.hpp"
+#include "ipc/RemoteScanSessionManager.hpp"
+
+namespace remidy_tooling {
+
+class PluginScanToolImpl final : public PluginScanTool {
+public:
+    PluginScanToolImpl();
+
+    PluginCatalog& catalog() override { return catalog_; }
+    const PluginCatalog& catalog() const override { return catalog_; }
+
+    std::vector<PluginCatalogEntry*> filterByFormat(std::vector<PluginCatalogEntry*> entries,
+                                                    std::string format) override {
+        erase_if(entries, [format](PluginCatalogEntry* entry) { return entry->format() != format; });
+        return entries;
+    }
+
+    std::vector<PluginFormat*> formats() override { return formatManager_.formats(); }
+    void addFormat(PluginFormat* item) override { formatManager_.addFormat(item); }
+
+    std::filesystem::path& pluginListCacheFile() override { return plugin_list_cache_file; }
+    int performPluginScanning(bool requireFastScanning,
+                              ScanMode mode,
+                              bool forceRescan,
+                              double bundleTimeoutSeconds,
+                              PluginScanObserver* observer) override;
+    int performPluginScanning(bool requireFastScanning,
+                              std::filesystem::path& pluginListCacheFile,
+                              ScanMode mode,
+                              bool forceRescan,
+                              double bundleTimeoutSeconds,
+                              PluginScanObserver* observer) override;
+    void savePluginListCache() override { savePluginListCache(plugin_list_cache_file); }
+    void savePluginListCache(std::filesystem::path& fileToSave) override { catalog_.save(fileToSave); }
+
+    std::vector<BlocklistEntry> blocklistEntries() const override;
+    bool unblockBundle(const std::string& entryId) override;
+    void clearBlocklist() override;
+    void addToBlocklist(const std::string& formatName, const std::string& pluginId, const std::string& reason) override;
+    std::string lastScanError() const override;
+    bool safeToInstantiate(PluginFormat* format, PluginCatalogEntry* entry) override;
+    bool shouldCreateInstanceOnUIThread(PluginFormat* format, PluginCatalogEntry* entry) override;
+    bool isBundleBlocklisted(const std::string& formatName, const std::filesystem::path& bundlePath) const override;
+
+protected:
+    void mergeScanResults(std::vector<std::unique_ptr<PluginCatalogEntry>> results) override;
+    std::string makeBlocklistId(const std::string& formatName, const std::string& pluginId) const;
+    bool isBlocklisted(const std::string& formatName, const std::string& pluginId) const;
+    ScanSessionManager& ensureRemoteSessionManager();
+    ScanSessionManager& ensureInProcessSessionManager();
+    void loadBlocklistFromDisk();
+    void saveBlocklistToDisk() const;
+    bool canPersistBlocklist() const;
+    void setLastScanError(std::string message);
+    void notifyBundleScanStarted(const std::filesystem::path& bundlePath,
+                                 PluginScanObserver* observer) const override;
+    void notifyBundleScanCompleted(const std::filesystem::path& bundlePath,
+                                   PluginScanObserver* observer) const override;
+    void notifySlowScanStarted(uint32_t totalBundles, PluginScanObserver* observer) const override;
+    void notifySlowScanCompleted(bool success, PluginScanObserver* observer) const override;
+    void notifyScanError(const std::string& message, PluginScanObserver* observer) override;
+    bool isScanCancellationRequested(PluginScanObserver* observer) const override;
+
+private:
+    SlowScanCatalog prepareSlowScanCatalog(const std::vector<PluginFormat*>& formats,
+                                           bool requireFastScanning,
+                                           std::filesystem::path& pluginListCacheFile,
+                                           bool forceRescan,
+                                           double bundleTimeoutSeconds,
+                                           std::string& slowScanReportText);
+    int executeSlowScanCatalog(const SlowScanCatalog& catalog,
+                               const std::vector<PluginFormat*>& formats,
+                               bool requireFastScanning,
+                               std::filesystem::path& pluginListCacheFile,
+                               ScanMode mode,
+                               bool forceRescan,
+                               double bundleTimeoutSeconds,
+                               PluginScanObserver* observer);
+
+    std::filesystem::path plugin_list_cache_file{};
+    PluginFormatManager formatManager_{};
+    PluginCatalog catalog_{};
+    mutable std::mutex stateMutex_{};
+    std::vector<BlocklistEntry> blocklistEntries_{};
+    std::filesystem::path blocklist_file_{};
+    std::unique_ptr<ScanSessionManager> inProcessSessionManager_{};
+    std::unique_ptr<ScanSessionManager> remoteSessionManager_{};
+    std::string lastScanErrorMessage_{};
+};
+
+std::optional<std::string> extractJsonPayload(const std::string& text) {
+    auto locate = [](char openChar, char closeChar, size_t startIdx, const std::string& input) -> std::optional<std::string> {
+        if (startIdx == std::string::npos)
+            return std::nullopt;
+        int depth = 0;
+        bool inString = false;
+        bool escape = false;
+        for (size_t i = startIdx; i < input.size(); ++i) {
+            char c = input[i];
+            if (inString) {
+                if (escape) {
+                    escape = false;
+                    continue;
+                }
+                if (c == '\\') {
+                    escape = true;
+                    continue;
+                }
+                if (c == '"')
+                    inString = false;
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
+            if (c == openChar) {
+                ++depth;
+                continue;
+            }
+            if (c == closeChar) {
+                --depth;
+                if (depth == 0)
+                    return input.substr(startIdx, i - startIdx + 1);
+            }
+        }
+        return std::nullopt;
+    };
+
+    auto objectStart = text.find('{');
+    auto arrayStart = text.find('[');
+    bool useArray = false;
+    size_t startIdx = std::string::npos;
+    if (arrayStart != std::string::npos &&
+        (objectStart == std::string::npos || arrayStart < objectStart)) {
+        useArray = true;
+        startIdx = arrayStart;
+    } else {
+        startIdx = objectStart;
+    }
+
+    if (useArray)
+        return locate('[', ']', startIdx, text);
+    return locate('{', '}', startIdx, text);
+}
 
 const char* TOOLING_DIR_NAME= "remidy-tooling";
 
-remidy_tooling::PluginScanTool::PluginScanTool() {
+PluginScanToolImpl::PluginScanToolImpl() {
 #if ANDROID
     std::filesystem::path dir{};
 #elif defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
@@ -22,67 +181,225 @@ remidy_tooling::PluginScanTool::PluginScanTool() {
 #endif
     plugin_list_cache_file = dir.empty() ? std::filesystem::path{""} : std::filesystem::path{dir}.append(
             "plugin-list-cache.json");
+    blocklist_file_ = dir.empty() ? std::filesystem::path{} : std::filesystem::path{dir}.append("plugin-blocklist.json");
+    loadBlocklistFromDisk();
 
-#if ANDROID
-    aap = remidy::PluginFormatAAP::create();
-    formats_ = { aap.get() };
-#elif defined(__EMSCRIPTEN__)
-    formats_.clear();
-#elif defined(__APPLE__) && TARGET_OS_IPHONE
-    // iOS: AUv3 is the only supported plugin format.
-    // VST3, LV2, and CLAP source files are excluded on iOS via CMake (NOT IOS guards).
-    au = remidy::PluginFormatAU::create();
-    formats_ = { au.get() };
-#else
-    vst3 = remidy::PluginFormatVST3::create(vst3SearchPaths);
-    lv2 = remidy::PluginFormatLV2::create(lv2SearchPaths);
-    clap = remidy::PluginFormatCLAP::create(clapSearchPaths);
-#if __APPLE__
-    au = remidy::PluginFormatAU::create();
-#endif
-
-    formats_ = {
-        clap.get(),
-        lv2.get(),
-#if __APPLE__
-        au.get(),
-#endif
-        vst3.get()
-    };
-#endif
 }
 
-int remidy_tooling::PluginScanTool::performPluginScanning(bool requireFastScanning) {
-    return performPluginScanning(requireFastScanning, plugin_list_cache_file);
+int PluginScanToolImpl::performPluginScanning(bool requireFastScanning,
+                                                          ScanMode mode,
+                                                          bool forceRescan,
+                                                          double bundleTimeoutSeconds,
+                                                          PluginScanObserver* observer) {
+    return performPluginScanning(requireFastScanning, plugin_list_cache_file, mode, forceRescan, bundleTimeoutSeconds, observer);
 }
 
-int remidy_tooling::PluginScanTool::performPluginScanning(bool requireFastScanning, std::filesystem::path& pluginListCacheFile) {
-    if (std::filesystem::exists(pluginListCacheFile)) {
-        catalog.load(pluginListCacheFile);
-        plugin_list_cache_file = pluginListCacheFile;
+int PluginScanToolImpl::performPluginScanning(bool requireFastScanning,
+                                                          std::filesystem::path& pluginListCacheFile,
+                                                          ScanMode mode,
+                                                          bool forceRescan,
+                                                          double bundleTimeoutSeconds,
+                                                          PluginScanObserver* observer) {
+    std::string planReport;
+    const auto& formatList = formatManager_.formatView();
+    auto catalogPlan = prepareSlowScanCatalog(formatList,
+                                              requireFastScanning,
+                                              pluginListCacheFile,
+                                              forceRescan,
+                                              bundleTimeoutSeconds,
+                                              planReport);
+    if (!planReport.empty())
+        std::cout << planReport << std::endl;
+    return executeSlowScanCatalog(catalogPlan,
+                                  formatList,
+                                  requireFastScanning,
+                                  pluginListCacheFile,
+                                  mode,
+                                  forceRescan,
+                                  bundleTimeoutSeconds,
+                                  observer);
+}
+
+remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const std::vector<PluginFormat*>& formats,
+                                                                                       bool requireFastScanning,
+                                                                                       std::filesystem::path& pluginListCacheFile,
+                                                                                       bool forceRescan,
+                                                                                       double bundleTimeoutSeconds,
+                                                                                       std::string& slowScanReportText) {
+    SlowScanCatalog catalogPlan;
+    plugin_list_cache_file = pluginListCacheFile;
+    slowScanReportText.clear();
+    if (!forceRescan && !pluginListCacheFile.empty() && std::filesystem::exists(pluginListCacheFile)) {
+        catalog_.load(pluginListCacheFile);
+        slowScanReportText = "Slow scanning skipped (loaded plugin cache).\n";
+        return catalogPlan;
     }
 
-    // build catalog
-    auto savedCwd = std::filesystem::current_path();
-    for (auto& format : formats()) {
-        auto plugins = filterByFormat(catalog.getPlugins(), format->name());
-        if (!format->scanning()->scanningMayBeSlow() || plugins.empty())
-            for (auto& info : format->scanning()->scanAllAvailablePlugins(requireFastScanning))
-                if (!catalog.contains(info->format(), info->pluginId()))
-                    catalog.add(std::move(info));
-    }
-    std::filesystem::current_path(savedCwd);
+    if (forceRescan)
+        catalog_.clear();
 
-    return 0;
+    size_t slowBundleTotal = 0;
+    std::ostringstream planStream;
+    planStream << "Slow scanning catalog\n";
+    bool fastScanModified = false;
+
+    for (auto* format : formats) {
+        if (!format)
+            continue;
+        auto scanning = format->scanning();
+        if (!scanning)
+            continue;
+        auto fileScanning = dynamic_cast<FileBasedPluginScanning*>(scanning);
+
+        auto strategy = scanning->scanRequiresLoadLibrary();
+        bool scanIsFast = strategy == PluginScanning::ScanningStrategyValue::NEVER;
+        auto cachedEntries = filterByFormat(catalog_.getPlugins(), format->name());
+        bool shouldScan = forceRescan || scanIsFast || cachedEntries.empty();
+        if (!shouldScan)
+            continue;
+
+        auto fastResults = scanning->scanAllAvailablePlugins(requireFastScanning);
+        if (!fastResults.empty()) {
+            mergeScanResults(std::move(fastResults));
+            fastScanModified = true;
+        }
+
+        if (scanIsFast || !fileScanning)
+            continue;
+
+        auto bundles = fileScanning->enumerateCandidateBundles(requireFastScanning);
+        std::vector<std::filesystem::path> slowBundles;
+        slowBundles.reserve(bundles.size());
+        for (const auto& bundle : bundles) {
+            if (isBundleBlocklisted(format->name(), bundle))
+                continue;
+            bool requiresLoad = scanning->scanRequiresLoadLibrary(bundle);
+            if (requiresLoad)
+                slowBundles.push_back(bundle);
+            else {
+                auto fastBundleResults = fileScanning->scanBundle(bundle, requireFastScanning, bundleTimeoutSeconds);
+                if (!fastBundleResults.empty()) {
+                    mergeScanResults(std::move(fastBundleResults));
+                    fastScanModified = true;
+                }
+            }
+        }
+
+        if (!slowBundles.empty()) {
+            planStream << "\n[" << format->name() << "]\n";
+            for (const auto& bundle : slowBundles) {
+                planStream << " - " << bundle << "\n";
+            }
+            slowBundleTotal += slowBundles.size();
+            catalogPlan.push_back(SlowScanEntry{format, std::move(slowBundles)});
+        }
+    }
+
+    if (slowBundleTotal == 0)
+        planStream << "\nAll plugin bundles were handled locally.\n";
+    if (fastScanModified && !plugin_list_cache_file.empty()) {
+        try {
+            savePluginListCache(plugin_list_cache_file);
+        } catch (...) {
+            // ignore cache write errors here; slow scan will surface errors later if needed.
+        }
+    }
+    slowScanReportText = planStream.str();
+    return catalogPlan;
+}
+
+int PluginScanToolImpl::executeSlowScanCatalog(const SlowScanCatalog& catalogPlan,
+                                                           const std::vector<PluginFormat*>& /*formats*/,
+                                                           bool requireFastScanning,
+                                                           std::filesystem::path& pluginListCacheFile,
+                                                           ScanMode mode,
+                                                           bool forceRescan,
+                                                           double bundleTimeoutSeconds,
+                                                           PluginScanObserver* observer) {
+    uint32_t totalBundles = 0;
+    for (const auto& entry : catalogPlan)
+        totalBundles += static_cast<uint32_t>(entry.bundles.size());
+    if (totalBundles > 0)
+        notifySlowScanStarted(totalBundles, observer);
+
+    int result = 0;
+    bool encounteredRecoverableError = false;
+    if (!catalogPlan.empty()) {
+#if ANDROID || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+        if (mode == ScanMode::Remote) {
+            notifyScanError("Remote scanning is unavailable on this platform.", observer);
+            notifySlowScanCompleted(false, observer);
+            return -1;
+        }
+#endif
+        if (mode == ScanMode::Remote && !pluginListCacheFile.empty())
+            savePluginListCache(pluginListCacheFile);
+        ScanSessionManager* manager = mode == ScanMode::Remote
+                                      ? &ensureRemoteSessionManager()
+                                      : &ensureInProcessSessionManager();
+        bool remainingForceRescan = forceRescan;
+        if (mode == ScanMode::Remote) {
+            for (const auto& entry : catalogPlan) {
+                if (!entry.format)
+                    continue;
+                for (const auto& bundlePath : entry.bundles) {
+                    SlowScanCatalog singleBundlePlan;
+                    singleBundlePlan.push_back(SlowScanEntry{entry.format, {bundlePath}});
+                    int runResult = manager->runScan(*this,
+                                                     singleBundlePlan,
+                                                     requireFastScanning,
+                                                     pluginListCacheFile,
+                                                     remainingForceRescan,
+                                                     bundleTimeoutSeconds,
+                                                     observer);
+                    remainingForceRescan = false;
+                    if (runResult == kScanTimeoutExitCode) {
+                        encounteredRecoverableError = true;
+                        continue;
+                    }
+                    if (runResult != 0) {
+                        result = runResult;
+                        break;
+                    }
+                }
+                if (result != 0)
+                    break;
+            }
+        } else {
+            result = manager->runScan(*this,
+                                      catalogPlan,
+                                      requireFastScanning,
+                                      pluginListCacheFile,
+                                      remainingForceRescan,
+                                      bundleTimeoutSeconds,
+                                      observer);
+        }
+    }
+
+    if (result == 0 && !encounteredRecoverableError)
+        setLastScanError({});
+    bool finalSuccess = (result == 0) && !encounteredRecoverableError;
+    notifySlowScanCompleted(finalSuccess, observer);
+    if (result != 0)
+        return result;
+    return encounteredRecoverableError ? kScanTimeoutExitCode : 0;
+}
+
+void PluginScanToolImpl::mergeScanResults(std::vector<std::unique_ptr<PluginCatalogEntry>> results) {
+    for (auto& entry : results) {
+        if (!catalog_.contains(entry->format(), entry->pluginId()))
+            catalog_.add(std::move(entry));
+    }
 }
 
 
-bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, PluginCatalogEntry *entry) {
+bool PluginScanToolImpl::safeToInstantiate(PluginFormat* format, PluginCatalogEntry *entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool skip = false;
 
-    // FIXME: implement blocklist
+    if (isBlocklisted(format->name(), entry->pluginId()))
+        return false;
 
     // Not sure when it started, but their AU version stalls while instantiating.
     // Note that they can be instantiated just fine. Maybe just instancing them among many.
@@ -119,7 +436,7 @@ bool remidy_tooling::PluginScanTool::safeToInstantiate(PluginFormat* format, Plu
     return !skip;
 }
 
-bool remidy_tooling::PluginScanTool::shouldCreateInstanceOnUIThread(PluginFormat *format, PluginCatalogEntry* entry) {
+bool PluginScanToolImpl::shouldCreateInstanceOnUIThread(PluginFormat *format, PluginCatalogEntry* entry) {
     auto displayName = entry->displayName();
     auto vendor = entry->vendorName();
     bool forceMainThread =
@@ -165,3 +482,232 @@ bool remidy_tooling::PluginScanTool::shouldCreateInstanceOnUIThread(PluginFormat
     ;
     return forceMainThread || format->requiresUIThreadOn(entry) != PluginUIThreadRequirement::None;
 }
+
+std::vector<remidy_tooling::BlocklistEntry> PluginScanToolImpl::blocklistEntries() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return blocklistEntries_;
+}
+
+std::string PluginScanToolImpl::lastScanError() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return lastScanErrorMessage_;
+}
+
+bool PluginScanToolImpl::unblockBundle(const std::string& entryId) {
+    bool removed = false;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        auto it = std::remove_if(blocklistEntries_.begin(), blocklistEntries_.end(), [&](const BlocklistEntry& entry) {
+            return entry.id == entryId;
+        });
+        if (it != blocklistEntries_.end()) {
+            blocklistEntries_.erase(it, blocklistEntries_.end());
+            removed = true;
+        }
+    }
+    if (removed)
+        saveBlocklistToDisk();
+    return removed;
+}
+
+void PluginScanToolImpl::clearBlocklist() {
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        if (!blocklistEntries_.empty()) {
+            blocklistEntries_.clear();
+            changed = true;
+        }
+    }
+    if (changed)
+        saveBlocklistToDisk();
+}
+
+void PluginScanToolImpl::addToBlocklist(const std::string& formatName, const std::string& pluginId, const std::string& reason) {
+    bool changed = false;
+    auto id = makeBlocklistId(formatName, pluginId);
+    auto now = std::chrono::system_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        auto it = std::find_if(blocklistEntries_.begin(), blocklistEntries_.end(), [&](const BlocklistEntry& entry) {
+            return entry.id == id;
+        });
+        if (it != blocklistEntries_.end()) {
+            it->reason = reason;
+            it->timestamp = now;
+            changed = true;
+        } else {
+            blocklistEntries_.push_back(BlocklistEntry{ id, formatName, pluginId, reason, now });
+            changed = true;
+        }
+    }
+    if (changed)
+        saveBlocklistToDisk();
+}
+
+std::string PluginScanToolImpl::makeBlocklistId(const std::string& formatName, const std::string& pluginId) const {
+    return formatName + ":" + pluginId;
+}
+
+bool PluginScanToolImpl::isBlocklisted(const std::string& formatName, const std::string& pluginId) const {
+    auto id = makeBlocklistId(formatName, pluginId);
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return std::any_of(blocklistEntries_.begin(), blocklistEntries_.end(), [&](const BlocklistEntry& entry) {
+        return entry.id == id;
+    });
+}
+
+bool PluginScanToolImpl::isBundleBlocklisted(const std::string& formatName,
+                                                         const std::filesystem::path& bundlePath) const {
+    return isBlocklisted(formatName, bundlePath.lexically_normal().string());
+}
+
+remidy_tooling::ScanSessionManager& PluginScanToolImpl::ensureInProcessSessionManager() {
+    if (!inProcessSessionManager_)
+        inProcessSessionManager_ = std::make_unique<InProcessScanSessionManager>();
+    return *inProcessSessionManager_;
+}
+
+remidy_tooling::ScanSessionManager& PluginScanToolImpl::ensureRemoteSessionManager() {
+#if ANDROID || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+    throw std::runtime_error("Remote scanning is unavailable on this platform.");
+#else
+    if (!remoteSessionManager_)
+        remoteSessionManager_ = std::make_unique<RemoteScanSessionManager>();
+    return *remoteSessionManager_;
+#endif
+}
+
+void PluginScanToolImpl::loadBlocklistFromDisk() {
+    if (!canPersistBlocklist())
+        return;
+
+    std::error_code ec;
+    if (!std::filesystem::exists(blocklist_file_, ec))
+        return;
+
+    std::ostringstream ss;
+    std::ifstream ifs{blocklist_file_};
+    if (!ifs)
+        return;
+    ss << ifs.rdbuf();
+    auto content = ss.str();
+    if (content.empty())
+        return;
+
+    try {
+        auto json = choc::json::parse(content);
+        auto view = json.getView();
+        if (!view.isArray())
+            return;
+        std::vector<BlocklistEntry> loaded;
+        loaded.reserve(view.size());
+        for (auto entry : view) {
+            BlocklistEntry item{};
+            auto id = entry["id"];
+            auto format = entry["format"];
+            auto plugin = entry["pluginId"];
+            auto reason = entry["reason"];
+            auto timestamp = entry["timestamp"];
+            if (id.isVoid() || format.isVoid() || plugin.isVoid())
+                continue;
+            item.id = id.toString();
+            item.format = format.toString();
+            item.pluginId = plugin.toString();
+            item.reason = reason.isVoid() ? std::string{} : reason.toString();
+            if (!timestamp.isVoid() && timestamp.isInt64()) {
+                auto millis = std::chrono::milliseconds(timestamp.getInt64());
+                item.timestamp = std::chrono::system_clock::time_point{millis};
+            } else {
+                item.timestamp = std::chrono::system_clock::now();
+            }
+            loaded.emplace_back(std::move(item));
+        }
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        blocklistEntries_ = std::move(loaded);
+    } catch (...) {
+        // Ignore malformed blocklist files for now.
+    }
+}
+
+void PluginScanToolImpl::saveBlocklistToDisk() const {
+    if (!canPersistBlocklist())
+        return;
+
+    std::vector<BlocklistEntry> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        snapshot = blocklistEntries_;
+    }
+
+    std::vector<choc::value::Value> serialized;
+    serialized.reserve(snapshot.size());
+    for (const auto& entry : snapshot) {
+        auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(entry.timestamp.time_since_epoch()).count();
+        serialized.emplace_back(choc::value::createObject("BlocklistEntry",
+                                                          "id", entry.id,
+                                                          "format", entry.format,
+                                                          "pluginId", entry.pluginId,
+                                                          "reason", entry.reason,
+                                                          "timestamp", static_cast<int64_t>(millis)));
+    }
+    auto json = choc::value::createArray(serialized);
+
+    auto parent = blocklist_file_.parent_path();
+    if (!parent.empty() && !std::filesystem::exists(parent))
+        std::filesystem::create_directories(parent);
+    std::ofstream ofs{blocklist_file_};
+    if (!ofs)
+        return;
+    ofs << choc::json::toString(json, true);
+}
+
+bool PluginScanToolImpl::canPersistBlocklist() const {
+    return !blocklist_file_.empty();
+}
+
+void PluginScanToolImpl::setLastScanError(std::string message) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    lastScanErrorMessage_ = std::move(message);
+}
+
+void PluginScanToolImpl::notifyBundleScanStarted(const std::filesystem::path& bundlePath,
+                                                             PluginScanObserver* observer) const {
+    if (observer && observer->bundleScanStarted)
+        observer->bundleScanStarted(bundlePath);
+}
+
+void PluginScanToolImpl::notifyBundleScanCompleted(const std::filesystem::path& bundlePath,
+                                                               PluginScanObserver* observer) const {
+    if (observer && observer->bundleScanCompleted)
+        observer->bundleScanCompleted(bundlePath);
+}
+
+void PluginScanToolImpl::notifySlowScanStarted(uint32_t totalBundles,
+                                                           PluginScanObserver* observer) const {
+    if (observer && observer->slowScanStarted)
+        observer->slowScanStarted(totalBundles);
+}
+
+void PluginScanToolImpl::notifySlowScanCompleted(bool success,
+                                                             PluginScanObserver* observer) const {
+    if (observer && observer->slowScanCompleted)
+        observer->slowScanCompleted(success);
+}
+
+void PluginScanToolImpl::notifyScanError(const std::string& message,
+                                                     PluginScanObserver* observer) {
+    setLastScanError(message);
+    if (observer && observer->errorOccurred)
+        observer->errorOccurred(message);
+}
+
+bool PluginScanToolImpl::isScanCancellationRequested(PluginScanObserver* observer) const {
+    return observer && observer->shouldCancel && observer->shouldCancel();
+}
+
+std::unique_ptr<PluginScanTool> PluginScanTool::create() {
+    return std::make_unique<PluginScanToolImpl>();
+}
+
+} // namespace remidy_tooling

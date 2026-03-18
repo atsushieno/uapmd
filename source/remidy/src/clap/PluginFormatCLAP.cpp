@@ -54,27 +54,45 @@ namespace remidy {
     PluginScanning::ScanningStrategyValue
     PluginScannerCLAP::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
 
+    bool PluginScannerCLAP::scanRequiresLoadLibrary(const std::filesystem::path& /*bundlePath*/) {
+        return true;
+    }
+
     PluginScanning::ScanningStrategyValue
     PluginScannerCLAP::scanRequiresInstantiation() { return ScanningStrategyValue::NEVER; }
 
-    void PluginScannerCLAP::scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<std::unique_ptr<PluginCatalogEntry>>& entries) {
+    void PluginScannerCLAP::scanAllAvailablePluginsInPath(std::filesystem::path path, bool requireFastScanning) {
         std::filesystem::path dir{path};
         if (is_directory(dir)) {
             for (auto &entry: std::filesystem::directory_iterator(dir)) {
-                if (!remidy_strcasecmp(entry.path().extension().string().c_str(), ".clap"))
-                    scanAllAvailablePluginsFromLibrary(entry.path(), entries);
-                else
-                    scanAllAvailablePluginsInPath(entry.path(), entries);
+                if (!remidy_strcasecmp(entry.path().extension().string().c_str(), ".clap")) {
+                    if (!requireFastScanning)
+                        pendingSlowBundles_.emplace_back(entry.path());
+                } else
+                    scanAllAvailablePluginsInPath(entry.path(), requireFastScanning);
             }
         }
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerCLAP::scanAllAvailablePlugins(bool requireFastScanning) {
-        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
+std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerCLAP::scanAllAvailablePlugins(bool requireFastScanning) {
+        pendingSlowBundles_.clear();
+        if (requireFastScanning)
+            return {};
         for (auto &path: getDefaultSearchPaths())
-            scanAllAvailablePluginsInPath(path, ret);
+            scanAllAvailablePluginsInPath(path, requireFastScanning);
+        for (auto& overridePath : getOverrideSearchPaths())
+            scanAllAvailablePluginsInPath(std::filesystem::path{overridePath}, requireFastScanning);
+        return {};
+    }
+
+    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerCLAP::scanBundle(const std::filesystem::path& bundlePath,
+                                                                                   bool /*requireFastScanning*/,
+                                                                                   double /*timeoutSeconds*/) {
+        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
+        scanAllAvailablePluginsFromLibrary(bundlePath, ret);
         return ret;
     }
+
 
     void PluginScannerCLAP::scanAllAvailablePluginsFromLibrary(std::filesystem::path clapDir,
                                                                     std::vector<std::unique_ptr<PluginCatalogEntry>>& entries) {
@@ -98,6 +116,41 @@ namespace remidy {
         }, [&](void *module) {
             impl->libraryPool()->removeReference(clapDir);
         });
+    }
+
+    namespace {
+    void collectClapBundles(const std::filesystem::path& root,
+                            std::vector<std::filesystem::path>& bundles) {
+        std::error_code ec;
+        if (!std::filesystem::exists(root, ec) || !std::filesystem::is_directory(root, ec))
+            return;
+        for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+            if (!entry.is_directory(ec))
+                continue;
+            if (!remidy_strcasecmp(entry.path().extension().string().c_str(), ".clap"))
+                bundles.emplace_back(entry.path());
+            else
+                collectClapBundles(entry.path(), bundles);
+        }
+    }
+    } // namespace
+
+    std::vector<std::filesystem::path> PluginScannerCLAP::enumerateCandidateBundles(bool /*requireFastScanning*/) {
+        std::vector<std::filesystem::path> bundles;
+        if (!pendingSlowBundles_.empty()) {
+            bundles = pendingSlowBundles_;
+        } else {
+            auto addRoot = [&](const std::filesystem::path& path) {
+                collectClapBundles(path, bundles);
+            };
+            for (auto& path : getDefaultSearchPaths())
+                addRoot(path);
+            for (auto& path : getOverrideSearchPaths())
+                addRoot(std::filesystem::path{path});
+        }
+        std::sort(bundles.begin(), bundles.end());
+        bundles.erase(std::unique(bundles.begin(), bundles.end()), bundles.end());
+        return bundles;
     }
 
     // PluginFormatCLAPImpl

@@ -318,6 +318,7 @@ std::unique_ptr<uapmd::AudioPluginHostingAPI> uapmd::AudioPluginHostingAPI::crea
 }
 
 uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
+    scanning = remidy_tooling::PluginScanTool::create();
 #if _WIN32
     // VST3 plugins (especially NI and JUCE-based ones) use COM and require STA.
     // Initialize COM before any DLL loading so initDll / GetPluginFactory run
@@ -328,9 +329,9 @@ uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
     else if (hr == RPC_E_CHANGED_MODE)
         remidy::Logger::global()->logWarning("RemidyAudioPluginHost: COM already initialized with a different apartment model; VST3 plugins using COM (e.g. NI) may crash");
 #endif
-    scanning.performPluginScanning(true);
-    if (!exists(scanning.pluginListCacheFile()))
-        scanning.savePluginListCache();
+    scanning->performPluginScanning(true);
+    if (!exists(scanning->pluginListCacheFile()))
+        scanning->savePluginListCache();
 }
 
 uapmd::RemidyAudioPluginHost::~RemidyAudioPluginHost() {
@@ -342,35 +343,31 @@ uapmd::RemidyAudioPluginHost::~RemidyAudioPluginHost() {
 
 std::vector<remidy::PluginCatalogEntry> uapmd::RemidyAudioPluginHost::pluginCatalogEntries() {
     std::vector<remidy::PluginCatalogEntry> ret{};
-    for (const auto e : scanning.catalog.getPlugins())
+    for (const auto e : scanning->catalog().getPlugins())
         ret.emplace_back(*e);
     return ret;
 }
 
 void uapmd::RemidyAudioPluginHost::savePluginCatalogToFile(std::filesystem::path path) {
-    scanning.catalog.save(path);
+    scanning->catalog().save(path);
 }
 
 std::filesystem::path empty_path{""};
 void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
-    scanning.catalog.clear();
-    if (rescan) {
-        scanning.performPluginScanning(false, empty_path);
-    }
-    else
-        scanning.performPluginScanning(false);
+    scanning->catalog().clear();
+    scanning->performPluginScanning(false, remidy_tooling::ScanMode::InProcess, rescan);
 }
 
 void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(int32_t instanceId, std::string error)>&& callback) {
-    auto format = *(scanning.formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
-    auto plugins = scanning.catalog.getPlugins();
+    auto format = *(scanning->formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
+    auto plugins = scanning->catalog().getPlugins();
     auto entry = std::ranges::find_if(plugins, [&formatName,&pluginId](auto e) {
         return e->format() == formatName && e->pluginId() == pluginId;
     });
     if (entry == plugins.end())
         callback(-1, "Plugin not found");
     else {
-        auto instancing = std::make_shared<remidy_tooling::PluginInstancing>(scanning, format, *entry);
+        auto instancing = std::make_shared<remidy_tooling::PluginInstancing>(*scanning, format, *entry);
         auto& request = instancing->configurationRequest();
         request.sampleRate = static_cast<uint32_t>(sampleRate);
         if (inputChannels > 0)

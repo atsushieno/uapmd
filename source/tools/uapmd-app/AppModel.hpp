@@ -106,9 +106,16 @@ namespace uapmd {
             int32_t trackIndex{-1};
         };
 
+        struct SlowScanProgressState {
+            bool running{false};
+            uint32_t processedBundles{0};
+            uint32_t totalBundles{0};
+            std::string currentBundle;
+        };
+
     private:
         RealtimeSequencer sequencer_;
-        remidy_tooling::PluginScanTool pluginScanTool_;
+        std::unique_ptr<remidy_tooling::PluginScanTool> pluginScanTool_;
         std::unique_ptr<TransportController> transportController_;
         std::atomic<bool> isScanning_{false};
         std::atomic<bool> audioEngineEnabled_{false};
@@ -123,6 +130,11 @@ namespace uapmd {
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
         std::unique_ptr<ScopedTempDir> activeProjectTempDir_;
+        SlowScanProgressState slowScanProgress_{};
+        mutable std::mutex slowScanMutex_;
+        std::atomic<bool> scanCancelRequested_{false};
+        mutable std::mutex scanMetricsMutex_;
+        std::unordered_map<std::string, double> lastScanBundleDurations_;
 
 
         // Audio processing callback (called by SequencerEngine)
@@ -130,14 +142,6 @@ namespace uapmd {
         PluginInstanceResult registerPluginInstanceInternal(int32_t instanceId,
                                                             const std::optional<PluginInstanceConfig>& configOverride);
         void clearDeviceEntries();
-        int performInProcessPluginScanning(bool forceRescan);
-        struct RemoteScanOutcome {
-            bool success{false};
-            std::string error;
-            std::filesystem::path cacheFile;
-        };
-        RemoteScanOutcome performRemotePluginScanning(bool forceRescan);
-        void reloadPluginCatalogFromCache(const std::filesystem::path& cacheFile);
 
     public:
         static void instantiate();
@@ -147,7 +151,8 @@ namespace uapmd {
         ~AppModel() override;
 
         RealtimeSequencer& sequencer() { return sequencer_; }
-        remidy_tooling::PluginScanTool& pluginScanTool() { return pluginScanTool_; }
+        remidy_tooling::PluginScanTool& pluginScanTool() { return *pluginScanTool_; }
+        const remidy_tooling::PluginScanTool& pluginScanTool() const { return *pluginScanTool_; }
         TransportController& transport() { return *transportController_; }
         IDocumentProvider* documentProvider();
         bool isScanning() const { return isScanning_; }
@@ -157,8 +162,11 @@ namespace uapmd {
         void updateAudioDeviceSettings(int32_t sampleRate, uint32_t bufferSize);
         void setAutoBufferSizeEnabled(bool enabled);
         bool autoBufferSizeEnabled() const { return auto_buffer_size_enabled_; }
+        void cancelPluginScanning();
+        std::string generateScanReport();
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
+        std::vector<std::function<void(const std::string& reportText)>> scanReportReady{};
 
         // Configuration for creating a plugin instance with virtual MIDI device
         struct PluginInstanceConfig {
@@ -261,7 +269,15 @@ namespace uapmd {
         void hidePluginUI(int32_t instanceId);
 
         void performPluginScanning(bool forceRescan = false,
-                                   PluginScanRequest request = PluginScanRequest::InProcess);
+                                   PluginScanRequest request = PluginScanRequest::InProcess,
+                                   double remoteTimeoutSeconds = 0.0);
+        SlowScanProgressState slowScanProgress() const;
+        std::vector<remidy_tooling::BlocklistEntry> pluginBlocklist() const;
+        bool unblockPluginFromBlocklist(const std::string& entryId);
+        void clearPluginBlocklist();
+        std::string lastPluginScanError() const;
+        uint8_t getInstanceGroup(int32_t instanceId) const;
+        bool setInstanceGroup(int32_t instanceId, uint8_t group);
 
         // Plugin state save/load operations
         // These handle the file I/O and plugin state manipulation, but not UI dialogs

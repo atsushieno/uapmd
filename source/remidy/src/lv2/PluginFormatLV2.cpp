@@ -5,7 +5,7 @@ namespace remidy {
         logger(Logger::global()),
         extensibility(*this) {
         world = lilv_world_new();
-        scanning_ = AudioPluginScannerLV2(world);
+        scanning_ = PluginScannerLV2(world);
         // FIXME: setup paths
         lilv_world_load_all(world);
 
@@ -17,7 +17,7 @@ namespace remidy {
         lilv_free(world);
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> AudioPluginScannerLV2::scanAllAvailablePlugins(bool /*requireFastScanning*/) {
+    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerLV2::scanAllAvailablePlugins(bool /*requireFastScanning*/) {
         std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
 
         auto plugins = lilv_world_get_all_plugins(world);
@@ -78,29 +78,6 @@ namespace remidy {
 
     std::unique_ptr<PluginFormatLV2> PluginFormatLV2::create(std::vector<std::string>& overrideSearchPaths) {
         return std::make_unique<PluginFormatLV2Impl>(overrideSearchPaths);
-    }
-
-    std::vector<std::filesystem::path>& AudioPluginScannerLV2::getDefaultSearchPaths() {
-        static std::filesystem::path defaultSearchPathsLV2[] = {
-#if _WIN32
-            std::string(getenv("APPDATA")) + "\\LV2",
-            std::string(getenv("COMMONPROGRAMFILES")) + "\\LV2"
-#elif __APPLE__
-            std::string(getenv("HOME")) + "/Library/Audio/Plug-Ins/LV2",
-            "/Library/Audio/Plug-Ins/LV2"
-#else // We assume the rest covers Linux and other Unix-y platforms
-            std::string(getenv("HOME")) + "/.lv2",
-            "/usr/local/lib/lv2", // $PREFIX-based path
-            "/usr/lib/lv2" // $PREFIX-based path
-#endif
-        };
-        static std::vector<std::filesystem::path> ret = [] {
-            std::vector<std::filesystem::path> paths{};
-            for (auto& path : defaultSearchPathsLV2)
-                paths.emplace_back(path);
-            return paths;
-        }();
-        return ret;
     }
 
 

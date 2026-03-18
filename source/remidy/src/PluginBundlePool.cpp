@@ -58,4 +58,3 @@ remidy::StatusCode remidy::PluginBundlePool::removeReference(std::filesystem::pa
     }
     return StatusCode::OK;
 }
-

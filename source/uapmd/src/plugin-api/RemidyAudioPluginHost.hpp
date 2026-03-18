@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <atomic>
+#include <memory>
 
 #include "remidy/remidy.hpp"
 #include "remidy-tooling/remidy-tooling.hpp"
@@ -9,7 +10,7 @@
 namespace uapmd {
 
     class RemidyAudioPluginHost : public AudioPluginHostingAPI {
-        remidy_tooling::PluginScanTool scanning{};
+        std::unique_ptr<remidy_tooling::PluginScanTool> scanning;
         std::map<int32_t,std::unique_ptr<AudioPluginInstanceAPI>> instances{};
 #if _WIN32
         bool comInitialized{false};

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <utility>
 #include <unordered_map>
 #import <AudioToolbox/AudioToolbox.h>
@@ -16,6 +17,7 @@ namespace remidy {
     class PluginScannerAU : public PluginScanning {
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
+        bool scanRequiresLoadLibrary(const std::filesystem::path&) override { return false; }
         std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins(bool requireFastScanning) override;
     };
 

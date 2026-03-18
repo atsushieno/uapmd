@@ -43,9 +43,9 @@ namespace remidy {
         return StatusCode::OK;
     }
 
-    PluginExtensibility<PluginFormat> *PluginFormatVST3Impl::getExtensibility() {
-        return &extensibility;
-    }
+PluginExtensibility<PluginFormat> *PluginFormatVST3Impl::getExtensibility() {
+    return &extensibility;
+}
 
     void PluginFormatVST3Impl::createInstance(PluginCatalogEntry *pluginInfo,
                                                 PluginInstantiationOptions options,
@@ -259,6 +259,11 @@ namespace remidy {
     PluginScanning::ScanningStrategyValue
     PluginScannerVST3::scanRequiresLoadLibrary() { return ScanningStrategyValue::MAYBE; }
 
+    bool PluginScannerVST3::scanRequiresLoadLibrary(const std::filesystem::path& bundlePath) {
+        auto pathCopy = bundlePath;
+        return !remidy_vst3::hasModuleInfo(pathCopy);
+    }
+
     PluginScanning::ScanningStrategyValue
     PluginScannerVST3::scanRequiresInstantiation() { return ScanningStrategyValue::ALWAYS; }
 
@@ -266,20 +271,40 @@ namespace remidy {
         std::filesystem::path dir{path};
         if (is_directory(dir)) {
             for (auto &entry: std::filesystem::directory_iterator(dir)) {
-                if (!remidy_strcasecmp(entry.path().extension().string().c_str(), ".vst3"))
-                    scanAllAvailablePluginsFromLibrary(entry.path(), infos, requireFastScanning);
-                else
+                if (!remidy_strcasecmp(entry.path().extension().string().c_str(), ".vst3")) {
+                    if (scanRequiresLoadLibrary(entry.path())) {
+                        if (!requireFastScanning)
+                            pendingSlowBundles_.emplace_back(entry.path());
+                    } else {
+                        scanAllAvailablePluginsFromLibrary(entry.path(), infos, requireFastScanning);
+                    }
+                } else {
                     scanAllAvailablePluginsInPath(entry.path(), infos, requireFastScanning);
+                }
             }
         }
     }
 
     std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerVST3::scanAllAvailablePlugins(bool requireFastScanning) {
+        pendingSlowBundles_.clear();
         std::vector<PluginClassInfo> infos;
-        for (auto &path: getDefaultSearchPaths())
+        for (auto& path : getDefaultSearchPaths())
             scanAllAvailablePluginsInPath(path, infos, requireFastScanning);
+        for (auto& overridePath : getOverrideSearchPaths())
+            scanAllAvailablePluginsInPath(std::filesystem::path{overridePath}, infos, requireFastScanning);
         std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
-        for (auto &info: infos)
+        for (auto& info : infos)
+            ret.emplace_back(createPluginInformation(info));
+        return ret;
+    }
+
+    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerVST3::scanBundle(const std::filesystem::path& bundlePath,
+                                                                                   bool requireFastScanning,
+                                                                                   double /*timeoutSeconds*/) {
+        std::vector<PluginClassInfo> infos;
+        scanAllAvailablePluginsFromLibrary(bundlePath, infos, requireFastScanning);
+        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
+        for (auto& info : infos)
             ret.emplace_back(createPluginInformation(info));
         return ret;
     }
@@ -302,6 +327,43 @@ namespace remidy {
         }, [&](void *module) {
             owner->libraryPool()->removeReference(vst3Dir);
         });
+    }
+
+    namespace {
+    void collectVst3Bundles(const std::filesystem::path& root,
+                            std::vector<std::filesystem::path>& bundles) {
+        std::error_code ec;
+        if (!std::filesystem::exists(root, ec))
+            return;
+        if (!std::filesystem::is_directory(root, ec))
+            return;
+        for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+            if (!entry.is_directory(ec))
+                continue;
+            if (!remidy_strcasecmp(entry.path().extension().string().c_str(), ".vst3"))
+                bundles.emplace_back(entry.path());
+            else
+                collectVst3Bundles(entry.path(), bundles);
+        }
+    }
+    } // namespace
+
+    std::vector<std::filesystem::path> PluginScannerVST3::enumerateCandidateBundles(bool /*requireFastScanning*/) {
+        std::vector<std::filesystem::path> bundles;
+        if (!pendingSlowBundles_.empty()) {
+            bundles = pendingSlowBundles_;
+        } else {
+            auto addRoot = [&](const std::filesystem::path& path) {
+                collectVst3Bundles(path, bundles);
+            };
+            for (auto& path : getDefaultSearchPaths())
+                addRoot(path);
+            for (auto& path : getOverrideSearchPaths())
+                addRoot(std::filesystem::path{path});
+        }
+        std::sort(bundles.begin(), bundles.end());
+        bundles.erase(std::unique(bundles.begin(), bundles.end()), bundles.end());
+        return bundles;
     }
 
     // Loader helpers

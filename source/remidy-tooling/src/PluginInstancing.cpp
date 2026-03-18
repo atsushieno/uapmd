@@ -45,7 +45,7 @@ remidy::PluginFormat* findFormat(remidy_tooling::PluginScanTool& scanner, const 
     return nullptr;
 }
 remidy::PluginCatalogEntry* findPlugin(remidy_tooling::PluginScanTool& scanner, const std::string_view& format, const std::string_view& pluginId) {
-    for (auto e : scanner.catalog.getPlugins())
+    for (auto e : scanner.catalog().getPlugins())
         if (e->format() == format && e->pluginId() == pluginId)
             return e;
     return nullptr;

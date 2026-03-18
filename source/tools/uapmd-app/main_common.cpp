@@ -15,6 +15,7 @@
 #include <thread>
 #include <string>
 #include <vector>
+#include <stdexcept>
 
 #include <imgui.h>
 
@@ -98,7 +99,8 @@ int runMainLoop(int argc, char** argv) {
     CommandLineOptions cliOptions{};
     std::vector<std::string> positional;
     positional.reserve(args.size());
-    for (const auto& arg : args) {
+    for (size_t i = 0; i < args.size(); ++i) {
+        const auto& arg = args[i];
         if (arg == "--scan-only") {
             cliOptions.scanOnly = true;
             continue;

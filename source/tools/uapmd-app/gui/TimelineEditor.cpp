@@ -139,12 +139,13 @@ TimelineEditor::TimelineEditor() {
         showPluginSelectorWindow_ = false;
     });
 
-    pluginSelector_.setOnScanPlugins([](bool forceRescan, bool useRemoteProcess) {
+    pluginSelector_.setOnScanPlugins([](bool forceRescan, bool useRemoteProcess, double remoteTimeoutSeconds) {
         uapmd::AppModel::instance().performPluginScanning(
             forceRescan,
             useRemoteProcess
                 ? uapmd::AppModel::PluginScanRequest::RemoteProcess
-                : uapmd::AppModel::PluginScanRequest::InProcess);
+                : uapmd::AppModel::PluginScanRequest::InProcess,
+            remoteTimeoutSeconds);
     });
 
     refreshAllSequenceEditorTracks();
@@ -346,7 +347,7 @@ void TimelineEditor::renderPluginSelectorWindow(float uiScale) {
 
     const std::string windowId = "PluginSelector";
     if (setNextChildWindowSize_)
-        setNextChildWindowSize_(windowId, ImVec2(520.0f, 560.0f));
+        setNextChildWindowSize_(windowId, ImVec2(720.0f, 600.0f));
     if (ImGui::Begin("Plugin Selector", &showPluginSelectorWindow_)) {
         if (updateChildWindowSizeState_)
             updateChildWindowSizeState_(windowId);
