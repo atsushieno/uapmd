@@ -46,6 +46,60 @@ std::string makeBundleLabel(const std::string& format, const std::filesystem::pa
     return std::format("{}: {}", format, filename);
 }
 
+std::string normalizeBundleKey(const std::filesystem::path& path) {
+    auto normalized = path.lexically_normal().generic_string();
+#if _WIN32
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+#endif
+    return normalized;
+}
+
+void pruneEmptyEntries(SlowScanCatalog& catalog) {
+    catalog.erase(std::remove_if(catalog.begin(),
+                                 catalog.end(),
+                                 [](const SlowScanEntry& entry) {
+                                     return entry.bundles.empty() || entry.format == nullptr;
+                                 }),
+                  catalog.end());
+}
+
+void removeBundleFromCatalog(SlowScanCatalog& catalog,
+                             const std::string& formatName,
+                             const std::filesystem::path& bundlePath) {
+    if (formatName.empty())
+        return;
+    auto targetKey = normalizeBundleKey(bundlePath);
+    for (auto entryIt = catalog.begin(); entryIt != catalog.end();) {
+        auto* format = entryIt->format;
+        if (!format || format->name() != formatName) {
+            ++entryIt;
+            continue;
+        }
+        auto& bundles = entryIt->bundles;
+        auto newEnd = std::remove_if(bundles.begin(),
+                                     bundles.end(),
+                                     [&](const std::filesystem::path& candidate) {
+                                         return normalizeBundleKey(candidate) == targetKey;
+                                     });
+        if (newEnd != bundles.end())
+            bundles.erase(newEnd, bundles.end());
+        if (bundles.empty())
+            entryIt = catalog.erase(entryIt);
+        else
+            ++entryIt;
+        break;
+    }
+}
+
+size_t countBundles(const SlowScanCatalog& catalog) {
+    size_t total = 0;
+    for (const auto& entry : catalog)
+        total += entry.bundles.size();
+    return total;
+}
+
 #if _WIN32
 std::string quoteWindowsArg(const std::string& arg) {
     if (arg.empty())
@@ -253,218 +307,239 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
                                       PluginScanObserver* observer) {
     if (catalogPlan.empty())
         return 0;
-    ipc::TcpServer server;
-    if (!server.listen(0)) {
-        tool.notifyScanError("Failed to create IPC server for remote scanning.", observer);
-        return -1;
-    }
 
-    auto exePathString = cpplocate::getExecutablePath();
-    if (exePathString.empty()) {
-        tool.notifyScanError("Unable to determine executable path for remote scanning.", observer);
-        return -1;
-    }
+    SlowScanCatalog remaining = catalogPlan;
+    pruneEmptyEntries(remaining);
+    if (remaining.empty())
+        return 0;
 
-    auto token = generateToken();
-    auto commandArgs = buildCommandArgs(exePathString, server.port(), token);
+    bool encounteredTimeout = false;
+    bool pendingForceRescan = forceRescan;
 
-    RemoteProcessHandle processHandle{};
-    if (!launchProcess(commandArgs, processHandle)) {
-        tool.notifyScanError("Failed to launch remote scanner process.", observer);
-        return -1;
-    }
-
-    auto socketOpt = server.accept(kConnectionTimeoutMs);
-    if (!socketOpt.has_value()) {
-        tool.notifyScanError("Remote scanner failed to connect.", observer);
-        int exitCode = -1;
-        terminateProcess(processHandle);
-        waitForProcess(processHandle, exitCode);
-        return -1;
-    }
-
-    ipc::IpcJsonChannel channel(std::move(*socketOpt));
-
-    auto hello = channel.receive(kConnectionTimeoutMs);
-    if (!hello.has_value() || hello->type != ipc::kScannerMsgHello) {
-        tool.notifyScanError("Remote scanner did not send handshake.", observer);
-        int exitCode = -1;
-        terminateProcess(processHandle);
-        waitForProcess(processHandle, exitCode);
-        return -1;
-    }
-    auto helloToken = hello->payload["token"];
-    if (helloToken.isVoid() || helloToken.toString() != token) {
-        tool.notifyScanError("Remote scanner authentication failed.", observer);
-        int exitCode = -1;
-        terminateProcess(processHandle);
-        waitForProcess(processHandle, exitCode);
-        return -1;
-    }
-
-    choc::value::Value payload = choc::value::createObject("StartScan");
-    payload.setMember("forceRescan", forceRescan);
-    payload.setMember("requireFastScanning", requireFastScanning);
-    payload.setMember("cacheFile", pluginListCacheFile.string());
-    size_t totalBundles = 0;
-    auto planArray = choc::value::createEmptyArray();
-    for (const auto& entry : catalogPlan) {
-        if (!entry.format)
-            continue;
-        choc::value::Value planEntry = choc::value::createObject("SlowScanEntry");
-        planEntry.setMember("format", entry.format->name());
-        auto bundlesArray = choc::value::createEmptyArray();
-        for (const auto& bundle : entry.bundles) {
-            bundlesArray.addArrayElement(bundle.string());
-            ++totalBundles;
+    while (!remaining.empty()) {
+        ipc::TcpServer server;
+        if (!server.listen(0)) {
+            tool.notifyScanError("Failed to create IPC server for remote scanning.", observer);
+            return -1;
         }
-        planEntry.setMember("bundles", std::move(bundlesArray));
-        planArray.addArrayElement(planEntry);
-    }
-    payload.setMember("slowCatalog", std::move(planArray));
-    payload.setMember("totalBundles", static_cast<int32_t>(totalBundles));
-    payload.setMember("timeoutSeconds", bundleTimeoutSeconds);
-    ipc::IpcMessage startMsg{
-        .type = ipc::kScannerMsgStartScan,
-        .requestId = "start",
-        .payload = payload
-    };
-    if (!channel.send(startMsg)) {
-        tool.notifyScanError("Failed to send start command to remote scanner.", observer);
-        int exitCode = -1;
-        terminateProcess(processHandle);
-        waitForProcess(processHandle, exitCode);
-        return -1;
-    }
 
-    bool finished = false;
-    int remoteResult = -1;
-    std::filesystem::path cachePath{};
-    bool cancelSent = false;
-    bool bundleTimedOut = false;
-    std::optional<std::filesystem::path> activeBundlePath;
-    std::string activeBundleFormat;
-    std::string activeBundleLabel;
-    std::optional<std::chrono::steady_clock::time_point> activeBundleStart;
+        auto exePathString = cpplocate::getExecutablePath();
+        if (exePathString.empty()) {
+            tool.notifyScanError("Unable to determine executable path for remote scanning.", observer);
+            return -1;
+        }
 
-    auto blocklistActiveBundle = [&](const std::string& reason) {
-        if (activeBundleFormat.empty() || !activeBundlePath.has_value())
-            return;
-        auto normalized = activeBundlePath->lexically_normal().string();
-        tool.addToBlocklist(activeBundleFormat, normalized, reason);
-    };
+        auto token = generateToken();
+        auto commandArgs = buildCommandArgs(exePathString, server.port(), token);
 
-    while (!finished) {
-        if (bundleTimeoutSeconds > 0.0 && activeBundleStart.has_value()) {
-            auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - *activeBundleStart).count();
-            if (elapsed > bundleTimeoutSeconds) {
-                bundleTimedOut = true;
-                std::string label = !activeBundleLabel.empty()
-                                        ? activeBundleLabel
-                                        : (activeBundlePath.has_value() ? activeBundlePath->string() : std::string{"Bundle"});
-                auto message = std::format("{} timed out after {:.1f} seconds", label, bundleTimeoutSeconds);
-                tool.notifyScanError(message, observer);
-                blocklistActiveBundle(message);
-                channel.close();
-                terminateProcess(processHandle);
-                finished = true;
-                remoteResult = kScanTimeoutExitCode;
+        RemoteProcessHandle processHandle{};
+        if (!launchProcess(commandArgs, processHandle)) {
+            tool.notifyScanError("Failed to launch remote scanner process.", observer);
+            return -1;
+        }
+
+        auto socketOpt = server.accept(kConnectionTimeoutMs);
+        if (!socketOpt.has_value()) {
+            tool.notifyScanError("Remote scanner failed to connect.", observer);
+            int exitCode = -1;
+            terminateProcess(processHandle);
+            waitForProcess(processHandle, exitCode);
+            return -1;
+        }
+
+        ipc::IpcJsonChannel channel(std::move(*socketOpt));
+
+        auto hello = channel.receive(kConnectionTimeoutMs);
+        if (!hello.has_value() || hello->type != ipc::kScannerMsgHello) {
+            tool.notifyScanError("Remote scanner did not send handshake.", observer);
+            int exitCode = -1;
+            terminateProcess(processHandle);
+            waitForProcess(processHandle, exitCode);
+            return -1;
+        }
+        auto helloToken = hello->payload["token"];
+        if (helloToken.isVoid() || helloToken.toString() != token) {
+            tool.notifyScanError("Remote scanner authentication failed.", observer);
+            int exitCode = -1;
+            terminateProcess(processHandle);
+            waitForProcess(processHandle, exitCode);
+            return -1;
+        }
+
+        choc::value::Value payload = choc::value::createObject("StartScan");
+        payload.setMember("forceRescan", pendingForceRescan);
+        payload.setMember("requireFastScanning", requireFastScanning);
+        payload.setMember("cacheFile", pluginListCacheFile.string());
+        auto planArray = choc::value::createEmptyArray();
+        for (const auto& entry : remaining) {
+            if (!entry.format)
+                continue;
+            choc::value::Value planEntry = choc::value::createObject("SlowScanEntry");
+            planEntry.setMember("format", entry.format->name());
+            auto bundlesArray = choc::value::createEmptyArray();
+            for (const auto& bundle : entry.bundles)
+                bundlesArray.addArrayElement(bundle.string());
+            planEntry.setMember("bundles", std::move(bundlesArray));
+            planArray.addArrayElement(planEntry);
+        }
+        payload.setMember("slowCatalog", std::move(planArray));
+        payload.setMember("totalBundles", static_cast<int32_t>(countBundles(remaining)));
+        payload.setMember("timeoutSeconds", bundleTimeoutSeconds);
+        ipc::IpcMessage startMsg{
+            .type = ipc::kScannerMsgStartScan,
+            .requestId = "start",
+            .payload = payload
+        };
+        if (!channel.send(startMsg)) {
+            tool.notifyScanError("Failed to send start command to remote scanner.", observer);
+            int exitCode = -1;
+            terminateProcess(processHandle);
+            waitForProcess(processHandle, exitCode);
+            return -1;
+        }
+        pendingForceRescan = false;
+
+        bool finished = false;
+        int remoteResult = -1;
+        std::filesystem::path cachePath{};
+        bool cancelSent = false;
+        bool bundleTimedOut = false;
+        std::optional<std::filesystem::path> activeBundlePath;
+        std::string activeBundleFormat;
+        std::string activeBundleLabel;
+        std::optional<std::chrono::steady_clock::time_point> activeBundleStart;
+
+        auto blocklistActiveBundle = [&](const std::string& reason) {
+            if (activeBundleFormat.empty() || !activeBundlePath.has_value())
+                return;
+            auto normalized = activeBundlePath->lexically_normal().string();
+            tool.addToBlocklist(activeBundleFormat, normalized, reason);
+            removeBundleFromCatalog(remaining, activeBundleFormat, *activeBundlePath);
+        };
+
+        while (!finished) {
+            if (bundleTimeoutSeconds > 0.0 && activeBundleStart.has_value()) {
+                auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - *activeBundleStart).count();
+                if (elapsed > bundleTimeoutSeconds) {
+                    bundleTimedOut = true;
+                    std::string label = !activeBundleLabel.empty()
+                                            ? activeBundleLabel
+                                            : (activeBundlePath.has_value() ? activeBundlePath->string() : std::string{"Bundle"});
+                    auto message = std::format("{} timed out after {:.1f} seconds", label, bundleTimeoutSeconds);
+                    tool.notifyScanError(message, observer);
+                    blocklistActiveBundle(message);
+                    channel.close();
+                    terminateProcess(processHandle);
+                    finished = true;
+                    remoteResult = kScanTimeoutExitCode;
+                    break;
+                }
+            }
+
+            if (!cancelSent && tool.isScanCancellationRequested(observer)) {
+                ipc::IpcMessage cancelMsg{
+                    .type = ipc::kScannerMsgCancelScan,
+                    .requestId = "cancel",
+                    .payload = choc::value::Value{}
+                };
+                cancelSent = channel.send(cancelMsg);
+                if (!cancelSent) {
+                    tool.notifyScanError("Failed to send cancel command to remote scanner.", observer);
+                    break;
+                }
+            }
+
+            bool timedOut = false;
+            auto message = channel.receive(250, timedOut);
+            if (timedOut)
+                continue;
+            if (!message.has_value()) {
+                if (tool.isScanCancellationRequested(observer))
+                    tool.notifyScanError("Remote scanning canceled.", observer);
+                else
+                    tool.notifyScanError("Remote scanner disconnected unexpectedly.", observer);
+                if (!tool.isScanCancellationRequested(observer))
+                    blocklistActiveBundle("Remote scanner disconnected unexpectedly.");
                 break;
             }
-        }
 
-        if (!cancelSent && tool.isScanCancellationRequested(observer)) {
-            ipc::IpcMessage cancelMsg{
-                .type = ipc::kScannerMsgCancelScan,
-                .requestId = "cancel",
-                .payload = choc::value::Value{}
-            };
-            cancelSent = channel.send(cancelMsg);
-            if (!cancelSent) {
-                tool.notifyScanError("Failed to send cancel command to remote scanner.", observer);
-                break;
-            }
-        }
-
-        bool timedOut = false;
-        auto message = channel.receive(250, timedOut);
-        if (timedOut)
-            continue;
-        if (!message.has_value()) {
-            if (tool.isScanCancellationRequested(observer))
-                tool.notifyScanError("Remote scanning canceled.", observer);
-            else
-                tool.notifyScanError("Remote scanner disconnected unexpectedly.", observer);
-            if (!tool.isScanCancellationRequested(observer))
-                blocklistActiveBundle("Remote scanner disconnected unexpectedly.");
-            break;
-        }
-
-        if (message->type == ipc::kScannerMsgBundleStarted) {
-            auto fmtValue = message->payload["format"];
-            auto bundleValue = message->payload["bundlePath"];
-            auto fmt = fmtValue.isVoid() ? std::string{} : fmtValue.toString();
-            auto bundle = bundleValue.isVoid() ? std::filesystem::path{} : std::filesystem::path(bundleValue.toString());
-            activeBundlePath = bundle;
-            activeBundleFormat = fmt;
-            activeBundleLabel = makeBundleLabel(fmt, bundle);
-            activeBundleStart = std::chrono::steady_clock::now();
-            tool.notifyBundleScanStarted(bundle, observer);
-        } else if (message->type == ipc::kScannerMsgBundleFinished) {
-            auto fmtValue = message->payload["format"];
-            auto bundleValue = message->payload["bundlePath"];
-            auto fmt = fmtValue.isVoid() ? std::string{} : fmtValue.toString();
-            auto bundle = bundleValue.isVoid() ? std::filesystem::path{} : std::filesystem::path(bundleValue.toString());
-            tool.notifyBundleScanCompleted(bundle, observer);
-            activeBundlePath.reset();
-            activeBundleFormat.clear();
-            activeBundleLabel.clear();
-            activeBundleStart.reset();
-        } else if (message->type == ipc::kScannerMsgBundleTotals) {
-            // Totals are determined before launching the remote scanner; retain message for compatibility.
-            continue;
-        } else if (message->type == ipc::kScannerMsgScanResult) {
-            auto successVal = message->payload["success"];
-            bool success = !successVal.isVoid() && successVal.getBool();
-            if (success) {
+            if (message->type == ipc::kScannerMsgBundleStarted) {
+                auto fmtValue = message->payload["format"];
+                auto bundleValue = message->payload["bundlePath"];
+                auto fmt = fmtValue.isVoid() ? std::string{} : fmtValue.toString();
+                auto bundle = bundleValue.isVoid() ? std::filesystem::path{} : std::filesystem::path(bundleValue.toString());
+                activeBundlePath = bundle;
+                activeBundleFormat = fmt;
+                activeBundleLabel = makeBundleLabel(fmt, bundle);
+                activeBundleStart = std::chrono::steady_clock::now();
+                tool.notifyBundleScanStarted(bundle, observer);
+            } else if (message->type == ipc::kScannerMsgBundleFinished) {
+                auto fmtValue = message->payload["format"];
+                auto bundleValue = message->payload["bundlePath"];
+                auto fmt = fmtValue.isVoid() ? std::string{} : fmtValue.toString();
+                auto bundle = bundleValue.isVoid() ? std::filesystem::path{} : std::filesystem::path(bundleValue.toString());
+                tool.notifyBundleScanCompleted(bundle, observer);
+                removeBundleFromCatalog(remaining, fmt, bundle);
+                activeBundlePath.reset();
+                activeBundleFormat.clear();
+                activeBundleLabel.clear();
+                activeBundleStart.reset();
+            } else if (message->type == ipc::kScannerMsgBundleTotals) {
+                continue;
+            } else if (message->type == ipc::kScannerMsgScanResult) {
+                auto successVal = message->payload["success"];
+                bool success = !successVal.isVoid() && successVal.getBool();
                 auto cacheVal = message->payload["cacheFile"];
                 if (!cacheVal.isVoid())
                     cachePath = std::filesystem::path(cacheVal.toString());
-                remoteResult = 0;
-            } else {
-                auto errorVal = message->payload["error"];
-                if (!errorVal.isVoid())
-                    tool.notifyScanError(errorVal.toString(), observer);
-                auto failedFormatVal = message->payload["failedBundleFormat"];
-                auto failedPathVal = message->payload["failedBundlePath"];
-                auto failedReasonVal = message->payload["failedBundleReason"];
-                if (!failedFormatVal.isVoid() && !failedPathVal.isVoid()) {
-                    std::string reason = !failedReasonVal.isVoid() ? failedReasonVal.toString()
-                                                                   : std::string{"Remote scanning failed."};
-                    std::filesystem::path failedPath{failedPathVal.toString()};
-                    tool.addToBlocklist(failedFormatVal.toString(), failedPath.lexically_normal().string(), reason);
+                if (success) {
+                    remoteResult = 0;
+                } else {
+                    auto errorVal = message->payload["error"];
+                    if (!errorVal.isVoid())
+                        tool.notifyScanError(errorVal.toString(), observer);
+                    auto failedFormatVal = message->payload["failedBundleFormat"];
+                    auto failedPathVal = message->payload["failedBundlePath"];
+                    auto failedReasonVal = message->payload["failedBundleReason"];
+                    if (!failedFormatVal.isVoid() && !failedPathVal.isVoid()) {
+                        std::string reason = !failedReasonVal.isVoid() ? failedReasonVal.toString()
+                                                                       : std::string{"Remote scanning failed."};
+                        std::filesystem::path failedPath{failedPathVal.toString()};
+                        tool.addToBlocklist(failedFormatVal.toString(), failedPath.lexically_normal().string(), reason);
+                        removeBundleFromCatalog(remaining, failedFormatVal.toString(), failedPath);
+                    }
+                    remoteResult = -1;
                 }
-                remoteResult = -1;
+                finished = true;
             }
-            finished = true;
+        }
+
+        int exitCode = -1;
+        waitForProcess(processHandle, exitCode);
+
+        if (bundleTimedOut)
+            remoteResult = kScanTimeoutExitCode;
+
+        auto cacheLoadPath = !cachePath.empty() ? cachePath : pluginListCacheFile;
+        if (!cacheLoadPath.empty() && std::filesystem::exists(cacheLoadPath)) {
+            tool.catalog().clear();
+            tool.catalog().load(cacheLoadPath);
+            pluginListCacheFile = cacheLoadPath;
+        }
+
+        if (bundleTimedOut) {
+            encounteredTimeout = true;
+            continue;
+        }
+
+        if (remoteResult != 0) {
+            if (tool.lastScanError().empty())
+                tool.notifyScanError("Remote scanning failed.", observer);
+            return remoteResult;
         }
     }
 
-    int exitCode = -1;
-    waitForProcess(processHandle, exitCode);
-
-    if (bundleTimedOut)
-        remoteResult = kScanTimeoutExitCode;
-
-    if (remoteResult == 0 && !cachePath.empty()) {
-        tool.catalog().clear();
-        tool.catalog().load(cachePath);
-        pluginListCacheFile = cachePath;
-    } else if (remoteResult != 0 && !bundleTimedOut && tool.lastScanError().empty()) {
-        tool.notifyScanError("Remote scanning failed.", observer);
-    }
-
-    return remoteResult;
+    return encounteredTimeout ? kScanTimeoutExitCode : 0;
 }
 
 } // namespace remidy_tooling

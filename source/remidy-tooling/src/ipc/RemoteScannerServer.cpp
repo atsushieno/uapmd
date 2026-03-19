@@ -198,6 +198,16 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
         return std::format("{}: {}", format, filename);
     };
 
+    auto persistCatalog = [&]() {
+        if (scanner->pluginListCacheFile().empty())
+            return;
+        try {
+            scanner->savePluginListCache();
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to save plugin list cache: " << e.what() << std::endl;
+        }
+    };
+
     for (const auto& entry : slowCatalog) {
         if (!entry.format)
             continue;
@@ -221,6 +231,7 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
                         scanner->catalog().add(std::move(plugin));
                 }
                 ++processedBundles;
+                persistCatalog();
             } catch (const std::exception& e) {
                 success = false;
                 errorMessage = e.what();
@@ -239,8 +250,7 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
     if (canceled && errorMessage.empty())
         errorMessage = "Scan canceled.";
 
-    if (success && !scanner->pluginListCacheFile().empty())
-        scanner->savePluginListCache();
+    persistCatalog();
 
     choc::value::Value resultPayload = choc::value::createObject("ScanResult");
     resultPayload.setMember("success", success);
@@ -250,9 +260,9 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
     resultPayload.setMember("running", false);
     if (!lastBundleLabel.empty())
         resultPayload.setMember("currentBundle", lastBundleLabel);
-    if (success) {
+    if (!scanner->pluginListCacheFile().empty())
         resultPayload.setMember("cacheFile", scanner->pluginListCacheFile().string());
-    } else {
+    if (!success) {
         auto err = scanner->lastScanError();
         if (err.empty())
             err = errorMessage.empty() ? "Remote scanning failed." : errorMessage;

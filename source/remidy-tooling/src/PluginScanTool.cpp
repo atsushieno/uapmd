@@ -338,42 +338,16 @@ int PluginScanToolImpl::executeSlowScanCatalog(const SlowScanCatalog& catalogPla
         ScanSessionManager* manager = mode == ScanMode::Remote
                                       ? &ensureRemoteSessionManager()
                                       : &ensureInProcessSessionManager();
-        bool remainingForceRescan = forceRescan;
-        if (mode == ScanMode::Remote) {
-            for (const auto& entry : catalogPlan) {
-                if (!entry.format)
-                    continue;
-                for (const auto& bundlePath : entry.bundles) {
-                    SlowScanCatalog singleBundlePlan;
-                    singleBundlePlan.push_back(SlowScanEntry{entry.format, {bundlePath}});
-                    int runResult = manager->runScan(*this,
-                                                     singleBundlePlan,
-                                                     requireFastScanning,
-                                                     pluginListCacheFile,
-                                                     remainingForceRescan,
-                                                     bundleTimeoutSeconds,
-                                                     observer);
-                    remainingForceRescan = false;
-                    if (runResult == kScanTimeoutExitCode) {
-                        encounteredRecoverableError = true;
-                        continue;
-                    }
-                    if (runResult != 0) {
-                        result = runResult;
-                        break;
-                    }
-                }
-                if (result != 0)
-                    break;
-            }
-        } else {
-            result = manager->runScan(*this,
-                                      catalogPlan,
-                                      requireFastScanning,
-                                      pluginListCacheFile,
-                                      remainingForceRescan,
-                                      bundleTimeoutSeconds,
-                                      observer);
+        result = manager->runScan(*this,
+                                  catalogPlan,
+                                  requireFastScanning,
+                                  pluginListCacheFile,
+                                  forceRescan,
+                                  bundleTimeoutSeconds,
+                                  observer);
+        if (mode == ScanMode::Remote && result == kScanTimeoutExitCode) {
+            encounteredRecoverableError = true;
+            result = 0;
         }
     }
 
