@@ -1044,7 +1044,6 @@ void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& dev
         }
         auto fb = fbManager->getFunctionDeviceByInstanceId(instanceId);
 
-        sequencer_.engine()->getPluginInstance(instanceId)->assignMidiDeviceToPlugin(fb->midiIO());
         fb->initialize();
 
         deviceState->device = fb;
@@ -1098,8 +1097,6 @@ void uapmd::AppModel::disableUmpDevice(int32_t instanceId) {
         return;
     }
 
-    // Clear MIDI device from plugin node to release the shared_ptr
-    sequencer_.engine()->getPluginInstance(instanceId)->clearMidiDeviceFromPlugin();
     if (auto fb = sequencer().engine()->functionBlockManager()->getFunctionDeviceForInstance(instanceId))
         fb->destroyDevice(instanceId);
 

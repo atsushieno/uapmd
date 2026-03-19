@@ -10,12 +10,14 @@
 
 namespace uapmd {
     class UapmdMidiCISession;
+    class UapmdNodeUmpOutputMapper;
 
     class UapmdFunctionBlock {
         AudioPluginNode* plugin_node;
         uint8_t ump_group{0xFF}; // invalid
 
         std::shared_ptr<MidiIOFeature> midi_device{};
+        std::unique_ptr<UapmdNodeUmpOutputMapper> ump_output_mapper_{};
 
         static void umpReceived(void* context, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);
         void umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp);

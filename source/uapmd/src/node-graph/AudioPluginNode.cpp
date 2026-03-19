@@ -4,11 +4,13 @@
 
 #include <atomic>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 #include "uapmd/uapmd.hpp"
+#include "../midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
 
@@ -25,6 +27,7 @@ namespace uapmd {
         remidy::EventListenerId metadata_listener_token_{0};
         std::mutex active_notes_mutex_;
         std::unordered_map<uint16_t, uint32_t> active_notes_;
+        std::unique_ptr<UapmdNodeUmpInputMapper> ump_input_mapper_{};
 
         struct PendingNoteUpdate {
             bool note_on;
@@ -41,6 +44,8 @@ namespace uapmd {
             instance_(instance),
             queue_(eventBufferSizeInBytes),
             on_delete_(std::move(onDelete)) {
+            if (instance_)
+                ump_input_mapper_ = std::make_unique<UapmdNodeUmpInputMapper>(instance_);
             // Register parameter change listener directly with the plugin
             if (instance_ && instance_->parameterSupport()) {
                 parameter_listener_token_ = instance_->parameterSupport()->parameterChangeEvent().addListener(
@@ -159,6 +164,11 @@ namespace uapmd {
                 pending_events_.push_back(u128);
             }
             queue_reading_.exchange(false);
+        }
+
+        void processInputMapping(AudioProcessContext& process) {
+            if (auto* mapper = ump_input_mapper_.get())
+                mapper->process(process);
         }
 
         size_t fillEventBufferForGroup(EventSequence& eventIn, uint8_t group) {

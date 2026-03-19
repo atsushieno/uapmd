@@ -62,6 +62,8 @@ namespace uapmd {
             node->trackEventsFromBuffer(eventIn, group);
 
             bool bypassed = node->instance()->bypassed();
+            if (!bypassed)
+                node->processInputMapping(process);
             if (bypassed) {
                 if (i + 1 < nodes_.size()) {
                     // Not the last node: pass audio through so the next plugin receives the signal

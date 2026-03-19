@@ -1,6 +1,9 @@
 #pragma once
 #include <memory>
 #include <remidy/remidy.hpp>
+#include "uapmd/priv/midi/MidiIOFeature.hpp"
+#include "uapmd/priv/midi/UapmdUmpMapper.hpp"
+#include "uapmd/priv/plugin-api/AudioPluginInstanceAPI.hpp"
 
 namespace uapmd {
     class UapmdNodeUmpInputMapper :

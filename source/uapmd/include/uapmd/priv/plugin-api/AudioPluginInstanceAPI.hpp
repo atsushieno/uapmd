@@ -6,8 +6,6 @@
 #include <cstdint>
 #include "remidy/remidy.hpp"
 #include "../CommonTypes.hpp"
-#include "../midi/UapmdUmpMapper.hpp"
-#include "../midi/MidiIOFeature.hpp"
 
 namespace uapmd {
     struct ParameterNamedValue {
@@ -73,9 +71,6 @@ namespace uapmd {
         virtual bool getUISize(uint32_t &width, uint32_t &height) = 0;
         virtual bool canUIResize() = 0;
         virtual remidy::PluginParameterSupport* parameterSupport() = 0;
-
-        virtual void assignMidiDeviceToPlugin(MidiIOFeature* device) = 0;
-        virtual void clearMidiDeviceFromPlugin() = 0;
 
         virtual remidy::PluginAudioBuses* audioBuses() = 0;
     };

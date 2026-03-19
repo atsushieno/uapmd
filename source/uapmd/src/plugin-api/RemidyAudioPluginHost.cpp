@@ -7,7 +7,6 @@
 #endif
 
 #include "remidy-tooling/remidy-tooling.hpp"
-#include "../midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
     int32_t instanceIdSerial{0};
@@ -21,9 +20,6 @@ namespace uapmd {
         bool uiVisible{false};
         bool uiFloating{true};
 
-        std::unique_ptr<UapmdUmpInputMapper> ump_input_mapper{};
-        std::unique_ptr<UapmdUmpOutputMapper> ump_output_mapper{};
-
         remidy::PluginUISupport* ensureUISupport() {
             if (!instance)
                 return nullptr;
@@ -35,7 +31,6 @@ namespace uapmd {
     public:
         explicit RemidyAudioPluginInstance(const std::shared_ptr<remidy_tooling::PluginInstancing>& instancing, remidy::PluginInstance* instance)
           : instancing(instancing), instance(instance) {
-            ump_input_mapper = std::make_unique<UapmdNodeUmpInputMapper>(this);
             bypassed_ = false;
         }
         ~RemidyAudioPluginInstance() override {
@@ -75,9 +70,6 @@ namespace uapmd {
                 process.copyInputsToOutputs();
                 process.enableReplacingIO();
             }
-
-            if (const auto m = ump_input_mapper.get())
-                m->process(process);
 
             // FIXME: define error codes
             uapmd_status_t status = 0;
@@ -295,16 +287,6 @@ namespace uapmd {
             if (!instance)
                 return nullptr;
             return instance->audioBuses();
-        }
-
-        void assignMidiDeviceToPlugin(MidiIOFeature* device) override {
-            if (!device)
-                return;
-            ump_output_mapper = std::make_unique<UapmdNodeUmpOutputMapper>(device, this);
-        }
-
-        void clearMidiDeviceFromPlugin() override {
-            ump_output_mapper.reset();
         }
 
         bool requiresReplacingProcess() const override {

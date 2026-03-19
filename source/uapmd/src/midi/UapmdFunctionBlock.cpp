@@ -9,6 +9,7 @@
 #include <midicci/midicci.hpp>
 #include "uapmd/uapmd.hpp"
 #include "UapmdMidiCISession.hpp"
+#include "UapmdNodeUmpMapper.hpp"
 
 using namespace midicci::commonproperties;
 
@@ -58,6 +59,8 @@ namespace uapmd {
       : plugin_node(pluginNode),
         midi_device(std::move(midiDevice)) {
         uapmd_sessions = UapmdMidiCISession::create(this, pluginNode->instance(), deviceName, manufacturerName, versionString);
+        if (midi_device && plugin_node && plugin_node->instance())
+            ump_output_mapper_ = std::make_unique<UapmdNodeUmpOutputMapper>(midi_device.get(), plugin_node->instance());
         if (midi_device)
             midi_device->addInputHandler(umpReceived, this);
     }
