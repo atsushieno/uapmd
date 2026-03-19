@@ -61,6 +61,7 @@ namespace remidy_tooling {
                                           PluginScanObserver* observer = nullptr) = 0;
         virtual void savePluginListCache() = 0;
         virtual void savePluginListCache(std::filesystem::path& fileToSave) = 0;
+        virtual void flushBlocklist() = 0;
 
         virtual std::vector<BlocklistEntry> blocklistEntries() const = 0;
         virtual bool unblockBundle(const std::string& entryId) = 0;

@@ -56,6 +56,7 @@ public:
                               PluginScanObserver* observer) override;
     void savePluginListCache() override { savePluginListCache(plugin_list_cache_file); }
     void savePluginListCache(std::filesystem::path& fileToSave) override { catalog_.save(fileToSave); }
+    void flushBlocklist() override { saveBlocklistToDisk(); }
 
     std::vector<BlocklistEntry> blocklistEntries() const override;
     bool unblockBundle(const std::string& entryId) override;

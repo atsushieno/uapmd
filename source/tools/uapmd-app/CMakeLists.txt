@@ -32,7 +32,6 @@ endif()
 set(UAPMD_APP_COMMON_SOURCE_FILES
         main_common.cpp
         AppModel.cpp
-        ScanOnlyMode.cpp
         UapmdJSRuntime.cpp
         gui/MainWindow.cpp
         gui/PluginList.cpp

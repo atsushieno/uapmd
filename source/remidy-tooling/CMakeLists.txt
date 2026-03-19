@@ -48,6 +48,7 @@ target_sources(remidy-tooling PRIVATE
         src/PluginScanTool.cpp
         src/PluginFormatManager.cpp
         src/PluginInstancing.cpp
+        src/ScanOnlyRunner.cpp
         src/ipc/InProcessScanSessionManager.cpp
         src/ipc/IpcJsonChannel.cpp
         src/ipc/TcpSocket.cpp

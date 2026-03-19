@@ -1,4 +1,4 @@
-#include "ScanOnlyMode.hpp"
+#include "remidy-tooling/ScanOnlyRunner.hpp"
 
 #include <cstdlib>
 
@@ -8,9 +8,9 @@
 
 #if defined(__EMSCRIPTEN__) || ANDROID || (defined(__APPLE__) && TARGET_OS_IPHONE)
 
-namespace uapmd {
+namespace remidy_tooling {
 
-int runScanOnlyMode(const ScanOnlyOptions&) {
+int runScanOnlyMode(const ScanOnlyOptions&, choc::value::Value*) {
     return EXIT_FAILURE;
 }
 
@@ -20,11 +20,12 @@ int runScanOnlyMode(const ScanOnlyOptions&) {
 
 #include <atomic>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <format>
 #include <iostream>
-#include <string>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -32,7 +33,7 @@ int runScanOnlyMode(const ScanOnlyOptions&) {
 #include <remidy/remidy.hpp>
 #include <remidy-tooling/remidy-tooling.hpp>
 
-namespace uapmd {
+namespace remidy_tooling {
 namespace {
 
 struct VerificationFailure {
@@ -209,19 +210,32 @@ choc::value::Value buildPluginArray(remidy_tooling::PluginScanTool& scanner) {
 
 }
 
-int runScanOnlyMode(const ScanOnlyOptions& options) {
+int runScanOnlyMode(const ScanOnlyOptions& options, choc::value::Value* outReport) {
     remidy::EventLoop::initializeOnUIThread();
 
     auto scanner = remidy_tooling::PluginScanTool::create();
-    static std::filesystem::path emptyPath{};
+    auto scanMode = options.useRemoteScanner
+        ? remidy_tooling::ScanMode::Remote
+        : remidy_tooling::ScanMode::InProcess;
 
-    int scanResult = scanner->performPluginScanning(false, remidy_tooling::ScanMode::InProcess, options.forceRescan, 0.0);
+    int scanResult = scanner->performPluginScanning(false,
+                                                    scanMode,
+                                                    options.forceRescan,
+                                                    options.bundleTimeoutSeconds);
+
+    if (!scanner->pluginListCacheFile().empty()) {
+        try {
+            scanner->savePluginListCache();
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to save plugin list cache: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "Failed to save plugin list cache: unknown error" << std::endl;
+        }
+    }
+    scanner->flushBlocklist();
 
     choc::value::Value pluginArray = buildPluginArray(*scanner);
     bool success = (scanResult == 0);
-
-    if (success)
-        scanner->savePluginListCache();
 
     choc::value::Value fullVerificationJson;
     if (options.fullVerification) {
@@ -285,7 +299,8 @@ int runScanOnlyMode(const ScanOnlyOptions& options) {
         );
     }
 
-    std::cout << choc::json::toString(root, true) << std::endl;
+    if (outReport)
+        *outReport = root;
 
     return success ? EXIT_SUCCESS : EXIT_FAILURE;
 }

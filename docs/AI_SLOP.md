@@ -11,6 +11,10 @@ Unless otherwise noted, "I" points to @atsushieno.
 - Per-note controller API: there is a lot of overlaps with parameter API and implementation, so I let AI generate a lot of "likewise" implementation.
 - Parameter updates API: transmits of parameter value changes were mostly by those AI coders, including some parts of the API. I prohibited a lot of arbitrary API bloats, but not that was not absolute.
 
+## remidy-tooling
+
+- The new `PluginScanTool` has a lot of AI-generated code involved, especially at the IPC foundation and remote scanner process manager. There was a bunch of dumped AI code and rewrites by @atsushieno though.
+
 ## remidy-gui
 
 - Nowadays it is almost all AI slop; the GUI stuff is mostly done by AI coders, and this module is no exception.

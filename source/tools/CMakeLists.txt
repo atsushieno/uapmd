@@ -7,15 +7,15 @@ CPMAddPackage(
 )
 
 if (NOT ANDROID AND NOT EMSCRIPTEN AND NOT IOS)
-    add_subdirectory(remidy-scan)
     add_subdirectory(uapmd-apply)
+    add_subdirectory(uapmd-scan)
 endif ()
 add_subdirectory(uapmd-app)
 
 # Install targets
 if (NOT ANDROID AND NOT EMSCRIPTEN)
 if (NOT IOS)
-install(TARGETS remidy-scan
+install(TARGETS uapmd-scan
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT uapmd)
 endif ()

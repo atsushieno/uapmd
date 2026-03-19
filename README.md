@@ -120,9 +120,9 @@ The virtual MIDI 2.0 device service controller. Currently the command line optio
 
 We have some [users guide documentation](docs/users/USERS_GUIDE.md).
 
-### remidy-scan
+### uapmd-scan
 
-`remidy-scan` is a tool to query and enumerate locally installed plugins, and stores the results to `(local app data)/remidy-tooling/plugin-list-cache.json` (`local app data` [depends on the platform](https://github.com/cginternals/cpplocate)).
+`uapmd-scan` is a standalone entry point for the scan-only mode that also powers `uapmd-app --scan-only`. It always performs a fresh rescan via the remote scanner worker (equivalent to `uapmd-app --scan-only --force-rescan --full --remote`), enforces per-bundle timeouts (`--timeout <seconds>`, default `120`) so that hung plugins are terminated and skipped, persists the cache to `(local app data)/remidy-tooling/plugin-list-cache.json` (`local app data` [depends on the platform](https://github.com/cginternals/cpplocate)), and prints the JSON report to stdout.
 
 ## Documentation
 

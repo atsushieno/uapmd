@@ -1,8 +1,8 @@
 #include "main_common.hpp"
 #include "AppModel.hpp"
-#include "ScanOnlyMode.hpp"
 #include "gui/MainWindow.hpp"
 #include "gui/FontLoader.hpp"
+#include <remidy-tooling/ScanOnlyRunner.hpp>
 #include <ImGuiEventLoop.hpp>
 #include <PlatformBackend.hpp>
 #include <algorithm>
@@ -135,11 +135,11 @@ int runMainLoop(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     if (cliOptions.scanOnly) {
-        ScanOnlyOptions options{
+        remidy_tooling::ScanOnlyOptions options{
             .forceRescan = cliOptions.forceRescan,
             .fullVerification = cliOptions.fullVerification
         };
-        return runScanOnlyMode(options);
+        return remidy_tooling::runScanOnlyMode(options);
     }
 #endif
 

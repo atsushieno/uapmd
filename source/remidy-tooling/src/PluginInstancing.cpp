@@ -13,7 +13,7 @@ void remidy_tooling::PluginInstancing::setupInstance(remidy::PluginUIThreadRequi
             callback(error);
             return;
         }
-        setCurrentThreadNameIfPossible(std::format("remidy-scan.{}:{}", format->name(), entry->displayName()));
+        setCurrentThreadNameIfPossible(std::format("uapmd-scan.{}:{}", format->name(), entry->displayName()));
         instance = std::move(newInstance);
         if (!instance)
             error = std::format("  {}: Could not instantiate plugin {}. Details: {}", format->name(), displayName, error);

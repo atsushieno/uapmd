@@ -15,7 +15,7 @@ In the latest source tree, the following description applies to the `source` dir
   - `src/uapmd-engine/`: sequencer engine.
 - `tools/`: tools
   - `uapmd-app`: an example plugin host that also serves virtual UMP devices
-  - `remidy-scan`: standalone plugin scanner
+  - `uapmd-scan`: standalone plugin scanner (same engine as the app's `--scan-only` mode)
 - `external/`: Third‑party dependencies (submodules/FetchContent).
 - `cmake/`: CMake build helpers
 
