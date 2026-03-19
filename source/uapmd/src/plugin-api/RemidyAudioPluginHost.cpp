@@ -391,7 +391,3 @@ uapmd::AudioPluginInstanceAPI * uapmd::RemidyAudioPluginHost::getInstance(int32_
     const auto &i = instances[instanceId];
     return i ? i.get() : nullptr;
 }
-
-uapmd_status_t uapmd::RemidyAudioPluginHost::processAudio(std::vector<remidy::AudioProcessContext *> contexts) {
-    return 0;
-}

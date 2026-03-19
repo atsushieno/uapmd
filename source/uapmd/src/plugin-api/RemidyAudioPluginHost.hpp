@@ -27,7 +27,6 @@ namespace uapmd {
         void deletePluginInstance(int32_t instanceId) override;
         std::vector<int32_t> instanceIds() override;
         AudioPluginInstanceAPI* getInstance(int32_t instanceId) override;
-        uapmd_status_t processAudio(std::vector<remidy::AudioProcessContext*> contexts) override;
     };
 
 }
