@@ -168,6 +168,56 @@ export class TrackInfo {
     }
 }
 
+export class ClipData {
+    constructor(data) {
+        this.clipId = data.clipId ?? -1;
+        this.positionSamples = data.positionSamples ?? 0;
+        this.durationSamples = data.durationSamples ?? 0;
+        this.name = data.name ?? '';
+        this.filepath = data.filepath ?? '';
+        this.clipType = data.clipType ?? 'audio';   // 'audio' | 'midi'
+        this.gain = data.gain ?? 1.0;
+        this.muted = data.muted ?? false;
+        this.tempo = data.tempo ?? 120.0;
+        this.tickResolution = data.tickResolution ?? 480;
+    }
+}
+
+export class TimelineState {
+    constructor(data) {
+        this.tempo = data.tempo ?? 120.0;
+        this.timeSignatureNumerator = data.timeSignatureNumerator ?? 4;
+        this.timeSignatureDenominator = data.timeSignatureDenominator ?? 4;
+        this.isPlaying = data.isPlaying ?? false;
+        this.playheadSamples = data.playheadSamples ?? 0;
+        this.loopEnabled = data.loopEnabled ?? false;
+        this.loopStartSamples = data.loopStartSamples ?? 0;
+        this.loopEndSamples = data.loopEndSamples ?? 0;
+    }
+}
+
+export const timeline = {
+    getState: function() {
+        return new TimelineState(__remidy_timeline_get_state());
+    },
+
+    setTempo: function(bpm) {
+        __remidy_timeline_set_tempo(bpm);
+    },
+
+    getClips: function(trackIndex) {
+        return __remidy_timeline_get_clips(trackIndex).map(c => new ClipData(c));
+    },
+
+    addMidiClip: function(trackIndex, positionSamples, filepath) {
+        return __remidy_timeline_add_midi_clip(trackIndex, positionSamples, filepath);
+    },
+
+    removeClip: function(trackIndex, clipId) {
+        return __remidy_timeline_remove_clip(trackIndex, clipId);
+    }
+};
+
 // Sequencer singleton - access to the application's audio sequencer
 export const sequencer = {
     // MIDI Control

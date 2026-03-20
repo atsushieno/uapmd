@@ -34,6 +34,7 @@ void UapmdJSRuntime::reinitialize()
     registerSequencerInstanceAPI();
     registerSequencerAudioAnalysisAPI();
     registerSequencerAudioDeviceAPI();
+    registerTimelineAPI();
 }
 
 void UapmdJSRuntime::registerConsoleFunctions()
@@ -872,6 +873,100 @@ void UapmdJSRuntime::unregisterAllMetadataListeners()
             }
         }
     }
+}
+
+void UapmdJSRuntime::registerTimelineAPI()
+{
+    jsContext_.registerFunction ("__remidy_timeline_get_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        const auto& state = uapmd::AppModel::instance().timeline();
+        auto obj = choc::value::createObject ("TimelineState");
+        obj.setMember ("tempo", state.tempo);
+        obj.setMember ("timeSignatureNumerator", state.timeSignatureNumerator);
+        obj.setMember ("timeSignatureDenominator", state.timeSignatureDenominator);
+        obj.setMember ("isPlaying", state.isPlaying);
+        obj.setMember ("playheadSamples", choc::value::createInt64 (state.playheadPosition.samples));
+        obj.setMember ("loopEnabled", state.loopEnabled);
+        obj.setMember ("loopStartSamples", choc::value::createInt64 (state.loopStart.samples));
+        obj.setMember ("loopEndSamples", choc::value::createInt64 (state.loopEnd.samples));
+        return obj;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_set_tempo", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto bpm = args.get<double> (0, 120.0);
+        if (bpm > 0.0)
+            uapmd::AppModel::instance().timeline().tempo = bpm;
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_get_clips", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        if (trackIndex < 0)
+            return choc::value::createEmptyArray();
+
+        auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+        if (trackIndex >= static_cast<int32_t> (tracks.size()))
+            return choc::value::createEmptyArray();
+
+        const auto clips = tracks[static_cast<size_t> (trackIndex)]->clipManager().getAllClips();
+        auto arr = choc::value::createEmptyArray();
+        for (const auto& clip : clips)
+        {
+            auto obj = choc::value::createObject ("ClipData");
+            obj.setMember ("clipId", clip.clipId);
+            obj.setMember ("positionSamples", choc::value::createInt64 (clip.position.samples));
+            obj.setMember ("durationSamples", choc::value::createInt64 (clip.durationSamples));
+            obj.setMember ("name", clip.name);
+            obj.setMember ("filepath", clip.filepath);
+            obj.setMember ("clipType", clip.clipType == uapmd::ClipType::Midi ? std::string ("midi") : std::string ("audio"));
+            obj.setMember ("gain", clip.gain);
+            obj.setMember ("muted", clip.muted);
+            obj.setMember ("tempo", clip.clipTempo);
+            obj.setMember ("tickResolution", static_cast<int32_t> (clip.tickResolution));
+            arr.addArrayElement (obj);
+        }
+        return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_add_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        auto positionSamples = args.get<int64_t> (1, 0);
+        auto filepath = args.get<std::string> (2, "");
+
+        auto makeError = [] (const std::string& msg) {
+            auto obj = choc::value::createObject ("ClipAddResult");
+            obj.setMember ("clipId", -1);
+            obj.setMember ("success", false);
+            obj.setMember ("error", msg);
+            return obj;
+        };
+
+        if (trackIndex < 0 || filepath.empty())
+            return makeError ("invalid arguments");
+
+        auto& appModel = uapmd::AppModel::instance();
+        uapmd::TimelinePosition pos{};
+        pos.samples = positionSamples;
+        auto result = appModel.addMidiClipToTrack (trackIndex, pos, filepath);
+
+        auto obj = choc::value::createObject ("ClipAddResult");
+        obj.setMember ("clipId", result.clipId);
+        obj.setMember ("success", result.success);
+        obj.setMember ("error", result.error);
+        return obj;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_remove_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        auto clipId = args.get<int32_t> (1, -1);
+        if (trackIndex < 0 || clipId < 0)
+            return choc::value::createBool (false);
+        return choc::value::createBool (uapmd::AppModel::instance().removeClipFromTrack (trackIndex, clipId));
+    });
 }
 
 } // namespace uapmd

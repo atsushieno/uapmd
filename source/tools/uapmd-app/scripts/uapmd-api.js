@@ -122,5 +122,14 @@ globalThis.uapmd = {
         getSampleRate: () => __remidy_sequencer_getSampleRate(),
         setSampleRate: (sampleRate) => __remidy_sequencer_setSampleRate(sampleRate),
         isScanning: () => __remidy_sequencer_isScanning()
+    },
+
+    // Timeline API - Clip and playback state management
+    timeline: {
+        getState: () => __remidy_timeline_get_state(),
+        setTempo: (bpm) => __remidy_timeline_set_tempo(bpm),
+        getClips: (trackIndex) => __remidy_timeline_get_clips(trackIndex),
+        addMidiClip: (trackIndex, positionSamples, filepath) => __remidy_timeline_add_midi_clip(trackIndex, positionSamples, filepath),
+        removeClip: (trackIndex, clipId) => __remidy_timeline_remove_clip(trackIndex, clipId)
     }
 };
