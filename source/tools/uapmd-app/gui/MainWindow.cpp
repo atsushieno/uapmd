@@ -65,6 +65,14 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     refreshInstances();
     refreshPluginList();
 
+#ifdef UAPMD_HAS_MCP_SERVER
+    if (defaults.mcpServerPort > 0) {
+        mcpPort_ = defaults.mcpServerPort;
+        mcpServer_ = std::make_unique<McpServer>(mcpPort_);
+        mcpServer_->start();
+    }
+#endif
+
     // Register callback for when plugin scanning completes.
     // NOTE: this callback fires from the background scanning thread, so the UI
     // update must be dispatched to the main thread to avoid a data race with
@@ -283,6 +291,11 @@ MainWindow::MainWindow(GuiDefaults defaults) {
 }
 
 void MainWindow::render(void* window) {
+#ifdef UAPMD_HAS_MCP_SERVER
+    if (mcpServer_)
+        mcpServer_->processMainThreadQueue();
+#endif
+
     // Use the entire screen space as the main window (no nested window).
     // On platforms with system UI overlays (Android 15+, iOS notch/home indicator),
     // safeAreaInsets_ shrinks the content area so interactive elements stay reachable.
@@ -360,6 +373,29 @@ void MainWindow::render(void* window) {
                 showDeviceSettingsWindow_ = !showDeviceSettingsWindow_;
             }
             ImGui::SameLine();
+
+#ifdef UAPMD_HAS_MCP_SERVER
+            {
+                bool mcpRunning = mcpServer_ != nullptr;
+                const ImVec4 onColor(0.20f, 0.55f, 0.28f, 1.0f);
+                const ImVec4 offColor(0.35f, 0.35f, 0.35f, 1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Button, mcpRunning ? onColor : offColor);
+                if (ImGui::Button("MCP")) {
+                    if (mcpRunning) {
+                        mcpServer_.reset();
+                    } else {
+                        mcpServer_ = std::make_unique<McpServer>(mcpPort_);
+                        mcpServer_->start();
+                    }
+                }
+                ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(mcpRunning
+                        ? "MCP server active on port %d\nClick to stop" : "Click to start MCP server on port %d",
+                        mcpPort_);
+            }
+            ImGui::SameLine();
+#endif
 
             // Transport controls
             auto& transport = appModel.transport();

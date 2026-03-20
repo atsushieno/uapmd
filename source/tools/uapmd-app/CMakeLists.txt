@@ -28,6 +28,16 @@ if(UAPMD_TARGET_WASM)
     endif()
 endif()
 
+# MCP server (desktop only — not available on WASM, iOS, or Android)
+if(NOT UAPMD_BUILDING_WASM AND NOT IOS AND NOT ANDROID)
+    CPMAddPackage(
+        NAME cpp-httplib
+        GIT_TAG v0.18.1
+        GIT_REPOSITORY https://github.com/yhirose/cpp-httplib
+        DOWNLOAD_ONLY YES
+    )
+endif()
+
 # Common application sources
 set(UAPMD_APP_COMMON_SOURCE_FILES
         main_common.cpp
@@ -53,6 +63,10 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
 )
+
+if(NOT UAPMD_BUILDING_WASM AND NOT IOS AND NOT ANDROID)
+    list(APPEND UAPMD_APP_COMMON_SOURCE_FILES mcp/McpServer.cpp)
+endif()
 
 # Platform-specific entrypoints
 if(UAPMD_BUILDING_WASM)
@@ -599,6 +613,11 @@ elseif(BACKEND_TYPE STREQUAL "GLFW")
     target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE USE_GLFW_BACKEND)
 endif()
 
+if(NOT UAPMD_BUILDING_WASM AND NOT IOS AND NOT ANDROID)
+    target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE ${cpp-httplib_SOURCE_DIR})
+    target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE UAPMD_HAS_MCP_SERVER=1)
+endif()
+
 target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
         ${choc_SOURCE_DIR}
         ${portable-file-dialogs_SOURCE_DIR}
@@ -626,6 +645,9 @@ target_compile_definitions(remidy-imgui-shared PUBLIC IMGUI_DEFINE_MATH_OPERATOR
 target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
 
 set(uapmd_LIBS_PLAT)
+if(WIN32 AND NOT UAPMD_BUILDING_WASM)
+    list(APPEND uapmd_LIBS_PLAT ws2_32)
+endif()
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     set(uapmd_LIBS_PLAT
             "-framework AudioToolbox"

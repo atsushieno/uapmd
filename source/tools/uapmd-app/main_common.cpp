@@ -97,6 +97,7 @@ int runMainLoop(int argc, char** argv) {
         bool fullVerification = false;
     };
     CommandLineOptions cliOptions{};
+    int mcpPort = -1;
     std::vector<std::string> positional;
     positional.reserve(args.size());
     for (size_t i = 0; i < args.size(); ++i) {
@@ -111,6 +112,13 @@ int runMainLoop(int argc, char** argv) {
         }
         if (arg == "--full") {
             cliOptions.fullVerification = true;
+            continue;
+        }
+        if (arg == "--mcp-server") {
+            mcpPort = 37373; // default
+            if (i + 1 < args.size()) {
+                try { mcpPort = std::stoi(args[i + 1]); ++i; } catch (...) {}
+            }
             continue;
         }
         /*if (arg == "--shell" || arg == "--cli" || arg == "--no-gui" || arg == "--headless") {
@@ -261,6 +269,7 @@ int runMainLoop(int argc, char** argv) {
     if (positional.size() > 1) defaults.formatName = positional[1];
     if (positional.size() > 2) defaults.apiName = positional[2];
     if (positional.size() > 3) defaults.deviceName = positional[3];
+    defaults.mcpServerPort = mcpPort;
 
     // Create main window controller
     uapmd::gui::MainWindow mainWindow(defaults);

@@ -200,6 +200,7 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [sevagh/demucs.cpp](https://github.com/sevagh/demucs.cpp) - MIT
 - [OpenMathLib/OpenBLAS](https://github.com/OpenMathLib/OpenBLAS) - BSD (3-clause)  (optional for demucs.cpp acceleration; disabled by default)
 - [wang-bin/JMI](https://github.com/wang-bin/JMI) - MIT
+- [yhirose/cpp-httplib](https://github.com/yhirose/cpp-httplib) - MIT
 
 Fonts used:
 

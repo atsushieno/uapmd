@@ -24,6 +24,9 @@
 #include <PluginUIHelpers.hpp>
 #include "../AppModel.hpp"
 #include "SharedTheme.hpp"
+#ifdef UAPMD_HAS_MCP_SERVER
+#include "../mcp/McpServer.hpp"
+#endif
 
 // Forward declarations for different window types
 struct SDL_Window;
@@ -36,6 +39,7 @@ struct GuiDefaults {
     std::string formatName;
     std::string apiName;
     std::string deviceName;
+    int mcpServerPort = -1;  // < 0 means do not auto-start MCP server
 };
 
 class MainWindow {
@@ -44,6 +48,11 @@ class MainWindow {
         // Device settings
         bool showDeviceSettingsWindow_ = false;
         AudioDeviceSettings audioDeviceSettings_;
+
+#ifdef UAPMD_HAS_MCP_SERVER
+        std::unique_ptr<McpServer> mcpServer_;
+        int mcpPort_ = 37373;
+#endif
 
         bool showAudioGraphWindow_ = false;
 
