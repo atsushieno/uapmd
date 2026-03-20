@@ -385,6 +385,13 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
         if (newIndex >= 0)
             refreshSequenceEditorForTrack(newIndex);
     }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Add track");
+    if (callbacks_.showPluginInstances) {
+        ImGui::SameLine();
+        if (ImGui::Button("Plugin Instances"))
+            callbacks_.showPluginInstances();
+    }
     ImGui::EndChild();
 }
 

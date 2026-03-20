@@ -274,6 +274,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         .savePluginState = [this](int32_t instanceId) { savePluginState(instanceId); },
         .loadPluginState = [this](int32_t instanceId) { loadPluginState(instanceId); },
         .onInstanceDetailsClosed = [this](int32_t) { trackList_.markDirty(); },
+        .showPluginInstances = [this]() { showAudioGraphWindow_ = !showAudioGraphWindow_; },
     });
 
     // Set up child window size helpers for TimelineEditor
@@ -380,6 +381,82 @@ void MainWindow::render(void* window) {
             }
             ImGui::SameLine();
 
+            // Transport controls
+            auto& transport = appModel.transport();
+            if (!audioEngineEnabled)
+                ImGui::BeginDisabled();
+            const char* playStopLabel = transport.isPlaying() ? icons::Stop : icons::Play;
+            if (ImGui::Button(playStopLabel)) {
+                if (transport.isPlaying())
+                    transport.stop();
+                else
+                    transport.play();
+            }
+            ImGui::SameLine();
+
+            if (!transport.isPlaying())
+                ImGui::BeginDisabled();
+            const char* pauseResumeLabel = transport.isPaused() ? icons::Play : icons::Pause;
+            if (ImGui::Button(pauseResumeLabel)) {
+                if (transport.isPaused())
+                    transport.resume();
+                else
+                    transport.pause();
+            }
+            if (!transport.isPlaying())
+                ImGui::EndDisabled();
+            if (!audioEngineEnabled)
+                ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Scale:");
+            ImGui::SameLine();
+            int currentScaleIndex = 0;
+            for (size_t i = 0; i < kUiScaleOptions.size(); ++i) {
+                if (std::fabs(uiScale_ - kUiScaleOptions[i]) < 0.001f) {
+                    currentScaleIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+            int selectedIndex = currentScaleIndex;
+            ImGui::SetNextItemWidth(100.0f * uiScale_);
+            if (ImGui::BeginCombo("##UiScaleCombo", kUiScaleLabels[currentScaleIndex])) {
+                for (int i = 0; i < static_cast<int>(kUiScaleOptions.size()); ++i) {
+                    bool isSelected = (selectedIndex == i);
+                    if (ImGui::Selectable(kUiScaleLabels[i], isSelected)) {
+                        selectedIndex = i;
+                    }
+                    if (isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (selectedIndex != currentScaleIndex) {
+                applyUiScale(kUiScaleOptions[selectedIndex]);
+                requestWindowResize();
+            }
+            ImGui::SameLine();
+
+            // Theme toggle
+            const char* themeLabel = icons::LightDarkSwitch;
+            if (ImGui::Button(themeLabel)) {
+                toggleTheme();
+            }
+
+            if (ImGui::Button("Plugins")) {
+                timelineEditor_.pluginSelector().setTargetNewTrack();
+                auto& showSelector = timelineEditor_.showPluginSelectorWindow();
+                showSelector = !showSelector;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Script")) {
+                if (scriptEditor_.isOpen())
+                    scriptEditor_.hide();
+                else
+                    scriptEditor_.show();
+            }
+            ImGui::SameLine();
 #ifdef UAPMD_HAS_MCP_SERVER
             {
 #ifdef __EMSCRIPTEN__
@@ -490,87 +567,6 @@ void MainWindow::render(void* window) {
             }
             ImGui::SameLine();
 #endif // UAPMD_HAS_MCP_SERVER
-
-            // Transport controls
-            auto& transport = appModel.transport();
-            if (!audioEngineEnabled)
-                ImGui::BeginDisabled();
-            const char* playStopLabel = transport.isPlaying() ? icons::Stop : icons::Play;
-            if (ImGui::Button(playStopLabel)) {
-                if (transport.isPlaying())
-                    transport.stop();
-                else
-                    transport.play();
-            }
-            ImGui::SameLine();
-
-            if (!transport.isPlaying())
-                ImGui::BeginDisabled();
-            const char* pauseResumeLabel = transport.isPaused() ? icons::Play : icons::Pause;
-            if (ImGui::Button(pauseResumeLabel)) {
-                if (transport.isPaused())
-                    transport.resume();
-                else
-                    transport.pause();
-            }
-            if (!transport.isPlaying())
-                ImGui::EndDisabled();
-            if (!audioEngineEnabled)
-                ImGui::EndDisabled();
-            ImGui::SameLine();
-            if (ImGui::Button("Plugin Instances")) {
-                showAudioGraphWindow_ = !showAudioGraphWindow_;
-            }
-            ImGui::SameLine();
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted("Scale:");
-            ImGui::SameLine();
-            int currentScaleIndex = 0;
-            for (size_t i = 0; i < kUiScaleOptions.size(); ++i) {
-                if (std::fabs(uiScale_ - kUiScaleOptions[i]) < 0.001f) {
-                    currentScaleIndex = static_cast<int>(i);
-                    break;
-                }
-            }
-            int selectedIndex = currentScaleIndex;
-            ImGui::SetNextItemWidth(100.0f * uiScale_);
-            if (ImGui::BeginCombo("##UiScaleCombo", kUiScaleLabels[currentScaleIndex])) {
-                for (int i = 0; i < static_cast<int>(kUiScaleOptions.size()); ++i) {
-                    bool isSelected = (selectedIndex == i);
-                    if (ImGui::Selectable(kUiScaleLabels[i], isSelected)) {
-                        selectedIndex = i;
-                    }
-                    if (isSelected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-            if (selectedIndex != currentScaleIndex) {
-                applyUiScale(kUiScaleOptions[selectedIndex]);
-                requestWindowResize();
-            }
-            ImGui::SameLine();
-
-            // Theme toggle
-            const char* themeLabel = icons::LightDarkSwitch;
-            if (ImGui::Button(themeLabel)) {
-                toggleTheme();
-            }
-
-            if (ImGui::Button("Plugins")) {
-                timelineEditor_.pluginSelector().setTargetNewTrack();
-                auto& showSelector = timelineEditor_.showPluginSelectorWindow();
-                showSelector = !showSelector;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Script")) {
-                if (scriptEditor_.isOpen())
-                    scriptEditor_.hide();
-                else
-                    scriptEditor_.show();
-            }
-            ImGui::SameLine();
             bool openImportPopup = false;
             if (ImGui::Button("Import")) {
                 openImportPopup = true;
