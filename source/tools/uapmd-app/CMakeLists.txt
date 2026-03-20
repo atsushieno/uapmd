@@ -48,6 +48,7 @@ if(NOT UAPMD_BUILDING_WASM)
         GIT_REPOSITORY https://github.com/machinezone/IXWebSocket
         OPTIONS
             "USE_TLS OFF"
+            "USE_ZLIB OFF"
             "IXWEBSOCKET_INSTALL OFF"
     )
 endif()
