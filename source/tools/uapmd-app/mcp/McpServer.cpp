@@ -381,19 +381,6 @@ static choc::value::Value toolStop(const choc::value::Value&)
     return result;
 }
 
-static choc::value::Value toolRunScript(const choc::value::Value& args, UapmdJSRuntime& runtime)
-{
-    auto code = getStringArg (args, "code");
-    if (code.empty())
-        throw std::invalid_argument ("code is required");
-
-    auto evalResult = runtime.context().evaluateExpression (code);
-    auto output = evalResult.isVoid() ? std::string ("undefined")
-                                      : choc::json::toString (evalResult);
-    auto result = choc::value::createObject ("");
-    result.setMember ("output", output);
-    return result;
-}
 
 // ─────────────────────────────────────────────────
 //  McpServer::Impl
@@ -500,6 +487,33 @@ struct McpServer::Impl {
         return jsonRpcResult (id, result);
     }
 
+    // Lazily initialise the JS runtime and bootstrap all AppJsLib scripts.
+    // Safe to call multiple times — no-op after the first call.
+    void ensureJSRuntime()
+    {
+        if (jsRuntime_)
+            return;
+        jsRuntime_ = std::make_unique<UapmdJSRuntime>();
+        for (auto& [filename, data] : ResEmbed::getCategory ("AppJsLib"))
+        {
+            std::string src (reinterpret_cast<const char*> (data.data()), data.size());
+            try { jsRuntime_->context().evaluateExpression (src); }
+            catch (const std::exception& e) {
+                std::cerr << "[MCP] Failed to bootstrap " << filename << ": " << e.what() << std::endl;
+            }
+        }
+    }
+
+    // Execute a JS snippet and return the string representation of the result.
+    // Throws on evaluation error.
+    std::string evalScript(const std::string& code)
+    {
+        ensureJSRuntime();
+        auto evalResult = jsRuntime_->context().evaluateExpression (code);
+        return evalResult.isVoid() ? std::string ("undefined")
+                                   : choc::json::toString (evalResult);
+    }
+
     std::string handleToolsCall(const choc::value::Value& id, const choc::value::Value& msg)
     {
         if (!msg.hasObjectMember ("params"))
@@ -533,21 +547,12 @@ struct McpServer::Impl {
             else if (toolName == "stop")                toolResult = toolStop (args);
             else if (toolName == "run_script")
             {
-                if (!jsRuntime_)
-                {
-                    jsRuntime_ = std::make_unique<UapmdJSRuntime>();
-                    // Bootstrap uapmd-api.js and other AppJsLib scripts so that
-                    // globalThis.uapmd (and remidy-bridge exports) are available.
-                    for (auto& [filename, data] : ResEmbed::getCategory ("AppJsLib"))
-                    {
-                        std::string src (reinterpret_cast<const char*> (data.data()), data.size());
-                        try { jsRuntime_->context().evaluateExpression (src); }
-                        catch (const std::exception& e) {
-                            std::cerr << "[MCP] Failed to bootstrap " << filename << ": " << e.what() << std::endl;
-                        }
-                    }
-                }
-                toolResult = toolRunScript (args, *jsRuntime_);
+                auto code = getStringArg (args, "code");
+                if (code.empty())
+                    throw std::invalid_argument ("code is required");
+                auto output = evalScript (code);
+                toolResult = choc::value::createObject ("");
+                toolResult.setMember ("output", output);
             }
             else
                 return jsonRpcError (id, -32601, "Unknown tool: " + toolName);
@@ -596,9 +601,25 @@ void McpServer::start()
             res.set_content (response, "application/json");
     });
 
+    // Bare JS REPL endpoint: POST /eval  body=<script>  → plain-text result.
+    // Simpler than going through JSON-RPC; useful for quick ad-hoc scripting.
+    impl_->server_.Post ("/eval", [this] (const httplib::Request& req, httplib::Response& res)
+    {
+        const auto code = req.body;
+        try {
+            std::string output = impl_->dispatchToMainThread ([this, code] {
+                return impl_->evalScript (code);
+            });
+            res.set_content (output, "text/plain");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content (e.what(), "text/plain");
+        }
+    });
+
     const auto port = impl_->port_;
     impl_->thread_ = std::thread ([this, port] {
-        std::cout << "[MCP] Listening on http://127.0.0.1:" << port << "/mcp" << std::endl;
+        std::cout << "[MCP] Listening on http://127.0.0.1:" << port << "/mcp  (JS eval: /eval)" << std::endl;
         impl_->server_.listen ("127.0.0.1", port);
     });
 }
