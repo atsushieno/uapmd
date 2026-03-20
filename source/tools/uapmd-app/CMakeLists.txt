@@ -21,7 +21,8 @@ if(UAPMD_TARGET_WASM)
         -s ASSERTIONS=1 \
         -s ASYNCIFY=1 \
         -s ASYNCIFY_IMPORTS=${_UAPMD_WASM_ASYNC_IMPORTS} \
-        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8']")
+        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8'] \
+        -s EXPORTED_FUNCTIONS=['_main','_uapmd_mcp_call','_uapmd_eval']")
     if(NOT UAPMD_WASM_USE_VCPKG_SDL3)
         # Emscripten port: the linker flag activates the bundled SDL3 port at link time.
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -s USE_SDL=3")
@@ -77,9 +78,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         Configuration/VirtualMidiDeviceConfiguration.cpp
 )
 
-if(NOT UAPMD_BUILDING_WASM)
-    list(APPEND UAPMD_APP_COMMON_SOURCE_FILES mcp/McpServer.cpp)
-endif()
+list(APPEND UAPMD_APP_COMMON_SOURCE_FILES mcp/McpServer.cpp)
 
 # Platform-specific entrypoints
 if(UAPMD_BUILDING_WASM)
@@ -626,11 +625,11 @@ elseif(BACKEND_TYPE STREQUAL "GLFW")
     target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE USE_GLFW_BACKEND)
 endif()
 
-# UAPMD_HAS_MCP_SERVER — MCP feature present (desktop + iOS + Android)
+# UAPMD_HAS_MCP_SERVER     — MCP feature present (all platforms)
 # UAPMD_MCP_HAS_HTTP_SERVER — embedded HTTP server mode available (desktop only)
+target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE UAPMD_HAS_MCP_SERVER=1)
 if(NOT UAPMD_BUILDING_WASM)
     target_link_libraries(${UAPMD_COMPILE_TARGET} PRIVATE ixwebsocket)
-    target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE UAPMD_HAS_MCP_SERVER=1)
     if(NOT IOS AND NOT ANDROID)
         target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE ${cpp-httplib_SOURCE_DIR})
         target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE UAPMD_MCP_HAS_HTTP_SERVER=1)

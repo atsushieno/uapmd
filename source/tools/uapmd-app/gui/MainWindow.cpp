@@ -66,11 +66,17 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     refreshPluginList();
 
 #ifdef UAPMD_HAS_MCP_SERVER
+#ifdef __EMSCRIPTEN__
+    // On Wasm, MCP is always active — auto-start immediately (no port/URL needed).
+    mcpServer_ = std::make_unique<McpServer>(mcpPort_);
+    mcpServer_->start();
+#else
     if (defaults.mcpServerPort > 0) {
         mcpPort_ = defaults.mcpServerPort;
         mcpServer_ = std::make_unique<McpServer>(mcpPort_);
         mcpServer_->start();
     }
+#endif
 #endif
 
     // Register callback for when plugin scanning completes.
@@ -376,6 +382,34 @@ void MainWindow::render(void* window) {
 
 #ifdef UAPMD_HAS_MCP_SERVER
             {
+#ifdef __EMSCRIPTEN__
+                // Wasm: MCP is always active as a C export — static green button.
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.55f, 0.28f, 1.0f));
+                if (ImGui::Button("MCP"))
+                    ImGui::OpenPopup("MCPSettings");
+                ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("MCP active — call via Module.ccall('uapmd_mcp_call',...)");
+                ImGui::SetNextWindowSizeConstraints(
+                    ImVec2(280.0f * uiScale_, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
+                if (ImGui::BeginPopup("MCPSettings")) {
+                    ImGui::TextDisabled("MCP  (WebAssembly)");
+                    ImGui::Separator();
+                    ImGui::TextWrapped("MCP is always active as a JavaScript export.");
+                    ImGui::Spacing();
+                    ImGui::TextUnformatted("JSON-RPC call:");
+                    ImGui::TextUnformatted("  Module.ccall(");
+                    ImGui::TextUnformatted("    'uapmd_mcp_call',");
+                    ImGui::TextUnformatted("    'string',['string'],[req])");
+                    ImGui::Spacing();
+                    ImGui::TextUnformatted("JS eval:");
+                    ImGui::TextUnformatted("  Module.ccall(");
+                    ImGui::TextUnformatted("    'uapmd_eval',");
+                    ImGui::TextUnformatted("    'string',['string'],[code])");
+                    ImGui::EndPopup();
+                }
+#else
+                // Desktop / mobile: full connect/disconnect popover.
                 // Button colour reflects connection state.
                 const auto mcpState = mcpServer_
                     ? mcpServer_->connectionState()
@@ -452,9 +486,10 @@ void MainWindow::render(void* window) {
 
                     ImGui::EndPopup();
                 }
+#endif // __EMSCRIPTEN__
             }
             ImGui::SameLine();
-#endif
+#endif // UAPMD_HAS_MCP_SERVER
 
             // Transport controls
             auto& transport = appModel.transport();

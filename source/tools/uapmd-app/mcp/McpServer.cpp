@@ -5,7 +5,11 @@
 #ifdef UAPMD_MCP_HAS_HTTP_SERVER
 #include <httplib.h>
 #endif
+#ifndef __EMSCRIPTEN__
 #include <ixwebsocket/IXWebSocket.h>
+#else
+#include <emscripten.h>
+#endif
 #include <choc/javascript/choc_javascript.h>
 #include <choc/text/choc_JSON.h>
 #include <AppJsLib.h>
@@ -406,7 +410,9 @@ struct McpServer::Impl {
     httplib::Server httpServer_;
     std::thread     httpThread_;
 #endif
+#ifndef __EMSCRIPTEN__
     ix::WebSocket wsClient_;
+#endif
 
     // ── JS runtime (lazily created, shared between both transports) ───────
     std::unique_ptr<UapmdJSRuntime> jsRuntime_;
@@ -420,9 +426,13 @@ struct McpServer::Impl {
     std::queue<std::shared_ptr<PendingCall>> queue_;
 
     // Post work to the main thread and block until it's processed.
-    // Called from any background thread (httplib thread or IXWebSocket callback thread).
+    // On Wasm the JS caller is already on the main thread, so call directly.
+    // On desktop/mobile the caller is a background thread (httplib / IXWebSocket).
     std::string dispatchToMainThread(std::function<std::string()> fn)
     {
+#ifdef __EMSCRIPTEN__
+        return fn();
+#else
         auto call = std::make_shared<PendingCall>();
         call->handler = std::move (fn);
         auto future = call->promise.get_future();
@@ -431,6 +441,7 @@ struct McpServer::Impl {
             queue_.push (call);
         }
         return future.get();
+#endif
     }
 
     // Called from main thread each frame.
@@ -603,6 +614,8 @@ struct McpServer::Impl {
 //  McpServer public API
 // ─────────────────────────────────────────────────
 
+#ifndef __EMSCRIPTEN__   // ── Desktop / mobile transport ──────────────────
+
 McpServer::McpServer(int port)
     : impl_ (std::make_unique<Impl>())
 {
@@ -712,7 +725,7 @@ void McpServer::start()
     impl_->setStatus (McpConnectionState::Connecting,
                       "Connecting to " + impl_->relayUrl_);
     impl_->wsClient_.start();
-}
+}  // end start()
 
 void McpServer::stop()
 {
@@ -729,15 +742,10 @@ void McpServer::stop()
     impl_->setStatus (McpConnectionState::Idle, "Disconnected");
 }
 
-McpConnectionMode McpServer::mode() const
-{
-    return impl_->mode_;
-}
-
-McpConnectionState McpServer::connectionState() const
-{
-    return impl_->connState_.load();
-}
+McpConnectionMode McpServer::mode() const          { return impl_->mode_; }
+McpConnectionState McpServer::connectionState() const { return impl_->connState_.load(); }
+int McpServer::port() const                        { return impl_->port_; }
+void McpServer::processMainThreadQueue()           { impl_->processQueue(); }
 
 std::string McpServer::statusMessage() const
 {
@@ -745,14 +753,96 @@ std::string McpServer::statusMessage() const
     return impl_->statusMsg_;
 }
 
-int McpServer::port() const
+#else  // ── Wasm transport ──────────────────────────────────────────────────
+
+// On Wasm, McpServer is a thin wrapper around Impl (for the JS runtime and the
+// dispatch queue).  The protocol is always reachable via the C exports below.
+// No sockets or threads are involved.
+
+// Opaque delegates — avoids naming the private McpServer::Impl type at file scope.
+static std::function<std::string(const char*)> gWasmCall;
+static std::function<std::string(const char*)> gWasmEval;
+
+McpServer::McpServer(int port)
+    : impl_ (std::make_unique<Impl>())
 {
-    return impl_->port_;
+    impl_->mode_ = McpConnectionMode::Server;
+    impl_->port_ = port;
 }
 
-void McpServer::processMainThreadQueue()
+McpServer::McpServer(std::string relayUrl, bool autoReconnect)
+    : impl_ (std::make_unique<Impl>())
 {
-    impl_->processQueue();
+    impl_->mode_          = McpConnectionMode::Client;
+    impl_->relayUrl_      = std::move (relayUrl);
+    impl_->autoReconnect_ = autoReconnect;
 }
+
+McpServer::~McpServer()
+{
+    gWasmCall = nullptr;
+    gWasmEval = nullptr;
+}
+
+void McpServer::start()
+{
+    auto* p = impl_.get();
+    gWasmCall = [p](const char* req)  { return p->handleRequest (req ? req : ""); };
+    gWasmEval = [p](const char* code) { return p->evalScript    (code ? code : ""); };
+    impl_->setStatus (McpConnectionState::Connected, "Active (JS export)");
+}
+
+void McpServer::stop()
+{
+    gWasmCall = nullptr;
+    gWasmEval = nullptr;
+    impl_->setStatus (McpConnectionState::Idle, "Stopped");
+}
+
+McpConnectionMode  McpServer::mode()            const { return impl_->mode_; }
+McpConnectionState McpServer::connectionState() const { return impl_->connState_.load(); }
+int                McpServer::port()            const { return impl_->port_; }
+void               McpServer::processMainThreadQueue() { impl_->processQueue(); }
+
+std::string McpServer::statusMessage() const
+{
+    std::lock_guard lock (impl_->statusMutex_);
+    return impl_->statusMsg_;
+}
+
+// ── Wasm C exports ────────────────────────────────────────────────────────────
+// Call from JS:
+//   const resp = Module.ccall('uapmd_mcp_call','string',['string'],[jsonRpcRequest]);
+//   const out  = Module.ccall('uapmd_eval',    'string',['string'],[jsCode]);
+
+extern "C" {
+
+EMSCRIPTEN_KEEPALIVE
+const char* uapmd_mcp_call(const char* requestJson)
+{
+    if (!gWasmCall || !requestJson)
+        return "";
+    static std::string response;
+    response = gWasmCall (requestJson);
+    return response.c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE
+const char* uapmd_eval(const char* code)
+{
+    if (!gWasmEval || !code)
+        return "undefined";
+    static std::string result;
+    try {
+        result = gWasmEval (code);
+    } catch (const std::exception& e) {
+        result = std::string ("Error: ") + e.what();
+    }
+    return result.c_str();
+}
+
+} // extern "C"
+
+#endif // __EMSCRIPTEN__
 
 } // namespace uapmd
