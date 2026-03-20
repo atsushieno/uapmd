@@ -210,7 +210,9 @@ namespace uapmd {
     }
 
     SequencerEngineImpl::~SequencerEngineImpl() {
-        // make sure to clean up tracks before plugin_host so that we don't release plugin instances ahead of these.
+        // Destroy function blocks first so their output mappers unsubscribe while plugin instances are still alive.
+        function_block_manager.clearAllDevices();
+        // Make sure to clean up tracks before plugin_host so that we don't release plugin instances ahead of these.
         tracks_.clear();
     }
 
@@ -648,6 +650,11 @@ namespace uapmd {
             if (instance->hasUISupport() && instance->isUIVisible())
                 instance->hideUI();
             instance->destroyUI();
+        }
+
+        if (const auto fbDevice = function_block_manager.getFunctionDeviceForInstance(instanceId)) {
+            fbDevice->destroyDevice(instanceId);
+            function_block_manager.deleteEmptyDevices();
         }
 
         // Metadata listener is unregistered automatically in AudioPluginNode destructor

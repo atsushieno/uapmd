@@ -81,5 +81,9 @@ namespace uapmd {
                 devices.end()
             );
         }
+
+        void clearAllDevices() {
+            devices.clear();
+        }
     };
 }
