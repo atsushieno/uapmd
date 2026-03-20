@@ -376,23 +376,82 @@ void MainWindow::render(void* window) {
 
 #ifdef UAPMD_HAS_MCP_SERVER
             {
-                bool mcpRunning = mcpServer_ != nullptr;
-                const ImVec4 onColor(0.20f, 0.55f, 0.28f, 1.0f);
-                const ImVec4 offColor(0.35f, 0.35f, 0.35f, 1.0f);
-                ImGui::PushStyleColor(ImGuiCol_Button, mcpRunning ? onColor : offColor);
-                if (ImGui::Button("MCP")) {
-                    if (mcpRunning) {
-                        mcpServer_.reset();
-                    } else {
-                        mcpServer_ = std::make_unique<McpServer>(mcpPort_);
-                        mcpServer_->start();
-                    }
+                // Button colour reflects connection state.
+                const auto mcpState = mcpServer_
+                    ? mcpServer_->connectionState()
+                    : McpConnectionState::Idle;
+                ImVec4 mcpColor;
+                switch (mcpState) {
+                case McpConnectionState::Connected:   mcpColor = ImVec4(0.20f, 0.55f, 0.28f, 1.0f); break;
+                case McpConnectionState::Connecting:  mcpColor = ImVec4(0.55f, 0.50f, 0.10f, 1.0f); break;
+                case McpConnectionState::Error:       mcpColor = ImVec4(0.55f, 0.20f, 0.20f, 1.0f); break;
+                default:                              mcpColor = ImVec4(0.35f, 0.35f, 0.35f, 1.0f); break;
                 }
+                ImGui::PushStyleColor(ImGuiCol_Button, mcpColor);
+                if (ImGui::Button("MCP"))
+                    ImGui::OpenPopup("MCPSettings");
                 ImGui::PopStyleColor();
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip(mcpRunning
-                        ? "MCP server active on port %d\nClick to stop" : "Click to start MCP server on port %d",
-                        mcpPort_);
+                if (ImGui::IsItemHovered()) {
+                    const auto tip = mcpServer_ ? mcpServer_->statusMessage() : std::string("Click to configure MCP");
+                    ImGui::SetTooltip("%s", tip.c_str());
+                }
+
+                ImGui::SetNextWindowSizeConstraints(
+                    ImVec2(280.0f * uiScale_, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
+                if (ImGui::BeginPopup("MCPSettings")) {
+                    ImGui::TextDisabled("MCP Settings");
+                    ImGui::Separator();
+
+#ifdef UAPMD_MCP_HAS_HTTP_SERVER
+                    // Mode selector — only meaningful on desktop.
+                    ImGui::Text("Mode:");
+                    ImGui::SameLine();
+                    ImGui::RadioButton("Server", &mcpMode_, 0);
+                    ImGui::SameLine();
+                    ImGui::RadioButton("Client", &mcpMode_, 1);
+                    ImGui::Separator();
+#endif
+
+                    if (mcpMode_ == 0) {
+#ifdef UAPMD_MCP_HAS_HTTP_SERVER
+                        ImGui::InputInt("Port", &mcpPort_);
+                        if (mcpPort_ < 1024)  mcpPort_ = 1024;
+                        if (mcpPort_ > 65535) mcpPort_ = 65535;
+#endif
+                    } else {
+                        ImGui::TextUnformatted("Relay URL");
+                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                        ImGui::InputText("##mcpRelayUrl", mcpRelayUrl_, sizeof(mcpRelayUrl_));
+                        ImGui::Checkbox("Auto-reconnect", &mcpAutoReconnect_);
+                    }
+
+                    ImGui::Separator();
+                    if (mcpServer_) {
+                        const auto status = mcpServer_->statusMessage();
+                        ImGui::TextUnformatted(status.c_str());
+                    }
+
+                    const bool running = mcpServer_ != nullptr;
+                    if (ImGui::Button(running ? "Disconnect" : "Connect")) {
+                        if (running) {
+                            mcpServer_.reset();
+                        } else {
+                            if (mcpMode_ == 0) {
+#ifdef UAPMD_MCP_HAS_HTTP_SERVER
+                                mcpServer_ = std::make_unique<McpServer>(mcpPort_);
+#endif
+                            } else {
+                                mcpServer_ = std::make_unique<McpServer>(
+                                    std::string(mcpRelayUrl_), mcpAutoReconnect_);
+                            }
+                            if (mcpServer_)
+                                mcpServer_->start();
+                        }
+                        ImGui::CloseCurrentPopup();
+                    }
+
+                    ImGui::EndPopup();
+                }
             }
             ImGui::SameLine();
 #endif

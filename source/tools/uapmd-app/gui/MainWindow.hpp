@@ -26,6 +26,12 @@
 #include "SharedTheme.hpp"
 #ifdef UAPMD_HAS_MCP_SERVER
 #include "../mcp/McpServer.hpp"
+#ifndef UAPMD_MCP_HAS_HTTP_SERVER
+// On platforms without an embedded HTTP server, default to client mode.
+#define UAPMD_MCP_DEFAULT_MODE 1
+#else
+#define UAPMD_MCP_DEFAULT_MODE 0
+#endif
 #endif
 
 // Forward declarations for different window types
@@ -51,7 +57,11 @@ class MainWindow {
 
 #ifdef UAPMD_HAS_MCP_SERVER
         std::unique_ptr<McpServer> mcpServer_;
-        int mcpPort_ = 37373;
+        // 0 = Server (desktop only), 1 = Client
+        int  mcpMode_          = UAPMD_MCP_DEFAULT_MODE;
+        int  mcpPort_          = 37373;
+        char mcpRelayUrl_[256] = "ws://localhost:8765/mcp";
+        bool mcpAutoReconnect_ = true;
 #endif
 
         bool showAudioGraphWindow_ = false;

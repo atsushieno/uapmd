@@ -2,12 +2,16 @@
 #include "../AppModel.hpp"
 #include "../UapmdJSRuntime.hpp"
 
+#ifdef UAPMD_MCP_HAS_HTTP_SERVER
 #include <httplib.h>
+#endif
+#include <ixwebsocket/IXWebSocket.h>
 #include <choc/javascript/choc_javascript.h>
 #include <choc/text/choc_JSON.h>
 #include <AppJsLib.h>
 #include <ResEmbed/ResEmbed.h>
 
+#include <atomic>
 #include <functional>
 #include <future>
 #include <iostream>
@@ -387,26 +391,43 @@ static choc::value::Value toolStop(const choc::value::Value&)
 // ─────────────────────────────────────────────────
 
 struct McpServer::Impl {
-    int port_;
-    httplib::Server server_;
-    std::thread thread_;
-    std::unique_ptr<UapmdJSRuntime> jsRuntime_;   // created lazily on main thread
+    // ── Transport config ──────────────────────────────────────────────────
+    McpConnectionMode mode_          = McpConnectionMode::Client;
+    int               port_          = 37373;
+    std::string       relayUrl_;
+    bool              autoReconnect_ = true;
 
+    std::atomic<McpConnectionState> connState_{McpConnectionState::Idle};
+    mutable std::mutex statusMutex_;
+    std::string        statusMsg_;
+
+    // ── Transport objects ─────────────────────────────────────────────────
+#ifdef UAPMD_MCP_HAS_HTTP_SERVER
+    httplib::Server httpServer_;
+    std::thread     httpThread_;
+#endif
+    ix::WebSocket wsClient_;
+
+    // ── JS runtime (lazily created, shared between both transports) ───────
+    std::unique_ptr<UapmdJSRuntime> jsRuntime_;
+
+    // ── Main-thread dispatch queue ────────────────────────────────────────
     struct PendingCall {
         std::function<std::string()> handler;
-        std::promise<std::string> promise;
+        std::promise<std::string>    promise;
     };
-    std::mutex mutex_;
+    std::mutex queueMutex_;
     std::queue<std::shared_ptr<PendingCall>> queue_;
 
-    // Called from HTTP thread — posts work and blocks until main thread processes it.
+    // Post work to the main thread and block until it's processed.
+    // Called from any background thread (httplib thread or IXWebSocket callback thread).
     std::string dispatchToMainThread(std::function<std::string()> fn)
     {
         auto call = std::make_shared<PendingCall>();
         call->handler = std::move (fn);
         auto future = call->promise.get_future();
         {
-            std::lock_guard lock (mutex_);
+            std::lock_guard lock (queueMutex_);
             queue_.push (call);
         }
         return future.get();
@@ -419,7 +440,7 @@ struct McpServer::Impl {
         {
             std::shared_ptr<PendingCall> call;
             {
-                std::lock_guard lock (mutex_);
+                std::lock_guard lock (queueMutex_);
                 if (queue_.empty()) break;
                 call = queue_.front();
                 queue_.pop();
@@ -430,6 +451,13 @@ struct McpServer::Impl {
                 call->promise.set_exception (std::current_exception());
             }
         }
+    }
+
+    void setStatus(McpConnectionState state, std::string msg)
+    {
+        connState_ = state;
+        std::lock_guard lock (statusMutex_);
+        statusMsg_ = std::move (msg);
     }
 
     // ---- MCP protocol handlers ----
@@ -578,7 +606,16 @@ struct McpServer::Impl {
 McpServer::McpServer(int port)
     : impl_ (std::make_unique<Impl>())
 {
+    impl_->mode_ = McpConnectionMode::Server;
     impl_->port_ = port;
+}
+
+McpServer::McpServer(std::string relayUrl, bool autoReconnect)
+    : impl_ (std::make_unique<Impl>())
+{
+    impl_->mode_          = McpConnectionMode::Client;
+    impl_->relayUrl_      = std::move (relayUrl);
+    impl_->autoReconnect_ = autoReconnect;
 }
 
 McpServer::~McpServer()
@@ -588,47 +625,124 @@ McpServer::~McpServer()
 
 void McpServer::start()
 {
-    impl_->server_.Post ("/mcp", [this] (const httplib::Request& req, httplib::Response& res)
+#ifdef UAPMD_MCP_HAS_HTTP_SERVER
+    if (impl_->mode_ == McpConnectionMode::Server)
     {
-        const auto body = req.body;
-        std::string response = impl_->dispatchToMainThread ([this, body] {
-            return impl_->handleRequest (body);
+        impl_->httpServer_.Post ("/mcp", [this] (const httplib::Request& req, httplib::Response& res)
+        {
+            const auto body = req.body;
+            std::string response = impl_->dispatchToMainThread ([this, body] {
+                return impl_->handleRequest (body);
+            });
+            if (response.empty())
+                res.status = 202;
+            else
+                res.set_content (response, "application/json");
         });
 
-        if (response.empty())
-            res.status = 202;   // notification — no body
-        else
-            res.set_content (response, "application/json");
-    });
+        impl_->httpServer_.Post ("/eval", [this] (const httplib::Request& req, httplib::Response& res)
+        {
+            const auto code = req.body;
+            try {
+                std::string output = impl_->dispatchToMainThread ([this, code] {
+                    return impl_->evalScript (code);
+                });
+                res.set_content (output, "text/plain");
+            } catch (const std::exception& e) {
+                res.status = 400;
+                res.set_content (e.what(), "text/plain");
+            }
+        });
 
-    // Bare JS REPL endpoint: POST /eval  body=<script>  → plain-text result.
-    // Simpler than going through JSON-RPC; useful for quick ad-hoc scripting.
-    impl_->server_.Post ("/eval", [this] (const httplib::Request& req, httplib::Response& res)
+        const auto port = impl_->port_;
+        impl_->httpThread_ = std::thread ([this, port] {
+            impl_->setStatus (McpConnectionState::Connected,
+                              "Listening on port " + std::to_string (port));
+            std::cout << "[MCP] Listening on http://127.0.0.1:" << port
+                      << "/mcp  (JS eval: /eval)" << std::endl;
+            impl_->httpServer_.listen ("127.0.0.1", port);
+            impl_->setStatus (McpConnectionState::Idle, "Stopped");
+        });
+        return;
+    }
+#endif
+
+    // ── Client mode — outbound WebSocket ─────────────────────────────────
+    impl_->wsClient_.setUrl (impl_->relayUrl_);
+
+    if (impl_->autoReconnect_)
+        impl_->wsClient_.enableAutomaticReconnection();
+
+    impl_->wsClient_.setOnMessageCallback ([this] (const ix::WebSocketMessagePtr& msg)
     {
-        const auto code = req.body;
-        try {
-            std::string output = impl_->dispatchToMainThread ([this, code] {
-                return impl_->evalScript (code);
+        switch (msg->type)
+        {
+        case ix::WebSocketMessageType::Open:
+            impl_->setStatus (McpConnectionState::Connected,
+                              "Connected to " + impl_->relayUrl_);
+            break;
+
+        case ix::WebSocketMessageType::Close:
+            impl_->setStatus (impl_->autoReconnect_ ? McpConnectionState::Connecting
+                                                     : McpConnectionState::Idle,
+                              impl_->autoReconnect_ ? "Reconnecting..." : "Disconnected");
+            break;
+
+        case ix::WebSocketMessageType::Error:
+            impl_->setStatus (McpConnectionState::Error,
+                              "Error: " + msg->errorInfo.reason);
+            break;
+
+        case ix::WebSocketMessageType::Message:
+        {
+            const auto body = msg->str;
+            std::string response = impl_->dispatchToMainThread ([this, body] {
+                return impl_->handleRequest (body);
             });
-            res.set_content (output, "text/plain");
-        } catch (const std::exception& e) {
-            res.status = 400;
-            res.set_content (e.what(), "text/plain");
+            if (!response.empty())
+                impl_->wsClient_.sendText (response);
+            break;
+        }
+
+        default:
+            break;
         }
     });
 
-    const auto port = impl_->port_;
-    impl_->thread_ = std::thread ([this, port] {
-        std::cout << "[MCP] Listening on http://127.0.0.1:" << port << "/mcp  (JS eval: /eval)" << std::endl;
-        impl_->server_.listen ("127.0.0.1", port);
-    });
+    impl_->setStatus (McpConnectionState::Connecting,
+                      "Connecting to " + impl_->relayUrl_);
+    impl_->wsClient_.start();
 }
 
 void McpServer::stop()
 {
-    impl_->server_.stop();
-    if (impl_->thread_.joinable())
-        impl_->thread_.join();
+#ifdef UAPMD_MCP_HAS_HTTP_SERVER
+    if (impl_->mode_ == McpConnectionMode::Server)
+    {
+        impl_->httpServer_.stop();
+        if (impl_->httpThread_.joinable())
+            impl_->httpThread_.join();
+        return;
+    }
+#endif
+    impl_->wsClient_.stop();
+    impl_->setStatus (McpConnectionState::Idle, "Disconnected");
+}
+
+McpConnectionMode McpServer::mode() const
+{
+    return impl_->mode_;
+}
+
+McpConnectionState McpServer::connectionState() const
+{
+    return impl_->connState_.load();
+}
+
+std::string McpServer::statusMessage() const
+{
+    std::lock_guard lock (impl_->statusMutex_);
+    return impl_->statusMsg_;
 }
 
 int McpServer::port() const

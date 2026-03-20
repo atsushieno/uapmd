@@ -28,13 +28,26 @@ if(UAPMD_TARGET_WASM)
     endif()
 endif()
 
-# MCP server (desktop only — not available on WASM, iOS, or Android)
+# MCP: cpp-httplib for embedded HTTP server mode (desktop only)
 if(NOT UAPMD_BUILDING_WASM AND NOT IOS AND NOT ANDROID)
     CPMAddPackage(
         NAME cpp-httplib
         GIT_TAG v0.18.1
         GIT_REPOSITORY https://github.com/yhirose/cpp-httplib
         DOWNLOAD_ONLY YES
+    )
+endif()
+
+# MCP: IXWebSocket for outbound WebSocket client mode (all platforms except Wasm —
+# Wasm uses the browser's native WebSocket via a future Emscripten binding path)
+if(NOT UAPMD_BUILDING_WASM)
+    CPMAddPackage(
+        NAME ixwebsocket
+        GIT_TAG v11.4.6
+        GIT_REPOSITORY https://github.com/machinezone/IXWebSocket
+        OPTIONS
+            "USE_TLS OFF"
+            "IXWEBSOCKET_INSTALL OFF"
     )
 endif()
 
@@ -64,7 +77,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         Configuration/VirtualMidiDeviceConfiguration.cpp
 )
 
-if(NOT UAPMD_BUILDING_WASM AND NOT IOS AND NOT ANDROID)
+if(NOT UAPMD_BUILDING_WASM)
     list(APPEND UAPMD_APP_COMMON_SOURCE_FILES mcp/McpServer.cpp)
 endif()
 
@@ -613,9 +626,15 @@ elseif(BACKEND_TYPE STREQUAL "GLFW")
     target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE USE_GLFW_BACKEND)
 endif()
 
-if(NOT UAPMD_BUILDING_WASM AND NOT IOS AND NOT ANDROID)
-    target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE ${cpp-httplib_SOURCE_DIR})
+# UAPMD_HAS_MCP_SERVER — MCP feature present (desktop + iOS + Android)
+# UAPMD_MCP_HAS_HTTP_SERVER — embedded HTTP server mode available (desktop only)
+if(NOT UAPMD_BUILDING_WASM)
+    target_link_libraries(${UAPMD_COMPILE_TARGET} PRIVATE ixwebsocket)
     target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE UAPMD_HAS_MCP_SERVER=1)
+    if(NOT IOS AND NOT ANDROID)
+        target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE ${cpp-httplib_SOURCE_DIR})
+        target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE UAPMD_MCP_HAS_HTTP_SERVER=1)
+    endif()
 endif()
 
 target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
