@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <imgui.h>
@@ -96,6 +97,7 @@ private:
     // Master track snapshot and signature for change detection
     std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot> masterTrackSnapshot_;
     std::string masterTrackSignature_;
+    std::unordered_map<int32_t, std::string> trackContentSignatures_;
 
     // Tempo segments for timeline unit conversion
     struct TempoSegment {
@@ -119,6 +121,8 @@ private:
     void renderMasterTrackRow(const SequenceEditor::RenderContext& context);
     void renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context);
     void deleteTrack(int32_t trackIndex);
+    void syncExternalTimelineChanges();
+    std::string buildTrackContentSignature(int32_t trackIndex) const;
 
     // Tempo management
     void rebuildTempoSegments(const std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot>& snapshot);

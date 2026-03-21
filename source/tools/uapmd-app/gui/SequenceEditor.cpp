@@ -10,6 +10,7 @@
 
 #include <imgui.h>
 #include <ImTimeline.h>
+#include "uapmd-data/priv/timeline/MidiClipSourceNode.hpp"
 
 #include "../AppModel.hpp"
 #include "ClipPreview.hpp"
@@ -22,6 +23,35 @@ constexpr int32_t kTimelineSectionId = 0;
 constexpr float kTimelineSectionSpacing = 5.0f; // Matches Timeline::DrawTimeline spacing
 constexpr float kTimelineChildPadding = 8.0f;   // Matches Timeline::DrawTimeline padding
 constexpr ImU32 kTimelinePlayheadColor = IM_COL32(255, 230, 0, 255);
+
+uint64_t mixHash(uint64_t seed, uint64_t value) {
+    constexpr uint64_t kPrime = 1099511628211ull;
+    seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
+    seed *= kPrime;
+    return seed;
+}
+
+uint64_t midiSourceFingerprint(const uapmd::MidiClipSourceNode& midiSource) {
+    const auto& words = midiSource.umpEvents();
+    const auto& ticks = midiSource.eventTimestampsTicks();
+    uint64_t hash = 1469598103934665603ull;
+    hash = mixHash(hash, words.size());
+    hash = mixHash(hash, ticks.size());
+    hash = mixHash(hash, static_cast<uint64_t>(midiSource.tickResolution()));
+    hash = mixHash(hash, static_cast<uint64_t>(midiSource.clipTempo() * 1000.0));
+
+    const size_t sampleCount = std::min<size_t>(words.size(), 24);
+    for (size_t i = 0; i < sampleCount; ++i) {
+        size_t index = (sampleCount <= 1 || words.size() <= 1)
+            ? 0
+            : (i * (words.size() - 1)) / (sampleCount - 1);
+        hash = mixHash(hash, words[index]);
+        if (index < ticks.size())
+            hash = mixHash(hash, ticks[index]);
+    }
+
+    return hash;
+}
 
 double secondsToUnits(const SequenceEditor::RenderContext& context, double seconds) {
     if (context.secondsToTimelineUnits) {
@@ -910,7 +940,7 @@ const uapmd::ClipData* SequenceEditor::findClipData(int32_t trackIndex, int32_t 
     return track->clipManager().getClip(clipId);
 }
 
-std::string SequenceEditor::buildClipSignature(const ClipRow& clip, const uapmd::ClipData* clipData) const {
+std::string SequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow& clip, const uapmd::ClipData* clipData) const {
     std::string sourcePath;
     if (clipData && !clipData->filepath.empty()) {
         sourcePath = clipData->filepath;
@@ -923,12 +953,22 @@ std::string SequenceEditor::buildClipSignature(const ClipRow& clip, const uapmd:
 
     const int64_t durationSamples = clipData ? clipData->durationSamples : 0;
     const int32_t sourceNodeId = clipData ? clipData->sourceNodeInstanceId : -1;
-    return std::format("{}|{}|{}|{}|{}",
+    uint64_t midiHash = 0;
+    if (clipData && clip.isMidiClip) {
+        auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+        if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
+            auto sourceNode = tracks[trackIndex]->getSourceNode(sourceNodeId);
+            if (auto* midiSource = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get()))
+                midiHash = midiSourceFingerprint(*midiSource);
+        }
+    }
+    return std::format("{}|{}|{}|{}|{}|{}",
                        sourcePath,
                        clip.isMidiClip ? 'm' : 'a',
                        clip.timelineEnd - clip.timelineStart,
                        durationSamples,
-                       sourceNodeId);
+                       sourceNodeId,
+                       midiHash);
 }
 
 std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
@@ -941,7 +981,7 @@ std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
     }
 
     const auto* clipData = findClipData(trackIndex, clip.clipId);
-    const auto signature = buildClipSignature(clip, clipData);
+    const auto signature = buildClipSignature(trackIndex, clip, clipData);
     auto existingIt = state.clipPreviews.find(clip.clipId);
     if (existingIt != state.clipPreviews.end() &&
         existingIt->second &&

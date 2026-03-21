@@ -113,8 +113,9 @@ namespace uapmd {
             rebuildSourceNodeSnapshotLocked();
         }
 
-        // Update the clip's source node reference
+        // Update the clip's source node reference and duration
         clip->sourceNodeInstanceId = newSourceNodeId;
+        clip_manager_.resizeClip(clipId, sharedNode->totalLength());
 
         return true;
     }
@@ -148,6 +149,7 @@ namespace uapmd {
         }
 
         clip->sourceNodeInstanceId = newSourceNodeId;
+        clip_manager_.resizeClip(clipId, sharedNode->totalLength());
         return true;
     }
 

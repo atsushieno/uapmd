@@ -113,7 +113,7 @@ private:
     ) const;
     void pruneClipPreviewCache(SequenceEditorState& state);
     std::shared_ptr<ClipPreview> ensureClipPreview(int32_t trackIndex, const ClipRow& clip, SequenceEditorState& state);
-    std::string buildClipSignature(const ClipRow& clip, const uapmd::ClipData* clipData) const;
+    std::string buildClipSignature(int32_t trackIndex, const ClipRow& clip, const uapmd::ClipData* clipData) const;
     const uapmd::ClipData* findClipData(int32_t trackIndex, int32_t clipId) const;
 };
 

@@ -32,6 +32,36 @@ namespace {
 constexpr int32_t kMasterTrackClipId = -1000;
 constexpr double kDisplayDefaultBpm = 120.0;
 
+uint64_t mixHash(uint64_t seed, uint64_t value) {
+    constexpr uint64_t kPrime = 1099511628211ull;
+    seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
+    seed *= kPrime;
+    return seed;
+}
+
+uint64_t midiSourceFingerprint(const uapmd::MidiClipSourceNode& midiSource) {
+    const auto& words = midiSource.umpEvents();
+    const auto& ticks = midiSource.eventTimestampsTicks();
+
+    uint64_t hash = 1469598103934665603ull;
+    hash = mixHash(hash, words.size());
+    hash = mixHash(hash, ticks.size());
+    hash = mixHash(hash, static_cast<uint64_t>(midiSource.tickResolution()));
+    hash = mixHash(hash, static_cast<uint64_t>(midiSource.clipTempo() * 1000.0));
+
+    const size_t sampleCount = std::min<size_t>(words.size(), 24);
+    for (size_t i = 0; i < sampleCount; ++i) {
+        size_t index = (sampleCount <= 1 || words.size() <= 1)
+            ? 0
+            : (i * (words.size() - 1)) / (sampleCount - 1);
+        hash = mixHash(hash, words[index]);
+        if (index < ticks.size())
+            hash = mixHash(hash, ticks[index]);
+    }
+
+    return hash;
+}
+
 int32_t toTimelineFrame(double units) {
     if (!std::isfinite(units))
         return 0;
@@ -237,6 +267,7 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
 }
 
 void TimelineEditor::render(float uiScale) {
+    syncExternalTimelineChanges();
     auto context = buildRenderContext(uiScale);
     renderTrackList(context);
     sequenceEditor_.render(context);
@@ -754,6 +785,28 @@ void TimelineEditor::refreshAllSequenceEditorTracks() {
     }
 }
 
+void TimelineEditor::syncExternalTimelineChanges() {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+
+    for (auto it = trackContentSignatures_.begin(); it != trackContentSignatures_.end();) {
+        if (it->first < 0 || it->first >= static_cast<int32_t>(tracks.size()))
+            it = trackContentSignatures_.erase(it);
+        else
+            ++it;
+    }
+
+    for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
+        if (appModel.isTrackHidden(i))
+            continue;
+        const auto signature = buildTrackContentSignature(i);
+        auto it = trackContentSignatures_.find(i);
+        if (it != trackContentSignatures_.end() && it->second == signature)
+            continue;
+        refreshSequenceEditorForTrack(i);
+    }
+}
+
 void TimelineEditor::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutChange& change) {
     switch (change.type) {
         case uapmd::AppModel::TrackLayoutChange::Type::Added:
@@ -761,9 +814,11 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutC
             break;
         case uapmd::AppModel::TrackLayoutChange::Type::Removed:
             sequenceEditor_.hideWindow(change.trackIndex);
+            trackContentSignatures_.erase(change.trackIndex);
             break;
         case uapmd::AppModel::TrackLayoutChange::Type::Cleared:
             sequenceEditor_.reset();
+            trackContentSignatures_.clear();
             break;
     }
 }
@@ -930,6 +985,42 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
     }
 
     sequenceEditor_.refreshClips(trackIndex, displayClips);
+    trackContentSignatures_[trackIndex] = buildTrackContentSignature(trackIndex);
+}
+
+std::string TimelineEditor::buildTrackContentSignature(int32_t trackIndex) const {
+    auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
+        return {};
+
+    auto* track = tracks[trackIndex];
+    auto clips = track->clipManager().getAllClips();
+    std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
+        return a.clipId < b.clipId;
+    });
+
+    std::string signature = std::to_string(clips.size());
+    signature.reserve(signature.size() + clips.size() * 96);
+    for (const auto& clip : clips) {
+        uint64_t midiHash = 0;
+        auto sourceNode = track->getSourceNode(clip.sourceNodeInstanceId);
+        if (auto* midiSource = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get()))
+            midiHash = midiSourceFingerprint(*midiSource);
+
+        signature += std::format("|{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+            clip.clipId,
+            static_cast<int>(clip.clipType),
+            clip.position.samples,
+            clip.durationSamples,
+            clip.sourceNodeInstanceId,
+            clip.anchorClipId,
+            static_cast<int>(clip.anchorOrigin),
+            clip.anchorOffset.samples,
+            clip.tickResolution,
+            clip.name,
+            midiHash);
+    }
+    return signature;
 }
 
 void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filepath) {
