@@ -187,6 +187,16 @@ static choc::value::Value buildToolDefinitions()
             "Returns the string representation of the last evaluated expression.",
             R"j({"type":"object","required":["code"],"properties":{"code":{"type":"string","description":"JavaScript code to execute"}}})j"
         },
+        {
+            "get_presets",
+            "Get the list of available presets for a plugin instance.",
+            R"j({"type":"object","required":["instanceId"],"properties":{"instanceId":{"type":"integer"}}})j"
+        },
+        {
+            "load_preset",
+            "Load a specific preset for a plugin instance.",
+            R"j({"type":"object","required":["instanceId","presetIndex"],"properties":{"instanceId":{"type":"integer"},"presetIndex":{"type":"integer"}}})j"
+        },
     };
 
     for (const auto& def : defs)
@@ -481,9 +491,56 @@ static choc::value::Value toolPlay(const choc::value::Value&)
 static choc::value::Value toolStop(const choc::value::Value&)
 {
     AppModel::instance().sequencer().engine()->stopPlayback();
-    auto result = choc::value::createObject ("");
+    auto result = choc::value::createObject ("playing");
     result.setMember ("playing", false);
     return result;
+}
+
+static choc::value::Value toolGetPresets(const choc::value::Value& args)
+{
+    auto instanceId = getIntArg (args, "instanceId");
+    if (instanceId < 0)
+        throw std::invalid_argument ("instanceId is required");
+
+    auto& sequencer = AppModel::instance().sequencer();
+    auto* instance = sequencer.engine()->getPluginInstance (instanceId);
+
+    if (! instance)
+        throw std::runtime_error ("Plugin instance not found");
+
+    auto presets = instance->presetMetadataList();
+    auto arr = choc::value::createEmptyArray();
+
+    for (const auto& p : presets)
+    {
+        auto obj = choc::value::createObject ("");
+        obj.setMember ("index", static_cast<int32_t>(p.index));
+        obj.setMember ("name", p.name);
+        obj.setMember ("bank", static_cast<int32_t>(p.bank));
+        arr.addArrayElement (obj);
+    }
+
+    auto result = choc::value::createObject ("");
+    result.setMember ("presets", arr);
+    return result;
+}
+
+static choc::value::Value toolLoadPreset(const choc::value::Value& args)
+{
+    auto instanceId = getIntArg (args, "instanceId");
+    auto presetIndex = getIntArg (args, "presetIndex");
+
+    if (instanceId < 0 || presetIndex < 0)
+        throw std::invalid_argument ("instanceId and presetIndex are required");
+
+    auto& sequencer = AppModel::instance().sequencer();
+    auto* instance = sequencer.engine()->getPluginInstance (instanceId);
+
+    if (! instance)
+        throw std::runtime_error ("Plugin instance not found");
+
+    instance->loadPreset (presetIndex);
+    return choc::value::createObject ("");
 }
 
 
@@ -684,7 +741,9 @@ struct McpServer::Impl {
             else if (toolName == "remove_ump_event")         toolResult = toolRemoveUmpEvent (args);
             else if (toolName == "create_empty_midi_clip")   toolResult = toolCreateEmptyMidiClip (args);
             else if (toolName == "play")                     toolResult = toolPlay (args);
-            else if (toolName == "stop")                toolResult = toolStop (args);
+            else if (toolName == "stop")                     toolResult = toolStop (args);
+            else if (toolName == "get_presets")             toolResult = toolGetPresets (args);
+            else if (toolName == "load_preset")             toolResult = toolLoadPreset (args);
             else if (toolName == "run_script")
             {
                 auto code = getStringArg (args, "code");

@@ -399,6 +399,53 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         obj.setMember ("instanceId", result.instanceId);
         return obj;
     });
+
+    jsContext_.registerFunction ("__remidy_instance_get_presets", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        if (instanceId < 0)
+            return choc::value::createEmptyArray();
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto* instance = sequencer.engine()->getPluginInstance (instanceId);
+
+        if (! instance)
+            return choc::value::createEmptyArray();
+
+        auto presets = instance->presetMetadataList();
+        auto arr = choc::value::createEmptyArray();
+
+        for (const auto& p : presets)
+        {
+            auto obj = choc::value::createObject ("PresetInfo");
+            obj.setMember ("index", static_cast<int32_t>(p.index));
+            obj.setMember ("name", p.name);
+            obj.setMember ("bank", static_cast<int32_t>(p.bank));
+            arr.addArrayElement (obj);
+        }
+
+        return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_instance_load_preset", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        auto presetIndex = args.get<int32_t> (1, -1);
+
+        if (instanceId < 0 || presetIndex < 0)
+            return choc::value::createBool (false);
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        auto* instance = sequencer.engine()->getPluginInstance (instanceId);
+
+        if (instance)
+        {
+            instance->loadPreset (presetIndex);
+            return choc::value::createBool (true);
+        }
+
+        return choc::value::createBool (false);
+    });
 }
 
 void UapmdJSRuntime::registerSequencerMidiAPI()

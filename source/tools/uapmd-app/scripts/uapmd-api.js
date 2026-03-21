@@ -61,6 +61,14 @@ class PluginInstance {
     loadState(filepath) {
         return __remidy_instance_load_state(this.instanceId, filepath);
     }
+
+    getPresets() {
+        return __remidy_instance_get_presets(this.instanceId);
+    }
+
+    loadPreset(presetIndex) {
+        return __remidy_instance_load_preset(this.instanceId, presetIndex);
+    }
 }
 
 globalThis.uapmd = {
