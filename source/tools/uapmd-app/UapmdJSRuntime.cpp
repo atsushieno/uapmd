@@ -967,6 +967,60 @@ void UapmdJSRuntime::registerTimelineAPI()
             return choc::value::createBool (false);
         return choc::value::createBool (uapmd::AppModel::instance().removeClipFromTrack (trackIndex, clipId));
     });
+
+    jsContext_.registerFunction ("__remidy_timeline_get_clip_ump_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        auto clipId     = args.get<int32_t> (1, -1);
+        if (trackIndex < 0 || clipId < 0)
+            return choc::value::createObject ("");
+        return uapmd::AppModel::instance().getMidiClipUmpEvents (trackIndex, clipId);
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_add_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        auto clipId     = args.get<int32_t> (1, -1);
+        auto tick       = static_cast<uint64_t>(args.get<int64_t> (2, 0));
+        if (trackIndex < 0 || clipId < 0)
+            return choc::value::createBool (false);
+        // args[3] is an array of 1–2 UMP words
+        std::vector<uint32_t> words;
+        if (args.size() > 3) {
+            auto* wordsVal = args[3];
+            if (wordsVal && wordsVal->isArray())
+                for (uint32_t i = 0; i < wordsVal->size(); ++i)
+                    words.push_back (static_cast<uint32_t>((*wordsVal)[i].get<int64_t>()));
+        }
+        if (words.empty()) return choc::value::createBool (false);
+        std::string error;
+        return choc::value::createBool (
+            uapmd::AppModel::instance().addUmpEventToClip (trackIndex, clipId, tick, std::move(words), error));
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_remove_ump_event", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex  = args.get<int32_t> (0, -1);
+        auto clipId      = args.get<int32_t> (1, -1);
+        auto eventIndex  = args.get<int32_t> (2, -1);
+        if (trackIndex < 0 || clipId < 0 || eventIndex < 0)
+            return choc::value::createBool (false);
+        std::string error;
+        return choc::value::createBool (
+            uapmd::AppModel::instance().removeUmpEventFromClip (trackIndex, clipId, eventIndex, error));
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_create_empty_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex      = args.get<int32_t> (0, -1);
+        if (trackIndex < 0) return choc::value::createInt32 (-1);
+        auto positionSamples = args.get<int64_t>  (1, 0);
+        auto tickResolution  = static_cast<uint32_t>(std::max (1, args.get<int32_t> (2, 480)));
+        auto bpm             = args.get<double>   (3, 120.0);
+        auto r = uapmd::AppModel::instance().createEmptyMidiClip (
+            trackIndex, positionSamples, tickResolution, bpm);
+        return choc::value::createInt32 (r.clipId);
+    });
 }
 
 } // namespace uapmd

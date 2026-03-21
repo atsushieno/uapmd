@@ -336,6 +336,18 @@ namespace uapmd {
 
         bool removeClipFromTrack(int32_t trackIndex, int32_t clipId);
 
+        // UMP-level clip editing
+        choc::value::Value getMidiClipUmpEvents(int32_t trackIndex, int32_t clipId);
+        bool addUmpEventToClip(int32_t trackIndex, int32_t clipId,
+                               uint64_t tick, std::vector<uint32_t> words,
+                               std::string& error);
+        bool removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
+                                    int32_t eventIndex, std::string& error);
+        ClipAddResult createEmptyMidiClip(int32_t trackIndex,
+                                          int64_t positionSamples = 0,
+                                          uint32_t tickResolution = 480,
+                                          double bpm = 120.0);
+
         // Device input routing
         int32_t addDeviceInputToTrack(
             int32_t trackIndex,

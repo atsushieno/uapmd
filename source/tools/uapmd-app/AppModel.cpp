@@ -1444,6 +1444,167 @@ bool uapmd::AppModel::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
     return sequencer_.engine()->timeline().removeClipFromTrack(trackIndex, clipId);
 }
 
+// ── UMP-level clip editing ────────────────────────────────────────────────────
+
+// Internal helper: look up a MIDI source node, run modifier(words, ticks, error),
+// then commit by replacing the clip source node.
+static bool modifyMidiClipUmp(
+    int32_t trackIndex, int32_t clipId,
+    const std::function<bool(std::vector<uapmd_ump_t>&,
+                             std::vector<uint64_t>&,
+                             std::string&)>& modifier,
+    std::string& error)
+{
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex]) {
+        error = "Track not found";
+        return false;
+    }
+    auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+    if (!clip) { error = "Clip not found"; return false; }
+    auto sourceNode = tracks[trackIndex]->getSourceNode(clip->sourceNodeInstanceId);
+    auto midiNode   = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(sourceNode);
+    if (!midiNode)  { error = "Not a MIDI clip"; return false; }
+
+    auto newWords = midiNode->umpEvents();
+    auto newTicks = midiNode->eventTimestampsTicks();
+
+    if (!modifier(newWords, newTicks, error))
+        return false;
+
+    auto newNode = std::make_unique<uapmd::MidiClipSourceNode>(
+        midiNode->instanceId(),
+        std::move(newWords),
+        std::move(newTicks),
+        midiNode->tickResolution(),
+        midiNode->clipTempo(),
+        static_cast<double>(appModel.sampleRate()),
+        midiNode->tempoChanges(),
+        midiNode->timeSignatureChanges());
+
+    if (!tracks[trackIndex]->replaceClipSourceNode(clipId, std::move(newNode))) {
+        error = "Failed to replace clip data";
+        return false;
+    }
+    return true;
+}
+
+choc::value::Value uapmd::AppModel::getMidiClipUmpEvents(int32_t trackIndex, int32_t clipId)
+{
+    auto tracks = getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex])
+        throw std::invalid_argument("Track not found");
+    auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+    if (!clip) throw std::invalid_argument("Clip not found");
+    auto sourceNode = tracks[trackIndex]->getSourceNode(clip->sourceNodeInstanceId);
+    auto midiNode   = std::dynamic_pointer_cast<uapmd::MidiClipSourceNode>(sourceNode);
+    if (!midiNode)  throw std::invalid_argument("Not a MIDI clip");
+
+    auto result = choc::value::createObject("");
+    result.setMember("tickResolution", static_cast<int32_t>(midiNode->tickResolution()));
+    result.setMember("bpm", midiNode->clipTempo());
+
+    const auto& words = midiNode->umpEvents();
+    const auto& ticks = midiNode->eventTimestampsTicks();
+    auto eventsArr = choc::value::createEmptyArray();
+    size_t i = 0;
+    int32_t evtIdx = 0;
+    while (i < words.size()) {
+        umppi::Ump u(words[i]);
+        int sz = std::max(1, u.getSizeInInts());
+        auto evt = choc::value::createObject("");
+        evt.setMember("eventIndex", evtIdx);
+        evt.setMember("tick", choc::value::createInt64(
+            static_cast<int64_t>(i < ticks.size() ? ticks[i] : 0)));
+        auto wordsArr = choc::value::createEmptyArray();
+        for (int w = 0; w < sz && i + static_cast<size_t>(w) < words.size(); ++w)
+            wordsArr.addArrayElement(choc::value::createInt64(
+                static_cast<int64_t>(static_cast<uint64_t>(words[i + static_cast<size_t>(w)]))));
+        evt.setMember("words", wordsArr);
+        eventsArr.addArrayElement(evt);
+        i += static_cast<size_t>(sz);
+        ++evtIdx;
+    }
+    result.setMember("events", eventsArr);
+    return result;
+}
+
+bool uapmd::AppModel::addUmpEventToClip(int32_t trackIndex, int32_t clipId,
+                                         uint64_t tick,
+                                         std::vector<uint32_t> wordsIn,
+                                         std::string& error)
+{
+    if (wordsIn.empty()) { error = "words must not be empty"; return false; }
+    // Validate word count matches UMP message type
+    umppi::Ump u(wordsIn[0]);
+    int expectedSz = std::max(1, u.getSizeInInts());
+    if (static_cast<int>(wordsIn.size()) != expectedSz) {
+        error = "words count (" + std::to_string(wordsIn.size()) +
+                ") does not match UMP message type (expected " +
+                std::to_string(expectedSz) + ")";
+        return false;
+    }
+    return modifyMidiClipUmp(trackIndex, clipId,
+        [tick, &wordsIn](std::vector<uapmd_ump_t>& w,
+                         std::vector<uint64_t>& t,
+                         std::string&) {
+            // Find first word index with tick > insertion tick
+            size_t insertAt = w.size();
+            for (size_t i = 0; i < t.size(); ++i)
+                if (t[i] > tick) { insertAt = i; break; }
+            w.insert(w.begin() + static_cast<std::ptrdiff_t>(insertAt),
+                     wordsIn.begin(), wordsIn.end());
+            t.insert(t.begin() + static_cast<std::ptrdiff_t>(insertAt),
+                     wordsIn.size(), tick);
+            return true;
+        }, error);
+}
+
+bool uapmd::AppModel::removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
+                                              int32_t eventIndex, std::string& error)
+{
+    if (eventIndex < 0) { error = "eventIndex must be >= 0"; return false; }
+    return modifyMidiClipUmp(trackIndex, clipId,
+        [eventIndex](std::vector<uapmd_ump_t>& w,
+                     std::vector<uint64_t>& t,
+                     std::string& err) {
+            // Walk the word stream counting logical events to find the raw word offset
+            size_t wordStart = w.size(); // sentinel = not found
+            int32_t curEvt = 0;
+            size_t i = 0;
+            while (i < w.size()) {
+                if (curEvt == eventIndex) { wordStart = i; break; }
+                umppi::Ump u(w[i]);
+                i += static_cast<size_t>(std::max(1, u.getSizeInInts()));
+                ++curEvt;
+            }
+            if (wordStart >= w.size()) {
+                err = "eventIndex out of range";
+                return false;
+            }
+            umppi::Ump u(w[wordStart]);
+            size_t wordCount = static_cast<size_t>(std::max(1, u.getSizeInInts()));
+            w.erase(w.begin() + static_cast<std::ptrdiff_t>(wordStart),
+                    w.begin() + static_cast<std::ptrdiff_t>(wordStart + wordCount));
+            if (!t.empty()) {
+                size_t tickEnd = std::min(wordStart + wordCount, t.size());
+                t.erase(t.begin() + static_cast<std::ptrdiff_t>(wordStart),
+                        t.begin() + static_cast<std::ptrdiff_t>(tickEnd));
+            }
+            return true;
+        }, error);
+}
+
+uapmd::AppModel::ClipAddResult uapmd::AppModel::createEmptyMidiClip(
+    int32_t trackIndex, int64_t positionSamples,
+    uint32_t tickResolution, double bpm)
+{
+    uapmd::TimelinePosition pos{};
+    pos.samples = positionSamples;
+    return addMidiClipToTrack(trackIndex, pos, {}, {}, tickResolution, bpm, {}, {});
+}
+
 int32_t uapmd::AppModel::addDeviceInputToTrack(
     int32_t trackIndex,
     const std::vector<uint32_t>& channelIndices

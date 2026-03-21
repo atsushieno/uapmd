@@ -80,6 +80,13 @@ static int64_t getInt64Arg(const choc::value::Value& args, const char* key, int6
     return fallback;
 }
 
+static double getDoubleArg(const choc::value::Value& args, const char* key, double fallback = 0.0)
+{
+    if (args.isObject() && args.hasObjectMember (key))
+        return args[key].get<double>();
+    return fallback;
+}
+
 // ─────────────────────────────────────────────────
 //  Tool definitions
 // ─────────────────────────────────────────────────
@@ -136,6 +143,32 @@ static choc::value::Value buildToolDefinitions()
             "remove_clip",
             "Remove a clip from a track by clipId.",
             R"j({"type":"object","required":["trackIndex","clipId"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"}}})j"
+        },
+        {
+            "get_clip_ump_events",
+            "Get the raw UMP event stream of a MIDI clip. "
+            "Returns tickResolution, bpm, and events[]{eventIndex, tick, words[]}. "
+            "words is 1 element for MIDI1 messages, 2 for MIDI2.",
+            R"j({"type":"object","required":["trackIndex","clipId"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"}}})j"
+        },
+        {
+            "add_ump_event",
+            "Insert a single UMP event into a MIDI clip at a given tick position. "
+            "words must contain exactly the right number of uint32 values for the message type "
+            "(1 for MIDI1, 2 for MIDI2). Use get_clip_ump_events to inspect existing events.",
+            R"j({"type":"object","required":["trackIndex","clipId","tick","words"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"},"tick":{"type":"integer","description":"Tick position within the clip (based on tickResolution)"},"words":{"type":"array","items":{"type":"integer"},"description":"1 or 2 uint32 UMP words as integers"}}})j"
+        },
+        {
+            "remove_ump_event",
+            "Remove a UMP event from a MIDI clip by its eventIndex (as returned by get_clip_ump_events). "
+            "Removes all words belonging to that logical event (1 for MIDI1, 2 for MIDI2).",
+            R"j({"type":"object","required":["trackIndex","clipId","eventIndex"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"},"eventIndex":{"type":"integer","description":"Zero-based logical event index from get_clip_ump_events"}}})j"
+        },
+        {
+            "create_empty_midi_clip",
+            "Create a new empty MIDI clip on a track. Returns clipId. "
+            "Use add_ump_event to populate it with events.",
+            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"},"positionSamples":{"type":"integer","description":"Start position in samples (default 0)"},"tickResolution":{"type":"integer","description":"Ticks per quarter note (default 480)"},"bpm":{"type":"number","description":"Clip tempo in BPM (default 120)"}}})j"
         },
         {
             "play",
@@ -373,6 +406,70 @@ static choc::value::Value toolRemoveClip(const choc::value::Value& args)
     return result;
 }
 
+static choc::value::Value toolGetClipUmpEvents(const choc::value::Value& args)
+{
+    auto trackIndex = getIntArg (args, "trackIndex");
+    auto clipId     = getIntArg (args, "clipId");
+    if (trackIndex < 0 || clipId < 0)
+        throw std::invalid_argument ("trackIndex and clipId are required");
+    return AppModel::instance().getMidiClipUmpEvents (trackIndex, clipId);
+}
+
+static choc::value::Value toolAddUmpEvent(const choc::value::Value& args)
+{
+    auto trackIndex = getIntArg  (args, "trackIndex");
+    auto clipId     = getIntArg  (args, "clipId");
+    auto tick       = static_cast<uint64_t>(getInt64Arg (args, "tick", 0));
+    if (trackIndex < 0 || clipId < 0)
+        throw std::invalid_argument ("trackIndex and clipId are required");
+
+    std::vector<uint32_t> words;
+    if (args.isObject() && args.hasObjectMember ("words")) {
+        auto wordsVal = args["words"];
+        if (wordsVal.isArray())
+            for (uint32_t i = 0; i < wordsVal.size(); ++i)
+                words.push_back (static_cast<uint32_t>(wordsVal[i].get<int64_t>()));
+    }
+    if (words.empty())
+        throw std::invalid_argument ("words is required and must be non-empty");
+
+    std::string error;
+    if (!AppModel::instance().addUmpEventToClip (trackIndex, clipId, tick, std::move(words), error))
+        throw std::runtime_error (error.empty() ? "Failed to add UMP event" : error);
+    return choc::value::createObject ("");
+}
+
+static choc::value::Value toolRemoveUmpEvent(const choc::value::Value& args)
+{
+    auto trackIndex  = getIntArg (args, "trackIndex");
+    auto clipId      = getIntArg (args, "clipId");
+    auto eventIndex  = getIntArg (args, "eventIndex");
+    if (trackIndex < 0 || clipId < 0 || eventIndex < 0)
+        throw std::invalid_argument ("trackIndex, clipId and eventIndex are required");
+
+    std::string error;
+    if (!AppModel::instance().removeUmpEventFromClip (trackIndex, clipId, eventIndex, error))
+        throw std::runtime_error (error.empty() ? "Failed to remove UMP event" : error);
+    return choc::value::createObject ("");
+}
+
+static choc::value::Value toolCreateEmptyMidiClip(const choc::value::Value& args)
+{
+    auto trackIndex      = getIntArg   (args, "trackIndex");
+    if (trackIndex < 0)
+        throw std::invalid_argument ("trackIndex is required");
+    auto positionSamples = getInt64Arg (args, "positionSamples", 0);
+    auto tickResolution  = static_cast<uint32_t>(std::max (1, getIntArg (args, "tickResolution", 480)));
+    auto bpm             = getDoubleArg(args, "bpm", 120.0);
+
+    auto r = AppModel::instance().createEmptyMidiClip (trackIndex, positionSamples, tickResolution, bpm);
+    if (!r.success)
+        throw std::runtime_error (r.error.empty() ? "Failed to create MIDI clip" : r.error);
+    auto result = choc::value::createObject ("");
+    result.setMember ("clipId", r.clipId);
+    return result;
+}
+
 static choc::value::Value toolPlay(const choc::value::Value&)
 {
     AppModel::instance().sequencer().engine()->startPlayback();
@@ -581,8 +678,12 @@ struct McpServer::Impl {
             else if (toolName == "set_tempo")           toolResult = toolSetTempo (args);
             else if (toolName == "list_clips")          toolResult = toolListClips (args);
             else if (toolName == "add_midi_clip")       toolResult = toolAddMidiClip (args);
-            else if (toolName == "remove_clip")         toolResult = toolRemoveClip (args);
-            else if (toolName == "play")                toolResult = toolPlay (args);
+            else if (toolName == "remove_clip")              toolResult = toolRemoveClip (args);
+            else if (toolName == "get_clip_ump_events")      toolResult = toolGetClipUmpEvents (args);
+            else if (toolName == "add_ump_event")            toolResult = toolAddUmpEvent (args);
+            else if (toolName == "remove_ump_event")         toolResult = toolRemoveUmpEvent (args);
+            else if (toolName == "create_empty_midi_clip")   toolResult = toolCreateEmptyMidiClip (args);
+            else if (toolName == "play")                     toolResult = toolPlay (args);
             else if (toolName == "stop")                toolResult = toolStop (args);
             else if (toolName == "run_script")
             {
