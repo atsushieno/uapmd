@@ -36,3 +36,6 @@ We need a handful of distinct layers:
 - audio/MIDI dispatcher: pretty much like `choc::audio::AudioMIDIBlockDispatcher` but we need support for UMP
 - clip/track manager: organizes tracks and clips in each track, as current (as of v0.1.3) `player` API is designed. And it has to determine which clips are in progress
 - transport controller: manages play/pause/stop state
+
+## Achieving realtime safety
+

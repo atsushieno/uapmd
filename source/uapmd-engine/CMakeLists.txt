@@ -32,6 +32,7 @@ target_include_directories(uapmd-engine PRIVATE
         ${choc_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include
         ${concurrentqueue_SOURCE_DIR}
+        ${readerwriterqueue_SOURCE_DIR}
         ../remidy/include
         ../uapmd/include
         ../uapmd-file/include

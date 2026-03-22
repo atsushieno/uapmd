@@ -7,6 +7,7 @@
 
 #include <uapmd/uapmd.hpp>
 #include <uapmd-data/uapmd-data.hpp>
+#include "SequenceProcessContext.hpp"
 
 namespace uapmd {
 
@@ -107,7 +108,11 @@ public:
 
     // Audio preprocess callback — feeds clip source nodes into track input buffers.
     // Called by SequencerEngineImpl via the registered AudioPreprocessCallback.
+    // The single-argument form targets engine_.data() (legacy / fallback path).
     virtual void processTracksAudio(AudioProcessContext& process) = 0;
+    // Pump-aware overload: writes into targetSequence.tracks[i] instead of engine_.data().
+    // Called by pumpAudio() so the pump can redirect output into per-track ring buffer slots.
+    virtual void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) = 0;
 
     // Lifecycle hooks called by SequencerEngineImpl when tracks are added/removed
     virtual void onTrackAdded(uint32_t outputChannels,

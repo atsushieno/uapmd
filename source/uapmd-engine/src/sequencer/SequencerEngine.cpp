@@ -11,8 +11,43 @@
 
 #include <remidy/remidy.hpp>
 #include "uapmd-engine/uapmd-engine.hpp"
+#include "readerwriterqueue.h"
 
 namespace uapmd {
+
+    // ── Pump / RT ring-buffer structures ─────────────────────────────────────
+    //
+    // Layer 1 (pump) pre-fills AudioProcessContext input buffers one quantum at
+    // a time and enqueues the slot index to the RT consumer via `filled`.  The RT
+    // layer (Layer 2) dequeues a slot, runs AudioPluginGraph::processAudio() using
+    // that slot's context, mixes the outputs, and returns the slot to `free_slots`.
+    //
+    // kPumpLookahead is the maximum number of quanta the pump can run ahead of the
+    // RT thread.  kPumpSlots = kPumpLookahead + 1 ensures the pump always has at
+    // least one writable slot while the RT thread holds one readable slot.
+
+    static constexpr size_t kPumpLookahead = 4;
+    static constexpr size_t kPumpSlots     = kPumpLookahead + 1;
+
+    struct PumpSlot {
+        std::unique_ptr<AudioProcessContext> ctx;
+    };
+
+    struct PumpTrackRing {
+        std::array<PumpSlot, kPumpSlots> slots;
+        moodycamel::ReaderWriterQueue<size_t> filled{kPumpSlots};
+        moodycamel::ReaderWriterQueue<size_t> free_slots{kPumpSlots};
+
+        explicit PumpTrackRing(MasterContext& mc, size_t umpBufSizeInInts) {
+            for (size_t i = 0; i < kPumpSlots; i++) {
+                slots[i].ctx = std::make_unique<AudioProcessContext>(mc, umpBufSizeInInts);
+                free_slots.try_enqueue(i);
+            }
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+
     class SequencerEngineImpl : public SequencerEngine {
         size_t audio_buffer_size_in_frames;
         size_t ump_buffer_size_in_ints;
@@ -61,6 +96,16 @@ namespace uapmd {
         // Track processing flags for safe deletion (parallel to tracks_ vector)
         // Note: std::atomic is not copyable, so we use unique_ptr
         std::vector<std::unique_ptr<std::atomic<bool>>> track_processing_flags_;
+
+        // Pump / RT ring-buffer state.  pump_rings_[t] is the per-track ring;
+        // pump_sequence_.tracks[t] is a non-owning pointer that the pump temporarily
+        // redirects to whichever ring slot it is currently filling.
+        std::vector<std::unique_ptr<PumpTrackRing>> pump_rings_;
+        SequenceProcessContext pump_sequence_{};
+        // Pre-allocated work vectors — kept in sync with tracks_.size() so the
+        // hot paths never allocate.
+        std::vector<size_t> pump_slot_indices_;   // pump thread: slot acquired per track
+        std::vector<size_t> rt_dequeued_slots_;   // RT thread: slot dequeued per track
 
         void ensureTrackBusConfiguration(int32_t trackIndex, remidy::PluginAudioBuses* pluginBuses);
         void ensureContextBusConfiguration(AudioProcessContext* ctx, remidy::PluginAudioBuses* pluginBuses);
@@ -205,8 +250,10 @@ namespace uapmd {
 
         // Create timeline facade and register its audio preprocess callback
         timeline_ = TimelineFacade::create(*this);
+        // Call the pump-aware overload so that processTracksAudio writes into
+        // pump_sequence_.tracks[i] (ring-buffer slots) instead of sequence.tracks[i].
         audio_preprocess_callback_ = [this](AudioProcessContext& process) {
-            timeline_->processTracksAudio(process);
+            timeline_->processTracksAudio(process, pump_sequence_);
         };
     }
 
@@ -282,6 +329,11 @@ namespace uapmd {
         }
 
         ensureContextBusConfiguration(ctx, pluginBuses);
+
+        // Keep pump ring slot contexts in sync so they have the same bus layout.
+        if (static_cast<size_t>(trackIndex) < pump_rings_.size())
+            for (auto& slot : pump_rings_[static_cast<size_t>(trackIndex)]->slots)
+                ensureContextBusConfiguration(slot.ctx.get(), pluginBuses);
     }
 
     std::vector<SequencerTrack*> &SequencerEngineImpl::tracks() const {
@@ -299,31 +351,60 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {
-        auto& data = sequence;
         const auto trackFrameCount = static_cast<int32_t>(
             std::min(static_cast<size_t>(process.frameCount()), audio_buffer_size_in_frames));
 
-        // Fan out device input to per-track input buffers and reset output-event positions.
-        for (uint32_t t = 0, nTracks = tracks_.size(); t < nTracks; t++) {
-            if (t >= data.tracks.size())
+        // ── Step 1: acquire a free ring-buffer slot per track ─────────────────
+        // pump_sequence_.tracks[t] is redirected to the acquired slot's context so
+        // audio_preprocess_callback_ (which calls
+        // timeline_->processTracksAudio(process, pump_sequence_)) writes into the
+        // ring slot rather than into the shared sequence.tracks[t].
+        std::fill(pump_slot_indices_.begin(), pump_slot_indices_.end(), SIZE_MAX);
+        for (size_t t = 0; t < tracks_.size(); t++) {
+            if (t >= pump_rings_.size() || t >= pump_sequence_.tracks.size()) {
+                pump_sequence_.tracks[t] = (t < sequence.tracks.size()) ? sequence.tracks[t] : nullptr;
                 continue;
-            auto ctx = data.tracks[t];
-            ctx->eventOut().position(0);
-            ctx->frameCount(trackFrameCount);
+            }
+            size_t idx;
+            if (pump_rings_[t]->free_slots.try_dequeue(idx)) {
+                pump_slot_indices_[t] = idx;
+                auto* ctx = pump_rings_[t]->slots[idx].ctx.get();
+                ctx->eventOut().position(0);
+                ctx->frameCount(trackFrameCount);
+                pump_sequence_.tracks[t] = ctx;
+            } else {
+                // All slots full: pump is kPumpLookahead quanta ahead of RT.
+                // Fall back to the shared sequence context (single-threaded path only).
+                pump_sequence_.tracks[t] = (t < sequence.tracks.size()) ? sequence.tracks[t] : nullptr;
+            }
+        }
+
+        // ── Step 2: fan out device input into pump contexts ───────────────────
+        for (size_t t = 0; t < tracks_.size(); t++) {
+            auto* ctx = pump_sequence_.tracks[t];
+            if (!ctx) continue;
             for (uint32_t i = 0; i < ctx->audioInBusCount(); i++) {
                 for (uint32_t ch = 0, nCh = ctx->inputChannelCount(i); ch < nCh; ch++) {
-                    float* trackDst = ctx->getFloatInBuffer(i, ch);
+                    float* dst = ctx->getFloatInBuffer(i, ch);
                     if (process.audioInBusCount() > 0 && ch < process.inputChannelCount(0))
-                        memcpy(trackDst, (void*)process.getFloatInBuffer(0, ch), trackFrameCount * sizeof(float));
+                        memcpy(dst, process.getFloatInBuffer(0, ch), trackFrameCount * sizeof(float));
                     else
-                        memset(trackDst, 0, trackFrameCount * sizeof(float));
+                        memset(dst, 0, trackFrameCount * sizeof(float));
                 }
             }
         }
 
-        // Advance timeline and fill per-track event/audio buffers from clip source nodes.
+        // ── Step 3: advance timeline and fill events / audio from clip sources ─
+        // audio_preprocess_callback_ calls
+        //   timeline_->processTracksAudio(process, pump_sequence_)
+        // which writes clip data into pump_sequence_.tracks[t] (= ring slots).
         if (audio_preprocess_callback_)
             audio_preprocess_callback_(process);
+
+        // ── Step 4: commit — enqueue filled slots to the RT consumer ──────────
+        for (size_t t = 0; t < tracks_.size(); t++)
+            if (t < pump_rings_.size() && pump_slot_indices_[t] != SIZE_MAX)
+                pump_rings_[t]->filled.try_enqueue(pump_slot_indices_[t]);
     }
 
     int32_t SequencerEngineImpl::processAudio(AudioProcessContext& process) {
@@ -363,6 +444,20 @@ namespace uapmd {
             masterContext.playbackPositionSamples(playback_position_samples_.load(std::memory_order_acquire));
             masterContext.isPlaying(isPlaybackActive);
             masterContext.sampleRate(sampleRate);
+        }
+
+        // Dequeue pump slots: update sequence.tracks[t] to point to the pre-filled
+        // ring-buffer slot context so the existing track-processing and mixing loops
+        // use the pump-filled data without modification.  In single-threaded mode the
+        // pump ran just above (pumpAudio call), so the filled queue is non-empty.
+        std::fill(rt_dequeued_slots_.begin(), rt_dequeued_slots_.end(), SIZE_MAX);
+        for (size_t t = 0; t < tracks_.size() && t < pump_rings_.size(); t++) {
+            size_t idx;
+            if (pump_rings_[t]->filled.try_dequeue(idx)) {
+                rt_dequeued_slots_[t] = idx;
+                sequence.tracks[t] = pump_rings_[t]->slots[idx].ctx.get();
+            }
+            // If no slot available: keep sequence.tracks[t] as-is (stale fallback).
         }
 
         // Process all tracks
@@ -410,6 +505,13 @@ namespace uapmd {
                 }
             }
         }
+
+        // Return consumed pump slots to the free queue so the pump can reuse them.
+        // Done after the mixing loop so no slot is recycled while its output buffers
+        // are still being read.
+        for (size_t t = 0; t < tracks_.size() && t < pump_rings_.size(); t++)
+            if (rt_dequeued_slots_[t] != SIZE_MAX)
+                pump_rings_[t]->free_slots.try_enqueue(rt_dequeued_slots_[t]);
 
         // Process master track plugins if present
         if (master_track_ && master_track_context_ && !master_track_->orderedInstanceIds().empty()) {
@@ -560,6 +662,17 @@ namespace uapmd {
         auto trackCtx = sequence.tracks[trackIndex];
         trackCtx->configureMainBus(default_input_channels_, default_output_channels_, audio_buffer_size_in_frames);
 
+        // Create pump ring buffer for this track and configure its slot contexts.
+        auto ring = std::make_unique<PumpTrackRing>(sequence.masterContext(), ump_buffer_size_in_ints);
+        for (auto& slot : ring->slots)
+            slot.ctx->configureMainBus(default_input_channels_, default_output_channels_, audio_buffer_size_in_frames);
+        pump_rings_.emplace_back(std::move(ring));
+        pump_sequence_.tracks.push_back(nullptr); // placeholder; set per-quantum in pumpAudio()
+
+        // Keep pre-allocated work vectors in sync.
+        pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
+        rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
+
         // Notify timeline facade so it can create a paired TimelineTrack
         timeline_->onTrackAdded(
             default_output_channels_,
@@ -576,6 +689,12 @@ namespace uapmd {
         tracks_.erase(tracks_.begin() + static_cast<long>(index));
         sequence.tracks.erase(sequence.tracks.begin() + static_cast<long>(index));
         track_processing_flags_.erase(track_processing_flags_.begin() + static_cast<long>(index));
+        if (static_cast<size_t>(index) < pump_rings_.size())
+            pump_rings_.erase(pump_rings_.begin() + static_cast<long>(index));
+        if (static_cast<size_t>(index) < pump_sequence_.tracks.size())
+            pump_sequence_.tracks.erase(pump_sequence_.tracks.begin() + static_cast<long>(index));
+        pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
+        rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
         timeline_->onTrackRemoved(static_cast<size_t>(index));
         return true;
     }

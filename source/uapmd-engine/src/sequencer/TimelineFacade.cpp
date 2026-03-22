@@ -584,6 +584,10 @@ namespace uapmd {
         }
 
         void processTracksAudio(AudioProcessContext& process) override {
+            processTracksAudio(process, engine_.data());
+        }
+
+        void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) override {
             // Hold a snapshot reference for the duration of this callback so that
             // tracks added or removed on the UI thread cannot destroy TrackList
             // elements while we are iterating them.
@@ -676,11 +680,12 @@ namespace uapmd {
             masterCtx.timeSignatureNumerator(timeline_.timeSignatureNumerator);
             masterCtx.timeSignatureDenominator(timeline_.timeSignatureDenominator);
 
-            // Process each timeline track into its sequencer track context
-            auto& sequenceData = engine_.data();
+            // Process each timeline track into the target sequencer context.
+            // targetSequence.tracks[i] points to a pump ring-buffer slot when called
+            // from pumpAudio(), or to engine_.data().tracks[i] on the legacy path.
             if (!snapshot) return;
-            for (size_t i = 0; i < snapshot->size() && i < sequenceData.tracks.size(); ++i) {
-                auto* trackContext = sequenceData.tracks[i];
+            for (size_t i = 0; i < snapshot->size() && i < targetSequence.tracks.size(); ++i) {
+                auto* trackContext = targetSequence.tracks[i];
                 if (!trackContext)
                     continue;
 
