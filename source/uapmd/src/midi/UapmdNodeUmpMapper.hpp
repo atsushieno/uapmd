@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <remidy/remidy.hpp>
+#include "readerwriterqueue.h"
 #include "uapmd/priv/midi/MidiIOFeature.hpp"
 #include "uapmd/priv/midi/UapmdUmpMapper.hpp"
 #include "uapmd/priv/plugin-api/AudioPluginInstanceAPI.hpp"
@@ -10,6 +11,7 @@ namespace uapmd {
         public UapmdUmpInputMapper,
         public remidy::UmpInputDispatcher {
         AudioPluginInstanceAPI* plugin;
+        moodycamel::ReaderWriterQueue<uint32_t> preset_load_queue_{4};
 
     public:
         explicit UapmdNodeUmpInputMapper(AudioPluginInstanceAPI* plugin);
@@ -22,7 +24,11 @@ namespace uapmd {
 
         void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override;
 
+        // Enqueues the preset load request for later drain on the non-RT thread.
         void loadPreset(uint32_t index) override;
+
+        // Drains queued preset load requests; call from non-RT context only.
+        void drainPresetRequests();
     };
 
     class UapmdNodeUmpOutputMapper : public UapmdUmpOutputMapper {

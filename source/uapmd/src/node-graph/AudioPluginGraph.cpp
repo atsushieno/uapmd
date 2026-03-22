@@ -1,11 +1,15 @@
 
 #include "uapmd/uapmd.hpp"
+#include "farbot/RealtimeObject.hpp"
 #include "AudioPluginNodeImpl.hpp"
 
 namespace uapmd {
 
+    using NodeList = std::vector<std::shared_ptr<AudioPluginNodeImpl>>;
+    using RTNodeList = farbot::RealtimeObject<NodeList, farbot::RealtimeObjectOptions::nonRealtimeMutatable>;
+
     class AudioPluginGraphImpl : public AudioPluginGraph {
-        std::vector<std::unique_ptr<AudioPluginNodeImpl>> nodes_;
+        RTNodeList nodes_;
         size_t event_buffer_size_in_bytes_;
         std::function<uint8_t(int32_t)> group_resolver_;
         std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback_;
@@ -34,7 +38,10 @@ namespace uapmd {
     }
 
     int32_t AudioPluginGraphImpl::processAudio(AudioProcessContext& process) {
-        if (nodes_.empty()) {
+        RTNodeList::ScopedAccess<farbot::ThreadType::realtime> access(nodes_);
+        auto& nodes = *access;
+
+        if (nodes.empty()) {
             // No plugins to process, simply route timeline/device input straight to output.
             process.copyInputsToOutputs();
             return 0;
@@ -42,8 +49,8 @@ namespace uapmd {
 
         process.clearAudioOutputs();
 
-        for (size_t i = 0; i < nodes_.size(); ++i) {
-            auto& node = nodes_[i];
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            auto& node = nodes[i];
             if (!node)
                 continue;
             auto instanceId = node->instanceId();
@@ -59,13 +66,12 @@ namespace uapmd {
             // Fill event buffer with events for this group
             auto& eventIn = process.eventIn();
             node->fillEventBufferForGroup(eventIn, group);
-            node->trackEventsFromBuffer(eventIn, group);
 
             bool bypassed = node->instance()->bypassed();
             if (!bypassed)
                 node->processInputMapping(process);
             if (bypassed) {
-                if (i + 1 < nodes_.size()) {
+                if (i + 1 < nodes.size()) {
                     // Not the last node: pass audio through so the next plugin receives the signal
                     process.copyInputsToOutputs();
                     process.advanceToNextNode();
@@ -92,40 +98,48 @@ namespace uapmd {
                 eventOut.position(0);
             }
 
-            if (i + 1 < nodes_.size()) {
+            if (i + 1 < nodes.size())
                 process.advanceToNextNode();
-            }
         }
         return 0;
     }
 
     uapmd_status_t AudioPluginGraphImpl::appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) {
-        auto node = std::make_unique<AudioPluginNodeImpl>(instanceId, instance, event_buffer_size_in_bytes_, std::move(onDelete));
-        nodes_.push_back(std::move(node));
+        auto newNode = std::make_shared<AudioPluginNodeImpl>(instanceId, instance, event_buffer_size_in_bytes_, std::move(onDelete));
+        RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+        access->push_back(std::move(newNode));
         // FIXME: define return codes
         return 0;
     }
 
     bool AudioPluginGraphImpl::removeNodeSimple(int32_t instanceId) {
-        for (size_t i = 0; i < nodes_.size(); ++i) {
-            if (nodes_[i]->instanceId() == instanceId) {
-                nodes_.erase(nodes_.begin() + i);
-                return true;
+        std::shared_ptr<AudioPluginNodeImpl> removed;
+        {
+            RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+            auto& nodes = *access;
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                if (nodes[i]->instanceId() == instanceId) {
+                    removed = std::move(nodes[i]);
+                    nodes.erase(nodes.begin() + static_cast<ptrdiff_t>(i));
+                    break;
+                }
             }
         }
-        return false;
+        // ~AudioPluginNodeImpl (and on_delete_()) runs here, outside the farbot lock.
+        return removed != nullptr;
     }
 
     std::map<int32_t, AudioPluginNode*> AudioPluginGraphImpl::plugins() {
+        RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
         std::map<int32_t, AudioPluginNode*> ret{};
-        for (auto& node : nodes_) {
+        for (auto& node : *access)
             ret[node->instanceId()] = node.get();
-        }
         return ret;
     }
 
     AudioPluginNode* AudioPluginGraphImpl::getPluginNode(int32_t instanceId) {
-        for (auto& node : nodes_)
+        RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+        for (auto& node : *access)
             if (node->instanceId() == instanceId)
                 return node.get();
         return nullptr;
