@@ -61,6 +61,18 @@ namespace uapmd {
         virtual void setAudioPreprocessCallback(AudioPreprocessCallback callback) = 0;
 
         virtual SequenceProcessContext& data() = 0;
+
+        // Pump step: advance the timeline, fill per-track audio/event input buffers from
+        // clip source nodes, and run the audio-preprocess callback. Intended to run on the
+        // non-RT main pthread (or a dedicated pump pthread). Must complete before the
+        // matching processAudio() call consumes the filled buffers.
+        // For single-threaded operation, processAudio() calls this automatically.
+        virtual void pumpAudio(AudioProcessContext& process) = 0;
+
+        // RT plugin chain: calls AudioPluginGraph::processAudio() for every track, mixes
+        // outputs, and runs the master track. In single-threaded builds this is called
+        // after pumpAudio(); in the Emscripten build it will be called from
+        // WebAudioEngineThread independently.
         virtual uapmd_status_t processAudio(AudioProcessContext& process) = 0;
 
         // Playback control (accessed by RealtimeSequencer)

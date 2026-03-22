@@ -122,6 +122,7 @@ namespace uapmd {
             audio_preprocess_callback_ = std::move(callback);
         }
 
+        void pumpAudio(AudioProcessContext& process) override;
         uapmd_status_t processAudio(AudioProcessContext& process) override;
 
         // Playback control
@@ -297,6 +298,34 @@ namespace uapmd {
         return master_track_.get();
     }
 
+    void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {
+        auto& data = sequence;
+        const auto trackFrameCount = static_cast<int32_t>(
+            std::min(static_cast<size_t>(process.frameCount()), audio_buffer_size_in_frames));
+
+        // Fan out device input to per-track input buffers and reset output-event positions.
+        for (uint32_t t = 0, nTracks = tracks_.size(); t < nTracks; t++) {
+            if (t >= data.tracks.size())
+                continue;
+            auto ctx = data.tracks[t];
+            ctx->eventOut().position(0);
+            ctx->frameCount(trackFrameCount);
+            for (uint32_t i = 0; i < ctx->audioInBusCount(); i++) {
+                for (uint32_t ch = 0, nCh = ctx->inputChannelCount(i); ch < nCh; ch++) {
+                    float* trackDst = ctx->getFloatInBuffer(i, ch);
+                    if (process.audioInBusCount() > 0 && ch < process.inputChannelCount(0))
+                        memcpy(trackDst, (void*)process.getFloatInBuffer(0, ch), trackFrameCount * sizeof(float));
+                    else
+                        memset(trackDst, 0, trackFrameCount * sizeof(float));
+                }
+            }
+        }
+
+        // Advance timeline and fill per-track event/audio buffers from clip source nodes.
+        if (audio_preprocess_callback_)
+            audio_preprocess_callback_(process);
+    }
+
     int32_t SequencerEngineImpl::processAudio(AudioProcessContext& process) {
         // Record start time for deadline tracking
         auto startTime = std::chrono::steady_clock::now();
@@ -305,16 +334,11 @@ namespace uapmd {
             // FIXME: define status codes
             return 1;
 
-        auto& data = sequence;
-        auto& masterContext = data.masterContext();
-
         // Clamp frame count to what track/master buffers can hold.
-        // Normally buffer_capacity_frames (Oboe) == audio_buffer_size_in_frames
-        // (engine), but clamp defensively to prevent buffer overruns.
         const auto trackFrameCount = static_cast<int32_t>(
             std::min(static_cast<size_t>(process.frameCount()), audio_buffer_size_in_frames));
 
-        // When engine is inactive, output silence and return - device keeps running cleanly.
+        // When engine is inactive, output silence and return.
         if (!engine_active_.load(std::memory_order_acquire)) {
             if (process.audioOutBusCount() > 0) {
                 for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++)
@@ -323,39 +347,22 @@ namespace uapmd {
             return 0;
         }
 
-        // Update playback position if playback is active
+        auto& data = sequence;
         bool isPlaybackActive = is_playback_active_.load(std::memory_order_acquire);
 
-        // Update MasterContext with current playback state
-        masterContext.playbackPositionSamples(playback_position_samples_.load(std::memory_order_acquire));
-        masterContext.isPlaying(isPlaybackActive);
-        masterContext.sampleRate(sampleRate);
+        // Run the pump (timeline advance + device-audio fanout + clip filling).
+        // In single-threaded operation this is called here; in the Emscripten multi-threaded
+        // path (Phase B) pumpAudio() will be driven independently from the main pthread.
+        pumpAudio(process);
 
-        // Copy device input directly to track input buffers (will be overwritten by app callback if set)
-        for (uint32_t t = 0, nTracks = tracks_.size(); t < nTracks; t++) {
-            if (t >= data.tracks.size())
-                continue; // buffer not ready
-            auto ctx = data.tracks[t];
-            ctx->eventOut().position(0); // clean up *out* events here.
-            ctx->frameCount(trackFrameCount);
-
-            // Copy device input to track input buffers
-            for (uint32_t i = 0; i < ctx->audioInBusCount(); i++) {
-                for (uint32_t ch = 0, nCh = ctx->inputChannelCount(i); ch < nCh; ch++) {
-                    float* trackDst = ctx->getFloatInBuffer(i, ch);
-                    // Copy from device input if available
-                    if (process.audioInBusCount() > 0 && ch < process.inputChannelCount(0)) {
-                        memcpy(trackDst, (void*)process.getFloatInBuffer(0, ch), trackFrameCount * sizeof(float));
-                    } else {
-                        memset(trackDst, 0, trackFrameCount * sizeof(float));
-                    }
-                }
-            }
-        }
-
-        // Call app-level preprocessing callback (for source node processing)
-        if (audio_preprocess_callback_) {
-            audio_preprocess_callback_(process);
+        // Sync MasterContext with the actual playback position *after* the pump.
+        // This must live here, not in pumpAudio(), so that when the pump eventually runs
+        // ahead of the audio output the UI-visible position still matches what is heard.
+        {
+            auto& masterContext = data.masterContext();
+            masterContext.playbackPositionSamples(playback_position_samples_.load(std::memory_order_acquire));
+            masterContext.isPlaying(isPlaybackActive);
+            masterContext.sampleRate(sampleRate);
         }
 
         // Process all tracks
