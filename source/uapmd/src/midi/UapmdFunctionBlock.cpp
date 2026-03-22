@@ -70,6 +70,10 @@ namespace uapmd {
             midi_device->removeInputHandler(umpReceived);
     }
 
+    void UapmdFunctionBlock::detachOutputMapper() {
+        ump_output_mapper_.reset();
+    }
+
     void UapmdFunctionBlock::initialize() {
         uapmd_sessions->setupMidiCISession();
     }

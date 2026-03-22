@@ -210,7 +210,11 @@ namespace uapmd {
     }
 
     SequencerEngineImpl::~SequencerEngineImpl() {
-        // Destroy function blocks first so their output mappers unsubscribe while plugin instances are still alive.
+        // Detach output mappers while plugin instances are still alive. This is a separate
+        // step from clearAllDevices() because AppModel::DeviceState holds shared_ptrs to
+        // UapmdFunctionBlock that may outlive the engine — detaching now ensures those
+        // delayed destructions won't access freed PluginParameterSupport objects.
+        function_block_manager.detachAllOutputMappers();
         function_block_manager.clearAllDevices();
         // Make sure to clean up tracks before plugin_host so that we don't release plugin instances ahead of these.
         tracks_.clear();

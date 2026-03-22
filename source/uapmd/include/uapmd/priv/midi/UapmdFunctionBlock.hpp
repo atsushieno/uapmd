@@ -39,6 +39,11 @@ namespace uapmd {
         uint8_t group() const { return ump_group; }
         void group(uint8_t groupId) { ump_group = groupId; }
 
+        // Detach the UMP output mapper (unregisters parameter listeners from the plugin)
+        // while the plugin instance is still alive. Must be called before the plugin is
+        // freed, because DeviceState::device shared_ptrs may outlive the engine tracks.
+        void detachOutputMapper();
+
         void initialize();
     };
 

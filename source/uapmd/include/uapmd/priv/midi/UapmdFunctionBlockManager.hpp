@@ -30,6 +30,12 @@ namespace uapmd {
             blocks.erase(instanceId);
         }
 
+        void detachAllOutputMappers() {
+            for (auto& [id, block] : blocks)
+                if (block)
+                    block->detachOutputMapper();
+        }
+
         bool isEmpty() const {
             return blocks.empty();
         }
@@ -80,6 +86,11 @@ namespace uapmd {
                     [](const UapmdFunctionDevice& block) { return block.isEmpty(); }),
                 devices.end()
             );
+        }
+
+        void detachAllOutputMappers() {
+            for (auto& device : devices)
+                device.detachAllOutputMappers();
         }
 
         void clearAllDevices() {
