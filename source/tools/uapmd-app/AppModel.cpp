@@ -746,7 +746,10 @@ void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
         // Silence the output first, then let the audio callback run for a couple
         // of cycles so the hardware ring buffer drains with silence before we stop.
         sequencer_.engine()->setEngineActive(false);
+#ifndef __EMSCRIPTEN__
+        // sleep_for calls Atomics.wait which is forbidden on the WASM main thread.
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
+#endif
         sequencer_.stopAudio();
         for (auto id : host->instanceIds())
             host->getInstance(id)->stopProcessing();

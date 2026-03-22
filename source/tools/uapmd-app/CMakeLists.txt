@@ -8,21 +8,23 @@ if(UAPMD_TARGET_WASM)
         "Use vcpkg to provide SDL3 for WASM builds (OFF: Emscripten port via -s USE_SDL=3; ON: vcpkg SDL3::SDL3)"
         OFF)
     add_compile_definitions(EMSCRIPTEN DISABLE_VST3 DISABLE_AU DISABLE_LV2 DISABLE_CLAP)
-    set(_UAPMD_WASM_ASYNC_IMPORTS "['uapmd_web_open_file_dialog','uapmd_web_save_file_dialog']")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
         -s WASM=1 \
         -s ALLOW_MEMORY_GROWTH=1 \
-        -s MAXIMUM_MEMORY=512MB \
+        -s MAXIMUM_MEMORY=2GB \
         -s USE_WEBGL2=1 \
         -s FULL_ES3=1 \
         -s MIN_WEBGL_VERSION=2 \
         -s DISABLE_EXCEPTION_CATCHING=0 \
         -s NO_EXIT_RUNTIME=1 \
         -s ASSERTIONS=1 \
-        -s ASYNCIFY=1 \
-        -s ASYNCIFY_IMPORTS=${_UAPMD_WASM_ASYNC_IMPORTS} \
-        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8'] \
-        -s EXPORTED_FUNCTIONS=['_main','_uapmd_mcp_call','_uapmd_eval']")
+        -s SHARED_MEMORY=1 \
+        -s WASM_WORKERS=1 \
+        -s AUDIO_WORKLET=1 \
+        -pthread \
+        -s PTHREAD_POOL_SIZE=8 \
+        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8','allocateUTF8','FS'] \
+        -s EXPORTED_FUNCTIONS=['_main','_uapmd_mcp_call','_uapmd_eval','_uapmd_debug_import_audio','_uapmd_debug_load_project','_uapmd_debug_enable_audio_engine','_uapmd_debug_start_playback','_uapmd_debug_get_playback_position_samples']")
     if(NOT UAPMD_WASM_USE_VCPKG_SDL3)
         # Emscripten port: the linker flag activates the bundled SDL3 port at link time.
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -s USE_SDL=3")
@@ -139,6 +141,12 @@ elseif(UAPMD_BUILDING_WASM)
     set(UAPMD_COMPILE_TARGET uapmd-app)
     add_dependencies(uapmd-app uapmd-app-web-assets)
     target_link_options(uapmd-app PRIVATE --bind)
+    # Prepend the AudioWorklet environment shim so it runs before Emscripten's
+    # runtime inside the AudioWorklet WASM Worker.  It backfills the missing
+    # AudioWorkletGlobalScope property (Chrome bug) and provides a navigator shim
+    # to prevent ReferenceErrors on the audio thread.
+    target_link_options(uapmd-app PRIVATE
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/web/audioworklet-env-fix.js")
 else()
     # Compile all sources once into a shared OBJECT library.
     # Both uapmd-app and uapmd-app-bundle link against it, avoiding duplicate

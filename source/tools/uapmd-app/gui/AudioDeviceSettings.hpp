@@ -46,6 +46,7 @@ public:
     void setSelectedInputDevice(int index);
     void setSelectedOutputDevice(int index);
     void setBufferSize(int size);
+    void setAvailableBufferSizes(const std::vector<int>& sizes);
     void setInputSampleRate(int rate);
     void setOutputSampleRate(int rate);
 

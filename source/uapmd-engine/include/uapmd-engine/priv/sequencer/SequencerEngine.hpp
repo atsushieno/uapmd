@@ -69,6 +69,13 @@ namespace uapmd {
         // For single-threaded operation, processAudio() calls this automatically.
         virtual void pumpAudio(AudioProcessContext& process) = 0;
 
+        // When enabled, processAudio() skips the inline pumpAudio() call.
+        // Set to true by WebAudioEngineThread before starting its pump pthread so
+        // that the pump thread and the engine thread do not both call pumpAudio()
+        // concurrently.  On all non-Emscripten platforms this remains false and
+        // processAudio() continues to call pumpAudio() inline as before.
+        virtual void setExternalPump(bool enabled) = 0;
+
         // RT plugin chain: calls AudioPluginGraph::processAudio() for every track, mixes
         // outputs, and runs the master track. In single-threaded builds this is called
         // after pumpAudio(); in the Emscripten build it will be called from

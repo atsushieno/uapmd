@@ -5,6 +5,8 @@
 #include <vector>
 
 namespace uapmd {
+    class SequencerEngine;
+
     enum AudioIODirections {
         UAPMD_AUDIO_DIRECTION_INPUT = 1,
         UAPMD_AUDIO_DIRECTION_OUTPUT = 2,
@@ -50,6 +52,9 @@ namespace uapmd {
         virtual std::vector<uint32_t> getNativeSampleRates() = 0;
 
         virtual void clearOutputBuffers() {}
+        // Optional hook so RealtimeSequencer can pass the engine to devices that
+        // need it (e.g. WebAudioWorkletIODevice).  Default no-op.
+        virtual void setEngine(SequencerEngine*) {}
         virtual uapmd_status_t start() = 0;
         virtual uapmd_status_t stop() = 0;
         virtual bool isPlaying() = 0;
@@ -94,6 +99,10 @@ namespace uapmd {
         }
 
         virtual bool platformProvidesAutoBufferSize() const = 0;
+
+        // Returns the set of valid buffer sizes for this driver, or empty if the
+        // UI should use its own default list.
+        virtual std::vector<int> getAvailableBufferSizes() const { return {}; }
 
     protected:
         bool initialized{false};

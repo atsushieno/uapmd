@@ -87,11 +87,18 @@ namespace uapmd {
         std::mutex instance_map_mutex_;
 
 
+        // When true, processAudio() skips the inline pumpAudio() call because a
+        // dedicated pump pthread (WebAudioEngineThread) is driving it independently.
+        std::atomic<bool> external_pump_{false};
+
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
 
-        // Engine active flag: when false, processAudio outputs silence without invoking plugins
-        std::atomic<bool> engine_active_{true};
+        // Engine active flag: when false, processAudio outputs silence without invoking plugins.
+        // Starts inactive so that no plugin code runs before the user explicitly enables the
+        // audio engine (important on Emscripten where AudioWorklet fires immediately after
+        // connect before lazy-initialized statics are guaranteed to be ready).
+        std::atomic<bool> engine_active_{false};
 
         // Track processing flags for safe deletion (parallel to tracks_ vector)
         // Note: std::atomic is not copyable, so we use unique_ptr
@@ -165,6 +172,10 @@ namespace uapmd {
 
         void setAudioPreprocessCallback(AudioPreprocessCallback callback) override {
             audio_preprocess_callback_ = std::move(callback);
+        }
+
+        void setExternalPump(bool enabled) override {
+            external_pump_.store(enabled, std::memory_order_release);
         }
 
         void pumpAudio(AudioProcessContext& process) override;
@@ -434,7 +445,8 @@ namespace uapmd {
         // Run the pump (timeline advance + device-audio fanout + clip filling).
         // In single-threaded operation this is called here; in the Emscripten multi-threaded
         // path (Phase B) pumpAudio() will be driven independently from the main pthread.
-        pumpAudio(process);
+        if (!external_pump_.load(std::memory_order_acquire))
+            pumpAudio(process);
 
         // Sync MasterContext with the actual playback position *after* the pump.
         // This must live here, not in pumpAudio(), so that when the pump eventually runs

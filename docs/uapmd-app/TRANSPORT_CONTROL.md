@@ -39,3 +39,5 @@ We need a handful of distinct layers:
 
 ## Achieving realtime safety
 
+`SequencerEngine::processAudio()` implements the processing of timeline tracks to retrieve audio and MIDI buffers, then to send to `AudioPluginGraph::processAudio()`. `AudioPluginGraph::processAudio()` is defined and designed to be realtime safe. `SequencerEngine::processAudio()` too, but audio data pump
+

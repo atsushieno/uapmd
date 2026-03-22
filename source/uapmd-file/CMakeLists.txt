@@ -24,7 +24,7 @@ elseif(EMSCRIPTEN)
     )
     target_link_options(uapmd-file PUBLIC
             -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$allocateUTF8
-            -sEXPORTED_RUNTIME_METHODS=ccall,allocateUTF8
+            -sEXPORTED_RUNTIME_METHODS=ccall,allocateUTF8,FS
     )
 elseif(IOS)
     target_sources(uapmd-file PRIVATE

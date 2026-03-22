@@ -55,6 +55,10 @@ set(LIBREMIDI_HEADER_ONLY ON CACHE BOOL "Build libremidi as header-only" FORCE)
 if(EMSCRIPTEN)
     add_compile_definitions(LIBLOCATE_DISABLE_DLOPEN)
     set(WITH_RUNTIME_CPU_DETECTION OFF CACHE BOOL "Disable zlib-ng SIMD dispatch for Emscripten" FORCE)
+    # Required for SharedArrayBuffer / pthreads / AudioWorklet.
+    # -pthread must be a compile-time flag so every TU gets atomics + bulk-memory
+    # codegen AND the linker selects the *-mt.a sysroot library variants.
+    add_compile_options(-pthread)
 endif()
 
 set(UAPMD_ENABLE_CPPTRACE ON)

@@ -47,14 +47,29 @@ void AudioDeviceSettings::setSelectedOutputDevice(int index) {
 
 void AudioDeviceSettings::setBufferSize(int size) {
     bufferSize_ = size;
-    // Try to find the buffer size in the available list and set the index
-    selectedBufferSizeIndex_ = 4; // Default to 256 (index 4)
+    selectedBufferSizeIndex_ = 0;
     for (size_t i = 0; i < availableBufferSizes_.size(); i++) {
         if (availableBufferSizes_[i] == size) {
             selectedBufferSizeIndex_ = static_cast<int>(i);
-            break;
+            return;
         }
     }
+    // size not in list — pick largest available that is ≤ size
+    for (int i = static_cast<int>(availableBufferSizes_.size()) - 1; i >= 0; i--) {
+        if (availableBufferSizes_[i] <= size) {
+            selectedBufferSizeIndex_ = i;
+            bufferSize_ = availableBufferSizes_[i];
+            return;
+        }
+    }
+}
+
+void AudioDeviceSettings::setAvailableBufferSizes(const std::vector<int>& sizes) {
+    if (sizes.empty())
+        return;
+    availableBufferSizes_ = sizes;
+    // Re-anchor selectedBufferSizeIndex_ to current bufferSize_; fall back to closest.
+    setBufferSize(bufferSize_);
 }
 
 void AudioDeviceSettings::setInputSampleRate(int rate) {

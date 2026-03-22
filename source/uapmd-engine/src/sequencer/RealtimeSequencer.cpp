@@ -40,6 +40,8 @@ uapmd::RealtimeSequencer::RealtimeSequencer(
     if (audioDevice)
         audioDevice->useAutoBufferSize(auto_buffer_size_enabled_);
     dispatcher->configure(umpBufferSizeInBytes, audioDevice, nullptr, nullptr, static_cast<uint32_t>(buffer_size_in_frames));
+    if (audioDevice)
+        audioDevice->setEngine(sequencer.get());
 
     dispatcher->addCallback([&](uapmd::AudioProcessContext& process) {
         // Delegate all master audio processing to SequencerEngine
@@ -152,6 +154,11 @@ bool uapmd::RealtimeSequencer::reconfigureAudioDevice(int inputDeviceIndex, int 
     const auto inputChannels = audioDevice ? std::max(audioDevice->inputChannels(), 2u) : 2;
     const auto outputChannels = audioDevice ? audioDevice->outputChannels() : 2;
     sequencer->setDefaultChannels(inputChannels, outputChannels);
+
+    // Wire the engine into the new device (needed for WebAudioWorkletIODevice to
+    // start its pump/engine threads when start() is later called).
+    if (audioDevice)
+        audioDevice->setEngine(sequencer.get());
 
     // Restart audio if it was playing before
     if (wasPlaying) {

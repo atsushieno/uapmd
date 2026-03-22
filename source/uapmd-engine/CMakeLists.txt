@@ -56,14 +56,29 @@ target_sources(uapmd-engine PRIVATE
         src/devices/DefaultDeviceIODispatcher.cpp
         src/devices/LibreMidiIODevice.cpp
         src/devices/MidiIODevice.cpp
-        src/devices/MiniAudioIODevice.cpp
-        src/devices/OboeAudioIODevice.cpp
         src/sequencer/OfflineRenderer.cpp
         src/sequencer/RealtimeSequencer.cpp
         src/sequencer/SequencerEngine.cpp
         src/sequencer/SequencerTrack.cpp
         src/sequencer/TimelineFacade.cpp
 )
+
+# Platform-specific audio backend
+if(EMSCRIPTEN)
+    target_sources(uapmd-engine PRIVATE
+            src/devices/WebAudioWorkletIODevice.cpp
+            src/devices/MiniaudioImpl.cpp
+    )
+elseif(ANDROID)
+    target_sources(uapmd-engine PRIVATE
+            src/devices/OboeAudioIODevice.cpp
+            src/devices/MiniaudioImpl.cpp
+    )
+else()
+    target_sources(uapmd-engine PRIVATE
+            src/devices/MiniAudioIODevice.cpp
+    )
+endif()
 
 if(ANDROID)
     find_package(oboe REQUIRED CONFIG)

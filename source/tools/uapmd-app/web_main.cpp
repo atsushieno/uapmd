@@ -116,7 +116,20 @@ void maybeScheduleAutoImport() {
 
 } // namespace
 
+static int g_frame_counter = 0;
+
 static void mainLoopIteration() {
+    // Every ~60 frames (~1s) print position so Playwright can read it
+    ++g_frame_counter;
+    if (g_frame_counter % 60 == 0) {
+        auto& appModel = uapmd::AppModel::instance();
+        auto& tl = appModel.timeline();
+        std::cout << "[uapmd-pos] " << tl.playheadPosition.samples
+                  << " isPlaying=" << tl.isPlaying
+                  << " engineEnabled=" << appModel.isAudioEngineEnabled()
+                  << "\n";
+    }
+
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL3_ProcessEvent(&event);
@@ -254,7 +267,9 @@ static int runWasmApp() {
     uapmd::AppModel::instantiate();
     uapmd::gui::GuiDefaults defaults;
     g_ctx.mainWindow = new uapmd::gui::MainWindow(defaults);
-    uapmd::AppModel::instance().setAudioEngineEnabled(true);
+    // Do NOT auto-enable the audio engine on the web: AudioContext requires a
+    // user gesture before it can start (browser autoplay policy).  The user
+    // must click "Audio Engine: Off" in the toolbar to turn it on.
 
     maybeScheduleAutoImport();
 
@@ -302,6 +317,41 @@ void uapmd_debug_import_audio(const char* path) {
     }
 
     std::cout << "[wasm-debug] import_audio: clip " << result.clipId << " added\n";
+}
+
+EMSCRIPTEN_KEEPALIVE
+void uapmd_debug_load_project(const char* path) {
+    if (!path || !*path) {
+        std::cout << "[wasm-debug] load_project: empty path\n";
+        return;
+    }
+    auto& appModel = uapmd::AppModel::instance();
+    auto result = appModel.loadProjectFromResolvedPath(std::filesystem::path(path));
+    if (!result.success)
+        std::cout << "[wasm-debug] load_project: failed: " << result.error << "\n";
+    else
+        std::cout << "[wasm-debug] load_project: OK\n";
+}
+
+EMSCRIPTEN_KEEPALIVE
+void uapmd_debug_enable_audio_engine(int enable) {
+    auto& appModel = uapmd::AppModel::instance();
+    appModel.setAudioEngineEnabled(enable != 0);
+    std::cout << "[wasm-debug] audio_engine: " << (enable ? "ON" : "OFF") << "\n";
+}
+
+EMSCRIPTEN_KEEPALIVE
+void uapmd_debug_start_playback() {
+    auto& appModel = uapmd::AppModel::instance();
+    appModel.transport().play();
+    std::cout << "[wasm-debug] start_playback called, isPlaying="
+              << appModel.transport().isPlaying() << "\n";
+}
+
+EMSCRIPTEN_KEEPALIVE
+double uapmd_debug_get_playback_position_samples() {
+    auto& appModel = uapmd::AppModel::instance();
+    return static_cast<double>(appModel.timeline().playheadPosition.samples);
 }
 }
 

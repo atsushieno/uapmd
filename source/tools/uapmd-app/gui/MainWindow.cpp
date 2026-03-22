@@ -944,6 +944,11 @@ void MainWindow::updateAudioDeviceSettingsData() {
 
     audioDeviceSettings_.setInputAvailableSampleRates(inputSampleRates);
     audioDeviceSettings_.setOutputAvailableSampleRates(outputSampleRates);
+
+    // Let the driver constrain the buffer size list (e.g. Web Audio requires multiples of 128).
+    auto availBufSizes = manager->getAvailableBufferSizes();
+    if (!availBufSizes.empty())
+        audioDeviceSettings_.setAvailableBufferSizes(availBufSizes);
 }
 
 
