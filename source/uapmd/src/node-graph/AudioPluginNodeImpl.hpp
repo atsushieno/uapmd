@@ -1,4 +1,4 @@
-
+#pragma once
 #include <umppi/umppi.hpp>
 #include "concurrentqueue.h"
 
@@ -160,9 +160,8 @@ namespace uapmd {
         void drainQueueToPending() {
             queue_reading_.exchange(true);
             umppi::Ump u128;
-            while (queue_.try_dequeue(u128)) {
+            while (queue_.try_dequeue(u128))
                 pending_events_.push_back(u128);
-            }
             queue_reading_.exchange(false);
         }
 
@@ -185,9 +184,8 @@ namespace uapmd {
                     continue;
                 }
                 const auto messageSize = static_cast<size_t>(ump.getSizeInBytes());
-                if (position + messageSize > capacity) {
+                if (position + messageSize > capacity)
                     break;
-                }
                 auto ints = ump.toInts();
                 std::memcpy(messages + position, ints.data(), messageSize);
                 position += messageSize;

@@ -43,5 +43,4 @@ target_sources(uapmd PRIVATE
         src/midi/UapmdNodeUmpMapper.cpp
         src/plugin-api/RemidyAudioPluginHost.cpp
         src/node-graph/AudioPluginGraph.cpp
-        src/node-graph/AudioPluginNode.cpp
 )
