@@ -8,7 +8,9 @@ PluginFormatManager::PluginFormatManager() {
     if (aap_)
         formats_.push_back(aap_.get());
 #elif defined(__EMSCRIPTEN__)
-    formats_.clear();
+    webclap_ = remidy::PluginFormatWebCLAP::create();
+    if (webclap_)
+        formats_.push_back(webclap_.get());
 #elif defined(__APPLE__) && TARGET_OS_IPHONE
     au_ = remidy::PluginFormatAU::create();
     if (au_)

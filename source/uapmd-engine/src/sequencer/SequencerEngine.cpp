@@ -93,6 +93,7 @@ namespace uapmd {
 
         // Offline rendering mode
         std::atomic<bool> offline_rendering_{false};
+        TrackOutputHandler track_output_handler_{};
 
         // Engine active flag: when false, processAudio outputs silence without invoking plugins.
         // Starts inactive so that no plugin code runs before the user explicitly enables the
@@ -176,6 +177,9 @@ namespace uapmd {
 
         void setExternalPump(bool enabled) override {
             external_pump_.store(enabled, std::memory_order_release);
+        }
+        void setTrackOutputHandler(TrackOutputHandler handler) override {
+            track_output_handler_ = std::move(handler);
         }
 
         void pumpAudio(AudioProcessContext& process) override;
@@ -444,7 +448,7 @@ namespace uapmd {
 
         // Run the pump (timeline advance + device-audio fanout + clip filling).
         // In single-threaded operation this is called here; in the Emscripten multi-threaded
-        // path (Phase B) pumpAudio() will be driven independently from the main pthread.
+        // path pumpAudio() will be driven independently from the main pthread.
         if (!external_pump_.load(std::memory_order_acquire))
             pumpAudio(process);
 
@@ -501,6 +505,9 @@ namespace uapmd {
                 continue; // buffer not ready
             auto ctx = data.tracks[t];
             ctx->eventIn().position(0); // clean up *in* events here.
+
+            if (track_output_handler_ && track_output_handler_(static_cast<int32_t>(t), *tracks_[t], *ctx))
+                continue;
 
             // Mix only main bus (bus 0)
             if (process.audioOutBusCount() > 0 && ctx->audioOutBusCount() > 0) {
@@ -721,7 +728,14 @@ namespace uapmd {
             }
         }
 
-        plugin_host->createPluginInstance(sampleRate, default_input_channels_, default_output_channels_, false, format, pluginId, [this, trackIndex, targetMaster, callback](int32_t instanceId, std::string error) {
+        plugin_host->createPluginInstance(static_cast<uint32_t>(sampleRate),
+                                          static_cast<uint32_t>(audio_buffer_size_in_frames),
+                                          default_input_channels_,
+                                          default_output_channels_,
+                                          false,
+                                          format,
+                                          pluginId,
+                                          [this, trackIndex, targetMaster, callback](int32_t instanceId, std::string error) {
             if (instanceId < 0) {
                 callback(-1, targetMaster ? kMasterTrackIndex : trackIndex, "Could not create plugin: " + error);
                 return;
@@ -760,6 +774,11 @@ namespace uapmd {
             }
 
             track->orderedInstanceIds().push_back(instanceId);
+            plugin_host->onTrackGraphNodeAdded(
+                instanceId,
+                targetMaster ? kMasterTrackIndex : trackIndex,
+                targetMaster,
+                static_cast<uint32_t>(track->orderedInstanceIds().size() - 1));
 
             // Auto-assign the lowest available UMP group (0–15) on this track.
             uint8_t autoGroup = track->findAvailableGroup();

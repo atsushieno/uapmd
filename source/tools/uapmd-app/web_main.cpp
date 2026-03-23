@@ -116,20 +116,7 @@ void maybeScheduleAutoImport() {
 
 } // namespace
 
-static int g_frame_counter = 0;
-
 static void mainLoopIteration() {
-    // Every ~60 frames (~1s) print position so Playwright can read it
-    ++g_frame_counter;
-    if (g_frame_counter % 60 == 0) {
-        auto& appModel = uapmd::AppModel::instance();
-        auto& tl = appModel.timeline();
-        std::cout << "[uapmd-pos] " << tl.playheadPosition.samples
-                  << " isPlaying=" << tl.isPlaying
-                  << " engineEnabled=" << appModel.isAudioEngineEnabled()
-                  << "\n";
-    }
-
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL3_ProcessEvent(&event);

@@ -75,6 +75,8 @@ namespace uapmd {
         // concurrently.  On all non-Emscripten platforms this remains false and
         // processAudio() continues to call pumpAudio() inline as before.
         virtual void setExternalPump(bool enabled) = 0;
+        using TrackOutputHandler = std::function<bool(uapmd_track_index_t, SequencerTrack&, AudioProcessContext&)>;
+        virtual void setTrackOutputHandler(TrackOutputHandler handler) = 0;
 
         // RT plugin chain: calls AudioPluginGraph::processAudio() for every track, mixes
         // outputs, and runs the master track. In single-threaded builds this is called

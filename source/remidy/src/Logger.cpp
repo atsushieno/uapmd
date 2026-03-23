@@ -127,6 +127,13 @@ void remidy::Logger::Impl::initializeGlobalLogger() {
             switch (level) {
                 // too much by default
                 case LogLevel::DIAGNOSTIC: break;
+                case LogLevel::INFO:
+#if ANDROID
+                    __android_log_print(convertLogLevel(level), "remidy", "[remidy #%zu (%s)]: %s", serial, levelString(level), s);
+#else
+                    std::cout << "[remidy #" << serial << " (" << levelString(level) << ")]: " << s << std::endl;
+#endif
+                    break;
                 default:
 #if ANDROID
                     __android_log_print(convertLogLevel(level), "remidy", "[remidy #%zu (%s)]: %s", serial, levelString(level), s);

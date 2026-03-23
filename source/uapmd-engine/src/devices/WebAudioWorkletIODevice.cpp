@@ -37,6 +37,39 @@ namespace uapmd {
             return;
         running_.store(true, std::memory_order_release);
         engine_->setExternalPump(true);
+        engine_->setTrackOutputHandler([this](uapmd_track_index_t trackIndex,
+                                              SequencerTrack& track,
+                                              AudioProcessContext& ctx) {
+            if (!sab_ || trackIndex < 0 || static_cast<uint32_t>(trackIndex) >= kWebAudioMaxTracks)
+                return false;
+            bool workletHosted = false;
+            for (const auto& [instanceId, node] : track.graph().plugins()) {
+                (void) instanceId;
+                if (node && node->instance() && node->instance()->formatName() == "WebCLAP") {
+                    workletHosted = true;
+                    break;
+                }
+            }
+            if (!workletHosted || ctx.audioOutBusCount() == 0)
+                return false;
+
+            for (uint32_t ch = 0; ch < kWebAudioChannels; ++ch) {
+                float* dst = sab_->track_output
+                    + (static_cast<size_t>(trackIndex) * kWebAudioChannels + ch) * buffer_size_;
+                if (!dst)
+                    continue;
+                if (ch < static_cast<uint32_t>(ctx.outputChannelCount(0))) {
+                    const float* src = ctx.getFloatOutBuffer(0, ch);
+                    if (src)
+                        std::memcpy(dst, src, buffer_size_ * sizeof(float));
+                    else
+                        std::memset(dst, 0, buffer_size_ * sizeof(float));
+                } else {
+                    std::memset(dst, 0, buffer_size_ * sizeof(float));
+                }
+            }
+            return true;
+        });
         pump_thread_   = std::thread([this]{ pumpLoop(); });
         engine_thread_ = std::thread([this]{ engineLoop(); });
     }
@@ -47,13 +80,14 @@ namespace uapmd {
         running_.store(false, std::memory_order_release);
         if (engine_thread_.joinable()) engine_thread_.join();
         if (pump_thread_.joinable())   pump_thread_.join();
+        engine_->setTrackOutputHandler({});
         engine_->setExternalPump(false);
     }
 
     void WebAudioEngineThread::engineLoop() {
-        uint64_t last_seq = 0;
+        uint32_t last_seq = 0;
         while (running_.load(std::memory_order_acquire)) {
-            uint64_t seq = sab_->host_seq.load(std::memory_order_acquire);
+            uint32_t seq = sab_->host_seq.load(std::memory_order_acquire);
             if (seq == last_seq) {
                 std::this_thread::yield();
                 continue;
@@ -61,6 +95,12 @@ namespace uapmd {
             last_seq = seq;
 
             try {
+                std::memset(sab_->track_output,
+                            0,
+                            static_cast<size_t>(kWebAudioMaxTracks) *
+                                kWebAudioChannels *
+                                buffer_size_ *
+                                sizeof(float));
                 engine_->processAudio(engine_ctx_);
             } catch (const std::exception& e) {
                 std::cerr << "[WebAudio] engineLoop processAudio exception: " << e.what() << std::endl;
@@ -78,6 +118,10 @@ namespace uapmd {
                 else
                     std::memset(dst, 0, buffer_size_ * sizeof(float));
             }
+
+            sab_->track_count.store(static_cast<uint32_t>(std::min<size_t>(engine_->tracks().size(),
+                                                                           kWebAudioMaxTracks)),
+                                    std::memory_order_release);
 
             sab_->engine_seq.store(seq, std::memory_order_release);
         }
@@ -137,44 +181,279 @@ namespace uapmd {
         }
     }
 
-    // ── Async worklet startup chain ───────────────────────────────────────────
+    // ── EM_JS helpers for the custom AudioWorklet processor ──────────────────
+    //
+    // A pure-JS AudioWorkletProcessor defined in uapmd-webclap-worklet.js:
+    //   • Receives the WASM heap SharedArrayBuffer + SAB byte offset at construction
+    //     via processorOptions so it can access WebAudioSAB directly.
+    //   • Handles wclap-* control messages (load plugin, unload, configure, etc.).
+    //   • In process(): ① runs WebCLAP plugins via wclap.mjs; ② signals host_seq;
+    //     ③ spin-waits engine_seq; ④ copies master_output → outputs[].
+    //
+    // The Emscripten AudioContext is still created the usual way so that
+    // emscripten_destroy_audio_context() works in the destructor.
 
-    struct WorkletStartCtx {
-        WebAudioWorkletIODevice* device;
-    };
+    // Load uapmd-webclap-worklet.js, create the AudioWorkletNode, and connect it
+    // to the AudioContext destination.  Called from start() after the AudioContext
+    // is created.  sabByteOffset is the byte address of WebAudioSAB inside the
+    // Emscripten WASM heap; engineQuantum is buffer_size_.
+    EM_JS(void, uapmd_load_webclap_worklet,
+          (EMSCRIPTEN_WEBAUDIO_T ctx,
+           int sabByteOffset,
+           int engineQuantum,
+           int hostSeqOffset,
+           int engineSeqOffset,
+           int trackCountOffset,
+           int masterOutOffset,
+           int trackOutOffset),
+    {
+        var audioCtx = emscriptenGetAudioObject(ctx);
+        audioCtx.audioWorklet.addModule('uapmd-webclap-worklet.js').then(function() {
+            var node = new AudioWorkletNode(audioCtx, 'uapmd-webclap', {
+                numberOfInputs:     0,
+                numberOfOutputs:    1,
+                outputChannelCount: [2],
+                processorOptions: {
+                    // Pass the Emscripten WASM heap SharedArrayBuffer and the byte
+                    // offset of the WebAudioSAB struct so the processor can access
+                    // SAB counters and audio buffers via Int32Array/Float32Array views.
+                    heapBuffer:     HEAPU8.buffer,
+                    sabByteOffset:  sabByteOffset,
+                    engineQuantum:  engineQuantum,
+                    offsets: {
+                        hostSeq: hostSeqOffset,
+                        engineSeq: engineSeqOffset,
+                        trackCount: trackCountOffset,
+                        masterOut: masterOutOffset,
+                        trackOut: trackOutOffset,
+                    }
+                }
+            });
+            node.connect(audioCtx.destination);
+            // Forward messages from the worklet processor to the C++ handler
+            // uapmd_webclap_on_worklet_message (defined in PluginFormatWebCLAP.cpp).
+            node.port.onmessage = function(e) {
+                var json = JSON.stringify(e.data);
+                var len  = lengthBytesUTF8(json) + 1;
+                var ptr  = _malloc(len);
+                stringToUTF8(json, ptr, len);
+                _uapmd_webclap_on_worklet_message(ptr);
+                _free(ptr);
+            };
+            // Compile uapmd-wclap-host.wasm and wasi.wasm on the main thread (fetch and URL are
+            // not available inside AudioWorkletGlobalScope) and send them to the worklet.
+            // The worklet's wclap-load-plugin handler waits for this message before
+            // initialising the host, so plugin loads issued before this resolves are queued.
+            // Fetch raw WASM bytes for uapmd-wclap-host and wasi on the main thread
+            // (fetch/URL are unavailable in AudioWorkletGlobalScope). Compiled
+            // WebAssembly.Module objects cannot cross the AudioWorklet MessagePort
+            // in Chrome, so we send ArrayBuffers and compile inside the worklet.
+            console.log('[uapmd] Fetching WCLAP host WASM bytes...');
+            Promise.all([
+                fetch('uapmd-wclap-host.wasm').then(function(r) { return r.arrayBuffer(); }),
+                fetch('es6/wasi/wasi.wasm').then(function(r) { return r.arrayBuffer(); }),
+            ]).then(function(buffers) {
+                console.log('[uapmd] WCLAP host WASM fetched, sending wclap-init-host');
+                node.port.postMessage({
+                    type:          'wclap-init-host',
+                    hostWasmBytes: buffers[0],
+                    wasiWasmBytes: buffers[1],
+                });
+            }).catch(function(err) {
+                console.error('[uapmd] Failed to fetch WCLAP host WASM:', err);
+            });
+            // Store globally so postMessageToWorklet can reach the port.
+            // Drain any messages that were queued before the node was ready
+            // (e.g. wclap-load-plugin posted before the user started audio).
+            Module._wclapWorkletNode = node;
+            var pending = Module._wclapPendingMessages;
+            if (pending) {
+                Module._wclapPendingMessages = null;
+                pending.forEach(function(msg) { node.port.postMessage(msg); });
+            }
+        }).catch(function(err) {
+            console.error('[uapmd] Failed to load uapmd-webclap-worklet.js:', err);
+        });
+    });
 
-    static void onWorkletProcessorCreated(EMSCRIPTEN_WEBAUDIO_T audioCtx, bool success, void* userData) {
-        auto* ctx = static_cast<WorkletStartCtx*>(userData);
-        if (!success) { delete ctx; return; }
+    // Post a JSON control message to the AudioWorkletNode's MessagePort.
+    // If the node does not exist yet (audio engine not started), the message is
+    // queued in Module._wclapPendingMessages and drained when the node is created.
+    EM_JS(void, uapmd_post_to_webclap_worklet_json, (const char* json),
+    {
+        var msg = JSON.parse(UTF8ToString(json));
+        var node = Module._wclapWorkletNode;
+        if (node) {
+            try {
+                node.port.postMessage(msg);
+            } catch(e) {
+                console.error('[uapmd] postMessageToWorklet failed:', e);
+            }
+        } else {
+            if (!Module._wclapPendingMessages)
+                Module._wclapPendingMessages = [];
+            Module._wclapPendingMessages.push(msg);
+        }
+    });
 
-        int outputChannelCounts[] = { static_cast<int>(kWebAudioChannels) };
-        EmscriptenAudioWorkletNodeCreateOptions opts{
-            .numberOfInputs  = 0,
-            .numberOfOutputs = 1,
-            .outputChannelCounts = outputChannelCounts,
-        };
-        auto node = emscripten_create_wasm_audio_worklet_node(
-            audioCtx, "uapmd-processor", &opts,
-            &WebAudioWorkletIODevice::audioProcessCallback, ctx->device);
-        ctx->device->onWorkletNodeCreated(node);
-        emscripten_audio_node_connect(node, audioCtx, 0, 0);
-        delete ctx;
+    // Fetch the plugin bundle on the main thread (fetch/URL are unavailable in
+    // AudioWorkletGlobalScope) and send the raw file bytes to the worklet.
+    // Compiled WebAssembly.Module objects cannot cross the AudioWorklet
+    // MessagePort in Chrome, so we send ArrayBuffers and compile inside the
+    // worklet. For .tar.gz bundles all extracted files are sent; for bare .wasm
+    // files the bytes are wrapped in a single-entry map keyed "module.wasm".
+    // On error the function reports directly to _uapmd_webclap_on_worklet_message.
+    EM_JS(void, uapmd_webclap_load_plugin_async, (const char* json_c),
+    {
+        var base = JSON.parse(UTF8ToString(json_c));
+        var url  = base.url;
+
+        function reportError(err) {
+            console.error('[uapmd] load plugin failed:', String(err));
+            var errMsg = JSON.stringify({
+                type:  'wclap-plugin-error',
+                reqId: base.reqId,
+                error: String(err),
+            });
+            var len = lengthBytesUTF8(errMsg) + 1;
+            var ptr = _malloc(len);
+            stringToUTF8(errMsg, ptr, len);
+            _uapmd_webclap_on_worklet_message(ptr);
+            _free(ptr);
+        }
+
+        function reportParameters(paramDescriptors) {
+            var msg = JSON.stringify({
+                type: 'wclap-parameters',
+                slot: base.slot,
+                paramDescriptors: paramDescriptors || [],
+            });
+            var len = lengthBytesUTF8(msg) + 1;
+            var ptr = _malloc(len);
+            stringToUTF8(msg, ptr, len);
+            _uapmd_webclap_on_worklet_message(ptr);
+            _free(ptr);
+        }
+
+        function readCString(memory, ptr) {
+            if (!ptr)
+                return "";
+            var bytes = new Uint8Array(memory.buffer);
+            var end = ptr;
+            while (end < bytes.length && bytes[end] !== 0)
+                end++;
+            return new TextDecoder('utf-8').decode(bytes.subarray(ptr, end));
+        }
+
+        function buildWclapInit(api, tarFiles) {
+            var wasmBuffer = tarFiles['module.wasm'];
+            if (!wasmBuffer)
+                throw new Error('No module.wasm found in WebCLAP bundle');
+            return WebAssembly.compile(wasmBuffer).then(function(wasmModule) {
+                var modulePages = Math.max(Math.ceil(wasmBuffer.byteLength / 65536) || 4, 4);
+                var memorySpec = { initial: modulePages, maximum: 32768, shared: true };
+                return api.getWclap({ url: url, files: tarFiles, module: wasmModule, memorySpec });
+            }).then(function(wclapInit) {
+                var fixedFiles = {};
+                Object.entries(wclapInit.files).forEach(function(entry) {
+                    var key = entry[0];
+                    var val = entry[1];
+                    if ((val instanceof ArrayBuffer && val.byteLength === 0) || key.indexOf('/._') >= 0)
+                        return;
+                    fixedFiles[key.startsWith('/') ? key : '/' + key] = val;
+                });
+                wclapInit.files = fixedFiles;
+                if (!wclapInit.memory && wclapInit.memorySpec)
+                    wclapInit.memory = new WebAssembly.Memory(wclapInit.memorySpec);
+                return wclapInit;
+            });
+        }
+
+        function ensureInspectorHost() {
+            if (!Module._wclapInspectorHostPromise) {
+                Module._wclapInspectorHostPromise = import('./wclap.mjs').then(function(api) {
+                    return api.getHost('./uapmd-wclap-host.wasm').then(function(hostInit) {
+                        return api.startHost(hostInit).then(function(host) {
+                            return {
+                                getWclap: api.getWclap,
+                                host: host,
+                            };
+                        });
+                    });
+                });
+            }
+            return Module._wclapInspectorHostPromise;
+        }
+
+        function inspectParameters(tarFiles) {
+            return ensureInspectorHost().then(function(api) {
+                return buildWclapInit(api, tarFiles).then(function(wclapInit) {
+                    return api.host.startWclap(wclapInit, null).then(function(instance) {
+                        var exp = api.host.hostInstance.exports;
+                        try {
+                            var ok = exp._wclapPluginSetup(instance.ptr, 48000, 128, 128);
+                            if (!ok)
+                                throw new Error('Inspector plugin setup failed');
+                            var paramsPtr = exp._wclapDescribeParameters(instance.ptr);
+                            var paramsJson = readCString(api.host.hostMemory, paramsPtr);
+                            reportParameters(paramsJson ? JSON.parse(paramsJson) : []);
+                        } finally {
+                            exp._wclapPluginDestroy(instance.ptr);
+                        }
+                    });
+                });
+            }).catch(function(err) {
+                console.warn('[uapmd] parameter inspection failed:', err);
+            });
+        }
+
+        function sendToWorklet(tarFiles) {
+            var msg = {
+                type:     'wclap-load-plugin',
+                reqId:    base.reqId,
+                slot:     base.slot,
+                url:      url,
+                tarFiles: tarFiles,
+            };
+            var node = Module._wclapWorkletNode;
+            if (node) {
+                node.port.postMessage(msg);
+            } else {
+                // Queue for when the worklet node is created.  If the audio
+                // engine is currently off, kick it on automatically so the
+                // plugin can load without requiring the user to manually press
+                // "Audio Engine: On".
+                if (!Module._wclapPendingMessages)
+                    Module._wclapPendingMessages = [];
+                Module._wclapPendingMessages.push(msg);
+                if (typeof Module._uapmd_debug_enable_audio_engine === 'function')
+                    Module._uapmd_debug_enable_audio_engine(1);
+            }
+        }
+
+        Promise.all([
+            fetch(url),
+            import('./es6/targz.mjs'),
+        ]).then(function(results) {
+            var response   = results[0];
+            var expandTarGz = results[1].default;
+            if (response.headers.get('Content-Type') === 'application/wasm') {
+                return response.arrayBuffer().then(function(bytes) {
+                    var tarFiles = { 'module.wasm': bytes };
+                    inspectParameters(tarFiles);
+                    sendToWorklet(tarFiles);
+                });
+            }
+            return expandTarGz(response).then(function(tarFiles) {
+                inspectParameters(tarFiles);
+                sendToWorklet(tarFiles);
+            });
+        }).catch(reportError);
+    });
+
+    void WebAudioWorkletIODevice::postMessageToWorklet(const char* json) const {
+        uapmd_post_to_webclap_worklet_json(json);
     }
-
-    static void onWorkletThreadStarted(EMSCRIPTEN_WEBAUDIO_T audioCtx, bool success, void* userData) {
-        auto* ctx = static_cast<WorkletStartCtx*>(userData);
-        if (!success) { delete ctx; return; }
-
-        WebAudioWorkletProcessorCreateOptions procOpts{
-            .name = "uapmd-processor",
-            .numAudioParams = 0,
-            .audioParamDescriptors = nullptr,
-        };
-        emscripten_create_wasm_audio_worklet_processor_async(
-            audioCtx, &procOpts, onWorkletProcessorCreated, ctx);
-    }
-
-    static uint8_t sAudioWorkletStack[8192] __attribute__((aligned(16)));
 
     uapmd_status_t WebAudioWorkletIODevice::start() {
         if (is_playing_)
@@ -183,8 +462,6 @@ namespace uapmd {
 
         if (engine_thread_) {
             engine_thread_->start();
-            // Publish after start() so the AudioWorklet thread sees this only
-            // once the pthreads are running and setExternalPump(true) is done.
             engine_thread_ready_.store(engine_thread_.get(), std::memory_order_release);
         }
 
@@ -195,10 +472,17 @@ namespace uapmd {
         audio_ctx_ = emscripten_create_audio_context(&attrs);
         emscripten_resume_audio_context_sync(audio_ctx_);
 
-        auto* ctx = new WorkletStartCtx{ this };
-        emscripten_start_wasm_audio_worklet_thread_async(
-            audio_ctx_, sAudioWorkletStack, sizeof(sAudioWorkletStack),
-            onWorkletThreadStarted, ctx);
+        // Load uapmd-webclap-worklet.js and create the AudioWorkletNode.
+        // The processor receives the WASM heap buffer + SAB byte offset via
+        // processorOptions and handles audio I/O and WebCLAP plugin processing.
+        uapmd_load_webclap_worklet(audio_ctx_,
+                                   static_cast<int>(reinterpret_cast<uintptr_t>(&sab_)),
+                                   static_cast<int>(buffer_size_),
+                                   static_cast<int>(offsetof(WebAudioSAB, host_seq)),
+                                   static_cast<int>(offsetof(WebAudioSAB, engine_seq)),
+                                   static_cast<int>(offsetof(WebAudioSAB, track_count)),
+                                   static_cast<int>(offsetof(WebAudioSAB, master_output)),
+                                   static_cast<int>(offsetof(WebAudioSAB, track_output)));
         return 0;
     }
 
@@ -210,65 +494,6 @@ namespace uapmd {
         if (engine_thread_)
             engine_thread_->stop();
         return 0;
-    }
-
-    // ── AudioWorklet process callback (runs on AudioWorklet WASM Worker) ──────
-
-    bool WebAudioWorkletIODevice::audioProcessCallback(
-        int /*numInputs*/, const AudioSampleFrame* /*inputs*/,
-        int numOutputs, AudioSampleFrame* outputs,
-        int /*numParams*/, const AudioParamFrame* /*params*/,
-        void* userData)
-    {
-        auto* self = static_cast<WebAudioWorkletIODevice*>(userData);
-
-        // Use the atomic flag — guarantees visibility across the main-thread write
-        // in start() and this AudioWorklet-thread read.
-        auto* engineThread = self->engine_thread_ready_.load(std::memory_order_acquire);
-
-        if (engineThread) {
-            const uint32_t engine_quantum = engineThread->bufferSize();
-            const uint32_t quanta_per_render = engine_quantum / kWebAudioQuantum;
-
-            // On the first slice of a new engine render, trigger processAudio().
-            if (self->accum_count_ == 0) {
-                uint64_t seq = self->sab_.host_seq.load(std::memory_order_relaxed) + 1;
-                self->sab_.host_seq.store(seq, std::memory_order_release);
-                // Spin-wait for engine to finish its full engine_quantum render.
-                while (self->sab_.engine_seq.load(std::memory_order_acquire) != seq)
-                    ; // engine must finish before the 128-frame AudioWorklet deadline
-            }
-
-            // Serve slice accum_count_ (128 frames) from the SAB.
-            if (numOutputs > 0) {
-                const int samplesPerCh = outputs[0].samplesPerChannel;
-                const uint32_t chCount = std::min(
-                    static_cast<uint32_t>(outputs[0].numberOfChannels), kWebAudioChannels);
-                const uint32_t offset = self->accum_count_ * kWebAudioQuantum;
-                for (uint32_t ch = 0; ch < chCount; ch++) {
-                    // Planar layout: ch0[0..engine_quantum) | ch1[0..engine_quantum) | ...
-                    const float* src = self->sab_.master_output + ch * engine_quantum + offset;
-                    float* dst = outputs[0].data + ch * samplesPerCh;
-                    std::memcpy(dst, src, kWebAudioQuantum * sizeof(float));
-                }
-            }
-
-            if (++self->accum_count_ >= quanta_per_render)
-                self->accum_count_ = 0;
-        } else {
-            // Engine thread not ready yet: output silence.
-            // Never call processAudio/pumpAudio from the AudioWorklet thread —
-            // they access mutexes (std::mutex → Atomics.wait) which are
-            // forbidden on the AudioWorklet rendering thread.
-            if (numOutputs > 0) {
-                const int samplesPerCh = outputs[0].samplesPerChannel;
-                const uint32_t chCount = static_cast<uint32_t>(outputs[0].numberOfChannels);
-                for (uint32_t ch = 0; ch < chCount; ch++)
-                    std::memset(outputs[0].data + ch * samplesPerCh, 0,
-                                samplesPerCh * sizeof(float));
-            }
-        }
-        return true; // keep processing
     }
 
     // ── WebAudioWorkletIODeviceManager ────────────────────────────────────────

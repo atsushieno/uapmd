@@ -10,6 +10,9 @@ endif ()
 if (ANDROID)
     set(REMIDY_SUPPORT_AAP ON)
 endif ()
+if (EMSCRIPTEN)
+    set(REMIDY_SUPPORT_WEBCLAP ON)
+endif ()
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     set (REMIDY_LINUX_DESKTOP ON)
 endif ()
@@ -19,6 +22,12 @@ if (UNIX AND NOT APPLE AND WAYLAND_CLIENT_FOUND)
     )
 endif ()
 
+
+if (${REMIDY_SUPPORT_WEBCLAP})
+    set(REMIDY_WEBCLAP_SUPPORT_SOURCES
+            src/webclap/PluginFormatWebCLAP.cpp
+    )
+endif ()
 
 if (${REMIDY_SUPPORT_AAP})
     set(REMIDY_AAP_SUPPORT_SOURCES
@@ -275,6 +284,7 @@ target_sources(remidy PRIVATE
         ${REMIDY_LV2_SUPPORT_SOURCES}
         ${REMIDY_CLAP_SUPPORT_SOURCES}
         ${REMIDY_AAP_SUPPORT_SOURCES}
+        ${REMIDY_WEBCLAP_SUPPORT_SOURCES}
 )
 
 add_library(remidy::remidy ALIAS remidy)

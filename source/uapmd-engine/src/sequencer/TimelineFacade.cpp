@@ -583,10 +583,6 @@ namespace uapmd {
             return bounds;
         }
 
-        void processTracksAudio(AudioProcessContext& process) override {
-            processTracksAudio(process, engine_.data());
-        }
-
         void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) override {
             // Hold a snapshot reference for the duration of this callback so that
             // tracks added or removed on the UI thread cannot destroy TrackList

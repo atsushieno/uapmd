@@ -1,6 +1,7 @@
 #pragma once
 
 #include "remidy/remidy.hpp"
+#include <cstddef>
 #include <optional>
 
 namespace remidy {

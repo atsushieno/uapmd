@@ -35,12 +35,21 @@ namespace uapmd {
     // limit.  The SAB master_output array is sized to hold one full engine render.
     static constexpr uint32_t kWebAudioMaxQuantum = 2048;
     static constexpr uint32_t kWebAudioBufferSize = kWebAudioChannels * kWebAudioMaxQuantum;
+    static constexpr uint32_t kWebAudioMaxTracks  = 16;
 
     struct WebAudioSAB {
-        std::atomic<uint64_t> host_seq{0};
-        std::atomic<uint64_t> engine_seq{0};
-        float audio_input [kWebAudioChannels * kWebAudioQuantum]{};  // planar L/R from AudioWorklet (always 128 frames)
-        float master_output[kWebAudioBufferSize]{};                  // planar L/R to AudioWorklet (up to kWebAudioMaxQuantum frames)
+        // 32-bit counters: JS side accesses them via Int32Array + Atomics.load/store.
+        // 64-bit counters would require BigInt64Array, which is unnecessary here since
+        // the counter cannot overflow 32 bits within any realistic audio session length.
+        std::atomic<uint32_t> host_seq{0};    //  bytes  0-3  — AudioWorklet → engine
+        std::atomic<uint32_t> engine_seq{0};  //  bytes  4-7  — engine → AudioWorklet
+        std::atomic<uint32_t> track_count{0}; //  bytes  8-11 — engine → AudioWorklet track stem count
+        // byte  8:  audio_input  [kWebAudioChannels * kWebAudioQuantum]  = 1024 bytes
+        float audio_input [kWebAudioChannels * kWebAudioQuantum]{};
+        // engine → device (post-native mix, pre-master-WebCLAP)
+        float master_output[kWebAudioBufferSize]{};
+        // engine → AudioWorklet dry per-track stems for worklet-hosted WebCLAP chains
+        float track_output[kWebAudioMaxTracks * kWebAudioBufferSize]{};
     };
 
     // ── WebAudioEngineThread ──────────────────────────────────────────────────
@@ -111,13 +120,11 @@ namespace uapmd {
         bool useAutoBufferSize() override { return false; }
         bool useAutoBufferSize(bool) override { return false; }
 
-        // Called from the AudioWorklet WASM Worker thread each quantum.
-        // When engine_thread_ is set: rendezvous via SAB.
-        // Fallback (engine_thread_ == nullptr): call callbacks_ directly.
-        static bool audioProcessCallback(int numInputs, const AudioSampleFrame* inputs,
-                                         int numOutputs, AudioSampleFrame* outputs,
-                                         int numParams, const AudioParamFrame* params,
-                                         void* userData);
+        // Post a JSON-serialised control message to the AudioWorkletNode's MessagePort.
+        // The message is sent from the Emscripten main pthread to the
+        // uapmd-webclap-worklet.js processor running on the AudioWorklet thread.
+        // Used by PluginFormatWebCLAP to load/unload plugin slots.
+        void postMessageToWorklet(const char* json) const;
 
         // Called by the worklet startup chain (file-static callbacks in the .cpp)
         // once the AudioWorkletNode is created and connected.
@@ -130,11 +137,8 @@ namespace uapmd {
 
         std::vector<std::function<uapmd_status_t(AudioProcessContext&)>> callbacks_;
 
-        // Counts how many kWebAudioQuantum-sized slices have been served from the
-        // current engine render.  Resets to 0 after buffer_size_/kWebAudioQuantum
-        // slices.  Accessed only from the AudioWorklet thread — no synchronisation
-        // needed.
-        uint32_t                               accum_count_{0};
+        // accum_count_ has moved to uapmd-webclap-worklet.js (the JS AudioWorkletProcessor
+        // tracks which slice of the engine render is being served).
 
         WebAudioSAB                            sab_{};
         std::unique_ptr<WebAudioEngineThread> engine_thread_{};

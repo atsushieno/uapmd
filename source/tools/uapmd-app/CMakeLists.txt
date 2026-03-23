@@ -24,7 +24,7 @@ if(UAPMD_TARGET_WASM)
         -pthread \
         -s PTHREAD_POOL_SIZE=8 \
         -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8','allocateUTF8','FS'] \
-        -s EXPORTED_FUNCTIONS=['_main','_uapmd_mcp_call','_uapmd_eval','_uapmd_debug_import_audio','_uapmd_debug_load_project','_uapmd_debug_enable_audio_engine','_uapmd_debug_start_playback','_uapmd_debug_get_playback_position_samples']")
+        -s EXPORTED_FUNCTIONS=['_main','_uapmd_mcp_call','_uapmd_eval','_uapmd_debug_import_audio','_uapmd_debug_load_project','_uapmd_debug_enable_audio_engine','_uapmd_debug_start_playback','_uapmd_debug_get_playback_position_samples','_uapmd_webclap_on_worklet_message']")
     if(NOT UAPMD_WASM_USE_VCPKG_SDL3)
         # Emscripten port: the linker flag activates the bundled SDL3 port at link time.
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -s USE_SDL=3")
@@ -91,13 +91,15 @@ if(UAPMD_BUILDING_WASM)
     )
     set(_UAPMD_WASM_WEB_SRC "${CMAKE_CURRENT_SOURCE_DIR}/web")
     set(_UAPMD_WASM_WEB_DST "${CMAKE_CURRENT_BINARY_DIR}")
-    file(GLOB_RECURSE _UAPMD_WASM_WEB_FILES
-            RELATIVE "${_UAPMD_WASM_WEB_SRC}"
-            "${_UAPMD_WASM_WEB_SRC}/*")
-    list(FILTER _UAPMD_WASM_WEB_FILES EXCLUDE REGEX "^\\.")
+    set(_UAPMD_WASM_WEB_RUNTIME_FILES
+            "index.html"
+            "coop-coep-sw.js"
+            "audioworklet-env-fix.js"
+            "uapmd-webclap-worklet.js"
+    )
     set(_UAPMD_WASM_WEB_STAMP "${_UAPMD_WASM_WEB_DST}/.web-assets.stamp")
     set(_UAPMD_WASM_WEB_SOURCE_FILES)
-    foreach(_web_file IN LISTS _UAPMD_WASM_WEB_FILES)
+    foreach(_web_file IN LISTS _UAPMD_WASM_WEB_RUNTIME_FILES)
         list(APPEND _UAPMD_WASM_WEB_SOURCE_FILES "${_UAPMD_WASM_WEB_SRC}/${_web_file}")
     endforeach()
     add_custom_command(

@@ -19,6 +19,8 @@ class PluginFormatManager {
 
 #if ANDROID
     std::unique_ptr<remidy::PluginFormatAAP> aap_;
+#elif defined(__EMSCRIPTEN__)
+    std::unique_ptr<remidy::PluginFormatWebCLAP> webclap_;
 #elif defined(__APPLE__) && TARGET_OS_IPHONE
     std::unique_ptr<remidy::PluginFormatAU> au_;
 #else
@@ -41,4 +43,3 @@ public:
 };
 
 } // namespace remidy_tooling
-

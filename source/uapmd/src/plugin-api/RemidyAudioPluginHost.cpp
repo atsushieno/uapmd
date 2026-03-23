@@ -5,7 +5,9 @@
 #if _WIN32
 #include <Windows.h>
 #endif
-
+#ifdef __EMSCRIPTEN__
+#include "../../../remidy/src/webclap/PluginFormatWebCLAP.hpp"
+#endif
 #include "remidy-tooling/remidy-tooling.hpp"
 
 namespace uapmd {
@@ -47,7 +49,18 @@ namespace uapmd {
         }
 
         bool bypassed() const override { return bypassed_; }
-        void bypassed(bool value) override { bypassed_ = value; }
+        void bypassed(bool value) override {
+            bypassed_ = value;
+            // For WebCLAP the actual DSP runs in the AudioWorklet thread and is
+            // gated by info.active, which is not touched by the C++ bypassed_ flag.
+            // Relay the state change so the worklet stops/resumes generating audio.
+            if (instance && instance->info() && instance->info()->format() == "WebCLAP") {
+                if (value)
+                    instance->stopProcessing();
+                else
+                    instance->startProcessing();
+            }
+        }
 
         uapmd_status_t startProcessing() override {
             if (!instance)
@@ -168,7 +181,7 @@ namespace uapmd {
         }
 
         double getParameterValue(int32_t index) override {
-            double value;
+            double value = 0.0;
             instance->parameters()->getParameter(index, &value);
             return value;
         }
@@ -188,6 +201,8 @@ namespace uapmd {
         std::string getPerNoteControllerValueString(uint8_t note, uint8_t index, double value) override {
             return instance->parameters()->valueToStringPerNote({ .note = note }, index, value);
         }
+
+        remidy::PluginInstance* rawInstance() const { return instance; }
 
         bool hasUISupport() override {
             auto ui = ensureUISupport();
@@ -340,7 +355,14 @@ void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
     scanning->performPluginScanning(false, remidy_tooling::ScanMode::InProcess, rescan);
 }
 
-void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uint32_t inputChannels, uint32_t outputChannels, bool offlineMode, std::string &formatName, std::string &pluginId, std::function<void(int32_t instanceId, std::string error)>&& callback) {
+void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate,
+                                                        uint32_t bufferSize,
+                                                        std::optional<uint32_t> mainInputChannels,
+                                                        std::optional<uint32_t> mainOutputChannels,
+                                                        bool offlineMode,
+                                                        std::string &formatName,
+                                                        std::string &pluginId,
+                                                        std::function<void(int32_t instanceId, std::string error)>&& callback) {
     auto format = *(scanning->formats() | std::views::filter([formatName](auto f) { return f->name() == formatName; })).begin();
     auto plugins = scanning->catalog().getPlugins();
     auto entry = std::ranges::find_if(plugins, [&formatName,&pluginId](auto e) {
@@ -350,17 +372,12 @@ void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate, uin
         callback(-1, "Plugin not found");
     else {
         auto instancing = std::make_shared<remidy_tooling::PluginInstancing>(*scanning, format, *entry);
-        auto& request = instancing->configurationRequest();
-        request.sampleRate = static_cast<uint32_t>(sampleRate);
-        if (inputChannels > 0)
-            request.mainInputChannels = inputChannels;
-        else
-            request.mainInputChannels.reset();
-        if (outputChannels > 0)
-            request.mainOutputChannels = outputChannels;
-        else
-            request.mainOutputChannels.reset();
-        request.offlineMode = offlineMode;
+        auto& configuration = instancing->configurationRequest();
+        configuration.sampleRate = sampleRate;
+        configuration.bufferSizeInSamples = bufferSize;
+        configuration.offlineMode = offlineMode;
+        configuration.mainInputChannels = mainInputChannels;
+        configuration.mainOutputChannels = mainOutputChannels;
         auto cb = std::move(callback);
         instancing->makeAlive([this,instancing,cb](std::string error) {
             if (error.empty())
@@ -390,4 +407,24 @@ std::vector<int32_t> uapmd::RemidyAudioPluginHost::instanceIds() {
 uapmd::AudioPluginInstanceAPI * uapmd::RemidyAudioPluginHost::getInstance(int32_t instanceId) {
     const auto &i = instances[instanceId];
     return i ? i.get() : nullptr;
+}
+
+void uapmd::RemidyAudioPluginHost::onTrackGraphNodeAdded(int32_t instanceId, int32_t trackIndex, bool isMasterTrack, uint32_t order) {
+#ifdef __EMSCRIPTEN__
+    auto it = instances.find(instanceId);
+    if (it == instances.end() || !it->second)
+        return;
+    auto* remidy_instance = dynamic_cast<RemidyAudioPluginInstance*>(it->second.get());
+    if (!remidy_instance)
+        return;
+    auto* webclap_instance = dynamic_cast<remidy::PluginInstanceWebCLAP*>(remidy_instance->rawInstance());
+    if (!webclap_instance)
+        return;
+    webclap_instance->attachToTrackGraph(trackIndex, isMasterTrack, order);
+#else
+    (void) instanceId;
+    (void) trackIndex;
+    (void) isMasterTrack;
+    (void) order;
+#endif
 }

@@ -11,6 +11,10 @@ if (NOT ANDROID AND NOT EMSCRIPTEN AND NOT IOS)
     add_subdirectory(uapmd-scan)
 endif ()
 add_subdirectory(uapmd-app)
+if(EMSCRIPTEN)
+    add_subdirectory(wclap-host)
+    add_dependencies(uapmd-app uapmd-wclap-host)
+endif()
 
 # Install targets
 if (NOT ANDROID AND NOT EMSCRIPTEN)

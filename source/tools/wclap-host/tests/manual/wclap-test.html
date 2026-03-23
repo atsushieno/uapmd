@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<!--
+  Manual integration test: uapmd-wclap-host.wasm + wclap.mjs.
+
+  What this tests:
+    1. uapmd-wclap-host.wasm loads and instantiates correctly via wclap.mjs.
+    2. Two known example plugins (.wclap.tar.gz) can be fetched, compiled, and
+       wrapped in a C++ Instance via host.startWclap().
+    3. No JS or WASM exceptions during the setup sequence.
+
+  What this does NOT test:
+    - AudioWorklet integration (no audio output).
+    - CLAP factory enumeration or plugin audio processing.
+
+  Requirements:
+    - Must be served over HTTPS or localhost with COOP/COEP headers
+      (crossOriginIsolated === true) — SharedArrayBuffer requires it.
+    - The served directory must also contain wclap.mjs, es6/, and
+      uapmd-wclap-host.wasm from a wasm build output.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>uapmd-wclap-host.wasm integration test</title>
+  <style>
+    body  { font-family: monospace; background: #1a1a1a; color: #ddd; padding: 1.5em; }
+    h2    { color: #fff; margin-bottom: 0.25em; }
+    .meta { color: #888; margin-bottom: 1em; }
+    #log  { white-space: pre-wrap; line-height: 1.6; }
+    .ok   { color: #4c4; }
+    .warn { color: #cc4; }
+    .err  { color: #f44; }
+    .hdr  { color: #88f; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>uapmd-wclap-host.wasm + wclap.mjs</h2>
+  <p class="meta">
+    Cross-origin isolated: <strong id="coi">checking…</strong>
+  </p>
+  <div id="log"></div>
+
+  <script type="module">
+    import { getHost, startHost, getWclap } from './wclap.mjs';
+
+    const logEl = document.getElementById('log');
+    const coiEl = document.getElementById('coi');
+
+    function log(msg, cls) {
+      const span = document.createElement('span');
+      if (cls) span.className = cls;
+      span.textContent = msg + '\n';
+      logEl.appendChild(span);
+      console.log('[wclap-test]', msg);
+    }
+
+    coiEl.textContent = crossOriginIsolated
+      ? 'YES ✅'
+      : 'NO ❌  (SharedArrayBuffer not available — check COOP/COEP headers)';
+
+    const PLUGIN_URLS = [
+      'https://webclap.github.io/browser-test-host/examples/signalsmith-basics/basics.wclap.tar.gz',
+      'https://webclap.github.io/browser-test-host/examples/signalsmith-clap-cpp/example-plugins.wclap.tar.gz',
+    ];
+
+    (async () => {
+      log('── Step 1: load uapmd-wclap-host.wasm ───────────────────────', 'hdr');
+      let host;
+      try {
+        const hostInit = await getHost('./uapmd-wclap-host.wasm');
+        log('  getHost() → module compiled', 'ok');
+
+        host = await startHost(hostInit);
+        log('  startHost() → WclapHost instantiated', 'ok');
+      } catch (e) {
+        log(`  FATAL: ${e}`, 'err');
+        console.error(e);
+        return;
+      }
+
+      log('\n── Step 2: load example plugins ─────────────────────────────', 'hdr');
+
+      const createWorkerFn = (_host, threadData) => {
+        log('  WARNING: createWorkerFn called unexpectedly (thread spawning not supported)', 'warn');
+        console.warn('Unexpected createWorkerFn call', threadData);
+        return null;
+      };
+
+      let allOk = true;
+      for (const url of PLUGIN_URLS) {
+        const name = url.split('/').pop();
+        log(`\n  ${name}`, 'hdr');
+        try {
+          const wclapInit = await getWclap(url);
+          log('    getWclap() → WASM module compiled', 'ok');
+
+          const { ptr } = await host.startWclap(wclapInit, createWorkerFn);
+          log(`    startWclap() → Instance* = 0x${ptr.toString(16)}`, 'ok');
+        } catch (e) {
+          log(`    ERROR: ${e}`, 'err');
+          console.error(e);
+          allOk = false;
+        }
+      }
+
+      log('\n─────────────────────────────────────────────────────────────', 'hdr');
+      if (allOk)
+        log('PASS ✅  — uapmd-wclap-host.wasm + wclap.mjs working', 'ok');
+      else
+        log('PARTIAL ⚠  — one or more plugins failed (see above)', 'warn');
+    })();
+  </script>
+</body>
+</html>

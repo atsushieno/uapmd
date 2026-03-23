@@ -71,12 +71,13 @@ namespace uapmd {
             if (!bypassed)
                 node->processInputMapping(process);
             if (bypassed) {
-                if (i + 1 < nodes.size()) {
-                    // Not the last node: pass audio through so the next plugin receives the signal
-                    process.copyInputsToOutputs();
+                // Pass audio through regardless of position so the signal is
+                // preserved when a plugin is disabled.  For a synthesizer that
+                // is the sole node on a track, inputs are empty and
+                // copyInputsToOutputs() produces silence — which is correct.
+                process.copyInputsToOutputs();
+                if (i + 1 < nodes.size())
                     process.advanceToNextNode();
-                }
-                // Last bypassed node: leave output zeroed (silence from this track)
                 continue;
             }
 
