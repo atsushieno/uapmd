@@ -1,12 +1,6 @@
 name: publish pages
 
 on:
-  push:
-    branches:
-      - main
-  release:
-    types:
-      - published
   workflow_dispatch:
     inputs:
       version_tag:
@@ -50,7 +44,7 @@ jobs:
       uses: actions/upload-artifact@v6
       with:
         name: pages-wasm
-        path: cmake-build-wasm/source/tools/uapmd-app/*
+        path: cmake-build-wasm/source/tools/uapmd-app
 
   deploy:
     name: deploy to gh-pages
@@ -59,7 +53,7 @@ jobs:
     permissions:
       contents: write
     env:
-      VERSION_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.version_tag }}
+      VERSION_TAG: ${{ github.event.inputs.version_tag }}
     steps:
     - name: checkout
       uses: actions/checkout@v6
