@@ -213,7 +213,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
             }
 
             case 'wclap-load-plugin': {
-                const { reqId, slot, url, tarFiles } = msg;
+                const { reqId, slot, url, pluginId, tarFiles } = msg;
                 try {
                     // Lazy host initialisation (shared across all slots).
                     // Waits for wclap-init-host to deliver the compiled modules because
@@ -246,6 +246,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                     const memorySpec = { initial: modulePages, maximum: 32768, shared: true };
 
                     const wclapInit = await getWclap({ url, files: tarFiles, module: wasmModule, memorySpec });
+                    wclapInit.pluginPath = pluginId ? `${url}#plugin=${pluginId}` : url;
 
                     // Rebuild the file map so every path starts with '/' (required by
                     // WASI vfs_createFile) while also dropping:
@@ -269,6 +270,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                         outROff: 0,
                         inLOff: 0,
                         inROff: 0,
+                        pluginId: pluginId || '',
                         files: fixedFiles,
                     });
 
