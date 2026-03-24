@@ -317,6 +317,8 @@ namespace uapmd {
     {
         var base = JSON.parse(UTF8ToString(json_c));
         var url  = base.url;
+        var pluginId = base.pluginId || "";
+        var pluginPath = pluginId ? (url + '#plugin=' + pluginId) : url;
 
         function reportError(err) {
             console.error('[uapmd] load plugin failed:', String(err));
@@ -387,6 +389,7 @@ namespace uapmd {
                 wclapInit.files = fixedFiles;
                 if (!wclapInit.memory && wclapInit.memorySpec)
                     wclapInit.memory = new WebAssembly.Memory(wclapInit.memorySpec);
+                wclapInit.pluginPath = pluginPath;
                 return wclapInit;
             });
         }
@@ -438,6 +441,7 @@ namespace uapmd {
                 reqId:    base.reqId,
                 slot:     base.slot,
                 url:      url,
+                pluginId: pluginId,
                 tarFiles: tarFiles,
             };
             var node = Module._wclapWorkletNode;

@@ -6,6 +6,7 @@
 #include <emscripten.h>
 #include <iostream>
 #include <sstream>
+#include <string_view>
 #include <umppi/umppi.hpp>
 
 // Forward declarations: defined in WebAudioWorkletIODevice.cpp as EM_JS functions.
@@ -163,27 +164,60 @@ EM_JS(void, uapmd_webclap_unbind_ui_slot, (uint32_t slot), {
 
 namespace remidy {
 
-// Hardcoded plugin catalog — two known example bundles returned unconditionally.
-// Plugin descriptors will eventually be discovered at runtime via the CLAP
-// factory chain once a plugin is loaded.
+// Hardcoded WebCLAP bundle catalog. Each bundle may expose multiple CLAP
+// descriptors, so the catalog expands one bundle URL into multiple entries.
 
-struct KnownPlugin {
-    const char* url;
+struct KnownBundlePlugin {
+    const char* clapId;
     const char* displayName;
 };
 
-static constexpr KnownPlugin kKnownPlugins[] = {
+struct KnownBundle {
+    const char* url;
+    const KnownBundlePlugin* plugins;
+    size_t pluginCount;
+};
+
+static constexpr KnownBundlePlugin kSignalsmithBasicsPlugins[] = {
+    {"uk.co.signalsmith.basics.chorus", "[Basics] Chorus"},
+    {"uk.co.signalsmith.basics.limiter", "[Basics] Limiter"},
+    {"uk.co.signalsmith.basics.freq-shifter", "[Basics] Frequency Shifter"},
+    {"uk.co.signalsmith.basics.analyser", "[Basics] Analyser"},
+    {"uk.co.signalsmith.basics.crunch", "[Basics] Crunch"},
+    {"uk.co.signalsmith.basics.reverb", "[Basics] Reverb"},
+};
+
+static constexpr KnownBundlePlugin kSignalsmithCppExamplePlugins[] = {
+    {"uk.co.signalsmith-audio.plugins.example-audio-plugin", "C++ Example Audio Plugin (Chorus)"},
+    {"uk.co.signalsmith-audio.plugins.example-note-plugin", "C++ Example Note Plugin"},
+    {"uk.co.signalsmith-audio.plugins.example-synth", "C++ Example Synth"},
+    {"uk.co.signalsmith-audio.plugins.example-keyboard", "C++ Example Virtual Keyboard"},
+};
+
+static constexpr KnownBundle kKnownBundles[] = {
     {
         "https://webclap.github.io/browser-test-host/examples/signalsmith-basics/"
             "basics.wclap.tar.gz",
-        "Signalsmith Basics"
+        kSignalsmithBasicsPlugins,
+        std::size(kSignalsmithBasicsPlugins),
     },
     {
         "https://webclap.github.io/browser-test-host/examples/signalsmith-clap-cpp/"
             "example-plugins.wclap.tar.gz",
-        "Signalsmith CLAP C++"
+        kSignalsmithCppExamplePlugins,
+        std::size(kSignalsmithCppExamplePlugins),
     },
 };
+
+static const char* findKnownBundleUrlForPluginId(std::string_view pluginId) {
+    for (const auto& bundle : kKnownBundles) {
+        for (size_t i = 0; i < bundle.pluginCount; ++i) {
+            if (pluginId == bundle.plugins[i].clapId)
+                return bundle.url;
+        }
+    }
+    return nullptr;
+}
 
 struct WebClapUiMessage {
     bool hasUi{};
@@ -423,6 +457,9 @@ void PluginFormatWebCLAPImpl::createInstance(
     auto& state = webclapGlobalState();
     const uint32_t slot   = state.next_slot.fetch_add(1, std::memory_order_relaxed);
     const uint32_t req_id = state.next_req_id.fetch_add(1, std::memory_order_relaxed);
+    std::string clapId = info->pluginId();
+    const char* bundleUrlPtr = findKnownBundleUrlForPluginId(clapId);
+    std::string bundleUrl = bundleUrlPtr ? std::string{bundleUrlPtr} : info->pluginId();
 
     {
         std::lock_guard<std::mutex> lock(state.pending_mutex);
@@ -435,7 +472,10 @@ void PluginFormatWebCLAPImpl::createInstance(
     json << "{\"type\":\"wclap-load-plugin\""
          << ",\"reqId\":"  << req_id
          << ",\"slot\":"   << slot
-         << ",\"url\":\""  << info->pluginId() << "\""
+         << ",\"url\":\""  << bundleUrl << "\"";
+    if (!clapId.empty() && clapId != bundleUrl)
+        json << ",\"pluginId\":\"" << clapId << "\"";
+    json
          << "}";
     uapmd_webclap_load_plugin_async(json.str().c_str());
 }
@@ -544,13 +584,16 @@ std::vector<std::unique_ptr<PluginCatalogEntry>>
 PluginScanningWebCLAP::scanAllAvailablePlugins(bool /*requireFastScanning*/) {
     std::vector<std::unique_ptr<PluginCatalogEntry>> result;
     std::string format_name = owner_->name();
-    for (const auto& p : kKnownPlugins) {
-        auto e = std::make_unique<PluginCatalogEntry>();
-        e->format(format_name);
-        std::string id{p.url};
-        e->pluginId(id);
-        e->displayName(p.displayName);
-        result.emplace_back(std::move(e));
+    for (const auto& bundle : kKnownBundles) {
+        for (size_t i = 0; i < bundle.pluginCount; ++i) {
+            const auto& plugin = bundle.plugins[i];
+            auto e = std::make_unique<PluginCatalogEntry>();
+            e->format(format_name);
+            std::string id{plugin.clapId};
+            e->pluginId(id);
+            e->displayName(plugin.displayName);
+            result.emplace_back(std::move(e));
+        }
     }
     return result;
 }

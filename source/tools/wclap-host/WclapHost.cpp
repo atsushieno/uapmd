@@ -227,6 +227,7 @@ struct SlotState {
     float localOutR[2048]{};
     uint32_t last_param_write_index = 0;
     double last_param_write_value = 0.0;
+    std::string selected_plugin_id{};
 };
 
 static uint32_t in_events_size(void *ctx, Pointer<const wclap_input_events>) {
@@ -1025,6 +1026,12 @@ int32_t _wclapPluginSetup(Instance *inst,
     auto maxF = static_cast<uint32_t>(maxBuf);
     auto *state = new SlotState{};
     state->owner_inst = inst;
+    if (auto path = inst->path(); path) {
+        std::string_view pluginPath{path};
+        static constexpr std::string_view marker = "#plugin=";
+        if (auto pos = pluginPath.find(marker); pos != std::string_view::npos)
+            state->selected_plugin_id = std::string{pluginPath.substr(pos + marker.size())};
+    }
 
     // Register host callbacks before init() so the plugin can call back.
     wclap_host h{};
@@ -1125,15 +1132,34 @@ int32_t _wclapPluginSetup(Instance *inst,
         return 0;
     }
 
-    // Read the first plugin descriptor's ID string.
-    auto descPtr = inst->call(factVal.get_plugin_descriptor, factPtr, 0u);
-    if (descPtr.wasmPointer == 0) {
-        std::cerr << "[wclap] get_plugin_descriptor(0) returned null\n";
-        delete state;
-        return 0;
+    std::string pluginId = state->selected_plugin_id;
+    if (pluginId.empty()) {
+        auto descPtr = inst->call(factVal.get_plugin_descriptor, factPtr, 0u);
+        if (descPtr.wasmPointer == 0) {
+            std::cerr << "[wclap] get_plugin_descriptor(0) returned null\n";
+            delete state;
+            return 0;
+        }
+        auto descVal = inst->get(descPtr);
+        pluginId = inst->getString(descVal.id, 256);
+    } else {
+        bool found = false;
+        for (uint32_t index = 0; index < pluginCount; ++index) {
+            auto descPtr = inst->call(factVal.get_plugin_descriptor, factPtr, index);
+            if (descPtr.wasmPointer == 0)
+                continue;
+            auto descVal = inst->get(descPtr);
+            if (pluginId == inst->getString(descVal.id, 256)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            std::cerr << "[wclap] plugin id not found in factory: " << pluginId << "\n";
+            delete state;
+            return 0;
+        }
     }
-    auto descVal = inst->get(descPtr);
-    std::string pluginId = inst->getString(descVal.id, 256);
 
     uint32_t idPtr = allocInPlugin(inst,
                          reinterpret_cast<const uint8_t *>(pluginId.c_str()),
