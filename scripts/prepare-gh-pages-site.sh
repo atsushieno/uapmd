@@ -22,7 +22,7 @@ API_INDEX="${SOURCE_DIR}/api/index.html"
 API_LATEST_INDEX="${SOURCE_DIR}/api/latest/index.html"
 
 if [[ ! -f "${ROOT_INDEX}" || ! -f "${ROOT_STYLES}" ]]; then
-    echo "error: missing GitHub Pages source files under ${SOURCE_DIR}" >&2
+    echo "error: missing site source files under ${SOURCE_DIR}" >&2
     exit 1
 fi
 

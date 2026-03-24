@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>uapmd playground</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="./">Playground</a>
+            <a class="nav-link" href="../api/">API references</a>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <p class="eyebrow">Playground</p>
+        <h1>Browser builds of uapmd-app</h1>
+        <p class="lede">
+            This area is for published Emscripten builds. For now it exposes a stable
+            <code>latest</code> URL that can host the current playable build.
+        </p>
+        <div class="actions">
+            <a class="button button-primary" href="./latest/">Open latest build</a>
+            <a class="button button-secondary" href="https://github.com/atsushieno/uapmd/actions">Build artifacts</a>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Planned URL layout</h2>
+        <ul class="list">
+            <li><code>/playground/latest/</code> for the current public build.</li>
+            <li><code>/playground/&lt;tag&gt;/</code> for archived builds if you decide to keep them later.</li>
+            <li>The landing page here stays stable even if the internal publishing flow changes.</li>
+        </ul>
+    </section>
+</div>
+</body>
+</html>

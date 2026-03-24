@@ -86,7 +86,7 @@ jobs:
 
     - name: update published site tree
       run: |
-        bash scripts/prepare-gh-pages-site.sh gh-pages pages-wasm publish "${VERSION_TAG}"
+        bash scripts/prepare-gh-pages-site.sh pages-src pages-wasm publish "${VERSION_TAG}"
 
     - name: commit and push
       env:
