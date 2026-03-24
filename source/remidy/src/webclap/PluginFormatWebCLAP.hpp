@@ -104,20 +104,28 @@ namespace remidy {
         };
 
         class UISupportWebCLAP : public PluginUISupport {
+            PluginInstanceWebCLAP* owner_{};
+            bool created_{false};
+            bool visible_{false};
+            bool can_resize_{false};
+            uint32_t width_{800};
+            uint32_t height_{600};
+            std::string container_id_{};
+            std::function<bool(uint32_t, uint32_t)> resize_handler_{};
         public:
-            bool hasUI() override { return false; }
-            bool create(bool, void*, std::function<bool(uint32_t, uint32_t)>) override {
-                return false;
-            }
-            void destroy() override {}
-            bool show() override { return false; }
-            void hide() override {}
-            void setWindowTitle(std::string) override {}
-            bool canResize() override { return false; }
-            bool getSize(uint32_t&, uint32_t&) override { return false; }
-            bool setSize(uint32_t, uint32_t) override { return false; }
-            bool suggestSize(uint32_t&, uint32_t&) override { return false; }
+            explicit UISupportWebCLAP(PluginInstanceWebCLAP* owner) : owner_(owner) {}
+            bool hasUI() override;
+            bool create(bool, void*, std::function<bool(uint32_t, uint32_t)>) override;
+            void destroy() override;
+            bool show() override;
+            void hide() override;
+            void setWindowTitle(std::string) override;
+            bool canResize() override;
+            bool getSize(uint32_t&, uint32_t&) override;
+            bool setSize(uint32_t, uint32_t) override;
+            bool suggestSize(uint32_t&, uint32_t&) override;
             bool setScale(double) override { return false; }
+            void updateUiState(bool canResize, uint32_t width, uint32_t height);
         };
 
         uint32_t slot_;
@@ -146,8 +154,14 @@ namespace remidy {
         const std::vector<PluginParameter*>& parameterPointers() const { return parameter_ptrs_; }
         bool getCachedParameterValue(uint32_t index, double* plainValue) const;
         void setCachedParameterValue(uint32_t index, double plainValue);
+        void applyParameterValueUpdate(uint32_t index, double plainValue);
         std::string buildParameterValueString(uint32_t index, double plainValue) const;
         void attachToTrackGraph(int32_t trackIndex, bool isMasterTrack, uint32_t order);
+        bool hasUiSupport() const;
+        void updateUiInfo(bool hasUi, bool canResize, uint32_t width, uint32_t height);
+        void notifyUiResizeRequest(bool canResize, uint32_t width, uint32_t height);
+        bool getUiSize(uint32_t& width, uint32_t& height) const;
+        bool canUiResize() const;
 
         StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode startProcessing() override;
@@ -170,9 +184,15 @@ namespace remidy {
             return (presets_ ? presets_ : presets_ = std::make_unique<PresetsSupportWebCLAP>()).get();
         }
         PluginUISupport* ui() override {
-            return (ui_ ? ui_ : ui_ = std::make_unique<UISupportWebCLAP>()).get();
+            return (ui_ ? ui_ : ui_ = std::make_unique<UISupportWebCLAP>(this)).get();
         }
         bool requiresReplacingProcess() const override { return false; }
+
+    private:
+        bool has_ui_{false};
+        bool ui_can_resize_{false};
+        uint32_t ui_width_{800};
+        uint32_t ui_height_{600};
     };
 
     // ── Format implementation ─────────────────────────────────────────────────

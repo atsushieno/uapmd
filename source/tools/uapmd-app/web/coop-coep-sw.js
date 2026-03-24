@@ -9,31 +9,34 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
+function withIsolationHeaders(response) {
+    if (!response || !response.url.startsWith(self.location.origin))
+        return response;
+
+    const headers = new Headers(response.headers);
+    headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+    headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+    });
+}
+
 self.addEventListener('fetch', (event) => {
     const url = event.request.url;
 
     // Force network fetch (bypass HTTP cache) for WASM and JS bundles so that a
     // hard reload always picks up the latest build rather than a stale SW-cached copy.
-    const noCache = /\.(wasm|js)(\?.*)?$/.test(url);
+    const noCache = /\.(wasm|m?js)(\?.*)?$/.test(url);
     const fetchRequest = noCache
         ? new Request(event.request, { cache: 'no-cache' })
         : event.request;
 
     event.respondWith(
         fetch(fetchRequest).then((response) => {
-            // Only mutate same-origin responses to avoid CORS issues with CDN assets.
-            if (!response.url.startsWith(self.location.origin))
-                return response;
-
-            const headers = new Headers(response.headers);
-            headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-            headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
-
-            return new Response(response.body, {
-                status: response.status,
-                statusText: response.statusText,
-                headers,
-            });
+            return withIsolationHeaders(response);
         })
     );
 });

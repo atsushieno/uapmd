@@ -84,7 +84,52 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         let end = ptr;
         while (end < bytes.length && bytes[end] !== 0)
             end++;
-        return new TextDecoder().decode(bytes.subarray(ptr, end));
+        let text = '';
+        for (let i = ptr; i < end; ++i)
+            text += String.fromCharCode(bytes[i]);
+        return text;
+    }
+
+    _drainUiMessages(slot, info) {
+        if (!this._wclapHost || !info)
+            return;
+        const exp = this._wclapHost.hostInstance.exports;
+        while (exp._wclapUiHasOutgoingMessage(info.ptr)) {
+            const size = exp._wclapUiDequeueOutgoingMessage(info.ptr);
+            if (!size)
+                break;
+            const ptr = exp._wclapUiGetOutgoingMessageData(info.ptr);
+            const bytes = new Uint8Array(this._wclapHost.hostMemory.buffer, ptr, size);
+            const payload = new Uint8Array(size);
+            payload.set(bytes);
+            this.port.postMessage({ type: 'wclap-ui-message', slot, payload: payload.buffer }, [payload.buffer]);
+        }
+        if (exp._wclapUiHasPendingResize(info.ptr)) {
+            const ptr = exp._wclapUiTakeResizeRequest(info.ptr);
+            const resize = this._readCString(ptr);
+            if (resize) {
+                const parsed = JSON.parse(resize);
+                this.port.postMessage({
+                    type: 'wclap-ui-resize',
+                    slot,
+                    hasUi: true,
+                    canResize: !!parsed.canResize,
+                    width: parsed.width || exp._wclapUiGetWidth(info.ptr),
+                    height: parsed.height || exp._wclapUiGetHeight(info.ptr),
+                });
+            }
+        }
+        while (exp._wclapHasParameterUpdates(info.ptr)) {
+            const ptr = exp._wclapTakeParameterUpdates(info.ptr);
+            const updates = this._readCString(ptr);
+            if (!updates)
+                break;
+            this.port.postMessage({
+                type: 'wclap-parameter-updates',
+                slot,
+                updates: JSON.parse(updates),
+            });
+        }
     }
 
     _trackBaseIndex(trackIndex) {
@@ -224,6 +269,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                         outROff: 0,
                         inLOff: 0,
                         inROff: 0,
+                        files: fixedFiles,
                     });
 
                     this.port.postMessage({ type: 'wclap-plugin-ready', reqId, slot });
@@ -310,13 +356,102 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                 break;
             }
 
+            case 'wclap-ui-create': {
+                const info = this._slots.get(msg.slot);
+                if (!info || !this._wclapHost) break;
+                const exp = this._wclapHost.hostInstance.exports;
+                const ok = exp._wclapUiCreate(info.ptr, msg.width || 800, msg.height || 600);
+                if (!ok)
+                    break;
+                this.port.postMessage({
+                    type: 'wclap-ui-open',
+                    slot: msg.slot,
+                    hasUi: true,
+                    canResize: !!exp._wclapUiCanResize(info.ptr),
+                    width: exp._wclapUiGetWidth(info.ptr),
+                    height: exp._wclapUiGetHeight(info.ptr),
+                    uri: this._readCString(exp._wclapUiGetUri(info.ptr)),
+                    files: info.files,
+                });
+                this._drainUiMessages(msg.slot, info);
+                break;
+            }
+
+            case 'wclap-ui-show': {
+                const info = this._slots.get(msg.slot);
+                if (!info || !this._wclapHost) break;
+                this._wclapHost.hostInstance.exports._wclapUiShow(info.ptr);
+                this._drainUiMessages(msg.slot, info);
+                break;
+            }
+
+            case 'wclap-ui-hide': {
+                const info = this._slots.get(msg.slot);
+                if (!info || !this._wclapHost) break;
+                this._wclapHost.hostInstance.exports._wclapUiHide(info.ptr);
+                break;
+            }
+
+            case 'wclap-ui-destroy': {
+                const info = this._slots.get(msg.slot);
+                if (!info || !this._wclapHost) break;
+                this._wclapHost.hostInstance.exports._wclapUiDestroy(info.ptr);
+                break;
+            }
+
+            case 'wclap-ui-set-size': {
+                const info = this._slots.get(msg.slot);
+                if (!info || !this._wclapHost) break;
+                const exp = this._wclapHost.hostInstance.exports;
+                if (exp._wclapUiSetSize(info.ptr, msg.width || 0, msg.height || 0)) {
+                    this.port.postMessage({
+                        type: 'wclap-ui-resize',
+                        slot: msg.slot,
+                        hasUi: true,
+                        canResize: !!exp._wclapUiCanResize(info.ptr),
+                        width: exp._wclapUiGetWidth(info.ptr),
+                        height: exp._wclapUiGetHeight(info.ptr),
+                    });
+                }
+                this._drainUiMessages(msg.slot, info);
+                break;
+            }
+
+            case 'wclap-ui-from-frame': {
+                const info = this._slots.get(msg.slot);
+                if (!info || !this._wclapHost) break;
+                const exp = this._wclapHost.hostInstance.exports;
+                const ptr = exp._wclapUiMessageBufferPtr(info.ptr);
+                const cap = exp._wclapUiMessageBufferCapacity(info.ptr);
+                if (!ptr || !cap) break;
+                let bytes;
+                if (msg.payload instanceof ArrayBuffer)
+                    bytes = new Uint8Array(msg.payload);
+                else if (ArrayBuffer.isView(msg.payload))
+                    bytes = new Uint8Array(msg.payload.buffer, msg.payload.byteOffset, msg.payload.byteLength);
+                else {
+                    const payload = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);
+                    bytes = new TextEncoder().encode(payload);
+                }
+                const hostBytes = new Uint8Array(this._wclapHost.hostMemory.buffer);
+                const size = Math.min(bytes.length, cap - 1);
+                hostBytes.set(bytes.subarray(0, size), ptr);
+                hostBytes[ptr + size] = 0;
+                exp._wclapUiReceiveMessage(info.ptr, size);
+                this._drainUiMessages(msg.slot, info);
+                break;
+            }
+
             case 'wclap-set-parameter': {
                 const info = this._slots.get(msg.slot);
                 if (!info || !this._wclapHost) break;
-                this._wclapHost.hostInstance.exports._wclapEnqueueParameterValue(
+                const exp = this._wclapHost.hostInstance.exports;
+                exp._wclapEnqueueParameterValue(
                     info.ptr,
                     msg.index,
                     msg.value);
+                exp._wclapFlushParameters(info.ptr);
+                this._drainUiMessages(msg.slot, info);
                 break;
             }
 
@@ -380,6 +515,8 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                 }
                 if (this._masterGraph.length > 0)
                     this._runTrackGraph(this._masterGraph, this._masterOutIdx, false);
+                for (const [slot, info] of this._slots.entries())
+                    this._drainUiMessages(slot, info);
             }
         }
 

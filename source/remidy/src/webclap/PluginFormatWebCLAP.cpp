@@ -12,6 +12,155 @@
 extern "C" void uapmd_post_to_webclap_worklet_json(const char* json);
 extern "C" void uapmd_webclap_load_plugin_async(const char* json);
 
+EM_JS(void, uapmd_webclap_bind_ui_slot, (uint32_t slot, const char* container_id), {
+    if (!Module._uapmdEnsureWebclapUiManager) {
+        Module._uapmdEnsureWebclapUiManager = function() {
+            if (Module._uapmdWebclapUi)
+                return Module._uapmdWebclapUi;
+            const manager = {
+                bindings: new Map(),
+                bind(slot, containerId) {
+                    const binding = { slot, containerId, iframe: null, uri: "", bodyId: containerId };
+                    this.bindings.set(slot, binding);
+                },
+                unbind(slot) {
+                    const binding = this.bindings.get(slot);
+                    if (binding && binding.blobUrls) {
+                        Object.values(binding.blobUrls).forEach(function(url) { URL.revokeObjectURL(url); });
+                    }
+                    if (binding && binding.iframe)
+                        binding.iframe.remove();
+                    this.bindings.delete(slot);
+                },
+                getBody(slot) {
+                    const binding = this.bindings.get(slot);
+                    if (!binding)
+                        return null;
+                    return document.getElementById(binding.containerId);
+                },
+                mimeFor(path) {
+                    if (path.endsWith('.html')) return 'text/html';
+                    if (path.endsWith('.js') || path.endsWith('.mjs')) return 'text/javascript';
+                    if (path.endsWith('.css')) return 'text/css';
+                    if (path.endsWith('.svg')) return 'image/svg+xml';
+                    if (path.endsWith('.json')) return 'application/json';
+                    if (path.endsWith('.wasm')) return 'application/wasm';
+                    return 'application/octet-stream';
+                },
+                findFileKey(files, uri) {
+                    if (!files)
+                        return null;
+                    let normalized = uri;
+                    if (normalized.startsWith('file://'))
+                        normalized = normalized.slice(7);
+                    else if (normalized.startsWith('file:'))
+                        normalized = normalized.slice(5);
+                    if (files[normalized]) return normalized;
+                    if (files['/' + normalized]) return '/' + normalized;
+                    for (const key of Object.keys(files)) {
+                        if (normalized.endsWith(key) || key.endsWith(normalized))
+                            return key;
+                    }
+                    return null;
+                },
+                open(slot, uri, files) {
+                    const binding = this.bindings.get(slot);
+                    const body = this.getBody(slot);
+                    if (!binding || !body)
+                        return;
+                    if (binding.blobUrls) {
+                        Object.values(binding.blobUrls).forEach(function(url) { URL.revokeObjectURL(url); });
+                        binding.blobUrls = null;
+                    }
+                    if (binding.iframe)
+                        binding.iframe.remove();
+                    body.dataset.webclapSlot = String(slot);
+                    body.textContent = "";
+                    const iframe = document.createElement('iframe');
+                    iframe.id = `uapmd-webclap-frame-${slot}`;
+                    iframe.dataset.webclapSlot = String(slot);
+                    iframe.style.border = '0';
+                    iframe.style.width = '100%';
+                    iframe.style.height = '100%';
+                    iframe.style.background = '#111';
+                    body.appendChild(iframe);
+                    binding.iframe = iframe;
+                    binding.uri = uri;
+                    if ((uri.startsWith('file:') || uri.startsWith('/')) && files) {
+                        const fileKey = this.findFileKey(files, uri);
+                        if (fileKey) {
+                            const root = files[fileKey];
+                            const blobUrls = {};
+                            for (const [path, content] of Object.entries(files)) {
+                                const blob = new Blob([content], { type: this.mimeFor(path) });
+                                blobUrls[path] = URL.createObjectURL(blob);
+                            }
+                            if (fileKey.endsWith('.html')) {
+                                let html = new TextDecoder('utf-8').decode(root);
+                                for (const [path, blobUrl] of Object.entries(blobUrls)) {
+                                    const basename = path.split('/').pop();
+                                    html = html.split(path).join(blobUrl);
+                                    if (basename)
+                                        html = html.split(basename).join(blobUrl);
+                                }
+                                iframe.srcdoc = html;
+                            } else {
+                                iframe.src = blobUrls[fileKey];
+                            }
+                            binding.blobUrls = blobUrls;
+                        } else {
+                            iframe.src = uri;
+                        }
+                    } else {
+                        iframe.src = uri;
+                    }
+                },
+                postToFrame(slot, payload) {
+                    const binding = this.bindings.get(slot);
+                    if (!binding || !binding.iframe || !binding.iframe.contentWindow)
+                        return;
+                    if (payload instanceof ArrayBuffer) {
+                        binding.iframe.contentWindow.postMessage(payload, '*', [payload]);
+                        return;
+                    }
+                    if (ArrayBuffer.isView(payload)) {
+                        binding.iframe.contentWindow.postMessage(payload.buffer, '*', [payload.buffer]);
+                        return;
+                    }
+                    let value = payload;
+                    if (typeof payload === 'string') {
+                        try { value = JSON.parse(payload); } catch (_) {}
+                    }
+                    binding.iframe.contentWindow.postMessage(value, '*');
+                },
+            };
+            window.addEventListener('message', function(event) {
+                for (const [slot, binding] of manager.bindings.entries()) {
+                    if (!binding.iframe || event.source !== binding.iframe.contentWindow)
+                        continue;
+                    const node = Module._wclapWorkletNode;
+                    if (node) {
+                        const payload = event.data;
+                        if (payload instanceof ArrayBuffer)
+                            node.port.postMessage({ type: 'wclap-ui-from-frame', slot, payload }, [payload]);
+                        else
+                            node.port.postMessage({ type: 'wclap-ui-from-frame', slot, payload });
+                    }
+                    break;
+                }
+            });
+            Module._uapmdWebclapUi = manager;
+            return manager;
+        };
+    }
+    Module._uapmdEnsureWebclapUiManager().bind(slot, UTF8ToString(container_id));
+});
+
+EM_JS(void, uapmd_webclap_unbind_ui_slot, (uint32_t slot), {
+    if (Module._uapmdEnsureWebclapUiManager)
+        Module._uapmdEnsureWebclapUiManager().unbind(slot);
+});
+
 namespace remidy {
 
 // Hardcoded plugin catalog — two known example bundles returned unconditionally.
@@ -36,6 +185,14 @@ static constexpr KnownPlugin kKnownPlugins[] = {
     },
 };
 
+struct WebClapUiMessage {
+    bool hasUi{};
+    bool canResize{};
+    uint32_t width{800};
+    uint32_t height{600};
+    std::string uri;
+};
+
 // ── Shared runtime state for extern "C" callback ──────────────────────────────
 
 struct WebClapGlobalState {
@@ -46,6 +203,7 @@ struct WebClapGlobalState {
     std::mutex instances_mutex;
     std::unordered_map<uint32_t, PluginInstanceWebCLAP*> instances_by_slot;
     std::unordered_map<uint32_t, std::vector<WebClapParamDescriptor>> pending_parameters_by_slot;
+    std::unordered_map<uint32_t, WebClapUiMessage> pending_ui_by_slot;
 };
 
 static WebClapGlobalState& webclapGlobalState() {
@@ -97,6 +255,35 @@ static std::vector<WebClapParamDescriptor> parseParamDescriptors(const choc::val
         descriptors.emplace_back(std::move(descriptor));
     }
     return descriptors;
+}
+
+static WebClapUiMessage parseUiMessage(const choc::value::ValueView& value) {
+    WebClapUiMessage ui;
+    ui.hasUi = value["hasUi"].getWithDefault<bool>(!value["uri"].toString().empty());
+    ui.canResize = value["canResize"].getWithDefault<bool>(false);
+    ui.width = static_cast<uint32_t>(value["width"].getWithDefault<int32_t>(800));
+    ui.height = static_cast<uint32_t>(value["height"].getWithDefault<int32_t>(600));
+    ui.uri = value["uri"].toString();
+    return ui;
+}
+
+static std::vector<std::pair<uint32_t, double>> parseParameterValueUpdates(const choc::value::ValueView& value) {
+    std::vector<std::pair<uint32_t, double>> updates;
+    if (!value.isArray())
+        return updates;
+    auto size = value.size();
+    updates.reserve(size);
+    for (uint32_t i = 0; i < size; ++i) {
+        auto item = value[i];
+        if (!item.isObject())
+            continue;
+        auto indexValue = item["index"].getWithDefault<int32_t>(-1);
+        if (indexValue < 0)
+            continue;
+        auto plainValue = item["value"].getWithDefault<double>(0.0);
+        updates.emplace_back(static_cast<uint32_t>(indexValue), plainValue);
+    }
+    return updates;
 }
 
 static std::string buildWclapEventJson(const std::string& type,
@@ -217,6 +404,11 @@ void PluginFormatWebCLAPImpl::registerInstance(PluginInstanceWebCLAP* instance) 
         instance->updateParameters(it->second);
         state.pending_parameters_by_slot.erase(it);
     }
+    auto uiIt = state.pending_ui_by_slot.find(instance->slot());
+    if (uiIt != state.pending_ui_by_slot.end()) {
+        instance->updateUiInfo(uiIt->second.hasUi, uiIt->second.canResize, uiIt->second.width, uiIt->second.height);
+        state.pending_ui_by_slot.erase(uiIt);
+    }
 }
 
 void PluginFormatWebCLAPImpl::unregisterInstance(uint32_t slot) {
@@ -307,6 +499,39 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
         }
         if (instance)
             instance->updateParameters(descriptors);
+    } else if (type == "wclap-ui-info" || type == "wclap-ui-open" || type == "wclap-ui-resize") {
+        const uint32_t slot = static_cast<uint32_t>(message["slot"].getWithDefault<int32_t>(0));
+        auto ui = parseUiMessage(message);
+        PluginInstanceWebCLAP* instance = nullptr;
+        auto& state = webclapGlobalState();
+        {
+            std::lock_guard<std::mutex> lock(state.instances_mutex);
+            auto it = state.instances_by_slot.find(slot);
+            if (it != state.instances_by_slot.end())
+                instance = it->second;
+            else
+                state.pending_ui_by_slot[slot] = ui;
+        }
+        if (instance) {
+            instance->updateUiInfo(ui.hasUi, ui.canResize, ui.width, ui.height);
+            if (type == "wclap-ui-resize")
+                instance->notifyUiResizeRequest(ui.canResize, ui.width, ui.height);
+        }
+    } else if (type == "wclap-parameter-updates") {
+        const uint32_t slot = static_cast<uint32_t>(message["slot"].getWithDefault<int32_t>(0));
+        auto updates = parseParameterValueUpdates(message["updates"]);
+        PluginInstanceWebCLAP* instance = nullptr;
+        auto& state = webclapGlobalState();
+        {
+            std::lock_guard<std::mutex> lock(state.instances_mutex);
+            auto it = state.instances_by_slot.find(slot);
+            if (it != state.instances_by_slot.end())
+                instance = it->second;
+        }
+        if (instance) {
+            for (const auto& update : updates)
+                instance->applyParameterValueUpdate(update.first, update.second);
+        }
     } else if (type == "wclap-runtime-error") {
         std::cerr << "[WebCLAP] runtime error: " << message["error"].toString() << std::endl;
     }
@@ -392,6 +617,45 @@ void PluginInstanceWebCLAP::setCachedParameterValue(uint32_t index, double plain
     parameter_values_[index] = plainValue;
 }
 
+void PluginInstanceWebCLAP::applyParameterValueUpdate(uint32_t index, double plainValue) {
+    setCachedParameterValue(index, plainValue);
+    if (params_)
+        params_->parameterChangeEvent().notify(index, plainValue);
+}
+
+bool PluginInstanceWebCLAP::hasUiSupport() const {
+    return has_ui_;
+}
+
+void PluginInstanceWebCLAP::updateUiInfo(bool hasUi, bool canResize, uint32_t width, uint32_t height) {
+    has_ui_ = hasUi;
+    ui_can_resize_ = canResize;
+    if (width > 0)
+        ui_width_ = width;
+    if (height > 0)
+        ui_height_ = height;
+    if (ui_)
+        ui_->updateUiState(ui_can_resize_, ui_width_, ui_height_);
+}
+
+void PluginInstanceWebCLAP::notifyUiResizeRequest(bool canResize, uint32_t width, uint32_t height) {
+    updateUiInfo(true, canResize, width, height);
+    if (ui_)
+        ui_->updateUiState(ui_can_resize_, ui_width_, ui_height_);
+}
+
+bool PluginInstanceWebCLAP::getUiSize(uint32_t& width, uint32_t& height) const {
+    if (!has_ui_)
+        return false;
+    width = ui_width_;
+    height = ui_height_;
+    return true;
+}
+
+bool PluginInstanceWebCLAP::canUiResize() const {
+    return has_ui_ && ui_can_resize_;
+}
+
 std::string PluginInstanceWebCLAP::buildParameterValueString(uint32_t index, double plainValue) const {
     std::lock_guard<std::mutex> lock(parameter_mutex_);
     for (auto* parameter : parameter_ptrs_) {
@@ -450,6 +714,104 @@ StatusCode PluginInstanceWebCLAP::process(AudioProcessContext& ctx) {
 
 PluginParameterSupport* PluginInstanceWebCLAP::parameters() {
     return (params_ ? params_ : params_ = std::make_unique<ParamSupportWebCLAP>(this)).get();
+}
+
+bool PluginInstanceWebCLAP::UISupportWebCLAP::hasUI() {
+    return owner_ && owner_->hasUiSupport();
+}
+
+bool PluginInstanceWebCLAP::UISupportWebCLAP::create(
+    bool, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler)
+{
+    if (created_ || !owner_ || !parentHandle || !owner_->hasUiSupport())
+        return false;
+    container_id_ = static_cast<const char*>(parentHandle);
+    if (container_id_.empty())
+        return false;
+    owner_->getUiSize(width_, height_);
+    can_resize_ = owner_->canUiResize();
+    resize_handler_ = std::move(resizeHandler);
+    uapmd_webclap_bind_ui_slot(owner_->slot(), container_id_.c_str());
+    std::ostringstream json;
+    json << "{\"type\":\"wclap-ui-create\",\"slot\":" << owner_->slot()
+         << ",\"width\":" << width_
+         << ",\"height\":" << height_
+         << "}";
+    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    created_ = true;
+    return true;
+}
+
+void PluginInstanceWebCLAP::UISupportWebCLAP::destroy() {
+    if (!owner_ || !created_)
+        return;
+    std::ostringstream json;
+    json << "{\"type\":\"wclap-ui-destroy\",\"slot\":" << owner_->slot() << "}";
+    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    uapmd_webclap_unbind_ui_slot(owner_->slot());
+    created_ = false;
+    visible_ = false;
+}
+
+bool PluginInstanceWebCLAP::UISupportWebCLAP::show() {
+    if (!owner_ || !created_)
+        return false;
+    std::ostringstream json;
+    json << "{\"type\":\"wclap-ui-show\",\"slot\":" << owner_->slot() << "}";
+    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    visible_ = true;
+    return true;
+}
+
+void PluginInstanceWebCLAP::UISupportWebCLAP::hide() {
+    if (!owner_ || !created_)
+        return;
+    std::ostringstream json;
+    json << "{\"type\":\"wclap-ui-hide\",\"slot\":" << owner_->slot() << "}";
+    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    visible_ = false;
+}
+
+void PluginInstanceWebCLAP::UISupportWebCLAP::setWindowTitle(std::string) {
+}
+
+bool PluginInstanceWebCLAP::UISupportWebCLAP::canResize() {
+    return can_resize_;
+}
+
+bool PluginInstanceWebCLAP::UISupportWebCLAP::getSize(uint32_t& width, uint32_t& height) {
+    width = width_;
+    height = height_;
+    return owner_ && owner_->hasUiSupport();
+}
+
+bool PluginInstanceWebCLAP::UISupportWebCLAP::setSize(uint32_t width, uint32_t height) {
+    if (!owner_ || !created_)
+        return false;
+    if (width_ == width && height_ == height)
+        return true;
+    width_ = width;
+    height_ = height;
+    std::ostringstream json;
+    json << "{\"type\":\"wclap-ui-set-size\",\"slot\":" << owner_->slot()
+         << ",\"width\":" << width
+         << ",\"height\":" << height
+         << "}";
+    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    return true;
+}
+
+bool PluginInstanceWebCLAP::UISupportWebCLAP::suggestSize(uint32_t& width, uint32_t& height) {
+    return getSize(width, height);
+}
+
+void PluginInstanceWebCLAP::UISupportWebCLAP::updateUiState(bool canResize, uint32_t width, uint32_t height) {
+    const bool size_changed = width_ != width || height_ != height;
+    can_resize_ = canResize;
+    width_ = width;
+    height_ = height;
+    if (resize_handler_ && size_changed && width > 0 && height > 0)
+        resize_handler_(width, height);
 }
 
 } // namespace remidy

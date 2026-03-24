@@ -201,6 +201,9 @@ There are third-party (and first party) dependency libraries (git submodules, CM
 - [OpenMathLib/OpenBLAS](https://github.com/OpenMathLib/OpenBLAS) - BSD (3-clause)  (optional for demucs.cpp acceleration; disabled by default)
 - [wang-bin/JMI](https://github.com/wang-bin/JMI) - MIT
 - [yhirose/cpp-httplib](https://github.com/yhirose/cpp-httplib) - MIT
+- [machinezone/IXWebSocket](https://github.com/machinezone/IXWebSocket) - BSD (3-clause)
+- [WebCLAP/wclap-host-cpp](https://github.com/WebCLAP/wclap-host-cpp) - MIT
+- [WebCLAP/wclap-host-js](https://github.com/WebCLAP/wclap-host-js) - MIT
 
 Fonts used:
 

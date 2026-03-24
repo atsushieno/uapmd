@@ -15,6 +15,15 @@ class WclapHost {
 		'_wclapHostReqRestart',
 		'_wclapHostReqProcess',
 		'_wclapHostReqCallback',
+		'_wclapHostGuiResizeHintsChanged',
+		'_wclapHostGuiRequestResize',
+		'_wclapHostGuiRequestShow',
+		'_wclapHostGuiRequestHide',
+		'_wclapHostGuiClosed',
+		'_wclapHostWebviewSend',
+		'_wclapHostParamsRescan',
+		'_wclapHostParamsClear',
+		'_wclapHostParamsRequestFlush',
 		'_wclapInEventsSize',
 		'_wclapInEventsGet',
 		'_wclapOutEventsTryPush',
@@ -390,7 +399,10 @@ class WclapHost {
 					let exportName = this.#hostCallbackOrder[hostFnEntry.registrationIndex];
 					hostFn = exportName ? this.hostInstance.exports[exportName] : null;
 				}
-				if (typeof hostFn !== 'function') throw Error("Host callback lookup failed");
+				if (typeof hostFn !== 'function') {
+					let exportName = this.#hostCallbackOrder[hostFnEntry.registrationIndex];
+					throw Error(`Host callback lookup failed (registrationIndex=${hostFnEntry.registrationIndex}, hostIndex=${hostFnEntry.hostIndex}, export=${exportName || 'undefined'})`);
+				}
 				imports.proxy[key] = hostFn.bind(null, hostFnEntry.context);
 			}
 			let wasm = generateForwardingWasm(fnSigs);

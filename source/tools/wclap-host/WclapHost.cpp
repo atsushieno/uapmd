@@ -15,10 +15,14 @@
 #include <cstddef>  // size_t — must precede wclap-host-cpp headers
 #include "wclap-js-instance.h"
 
+#include <cmath>
 #include <atomic>
 #include <array>
 #include <cstring>
+#include <deque>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -33,14 +37,19 @@ using wclap32::wclap_event_header;
 using wclap32::wclap_event_midi2;
 using wclap32::wclap_event_param_value;
 using wclap32::wclap_host;
+using wclap32::wclap_host_gui;
+using wclap32::wclap_host_params;
+using wclap32::wclap_host_webview;
 using wclap32::wclap_input_events;
 using wclap32::wclap_output_events;
 using wclap32::wclap_param_info;
 using wclap32::wclap_plugin;
 using wclap32::wclap_plugin_entry;
 using wclap32::wclap_plugin_factory;
+using wclap32::wclap_plugin_gui;
 using wclap32::wclap_plugin_params;
 using wclap32::wclap_process;
+using wclap32::wclap_plugin_webview;
 
 // ── Instance management (called by wclap.mjs) ─────────────────────────────
 
@@ -71,19 +80,26 @@ int32_t _wclapStartInstanceThread(Instance *, uint64_t) { return -1; }
 struct SlotState;
 
 static Pointer<const void>
-host_get_ext(void *, Pointer<const wclap_host>, Pointer<const char>) {
-    return {0};
-}
+host_get_ext(void *, Pointer<const wclap_host>, Pointer<const char>);
 static void host_req_restart (void *, Pointer<const wclap_host>) {}
 static void host_req_process (void *, Pointer<const wclap_host>) {}
-static void host_req_callback(void *, Pointer<const wclap_host>) {}
+static void host_req_callback(void *, Pointer<const wclap_host>);
+static void host_gui_resize_hints_changed(void *, Pointer<const wclap_host>) {}
+static bool host_gui_request_resize(void *, Pointer<const wclap_host>, uint32_t, uint32_t);
+static bool host_gui_request_show(void *, Pointer<const wclap_host>) { return true; }
+static bool host_gui_request_hide(void *, Pointer<const wclap_host>) { return true; }
+static void host_gui_closed(void *, Pointer<const wclap_host>, bool) {}
+static void host_params_rescan(void *, Pointer<const wclap_host>, uint32_t);
+static void host_params_clear(void *, Pointer<const wclap_host>, wclap32::wclap_id, uint32_t) {}
+static void host_params_request_flush(void *, Pointer<const wclap_host>);
+static bool host_webview_send(void *, Pointer<const wclap_host>, Pointer<const void>, uint32_t);
 
 static uint32_t in_events_size(void *ctx, Pointer<const wclap_input_events>);
 static Pointer<const wclap_event_header> in_events_get(void *ctx, Pointer<const wclap_input_events>, uint32_t index);
 
 static bool
 out_events_try_push(void *, Pointer<const wclap_output_events>,
-                    Pointer<const wclap_event_header>) { return true; }
+                    Pointer<const wclap_event_header>);
 
 extern "C" __attribute__((export_name("_wclapHostGetExt")))
 Pointer<const void> _wclapHostGetExt(void *ctx, Pointer<const wclap_host> host, Pointer<const char> id) {
@@ -105,6 +121,51 @@ void _wclapHostReqCallback(void *ctx, Pointer<const wclap_host> host) {
     host_req_callback(ctx, host);
 }
 
+extern "C" __attribute__((export_name("_wclapHostGuiResizeHintsChanged")))
+void _wclapHostGuiResizeHintsChanged(void *ctx, Pointer<const wclap_host> host) {
+    host_gui_resize_hints_changed(ctx, host);
+}
+
+extern "C" __attribute__((export_name("_wclapHostGuiRequestResize")))
+bool _wclapHostGuiRequestResize(void *ctx, Pointer<const wclap_host> host, uint32_t width, uint32_t height) {
+    return host_gui_request_resize(ctx, host, width, height);
+}
+
+extern "C" __attribute__((export_name("_wclapHostGuiRequestShow")))
+bool _wclapHostGuiRequestShow(void *ctx, Pointer<const wclap_host> host) {
+    return host_gui_request_show(ctx, host);
+}
+
+extern "C" __attribute__((export_name("_wclapHostGuiRequestHide")))
+bool _wclapHostGuiRequestHide(void *ctx, Pointer<const wclap_host> host) {
+    return host_gui_request_hide(ctx, host);
+}
+
+extern "C" __attribute__((export_name("_wclapHostGuiClosed")))
+void _wclapHostGuiClosed(void *ctx, Pointer<const wclap_host> host, bool wasDestroyed) {
+    host_gui_closed(ctx, host, wasDestroyed);
+}
+
+extern "C" __attribute__((export_name("_wclapHostParamsRescan")))
+void _wclapHostParamsRescan(void *ctx, Pointer<const wclap_host> host, uint32_t flags) {
+    host_params_rescan(ctx, host, flags);
+}
+
+extern "C" __attribute__((export_name("_wclapHostParamsClear")))
+void _wclapHostParamsClear(void *ctx, Pointer<const wclap_host> host, wclap32::wclap_id paramId, uint32_t flags) {
+    host_params_clear(ctx, host, paramId, flags);
+}
+
+extern "C" __attribute__((export_name("_wclapHostParamsRequestFlush")))
+void _wclapHostParamsRequestFlush(void *ctx, Pointer<const wclap_host> host) {
+    host_params_request_flush(ctx, host);
+}
+
+extern "C" __attribute__((export_name("_wclapHostWebviewSend")))
+bool _wclapHostWebviewSend(void *ctx, Pointer<const wclap_host> host, Pointer<const void> data, uint32_t size) {
+    return host_webview_send(ctx, host, data, size);
+}
+
 // ── Per-slot state ─────────────────────────────────────────────────────────
 // One SlotState is created by _wclapPluginSetup and destroyed by
 // _wclapPluginDestroy. All uint32_t members are byte-offsets into the
@@ -114,7 +175,11 @@ struct SlotState {
     static constexpr uint32_t kMaxInputEvents = 64;
     static constexpr uint32_t kInputEventStride = 64;
 
+    Instance* owner_inst  = nullptr;
     uint32_t plugin_ptr    = 0;
+    uint32_t host_gui_ptr  = 0;
+    uint32_t host_params_ptr = 0;
+    uint32_t host_webview_ptr = 0;
     uint32_t in_data_ptr   = 0; // float[2][maxFrames] — ch0 then ch1
     uint32_t in_ptrs_ptr   = 0; // float*[2]
     uint32_t in_buf_ptr    = 0; // wclap_audio_buffer (stereo input bus)
@@ -130,13 +195,38 @@ struct SlotState {
     uint32_t queued_input_events = 0;
     int64_t  steady_time   = 0;
     bool has_params = false;
+    bool has_gui = false;
+    bool has_webview = false;
+    bool callback_requested = false;
+    bool flush_requested = false;
+    bool flushing_params = false;
+    bool parameter_values_dirty = false;
+    bool ui_created = false;
+    bool ui_visible = false;
+    bool ui_can_resize = false;
+    bool ui_resize_pending = false;
+    uint32_t ui_width = 800;
+    uint32_t ui_height = 600;
     wclap_plugin_params params{};
+    wclap_plugin_gui gui{};
+    wclap_plugin_webview webview{};
     std::vector<wclap_param_info> parameter_infos{};
+    std::vector<double> parameter_values{};
     std::string parameter_json{};
+    std::vector<std::pair<uint32_t, double>> pending_parameter_updates{};
+    std::string parameter_updates_json{};
+    std::string ui_json{};
+    std::string ui_uri{};
+    std::string ui_resize_json{};
+    std::vector<uint8_t> ui_outgoing_message{};
+    std::deque<std::vector<uint8_t>> ui_outgoing_messages{};
+    std::array<char, 8192> ui_incoming_buffer{};
     float localInL[2048]{};
     float localInR[2048]{};
     float localOutL[2048]{};
     float localOutR[2048]{};
+    uint32_t last_param_write_index = 0;
+    double last_param_write_value = 0.0;
 };
 
 static uint32_t in_events_size(void *ctx, Pointer<const wclap_input_events>) {
@@ -172,7 +262,421 @@ bool _wclapOutEventsTryPush(
     return out_events_try_push(ctx, events, header);
 }
 
+static bool
+out_events_try_push(void *ctx, Pointer<const wclap_output_events>,
+                    Pointer<const wclap_event_header> eventHeaderPtr)
+{
+    auto* state = static_cast<SlotState*>(ctx);
+    if (!state || !state->owner_inst || !eventHeaderPtr.wasmPointer)
+        return true;
+
+    wclap_event_header header{};
+    state->owner_inst->getArray(Pointer<wclap_event_header>{eventHeaderPtr.wasmPointer}, &header, 1);
+    switch (header.type) {
+        case wclap32::WCLAP_EVENT_PARAM_VALUE:
+            state->parameter_values_dirty = true;
+            if (header.size >= sizeof(wclap_event_param_value)) {
+                wclap_event_param_value event{};
+                state->owner_inst->getArray(Pointer<wclap_event_param_value>{eventHeaderPtr.wasmPointer}, &event, 1);
+                for (uint32_t index = 0; index < state->parameter_infos.size(); ++index) {
+                    if (state->parameter_infos[index].id == event.param_id) {
+                        state->pending_parameter_updates.emplace_back(index, event.value);
+                        break;
+                    }
+                }
+            }
+            break;
+        case wclap32::WCLAP_EVENT_PARAM_MOD:
+        case wclap32::WCLAP_EVENT_PARAM_GESTURE_BEGIN:
+        case wclap32::WCLAP_EVENT_PARAM_GESTURE_END:
+            state->parameter_values_dirty = true;
+            break;
+        default:
+            break;
+    }
+    return true;
+}
+
 static std::unordered_map<Instance *, SlotState *> s_slots;
+
+struct UiObservedParamUpdate {
+    uint32_t index{};
+    double value{};
+};
+
+static std::string debugPreviewBytes(const uint8_t* bytes, uint32_t size);
+
+static bool cborReadLength(const uint8_t*& ptr, const uint8_t* end, uint8_t addl, uint64_t& out) {
+    if (addl < 24) {
+        out = addl;
+        return true;
+    }
+    auto readN = [&](uint32_t count) -> bool {
+        if (ptr + count > end)
+            return false;
+        out = 0;
+        for (uint32_t i = 0; i < count; ++i)
+            out = (out << 8) | *ptr++;
+        return true;
+    };
+    switch (addl) {
+        case 24: return readN(1);
+        case 25: return readN(2);
+        case 26: return readN(4);
+        case 27: return readN(8);
+        default: return false;
+    }
+}
+
+static bool cborReadText(const uint8_t*& ptr, const uint8_t* end, std::string& out) {
+    if (ptr >= end)
+        return false;
+    const auto initial = *ptr++;
+    if ((initial >> 5) != 3)
+        return false;
+    uint64_t length = 0;
+    if (!cborReadLength(ptr, end, initial & 0x1f, length) || ptr + length > end)
+        return false;
+    out.assign(reinterpret_cast<const char*>(ptr), reinterpret_cast<const char*>(ptr + length));
+    ptr += length;
+    return true;
+}
+
+static bool cborReadDouble(const uint8_t*& ptr, const uint8_t* end, double& out) {
+    if (ptr >= end)
+        return false;
+    const auto initial = *ptr++;
+    const auto major = initial >> 5;
+    const auto addl = initial & 0x1f;
+    if (major == 0 || major == 1) {
+        uint64_t value = 0;
+        if (!cborReadLength(ptr, end, addl, value))
+            return false;
+        out = major == 0 ? static_cast<double>(value) : -1.0 - static_cast<double>(value);
+        return true;
+    }
+    if (major != 7)
+        return false;
+    if (addl == 27) {
+        if (ptr + 8 > end)
+            return false;
+        uint64_t bits = 0;
+        for (int i = 0; i < 8; ++i)
+            bits = (bits << 8) | *ptr++;
+        std::memcpy(&out, &bits, sizeof(out));
+        return true;
+    }
+    if (addl == 26) {
+        if (ptr + 4 > end)
+            return false;
+        uint32_t bits = 0;
+        for (int i = 0; i < 4; ++i)
+            bits = (bits << 8) | *ptr++;
+        float value = 0.0f;
+        std::memcpy(&value, &bits, sizeof(value));
+        out = value;
+        return true;
+    }
+    if (addl == 20) {
+        out = 0.0;
+        return true;
+    }
+    if (addl == 21) {
+        out = 1.0;
+        return true;
+    }
+    return false;
+}
+
+static bool cborReadBool(const uint8_t*& ptr, const uint8_t* end, bool& out) {
+    if (ptr >= end)
+        return false;
+    const auto initial = *ptr++;
+    if (initial == 0xf4) {
+        out = false;
+        return true;
+    }
+    if (initial == 0xf5) {
+        out = true;
+        return true;
+    }
+    return false;
+}
+
+static bool cborSkip(const uint8_t*& ptr, const uint8_t* end);
+
+static bool cborSkipMap(const uint8_t*& ptr, const uint8_t* end, uint64_t count) {
+    for (uint64_t i = 0; i < count; ++i) {
+        if (!cborSkip(ptr, end) || !cborSkip(ptr, end))
+            return false;
+    }
+    return true;
+}
+
+static bool cborSkipArray(const uint8_t*& ptr, const uint8_t* end, uint64_t count) {
+    for (uint64_t i = 0; i < count; ++i) {
+        if (!cborSkip(ptr, end))
+            return false;
+    }
+    return true;
+}
+
+static bool cborSkip(const uint8_t*& ptr, const uint8_t* end) {
+    if (ptr >= end)
+        return false;
+    const auto initial = *ptr++;
+    const auto major = initial >> 5;
+    uint64_t length = 0;
+    switch (major) {
+        case 0:
+        case 1:
+            return cborReadLength(ptr, end, initial & 0x1f, length);
+        case 2:
+        case 3:
+            return cborReadLength(ptr, end, initial & 0x1f, length) && ptr + length <= end ? (ptr += length, true) : false;
+        case 4:
+            return cborReadLength(ptr, end, initial & 0x1f, length) && cborSkipArray(ptr, end, length);
+        case 5:
+            return cborReadLength(ptr, end, initial & 0x1f, length) && cborSkipMap(ptr, end, length);
+        case 7:
+            switch (initial & 0x1f) {
+                case 20:
+                case 21:
+                case 22:
+                case 23:
+                    return true;
+                case 25:
+                    return ptr + 2 <= end ? (ptr += 2, true) : false;
+                case 26:
+                    return ptr + 4 <= end ? (ptr += 4, true) : false;
+                case 27:
+                    return ptr + 8 <= end ? (ptr += 8, true) : false;
+                default:
+                    return false;
+            }
+        default:
+            return false;
+    }
+}
+
+static bool decodeObservedUiParamMerges(const uint8_t* data,
+                                        uint32_t size,
+                                        const SlotState* state,
+                                        std::vector<UiObservedParamUpdate>& updates) {
+    if (!data || !state || size == 0)
+        return false;
+    const uint8_t* ptr = data;
+    const uint8_t* end = data + size;
+    if (ptr >= end)
+        return false;
+    const auto initial = *ptr++;
+    if ((initial >> 5) != 5)
+        return false;
+    uint64_t topCount = 0;
+    if (!cborReadLength(ptr, end, initial & 0x1f, topCount))
+        return false;
+
+    bool foundAny = false;
+    for (uint64_t i = 0; i < topCount; ++i) {
+        std::string key;
+        if (!cborReadText(ptr, end, key))
+            return false;
+        if (ptr >= end)
+            return false;
+        const auto valueInitial = *ptr++;
+        if ((valueInitial >> 5) != 5) {
+            if (!cborSkip(ptr, end))
+                return false;
+            continue;
+        }
+        uint64_t nestedCount = 0;
+        if (!cborReadLength(ptr, end, valueInitial & 0x1f, nestedCount))
+            return false;
+        bool hasRangeUnit = false;
+        double rangeUnit = 0.0;
+        bool hasValue = false;
+        double value = 0.0;
+        for (uint64_t j = 0; j < nestedCount; ++j) {
+            std::string nestedKey;
+            if (!cborReadText(ptr, end, nestedKey))
+                return false;
+            if (nestedKey == "rangeUnit") {
+                hasRangeUnit = cborReadDouble(ptr, end, rangeUnit);
+                if (!hasRangeUnit)
+                    return false;
+            } else if (nestedKey == "value") {
+                hasValue = cborReadDouble(ptr, end, value);
+                if (!hasValue)
+                    return false;
+            } else if (nestedKey == "gesture") {
+                bool ignored = false;
+                if (!cborReadBool(ptr, end, ignored))
+                    return false;
+            } else if (!cborSkip(ptr, end)) {
+                return false;
+            }
+        }
+
+        auto it = std::find_if(state->parameter_infos.begin(), state->parameter_infos.end(),
+                               [&](const wclap_param_info& info) { return key == info.name; });
+        if (it == state->parameter_infos.end())
+            continue;
+        const auto index = static_cast<uint32_t>(std::distance(state->parameter_infos.begin(), it));
+        double plainValue = state->parameter_values.size() > index ? state->parameter_values[index] : it->default_value;
+        if (hasValue) {
+            plainValue = value;
+        } else if (hasRangeUnit) {
+            const auto normalized = std::clamp(rangeUnit, 0.0, 1.0);
+            plainValue = it->min_value + (it->max_value - it->min_value) * normalized;
+        } else {
+            continue;
+        }
+        updates.push_back({index, plainValue});
+        foundAny = true;
+    }
+    return foundAny;
+}
+
+static void cborAppendTypeAndLength(std::vector<uint8_t>& out, uint8_t major, uint64_t length) {
+    if (length < 24) {
+        out.push_back(static_cast<uint8_t>((major << 5) | length));
+        return;
+    }
+    if (length <= std::numeric_limits<uint8_t>::max()) {
+        out.push_back(static_cast<uint8_t>((major << 5) | 24));
+        out.push_back(static_cast<uint8_t>(length));
+        return;
+    }
+    if (length <= std::numeric_limits<uint16_t>::max()) {
+        out.push_back(static_cast<uint8_t>((major << 5) | 25));
+        out.push_back(static_cast<uint8_t>((length >> 8) & 0xff));
+        out.push_back(static_cast<uint8_t>(length & 0xff));
+        return;
+    }
+    out.push_back(static_cast<uint8_t>((major << 5) | 26));
+    out.push_back(static_cast<uint8_t>((length >> 24) & 0xff));
+    out.push_back(static_cast<uint8_t>((length >> 16) & 0xff));
+    out.push_back(static_cast<uint8_t>((length >> 8) & 0xff));
+    out.push_back(static_cast<uint8_t>(length & 0xff));
+}
+
+static void cborAppendText(std::vector<uint8_t>& out, const std::string& text) {
+    cborAppendTypeAndLength(out, 3, text.size());
+    out.insert(out.end(), text.begin(), text.end());
+}
+
+static void cborAppendBool(std::vector<uint8_t>& out, bool value) {
+    out.push_back(value ? 0xf5 : 0xf4);
+}
+
+static void cborAppendDouble(std::vector<uint8_t>& out, double value) {
+    out.push_back(0xfb);
+    uint64_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    for (int shift = 56; shift >= 0; shift -= 8)
+        out.push_back(static_cast<uint8_t>((bits >> shift) & 0xff));
+}
+
+static std::pair<std::string, std::string> splitValueText(const std::string& text) {
+    const auto pos = text.rfind(' ');
+    if (pos == std::string::npos)
+        return {text, ""};
+    return {text.substr(0, pos), text.substr(pos + 1)};
+}
+
+static std::vector<uint8_t> encodeSyntheticUiMerge(Instance* inst,
+                                                   SlotState* state,
+                                                   Pointer<const wclap_plugin> plugPtr,
+                                                   const std::vector<UiObservedParamUpdate>& updates) {
+    std::vector<uint8_t> out;
+    if (!inst || !state || updates.empty())
+        return out;
+    cborAppendTypeAndLength(out, 5, updates.size());
+    auto textPtr = inst->malloc32(256);
+    for (const auto& update : updates) {
+        if (update.index >= state->parameter_infos.size())
+            continue;
+        const auto& info = state->parameter_infos[update.index];
+        cborAppendText(out, info.name);
+        const bool stepped = (info.flags & wclap32::WCLAP_PARAM_IS_STEPPED) != 0;
+        cborAppendTypeAndLength(out, 5, stepped ? 2 : 4);
+        if (stepped) {
+            cborAppendText(out, "value");
+            cborAppendDouble(out, update.value);
+        } else {
+            const double denom = info.max_value - info.min_value;
+            const double rangeUnit = denom == 0.0 ? 0.0 : std::clamp((update.value - info.min_value) / denom, 0.0, 1.0);
+            cborAppendText(out, "rangeUnit");
+            cborAppendDouble(out, rangeUnit);
+            cborAppendText(out, "gesture");
+            cborAppendBool(out, false);
+        }
+        std::string textValue;
+        if (textPtr.wasmPointer &&
+            inst->call(state->params.value_to_text,
+                       plugPtr,
+                       info.id,
+                       update.value,
+                       Pointer<char>{textPtr.wasmPointer},
+                       255u)) {
+            textValue = inst->getString(Pointer<const char>{textPtr.wasmPointer}, 255);
+        }
+        auto [text, units] = splitValueText(textValue);
+        cborAppendText(out, "text");
+        cborAppendText(out, text);
+        if (!stepped) {
+            cborAppendText(out, "textUnits");
+            cborAppendText(out, units);
+        }
+    }
+    return out;
+}
+
+static bool applyObservedUiParamUpdates(SlotState* state,
+                                        const std::vector<UiObservedParamUpdate>& updates) {
+    if (!state || updates.empty())
+        return false;
+    if (state->parameter_values.size() != state->parameter_infos.size())
+        state->parameter_values.resize(state->parameter_infos.size(), 0.0);
+    bool changed = false;
+    for (const auto& update : updates) {
+        if (update.index >= state->parameter_infos.size())
+            continue;
+        if (std::abs(state->parameter_values[update.index] - update.value) <= 1.0e-9)
+            continue;
+        state->parameter_values[update.index] = update.value;
+        state->pending_parameter_updates.emplace_back(update.index, update.value);
+        changed = true;
+    }
+    return changed;
+}
+
+static void enqueueSyntheticUiMerge(Instance* inst,
+                                    SlotState* state,
+                                    Pointer<const wclap_plugin> plugPtr,
+                                    const std::vector<UiObservedParamUpdate>& updates) {
+    if (!state || updates.empty())
+        return;
+    auto payload = encodeSyntheticUiMerge(inst, state, plugPtr, updates);
+    if (payload.empty())
+        return;
+    state->ui_outgoing_messages.emplace_back(std::move(payload));
+}
+
+static void rebuildUiJson(SlotState* state) {
+    if (!state)
+        return;
+    std::ostringstream json;
+    json << "{"
+         << "\"hasUi\":" << ((state->has_webview || state->has_gui) ? "true" : "false")
+         << ",\"hasGui\":" << (state->has_gui ? "true" : "false")
+         << ",\"hasWebview\":" << (state->has_webview ? "true" : "false")
+         << ",\"canResize\":" << (state->ui_can_resize ? "true" : "false")
+         << ",\"width\":" << state->ui_width
+         << ",\"height\":" << state->ui_height
+         << "}";
+    state->ui_json = json.str();
+}
 
 // Copy count elements of T from host memory into plugin memory at destOffset.
 template<class T>
@@ -197,6 +701,98 @@ static uint32_t allocInPlugin(Instance *inst, const void *data, uint32_t size) {
     return p.wasmPointer;
 }
 
+static bool pluginSupportsWebviewUi(Instance* inst, SlotState* state, Pointer<const wclap_plugin> plugPtr) {
+    if (!inst || !state || !state->has_gui)
+        return false;
+    auto apiPtr = allocInPlugin(inst,
+        wclap32::WCLAP_WINDOW_API_WEBVIEW,
+        sizeof(wclap32::WCLAP_WINDOW_API_WEBVIEW));
+    if (!apiPtr)
+        return false;
+    return inst->call(state->gui.is_api_supported,
+                      plugPtr,
+                      Pointer<const char>{apiPtr},
+                      false);
+}
+
+static void updateUiSizeFromPlugin(Instance* inst, SlotState* state, Pointer<const wclap_plugin> plugPtr) {
+    if (!inst || !state || !state->has_gui || !state->ui_created)
+        return;
+    auto widthPtr = inst->malloc32(sizeof(uint32_t));
+    auto heightPtr = inst->malloc32(sizeof(uint32_t));
+    if (!widthPtr.wasmPointer || !heightPtr.wasmPointer)
+        return;
+    if (inst->call(state->gui.get_size, plugPtr,
+                   Pointer<uint32_t>{widthPtr.wasmPointer},
+                   Pointer<uint32_t>{heightPtr.wasmPointer})) {
+        uint32_t width = state->ui_width;
+        uint32_t height = state->ui_height;
+        readPlugin(inst, widthPtr.wasmPointer, &width, 1);
+        readPlugin(inst, heightPtr.wasmPointer, &height, 1);
+        if (width > 0)
+            state->ui_width = width;
+        if (height > 0)
+            state->ui_height = height;
+    }
+}
+
+static bool prepareUi(Instance* inst, SlotState* state, uint32_t width, uint32_t height) {
+    if (!inst || !state)
+        return false;
+
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    if (state->has_gui) {
+        if (!state->ui_created) {
+            auto apiPtr = allocInPlugin(inst,
+                wclap32::WCLAP_WINDOW_API_WEBVIEW,
+                sizeof(wclap32::WCLAP_WINDOW_API_WEBVIEW));
+            if (!apiPtr)
+                return false;
+            if (!inst->call(state->gui.create, plugPtr, Pointer<const char>{apiPtr}, false))
+                return false;
+            state->ui_created = true;
+            state->ui_visible = false;
+        }
+
+        state->ui_can_resize = inst->call(state->gui.can_resize, plugPtr);
+        if (width > 0 && height > 0) {
+            uint32_t adjustedWidth = width;
+            uint32_t adjustedHeight = height;
+            auto widthPtr = inst->malloc32(sizeof(uint32_t));
+            auto heightPtr = inst->malloc32(sizeof(uint32_t));
+            if (widthPtr.wasmPointer && heightPtr.wasmPointer) {
+                writePlugin(inst, widthPtr.wasmPointer, &adjustedWidth, 1);
+                writePlugin(inst, heightPtr.wasmPointer, &adjustedHeight, 1);
+                if (inst->call(state->gui.adjust_size,
+                               plugPtr,
+                               Pointer<uint32_t>{widthPtr.wasmPointer},
+                               Pointer<uint32_t>{heightPtr.wasmPointer})) {
+                    readPlugin(inst, widthPtr.wasmPointer, &adjustedWidth, 1);
+                    readPlugin(inst, heightPtr.wasmPointer, &adjustedHeight, 1);
+                }
+                if (adjustedWidth > 0 && adjustedHeight > 0)
+                    inst->call(state->gui.set_size, plugPtr, adjustedWidth, adjustedHeight);
+            }
+        }
+        updateUiSizeFromPlugin(inst, state, plugPtr);
+    }
+
+    if (state->has_webview) {
+        auto uriPtr = inst->malloc32(4096);
+        if (!uriPtr.wasmPointer)
+            return false;
+        auto written = inst->call(state->webview.get_uri,
+                                  plugPtr,
+                                  Pointer<char>{uriPtr.wasmPointer},
+                                  4096u);
+        if (written > 0)
+            state->ui_uri = inst->getString(Pointer<const char>{uriPtr.wasmPointer}, 4096);
+    }
+
+    rebuildUiJson(state);
+    return state->has_webview || state->has_gui;
+}
+
 static std::string jsonEscape(const char *text, size_t size) {
     std::string escaped;
     escaped.reserve(size + 8);
@@ -213,11 +809,73 @@ static std::string jsonEscape(const char *text, size_t size) {
     return escaped;
 }
 
+static Pointer<const void>
+host_get_ext(void *ctx, Pointer<const wclap_host>, Pointer<const char> id) {
+    auto* state = static_cast<SlotState*>(ctx);
+    if (!state || !state->owner_inst || !id.wasmPointer)
+        return {0};
+    auto extId = state->owner_inst->getString(id, 128);
+    if (extId == wclap32::WCLAP_EXT_GUI && state->host_gui_ptr)
+        return {state->host_gui_ptr};
+    if (extId == wclap32::WCLAP_EXT_PARAMS && state->host_params_ptr)
+        return {state->host_params_ptr};
+    if (extId == wclap32::WCLAP_EXT_WEBVIEW && state->host_webview_ptr)
+        return {state->host_webview_ptr};
+    return {0};
+}
+
+static void host_req_callback(void *ctx, Pointer<const wclap_host>) {
+    auto* state = static_cast<SlotState*>(ctx);
+    if (state)
+        state->callback_requested = true;
+}
+
+static bool host_gui_request_resize(void *ctx, Pointer<const wclap_host>, uint32_t width, uint32_t height) {
+    auto* state = static_cast<SlotState*>(ctx);
+    if (!state)
+        return false;
+    state->ui_width = width;
+    state->ui_height = height;
+    state->ui_resize_pending = true;
+    std::ostringstream json;
+    json << "{"
+         << "\"width\":" << width
+         << ",\"height\":" << height
+         << ",\"canResize\":" << (state->ui_can_resize ? "true" : "false")
+         << "}";
+    state->ui_resize_json = json.str();
+    rebuildUiJson(state);
+    return true;
+}
+
+static bool host_webview_send(void *ctx, Pointer<const wclap_host>, Pointer<const void> data, uint32_t size) {
+    auto* state = static_cast<SlotState*>(ctx);
+    if (!state || !state->owner_inst || !data.wasmPointer || size == 0)
+        return false;
+    std::vector<uint8_t> payload(size);
+    readPlugin(state->owner_inst, data.wasmPointer, payload.data(), size);
+    state->ui_outgoing_messages.emplace_back(std::move(payload));
+    return true;
+}
+
+static void host_params_rescan(void *ctx, Pointer<const wclap_host>, uint32_t) {
+    auto* state = static_cast<SlotState*>(ctx);
+    if (state)
+        state->parameter_values_dirty = true;
+}
+
+static void host_params_request_flush(void *ctx, Pointer<const wclap_host>) {
+    auto* state = static_cast<SlotState*>(ctx);
+    if (state)
+        state->flush_requested = true;
+}
+
 static void rebuildParameterJson(Instance *inst, SlotState *state, Pointer<const wclap_plugin> plugPtr) {
     if (!state || !state->has_params)
         return;
 
     state->parameter_infos.clear();
+    state->parameter_values.clear();
     state->parameter_json = "[]";
 
     auto count = inst->call(state->params.count, plugPtr);
@@ -229,6 +887,7 @@ static void rebuildParameterJson(Instance *inst, SlotState *state, Pointer<const
         return;
 
     state->parameter_infos.reserve(count);
+    state->parameter_values.reserve(count);
     std::ostringstream json;
     json << "[";
     bool first = true;
@@ -247,6 +906,7 @@ static void rebuildParameterJson(Instance *inst, SlotState *state, Pointer<const
         currentValue = tmpValue;
 
         state->parameter_infos.emplace_back(info);
+        state->parameter_values.emplace_back(currentValue);
 
         if (!first)
             json << ",";
@@ -270,6 +930,32 @@ static void rebuildParameterJson(Instance *inst, SlotState *state, Pointer<const
     state->parameter_json = json.str();
 }
 
+static void syncParameterValueUpdates(Instance *inst, SlotState *state, Pointer<const wclap_plugin> plugPtr) {
+    if (!inst || !state || !state->has_params)
+        return;
+    if (state->parameter_infos.empty())
+        return;
+
+    if (state->parameter_values.size() != state->parameter_infos.size())
+        state->parameter_values.assign(state->parameter_infos.size(), 0.0);
+
+    auto valuePtr = inst->malloc32(sizeof(double));
+    if (!valuePtr.wasmPointer)
+        return;
+
+    for (uint32_t index = 0; index < state->parameter_infos.size(); ++index) {
+        const auto& info = state->parameter_infos[index];
+        double currentValue = state->parameter_values[index];
+        if (!inst->call(state->params.get_value, plugPtr, info.id, Pointer<double>{valuePtr.wasmPointer}))
+            continue;
+        readPlugin(inst, valuePtr.wasmPointer, &currentValue, 1);
+        if (std::abs(currentValue - state->parameter_values[index]) > 1.0e-9) {
+            state->parameter_values[index] = currentValue;
+            state->pending_parameter_updates.emplace_back(index, currentValue);
+        }
+    }
+}
+
 static bool enqueueInputEvent(Instance *inst, SlotState *state, const void *eventData, uint32_t eventSize) {
     if (!inst || !state || !eventData || eventSize == 0 || eventSize > state->input_event_stride)
         return false;
@@ -281,6 +967,44 @@ static bool enqueueInputEvent(Instance *inst, SlotState *state, const void *even
     std::memcpy(storage.data(), eventData, eventSize);
     writePlugin(inst, dest, storage.data(), state->input_event_stride);
     ++state->queued_input_events;
+    return true;
+}
+
+static void serviceMainThreadCallbacks(Instance *inst, SlotState *state, bool callOnce = false) {
+    if (!inst || !state)
+        return;
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    auto plugVal = inst->get(plugPtr);
+    if (!plugVal.on_main_thread.wasmPointer)
+        return;
+    if (callOnce) {
+        inst->call(plugVal.on_main_thread, plugPtr);
+    }
+    if (!state->callback_requested)
+        return;
+    for (int guard = 0; guard < 8 && state->callback_requested; ++guard) {
+        state->callback_requested = false;
+        inst->call(plugVal.on_main_thread, plugPtr);
+    }
+}
+
+static bool flushParameterChanges(Instance *inst, SlotState *state, bool force) {
+    if (!inst || !state || !state->has_params || state->flushing_params)
+        return false;
+    if (!force && !state->flush_requested && state->queued_input_events == 0)
+        return false;
+
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    state->flushing_params = true;
+    state->flush_requested = false;
+    state->parameter_values_dirty = false;
+    inst->call(state->params.flush,
+               plugPtr,
+               Pointer<const wclap_input_events>{state->in_events_ptr},
+               Pointer<const wclap_output_events>{state->out_events_ptr});
+    state->queued_input_events = 0;
+    rebuildParameterJson(inst, state, plugPtr);
+    state->flushing_params = false;
     return true;
 }
 
@@ -300,6 +1024,7 @@ int32_t _wclapPluginSetup(Instance *inst,
     if (!inst || maxBuf <= 0 || maxBuf > 2048) return 0;
     auto maxF = static_cast<uint32_t>(maxBuf);
     auto *state = new SlotState{};
+    state->owner_inst = inst;
 
     // Register host callbacks before init() so the plugin can call back.
     wclap_host h{};
@@ -315,6 +1040,30 @@ int32_t _wclapPluginSetup(Instance *inst,
                             Pointer<const wclap_host>>(state, host_req_process);
     h.request_callback = inst->registerHost32<void,
                             Pointer<const wclap_host>>(state, host_req_callback);
+
+    wclap_host_gui hostGui{};
+    hostGui.resize_hints_changed = inst->registerHost32<void,
+        Pointer<const wclap_host>>(state, host_gui_resize_hints_changed);
+    hostGui.request_resize = inst->registerHost32<bool,
+        Pointer<const wclap_host>, uint32_t, uint32_t>(state, host_gui_request_resize);
+    hostGui.request_show = inst->registerHost32<bool,
+        Pointer<const wclap_host>>(state, host_gui_request_show);
+    hostGui.request_hide = inst->registerHost32<bool,
+        Pointer<const wclap_host>>(state, host_gui_request_hide);
+    hostGui.closed = inst->registerHost32<void,
+        Pointer<const wclap_host>, bool>(state, host_gui_closed);
+
+    wclap_host_webview hostWebview{};
+    hostWebview.send = inst->registerHost32<bool,
+        Pointer<const wclap_host>, Pointer<const void>, uint32_t>(state, host_webview_send);
+
+    wclap_host_params hostParams{};
+    hostParams.rescan = inst->registerHost32<void,
+        Pointer<const wclap_host>, uint32_t>(state, host_params_rescan);
+    hostParams.clear = inst->registerHost32<void,
+        Pointer<const wclap_host>, wclap32::wclap_id, uint32_t>(state, host_params_clear);
+    hostParams.request_flush = inst->registerHost32<void,
+        Pointer<const wclap_host>>(state, host_params_request_flush);
 
     wclap_input_events ie{};
     ie.ctx  = {0};
@@ -401,6 +1150,16 @@ int32_t _wclapPluginSetup(Instance *inst,
         delete state;
         return 0;
     }
+
+    state->host_gui_ptr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(&hostGui),
+        sizeof(hostGui));
+    state->host_params_ptr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(&hostParams),
+        sizeof(hostParams));
+    state->host_webview_ptr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(&hostWebview),
+        sizeof(hostWebview));
 
     // create_plugin / init / activate
     auto plugPtr = inst->call(factVal.create_plugin,
@@ -569,6 +1328,31 @@ int32_t _wclapPluginSetup(Instance *inst,
             rebuildParameterJson(inst, state, plugPtr);
         }
     }
+
+    static const char kGuiExtId[] = "clap.gui";
+    auto guiIdPtr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(kGuiExtId),
+        sizeof(kGuiExtId));
+    if (guiIdPtr) {
+        auto guiVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{guiIdPtr});
+        if (guiVoid.wasmPointer != 0) {
+            state->has_gui = true;
+            state->gui = inst->get(Pointer<const wclap_plugin_gui>{guiVoid.wasmPointer});
+        }
+    }
+
+    static const char kWebviewExtId[] = "clap.webview/3";
+    auto webviewIdPtr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(kWebviewExtId),
+        sizeof(kWebviewExtId));
+    if (webviewIdPtr) {
+        auto webviewVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{webviewIdPtr});
+        if (webviewVoid.wasmPointer != 0) {
+            state->has_webview = true;
+            state->webview = inst->get(Pointer<const wclap_plugin_webview>{webviewVoid.wasmPointer});
+        }
+    }
+    rebuildUiJson(state);
     s_slots[inst]         = state;
 
     return 1;
@@ -638,6 +1422,11 @@ int32_t _wclapPluginProcess(Instance *inst, int32_t frames) {
     auto procPtr = Pointer<const wclap_process>{state->process_ptr};
     auto status  = inst->call(plugVal.process, plugPtr, procPtr);
     state->queued_input_events = 0;
+    serviceMainThreadCallbacks(inst, state, true);
+    if (state->parameter_values_dirty) {
+        syncParameterValueUpdates(inst, state, plugPtr);
+        state->parameter_values_dirty = false;
+    }
 
     readPlugin(inst, state->out_data_ptr,
                state->localOutL, f);
@@ -685,6 +1474,291 @@ const char * _wclapDescribeParameters(Instance *inst) {
     return it->second->parameter_json.c_str();
 }
 
+extern "C" __attribute__((export_name("_wclapHasParameterUpdates")))
+int32_t _wclapHasParameterUpdates(Instance *inst) {
+    auto it = s_slots.find(inst);
+    return (it != s_slots.end() && !it->second->pending_parameter_updates.empty()) ? 1 : 0;
+}
+
+extern "C" __attribute__((export_name("_wclapTakeParameterUpdates")))
+const char * _wclapTakeParameterUpdates(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end() || it->second->pending_parameter_updates.empty())
+        return "[]";
+    auto* state = it->second;
+    std::ostringstream json;
+    json << "[";
+    bool first = true;
+    for (const auto& update : state->pending_parameter_updates) {
+        if (!first)
+            json << ",";
+        first = false;
+        json << "{\"index\":" << update.first << ",\"value\":" << update.second << "}";
+    }
+    json << "]";
+    state->parameter_updates_json = json.str();
+    state->pending_parameter_updates.clear();
+    return state->parameter_updates_json.c_str();
+}
+
+extern "C" __attribute__((export_name("_wclapDescribeUi")))
+const char * _wclapDescribeUi(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return "";
+    auto* state = it->second;
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    if (state->has_gui && pluginSupportsWebviewUi(inst, state, plugPtr)) {
+        prepareUi(inst, state, state->ui_width, state->ui_height);
+        if (state->ui_created) {
+            inst->call(state->gui.destroy, plugPtr);
+            state->ui_created = false;
+            state->ui_visible = false;
+        }
+    } else {
+        rebuildUiJson(state);
+    }
+    return state->ui_json.c_str();
+}
+
+extern "C" __attribute__((export_name("_wclapUiCreate")))
+int32_t _wclapUiCreate(Instance *inst, uint32_t width, uint32_t height) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return 0;
+    auto* state = it->second;
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    if (state->has_gui && !pluginSupportsWebviewUi(inst, state, plugPtr))
+        return 0;
+    if (!prepareUi(inst, state, width, height))
+        return 0;
+    serviceMainThreadCallbacks(inst, state, true);
+    return 1;
+}
+
+extern "C" __attribute__((export_name("_wclapUiShow")))
+int32_t _wclapUiShow(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return 0;
+    auto* state = it->second;
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    if (state->has_gui && state->ui_created && !inst->call(state->gui.show, plugPtr))
+        return 0;
+    state->ui_visible = true;
+    serviceMainThreadCallbacks(inst, state, true);
+    return 1;
+}
+
+extern "C" __attribute__((export_name("_wclapUiHide")))
+void _wclapUiHide(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return;
+    auto* state = it->second;
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    if (state->has_gui && state->ui_created)
+        inst->call(state->gui.hide, plugPtr);
+    state->ui_visible = false;
+    serviceMainThreadCallbacks(inst, state, true);
+}
+
+extern "C" __attribute__((export_name("_wclapUiDestroy")))
+void _wclapUiDestroy(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return;
+    auto* state = it->second;
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    if (state->has_gui && state->ui_created)
+        inst->call(state->gui.destroy, plugPtr);
+    state->ui_created = false;
+    state->ui_visible = false;
+    serviceMainThreadCallbacks(inst, state, true);
+}
+
+extern "C" __attribute__((export_name("_wclapUiSetSize")))
+int32_t _wclapUiSetSize(Instance *inst, uint32_t width, uint32_t height) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return 0;
+    auto* state = it->second;
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    if (!state->has_gui || !state->ui_created)
+        return 0;
+    uint32_t adjustedWidth = width;
+    uint32_t adjustedHeight = height;
+    auto widthPtr = inst->malloc32(sizeof(uint32_t));
+    auto heightPtr = inst->malloc32(sizeof(uint32_t));
+    if (widthPtr.wasmPointer && heightPtr.wasmPointer) {
+        writePlugin(inst, widthPtr.wasmPointer, &adjustedWidth, 1);
+        writePlugin(inst, heightPtr.wasmPointer, &adjustedHeight, 1);
+        if (inst->call(state->gui.adjust_size,
+                       plugPtr,
+                       Pointer<uint32_t>{widthPtr.wasmPointer},
+                       Pointer<uint32_t>{heightPtr.wasmPointer})) {
+            readPlugin(inst, widthPtr.wasmPointer, &adjustedWidth, 1);
+            readPlugin(inst, heightPtr.wasmPointer, &adjustedHeight, 1);
+        }
+    }
+    if (!inst->call(state->gui.set_size, plugPtr, adjustedWidth, adjustedHeight))
+        return 0;
+    state->ui_width = adjustedWidth;
+    state->ui_height = adjustedHeight;
+    rebuildUiJson(state);
+    serviceMainThreadCallbacks(inst, state, true);
+    return 1;
+}
+
+extern "C" __attribute__((export_name("_wclapUiGetWidth")))
+uint32_t _wclapUiGetWidth(Instance *inst) {
+    auto it = s_slots.find(inst);
+    return it == s_slots.end() ? 0 : it->second->ui_width;
+}
+
+extern "C" __attribute__((export_name("_wclapUiGetHeight")))
+uint32_t _wclapUiGetHeight(Instance *inst) {
+    auto it = s_slots.find(inst);
+    return it == s_slots.end() ? 0 : it->second->ui_height;
+}
+
+extern "C" __attribute__((export_name("_wclapUiCanResize")))
+int32_t _wclapUiCanResize(Instance *inst) {
+    auto it = s_slots.find(inst);
+    return (it != s_slots.end() && it->second->ui_can_resize) ? 1 : 0;
+}
+
+extern "C" __attribute__((export_name("_wclapUiGetUri")))
+const char * _wclapUiGetUri(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return "";
+    return it->second->ui_uri.c_str();
+}
+
+extern "C" __attribute__((export_name("_wclapUiHasPendingResize")))
+int32_t _wclapUiHasPendingResize(Instance *inst) {
+    auto it = s_slots.find(inst);
+    return (it != s_slots.end() && it->second->ui_resize_pending) ? 1 : 0;
+}
+
+extern "C" __attribute__((export_name("_wclapUiTakeResizeRequest")))
+const char * _wclapUiTakeResizeRequest(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end() || !it->second->ui_resize_pending)
+        return "";
+    it->second->ui_resize_pending = false;
+    return it->second->ui_resize_json.c_str();
+}
+
+extern "C" __attribute__((export_name("_wclapUiMessageBufferPtr")))
+char * _wclapUiMessageBufferPtr(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return nullptr;
+    return it->second->ui_incoming_buffer.data();
+}
+
+extern "C" __attribute__((export_name("_wclapUiMessageBufferCapacity")))
+uint32_t _wclapUiMessageBufferCapacity(Instance *inst) {
+    auto it = s_slots.find(inst);
+    return it == s_slots.end() ? 0 : static_cast<uint32_t>(it->second->ui_incoming_buffer.size());
+}
+
+extern "C" __attribute__((export_name("_wclapUiReceiveMessage")))
+int32_t _wclapUiReceiveMessage(Instance *inst, uint32_t size) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return 0;
+    auto* state = it->second;
+    if (!state->has_webview || size == 0 || size > state->ui_incoming_buffer.size())
+        return 0;
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    auto dataPtr = allocInPlugin(inst, state->ui_incoming_buffer.data(), size);
+    if (!dataPtr)
+        return 0;
+    std::vector<UiObservedParamUpdate> observedUiUpdates{};
+    const auto hadObservedUiUpdates = decodeObservedUiParamMerges(
+        reinterpret_cast<const uint8_t*>(state->ui_incoming_buffer.data()),
+        size,
+        state,
+        observedUiUpdates);
+    const auto pendingUpdatesBefore = state->pending_parameter_updates.size();
+    const auto outgoingMessagesBefore = state->ui_outgoing_messages.size();
+    if (!inst->call(state->webview.receive, plugPtr, Pointer<const void>{dataPtr}, size))
+        return 0;
+
+    // Webview-originated edits may mutate plugin state immediately without
+    // waiting for the normal audio process() cadence. Give the plugin a main
+    // thread turn, service any requested params flush, then resync parameter
+    // values so both host state and any outgoing UI merges stay current.
+    serviceMainThreadCallbacks(inst, state, true);
+    auto flushed = flushParameterChanges(inst, state, false);
+    serviceMainThreadCallbacks(inst, state, true);
+    (void) flushed;
+    syncParameterValueUpdates(inst, state, plugPtr);
+    state->parameter_values_dirty = false;
+    if (hadObservedUiUpdates && state->pending_parameter_updates.size() == pendingUpdatesBefore) {
+        const auto applied = applyObservedUiParamUpdates(state, observedUiUpdates);
+        if (applied && state->ui_outgoing_messages.size() == outgoingMessagesBefore)
+            enqueueSyntheticUiMerge(inst, state, plugPtr, observedUiUpdates);
+    }
+    return 1;
+}
+
+extern "C" __attribute__((export_name("_wclapFlushParameters")))
+int32_t _wclapFlushParameters(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return 0;
+    auto* state = it->second;
+    if (!state->has_params)
+        return 0;
+    const auto outgoingMessagesBefore = state->ui_outgoing_messages.size();
+    auto flushed = flushParameterChanges(inst, state, true);
+    serviceMainThreadCallbacks(inst, state, true);
+    syncParameterValueUpdates(inst, state, Pointer<const wclap_plugin>{state->plugin_ptr});
+    state->parameter_values_dirty = false;
+    if (state->ui_outgoing_messages.size() == outgoingMessagesBefore &&
+        state->last_param_write_index < state->parameter_infos.size()) {
+        const auto paramIndex = state->last_param_write_index;
+        const auto value = state->last_param_write_value;
+        if (state->parameter_values.size() != state->parameter_infos.size())
+            state->parameter_values.resize(state->parameter_infos.size(), 0.0);
+        state->parameter_values[paramIndex] = value;
+        enqueueSyntheticUiMerge(inst,
+                                state,
+                                Pointer<const wclap_plugin>{state->plugin_ptr},
+                                {{paramIndex, value}});
+    }
+    return flushed ? 1 : 0;
+}
+
+extern "C" __attribute__((export_name("_wclapUiHasOutgoingMessage")))
+int32_t _wclapUiHasOutgoingMessage(Instance *inst) {
+    auto it = s_slots.find(inst);
+    return (it != s_slots.end() && !it->second->ui_outgoing_messages.empty()) ? 1 : 0;
+}
+
+extern "C" __attribute__((export_name("_wclapUiDequeueOutgoingMessage")))
+uint32_t _wclapUiDequeueOutgoingMessage(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end() || it->second->ui_outgoing_messages.empty())
+        return 0;
+    auto* state = it->second;
+    state->ui_outgoing_message = std::move(state->ui_outgoing_messages.front());
+    state->ui_outgoing_messages.pop_front();
+    return static_cast<uint32_t>(state->ui_outgoing_message.size());
+}
+
+extern "C" __attribute__((export_name("_wclapUiGetOutgoingMessageData")))
+const uint8_t * _wclapUiGetOutgoingMessageData(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end() || it->second->ui_outgoing_message.empty())
+        return nullptr;
+    return it->second->ui_outgoing_message.data();
+}
+
 extern "C" __attribute__((export_name("_wclapEnqueueMidi2Event")))
 int32_t _wclapEnqueueMidi2Event(Instance *inst, uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3) {
     auto it = s_slots.find(inst);
@@ -713,15 +1787,19 @@ int32_t _wclapEnqueueParameterValue(Instance *inst, uint32_t paramIndex, double 
     auto *state = it->second;
     if (!state->has_params || paramIndex >= state->parameter_infos.size())
         return 0;
+    state->last_param_write_index = paramIndex;
+    state->last_param_write_value = value;
 
     wclap_event_param_value event{};
     event.header.size = sizeof(event);
     event.header.time = 0;
     event.header.space_id = wclap32::WCLAP_CORE_EVENT_SPACE_ID;
     event.header.type = wclap32::WCLAP_EVENT_PARAM_VALUE;
-    event.header.flags = 0;
+    event.header.flags = wclap32::WCLAP_EVENT_IS_LIVE;
     event.param_id = state->parameter_infos[paramIndex].id;
-    event.cookie = state->parameter_infos[paramIndex].cookie;
+    // Match the upstream browser host: host-side param writes identify the
+    // parameter by ID and do not round-trip the plugin cookie here.
+    event.cookie = {0};
     event.note_id = -1;
     event.port_index = -1;
     event.channel = -1;

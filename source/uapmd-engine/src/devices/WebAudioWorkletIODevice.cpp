@@ -233,6 +233,16 @@ namespace uapmd {
             // Forward messages from the worklet processor to the C++ handler
             // uapmd_webclap_on_worklet_message (defined in PluginFormatWebCLAP.cpp).
             node.port.onmessage = function(e) {
+                if (Module._uapmdEnsureWebclapUiManager) {
+                    var uiManager = Module._uapmdEnsureWebclapUiManager();
+                    if (e.data.type === 'wclap-ui-open') {
+                        uiManager.open(e.data.slot, e.data.uri || "", e.data.files || null);
+                        return;
+                    } else if (e.data.type === 'wclap-ui-message') {
+                        uiManager.postToFrame(e.data.slot, e.data.payload);
+                        return;
+                    }
+                }
                 var json = JSON.stringify(e.data);
                 var len  = lengthBytesUTF8(json) + 1;
                 var ptr  = _malloc(len);
@@ -335,6 +345,18 @@ namespace uapmd {
             _free(ptr);
         }
 
+        function reportUiInfo(uiInfo) {
+            var msg = JSON.stringify(Object.assign({
+                type: 'wclap-ui-info',
+                slot: base.slot,
+            }, uiInfo || {}));
+            var len = lengthBytesUTF8(msg) + 1;
+            var ptr = _malloc(len);
+            stringToUTF8(msg, ptr, len);
+            _uapmd_webclap_on_worklet_message(ptr);
+            _free(ptr);
+        }
+
         function readCString(memory, ptr) {
             if (!ptr)
                 return "";
@@ -397,6 +419,9 @@ namespace uapmd {
                             var paramsPtr = exp._wclapDescribeParameters(instance.ptr);
                             var paramsJson = readCString(api.host.hostMemory, paramsPtr);
                             reportParameters(paramsJson ? JSON.parse(paramsJson) : []);
+                            var uiPtr = exp._wclapDescribeUi(instance.ptr);
+                            var uiJson = readCString(api.host.hostMemory, uiPtr);
+                            reportUiInfo(uiJson ? JSON.parse(uiJson) : { hasUi: false });
                         } finally {
                             exp._wclapPluginDestroy(instance.ptr);
                         }
