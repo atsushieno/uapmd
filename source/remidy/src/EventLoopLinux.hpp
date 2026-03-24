@@ -8,7 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#if defined(__linux__) || defined(__unix__)
+#if (defined(__linux__) || defined(__unix__)) && !defined(__EMSCRIPTEN__)
 #include <unistd.h>
 #include <sys/socket.h>
 #include <X11/Xlib.h>
@@ -21,7 +21,7 @@
 
 namespace remidy {
 
-#if defined(__linux__) || defined(__unix__)
+#if (defined(__linux__) || defined(__unix__)) && !defined(__EMSCRIPTEN__)
 
     enum class DisplayServerType {
         Unknown,
@@ -355,6 +355,6 @@ namespace remidy {
         }
     };
 
-#endif // __linux__ || __unix__
+#endif // (__linux__ || __unix__) && !__EMSCRIPTEN__
 
 }

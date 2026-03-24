@@ -4,9 +4,9 @@
 #include <mutex>
 #if ANDROID
 #include <android/looper.h>
-#elif EMSCRIPTEN
+#elif defined(__EMSCRIPTEN__) || EMSCRIPTEN
 #include <emscripten/emscripten.h>
-#elif (defined(__linux__) || defined(__unix__))
+#elif (defined(__linux__) || defined(__unix__)) && !defined(__EMSCRIPTEN__)
 #include "EventLoopLinux.hpp"
 #else
 #include <choc/gui/choc_MessageLoop.h>
@@ -45,7 +45,7 @@ namespace remidy {
             eventLoop = &androidEventLoop;
         return eventLoop;
     }
-#elif EMSCRIPTEN
+#elif defined(__EMSCRIPTEN__) || EMSCRIPTEN
     class EventLoopEmscripten : public EventLoop {
     public:
         EventLoopEmscripten() = default;
@@ -106,7 +106,7 @@ namespace remidy {
             eventLoop = &wasmEventLoop;
         return eventLoop;
     }
-#elif (defined(__linux__) || defined(__unix__))
+#elif (defined(__linux__) || defined(__unix__)) && !defined(__EMSCRIPTEN__)
     // On Linux, use unified EventLoop with X11 + Wayland support (no GTK dependency)
     EventLoopLinux linuxEventLoop{};
 

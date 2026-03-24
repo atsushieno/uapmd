@@ -6,7 +6,7 @@
 #include <thread>
 #include <atomic>
 
-#if defined(__linux__) || defined(__unix__)
+#if (defined(__linux__) || defined(__unix__)) && !defined(__EMSCRIPTEN__)
 #include <unistd.h>
 #include <sys/socket.h>
 #include <X11/Xlib.h>
@@ -15,7 +15,7 @@
 
 namespace remidy {
 
-#if defined(__linux__) || defined(__unix__)
+#if (defined(__linux__) || defined(__unix__)) && !defined(__EMSCRIPTEN__)
 
     // X11-based EventLoop implementation for Linux.
     // This provides a complete, ready-to-use event loop that integrates
@@ -190,6 +190,6 @@ namespace remidy {
         }
     };
 
-#endif // __linux__ || __unix__
+#endif // (__linux__ || __unix__) && !__EMSCRIPTEN__
 
 }
