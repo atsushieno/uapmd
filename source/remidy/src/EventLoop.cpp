@@ -4,7 +4,7 @@
 #include <mutex>
 #if ANDROID
 #include <android/looper.h>
-#elif defined(__EMSCRIPTEN__) || EMSCRIPTEN
+#elif defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
 #elif (defined(__linux__) || defined(__unix__)) && !defined(__EMSCRIPTEN__)
 #include "EventLoopLinux.hpp"
@@ -45,7 +45,7 @@ namespace remidy {
             eventLoop = &androidEventLoop;
         return eventLoop;
     }
-#elif defined(__EMSCRIPTEN__) || EMSCRIPTEN
+#elif defined(__EMSCRIPTEN__)
     class EventLoopEmscripten : public EventLoop {
     public:
         EventLoopEmscripten() = default;
