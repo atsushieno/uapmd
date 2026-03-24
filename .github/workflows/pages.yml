@@ -46,9 +46,41 @@ jobs:
         name: pages-wasm
         path: cmake-build-wasm/source/tools/uapmd-app
 
+  build-api-docs:
+    name: build doxygen for pages
+    runs-on: ubuntu-24.04
+    env:
+      VERSION_TAG: ${{ github.event.inputs.version_tag }}
+    steps:
+    - name: checkout
+      uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    - name: install doxygen
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen
+
+    - name: build doxygen html
+      run: |
+        rm -rf apidocs
+        cp Doxyfile Doxyfile.pages
+        if [ -n "${VERSION_TAG}" ]; then
+          normalized_version="$(printf '%s\n' "${VERSION_TAG}" | perl -ne 'if (/^([0-9]+)\.([0-9]+)\.([0-9]+)(?:[.-].*)?$/) { print "$1.$2.$3\n"; } else { print $_; }')"
+          perl -0pi -e 's/PROJECT_NUMBER\s*=\s*"[^"]*"/PROJECT_NUMBER         = "'"${normalized_version}"'"/' Doxyfile.pages
+        fi
+        doxygen Doxyfile.pages
+
+    - name: upload pages api docs
+      uses: actions/upload-artifact@v6
+      with:
+        name: pages-api-docs
+        path: apidocs/html
+
   deploy:
     name: deploy to gh-pages
-    needs: build-wasm
+    needs: [build-wasm, build-api-docs]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -66,6 +98,12 @@ jobs:
         name: pages-wasm
         path: pages-wasm
 
+    - name: download pages api docs
+      uses: actions/download-artifact@v7
+      with:
+        name: pages-api-docs
+        path: pages-api-docs
+
     - name: prepare gh-pages checkout
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,7 +118,7 @@ jobs:
 
     - name: update published site tree
       run: |
-        bash scripts/prepare-gh-pages-site.sh pages-src pages-wasm publish "${VERSION_TAG}"
+        bash scripts/prepare-gh-pages-site.sh pages-src pages-wasm pages-api-docs publish "${VERSION_TAG}"
 
     - name: commit and push
       env:
