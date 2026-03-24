@@ -1,0 +1,105 @@
+name: publish pages
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Optional version tag to snapshot under /playground/<tag>/ and /api/<tag>/'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-wasm:
+    name: build wasm for pages
+    runs-on: macos-15
+    steps:
+    - name: checkout
+      uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    - name: restore emsdk cache
+      uses: actions/cache@v4
+      with:
+        path: source/tools/uapmd-app/web/.emsdk
+        key: emsdk-${{ runner.os }}-${{ hashFiles('build-wasm.sh') }}
+        restore-keys: emsdk-${{ runner.os }}-
+
+    - name: restore CPM package cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/CPM/uapmd
+        key: cpm-wasm-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
+        restore-keys: cpm-wasm-${{ runner.os }}-
+
+    - name: build
+      run: bash build-wasm.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd
+
+    - name: upload pages wasm bundle
+      uses: actions/upload-artifact@v6
+      with:
+        name: pages-wasm
+        path: cmake-build-wasm/source/tools/uapmd-app/*
+
+  deploy:
+    name: deploy to gh-pages
+    needs: build-wasm
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.version_tag }}
+    steps:
+    - name: checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+
+    - name: download pages wasm bundle
+      uses: actions/download-artifact@v7
+      with:
+        name: pages-wasm
+        path: pages-wasm
+
+    - name: prepare gh-pages checkout
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        remote_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+        if git ls-remote --exit-code --heads "${remote_url}" gh-pages >/dev/null 2>&1; then
+          git clone --depth 1 --branch gh-pages "${remote_url}" publish
+        else
+          git init publish
+          git -C publish checkout --orphan gh-pages
+        fi
+
+    - name: update published site tree
+      run: |
+        bash scripts/prepare-gh-pages-site.sh gh-pages pages-wasm publish "${VERSION_TAG}"
+
+    - name: commit and push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git -C publish add -A
+        if git -C publish diff --cached --quiet; then
+          echo "No gh-pages changes to publish."
+          exit 0
+        fi
+
+        git -C publish config user.name "github-actions[bot]"
+        git -C publish config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git -C publish commit -m "Publish Pages for ${GITHUB_SHA}"
+        git -C publish remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null || true
+        git -C publish push --force origin HEAD:gh-pages
