@@ -22,20 +22,20 @@ We also develop [midicci](https://github.com/atsushieno/midicci), an fully featu
 
 UAPMD targets the following platforms:
 
-| platform | missing features |
-|-|-|
-| Linux desktop | |
-| macOS | |
-| Windows | MIDI 2.0 virtual devices (WIP) |
-| Android | Audio plugins (WIP) |
-| iOS | (not verified much) |
-| Web (Emscripten) | Audio plugins |
+| platform | plugin formats | missing features |
+|-|-|-|
+| Linux desktop | VST3,LV2,CLAP | |
+| macOS | VST3,AU(v2/v3),LV2,CLAP | |
+| Windows | VST3,LV2,CLAP | MIDI 2.0 virtual devices (WIP) |
+| Android | [AAP](https://github.com/atsushieno/aap-core) | MIDI 2.0 virtual devices (but AAP itself supports it statically) |
+| iOS | AUv3 | |
+| Web (Emscripten) | [WebCLAP](https://github.com/WebCLAP) | |
 
-We support VST3, AudioUnit (v2 and v3), LV2, and CLAP plugin formats.
+Note that there are handful of experimental formats.
 
 UAPMD is based on its own plugin hosting foundation `remidy`, and released under the MIT license (except for Android which brings in a lot of ApacheV2-licensed libraries). `uapmd-app` is built strictly on the libraries with liberal licenses.
 
-## Build or Install
+## Build + Install
 
 There is an application `uapmd-app` that performs almost all features UAPMD provides.
 
@@ -96,9 +96,11 @@ I put them on the [wiki](https://github.com/atsushieno/uapmd/wiki) pages (note t
 
 ## What's the point of these tools?
 
-With UAPMD, You do not have to wait for MIDI 2.0 synthesizers in the market; existing audio plugins should work as virtual MIDI 2.0 devices. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take a similar place for MIDI 2.0.
+v0.1: With UAPMD, You do not have to wait for MIDI 2.0 synthesizers in the market; existing audio plugins should work as virtual MIDI 2.0 devices. We have timidity++ or fluidsynth, Microsoft GS wavetable synth, YAMAHA S-YXG etc. for MIDI 1.0. UAPMD will take a similar place for MIDI 2.0.
 
-Currently, both Remidy and UAPMD target only desktop platforms so far, but if you use my [AAP project](https://github.com/atsushieno/aap-core) those synth plugins already work as UMP devices (you need Android 15 or later that supports [`MidiUmpDeviceService`](https://developer.android.com/reference/kotlin/android/media/midi/MidiUmpDeviceService)).
+v0.2: UAPMD works more like a multitrack sequencer that lets you organize audio and MIDI 2.0 clips with audio plugins, to play all together or record statically into audio files.
+
+v0.3: UAPMD works everywhere on desktop, mobile, and web (virtual MIDI 2.0 devices as long as the platform is eligible).
 
 ## Usage
 
@@ -108,7 +110,7 @@ There are supplemental tools for diagnosing problems we encounter.
 
 ### uapmd-app
 
-The virtual MIDI 2.0 device service controller. Currently the command line options are hacky:
+It is the primary multitrack sequencer, virtual MIDI 2.0 device service controller. Currently the public command line options are hacky:
 
 > $ uapmd-app (plugin-name) (format-name) (api-name)
 
@@ -123,6 +125,11 @@ We have some [users guide documentation](docs/users/USERS_GUIDE.md).
 ### uapmd-scan
 
 `uapmd-scan` is a standalone entry point for the scan-only mode that also powers `uapmd-app --scan-only`. It always performs a fresh rescan via the remote scanner worker (equivalent to `uapmd-app --scan-only --force-rescan --full --remote`), enforces per-bundle timeouts (`--timeout <seconds>`, default `120`) so that hung plugins are terminated and skipped, persists the cache to `(local app data)/remidy-tooling/plugin-list-cache.json` (`local app data` [depends on the platform](https://github.com/cginternals/cpplocate)), and prints the JSON report to stdout.
+
+### uapmd-apply
+
+`uapmd-apply` is an offline rendering engine for `*.uapmdz` project files. It instantiates all the plugins used in the project, then render a WAV without GUI. You can achieve the same functionality using `uapmd-app`.
+
 
 ## Documentation
 
@@ -172,38 +179,44 @@ It likely works with MIDI 1.0 inputs (translated, depending on the platform) to 
 
 Sources in this repository are released under the MIT license.
 
-There are third-party (and first party) dependency libraries (git submodules, CMake FetchContent, or directly included):
+There are third-party (and first-party) dependency libraries (git submodules, CMake FetchContent, or directly included):
 
 - [lv2/lv2kit](https://github.com/lv2/lv2kit) (serd, sord, sratom, lilv, zix): the ISC license.
 - [free-audio/clap](https://github.com/free-audio/clap) - MIT
 - [free-audio/clap-helpers](https://github.com/free-audio/clap-helpers) - MIT
 - [steinbergmedia/vst3sdk](https://github.com/steinbergmedia/vst3sdk) - MIT
+- [atsushieno/aap-core](https://github.com/atsushieno/aap-core) - MIT
+- [WebCLAP/wclap-host-cpp](https://github.com/WebCLAP/wclap-host-cpp) - MIT
+- [WebCLAP/wclap-host-js](https://github.com/WebCLAP/wclap-host-js) - MIT
 - [Tracktion/choc](https://github.com/Tracktion/choc/): the ISC license.
   - [bellard/quickjs](https://github.com/bellard/quickjs) - MIT
   - [xiph/vorbis](https://github.com/xiph/vorbis) - BSD (3-clause)
   - [xiph/flac](https://github.com/xiph/flac) - BSD-like (libraries only)
 - [celtera/libremidi](https://github.com/celtera/libremidi) - BSD (2-clause), MIT (RtMidi)
-- [zlib-ng/zlib-ng](https://github.com/zlib-ng/zlib-ng) - Zlib license.
 - [atsushieno/midicci](https://github.com/atsushieno/midicci) - MIT
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - MIT (or public domain)
+- [zlib-ng/zlib-ng](https://github.com/zlib-ng/zlib-ng) - Zlib license.
 - [cginternals/cpplocate](https://github.com/cginternals/cpplocate): MIT
 - [jeremy-rifkin/cpptrace](https://github.com/jeremy-rifkin/cpptrace) - MIT
 - [jarro2783/cxxopts](https://github.com/jarro2783/cxxopts): MIT
+- [cameron314/readerwriterqueue](https://github.com/cameron314/readerwriterqueue) - BSD (2-clause)
 - [cameron314/concurrentqueue](https://github.com/cameron314/concurrentqueue) - BSD (2-clause)
 - [cjappl/rtlog-cpp](https://github.com/cjappl/rtlog-cpp): MIT
-    - for submodules see their [LICENSE.md](https://github.com/cjappl/rtlog-cpp/blob/main/LICENSE.md) (modified BSD, MIT)
-- [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
+  - [hogliux/farbot](https://github.com/hogliux/farbot) - MIT
+  - [nothings/stb](https://github.com/nothings/stb) - MIT
+  - [fmtlib/fmt](https://github.com/fmtlib/fmt) - MIT
 - [ocornut/imgui](https://github.com/ocornut/imgui) - MIT
+- [samhocevar/portable-file-dialogs](https://github.com/samhocevar/portable-file-dialogs) - WTFPL
 - [triplejam/ImTimeline](https://github.com/triplejam/ImTimeline) (a well-maintained and buildable fork of NickVanheer/ImTimeline) - MIT
 - [juliettef/IconFontCppHelpers](https://github.com/juliettef/IconFontCppHeaders) - Zlib license.
 - [eyalamirmusic/ResEmbed](https://github.com/eyalamirmusic/ResEmbed) - MIT
 - [sevagh/demucs.cpp](https://github.com/sevagh/demucs.cpp) - MIT
-- [OpenMathLib/OpenBLAS](https://github.com/OpenMathLib/OpenBLAS) - BSD (3-clause)  (optional for demucs.cpp acceleration; disabled by default)
+- [OpenMathLib/OpenBLAS](https://github.com/OpenMathLib/OpenBLAS) (optional for demucs.cpp acceleration; disabled by default) - BSD (3-clause) 
 - [wang-bin/JMI](https://github.com/wang-bin/JMI) - MIT
 - [yhirose/cpp-httplib](https://github.com/yhirose/cpp-httplib) - MIT
 - [machinezone/IXWebSocket](https://github.com/machinezone/IXWebSocket) - BSD (3-clause)
-- [WebCLAP/wclap-host-cpp](https://github.com/WebCLAP/wclap-host-cpp) - MIT
-- [WebCLAP/wclap-host-js](https://github.com/WebCLAP/wclap-host-js) - MIT
+- [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
+- [google/googletest](https://github.com/google/googletest) - BSD (3-clause)
 
 Fonts used:
 
