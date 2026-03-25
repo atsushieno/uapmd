@@ -41,7 +41,7 @@ namespace remidy {
         ~PluginScanningWebCLAP() override = default;
 
         ScanningStrategyValue scanRequiresLoadLibrary() override {
-            return ScanningStrategyValue::NEVER;
+            return ScanningStrategyValue::ALWAYS;
         }
         bool scanRequiresLoadLibrary(const std::filesystem::path&) override { return false; }
         ScanningStrategyValue scanRequiresInstantiation() override {

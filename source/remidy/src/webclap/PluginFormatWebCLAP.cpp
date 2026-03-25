@@ -164,61 +164,6 @@ EM_JS(void, uapmd_webclap_unbind_ui_slot, (uint32_t slot), {
 
 namespace remidy {
 
-// Hardcoded WebCLAP bundle catalog. Each bundle may expose multiple CLAP
-// descriptors, so the catalog expands one bundle URL into multiple entries.
-
-struct KnownBundlePlugin {
-    const char* clapId;
-    const char* displayName;
-};
-
-struct KnownBundle {
-    const char* url;
-    const KnownBundlePlugin* plugins;
-    size_t pluginCount;
-};
-
-static constexpr KnownBundlePlugin kSignalsmithBasicsPlugins[] = {
-    {"uk.co.signalsmith.basics.chorus", "[Basics] Chorus"},
-    {"uk.co.signalsmith.basics.limiter", "[Basics] Limiter"},
-    {"uk.co.signalsmith.basics.freq-shifter", "[Basics] Frequency Shifter"},
-    {"uk.co.signalsmith.basics.analyser", "[Basics] Analyser"},
-    {"uk.co.signalsmith.basics.crunch", "[Basics] Crunch"},
-    {"uk.co.signalsmith.basics.reverb", "[Basics] Reverb"},
-};
-
-static constexpr KnownBundlePlugin kSignalsmithCppExamplePlugins[] = {
-    {"uk.co.signalsmith-audio.plugins.example-audio-plugin", "C++ Example Audio Plugin (Chorus)"},
-    {"uk.co.signalsmith-audio.plugins.example-note-plugin", "C++ Example Note Plugin"},
-    {"uk.co.signalsmith-audio.plugins.example-synth", "C++ Example Synth"},
-    {"uk.co.signalsmith-audio.plugins.example-keyboard", "C++ Example Virtual Keyboard"},
-};
-
-static constexpr KnownBundle kKnownBundles[] = {
-    {
-        "https://webclap.github.io/browser-test-host/examples/signalsmith-basics/"
-            "basics.wclap.tar.gz",
-        kSignalsmithBasicsPlugins,
-        std::size(kSignalsmithBasicsPlugins),
-    },
-    {
-        "https://webclap.github.io/browser-test-host/examples/signalsmith-clap-cpp/"
-            "example-plugins.wclap.tar.gz",
-        kSignalsmithCppExamplePlugins,
-        std::size(kSignalsmithCppExamplePlugins),
-    },
-};
-
-static const char* findKnownBundleUrlForPluginId(std::string_view pluginId) {
-    for (const auto& bundle : kKnownBundles) {
-        for (size_t i = 0; i < bundle.pluginCount; ++i) {
-            if (pluginId == bundle.plugins[i].clapId)
-                return bundle.url;
-        }
-    }
-    return nullptr;
-}
-
 struct WebClapUiMessage {
     bool hasUi{};
     bool canResize{};
@@ -458,12 +403,18 @@ void PluginFormatWebCLAPImpl::createInstance(
     const uint32_t slot   = state.next_slot.fetch_add(1, std::memory_order_relaxed);
     const uint32_t req_id = state.next_req_id.fetch_add(1, std::memory_order_relaxed);
     std::string clapId = info->pluginId();
-    const char* bundleUrlPtr = findKnownBundleUrlForPluginId(clapId);
-    std::string bundleUrl = bundleUrlPtr ? std::string{bundleUrlPtr} : info->pluginId();
+    std::string bundleUrl = info->productUrl();
 
     {
         std::lock_guard<std::mutex> lock(state.pending_mutex);
         state.pending_requests.emplace(req_id, PendingRequest{info, slot, std::move(callback)});
+    }
+
+    if (bundleUrl.empty()) {
+        callback(nullptr, "WebCLAP bundle URL is missing from catalog entry");
+        std::lock_guard<std::mutex> lock(state.pending_mutex);
+        state.pending_requests.erase(req_id);
+        return;
     }
 
     // Fetch and compile the plugin WASM on the main thread (where fetch/URL are
@@ -582,20 +533,10 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
 
 std::vector<std::unique_ptr<PluginCatalogEntry>>
 PluginScanningWebCLAP::scanAllAvailablePlugins(bool /*requireFastScanning*/) {
-    std::vector<std::unique_ptr<PluginCatalogEntry>> result;
-    std::string format_name = owner_->name();
-    for (const auto& bundle : kKnownBundles) {
-        for (size_t i = 0; i < bundle.pluginCount; ++i) {
-            const auto& plugin = bundle.plugins[i];
-            auto e = std::make_unique<PluginCatalogEntry>();
-            e->format(format_name);
-            std::string id{plugin.clapId};
-            e->pluginId(id);
-            e->displayName(plugin.displayName);
-            result.emplace_back(std::move(e));
-        }
-    }
-    return result;
+    // WebCLAP descriptors are discovered asynchronously in the browser and then
+    // loaded from the persisted catalog cache. Do not synthesize descriptor
+    // entries here from a hardcoded list.
+    return {};
 }
 
 // ── PluginInstanceWebCLAP ─────────────────────────────────────────────────────

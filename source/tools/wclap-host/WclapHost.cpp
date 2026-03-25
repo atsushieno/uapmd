@@ -51,6 +51,33 @@ using wclap32::wclap_plugin_params;
 using wclap32::wclap_process;
 using wclap32::wclap_plugin_webview;
 
+static std::string escapeJsonString(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (char ch : value) {
+        switch (ch) {
+            case '\\': escaped += "\\\\"; break;
+            case '"': escaped += "\\\""; break;
+            case '\b': escaped += "\\b"; break;
+            case '\f': escaped += "\\f"; break;
+            case '\n': escaped += "\\n"; break;
+            case '\r': escaped += "\\r"; break;
+            case '\t': escaped += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(ch) < 0x20) {
+                    std::ostringstream hex;
+                    hex << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                        << static_cast<int>(static_cast<unsigned char>(ch));
+                    escaped += hex.str();
+                } else {
+                    escaped += ch;
+                }
+                break;
+        }
+    }
+    return escaped;
+}
+
 // ── Instance management (called by wclap.mjs) ─────────────────────────────
 
 Instance * _wclapInstanceCreate(bool is64) {
@@ -1382,6 +1409,66 @@ int32_t _wclapPluginSetup(Instance *inst,
     s_slots[inst]         = state;
 
     return 1;
+}
+
+extern "C" __attribute__((export_name("_wclapDescribePlugins")))
+const char * _wclapDescribePlugins(Instance *inst) {
+    static std::string json = "[]";
+    if (!inst)
+        return json.c_str();
+
+    if (!inst->init()) {
+        std::cerr << "[wclap] inst->init() failed during descriptor scan\n";
+        return json.c_str();
+    }
+
+    static const uint8_t kRoot[] = {'/', '\0'};
+    uint32_t pathPtr = allocInPlugin(inst, kRoot, sizeof(kRoot));
+    if (!pathPtr)
+        return json.c_str();
+
+    auto entryVal = inst->get(inst->entry32);
+    if (entryVal.init.wasmPointer)
+        inst->call(entryVal.init, Pointer<const char>{pathPtr});
+
+    static const char kFactoryId[] = "clap.plugin-factory";
+    uint32_t fidPtr = allocInPlugin(inst,
+                                    reinterpret_cast<const uint8_t *>(kFactoryId),
+                                    sizeof(kFactoryId));
+    if (!fidPtr)
+        return json.c_str();
+
+    auto factVoid = inst->call(entryVal.get_factory, Pointer<const char>{fidPtr});
+    if (factVoid.wasmPointer == 0)
+        return json.c_str();
+
+    auto factPtr = Pointer<const wclap_plugin_factory>{factVoid.wasmPointer};
+    auto factVal = inst->get(factPtr);
+    uint32_t pluginCount = inst->call(factVal.get_plugin_count, factPtr);
+
+    std::ostringstream out;
+    out << "[";
+    bool first = true;
+    for (uint32_t index = 0; index < pluginCount; ++index) {
+        auto descPtr = inst->call(factVal.get_plugin_descriptor, factPtr, index);
+        if (descPtr.wasmPointer == 0)
+            continue;
+        auto descVal = inst->get(descPtr);
+        auto pluginId = inst->getString(descVal.id, 256);
+        if (pluginId.empty())
+            continue;
+        if (!first)
+            out << ",";
+        first = false;
+        out << "{";
+        out << "\"pluginId\":\"" << escapeJsonString(pluginId) << "\"";
+        out << ",\"displayName\":\"" << escapeJsonString(inst->getString(descVal.name, 256)) << "\"";
+        out << ",\"vendorName\":\"" << escapeJsonString(inst->getString(descVal.vendor, 256)) << "\"";
+        out << "}";
+    }
+    out << "]";
+    json = out.str();
+    return json.c_str();
 }
 
 extern "C" __attribute__((export_name("_wclapPluginStartProcessing")))

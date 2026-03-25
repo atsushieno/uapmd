@@ -22,6 +22,9 @@
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include <choc/text/choc_JSON.h>
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_SampleBuffers.h>
@@ -120,6 +123,154 @@ private:
 };
 
 } // namespace uapmd
+
+#ifdef __EMSCRIPTEN__
+extern "C" void uapmd_webclap_on_catalog_scanned(const char* json_c);
+
+EM_JS(void, uapmd_webclap_scan_catalog_async, (), {
+    const bundleUrls = [
+        'https://webclap.github.io/browser-test-host/examples/signalsmith-basics/basics.wclap.tar.gz',
+        'https://webclap.github.io/browser-test-host/examples/signalsmith-clap-cpp/example-plugins.wclap.tar.gz',
+    ];
+
+    function sendResult(entries) {
+        const msg = JSON.stringify({ entries: entries || [] });
+        const len = lengthBytesUTF8(msg) + 1;
+        const ptr = _malloc(len);
+        stringToUTF8(msg, ptr, len);
+        _uapmd_webclap_on_catalog_scanned(ptr);
+        _free(ptr);
+    }
+
+    function readCString(memory, ptr) {
+        if (!ptr)
+            return "";
+        const bytes = new Uint8Array(memory.buffer);
+        let end = ptr;
+        while (end < bytes.length && bytes[end] !== 0)
+            end++;
+        return new TextDecoder('utf-8').decode(bytes.subarray(ptr, end));
+    }
+
+    function ensureInspectorHost() {
+        if (!Module._wclapInspectorHostPromise) {
+            Module._wclapInspectorHostPromise = import('./wclap.mjs').then(function(api) {
+                return api.getHost('./uapmd-wclap-host.wasm').then(function(hostInit) {
+                    return api.startHost(hostInit).then(function(host) {
+                        return { getWclap: api.getWclap, host: host };
+                    });
+                });
+            });
+        }
+        return Module._wclapInspectorHostPromise;
+    }
+
+    function buildWclapInit(api, url, tarFiles) {
+        const wasmBuffer = tarFiles['module.wasm'];
+        if (!wasmBuffer)
+            throw new Error('No module.wasm found in WebCLAP bundle');
+        return WebAssembly.compile(wasmBuffer).then(function(wasmModule) {
+            const modulePages = Math.max(Math.ceil(wasmBuffer.byteLength / 65536) || 4, 4);
+            const memorySpec = { initial: modulePages, maximum: 32768, shared: true };
+            return api.getWclap({ url: url, files: tarFiles, module: wasmModule, memorySpec });
+        }).then(function(wclapInit) {
+            const fixedFiles = {};
+            Object.entries(wclapInit.files).forEach(function(entry) {
+                const key = entry[0];
+                const val = entry[1];
+                if ((val instanceof ArrayBuffer && val.byteLength === 0) || key.indexOf('/._') >= 0)
+                    return;
+                fixedFiles[key.startsWith('/') ? key : '/' + key] = val;
+            });
+            wclapInit.files = fixedFiles;
+            if (!wclapInit.memory && wclapInit.memorySpec)
+                wclapInit.memory = new WebAssembly.Memory(wclapInit.memorySpec);
+            wclapInit.pluginPath = url;
+            return wclapInit;
+        });
+    }
+
+    function expandTarFiles(response, expandTarGz) {
+        if (response.headers.get('Content-Type') === 'application/wasm') {
+            return response.arrayBuffer().then(function(bytes) {
+                return { 'module.wasm': bytes };
+            });
+        }
+        return expandTarGz(response);
+    }
+
+    function inspectBundle(url) {
+        return Promise.all([fetch(url), import('./es6/targz.mjs')]).then(function(results) {
+            const response = results[0];
+            const expandTarGz = results[1].default;
+            return expandTarFiles(response, expandTarGz);
+        }).then(function(tarFiles) {
+            return ensureInspectorHost().then(function(api) {
+                return buildWclapInit(api, url, tarFiles).then(function(wclapInit) {
+                    return api.host.startWclap(wclapInit, null).then(function(instance) {
+                        const exp = api.host.hostInstance.exports;
+                        try {
+                            const ptr = exp._wclapDescribePlugins(instance.ptr);
+                            const json = readCString(api.host.hostMemory, ptr);
+                            const descriptors = json ? JSON.parse(json) : [];
+                            return descriptors.map(function(entry) {
+                                return {
+                                    format: 'WebCLAP',
+                                    pluginId: entry.pluginId || "",
+                                    displayName: entry.displayName || entry.pluginId || "",
+                                    vendorName: entry.vendorName || "",
+                                    productUrl: url,
+                                };
+                            });
+                        } finally {
+                            exp._wclapInstanceDestroy && exp._wclapInstanceDestroy(instance.ptr);
+                        }
+                    });
+                });
+            });
+        });
+    }
+
+    Promise.all(bundleUrls.map(function(url) {
+        return inspectBundle(url).catch(function(err) {
+            console.warn('[uapmd] WebCLAP catalog inspection failed for', url, err);
+            return [];
+        });
+    })).then(function(results) {
+        sendResult([].concat(...results));
+    }).catch(function(err) {
+        console.error('[uapmd] WebCLAP catalog inspection failed:', err);
+        sendResult([]);
+    });
+});
+
+extern "C" EMSCRIPTEN_KEEPALIVE void uapmd_webclap_on_catalog_scanned(const char* json_c) {
+    auto payload = choc::json::parse(json_c);
+    auto entries = payload["entries"];
+    auto& app = uapmd::AppModel::instance();
+    app.pluginScanTool().catalog().clear();
+    for (uint32_t i = 0; i < entries.size(); ++i) {
+        auto item = entries[i];
+        auto entry = std::make_unique<remidy::PluginCatalogEntry>();
+        std::string format = item["format"].toString();
+        std::string pluginId = item["pluginId"].toString();
+        std::string displayName = item["displayName"].toString();
+        std::string vendorName = item["vendorName"].toString();
+        std::string productUrl = item["productUrl"].toString();
+        entry->format(format);
+        entry->pluginId(pluginId);
+        entry->displayName(displayName);
+        entry->vendorName(vendorName);
+        entry->productUrl(productUrl);
+        app.pluginScanTool().catalog().add(std::move(entry));
+    }
+
+    auto& cacheFile = app.pluginScanTool().pluginListCacheFile();
+    if (!cacheFile.empty())
+        app.pluginScanTool().savePluginListCache();
+    app.sequencer().engine()->pluginHost()->performPluginScanning(false);
+}
+#endif
 
 std::optional<std::filesystem::path> createTempProjectDirectory(std::string& error)
 {
@@ -508,6 +659,9 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
         }
     }
     if (!loadedFromCache || pluginScanTool_->catalog().getPlugins().empty()) {
+#if defined(__EMSCRIPTEN__)
+        uapmd_webclap_scan_catalog_async();
+#else
         auto hostEntries = sequencer_.engine()->pluginHost()->pluginCatalogEntries();
         for (auto& plugin : hostEntries) {
             auto entry = std::make_unique<remidy::PluginCatalogEntry>();
@@ -521,6 +675,7 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
             entry->bundlePath(plugin.bundlePath());
             pluginScanTool_->catalog().add(std::move(entry));
         }
+#endif
     }
 }
 

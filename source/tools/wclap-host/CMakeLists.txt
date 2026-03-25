@@ -106,6 +106,7 @@ target_link_options(uapmd-wclap-host PRIVATE
     "-Wl,--export=_wclapInEventsSize"
     "-Wl,--export=_wclapInEventsGet"
     "-Wl,--export=_wclapOutEventsTryPush"
+    "-Wl,--export=_wclapDescribePlugins"
     "-Wl,--export=_wclapDescribeParameters"
     "-Wl,--export=_wclapHasParameterUpdates"
     "-Wl,--export=_wclapTakeParameterUpdates"
