@@ -17,35 +17,41 @@ namespace remidy {
         lilv_free(world);
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerLV2::scanAllAvailablePlugins(bool /*requireFastScanning*/) {
-        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
+    std::vector<PluginCatalogEntry> PluginScannerLV2::getAllFastScannablePlugins() {
+        std::vector<PluginCatalogEntry> ret{};
 
         auto plugins = lilv_world_get_all_plugins(world);
         LILV_FOREACH(plugins, iter, plugins) {
             const LilvPlugin* plugin = lilv_plugins_get(plugins, iter);
-            auto entry = std::make_unique<PluginCatalogEntry>();
+            PluginCatalogEntry entry{};
             static std::string lv2Format{"LV2"};
-            entry->format(lv2Format);
+            entry.format(lv2Format);
             auto uriNode = lilv_plugin_get_uri(plugin);
             std::string uri = lilv_node_as_uri(uriNode);
             auto bundleUriNode = lilv_plugin_get_bundle_uri(plugin);
             auto bundlePath = lilv_node_as_uri(bundleUriNode);
-            entry->bundlePath(std::filesystem::path{bundlePath});
-            entry->pluginId(uri);
+            entry.bundlePath(std::filesystem::path{bundlePath});
+            entry.pluginId(uri);
             auto nameNode = lilv_plugin_get_name(plugin);
             std::string name = lilv_node_as_string(nameNode);
             auto authorNameNode = lilv_plugin_get_author_name(plugin);
             auto authorName = lilv_node_as_string(authorNameNode);
             auto authorUrlNode = lilv_plugin_get_author_homepage(plugin);
             auto authorUrl = lilv_node_as_string(authorUrlNode);
-            entry->displayName(name);
+            entry.displayName(name);
             if (authorName)
-                entry->vendorName(authorName);
+                entry.vendorName(authorName);
             if (authorUrl)
-                entry->productUrl(authorUrl);
+                entry.productUrl(authorUrl);
             ret.emplace_back(std::move(entry));
         }
         return ret;
+    }
+
+    void PluginScannerLV2::startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> /*pluginFound*/,
+                                               PluginScanCompletedCallback scanCompleted) {
+        if (scanCompleted)
+            scanCompleted("");
     }
 
     void PluginFormatLV2Impl::createInstance(

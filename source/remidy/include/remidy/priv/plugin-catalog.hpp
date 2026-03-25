@@ -1,6 +1,6 @@
 #pragma once
-#include <map>
 #include <filesystem>
+#include <map>
 #include <vector>
 
 #include "common.hpp"
@@ -21,6 +21,7 @@ namespace remidy {
 
         // Returns the plugin format.
         std::string& format() { return fmt; }
+        const std::string& format() const { return fmt; }
         // Set a new plugin ID. It is settable only because deserializers will use it.
         StatusCode format(std::string& newFormat) {
             fmt = newFormat;
@@ -28,28 +29,33 @@ namespace remidy {
         }
         // Returns the plugin ID.
         std::string& pluginId() { return id; }
+        const std::string& pluginId() const { return id; }
         // Set a new plugin ID. It is settable only because deserializers will use it.
         StatusCode pluginId(std::string& newId) {
             id = newId;
             return StatusCode::OK;
         }
         std::string& displayName() { return display_name; }
+        const std::string& displayName() const { return display_name; }
         StatusCode displayName(const std::string& newValue) {
             display_name = newValue;
             return StatusCode::OK;
         }
         std::string& vendorName() { return vendor_name; }
+        const std::string& vendorName() const { return vendor_name; }
         StatusCode vendorName(const std::string& newValue) {
             vendor_name = newValue;
             return StatusCode::OK;
         }
         std::string& productUrl() { return product_url; }
+        const std::string& productUrl() const { return product_url; }
         StatusCode productUrl(const std::string& newValue) {
             product_url = newValue;
             return StatusCode::OK;
         }
         // Returns a file system path to the bundle, if the format supports it.
         std::filesystem::path& bundlePath() { return bundle; }
+        const std::filesystem::path& bundlePath() const { return bundle; }
         // Sets a file system path to the bundle, if the format supports it.
         StatusCode bundlePath(const std::filesystem::path& newPath) {
             bundle = newPath.lexically_normal();
@@ -58,14 +64,14 @@ namespace remidy {
     };
 
     class PluginCatalog {
-        std::vector<std::unique_ptr<PluginCatalogEntry>> entries{};
-        std::vector<std::unique_ptr<PluginCatalogEntry>> denyList{};
+        std::vector<PluginCatalogEntry> entries{};
+        std::vector<PluginCatalogEntry> denyList{};
 
     public:
         std::vector<PluginCatalogEntry*> getPlugins();
         std::vector<PluginCatalogEntry*> getDenyList();
-        bool contains(std::string& format, std::string& pluginId) const;
-        void add(std::unique_ptr<PluginCatalogEntry> entry);
+        bool contains(const std::string& format, const std::string& pluginId) const;
+        void add(PluginCatalogEntry entry);
         void merge(PluginCatalog&& other);
         void clear();
         void load(std::filesystem::path& path);

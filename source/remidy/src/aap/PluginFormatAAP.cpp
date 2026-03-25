@@ -67,19 +67,25 @@ void remidy::PluginFormatAAPImpl::createInstance(remidy::PluginCatalogEntry *inf
     }
 }
 
-std::vector<std::unique_ptr<remidy::PluginCatalogEntry>>
-remidy::PluginScanningAAP::scanAllAvailablePlugins(bool requireFastScanning) {
-    std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
+std::vector<remidy::PluginCatalogEntry>
+remidy::PluginScanningAAP::getAllFastScannablePlugins() {
+    std::vector<PluginCatalogEntry> ret{};
     auto infos = aap::PluginClientSystem::getInstance()->getInstalledPlugins();
     for (auto& plugin : infos) {
-        auto e = std::make_unique<remidy::PluginCatalogEntry>();
+        PluginCatalogEntry e{};
         std::string format = owner->name();
-        e->format(format);
+        e.format(format);
         std::string id = plugin->getPluginID();
-        e->pluginId(id);
-        e->displayName(plugin->getDisplayName());
-        e->vendorName(plugin->getDeveloperName());
+        e.pluginId(id);
+        e.displayName(plugin->getDisplayName());
+        e.vendorName(plugin->getDeveloperName());
         ret.push_back(std::move(e));
     }
     return ret;
+}
+
+void remidy::PluginScanningAAP::startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> /*pluginFound*/,
+                                                    PluginScanCompletedCallback scanCompleted) {
+    if (scanCompleted)
+        scanCompleted("");
 }

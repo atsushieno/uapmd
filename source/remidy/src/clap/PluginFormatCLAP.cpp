@@ -74,43 +74,80 @@ namespace remidy {
         }
     }
 
-std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerCLAP::scanAllAvailablePlugins(bool requireFastScanning) {
+std::vector<PluginCatalogEntry> PluginScannerCLAP::getAllFastScannablePlugins() {
         pendingSlowBundles_.clear();
-        if (requireFastScanning)
-            return {};
         for (auto &path: getDefaultSearchPaths())
-            scanAllAvailablePluginsInPath(path, requireFastScanning);
+            scanAllAvailablePluginsInPath(path, false);
         for (auto& overridePath : getOverrideSearchPaths())
-            scanAllAvailablePluginsInPath(std::filesystem::path{overridePath}, requireFastScanning);
+            scanAllAvailablePluginsInPath(std::filesystem::path{overridePath}, false);
         return {};
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerCLAP::scanBundle(const std::filesystem::path& bundlePath,
-                                                                                   bool /*requireFastScanning*/,
-                                                                                   double /*timeoutSeconds*/) {
-        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
-        scanAllAvailablePluginsFromLibrary(bundlePath, ret);
-        return ret;
+    void PluginScannerCLAP::startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                                PluginScanCompletedCallback scanCompleted) {
+        for (const auto& bundlePath : enumerateCandidateBundles(false)) {
+            bool bundleCompleted = false;
+            std::string bundleError;
+            scanBundle(bundlePath, false, 0.0, pluginFound,
+                       [&](std::string error) {
+                           bundleError = std::move(error);
+                           bundleCompleted = true;
+                       });
+            if (!bundleCompleted) {
+                if (scanCompleted)
+                    scanCompleted(std::format("CLAP slow scan for '{}' did not invoke completion.", bundlePath.string()));
+                return;
+            }
+            if (!bundleError.empty()) {
+                if (scanCompleted)
+                    scanCompleted(std::move(bundleError));
+                return;
+            }
+        }
+        if (scanCompleted)
+            scanCompleted("");
+    }
+
+    void PluginScannerCLAP::scanBundle(const std::filesystem::path& bundlePath,
+                                       bool /*requireFastScanning*/,
+                                       double /*timeoutSeconds*/,
+                                       std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                       PluginScanCompletedCallback scanCompleted) {
+        std::vector<PluginCatalogEntry> ret{};
+        try {
+            scanAllAvailablePluginsFromLibrary(bundlePath, ret);
+            for (auto& entry : ret)
+                if (pluginFound)
+                    pluginFound(std::move(entry));
+            if (scanCompleted)
+                scanCompleted("");
+        } catch (const std::exception& e) {
+            if (scanCompleted)
+                scanCompleted(e.what());
+        } catch (...) {
+            if (scanCompleted)
+                scanCompleted("CLAP bundle scan failed.");
+        }
     }
 
 
     void PluginScannerCLAP::scanAllAvailablePluginsFromLibrary(std::filesystem::path clapDir,
-                                                                    std::vector<std::unique_ptr<PluginCatalogEntry>>& entries) {
+                                                                    std::vector<PluginCatalogEntry>& entries) {
         impl->getLogger()->logInfo("CLAP: scanning %s ", clapDir.c_str());
 
         if (isBlocklistedAsBundle(clapDir))
             return;
 
         impl->forEachPlugin(clapDir, [&](void *module, clap_plugin_factory_t* factory, clap_preset_discovery_factory* presetDiscoveryFactory, const clap_plugin_descriptor_t *descriptor) {
-            auto e = std::make_unique<PluginCatalogEntry>();
+            PluginCatalogEntry e{};
             auto name = impl->name();
             std::string id{descriptor->id};
-            e->format(name);
-            e->bundlePath(clapDir);
-            e->displayName(descriptor->name);
-            e->vendorName(descriptor->vendor);
-            e->productUrl(descriptor->url);
-            e->pluginId(id);
+            e.format(name);
+            e.bundlePath(clapDir);
+            e.displayName(descriptor->name);
+            e.vendorName(descriptor->vendor);
+            e.productUrl(descriptor->url);
+            e.pluginId(id);
 
             entries.emplace_back(std::move(e));
         }, [&](void *module) {

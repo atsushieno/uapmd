@@ -298,35 +298,34 @@ bool RemoteScanSessionManager::waitForProcess(RemoteProcessHandle& handle, int& 
     return exitCode == 0;
 }
 
-int RemoteScanSessionManager::runScan(PluginScanTool& tool,
-                                      const SlowScanCatalog& catalogPlan,
-                                      bool requireFastScanning,
-                                      std::filesystem::path& pluginListCacheFile,
-                                      bool forceRescan,
-                                      double bundleTimeoutSeconds,
-                                      PluginScanObserver* observer) {
+void RemoteScanSessionManager::runScan(PluginScanTool& tool,
+                                       const SlowScanCatalog& catalogPlan,
+                                       bool requireFastScanning,
+                                       std::filesystem::path& pluginListCacheFile,
+                                       bool forceRescan,
+                                       double bundleTimeoutSeconds,
+                                       PluginScanObserver* observer) {
     if (catalogPlan.empty())
-        return 0;
+        return;
 
     SlowScanCatalog remaining = catalogPlan;
     pruneEmptyEntries(remaining);
     if (remaining.empty())
-        return 0;
+        return;
 
-    bool encounteredTimeout = false;
     bool pendingForceRescan = forceRescan;
 
     while (!remaining.empty()) {
         ipc::TcpServer server;
         if (!server.listen(0)) {
             tool.notifyScanError("Failed to create IPC server for remote scanning.", observer);
-            return -1;
+            return;
         }
 
         auto exePathString = cpplocate::getExecutablePath();
         if (exePathString.empty()) {
             tool.notifyScanError("Unable to determine executable path for remote scanning.", observer);
-            return -1;
+            return;
         }
 
         auto token = generateToken();
@@ -335,7 +334,7 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
         RemoteProcessHandle processHandle{};
         if (!launchProcess(commandArgs, processHandle)) {
             tool.notifyScanError("Failed to launch remote scanner process.", observer);
-            return -1;
+            return;
         }
 
         auto socketOpt = server.accept(kConnectionTimeoutMs);
@@ -344,7 +343,7 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
             int exitCode = -1;
             terminateProcess(processHandle);
             waitForProcess(processHandle, exitCode);
-            return -1;
+            return;
         }
 
         ipc::IpcJsonChannel channel(std::move(*socketOpt));
@@ -355,7 +354,7 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
             int exitCode = -1;
             terminateProcess(processHandle);
             waitForProcess(processHandle, exitCode);
-            return -1;
+            return;
         }
         auto helloToken = hello->payload["token"];
         if (helloToken.isVoid() || helloToken.toString() != token) {
@@ -363,7 +362,7 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
             int exitCode = -1;
             terminateProcess(processHandle);
             waitForProcess(processHandle, exitCode);
-            return -1;
+            return;
         }
 
         choc::value::Value payload = choc::value::createObject("StartScan");
@@ -395,12 +394,12 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
             int exitCode = -1;
             terminateProcess(processHandle);
             waitForProcess(processHandle, exitCode);
-            return -1;
+            return;
         }
         pendingForceRescan = false;
 
         bool finished = false;
-        int remoteResult = -1;
+        bool remoteSucceeded = false;
         std::filesystem::path cachePath{};
         bool cancelSent = false;
         bool bundleTimedOut = false;
@@ -431,7 +430,6 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
                     channel.close();
                     terminateProcess(processHandle);
                     finished = true;
-                    remoteResult = kScanTimeoutExitCode;
                     break;
                 }
             }
@@ -493,7 +491,7 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
                 if (!cacheVal.isVoid())
                     cachePath = std::filesystem::path(cacheVal.toString());
                 if (success) {
-                    remoteResult = 0;
+                    remoteSucceeded = true;
                 } else {
                     auto errorVal = message->payload["error"];
                     if (!errorVal.isVoid())
@@ -508,7 +506,6 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
                         tool.addToBlocklist(failedFormatVal.toString(), failedPath.lexically_normal().string(), reason);
                         removeBundleFromCatalog(remaining, failedFormatVal.toString(), failedPath);
                     }
-                    remoteResult = -1;
                 }
                 finished = true;
             }
@@ -516,9 +513,6 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
 
         int exitCode = -1;
         waitForProcess(processHandle, exitCode);
-
-        if (bundleTimedOut)
-            remoteResult = kScanTimeoutExitCode;
 
         auto cacheLoadPath = !cachePath.empty() ? cachePath : pluginListCacheFile;
         if (!cacheLoadPath.empty() && std::filesystem::exists(cacheLoadPath)) {
@@ -528,18 +522,15 @@ int RemoteScanSessionManager::runScan(PluginScanTool& tool,
         }
 
         if (bundleTimedOut) {
-            encounteredTimeout = true;
             continue;
         }
 
-        if (remoteResult != 0) {
+        if (!remoteSucceeded) {
             if (tool.lastScanError().empty())
                 tool.notifyScanError("Remote scanning failed.", observer);
-            return remoteResult;
+            return;
         }
     }
-
-    return encounteredTimeout ? kScanTimeoutExitCode : 0;
 }
 
 } // namespace remidy_tooling

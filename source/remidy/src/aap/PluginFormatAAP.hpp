@@ -26,13 +26,15 @@ namespace remidy {
         PluginScanningAAP(PluginFormatAAP* owner) : owner(owner) {}
         ~PluginScanningAAP() override = default;
 
+        bool scanningMayBeSlow() override { return false; }
         ScanningStrategyValue scanRequiresLoadLibrary() override { return ScanningStrategyValue::NEVER; }
         bool scanRequiresLoadLibrary(const std::filesystem::path&) override { return false; }
 
         ScanningStrategyValue scanRequiresInstantiation() override { return ScanningStrategyValue::NEVER; }
 
-        std::vector<std::unique_ptr<PluginCatalogEntry>>
-        scanAllAvailablePlugins(bool requireFastScanning) override;
+        std::vector<PluginCatalogEntry> getAllFastScannablePlugins() override;
+        void startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                 PluginScanCompletedCallback scanCompleted) override;
     };
 
     class PluginInstanceAAP : public PluginInstance {

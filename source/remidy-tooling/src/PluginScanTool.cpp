@@ -43,17 +43,17 @@ public:
     void addFormat(PluginFormat* item) override { formatManager_.addFormat(item); }
 
     std::filesystem::path& pluginListCacheFile() override { return plugin_list_cache_file; }
-    int performPluginScanning(bool requireFastScanning,
-                              ScanMode mode,
-                              bool forceRescan,
-                              double bundleTimeoutSeconds,
-                              PluginScanObserver* observer) override;
-    int performPluginScanning(bool requireFastScanning,
-                              std::filesystem::path& pluginListCacheFile,
-                              ScanMode mode,
-                              bool forceRescan,
-                              double bundleTimeoutSeconds,
-                              PluginScanObserver* observer) override;
+    void performPluginScanning(bool requireFastScanning,
+                               ScanMode mode,
+                               bool forceRescan,
+                               double bundleTimeoutSeconds,
+                               PluginScanObserver* observer) override;
+    void performPluginScanning(bool requireFastScanning,
+                               std::filesystem::path& pluginListCacheFile,
+                               ScanMode mode,
+                               bool forceRescan,
+                               double bundleTimeoutSeconds,
+                               PluginScanObserver* observer) override;
     void savePluginListCache() override { savePluginListCache(plugin_list_cache_file); }
     void savePluginListCache(std::filesystem::path& fileToSave) override { catalog_.save(fileToSave); }
     void flushBlocklist() override { saveBlocklistToDisk(); }
@@ -68,7 +68,7 @@ public:
     bool isBundleBlocklisted(const std::string& formatName, const std::filesystem::path& bundlePath) const override;
 
 protected:
-    void mergeScanResults(std::vector<std::unique_ptr<PluginCatalogEntry>> results) override;
+    void mergeScanResults(std::vector<PluginCatalogEntry> results) override;
     std::string makeBlocklistId(const std::string& formatName, const std::string& pluginId) const;
     bool isBlocklisted(const std::string& formatName, const std::string& pluginId) const;
     ScanSessionManager& ensureRemoteSessionManager();
@@ -82,7 +82,7 @@ protected:
     void notifyBundleScanCompleted(const std::filesystem::path& bundlePath,
                                    PluginScanObserver* observer) const override;
     void notifySlowScanStarted(uint32_t totalBundles, PluginScanObserver* observer) const override;
-    void notifySlowScanCompleted(bool success, PluginScanObserver* observer) const override;
+    void notifySlowScanCompleted(PluginScanObserver* observer) const override;
     void notifyScanError(const std::string& message, PluginScanObserver* observer) override;
     bool isScanCancellationRequested(PluginScanObserver* observer) const override;
 
@@ -93,14 +93,14 @@ private:
                                            bool forceRescan,
                                            double bundleTimeoutSeconds,
                                            std::string& slowScanReportText);
-    int executeSlowScanCatalog(const SlowScanCatalog& catalog,
-                               const std::vector<PluginFormat*>& formats,
-                               bool requireFastScanning,
-                               std::filesystem::path& pluginListCacheFile,
-                               ScanMode mode,
-                               bool forceRescan,
-                               double bundleTimeoutSeconds,
-                               PluginScanObserver* observer);
+    void executeSlowScanCatalog(const SlowScanCatalog& catalog,
+                                const std::vector<PluginFormat*>& formats,
+                                bool requireFastScanning,
+                                std::filesystem::path& pluginListCacheFile,
+                                ScanMode mode,
+                                bool forceRescan,
+                                double bundleTimeoutSeconds,
+                                PluginScanObserver* observer);
 
     std::filesystem::path plugin_list_cache_file{};
     PluginFormatManager formatManager_{};
@@ -187,20 +187,21 @@ PluginScanToolImpl::PluginScanToolImpl() {
 
 }
 
-int PluginScanToolImpl::performPluginScanning(bool requireFastScanning,
-                                                          ScanMode mode,
-                                                          bool forceRescan,
-                                                          double bundleTimeoutSeconds,
-                                                          PluginScanObserver* observer) {
-    return performPluginScanning(requireFastScanning, plugin_list_cache_file, mode, forceRescan, bundleTimeoutSeconds, observer);
+void PluginScanToolImpl::performPluginScanning(bool requireFastScanning,
+                                               ScanMode mode,
+                                               bool forceRescan,
+                                               double bundleTimeoutSeconds,
+                                               PluginScanObserver* observer) {
+    performPluginScanning(requireFastScanning, plugin_list_cache_file, mode, forceRescan, bundleTimeoutSeconds, observer);
 }
 
-int PluginScanToolImpl::performPluginScanning(bool requireFastScanning,
-                                                          std::filesystem::path& pluginListCacheFile,
-                                                          ScanMode mode,
-                                                          bool forceRescan,
-                                                          double bundleTimeoutSeconds,
-                                                          PluginScanObserver* observer) {
+void PluginScanToolImpl::performPluginScanning(bool requireFastScanning,
+                                               std::filesystem::path& pluginListCacheFile,
+                                               ScanMode mode,
+                                               bool forceRescan,
+                                               double bundleTimeoutSeconds,
+                                               PluginScanObserver* observer) {
+    setLastScanError({});
     std::string planReport;
     const auto& formatList = formatManager_.formatView();
     auto catalogPlan = prepareSlowScanCatalog(formatList,
@@ -211,14 +212,14 @@ int PluginScanToolImpl::performPluginScanning(bool requireFastScanning,
                                               planReport);
     if (!planReport.empty())
         std::cout << planReport << std::endl;
-    return executeSlowScanCatalog(catalogPlan,
-                                  formatList,
-                                  requireFastScanning,
-                                  pluginListCacheFile,
-                                  mode,
-                                  forceRescan,
-                                  bundleTimeoutSeconds,
-                                  observer);
+    executeSlowScanCatalog(catalogPlan,
+                           formatList,
+                           requireFastScanning,
+                           pluginListCacheFile,
+                           mode,
+                           forceRescan,
+                           bundleTimeoutSeconds,
+                           observer);
 }
 
 remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const std::vector<PluginFormat*>& formats,
@@ -250,23 +251,27 @@ remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const
         auto scanning = format->scanning();
         if (!scanning)
             continue;
-        auto fileScanning = dynamic_cast<FileBasedPluginScanning*>(scanning);
+        auto fileScanning = dynamic_cast<FileOrUrlBasedPluginScanning*>(scanning);
 
-        auto strategy = scanning->scanRequiresLoadLibrary();
-        bool scanIsFast = strategy == PluginScanning::ScanningStrategyValue::NEVER;
+        bool scanMayBeSlow = scanning->scanningMayBeSlow();
         auto cachedEntries = filterByFormat(catalog_.getPlugins(), format->name());
-        bool shouldScan = forceRescan || scanIsFast || cachedEntries.empty();
+        bool shouldScan = forceRescan || !scanMayBeSlow || cachedEntries.empty();
         if (!shouldScan)
             continue;
 
-        auto fastResults = scanning->scanAllAvailablePlugins(requireFastScanning);
+        auto fastResults = scanning->getAllFastScannablePlugins();
         if (!fastResults.empty()) {
             mergeScanResults(std::move(fastResults));
             fastScanModified = true;
         }
 
-        if (scanIsFast || !fileScanning)
+        if (!scanMayBeSlow)
             continue;
+
+        if (!fileScanning) {
+            notifyScanError(std::format("Format {} reports slow scanning but does not implement FileOrUrlBasedPluginScanning.", format->name()), nullptr);
+            continue;
+        }
 
         auto bundles = fileScanning->enumerateCandidateBundles(requireFastScanning);
         std::vector<std::filesystem::path> slowBundles;
@@ -277,13 +282,6 @@ remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const
             bool requiresLoad = scanning->scanRequiresLoadLibrary(bundle);
             if (requiresLoad)
                 slowBundles.push_back(bundle);
-            else {
-                auto fastBundleResults = fileScanning->scanBundle(bundle, requireFastScanning, bundleTimeoutSeconds);
-                if (!fastBundleResults.empty()) {
-                    mergeScanResults(std::move(fastBundleResults));
-                    fastScanModified = true;
-                }
-            }
         }
 
         if (!slowBundles.empty()) {
@@ -309,28 +307,26 @@ remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const
     return catalogPlan;
 }
 
-int PluginScanToolImpl::executeSlowScanCatalog(const SlowScanCatalog& catalogPlan,
-                                                           const std::vector<PluginFormat*>& /*formats*/,
-                                                           bool requireFastScanning,
-                                                           std::filesystem::path& pluginListCacheFile,
-                                                           ScanMode mode,
-                                                           bool forceRescan,
-                                                           double bundleTimeoutSeconds,
-                                                           PluginScanObserver* observer) {
+void PluginScanToolImpl::executeSlowScanCatalog(const SlowScanCatalog& catalogPlan,
+                                                const std::vector<PluginFormat*>& /*formats*/,
+                                                bool requireFastScanning,
+                                                std::filesystem::path& pluginListCacheFile,
+                                                ScanMode mode,
+                                                bool forceRescan,
+                                                double bundleTimeoutSeconds,
+                                                PluginScanObserver* observer) {
     uint32_t totalBundles = 0;
     for (const auto& entry : catalogPlan)
         totalBundles += static_cast<uint32_t>(entry.bundles.size());
     if (totalBundles > 0)
         notifySlowScanStarted(totalBundles, observer);
 
-    int result = 0;
-    bool encounteredRecoverableError = false;
     if (!catalogPlan.empty()) {
 #if ANDROID || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
         if (mode == ScanMode::Remote) {
             notifyScanError("Remote scanning is unavailable on this platform.", observer);
-            notifySlowScanCompleted(false, observer);
-            return -1;
+            notifySlowScanCompleted(observer);
+            return;
         }
 #endif
         if (mode == ScanMode::Remote && !pluginListCacheFile.empty())
@@ -338,31 +334,21 @@ int PluginScanToolImpl::executeSlowScanCatalog(const SlowScanCatalog& catalogPla
         ScanSessionManager* manager = mode == ScanMode::Remote
                                       ? &ensureRemoteSessionManager()
                                       : &ensureInProcessSessionManager();
-        result = manager->runScan(*this,
-                                  catalogPlan,
-                                  requireFastScanning,
-                                  pluginListCacheFile,
-                                  forceRescan,
-                                  bundleTimeoutSeconds,
-                                  observer);
-        if (mode == ScanMode::Remote && result == kScanTimeoutExitCode) {
-            encounteredRecoverableError = true;
-            result = 0;
-        }
+        manager->runScan(*this,
+                         catalogPlan,
+                         requireFastScanning,
+                         pluginListCacheFile,
+                         forceRescan,
+                         bundleTimeoutSeconds,
+                         observer);
     }
 
-    if (result == 0 && !encounteredRecoverableError)
-        setLastScanError({});
-    bool finalSuccess = (result == 0) && !encounteredRecoverableError;
-    notifySlowScanCompleted(finalSuccess, observer);
-    if (result != 0)
-        return result;
-    return encounteredRecoverableError ? kScanTimeoutExitCode : 0;
+    notifySlowScanCompleted(observer);
 }
 
-void PluginScanToolImpl::mergeScanResults(std::vector<std::unique_ptr<PluginCatalogEntry>> results) {
+void PluginScanToolImpl::mergeScanResults(std::vector<PluginCatalogEntry> results) {
     for (auto& entry : results) {
-        if (!catalog_.contains(entry->format(), entry->pluginId()))
+        if (!catalog_.contains(entry.format(), entry.pluginId()))
             catalog_.add(std::move(entry));
     }
 }
@@ -664,10 +650,9 @@ void PluginScanToolImpl::notifySlowScanStarted(uint32_t totalBundles,
         observer->slowScanStarted(totalBundles);
 }
 
-void PluginScanToolImpl::notifySlowScanCompleted(bool success,
-                                                             PluginScanObserver* observer) const {
+void PluginScanToolImpl::notifySlowScanCompleted(PluginScanObserver* observer) const {
     if (observer && observer->slowScanCompleted)
-        observer->slowScanCompleted(success);
+        observer->slowScanCompleted();
 }
 
 void PluginScanToolImpl::notifyScanError(const std::string& message,

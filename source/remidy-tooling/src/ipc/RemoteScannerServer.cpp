@@ -6,9 +6,11 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <condition_variable>
 #include <filesystem>
 #include <format>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -212,7 +214,7 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
         if (!entry.format)
             continue;
         auto scanning = entry.format->scanning();
-        auto fileScanning = dynamic_cast<FileBasedPluginScanning*>(scanning);
+        auto fileScanning = dynamic_cast<FileOrUrlBasedPluginScanning*>(scanning);
         if (!fileScanning)
             continue;
         auto formatName = entry.format->name();
@@ -224,23 +226,43 @@ int runRemoteScannerServer(const RemoteScannerServerOptions& options) {
             }
             sendBundleStarted(formatName, bundlePath);
             lastBundleLabel = describeBundle(formatName, bundlePath);
-            try {
-                auto results = fileScanning->scanBundle(bundlePath, requireFast, timeoutSeconds);
-                for (auto& plugin : results) {
-                    if (!scanner->catalog().contains(plugin->format(), plugin->pluginId()))
-                        scanner->catalog().add(std::move(plugin));
-                }
-                ++processedBundles;
-                persistCatalog();
-            } catch (const std::exception& e) {
+            std::mutex bundleMutex;
+            std::condition_variable bundleCondition;
+            bool bundleCompleted = false;
+            std::string bundleError;
+            std::vector<PluginCatalogEntry> bundleResults;
+            fileScanning->scanBundle(bundlePath, requireFast, timeoutSeconds,
+                                     [&](PluginCatalogEntry plugin) {
+                                         std::lock_guard<std::mutex> lock(bundleMutex);
+                                         bundleResults.emplace_back(std::move(plugin));
+                                     },
+                                     [&](std::string error) {
+                                         {
+                                             std::lock_guard<std::mutex> lock(bundleMutex);
+                                             bundleError = std::move(error);
+                                             bundleCompleted = true;
+                                         }
+                                         bundleCondition.notify_one();
+                                     });
+            {
+                std::unique_lock<std::mutex> lock(bundleMutex);
+                bundleCondition.wait(lock, [&] { return bundleCompleted; });
+            }
+            if (!bundleError.empty()) {
                 success = false;
-                errorMessage = e.what();
+                errorMessage = bundleError;
                 failedBundlePath = bundlePath;
                 failedBundleFormat = formatName;
                 failedBundleReason = errorMessage;
                 sendBundleFinished(formatName, bundlePath);
                 break;
             }
+            for (auto& plugin : bundleResults) {
+                if (!scanner->catalog().contains(plugin.format(), plugin.pluginId()))
+                    scanner->catalog().add(std::move(plugin));
+            }
+            ++processedBundles;
+            persistCatalog();
             sendBundleFinished(formatName, bundlePath);
         }
         if (!success || canceled)

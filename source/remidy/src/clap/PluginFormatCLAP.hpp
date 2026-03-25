@@ -25,9 +25,9 @@ namespace remidy {
 
     class PluginFormatCLAPImpl;
 
-    class PluginScannerCLAP : public FileBasedPluginScanning {
+    class PluginScannerCLAP : public FileOrUrlBasedPluginScanning {
         void scanAllAvailablePluginsInPath(std::filesystem::path path, bool requireFastScanning);
-        void scanAllAvailablePluginsFromLibrary(std::filesystem::path clapDir, std::vector<std::unique_ptr<PluginCatalogEntry>>& entries);
+        void scanAllAvailablePluginsFromLibrary(std::filesystem::path clapDir, std::vector<PluginCatalogEntry>& entries);
 
         PluginFormatCLAPImpl* impl{};
         std::vector<std::filesystem::path> pendingSlowBundles_{};
@@ -36,15 +36,20 @@ namespace remidy {
         explicit PluginScannerCLAP(PluginFormatCLAPImpl* impl)
             : impl(impl) {
         }
+        bool scanningMayBeSlow() override { return true; }
         bool usePluginSearchPaths() override;
         std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         bool scanRequiresLoadLibrary(const std::filesystem::path& bundlePath) override;
         ScanningStrategyValue scanRequiresInstantiation() override;
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins(bool requireFastScanning) override;
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanBundle(const std::filesystem::path& bundlePath,
-                                                                    bool requireFastScanning,
-                                                                    double timeoutSeconds) override;
+        std::vector<PluginCatalogEntry> getAllFastScannablePlugins() override;
+        void startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                 PluginScanCompletedCallback scanCompleted) override;
+        void scanBundle(const std::filesystem::path& bundlePath,
+                        bool requireFastScanning,
+                        double timeoutSeconds,
+                        std::function<void(PluginCatalogEntry entry)> pluginFound,
+                        PluginScanCompletedCallback scanCompleted) override;
         std::vector<std::filesystem::path> enumerateCandidateBundles(bool requireFastScanning) override;
 
         virtual bool isBlocklistedAsBundle(std::filesystem::path path) {
@@ -81,7 +86,6 @@ namespace remidy {
 
         PluginExtensibility<PluginFormat>* getExtensibility() override;
         PluginScanning* scanning() override { return &scanning_; }
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path& clapDir,
             const std::function<void(void* module, clap_plugin_factory_t* factory, clap_preset_discovery_factory* presetDiscoveryFactory, const clap_plugin_descriptor_t* info)>& func,
             const std::function<void(void* module)>& cleanup

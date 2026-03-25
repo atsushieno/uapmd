@@ -22,12 +22,12 @@ namespace remidy_tooling {
     public:
         virtual ~ScanSessionManager() = default;
 
-        virtual int runScan(PluginScanTool& tool,
-                            const SlowScanCatalog& catalog,
-                            bool requireFastScanning,
-                            std::filesystem::path& pluginListCacheFile,
-                            bool forceRescan,
-                            double bundleTimeoutSeconds,
-                            PluginScanObserver* observer) = 0;
+        virtual void runScan(PluginScanTool& tool,
+                             const SlowScanCatalog& catalog,
+                             bool requireFastScanning,
+                             std::filesystem::path& pluginListCacheFile,
+                             bool forceRescan,
+                             double bundleTimeoutSeconds,
+                             PluginScanObserver* observer) = 0;
     };
 }

@@ -1,4 +1,4 @@
-#include "remidy-tooling/ScanOnlyRunner.hpp"
+#include "../include/remidy-tooling/priv/ScanOnlyRunner.hpp"
 
 #include <cstdlib>
 
@@ -28,6 +28,7 @@ int runScanOnlyMode(const ScanOnlyOptions&, choc::value::Value*) {
 #include <string>
 #include <thread>
 #include <vector>
+#include <condition_variable>
 
 #include <choc/text/choc_JSON.h>
 #include <remidy/remidy.hpp>
@@ -218,10 +219,34 @@ int runScanOnlyMode(const ScanOnlyOptions& options, choc::value::Value* outRepor
         ? remidy_tooling::ScanMode::Remote
         : remidy_tooling::ScanMode::InProcess;
 
-    int scanResult = scanner->performPluginScanning(false,
-                                                    scanMode,
-                                                    options.forceRescan,
-                                                    options.bundleTimeoutSeconds);
+    std::mutex scanMutex;
+    std::condition_variable scanCondition;
+    bool scanCompleted = false;
+    bool scanFailed = false;
+    std::string scanError;
+    remidy_tooling::PluginScanObserver observer;
+    observer.errorOccurred = [&](const std::string& message) {
+        std::lock_guard<std::mutex> lock(scanMutex);
+        scanFailed = true;
+        scanError = message;
+    };
+    observer.slowScanCompleted = [&]() {
+        {
+            std::lock_guard<std::mutex> lock(scanMutex);
+            scanCompleted = true;
+        }
+        scanCondition.notify_one();
+    };
+
+    scanner->performPluginScanning(false,
+                                   scanMode,
+                                   options.forceRescan,
+                                   options.bundleTimeoutSeconds,
+                                   &observer);
+    {
+        std::unique_lock<std::mutex> lock(scanMutex);
+        scanCondition.wait(lock, [&] { return scanCompleted; });
+    }
 
     if (!scanner->pluginListCacheFile().empty()) {
         try {
@@ -235,7 +260,7 @@ int runScanOnlyMode(const ScanOnlyOptions& options, choc::value::Value* outRepor
     scanner->flushBlocklist();
 
     choc::value::Value pluginArray = buildPluginArray(*scanner);
-    bool success = (scanResult == 0);
+    bool success = !scanFailed;
 
     choc::value::Value fullVerificationJson;
     if (options.fullVerification) {
@@ -285,8 +310,8 @@ int runScanOnlyMode(const ScanOnlyOptions& options, choc::value::Value* outRepor
             "fullVerification", fullVerificationJson
         );
     } else {
-        std::string error = (scanResult != 0)
-                                ? std::format("Scanner exited with code {}", scanResult)
+        std::string error = !scanError.empty()
+                                ? scanError
                                 : "Full verification reported failures";
         root = choc::value::createObject(
             "PluginScanResult",

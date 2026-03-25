@@ -6,4 +6,4 @@
 #include "remidy-tooling/priv/PluginScanTool.hpp"
 #include "remidy-tooling/priv/PluginFormatManager.hpp"
 #include "remidy-tooling/priv/RemoteScannerServer.hpp"
-#include "remidy-tooling/ScanOnlyRunner.hpp"
+#include "remidy-tooling/priv/ScanOnlyRunner.hpp"

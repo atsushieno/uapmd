@@ -662,22 +662,74 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
 
 // ── PluginScanningWebCLAP ─────────────────────────────────────────────────────
 
-std::vector<std::unique_ptr<PluginCatalogEntry>>
-PluginScanningWebCLAP::scanAllAvailablePlugins(bool /*requireFastScanning*/) {
-    std::vector<std::unique_ptr<PluginCatalogEntry>> result;
-    std::string format_name = owner_->name();
+std::vector<PluginCatalogEntry>
+PluginScanningWebCLAP::getAllFastScannablePlugins() {
+    return {};
+}
+
+std::vector<std::filesystem::path>& PluginScanningWebCLAP::getDefaultSearchPaths() {
+    static std::vector<std::filesystem::path> paths{};
+    return paths;
+}
+
+void PluginScanningWebCLAP::scanBundle(const std::filesystem::path& bundlePath,
+                                       bool /*requireFastScanning*/,
+                                       double /*timeoutSeconds*/,
+                                       std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                       PluginScanCompletedCallback scanCompleted) {
+    std::string bundleKey = bundlePath.string();
+    std::string formatName = owner_->name();
     for (const auto& bundle : kKnownBundles) {
+        if (bundleKey != bundle.url)
+            continue;
         for (size_t i = 0; i < bundle.pluginCount; ++i) {
             const auto& plugin = bundle.plugins[i];
-            auto e = std::make_unique<PluginCatalogEntry>();
-            e->format(format_name);
+            PluginCatalogEntry entry{};
+            entry.format(formatName);
             std::string id{plugin.clapId};
-            e->pluginId(id);
-            e->displayName(plugin.displayName);
-            result.emplace_back(std::move(e));
+            entry.pluginId(id);
+            entry.displayName(plugin.displayName);
+            entry.bundlePath(bundlePath);
+            if (pluginFound)
+                pluginFound(std::move(entry));
+        }
+        break;
+    }
+    if (scanCompleted)
+        scanCompleted("");
+}
+
+std::vector<std::filesystem::path> PluginScanningWebCLAP::enumerateCandidateBundles(bool /*requireFastScanning*/) {
+    std::vector<std::filesystem::path> bundles;
+    bundles.reserve(std::size(kKnownBundles));
+    for (const auto& bundle : kKnownBundles)
+        bundles.emplace_back(bundle.url);
+    return bundles;
+}
+
+void PluginScanningWebCLAP::startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                                PluginScanCompletedCallback scanCompleted) {
+    for (const auto& bundlePath : enumerateCandidateBundles(false)) {
+        bool bundleCompleted = false;
+        std::string bundleError;
+        scanBundle(bundlePath, false, 0.0, pluginFound,
+                   [&](std::string error) {
+                       bundleError = std::move(error);
+                       bundleCompleted = true;
+                   });
+        if (!bundleCompleted) {
+            if (scanCompleted)
+                scanCompleted(std::format("WebCLAP slow scan for '{}' did not invoke completion.", bundlePath.string()));
+            return;
+        }
+        if (!bundleError.empty()) {
+            if (scanCompleted)
+                scanCompleted(std::move(bundleError));
+            return;
         }
     }
-    return result;
+    if (scanCompleted)
+        scanCompleted("");
 }
 
 // ── PluginInstanceWebCLAP ─────────────────────────────────────────────────────

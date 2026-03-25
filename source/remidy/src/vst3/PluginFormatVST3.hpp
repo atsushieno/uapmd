@@ -15,10 +15,10 @@ namespace remidy {
     class PluginInstanceVST3;
     class PluginFormatVST3Impl;
 
-    class PluginScannerVST3 : public FileBasedPluginScanning {
+    class PluginScannerVST3 : public FileOrUrlBasedPluginScanning {
         void scanAllAvailablePluginsInPath(std::filesystem::path path, std::vector<PluginClassInfo>& infos, bool requireFastScanning);
         void scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir, std::vector<PluginClassInfo>& results, bool requireFastScanning);
-        std::unique_ptr<PluginCatalogEntry> createPluginInformation(PluginClassInfo& info);
+        PluginCatalogEntry createPluginInformation(PluginClassInfo& info);
 
         PluginFormatVST3Impl* owner{};
         std::vector<std::filesystem::path> pendingSlowBundles_{};
@@ -27,15 +27,20 @@ namespace remidy {
         explicit PluginScannerVST3(PluginFormatVST3Impl* owner)
             : owner(owner) {
         }
+        bool scanningMayBeSlow() override { return true; }
         bool usePluginSearchPaths() override;
         std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override;
         ScanningStrategyValue scanRequiresInstantiation() override;
         bool scanRequiresLoadLibrary(const std::filesystem::path& bundlePath) override;
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins(bool requireFastScanning) override;
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanBundle(const std::filesystem::path& bundlePath,
-                                                                    bool requireFastScanning,
-                                                                    double timeoutSeconds) override;
+        std::vector<PluginCatalogEntry> getAllFastScannablePlugins() override;
+        void startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                 PluginScanCompletedCallback scanCompleted) override;
+        void scanBundle(const std::filesystem::path& bundlePath,
+                        bool requireFastScanning,
+                        double timeoutSeconds,
+                        std::function<void(PluginCatalogEntry entry)> pluginFound,
+                        PluginScanCompletedCallback scanCompleted) override;
         std::vector<std::filesystem::path> enumerateCandidateBundles(bool requireFastScanning) override;
     };
 
@@ -125,7 +130,6 @@ namespace remidy {
 
         PluginExtensibility<PluginFormat>* getExtensibility() override;
         PluginScanning* scanning() override { return &scanning_; }
-        std::vector<std::unique_ptr<PluginCatalogEntry>> scanAllAvailablePlugins();
         void forEachPlugin(std::filesystem::path& vst3Path,
             const std::function<void(void* module, IPluginFactory* factory, PluginClassInfo& info)>& func,
             const std::function<void(void* module)>& cleanup

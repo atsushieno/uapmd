@@ -241,16 +241,16 @@ PluginExtensibility<PluginFormat> *PluginFormatVST3Impl::getExtensibility() {
         return ret;
     }
 
-    std::unique_ptr<PluginCatalogEntry> PluginScannerVST3::createPluginInformation(PluginClassInfo &info) {
-        auto ret = std::make_unique<PluginCatalogEntry>();
+    PluginCatalogEntry PluginScannerVST3::createPluginInformation(PluginClassInfo &info) {
+        PluginCatalogEntry ret{};
         static std::string format{"VST3"};
-        ret->format(format);
+        ret.format(format);
         auto idString = vst3TuidToString((char *) info.tuid, sizeof(TUID), true);
-        ret->bundlePath(info.bundlePath);
-        ret->pluginId(idString);
-        ret->displayName(info.name);
-        ret->vendorName(info.vendor);
-        ret->productUrl(info.url);
+        ret.bundlePath(info.bundlePath);
+        ret.pluginId(idString);
+        ret.displayName(info.name);
+        ret.vendorName(info.vendor);
+        ret.productUrl(info.url);
         return ret;
     }
 
@@ -285,28 +285,64 @@ PluginExtensibility<PluginFormat> *PluginFormatVST3Impl::getExtensibility() {
         }
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerVST3::scanAllAvailablePlugins(bool requireFastScanning) {
+    std::vector<PluginCatalogEntry> PluginScannerVST3::getAllFastScannablePlugins() {
         pendingSlowBundles_.clear();
         std::vector<PluginClassInfo> infos;
         for (auto& path : getDefaultSearchPaths())
-            scanAllAvailablePluginsInPath(path, infos, requireFastScanning);
+            scanAllAvailablePluginsInPath(path, infos, true);
         for (auto& overridePath : getOverrideSearchPaths())
-            scanAllAvailablePluginsInPath(std::filesystem::path{overridePath}, infos, requireFastScanning);
-        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
+            scanAllAvailablePluginsInPath(std::filesystem::path{overridePath}, infos, true);
+        std::vector<PluginCatalogEntry> ret{};
         for (auto& info : infos)
             ret.emplace_back(createPluginInformation(info));
         return ret;
     }
 
-    std::vector<std::unique_ptr<PluginCatalogEntry>> PluginScannerVST3::scanBundle(const std::filesystem::path& bundlePath,
-                                                                                   bool requireFastScanning,
-                                                                                   double /*timeoutSeconds*/) {
+    void PluginScannerVST3::startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                                PluginScanCompletedCallback scanCompleted) {
+        for (const auto& bundlePath : enumerateCandidateBundles(false)) {
+            bool bundleCompleted = false;
+            std::string bundleError;
+            scanBundle(bundlePath, false, 0.0, pluginFound,
+                       [&](std::string error) {
+                           bundleError = std::move(error);
+                           bundleCompleted = true;
+                       });
+            if (!bundleCompleted) {
+                if (scanCompleted)
+                    scanCompleted(std::format("VST3 slow scan for '{}' did not invoke completion.", bundlePath.string()));
+                return;
+            }
+            if (!bundleError.empty()) {
+                if (scanCompleted)
+                    scanCompleted(std::move(bundleError));
+                return;
+            }
+        }
+        if (scanCompleted)
+            scanCompleted("");
+    }
+
+    void PluginScannerVST3::scanBundle(const std::filesystem::path& bundlePath,
+                                       bool requireFastScanning,
+                                       double /*timeoutSeconds*/,
+                                       std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                       PluginScanCompletedCallback scanCompleted) {
         std::vector<PluginClassInfo> infos;
-        scanAllAvailablePluginsFromLibrary(bundlePath, infos, requireFastScanning);
-        std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
-        for (auto& info : infos)
-            ret.emplace_back(createPluginInformation(info));
-        return ret;
+        try {
+            scanAllAvailablePluginsFromLibrary(bundlePath, infos, requireFastScanning);
+            for (auto& info : infos)
+                if (pluginFound)
+                    pluginFound(createPluginInformation(info));
+            if (scanCompleted)
+                scanCompleted("");
+        } catch (const std::exception& e) {
+            if (scanCompleted)
+                scanCompleted(e.what());
+        } catch (...) {
+            if (scanCompleted)
+                scanCompleted("VST3 bundle scan failed.");
+        }
     }
 
     void PluginScannerVST3::scanAllAvailablePluginsFromLibrary(std::filesystem::path vst3Dir,

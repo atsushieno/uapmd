@@ -48,22 +48,32 @@ namespace remidy {
 
     // ── Scanning ──────────────────────────────────────────────────────────────
 
-    class PluginScanningWebCLAP : public PluginScanning {
+    class PluginScanningWebCLAP : public FileOrUrlBasedPluginScanning {
         PluginFormatWebCLAPImpl* owner_;
     public:
         explicit PluginScanningWebCLAP(PluginFormatWebCLAPImpl* owner) : owner_(owner) {}
         ~PluginScanningWebCLAP() override = default;
 
+        bool scanningMayBeSlow() override { return true; }
+        bool usePluginSearchPaths() override { return false; }
+        std::vector<std::filesystem::path>& getDefaultSearchPaths() override;
         ScanningStrategyValue scanRequiresLoadLibrary() override {
-            return ScanningStrategyValue::NEVER;
+            return ScanningStrategyValue::ALWAYS;
         }
-        bool scanRequiresLoadLibrary(const std::filesystem::path&) override { return false; }
+        bool scanRequiresLoadLibrary(const std::filesystem::path&) override { return true; }
         ScanningStrategyValue scanRequiresInstantiation() override {
-            return ScanningStrategyValue::NEVER;
+            return ScanningStrategyValue::ALWAYS;
         }
 
-        std::vector<std::unique_ptr<PluginCatalogEntry>>
-        scanAllAvailablePlugins(bool requireFastScanning) override;
+        std::vector<PluginCatalogEntry> getAllFastScannablePlugins() override;
+        void scanBundle(const std::filesystem::path& bundlePath,
+                        bool requireFastScanning,
+                        double timeoutSeconds,
+                        std::function<void(PluginCatalogEntry entry)> pluginFound,
+                        PluginScanCompletedCallback scanCompleted) override;
+        std::vector<std::filesystem::path> enumerateCandidateBundles(bool requireFastScanning) override;
+        void startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                 PluginScanCompletedCallback scanCompleted) override;
     };
 
     // ── Instance ──────────────────────────────────────────────────────────────

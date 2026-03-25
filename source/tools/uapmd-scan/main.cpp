@@ -9,7 +9,7 @@
 #include <cpptrace/from_current.hpp>
 #endif
 
-#include <remidy-tooling/ScanOnlyRunner.hpp>
+#include <../../remidy-tooling/include/remidy-tooling/priv/ScanOnlyRunner.hpp>
 #include <remidy-tooling/remidy-tooling.hpp>
 
 namespace {

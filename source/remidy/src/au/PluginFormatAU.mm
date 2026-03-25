@@ -112,28 +112,34 @@ std::vector<AUPluginEntry> scanAllAvailableAUPluginsV3() {
     return ret;
 }
 
-std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> remidy::PluginScannerAU::scanAllAvailablePlugins(bool /*requireFastScanning*/) {
-    std::vector<std::unique_ptr<PluginCatalogEntry>> ret{};
+std::vector<remidy::PluginCatalogEntry> remidy::PluginScannerAU::getAllFastScannablePlugins() {
+    std::vector<PluginCatalogEntry> ret{};
     auto plugins = scanAllAvailableAUPluginsV3();
     ret.reserve(plugins.size());
 
     for (auto& plugin : plugins) {
-        auto entry = std::make_unique<PluginCatalogEntry>();
+        PluginCatalogEntry entry{};
         static std::string format{"AU"};
-        entry->format(format);
-        entry->pluginId(plugin.id);
-        entry->displayName(plugin.name);
+        entry.format(format);
+        entry.pluginId(plugin.id);
+        entry.displayName(plugin.name);
         auto vendor = deriveVendorFromComponent(plugin.component);
         if (vendor.empty())
             vendor = manufacturerCodeToString(plugin.desc.componentManufacturer);
         if (!vendor.empty())
-            entry->vendorName(vendor);
+            entry.vendorName(vendor);
         // Store whether it's native v3 or v2-wrapped in metadata if needed
         // For now, we handle both through AUAudioUnit API
 
         ret.emplace_back(std::move(entry));
     }
     return ret;
+}
+
+void remidy::PluginScannerAU::startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> /*pluginFound*/,
+                                                  PluginScanCompletedCallback scanCompleted) {
+    if (scanCompleted)
+        scanCompleted("");
 }
 
 void remidy::PluginFormatAUImpl::createInstance(

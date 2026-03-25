@@ -33,13 +33,13 @@ public:
     RemoteScanSessionManager() = default;
     ~RemoteScanSessionManager() override = default;
 
-    int runScan(PluginScanTool& tool,
-                const SlowScanCatalog& catalog,
-                bool requireFastScanning,
-                std::filesystem::path& pluginListCacheFile,
-                bool forceRescan,
-                double bundleTimeoutSeconds,
-                PluginScanObserver* observer) override;
+    void runScan(PluginScanTool& tool,
+                 const SlowScanCatalog& catalog,
+                 bool requireFastScanning,
+                 std::filesystem::path& pluginListCacheFile,
+                 bool forceRescan,
+                 double bundleTimeoutSeconds,
+                 PluginScanObserver* observer) override;
 
 private:
     struct RemoteProcessHandle {
@@ -65,15 +65,15 @@ private:
 
 class RemoteScanSessionManager final : public ScanSessionManager {
 public:
-    int runScan(PluginScanTool& tool,
-                const SlowScanCatalog& catalog,
-                bool /*requireFastScanning*/,
-                std::filesystem::path& /*pluginListCacheFile*/,
-                bool /*forceRescan*/,
-                double /*bundleTimeoutSeconds*/,
-                PluginScanObserver* observer) override {
+    void runScan(PluginScanTool& tool,
+                 const SlowScanCatalog& catalog,
+                 bool /*requireFastScanning*/,
+                 std::filesystem::path& /*pluginListCacheFile*/,
+                 bool /*forceRescan*/,
+                 double /*bundleTimeoutSeconds*/,
+                 PluginScanObserver* observer) override {
+        (void) catalog;
         tool.notifyScanError("Remote scanning is unavailable on this platform.", observer);
-        return -1;
     }
 };
 

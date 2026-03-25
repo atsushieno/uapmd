@@ -510,15 +510,15 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     if (!loadedFromCache || pluginScanTool_->catalog().getPlugins().empty()) {
         auto hostEntries = sequencer_.engine()->pluginHost()->pluginCatalogEntries();
         for (auto& plugin : hostEntries) {
-            auto entry = std::make_unique<remidy::PluginCatalogEntry>();
+            remidy::PluginCatalogEntry entry{};
             auto fmt = plugin.format();
-            entry->format(fmt);
+            entry.format(fmt);
             auto id = plugin.pluginId();
-            entry->pluginId(id);
-            entry->displayName(plugin.displayName());
-            entry->vendorName(plugin.vendorName());
-            entry->productUrl(plugin.productUrl());
-            entry->bundlePath(plugin.bundlePath());
+            entry.pluginId(id);
+            entry.displayName(plugin.displayName());
+            entry.vendorName(plugin.vendorName());
+            entry.productUrl(plugin.productUrl());
+            entry.bundlePath(plugin.bundlePath());
             pluginScanTool_->catalog().add(std::move(entry));
         }
     }
@@ -573,7 +573,6 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest 
         try {
             bool success = false;
             std::string errorMsg;
-            int result = 0;
             std::string reportText;
 
             auto& cacheFile = pluginScanTool_->pluginListCacheFile();
@@ -621,32 +620,34 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest 
                 slowScanProgress_.processedBundles += 1;
                 slowScanProgress_.currentBundle = bundleDisplayName(bundlePath);
             };
-            observer.slowScanCompleted = [this](bool) {
+            observer.slowScanCompleted = [this]() {
                 std::lock_guard<std::mutex> lock(slowScanMutex_);
                 slowScanProgress_.running = false;
                 slowScanProgress_.currentBundle.clear();
                 if (slowScanProgress_.processedBundles > slowScanProgress_.totalBundles)
                     slowScanProgress_.totalBundles = slowScanProgress_.processedBundles;
             };
-            observer.errorOccurred = [this](const std::string&) {};
+            observer.errorOccurred = [&errorMsg](const std::string& message) {
+                errorMsg = message;
+            };
             observer.shouldCancel = [this]() {
                 return scanCancelRequested_.load(std::memory_order_acquire);
             };
             auto mode = (request == PluginScanRequest::RemoteProcess)
                         ? remidy_tooling::ScanMode::Remote
                         : remidy_tooling::ScanMode::InProcess;
-            result = pluginScanTool_->performPluginScanning(false,
-                                                           cacheFile,
-                                                           mode,
-                                                           forceRescan,
-                                                           bundleTimeoutSeconds,
-                                                           &observer);
+            pluginScanTool_->performPluginScanning(false,
+                                                   cacheFile,
+                                                   mode,
+                                                   forceRescan,
+                                                   bundleTimeoutSeconds,
+                                                   &observer);
 
-            success = (result == 0);
+            success = errorMsg.empty();
             if (!success) {
                 auto scanError = pluginScanTool_->lastScanError();
                 errorMsg = scanError.empty()
-                               ? "Plugin scanning failed with error code " + std::to_string(result)
+                               ? "Plugin scanning failed."
                                : scanError;
             }
 

@@ -7,11 +7,11 @@
 
 
 template<typename T>
-std::vector<T*> getUnownedList(std::vector<std::unique_ptr<T>>& list) {
+std::vector<T*> getUnownedList(std::vector<T>& list) {
     std::vector<T *> ret{};
     ret.reserve(list.size());
     for (auto& entry : list)
-        ret.emplace_back(entry.get());
+        ret.emplace_back(&entry);
     return ret;
 }
 std::vector<remidy::PluginCatalogEntry*> remidy::PluginCatalog::getPlugins() {
@@ -21,14 +21,14 @@ std::vector<remidy::PluginCatalogEntry*> remidy::PluginCatalog::getDenyList() {
     return getUnownedList(denyList);
 }
 
-bool remidy::PluginCatalog::contains(std::string& format, std::string& pluginId) const {
+bool remidy::PluginCatalog::contains(const std::string& format, const std::string& pluginId) const {
     for (auto & e : entries)
-        if (e->format() == format && e->pluginId() == pluginId)
+        if (e.format() == format && e.pluginId() == pluginId)
             return true;
     return false;
 }
 
-void remidy::PluginCatalog::add(std::unique_ptr<PluginCatalogEntry> entry) {
+void remidy::PluginCatalog::add(PluginCatalogEntry entry) {
     entries.emplace_back(std::move(entry));
 }
 
@@ -44,23 +44,23 @@ void remidy::PluginCatalog::clear() {
 }
 
 
-std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> fromJson(const choc::value::ValueView& j) {
-    std::vector<std::unique_ptr<remidy::PluginCatalogEntry>> list{};
+std::vector<remidy::PluginCatalogEntry> fromJson(const choc::value::ValueView& j) {
+    std::vector<remidy::PluginCatalogEntry> list{};
     auto jPlugins = j["plugins"];
     for (auto jPlugin : jPlugins) {
-        auto entry = std::make_unique<remidy::PluginCatalogEntry>();
+        remidy::PluginCatalogEntry entry{};
         std::string format = jPlugin["format"].toString();
-        entry->format(format);
+        entry.format(format);
         std::string id = jPlugin["id"].toString();
-        entry->pluginId(id);
+        entry.pluginId(id);
         std::string bundle = jPlugin["bundle"].toString();
-        entry->bundlePath(bundle);
+        entry.bundlePath(bundle);
         std::string name = jPlugin["name"].toString();
-        entry->displayName(name);
+        entry.displayName(name);
         std::string vendor = jPlugin["vendor"].toString();
-        entry->vendorName(vendor);
+        entry.vendorName(vendor);
         std::string url = jPlugin["url"].toString();
-        entry->productUrl(url);
+        entry.productUrl(url);
 
         list.emplace_back(std::move(entry));
     }
@@ -119,4 +119,3 @@ void remidy::PluginCatalog::save(std::filesystem::path& path) {
     ofs << choc::json::toString(j, true);
     ofs.close();
 }
-
