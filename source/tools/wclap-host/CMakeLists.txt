@@ -110,6 +110,7 @@ target_link_options(uapmd-wclap-host PRIVATE
     "-Wl,--export=_wclapHasParameterUpdates"
     "-Wl,--export=_wclapTakeParameterUpdates"
     "-Wl,--export=_wclapDescribeUi"
+    "-Wl,--export=_wclapDescribeCapabilities"
     "-Wl,--export=_wclapUiCreate"
     "-Wl,--export=_wclapUiShow"
     "-Wl,--export=_wclapUiHide"
@@ -129,6 +130,7 @@ target_link_options(uapmd-wclap-host PRIVATE
     "-Wl,--export=_wclapUiGetOutgoingMessageData"
     "-Wl,--export=_wclapEnqueueMidi2Event"
     "-Wl,--export=_wclapEnqueueParameterValue"
+    "-Wl,--export=_wclapEnqueuePerNoteParameterValue"
     "-Wl,--export=_wclapFlushParameters"
     "-Wl,--export=_wclapPluginDestroy"
 )

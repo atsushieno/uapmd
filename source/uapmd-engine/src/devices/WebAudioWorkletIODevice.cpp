@@ -359,6 +359,18 @@ namespace uapmd {
             _free(ptr);
         }
 
+        function reportCapabilities(capabilities) {
+            var msg = JSON.stringify(Object.assign({
+                type: 'wclap-capabilities',
+                slot: base.slot,
+            }, capabilities || {}));
+            var len = lengthBytesUTF8(msg) + 1;
+            var ptr = _malloc(len);
+            stringToUTF8(msg, ptr, len);
+            _uapmd_webclap_on_worklet_message(ptr);
+            _free(ptr);
+        }
+
         function readCString(memory, ptr) {
             if (!ptr)
                 return "";
@@ -425,6 +437,9 @@ namespace uapmd {
                             var uiPtr = exp._wclapDescribeUi(instance.ptr);
                             var uiJson = readCString(api.host.hostMemory, uiPtr);
                             reportUiInfo(uiJson ? JSON.parse(uiJson) : { hasUi: false });
+                            var capabilitiesPtr = exp._wclapDescribeCapabilities(instance.ptr);
+                            var capabilitiesJson = readCString(api.host.hostMemory, capabilitiesPtr);
+                            reportCapabilities(capabilitiesJson ? JSON.parse(capabilitiesJson) : {});
                         } finally {
                             exp._wclapPluginDestroy(instance.ptr);
                         }

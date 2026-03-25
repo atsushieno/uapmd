@@ -30,6 +30,20 @@ namespace remidy {
         bool hidden{};
         bool readOnly{};
         bool stepped{};
+        bool automatablePerKey{};
+        bool automatablePerChannel{};
+        bool automatablePerPort{};
+        bool modulatablePerKey{};
+        bool modulatablePerChannel{};
+        bool modulatablePerPort{};
+        bool modulatablePerNoteId{};
+    };
+
+    struct WebClapCapabilities {
+        bool hasEventInputs{};
+        bool hasEventOutputs{};
+        bool hasState{};
+        bool hasPresetLoad{};
     };
 
     // ── Scanning ──────────────────────────────────────────────────────────────
@@ -57,14 +71,16 @@ namespace remidy {
     class PluginInstanceWebCLAP : public PluginInstance {
 
         class BusesWebCLAP : public PluginAudioBuses {
+            PluginInstanceWebCLAP* owner_;
             AudioBusDefinition              out_def_{"main", AudioBusRole::Main,
                                                      {AudioChannelLayout::stereo()}};
             AudioBusConfiguration           out_cfg_{out_def_};
             std::vector<AudioBusConfiguration*> out_buses_{&out_cfg_};
             std::vector<AudioBusConfiguration*> in_buses_{};
         public:
-            bool hasEventInputs() override  { return true; }
-            bool hasEventOutputs() override { return false; }
+            explicit BusesWebCLAP(PluginInstanceWebCLAP* owner) : owner_(owner) {}
+            bool hasEventInputs() override;
+            bool hasEventOutputs() override;
             const std::vector<AudioBusConfiguration*>& audioInputBuses()  const override { return in_buses_; }
             const std::vector<AudioBusConfiguration*>& audioOutputBuses() const override { return out_buses_; }
         };
@@ -81,26 +97,30 @@ namespace remidy {
             StatusCode setPerNoteController(PerNoteControllerContext, uint32_t index, double plainValue,
                                             uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext, uint32_t,
-                                            double*) override { return StatusCode::NOT_IMPLEMENTED; }
+                                            double*) override;
             std::string valueToString(uint32_t index, double v) override;
             std::string valueToStringPerNote(PerNoteControllerContext, uint32_t,
-                                             double v) override { return std::to_string(v); }
+                                             double v) override;
         };
 
         class StateSupportWebCLAP : public PluginStateSupport {
+            PluginInstanceWebCLAP* owner_;
         public:
-            std::vector<uint8_t> getState(StateContextType, bool) override { return {}; }
-            void setState(std::vector<uint8_t>&, StateContextType, bool) override {}
+            explicit StateSupportWebCLAP(PluginInstanceWebCLAP* owner) : owner_(owner) {}
+            std::vector<uint8_t> getState(StateContextType, bool) override;
+            void setState(std::vector<uint8_t>&, StateContextType, bool) override;
         };
 
         class PresetsSupportWebCLAP : public PluginPresetsSupport {
+            PluginInstanceWebCLAP* owner_;
         public:
+            explicit PresetsSupportWebCLAP(PluginInstanceWebCLAP* owner) : owner_(owner) {}
             bool isIndexStable() override { return false; }
             bool isIndexId() override { return false; }
-            int32_t getPresetIndexForId(std::string&) override { return -1; }
-            int32_t getPresetCount() override { return 0; }
-            PresetInfo getPresetInfo(int32_t) override { return {"", "", 0, 0}; }
-            void loadPreset(int32_t) override {}
+            int32_t getPresetIndexForId(std::string&) override;
+            int32_t getPresetCount() override;
+            PresetInfo getPresetInfo(int32_t) override;
+            void loadPreset(int32_t) override;
         };
 
         class UISupportWebCLAP : public PluginUISupport {
@@ -130,8 +150,10 @@ namespace remidy {
 
         uint32_t slot_;
         mutable std::mutex parameter_mutex_;
+        std::vector<WebClapParamDescriptor> parameter_descriptors_{};
         std::vector<std::unique_ptr<PluginParameter>> parameter_defs_{};
         std::vector<PluginParameter*> parameter_ptrs_{};
+        std::vector<PluginParameter*> per_note_parameter_ptrs_{};
         std::unordered_map<uint32_t, double> parameter_values_{};
         std::unique_ptr<BusesWebCLAP>        buses_{};
         std::unique_ptr<ParamSupportWebCLAP> params_{};
@@ -150,8 +172,10 @@ namespace remidy {
         }
 
         void updateParameters(const std::vector<WebClapParamDescriptor>& descriptors);
+        void updateCapabilities(const WebClapCapabilities& capabilities);
         std::vector<PluginParameter*>& parameterPointers() { return parameter_ptrs_; }
         const std::vector<PluginParameter*>& parameterPointers() const { return parameter_ptrs_; }
+        std::vector<PluginParameter*>& perNoteParameterPointers() { return per_note_parameter_ptrs_; }
         bool getCachedParameterValue(uint32_t index, double* plainValue) const;
         void setCachedParameterValue(uint32_t index, double plainValue);
         void applyParameterValueUpdate(uint32_t index, double plainValue);
@@ -162,6 +186,11 @@ namespace remidy {
         void notifyUiResizeRequest(bool canResize, uint32_t width, uint32_t height);
         bool getUiSize(uint32_t& width, uint32_t& height) const;
         bool canUiResize() const;
+        bool hasEventInputs() const { return has_event_inputs_; }
+        bool hasEventOutputs() const { return has_event_outputs_; }
+        bool hasStateSupport() const { return has_state_support_; }
+        bool hasPresetLoadSupport() const { return has_preset_load_support_; }
+        bool parameterSupportsContext(uint32_t index, PerNoteControllerContextTypes types) const;
 
         StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode startProcessing() override;
@@ -174,14 +203,14 @@ namespace remidy {
         // preserved rather than zeroed by the graph's clearAudioOutputs().
 
         PluginAudioBuses* audioBuses() override {
-            return (buses_ ? buses_ : buses_ = std::make_unique<BusesWebCLAP>()).get();
+            return (buses_ ? buses_ : buses_ = std::make_unique<BusesWebCLAP>(this)).get();
         }
         PluginParameterSupport* parameters() override;
         PluginStateSupport* states() override {
-            return (state_ ? state_ : state_ = std::make_unique<StateSupportWebCLAP>()).get();
+            return (state_ ? state_ : state_ = std::make_unique<StateSupportWebCLAP>(this)).get();
         }
         PluginPresetsSupport* presets() override {
-            return (presets_ ? presets_ : presets_ = std::make_unique<PresetsSupportWebCLAP>()).get();
+            return (presets_ ? presets_ : presets_ = std::make_unique<PresetsSupportWebCLAP>(this)).get();
         }
         PluginUISupport* ui() override {
             return (ui_ ? ui_ : ui_ = std::make_unique<UISupportWebCLAP>(this)).get();
@@ -193,6 +222,10 @@ namespace remidy {
         bool ui_can_resize_{false};
         uint32_t ui_width_{800};
         uint32_t ui_height_{600};
+        bool has_event_inputs_{false};
+        bool has_event_outputs_{false};
+        bool has_state_support_{false};
+        bool has_preset_load_support_{false};
     };
 
     // ── Format implementation ─────────────────────────────────────────────────

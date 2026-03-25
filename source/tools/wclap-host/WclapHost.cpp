@@ -47,9 +47,13 @@ using wclap32::wclap_plugin;
 using wclap32::wclap_plugin_entry;
 using wclap32::wclap_plugin_factory;
 using wclap32::wclap_plugin_gui;
+using wclap32::wclap_plugin_note_ports;
 using wclap32::wclap_plugin_params;
+using wclap32::wclap_plugin_preset_load;
 using wclap32::wclap_process;
 using wclap32::wclap_plugin_webview;
+using wclap32::wclap_plugin_state;
+using wclap32::wclap_plugin_state_context;
 
 // ── Instance management (called by wclap.mjs) ─────────────────────────────
 
@@ -205,6 +209,10 @@ struct SlotState {
     bool ui_visible = false;
     bool ui_can_resize = false;
     bool ui_resize_pending = false;
+    bool has_event_inputs = false;
+    bool has_event_outputs = false;
+    bool has_state = false;
+    bool has_preset_load = false;
     uint32_t ui_width = 800;
     uint32_t ui_height = 600;
     wclap_plugin_params params{};
@@ -679,6 +687,17 @@ static void rebuildUiJson(SlotState* state) {
     state->ui_json = json.str();
 }
 
+static std::string buildCapabilitiesJson(const SlotState* state) {
+    std::ostringstream json;
+    json << "{"
+         << "\"hasEventInputs\":" << (state && state->has_event_inputs ? "true" : "false")
+         << ",\"hasEventOutputs\":" << (state && state->has_event_outputs ? "true" : "false")
+         << ",\"hasState\":" << (state && state->has_state ? "true" : "false")
+         << ",\"hasPresetLoad\":" << (state && state->has_preset_load ? "true" : "false")
+         << "}";
+    return json.str();
+}
+
 // Copy count elements of T from host memory into plugin memory at destOffset.
 template<class T>
 static inline void writePlugin(Instance *inst, uint32_t destOffset,
@@ -925,6 +944,13 @@ static void rebuildParameterJson(Instance *inst, SlotState *state, Pointer<const
              << ",\"hidden\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_HIDDEN) ? "true" : "false")
              << ",\"readOnly\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_READONLY) ? "true" : "false")
              << ",\"stepped\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_STEPPED) ? "true" : "false")
+             << ",\"automatablePerKey\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_AUTOMATABLE_PER_KEY) ? "true" : "false")
+             << ",\"automatablePerChannel\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_AUTOMATABLE_PER_CHANNEL) ? "true" : "false")
+             << ",\"automatablePerPort\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_AUTOMATABLE_PER_PORT) ? "true" : "false")
+             << ",\"modulatablePerKey\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_MODULATABLE_PER_KEY) ? "true" : "false")
+             << ",\"modulatablePerChannel\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_MODULATABLE_PER_CHANNEL) ? "true" : "false")
+             << ",\"modulatablePerPort\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_MODULATABLE_PER_PORT) ? "true" : "false")
+             << ",\"modulatablePerNoteId\":" << ((info.flags & wclap32::WCLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID) ? "true" : "false")
              << "}";
     }
     json << "]";
@@ -1378,6 +1404,44 @@ int32_t _wclapPluginSetup(Instance *inst,
             state->webview = inst->get(Pointer<const wclap_plugin_webview>{webviewVoid.wasmPointer});
         }
     }
+    static const char kNotePortsExtId[] = "clap.note-ports";
+    auto notePortsIdPtr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(kNotePortsExtId),
+        sizeof(kNotePortsExtId));
+    if (notePortsIdPtr) {
+        auto notePortsVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{notePortsIdPtr});
+        if (notePortsVoid.wasmPointer != 0) {
+            auto notePorts = inst->get(Pointer<const wclap_plugin_note_ports>{notePortsVoid.wasmPointer});
+            state->has_event_inputs = inst->call(notePorts.count, plugPtr, true) > 0;
+            state->has_event_outputs = inst->call(notePorts.count, plugPtr, false) > 0;
+        }
+    }
+    static const char kStateExtId[] = "clap.state";
+    auto stateIdPtr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(kStateExtId),
+        sizeof(kStateExtId));
+    if (stateIdPtr) {
+        auto stateVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{stateIdPtr});
+        state->has_state = stateVoid.wasmPointer != 0;
+    }
+    if (!state->has_state) {
+        static const char kStateContextExtId[] = "clap.state-context/2";
+        auto stateContextIdPtr = allocInPlugin(inst,
+            reinterpret_cast<const uint8_t*>(kStateContextExtId),
+            sizeof(kStateContextExtId));
+        if (stateContextIdPtr) {
+            auto stateContextVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{stateContextIdPtr});
+            state->has_state = stateContextVoid.wasmPointer != 0;
+        }
+    }
+    static const char kPresetLoadExtId[] = "clap.preset-load/2";
+    auto presetLoadIdPtr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(kPresetLoadExtId),
+        sizeof(kPresetLoadExtId));
+    if (presetLoadIdPtr) {
+        auto presetLoadVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{presetLoadIdPtr});
+        state->has_preset_load = presetLoadVoid.wasmPointer != 0;
+    }
     rebuildUiJson(state);
     s_slots[inst]         = state;
 
@@ -1545,6 +1609,16 @@ const char * _wclapDescribeUi(Instance *inst) {
         rebuildUiJson(state);
     }
     return state->ui_json.c_str();
+}
+
+extern "C" __attribute__((export_name("_wclapDescribeCapabilities")))
+const char * _wclapDescribeCapabilities(Instance *inst) {
+    static std::string json = "{}";
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return json.c_str();
+    json = buildCapabilitiesJson(it->second);
+    return json.c_str();
 }
 
 extern "C" __attribute__((export_name("_wclapUiCreate")))
@@ -1830,6 +1904,40 @@ int32_t _wclapEnqueueParameterValue(Instance *inst, uint32_t paramIndex, double 
     event.port_index = -1;
     event.channel = -1;
     event.key = -1;
+    event.value = value;
+    return enqueueInputEvent(inst, state, &event, sizeof(event)) ? 1 : 0;
+}
+
+extern "C" __attribute__((export_name("_wclapEnqueuePerNoteParameterValue")))
+int32_t _wclapEnqueuePerNoteParameterValue(
+    Instance *inst,
+    uint32_t paramIndex,
+    double value,
+    uint32_t group,
+    uint32_t channel,
+    uint32_t note)
+{
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return 0;
+    auto *state = it->second;
+    if (!state->has_params || paramIndex >= state->parameter_infos.size())
+        return 0;
+    state->last_param_write_index = paramIndex;
+    state->last_param_write_value = value;
+
+    wclap_event_param_value event{};
+    event.header.size = sizeof(event);
+    event.header.time = 0;
+    event.header.space_id = wclap32::WCLAP_CORE_EVENT_SPACE_ID;
+    event.header.type = wclap32::WCLAP_EVENT_PARAM_VALUE;
+    event.header.flags = wclap32::WCLAP_EVENT_IS_LIVE;
+    event.param_id = state->parameter_infos[paramIndex].id;
+    event.cookie = {0};
+    event.note_id = -1;
+    event.port_index = static_cast<int16_t>(group);
+    event.channel = static_cast<int16_t>(channel);
+    event.key = static_cast<int16_t>(note);
     event.value = value;
     return enqueueInputEvent(inst, state, &event, sizeof(event)) ? 1 : 0;
 }

@@ -238,6 +238,7 @@ struct WebClapGlobalState {
     std::unordered_map<uint32_t, PluginInstanceWebCLAP*> instances_by_slot;
     std::unordered_map<uint32_t, std::vector<WebClapParamDescriptor>> pending_parameters_by_slot;
     std::unordered_map<uint32_t, WebClapUiMessage> pending_ui_by_slot;
+    std::unordered_map<uint32_t, WebClapCapabilities> pending_capabilities_by_slot;
 };
 
 static WebClapGlobalState& webclapGlobalState() {
@@ -286,9 +287,25 @@ static std::vector<WebClapParamDescriptor> parseParamDescriptors(const choc::val
         descriptor.hidden      = item["hidden"].getWithDefault<bool>(false);
         descriptor.readOnly    = item["readOnly"].getWithDefault<bool>(false);
         descriptor.stepped     = item["stepped"].getWithDefault<bool>(false);
+        descriptor.automatablePerKey = item["automatablePerKey"].getWithDefault<bool>(false);
+        descriptor.automatablePerChannel = item["automatablePerChannel"].getWithDefault<bool>(false);
+        descriptor.automatablePerPort = item["automatablePerPort"].getWithDefault<bool>(false);
+        descriptor.modulatablePerKey = item["modulatablePerKey"].getWithDefault<bool>(false);
+        descriptor.modulatablePerChannel = item["modulatablePerChannel"].getWithDefault<bool>(false);
+        descriptor.modulatablePerPort = item["modulatablePerPort"].getWithDefault<bool>(false);
+        descriptor.modulatablePerNoteId = item["modulatablePerNoteId"].getWithDefault<bool>(false);
         descriptors.emplace_back(std::move(descriptor));
     }
     return descriptors;
+}
+
+static WebClapCapabilities parseCapabilities(const choc::value::ValueView& value) {
+    WebClapCapabilities capabilities;
+    capabilities.hasEventInputs = value["hasEventInputs"].getWithDefault<bool>(false);
+    capabilities.hasEventOutputs = value["hasEventOutputs"].getWithDefault<bool>(false);
+    capabilities.hasState = value["hasState"].getWithDefault<bool>(false);
+    capabilities.hasPresetLoad = value["hasPresetLoad"].getWithDefault<bool>(false);
+    return capabilities;
 }
 
 static WebClapUiMessage parseUiMessage(const choc::value::ValueView& value) {
@@ -376,9 +393,19 @@ std::vector<PluginParameter*>& PluginInstanceWebCLAP::ParamSupportWebCLAP::param
 }
 
 std::vector<PluginParameter*>& PluginInstanceWebCLAP::ParamSupportWebCLAP::perNoteControllers(
-    PerNoteControllerContextTypes, PerNoteControllerContext)
+    PerNoteControllerContextTypes types, PerNoteControllerContext)
 {
-    return owner_->parameterPointers();
+    auto& params = owner_->parameterPointers();
+    auto& filtered = owner_->perNoteParameterPointers();
+    filtered.clear();
+    if (types == PER_NOTE_CONTROLLER_NONE)
+        return params;
+    filtered.reserve(params.size());
+    for (uint32_t index = 0; index < params.size(); ++index) {
+        if (owner_->parameterSupportsContext(index, types))
+            filtered.emplace_back(params[index]);
+    }
+    return filtered;
 }
 
 StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setParameter(
@@ -404,13 +431,48 @@ StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::getParameter(
 }
 
 StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setPerNoteController(
-    PerNoteControllerContext, uint32_t index, double plainValue, uint64_t timestamp)
+    PerNoteControllerContext context, uint32_t index, double plainValue, uint64_t)
 {
-    return setParameter(index, plainValue, timestamp);
+    owner_->setCachedParameterValue(index, plainValue);
+    std::ostringstream payload;
+    payload << "\"index\":" << index
+            << ",\"value\":" << plainValue
+            << ",\"perNote\":true"
+            << ",\"group\":" << context.group
+            << ",\"channel\":" << context.channel
+            << ",\"note\":" << context.note;
+    auto json = buildWclapEventJson("wclap-set-parameter", owner_->slot(), payload.str());
+    uapmd_post_to_webclap_worklet_json(json.c_str());
+
+    PerNoteControllerContextTypes contextType = PER_NOTE_CONTROLLER_NONE;
+    if (context.group != 0)
+        contextType = static_cast<PerNoteControllerContextTypes>(contextType | PER_NOTE_CONTROLLER_PER_GROUP);
+    if (context.channel != 0)
+        contextType = static_cast<PerNoteControllerContextTypes>(contextType | PER_NOTE_CONTROLLER_PER_CHANNEL);
+    if (context.note != 0)
+        contextType = static_cast<PerNoteControllerContextTypes>(contextType | PER_NOTE_CONTROLLER_PER_NOTE);
+
+    uint32_t contextValue = context.note;
+    perNoteControllerChangeEvent().notify(contextType, contextValue, index, plainValue);
+    return StatusCode::OK;
+}
+
+StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::getPerNoteController(
+    PerNoteControllerContext, uint32_t index, double* value)
+{
+    (void) index;
+    (void) value;
+    return StatusCode::NOT_IMPLEMENTED;
 }
 
 std::string PluginInstanceWebCLAP::ParamSupportWebCLAP::valueToString(uint32_t index, double v) {
     return owner_->buildParameterValueString(index, v);
+}
+
+std::string PluginInstanceWebCLAP::ParamSupportWebCLAP::valueToStringPerNote(
+    PerNoteControllerContext, uint32_t index, double v)
+{
+    return valueToString(index, v);
 }
 
 // ── PluginFormatWebCLAP::create ───────────────────────────────────────────────
@@ -437,6 +499,11 @@ void PluginFormatWebCLAPImpl::registerInstance(PluginInstanceWebCLAP* instance) 
     if (it != state.pending_parameters_by_slot.end()) {
         instance->updateParameters(it->second);
         state.pending_parameters_by_slot.erase(it);
+    }
+    auto capsIt = state.pending_capabilities_by_slot.find(instance->slot());
+    if (capsIt != state.pending_capabilities_by_slot.end()) {
+        instance->updateCapabilities(capsIt->second);
+        state.pending_capabilities_by_slot.erase(capsIt);
     }
     auto uiIt = state.pending_ui_by_slot.find(instance->slot());
     if (uiIt != state.pending_ui_by_slot.end()) {
@@ -572,6 +639,21 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
             for (const auto& update : updates)
                 instance->applyParameterValueUpdate(update.first, update.second);
         }
+    } else if (type == "wclap-capabilities") {
+        const uint32_t slot = static_cast<uint32_t>(message["slot"].getWithDefault<int32_t>(0));
+        auto capabilities = parseCapabilities(message);
+        PluginInstanceWebCLAP* instance = nullptr;
+        auto& state = webclapGlobalState();
+        {
+            std::lock_guard<std::mutex> lock(state.instances_mutex);
+            auto it = state.instances_by_slot.find(slot);
+            if (it != state.instances_by_slot.end())
+                instance = it->second;
+            else
+                state.pending_capabilities_by_slot[slot] = capabilities;
+        }
+        if (instance)
+            instance->updateCapabilities(capabilities);
     } else if (type == "wclap-runtime-error") {
         std::cerr << "[WebCLAP] runtime error: " << message["error"].toString() << std::endl;
     }
@@ -613,8 +695,10 @@ PluginInstanceWebCLAP::~PluginInstanceWebCLAP() {
 void PluginInstanceWebCLAP::updateParameters(const std::vector<WebClapParamDescriptor>& descriptors) {
     std::lock_guard<std::mutex> lock(parameter_mutex_);
 
+    parameter_descriptors_ = descriptors;
     parameter_defs_.clear();
     parameter_ptrs_.clear();
+    per_note_parameter_ptrs_.clear();
     parameter_values_.clear();
     parameter_defs_.reserve(descriptors.size());
     parameter_ptrs_.reserve(descriptors.size());
@@ -642,6 +726,13 @@ void PluginInstanceWebCLAP::updateParameters(const std::vector<WebClapParamDescr
 
     if (params_)
         params_->parameterMetadataChangeEvent().notify();
+}
+
+void PluginInstanceWebCLAP::updateCapabilities(const WebClapCapabilities& capabilities) {
+    has_event_inputs_ = capabilities.hasEventInputs;
+    has_event_outputs_ = capabilities.hasEventOutputs;
+    has_state_support_ = capabilities.hasState;
+    has_preset_load_support_ = capabilities.hasPresetLoad;
 }
 
 bool PluginInstanceWebCLAP::getCachedParameterValue(uint32_t index, double* plainValue) const {
@@ -699,6 +790,26 @@ bool PluginInstanceWebCLAP::canUiResize() const {
     return has_ui_ && ui_can_resize_;
 }
 
+bool PluginInstanceWebCLAP::parameterSupportsContext(uint32_t index, PerNoteControllerContextTypes types) const {
+    if (index >= parameter_descriptors_.size())
+        return false;
+    const auto& descriptor = parameter_descriptors_[index];
+    if (types & PER_NOTE_CONTROLLER_PER_GROUP) {
+        if (!descriptor.automatablePerPort && !descriptor.modulatablePerPort)
+            return false;
+    }
+    if (types & PER_NOTE_CONTROLLER_PER_CHANNEL) {
+        if (!descriptor.automatablePerChannel && !descriptor.modulatablePerChannel)
+            return false;
+    }
+    if (types & PER_NOTE_CONTROLLER_PER_NOTE) {
+        if (!descriptor.automatablePerKey && !descriptor.modulatablePerKey &&
+            !descriptor.modulatablePerNoteId)
+            return false;
+    }
+    return true;
+}
+
 std::string PluginInstanceWebCLAP::buildParameterValueString(uint32_t index, double plainValue) const {
     std::lock_guard<std::mutex> lock(parameter_mutex_);
     for (auto* parameter : parameter_ptrs_) {
@@ -709,6 +820,42 @@ std::string PluginInstanceWebCLAP::buildParameterValueString(uint32_t index, dou
         }
     }
     return std::to_string(plainValue);
+}
+
+bool PluginInstanceWebCLAP::BusesWebCLAP::hasEventInputs() {
+    return owner_ && owner_->hasEventInputs();
+}
+
+bool PluginInstanceWebCLAP::BusesWebCLAP::hasEventOutputs() {
+    return owner_ && owner_->hasEventOutputs();
+}
+
+std::vector<uint8_t> PluginInstanceWebCLAP::StateSupportWebCLAP::getState(StateContextType, bool) {
+    if (owner_ && owner_->hasStateSupport())
+        std::cerr << "[WebCLAP] state save is not implemented for worklet-owned instances\n";
+    return {};
+}
+
+void PluginInstanceWebCLAP::StateSupportWebCLAP::setState(std::vector<uint8_t>&, StateContextType, bool) {
+    if (owner_ && owner_->hasStateSupport())
+        std::cerr << "[WebCLAP] state load is not implemented for worklet-owned instances\n";
+}
+
+int32_t PluginInstanceWebCLAP::PresetsSupportWebCLAP::getPresetIndexForId(std::string&) {
+    return -1;
+}
+
+int32_t PluginInstanceWebCLAP::PresetsSupportWebCLAP::getPresetCount() {
+    return 0;
+}
+
+PresetInfo PluginInstanceWebCLAP::PresetsSupportWebCLAP::getPresetInfo(int32_t) {
+    return {"", "", 0, 0};
+}
+
+void PluginInstanceWebCLAP::PresetsSupportWebCLAP::loadPreset(int32_t) {
+    if (owner_ && owner_->hasPresetLoadSupport())
+        std::cerr << "[WebCLAP] preset loading is not implemented for worklet-owned instances\n";
 }
 
 StatusCode PluginInstanceWebCLAP::configure(ConfigurationRequest& cfg) {
