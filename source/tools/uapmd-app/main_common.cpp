@@ -273,6 +273,8 @@ int runMainLoop(int argc, char** argv) {
 
     // Create main window controller
     uapmd::gui::MainWindow mainWindow(defaults);
+    uapmd::AppModel::instance().notifyUiReady();
+    uapmd::AppModel::instance().notifyPersistentStorageReady();
     float suggestedUiScale = recommendUiScale(window);
     if (suggestedUiScale > 1.01f) {
         mainWindow.applySystemUiScale(suggestedUiScale);

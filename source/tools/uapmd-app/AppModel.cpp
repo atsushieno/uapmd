@@ -493,53 +493,31 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     for (int i = 0; i < kInitialTrackCount; ++i) {
         addTrack();
     }
-
-    auto& scanCache = pluginScanTool_->pluginListCacheFile();
-    bool loadedFromCache = false;
-    if (!scanCache.empty()) {
-        std::error_code ec;
-        if (std::filesystem::exists(scanCache, ec) && ec.value() == 0) {
-            try {
-                pluginScanTool_->catalog().load(scanCache);
-                loadedFromCache = true;
-            } catch (const std::exception& e) {
-                std::cerr << "Failed to load plugin list cache: " << e.what() << std::endl;
-            }
-        }
-    }
-    if (!loadedFromCache || pluginScanTool_->catalog().getPlugins().empty()) {
-        auto hostEntries = sequencer_.engine()->pluginHost()->pluginCatalogEntries();
-        for (auto& plugin : hostEntries) {
-            remidy::PluginCatalogEntry entry{};
-            auto fmt = plugin.format();
-            entry.format(fmt);
-            auto id = plugin.pluginId();
-            entry.pluginId(id);
-            entry.displayName(plugin.displayName());
-            entry.vendorName(plugin.vendorName());
-            entry.productUrl(plugin.productUrl());
-            entry.bundlePath(plugin.bundlePath());
-            pluginScanTool_->catalog().add(std::move(entry));
-        }
-    }
 }
 
-void uapmd::AppModel::reloadPluginCatalogsFromCache() {
-    auto& scanCache = pluginScanTool_->pluginListCacheFile();
-    if (scanCache.empty())
-        return;
-
-    std::error_code ec;
-    if (!std::filesystem::exists(scanCache, ec) || ec)
-        return;
-
-    try {
-        pluginScanTool_->catalog().clear();
-        pluginScanTool_->catalog().load(scanCache);
-        sequencer_.engine()->pluginHost()->reloadPluginCatalogFromCache();
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to reload plugin list cache: " << e.what() << std::endl;
+void uapmd::AppModel::notifyUiReady() {
+    {
+        std::lock_guard<std::mutex> lock(startupScanMutex_);
+        uiReady_ = true;
     }
+    maybeStartInitialPluginScan();
+}
+
+void uapmd::AppModel::notifyPersistentStorageReady() {
+    {
+        std::lock_guard<std::mutex> lock(startupScanMutex_);
+        persistentStorageReady_ = true;
+    }
+    maybeStartInitialPluginScan();
+}
+
+void uapmd::AppModel::maybeStartInitialPluginScan() {
+    std::lock_guard<std::mutex> lock(startupScanMutex_);
+    if (!uiReady_ || !persistentStorageReady_)
+        return;
+    if (initialPluginScanStarted_.exchange(true, std::memory_order_acq_rel))
+        return;
+    performPluginScanning(false, PluginScanRequest::InProcess, 0.0, true);
 }
 
 uapmd::AppModel::~AppModel() = default;
@@ -560,7 +538,10 @@ void uapmd::AppModel::cancelPluginScanning() {
     scanCancelRequested_.store(true, std::memory_order_release);
 }
 
-void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest request, double remoteTimeoutSeconds) {
+void uapmd::AppModel::performPluginScanning(bool forceRescan,
+                                            PluginScanRequest request,
+                                            double remoteTimeoutSeconds,
+                                            bool requireFastScanning) {
     if (isScanning_) {
         std::cout << "Plugin scanning already in progress" << std::endl;
         return;
@@ -577,7 +558,9 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest 
 
     isScanning_ = true;
     const char* modeStr = request == PluginScanRequest::RemoteProcess ? "remote process" : "in-process";
-    std::cout << "Starting plugin scanning (" << modeStr << ", forceRescan: " << forceRescan << ")" << std::endl;
+    std::cout << "Starting plugin scanning (" << modeStr
+              << ", forceRescan: " << forceRescan
+              << ", fastOnly: " << requireFastScanning << ")" << std::endl;
 
     scanCancelRequested_.store(false, std::memory_order_release);
     {
@@ -586,7 +569,7 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest 
     }
 
     // Run scanning in a separate thread to avoid blocking the UI
-    std::thread scanningThread([this, forceRescan, request, remoteTimeoutSeconds]() {
+    std::thread scanningThread([this, forceRescan, request, remoteTimeoutSeconds, requireFastScanning]() {
         try {
             bool success = false;
             std::string errorMsg;
@@ -653,7 +636,7 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest 
             auto mode = (request == PluginScanRequest::RemoteProcess)
                         ? remidy_tooling::ScanMode::Remote
                         : remidy_tooling::ScanMode::InProcess;
-            pluginScanTool_->performPluginScanning(false,
+            pluginScanTool_->performPluginScanning(requireFastScanning,
                                                    cacheFile,
                                                    mode,
                                                    forceRescan,
@@ -675,7 +658,7 @@ void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest 
 
             if (success) {
                 pluginScanTool_->savePluginListCache();
-                sequencer_.engine()->pluginHost()->performPluginScanning(false); // Load from cache, don't rescan
+                sequencer_.engine()->pluginHost()->reloadPluginCatalogFromCache();
                 reportText = generateScanReport();
             }
 

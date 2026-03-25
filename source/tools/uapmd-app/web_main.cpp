@@ -288,6 +288,7 @@ static int runWasmApp() {
     uapmd::AppModel::instantiate();
     uapmd::gui::GuiDefaults defaults;
     g_ctx.mainWindow = new uapmd::gui::MainWindow(defaults);
+    uapmd::AppModel::instance().notifyUiReady();
     maybeScheduleAutoImport();
     uapmd::AppModel::instance().setAudioEngineEnabled(false);
 
@@ -377,7 +378,7 @@ void uapmd_web_storage_ready(int ok) {
         std::cerr << "[uapmd] Browser storage sync failed; continuing without persistent cache." << std::endl;
         return;
     }
-    uapmd::AppModel::instance().reloadPluginCatalogsFromCache();
+    uapmd::AppModel::instance().notifyPersistentStorageReady();
 }
 }
 

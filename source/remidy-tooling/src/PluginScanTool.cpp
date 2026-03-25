@@ -30,19 +30,34 @@
 namespace remidy_tooling {
 
 #ifdef __EMSCRIPTEN__
-EM_JS(void, uapmd_sync_browser_fs_async, (), {
+EM_JS(void, uapmd_sync_browser_fs_async, (const char* pathPtr, const char* kindPtr), {
+    const path = UTF8ToString(pathPtr);
+    const kind = UTF8ToString(kindPtr);
     if (typeof FS === 'undefined' || !FS.syncfs)
         return;
     FS.syncfs(false, function(err) {
         if (err)
-            console.error('[uapmd] Failed to persist browser filesystem:', err);
+            console.error('[uapmd] Failed to persist ' + kind + ' to browser filesystem:', path, err);
+        else
+            console.log('[uapmd] Persisted ' + kind + ' to browser filesystem:', path);
     });
 });
 #endif
 
-static void syncBrowserFsAsync() {
+static void syncBrowserFsAsync(const std::filesystem::path& path, const char* kind) {
 #ifdef __EMSCRIPTEN__
-    uapmd_sync_browser_fs_async();
+    if (path.empty())
+        return;
+    auto pathString = path.string();
+    if (remidy::EventLoop::runningOnMainThread())
+        uapmd_sync_browser_fs_async(pathString.c_str(), kind);
+    else
+        remidy::EventLoop::runTaskOnMainThread([pathString = std::move(pathString), kindString = std::string(kind)]() {
+            uapmd_sync_browser_fs_async(pathString.c_str(), kindString.c_str());
+        });
+#else
+    (void) path;
+    (void) kind;
 #endif
 }
 
@@ -77,7 +92,9 @@ public:
     void savePluginListCache() override { savePluginListCache(plugin_list_cache_file); }
     void savePluginListCache(std::filesystem::path& fileToSave) override {
         catalog_.save(fileToSave);
-        syncBrowserFsAsync();
+        if (!fileToSave.empty())
+            std::cout << "[uapmd] Saved plugin cache: " << fileToSave << std::endl;
+        syncBrowserFsAsync(fileToSave, "plugin cache");
     }
     void flushBlocklist() override { saveBlocklistToDisk(); }
 
@@ -649,7 +666,8 @@ void PluginScanToolImpl::saveBlocklistToDisk() const {
     if (!ofs)
         return;
     ofs << choc::json::toString(json, true);
-    syncBrowserFsAsync();
+    std::cout << "[uapmd] Saved plugin blocklist: " << blocklist_file_ << std::endl;
+    syncBrowserFsAsync(blocklist_file_, "plugin blocklist");
 }
 
 bool PluginScanToolImpl::canPersistBlocklist() const {

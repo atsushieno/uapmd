@@ -326,11 +326,6 @@ uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
     else if (hr == RPC_E_CHANGED_MODE)
         remidy::Logger::global()->logWarning("RemidyAudioPluginHost: COM already initialized with a different apartment model; VST3 plugins using COM (e.g. NI) may crash");
 #endif
-#ifndef __EMSCRIPTEN__
-    scanning->performPluginScanning(true);
-    if (!exists(scanning->pluginListCacheFile()))
-        scanning->savePluginListCache();
-#endif
 }
 
 uapmd::RemidyAudioPluginHost::~RemidyAudioPluginHost() {

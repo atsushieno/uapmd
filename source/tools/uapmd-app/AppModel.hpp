@@ -119,6 +119,7 @@ namespace uapmd {
         std::unique_ptr<TransportController> transportController_;
         std::atomic<bool> isScanning_{false};
         std::atomic<bool> audioEngineEnabled_{false};
+        std::atomic<bool> initialPluginScanStarted_{false};
         mutable std::mutex devicesMutex_;
         std::vector<DeviceEntry> devices_;
         int32_t nextDeviceId_ = 1;
@@ -133,6 +134,9 @@ namespace uapmd {
         SlowScanProgressState slowScanProgress_{};
         mutable std::mutex slowScanMutex_;
         std::atomic<bool> scanCancelRequested_{false};
+        bool uiReady_{false};
+        bool persistentStorageReady_{false};
+        mutable std::mutex startupScanMutex_;
         mutable std::mutex scanMetricsMutex_;
         std::unordered_map<std::string, double> lastScanBundleDurations_;
 
@@ -142,6 +146,7 @@ namespace uapmd {
         PluginInstanceResult registerPluginInstanceInternal(int32_t instanceId,
                                                             const std::optional<PluginInstanceConfig>& configOverride);
         void clearDeviceEntries();
+        void maybeStartInitialPluginScan();
 
     public:
         static void instantiate();
@@ -164,7 +169,8 @@ namespace uapmd {
         bool autoBufferSizeEnabled() const { return auto_buffer_size_enabled_; }
         void cancelPluginScanning();
         std::string generateScanReport();
-        void reloadPluginCatalogsFromCache();
+        void notifyUiReady();
+        void notifyPersistentStorageReady();
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
         std::vector<std::function<void(const std::string& reportText)>> scanReportReady{};
@@ -271,7 +277,8 @@ namespace uapmd {
 
         void performPluginScanning(bool forceRescan = false,
                                    PluginScanRequest request = PluginScanRequest::InProcess,
-                                   double remoteTimeoutSeconds = 0.0);
+                                   double remoteTimeoutSeconds = 0.0,
+                                   bool requireFastScanning = false);
         SlowScanProgressState slowScanProgress() const;
         std::vector<remidy_tooling::BlocklistEntry> pluginBlocklist() const;
         bool unblockPluginFromBlocklist(const std::string& entryId);
