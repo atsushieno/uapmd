@@ -524,6 +524,24 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     }
 }
 
+void uapmd::AppModel::reloadPluginCatalogsFromCache() {
+    auto& scanCache = pluginScanTool_->pluginListCacheFile();
+    if (scanCache.empty())
+        return;
+
+    std::error_code ec;
+    if (!std::filesystem::exists(scanCache, ec) || ec)
+        return;
+
+    try {
+        pluginScanTool_->catalog().clear();
+        pluginScanTool_->catalog().load(scanCache);
+        sequencer_.engine()->pluginHost()->reloadPluginCatalogFromCache();
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to reload plugin list cache: " << e.what() << std::endl;
+    }
+}
+
 uapmd::AppModel::~AppModel() = default;
 
 uapmd::IDocumentProvider* uapmd::AppModel::documentProvider() {
@@ -543,20 +561,19 @@ void uapmd::AppModel::cancelPluginScanning() {
 }
 
 void uapmd::AppModel::performPluginScanning(bool forceRescan, PluginScanRequest request, double remoteTimeoutSeconds) {
-#if defined(__EMSCRIPTEN__)
-    // Native plugin formats (VST3/LV2/CLAP) are not available in the browser build,
-    // so skip scanning entirely and notify the UI that nothing happened.
-    std::cout << "Plugin scanning is not supported on the WebAssembly build. Skipping request." << std::endl;
-    for (auto& callback : scanningCompleted) {
-        callback(false, "Plugin scanning is unavailable on the WebAssembly build.");
-    }
-    return;
-#endif
-
     if (isScanning_) {
         std::cout << "Plugin scanning already in progress" << std::endl;
         return;
     }
+
+#if defined(__EMSCRIPTEN__)
+    if (request == PluginScanRequest::RemoteProcess) {
+        for (auto& callback : scanningCompleted) {
+            callback(false, "Remote plugin scanning is unavailable on the WebAssembly build.");
+        }
+        return;
+    }
+#endif
 
     isScanning_ = true;
     const char* modeStr = request == PluginScanRequest::RemoteProcess ? "remote process" : "in-process";

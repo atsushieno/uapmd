@@ -164,60 +164,20 @@ EM_JS(void, uapmd_webclap_unbind_ui_slot, (uint32_t slot), {
 
 namespace remidy {
 
-// Hardcoded WebCLAP bundle catalog. Each bundle may expose multiple CLAP
-// descriptors, so the catalog expands one bundle URL into multiple entries.
-
-struct KnownBundlePlugin {
-    const char* clapId;
-    const char* displayName;
-};
-
 struct KnownBundle {
     const char* url;
-    const KnownBundlePlugin* plugins;
-    size_t pluginCount;
-};
-
-static constexpr KnownBundlePlugin kSignalsmithBasicsPlugins[] = {
-    {"uk.co.signalsmith.basics.chorus", "[Basics] Chorus"},
-    {"uk.co.signalsmith.basics.limiter", "[Basics] Limiter"},
-    {"uk.co.signalsmith.basics.freq-shifter", "[Basics] Frequency Shifter"},
-    {"uk.co.signalsmith.basics.analyser", "[Basics] Analyser"},
-    {"uk.co.signalsmith.basics.crunch", "[Basics] Crunch"},
-    {"uk.co.signalsmith.basics.reverb", "[Basics] Reverb"},
-};
-
-static constexpr KnownBundlePlugin kSignalsmithCppExamplePlugins[] = {
-    {"uk.co.signalsmith-audio.plugins.example-audio-plugin", "C++ Example Audio Plugin (Chorus)"},
-    {"uk.co.signalsmith-audio.plugins.example-note-plugin", "C++ Example Note Plugin"},
-    {"uk.co.signalsmith-audio.plugins.example-synth", "C++ Example Synth"},
-    {"uk.co.signalsmith-audio.plugins.example-keyboard", "C++ Example Virtual Keyboard"},
 };
 
 static constexpr KnownBundle kKnownBundles[] = {
     {
         "https://webclap.github.io/browser-test-host/examples/signalsmith-basics/"
             "basics.wclap.tar.gz",
-        kSignalsmithBasicsPlugins,
-        std::size(kSignalsmithBasicsPlugins),
     },
     {
         "https://webclap.github.io/browser-test-host/examples/signalsmith-clap-cpp/"
             "example-plugins.wclap.tar.gz",
-        kSignalsmithCppExamplePlugins,
-        std::size(kSignalsmithCppExamplePlugins),
     },
 };
-
-static const char* findKnownBundleUrlForPluginId(std::string_view pluginId) {
-    for (const auto& bundle : kKnownBundles) {
-        for (size_t i = 0; i < bundle.pluginCount; ++i) {
-            if (pluginId == bundle.plugins[i].clapId)
-                return bundle.url;
-        }
-    }
-    return nullptr;
-}
 
 struct WebClapUiMessage {
     bool hasUi{};
@@ -234,6 +194,7 @@ struct WebClapGlobalState {
     std::atomic<uint32_t> next_req_id{1};
     std::mutex pending_mutex;
     std::unordered_map<uint32_t, PluginFormatWebCLAPImpl::PendingRequest> pending_requests;
+    std::unordered_map<uint32_t, PluginFormatWebCLAPImpl::PendingScanRequest> pending_scan_requests;
     std::mutex instances_mutex;
     std::unordered_map<uint32_t, PluginInstanceWebCLAP*> instances_by_slot;
     std::unordered_map<uint32_t, std::vector<WebClapParamDescriptor>> pending_parameters_by_slot;
@@ -297,6 +258,28 @@ static std::vector<WebClapParamDescriptor> parseParamDescriptors(const choc::val
         descriptors.emplace_back(std::move(descriptor));
     }
     return descriptors;
+}
+
+static std::vector<PluginCatalogEntry> parsePluginCatalogEntries(const choc::value::ValueView& value,
+                                                                 const std::filesystem::path& bundlePath) {
+    std::vector<PluginCatalogEntry> entries;
+    if (!value.isArray())
+        return entries;
+    entries.reserve(value.size());
+    for (uint32_t i = 0, size = value.size(); i < size; ++i) {
+        auto item = value[i];
+        PluginCatalogEntry entry{};
+        static std::string formatName{"WebCLAP"};
+        entry.format(formatName);
+        std::string pluginId = item["id"].toString();
+        entry.pluginId(pluginId);
+        entry.displayName(item["name"].toString());
+        entry.vendorName(item["vendor"].toString());
+        entry.productUrl(item["url"].toString());
+        entry.bundlePath(bundlePath);
+        entries.emplace_back(std::move(entry));
+    }
+    return entries;
 }
 
 static WebClapCapabilities parseCapabilities(const choc::value::ValueView& value) {
@@ -525,8 +508,8 @@ void PluginFormatWebCLAPImpl::createInstance(
     const uint32_t slot   = state.next_slot.fetch_add(1, std::memory_order_relaxed);
     const uint32_t req_id = state.next_req_id.fetch_add(1, std::memory_order_relaxed);
     std::string clapId = info->pluginId();
-    const char* bundleUrlPtr = findKnownBundleUrlForPluginId(clapId);
-    std::string bundleUrl = bundleUrlPtr ? std::string{bundleUrlPtr} : info->pluginId();
+    auto bundlePath = info->bundlePath();
+    std::string bundleUrl = bundlePath.empty() ? info->pluginId() : bundlePath.string();
 
     {
         std::lock_guard<std::mutex> lock(state.pending_mutex);
@@ -544,7 +527,32 @@ void PluginFormatWebCLAPImpl::createInstance(
         json << ",\"pluginId\":\"" << clapId << "\"";
     json
          << "}";
-    uapmd_webclap_load_plugin_async(json.str().c_str());
+    auto requestJson = json.str();
+    EventLoop::runTaskOnMainThread([requestJson]() {
+        uapmd_webclap_load_plugin_async(requestJson.c_str());
+    });
+}
+
+void PluginFormatWebCLAPImpl::startBundleScan(const std::filesystem::path& bundlePath,
+                                              std::function<void(PluginCatalogEntry entry)> pluginFound,
+                                              PluginScanCompletedCallback scanCompleted) {
+    auto& state = webclapGlobalState();
+    const uint32_t req_id = state.next_req_id.fetch_add(1, std::memory_order_relaxed);
+
+    {
+        std::lock_guard<std::mutex> lock(state.pending_mutex);
+        state.pending_scan_requests.emplace(req_id, PendingScanRequest{bundlePath, std::move(pluginFound), std::move(scanCompleted)});
+    }
+
+    std::ostringstream json;
+    json << "{\"type\":\"wclap-scan-bundle\""
+         << ",\"reqId\":" << req_id
+         << ",\"url\":\"" << bundlePath.string() << "\""
+         << "}";
+    auto requestJson = json.str();
+    EventLoop::runTaskOnMainThread([requestJson]() {
+        uapmd_webclap_load_plugin_async(requestJson.c_str());
+    });
 }
 
 void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
@@ -591,6 +599,48 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
             state.pending_requests.erase(it);
         }
         req.callback(nullptr, error);
+    } else if (type == "wclap-scan-result") {
+        const uint32_t req_id = static_cast<uint32_t>(message["reqId"].getWithDefault<int32_t>(0));
+        auto& state = webclapGlobalState();
+
+        PendingScanRequest req;
+        {
+            std::lock_guard<std::mutex> lock(state.pending_mutex);
+            auto it = state.pending_scan_requests.find(req_id);
+            if (it == state.pending_scan_requests.end()) {
+                std::cerr << "[WebCLAP] wclap-scan-result: unknown reqId "
+                          << req_id << std::endl;
+                return;
+            }
+            req = std::move(it->second);
+            state.pending_scan_requests.erase(it);
+        }
+
+        auto entries = parsePluginCatalogEntries(message["plugins"], req.bundlePath);
+        for (auto& entry : entries)
+            if (req.pluginFound)
+                req.pluginFound(std::move(entry));
+        if (req.scanCompleted)
+            req.scanCompleted("");
+    } else if (type == "wclap-scan-error") {
+        const uint32_t req_id = static_cast<uint32_t>(message["reqId"].getWithDefault<int32_t>(0));
+        auto& state = webclapGlobalState();
+
+        PendingScanRequest req;
+        {
+            std::lock_guard<std::mutex> lock(state.pending_mutex);
+            auto it = state.pending_scan_requests.find(req_id);
+            if (it == state.pending_scan_requests.end()) {
+                std::cerr << "[WebCLAP] wclap-scan-error: unknown reqId "
+                          << req_id << std::endl;
+                return;
+            }
+            req = std::move(it->second);
+            state.pending_scan_requests.erase(it);
+        }
+
+        if (req.scanCompleted)
+            req.scanCompleted(message["error"].toString());
     } else if (type == "wclap-parameters") {
         const uint32_t slot = static_cast<uint32_t>(message["slot"].getWithDefault<int32_t>(0));
         auto descriptors = parseParamDescriptors(message["paramDescriptors"]);
@@ -677,26 +727,7 @@ void PluginScanningWebCLAP::scanBundle(const std::filesystem::path& bundlePath,
                                        double /*timeoutSeconds*/,
                                        std::function<void(PluginCatalogEntry entry)> pluginFound,
                                        PluginScanCompletedCallback scanCompleted) {
-    std::string bundleKey = bundlePath.string();
-    std::string formatName = owner_->name();
-    for (const auto& bundle : kKnownBundles) {
-        if (bundleKey != bundle.url)
-            continue;
-        for (size_t i = 0; i < bundle.pluginCount; ++i) {
-            const auto& plugin = bundle.plugins[i];
-            PluginCatalogEntry entry{};
-            entry.format(formatName);
-            std::string id{plugin.clapId};
-            entry.pluginId(id);
-            entry.displayName(plugin.displayName);
-            entry.bundlePath(bundlePath);
-            if (pluginFound)
-                pluginFound(std::move(entry));
-        }
-        break;
-    }
-    if (scanCompleted)
-        scanCompleted("");
+    owner_->startBundleScan(bundlePath, std::move(pluginFound), std::move(scanCompleted));
 }
 
 std::vector<std::filesystem::path> PluginScanningWebCLAP::enumerateCandidateBundles(bool /*requireFastScanning*/) {
@@ -709,27 +740,28 @@ std::vector<std::filesystem::path> PluginScanningWebCLAP::enumerateCandidateBund
 
 void PluginScanningWebCLAP::startSlowPluginScan(std::function<void(PluginCatalogEntry entry)> pluginFound,
                                                 PluginScanCompletedCallback scanCompleted) {
-    for (const auto& bundlePath : enumerateCandidateBundles(false)) {
-        bool bundleCompleted = false;
-        std::string bundleError;
+    auto bundles = enumerateCandidateBundles(false);
+    auto bundleList = std::make_shared<std::vector<std::filesystem::path>>(std::move(bundles));
+    auto index = std::make_shared<size_t>(0);
+    auto continuation = std::make_shared<std::function<void()>>();
+    *continuation = [this, bundleList, index, pluginFound, scanCompleted, continuation]() mutable {
+        if (*index >= bundleList->size()) {
+            if (scanCompleted)
+                scanCompleted("");
+            return;
+        }
+        auto bundlePath = (*bundleList)[(*index)++];
         scanBundle(bundlePath, false, 0.0, pluginFound,
-                   [&](std::string error) {
-                       bundleError = std::move(error);
-                       bundleCompleted = true;
+                   [scanCompleted, continuation](std::string error) mutable {
+                       if (!error.empty()) {
+                           if (scanCompleted)
+                               scanCompleted(std::move(error));
+                           return;
+                       }
+                       (*continuation)();
                    });
-        if (!bundleCompleted) {
-            if (scanCompleted)
-                scanCompleted(std::format("WebCLAP slow scan for '{}' did not invoke completion.", bundlePath.string()));
-            return;
-        }
-        if (!bundleError.empty()) {
-            if (scanCompleted)
-                scanCompleted(std::move(bundleError));
-            return;
-        }
-    }
-    if (scanCompleted)
-        scanCompleted("");
+    };
+    (*continuation)();
 }
 
 // ── PluginInstanceWebCLAP ─────────────────────────────────────────────────────

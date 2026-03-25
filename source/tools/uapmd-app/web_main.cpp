@@ -38,6 +38,40 @@ struct WasmContext {
 
 static WasmContext g_ctx;
 
+extern "C" void uapmd_web_storage_ready(int ok);
+
+EM_JS(void, uapmd_init_browser_storage, (), {
+    if (typeof FS === 'undefined' || typeof IDBFS === 'undefined') {
+        console.error('[uapmd] Browser storage unavailable: FS or IDBFS is missing.');
+        _uapmd_web_storage_ready(0);
+        return;
+    }
+    try {
+        if (!FS.analyzePath('/browser').exists)
+            FS.mkdir('/browser');
+        if (!FS.analyzePath('/browser/uploads').exists)
+            FS.mkdir('/browser/uploads');
+        if (!FS.analyzePath('/browser/remidy-tooling').exists)
+            FS.mkdir('/browser/remidy-tooling');
+        try {
+            FS.mount(IDBFS, {}, '/browser');
+        } catch (e) {
+            if (!String(e).includes('already mounted'))
+                throw e;
+        }
+        FS.syncfs(true, function(err) {
+            if (err)
+                console.error('[uapmd] Failed to load browser filesystem:', err);
+            else
+                console.log('[uapmd] Browser filesystem ready.');
+            _uapmd_web_storage_ready(err ? 0 : 1);
+        });
+    } catch (e) {
+        console.error('[uapmd] Failed to initialize browser filesystem:', e);
+        _uapmd_web_storage_ready(0);
+    }
+});
+
 extern "C" void uapmd_debug_import_audio(const char* path);
 
 namespace {
@@ -254,15 +288,11 @@ static int runWasmApp() {
     uapmd::AppModel::instantiate();
     uapmd::gui::GuiDefaults defaults;
     g_ctx.mainWindow = new uapmd::gui::MainWindow(defaults);
-    // Do NOT auto-enable the audio engine on the web: AudioContext requires a
-    // user gesture before it can start (browser autoplay policy).  The user
-    // must click "Audio Engine: Off" in the toolbar to turn it on.
-
     maybeScheduleAutoImport();
-
-    emscripten_set_main_loop(mainLoopIteration, 0, 1);
-
     uapmd::AppModel::instance().setAudioEngineEnabled(false);
+
+    uapmd_init_browser_storage();
+    emscripten_set_main_loop(mainLoopIteration, 0, 1);
     cleanup();
     uapmd::AppModel::cleanupInstance();
     return EXIT_SUCCESS;
@@ -339,6 +369,15 @@ EMSCRIPTEN_KEEPALIVE
 double uapmd_debug_get_playback_position_samples() {
     auto& appModel = uapmd::AppModel::instance();
     return static_cast<double>(appModel.timeline().playheadPosition.samples);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void uapmd_web_storage_ready(int ok) {
+    if (!ok) {
+        std::cerr << "[uapmd] Browser storage sync failed; continuing without persistent cache." << std::endl;
+        return;
+    }
+    uapmd::AppModel::instance().reloadPluginCatalogsFromCache();
 }
 }
 

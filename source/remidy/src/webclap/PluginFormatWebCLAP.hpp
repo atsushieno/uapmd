@@ -247,6 +247,11 @@ namespace remidy {
             uint32_t slot;
             std::function<void(std::unique_ptr<PluginInstance>, std::string)> callback;
         };
+        struct PendingScanRequest {
+            std::filesystem::path bundlePath;
+            std::function<void(PluginCatalogEntry entry)> pluginFound;
+            PluginScanCompletedCallback scanCompleted;
+        };
 
     private:
         PluginScanningWebCLAP           scanning_{this};
@@ -263,6 +268,9 @@ namespace remidy {
                             PluginInstantiationOptions options,
                             std::function<void(std::unique_ptr<PluginInstance>,
                                                std::string)> callback) override;
+        void startBundleScan(const std::filesystem::path& bundlePath,
+                             std::function<void(PluginCatalogEntry entry)> pluginFound,
+                             PluginScanCompletedCallback scanCompleted);
 
         void onWorkletMessage(const char* json) override;
     };

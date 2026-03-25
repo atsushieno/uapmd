@@ -1621,6 +1621,88 @@ const char * _wclapDescribeCapabilities(Instance *inst) {
     return json.c_str();
 }
 
+extern "C" __attribute__((export_name("_wclapDescribePlugins")))
+const char * _wclapDescribePlugins(Instance *inst) {
+    static std::string json = "[]";
+    if (!inst)
+        return json.c_str();
+
+    if (!inst->init()) {
+        std::cerr << "[wclap] inst->init() failed in _wclapDescribePlugins\n";
+        return json.c_str();
+    }
+
+    static const uint8_t kRoot[] = {'/', '\0'};
+    uint32_t pathPtr = allocInPlugin(inst, kRoot, sizeof(kRoot));
+    if (!pathPtr)
+        return json.c_str();
+
+    auto entryVal = inst->get(inst->entry32);
+    if (entryVal.init.wasmPointer)
+        inst->call(entryVal.init, Pointer<const char>{pathPtr});
+
+    static const char kFactoryId[] = "clap.plugin-factory";
+    uint32_t fidPtr = allocInPlugin(inst,
+                                    reinterpret_cast<const uint8_t *>(kFactoryId),
+                                    sizeof(kFactoryId));
+    if (!fidPtr)
+        return json.c_str();
+
+    auto factVoid = inst->call(entryVal.get_factory, Pointer<const char>{fidPtr});
+    if (factVoid.wasmPointer == 0)
+        return json.c_str();
+
+    auto factPtr = Pointer<const wclap_plugin_factory>{factVoid.wasmPointer};
+    auto factVal = inst->get(factPtr);
+    uint32_t pluginCount = inst->call(factVal.get_plugin_count, factPtr);
+
+    auto appendJsonString = [](std::ostringstream& out, const std::string& value) {
+        out << '"';
+        for (char c : value) {
+            switch (c) {
+                case '\\': out << "\\\\"; break;
+                case '"': out << "\\\""; break;
+                case '\b': out << "\\b"; break;
+                case '\f': out << "\\f"; break;
+                case '\n': out << "\\n"; break;
+                case '\r': out << "\\r"; break;
+                case '\t': out << "\\t"; break;
+                default: out << c; break;
+            }
+        }
+        out << '"';
+    };
+
+    std::ostringstream result;
+    result << "[";
+    bool first = true;
+    for (uint32_t index = 0; index < pluginCount; ++index) {
+        auto descPtr = inst->call(factVal.get_plugin_descriptor, factPtr, index);
+        if (descPtr.wasmPointer == 0)
+            continue;
+        auto descVal = inst->get(descPtr);
+        auto pluginId = inst->getString(descVal.id, 256);
+        auto name = inst->getString(descVal.name, 256);
+        auto vendor = inst->getString(descVal.vendor, 256);
+        auto url = inst->getString(descVal.url, 512);
+        if (!first)
+            result << ",";
+        first = false;
+        result << "{\"id\":";
+        appendJsonString(result, pluginId);
+        result << ",\"name\":";
+        appendJsonString(result, name);
+        result << ",\"vendor\":";
+        appendJsonString(result, vendor);
+        result << ",\"url\":";
+        appendJsonString(result, url);
+        result << "}";
+    }
+    result << "]";
+    json = result.str();
+    return json.c_str();
+}
+
 extern "C" __attribute__((export_name("_wclapUiCreate")))
 int32_t _wclapUiCreate(Instance *inst, uint32_t width, uint32_t height) {
     auto it = s_slots.find(inst);

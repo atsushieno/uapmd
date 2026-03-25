@@ -24,7 +24,7 @@ if(UAPMD_TARGET_WASM)
         -pthread \
         -s PTHREAD_POOL_SIZE=8 \
         -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8','allocateUTF8','FS'] \
-        -s EXPORTED_FUNCTIONS=['_main','_uapmd_mcp_call','_uapmd_eval','_uapmd_debug_import_audio','_uapmd_debug_load_project','_uapmd_debug_enable_audio_engine','_uapmd_debug_start_playback','_uapmd_debug_get_playback_position_samples','_uapmd_webclap_on_worklet_message']")
+        -s EXPORTED_FUNCTIONS=['_main','_uapmd_mcp_call','_uapmd_eval','_uapmd_debug_import_audio','_uapmd_debug_load_project','_uapmd_debug_enable_audio_engine','_uapmd_debug_start_playback','_uapmd_debug_get_playback_position_samples','_uapmd_web_storage_ready','_uapmd_webclap_on_worklet_message']")
     if(NOT UAPMD_WASM_USE_VCPKG_SDL3)
         # Emscripten port: the linker flag activates the bundled SDL3 port at link time.
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -s USE_SDL=3")
@@ -142,7 +142,7 @@ elseif(UAPMD_BUILDING_WASM)
     add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET uapmd-app)
     add_dependencies(uapmd-app uapmd-app-web-assets)
-    target_link_options(uapmd-app PRIVATE --bind)
+    target_link_options(uapmd-app PRIVATE --bind -lidbfs.js)
     # Prepend the AudioWorklet environment shim so it runs before Emscripten's
     # runtime inside the AudioWorklet WASM Worker.  It backfills the missing
     # AudioWorkletGlobalScope property (Chrome bug) and provides a navigator shim

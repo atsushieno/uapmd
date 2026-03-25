@@ -323,7 +323,7 @@ namespace uapmd {
         function reportError(err) {
             console.error('[uapmd] load plugin failed:', String(err));
             var errMsg = JSON.stringify({
-                type:  'wclap-plugin-error',
+                type:  base.type === 'wclap-scan-bundle' ? 'wclap-scan-error' : 'wclap-plugin-error',
                 reqId: base.reqId,
                 error: String(err),
             });
@@ -364,6 +364,32 @@ namespace uapmd {
                 type: 'wclap-capabilities',
                 slot: base.slot,
             }, capabilities || {}));
+            var len = lengthBytesUTF8(msg) + 1;
+            var ptr = _malloc(len);
+            stringToUTF8(msg, ptr, len);
+            _uapmd_webclap_on_worklet_message(ptr);
+            _free(ptr);
+        }
+
+        function reportScanResult(plugins) {
+            var msg = JSON.stringify({
+                type: 'wclap-scan-result',
+                reqId: base.reqId,
+                plugins: plugins || [],
+            });
+            var len = lengthBytesUTF8(msg) + 1;
+            var ptr = _malloc(len);
+            stringToUTF8(msg, ptr, len);
+            _uapmd_webclap_on_worklet_message(ptr);
+            _free(ptr);
+        }
+
+        function reportScanError(err) {
+            var msg = JSON.stringify({
+                type: 'wclap-scan-error',
+                reqId: base.reqId,
+                error: String(err),
+            });
             var len = lengthBytesUTF8(msg) + 1;
             var ptr = _malloc(len);
             stringToUTF8(msg, ptr, len);
@@ -450,6 +476,21 @@ namespace uapmd {
             });
         }
 
+        function inspectDescriptors(tarFiles) {
+            return ensureInspectorHost().then(function(api) {
+                return buildWclapInit(api, tarFiles).then(function(wclapInit) {
+                    return api.host.startWclap(wclapInit, null).then(function(instance) {
+                        var exp = api.host.hostInstance.exports;
+                        var pluginsPtr = exp._wclapDescribePlugins(instance.ptr);
+                        var pluginsJson = readCString(api.host.hostMemory, pluginsPtr);
+                        reportScanResult(pluginsJson ? JSON.parse(pluginsJson) : []);
+                    });
+                });
+            }).catch(function(err) {
+                reportScanError(err);
+            });
+        }
+
         function sendToWorklet(tarFiles) {
             var msg = {
                 type:     'wclap-load-plugin',
@@ -484,13 +525,21 @@ namespace uapmd {
             if (response.headers.get('Content-Type') === 'application/wasm') {
                 return response.arrayBuffer().then(function(bytes) {
                     var tarFiles = { 'module.wasm': bytes };
-                    inspectParameters(tarFiles);
-                    sendToWorklet(tarFiles);
+                    if (base.type === 'wclap-scan-bundle')
+                        inspectDescriptors(tarFiles);
+                    else {
+                        inspectParameters(tarFiles);
+                        sendToWorklet(tarFiles);
+                    }
                 });
             }
             return expandTarGz(response).then(function(tarFiles) {
-                inspectParameters(tarFiles);
-                sendToWorklet(tarFiles);
+                if (base.type === 'wclap-scan-bundle')
+                    inspectDescriptors(tarFiles);
+                else {
+                    inspectParameters(tarFiles);
+                    sendToWorklet(tarFiles);
+                }
             });
         }).catch(reportError);
     });

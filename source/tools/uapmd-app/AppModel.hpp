@@ -164,6 +164,7 @@ namespace uapmd {
         bool autoBufferSizeEnabled() const { return auto_buffer_size_enabled_; }
         void cancelPluginScanning();
         std::string generateScanReport();
+        void reloadPluginCatalogsFromCache();
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
         std::vector<std::function<void(const std::string& reportText)>> scanReportReady{};

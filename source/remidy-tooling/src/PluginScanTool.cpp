@@ -16,6 +16,9 @@
 #include <cpplocate/cpplocate.h>
 #include <choc/platform/choc_Execute.h>
 #endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include <choc/text/choc_JSON.h>
 #include "remidy-tooling/remidy-tooling.hpp"
 #include "remidy-tooling/priv/PluginFormatManager.hpp"
@@ -25,6 +28,23 @@
 #include "ipc/RemoteScanSessionManager.hpp"
 
 namespace remidy_tooling {
+
+#ifdef __EMSCRIPTEN__
+EM_JS(void, uapmd_sync_browser_fs_async, (), {
+    if (typeof FS === 'undefined' || !FS.syncfs)
+        return;
+    FS.syncfs(false, function(err) {
+        if (err)
+            console.error('[uapmd] Failed to persist browser filesystem:', err);
+    });
+});
+#endif
+
+static void syncBrowserFsAsync() {
+#ifdef __EMSCRIPTEN__
+    uapmd_sync_browser_fs_async();
+#endif
+}
 
 class PluginScanToolImpl final : public PluginScanTool {
 public:
@@ -55,7 +75,10 @@ public:
                                double bundleTimeoutSeconds,
                                PluginScanObserver* observer) override;
     void savePluginListCache() override { savePluginListCache(plugin_list_cache_file); }
-    void savePluginListCache(std::filesystem::path& fileToSave) override { catalog_.save(fileToSave); }
+    void savePluginListCache(std::filesystem::path& fileToSave) override {
+        catalog_.save(fileToSave);
+        syncBrowserFsAsync();
+    }
     void flushBlocklist() override { saveBlocklistToDisk(); }
 
     std::vector<BlocklistEntry> blocklistEntries() const override;
@@ -174,7 +197,9 @@ const char* TOOLING_DIR_NAME= "remidy-tooling";
 PluginScanToolImpl::PluginScanToolImpl() {
 #if ANDROID
     std::filesystem::path dir{};
-#elif defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+#elif defined(__EMSCRIPTEN__)
+    std::filesystem::path dir{"/browser/remidy-tooling"};
+#elif (defined(__APPLE__) && TARGET_OS_IPHONE)
     // No filesystem-based plugin cache path on iOS (sandboxed app bundle).
     std::filesystem::path dir{};
 #else
@@ -264,6 +289,9 @@ remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const
             mergeScanResults(std::move(fastResults));
             fastScanModified = true;
         }
+
+        if (requireFastScanning)
+            continue;
 
         if (!scanMayBeSlow)
             continue;
@@ -621,6 +649,7 @@ void PluginScanToolImpl::saveBlocklistToDisk() const {
     if (!ofs)
         return;
     ofs << choc::json::toString(json, true);
+    syncBrowserFsAsync();
 }
 
 bool PluginScanToolImpl::canPersistBlocklist() const {

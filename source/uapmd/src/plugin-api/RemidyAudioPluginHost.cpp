@@ -326,9 +326,11 @@ uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
     else if (hr == RPC_E_CHANGED_MODE)
         remidy::Logger::global()->logWarning("RemidyAudioPluginHost: COM already initialized with a different apartment model; VST3 plugins using COM (e.g. NI) may crash");
 #endif
+#ifndef __EMSCRIPTEN__
     scanning->performPluginScanning(true);
     if (!exists(scanning->pluginListCacheFile()))
         scanning->savePluginListCache();
+#endif
 }
 
 uapmd::RemidyAudioPluginHost::~RemidyAudioPluginHost() {
@@ -353,6 +355,19 @@ std::filesystem::path empty_path{""};
 void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
     scanning->catalog().clear();
     scanning->performPluginScanning(false, remidy_tooling::ScanMode::InProcess, rescan);
+}
+
+void uapmd::RemidyAudioPluginHost::reloadPluginCatalogFromCache() {
+    auto& cacheFile = scanning->pluginListCacheFile();
+    if (cacheFile.empty())
+        return;
+
+    std::error_code ec;
+    if (!std::filesystem::exists(cacheFile, ec) || ec)
+        return;
+
+    scanning->catalog().clear();
+    scanning->catalog().load(cacheFile);
 }
 
 void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate,

@@ -11,6 +11,7 @@ namespace uapmd {
         virtual std::vector<remidy::PluginCatalogEntry> pluginCatalogEntries() = 0;
         virtual void savePluginCatalogToFile(std::filesystem::path path) = 0;
         virtual void performPluginScanning(bool rescan) = 0;
+        virtual void reloadPluginCatalogFromCache() = 0;
         virtual void createPluginInstance(uint32_t sampleRate,
                                           uint32_t bufferSize,
                                           std::optional<uint32_t> mainInputChannels,
