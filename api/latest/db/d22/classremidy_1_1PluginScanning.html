@@ -86,7 +86,7 @@ Inheritance diagram for remidy::PluginScanning:</div>
  <div class="center">
   <img src="../../db/d22/classremidy_1_1PluginScanning.png" usemap="#remidy::PluginScanning_map" alt=""/>
   <map id="remidy::PluginScanning_map" name="remidy::PluginScanning_map">
-<area href="../../de/d34/classremidy_1_1FileBasedPluginScanning.html" alt="remidy::FileBasedPluginScanning" shape="rect" coords="0,56,200,80"/>
+<area href="../../df/d29/classremidy_1_1FileOrUrlBasedPluginScanning.html" alt="remidy::FileOrUrlBasedPluginScanning" shape="rect" coords="0,56,231,80"/>
   </map>
 </div></div>
 <table class="memberdecls">
@@ -100,6 +100,9 @@ Public Types</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:ace8505b9034b69be1891c980e9b827f8" id="r_ace8505b9034b69be1891c980e9b827f8"><td class="memItemLeft" align="right" valign="top"><a id="ace8505b9034b69be1891c980e9b827f8" name="ace8505b9034b69be1891c980e9b827f8"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>scanningMayBeSlow</b> ()=0</td></tr>
+<tr class="separator:ace8505b9034b69be1891c980e9b827f8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1b55bdb64728a94b273be4b72d876728" id="r_a1b55bdb64728a94b273be4b72d876728"><td class="memItemLeft" align="right" valign="top"><a id="a1b55bdb64728a94b273be4b72d876728" name="a1b55bdb64728a94b273be4b72d876728"></a>
 virtual ScanningStrategyValue&#160;</td><td class="memItemRight" valign="bottom"><b>scanRequiresLoadLibrary</b> ()=0</td></tr>
 <tr class="separator:a1b55bdb64728a94b273be4b72d876728"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -109,9 +112,12 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>scanRequiresL
 <tr class="memitem:afeddee3604b483009205ed1ac6e13671" id="r_afeddee3604b483009205ed1ac6e13671"><td class="memItemLeft" align="right" valign="top"><a id="afeddee3604b483009205ed1ac6e13671" name="afeddee3604b483009205ed1ac6e13671"></a>
 virtual ScanningStrategyValue&#160;</td><td class="memItemRight" valign="bottom"><b>scanRequiresInstantiation</b> ()=0</td></tr>
 <tr class="separator:afeddee3604b483009205ed1ac6e13671"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a4c0b6907f076ef92dd680d41f2c190fe" id="r_a4c0b6907f076ef92dd680d41f2c190fe"><td class="memItemLeft" align="right" valign="top"><a id="a4c0b6907f076ef92dd680d41f2c190fe" name="a4c0b6907f076ef92dd680d41f2c190fe"></a>
-virtual std::vector&lt; std::unique_ptr&lt; <a class="el" href="../../d7/d03/classremidy_1_1PluginCatalogEntry.html">PluginCatalogEntry</a> &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>scanAllAvailablePlugins</b> (bool requireFastScanning)=0</td></tr>
-<tr class="separator:a4c0b6907f076ef92dd680d41f2c190fe"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9e6cb985a9b005cb0de82759b5d5ec31" id="r_a9e6cb985a9b005cb0de82759b5d5ec31"><td class="memItemLeft" align="right" valign="top"><a id="a9e6cb985a9b005cb0de82759b5d5ec31" name="a9e6cb985a9b005cb0de82759b5d5ec31"></a>
+virtual std::vector&lt; <a class="el" href="../../d7/d03/classremidy_1_1PluginCatalogEntry.html">PluginCatalogEntry</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>getAllFastScannablePlugins</b> ()=0</td></tr>
+<tr class="separator:a9e6cb985a9b005cb0de82759b5d5ec31"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a59081abd04fc046c037d3ab02b406592" id="r_a59081abd04fc046c037d3ab02b406592"><td class="memItemLeft" align="right" valign="top"><a id="a59081abd04fc046c037d3ab02b406592" name="a59081abd04fc046c037d3ab02b406592"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>startSlowPluginScan</b> (std::function&lt; void(<a class="el" href="../../d7/d03/classremidy_1_1PluginCatalogEntry.html">PluginCatalogEntry</a> entry)&gt; pluginFound, PluginScanCompletedCallback scanCompleted)=0</td></tr>
+<tr class="separator:a59081abd04fc046c037d3ab02b406592"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/remidy/include/remidy/priv/<a class="el" href="../../dc/dc7/plugin-scanning_8hpp_source.html">plugin-scanning.hpp</a></li>

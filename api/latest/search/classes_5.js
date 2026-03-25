@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['filebasedpluginscanning_0',['FileBasedPluginScanning',['../de/d34/classremidy_1_1FileBasedPluginScanning.html',1,'remidy']]]
+  ['fileorurlbasedpluginscanning_0',['FileOrUrlBasedPluginScanning',['../df/d29/classremidy_1_1FileOrUrlBasedPluginScanning.html',1,'remidy']]]
 ];

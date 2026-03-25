@@ -448,10 +448,20 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                 const info = this._slots.get(msg.slot);
                 if (!info || !this._wclapHost) break;
                 const exp = this._wclapHost.hostInstance.exports;
-                exp._wclapEnqueueParameterValue(
-                    info.ptr,
-                    msg.index,
-                    msg.value);
+                if (msg.perNote) {
+                    exp._wclapEnqueuePerNoteParameterValue(
+                        info.ptr,
+                        msg.index,
+                        msg.value,
+                        msg.group ?? 0,
+                        msg.channel ?? 0,
+                        msg.note ?? 0);
+                } else {
+                    exp._wclapEnqueueParameterValue(
+                        info.ptr,
+                        msg.index,
+                        msg.value);
+                }
                 exp._wclapFlushParameters(info.ptr);
                 this._drainUiMessages(msg.slot, info);
                 break;

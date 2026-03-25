@@ -103,12 +103,12 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addFormat</b>
 <tr class="memitem:a8fed7e4048201ef1e7b67aae96ee198c" id="r_a8fed7e4048201ef1e7b67aae96ee198c"><td class="memItemLeft" align="right" valign="top"><a id="a8fed7e4048201ef1e7b67aae96ee198c" name="a8fed7e4048201ef1e7b67aae96ee198c"></a>
 virtual std::filesystem::path &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>pluginListCacheFile</b> ()=0</td></tr>
 <tr class="separator:a8fed7e4048201ef1e7b67aae96ee198c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a070e21c0f164a47c1229a423f21dcc9a" id="r_a070e21c0f164a47c1229a423f21dcc9a"><td class="memItemLeft" align="right" valign="top"><a id="a070e21c0f164a47c1229a423f21dcc9a" name="a070e21c0f164a47c1229a423f21dcc9a"></a>
-virtual int&#160;</td><td class="memItemRight" valign="bottom"><b>performPluginScanning</b> (bool requireFastScanning, ScanMode mode=ScanMode::InProcess, bool forceRescan=false, double bundleTimeoutSeconds=0.0, <a class="el" href="../../dd/d14/structremidy__tooling_1_1PluginScanObserver.html">PluginScanObserver</a> *observer=nullptr)=0</td></tr>
-<tr class="separator:a070e21c0f164a47c1229a423f21dcc9a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aeca96196503fe807f2972976a36cc929" id="r_aeca96196503fe807f2972976a36cc929"><td class="memItemLeft" align="right" valign="top"><a id="aeca96196503fe807f2972976a36cc929" name="aeca96196503fe807f2972976a36cc929"></a>
-virtual int&#160;</td><td class="memItemRight" valign="bottom"><b>performPluginScanning</b> (bool requireFastScanning, std::filesystem::path &amp;pluginListCacheFile, ScanMode mode=ScanMode::InProcess, bool forceRescan=false, double bundleTimeoutSeconds=0.0, <a class="el" href="../../dd/d14/structremidy__tooling_1_1PluginScanObserver.html">PluginScanObserver</a> *observer=nullptr)=0</td></tr>
-<tr class="separator:aeca96196503fe807f2972976a36cc929"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8a8e4e7bfca95e4ec327d05718a54102" id="r_a8a8e4e7bfca95e4ec327d05718a54102"><td class="memItemLeft" align="right" valign="top"><a id="a8a8e4e7bfca95e4ec327d05718a54102" name="a8a8e4e7bfca95e4ec327d05718a54102"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>performPluginScanning</b> (bool requireFastScanning, ScanMode mode=ScanMode::InProcess, bool forceRescan=false, double bundleTimeoutSeconds=0.0, <a class="el" href="../../dd/d14/structremidy__tooling_1_1PluginScanObserver.html">PluginScanObserver</a> *observer=nullptr)=0</td></tr>
+<tr class="separator:a8a8e4e7bfca95e4ec327d05718a54102"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8e56e6b7ecce62a02856152c0e6cc9ba" id="r_a8e56e6b7ecce62a02856152c0e6cc9ba"><td class="memItemLeft" align="right" valign="top"><a id="a8e56e6b7ecce62a02856152c0e6cc9ba" name="a8e56e6b7ecce62a02856152c0e6cc9ba"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>performPluginScanning</b> (bool requireFastScanning, std::filesystem::path &amp;pluginListCacheFile, ScanMode mode=ScanMode::InProcess, bool forceRescan=false, double bundleTimeoutSeconds=0.0, <a class="el" href="../../dd/d14/structremidy__tooling_1_1PluginScanObserver.html">PluginScanObserver</a> *observer=nullptr)=0</td></tr>
+<tr class="separator:a8e56e6b7ecce62a02856152c0e6cc9ba"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1c1c29692b01200683ee590dd84c6c04" id="r_a1c1c29692b01200683ee590dd84c6c04"><td class="memItemLeft" align="right" valign="top"><a id="a1c1c29692b01200683ee590dd84c6c04" name="a1c1c29692b01200683ee590dd84c6c04"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>savePluginListCache</b> ()=0</td></tr>
 <tr class="separator:a1c1c29692b01200683ee590dd84c6c04"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -151,9 +151,9 @@ static std::unique_ptr&lt; <a class="el" href="../../d4/d11/classremidy__tooling
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-methods" name="pro-methods"></a>
 Protected Member Functions</h2></td></tr>
-<tr class="memitem:a8e0fa218203c9cee07c37c6df460d522" id="r_a8e0fa218203c9cee07c37c6df460d522"><td class="memItemLeft" align="right" valign="top"><a id="a8e0fa218203c9cee07c37c6df460d522" name="a8e0fa218203c9cee07c37c6df460d522"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>mergeScanResults</b> (std::vector&lt; std::unique_ptr&lt; <a class="el" href="../../d7/d03/classremidy_1_1PluginCatalogEntry.html">PluginCatalogEntry</a> &gt; &gt; results)=0</td></tr>
-<tr class="separator:a8e0fa218203c9cee07c37c6df460d522"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afb9ca88fd6f58d4ff301927e4a4bed49" id="r_afb9ca88fd6f58d4ff301927e4a4bed49"><td class="memItemLeft" align="right" valign="top"><a id="afb9ca88fd6f58d4ff301927e4a4bed49" name="afb9ca88fd6f58d4ff301927e4a4bed49"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>mergeScanResults</b> (std::vector&lt; <a class="el" href="../../d7/d03/classremidy_1_1PluginCatalogEntry.html">PluginCatalogEntry</a> &gt; results)=0</td></tr>
+<tr class="separator:afb9ca88fd6f58d4ff301927e4a4bed49"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a86963967a31cd1e71108a1fa0d0b2198" id="r_a86963967a31cd1e71108a1fa0d0b2198"><td class="memItemLeft" align="right" valign="top"><a id="a86963967a31cd1e71108a1fa0d0b2198" name="a86963967a31cd1e71108a1fa0d0b2198"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>notifyBundleScanStarted</b> (const std::filesystem::path &amp;bundlePath, <a class="el" href="../../dd/d14/structremidy__tooling_1_1PluginScanObserver.html">PluginScanObserver</a> *observer) const =0</td></tr>
 <tr class="separator:a86963967a31cd1e71108a1fa0d0b2198"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -163,9 +163,9 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>notifyBundleS
 <tr class="memitem:a932e3992f5ccd87f2b878b6f95feb107" id="r_a932e3992f5ccd87f2b878b6f95feb107"><td class="memItemLeft" align="right" valign="top"><a id="a932e3992f5ccd87f2b878b6f95feb107" name="a932e3992f5ccd87f2b878b6f95feb107"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>notifySlowScanStarted</b> (uint32_t totalBundles, <a class="el" href="../../dd/d14/structremidy__tooling_1_1PluginScanObserver.html">PluginScanObserver</a> *observer) const =0</td></tr>
 <tr class="separator:a932e3992f5ccd87f2b878b6f95feb107"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a4666df4403e4e14da9a2626a82d7f859" id="r_a4666df4403e4e14da9a2626a82d7f859"><td class="memItemLeft" align="right" valign="top"><a id="a4666df4403e4e14da9a2626a82d7f859" name="a4666df4403e4e14da9a2626a82d7f859"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>notifySlowScanCompleted</b> (bool success, <a class="el" href="../../dd/d14/structremidy__tooling_1_1PluginScanObserver.html">PluginScanObserver</a> *observer) const =0</td></tr>
-<tr class="separator:a4666df4403e4e14da9a2626a82d7f859"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0e27e3d7018a11df74e23156e40a75ca" id="r_a0e27e3d7018a11df74e23156e40a75ca"><td class="memItemLeft" align="right" valign="top"><a id="a0e27e3d7018a11df74e23156e40a75ca" name="a0e27e3d7018a11df74e23156e40a75ca"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>notifySlowScanCompleted</b> (<a class="el" href="../../dd/d14/structremidy__tooling_1_1PluginScanObserver.html">PluginScanObserver</a> *observer) const =0</td></tr>
+<tr class="separator:a0e27e3d7018a11df74e23156e40a75ca"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a94065b4922d57be09f6543329e766977" id="r_a94065b4922d57be09f6543329e766977"><td class="memItemLeft" align="right" valign="top"><a id="a94065b4922d57be09f6543329e766977" name="a94065b4922d57be09f6543329e766977"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>notifyScanError</b> (const std::string &amp;message, <a class="el" href="../../dd/d14/structremidy__tooling_1_1PluginScanObserver.html">PluginScanObserver</a> *observer)=0</td></tr>
 <tr class="separator:a94065b4922d57be09f6543329e766977"><td class="memSeparator" colspan="2">&#160;</td></tr>
