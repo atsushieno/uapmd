@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <future>
 #include <memory>
 #include <optional>
 
@@ -299,7 +300,13 @@ void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint
     std::vector<uint8_t> buf(size);
     int32_t read;
     stream->read(buf.data(), size, &read);
-    states->setState(buf, remidy::PluginStateSupport::StateContextType::Preset, true);
+    auto loadPromise = std::make_shared<std::promise<void>>();
+    auto loadFuture = loadPromise->get_future();
+    states->loadState(std::move(buf), remidy::PluginStateSupport::StateContextType::Preset, true, nullptr,
+                      [loadPromise](std::string error, void* callbackContext) {
+                          loadPromise->set_value();
+                      });
+    loadFuture.get();
 }
 
 std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t index, double value) {

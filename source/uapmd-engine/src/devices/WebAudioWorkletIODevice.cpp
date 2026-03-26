@@ -243,6 +243,39 @@ namespace uapmd {
                         return;
                     }
                 }
+                if (e.data.type === 'wclap-state-response') {
+                    var payload = e.data.payload instanceof ArrayBuffer ? new Uint8Array(e.data.payload) : null;
+                    var payloadPtr = 0;
+                    var payloadSize = 0;
+                    if (payload && payload.byteLength > 0) {
+                        payloadSize = payload.byteLength;
+                        payloadPtr = _malloc(payloadSize);
+                        HEAPU8.set(payload, payloadPtr);
+                    }
+                    var errorPtr = 0;
+                    if (e.data.error) {
+                        var errorLen = lengthBytesUTF8(String(e.data.error)) + 1;
+                        errorPtr = _malloc(errorLen);
+                        stringToUTF8(String(e.data.error), errorPtr, errorLen);
+                    }
+                    _uapmd_webclap_on_worklet_state_response(e.data.reqId >>> 0, payloadPtr, payloadSize, errorPtr);
+                    if (payloadPtr)
+                        _free(payloadPtr);
+                    if (errorPtr)
+                        _free(errorPtr);
+                    return;
+                } else if (e.data.type === 'wclap-state-load-complete') {
+                    var loadErrorPtr = 0;
+                    if (e.data.error) {
+                        var loadErrorLen = lengthBytesUTF8(String(e.data.error)) + 1;
+                        loadErrorPtr = _malloc(loadErrorLen);
+                        stringToUTF8(String(e.data.error), loadErrorPtr, loadErrorLen);
+                    }
+                    _uapmd_webclap_on_worklet_state_load_complete(e.data.reqId >>> 0, loadErrorPtr);
+                    if (loadErrorPtr)
+                        _free(loadErrorPtr);
+                    return;
+                }
                 var json = JSON.stringify(e.data);
                 var len  = lengthBytesUTF8(json) + 1;
                 var ptr  = _malloc(len);
@@ -298,6 +331,34 @@ namespace uapmd {
                 node.port.postMessage(msg);
             } catch(e) {
                 console.error('[uapmd] postMessageToWorklet failed:', e);
+            }
+        } else {
+            if (!Module._wclapPendingMessages)
+                Module._wclapPendingMessages = [];
+            Module._wclapPendingMessages.push(msg);
+        }
+    });
+
+    EM_JS(void, uapmd_post_to_webclap_worklet_load_state,
+          (uint32_t reqId, uint32_t slot, uint32_t stateContextType, const uint8_t* data, size_t size),
+    {
+        var msg = {
+            type: 'wclap-load-state',
+            reqId: reqId,
+            slot: slot,
+            stateContextType: stateContextType,
+            payload: new ArrayBuffer(0),
+        };
+        if (size > 0 && data) {
+            var bytes = HEAPU8.slice(data, data + size);
+            msg.payload = bytes.buffer;
+        }
+        var node = Module._wclapWorkletNode;
+        if (node) {
+            try {
+                node.port.postMessage(msg, [msg.payload]);
+            } catch(e) {
+                console.error('[uapmd] post loadState to worklet failed:', e);
             }
         } else {
             if (!Module._wclapPendingMessages)

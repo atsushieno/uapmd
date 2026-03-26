@@ -73,3 +73,37 @@ void remidy::PluginInstanceAUv2::PluginStatesAU::setState(std::vector<uint8_t> &
     else
         impl();
 }
+
+void remidy::PluginInstanceAUv2::PluginStatesAU::requestState(
+        StateContextType stateContextType,
+        bool includeUiState,
+        void* callbackContext,
+        std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) {
+    queue_.enqueueRequest(callbackContext, std::move(receiver),
+                          [this, stateContextType, includeUiState](std::function<bool()> isCancelled,
+                                                                    std::function<void(std::vector<uint8_t> state, std::string error)> finish) mutable {
+                              if (isCancelled()) {
+                                  finish({}, "instance destroyed");
+                                  return;
+                              }
+                              finish(getState(stateContextType, includeUiState), "");
+                          });
+}
+
+void remidy::PluginInstanceAUv2::PluginStatesAU::loadState(
+        std::vector<uint8_t> state,
+        StateContextType stateContextType,
+        bool includeUiState,
+        void* callbackContext,
+        std::function<void(std::string error, void* callbackContext)> completed) {
+    queue_.enqueueLoad(callbackContext, std::move(completed),
+                       [this, state = std::move(state), stateContextType, includeUiState](std::function<bool()> isCancelled,
+                                                                                           std::function<void(std::string error)> finish) mutable {
+                           if (isCancelled()) {
+                               finish("instance destroyed");
+                               return;
+                           }
+                           setState(state, stateContextType, includeUiState);
+                           finish("");
+                       });
+}

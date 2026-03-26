@@ -1,6 +1,7 @@
 #pragma once
 
 #include "remidy/remidy.hpp"
+#include "remidy/priv/queued-state-operations.hpp"
 #include <stdexcept>
 #include <aap/core/host/plugin-connections.h>
 #include <aap/core/host/plugin-host.h>
@@ -275,12 +276,18 @@ namespace remidy {
 
         class StateSupport : public PluginStateSupport {
             remidy::PluginInstanceAAP* owner;
+            QueuedStateOperationManager queue_{};
 
         public:
             StateSupport(remidy::PluginInstanceAAP* owner) : owner(owner) {}
 
+            bool requiresMainThread() override { return false; }
             std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override;
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                              std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) override;
+            void loadState(std::vector<uint8_t> state, StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                           std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
         PluginFormatAAPImpl* format;

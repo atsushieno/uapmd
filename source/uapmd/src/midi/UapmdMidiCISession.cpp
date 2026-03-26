@@ -1,5 +1,6 @@
 
 #include <cmath>
+#include <future>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -201,8 +202,17 @@ namespace uapmd {
         // Create custom property getter that uses AudioPluginNode::saveState() for State/fullState
         auto customGetter = [this, originalGetter](const std::string& property_id, const std::string& res_id) -> std::vector<uint8_t> {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
-                if (instance)
-                    return instance->saveState();
+                if (instance) {
+                    auto statePromise = std::make_shared<std::promise<std::pair<std::vector<uint8_t>, std::string>>>();
+                    auto stateFuture = statePromise->get_future();
+                    instance->requestState(uapmd::StateContextType::Project, false, nullptr,
+                                           [statePromise](std::vector<uint8_t> state, std::string error, void* callbackContext) {
+                                               statePromise->set_value({std::move(state), std::move(error)});
+                                           });
+                    auto [state, error] = stateFuture.get();
+                    if (error.empty())
+                        return state;
+                }
                 return {};
             }
             // Fall back to the original delegate
@@ -218,9 +228,13 @@ namespace uapmd {
                                                      const std::string& media_type, const std::vector<uint8_t>& body) -> bool {
             if (property_id == StandardPropertyNames::STATE && res_id == MidiCIStatePredefinedNames::FULL_STATE) {
                 if (instance) {
-                    std::vector<uint8_t> state = body;
-                    instance->loadState(state);
-                    return true;
+                    auto loadPromise = std::make_shared<std::promise<std::string>>();
+                    auto loadFuture = loadPromise->get_future();
+                    instance->loadState(std::vector<uint8_t>(body), uapmd::StateContextType::Project, false, nullptr,
+                                        [loadPromise](std::string error, void* callbackContext) {
+                                            loadPromise->set_value(std::move(error));
+                                        });
+                    return loadFuture.get().empty();
                 }
                 return false;
             }

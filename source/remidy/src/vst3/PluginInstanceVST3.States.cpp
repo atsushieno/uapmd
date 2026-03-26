@@ -90,4 +90,42 @@ namespace remidy {
                 owner->processingActive = true;
         }
     }
+
+    void PluginInstanceVST3::PluginStatesVST3::requestState(
+            StateContextType stateContextType,
+            bool includeUiState,
+            void* callbackContext,
+            std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) {
+        queue_.enqueueRequest(callbackContext, std::move(receiver),
+                              [this, stateContextType, includeUiState](std::function<bool()> isCancelled,
+                                                                        std::function<void(std::vector<uint8_t> state, std::string error)> finish) mutable {
+                                  EventLoop::enqueueTaskOnMainThread([this, isCancelled, stateContextType, includeUiState, finish = std::move(finish)]() mutable {
+                                      if (isCancelled()) {
+                                          finish({}, "instance destroyed");
+                                          return;
+                                      }
+                                      finish(getState(stateContextType, includeUiState), "");
+                                  });
+                              });
+    }
+
+    void PluginInstanceVST3::PluginStatesVST3::loadState(
+            std::vector<uint8_t> state,
+            StateContextType stateContextType,
+            bool includeUiState,
+            void* callbackContext,
+            std::function<void(std::string error, void* callbackContext)> completed) {
+        queue_.enqueueLoad(callbackContext, std::move(completed),
+                           [this, state = std::move(state), stateContextType, includeUiState](std::function<bool()> isCancelled,
+                                                                                               std::function<void(std::string error)> finish) mutable {
+                               EventLoop::enqueueTaskOnMainThread([this, isCancelled, state = std::move(state), stateContextType, includeUiState, finish = std::move(finish)]() mutable {
+                                   if (isCancelled()) {
+                                       finish("instance destroyed");
+                                       return;
+                                   }
+                                   setState(state, stateContextType, includeUiState);
+                                   finish("");
+                               });
+                           });
+    }
 }

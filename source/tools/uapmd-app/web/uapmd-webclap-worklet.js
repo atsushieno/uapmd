@@ -467,6 +467,76 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                 break;
             }
 
+            case 'wclap-request-state': {
+                const info = this._slots.get(msg.slot);
+                if (!info || !this._wclapHost) break;
+                const exp = this._wclapHost.hostInstance.exports;
+                try {
+                    if (!exp._wclapStateSave(info.ptr, msg.stateContextType ?? 3)) {
+                        this.port.postMessage({
+                            type: 'wclap-state-response',
+                            reqId: msg.reqId,
+                            slot: msg.slot,
+                            error: 'Plugin state save failed',
+                        });
+                        break;
+                    }
+                    const size = exp._wclapStateGetSize(info.ptr);
+                    const ptr = exp._wclapStateGetData(info.ptr);
+                    let payload = new ArrayBuffer(0);
+                    if (ptr && size) {
+                        const src = new Uint8Array(this._wclapHost.hostMemory.buffer, ptr, size);
+                        payload = src.slice().buffer;
+                    }
+                    this.port.postMessage({
+                        type: 'wclap-state-response',
+                        reqId: msg.reqId,
+                        slot: msg.slot,
+                        payload,
+                    }, [payload]);
+                } catch (err) {
+                    this.port.postMessage({
+                        type: 'wclap-state-response',
+                        reqId: msg.reqId,
+                        slot: msg.slot,
+                        error: String(err),
+                    });
+                }
+                break;
+            }
+
+            case 'wclap-load-state': {
+                const info = this._slots.get(msg.slot);
+                if (!info || !this._wclapHost) break;
+                const exp = this._wclapHost.hostInstance.exports;
+                try {
+                    const payload = msg.payload instanceof ArrayBuffer ? new Uint8Array(msg.payload) : new Uint8Array(0);
+                    const ptr = exp._wclapStatePrepareLoad(info.ptr, payload.byteLength);
+                    if (payload.byteLength > 0) {
+                        if (!ptr)
+                            throw new Error('Failed to allocate state transfer buffer');
+                        const dst = new Uint8Array(this._wclapHost.hostMemory.buffer, ptr, payload.byteLength);
+                        dst.set(payload);
+                    }
+                    if (!exp._wclapStateLoad(info.ptr, payload.byteLength, msg.stateContextType ?? 3))
+                        throw new Error('Plugin state load failed');
+                    this._drainUiMessages(msg.slot, info);
+                    this.port.postMessage({
+                        type: 'wclap-state-load-complete',
+                        reqId: msg.reqId,
+                        slot: msg.slot,
+                    });
+                } catch (err) {
+                    this.port.postMessage({
+                        type: 'wclap-state-load-complete',
+                        reqId: msg.reqId,
+                        slot: msg.slot,
+                        error: String(err),
+                    });
+                }
+                break;
+            }
+
             case 'wclap-send-ump': {
                 const info = this._slots.get(msg.slot);
                 if (!info || !this._wclapHost) break;

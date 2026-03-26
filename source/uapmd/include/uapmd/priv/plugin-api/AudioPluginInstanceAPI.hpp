@@ -35,6 +35,14 @@ namespace uapmd {
         std::string path;
     };
 
+    // usable only in LV2 and CLAP. VST3 and AU have no concept for them.
+    enum class StateContextType {
+        Remember, // LV2_STATE_IS_NATIVE
+        Copyable, // LV2_STATE_IS_POD
+        Preset,
+        Project,  // LV2_STATE_IS_PORTABLE?
+    };
+
     class AudioPluginInstanceAPI {
     public:
         virtual ~AudioPluginInstanceAPI() = default;
@@ -52,8 +60,26 @@ namespace uapmd {
         virtual std::vector<PresetsMetadata> presetMetadataList() = 0;
         virtual void loadPreset(int32_t presetIndex) = 0;
 
-        virtual std::vector<uint8_t> saveState() = 0;
-        virtual void loadState(std::vector<uint8_t>& state) = 0;
+
+        // OBSOLETE: use `requestState()` with appropriate callback instead.
+        virtual std::vector<uint8_t> saveStateSync() = 0;
+        // OBSOLETE: use `loadState()` with appropriate callback instead.
+        virtual void loadStateSync(std::vector<uint8_t>& state) = 0;
+        // Asynchronously get the current state. The callback is invoked exactly once.
+        // Success is indicated by an empty error string; empty state data is valid.
+        virtual void requestState(
+                StateContextType stateContextType,
+                bool includeUiState,
+                void* callbackContext,
+                std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) = 0;
+        // Asynchronously set the current state. The callback is invoked exactly once.
+        // Success is indicated by an empty error string.
+        virtual void loadState(
+                std::vector<uint8_t> state,
+                StateContextType stateContextType,
+                bool includeUiState,
+                void* callbackContext,
+                std::function<void(std::string error, void* callbackContext)> completed) = 0;
 
         virtual double getParameterValue(int32_t index) = 0;
         virtual void setParameterValue(int32_t index, double value) = 0;

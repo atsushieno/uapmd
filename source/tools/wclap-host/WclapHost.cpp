@@ -54,6 +54,8 @@ using wclap32::wclap_process;
 using wclap32::wclap_plugin_webview;
 using wclap32::wclap_plugin_state;
 using wclap32::wclap_plugin_state_context;
+using wclap32::wclap_istream;
+using wclap32::wclap_ostream;
 
 // ── Instance management (called by wclap.mjs) ─────────────────────────────
 
@@ -100,6 +102,8 @@ static bool host_webview_send(void *, Pointer<const wclap_host>, Pointer<const v
 
 static uint32_t in_events_size(void *ctx, Pointer<const wclap_input_events>);
 static Pointer<const wclap_event_header> in_events_get(void *ctx, Pointer<const wclap_input_events>, uint32_t index);
+static int64_t state_stream_read(void *ctx, Pointer<const wclap_istream>, Pointer<void>, uint64_t size);
+static int64_t state_stream_write(void *ctx, Pointer<const wclap_ostream>, Pointer<const void>, uint64_t size);
 
 static bool
 out_events_try_push(void *, Pointer<const wclap_output_events>,
@@ -170,6 +174,16 @@ bool _wclapHostWebviewSend(void *ctx, Pointer<const wclap_host> host, Pointer<co
     return host_webview_send(ctx, host, data, size);
 }
 
+extern "C" __attribute__((export_name("_wclapStateStreamRead")))
+int64_t _wclapStateStreamRead(void *ctx, Pointer<const wclap_istream> stream, Pointer<void> buffer, uint64_t size) {
+    return state_stream_read(ctx, stream, buffer, size);
+}
+
+extern "C" __attribute__((export_name("_wclapStateStreamWrite")))
+int64_t _wclapStateStreamWrite(void *ctx, Pointer<const wclap_ostream> stream, Pointer<const void> buffer, uint64_t size) {
+    return state_stream_write(ctx, stream, buffer, size);
+}
+
 // ── Per-slot state ─────────────────────────────────────────────────────────
 // One SlotState is created by _wclapPluginSetup and destroyed by
 // _wclapPluginDestroy. All uint32_t members are byte-offsets into the
@@ -212,12 +226,15 @@ struct SlotState {
     bool has_event_inputs = false;
     bool has_event_outputs = false;
     bool has_state = false;
+    bool has_state_context = false;
     bool has_preset_load = false;
     uint32_t ui_width = 800;
     uint32_t ui_height = 600;
     wclap_plugin_params params{};
     wclap_plugin_gui gui{};
     wclap_plugin_webview webview{};
+    wclap_plugin_state state_ext{};
+    wclap_plugin_state_context state_context_ext{};
     std::vector<wclap_param_info> parameter_infos{};
     std::vector<double> parameter_values{};
     std::string parameter_json{};
@@ -236,6 +253,11 @@ struct SlotState {
     uint32_t last_param_write_index = 0;
     double last_param_write_value = 0.0;
     std::string selected_plugin_id{};
+    uint32_t state_istream_ptr = 0;
+    uint32_t state_ostream_ptr = 0;
+    uint32_t state_context_type = 0;
+    uint32_t state_transfer_offset = 0;
+    std::vector<uint8_t> state_transfer{};
 };
 
 static uint32_t in_events_size(void *ctx, Pointer<const wclap_input_events>) {
@@ -712,6 +734,55 @@ static inline void readPlugin(Instance *inst, uint32_t srcOffset,
     inst->getArray(Pointer<T>{srcOffset}, dst, count);
 }
 
+static int64_t state_stream_read(void *ctx,
+                                 Pointer<const wclap_istream>,
+                                 Pointer<void> buffer,
+                                 uint64_t size) {
+    auto *state = static_cast<SlotState *>(ctx);
+    if (!state || !state->owner_inst || !buffer.wasmPointer || size == 0)
+        return 0;
+    if (state->state_transfer_offset >= state->state_transfer.size())
+        return 0;
+    const auto remaining = state->state_transfer.size() - state->state_transfer_offset;
+    const auto bytesToCopy = static_cast<uint32_t>(std::min<uint64_t>(size, remaining));
+    writePlugin(state->owner_inst,
+                buffer.wasmPointer,
+                state->state_transfer.data() + state->state_transfer_offset,
+                bytesToCopy);
+    state->state_transfer_offset += bytesToCopy;
+    return static_cast<int64_t>(bytesToCopy);
+}
+
+static int64_t state_stream_write(void *ctx,
+                                  Pointer<const wclap_ostream>,
+                                  Pointer<const void> buffer,
+                                  uint64_t size) {
+    auto *state = static_cast<SlotState *>(ctx);
+    if (!state || !state->owner_inst || !buffer.wasmPointer || size == 0)
+        return 0;
+    const auto previousSize = state->state_transfer.size();
+    const auto bytesToCopy = static_cast<uint32_t>(size);
+    state->state_transfer.resize(previousSize + bytesToCopy);
+    readPlugin(state->owner_inst,
+               buffer.wasmPointer,
+               state->state_transfer.data() + previousSize,
+               bytesToCopy);
+    state->state_transfer_offset += bytesToCopy;
+    return static_cast<int64_t>(bytesToCopy);
+}
+
+static uint32_t remidyStateContextToWclapStateContext(uint32_t stateContextType) {
+    switch (stateContextType) {
+        case 0:
+        case 1:
+            return wclap32::WCLAP_STATE_CONTEXT_FOR_DUPLICATE;
+        case 2:
+            return wclap32::WCLAP_STATE_CONTEXT_FOR_PRESET;
+        default:
+            return wclap32::WCLAP_STATE_CONTEXT_FOR_PROJECT;
+    }
+}
+
 // Allocate size bytes in plugin memory, write data, return the address.
 static uint32_t allocInPlugin(Instance *inst, const void *data, uint32_t size) {
     auto p = inst->malloc32(size);
@@ -1112,6 +1183,16 @@ int32_t _wclapPluginSetup(Instance *inst,
                       Pointer<const wclap_event_header>>(
                           state, out_events_try_push);
 
+    wclap_istream stateInput{};
+    stateInput.ctx = {0};
+    stateInput.read = inst->registerHost32<int64_t,
+        Pointer<const wclap_istream>, Pointer<void>, uint64_t>(state, state_stream_read);
+
+    wclap_ostream stateOutput{};
+    stateOutput.ctx = {0};
+    stateOutput.write = inst->registerHost32<int64_t,
+        Pointer<const wclap_ostream>, Pointer<const void>, uint64_t>(state, state_stream_write);
+
     // init() sets hadInit in JS, making subsequent registerHost32 calls throw.
     if (!inst->init()) {
         std::cerr << "[wclap] inst->init() failed\n";
@@ -1337,6 +1418,20 @@ int32_t _wclapPluginSetup(Instance *inst,
         return 0;
     }
 
+    uint32_t stateInputPtr = allocInPlugin(inst,
+                             reinterpret_cast<const uint8_t *>(&stateInput), sizeof(stateInput));
+    if (!stateInputPtr) {
+        delete state;
+        return 0;
+    }
+
+    uint32_t stateOutputPtr = allocInPlugin(inst,
+                              reinterpret_cast<const uint8_t *>(&stateOutput), sizeof(stateOutput));
+    if (!stateOutputPtr) {
+        delete state;
+        return 0;
+    }
+
     wclap_process proc{};
     proc.steady_time         = 0;
     proc.frames_count        = static_cast<uint32_t>(maxBuf);
@@ -1364,6 +1459,8 @@ int32_t _wclapPluginSetup(Instance *inst,
     state->out_buf_ptr    = outBufPtr;
     state->in_events_ptr  = iePtr;
     state->out_events_ptr = oePtr;
+    state->state_istream_ptr = stateInputPtr;
+    state->state_ostream_ptr = stateOutputPtr;
     state->process_ptr    = procPtr;
     state->maxFrames      = maxF;
     state->steady_time    = 0;
@@ -1423,6 +1520,8 @@ int32_t _wclapPluginSetup(Instance *inst,
     if (stateIdPtr) {
         auto stateVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{stateIdPtr});
         state->has_state = stateVoid.wasmPointer != 0;
+        if (state->has_state)
+            state->state_ext = inst->get(Pointer<const wclap_plugin_state>{stateVoid.wasmPointer});
     }
     if (!state->has_state) {
         static const char kStateContextExtId[] = "clap.state-context/2";
@@ -1431,7 +1530,10 @@ int32_t _wclapPluginSetup(Instance *inst,
             sizeof(kStateContextExtId));
         if (stateContextIdPtr) {
             auto stateContextVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{stateContextIdPtr});
-            state->has_state = stateContextVoid.wasmPointer != 0;
+            state->has_state_context = stateContextVoid.wasmPointer != 0;
+            state->has_state = state->has_state_context;
+            if (state->has_state_context)
+                state->state_context_ext = inst->get(Pointer<const wclap_plugin_state_context>{stateContextVoid.wasmPointer});
         }
     }
     static const char kPresetLoadExtId[] = "clap.preset-load/2";
@@ -1619,6 +1721,101 @@ const char * _wclapDescribeCapabilities(Instance *inst) {
         return json.c_str();
     json = buildCapabilitiesJson(it->second);
     return json.c_str();
+}
+
+extern "C" __attribute__((export_name("_wclapStateSave")))
+int32_t _wclapStateSave(Instance *inst, uint32_t stateContextType) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return 0;
+    auto *state = it->second;
+    if (!state->has_state)
+        return 0;
+
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    state->state_transfer.clear();
+    state->state_transfer_offset = 0;
+    state->state_context_type = remidyStateContextToWclapStateContext(stateContextType);
+
+    serviceMainThreadCallbacks(inst, state, true);
+    if (state->has_params) {
+        auto flushed = flushParameterChanges(inst, state, true);
+        (void) flushed;
+        serviceMainThreadCallbacks(inst, state, true);
+        syncParameterValueUpdates(inst, state, plugPtr);
+        state->parameter_values_dirty = false;
+    }
+
+    if (state->has_state_context)
+        return inst->call(state->state_context_ext.save,
+                          plugPtr,
+                          Pointer<const wclap_ostream>{state->state_ostream_ptr},
+                          state->state_context_type) ? 1 : 0;
+
+    return inst->call(state->state_ext.save,
+                      plugPtr,
+                      Pointer<const wclap_ostream>{state->state_ostream_ptr}) ? 1 : 0;
+}
+
+extern "C" __attribute__((export_name("_wclapStateGetSize")))
+uint32_t _wclapStateGetSize(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return 0;
+    return static_cast<uint32_t>(it->second->state_transfer.size());
+}
+
+extern "C" __attribute__((export_name("_wclapStateGetData")))
+const uint8_t * _wclapStateGetData(Instance *inst) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end() || it->second->state_transfer.empty())
+        return nullptr;
+    return it->second->state_transfer.data();
+}
+
+extern "C" __attribute__((export_name("_wclapStatePrepareLoad")))
+uint8_t * _wclapStatePrepareLoad(Instance *inst, uint32_t size) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return nullptr;
+    auto *state = it->second;
+    state->state_transfer.resize(size);
+    state->state_transfer_offset = 0;
+    return size == 0 ? nullptr : state->state_transfer.data();
+}
+
+extern "C" __attribute__((export_name("_wclapStateLoad")))
+int32_t _wclapStateLoad(Instance *inst, uint32_t size, uint32_t stateContextType) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return 0;
+    auto *state = it->second;
+    if (!state->has_state)
+        return 0;
+
+    auto plugPtr = Pointer<const wclap_plugin>{state->plugin_ptr};
+    if (size < state->state_transfer.size())
+        state->state_transfer.resize(size);
+    state->state_transfer_offset = 0;
+    state->state_context_type = remidyStateContextToWclapStateContext(stateContextType);
+
+    const bool loaded = state->has_state_context
+        ? inst->call(state->state_context_ext.load,
+                     plugPtr,
+                     Pointer<const wclap_istream>{state->state_istream_ptr},
+                     state->state_context_type)
+        : inst->call(state->state_ext.load,
+                     plugPtr,
+                     Pointer<const wclap_istream>{state->state_istream_ptr});
+    if (!loaded)
+        return 0;
+
+    serviceMainThreadCallbacks(inst, state, true);
+    if (state->has_params) {
+        syncParameterValueUpdates(inst, state, plugPtr);
+        state->parameter_values_dirty = false;
+    }
+    return 1;
 }
 
 extern "C" __attribute__((export_name("_wclapDescribePlugins")))

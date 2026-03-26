@@ -3,6 +3,7 @@
 #ifdef __EMSCRIPTEN__
 
 #include "remidy/remidy.hpp"
+#include "remidy/priv/queued-state-operations.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -115,10 +116,16 @@ namespace remidy {
 
         class StateSupportWebCLAP : public PluginStateSupport {
             PluginInstanceWebCLAP* owner_;
+            QueuedStateOperationManager queue_{};
         public:
             explicit StateSupportWebCLAP(PluginInstanceWebCLAP* owner) : owner_(owner) {}
+            bool requiresMainThread() override { return true; }
             std::vector<uint8_t> getState(StateContextType, bool) override;
             void setState(std::vector<uint8_t>&, StateContextType, bool) override;
+            void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                              std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) override;
+            void loadState(std::vector<uint8_t> state, StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                           std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
         class PresetsSupportWebCLAP : public PluginPresetsSupport {
@@ -252,6 +259,14 @@ namespace remidy {
             std::function<void(PluginCatalogEntry entry)> pluginFound;
             PluginScanCompletedCallback scanCompleted;
         };
+        struct PendingStateRequest {
+            uint32_t slot;
+            std::function<void(std::vector<uint8_t> state, std::string error)> callback;
+        };
+        struct PendingStateLoadRequest {
+            uint32_t slot;
+            std::function<void(std::string error)> callback;
+        };
 
     private:
         PluginScanningWebCLAP           scanning_{this};
@@ -271,8 +286,15 @@ namespace remidy {
         void startBundleScan(const std::filesystem::path& bundlePath,
                              std::function<void(PluginCatalogEntry entry)> pluginFound,
                              PluginScanCompletedCallback scanCompleted);
+        uint32_t reserveRequestId();
+        void registerPendingStateRequest(uint32_t reqId, uint32_t slot,
+                                         std::function<void(std::vector<uint8_t> state, std::string error)> callback);
+        void registerPendingStateLoadRequest(uint32_t reqId, uint32_t slot,
+                                             std::function<void(std::string error)> callback);
 
         void onWorkletMessage(const char* json) override;
+        void onWorkletStateResponse(uint32_t reqId, const uint8_t* data, size_t size, const char* error);
+        void onWorkletStateLoadComplete(uint32_t reqId, const char* error);
     };
 
 } // namespace remidy

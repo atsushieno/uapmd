@@ -4,6 +4,7 @@
 
 #include <choc/text/choc_JSON.h>
 #include <emscripten.h>
+#include <cstring>
 #include <iostream>
 #include <sstream>
 #include <string_view>
@@ -12,6 +13,7 @@
 // Forward declarations: defined in WebAudioWorkletIODevice.cpp as EM_JS functions.
 extern "C" void uapmd_post_to_webclap_worklet_json(const char* json);
 extern "C" void uapmd_webclap_load_plugin_async(const char* json);
+extern "C" void uapmd_post_to_webclap_worklet_load_state(uint32_t reqId, uint32_t slot, uint32_t stateContextType, const uint8_t* data, size_t size);
 
 EM_JS(void, uapmd_webclap_bind_ui_slot, (uint32_t slot, const char* container_id), {
     if (!Module._uapmdEnsureWebclapUiManager) {
@@ -195,6 +197,8 @@ struct WebClapGlobalState {
     std::mutex pending_mutex;
     std::unordered_map<uint32_t, PluginFormatWebCLAPImpl::PendingRequest> pending_requests;
     std::unordered_map<uint32_t, PluginFormatWebCLAPImpl::PendingScanRequest> pending_scan_requests;
+    std::unordered_map<uint32_t, PluginFormatWebCLAPImpl::PendingStateRequest> pending_state_requests;
+    std::unordered_map<uint32_t, PluginFormatWebCLAPImpl::PendingStateLoadRequest> pending_state_load_requests;
     std::mutex instances_mutex;
     std::unordered_map<uint32_t, PluginInstanceWebCLAP*> instances_by_slot;
     std::unordered_map<uint32_t, std::vector<WebClapParamDescriptor>> pending_parameters_by_slot;
@@ -222,6 +226,18 @@ extern "C" EMSCRIPTEN_KEEPALIVE
 void uapmd_webclap_on_worklet_message(const char* json) {
     PluginFormatWebCLAPImpl impl;
     impl.onWorkletMessage(json);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE
+void uapmd_webclap_on_worklet_state_response(uint32_t reqId, const uint8_t* data, size_t size, const char* error) {
+    PluginFormatWebCLAPImpl impl;
+    impl.onWorkletStateResponse(reqId, data, size, error);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE
+void uapmd_webclap_on_worklet_state_load_complete(uint32_t reqId, const char* error) {
+    PluginFormatWebCLAPImpl impl;
+    impl.onWorkletStateLoadComplete(reqId, error);
 }
 
 static std::vector<WebClapParamDescriptor> parseParamDescriptors(const choc::value::ValueView& value) {
@@ -555,6 +571,29 @@ void PluginFormatWebCLAPImpl::startBundleScan(const std::filesystem::path& bundl
     });
 }
 
+uint32_t PluginFormatWebCLAPImpl::reserveRequestId() {
+    auto& state = webclapGlobalState();
+    return state.next_req_id.fetch_add(1, std::memory_order_relaxed);
+}
+
+void PluginFormatWebCLAPImpl::registerPendingStateRequest(
+        uint32_t reqId,
+        uint32_t slot,
+        std::function<void(std::vector<uint8_t> state, std::string error)> callback) {
+    auto& state = webclapGlobalState();
+    std::lock_guard<std::mutex> lock(state.pending_mutex);
+    state.pending_state_requests.emplace(reqId, PendingStateRequest{slot, std::move(callback)});
+}
+
+void PluginFormatWebCLAPImpl::registerPendingStateLoadRequest(
+        uint32_t reqId,
+        uint32_t slot,
+        std::function<void(std::string error)> callback) {
+    auto& state = webclapGlobalState();
+    std::lock_guard<std::mutex> lock(state.pending_mutex);
+    state.pending_state_load_requests.emplace(reqId, PendingStateLoadRequest{slot, std::move(callback)});
+}
+
 void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
     const auto message = choc::json::parse(json_cstr);
     const auto type = message["type"].toString();
@@ -708,6 +747,47 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
         std::cerr << "[WebCLAP] runtime error: " << message["error"].toString() << std::endl;
     }
     // All other message types (wclap-host-ready, etc.) are silently ignored here.
+}
+
+void PluginFormatWebCLAPImpl::onWorkletStateResponse(uint32_t reqId, const uint8_t* data, size_t size, const char* error) {
+    auto& state = webclapGlobalState();
+    PendingStateRequest request{};
+    {
+        std::lock_guard<std::mutex> lock(state.pending_mutex);
+        auto it = state.pending_state_requests.find(reqId);
+        if (it == state.pending_state_requests.end()) {
+            std::cerr << "[WebCLAP] wclap-state-response: unknown reqId "
+                      << reqId << std::endl;
+            return;
+        }
+        request = std::move(it->second);
+        state.pending_state_requests.erase(it);
+    }
+
+    std::vector<uint8_t> response{};
+    if (data && size > 0) {
+        response.resize(size);
+        memcpy(response.data(), data, size);
+    }
+    request.callback(std::move(response), error ? error : "");
+}
+
+void PluginFormatWebCLAPImpl::onWorkletStateLoadComplete(uint32_t reqId, const char* error) {
+    auto& state = webclapGlobalState();
+    PendingStateLoadRequest request{};
+    {
+        std::lock_guard<std::mutex> lock(state.pending_mutex);
+        auto it = state.pending_state_load_requests.find(reqId);
+        if (it == state.pending_state_load_requests.end()) {
+            std::cerr << "[WebCLAP] wclap-state-load-complete: unknown reqId "
+                      << reqId << std::endl;
+            return;
+        }
+        request = std::move(it->second);
+        state.pending_state_load_requests.erase(it);
+    }
+
+    request.callback(error ? error : "");
 }
 
 // ── PluginScanningWebCLAP ─────────────────────────────────────────────────────
@@ -923,6 +1003,79 @@ std::vector<uint8_t> PluginInstanceWebCLAP::StateSupportWebCLAP::getState(StateC
 void PluginInstanceWebCLAP::StateSupportWebCLAP::setState(std::vector<uint8_t>&, StateContextType, bool) {
     if (owner_ && owner_->hasStateSupport())
         std::cerr << "[WebCLAP] state load is not implemented for worklet-owned instances\n";
+}
+
+void PluginInstanceWebCLAP::StateSupportWebCLAP::requestState(
+        StateContextType stateContextType,
+        bool includeUiState,
+        void* callbackContext,
+        std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) {
+    queue_.enqueueRequest(callbackContext, std::move(receiver),
+                          [this, stateContextType, includeUiState](std::function<bool()> isCancelled,
+                                                                    std::function<void(std::vector<uint8_t> state, std::string error)> finish) mutable {
+                              EventLoop::enqueueTaskOnMainThread([this, isCancelled, stateContextType, includeUiState, finish = std::move(finish)]() mutable {
+                                  if (isCancelled()) {
+                                      finish({}, "instance destroyed");
+                                      return;
+                                  }
+                                  if (!owner_ || !owner_->hasStateSupport()) {
+                                      finish({}, "State is not supported");
+                                      return;
+                                  }
+
+                                  auto reqId = PluginFormatWebCLAPImpl{}.reserveRequestId();
+                                  PluginFormatWebCLAPImpl{}.registerPendingStateRequest(
+                                          reqId,
+                                          owner_->slot(),
+                                          [finish = std::move(finish)](std::vector<uint8_t> state, std::string error) mutable {
+                                              finish(std::move(state), std::move(error));
+                                          });
+
+                                  std::ostringstream json;
+                                  json << "{\"type\":\"wclap-request-state\""
+                                       << ",\"reqId\":" << reqId
+                                       << ",\"slot\":" << owner_->slot()
+                                       << ",\"stateContextType\":" << static_cast<uint32_t>(stateContextType)
+                                       << ",\"includeUiState\":" << (includeUiState ? "true" : "false")
+                                       << "}";
+                                  uapmd_post_to_webclap_worklet_json(json.str().c_str());
+                              });
+                          });
+}
+
+void PluginInstanceWebCLAP::StateSupportWebCLAP::loadState(
+        std::vector<uint8_t> state,
+        StateContextType stateContextType,
+        bool includeUiState,
+        void* callbackContext,
+        std::function<void(std::string error, void* callbackContext)> completed) {
+    queue_.enqueueLoad(callbackContext, std::move(completed),
+                       [this, state = std::move(state), stateContextType, includeUiState](std::function<bool()> isCancelled,
+                                                                                           std::function<void(std::string error)> finish) mutable {
+                           EventLoop::enqueueTaskOnMainThread([this, isCancelled, state = std::move(state), stateContextType, includeUiState, finish = std::move(finish)]() mutable {
+                               if (isCancelled()) {
+                                   finish("instance destroyed");
+                                   return;
+                               }
+                               if (!owner_ || !owner_->hasStateSupport()) {
+                                   finish("State is not supported");
+                                   return;
+                               }
+
+                               auto reqId = PluginFormatWebCLAPImpl{}.reserveRequestId();
+                               PluginFormatWebCLAPImpl{}.registerPendingStateLoadRequest(
+                                       reqId,
+                                       owner_->slot(),
+                                       [finish = std::move(finish)](std::string error) mutable {
+                                           finish(std::move(error));
+                                       });
+                               uapmd_post_to_webclap_worklet_load_state(reqId,
+                                                                        owner_->slot(),
+                                                                        static_cast<uint32_t>(stateContextType),
+                                                                        state.data(),
+                                                                        state.size());
+                           });
+                       });
 }
 
 int32_t PluginInstanceWebCLAP::PresetsSupportWebCLAP::getPresetIndexForId(std::string&) {

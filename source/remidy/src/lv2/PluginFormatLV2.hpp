@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 #include "remidy/remidy.hpp"
+#include "remidy/priv/queued-state-operations.hpp"
 #include "../GenericAudioBuses.hpp"
 #include "lilv/lilv.h"
 #include <lv2/ui/ui.h>
@@ -229,12 +230,18 @@ namespace remidy {
 
         class PluginStatesLV2 : public PluginStateSupport {
             PluginInstanceLV2* owner;
+            QueuedStateOperationManager queue_{};
 
         public:
             explicit PluginStatesLV2(PluginInstanceLV2* owner) : owner(owner) {}
 
+            bool requiresMainThread() override { return false; }
             std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override;
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                              std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) override;
+            void loadState(std::vector<uint8_t> state, StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                           std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
         class PresetsSupport : public PluginPresetsSupport {

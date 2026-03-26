@@ -9,6 +9,7 @@
 #import <AVFoundation/AVFoundation.h>
 
 #include "remidy/remidy.hpp"
+#include "remidy/priv/queued-state-operations.hpp"
 #include "../GenericAudioBuses.hpp"
 
 struct MIDIEventList;
@@ -116,12 +117,18 @@ namespace remidy {
 
         class PluginStatesAUv3 : public PluginStateSupport {
             PluginInstanceAUv3* owner;
+            QueuedStateOperationManager queue_{};
 
         public:
             explicit PluginStatesAUv3(PluginInstanceAUv3* owner) : owner(owner) {}
 
+            bool requiresMainThread() override { return false; }
             std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override;
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                              std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) override;
+            void loadState(std::vector<uint8_t> state, StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                           std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
         class PresetsSupport : public PluginPresetsSupport {
@@ -331,12 +338,18 @@ namespace remidy {
 
         class PluginStatesAU : public PluginStateSupport {
             PluginInstanceAUv2* owner;
+            QueuedStateOperationManager queue_{};
 
         public:
             explicit PluginStatesAU(PluginInstanceAUv2* owner) : owner(owner) {}
 
+            bool requiresMainThread() override { return false; }
             std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override;
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                              std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) override;
+            void loadState(std::vector<uint8_t> state, StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                           std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
         class PresetsSupport : public PluginPresetsSupport {

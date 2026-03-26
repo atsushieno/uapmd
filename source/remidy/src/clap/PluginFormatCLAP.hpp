@@ -13,6 +13,7 @@
 
 #include "clap/ext/render.h"
 #include "remidy/remidy.hpp"
+#include "remidy/priv/queued-state-operations.hpp"
 #include "HostClasses.hpp"
 #include "../GenericAudioBuses.hpp"
 
@@ -204,12 +205,18 @@ namespace remidy {
         class PluginStatesCLAP : public PluginStateSupport {
             PluginInstanceCLAP* owner;
             clap_plugin_state_context_t* state_context_ext;
+            QueuedStateOperationManager queue_{};
 
         public:
             explicit PluginStatesCLAP(PluginInstanceCLAP* owner);
 
+            bool requiresMainThread() override { return true; }
             std::vector<uint8_t> getState(StateContextType stateContextType, bool includeUiState) override;
             void setState(std::vector<uint8_t>& state, StateContextType stateContextType, bool includeUiState) override;
+            void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                              std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) override;
+            void loadState(std::vector<uint8_t> state, StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                           std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
         class PresetsSupport : public PluginPresetsSupport {

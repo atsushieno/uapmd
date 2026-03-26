@@ -1,6 +1,8 @@
 
 #include "RemidyAudioPluginHost.hpp"
+#include <condition_variable>
 #include <functional>
+#include <mutex>
 #include <ranges>
 #if _WIN32
 #include <Windows.h>
@@ -12,6 +14,19 @@
 
 namespace uapmd {
     int32_t instanceIdSerial{0};
+
+    static remidy::PluginStateSupport::StateContextType toRemidyStateContextType(uapmd::StateContextType type) {
+        switch (type) {
+            case uapmd::StateContextType::Remember:
+                return remidy::PluginStateSupport::StateContextType::Remember;
+            case uapmd::StateContextType::Copyable:
+                return remidy::PluginStateSupport::StateContextType::Copyable;
+            case uapmd::StateContextType::Preset:
+                return remidy::PluginStateSupport::StateContextType::Preset;
+            case uapmd::StateContextType::Project:
+                return remidy::PluginStateSupport::StateContextType::Project;
+        }
+    }
 
     class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
         bool bypassed_{true};
@@ -168,16 +183,54 @@ namespace uapmd {
         std::string& formatName() const override { return instance->info()->format(); }
         std::string& pluginId() const override { return instance->info()->pluginId(); }
 
-        void loadState(std::vector<uint8_t> &state) override {
-            instance->states()->setState(state, remidy::PluginStateSupport::StateContextType::Project, false);
-        }
-
         void loadPreset(int32_t presetIndex) override {
             instance->presets()->loadPreset(presetIndex);
         }
 
-        std::vector<uint8_t> saveState() override {
-            return instance->states()->getState(remidy::PluginStateSupport::StateContextType::Project, false);
+        std::vector<uint8_t> saveStateSync() override {
+            std::mutex mutex;
+            std::condition_variable cv;
+            bool done = false;
+            std::vector<uint8_t> result{};
+
+            requestState(StateContextType::Project, false, nullptr,
+                         [&](std::vector<uint8_t> state, std::string error, void* callbackContext) {
+                             std::lock_guard lock(mutex);
+                             if (error.empty())
+                                 result = std::move(state);
+                             done = true;
+                             cv.notify_one();
+                         });
+
+            std::unique_lock lock(mutex);
+            cv.wait(lock, [&] { return done; });
+            return result;
+        }
+
+        void loadStateSync(std::vector<uint8_t> &state) override {
+            std::mutex mutex;
+            std::condition_variable cv;
+            bool done = false;
+
+            loadState(state, StateContextType::Project, false, nullptr,
+                      [&](std::string error, void* callbackContext) {
+                          std::lock_guard lock(mutex);
+                          done = true;
+                          cv.notify_one();
+                      });
+
+            std::unique_lock lock(mutex);
+            cv.wait(lock, [&] { return done; });
+        }
+
+        void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                          std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) override {
+            instance->states()->requestState(toRemidyStateContextType(stateContextType), includeUiState, callbackContext, std::move(receiver));
+        }
+
+        void loadState(std::vector<uint8_t> state, StateContextType stateContextType, bool includeUiState, void* callbackContext,
+                       std::function<void(std::string error, void* callbackContext)> completed) override {
+            instance->states()->loadState(std::move(state), toRemidyStateContextType(stateContextType), includeUiState, callbackContext, std::move(completed));
         }
 
         double getParameterValue(int32_t index) override {

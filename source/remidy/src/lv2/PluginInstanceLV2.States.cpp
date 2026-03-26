@@ -47,4 +47,38 @@ namespace remidy {
         // should we pass `set_value` function here...?
         lilv_state_restore(lilvState, owner->instance, nullptr, this,flags, formatImpl->features.data());
     }
+
+    void PluginInstanceLV2::PluginStatesLV2::requestState(
+            StateContextType stateContextType,
+            bool includeUiState,
+            void* callbackContext,
+            std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) {
+        queue_.enqueueRequest(callbackContext, std::move(receiver),
+                              [this, stateContextType, includeUiState](std::function<bool()> isCancelled,
+                                                                        std::function<void(std::vector<uint8_t> state, std::string error)> finish) mutable {
+                                  if (isCancelled()) {
+                                      finish({}, "instance destroyed");
+                                      return;
+                                  }
+                                  finish(getState(stateContextType, includeUiState), "");
+                              });
+    }
+
+    void PluginInstanceLV2::PluginStatesLV2::loadState(
+            std::vector<uint8_t> state,
+            StateContextType stateContextType,
+            bool includeUiState,
+            void* callbackContext,
+            std::function<void(std::string error, void* callbackContext)> completed) {
+        queue_.enqueueLoad(callbackContext, std::move(completed),
+                           [this, state = std::move(state), stateContextType, includeUiState](std::function<bool()> isCancelled,
+                                                                                               std::function<void(std::string error)> finish) mutable {
+                               if (isCancelled()) {
+                                   finish("instance destroyed");
+                                   return;
+                               }
+                               setState(state, stateContextType, includeUiState);
+                               finish("");
+                           });
+    }
 }

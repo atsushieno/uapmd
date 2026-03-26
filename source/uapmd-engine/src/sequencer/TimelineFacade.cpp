@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <thread>
 #include <unordered_map>
@@ -354,7 +355,17 @@ namespace uapmd {
                                         std::ifstream f(resolvedState, std::ios::binary);
                                         if (f) {
                                             std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), {});
-                                            instance->loadState(data);
+                                            auto loadPromise = std::make_shared<std::promise<std::string>>();
+                                            auto loadFuture = loadPromise->get_future();
+                                            instance->loadState(std::move(data), uapmd::StateContextType::Project, false, nullptr,
+                                                                [loadPromise](std::string error, void* callbackContext) {
+                                                                    loadPromise->set_value(std::move(error));
+                                                                });
+                                            auto loadError = loadFuture.get();
+                                            if (!loadError.empty()) {
+                                                std::cerr << "Warning: Failed to restore plugin state for " << pluginLabel
+                                                          << ": " << loadError << std::endl;
+                                            }
                                         }
                                     }
                                 }

@@ -27,6 +27,8 @@ class WclapHost {
 		'_wclapInEventsSize',
 		'_wclapInEventsGet',
 		'_wclapOutEventsTryPush',
+		'_wclapStateStreamRead',
+		'_wclapStateStreamWrite',
 	];
 	
 	ready;

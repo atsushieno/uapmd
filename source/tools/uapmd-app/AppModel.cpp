@@ -1322,9 +1322,20 @@ uapmd::AppModel::PluginStateResult uapmd::AppModel::loadPluginState(int32_t inst
         return result;
     }
 
-    // Set plugin state
-    instance->loadState(stateData);
-    // Note: loadState doesn't return a status, so we assume success
+    auto loadPromise = std::make_shared<std::promise<std::string>>();
+    auto loadFuture = loadPromise->get_future();
+    instance->loadState(std::move(stateData), uapmd::StateContextType::Project, false, nullptr,
+                        [loadPromise](std::string error, void* callbackContext) {
+                            loadPromise->set_value(std::move(error));
+                        });
+
+    auto loadError = loadFuture.get();
+    if (!loadError.empty()) {
+        result.success = false;
+        result.error = loadError;
+        std::cerr << result.error << std::endl;
+        return result;
+    }
 
     result.success = true;
     std::cout << "Plugin state loaded from: " << filepath << std::endl;
@@ -1345,11 +1356,17 @@ uapmd::AppModel::PluginStateResult uapmd::AppModel::savePluginState(int32_t inst
         return result;
     }
 
-    // Get plugin state
-    auto stateData = instance->saveState();
-    if (stateData.empty()) {
+    auto statePromise = std::make_shared<std::promise<std::pair<std::vector<uint8_t>, std::string>>>();
+    auto stateFuture = statePromise->get_future();
+    instance->requestState(uapmd::StateContextType::Project, false, nullptr,
+                           [statePromise](std::vector<uint8_t> state, std::string error, void* callbackContext) {
+                               statePromise->set_value({std::move(state), std::move(error)});
+                           });
+
+    auto [stateData, stateError] = stateFuture.get();
+    if (!stateError.empty()) {
         result.success = false;
-        result.error = "Failed to retrieve plugin state";
+        result.error = stateError;
         std::cerr << result.error << std::endl;
         return result;
     }
@@ -1824,9 +1841,18 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
                 if (!instance)
                     return {};
 
-                auto stateData = instance->saveState();
-                if (stateData.empty())
+                auto statePromise = std::make_shared<std::promise<std::pair<std::vector<uint8_t>, std::string>>>();
+                auto stateFuture = statePromise->get_future();
+                instance->requestState(uapmd::StateContextType::Project, false, nullptr,
+                                       [statePromise](std::vector<uint8_t> state, std::string error, void* callbackContext) {
+                                           statePromise->set_value({std::move(state), std::move(error)});
+                                       });
+                auto [stateData, stateError] = stateFuture.get();
+                if (!stateError.empty()) {
+                    std::cerr << "Failed to retrieve plugin state for instance " << instanceId
+                              << ": " << stateError << std::endl;
                     return {};
+                }
 
                 std::error_code createDirEc;
                 std::filesystem::create_directories(pluginStateDir, createDirEc);
