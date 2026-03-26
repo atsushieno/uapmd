@@ -1179,11 +1179,13 @@ void MainWindow::savePluginState(int32_t instanceId) {
         [instanceId](uapmd::DocumentPickResult pickResult) {
             if (!pickResult.success || pickResult.handles.empty())
                 return;
-            auto result = uapmd::AppModel::instance().savePluginState(
-                instanceId, pickResult.handles[0].id);
-            if (!result.success)
-                platformError("Save Failed",
-                              std::format("Failed to save plugin state:\n{}", result.error));
+            uapmd::AppModel::instance().savePluginState(
+                instanceId, pickResult.handles[0],
+                [](uapmd::AppModel::PluginStateResult result) {
+                    if (!result.success)
+                        platformError("Save Failed",
+                                      std::format("Failed to save plugin state:\n{}", result.error));
+                });
         }
     );
 }
@@ -1200,20 +1202,15 @@ void MainWindow::loadPluginState(int32_t instanceId) {
         [this, instanceId](uapmd::DocumentPickResult pickResult) {
             if (!pickResult.success || pickResult.handles.empty())
                 return;
-            resolveDocumentHandle(
-                pickResult.handles[0],
-                [this, instanceId](const std::filesystem::path& resolved) {
-                    auto result = uapmd::AppModel::instance().loadPluginState(
-                        instanceId, resolved.string());
+            uapmd::AppModel::instance().loadPluginState(
+                instanceId, pickResult.handles[0],
+                [this, instanceId](uapmd::AppModel::PluginStateResult result) {
                     if (!result.success) {
                         platformError("Load Failed",
                                       std::format("Failed to load plugin state:\n{}", result.error));
                         return;
                     }
                     timelineEditor_.instanceDetails().refreshParametersForInstance(instanceId);
-                },
-                [](const std::string& error) {
-                    platformError("Load Failed", error);
                 });
         }
     );

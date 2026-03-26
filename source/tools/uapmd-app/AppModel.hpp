@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <thread>
 #include <string>
+#include <functional>
 #include <unordered_map>
 #include <optional>
 #include <set>
@@ -295,14 +296,19 @@ namespace uapmd {
             std::string error;
             std::string filepath;  // Path that was used for save/load
         };
+        using PluginStateCallback = std::function<void(PluginStateResult)>;
 
-        // Load plugin state from a file
-        // Returns result with success status and any error message
-        PluginStateResult loadPluginState(int32_t instanceId, const std::string& filepath);
+        // Load plugin state from a file.
+        void loadPluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback);
+        void loadPluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback);
+        // OBSOLETE: use `loadPluginState()` with callback instead.
+        PluginStateResult loadPluginStateSync(int32_t instanceId, const std::string& filepath);
 
-        // Save plugin state to a file
-        // Returns result with success status and any error message
-        PluginStateResult savePluginState(int32_t instanceId, const std::string& filepath);
+        // Save plugin state to a file.
+        void savePluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback);
+        void savePluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback);
+        // OBSOLETE: use `savePluginState()` with callback instead.
+        PluginStateResult savePluginStateSync(int32_t instanceId, const std::string& filepath);
 
         // Timeline access
         uapmd::TimelineState& timeline() { return sequencer_.engine()->timeline().state(); }
@@ -379,8 +385,11 @@ namespace uapmd {
             bool success{false};
             std::string error;
         };
+        using ProjectSaveCallback = std::function<void(ProjectResult)>;
 
-        ProjectResult saveProject(const std::filesystem::path& file);
+        void saveProject(const std::filesystem::path& file, ProjectSaveCallback callback);
+        // OBSOLETE: use `saveProject()` with callback instead.
+        ProjectResult saveProjectSync(const std::filesystem::path& file);
         ProjectResult loadProject(const std::filesystem::path& file);
         void saveProjectToDocument(DocumentHandle handle, IDocumentProvider::WriteCallback callback);
         ProjectResult loadProjectFromResolvedPath(const std::filesystem::path& file);

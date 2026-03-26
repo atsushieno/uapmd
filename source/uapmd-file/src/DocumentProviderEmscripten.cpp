@@ -229,7 +229,9 @@ public:
                 var mimeStr  = UTF8ToString($2);
                 var nameStr  = UTF8ToString($3);
 
-                var bytes = HEAPU8.subarray(ptr, ptr + length);
+                // Blob cannot be constructed directly from a view backed by the
+                // shared wasm heap, so make a detached copy first.
+                var bytes = HEAPU8.slice(ptr, ptr + length);
                 var blob  = new Blob([bytes], {type: mimeStr});
                 var url   = URL.createObjectURL(blob);
                 var a     = document.createElement('a');

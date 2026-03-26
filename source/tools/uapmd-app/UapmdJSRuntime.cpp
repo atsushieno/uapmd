@@ -367,7 +367,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
             return result;
         }
 
-        auto result = uapmd::AppModel::instance().savePluginState (instanceId, filepath);
+        auto result = uapmd::AppModel::instance().savePluginStateSync (instanceId, filepath);
 
         auto obj = choc::value::createObject ("PluginStateResult");
         obj.setMember ("success", result.success);
@@ -390,7 +390,7 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
             return result;
         }
 
-        auto result = uapmd::AppModel::instance().loadPluginState (instanceId, filepath);
+        auto result = uapmd::AppModel::instance().loadPluginStateSync (instanceId, filepath);
 
         auto obj = choc::value::createObject ("PluginStateResult");
         obj.setMember ("success", result.success);

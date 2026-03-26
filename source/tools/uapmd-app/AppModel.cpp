@@ -158,19 +158,27 @@ public:
     void clearPlugins() override { nodes.clear(); }
 };
 
-using PluginStateWriter = std::function<std::string(int32_t, size_t, uapmd::AudioPluginInstanceAPI*)>;
+struct PendingProjectPluginState {
+    int32_t instance_id{-1};
+    size_t plugin_order{0};
+    uapmd::AudioPluginInstanceAPI* instance{};
+    SerializedProjectPluginGraph* graph{};
+    size_t node_index{0};
+    std::string scope_label;
+};
 
 std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
     uapmd::SequencerTrack* sequencerTrack,
     uapmd::SequencerEngine* engine,
-    PluginStateWriter stateWriter = {})
+    std::vector<PendingProjectPluginState>* pendingStates = nullptr,
+    std::string scopeLabel = {})
 {
     if (!sequencerTrack)
         return nullptr;
 
-    std::vector<uapmd::UapmdProjectPluginNodeData> pluginNodes;
     const auto& orderedIds = sequencerTrack->orderedInstanceIds();
-    pluginNodes.reserve(orderedIds.size());
+    auto graph = std::make_unique<SerializedProjectPluginGraph>();
+    graph->nodes.reserve(orderedIds.size());
     size_t pluginIndex = 0;
 
     for (int32_t instanceId : orderedIds) {
@@ -189,22 +197,76 @@ std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
         nodeData.plugin_id = instance->pluginId();
         nodeData.format = instance->formatName();
         nodeData.display_name = instance->displayName();
-        if (stateWriter) {
-            try {
-                nodeData.state_file = stateWriter(instanceId, pluginIndex, instance);
-            } catch (const std::exception& ex) {
-                std::cerr << "Failed to save plugin state for instance " << instanceId
-                          << ": " << ex.what() << std::endl;
-            }
+        if (pendingStates) {
+            nodeData.state_file.clear();
         }
-        pluginNodes.push_back(std::move(nodeData));
+        graph->nodes.push_back(std::move(nodeData));
+        if (pendingStates) {
+            pendingStates->push_back(PendingProjectPluginState{
+                .instance_id = instanceId,
+                .plugin_order = pluginIndex,
+                .instance = instance,
+                .graph = graph.get(),
+                .node_index = graph->nodes.size() - 1,
+                .scope_label = scopeLabel
+            });
+        }
         ++pluginIndex;
     }
 
-    auto graph = std::make_unique<SerializedProjectPluginGraph>();
-    graph->setPlugins(std::move(pluginNodes));
     return graph;
 }
+
+std::string writePluginStateBlob(const std::filesystem::path& projectDir,
+                                 const std::filesystem::path& pluginStateDir,
+                                 const std::string& scopeLabel,
+                                 size_t pluginOrder,
+                                 int32_t instanceId,
+                                 const std::vector<uint8_t>& stateData,
+                                 std::string& error) {
+    std::error_code createDirEc;
+    std::filesystem::create_directories(pluginStateDir, createDirEc);
+    if (createDirEc) {
+        error = std::format("Failed to create plugin state directory: {} ({})",
+                            pluginStateDir.string(),
+                            createDirEc.message());
+        return {};
+    }
+
+    auto filename = std::format("{}_plugin{}_instance{}.state",
+                                scopeLabel,
+                                pluginOrder,
+                                instanceId);
+    auto targetPath = pluginStateDir / filename;
+
+    try {
+        std::ofstream out(targetPath, std::ios::binary);
+        if (!out)
+            throw std::runtime_error("Failed to open state file for writing");
+        out.write(reinterpret_cast<const char*>(stateData.data()),
+                  static_cast<std::streamsize>(stateData.size()));
+    } catch (const std::exception& ex) {
+        error = std::format("Failed to write plugin state to {}: {}",
+                            targetPath.string(),
+                            ex.what());
+        return {};
+    }
+
+    auto recordedPath = targetPath;
+    if (!projectDir.empty())
+        recordedPath = makeRelativePath(projectDir, recordedPath);
+    return recordedPath.generic_string();
+}
+
+struct PendingProjectSaveContext {
+    std::filesystem::path project_file;
+    std::filesystem::path project_dir;
+    std::filesystem::path plugin_state_dir;
+    std::unique_ptr<uapmd::UapmdProjectData> project;
+    std::vector<PendingProjectPluginState> pending_states;
+    size_t next_pending_state{0};
+    uapmd::AppModel::ProjectSaveCallback callback;
+};
 
 GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
     GatheredClipEvents result;
@@ -907,7 +969,7 @@ uapmd::AppModel::PluginInstanceResult uapmd::AppModel::registerPluginInstanceInt
     }
 
     if (configOverride && !configOverride->stateFile.empty()) {
-        auto stateResult = loadPluginState(instanceId, configOverride->stateFile.string());
+        auto stateResult = loadPluginStateSync(instanceId, configOverride->stateFile.string());
         if (!stateResult.success) {
             std::cerr << "Automatic plugin state load failed for " << pluginName
                       << ": " << stateResult.error << std::endl;
@@ -1287,27 +1349,26 @@ void uapmd::AppModel::updateDeviceLabel(int32_t instanceId, const std::string& l
     }
 }
 
-uapmd::AppModel::PluginStateResult uapmd::AppModel::loadPluginState(int32_t instanceId, const std::string& filepath) {
+void uapmd::AppModel::loadPluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback) {
     PluginStateResult result;
     result.instanceId = instanceId;
     result.filepath = filepath;
 
-    // Get plugin instance
     auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (!instance) {
         result.success = false;
         result.error = "Failed to get plugin instance";
         std::cerr << result.error << std::endl;
-        return result;
+        if (callback)
+            callback(std::move(result));
+        return;
     }
 
-    // Load from file
     std::vector<uint8_t> stateData;
     try {
         std::ifstream file(filepath, std::ios::binary | std::ios::ate);
-        if (!file.is_open()) {
+        if (!file.is_open())
             throw std::runtime_error("Failed to open file for reading");
-        }
 
         auto fileSize = file.tellg();
         file.seekg(0, std::ios::beg);
@@ -1319,76 +1380,207 @@ uapmd::AppModel::PluginStateResult uapmd::AppModel::loadPluginState(int32_t inst
         result.success = false;
         result.error = std::format("Failed to load plugin state: {}", ex.what());
         std::cerr << result.error << std::endl;
-        return result;
+        if (callback)
+            callback(std::move(result));
+        return;
     }
 
-    auto loadPromise = std::make_shared<std::promise<std::string>>();
-    auto loadFuture = loadPromise->get_future();
     instance->loadState(std::move(stateData), uapmd::StateContextType::Project, false, nullptr,
-                        [loadPromise](std::string error, void* callbackContext) {
-                            loadPromise->set_value(std::move(error));
+                        [callback = std::move(callback), result](std::string error, void* callbackContext) mutable {
+                            auto completed = result;
+                            if (!error.empty()) {
+                                completed.success = false;
+                                completed.error = std::move(error);
+                                std::cerr << completed.error << std::endl;
+                            } else {
+                                completed.success = true;
+                                std::cout << "Plugin state loaded from: " << completed.filepath << std::endl;
+                            }
+                            if (callback)
+                                callback(std::move(completed));
                         });
-
-    auto loadError = loadFuture.get();
-    if (!loadError.empty()) {
-        result.success = false;
-        result.error = loadError;
-        std::cerr << result.error << std::endl;
-        return result;
-    }
-
-    result.success = true;
-    std::cout << "Plugin state loaded from: " << filepath << std::endl;
-    return result;
 }
 
-uapmd::AppModel::PluginStateResult uapmd::AppModel::savePluginState(int32_t instanceId, const std::string& filepath) {
+void uapmd::AppModel::loadPluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback) {
     PluginStateResult result;
     result.instanceId = instanceId;
-    result.filepath = filepath;
+    result.filepath = handle.display_name.empty() ? handle.id : handle.display_name;
 
-    // Get plugin instance
     auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (!instance) {
         result.success = false;
         result.error = "Failed to get plugin instance";
         std::cerr << result.error << std::endl;
-        return result;
+        if (callback)
+            callback(std::move(result));
+        return;
     }
 
-    auto statePromise = std::make_shared<std::promise<std::pair<std::vector<uint8_t>, std::string>>>();
-    auto stateFuture = statePromise->get_future();
-    instance->requestState(uapmd::StateContextType::Project, false, nullptr,
-                           [statePromise](std::vector<uint8_t> state, std::string error, void* callbackContext) {
-                               statePromise->set_value({std::move(state), std::move(error)});
+    auto* provider = documentProvider();
+    if (!provider) {
+        result.success = false;
+        result.error = "Document provider unavailable";
+        std::cerr << result.error << std::endl;
+        if (callback)
+            callback(std::move(result));
+        return;
+    }
+
+    provider->readDocument(std::move(handle),
+                           [instance, callback = std::move(callback), result](DocumentIOResult ioResult, std::vector<uint8_t> data) mutable {
+                               auto completed = result;
+                               if (!ioResult.success) {
+                                   completed.success = false;
+                                   completed.error = ioResult.error;
+                                   std::cerr << completed.error << std::endl;
+                                   if (callback)
+                                       callback(std::move(completed));
+                                   return;
+                               }
+
+                               instance->loadState(std::move(data), uapmd::StateContextType::Project, false, nullptr,
+                                                   [callback = std::move(callback), completed](std::string error, void* callbackContext) mutable {
+                                                       auto finalResult = completed;
+                                                       if (!error.empty()) {
+                                                           finalResult.success = false;
+                                                           finalResult.error = std::move(error);
+                                                           std::cerr << finalResult.error << std::endl;
+                                                       } else {
+                                                           finalResult.success = true;
+                                                           std::cout << "Plugin state loaded from: " << finalResult.filepath << std::endl;
+                                                       }
+                                                       if (callback)
+                                                           callback(std::move(finalResult));
+                                                   });
                            });
+}
 
-    auto [stateData, stateError] = stateFuture.get();
-    if (!stateError.empty()) {
+uapmd::AppModel::PluginStateResult uapmd::AppModel::loadPluginStateSync(int32_t instanceId, const std::string& filepath) {
+    auto promise = std::make_shared<std::promise<PluginStateResult>>();
+    auto future = promise->get_future();
+    loadPluginState(instanceId, filepath,
+                    [promise](PluginStateResult result) {
+                        promise->set_value(std::move(result));
+                    });
+    return future.get();
+}
+
+void uapmd::AppModel::savePluginState(int32_t instanceId, const std::string& filepath, PluginStateCallback callback) {
+    PluginStateResult result;
+    result.instanceId = instanceId;
+    result.filepath = filepath;
+
+    auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
+    if (!instance) {
         result.success = false;
-        result.error = stateError;
+        result.error = "Failed to get plugin instance";
         std::cerr << result.error << std::endl;
-        return result;
+        if (callback)
+            callback(std::move(result));
+        return;
     }
 
-    // Save to file as binary blob
-    try {
-        std::ofstream file(filepath, std::ios::binary);
-        if (!file.is_open()) {
-            throw std::runtime_error("Failed to open file for writing");
-        }
-        file.write(reinterpret_cast<const char*>(stateData.data()), stateData.size());
-        file.close();
+    instance->requestState(uapmd::StateContextType::Project, false, nullptr,
+                           [callback = std::move(callback), result, filepath](std::vector<uint8_t> state, std::string error, void* callbackContext) mutable {
+                               auto completed = result;
+                               if (!error.empty()) {
+                                   completed.success = false;
+                                   completed.error = std::move(error);
+                                   std::cerr << completed.error << std::endl;
+                                   if (callback)
+                                       callback(std::move(completed));
+                                   return;
+                               }
 
-        result.success = true;
-        std::cout << "Plugin state saved to: " << filepath << std::endl;
-    } catch (const std::exception& ex) {
+                               try {
+                                   std::ofstream file(filepath, std::ios::binary);
+                                   if (!file.is_open())
+                                       throw std::runtime_error("Failed to open file for writing");
+                                   file.write(reinterpret_cast<const char*>(state.data()), static_cast<std::streamsize>(state.size()));
+                                   file.close();
+                                   completed.success = true;
+                                   std::cout << "Plugin state saved to: " << filepath << std::endl;
+                               } catch (const std::exception& ex) {
+                                   completed.success = false;
+                                   completed.error = std::format("Failed to save plugin state: {}", ex.what());
+                                   std::cerr << completed.error << std::endl;
+                               }
+
+                               if (callback)
+                                   callback(std::move(completed));
+                           });
+}
+
+void uapmd::AppModel::savePluginState(int32_t instanceId, DocumentHandle handle, PluginStateCallback callback) {
+    PluginStateResult result;
+    result.instanceId = instanceId;
+    result.filepath = handle.display_name.empty() ? handle.id : handle.display_name;
+
+    auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
+    if (!instance) {
         result.success = false;
-        result.error = std::format("Failed to save plugin state: {}", ex.what());
+        result.error = "Failed to get plugin instance";
         std::cerr << result.error << std::endl;
+        if (callback)
+            callback(std::move(result));
+        return;
     }
 
-    return result;
+    if (!documentProvider()) {
+        result.success = false;
+        result.error = "Document provider unavailable";
+        std::cerr << result.error << std::endl;
+        if (callback)
+            callback(std::move(result));
+        return;
+    }
+
+    instance->requestState(uapmd::StateContextType::Project, false, nullptr,
+                           [handle = std::move(handle), callback = std::move(callback), result](std::vector<uint8_t> state, std::string error, void* callbackContext) mutable {
+                               auto completed = result;
+                               if (!error.empty()) {
+                                   completed.success = false;
+                                   completed.error = std::move(error);
+                                   std::cerr << completed.error << std::endl;
+                                   if (callback)
+                                       callback(std::move(completed));
+                                   return;
+                               }
+
+                               auto* provider = uapmd::AppModel::instance().documentProvider();
+                               if (!provider) {
+                                   completed.success = false;
+                                   completed.error = "Document provider unavailable";
+                                   std::cerr << completed.error << std::endl;
+                                   if (callback)
+                                       callback(std::move(completed));
+                                   return;
+                               }
+
+                               provider->writeDocument(std::move(handle), std::move(state),
+                                                       [callback = std::move(callback), completed](DocumentIOResult ioResult) mutable {
+                                                           auto finalResult = completed;
+                                                           finalResult.success = ioResult.success;
+                                                           finalResult.error = ioResult.error;
+                                                           if (finalResult.success) {
+                                                               std::cout << "Plugin state saved to: " << finalResult.filepath << std::endl;
+                                                           } else {
+                                                               std::cerr << finalResult.error << std::endl;
+                                                           }
+                                                           if (callback)
+                                                               callback(std::move(finalResult));
+                                                       });
+                           });
+}
+
+uapmd::AppModel::PluginStateResult uapmd::AppModel::savePluginStateSync(int32_t instanceId, const std::string& filepath) {
+    auto promise = std::make_shared<std::promise<PluginStateResult>>();
+    auto future = promise->get_future();
+    savePluginState(instanceId, filepath,
+                    [promise](PluginStateResult result) {
+                        promise->set_value(std::move(result));
+                    });
+    return future.get();
 }
 
 // Timeline and clip management
@@ -1752,30 +1944,32 @@ void uapmd::AppModel::saveProjectToDocument(DocumentHandle handle,
             callback({false, tempDirError});
         return;
     }
-    ScopedTempDir stage(std::move(*tempDir));
+    auto stage = std::make_shared<ScopedTempDir>(std::move(*tempDir));
 
-    const auto stagePath = stage.get() / std::filesystem::path("project.uapmd");
+    const auto stagePath = stage->get() / std::filesystem::path("project.uapmd");
 
-    auto saveResult = saveProject(stagePath);
-    if (!saveResult.success) {
-        if (callback)
-            callback({false, saveResult.error});
-        return;
-    }
+    saveProject(stagePath,
+                [provider, handle = std::move(handle), callback = std::move(callback), stage](ProjectResult saveResult) mutable {
+                    if (!saveResult.success) {
+                        if (callback)
+                            callback({false, saveResult.error});
+                        return;
+                    }
 
-    std::vector<uint8_t> archive;
-    std::string archiveError;
-    if (!ProjectArchive::createArchive(stage.get(), archive, archiveError)) {
-        if (callback)
-            callback({false, archiveError});
-        return;
-    }
+                    std::vector<uint8_t> archive;
+                    std::string archiveError;
+                    if (!ProjectArchive::createArchive(stage->get(), archive, archiveError)) {
+                        if (callback)
+                            callback({false, archiveError});
+                        return;
+                    }
 
-    provider->writeDocument(std::move(handle), std::move(archive),
-        [callback = std::move(callback)](DocumentIOResult ioResult) mutable {
-            if (callback)
-                callback(ioResult);
-        });
+                    provider->writeDocument(std::move(handle), std::move(archive),
+                                            [callback = std::move(callback), stage](DocumentIOResult ioResult) mutable {
+                                                if (callback)
+                                                    callback(ioResult);
+                                            });
+                });
 }
 
 uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromResolvedPath(
@@ -1822,72 +2016,41 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromResolvedPath(
     return result;
 }
 
-uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesystem::path& projectFile) {
-    ProjectResult result;
+uapmd::AppModel::ProjectResult uapmd::AppModel::saveProjectSync(const std::filesystem::path& projectFile) {
+    auto promise = std::make_shared<std::promise<ProjectResult>>();
+    auto future = promise->get_future();
+    saveProject(projectFile,
+                [promise](ProjectResult result) {
+                    promise->set_value(std::move(result));
+                });
+    return future.get();
+}
+
+void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, ProjectSaveCallback callback) {
+    auto operation = std::make_shared<PendingProjectSaveContext>();
+    operation->project_file = projectFile;
+    operation->callback = std::move(callback);
+
+    auto complete = [operation](ProjectResult result) mutable {
+        if (!operation->callback)
+            return;
+        auto callback = std::move(operation->callback);
+        callback(std::move(result));
+    };
+
     if (projectFile.empty()) {
-        result.error = "Project path is empty";
-        return result;
+        complete(ProjectResult{false, "Project path is empty"});
+        return;
     }
 
     try {
-        auto projectDir = projectFile.parent_path();
-        if (!projectDir.empty())
-            std::filesystem::create_directories(projectDir);
-        auto clipDir = projectDir / "clips";
-        auto pluginStateDir = projectDir / "plugin_states";
+        operation->project_dir = projectFile.parent_path();
+        if (!operation->project_dir.empty())
+            std::filesystem::create_directories(operation->project_dir);
+        auto clipDir = operation->project_dir / "clips";
+        operation->plugin_state_dir = operation->project_dir / "plugin_states";
 
-        auto makePluginStateWriter = [&](const std::string& scopeLabel) -> PluginStateWriter {
-            return [&, scopeLabel](int32_t instanceId, size_t pluginOrder, uapmd::AudioPluginInstanceAPI* instance) -> std::string {
-                if (!instance)
-                    return {};
-
-                auto statePromise = std::make_shared<std::promise<std::pair<std::vector<uint8_t>, std::string>>>();
-                auto stateFuture = statePromise->get_future();
-                instance->requestState(uapmd::StateContextType::Project, false, nullptr,
-                                       [statePromise](std::vector<uint8_t> state, std::string error, void* callbackContext) {
-                                           statePromise->set_value({std::move(state), std::move(error)});
-                                       });
-                auto [stateData, stateError] = stateFuture.get();
-                if (!stateError.empty()) {
-                    std::cerr << "Failed to retrieve plugin state for instance " << instanceId
-                              << ": " << stateError << std::endl;
-                    return {};
-                }
-
-                std::error_code createDirEc;
-                std::filesystem::create_directories(pluginStateDir, createDirEc);
-                if (createDirEc) {
-                    std::cerr << "Failed to create plugin state directory: "
-                              << pluginStateDir << " (" << createDirEc.message() << ")\n";
-                    return {};
-                }
-
-                auto filename = std::format("{}_plugin{}_instance{}.state",
-                                            scopeLabel,
-                                            pluginOrder,
-                                            instanceId);
-                auto targetPath = pluginStateDir / filename;
-
-                try {
-                    std::ofstream out(targetPath, std::ios::binary);
-                    if (!out)
-                        throw std::runtime_error("Failed to open state file for writing");
-                    out.write(reinterpret_cast<const char*>(stateData.data()),
-                              static_cast<std::streamsize>(stateData.size()));
-                } catch (const std::exception& ex) {
-                    std::cerr << "Failed to write plugin state to " << targetPath
-                              << ": " << ex.what() << std::endl;
-                    return {};
-                }
-
-                auto recordedPath = targetPath;
-                if (!projectDir.empty())
-                    recordedPath = makeRelativePath(projectDir, recordedPath);
-                return recordedPath.generic_string();
-            };
-        };
-
-        auto project = uapmd::UapmdProjectData::create();
+        operation->project = uapmd::UapmdProjectData::create();
         auto* sequencerEngine = sequencer_.engine();
         auto sequencerTracks = sequencerEngine ? sequencerEngine->tracks() : std::vector<uapmd::SequencerTrack*>{};
         auto timelineTracks = getTimelineTracks();
@@ -1895,7 +2058,6 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
         size_t midiExportCounter = 0;
 
         for (size_t trackIndex = 0; trackIndex < timelineTracks.size(); ++trackIndex) {
-            // Skip hidden tracks (logically removed tracks)
             if (hidden_tracks_.contains(static_cast<int32_t>(trackIndex)))
                 continue;
 
@@ -1931,13 +2093,17 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
                         auto sourceNode = timelineTrack->getSourceNode(clip.sourceNodeInstanceId);
                         auto* midiNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
                         if (!midiNode) {
-                            result.error = std::format("Clip {} on track {} is missing MIDI data", clip.clipId, trackIndex);
-                            return result;
+                            complete(ProjectResult{false, std::format("Clip {} on track {} is missing MIDI data",
+                                                                      clip.clipId, trackIndex)});
+                            return;
                         }
 
+                        std::string writeError;
                         auto clipUmps = buildSmf2ClipFromMidiNode(*midiNode);
-                        if (!uapmd::Smf2ClipReaderWriter::write(exportPath, clipUmps, &result.error))
-                            return result;
+                        if (!uapmd::Smf2ClipReaderWriter::write(exportPath, clipUmps, &writeError)) {
+                            complete(ProjectResult{false, std::move(writeError)});
+                            return;
+                        }
                         clipPath = exportPath;
                     } else {
                         clipPath = std::filesystem::absolute(clipPath);
@@ -1945,21 +2111,23 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
                 } else {
                     if (clip.needsFileSave) {
                         if (clipPath.empty()) {
-                            result.error = std::format("Clip {} on track {} has no source audio to save", clip.clipId, trackIndex);
-                            return result;
+                            complete(ProjectResult{false, std::format("Clip {} on track {} has no source audio to save",
+                                                                      clip.clipId, trackIndex)});
+                            return;
                         }
 
                         auto sourcePath = std::filesystem::absolute(clipPath);
                         if (!std::filesystem::exists(sourcePath)) {
-                            result.error = std::format("Clip {} on track {} is missing its audio file", clip.clipId, trackIndex);
-                            return result;
+                            complete(ProjectResult{false, std::format("Clip {} on track {} is missing its audio file",
+                                                                      clip.clipId, trackIndex)});
+                            return;
                         }
 
                         std::error_code dirEc;
                         std::filesystem::create_directories(clipDir, dirEc);
                         if (dirEc) {
-                            result.error = std::format("Failed to create clip directory: {}", dirEc.message());
-                            return result;
+                            complete(ProjectResult{false, std::format("Failed to create clip directory: {}", dirEc.message())});
+                            return;
                         }
 
                         auto originalName = sourcePath.filename().string();
@@ -1970,8 +2138,9 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
                         std::error_code copyEc;
                         std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing, copyEc);
                         if (copyEc) {
-                            result.error = std::format("Failed to store audio clip {}: {}", clip.clipId, copyEc.message());
-                            return result;
+                            complete(ProjectResult{false, std::format("Failed to store audio clip {}: {}",
+                                                                      clip.clipId, copyEc.message())});
+                            return;
                         }
 
                         clipPath = destPath;
@@ -1987,8 +2156,8 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
                     }
                 }
 
-                if (!clipPath.empty() && !projectDir.empty())
-                    clipPath = makeRelativePath(projectDir, clipPath);
+                if (!clipPath.empty() && !operation->project_dir.empty())
+                    clipPath = makeRelativePath(operation->project_dir, clipPath);
 
                 projectClip->file(clipPath);
 
@@ -2017,20 +2186,23 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
             uapmd::SequencerTrack* sequencerTrack = (sequencerEngine && trackIndex < sequencerTracks.size())
                 ? sequencerTracks[trackIndex]
                 : nullptr;
-            auto trackStateWriter = makePluginStateWriter(std::format("track{}", trackIndex));
-            if (auto graphData = createSerializedPluginGraph(sequencerTrack, sequencerEngine, trackStateWriter))
+            if (auto graphData = createSerializedPluginGraph(
+                    sequencerTrack,
+                    sequencerEngine,
+                    &operation->pending_states,
+                    std::format("track{}", trackIndex))) {
                 projectTrack->graph(std::move(graphData));
+            }
 
-            // Skip completely empty tracks (no clips and no plugins)
             bool hasClips = !projectTrack->clips().empty();
             bool hasPlugins = projectTrack->graph() && !projectTrack->graph()->plugins().empty();
             if (!hasClips && !hasPlugins)
                 continue;
 
-            project->addTrack(std::move(projectTrack));
+            operation->project->addTrack(std::move(projectTrack));
         }
 
-        if (auto* masterTrack = project->masterTrack()) {
+        if (auto* masterTrack = operation->project->masterTrack()) {
             masterTrack->clips().clear();
             auto snapshot = buildMasterTrackSnapshot();
             auto masterClip = uapmd::UapmdProjectClipData::create();
@@ -2038,11 +2210,14 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
             std::filesystem::path masterFile = clipDir / "master_track.midi2";
             std::filesystem::create_directories(clipDir);
             auto masterUmps = buildMasterTrackSmf2Clip(snapshot);
-            if (!uapmd::Smf2ClipReaderWriter::write(masterFile, masterUmps, &result.error))
-                return result;
+            std::string writeError;
+            if (!uapmd::Smf2ClipReaderWriter::write(masterFile, masterUmps, &writeError)) {
+                complete(ProjectResult{false, std::move(writeError)});
+                return;
+            }
 
-            if (!projectDir.empty())
-                masterFile = makeRelativePath(projectDir, masterFile);
+            if (!operation->project_dir.empty())
+                masterFile = makeRelativePath(operation->project_dir, masterFile);
 
             uapmd::UapmdTimelinePosition pos{};
             pos.anchor = nullptr;
@@ -2053,26 +2228,66 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProject(const std::filesyste
             masterClip->file(masterFile);
             masterTrack->clips().push_back(std::move(masterClip));
 
-            auto masterStateWriter = makePluginStateWriter("master");
             if (auto graphData = createSerializedPluginGraph(
                     sequencerEngine ? sequencerEngine->masterTrack() : nullptr,
                     sequencerEngine,
-                    masterStateWriter)) {
+                    &operation->pending_states,
+                    "master")) {
                 masterTrack->graph(std::move(graphData));
             }
         }
+    } catch (const std::exception& e) {
+        complete(ProjectResult{false, e.what()});
+        return;
+    }
 
-        if (!uapmd::UapmdProjectDataWriter::write(project.get(), projectFile)) {
-            result.error = "Failed to write project file";
-            return result;
+    auto runNext = std::make_shared<std::function<void()>>();
+    *runNext = [operation, complete, runNext]() mutable {
+        if (operation->next_pending_state >= operation->pending_states.size()) {
+            if (!uapmd::UapmdProjectDataWriter::write(operation->project.get(), operation->project_file)) {
+                complete(ProjectResult{false, "Failed to write project file"});
+                return;
+            }
+            complete(ProjectResult{true, {}});
+            return;
         }
 
-        result.success = true;
-        return result;
-    } catch (const std::exception& e) {
-        result.error = e.what();
-        return result;
-    }
+        auto pending = operation->pending_states[operation->next_pending_state];
+        if (!pending.instance) {
+            ++operation->next_pending_state;
+            (*runNext)();
+            return;
+        }
+
+        pending.instance->requestState(uapmd::StateContextType::Project, false, nullptr,
+                                       [operation, complete, runNext, pending](std::vector<uint8_t> state, std::string error, void* callbackContext) mutable {
+                                           if (!error.empty()) {
+                                               complete(ProjectResult{false, std::format("Failed to retrieve plugin state for instance {}: {}",
+                                                                                          pending.instance_id, error)});
+                                               return;
+                                           }
+
+                                           std::string writeError;
+                                           auto relativePath = writePluginStateBlob(operation->project_dir,
+                                                                                    operation->plugin_state_dir,
+                                                                                    pending.scope_label,
+                                                                                    pending.plugin_order,
+                                                                                    pending.instance_id,
+                                                                                    state,
+                                                                                    writeError);
+                                           if (!writeError.empty()) {
+                                               complete(ProjectResult{false, std::move(writeError)});
+                                               return;
+                                           }
+
+                                           if (pending.graph && pending.node_index < pending.graph->nodes.size())
+                                               pending.graph->nodes[pending.node_index].state_file = std::move(relativePath);
+
+                                           ++operation->next_pending_state;
+                                           (*runNext)();
+                                       });
+    };
+    (*runNext)();
 }
 
 uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesystem::path& projectFile) {
