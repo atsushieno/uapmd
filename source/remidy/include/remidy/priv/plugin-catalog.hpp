@@ -58,6 +58,11 @@ namespace remidy {
         const std::filesystem::path& bundlePath() const { return bundle; }
         // Sets a file system path to the bundle, if the format supports it.
         StatusCode bundlePath(const std::filesystem::path& newPath) {
+            auto raw = newPath.generic_string();
+            if (raw.rfind("http://", 0) == 0 || raw.rfind("https://", 0) == 0) {
+                bundle = raw;
+                return StatusCode::OK;
+            }
             bundle = newPath.lexically_normal();
             return StatusCode::OK;
         }

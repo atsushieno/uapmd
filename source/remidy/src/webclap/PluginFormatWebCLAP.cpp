@@ -204,6 +204,19 @@ static std::vector<std::pair<uint32_t, double>> parseParameterValueUpdates(const
     return updates;
 }
 
+static std::string normalizeWebClapBundleUrl(std::string url) {
+    if (url.rfind("/https://", 0) == 0 || url.rfind("/http://", 0) == 0)
+        url.erase(0, 1);
+    if (url.rfind("https:/", 0) == 0 && url.rfind("https://", 0) != 0)
+        return "https://" + url.substr(std::strlen("https:/"));
+    if (url.rfind("http:/", 0) == 0 && url.rfind("http://", 0) != 0)
+        return "http://" + url.substr(std::strlen("http:/"));
+    if ((url.rfind("webclap.github.io/", 0) == 0 || url.rfind("www.webclap.github.io/", 0) == 0) &&
+        url.find("://") == std::string::npos)
+        return "https://" + url;
+    return url;
+}
+
 static void postWclapRpc(const char* method, const std::string& argsJson) {
     uapmd_ensure_webclap_bridge();
     uapmd_post_to_webclap_worklet_rpc(method, argsJson.c_str());
@@ -386,7 +399,7 @@ void PluginFormatWebCLAPImpl::createInstance(
     const uint32_t req_id = state.next_req_id.fetch_add(1, std::memory_order_relaxed);
     std::string clapId = info->pluginId();
     auto bundlePath = info->bundlePath();
-    std::string bundleUrl = bundlePath.empty() ? info->pluginId() : bundlePath.string();
+    std::string bundleUrl = normalizeWebClapBundleUrl(bundlePath.empty() ? info->pluginId() : bundlePath.string());
 
     {
         std::lock_guard<std::mutex> lock(state.pending_mutex);
@@ -425,7 +438,7 @@ void PluginFormatWebCLAPImpl::startBundleScan(const std::filesystem::path& bundl
     std::ostringstream json;
     json << "{\"type\":\"webclap-scan\""
          << ",\"reqId\":" << req_id
-         << ",\"url\":\"" << bundlePath.string() << "\""
+         << ",\"url\":\"" << normalizeWebClapBundleUrl(bundlePath.string()) << "\""
          << "}";
     auto requestJson = json.str();
     EventLoop::runTaskOnMainThread([requestJson]() {
