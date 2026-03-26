@@ -6,6 +6,20 @@
 
 namespace uapmd::gui {
 
+static std::string escapeSliderFormatLiteral(const std::string& text) {
+    if (text.find('%') == std::string::npos)
+        return text;
+    std::string escaped;
+    escaped.reserve(text.size() + 4);
+    for (char ch : text) {
+        if (ch == '%')
+            escaped += "%%";
+        else
+            escaped.push_back(ch);
+    }
+    return escaped;
+}
+
 ParameterList::ParameterList() {
     std::fill(std::begin(parameterFilter_), std::end(parameterFilter_), '\0');
     for (size_t i = 0; i < contextValueLabels_.size(); ++i)
@@ -216,9 +230,10 @@ void ParameterList::render() {
 
             bool parameterChanged = false;
             const bool hasDiscreteCombo = !param.namedValues.empty();
-            const char* format = parameterValueStrings_[paramIndex].empty()
-                                     ? "%.3f"
-                                     : parameterValueStrings_[paramIndex].c_str();
+            std::string sliderFormat = parameterValueStrings_[paramIndex].empty()
+                                           ? "%.3f"
+                                           : escapeSliderFormatLiteral(parameterValueStrings_[paramIndex]);
+            const char* format = sliderFormat.c_str();
 
             float sliderWidth = ImGui::GetContentRegionAvail().x;
             float comboButtonWidth = 0.0f;
