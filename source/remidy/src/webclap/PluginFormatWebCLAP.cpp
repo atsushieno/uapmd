@@ -4,6 +4,7 @@
 
 #include <choc/text/choc_JSON.h>
 #include <emscripten.h>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -11,157 +12,25 @@
 #include <umppi/umppi.hpp>
 
 // Forward declarations: defined in WebAudioWorkletIODevice.cpp as EM_JS functions.
-extern "C" void uapmd_post_to_webclap_worklet_json(const char* json);
+extern "C" void uapmd_ensure_webclap_bridge();
+extern "C" void uapmd_post_to_webclap_worklet_rpc(const char* method, const char* argsJson);
+extern "C" void uapmd_webclap_create_ui_rpc(uint32_t slot, uint32_t width, uint32_t height);
+extern "C" void uapmd_webclap_set_ui_size_rpc(uint32_t slot, uint32_t width, uint32_t height);
 extern "C" void uapmd_webclap_load_plugin_async(const char* json);
-extern "C" void uapmd_post_to_webclap_worklet_load_state(uint32_t reqId, uint32_t slot, uint32_t stateContextType, const uint8_t* data, size_t size);
+extern "C" void uapmd_webclap_request_state_rpc(uint32_t reqId, uint32_t slot, uint32_t stateContextType);
+extern "C" void uapmd_webclap_load_state_rpc(uint32_t reqId, uint32_t slot, uint32_t stateContextType, const uint8_t* data, size_t size);
 
 EM_JS(void, uapmd_webclap_bind_ui_slot, (uint32_t slot, const char* container_id), {
-    if (!Module._uapmdEnsureWebclapUiManager) {
-        Module._uapmdEnsureWebclapUiManager = function() {
-            if (Module._uapmdWebclapUi)
-                return Module._uapmdWebclapUi;
-            const manager = {
-                bindings: new Map(),
-                bind(slot, containerId) {
-                    const binding = { slot, containerId, iframe: null, uri: "", bodyId: containerId };
-                    this.bindings.set(slot, binding);
-                },
-                unbind(slot) {
-                    const binding = this.bindings.get(slot);
-                    if (binding && binding.blobUrls) {
-                        Object.values(binding.blobUrls).forEach(function(url) { URL.revokeObjectURL(url); });
-                    }
-                    if (binding && binding.iframe)
-                        binding.iframe.remove();
-                    this.bindings.delete(slot);
-                },
-                getBody(slot) {
-                    const binding = this.bindings.get(slot);
-                    if (!binding)
-                        return null;
-                    return document.getElementById(binding.containerId);
-                },
-                mimeFor(path) {
-                    if (path.endsWith('.html')) return 'text/html';
-                    if (path.endsWith('.js') || path.endsWith('.mjs')) return 'text/javascript';
-                    if (path.endsWith('.css')) return 'text/css';
-                    if (path.endsWith('.svg')) return 'image/svg+xml';
-                    if (path.endsWith('.json')) return 'application/json';
-                    if (path.endsWith('.wasm')) return 'application/wasm';
-                    return 'application/octet-stream';
-                },
-                findFileKey(files, uri) {
-                    if (!files)
-                        return null;
-                    let normalized = uri;
-                    if (normalized.startsWith('file://'))
-                        normalized = normalized.slice(7);
-                    else if (normalized.startsWith('file:'))
-                        normalized = normalized.slice(5);
-                    if (files[normalized]) return normalized;
-                    if (files['/' + normalized]) return '/' + normalized;
-                    for (const key of Object.keys(files)) {
-                        if (normalized.endsWith(key) || key.endsWith(normalized))
-                            return key;
-                    }
-                    return null;
-                },
-                open(slot, uri, files) {
-                    const binding = this.bindings.get(slot);
-                    const body = this.getBody(slot);
-                    if (!binding || !body)
-                        return;
-                    if (binding.blobUrls) {
-                        Object.values(binding.blobUrls).forEach(function(url) { URL.revokeObjectURL(url); });
-                        binding.blobUrls = null;
-                    }
-                    if (binding.iframe)
-                        binding.iframe.remove();
-                    body.dataset.webclapSlot = String(slot);
-                    body.textContent = "";
-                    const iframe = document.createElement('iframe');
-                    iframe.id = `uapmd-webclap-frame-${slot}`;
-                    iframe.dataset.webclapSlot = String(slot);
-                    iframe.style.border = '0';
-                    iframe.style.width = '100%';
-                    iframe.style.height = '100%';
-                    iframe.style.background = '#111';
-                    body.appendChild(iframe);
-                    binding.iframe = iframe;
-                    binding.uri = uri;
-                    if ((uri.startsWith('file:') || uri.startsWith('/')) && files) {
-                        const fileKey = this.findFileKey(files, uri);
-                        if (fileKey) {
-                            const root = files[fileKey];
-                            const blobUrls = {};
-                            for (const [path, content] of Object.entries(files)) {
-                                const blob = new Blob([content], { type: this.mimeFor(path) });
-                                blobUrls[path] = URL.createObjectURL(blob);
-                            }
-                            if (fileKey.endsWith('.html')) {
-                                let html = new TextDecoder('utf-8').decode(root);
-                                for (const [path, blobUrl] of Object.entries(blobUrls)) {
-                                    const basename = path.split('/').pop();
-                                    html = html.split(path).join(blobUrl);
-                                    if (basename)
-                                        html = html.split(basename).join(blobUrl);
-                                }
-                                iframe.srcdoc = html;
-                            } else {
-                                iframe.src = blobUrls[fileKey];
-                            }
-                            binding.blobUrls = blobUrls;
-                        } else {
-                            iframe.src = uri;
-                        }
-                    } else {
-                        iframe.src = uri;
-                    }
-                },
-                postToFrame(slot, payload) {
-                    const binding = this.bindings.get(slot);
-                    if (!binding || !binding.iframe || !binding.iframe.contentWindow)
-                        return;
-                    if (payload instanceof ArrayBuffer) {
-                        binding.iframe.contentWindow.postMessage(payload, '*', [payload]);
-                        return;
-                    }
-                    if (ArrayBuffer.isView(payload)) {
-                        binding.iframe.contentWindow.postMessage(payload.buffer, '*', [payload.buffer]);
-                        return;
-                    }
-                    let value = payload;
-                    if (typeof payload === 'string') {
-                        try { value = JSON.parse(payload); } catch (_) {}
-                    }
-                    binding.iframe.contentWindow.postMessage(value, '*');
-                },
-            };
-            window.addEventListener('message', function(event) {
-                for (const [slot, binding] of manager.bindings.entries()) {
-                    if (!binding.iframe || event.source !== binding.iframe.contentWindow)
-                        continue;
-                    const node = Module._wclapWorkletNode;
-                    if (node) {
-                        const payload = event.data;
-                        if (payload instanceof ArrayBuffer)
-                            node.port.postMessage({ type: 'wclap-ui-from-frame', slot, payload }, [payload]);
-                        else
-                            node.port.postMessage({ type: 'wclap-ui-from-frame', slot, payload });
-                    }
-                    break;
-                }
-            });
-            Module._uapmdWebclapUi = manager;
-            return manager;
-        };
-    }
-    Module._uapmdEnsureWebclapUiManager().bind(slot, UTF8ToString(container_id));
+    Module._uapmdEnsureWebclapBridge().bindUiSlot(slot, UTF8ToString(container_id));
 });
 
 EM_JS(void, uapmd_webclap_unbind_ui_slot, (uint32_t slot), {
-    if (Module._uapmdEnsureWebclapUiManager)
-        Module._uapmdEnsureWebclapUiManager().unbind(slot);
+    Module._uapmdEnsureWebclapBridge().unbindUiSlot(slot);
+});
+
+EM_JS(char*, uapmd_webclap_format_parameter_value, (uint32_t slot, uint32_t index, double value), {
+    var text = Module._uapmdEnsureWebclapBridge().formatParameterValue(slot, index, value);
+    return stringToNewUTF8(text || "");
 });
 
 namespace remidy {
@@ -217,27 +86,26 @@ static void unregisterWebClapInstance(uint32_t slot) {
     state.instances_by_slot.erase(slot);
 }
 
-// Called from the EM_JS onmessage handler in WebAudioWorkletIODevice.cpp when
-// the AudioWorklet sends a response (wclap-plugin-ready, wclap-plugin-error, …).
-// The function must be exported so that the EM_JS can call it as
-// _uapmd_webclap_on_worklet_message.
+// Called from the bridge in WebAudioWorkletIODevice.cpp when browser-side
+// WebCLAP operations report completion or metadata back to remidy. The exported
+// C symbol name is kept stable because the bridge calls it directly.
 
 extern "C" EMSCRIPTEN_KEEPALIVE
 void uapmd_webclap_on_worklet_message(const char* json) {
     PluginFormatWebCLAPImpl impl;
-    impl.onWorkletMessage(json);
+    impl.onBridgeMessage(json);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE
 void uapmd_webclap_on_worklet_state_response(uint32_t reqId, const uint8_t* data, size_t size, const char* error) {
     PluginFormatWebCLAPImpl impl;
-    impl.onWorkletStateResponse(reqId, data, size, error);
+    impl.onBridgeStateResponse(reqId, data, size, error);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE
 void uapmd_webclap_on_worklet_state_load_complete(uint32_t reqId, const char* error) {
     PluginFormatWebCLAPImpl impl;
-    impl.onWorkletStateLoadComplete(reqId, error);
+    impl.onBridgeStateLoadComplete(reqId, error);
 }
 
 static std::vector<WebClapParamDescriptor> parseParamDescriptors(const choc::value::ValueView& value) {
@@ -336,26 +204,19 @@ static std::vector<std::pair<uint32_t, double>> parseParameterValueUpdates(const
     return updates;
 }
 
-static std::string buildWclapEventJson(const std::string& type,
-                                       uint32_t slot,
-                                       const std::string& payload)
-{
-    std::ostringstream json;
-    json << "{\"type\":\"" << type << "\",\"slot\":" << slot;
-    if (!payload.empty())
-        json << "," << payload;
-    json << "}";
-    return json.str();
+static void postWclapRpc(const char* method, const std::string& argsJson) {
+    uapmd_ensure_webclap_bridge();
+    uapmd_post_to_webclap_worklet_rpc(method, argsJson.c_str());
 }
 
-static std::string buildWclapBatchUmpJson(uint32_t slot, EventSequence& eventIn) {
+static std::string buildWclapBatchUmpArgsJson(EventSequence& eventIn) {
     auto* bytes = static_cast<const uint8_t*>(eventIn.getMessages());
     const size_t bytes_available = eventIn.position();
     if (!bytes || bytes_available == 0)
         return {};
 
     std::ostringstream payload;
-    payload << "\"events\":[";
+    payload << "[";
 
     bool has_events = false;
     size_t offset = 0;
@@ -384,7 +245,7 @@ static std::string buildWclapBatchUmpJson(uint32_t slot, EventSequence& eventIn)
         return {};
 
     payload << "]";
-    return buildWclapEventJson("wclap-send-ump-batch", slot, payload.str());
+    return payload.str();
 }
 
 std::vector<PluginParameter*>& PluginInstanceWebCLAP::ParamSupportWebCLAP::parameters() {
@@ -411,10 +272,9 @@ StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setParameter(
     uint32_t index, double plainValue, uint64_t)
 {
     owner_->setCachedParameterValue(index, plainValue);
-    std::ostringstream payload;
-    payload << "\"index\":" << index << ",\"value\":" << plainValue;
-    auto json = buildWclapEventJson("wclap-set-parameter", owner_->slot(), payload.str());
-    uapmd_post_to_webclap_worklet_json(json.c_str());
+    std::ostringstream args;
+    args << "[" << owner_->slot() << "," << index << "," << plainValue << "]";
+    postWclapRpc("setParameter", args.str());
     parameterChangeEvent().notify(index, plainValue);
     return StatusCode::OK;
 }
@@ -433,15 +293,16 @@ StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setPerNoteController(
     PerNoteControllerContext context, uint32_t index, double plainValue, uint64_t)
 {
     owner_->setCachedParameterValue(index, plainValue);
-    std::ostringstream payload;
-    payload << "\"index\":" << index
-            << ",\"value\":" << plainValue
-            << ",\"perNote\":true"
-            << ",\"group\":" << context.group
-            << ",\"channel\":" << context.channel
-            << ",\"note\":" << context.note;
-    auto json = buildWclapEventJson("wclap-set-parameter", owner_->slot(), payload.str());
-    uapmd_post_to_webclap_worklet_json(json.c_str());
+    std::ostringstream args;
+    args << "[" << owner_->slot()
+         << "," << index
+         << "," << plainValue
+         << ",true"
+         << "," << context.group
+         << "," << context.channel
+         << "," << context.note
+         << "]";
+    postWclapRpc("setParameter", args.str());
 
     PerNoteControllerContextTypes contextType = PER_NOTE_CONTROLLER_NONE;
     if (context.group != 0)
@@ -532,10 +393,10 @@ void PluginFormatWebCLAPImpl::createInstance(
         state.pending_requests.emplace(req_id, PendingRequest{info, slot, std::move(callback)});
     }
 
-    // Fetch and compile the plugin WASM on the main thread (where fetch/URL are
-    // available), then forward the compiled init object to the worklet.
+    // Ask the browser-side bridge to fetch and inspect the bundle on the main
+    // thread, then instantiate it in the worklet runtime.
     std::ostringstream json;
-    json << "{\"type\":\"wclap-load-plugin\""
+    json << "{\"type\":\"webclap-instantiate\""
          << ",\"reqId\":"  << req_id
          << ",\"slot\":"   << slot
          << ",\"url\":\""  << bundleUrl << "\"";
@@ -545,6 +406,7 @@ void PluginFormatWebCLAPImpl::createInstance(
          << "}";
     auto requestJson = json.str();
     EventLoop::runTaskOnMainThread([requestJson]() {
+        uapmd_ensure_webclap_bridge();
         uapmd_webclap_load_plugin_async(requestJson.c_str());
     });
 }
@@ -561,12 +423,13 @@ void PluginFormatWebCLAPImpl::startBundleScan(const std::filesystem::path& bundl
     }
 
     std::ostringstream json;
-    json << "{\"type\":\"wclap-scan-bundle\""
+    json << "{\"type\":\"webclap-scan\""
          << ",\"reqId\":" << req_id
          << ",\"url\":\"" << bundlePath.string() << "\""
          << "}";
     auto requestJson = json.str();
     EventLoop::runTaskOnMainThread([requestJson]() {
+        uapmd_ensure_webclap_bridge();
         uapmd_webclap_load_plugin_async(requestJson.c_str());
     });
 }
@@ -594,11 +457,11 @@ void PluginFormatWebCLAPImpl::registerPendingStateLoadRequest(
     state.pending_state_load_requests.emplace(reqId, PendingStateLoadRequest{slot, std::move(callback)});
 }
 
-void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
+void PluginFormatWebCLAPImpl::onBridgeMessage(const char* json_cstr) {
     const auto message = choc::json::parse(json_cstr);
     const auto type = message["type"].toString();
 
-    if (type == "wclap-plugin-ready") {
+    if (type == "webclap-instance-created") {
         const uint32_t req_id = static_cast<uint32_t>(message["reqId"].getWithDefault<int32_t>(0));
         const uint32_t slot   = static_cast<uint32_t>(message["slot"].getWithDefault<int32_t>(0));
         auto& state = webclapGlobalState();
@@ -608,7 +471,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
             std::lock_guard<std::mutex> lock(state.pending_mutex);
             auto it = state.pending_requests.find(req_id);
             if (it == state.pending_requests.end()) {
-                std::cerr << "[WebCLAP] wclap-plugin-ready: unknown reqId "
+                std::cerr << "[WebCLAP] plugin-ready: unknown reqId "
                           << req_id << std::endl;
                 return;
             }
@@ -620,7 +483,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
         std::string no_error;
         req.callback(std::move(instance), no_error);
 
-    } else if (type == "wclap-plugin-error") {
+    } else if (type == "webclap-instance-create-failed") {
         const uint32_t req_id = static_cast<uint32_t>(message["reqId"].getWithDefault<int32_t>(0));
         std::string error = message["error"].toString();
         auto& state = webclapGlobalState();
@@ -630,7 +493,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
             std::lock_guard<std::mutex> lock(state.pending_mutex);
             auto it = state.pending_requests.find(req_id);
             if (it == state.pending_requests.end()) {
-                std::cerr << "[WebCLAP] wclap-plugin-error: unknown reqId "
+                std::cerr << "[WebCLAP] plugin-error: unknown reqId "
                           << req_id << std::endl;
                 return;
             }
@@ -638,7 +501,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
             state.pending_requests.erase(it);
         }
         req.callback(nullptr, error);
-    } else if (type == "wclap-scan-result") {
+    } else if (type == "webclap-scan-complete") {
         const uint32_t req_id = static_cast<uint32_t>(message["reqId"].getWithDefault<int32_t>(0));
         auto& state = webclapGlobalState();
 
@@ -647,7 +510,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
             std::lock_guard<std::mutex> lock(state.pending_mutex);
             auto it = state.pending_scan_requests.find(req_id);
             if (it == state.pending_scan_requests.end()) {
-                std::cerr << "[WebCLAP] wclap-scan-result: unknown reqId "
+                std::cerr << "[WebCLAP] scan-result: unknown reqId "
                           << req_id << std::endl;
                 return;
             }
@@ -661,7 +524,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
                 req.pluginFound(std::move(entry));
         if (req.scanCompleted)
             req.scanCompleted("");
-    } else if (type == "wclap-scan-error") {
+    } else if (type == "webclap-scan-failed") {
         const uint32_t req_id = static_cast<uint32_t>(message["reqId"].getWithDefault<int32_t>(0));
         auto& state = webclapGlobalState();
 
@@ -670,7 +533,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
             std::lock_guard<std::mutex> lock(state.pending_mutex);
             auto it = state.pending_scan_requests.find(req_id);
             if (it == state.pending_scan_requests.end()) {
-                std::cerr << "[WebCLAP] wclap-scan-error: unknown reqId "
+                std::cerr << "[WebCLAP] scan-error: unknown reqId "
                           << req_id << std::endl;
                 return;
             }
@@ -680,7 +543,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
 
         if (req.scanCompleted)
             req.scanCompleted(message["error"].toString());
-    } else if (type == "wclap-parameters") {
+    } else if (type == "webclap-parameter-descriptors") {
         const uint32_t slot = static_cast<uint32_t>(message["slot"].getWithDefault<int32_t>(0));
         auto descriptors = parseParamDescriptors(message["paramDescriptors"]);
         PluginInstanceWebCLAP* instance = nullptr;
@@ -695,7 +558,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
         }
         if (instance)
             instance->updateParameters(descriptors);
-    } else if (type == "wclap-ui-info" || type == "wclap-ui-open" || type == "wclap-ui-resize") {
+    } else if (type == "webclap-ui-descriptor" || type == "webclap-ui-opened" || type == "webclap-ui-resized") {
         const uint32_t slot = static_cast<uint32_t>(message["slot"].getWithDefault<int32_t>(0));
         auto ui = parseUiMessage(message);
         PluginInstanceWebCLAP* instance = nullptr;
@@ -710,10 +573,10 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
         }
         if (instance) {
             instance->updateUiInfo(ui.hasUi, ui.canResize, ui.width, ui.height);
-            if (type == "wclap-ui-resize")
+            if (type == "webclap-ui-resized")
                 instance->notifyUiResizeRequest(ui.canResize, ui.width, ui.height);
         }
-    } else if (type == "wclap-parameter-updates") {
+    } else if (type == "webclap-parameter-values-updated") {
         const uint32_t slot = static_cast<uint32_t>(message["slot"].getWithDefault<int32_t>(0));
         auto updates = parseParameterValueUpdates(message["updates"]);
         PluginInstanceWebCLAP* instance = nullptr;
@@ -728,7 +591,7 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
             for (const auto& update : updates)
                 instance->applyParameterValueUpdate(update.first, update.second);
         }
-    } else if (type == "wclap-capabilities") {
+    } else if (type == "webclap-capabilities") {
         const uint32_t slot = static_cast<uint32_t>(message["slot"].getWithDefault<int32_t>(0));
         auto capabilities = parseCapabilities(message);
         PluginInstanceWebCLAP* instance = nullptr;
@@ -743,20 +606,20 @@ void PluginFormatWebCLAPImpl::onWorkletMessage(const char* json_cstr) {
         }
         if (instance)
             instance->updateCapabilities(capabilities);
-    } else if (type == "wclap-runtime-error") {
+    } else if (type == "webclap-runtime-error") {
         std::cerr << "[WebCLAP] runtime error: " << message["error"].toString() << std::endl;
     }
     // All other message types (wclap-host-ready, etc.) are silently ignored here.
 }
 
-void PluginFormatWebCLAPImpl::onWorkletStateResponse(uint32_t reqId, const uint8_t* data, size_t size, const char* error) {
+void PluginFormatWebCLAPImpl::onBridgeStateResponse(uint32_t reqId, const uint8_t* data, size_t size, const char* error) {
     auto& state = webclapGlobalState();
     PendingStateRequest request{};
     {
         std::lock_guard<std::mutex> lock(state.pending_mutex);
         auto it = state.pending_state_requests.find(reqId);
         if (it == state.pending_state_requests.end()) {
-            std::cerr << "[WebCLAP] wclap-state-response: unknown reqId "
+            std::cerr << "[WebCLAP] state-request completion for unknown reqId "
                       << reqId << std::endl;
             return;
         }
@@ -772,14 +635,14 @@ void PluginFormatWebCLAPImpl::onWorkletStateResponse(uint32_t reqId, const uint8
     request.callback(std::move(response), error ? error : "");
 }
 
-void PluginFormatWebCLAPImpl::onWorkletStateLoadComplete(uint32_t reqId, const char* error) {
+void PluginFormatWebCLAPImpl::onBridgeStateLoadComplete(uint32_t reqId, const char* error) {
     auto& state = webclapGlobalState();
     PendingStateLoadRequest request{};
     {
         std::lock_guard<std::mutex> lock(state.pending_mutex);
         auto it = state.pending_state_load_requests.find(reqId);
         if (it == state.pending_state_load_requests.end()) {
-            std::cerr << "[WebCLAP] wclap-state-load-complete: unknown reqId "
+            std::cerr << "[WebCLAP] state-load completion for unknown reqId "
                       << reqId << std::endl;
             return;
         }
@@ -851,8 +714,9 @@ PluginInstanceWebCLAP::PluginInstanceWebCLAP(PluginCatalogEntry* entry, uint32_t
 {}
 
 PluginInstanceWebCLAP::~PluginInstanceWebCLAP() {
-    auto json = buildWclapEventJson("wclap-unload", slot_, "");
-    uapmd_post_to_webclap_worklet_json(json.c_str());
+    std::ostringstream args;
+    args << "[" << slot_ << "]";
+    postWclapRpc("unload", args.str());
     unregisterWebClapInstance(slot_);
 }
 
@@ -975,6 +839,14 @@ bool PluginInstanceWebCLAP::parameterSupportsContext(uint32_t index, PerNoteCont
 }
 
 std::string PluginInstanceWebCLAP::buildParameterValueString(uint32_t index, double plainValue) const {
+    char* formatted = uapmd_webclap_format_parameter_value(slot_, index, plainValue);
+    if (formatted) {
+        std::string text{formatted};
+        std::free(formatted);
+        if (!text.empty())
+            return text;
+    }
+
     std::lock_guard<std::mutex> lock(parameter_mutex_);
     for (auto* parameter : parameter_ptrs_) {
         if (parameter && parameter->index() == index) {
@@ -1031,14 +903,10 @@ void PluginInstanceWebCLAP::StateSupportWebCLAP::requestState(
                                               finish(std::move(state), std::move(error));
                                           });
 
-                                  std::ostringstream json;
-                                  json << "{\"type\":\"wclap-request-state\""
-                                       << ",\"reqId\":" << reqId
-                                       << ",\"slot\":" << owner_->slot()
-                                       << ",\"stateContextType\":" << static_cast<uint32_t>(stateContextType)
-                                       << ",\"includeUiState\":" << (includeUiState ? "true" : "false")
-                                       << "}";
-                                  uapmd_post_to_webclap_worklet_json(json.str().c_str());
+                                  uapmd_ensure_webclap_bridge();
+                                  uapmd_webclap_request_state_rpc(reqId,
+                                                                 owner_->slot(),
+                                                                 static_cast<uint32_t>(stateContextType));
                               });
                           });
 }
@@ -1069,11 +937,12 @@ void PluginInstanceWebCLAP::StateSupportWebCLAP::loadState(
                                        [finish = std::move(finish)](std::string error) mutable {
                                            finish(std::move(error));
                                        });
-                               uapmd_post_to_webclap_worklet_load_state(reqId,
-                                                                        owner_->slot(),
-                                                                        static_cast<uint32_t>(stateContextType),
-                                                                        state.data(),
-                                                                        state.size());
+                               uapmd_ensure_webclap_bridge();
+                               uapmd_webclap_load_state_rpc(reqId,
+                                                            owner_->slot(),
+                                                            static_cast<uint32_t>(stateContextType),
+                                                            state.data(),
+                                                            state.size());
                            });
                        });
 }
@@ -1096,45 +965,42 @@ void PluginInstanceWebCLAP::PresetsSupportWebCLAP::loadPreset(int32_t) {
 }
 
 StatusCode PluginInstanceWebCLAP::configure(ConfigurationRequest& cfg) {
-    // {"type":"wclap-configure","slot":<n>,"sampleRate":<n>,"bufferSize":<n>}
-    std::ostringstream json;
-    json << "{\"type\":\"wclap-configure\""
-         << ",\"slot\":"       << slot_
-         << ",\"sampleRate\":" << cfg.sampleRate
-         << ",\"bufferSize\":" << cfg.bufferSizeInSamples
-         << "}";
-    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    std::ostringstream args;
+    args << "[" << slot_ << "," << cfg.sampleRate << "," << cfg.bufferSizeInSamples << "]";
+    postWclapRpc("configure", args.str());
     return StatusCode::OK;
 }
 
 StatusCode PluginInstanceWebCLAP::startProcessing() {
-    std::ostringstream json;
-    json << "{\"type\":\"wclap-start\",\"slot\":" << slot_ << "}";
-    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    std::ostringstream args;
+    args << "[" << slot_ << "]";
+    postWclapRpc("start", args.str());
     return StatusCode::OK;
 }
 
 StatusCode PluginInstanceWebCLAP::stopProcessing() {
-    std::ostringstream json;
-    json << "{\"type\":\"wclap-stop\",\"slot\":" << slot_ << "}";
-    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    std::ostringstream args;
+    args << "[" << slot_ << "]";
+    postWclapRpc("stop", args.str());
     return StatusCode::OK;
 }
 
 void PluginInstanceWebCLAP::attachToTrackGraph(int32_t trackIndex, bool isMasterTrack, uint32_t order) {
-    std::ostringstream json;
-    json << "{\"type\":\"wclap-graph-add-node\""
-         << ",\"slot\":" << slot_
-         << ",\"trackIndex\":" << trackIndex
-         << ",\"isMaster\":" << (isMasterTrack ? "true" : "false")
-         << ",\"order\":" << order
-         << "}";
-    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    std::ostringstream args;
+    args << "[" << slot_
+         << "," << (isMasterTrack ? "true" : "false")
+         << "," << trackIndex
+         << "," << order
+         << "]";
+    postWclapRpc("graphAddNode", args.str());
 }
 
 StatusCode PluginInstanceWebCLAP::process(AudioProcessContext& ctx) {
-    if (auto json = buildWclapBatchUmpJson(slot_, ctx.eventIn()); !json.empty())
-        uapmd_post_to_webclap_worklet_json(json.c_str());
+    if (auto args = buildWclapBatchUmpArgsJson(ctx.eventIn()); !args.empty()) {
+        std::ostringstream rpcArgs;
+        rpcArgs << "[" << slot_ << "," << args << "]";
+        postWclapRpc("sendUmpBatch", rpcArgs.str());
+    }
     ctx.copyInputsToOutputs();
     return StatusCode::OK;
 }
@@ -1159,12 +1025,8 @@ bool PluginInstanceWebCLAP::UISupportWebCLAP::create(
     can_resize_ = owner_->canUiResize();
     resize_handler_ = std::move(resizeHandler);
     uapmd_webclap_bind_ui_slot(owner_->slot(), container_id_.c_str());
-    std::ostringstream json;
-    json << "{\"type\":\"wclap-ui-create\",\"slot\":" << owner_->slot()
-         << ",\"width\":" << width_
-         << ",\"height\":" << height_
-         << "}";
-    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    uapmd_ensure_webclap_bridge();
+    uapmd_webclap_create_ui_rpc(owner_->slot(), width_, height_);
     created_ = true;
     return true;
 }
@@ -1172,9 +1034,9 @@ bool PluginInstanceWebCLAP::UISupportWebCLAP::create(
 void PluginInstanceWebCLAP::UISupportWebCLAP::destroy() {
     if (!owner_ || !created_)
         return;
-    std::ostringstream json;
-    json << "{\"type\":\"wclap-ui-destroy\",\"slot\":" << owner_->slot() << "}";
-    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    std::ostringstream args;
+    args << "[" << owner_->slot() << "]";
+    postWclapRpc("destroyUi", args.str());
     uapmd_webclap_unbind_ui_slot(owner_->slot());
     created_ = false;
     visible_ = false;
@@ -1183,9 +1045,9 @@ void PluginInstanceWebCLAP::UISupportWebCLAP::destroy() {
 bool PluginInstanceWebCLAP::UISupportWebCLAP::show() {
     if (!owner_ || !created_)
         return false;
-    std::ostringstream json;
-    json << "{\"type\":\"wclap-ui-show\",\"slot\":" << owner_->slot() << "}";
-    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    std::ostringstream args;
+    args << "[" << owner_->slot() << "]";
+    postWclapRpc("showUi", args.str());
     visible_ = true;
     return true;
 }
@@ -1193,9 +1055,9 @@ bool PluginInstanceWebCLAP::UISupportWebCLAP::show() {
 void PluginInstanceWebCLAP::UISupportWebCLAP::hide() {
     if (!owner_ || !created_)
         return;
-    std::ostringstream json;
-    json << "{\"type\":\"wclap-ui-hide\",\"slot\":" << owner_->slot() << "}";
-    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    std::ostringstream args;
+    args << "[" << owner_->slot() << "]";
+    postWclapRpc("hideUi", args.str());
     visible_ = false;
 }
 
@@ -1219,12 +1081,8 @@ bool PluginInstanceWebCLAP::UISupportWebCLAP::setSize(uint32_t width, uint32_t h
         return true;
     width_ = width;
     height_ = height;
-    std::ostringstream json;
-    json << "{\"type\":\"wclap-ui-set-size\",\"slot\":" << owner_->slot()
-         << ",\"width\":" << width
-         << ",\"height\":" << height
-         << "}";
-    uapmd_post_to_webclap_worklet_json(json.str().c_str());
+    uapmd_ensure_webclap_bridge();
+    uapmd_webclap_set_ui_size_rpc(owner_->slot(), width, height);
     return true;
 }
 

@@ -26,10 +26,11 @@ namespace remidy {
         bool canOmitUiState() override { return true; }
         bool isStateStructured() override { return false; }
 
-        // Dispatches an incoming JSON message from the AudioWorklet to the pending
-        // createInstance callbacks.  Called by uapmd_webclap_on_worklet_message()
-        // which is an EMSCRIPTEN_KEEPALIVE function linked from the engine layer.
-        virtual void onWorkletMessage(const char* json) = 0;
+        // Dispatches an incoming JSON message from the browser-side bridge to the
+        // pending createInstance callbacks and live instances. Called by
+        // uapmd_webclap_on_worklet_message(), whose exported symbol name is kept
+        // stable for the engine layer.
+        virtual void onBridgeMessage(const char* json) = 0;
 
         static std::unique_ptr<PluginFormatWebCLAP> create();
     };

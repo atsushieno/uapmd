@@ -26,22 +26,23 @@ CPMAddPackage(
     DOWNLOAD_ONLY YES
 )
 
-# ── CPM: wclap-host-js ─────────────────────────────────────────────────────────
-# Provides:
-#   cpp/wclap-js-instance.h  — js_wasm::WclapInstance and the extern "C" bridge
-#   wclap.mjs                — top-level JS re-export
-#   es6/                     — actual JS runtime (wclap.mjs, wclap-plugin.mjs, …)
-#   es6/wasi/                — WASI runtime that satisfies WASI imports in the WASM
-#
-# GIT_SUBMODULES initialises es6/wasi alongside the main checkout.
+# ── CPM: browser-test-host ─────────────────────────────────────────────────────
+# Use the WebCLAP project's browser test host repo as the upstream source for
+# the WCLAP JS bridge layer. For the initial migration step we still keep our
+# local `es6/wclap.mjs` override, but the copied runtime assets and C++ bridge
+# headers now come from that test host tree.
 
 CPMAddPackage(
-    NAME wclap-host-js
-    GIT_REPOSITORY https://github.com/WebCLAP/wclap-host-js
+    NAME webclap-browser-test-host
+    GIT_REPOSITORY https://github.com/WebCLAP/browser-test-host
     GIT_TAG main
-    GIT_SUBMODULES "es6/wasi"
+    GIT_SUBMODULES "clap-audionode/wclap-js"
+    GIT_SUBMODULES_RECURSE YES
     DOWNLOAD_ONLY YES
 )
+
+set(_UAPMD_WCLAP_JS_SOURCE_DIR
+    "${webclap-browser-test-host_SOURCE_DIR}/clap-audionode/wclap-js")
 
 # ── uapmd-wclap-host executable (produces uapmd-wclap-host.wasm) ──────────────
 
@@ -50,7 +51,7 @@ set_target_properties(uapmd-wclap-host PROPERTIES OUTPUT_NAME "uapmd-wclap-host"
 
 target_include_directories(uapmd-wclap-host PRIVATE
     "${wclap-host-cpp_SOURCE_DIR}/include"   # wclap/instance.hpp, wclap/wclap.hpp
-    "${wclap-host-js_SOURCE_DIR}/cpp"        # wclap-js-instance.h
+    "${_UAPMD_WCLAP_JS_SOURCE_DIR}/cpp"      # wclap-js-instance.h
 )
 
 target_compile_options(uapmd-wclap-host PRIVATE
@@ -108,6 +109,7 @@ target_link_options(uapmd-wclap-host PRIVATE
     "-Wl,--export=_wclapOutEventsTryPush"
     "-Wl,--export=_wclapDescribePlugins"
     "-Wl,--export=_wclapDescribeParameters"
+    "-Wl,--export=_wclapFormatParameterValue"
     "-Wl,--export=_wclapHasParameterUpdates"
     "-Wl,--export=_wclapTakeParameterUpdates"
     "-Wl,--export=_wclapDescribeUi"
@@ -147,11 +149,11 @@ add_custom_command(TARGET uapmd-wclap-host POST_BUILD
             "${_WCLAP_WEB_DST}/uapmd-wclap-host.wasm"
     # wclap.mjs — top-level re-export (import { getHost, startHost, getWclap })
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${wclap-host-js_SOURCE_DIR}/wclap.mjs"
+            "${_UAPMD_WCLAP_JS_SOURCE_DIR}/wclap.mjs"
             "${_WCLAP_WEB_DST}/wclap.mjs"
     # es6/ — full module tree including wasi/ runtime
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${wclap-host-js_SOURCE_DIR}/es6"
+            "${_UAPMD_WCLAP_JS_SOURCE_DIR}/es6"
             "${_WCLAP_WEB_DST}/es6"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/web-overrides/es6/wclap.mjs"

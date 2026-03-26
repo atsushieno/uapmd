@@ -258,6 +258,7 @@ struct SlotState {
     uint32_t state_context_type = 0;
     uint32_t state_transfer_offset = 0;
     std::vector<uint8_t> state_transfer{};
+    std::string formatted_value_text{};
 };
 
 static uint32_t in_events_size(void *ctx, Pointer<const wclap_input_events>) {
@@ -613,6 +614,27 @@ static std::pair<std::string, std::string> splitValueText(const std::string& tex
     if (pos == std::string::npos)
         return {text, ""};
     return {text.substr(0, pos), text.substr(pos + 1)};
+}
+
+static std::string formatParameterValueText(Instance* inst,
+                                            SlotState* state,
+                                            uint32_t index,
+                                            double value) {
+    if (!inst || !state || !state->has_params || index >= state->parameter_infos.size())
+        return {};
+    auto textPtr = inst->malloc32(256);
+    if (!textPtr.wasmPointer)
+        return {};
+    const auto& info = state->parameter_infos[index];
+    if (!inst->call(state->params.value_to_text,
+                    Pointer<const wclap_plugin>{state->plugin_ptr},
+                    info.id,
+                    value,
+                    Pointer<char>{textPtr.wasmPointer},
+                    255u)) {
+        return {};
+    }
+    return inst->getString(Pointer<const char>{textPtr.wasmPointer}, 255);
 }
 
 static std::vector<uint8_t> encodeSyntheticUiMerge(Instance* inst,
@@ -1664,6 +1686,16 @@ const char * _wclapDescribeParameters(Instance *inst) {
     if (it == s_slots.end())
         return "";
     return it->second->parameter_json.c_str();
+}
+
+extern "C" __attribute__((export_name("_wclapFormatParameterValue")))
+const char * _wclapFormatParameterValue(Instance *inst, uint32_t paramIndex, double value) {
+    auto it = s_slots.find(inst);
+    if (it == s_slots.end())
+        return "";
+    auto* state = it->second;
+    state->formatted_value_text = formatParameterValueText(inst, state, paramIndex, value);
+    return state->formatted_value_text.c_str();
 }
 
 extern "C" __attribute__((export_name("_wclapHasParameterUpdates")))

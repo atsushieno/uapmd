@@ -120,12 +120,6 @@ namespace uapmd {
         bool useAutoBufferSize() override { return false; }
         bool useAutoBufferSize(bool) override { return false; }
 
-        // Post a JSON-serialised control message to the AudioWorkletNode's MessagePort.
-        // The message is sent from the Emscripten main pthread to the
-        // uapmd-webclap-worklet.js processor running on the AudioWorklet thread.
-        // Used by PluginFormatWebCLAP to load/unload plugin slots.
-        void postMessageToWorklet(const char* json) const;
-
         // Called by the worklet startup chain (file-static callbacks in the .cpp)
         // once the AudioWorkletNode is created and connected.
         void onWorkletNodeCreated(EMSCRIPTEN_AUDIO_WORKLET_NODE_T node) { worklet_node_ = node; }

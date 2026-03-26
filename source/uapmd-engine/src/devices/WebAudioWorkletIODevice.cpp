@@ -193,6 +193,462 @@ namespace uapmd {
     // The Emscripten AudioContext is still created the usual way so that
     // emscripten_destroy_audio_context() works in the destructor.
 
+    EM_JS(void, uapmd_ensure_webclap_bridge, (), {
+        Module._uapmdEnsureWebclapBridge = function() {
+            if (Module._uapmdWebclapBridge)
+                return Module._uapmdWebclapBridge;
+            const bridge = {
+                node: null,
+                pending: [],
+                uiManager: null,
+                parameterFormatters: new Map(),
+                nextRequestId: 1,
+                pendingRpc: new Map(),
+                inspectorHostPromise: null,
+                setNode(node) {
+                    this.node = node;
+                    Module._wclapWorkletNode = node;
+                    const queued = this.pending;
+                    this.pending = [];
+                    queued.forEach(entry => this.post(entry.message, entry.transfers));
+                },
+                ensureUiManager() {
+                    if (this.uiManager)
+                        return this.uiManager;
+                    const bridgeRef = this;
+                    this.uiManager = {
+                        bindings: new Map(),
+                        bind(slot, containerId) {
+                            const binding = { slot, containerId, iframe: null, uri: "", bodyId: containerId };
+                            this.bindings.set(slot, binding);
+                        },
+                        unbind(slot) {
+                            const binding = this.bindings.get(slot);
+                            if (binding && binding.blobUrls)
+                                Object.values(binding.blobUrls).forEach(function(url) { URL.revokeObjectURL(url); });
+                            if (binding && binding.iframe)
+                                binding.iframe.remove();
+                            this.bindings.delete(slot);
+                        },
+                        getBody(slot) {
+                            const binding = this.bindings.get(slot);
+                            if (!binding)
+                                return null;
+                            return document.getElementById(binding.containerId);
+                        },
+                        mimeFor(path) {
+                            if (path.endsWith('.html')) return 'text/html';
+                            if (path.endsWith('.js') || path.endsWith('.mjs')) return 'text/javascript';
+                            if (path.endsWith('.css')) return 'text/css';
+                            if (path.endsWith('.svg')) return 'image/svg+xml';
+                            if (path.endsWith('.json')) return 'application/json';
+                            if (path.endsWith('.wasm')) return 'application/wasm';
+                            return 'application/octet-stream';
+                        },
+                        findFileKey(files, uri) {
+                            if (!files)
+                                return null;
+                            let normalized = uri;
+                            if (normalized.startsWith('file://'))
+                                normalized = normalized.slice(7);
+                            else if (normalized.startsWith('file:'))
+                                normalized = normalized.slice(5);
+                            if (files[normalized]) return normalized;
+                            if (files['/' + normalized]) return '/' + normalized;
+                            for (const key of Object.keys(files))
+                                if (normalized.endsWith(key) || key.endsWith(normalized))
+                                    return key;
+                            return null;
+                        },
+                        open(slot, uri, files) {
+                            const binding = this.bindings.get(slot);
+                            const body = this.getBody(slot);
+                            if (!binding || !body)
+                                return;
+                            if (binding.blobUrls) {
+                                Object.values(binding.blobUrls).forEach(function(url) { URL.revokeObjectURL(url); });
+                                binding.blobUrls = null;
+                            }
+                            if (binding.iframe)
+                                binding.iframe.remove();
+                            body.dataset.webclapSlot = String(slot);
+                            body.textContent = "";
+                            const iframe = document.createElement('iframe');
+                            iframe.id = `uapmd-webclap-frame-${slot}`;
+                            iframe.dataset.webclapSlot = String(slot);
+                            iframe.style.border = '0';
+                            iframe.style.width = '100%';
+                            iframe.style.height = '100%';
+                            iframe.style.background = '#111';
+                            body.appendChild(iframe);
+                            binding.iframe = iframe;
+                            binding.uri = uri;
+                            if ((uri.startsWith('file:') || uri.startsWith('/')) && files) {
+                                const fileKey = this.findFileKey(files, uri);
+                                if (fileKey) {
+                                    const root = files[fileKey];
+                                    const blobUrls = {};
+                                    for (const [path, content] of Object.entries(files)) {
+                                        const blob = new Blob([content], { type: this.mimeFor(path) });
+                                        blobUrls[path] = URL.createObjectURL(blob);
+                                    }
+                                    if (fileKey.endsWith('.html')) {
+                                        let html = new TextDecoder('utf-8').decode(root);
+                                        for (const [path, blobUrl] of Object.entries(blobUrls)) {
+                                            const basename = path.split('/').pop();
+                                            html = html.split(path).join(blobUrl);
+                                            if (basename)
+                                                html = html.split(basename).join(blobUrl);
+                                        }
+                                        iframe.srcdoc = html;
+                                    } else {
+                                        iframe.src = blobUrls[fileKey];
+                                    }
+                                    binding.blobUrls = blobUrls;
+                                } else {
+                                    iframe.src = uri;
+                                }
+                            } else {
+                                iframe.src = uri;
+                            }
+                        },
+                        postToFrame(slot, payload) {
+                            const binding = this.bindings.get(slot);
+                            if (!binding || !binding.iframe || !binding.iframe.contentWindow)
+                                return;
+                            if (payload instanceof ArrayBuffer) {
+                                binding.iframe.contentWindow.postMessage(payload, '*', [payload]);
+                                return;
+                            }
+                            if (ArrayBuffer.isView(payload)) {
+                                binding.iframe.contentWindow.postMessage(payload.buffer, '*', [payload.buffer]);
+                                return;
+                            }
+                            let value = payload;
+                            if (typeof payload === 'string') {
+                                try { value = JSON.parse(payload); } catch (_) {}
+                            }
+                            binding.iframe.contentWindow.postMessage(value, '*');
+                        },
+                    };
+                    window.addEventListener('message', function(event) {
+                        for (const [slot, binding] of bridgeRef.uiManager.bindings.entries()) {
+                            if (!binding.iframe || event.source !== binding.iframe.contentWindow)
+                                continue;
+                            const payload = event.data;
+                            if (payload instanceof ArrayBuffer)
+                                bridgeRef.postRpc(-1, 'uiFromFrame', [slot, payload], [payload]);
+                            else
+                                bridgeRef.postRpc(-1, 'uiFromFrame', [slot, payload], null);
+                            break;
+                        }
+                    });
+                    return this.uiManager;
+                },
+                releaseParameterFormatter(slot) {
+                    const formatter = this.parameterFormatters.get(slot);
+                    if (!formatter)
+                        return;
+                    this.parameterFormatters.delete(slot);
+                    try {
+                        formatter.api.host.hostInstance.exports._wclapPluginDestroy(formatter.instance.ptr);
+                    } catch (e) {
+                        console.warn('[uapmd] failed to release WebCLAP formatter:', e);
+                    }
+                },
+                rememberParameterFormatter(slot, api, instance) {
+                    this.releaseParameterFormatter(slot);
+                    this.parameterFormatters.set(slot, { api, instance });
+                },
+                formatParameterValue(slot, index, value) {
+                    const formatter = this.parameterFormatters.get(slot);
+                    if (!formatter)
+                        return "";
+                    try {
+                        const ptr = formatter.api.host.hostInstance.exports._wclapFormatParameterValue(formatter.instance.ptr, index, value);
+                        return ptr ? this.readCString(formatter.api.host.hostMemory, ptr) : "";
+                    } catch (e) {
+                        console.warn('[uapmd] failed to format WebCLAP parameter value:', e);
+                        return "";
+                    }
+                },
+                bindUiSlot(slot, containerId) {
+                    this.ensureUiManager().bind(slot, containerId);
+                },
+                unbindUiSlot(slot) {
+                    if (this.uiManager)
+                        this.uiManager.unbind(slot);
+                },
+                post(message, transfers) {
+                    if (this.node) {
+                        try {
+                            if (transfers && transfers.length)
+                                this.node.port.postMessage(message, transfers);
+                            else
+                                this.node.port.postMessage(message);
+                        } catch (e) {
+                            console.error('[uapmd] postMessageToWorklet failed:', e);
+                        }
+                        return;
+                    }
+                    this.pending.push({ message: message, transfers: transfers || null });
+                },
+                postJson(message) {
+                    this.post(message, null);
+                },
+                postRpc(requestId, method, args, transfers) {
+                    if (method === 'unload' && args && args.length > 0)
+                        this.releaseParameterFormatter(args[0]);
+                    this.post([requestId, method, args], transfers);
+                },
+                callRpc(method, args, transfers) {
+                    const requestId = this.nextRequestId++;
+                    return new Promise((resolve, reject) => {
+                        this.pendingRpc.set(requestId, { resolve, reject });
+                        this.postRpc(requestId, method, args, transfers);
+                    });
+                },
+                forwardJsonToHost(data) {
+                    var json = JSON.stringify(data);
+                    var len  = lengthBytesUTF8(json) + 1;
+                    var ptr  = _malloc(len);
+                    stringToUTF8(json, ptr, len);
+                    _uapmd_webclap_on_worklet_message(ptr);
+                    _free(ptr);
+                },
+                readCString(memory, ptr) {
+                    if (!ptr)
+                        return "";
+                    var bytes = new Uint8Array(memory.buffer);
+                    var end = ptr;
+                    while (end < bytes.length && bytes[end] !== 0)
+                        end++;
+                    return new TextDecoder('utf-8').decode(bytes.subarray(ptr, end));
+                },
+                reportParameters(slot, paramDescriptors) {
+                    this.forwardJsonToHost({
+                        type: 'webclap-parameter-descriptors',
+                        slot: slot,
+                        paramDescriptors: paramDescriptors || [],
+                    });
+                },
+                reportUiInfo(slot, uiInfo) {
+                    this.forwardJsonToHost(Object.assign({
+                        type: 'webclap-ui-descriptor',
+                        slot: slot,
+                    }, uiInfo || {}));
+                },
+                reportCapabilities(slot, capabilities) {
+                    this.forwardJsonToHost(Object.assign({
+                        type: 'webclap-capabilities',
+                        slot: slot,
+                    }, capabilities || {}));
+                },
+                reportScanResult(reqId, plugins) {
+                    this.forwardJsonToHost({
+                        type: 'webclap-scan-complete',
+                        reqId: reqId,
+                        plugins: plugins || [],
+                    });
+                },
+                reportScanError(reqId, err) {
+                    this.forwardJsonToHost({
+                        type: 'webclap-scan-failed',
+                        reqId: reqId,
+                        error: String(err),
+                    });
+                },
+                ensureInspectorHost() {
+                    if (!this.inspectorHostPromise) {
+                        this.inspectorHostPromise = import('./wclap.mjs').then(function(api) {
+                            return api.getHost('./uapmd-wclap-host.wasm').then(function(hostInit) {
+                                return api.startHost(hostInit).then(function(host) {
+                                    return {
+                                        getWclap: api.getWclap,
+                                        host: host,
+                                    };
+                                });
+                            });
+                        });
+                    }
+                    return this.inspectorHostPromise;
+                },
+                buildWclapInit(base, tarFiles, api) {
+                    var url = base.url;
+                    var pluginId = base.pluginId || "";
+                    var pluginPath = pluginId ? (url + '#plugin=' + pluginId) : url;
+                    var wasmBuffer = tarFiles['module.wasm'];
+                    if (!wasmBuffer)
+                        throw new Error('No module.wasm found in WebCLAP bundle');
+                    return WebAssembly.compile(wasmBuffer).then(function(wasmModule) {
+                        var modulePages = Math.max(Math.ceil(wasmBuffer.byteLength / 65536) || 4, 4);
+                        var memorySpec = { initial: modulePages, maximum: 32768, shared: true };
+                        return api.getWclap({ url: url, files: tarFiles, module: wasmModule, memorySpec });
+                    }).then(function(wclapInit) {
+                        var fixedFiles = {};
+                        Object.entries(wclapInit.files).forEach(function(entry) {
+                            var key = entry[0];
+                            var val = entry[1];
+                            if ((val instanceof ArrayBuffer && val.byteLength === 0) || key.indexOf('/._') >= 0)
+                                return;
+                            fixedFiles[key.startsWith('/') ? key : '/' + key] = val;
+                        });
+                        wclapInit.files = fixedFiles;
+                        if (!wclapInit.memory && wclapInit.memorySpec)
+                            wclapInit.memory = new WebAssembly.Memory(wclapInit.memorySpec);
+                        wclapInit.pluginPath = pluginPath;
+                        return wclapInit;
+                    });
+                },
+                inspectParameters(base, tarFiles) {
+                    var bridge = this;
+                    return this.ensureInspectorHost().then(function(api) {
+                        bridge.releaseParameterFormatter(base.slot);
+                        return bridge.buildWclapInit(base, tarFiles, api).then(function(wclapInit) {
+                            return api.host.startWclap(wclapInit, null).then(function(instance) {
+                                var exp = api.host.hostInstance.exports;
+                                var keepFormatter = false;
+                                try {
+                                    var ok = exp._wclapPluginSetup(instance.ptr, 48000, 128, 128);
+                                    if (!ok)
+                                        throw new Error('Inspector plugin setup failed');
+                                    var paramsPtr = exp._wclapDescribeParameters(instance.ptr);
+                                    var paramsJson = bridge.readCString(api.host.hostMemory, paramsPtr);
+                                    bridge.reportParameters(base.slot, paramsJson ? JSON.parse(paramsJson) : []);
+                                    var uiPtr = exp._wclapDescribeUi(instance.ptr);
+                                    var uiJson = bridge.readCString(api.host.hostMemory, uiPtr);
+                                    bridge.reportUiInfo(base.slot, uiJson ? JSON.parse(uiJson) : { hasUi: false });
+                                    var capabilitiesPtr = exp._wclapDescribeCapabilities(instance.ptr);
+                                    var capabilitiesJson = bridge.readCString(api.host.hostMemory, capabilitiesPtr);
+                                    bridge.reportCapabilities(base.slot, capabilitiesJson ? JSON.parse(capabilitiesJson) : {});
+                                    bridge.rememberParameterFormatter(base.slot, api, instance);
+                                    keepFormatter = true;
+                                } finally {
+                                    if (!keepFormatter)
+                                        exp._wclapPluginDestroy(instance.ptr);
+                                }
+                            });
+                        });
+                    }).catch(function(err) {
+                        console.warn('[uapmd] parameter inspection failed:', err);
+                    });
+                },
+                inspectDescriptors(base, tarFiles) {
+                    var bridge = this;
+                    return this.ensureInspectorHost().then(function(api) {
+                        return bridge.buildWclapInit(base, tarFiles, api).then(function(wclapInit) {
+                            return api.host.startWclap(wclapInit, null).then(function(instance) {
+                                var exp = api.host.hostInstance.exports;
+                                var pluginsPtr = exp._wclapDescribePlugins(instance.ptr);
+                                var pluginsJson = bridge.readCString(api.host.hostMemory, pluginsPtr);
+                                bridge.reportScanResult(base.reqId, pluginsJson ? JSON.parse(pluginsJson) : []);
+                            });
+                        });
+                    }).catch(function(err) {
+                        bridge.reportScanError(base.reqId, err);
+                    });
+                },
+                instantiatePlugin(base, tarFiles) {
+                    var bridge = this;
+                    var url = base.url;
+                    var pluginId = base.pluginId || "";
+                    var rpcTarFiles = {};
+                    var transfers = [];
+                    Object.entries(tarFiles).forEach(function(entry) {
+                        var key = entry[0];
+                        var content = entry[1];
+                        if (content instanceof ArrayBuffer) {
+                            var clone = content.slice(0);
+                            rpcTarFiles[key] = clone;
+                            transfers.push(clone);
+                        } else {
+                            rpcTarFiles[key] = content;
+                        }
+                    });
+                    return bridge.callRpc('loadPlugin', [base.slot, url, pluginId, rpcTarFiles], transfers)
+                        .then(function() {
+                            bridge.forwardJsonToHost({
+                                type: 'webclap-instance-created',
+                                reqId: base.reqId,
+                                slot: base.slot,
+                            });
+                        })
+                        .catch(function(err) {
+                            bridge.forwardJsonToHost({
+                                type: 'webclap-instance-create-failed',
+                                reqId: base.reqId,
+                                error: String(err),
+                            });
+                        });
+                },
+                loadBundleRequest(base) {
+                    var bridge = this;
+                    var url = base.url;
+                    function reportError(err) {
+                        console.error('[uapmd] load plugin failed:', String(err));
+                        bridge.forwardJsonToHost({
+                            type: base.type === 'webclap-scan' ? 'webclap-scan-failed' : 'webclap-instance-create-failed',
+                            reqId: base.reqId,
+                            error: String(err),
+                        });
+                    }
+                    return Promise.all([
+                        fetch(url),
+                        import('./es6/targz.mjs'),
+                    ]).then(function(results) {
+                        var response = results[0];
+                        var expandTarGz = results[1].default;
+                        function handleTarFiles(tarFiles) {
+                            if (base.type === 'webclap-scan')
+                                return bridge.inspectDescriptors(base, tarFiles);
+                            bridge.inspectParameters(base, tarFiles);
+                            if (!bridge.node && typeof Module._uapmd_debug_enable_audio_engine === 'function')
+                                Module._uapmd_debug_enable_audio_engine(1);
+                            return bridge.instantiatePlugin(base, tarFiles);
+                        }
+                        if (response.headers.get('Content-Type') === 'application/wasm') {
+                            return response.arrayBuffer().then(function(bytes) {
+                                return handleTarFiles({ 'module.wasm': bytes });
+                            });
+                        }
+                        return expandTarGz(response).then(handleTarFiles);
+                    }).catch(reportError);
+                },
+                handleMessage(data) {
+                    if (Array.isArray(data) && typeof data[0] === 'number') {
+                        const requestId = data[0];
+                        const pending = this.pendingRpc.get(requestId);
+                        if (!pending)
+                            return;
+                        this.pendingRpc.delete(requestId);
+                        if (data[1])
+                            pending.reject(data[1]);
+                        else
+                            pending.resolve(data[2]);
+                        return;
+                    }
+                    if (data.type === 'webclap-ui-opened') {
+                        this.ensureUiManager().open(data.slot, data.uri || "", data.files || null);
+                        return;
+                    } else if (data.type === 'bridge-ui-message') {
+                        this.ensureUiManager().postToFrame(data.slot, data.payload);
+                        return;
+                    } else if (data.type === 'bridge-ui-resize') {
+                        this.forwardJsonToHost(Object.assign({}, data, { type: 'webclap-ui-resized' }));
+                        return;
+                    } else if (data.type === 'bridge-parameter-updates') {
+                        this.forwardJsonToHost(Object.assign({}, data, { type: 'webclap-parameter-values-updated' }));
+                        return;
+                    }
+                    this.forwardJsonToHost(data);
+                },
+            };
+            Module._uapmdWebclapBridge = bridge;
+            return bridge;
+        };
+        Module._uapmdEnsureWebclapBridge();
+    });
+
     // Load uapmd-webclap-worklet.js, create the AudioWorkletNode, and connect it
     // to the AudioContext destination.  Called from start() after the AudioContext
     // is created.  sabByteOffset is the byte address of WebAudioSAB inside the
@@ -207,8 +663,10 @@ namespace uapmd {
            int masterOutOffset,
            int trackOutOffset),
     {
+        Module._uapmdEnsureWebclapBridge();
         var audioCtx = emscriptenGetAudioObject(ctx);
         audioCtx.audioWorklet.addModule('uapmd-webclap-worklet.js').then(function() {
+            var bridge = Module._uapmdEnsureWebclapBridge();
             var node = new AudioWorkletNode(audioCtx, 'uapmd-webclap', {
                 numberOfInputs:     0,
                 numberOfOutputs:    1,
@@ -230,62 +688,12 @@ namespace uapmd {
                 }
             });
             node.connect(audioCtx.destination);
-            // Forward messages from the worklet processor to the C++ handler
-            // uapmd_webclap_on_worklet_message (defined in PluginFormatWebCLAP.cpp).
             node.port.onmessage = function(e) {
-                if (Module._uapmdEnsureWebclapUiManager) {
-                    var uiManager = Module._uapmdEnsureWebclapUiManager();
-                    if (e.data.type === 'wclap-ui-open') {
-                        uiManager.open(e.data.slot, e.data.uri || "", e.data.files || null);
-                        return;
-                    } else if (e.data.type === 'wclap-ui-message') {
-                        uiManager.postToFrame(e.data.slot, e.data.payload);
-                        return;
-                    }
-                }
-                if (e.data.type === 'wclap-state-response') {
-                    var payload = e.data.payload instanceof ArrayBuffer ? new Uint8Array(e.data.payload) : null;
-                    var payloadPtr = 0;
-                    var payloadSize = 0;
-                    if (payload && payload.byteLength > 0) {
-                        payloadSize = payload.byteLength;
-                        payloadPtr = _malloc(payloadSize);
-                        HEAPU8.set(payload, payloadPtr);
-                    }
-                    var errorPtr = 0;
-                    if (e.data.error) {
-                        var errorLen = lengthBytesUTF8(String(e.data.error)) + 1;
-                        errorPtr = _malloc(errorLen);
-                        stringToUTF8(String(e.data.error), errorPtr, errorLen);
-                    }
-                    _uapmd_webclap_on_worklet_state_response(e.data.reqId >>> 0, payloadPtr, payloadSize, errorPtr);
-                    if (payloadPtr)
-                        _free(payloadPtr);
-                    if (errorPtr)
-                        _free(errorPtr);
-                    return;
-                } else if (e.data.type === 'wclap-state-load-complete') {
-                    var loadErrorPtr = 0;
-                    if (e.data.error) {
-                        var loadErrorLen = lengthBytesUTF8(String(e.data.error)) + 1;
-                        loadErrorPtr = _malloc(loadErrorLen);
-                        stringToUTF8(String(e.data.error), loadErrorPtr, loadErrorLen);
-                    }
-                    _uapmd_webclap_on_worklet_state_load_complete(e.data.reqId >>> 0, loadErrorPtr);
-                    if (loadErrorPtr)
-                        _free(loadErrorPtr);
-                    return;
-                }
-                var json = JSON.stringify(e.data);
-                var len  = lengthBytesUTF8(json) + 1;
-                var ptr  = _malloc(len);
-                stringToUTF8(json, ptr, len);
-                _uapmd_webclap_on_worklet_message(ptr);
-                _free(ptr);
+                bridge.handleMessage(e.data);
             };
             // Compile uapmd-wclap-host.wasm and wasi.wasm on the main thread (fetch and URL are
             // not available inside AudioWorkletGlobalScope) and send them to the worklet.
-            // The worklet's wclap-load-plugin handler waits for this message before
+            // The bridge's loadPlugin RPC path waits for this bootstrap before
             // initialising the host, so plugin loads issued before this resolves are queued.
             // Fetch raw WASM bytes for uapmd-wclap-host and wasi on the main thread
             // (fetch/URL are unavailable in AudioWorkletGlobalScope). Compiled
@@ -305,66 +713,95 @@ namespace uapmd {
             }).catch(function(err) {
                 console.error('[uapmd] Failed to fetch WCLAP host WASM:', err);
             });
-            // Store globally so postMessageToWorklet can reach the port.
-            // Drain any messages that were queued before the node was ready
-            // (e.g. wclap-load-plugin posted before the user started audio).
-            Module._wclapWorkletNode = node;
-            var pending = Module._wclapPendingMessages;
-            if (pending) {
-                Module._wclapPendingMessages = null;
-                pending.forEach(function(msg) { node.port.postMessage(msg); });
-            }
+            bridge.setNode(node);
         }).catch(function(err) {
             console.error('[uapmd] Failed to load uapmd-webclap-worklet.js:', err);
         });
     });
 
-    // Post a JSON control message to the AudioWorkletNode's MessagePort.
-    // If the node does not exist yet (audio engine not started), the message is
-    // queued in Module._wclapPendingMessages and drained when the node is created.
-    EM_JS(void, uapmd_post_to_webclap_worklet_json, (const char* json),
+    EM_JS(void, uapmd_post_to_webclap_worklet_rpc, (const char* method, const char* args_json),
     {
-        var msg = JSON.parse(UTF8ToString(json));
-        var node = Module._wclapWorkletNode;
-        if (node) {
-            try {
-                node.port.postMessage(msg);
-            } catch(e) {
-                console.error('[uapmd] postMessageToWorklet failed:', e);
-            }
-        } else {
-            if (!Module._wclapPendingMessages)
-                Module._wclapPendingMessages = [];
-            Module._wclapPendingMessages.push(msg);
-        }
+        Module._uapmdEnsureWebclapBridge().postRpc(-1, UTF8ToString(method), JSON.parse(UTF8ToString(args_json)), null);
     });
 
-    EM_JS(void, uapmd_post_to_webclap_worklet_load_state,
+    EM_JS(void, uapmd_webclap_create_ui_rpc, (uint32_t slot, uint32_t width, uint32_t height),
+    {
+        var bridge = Module._uapmdEnsureWebclapBridge();
+        bridge.callRpc('createUi', [slot, width, height], null).then(function(uiInfo) {
+            if (!uiInfo)
+                return;
+            bridge.ensureUiManager().open(uiInfo.slot, uiInfo.uri || "", uiInfo.files || null);
+            bridge.forwardJsonToHost(Object.assign({ type: 'webclap-ui-opened' }, uiInfo));
+        }).catch(function(err) {
+            console.error('[uapmd] createUi RPC failed:', err);
+        });
+    });
+
+    EM_JS(void, uapmd_webclap_set_ui_size_rpc, (uint32_t slot, uint32_t width, uint32_t height),
+    {
+        var bridge = Module._uapmdEnsureWebclapBridge();
+        bridge.callRpc('setUiSize', [slot, width, height], null).then(function(uiInfo) {
+            if (!uiInfo)
+                return;
+            bridge.forwardJsonToHost(Object.assign({}, uiInfo, { type: 'webclap-ui-resized' }));
+        }).catch(function(err) {
+            console.error('[uapmd] setUiSize RPC failed:', err);
+        });
+    });
+
+    EM_JS(void, uapmd_webclap_request_state_rpc, (uint32_t reqId, uint32_t slot, uint32_t stateContextType),
+    {
+        var bridge = Module._uapmdEnsureWebclapBridge();
+        bridge.callRpc('requestState', [slot, stateContextType], null).then(function(payload) {
+            var stateBytes = payload instanceof ArrayBuffer ? new Uint8Array(payload) : new Uint8Array(0);
+            var payloadPtr = 0;
+            var payloadSize = stateBytes.byteLength;
+            if (payloadSize > 0) {
+                payloadPtr = _malloc(payloadSize);
+                HEAPU8.set(stateBytes, payloadPtr);
+            }
+            _uapmd_webclap_on_worklet_state_response(reqId >>> 0, payloadPtr, payloadSize, 0);
+            if (payloadPtr)
+                _free(payloadPtr);
+        }).catch(function(err) {
+            var errorPtr = 0;
+            if (err != null) {
+                var errorText = String(err);
+                var errorLen = lengthBytesUTF8(errorText) + 1;
+                errorPtr = _malloc(errorLen);
+                stringToUTF8(errorText, errorPtr, errorLen);
+            }
+            _uapmd_webclap_on_worklet_state_response(reqId >>> 0, 0, 0, errorPtr);
+            if (errorPtr)
+                _free(errorPtr);
+        });
+    });
+
+    EM_JS(void, uapmd_webclap_load_state_rpc,
           (uint32_t reqId, uint32_t slot, uint32_t stateContextType, const uint8_t* data, size_t size),
     {
-        var msg = {
-            type: 'wclap-load-state',
-            reqId: reqId,
-            slot: slot,
-            stateContextType: stateContextType,
-            payload: new ArrayBuffer(0),
-        };
+        var payload = new ArrayBuffer(0);
+        var transfers = null;
         if (size > 0 && data) {
             var bytes = HEAPU8.slice(data, data + size);
-            msg.payload = bytes.buffer;
+            payload = bytes.buffer;
+            transfers = [payload];
         }
-        var node = Module._wclapWorkletNode;
-        if (node) {
-            try {
-                node.port.postMessage(msg, [msg.payload]);
-            } catch(e) {
-                console.error('[uapmd] post loadState to worklet failed:', e);
+        var bridge = Module._uapmdEnsureWebclapBridge();
+        bridge.callRpc('loadState', [slot, payload, stateContextType], transfers).then(function() {
+            _uapmd_webclap_on_worklet_state_load_complete(reqId >>> 0, 0);
+        }).catch(function(err) {
+            var errorPtr = 0;
+            if (err != null) {
+                var errorText = String(err);
+                var errorLen = lengthBytesUTF8(errorText) + 1;
+                errorPtr = _malloc(errorLen);
+                stringToUTF8(errorText, errorPtr, errorLen);
             }
-        } else {
-            if (!Module._wclapPendingMessages)
-                Module._wclapPendingMessages = [];
-            Module._wclapPendingMessages.push(msg);
-        }
+            _uapmd_webclap_on_worklet_state_load_complete(reqId >>> 0, errorPtr);
+            if (errorPtr)
+                _free(errorPtr);
+        });
     });
 
     // Fetch the plugin bundle on the main thread (fetch/URL are unavailable in
@@ -376,238 +813,8 @@ namespace uapmd {
     // On error the function reports directly to _uapmd_webclap_on_worklet_message.
     EM_JS(void, uapmd_webclap_load_plugin_async, (const char* json_c),
     {
-        var base = JSON.parse(UTF8ToString(json_c));
-        var url  = base.url;
-        var pluginId = base.pluginId || "";
-        var pluginPath = pluginId ? (url + '#plugin=' + pluginId) : url;
-
-        function reportError(err) {
-            console.error('[uapmd] load plugin failed:', String(err));
-            var errMsg = JSON.stringify({
-                type:  base.type === 'wclap-scan-bundle' ? 'wclap-scan-error' : 'wclap-plugin-error',
-                reqId: base.reqId,
-                error: String(err),
-            });
-            var len = lengthBytesUTF8(errMsg) + 1;
-            var ptr = _malloc(len);
-            stringToUTF8(errMsg, ptr, len);
-            _uapmd_webclap_on_worklet_message(ptr);
-            _free(ptr);
-        }
-
-        function reportParameters(paramDescriptors) {
-            var msg = JSON.stringify({
-                type: 'wclap-parameters',
-                slot: base.slot,
-                paramDescriptors: paramDescriptors || [],
-            });
-            var len = lengthBytesUTF8(msg) + 1;
-            var ptr = _malloc(len);
-            stringToUTF8(msg, ptr, len);
-            _uapmd_webclap_on_worklet_message(ptr);
-            _free(ptr);
-        }
-
-        function reportUiInfo(uiInfo) {
-            var msg = JSON.stringify(Object.assign({
-                type: 'wclap-ui-info',
-                slot: base.slot,
-            }, uiInfo || {}));
-            var len = lengthBytesUTF8(msg) + 1;
-            var ptr = _malloc(len);
-            stringToUTF8(msg, ptr, len);
-            _uapmd_webclap_on_worklet_message(ptr);
-            _free(ptr);
-        }
-
-        function reportCapabilities(capabilities) {
-            var msg = JSON.stringify(Object.assign({
-                type: 'wclap-capabilities',
-                slot: base.slot,
-            }, capabilities || {}));
-            var len = lengthBytesUTF8(msg) + 1;
-            var ptr = _malloc(len);
-            stringToUTF8(msg, ptr, len);
-            _uapmd_webclap_on_worklet_message(ptr);
-            _free(ptr);
-        }
-
-        function reportScanResult(plugins) {
-            var msg = JSON.stringify({
-                type: 'wclap-scan-result',
-                reqId: base.reqId,
-                plugins: plugins || [],
-            });
-            var len = lengthBytesUTF8(msg) + 1;
-            var ptr = _malloc(len);
-            stringToUTF8(msg, ptr, len);
-            _uapmd_webclap_on_worklet_message(ptr);
-            _free(ptr);
-        }
-
-        function reportScanError(err) {
-            var msg = JSON.stringify({
-                type: 'wclap-scan-error',
-                reqId: base.reqId,
-                error: String(err),
-            });
-            var len = lengthBytesUTF8(msg) + 1;
-            var ptr = _malloc(len);
-            stringToUTF8(msg, ptr, len);
-            _uapmd_webclap_on_worklet_message(ptr);
-            _free(ptr);
-        }
-
-        function readCString(memory, ptr) {
-            if (!ptr)
-                return "";
-            var bytes = new Uint8Array(memory.buffer);
-            var end = ptr;
-            while (end < bytes.length && bytes[end] !== 0)
-                end++;
-            return new TextDecoder('utf-8').decode(bytes.subarray(ptr, end));
-        }
-
-        function buildWclapInit(api, tarFiles) {
-            var wasmBuffer = tarFiles['module.wasm'];
-            if (!wasmBuffer)
-                throw new Error('No module.wasm found in WebCLAP bundle');
-            return WebAssembly.compile(wasmBuffer).then(function(wasmModule) {
-                var modulePages = Math.max(Math.ceil(wasmBuffer.byteLength / 65536) || 4, 4);
-                var memorySpec = { initial: modulePages, maximum: 32768, shared: true };
-                return api.getWclap({ url: url, files: tarFiles, module: wasmModule, memorySpec });
-            }).then(function(wclapInit) {
-                var fixedFiles = {};
-                Object.entries(wclapInit.files).forEach(function(entry) {
-                    var key = entry[0];
-                    var val = entry[1];
-                    if ((val instanceof ArrayBuffer && val.byteLength === 0) || key.indexOf('/._') >= 0)
-                        return;
-                    fixedFiles[key.startsWith('/') ? key : '/' + key] = val;
-                });
-                wclapInit.files = fixedFiles;
-                if (!wclapInit.memory && wclapInit.memorySpec)
-                    wclapInit.memory = new WebAssembly.Memory(wclapInit.memorySpec);
-                wclapInit.pluginPath = pluginPath;
-                return wclapInit;
-            });
-        }
-
-        function ensureInspectorHost() {
-            if (!Module._wclapInspectorHostPromise) {
-                Module._wclapInspectorHostPromise = import('./wclap.mjs').then(function(api) {
-                    return api.getHost('./uapmd-wclap-host.wasm').then(function(hostInit) {
-                        return api.startHost(hostInit).then(function(host) {
-                            return {
-                                getWclap: api.getWclap,
-                                host: host,
-                            };
-                        });
-                    });
-                });
-            }
-            return Module._wclapInspectorHostPromise;
-        }
-
-        function inspectParameters(tarFiles) {
-            return ensureInspectorHost().then(function(api) {
-                return buildWclapInit(api, tarFiles).then(function(wclapInit) {
-                    return api.host.startWclap(wclapInit, null).then(function(instance) {
-                        var exp = api.host.hostInstance.exports;
-                        try {
-                            var ok = exp._wclapPluginSetup(instance.ptr, 48000, 128, 128);
-                            if (!ok)
-                                throw new Error('Inspector plugin setup failed');
-                            var paramsPtr = exp._wclapDescribeParameters(instance.ptr);
-                            var paramsJson = readCString(api.host.hostMemory, paramsPtr);
-                            reportParameters(paramsJson ? JSON.parse(paramsJson) : []);
-                            var uiPtr = exp._wclapDescribeUi(instance.ptr);
-                            var uiJson = readCString(api.host.hostMemory, uiPtr);
-                            reportUiInfo(uiJson ? JSON.parse(uiJson) : { hasUi: false });
-                            var capabilitiesPtr = exp._wclapDescribeCapabilities(instance.ptr);
-                            var capabilitiesJson = readCString(api.host.hostMemory, capabilitiesPtr);
-                            reportCapabilities(capabilitiesJson ? JSON.parse(capabilitiesJson) : {});
-                        } finally {
-                            exp._wclapPluginDestroy(instance.ptr);
-                        }
-                    });
-                });
-            }).catch(function(err) {
-                console.warn('[uapmd] parameter inspection failed:', err);
-            });
-        }
-
-        function inspectDescriptors(tarFiles) {
-            return ensureInspectorHost().then(function(api) {
-                return buildWclapInit(api, tarFiles).then(function(wclapInit) {
-                    return api.host.startWclap(wclapInit, null).then(function(instance) {
-                        var exp = api.host.hostInstance.exports;
-                        var pluginsPtr = exp._wclapDescribePlugins(instance.ptr);
-                        var pluginsJson = readCString(api.host.hostMemory, pluginsPtr);
-                        reportScanResult(pluginsJson ? JSON.parse(pluginsJson) : []);
-                    });
-                });
-            }).catch(function(err) {
-                reportScanError(err);
-            });
-        }
-
-        function sendToWorklet(tarFiles) {
-            var msg = {
-                type:     'wclap-load-plugin',
-                reqId:    base.reqId,
-                slot:     base.slot,
-                url:      url,
-                pluginId: pluginId,
-                tarFiles: tarFiles,
-            };
-            var node = Module._wclapWorkletNode;
-            if (node) {
-                node.port.postMessage(msg);
-            } else {
-                // Queue for when the worklet node is created.  If the audio
-                // engine is currently off, kick it on automatically so the
-                // plugin can load without requiring the user to manually press
-                // "Audio Engine: On".
-                if (!Module._wclapPendingMessages)
-                    Module._wclapPendingMessages = [];
-                Module._wclapPendingMessages.push(msg);
-                if (typeof Module._uapmd_debug_enable_audio_engine === 'function')
-                    Module._uapmd_debug_enable_audio_engine(1);
-            }
-        }
-
-        Promise.all([
-            fetch(url),
-            import('./es6/targz.mjs'),
-        ]).then(function(results) {
-            var response   = results[0];
-            var expandTarGz = results[1].default;
-            if (response.headers.get('Content-Type') === 'application/wasm') {
-                return response.arrayBuffer().then(function(bytes) {
-                    var tarFiles = { 'module.wasm': bytes };
-                    if (base.type === 'wclap-scan-bundle')
-                        inspectDescriptors(tarFiles);
-                    else {
-                        inspectParameters(tarFiles);
-                        sendToWorklet(tarFiles);
-                    }
-                });
-            }
-            return expandTarGz(response).then(function(tarFiles) {
-                if (base.type === 'wclap-scan-bundle')
-                    inspectDescriptors(tarFiles);
-                else {
-                    inspectParameters(tarFiles);
-                    sendToWorklet(tarFiles);
-                }
-            });
-        }).catch(reportError);
+        Module._uapmdEnsureWebclapBridge().loadBundleRequest(JSON.parse(UTF8ToString(json_c)));
     });
-
-    void WebAudioWorkletIODevice::postMessageToWorklet(const char* json) const {
-        uapmd_post_to_webclap_worklet_json(json);
-    }
 
     uapmd_status_t WebAudioWorkletIODevice::start() {
         if (is_playing_)
@@ -626,6 +833,7 @@ namespace uapmd {
         audio_ctx_ = emscripten_create_audio_context(&attrs);
         emscripten_resume_audio_context_sync(audio_ctx_);
 
+        uapmd_ensure_webclap_bridge();
         // Load uapmd-webclap-worklet.js and create the AudioWorkletNode.
         // The processor receives the WASM heap buffer + SAB byte offset via
         // processorOptions and handles audio I/O and WebCLAP plugin processing.

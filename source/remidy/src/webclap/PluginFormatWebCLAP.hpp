@@ -292,9 +292,9 @@ namespace remidy {
         void registerPendingStateLoadRequest(uint32_t reqId, uint32_t slot,
                                              std::function<void(std::string error)> callback);
 
-        void onWorkletMessage(const char* json) override;
-        void onWorkletStateResponse(uint32_t reqId, const uint8_t* data, size_t size, const char* error);
-        void onWorkletStateLoadComplete(uint32_t reqId, const char* error);
+        void onBridgeMessage(const char* json) override;
+        void onBridgeStateResponse(uint32_t reqId, const uint8_t* data, size_t size, const char* error);
+        void onBridgeStateLoadComplete(uint32_t reqId, const char* error);
     };
 
 } // namespace remidy
