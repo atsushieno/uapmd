@@ -61,10 +61,37 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         this._wclapInitPromise = new Promise(r => { this._wclapInitResolve = r; });
 
         this.port.onmessage = (e) => {
-            this._handleMessage(e.data).catch((err) => {
+            this._handlePortMessage(e.data).catch((err) => {
                 console.error('[uapmd-webclap-worklet] message error:', err);
             });
         };
+    }
+
+    async _handlePortMessage(data) {
+        if (Array.isArray(data) && typeof data[1] === 'string' && Array.isArray(data[2])) {
+            const requestId = data[0];
+            const method = data[1];
+            const args = data[2];
+            try {
+                const handler = this.remoteMethods[method];
+                if (typeof handler !== 'function')
+                    throw new Error(`Unknown remote method: ${method}`);
+                const result = await handler.apply(this, args);
+                if (typeof requestId === 'number' && requestId >= 0) {
+                    if (result instanceof ArrayBuffer)
+                        this.port.postMessage([requestId, null, result], [result]);
+                    else
+                        this.port.postMessage([requestId, null, result]);
+                }
+            } catch (err) {
+                if (typeof requestId === 'number' && requestId >= 0)
+                    this.port.postMessage([requestId, String(err)]);
+                else
+                    console.error('[uapmd-webclap-worklet] rpc error:', err);
+            }
+            return;
+        }
+        await this._handleMessage(data);
     }
 
     _ensureHostViews() {
@@ -102,7 +129,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
             const bytes = new Uint8Array(this._wclapHost.hostMemory.buffer, ptr, size);
             const payload = new Uint8Array(size);
             payload.set(bytes);
-            this.port.postMessage({ type: 'wclap-ui-message', slot, payload: payload.buffer }, [payload.buffer]);
+            this.port.postMessage({ type: 'bridge-ui-message', slot, payload: payload.buffer }, [payload.buffer]);
         }
         if (exp._wclapUiHasPendingResize(info.ptr)) {
             const ptr = exp._wclapUiTakeResizeRequest(info.ptr);
@@ -110,7 +137,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
             if (resize) {
                 const parsed = JSON.parse(resize);
                 this.port.postMessage({
-                    type: 'wclap-ui-resize',
+                    type: 'bridge-ui-resize',
                     slot,
                     hasUi: true,
                     canResize: !!parsed.canResize,
@@ -125,7 +152,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
             if (!updates)
                 break;
             this.port.postMessage({
-                type: 'wclap-parameter-updates',
+                type: 'bridge-parameter-updates',
                 slot,
                 updates: JSON.parse(updates),
             });
@@ -155,6 +182,273 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         this._hostF32.set(srcL, dstL);
         this._hostF32.set(srcR, dstR);
     }
+
+    _requireSlot(slot) {
+        const info = this._slots.get(slot);
+        if (!info || !this._wclapHost)
+            throw new Error(`Unknown WCLAP slot: ${slot}`);
+        return info;
+    }
+
+    async _loadPlugin(slot, url, pluginId, tarFiles) {
+        if (!this._wclapHostPromise) {
+            this._wclapHostPromise = (async () => {
+                await this._wclapInitPromise;
+                this._wclapHost = await startHost({
+                    module: this._wclapHostModule,
+                    wasi:   { module: this._wclapWasiModule },
+                });
+            })();
+        }
+        await this._wclapHostPromise;
+
+        const wasmBuffer = tarFiles['module.wasm'];
+        const wasmModule = await WebAssembly.compile(wasmBuffer);
+        const modulePages = Math.max(Math.ceil(wasmBuffer.byteLength / 65536) || 4, 4);
+        const memorySpec = { initial: modulePages, maximum: 32768, shared: true };
+
+        const wclapInit = await getWclap({ url, files: tarFiles, module: wasmModule, memorySpec });
+        wclapInit.pluginPath = pluginId ? `${url}#plugin=${pluginId}` : url;
+
+        const fixedFiles = {};
+        for (const [key, val] of Object.entries(wclapInit.files)) {
+            if ((val instanceof ArrayBuffer && val.byteLength === 0) || /\/\._/.test(key))
+                continue;
+            const fixedKey = key.startsWith('/') ? key : '/' + key;
+            fixedFiles[fixedKey] = val;
+        }
+        wclapInit.files = fixedFiles;
+
+        const { ptr } = await this._wclapHost.startWclap(wclapInit, null);
+        this._slots.set(slot, {
+            ptr,
+            active: false,
+            outLOff: 0,
+            outROff: 0,
+            inLOff: 0,
+            inROff: 0,
+            pluginId: pluginId || '',
+            files: fixedFiles,
+        });
+    }
+
+    _configureSlot(slot, sampleRate, bufferSize) {
+        const info = this._requireSlot(slot);
+        const exp = this._wclapHost.hostInstance.exports;
+        const ok = exp._wclapPluginSetup(info.ptr, sampleRate, bufferSize, bufferSize);
+        if (!ok)
+            throw new Error(`Plugin setup failed for slot ${slot}`);
+
+        info.inLOff = exp._wclapGetInputL(info.ptr);
+        info.inROff = exp._wclapGetInputR(info.ptr);
+        info.outLOff = exp._wclapGetOutputL(info.ptr);
+        info.outROff = exp._wclapGetOutputR(info.ptr);
+
+        if (!this._hostF32)
+            this._hostF32 = new Float32Array(this._wclapHost.hostMemory.buffer);
+    }
+
+    _requestState(slot, stateContextType = 3) {
+        const info = this._requireSlot(slot);
+        const exp = this._wclapHost.hostInstance.exports;
+        if (!exp._wclapStateSave(info.ptr, stateContextType))
+            throw new Error('Plugin state save failed');
+        const size = exp._wclapStateGetSize(info.ptr);
+        const ptr = exp._wclapStateGetData(info.ptr);
+        if (!ptr || !size)
+            return new ArrayBuffer(0);
+        const src = new Uint8Array(this._wclapHost.hostMemory.buffer, ptr, size);
+        return src.slice().buffer;
+    }
+
+    _loadState(slot, stateArray, stateContextType = 3) {
+        const info = this._requireSlot(slot);
+        const exp = this._wclapHost.hostInstance.exports;
+        const payload = stateArray instanceof ArrayBuffer ? new Uint8Array(stateArray) : new Uint8Array(0);
+        const ptr = exp._wclapStatePrepareLoad(info.ptr, payload.byteLength);
+        if (payload.byteLength > 0) {
+            if (!ptr)
+                throw new Error('Failed to allocate state transfer buffer');
+            const dst = new Uint8Array(this._wclapHost.hostMemory.buffer, ptr, payload.byteLength);
+            dst.set(payload);
+        }
+        if (!exp._wclapStateLoad(info.ptr, payload.byteLength, stateContextType))
+            throw new Error('Plugin state load failed');
+        this._drainUiMessages(slot, info);
+        return true;
+    }
+
+    _createUi(slot, width = 800, height = 600) {
+        const info = this._requireSlot(slot);
+        const exp = this._wclapHost.hostInstance.exports;
+        const ok = exp._wclapUiCreate(info.ptr, width, height);
+        if (!ok)
+            return null;
+        const uiInfo = {
+            slot,
+            hasUi: true,
+            canResize: !!exp._wclapUiCanResize(info.ptr),
+            width: exp._wclapUiGetWidth(info.ptr),
+            height: exp._wclapUiGetHeight(info.ptr),
+            uri: this._readCString(exp._wclapUiGetUri(info.ptr)),
+            files: info.files,
+        };
+        this._drainUiMessages(slot, info);
+        return uiInfo;
+    }
+
+    _setUiSize(slot, width = 0, height = 0) {
+        const info = this._requireSlot(slot);
+        const exp = this._wclapHost.hostInstance.exports;
+        if (!exp._wclapUiSetSize(info.ptr, width, height))
+            return null;
+        const uiInfo = {
+            slot,
+            hasUi: true,
+            canResize: !!exp._wclapUiCanResize(info.ptr),
+            width: exp._wclapUiGetWidth(info.ptr),
+            height: exp._wclapUiGetHeight(info.ptr),
+        };
+        this._drainUiMessages(slot, info);
+        return uiInfo;
+    }
+
+    _sendUiMessage(slot, payload) {
+        const info = this._requireSlot(slot);
+        const exp = this._wclapHost.hostInstance.exports;
+        const ptr = exp._wclapUiMessageBufferPtr(info.ptr);
+        const cap = exp._wclapUiMessageBufferCapacity(info.ptr);
+        if (!ptr || !cap)
+            return;
+        let bytes;
+        if (payload instanceof ArrayBuffer)
+            bytes = new Uint8Array(payload);
+        else if (ArrayBuffer.isView(payload))
+            bytes = new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength);
+        else {
+            const serialized = typeof payload === 'string' ? payload : JSON.stringify(payload);
+            bytes = new TextEncoder().encode(serialized);
+        }
+        const hostBytes = new Uint8Array(this._wclapHost.hostMemory.buffer);
+        const size = Math.min(bytes.length, cap - 1);
+        hostBytes.set(bytes.subarray(0, size), ptr);
+        hostBytes[ptr + size] = 0;
+        exp._wclapUiReceiveMessage(info.ptr, size);
+        this._drainUiMessages(slot, info);
+    }
+
+    remoteMethods = {
+        async loadPlugin(slot, url, pluginId, tarFiles) {
+            await this._loadPlugin(slot, url, pluginId, tarFiles);
+            return { slot };
+        },
+        configure(slot, sampleRate, bufferSize) {
+            this._configureSlot(slot, sampleRate, bufferSize);
+            return true;
+        },
+        start(slot) {
+            const info = this._requireSlot(slot);
+            this._wclapHost.hostInstance.exports._wclapPluginStartProcessing(info.ptr);
+            info.active = true;
+            return true;
+        },
+        stop(slot) {
+            const info = this._requireSlot(slot);
+            this._wclapHost.hostInstance.exports._wclapPluginStopProcessing(info.ptr);
+            info.active = false;
+            return true;
+        },
+        unload(slot) {
+            const info = this._requireSlot(slot);
+            this._wclapHost.hostInstance.exports._wclapPluginDestroy(info.ptr);
+            this._slots.delete(slot);
+            this._removeSlotFromGraphs(slot);
+            return true;
+        },
+        graphAddNode(slot, isMaster, trackIndex, order) {
+            this._removeSlotFromGraphs(slot);
+            if (isMaster) {
+                const insertAt = Math.max(0, Math.min(order ?? this._masterGraph.length, this._masterGraph.length));
+                this._masterGraph.splice(insertAt, 0, slot);
+            } else {
+                const slots = this._trackGraphs.get(trackIndex) || [];
+                const insertAt = Math.max(0, Math.min(order ?? slots.length, slots.length));
+                slots.splice(insertAt, 0, slot);
+                this._trackGraphs.set(trackIndex, slots);
+            }
+            return true;
+        },
+        createUi(slot, width, height) {
+            return this._createUi(slot, width, height);
+        },
+        showUi(slot) {
+            const info = this._requireSlot(slot);
+            this._wclapHost.hostInstance.exports._wclapUiShow(info.ptr);
+            this._drainUiMessages(slot, info);
+            return true;
+        },
+        hideUi(slot) {
+            const info = this._requireSlot(slot);
+            this._wclapHost.hostInstance.exports._wclapUiHide(info.ptr);
+            return true;
+        },
+        destroyUi(slot) {
+            const info = this._requireSlot(slot);
+            this._wclapHost.hostInstance.exports._wclapUiDestroy(info.ptr);
+            return true;
+        },
+        setUiSize(slot, width, height) {
+            return this._setUiSize(slot, width, height);
+        },
+        uiFromFrame(slot, payload) {
+            this._sendUiMessage(slot, payload);
+            return true;
+        },
+        setParameter(slot, index, value, perNote = false, group = 0, channel = 0, note = 0) {
+            const info = this._requireSlot(slot);
+            const exp = this._wclapHost.hostInstance.exports;
+            if (perNote) {
+                exp._wclapEnqueuePerNoteParameterValue(info.ptr, index, value, group, channel, note);
+            } else {
+                exp._wclapEnqueueParameterValue(info.ptr, index, value);
+            }
+            exp._wclapFlushParameters(info.ptr);
+            this._drainUiMessages(slot, info);
+            return true;
+        },
+        requestState(slot, stateContextType = 3) {
+            return this._requestState(slot, stateContextType);
+        },
+        loadState(slot, stateArray, stateContextType = 3) {
+            return this._loadState(slot, stateArray, stateContextType);
+        },
+        sendUmp(slot, words) {
+            const info = this._requireSlot(slot);
+            const eventWords = Array.isArray(words) ? words : [];
+            this._wclapHost.hostInstance.exports._wclapEnqueueMidi2Event(
+                info.ptr,
+                eventWords[0] || 0,
+                eventWords[1] || 0,
+                eventWords[2] || 0,
+                eventWords[3] || 0);
+            return true;
+        },
+        sendUmpBatch(slot, events) {
+            const info = this._requireSlot(slot);
+            const eventList = Array.isArray(events) ? events : [];
+            const exp = this._wclapHost.hostInstance.exports;
+            for (const event of eventList) {
+                const words = Array.isArray(event?.words) ? event.words : [];
+                exp._wclapEnqueueMidi2Event(
+                    info.ptr,
+                    words[0] || 0,
+                    words[1] || 0,
+                    words[2] || 0,
+                    words[3] || 0);
+            }
+            return true;
+        },
+    };
 
     _runTrackGraph(slotIds, srcBaseIdx, accumulateIntoMaster) {
         if (!this._wclapHost || slotIds.length === 0)
@@ -212,105 +506,14 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                 break;
             }
 
-            case 'wclap-load-plugin': {
-                const { reqId, slot, url, pluginId, tarFiles } = msg;
-                try {
-                    // Lazy host initialisation (shared across all slots).
-                    // Waits for wclap-init-host to deliver the compiled modules because
-                    // fetch and URL are not available in AudioWorkletGlobalScope.
-                    if (!this._wclapHostPromise) {
-                        this._wclapHostPromise = (async () => {
-                            await this._wclapInitPromise;
-                            this._wclapHost = await startHost({
-                                module: this._wclapHostModule,
-                                wasi:   { module: this._wclapWasiModule },
-                            });
-                        })();
-                    }
-                    await this._wclapHostPromise;
-
-                    // Pre-compile the plugin WASM here so getWclap receives a
-                    // WebAssembly.Module (not an ArrayBuffer).  The ArrayBuffer code
-                    // path in getWclap has a reference to an undefined variable
-                    // ('module' instead of 'options.module') that throws in strict ES
-                    // module scope; passing a pre-compiled module avoids that branch.
-                    const wasmBuffer = tarFiles['module.wasm'];
-                    const wasmModule = await WebAssembly.compile(wasmBuffer);
-
-                    // Compute a memory descriptor for plugins that import memory.
-                    // Heuristic: use the compiled WASM size (in pages) as the initial
-                    // size, matching the logic in wclap-plugin.mjs's guessMemorySize.
-                    const modulePages = Math.max(Math.ceil(wasmBuffer.byteLength / 65536) || 4, 4);
-                    // Use shared:true so wasi-threads plugins (which import shared memory) work.
-                    // The page has COOP/COEP so SharedArrayBuffer is available.
-                    const memorySpec = { initial: modulePages, maximum: 32768, shared: true };
-
-                    const wclapInit = await getWclap({ url, files: tarFiles, module: wasmModule, memorySpec });
-                    wclapInit.pluginPath = pluginId ? `${url}#plugin=${pluginId}` : url;
-
-                    // Rebuild the file map so every path starts with '/' (required by
-                    // WASI vfs_createFile) while also dropping:
-                    //  • 0-byte ArrayBuffers inserted by getWclap ("avoid self-parsing")
-                    //  • macOS resource-fork files (._*) not needed by the plugin
-                    const fixedFiles = {};
-                    for (const [key, val] of Object.entries(wclapInit.files)) {
-                        if ((val instanceof ArrayBuffer && val.byteLength === 0) ||
-                            /\/\._/.test(key))
-                            continue;
-                        const fixedKey = key.startsWith('/') ? key : '/' + key;
-                        fixedFiles[fixedKey] = val;
-                    }
-                    wclapInit.files = fixedFiles;
-
-                    const { ptr } = await this._wclapHost.startWclap(wclapInit, null);
-                    this._slots.set(slot, {
-                        ptr,
-                        active: false,
-                        outLOff: 0,
-                        outROff: 0,
-                        inLOff: 0,
-                        inROff: 0,
-                        pluginId: pluginId || '',
-                        files: fixedFiles,
-                    });
-
-                    this.port.postMessage({ type: 'wclap-plugin-ready', reqId, slot });
-                } catch (err) {
-                    console.error('[uapmd-webclap-worklet] load failed:', err.stack || err);
-                    this.port.postMessage({ type: 'wclap-plugin-error', reqId,
-                                            error: String(err) });
-                }
-                break;
-            }
-
             case 'wclap-configure': {
                 const { slot, sampleRate, bufferSize } = msg;
-                const info = this._slots.get(slot);
-                if (!info || !this._wclapHost) break;
                 try {
-                    const exp = this._wclapHost.hostInstance.exports;
-
-                    const ok = exp._wclapPluginSetup(
-                        info.ptr, sampleRate, bufferSize, bufferSize);
-                    if (!ok) {
-                        const error = `Plugin setup failed for slot ${slot}`;
-                        console.error('[uapmd-webclap-worklet]', error);
-                        this.port.postMessage({ type: 'wclap-runtime-error', slot, error });
-                        break;
-                    }
-
-                    // Cache buffer offsets after non-realtime setup succeeds.
-                    info.inLOff = exp._wclapGetInputL(info.ptr);
-                    info.inROff = exp._wclapGetInputR(info.ptr);
-                    info.outLOff = exp._wclapGetOutputL(info.ptr);
-                    info.outROff = exp._wclapGetOutputR(info.ptr);
-
-                    if (!this._hostF32)
-                        this._hostF32 = new Float32Array(this._wclapHost.hostMemory.buffer);
+                    this.remoteMethods.configure.call(this, slot, sampleRate, bufferSize);
                 } catch (err) {
                     console.error('[uapmd-webclap-worklet] configure failed:', err.stack || err);
                     this.port.postMessage({
-                        type: 'wclap-runtime-error',
+                        type: 'webclap-runtime-error',
                         slot,
                         error: String(err),
                     });
@@ -319,251 +522,46 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
             }
 
             case 'wclap-start': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                this._wclapHost.hostInstance.exports._wclapPluginStartProcessing(info.ptr);
-                info.active = true;
+                this.remoteMethods.start.call(this, msg.slot);
                 break;
             }
 
             case 'wclap-stop': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                this._wclapHost.hostInstance.exports._wclapPluginStopProcessing(info.ptr);
-                info.active = false;
+                this.remoteMethods.stop.call(this, msg.slot);
                 break;
             }
 
             case 'wclap-unload': {
-                const info = this._slots.get(msg.slot);
-                if (info && this._wclapHost) {
-                    this._wclapHost.hostInstance.exports._wclapPluginDestroy(info.ptr);
-                }
-                this._slots.delete(msg.slot);
-                this._removeSlotFromGraphs(msg.slot);
+                if (this._slots.has(msg.slot) && this._wclapHost)
+                    this.remoteMethods.unload.call(this, msg.slot);
                 break;
             }
 
             case 'wclap-graph-add-node': {
-                this._removeSlotFromGraphs(msg.slot);
-                if (msg.isMaster) {
-                    const order = Math.max(0, Math.min(msg.order ?? this._masterGraph.length, this._masterGraph.length));
-                    this._masterGraph.splice(order, 0, msg.slot);
-                } else {
-                    const slots = this._trackGraphs.get(msg.trackIndex) || [];
-                    const order = Math.max(0, Math.min(msg.order ?? slots.length, slots.length));
-                    slots.splice(order, 0, msg.slot);
-                    this._trackGraphs.set(msg.trackIndex, slots);
-                }
-                break;
-            }
-
-            case 'wclap-ui-create': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                const exp = this._wclapHost.hostInstance.exports;
-                const ok = exp._wclapUiCreate(info.ptr, msg.width || 800, msg.height || 600);
-                if (!ok)
-                    break;
-                this.port.postMessage({
-                    type: 'wclap-ui-open',
-                    slot: msg.slot,
-                    hasUi: true,
-                    canResize: !!exp._wclapUiCanResize(info.ptr),
-                    width: exp._wclapUiGetWidth(info.ptr),
-                    height: exp._wclapUiGetHeight(info.ptr),
-                    uri: this._readCString(exp._wclapUiGetUri(info.ptr)),
-                    files: info.files,
-                });
-                this._drainUiMessages(msg.slot, info);
-                break;
-            }
-
-            case 'wclap-ui-show': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                this._wclapHost.hostInstance.exports._wclapUiShow(info.ptr);
-                this._drainUiMessages(msg.slot, info);
-                break;
-            }
-
-            case 'wclap-ui-hide': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                this._wclapHost.hostInstance.exports._wclapUiHide(info.ptr);
-                break;
-            }
-
-            case 'wclap-ui-destroy': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                this._wclapHost.hostInstance.exports._wclapUiDestroy(info.ptr);
-                break;
-            }
-
-            case 'wclap-ui-set-size': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                const exp = this._wclapHost.hostInstance.exports;
-                if (exp._wclapUiSetSize(info.ptr, msg.width || 0, msg.height || 0)) {
-                    this.port.postMessage({
-                        type: 'wclap-ui-resize',
-                        slot: msg.slot,
-                        hasUi: true,
-                        canResize: !!exp._wclapUiCanResize(info.ptr),
-                        width: exp._wclapUiGetWidth(info.ptr),
-                        height: exp._wclapUiGetHeight(info.ptr),
-                    });
-                }
-                this._drainUiMessages(msg.slot, info);
-                break;
-            }
-
-            case 'wclap-ui-from-frame': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                const exp = this._wclapHost.hostInstance.exports;
-                const ptr = exp._wclapUiMessageBufferPtr(info.ptr);
-                const cap = exp._wclapUiMessageBufferCapacity(info.ptr);
-                if (!ptr || !cap) break;
-                let bytes;
-                if (msg.payload instanceof ArrayBuffer)
-                    bytes = new Uint8Array(msg.payload);
-                else if (ArrayBuffer.isView(msg.payload))
-                    bytes = new Uint8Array(msg.payload.buffer, msg.payload.byteOffset, msg.payload.byteLength);
-                else {
-                    const payload = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);
-                    bytes = new TextEncoder().encode(payload);
-                }
-                const hostBytes = new Uint8Array(this._wclapHost.hostMemory.buffer);
-                const size = Math.min(bytes.length, cap - 1);
-                hostBytes.set(bytes.subarray(0, size), ptr);
-                hostBytes[ptr + size] = 0;
-                exp._wclapUiReceiveMessage(info.ptr, size);
-                this._drainUiMessages(msg.slot, info);
+                this.remoteMethods.graphAddNode.call(this, msg.slot, msg.isMaster, msg.trackIndex, msg.order);
                 break;
             }
 
             case 'wclap-set-parameter': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                const exp = this._wclapHost.hostInstance.exports;
-                if (msg.perNote) {
-                    exp._wclapEnqueuePerNoteParameterValue(
-                        info.ptr,
-                        msg.index,
-                        msg.value,
-                        msg.group ?? 0,
-                        msg.channel ?? 0,
-                        msg.note ?? 0);
-                } else {
-                    exp._wclapEnqueueParameterValue(
-                        info.ptr,
-                        msg.index,
-                        msg.value);
-                }
-                exp._wclapFlushParameters(info.ptr);
-                this._drainUiMessages(msg.slot, info);
-                break;
-            }
-
-            case 'wclap-request-state': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                const exp = this._wclapHost.hostInstance.exports;
-                try {
-                    if (!exp._wclapStateSave(info.ptr, msg.stateContextType ?? 3)) {
-                        this.port.postMessage({
-                            type: 'wclap-state-response',
-                            reqId: msg.reqId,
-                            slot: msg.slot,
-                            error: 'Plugin state save failed',
-                        });
-                        break;
-                    }
-                    const size = exp._wclapStateGetSize(info.ptr);
-                    const ptr = exp._wclapStateGetData(info.ptr);
-                    let payload = new ArrayBuffer(0);
-                    if (ptr && size) {
-                        const src = new Uint8Array(this._wclapHost.hostMemory.buffer, ptr, size);
-                        payload = src.slice().buffer;
-                    }
-                    this.port.postMessage({
-                        type: 'wclap-state-response',
-                        reqId: msg.reqId,
-                        slot: msg.slot,
-                        payload,
-                    }, [payload]);
-                } catch (err) {
-                    this.port.postMessage({
-                        type: 'wclap-state-response',
-                        reqId: msg.reqId,
-                        slot: msg.slot,
-                        error: String(err),
-                    });
-                }
-                break;
-            }
-
-            case 'wclap-load-state': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                const exp = this._wclapHost.hostInstance.exports;
-                try {
-                    const payload = msg.payload instanceof ArrayBuffer ? new Uint8Array(msg.payload) : new Uint8Array(0);
-                    const ptr = exp._wclapStatePrepareLoad(info.ptr, payload.byteLength);
-                    if (payload.byteLength > 0) {
-                        if (!ptr)
-                            throw new Error('Failed to allocate state transfer buffer');
-                        const dst = new Uint8Array(this._wclapHost.hostMemory.buffer, ptr, payload.byteLength);
-                        dst.set(payload);
-                    }
-                    if (!exp._wclapStateLoad(info.ptr, payload.byteLength, msg.stateContextType ?? 3))
-                        throw new Error('Plugin state load failed');
-                    this._drainUiMessages(msg.slot, info);
-                    this.port.postMessage({
-                        type: 'wclap-state-load-complete',
-                        reqId: msg.reqId,
-                        slot: msg.slot,
-                    });
-                } catch (err) {
-                    this.port.postMessage({
-                        type: 'wclap-state-load-complete',
-                        reqId: msg.reqId,
-                        slot: msg.slot,
-                        error: String(err),
-                    });
-                }
+                this.remoteMethods.setParameter.call(
+                    this,
+                    msg.slot,
+                    msg.index,
+                    msg.value,
+                    !!msg.perNote,
+                    msg.group ?? 0,
+                    msg.channel ?? 0,
+                    msg.note ?? 0);
                 break;
             }
 
             case 'wclap-send-ump': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                const words = Array.isArray(msg.words) ? msg.words : [];
-                this._wclapHost.hostInstance.exports._wclapEnqueueMidi2Event(
-                    info.ptr,
-                    words[0] || 0,
-                    words[1] || 0,
-                    words[2] || 0,
-                    words[3] || 0);
+                this.remoteMethods.sendUmp.call(this, msg.slot, msg.words);
                 break;
             }
 
             case 'wclap-send-ump-batch': {
-                const info = this._slots.get(msg.slot);
-                if (!info || !this._wclapHost) break;
-                const events = Array.isArray(msg.events) ? msg.events : [];
-                const exp = this._wclapHost.hostInstance.exports;
-                for (const event of events) {
-                    const words = Array.isArray(event?.words) ? event.words : [];
-                    exp._wclapEnqueueMidi2Event(
-                        info.ptr,
-                        words[0] || 0,
-                        words[1] || 0,
-                        words[2] || 0,
-                        words[3] || 0);
-                }
+                this.remoteMethods.sendUmpBatch.call(this, msg.slot, msg.events);
                 break;
             }
 
