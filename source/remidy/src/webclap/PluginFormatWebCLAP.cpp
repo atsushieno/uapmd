@@ -211,9 +211,17 @@ static std::string normalizeWebClapBundleUrl(std::string url) {
         return "https://" + url.substr(std::strlen("https:/"));
     if (url.rfind("http:/", 0) == 0 && url.rfind("http://", 0) != 0)
         return "http://" + url.substr(std::strlen("http:/"));
-    if ((url.rfind("webclap.github.io/", 0) == 0 || url.rfind("www.webclap.github.io/", 0) == 0) &&
-        url.find("://") == std::string::npos)
-        return "https://" + url;
+    if (url.find("://") == std::string::npos) {
+        constexpr std::string_view hosts[] = {
+            "webclap.github.io/",
+            "www.webclap.github.io/",
+        };
+        for (auto host : hosts) {
+            auto pos = url.find(host);
+            if (pos != std::string::npos)
+                return "https://" + url.substr(pos);
+        }
+    }
     return url;
 }
 
