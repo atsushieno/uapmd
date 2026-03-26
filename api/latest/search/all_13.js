@@ -1,14 +1,15 @@
 var searchData=
 [
-  ['tempopoint_0',['TempoPoint',['../dd/d37/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot_1_1TempoPoint.html',1,'uapmd::TimelineFacade::MasterTrackSnapshot']]],
-  ['timelinefacade_1',['TimelineFacade',['../d9/ded/classuapmd_1_1TimelineFacade.html',1,'uapmd']]],
-  ['timelineposition_2',['TimelinePosition',['../d1/d17/structuapmd_1_1TimelinePosition.html',1,'uapmd']]],
-  ['timelinestate_3',['TimelineState',['../df/d2b/structuapmd_1_1TimelineState.html',1,'uapmd']]],
-  ['timelinetrack_4',['TimelineTrack',['../d3/d29/classuapmd_1_1TimelineTrack.html',1,'uapmd']]],
-  ['timesignaturepoint_5',['TimeSignaturePoint',['../de/d13/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot_1_1TimeSignaturePoint.html',1,'uapmd::TimelineFacade::MasterTrackSnapshot']]],
-  ['track_6',['Master Track',['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md13',1,'']]],
-  ['track_20anchored_20positioning_7',['Example 2: Track-Anchored Positioning',['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md16',1,'']]],
-  ['track_20object_8',['Track Object',['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md3',1,'']]],
-  ['trackimporter_9',['TrackImporter',['../dc/de3/classuapmd_1_1import_1_1TrackImporter.html',1,'uapmd::import']]],
-  ['typedumpinputdispatcher_10',['TypedUmpInputDispatcher',['../d8/d29/classremidy_1_1TypedUmpInputDispatcher.html',1,'remidy']]]
+  ['sample_20rate_20considerations_0',['Sample Rate Considerations',['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md23',1,'']]],
+  ['scanonlyoptions_1',['ScanOnlyOptions',['../d4/d11/structremidy__tooling_1_1ScanOnlyOptions.html',1,'remidy_tooling']]],
+  ['schema_2',['schema',['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md4',1,'Schema'],['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md7',1,'Schema'],['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md10',1,'Schema']]],
+  ['sequenceprocesscontext_3',['SequenceProcessContext',['../d1/d7c/classuapmd_1_1SequenceProcessContext.html',1,'uapmd']]],
+  ['sequencerengine_4',['SequencerEngine',['../d1/dee/classuapmd_1_1SequencerEngine.html',1,'uapmd']]],
+  ['sequencertrack_5',['SequencerTrack',['../d0/dc0/classuapmd_1_1SequencerTrack.html',1,'uapmd']]],
+  ['smf2clipreaderwriter_6',['Smf2ClipReaderWriter',['../dd/dc4/classuapmd_1_1Smf2ClipReaderWriter.html',1,'uapmd']]],
+  ['smfconverter_7',['SmfConverter',['../de/d16/classuapmd_1_1SmfConverter.html',1,'uapmd']]],
+  ['sourcenode_8',['SourceNode',['../d6/dbc/classuapmd_1_1SourceNode.html',1,'uapmd']]],
+  ['stemfile_9',['StemFile',['../de/d57/structuapmd_1_1import_1_1DemucsStemSeparator_1_1StemFile.html',1,'uapmd::import::DemucsStemSeparator']]],
+  ['structure_10',['File Structure',['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md2',1,'']]],
+  ['supported_20midi_20format_11',['Supported MIDI Format',['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md25',1,'']]]
 ];

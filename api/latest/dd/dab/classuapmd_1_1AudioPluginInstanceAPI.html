@@ -121,12 +121,18 @@ virtual std::vector&lt; <a class="el" href="../../d7/d86/structuapmd_1_1PresetsM
 <tr class="memitem:a514e3765f7bbaef39b6f093746eb232e" id="r_a514e3765f7bbaef39b6f093746eb232e"><td class="memItemLeft" align="right" valign="top"><a id="a514e3765f7bbaef39b6f093746eb232e" name="a514e3765f7bbaef39b6f093746eb232e"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadPreset</b> (int32_t presetIndex)=0</td></tr>
 <tr class="separator:a514e3765f7bbaef39b6f093746eb232e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a684942affe9f4c6c5782cd60ee810a3c" id="r_a684942affe9f4c6c5782cd60ee810a3c"><td class="memItemLeft" align="right" valign="top"><a id="a684942affe9f4c6c5782cd60ee810a3c" name="a684942affe9f4c6c5782cd60ee810a3c"></a>
-virtual std::vector&lt; uint8_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>saveState</b> ()=0</td></tr>
-<tr class="separator:a684942affe9f4c6c5782cd60ee810a3c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af0a56faa88ca43e25bb2ea9ca2bea205" id="r_af0a56faa88ca43e25bb2ea9ca2bea205"><td class="memItemLeft" align="right" valign="top"><a id="af0a56faa88ca43e25bb2ea9ca2bea205" name="af0a56faa88ca43e25bb2ea9ca2bea205"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadState</b> (std::vector&lt; uint8_t &gt; &amp;state)=0</td></tr>
-<tr class="separator:af0a56faa88ca43e25bb2ea9ca2bea205"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a09a211cd98fd7acaa3ab961ece254c1d" id="r_a09a211cd98fd7acaa3ab961ece254c1d"><td class="memItemLeft" align="right" valign="top"><a id="a09a211cd98fd7acaa3ab961ece254c1d" name="a09a211cd98fd7acaa3ab961ece254c1d"></a>
+virtual std::vector&lt; uint8_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>saveStateSync</b> ()=0</td></tr>
+<tr class="separator:a09a211cd98fd7acaa3ab961ece254c1d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a765078bb97e2d5fc6b64750b7925566b" id="r_a765078bb97e2d5fc6b64750b7925566b"><td class="memItemLeft" align="right" valign="top"><a id="a765078bb97e2d5fc6b64750b7925566b" name="a765078bb97e2d5fc6b64750b7925566b"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadStateSync</b> (std::vector&lt; uint8_t &gt; &amp;state)=0</td></tr>
+<tr class="separator:a765078bb97e2d5fc6b64750b7925566b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7cc0a2efca88d61e9f6f1fd063fa7d16" id="r_a7cc0a2efca88d61e9f6f1fd063fa7d16"><td class="memItemLeft" align="right" valign="top"><a id="a7cc0a2efca88d61e9f6f1fd063fa7d16" name="a7cc0a2efca88d61e9f6f1fd063fa7d16"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>requestState</b> (StateContextType stateContextType, bool includeUiState, void *callbackContext, std::function&lt; void(std::vector&lt; uint8_t &gt; state, std::string error, void *callbackContext)&gt; receiver)=0</td></tr>
+<tr class="separator:a7cc0a2efca88d61e9f6f1fd063fa7d16"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0077a9885f3359cfb54ba72e28b1ac18" id="r_a0077a9885f3359cfb54ba72e28b1ac18"><td class="memItemLeft" align="right" valign="top"><a id="a0077a9885f3359cfb54ba72e28b1ac18" name="a0077a9885f3359cfb54ba72e28b1ac18"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadState</b> (std::vector&lt; uint8_t &gt; state, StateContextType stateContextType, bool includeUiState, void *callbackContext, std::function&lt; void(std::string error, void *callbackContext)&gt; completed)=0</td></tr>
+<tr class="separator:a0077a9885f3359cfb54ba72e28b1ac18"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac3c0c914deee9d3de1b527d1424e7c48" id="r_ac3c0c914deee9d3de1b527d1424e7c48"><td class="memItemLeft" align="right" valign="top"><a id="ac3c0c914deee9d3de1b527d1424e7c48" name="ac3c0c914deee9d3de1b527d1424e7c48"></a>
 virtual double&#160;</td><td class="memItemRight" valign="bottom"><b>getParameterValue</b> (int32_t index)=0</td></tr>
 <tr class="separator:ac3c0c914deee9d3de1b527d1424e7c48"><td class="memSeparator" colspan="2">&#160;</td></tr>

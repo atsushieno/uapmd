@@ -92,12 +92,21 @@ Public Types</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:ab482ddd9e20e5e776bd66d005d42982f" id="r_ab482ddd9e20e5e776bd66d005d42982f"><td class="memItemLeft" align="right" valign="top"><a id="ab482ddd9e20e5e776bd66d005d42982f" name="ab482ddd9e20e5e776bd66d005d42982f"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>requiresMainThread</b> ()=0</td></tr>
+<tr class="separator:ab482ddd9e20e5e776bd66d005d42982f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae0d04296c7db003ce6b4965d126ee6d1" id="r_ae0d04296c7db003ce6b4965d126ee6d1"><td class="memItemLeft" align="right" valign="top"><a id="ae0d04296c7db003ce6b4965d126ee6d1" name="ae0d04296c7db003ce6b4965d126ee6d1"></a>
 virtual std::vector&lt; uint8_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>getState</b> (StateContextType stateContextType, bool includeUiState)=0</td></tr>
 <tr class="separator:ae0d04296c7db003ce6b4965d126ee6d1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae68ec8256a03ca337d462c9f0bb0bb26" id="r_ae68ec8256a03ca337d462c9f0bb0bb26"><td class="memItemLeft" align="right" valign="top"><a id="ae68ec8256a03ca337d462c9f0bb0bb26" name="ae68ec8256a03ca337d462c9f0bb0bb26"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setState</b> (std::vector&lt; uint8_t &gt; &amp;state, StateContextType stateContextType, bool includeUiState)=0</td></tr>
 <tr class="separator:ae68ec8256a03ca337d462c9f0bb0bb26"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa02cd4eea33d94e15b6e11814348778e" id="r_aa02cd4eea33d94e15b6e11814348778e"><td class="memItemLeft" align="right" valign="top"><a id="aa02cd4eea33d94e15b6e11814348778e" name="aa02cd4eea33d94e15b6e11814348778e"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>requestState</b> (StateContextType stateContextType, bool includeUiState, void *callbackContext, std::function&lt; void(std::vector&lt; uint8_t &gt; state, std::string error, void *callbackContext)&gt; receiver)=0</td></tr>
+<tr class="separator:aa02cd4eea33d94e15b6e11814348778e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a90a096bd76613188155c9c42e6ace96a" id="r_a90a096bd76613188155c9c42e6ace96a"><td class="memItemLeft" align="right" valign="top"><a id="a90a096bd76613188155c9c42e6ace96a" name="a90a096bd76613188155c9c42e6ace96a"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadState</b> (std::vector&lt; uint8_t &gt; state, StateContextType stateContextType, bool includeUiState, void *callbackContext, std::function&lt; void(std::string error, void *callbackContext)&gt; completed)=0</td></tr>
+<tr class="separator:a90a096bd76613188155c9c42e6ace96a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/remidy/include/remidy/priv/<a class="el" href="../../db/dde/plugin-states_8hpp_source.html">plugin-states.hpp</a></li>

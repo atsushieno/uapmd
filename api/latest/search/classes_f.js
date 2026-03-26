@@ -1,25 +1,11 @@
 var searchData=
 [
-  ['uapmdaudioclip_0',['UapmdAudioClip',['../d1/de4/classuapmd_1_1UapmdAudioClip.html',1,'uapmd']]],
-  ['uapmdclipdatareferencible_1',['UapmdClipDataReferencible',['../da/d50/classuapmd_1_1UapmdClipDataReferencible.html',1,'uapmd']]],
-  ['uapmdfunctionblock_2',['UapmdFunctionBlock',['../d3/dfa/classuapmd_1_1UapmdFunctionBlock.html',1,'uapmd']]],
-  ['uapmdfunctionblockmanager_3',['UapmdFunctionBlockManager',['../d6/d47/classuapmd_1_1UapmdFunctionBlockManager.html',1,'uapmd']]],
-  ['uapmdfunctiondevice_4',['UapmdFunctionDevice',['../d5/d86/classuapmd_1_1UapmdFunctionDevice.html',1,'uapmd']]],
-  ['uapmdmidi2clip_5',['UapmdMidi2Clip',['../d8/d84/classuapmd_1_1UapmdMidi2Clip.html',1,'uapmd']]],
-  ['uapmdplugingraphbuilder_6',['UapmdPluginGraphBuilder',['../d0/db4/classuapmd_1_1UapmdPluginGraphBuilder.html',1,'uapmd']]],
-  ['uapmdprojectclip_7',['UapmdProjectClip',['../d2/d06/classuapmd_1_1UapmdProjectClip.html',1,'uapmd']]],
-  ['uapmdprojectclipdata_8',['UapmdProjectClipData',['../dc/dc0/classuapmd_1_1UapmdProjectClipData.html',1,'uapmd']]],
-  ['uapmdprojectdata_9',['UapmdProjectData',['../d1/d64/classuapmd_1_1UapmdProjectData.html',1,'uapmd']]],
-  ['uapmdprojectdatareader_10',['UapmdProjectDataReader',['../d8/db4/classuapmd_1_1UapmdProjectDataReader.html',1,'uapmd']]],
-  ['uapmdprojectdatawriter_11',['UapmdProjectDataWriter',['../db/dd8/classuapmd_1_1UapmdProjectDataWriter.html',1,'uapmd']]],
-  ['uapmdprojectplugingraphdata_12',['UapmdProjectPluginGraphData',['../da/daf/classuapmd_1_1UapmdProjectPluginGraphData.html',1,'uapmd']]],
-  ['uapmdprojectpluginnodedata_13',['UapmdProjectPluginNodeData',['../d8/d09/structuapmd_1_1UapmdProjectPluginNodeData.html',1,'uapmd']]],
-  ['uapmdprojecttrackdata_14',['UapmdProjectTrackData',['../da/d1e/classuapmd_1_1UapmdProjectTrackData.html',1,'uapmd']]],
-  ['uapmdsequence_15',['UapmdSequence',['../da/d62/classuapmd_1_1UapmdSequence.html',1,'uapmd']]],
-  ['uapmdsequencebuilder_16',['UapmdSequenceBuilder',['../df/d0e/classuapmd_1_1UapmdSequenceBuilder.html',1,'uapmd']]],
-  ['uapmdsequencetrack_17',['UapmdSequenceTrack',['../d6/ddc/classuapmd_1_1UapmdSequenceTrack.html',1,'uapmd']]],
-  ['uapmdtimelineposition_18',['UapmdTimelinePosition',['../de/df2/structuapmd_1_1UapmdTimelinePosition.html',1,'uapmd']]],
-  ['uapmdumpinputmapper_19',['UapmdUmpInputMapper',['../d2/d20/classuapmd_1_1UapmdUmpInputMapper.html',1,'uapmd']]],
-  ['uapmdumpoutputmapper_20',['UapmdUmpOutputMapper',['../de/d4d/classuapmd_1_1UapmdUmpOutputMapper.html',1,'uapmd']]],
-  ['umpinputdispatcher_21',['UmpInputDispatcher',['../d1/d67/classremidy_1_1UmpInputDispatcher.html',1,'remidy']]]
+  ['tempopoint_0',['TempoPoint',['../dd/d37/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot_1_1TempoPoint.html',1,'uapmd::TimelineFacade::MasterTrackSnapshot']]],
+  ['timelinefacade_1',['TimelineFacade',['../d9/ded/classuapmd_1_1TimelineFacade.html',1,'uapmd']]],
+  ['timelineposition_2',['TimelinePosition',['../d1/d17/structuapmd_1_1TimelinePosition.html',1,'uapmd']]],
+  ['timelinestate_3',['TimelineState',['../df/d2b/structuapmd_1_1TimelineState.html',1,'uapmd']]],
+  ['timelinetrack_4',['TimelineTrack',['../d3/d29/classuapmd_1_1TimelineTrack.html',1,'uapmd']]],
+  ['timesignaturepoint_5',['TimeSignaturePoint',['../de/d13/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot_1_1TimeSignaturePoint.html',1,'uapmd::TimelineFacade::MasterTrackSnapshot']]],
+  ['trackimporter_6',['TrackImporter',['../dc/de3/classuapmd_1_1import_1_1TrackImporter.html',1,'uapmd::import']]],
+  ['typedumpinputdispatcher_7',['TypedUmpInputDispatcher',['../d8/d29/classremidy_1_1TypedUmpInputDispatcher.html',1,'remidy']]]
 ];
