@@ -1,0 +1,25 @@
+{
+  "name": "wasi.wasm",
+  "version": "1.0.0",
+  "description": "Portable WASI implementation for JS environments",
+  "keywords": [
+    "WASM",
+    "WebAssembly",
+    "WASI"
+  ],
+  "homepage": "https://github.com/WebCLAP/wasi.wasm#readme",
+  "bugs": {
+    "url": "https://github.com/WebCLAP/wasi.wasm/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WebCLAP/wasi.wasm.git"
+  },
+  "license": "MIT",
+  "author": "Geraint Luff <geraint@signalsmith-audio.co.uk>",
+  "type": "module",
+  "main": "wasi-bundled.mjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
