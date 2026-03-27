@@ -57,7 +57,7 @@ namespace uapmd {
             return result;
         }
 
-        ClipAddResult addClipToTrack(
+        ClipAddResult addAudioClipToTrack(
             int32_t trackIndex,
             const TimelinePosition& position,
             std::unique_ptr<AudioFileReader> reader,
@@ -434,7 +434,7 @@ namespace uapmd {
                             result.error = std::format("Failed to open audio clip {}", resolvedPath.string());
                             return result;
                         }
-                        auto loadResult = addClipToTrack(trackIndex, position, std::move(reader), resolvedPath.string());
+                        auto loadResult = addAudioClipToTrack(trackIndex, position, std::move(reader), resolvedPath.string());
                         if (!loadResult.success) {
                             result.error = loadResult.error.empty() ? "Failed to load audio clip" : loadResult.error;
                             return result;

@@ -36,7 +36,7 @@ public:
         std::string error;
     };
 
-    virtual ClipAddResult addClipToTrack(
+    virtual ClipAddResult addAudioClipToTrack(
         int32_t trackIndex,
         const TimelinePosition& position,
         std::unique_ptr<AudioFileReader> reader,

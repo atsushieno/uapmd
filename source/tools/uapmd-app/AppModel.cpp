@@ -1602,7 +1602,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
             return addMidiClipToTrack(trackIndex, position, filepath);
     }
 
-    auto engineResult = sequencer_.engine()->timeline().addClipToTrack(trackIndex, position, std::move(reader), filepath);
+    auto engineResult = sequencer_.engine()->timeline().addAudioClipToTrack(trackIndex, position, std::move(reader), filepath);
     result.clipId = engineResult.clipId;
     result.sourceNodeId = engineResult.sourceNodeId;
     result.success = engineResult.success;
