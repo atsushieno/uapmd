@@ -10,17 +10,18 @@
 
   <description>
     <p>
-      UAPMD (Ubiquitous Audio Plugin MIDI Device) is a tool for hosting audio
-      plugins (VST3, LV2, CLAP) and exposing them as virtual MIDI devices.
-      This allows any MIDI-capable application to use software synthesizers
-      and effects without native plugin support.
+      UAPMD (Ubiquitous Audio Plugin MIDI Device) hosts audio plugins and
+      exposes them as virtual MIDI 2.0 devices, letting any MIDI-capable
+      application use software synthesizers and effects without native plugin
+      support.
     </p>
-    <p>Features:</p>
     <ul>
-      <li>Host VST3, (AudioUnit,) LV2, and CLAP audio plugins</li>
+      <li>Host VST3, AudioUnit, LV2, and CLAP audio plugins</li>
       <li>Expose plugins as virtual MIDI 2.0 devices</li>
-      <li>Plugin parameter control and presets control as program list</li>
-      <li>Cross-platform support (Linux, macOS, Windows WIP)</li>
+      <li>Built-in sequencer with piano roll and MIDI 2.0 clip editing</li>
+      <li>Plugin parameter and preset control via program list</li>
+      <li>Scriptable via JavaScript API and MCP (Model Context Protocol)</li>
+      <li>Cross-platform: Linux, macOS, Windows, Android, iOS, and browser (WebAssembly)</li>
     </ul>
   </description>
 
@@ -37,6 +38,7 @@
   <provides>
     <binary>uapmd-app</binary>
     <binary>uapmd-scan</binary>
+    <binary>uapmd-apply</binary>
   </provides>
 
   <content_rating type="oars-1.1" />
@@ -60,6 +62,7 @@
     <keyword>vst3</keyword>
     <keyword>lv2</keyword>
     <keyword>clap</keyword>
+    <keyword>webclap</keyword>
     <keyword>midi</keyword>
     <keyword>synthesizer</keyword>
   </keywords>

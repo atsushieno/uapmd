@@ -17,12 +17,12 @@ if(EMSCRIPTEN)
 endif()
 
 # Install targets
-if (NOT ANDROID AND NOT EMSCRIPTEN)
-if (NOT IOS)
-install(TARGETS uapmd-scan
+if (NOT ANDROID AND NOT EMSCRIPTEN AND NOT IOS)
+install(TARGETS uapmd-scan uapmd-apply
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT uapmd)
 endif ()
+if (NOT ANDROID AND NOT EMSCRIPTEN)
 install(TARGETS uapmd-app
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         BUNDLE DESTINATION .
