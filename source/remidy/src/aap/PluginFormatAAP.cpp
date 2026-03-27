@@ -1,5 +1,5 @@
 #include "PluginFormatAAP.hpp"
-#include "priv/plugin-format-aap.hpp"
+#include "detail/plugin-format-aap.hpp"
 
 #include <aap/core/host/plugin-client-system.h>
 #include <aap/core/host/android/audio-plugin-host-android.h>

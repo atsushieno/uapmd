@@ -6,7 +6,7 @@
 #include <unordered_map>
 
 #include "remidy/remidy.hpp"
-#include "remidy/priv/queued-state-operations.hpp"
+#include "remidy/detail/queued-state-operations.hpp"
 #include "../GenericAudioBuses.hpp"
 #include "lilv/lilv.h"
 #include <lv2/ui/ui.h>

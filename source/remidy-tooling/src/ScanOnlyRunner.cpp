@@ -1,4 +1,4 @@
-#include "../include/remidy-tooling/priv/ScanOnlyRunner.hpp"
+#include "../include/remidy-tooling/detail/ScanOnlyRunner.hpp"
 
 #include <cstdlib>
 

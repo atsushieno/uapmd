@@ -9,7 +9,7 @@
 #import <AVFoundation/AVFoundation.h>
 
 #include "remidy/remidy.hpp"
-#include "remidy/priv/queued-state-operations.hpp"
+#include "remidy/detail/queued-state-operations.hpp"
 #include "../GenericAudioBuses.hpp"
 
 struct MIDIEventList;

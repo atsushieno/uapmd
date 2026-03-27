@@ -1,4 +1,4 @@
-#include "remidy-tooling/priv/RemotePluginScannerProcess.hpp"
+#include "remidy-tooling/detail/RemotePluginScannerProcess.hpp"
 
 #include <cstdlib>
 #include <string>

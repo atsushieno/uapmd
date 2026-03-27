@@ -10,7 +10,7 @@
 
 #include <imgui.h>
 #include <ImTimeline.h>
-#include "uapmd-data/priv/timeline/MidiClipSourceNode.hpp"
+#include "uapmd-data/detail/timeline/MidiClipSourceNode.hpp"
 
 #include "../AppModel.hpp"
 #include "ClipPreview.hpp"

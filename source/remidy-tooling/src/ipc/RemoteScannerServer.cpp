@@ -1,4 +1,4 @@
-#include "remidy-tooling/priv/RemoteScannerServer.hpp"
+#include "remidy-tooling/detail/RemoteScannerServer.hpp"
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
@@ -21,7 +21,7 @@
 #include "ScannerProtocol.hpp"
 #include "TcpSocket.hpp"
 #include "ScanSessionManager.hpp"
-#include "remidy-tooling/priv/PluginScanTool.hpp"
+#include "remidy-tooling/detail/PluginScanTool.hpp"
 
 namespace remidy_tooling {
 

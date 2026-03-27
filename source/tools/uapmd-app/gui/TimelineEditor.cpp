@@ -18,7 +18,7 @@
 #include <imgui.h>
 #include <umppi/umppi.hpp>
 #include <uapmd-data/uapmd-data.hpp>
-#include "uapmd-data/priv/timeline/MidiClipSourceNode.hpp"
+#include "uapmd-data/detail/timeline/MidiClipSourceNode.hpp"
 
 #include "TimelineEditor.hpp"
 #include "ClipPreview.hpp"

@@ -28,7 +28,7 @@
 extern char** environ;
 #endif
 
-#include "remidy-tooling/priv/PluginScanTool.hpp"
+#include "remidy-tooling/detail/PluginScanTool.hpp"
 #include "ScannerProtocol.hpp"
 
 namespace remidy_tooling {

@@ -1,5 +1,5 @@
 
-#include "remidy/priv/processing-context.hpp"
+#include "remidy/detail/processing-context.hpp"
 
 namespace remidy {
     void AudioProcessContext::rebuildBuses(std::vector<AudioBusBufferList*>& buses, std::vector<AudioBusSpec>& specsStorage, const std::vector<AudioBusSpec>& requestedSpecs) {

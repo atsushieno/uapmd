@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <string>
 
-#include "remidy-tooling/priv/ChildProcess.hpp"
-#include "remidy-tooling/priv/RemoteScannerServer.hpp"
+#include "remidy-tooling/detail/ChildProcess.hpp"
+#include "remidy-tooling/detail/RemoteScannerServer.hpp"
 
 namespace remidy_tooling {
 

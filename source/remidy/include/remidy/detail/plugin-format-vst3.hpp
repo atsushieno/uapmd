@@ -1,6 +1,6 @@
 #pragma once
 
-#include "remidy/priv/plugin-format.hpp"
+#include "remidy/detail/plugin-format.hpp"
 
 namespace remidy {
     class PluginFormatVST3 : public PluginFormat {

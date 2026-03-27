@@ -13,7 +13,7 @@
 
 #include "clap/ext/render.h"
 #include "remidy/remidy.hpp"
-#include "remidy/priv/queued-state-operations.hpp"
+#include "remidy/detail/queued-state-operations.hpp"
 #include "HostClasses.hpp"
 #include "../GenericAudioBuses.hpp"
 

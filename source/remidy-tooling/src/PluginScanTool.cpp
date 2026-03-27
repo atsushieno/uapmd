@@ -21,7 +21,7 @@
 #endif
 #include <choc/text/choc_JSON.h>
 #include "remidy-tooling/remidy-tooling.hpp"
-#include "remidy-tooling/priv/PluginFormatManager.hpp"
+#include "remidy-tooling/detail/PluginFormatManager.hpp"
 #include "ScanConstants.hpp"
 #include "ipc/ScanSessionManager.hpp"
 #include "ipc/InProcessScanSessionManager.hpp"

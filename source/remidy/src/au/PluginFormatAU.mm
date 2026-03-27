@@ -3,7 +3,7 @@
 #include <format>
 #include <CoreFoundation/CoreFoundation.h>
 #include "PluginFormatAU.hpp"
-#include "remidy/priv/plugin-format-au.hpp"
+#include "remidy/detail/plugin-format-au.hpp"
 #include "AUv2Helper.hpp"
 
 std::unique_ptr<remidy::PluginFormatAU> remidy::PluginFormatAU::create() {

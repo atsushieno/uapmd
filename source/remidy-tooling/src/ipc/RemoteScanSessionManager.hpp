@@ -19,7 +19,7 @@
 #include "IpcJsonChannel.hpp"
 #include "ScanSessionManager.hpp"
 #if REMIDY_TOOLING_REMOTE_SCAN_SUPPORTED == 0
-#include "remidy-tooling/priv/PluginScanTool.hpp"
+#include "remidy-tooling/detail/PluginScanTool.hpp"
 #endif
 
 namespace remidy_tooling {

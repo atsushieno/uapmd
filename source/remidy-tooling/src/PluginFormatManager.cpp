@@ -1,4 +1,4 @@
-#include "remidy-tooling/priv/PluginFormatManager.hpp"
+#include "remidy-tooling/detail/PluginFormatManager.hpp"
 
 namespace remidy_tooling {
 

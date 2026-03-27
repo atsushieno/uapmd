@@ -12,7 +12,7 @@
 #include <vector>
 
 #include <libremidi/libremidi.hpp>
-#include <remidy/priv/common.hpp>
+#include <remidy/detail/common.hpp>
 
 #ifdef _WIN32
 #include <windows.h>

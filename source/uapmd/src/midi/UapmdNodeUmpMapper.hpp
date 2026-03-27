@@ -2,9 +2,9 @@
 #include <memory>
 #include <remidy/remidy.hpp>
 #include "readerwriterqueue.h"
-#include "uapmd/priv/midi/MidiIOFeature.hpp"
-#include "uapmd/priv/midi/UapmdUmpMapper.hpp"
-#include "uapmd/priv/plugin-api/AudioPluginInstanceAPI.hpp"
+#include "uapmd/detail/midi/MidiIOFeature.hpp"
+#include "uapmd/detail/midi/UapmdUmpMapper.hpp"
+#include "uapmd/detail/plugin-api/AudioPluginInstanceAPI.hpp"
 
 namespace uapmd {
     class UapmdNodeUmpInputMapper :

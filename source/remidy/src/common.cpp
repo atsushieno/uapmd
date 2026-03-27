@@ -4,7 +4,7 @@
 #elif __APPLE__ || defined(__unix__) && !defined(__EMSCRIPTEN__)
 #include <pthread.h>
 #endif
-#include "remidy/priv/common.hpp"
+#include "remidy/detail/common.hpp"
 
 void remidy::setCurrentThreadNameIfPossible(const std::string& threadName) {
 #if defined(_WIN32)

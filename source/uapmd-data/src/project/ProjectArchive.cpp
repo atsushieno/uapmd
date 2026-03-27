@@ -9,7 +9,7 @@
 #include <string>
 #include <system_error>
 #include <vector>
-#include "uapmd-data/priv/project/ProjectArchive.hpp"
+#include "uapmd-data/detail/project/ProjectArchive.hpp"
 
 namespace uapmd {
 

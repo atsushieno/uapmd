@@ -1,7 +1,7 @@
 #pragma once
 
 #include "remidy/remidy.hpp"
-#include "remidy/priv/queued-state-operations.hpp"
+#include "remidy/detail/queued-state-operations.hpp"
 #include <stdexcept>
 #include <aap/core/host/plugin-connections.h>
 #include <aap/core/host/plugin-host.h>

@@ -5,7 +5,7 @@
 #include <functional>
 #include <thread>
 
-#include <remidy/priv/event-loop.hpp>
+#include <remidy/detail/event-loop.hpp>
 #include <remidy-gui/remidy-gui.hpp>
 
 namespace uapmd::gui {

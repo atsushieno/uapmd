@@ -1,28 +1,28 @@
 #pragma once
 
-#include "priv/common.hpp"
+#include "detail/common.hpp"
 
-#include "priv/plugin-catalog.hpp"
-#include "priv/plugin-scanning.hpp"
+#include "detail/plugin-catalog.hpp"
+#include "detail/plugin-scanning.hpp"
 
-#include "priv/audio-bus-configuration.hpp"
-#include "priv/processing-context.hpp"
+#include "detail/audio-bus-configuration.hpp"
+#include "detail/processing-context.hpp"
 
-#include "priv/event-loop.hpp"
-#include "priv/ump-dispatcher.hpp"
+#include "detail/event-loop.hpp"
+#include "detail/ump-dispatcher.hpp"
 
-#include "priv/plugin-parameter.hpp"
-#include "priv/plugin-states.hpp"
-#include "priv/plugin-presets.hpp"
-#include "priv/plugin-audio-buses.hpp"
-#include "priv/plugin-ui.hpp"
+#include "detail/plugin-parameter.hpp"
+#include "detail/plugin-states.hpp"
+#include "detail/plugin-presets.hpp"
+#include "detail/plugin-audio-buses.hpp"
+#include "detail/plugin-ui.hpp"
 
-#include "priv/plugin-instance.hpp"
+#include "detail/plugin-instance.hpp"
 
-#include "priv/plugin-format.hpp"
-#include "priv/plugin-format-aap.hpp"
-#include "priv/plugin-format-vst3.hpp"
-#include "priv/plugin-format-au.hpp"
-#include "priv/plugin-format-lv2.hpp"
-#include "priv/plugin-format-clap.hpp"
-#include "priv/plugin-format-webclap.hpp"
+#include "detail/plugin-format.hpp"
+#include "detail/plugin-format-aap.hpp"
+#include "detail/plugin-format-vst3.hpp"
+#include "detail/plugin-format-au.hpp"
+#include "detail/plugin-format-lv2.hpp"
+#include "detail/plugin-format-clap.hpp"
+#include "detail/plugin-format-webclap.hpp"

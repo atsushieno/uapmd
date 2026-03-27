@@ -13,7 +13,7 @@
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_SampleBuffers.h>
 
-#include "uapmd-data/priv/audio/AudioFileFactory.hpp"
+#include "uapmd-data/detail/audio/AudioFileFactory.hpp"
 
 #include <dsp.hpp>
 #include <model.hpp>

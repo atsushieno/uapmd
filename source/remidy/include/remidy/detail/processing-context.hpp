@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <cstring>
 #include <vector>
-#include "remidy/priv/common.hpp"
-#include "remidy/priv/audio-bus-configuration.hpp"
+#include "remidy/detail/common.hpp"
+#include "remidy/detail/audio-bus-configuration.hpp"
 
 namespace remidy {
     enum class AudioContentType {

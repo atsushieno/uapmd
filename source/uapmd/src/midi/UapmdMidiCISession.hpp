@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "uapmd/priv/CommonTypes.hpp"
+#include "uapmd/detail/CommonTypes.hpp"
 
 namespace uapmd {
     class UapmdFunctionBlock;
