@@ -17,7 +17,6 @@ VERSION_TAG="${5:-}"
 ROOT_INDEX="${SOURCE_DIR}/index.html"
 ROOT_STYLES="${SOURCE_DIR}/styles.css"
 PLAYGROUND_INDEX="${SOURCE_DIR}/playground/index.html"
-API_INDEX="${SOURCE_DIR}/api/index.html"
 
 if [[ ! -f "${ROOT_INDEX}" || ! -f "${ROOT_STYLES}" ]]; then
     echo "error: missing site source files under ${SOURCE_DIR}" >&2
@@ -82,10 +81,80 @@ copy_tree() {
     cp -R "${src_dir}/." "${dst_dir}/"
 }
 
+render_api_index_page() {
+    local api_dir="$1"
+    shift
+    local versions=("$@")
+    local versions_markup=""
+    local version
+
+    if [[ ${#versions[@]} -gt 0 ]]; then
+        for version in "${versions[@]}"; do
+            versions_markup="${versions_markup}            <li><a href=\"./${version}/\">${version}</a></li>
+"
+        done
+    else
+        versions_markup='            <li>No versioned API snapshots have been published yet.</li>
+'
+    fi
+
+    cat > "${api_dir}/index.html" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>uapmd API references</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="../playground/">Playground</a>
+            <a class="nav-link" href="./">API references</a>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <p class="eyebrow">API references</p>
+        <h1>Doxygen reference sets</h1>
+        <p class="lede">
+            The latest API docs are always refreshed on a manual Pages run. Versioned
+            snapshots are retained on this site and can be republished individually.
+        </p>
+        <div class="actions">
+            <a class="button button-primary" href="./latest/">Open latest docs</a>
+        </div>
+    </section>
+
+    <div class="grid two">
+        <section class="card">
+            <p class="eyebrow">Current</p>
+            <h2><a href="./latest/">latest</a></h2>
+            <p>
+                Stable entry point for the current Doxygen-generated API reference set.
+            </p>
+        </section>
+
+        <section class="card">
+            <p class="eyebrow">Published versions</p>
+            <h2>Version snapshots</h2>
+            <ul class="list">
+${versions_markup}            </ul>
+        </section>
+    </div>
+</div>
+</body>
+</html>
+EOF
+}
+
 copy_static_file "${ROOT_INDEX}" "${TARGET_DIR}/index.html"
 copy_static_file "${ROOT_STYLES}" "${TARGET_DIR}/styles.css"
 copy_static_file "${PLAYGROUND_INDEX}" "${TARGET_DIR}/playground/index.html"
-copy_static_file "${API_INDEX}" "${TARGET_DIR}/api/index.html"
+mkdir -p "${TARGET_DIR}/api"
 
 copy_tree "${PLAYGROUND_ARTIFACT_ROOT}" "${TARGET_DIR}/playground/latest"
 
@@ -98,5 +167,27 @@ if [[ -n "${VERSION_TAG}" ]]; then
 
     copy_tree "${API_ARTIFACT_ROOT}" "${TARGET_DIR}/api/${NORMALIZED_VERSION_TAG}"
 fi
+
+API_VERSIONS=()
+for api_subdir in "${TARGET_DIR}/api"/*; do
+    if [[ ! -d "${api_subdir}" ]]; then
+        continue
+    fi
+    api_name="$(basename "${api_subdir}")"
+    if [[ "${api_name}" == "latest" ]]; then
+        continue
+    fi
+    API_VERSIONS+=("${api_name}")
+done
+
+if [[ ${#API_VERSIONS[@]} -gt 0 ]]; then
+    SORTED_API_VERSIONS=()
+    while IFS= read -r version; do
+        SORTED_API_VERSIONS+=("${version}")
+    done < <(printf '%s\n' "${API_VERSIONS[@]}" | sort)
+    API_VERSIONS=("${SORTED_API_VERSIONS[@]}")
+fi
+
+render_api_index_page "${TARGET_DIR}/api" "${API_VERSIONS[@]}"
 
 touch "${TARGET_DIR}/.nojekyll"

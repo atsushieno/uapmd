@@ -50,7 +50,7 @@ jobs:
     name: build doxygen for pages
     runs-on: ubuntu-24.04
     env:
-      VERSION_TAG: ${{ github.event.inputs.version_tag }}
+      VERSION_TAG: ${{ github.event.inputs.version_tag != '' && github.event.inputs.version_tag || (github.ref_type == 'tag' && github.ref_name || '') }}
     steps:
     - name: checkout
       uses: actions/checkout@v6
@@ -85,7 +85,7 @@ jobs:
     permissions:
       contents: write
     env:
-      VERSION_TAG: ${{ github.event.inputs.version_tag }}
+      VERSION_TAG: ${{ github.event.inputs.version_tag != '' && github.event.inputs.version_tag || (github.ref_type == 'tag' && github.ref_name || '') }}
     steps:
     - name: checkout
       uses: actions/checkout@v6
