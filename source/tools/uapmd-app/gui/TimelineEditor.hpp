@@ -62,7 +62,7 @@ public:
     void addClipToTrackAtPosition(int32_t trackIndex, const std::string& filepath, double positionSeconds);
     void removeClipFromTrack(int32_t trackIndex, int32_t clipId);
     void clearAllClipsFromTrack(int32_t trackIndex);
-    void updateClip(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position);
+    void updateClip(int32_t trackIndex, int32_t clipId, const std::string& anchorReferenceId, const std::string& origin, const std::string& position);
     void updateClipName(int32_t trackIndex, int32_t clipId, const std::string& name);
     void changeClipFile(int32_t trackIndex, int32_t clipId);
     void moveClipAbsolute(int32_t trackIndex, int32_t clipId, double seconds);
@@ -123,6 +123,7 @@ private:
     void deleteTrack(int32_t trackIndex);
     void syncExternalTimelineChanges();
     std::string buildTrackContentSignature(int32_t trackIndex) const;
+    void resolveAllClipAnchors();
 
     // Tempo management
     void rebuildTempoSegments(const std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot>& snapshot);

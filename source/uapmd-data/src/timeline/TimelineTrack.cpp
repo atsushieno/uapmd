@@ -2,12 +2,13 @@
 #include <atomic>
 #include <cstring>
 #include <mutex>
+#include <utility>
 #include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
 
-    TimelineTrack::TimelineTrack(uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames)
-        : channel_count_(channelCount), sample_rate_(sampleRate) {
+    TimelineTrack::TimelineTrack(std::string referenceId, uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames)
+        : reference_id_(std::move(referenceId)), channel_count_(channelCount), sample_rate_(sampleRate) {
         source_nodes_snapshot_ = std::make_shared<SourceNodeList>();
 
         // Pre-allocate buffers to avoid real-time allocations
@@ -304,7 +305,7 @@ namespace uapmd {
 
         if (clipSnapshot) {
             const auto& clips = clipSnapshot->clips;
-            const auto& clipMap = clipSnapshot->clipMap;
+            const auto& clipMap = clipSnapshot->clipReferenceMap;
 
             // Process audio source nodes — iterate all clips, skip inactive ones inline
             for (const auto& clip : clips) {

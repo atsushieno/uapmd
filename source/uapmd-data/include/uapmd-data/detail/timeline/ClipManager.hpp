@@ -16,6 +16,7 @@ namespace uapmd {
         struct ClipSnapshot {
             std::vector<ClipData> clips;
             std::unordered_map<int32_t, const ClipData*> clipMap; // pointers into clips
+            std::unordered_map<std::string, const ClipData*> clipReferenceMap; // pointers into clips
         };
 
         ClipManager() = default;
@@ -38,7 +39,8 @@ namespace uapmd {
         bool setClipFilepath(int32_t clipId, const std::string& filepath);
         bool setClipNeedsFileSave(int32_t clipId, bool needsSave);
         bool clipNeedsFileSave(int32_t clipId) const;
-        bool setClipAnchor(int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset);
+        bool setClipAnchor(int32_t clipId, const std::string& anchorReferenceId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset);
+        bool setClipPosition(int32_t clipId, const TimelinePosition& position);
 
         // Query clips at timeline position (RT-safe after initial query)
         std::vector<ClipData> getActiveClipsAt(const TimelinePosition& position);

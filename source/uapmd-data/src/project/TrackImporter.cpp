@@ -28,9 +28,6 @@ MidiImportResult TrackImporter::importMidiFile(const std::string& filepath) {
                 continue;
             }
 
-            if (convertResult.umpEvents.empty())
-                continue;
-
             MidiTrackImport track;
             track.clipName = std::format("{} - Track {}", baseFilename, trackIdx + 1);
             track.umpEvents = std::move(convertResult.umpEvents);
@@ -39,6 +36,10 @@ MidiImportResult TrackImporter::importMidiFile(const std::string& filepath) {
             track.detectedTempo = convertResult.detectedTempo;
             track.tempoChanges = std::move(convertResult.tempoChanges);
             track.timeSignatureChanges = std::move(convertResult.timeSignatureChanges);
+
+            if (convertResult.umpEvents.empty())
+                continue;
+
             result.tracks.push_back(std::move(track));
         }
 

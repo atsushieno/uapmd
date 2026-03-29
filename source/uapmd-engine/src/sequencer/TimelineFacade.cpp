@@ -31,6 +31,7 @@ namespace uapmd {
 
         TimelineState timeline_;
         int32_t next_source_node_id_{1};
+        uint32_t next_timeline_track_reference_{1};
 
     public:
         explicit TimelineFacadeImpl(SequencerEngine& engine)
@@ -89,7 +90,7 @@ namespace uapmd {
             clip.gain = 1.0;
             clip.muted = false;
             clip.filepath = filepath;
-            clip.anchorClipId = -1;
+            clip.anchorReferenceId.clear();
             clip.anchorOrigin = AnchorOrigin::Start;
             clip.anchorOffset = position;
 
@@ -147,7 +148,7 @@ namespace uapmd {
             clip.gain = 1.0;
             clip.muted = false;
             clip.name = std::filesystem::path(filepath).stem().string();
-            clip.anchorClipId = -1;
+            clip.anchorReferenceId.clear();
             clip.anchorOrigin = AnchorOrigin::Start;
             clip.anchorOffset = position;
             clip.nrpnToParameterMapping = nrpnToParameterMapping;
@@ -206,7 +207,7 @@ namespace uapmd {
             clip.gain = 1.0;
             clip.muted = false;
             clip.name = clipName.empty() ? "MIDI Clip" : clipName;
-            clip.anchorClipId = -1;
+            clip.anchorReferenceId.clear();
             clip.anchorOrigin = AnchorOrigin::Start;
             clip.anchorOffset = position;
             clip.nrpnToParameterMapping = nrpnToParameterMapping;
@@ -246,6 +247,7 @@ namespace uapmd {
             timeline_.isPlaying = false;
             timeline_.playheadPosition = TimelinePosition{};
             timeline_.loopEnabled = false;
+            next_timeline_track_reference_ = 1;
 
             // Clear all existing tracks via engine (which calls onTrackRemoved for each)
             // NOTE: SequencerEngine::tracks() returns a transient snapshot, so refresh it
@@ -258,6 +260,12 @@ namespace uapmd {
             }
 
             std::atomic<int> pending_plugins{0};
+            struct LoadedClipRef {
+                TimelineTrack* track{nullptr};
+                int32_t clipId{-1};
+                std::string clipReferenceId;
+            };
+            std::unordered_map<UapmdProjectClipData*, LoadedClipRef> loadedClipRefs;
 
             auto loadPluginsForTrack = [this, &projectDir, &pending_plugins](UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
                 if (!projectTrack)
@@ -428,6 +436,11 @@ namespace uapmd {
                             result.error = loadResult.error.empty() ? "Failed to load MIDI clip" : loadResult.error;
                             return result;
                         }
+                        auto* loadedClip = timeline_tracks_[static_cast<size_t>(trackIndex)]->clipManager().getClip(loadResult.clipId);
+                        loadedClipRefs[clip.get()] = LoadedClipRef{
+                            timeline_tracks_[static_cast<size_t>(trackIndex)].get(),
+                            loadResult.clipId,
+                            loadedClip ? loadedClip->referenceId : std::string{}};
                     } else {
                         auto reader = createAudioFileReaderFromPath(resolvedPath.string());
                         if (!reader) {
@@ -439,6 +452,11 @@ namespace uapmd {
                             result.error = loadResult.error.empty() ? "Failed to load audio clip" : loadResult.error;
                             return result;
                         }
+                        auto* loadedClip = timeline_tracks_[static_cast<size_t>(trackIndex)]->clipManager().getClip(loadResult.clipId);
+                        loadedClipRefs[clip.get()] = LoadedClipRef{
+                            timeline_tracks_[static_cast<size_t>(trackIndex)].get(),
+                            loadResult.clipId,
+                            loadedClip ? loadedClip->referenceId : std::string{}};
                     }
                 }
             }
@@ -476,6 +494,37 @@ namespace uapmd {
                 }
             }
 
+            auto applyAnchorToLoadedClip = [&loadedClipRefs](UapmdProjectClipData* projectClip) {
+                if (!projectClip)
+                    return;
+                auto loadedIt = loadedClipRefs.find(projectClip);
+                if (loadedIt == loadedClipRefs.end() || !loadedIt->second.track)
+                    return;
+
+                auto pos = projectClip->position();
+                std::string anchorReferenceId;
+                if (auto* anchorClip = dynamic_cast<UapmdProjectClipData*>(pos.anchor)) {
+                    auto anchorIt = loadedClipRefs.find(anchorClip);
+                    if (anchorIt != loadedClipRefs.end())
+                        anchorReferenceId = anchorIt->second.clipReferenceId;
+                }
+                auto anchorOrigin = pos.origin == UapmdAnchorOrigin::End
+                    ? AnchorOrigin::End
+                    : AnchorOrigin::Start;
+                loadedIt->second.track->clipManager().setClipAnchor(
+                    loadedIt->second.clipId,
+                    anchorReferenceId,
+                    anchorOrigin,
+                    TimelinePosition(static_cast<int64_t>(pos.samples)));
+                loadedIt->second.track->clipManager().setClipPosition(
+                    loadedIt->second.clipId,
+                    TimelinePosition(static_cast<int64_t>(projectClip->absolutePositionInSamples())));
+            };
+
+            for (auto* projectTrack : tracks)
+                for (auto& clip : projectTrack->clips())
+                    applyAnchorToLoadedClip(clip.get());
+
             // Wait for all async plugin instantiations to complete
             while (pending_plugins.load(std::memory_order_acquire) > 0)
                 std::this_thread::yield();
@@ -495,11 +544,6 @@ namespace uapmd {
                 if (clips.empty())
                     continue;
 
-                std::unordered_map<int32_t, const ClipData*> clipMap;
-                clipMap.reserve(clips.size());
-                for (auto& clip : clips)
-                    clipMap[clip.clipId] = &clip;
-
                 for (const auto& clip : clips) {
                     if (clip.clipType != ClipType::Midi)
                         continue;
@@ -508,7 +552,7 @@ namespace uapmd {
                     if (!midiNode)
                         continue;
 
-                    const auto absolutePosition = clip.getAbsolutePosition(clipMap);
+                    const auto absolutePosition = clip.position;
                     const double clipStartSamples = static_cast<double>(absolutePosition.samples);
 
                     const auto& tempoSamples = midiNode->tempoChangeSamples();
@@ -537,11 +581,11 @@ namespace uapmd {
                 }
             }
 
-            std::sort(snapshot.tempoPoints.begin(), snapshot.tempoPoints.end(),
+            std::stable_sort(snapshot.tempoPoints.begin(), snapshot.tempoPoints.end(),
                 [](const MasterTrackSnapshot::TempoPoint& a, const MasterTrackSnapshot::TempoPoint& b) {
                     return a.timeSeconds < b.timeSeconds;
                 });
-            std::sort(snapshot.timeSignaturePoints.begin(), snapshot.timeSignaturePoints.end(),
+            std::stable_sort(snapshot.timeSignaturePoints.begin(), snapshot.timeSignaturePoints.end(),
                 [](const MasterTrackSnapshot::TimeSignaturePoint& a, const MasterTrackSnapshot::TimeSignaturePoint& b) {
                     return a.timeSeconds < b.timeSeconds;
                 });
@@ -562,13 +606,8 @@ namespace uapmd {
                 if (clips.empty())
                     continue;
 
-                std::unordered_map<int32_t, const ClipData*> clipMap;
-                clipMap.reserve(clips.size());
-                for (auto& clip : clips)
-                    clipMap[clip.clipId] = &clip;
-
                 for (const auto& clip : clips) {
-                    auto absolute = clip.getAbsolutePosition(clipMap);
+                    auto absolute = clip.position;
                     const int64_t startSample = absolute.samples;
                     const int64_t endSample = startSample + std::max<int64_t>(0, clip.durationSamples);
 
@@ -642,7 +681,7 @@ namespace uapmd {
                 if (!clipSnap)
                     return;
                 const auto& clips = clipSnap->clips;
-                const auto& clipMap = clipSnap->clipMap;
+                const auto& clipMap = clipSnap->clipReferenceMap;
                 for (const auto& clip : clips) {
                     if (clip.clipType != ClipType::Midi || clip.muted)
                         continue;
@@ -776,15 +815,19 @@ namespace uapmd {
             sampleRate_ = static_cast<int32_t>(sampleRate);
             bufferSizeInFrames_ = bufferSizeInFrames;
 
-            auto newTrack = std::make_shared<TimelineTrack>(outputChannels, sampleRate, bufferSizeInFrames);
-
-            // Capture the index this track will occupy (current size = future index after push_back)
-            // Note: this index is stable as long as no tracks before it are removed.
-            const int32_t trackIndex = static_cast<int32_t>(timeline_tracks_.size());
+            const std::string trackReferenceId = std::format("track_{}", next_timeline_track_reference_++);
+            auto newTrack = std::make_shared<TimelineTrack>(trackReferenceId, outputChannels, sampleRate, bufferSizeInFrames);
 
             newTrack->setNrpnParameterCallback(
-                [this, trackIndex](uint8_t group, uint32_t paramIdx, uint32_t rawValue, bool isRelative) {
+                [this, trackReferenceId](uint8_t group, uint32_t paramIdx, uint32_t rawValue, bool isRelative) {
                     auto& seqTracks = engine_.tracks();
+                    uapmd_track_index_t trackIndex = -1;
+                    for (size_t i = 0; i < timeline_tracks_.size(); ++i) {
+                        if (timeline_tracks_[i] && timeline_tracks_[i]->referenceId() == trackReferenceId) {
+                            trackIndex = static_cast<uapmd_track_index_t>(i);
+                            break;
+                        }
+                    }
                     if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= seqTracks.size())
                         return;
                     auto* seqTrack = seqTracks[static_cast<size_t>(trackIndex)];

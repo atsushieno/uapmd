@@ -1,8 +1,15 @@
 #include <algorithm>
 #include <atomic>
+#include <format>
 #include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
+
+    namespace {
+        std::string makeClipReferenceId(int32_t clipId) {
+            return std::format("clip_{:08x}", static_cast<uint32_t>(clipId));
+        }
+    } // namespace
 
     int32_t ClipManager::generateClipId() {
         return next_clip_id_++;
@@ -14,8 +21,11 @@ namespace uapmd {
         for (const auto& pair : clips_)
             snap->clips.push_back(pair.second);
         snap->clipMap.reserve(snap->clips.size());
-        for (auto& clip : snap->clips)
+        snap->clipReferenceMap.reserve(snap->clips.size());
+        for (auto& clip : snap->clips) {
             snap->clipMap[clip.clipId] = &clip;
+            snap->clipReferenceMap[clip.referenceId] = &clip;
+        }
         std::atomic_store_explicit(&clip_snapshot_,
             std::shared_ptr<const ClipSnapshot>(snap),
             std::memory_order_release);
@@ -37,6 +47,8 @@ namespace uapmd {
             // Ensure next_clip_id_ is always higher than any existing ID
             next_clip_id_ = std::max(next_clip_id_, newClip.clipId + 1);
         }
+        if (newClip.referenceId.empty())
+            newClip.referenceId = makeClipReferenceId(newClip.clipId);
 
         clips_[newClip.clipId] = newClip;
         rebuildSnapshotLocked();
@@ -92,26 +104,17 @@ namespace uapmd {
                 clipCopies.push_back(pair.second);
             }
 
-            std::unordered_map<int32_t, const ClipData*> clipMap;
-            clipMap.reserve(clipCopies.size());
-            for (auto& clip : clipCopies) {
-                clipMap[clip.clipId] = &clip;
-            }
-
             std::vector<const ClipData*> activeClips;
             activeClips.reserve(clipCopies.size());
             for (auto& clip : clipCopies) {
-                TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
-                if (position.samples >= absPos.samples &&
-                    position.samples < absPos.samples + clip.durationSamples) {
+                if (position.samples >= clip.position.samples &&
+                    position.samples < clip.position.samples + clip.durationSamples) {
                     activeClips.push_back(&clip);
                 }
             }
 
-            std::sort(activeClips.begin(), activeClips.end(), [&clipMap](const ClipData* a, const ClipData* b) {
-                TimelinePosition aPosAbs = a->getAbsolutePosition(clipMap);
-                TimelinePosition bPosAbs = b->getAbsolutePosition(clipMap);
-                return aPosAbs.samples < bPosAbs.samples;
+            std::sort(activeClips.begin(), activeClips.end(), [](const ClipData* a, const ClipData* b) {
+                return a->position.samples < b->position.samples;
             });
 
             std::vector<ClipData> result;
@@ -219,15 +222,26 @@ namespace uapmd {
         return it->second.needsFileSave;
     }
 
-    bool ClipManager::setClipAnchor(int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset) {
+    bool ClipManager::setClipAnchor(int32_t clipId, const std::string& anchorReferenceId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
             return false;
 
-        it->second.anchorClipId = anchorClipId;
+        it->second.anchorReferenceId = anchorReferenceId;
         it->second.anchorOrigin = anchorOrigin;
         it->second.anchorOffset = anchorOffset;
+        rebuildSnapshotLocked();
+        return true;
+    }
+
+    bool ClipManager::setClipPosition(int32_t clipId, const TimelinePosition& position) {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        it->second.position = position;
         rebuildSnapshotLocked();
         return true;
     }

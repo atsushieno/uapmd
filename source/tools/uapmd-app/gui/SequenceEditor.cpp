@@ -703,14 +703,12 @@ void SequenceEditor::renderClipRow(int32_t trackIndex, const ClipRow& clip, cons
 bool SequenceEditor::renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
     bool changed = false;
     std::string anchorLabel = "Track";
-    if (clip.anchorClipId != -1) {
-        auto it = windows_.find(trackIndex);
-        if (it != windows_.end()) {
-            for (const auto& c : it->second.displayClips) {
-                if (c.clipId == clip.anchorClipId) {
-                    anchorLabel = c.name.empty() ? std::format("Clip #{}", c.clipId) : c.name;
-                    break;
-                }
+    if (!clip.anchorReferenceId.empty()) {
+        auto anchorOptions = getAnchorOptions(trackIndex, clip.clipId);
+        for (const auto& option : anchorOptions) {
+            if (option.clipReferenceId == clip.anchorReferenceId) {
+                anchorLabel = option.label;
+                break;
             }
         }
     }
@@ -719,35 +717,22 @@ bool SequenceEditor::renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, 
     std::string comboId = std::format("##AnchorCombo{}", clip.clipId);
     if (ImGui::BeginCombo(comboId.c_str(), anchorLabel.c_str())) {
         // Track anchor option
-        bool isTrackAnchor = (clip.anchorClipId == -1);
+        bool isTrackAnchor = clip.anchorReferenceId.empty();
         if (ImGui::Selectable("Track", isTrackAnchor)) {
             if (context.updateClip) {
-                context.updateClip(trackIndex, clip.clipId, -1, clip.anchorOrigin, clip.position);
+                context.updateClip(trackIndex, clip.clipId, {}, clip.anchorOrigin, clip.position);
                 changed = true;
             }
         }
 
         // Other clip anchors - show clip names
         auto anchorOptions = getAnchorOptions(trackIndex, clip.clipId);
-        auto it = windows_.find(trackIndex);
-        if (it != windows_.end()) {
-            for (int32_t anchorId : anchorOptions) {
-                bool isSelected = (clip.anchorClipId == anchorId);
-
-                // Find the name of this anchor clip
-                std::string anchorName;
-                for (const auto& c : it->second.displayClips) {
-                    if (c.clipId == anchorId) {
-                        anchorName = c.name.empty() ? std::format("Clip #{}", anchorId) : c.name;
-                        break;
-                    }
-                }
-
-                if (ImGui::Selectable(anchorName.c_str(), isSelected)) {
-                    if (context.updateClip) {
-                        context.updateClip(trackIndex, clip.clipId, anchorId, clip.anchorOrigin, clip.position);
-                        changed = true;
-                    }
+        for (const auto& anchorOption : anchorOptions) {
+            bool isSelected = (clip.anchorReferenceId == anchorOption.clipReferenceId);
+            if (ImGui::Selectable(anchorOption.label.c_str(), isSelected)) {
+                if (context.updateClip) {
+                    context.updateClip(trackIndex, clip.clipId, anchorOption.clipReferenceId, clip.anchorOrigin, clip.position);
+                    changed = true;
                 }
             }
         }
@@ -766,7 +751,7 @@ bool SequenceEditor::renderOriginCombo(int32_t trackIndex, const ClipRow& clip, 
         bool isStart = (clip.anchorOrigin == "Start");
         if (ImGui::Selectable("Start", isStart)) {
             if (context.updateClip) {
-                context.updateClip(trackIndex, clip.clipId, clip.anchorClipId, "Start", clip.position);
+                context.updateClip(trackIndex, clip.clipId, clip.anchorReferenceId, "Start", clip.position);
                 changed = true;
             }
         }
@@ -774,7 +759,7 @@ bool SequenceEditor::renderOriginCombo(int32_t trackIndex, const ClipRow& clip, 
         bool isEnd = (clip.anchorOrigin == "End");
         if (ImGui::Selectable("End", isEnd)) {
             if (context.updateClip) {
-                context.updateClip(trackIndex, clip.clipId, clip.anchorClipId, "End", clip.position);
+                context.updateClip(trackIndex, clip.clipId, clip.anchorReferenceId, "End", clip.position);
                 changed = true;
             }
         }
@@ -794,7 +779,7 @@ bool SequenceEditor::renderPositionInput(int32_t trackIndex, const ClipRow& clip
     std::string inputId = std::format("##PosInput{}", clip.clipId);
     if (ImGui::InputText(inputId.c_str(), posBuffer, sizeof(posBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
         if (context.updateClip) {
-            context.updateClip(trackIndex, clip.clipId, clip.anchorClipId, clip.anchorOrigin, std::string(posBuffer));
+            context.updateClip(trackIndex, clip.clipId, clip.anchorReferenceId, clip.anchorOrigin, std::string(posBuffer));
             changed = true;
         }
     }
@@ -821,24 +806,33 @@ bool SequenceEditor::renderNameInput(int32_t trackIndex, const ClipRow& clip, co
     return changed;
 }
 
-std::vector<int32_t> SequenceEditor::getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const {
-    std::vector<int32_t> options;
+std::vector<SequenceEditor::AnchorOption> SequenceEditor::getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const {
+    std::vector<AnchorOption> options;
     if (trackIndex < 0)
         return options;
 
-    auto it = windows_.find(trackIndex);
-    if (it == windows_.end()) {
-        return options;
-    }
+    for (const auto& [windowTrackIndex, state] : windows_) {
+        for (const auto& clip : state.displayClips) {
+            if (clip.clipId == currentClipId && windowTrackIndex == trackIndex)
+                continue;
+            if (clip.clipId <= 0 || clip.referenceId.empty())
+                continue;
 
-    const auto& state = it->second;
-    for (const auto& clip : state.displayClips) {
-        if (clip.clipId != currentClipId && clip.clipId > 0) {
-            options.push_back(clip.clipId);
+            auto label = clip.name.empty() ? std::format("Clip #{}", clip.clipId) : clip.name;
+            if (windowTrackIndex != trackIndex)
+                label = std::format("[{}] {}", windowTrackIndex, label);
+            options.push_back(AnchorOption{
+                windowTrackIndex,
+                clip.referenceId,
+                std::move(label)});
         }
     }
 
-    std::sort(options.begin(), options.end());
+    std::sort(options.begin(), options.end(), [](const AnchorOption& a, const AnchorOption& b) {
+        if (a.trackIndex != b.trackIndex)
+            return a.trackIndex < b.trackIndex;
+        return a.clipReferenceId < b.clipReferenceId;
+    });
     return options;
 }
 

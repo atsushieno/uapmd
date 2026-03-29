@@ -9,6 +9,7 @@
 
 #include <imgui.h>
 #include <ImTimeline.h>
+#include <uapmd-data/uapmd-data.hpp>
 
 #include "ClipPreview.hpp"
 
@@ -20,7 +21,9 @@ public:
 
     struct ClipRow {
         int32_t clipId{-1};
-        int32_t anchorClipId{-1};  // -1 = track anchor
+        std::string referenceId;
+        std::string trackReferenceId;
+        std::string anchorReferenceId;  // Empty = track anchor
         std::string anchorOrigin;   // "Start" or "End"
         std::string position;       // Display string: "+2.5s"
         std::string name;           // User-editable clip name
@@ -45,7 +48,7 @@ public:
         std::function<void(int32_t trackIndex, double positionSeconds)> addBlankMidiClipAtPosition;
         std::function<void(int32_t trackIndex, int32_t clipId)> removeClip;
         std::function<void(int32_t trackIndex)> clearAllClips;
-        std::function<void(int32_t trackIndex, int32_t clipId, int32_t anchorId, const std::string& origin, const std::string& position)> updateClip;
+        std::function<void(int32_t trackIndex, int32_t clipId, const std::string& anchorReferenceId, const std::string& origin, const std::string& position)> updateClip;
         std::function<void(int32_t trackIndex, int32_t clipId, const std::string& name)> updateClipName;
         std::function<void(int32_t trackIndex, int32_t clipId)> changeClipFile;
         std::function<void(int32_t trackIndex, int32_t clipId, double seconds)> moveClipAbsolute;
@@ -102,7 +105,13 @@ private:
     bool renderOriginCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     bool renderPositionInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     bool renderNameInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
-    std::vector<int32_t> getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const;
+    struct AnchorOption {
+        int32_t trackIndex{-1};
+        std::string clipReferenceId;
+        std::string label;
+    };
+
+    std::vector<AnchorOption> getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const;
     void drawPlayheadIndicator(
         const SequenceEditorState& state,
         const RenderContext& context,

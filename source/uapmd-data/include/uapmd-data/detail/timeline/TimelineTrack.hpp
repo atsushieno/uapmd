@@ -22,7 +22,7 @@ namespace uapmd {
     // Independent of SequencerEngine for maximum reusability
     class TimelineTrack {
     public:
-        explicit TimelineTrack(uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames);
+        explicit TimelineTrack(std::string referenceId, uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames);
         ~TimelineTrack() = default;
 
         // Clip management
@@ -55,6 +55,7 @@ namespace uapmd {
         // Channel information
         uint32_t channelCount() const { return channel_count_; }
         double sampleRate() const { return sample_rate_; }
+        const std::string& referenceId() const { return reference_id_; }
 
         // NRPN parameter mapping callback.
         // When set, MidiClipSourceNodes with nrpnToParameterMapping==true route Assignable
@@ -68,6 +69,7 @@ namespace uapmd {
         void reconfigureBuffers(uint32_t channelCount, uint32_t bufferSizeInFrames);
 
     private:
+        std::string reference_id_;
         uint32_t channel_count_;
         double sample_rate_;
 

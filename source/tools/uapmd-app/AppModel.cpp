@@ -2054,6 +2054,12 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
         auto* sequencerEngine = sequencer_.engine();
         auto sequencerTracks = sequencerEngine ? sequencerEngine->tracks() : std::vector<uapmd::SequencerTrack*>{};
         auto timelineTracks = getTimelineTracks();
+        struct SerializedTrackClips {
+            int32_t trackIndex{0};
+            std::vector<uapmd::ClipData> clips;
+        };
+        std::unordered_map<std::string, uapmd::UapmdProjectClipData*> serializedClipLookup;
+        std::vector<SerializedTrackClips> serializedTracks;
 
         size_t midiExportCounter = 0;
 
@@ -2071,8 +2077,9 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                 return a.clipId < b.clipId;
             });
 
-            std::unordered_map<int32_t, uapmd::UapmdProjectClipData*> clipLookup;
-            clipLookup.reserve(clips.size());
+            serializedTracks.push_back(SerializedTrackClips{
+                static_cast<int32_t>(trackIndex),
+                clips});
 
             for (const auto& clip : clips) {
                 auto projectClip = uapmd::UapmdProjectClipData::create();
@@ -2161,26 +2168,8 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
 
                 projectClip->file(clipPath);
 
-                clipLookup[clip.clipId] = projectClip.get();
+                serializedClipLookup[clip.referenceId] = projectClip.get();
                 projectTrack->clips().push_back(std::move(projectClip));
-            }
-
-            for (const auto& clip : clips) {
-                auto it = clipLookup.find(clip.clipId);
-                if (it == clipLookup.end())
-                    continue;
-
-                uapmd::UapmdTimelinePosition pos{};
-                if (clip.anchorClipId >= 0) {
-                    auto anchorIt = clipLookup.find(clip.anchorClipId);
-                    if (anchorIt != clipLookup.end())
-                        pos.anchor = anchorIt->second;
-                }
-                pos.origin = (clip.anchorOrigin == uapmd::AnchorOrigin::End)
-                    ? uapmd::UapmdAnchorOrigin::End
-                    : uapmd::UapmdAnchorOrigin::Start;
-                pos.samples = static_cast<uint64_t>(std::max<int64_t>(0, clip.anchorOffset.samples));
-                it->second->position(pos);
             }
 
             uapmd::SequencerTrack* sequencerTrack = (sequencerEngine && trackIndex < sequencerTracks.size())
@@ -2234,6 +2223,26 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                     &operation->pending_states,
                     "master")) {
                 masterTrack->graph(std::move(graphData));
+            }
+        }
+
+        for (const auto& serializedTrack : serializedTracks) {
+            for (const auto& clip : serializedTrack.clips) {
+                auto clipIt = serializedClipLookup.find(clip.referenceId);
+                if (clipIt == serializedClipLookup.end())
+                    continue;
+
+                uapmd::UapmdTimelinePosition pos{};
+                if (!clip.anchorReferenceId.empty()) {
+                    auto anchorIt = serializedClipLookup.find(clip.anchorReferenceId);
+                    if (anchorIt != serializedClipLookup.end())
+                        pos.anchor = anchorIt->second;
+                }
+                pos.origin = (clip.anchorOrigin == uapmd::AnchorOrigin::End)
+                    ? uapmd::UapmdAnchorOrigin::End
+                    : uapmd::UapmdAnchorOrigin::Start;
+                pos.samples = static_cast<uint64_t>(std::max<int64_t>(0, clip.anchorOffset.samples));
+                clipIt->second->position(pos);
             }
         }
     } catch (const std::exception& e) {
