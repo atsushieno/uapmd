@@ -19,7 +19,7 @@ namespace uapmd {
         ~SequencerTrackImpl() override = default;
 
         AudioPluginGraph& graph() override { return *graph_; }
-        uint32_t latencyInSamples() override { return graph_ ? graph_->latencyInSamples() : 0; }
+        uint32_t latencyInSamples() override { return graph_ ? graph_->mainOutputLatencyInSamples() : 0; }
 
         std::vector<int32_t>& orderedInstanceIds() override {
             return instance_ids;

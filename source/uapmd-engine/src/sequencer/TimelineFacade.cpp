@@ -607,9 +607,8 @@ namespace uapmd {
             if (trackIndex < 0)
                 return 0;
             auto trackLatency = engine_.trackLatencyInSamples(trackIndex);
-            auto maxTrackLatency = maxTrackLatencyInSamples();
             auto masterLatency = engine_.masterTrackLatencyInSamples();
-            return masterLatency + (maxTrackLatency > trackLatency ? maxTrackLatency - trackLatency : 0);
+            return masterLatency + trackLatency;
         }
 
         uint32_t masterTrackRenderOffsetInSamples() override {
@@ -713,8 +712,6 @@ namespace uapmd {
             // targetSequence.tracks[i] points to a pump ring-buffer slot when called
             // from pumpAudio(), or to engine_.data().tracks[i] on the legacy path.
             if (!snapshot) return;
-            const auto maxTrackLatency = maxTrackLatencyInSamples();
-            const auto masterLatency = masterTrackRenderOffsetInSamples();
             for (size_t i = 0; i < snapshot->size() && i < targetSequence.tracks.size(); ++i) {
                 auto* trackContext = targetSequence.tracks[i];
                 if (!trackContext)
@@ -741,9 +738,7 @@ namespace uapmd {
 
                 auto renderTimeline = timeline_;
                 TimelinePosition renderPosition{};
-                const auto trackLatency = engine_.trackLatencyInSamples(static_cast<int32_t>(i));
-                const auto trackOffset = masterLatency +
-                    (maxTrackLatency > trackLatency ? maxTrackLatency - trackLatency : 0);
+                const auto trackOffset = trackRenderOffsetInSamples(static_cast<int32_t>(i));
                 int64_t renderStartSample =
                     timeline_.playheadPosition.samples + static_cast<int64_t>(trackOffset);
                 if (renderStartSample < 0)

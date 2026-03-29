@@ -27,7 +27,7 @@ namespace uapmd {
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
         int32_t processAudio(AudioProcessContext& process) override;
-        uint32_t latencyInSamples() override;
+        uint32_t mainOutputLatencyInSamples() override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
     };
@@ -108,7 +108,7 @@ namespace uapmd {
         return 0;
     }
 
-    uint32_t AudioPluginGraphImpl::latencyInSamples() {
+    uint32_t AudioPluginGraphImpl::mainOutputLatencyInSamples() {
         RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
         uint64_t total = 0;
         for (const auto& node : *access) {
