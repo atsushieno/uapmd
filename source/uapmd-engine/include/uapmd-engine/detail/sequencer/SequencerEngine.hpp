@@ -34,6 +34,8 @@ namespace uapmd {
 
         virtual std::vector<SequencerTrack *> & tracks() const = 0;
         virtual SequencerTrack* masterTrack() = 0;
+        virtual uint32_t trackLatencyInSamples(uapmd_track_index_t trackIndex) = 0;
+        virtual uint32_t masterTrackLatencyInSamples() = 0;
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
         virtual uapmd_track_index_t addEmptyTrack() = 0;
         // Add plugin to existing track

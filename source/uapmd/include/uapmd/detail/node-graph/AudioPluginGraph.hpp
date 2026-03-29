@@ -45,6 +45,7 @@ namespace uapmd {
         virtual void setEventOutputCallback(std::function<void(int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes)> callback) = 0;
 
         virtual int32_t processAudio(AudioProcessContext& process) = 0;
+        virtual uint32_t latencyInSamples() = 0;
 
         // Creates a minimum linear implementation of this interface.
         static std::unique_ptr<AudioPluginGraph> create(size_t eventBufferSizeInBytes);

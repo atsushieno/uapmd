@@ -133,6 +133,8 @@ namespace uapmd {
 
         std::vector<SequencerTrack*>& tracks() const override;
         SequencerTrack* masterTrack() override;
+        uint32_t trackLatencyInSamples(uapmd_track_index_t trackIndex) override;
+        uint32_t masterTrackLatencyInSamples() override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         uapmd_track_index_t addEmptyTrack() override;
@@ -363,6 +365,17 @@ namespace uapmd {
 
     SequencerTrack* SequencerEngineImpl::masterTrack() {
         return master_track_.get();
+    }
+
+    uint32_t SequencerEngineImpl::trackLatencyInSamples(uapmd_track_index_t trackIndex) {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return 0;
+        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+        return track ? track->latencyInSamples() : 0;
+    }
+
+    uint32_t SequencerEngineImpl::masterTrackLatencyInSamples() {
+        return master_track_ ? master_track_->latencyInSamples() : 0;
     }
 
     void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {
