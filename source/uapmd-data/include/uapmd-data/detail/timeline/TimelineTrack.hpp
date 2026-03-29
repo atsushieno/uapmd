@@ -46,6 +46,11 @@ namespace uapmd {
             remidy::AudioProcessContext& process,
             const TimelineState& timeline
         );
+        void processAudioForRenderPosition(
+            remidy::AudioProcessContext& process,
+            const TimelineState& timeline,
+            int64_t renderStartSample
+        );
 
         // Channel information
         uint32_t channelCount() const { return channel_count_; }

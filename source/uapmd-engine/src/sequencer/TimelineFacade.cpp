@@ -594,6 +594,28 @@ namespace uapmd {
             return bounds;
         }
 
+        uint32_t maxTrackLatencyInSamples() override {
+            uint32_t maxLatency = 0;
+            auto& tracks = engine_.tracks();
+            for (size_t i = 0; i < tracks.size(); ++i)
+                maxLatency = std::max(maxLatency,
+                                      engine_.trackLatencyInSamples(static_cast<int32_t>(i)));
+            return maxLatency;
+        }
+
+        uint32_t trackRenderOffsetInSamples(int32_t trackIndex) override {
+            if (trackIndex < 0)
+                return 0;
+            auto trackLatency = engine_.trackLatencyInSamples(trackIndex);
+            auto maxTrackLatency = maxTrackLatencyInSamples();
+            auto masterLatency = engine_.masterTrackLatencyInSamples();
+            return masterLatency + (maxTrackLatency > trackLatency ? maxTrackLatency - trackLatency : 0);
+        }
+
+        uint32_t masterTrackRenderOffsetInSamples() override {
+            return engine_.masterTrackLatencyInSamples();
+        }
+
         void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) override {
             // Hold a snapshot reference for the duration of this callback so that
             // tracks added or removed on the UI thread cannot destroy TrackList
@@ -691,6 +713,8 @@ namespace uapmd {
             // targetSequence.tracks[i] points to a pump ring-buffer slot when called
             // from pumpAudio(), or to engine_.data().tracks[i] on the legacy path.
             if (!snapshot) return;
+            const auto maxTrackLatency = maxTrackLatencyInSamples();
+            const auto masterLatency = masterTrackRenderOffsetInSamples();
             for (size_t i = 0; i < snapshot->size() && i < targetSequence.tracks.size(); ++i) {
                 auto* trackContext = targetSequence.tracks[i];
                 if (!trackContext)
@@ -715,7 +739,26 @@ namespace uapmd {
                     }
                 }
 
-                (*snapshot)[i]->processAudio(*trackContext, timeline_);
+                auto renderTimeline = timeline_;
+                TimelinePosition renderPosition{};
+                const auto trackLatency = engine_.trackLatencyInSamples(static_cast<int32_t>(i));
+                const auto trackOffset = masterLatency +
+                    (maxTrackLatency > trackLatency ? maxTrackLatency - trackLatency : 0);
+                int64_t renderStartSample =
+                    timeline_.playheadPosition.samples + static_cast<int64_t>(trackOffset);
+                if (renderStartSample < 0)
+                    renderStartSample = 0;
+                if (renderTimeline.loopEnabled && renderTimeline.loopEnd.samples > renderTimeline.loopStart.samples) {
+                    const int64_t loopLength = renderTimeline.loopEnd.samples - renderTimeline.loopStart.samples;
+                    if (renderStartSample >= renderTimeline.loopStart.samples) {
+                        renderStartSample =
+                            renderTimeline.loopStart.samples +
+                            ((renderStartSample - renderTimeline.loopStart.samples) % loopLength);
+                    }
+                }
+                renderPosition.samples = renderStartSample;
+                renderTimeline.seekTo(renderPosition, sampleRate_);
+                (*snapshot)[i]->processAudioForRenderPosition(*trackContext, renderTimeline, renderStartSample);
             }
         }
 

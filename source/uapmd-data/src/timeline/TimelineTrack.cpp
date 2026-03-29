@@ -274,6 +274,17 @@ namespace uapmd {
         remidy::AudioProcessContext& process,
         const TimelineState& timeline
     ) {
+        processAudioForRenderPosition(process, timeline, timeline.playheadPosition.samples);
+    }
+
+    void TimelineTrack::processAudioForRenderPosition(
+        remidy::AudioProcessContext& process,
+        const TimelineState& timeline,
+        int64_t renderStartSample
+    ) {
+        (void) renderStartSample;
+        const auto& renderTimeline = timeline;
+
         const int32_t frameCount = process.frameCount();
         const uint32_t numChannels = std::min(channel_count_,
             static_cast<uint32_t>(process.audioOutBusCount() > 0 ? process.outputChannelCount(0) : 0));
@@ -302,8 +313,8 @@ namespace uapmd {
 
                 // Check if clip is active at current playhead (anchor-aware)
                 TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
-                if (timeline.playheadPosition.samples < absPos.samples ||
-                    timeline.playheadPosition.samples >= absPos.samples + clip.durationSamples)
+                if (renderTimeline.playheadPosition.samples < absPos.samples ||
+                    renderTimeline.playheadPosition.samples >= absPos.samples + clip.durationSamples)
                     continue;
 
                 auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
@@ -314,12 +325,12 @@ namespace uapmd {
                 if (!audioSourceNode)
                     continue;
 
-                int64_t sourcePosition = timeline.playheadPosition.samples - absPos.samples;
+                int64_t sourcePosition = renderTimeline.playheadPosition.samples - absPos.samples;
                 if (sourcePosition < 0)
                     continue;
 
                 audioSourceNode->seek(sourcePosition);
-                audioSourceNode->setPlaying(timeline.isPlaying);
+                audioSourceNode->setPlaying(renderTimeline.isPlaying);
 
                 // Zero pre-allocated scratch buffers and process
                 for (uint32_t ch = 0; ch < numChannels && ch < temp_source_buffers_.size(); ++ch)
@@ -340,8 +351,8 @@ namespace uapmd {
                     continue;
 
                 TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
-                if (timeline.playheadPosition.samples < absPos.samples ||
-                    timeline.playheadPosition.samples >= absPos.samples + clip.durationSamples)
+                if (renderTimeline.playheadPosition.samples < absPos.samples ||
+                    renderTimeline.playheadPosition.samples >= absPos.samples + clip.durationSamples)
                     continue;
 
                 auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
@@ -352,18 +363,18 @@ namespace uapmd {
                 if (!midiNode)
                     continue;
 
-                int64_t sourcePosition = timeline.playheadPosition.samples - absPos.samples;
+                int64_t sourcePosition = renderTimeline.playheadPosition.samples - absPos.samples;
                 if (sourcePosition < 0)
                     continue;
 
                 midiNode->seek(sourcePosition);
-                midiNode->setPlaying(timeline.isPlaying);
+                midiNode->setPlaying(renderTimeline.isPlaying);
 
                 midiNode->processEvents(
                     process.eventIn(),
                     frameCount,
                     static_cast<int32_t>(sample_rate_),
-                    timeline.tempo
+                    renderTimeline.tempo
                 );
             }
         }
@@ -391,7 +402,7 @@ namespace uapmd {
                         devicePtrs[ch] = const_cast<float*>(process.getFloatInBuffer(0, ch));
 
                     deviceInputNode->setDeviceInputBuffers(devicePtrs, usableChannels);
-                    deviceInputNode->setPlaying(timeline.isPlaying);
+                    deviceInputNode->setPlaying(renderTimeline.isPlaying);
 
                     // Zero and reuse pre-allocated scratch buffers
                     for (uint32_t ch = 0; ch < numChannels && ch < temp_source_buffers_.size(); ++ch)
