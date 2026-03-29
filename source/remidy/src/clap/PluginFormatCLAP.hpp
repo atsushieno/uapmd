@@ -106,6 +106,7 @@ namespace remidy {
         clap_preset_discovery_factory* preset_discovery_factory;
         void* module;
         clap_process_t clap_process;
+        std::atomic<uint32_t> cached_latency_samples_{0};
 
         std::vector<clap_audio_buffer_t> audio_in_port_buffers{};
         std::vector<clap_audio_buffer_t> audio_out_port_buffers{};
@@ -285,6 +286,7 @@ namespace remidy {
         void resetAudioPortBuffers();
         void cleanupBuffers();
         void applyOfflineRenderingMode();
+        void refreshLatencyOnMainThread();
         void processParamsFlush();
 
     public:
@@ -308,6 +310,7 @@ namespace remidy {
         StatusCode startProcessing() override;
         StatusCode stopProcessing() override;
         StatusCode process(AudioProcessContext &process) override;
+        uint32_t latencyInSamples() const override { return cached_latency_samples_.load(std::memory_order_acquire); }
 
         // port helpers
         PluginAudioBuses* audioBuses() override { return audio_buses; }

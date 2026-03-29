@@ -338,6 +338,7 @@ namespace remidy {
             return (ui_ ? ui_ : ui_ = std::make_unique<UISupport>(this)).get();
         }
 
+        uint32_t latencyInSamples() const override { return 0; }
         bool requiresReplacingProcess() const override { return false; }
     };
 

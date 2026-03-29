@@ -201,6 +201,22 @@ remidy::StatusCode remidy::PluginInstanceAUv3::stopProcessing() {
     return StatusCode::OK;
 }
 
+uint32_t remidy::PluginInstanceAUv3::latencyInSamples() const {
+    @autoreleasepool {
+        if (audioUnit == nil)
+            return 0;
+
+        const NSTimeInterval latencySeconds = audioUnit.latency;
+        double sampleRate = host_transport_info.sampleRate;
+        if (sampleRate <= 0.0 && audioUnit.outputBusses.count > 0)
+            sampleRate = [[audioUnit.outputBusses objectAtIndexedSubscript:0] format].sampleRate;
+        if (sampleRate <= 0.0 || latencySeconds <= 0.0)
+            return 0;
+
+        return static_cast<uint32_t>(std::llround(latencySeconds * sampleRate));
+    }
+}
+
 remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &process) {
     @autoreleasepool {
         if (audioUnit == nil) {

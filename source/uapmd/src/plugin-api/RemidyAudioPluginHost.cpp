@@ -109,6 +109,10 @@ namespace uapmd {
             return status;
         }
 
+        uint32_t latencyInSamples() const override {
+            return instance ? instance->latencyInSamples() : 0;
+        }
+
         std::vector<uapmd::ParameterMetadata> parameterMetadataList() override {
             std::vector<ParameterMetadata> ret{};
             auto pl = instance->parameters();

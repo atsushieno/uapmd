@@ -122,6 +122,13 @@ namespace remidy {
         resizeAudioPortBuffers(0, true);
     }
 
+    void PluginInstanceCLAP::refreshLatencyOnMainThread() {
+        uint32_t latency = 0;
+        if (plugin && plugin->canUseLatency())
+            latency = plugin->latencyGet();
+        cached_latency_samples_.store(latency, std::memory_order_release);
+    }
+
     StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {
         bool useDouble = configuration.dataType == AudioContentType::Float64;
         is_offline_ = configuration.offlineMode;
@@ -174,6 +181,7 @@ namespace remidy {
         // It seems we have to activate plugin buses first.
         EventLoop::runTaskOnMainThread([&] {
             plugin->activate(configuration.sampleRate, 1, configuration.bufferSizeInSamples);
+            refreshLatencyOnMainThread();
         });
         applyOfflineRenderingMode();
 

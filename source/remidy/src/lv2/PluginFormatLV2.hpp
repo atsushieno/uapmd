@@ -346,6 +346,8 @@ namespace remidy {
         };
         std::vector<LV2PortInfo> lv2_ports{};
         int32_t control_atom_port_index{-1};
+        int32_t latency_port_index_{-1};
+        std::atomic<uint32_t> cached_latency_samples_{0};
         struct PendingParameterChange {
             uint32_t index;
             double value;
@@ -437,6 +439,7 @@ namespace remidy {
         // ui
         PluginUISupport *ui() override;
 
+        uint32_t latencyInSamples() const override { return cached_latency_samples_.load(std::memory_order_acquire); }
         bool requiresReplacingProcess() const override { return false; }
     };
 

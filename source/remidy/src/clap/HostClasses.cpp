@@ -11,7 +11,17 @@
 namespace remidy {
 
     void RemidyCLAPHost::requestRestart() noexcept {
-        // FIXME: implement
+        auto* instance = attached_instance.load();
+        if (!instance)
+            return;
+
+        auto callbacksAlive = instance->callbacks_alive_;
+        EventLoop::enqueueTaskOnMainThread([instance, callbacksAlive] {
+            if (!callbacksAlive->load(std::memory_order_acquire))
+                return;
+            instance->refreshLatencyOnMainThread();
+        });
+
         Logger::global()->logInfo("RemidyCLAPHost::requestRestart() is not implemented");
     }
 

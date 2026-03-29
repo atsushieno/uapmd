@@ -50,6 +50,7 @@ using wclap32::wclap_plugin_gui;
 using wclap32::wclap_plugin_note_ports;
 using wclap32::wclap_plugin_params;
 using wclap32::wclap_plugin_preset_load;
+using wclap32::wclap_plugin_latency;
 using wclap32::wclap_process;
 using wclap32::wclap_plugin_webview;
 using wclap32::wclap_plugin_state;
@@ -228,6 +229,7 @@ struct SlotState {
     bool has_state = false;
     bool has_state_context = false;
     bool has_preset_load = false;
+    uint32_t latency_in_samples = 0;
     uint32_t ui_width = 800;
     uint32_t ui_height = 600;
     wclap_plugin_params params{};
@@ -738,6 +740,7 @@ static std::string buildCapabilitiesJson(const SlotState* state) {
          << ",\"hasEventOutputs\":" << (state && state->has_event_outputs ? "true" : "false")
          << ",\"hasState\":" << (state && state->has_state ? "true" : "false")
          << ",\"hasPresetLoad\":" << (state && state->has_preset_load ? "true" : "false")
+         << ",\"latencyInSamples\":" << (state ? state->latency_in_samples : 0)
          << "}";
     return json.str();
 }
@@ -1565,6 +1568,17 @@ int32_t _wclapPluginSetup(Instance *inst,
     if (presetLoadIdPtr) {
         auto presetLoadVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{presetLoadIdPtr});
         state->has_preset_load = presetLoadVoid.wasmPointer != 0;
+    }
+    static const char kLatencyExtId[] = "clap.latency";
+    auto latencyIdPtr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(kLatencyExtId),
+        sizeof(kLatencyExtId));
+    if (latencyIdPtr) {
+        auto latencyVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{latencyIdPtr});
+        if (latencyVoid.wasmPointer != 0) {
+            auto latency = inst->get(Pointer<const wclap_plugin_latency>{latencyVoid.wasmPointer});
+            state->latency_in_samples = inst->call(latency.get, plugPtr);
+        }
     }
     rebuildUiJson(state);
     s_slots[inst]         = state;

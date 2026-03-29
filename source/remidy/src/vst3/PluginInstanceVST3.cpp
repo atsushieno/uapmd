@@ -601,6 +601,9 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
     return StatusCode::OK;
 }
 
+uint32_t remidy::PluginInstanceVST3::latencyInSamples() const {
+    return processor ? processor->getLatencySamples() : 0;
+}
 
 remidy::PluginParameterSupport* remidy::PluginInstanceVST3::parameters() {
     if (!_parameters)

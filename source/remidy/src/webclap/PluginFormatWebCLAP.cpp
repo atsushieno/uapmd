@@ -172,6 +172,8 @@ static WebClapCapabilities parseCapabilities(const choc::value::ValueView& value
     capabilities.hasEventOutputs = value["hasEventOutputs"].getWithDefault<bool>(false);
     capabilities.hasState = value["hasState"].getWithDefault<bool>(false);
     capabilities.hasPresetLoad = value["hasPresetLoad"].getWithDefault<bool>(false);
+    capabilities.latencyInSamples =
+        static_cast<uint32_t>(value["latencyInSamples"].getWithDefault<int32_t>(0));
     return capabilities;
 }
 
@@ -782,6 +784,7 @@ void PluginInstanceWebCLAP::updateCapabilities(const WebClapCapabilities& capabi
     has_event_outputs_ = capabilities.hasEventOutputs;
     has_state_support_ = capabilities.hasState;
     has_preset_load_support_ = capabilities.hasPresetLoad;
+    latency_in_samples_.store(capabilities.latencyInSamples);
 }
 
 bool PluginInstanceWebCLAP::getCachedParameterValue(uint32_t index, double* plainValue) const {

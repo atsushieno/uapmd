@@ -267,6 +267,7 @@ namespace remidy {
 
         AudioBuses* audioBuses() override { return audio_buses; }
 
+        uint32_t latencyInSamples() const override;
         bool requiresReplacingProcess() const override { return false; }
     };
 
@@ -508,6 +509,7 @@ namespace remidy {
 
         AudioBuses* audioBuses() override { return audio_buses; }
 
+        uint32_t latencyInSamples() const override;
         bool requiresReplacingProcess() const override { return false; }
     };
 

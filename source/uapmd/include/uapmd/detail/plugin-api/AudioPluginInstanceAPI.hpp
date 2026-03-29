@@ -54,6 +54,7 @@ namespace uapmd {
         virtual uapmd_status_t startProcessing() = 0;
         virtual uapmd_status_t stopProcessing() = 0;
         virtual uapmd_status_t processAudio(AudioProcessContext &process) = 0;
+        virtual uint32_t latencyInSamples() const = 0;
         virtual bool requiresReplacingProcess() const = 0;
         virtual std::vector<ParameterMetadata> parameterMetadataList() = 0;
         virtual std::vector<ParameterMetadata> perNoteControllerMetadataList(remidy::PerNoteControllerContextTypes contextType, uint32_t context) = 0;

@@ -9,6 +9,8 @@ remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFo
         PluginInstance(entry), formatImpl(formatImpl), plugin(plugin),
         implContext(formatImpl->worldContext, formatImpl->world, plugin),
         audio_buses(new AudioBuses(this)) {
+    if (plugin && lilv_plugin_has_latency(plugin))
+        latency_port_index_ = static_cast<int32_t>(lilv_plugin_get_latency_port_index(plugin));
 }
 
 remidy::PluginInstanceLV2::~PluginInstanceLV2() {
@@ -69,6 +71,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
             free(p.port_buffer);
     lv2_ports.clear();
     control_atom_port_index = -1;
+    cached_latency_samples_.store(0, std::memory_order_release);
 
     // create port mappings between Remidy and LV2
     uint32_t numPorts = lilv_plugin_get_num_ports(plugin);
@@ -142,6 +145,12 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
             lv2Port.buffer_size = configuration.bufferSizeInSamples * sizeof(float);
 
         lv2_ports.emplace_back(lv2Port);
+    }
+
+    if (latency_port_index_ >= 0 && static_cast<size_t>(latency_port_index_) < lv2_ports.size()) {
+        auto* buffer = static_cast<float*>(lv2_ports[static_cast<size_t>(latency_port_index_)].port_buffer);
+        if (buffer)
+            cached_latency_samples_.store(static_cast<uint32_t>(std::max(0.0f, *buffer)), std::memory_order_release);
     }
 
     auto ensureFallbackSize = [&](std::vector<std::vector<float>>& buffers, size_t count) {
@@ -231,6 +240,12 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
     ump_input_dispatcher.process(process);
 
     lilv_instance_run(instance, process.frameCount());
+
+    if (latency_port_index_ >= 0 && static_cast<size_t>(latency_port_index_) < lv2_ports.size()) {
+        auto* buffer = static_cast<float*>(lv2_ports[static_cast<size_t>(latency_port_index_)].port_buffer);
+        if (buffer)
+            cached_latency_samples_.store(static_cast<uint32_t>(std::max(0.0f, *buffer)), std::memory_order_release);
+    }
 
     // Deliver any LV2 worker responses generated during this cycle
     remidy_lv2::jalv_worker_emit_responses(&implContext.worker, instance);

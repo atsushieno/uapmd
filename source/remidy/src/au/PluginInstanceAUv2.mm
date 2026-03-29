@@ -237,6 +237,28 @@ remidy::StatusCode remidy::PluginInstanceAUv2::stopProcessing() {
     return StatusCode::OK;
 }
 
+uint32_t remidy::PluginInstanceAUv2::latencyInSamples() const {
+    if (!instance)
+        return 0;
+
+    Float64 latencySeconds = 0.0;
+    UInt32 size = sizeof(latencySeconds);
+    const auto status = AudioUnitGetProperty(instance,
+                                             kAudioUnitProperty_Latency,
+                                             kAudioUnitScope_Global,
+                                             0,
+                                             &latencySeconds,
+                                             &size);
+    if (status != noErr || latencySeconds <= 0.0)
+        return 0;
+
+    const double sampleRateToUse = host_transport_info.sampleRate;
+    if (sampleRateToUse <= 0.0)
+        return 0;
+
+    return static_cast<uint32_t>(std::llround(latencySeconds * sampleRateToUse));
+}
+
 remidy::StatusCode remidy::PluginInstanceAUv2::process(AudioProcessContext &process) {
 
     // It seems the AudioUnit framework resets this information every time...
