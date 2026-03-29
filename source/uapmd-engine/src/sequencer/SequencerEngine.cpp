@@ -65,6 +65,9 @@ namespace uapmd {
         std::atomic<bool> is_playback_active_{false};
         std::atomic<int64_t> playback_position_samples_{0};
         std::atomic<int64_t> render_playback_position_samples_{0};
+        std::atomic<bool> latency_drain_active_{false};
+        std::atomic<int64_t> latency_drain_remaining_samples_{0};
+        std::atomic<bool> reset_to_start_after_latency_drain_{false};
 
         // Audio preprocessing callback (for app-level source nodes)
         AudioPreprocessCallback audio_preprocess_callback_;
@@ -249,6 +252,7 @@ namespace uapmd {
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
         void schedulePrerollFromAudiblePosition(int64_t samples);
         uint32_t maxRenderLeadInSamples() const;
+        void updateLatencyDrainState(int32_t frameCount);
     };
 
     std::unique_ptr<SequencerEngine> SequencerEngine::create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts) {
@@ -395,12 +399,33 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
+        latency_drain_active_.store(false, std::memory_order_release);
+        latency_drain_remaining_samples_.store(0, std::memory_order_release);
+        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
         playback_position_samples_.store(samples, std::memory_order_release);
         const auto prerollSamples = static_cast<int64_t>(maxRenderLeadInSamples());
         const auto quantum = static_cast<int64_t>(audio_buffer_size_in_frames > 0 ? audio_buffer_size_in_frames : 1);
         const auto alignedPreroll =
             ((prerollSamples + quantum - 1) / quantum) * quantum;
         render_playback_position_samples_.store(samples - alignedPreroll, std::memory_order_release);
+    }
+
+    void SequencerEngineImpl::updateLatencyDrainState(int32_t frameCount) {
+        if (!latency_drain_active_.load(std::memory_order_acquire))
+            return;
+
+        const auto remaining =
+            latency_drain_remaining_samples_.fetch_sub(frameCount, std::memory_order_acq_rel) - frameCount;
+        render_playback_position_samples_.fetch_add(frameCount, std::memory_order_release);
+        if (remaining > 0)
+            return;
+
+        latency_drain_active_.store(false, std::memory_order_release);
+        latency_drain_remaining_samples_.store(0, std::memory_order_release);
+        if (reset_to_start_after_latency_drain_.exchange(false, std::memory_order_acq_rel)) {
+            playback_position_samples_.store(0, std::memory_order_release);
+            render_playback_position_samples_.store(0, std::memory_order_release);
+        }
     }
 
     void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {
@@ -483,6 +508,7 @@ namespace uapmd {
 
         auto& data = sequence;
         bool isPlaybackActive = is_playback_active_.load(std::memory_order_acquire);
+        const bool isLatencyDrainActive = latency_drain_active_.load(std::memory_order_acquire);
 
         // Run the pump (timeline advance + device-audio fanout + clip filling).
         // In single-threaded operation this is called here; in the Emscripten multi-threaded
@@ -496,7 +522,7 @@ namespace uapmd {
         {
             auto& masterContext = data.masterContext();
             masterContext.playbackPositionSamples(render_playback_position_samples_.load(std::memory_order_acquire));
-            masterContext.isPlaying(isPlaybackActive);
+            masterContext.isPlaying(isPlaybackActive || isLatencyDrainActive);
             masterContext.sampleRate(sampleRate);
         }
 
@@ -687,6 +713,7 @@ namespace uapmd {
             if (!prerollActive)
                 playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
         }
+        updateLatencyDrainState(process.frameCount());
 
         // Check for missed audio processing deadline
         auto endTime = std::chrono::steady_clock::now();
@@ -915,7 +942,15 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::playbackPosition(int64_t samples) {
-        schedulePrerollFromAudiblePosition(samples);
+        if (is_playback_active_.load(std::memory_order_acquire)) {
+            schedulePrerollFromAudiblePosition(samples);
+            return;
+        }
+        latency_drain_active_.store(false, std::memory_order_release);
+        latency_drain_remaining_samples_.store(0, std::memory_order_release);
+        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
+        playback_position_samples_.store(samples, std::memory_order_release);
+        render_playback_position_samples_.store(samples, std::memory_order_release);
     }
 
     int64_t SequencerEngineImpl::playbackPosition() const {
@@ -933,8 +968,20 @@ namespace uapmd {
 
     void uapmd::SequencerEngineImpl::stopPlayback() {
         is_playback_active_.store(false, std::memory_order_release);
-        playback_position_samples_.store(0, std::memory_order_release);
-        render_playback_position_samples_.store(0, std::memory_order_release);
+        const auto tailSamples = static_cast<int64_t>(maxRenderLeadInSamples());
+        if (tailSamples > 0) {
+            const auto quantum = static_cast<int64_t>(audio_buffer_size_in_frames > 0 ? audio_buffer_size_in_frames : 1);
+            const auto alignedTail = ((tailSamples + quantum - 1) / quantum) * quantum;
+            latency_drain_active_.store(true, std::memory_order_release);
+            latency_drain_remaining_samples_.store(alignedTail, std::memory_order_release);
+            reset_to_start_after_latency_drain_.store(true, std::memory_order_release);
+        } else {
+            playback_position_samples_.store(0, std::memory_order_release);
+            render_playback_position_samples_.store(0, std::memory_order_release);
+            latency_drain_active_.store(false, std::memory_order_release);
+            latency_drain_remaining_samples_.store(0, std::memory_order_release);
+            reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
+        }
         auto flushTrackNotes = [](SequencerTrack* track) {
             if (!track)
                 return;
@@ -951,6 +998,11 @@ namespace uapmd {
 
     void uapmd::SequencerEngineImpl::pausePlayback() {
         is_playback_active_.store(false, std::memory_order_release);
+        latency_drain_active_.store(false, std::memory_order_release);
+        latency_drain_remaining_samples_.store(0, std::memory_order_release);
+        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
+        render_playback_position_samples_.store(playback_position_samples_.load(std::memory_order_acquire),
+                                                std::memory_order_release);
     }
 
     void uapmd::SequencerEngineImpl::resumePlayback() {

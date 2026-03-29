@@ -623,7 +623,11 @@ namespace uapmd {
                 &timeline_tracks_snapshot_, std::memory_order_acquire);
 
             timeline_.isPlaying = engine_.isPlaybackActive();
-            int64_t renderPlayheadSamples = engine_.renderPlaybackPosition();
+            const auto audiblePlayheadSamples = engine_.playbackPosition();
+            const auto renderPlayheadRaw = engine_.renderPlaybackPosition();
+            int64_t renderPlayheadSamples =
+                (timeline_.isPlaying || renderPlayheadRaw != audiblePlayheadSamples) ?
+                    renderPlayheadRaw : audiblePlayheadSamples;
             if (timeline_.loopEnabled && timeline_.loopEnd.samples > timeline_.loopStart.samples) {
                 const auto loopLength = timeline_.loopEnd.samples - timeline_.loopStart.samples;
                 if (renderPlayheadSamples >= timeline_.loopStart.samples) {
