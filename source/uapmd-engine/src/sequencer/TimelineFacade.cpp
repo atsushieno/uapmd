@@ -622,85 +622,81 @@ namespace uapmd {
             auto snapshot = std::atomic_load_explicit(
                 &timeline_tracks_snapshot_, std::memory_order_acquire);
 
+            auto wrapToLoopRange = [this](int64_t samplePosition) -> int64_t {
+                if (!timeline_.loopEnabled || timeline_.loopEnd.samples <= timeline_.loopStart.samples)
+                    return samplePosition;
+                const auto loopLength = timeline_.loopEnd.samples - timeline_.loopStart.samples;
+                if (samplePosition < timeline_.loopStart.samples)
+                    return samplePosition;
+                return timeline_.loopStart.samples +
+                    ((samplePosition - timeline_.loopStart.samples) % loopLength);
+            };
+
+            auto updateTransportMetaForPlayhead = [snapshot, this](TimelineState& state) {
+                if (!snapshot || snapshot->empty())
+                    return;
+                auto* t = (*snapshot)[0].get();
+                if (!t)
+                    return;
+                auto clipSnap = t->clipManager().getSnapshotRT();
+                if (!clipSnap)
+                    return;
+                const auto& clips = clipSnap->clips;
+                const auto& clipMap = clipSnap->clipMap;
+                for (const auto& clip : clips) {
+                    if (clip.clipType != ClipType::Midi || clip.muted)
+                        continue;
+
+                    TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
+                    if (state.playheadPosition.samples < absPos.samples ||
+                        state.playheadPosition.samples >= absPos.samples + clip.durationSamples)
+                        continue;
+
+                    auto sourceNode = t->getSourceNode(clip.sourceNodeInstanceId);
+                    auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
+                    if (!midiNode)
+                        continue;
+
+                    int64_t sourcePos = state.playheadPosition.samples - absPos.samples;
+                    if (sourcePos < 0)
+                        continue;
+
+                    const auto& tempoSamples = midiNode->tempoChangeSamples();
+                    const auto& tempoEvents = midiNode->tempoChanges();
+                    if (!tempoEvents.empty() && tempoEvents.size() == tempoSamples.size()) {
+                        double currentTempo = tempoEvents[0].bpm;
+                        for (size_t i = 0; i < tempoSamples.size(); ++i) {
+                            if (static_cast<int64_t>(tempoSamples[i]) <= sourcePos)
+                                currentTempo = tempoEvents[i].bpm;
+                            else
+                                break;
+                        }
+                        state.tempo = currentTempo;
+                    }
+
+                    const auto& sigSamples = midiNode->timeSignatureChangeSamples();
+                    const auto& sigEvents = midiNode->timeSignatureChanges();
+                    if (!sigEvents.empty() && sigEvents.size() == sigSamples.size()) {
+                        uint8_t num = sigEvents[0].numerator;
+                        uint8_t den = sigEvents[0].denominator;
+                        for (size_t i = 0; i < sigSamples.size(); ++i) {
+                            if (static_cast<int64_t>(sigSamples[i]) <= sourcePos) {
+                                num = sigEvents[i].numerator;
+                                den = sigEvents[i].denominator;
+                            } else break;
+                        }
+                        state.timeSignatureNumerator = num;
+                        state.timeSignatureDenominator = den;
+                    }
+                    break;
+                }
+            };
+
             timeline_.isPlaying = engine_.isPlaybackActive();
             const auto audiblePlayheadSamples = engine_.playbackPosition();
             const auto renderPlayheadRaw = engine_.renderPlaybackPosition();
-            int64_t renderPlayheadSamples =
-                (timeline_.isPlaying || renderPlayheadRaw != audiblePlayheadSamples) ?
-                    renderPlayheadRaw : audiblePlayheadSamples;
-            if (timeline_.loopEnabled && timeline_.loopEnd.samples > timeline_.loopStart.samples) {
-                const auto loopLength = timeline_.loopEnd.samples - timeline_.loopStart.samples;
-                if (renderPlayheadSamples >= timeline_.loopStart.samples) {
-                    renderPlayheadSamples =
-                        timeline_.loopStart.samples +
-                        ((renderPlayheadSamples - timeline_.loopStart.samples) % loopLength);
-                }
-            }
-            timeline_.playheadPosition.samples = renderPlayheadSamples;
-
-            // Advance tempo/time-signature state using the render playhead
-            if (timeline_.isPlaying) {
-
-                // Update tempo from MIDI clips on track 0 (if any)
-                // Uses RT-safe snapshot — no mutex, no heap allocation.
-                if (snapshot && !snapshot->empty()) {
-                    auto* t = (*snapshot)[0].get();
-                    if (t) {
-                        auto clipSnap = t->clipManager().getSnapshotRT();
-                        if (clipSnap) {
-                            const auto& clips = clipSnap->clips;
-                            const auto& clipMap = clipSnap->clipMap;
-                            for (const auto& clip : clips) {
-                                if (clip.clipType != ClipType::Midi || clip.muted)
-                                    continue;
-
-                                TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
-                                if (timeline_.playheadPosition.samples < absPos.samples ||
-                                    timeline_.playheadPosition.samples >= absPos.samples + clip.durationSamples)
-                                    continue;
-
-                                auto sourceNode = t->getSourceNode(clip.sourceNodeInstanceId);
-                                auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
-                                if (!midiNode)
-                                    continue;
-
-                                int64_t sourcePos = timeline_.playheadPosition.samples - absPos.samples;
-                                if (sourcePos < 0)
-                                    continue;
-
-                                const auto& tempoSamples = midiNode->tempoChangeSamples();
-                                const auto& tempoEvents = midiNode->tempoChanges();
-                                if (!tempoEvents.empty() && tempoEvents.size() == tempoSamples.size()) {
-                                    double currentTempo = tempoEvents[0].bpm;
-                                    for (size_t i = 0; i < tempoSamples.size(); ++i) {
-                                        if (static_cast<int64_t>(tempoSamples[i]) <= sourcePos)
-                                            currentTempo = tempoEvents[i].bpm;
-                                        else
-                                            break;
-                                    }
-                                    timeline_.tempo = currentTempo;
-                                }
-
-                                const auto& sigSamples = midiNode->timeSignatureChangeSamples();
-                                const auto& sigEvents = midiNode->timeSignatureChanges();
-                                if (!sigEvents.empty() && sigEvents.size() == sigSamples.size()) {
-                                    uint8_t num = sigEvents[0].numerator;
-                                    uint8_t den = sigEvents[0].denominator;
-                                    for (size_t i = 0; i < sigSamples.size(); ++i) {
-                                        if (static_cast<int64_t>(sigSamples[i]) <= sourcePos) {
-                                            num = sigEvents[i].numerator;
-                                            den = sigEvents[i].denominator;
-                                        } else break;
-                                    }
-                                    timeline_.timeSignatureNumerator = num;
-                                    timeline_.timeSignatureDenominator = den;
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
+            timeline_.playheadPosition.samples = wrapToLoopRange(audiblePlayheadSamples);
+            updateTransportMetaForPlayhead(timeline_);
 
             // Update legacy_beats
             double secondsPerBeat = 60.0 / timeline_.tempo;
@@ -711,13 +707,27 @@ namespace uapmd {
             }
 
             // Sync to MasterContext
+            TimelineState renderTransport = timeline_;
+            renderTransport.playheadPosition.samples = wrapToLoopRange(
+                (timeline_.isPlaying || renderPlayheadRaw != audiblePlayheadSamples) ?
+                    renderPlayheadRaw : audiblePlayheadSamples
+            );
+            updateTransportMetaForPlayhead(renderTransport);
+            const double renderSecondsPerBeat = 60.0 / renderTransport.tempo;
+            const int64_t renderSamplesPerBeat = static_cast<int64_t>(renderSecondsPerBeat * sampleRate_);
+            if (renderSamplesPerBeat > 0) {
+                renderTransport.playheadPosition.legacy_beats =
+                    static_cast<double>(renderTransport.playheadPosition.samples) /
+                    static_cast<double>(renderSamplesPerBeat);
+            }
+
             auto& masterCtx = process.masterContext();
-            masterCtx.playbackPositionSamples(timeline_.playheadPosition.samples);
+            masterCtx.playbackPositionSamples(renderTransport.playheadPosition.samples);
             masterCtx.isPlaying(timeline_.isPlaying);
-            uint32_t tempoMicros = static_cast<uint32_t>(60000000.0 / timeline_.tempo);
+            uint32_t tempoMicros = static_cast<uint32_t>(60000000.0 / renderTransport.tempo);
             masterCtx.tempo(tempoMicros);
-            masterCtx.timeSignatureNumerator(timeline_.timeSignatureNumerator);
-            masterCtx.timeSignatureDenominator(timeline_.timeSignatureDenominator);
+            masterCtx.timeSignatureNumerator(renderTransport.timeSignatureNumerator);
+            masterCtx.timeSignatureDenominator(renderTransport.timeSignatureDenominator);
 
             // Process each timeline track into the target sequencer context.
             // targetSequence.tracks[i] points to a pump ring-buffer slot when called
@@ -754,16 +764,10 @@ namespace uapmd {
                     timeline_.playheadPosition.samples + static_cast<int64_t>(trackOffset);
                 if (renderStartSample < 0)
                     renderStartSample = 0;
-                if (renderTimeline.loopEnabled && renderTimeline.loopEnd.samples > renderTimeline.loopStart.samples) {
-                    const int64_t loopLength = renderTimeline.loopEnd.samples - renderTimeline.loopStart.samples;
-                    if (renderStartSample >= renderTimeline.loopStart.samples) {
-                        renderStartSample =
-                            renderTimeline.loopStart.samples +
-                            ((renderStartSample - renderTimeline.loopStart.samples) % loopLength);
-                    }
-                }
+                renderStartSample = wrapToLoopRange(renderStartSample);
                 renderPosition.samples = renderStartSample;
                 renderTimeline.seekTo(renderPosition, sampleRate_);
+                updateTransportMetaForPlayhead(renderTimeline);
                 (*snapshot)[i]->processAudioForRenderPosition(*trackContext, renderTimeline, renderStartSample);
             }
         }
