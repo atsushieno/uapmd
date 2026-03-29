@@ -622,13 +622,20 @@ namespace uapmd {
             auto snapshot = std::atomic_load_explicit(
                 &timeline_tracks_snapshot_, std::memory_order_acquire);
 
-            // Advance playhead and sync MasterContext
-            if (timeline_.isPlaying) {
-                timeline_.playheadPosition.samples += process.frameCount();
+            timeline_.isPlaying = engine_.isPlaybackActive();
+            int64_t renderPlayheadSamples = engine_.renderPlaybackPosition();
+            if (timeline_.loopEnabled && timeline_.loopEnd.samples > timeline_.loopStart.samples) {
+                const auto loopLength = timeline_.loopEnd.samples - timeline_.loopStart.samples;
+                if (renderPlayheadSamples >= timeline_.loopStart.samples) {
+                    renderPlayheadSamples =
+                        timeline_.loopStart.samples +
+                        ((renderPlayheadSamples - timeline_.loopStart.samples) % loopLength);
+                }
+            }
+            timeline_.playheadPosition.samples = renderPlayheadSamples;
 
-                if (timeline_.loopEnabled &&
-                    timeline_.playheadPosition.samples >= timeline_.loopEnd.samples)
-                    timeline_.playheadPosition.samples = timeline_.loopStart.samples;
+            // Advance tempo/time-signature state using the render playhead
+            if (timeline_.isPlaying) {
 
                 // Update tempo from MIDI clips on track 0 (if any)
                 // Uses RT-safe snapshot — no mutex, no heap allocation.

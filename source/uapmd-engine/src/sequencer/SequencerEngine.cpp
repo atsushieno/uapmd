@@ -64,6 +64,7 @@ namespace uapmd {
         // Playback state (managed by RealtimeSequencer)
         std::atomic<bool> is_playback_active_{false};
         std::atomic<int64_t> playback_position_samples_{0};
+        std::atomic<int64_t> render_playback_position_samples_{0};
 
         // Audio preprocessing callback (for app-level source nodes)
         AudioPreprocessCallback audio_preprocess_callback_;
@@ -191,6 +192,7 @@ namespace uapmd {
         bool isPlaybackActive() const override;
         void playbackPosition(int64_t samples) override;
         int64_t playbackPosition() const override;
+        int64_t renderPlaybackPosition() const override;
         void startPlayback() override;
         void stopPlayback() override;
         void pausePlayback() override;
@@ -245,6 +247,8 @@ namespace uapmd {
 
         // Output dispatch
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
+        void schedulePrerollFromAudiblePosition(int64_t samples);
+        uint32_t maxRenderLeadInSamples() const;
     };
 
     std::unique_ptr<SequencerEngine> SequencerEngine::create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts) {
@@ -378,6 +382,27 @@ namespace uapmd {
         return master_track_ ? master_track_->latencyInSamples() : 0;
     }
 
+    uint32_t SequencerEngineImpl::maxRenderLeadInSamples() const {
+        uint32_t maxTrackLatency = 0;
+        for (size_t i = 0; i < tracks_.size(); ++i) {
+            auto* track = tracks_[i].get();
+            if (!track)
+                continue;
+            maxTrackLatency = std::max(maxTrackLatency, track->latencyInSamples());
+        }
+        const uint32_t masterLatency = master_track_ ? master_track_->latencyInSamples() : 0;
+        return maxTrackLatency + masterLatency;
+    }
+
+    void SequencerEngineImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
+        playback_position_samples_.store(samples, std::memory_order_release);
+        const auto prerollSamples = static_cast<int64_t>(maxRenderLeadInSamples());
+        const auto quantum = static_cast<int64_t>(audio_buffer_size_in_frames > 0 ? audio_buffer_size_in_frames : 1);
+        const auto alignedPreroll =
+            ((prerollSamples + quantum - 1) / quantum) * quantum;
+        render_playback_position_samples_.store(samples - alignedPreroll, std::memory_order_release);
+    }
+
     void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {
         const auto trackFrameCount = static_cast<int32_t>(
             std::min(static_cast<size_t>(process.frameCount()), audio_buffer_size_in_frames));
@@ -470,7 +495,7 @@ namespace uapmd {
         // ahead of the audio output the UI-visible position still matches what is heard.
         {
             auto& masterContext = data.masterContext();
-            masterContext.playbackPositionSamples(playback_position_samples_.load(std::memory_order_acquire));
+            masterContext.playbackPositionSamples(render_playback_position_samples_.load(std::memory_order_acquire));
             masterContext.isPlaying(isPlaybackActive);
             masterContext.sampleRate(sampleRate);
         }
@@ -504,6 +529,10 @@ namespace uapmd {
             // Clear processing flag AFTER we're done with the track context
             track_processing_flags_[i]->store(false, std::memory_order_release);
         }
+
+        const auto audiblePosition = playback_position_samples_.load(std::memory_order_acquire);
+        const auto renderPosition = render_playback_position_samples_.load(std::memory_order_acquire);
+        const bool prerollActive = isPlaybackActive && renderPosition < audiblePosition;
 
         // Clear main output bus (bus 0) before mixing
         if (process.audioOutBusCount() > 0) {
@@ -581,8 +610,13 @@ namespace uapmd {
             }
         }
 
+        if (prerollActive && process.audioOutBusCount() > 0) {
+            for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++)
+                memset(process.getFloatOutBuffer(0, ch), 0, process.frameCount() * sizeof(float));
+        }
+
         // Apply soft clipping to prevent harsh distortion
-        if (process.audioOutBusCount() > 0) {
+        if (!prerollActive && process.audioOutBusCount() > 0) {
             for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++) {
                 float* buffer = process.getFloatOutBuffer(0, ch);
                 for (uint32_t frame = 0; frame < process.frameCount(); frame++) {
@@ -648,8 +682,11 @@ namespace uapmd {
             }
         }
 
-        if (isPlaybackActive)
-            playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
+        if (isPlaybackActive) {
+            render_playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
+            if (!prerollActive)
+                playback_position_samples_.fetch_add(process.frameCount(), std::memory_order_release);
+        }
 
         // Check for missed audio processing deadline
         auto endTime = std::chrono::steady_clock::now();
@@ -878,21 +915,26 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::playbackPosition(int64_t samples) {
-        playback_position_samples_.store(samples, std::memory_order_release);
+        schedulePrerollFromAudiblePosition(samples);
     }
 
     int64_t SequencerEngineImpl::playbackPosition() const {
         return playback_position_samples_.load(std::memory_order_acquire);
     }
 
+    int64_t SequencerEngineImpl::renderPlaybackPosition() const {
+        return render_playback_position_samples_.load(std::memory_order_acquire);
+    }
+
     void uapmd::SequencerEngineImpl::startPlayback() {
-        playback_position_samples_.store(0, std::memory_order_release);
+        schedulePrerollFromAudiblePosition(0);
         is_playback_active_.store(true, std::memory_order_release);
     }
 
     void uapmd::SequencerEngineImpl::stopPlayback() {
         is_playback_active_.store(false, std::memory_order_release);
         playback_position_samples_.store(0, std::memory_order_release);
+        render_playback_position_samples_.store(0, std::memory_order_release);
         auto flushTrackNotes = [](SequencerTrack* track) {
             if (!track)
                 return;
@@ -912,6 +954,7 @@ namespace uapmd {
     }
 
     void uapmd::SequencerEngineImpl::resumePlayback() {
+        schedulePrerollFromAudiblePosition(playback_position_samples_.load(std::memory_order_acquire));
         is_playback_active_.store(true, std::memory_order_release);
     }
 
