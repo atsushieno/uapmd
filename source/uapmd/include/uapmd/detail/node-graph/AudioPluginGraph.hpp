@@ -46,6 +46,7 @@ namespace uapmd {
 
         virtual int32_t processAudio(AudioProcessContext& process) = 0;
         virtual uint32_t mainOutputLatencyInSamples() = 0;
+        virtual double mainOutputTailLengthInSeconds() = 0;
 
         // Creates a minimum linear implementation of this interface.
         static std::unique_ptr<AudioPluginGraph> create(size_t eventBufferSizeInBytes);

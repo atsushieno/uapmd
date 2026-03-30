@@ -3,6 +3,7 @@
 #include "farbot/RealtimeObject.hpp"
 #include "AudioPluginNodeImpl.hpp"
 
+#include <cmath>
 #include <limits>
 
 namespace uapmd {
@@ -28,6 +29,7 @@ namespace uapmd {
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
         int32_t processAudio(AudioProcessContext& process) override;
         uint32_t mainOutputLatencyInSamples() override;
+        double mainOutputTailLengthInSeconds() override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
     };
@@ -122,6 +124,23 @@ namespace uapmd {
         return total > std::numeric_limits<uint32_t>::max() ?
             std::numeric_limits<uint32_t>::max() :
             static_cast<uint32_t>(total);
+    }
+
+    double AudioPluginGraphImpl::mainOutputTailLengthInSeconds() {
+        RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+        double total = 0.0;
+        for (const auto& node : *access) {
+            if (!node)
+                continue;
+            auto* instance = node->instance();
+            if (!instance || instance->bypassed())
+                continue;
+            const auto tail = instance->tailLengthInSeconds();
+            if (std::isinf(tail))
+                return std::numeric_limits<double>::infinity();
+            total += std::max(0.0, tail);
+        }
+        return total;
     }
 
     uapmd_status_t AudioPluginGraphImpl::appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) {

@@ -18,6 +18,7 @@ namespace uapmd {
 
         virtual AudioPluginGraph& graph() = 0;
         virtual uint32_t latencyInSamples() = 0;
+        virtual double tailLengthInSeconds() = 0;
         virtual std::vector<int32_t>& orderedInstanceIds() = 0;
 
         virtual bool bypassed() = 0;

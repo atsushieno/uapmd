@@ -252,6 +252,8 @@ namespace uapmd {
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
         void schedulePrerollFromAudiblePosition(int64_t samples);
         uint32_t maxRenderLeadInSamples() const;
+        int64_t maxStopDrainInSamples() const;
+        double tailLengthSecondsToSamples(double seconds) const;
         void updateLatencyDrainState(int32_t frameCount);
     };
 
@@ -396,6 +398,42 @@ namespace uapmd {
         }
         const uint32_t masterLatency = master_track_ ? master_track_->latencyInSamples() : 0;
         return maxTrackLatency + masterLatency;
+    }
+
+    double SequencerEngineImpl::tailLengthSecondsToSamples(double seconds) const {
+        if (!(seconds > 0.0))
+            return 0.0;
+        if (!std::isfinite(seconds))
+            return std::numeric_limits<double>::infinity();
+        return std::ceil(seconds * static_cast<double>(sampleRate));
+    }
+
+    int64_t SequencerEngineImpl::maxStopDrainInSamples() const {
+        const double masterPathSamples =
+            static_cast<double>(master_track_ ? master_track_->latencyInSamples() : 0) +
+            tailLengthSecondsToSamples(master_track_ ? master_track_->tailLengthInSeconds() : 0.0);
+
+        double maxTrackPathSamples = 0.0;
+        for (const auto& track : tracks_) {
+            if (!track)
+                continue;
+            const double trackPathSamples =
+                static_cast<double>(track->latencyInSamples()) +
+                tailLengthSecondsToSamples(track->tailLengthInSeconds());
+            if (!std::isfinite(trackPathSamples) || !std::isfinite(masterPathSamples))
+                return static_cast<int64_t>(maxRenderLeadInSamples());
+            maxTrackPathSamples = std::max(maxTrackPathSamples, trackPathSamples);
+        }
+
+        const double totalDrainSamples =
+            tracks_.empty() ? masterPathSamples : maxTrackPathSamples + masterPathSamples;
+        if (!std::isfinite(totalDrainSamples))
+            return static_cast<int64_t>(maxRenderLeadInSamples());
+        if (totalDrainSamples <= 0.0)
+            return 0;
+        if (totalDrainSamples >= static_cast<double>(std::numeric_limits<int64_t>::max()))
+            return std::numeric_limits<int64_t>::max();
+        return static_cast<int64_t>(totalDrainSamples);
     }
 
     void SequencerEngineImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
@@ -968,7 +1006,7 @@ namespace uapmd {
 
     void uapmd::SequencerEngineImpl::stopPlayback() {
         is_playback_active_.store(false, std::memory_order_release);
-        const auto tailSamples = static_cast<int64_t>(maxRenderLeadInSamples());
+        const auto tailSamples = maxStopDrainInSamples();
         if (tailSamples > 0) {
             const auto quantum = static_cast<int64_t>(audio_buffer_size_in_frames > 0 ? audio_buffer_size_in_frames : 1);
             const auto alignedTail = ((tailSamples + quantum - 1) / quantum) * quantum;
