@@ -21,6 +21,43 @@ double makePositiveSeconds(double value) {
     return std::max(0.0, value);
 }
 
+double tailLengthSecondsToSamples(double seconds, int32_t sampleRate) {
+    if (!(seconds > 0.0))
+        return 0.0;
+    if (!std::isfinite(seconds))
+        return std::numeric_limits<double>::infinity();
+    return std::ceil(seconds * static_cast<double>(sampleRate));
+}
+
+int64_t computeOfflineStopDrainFrames(SequencerEngine& engine, int32_t sampleRate) {
+    auto* masterTrack = engine.masterTrack();
+    const double masterPathSamples =
+        static_cast<double>(engine.masterTrackLatencyInSamples()) +
+        tailLengthSecondsToSamples(masterTrack ? masterTrack->tailLengthInSeconds() : 0.0, sampleRate);
+
+    double maxTrackPathSamples = 0.0;
+    auto& tracks = engine.tracks();
+    for (size_t i = 0; i < tracks.size(); ++i) {
+        auto* track = tracks[i];
+        if (!track)
+            continue;
+        const double trackPathSamples =
+            static_cast<double>(engine.trackLatencyInSamples(static_cast<uapmd_track_index_t>(i))) +
+            tailLengthSecondsToSamples(track->tailLengthInSeconds(), sampleRate);
+        if (!std::isfinite(trackPathSamples) || !std::isfinite(masterPathSamples))
+            return 0;
+        maxTrackPathSamples = std::max(maxTrackPathSamples, trackPathSamples);
+    }
+
+    const double totalSamples =
+        tracks.empty() ? masterPathSamples : maxTrackPathSamples + masterPathSamples;
+    if (!std::isfinite(totalSamples) || totalSamples <= 0.0)
+        return 0;
+    if (totalSamples >= static_cast<double>(std::numeric_limits<int64_t>::max()))
+        return std::numeric_limits<int64_t>::max();
+    return static_cast<int64_t>(totalSamples);
+}
+
 class EngineStateGuard {
 public:
     explicit EngineStateGuard(SequencerEngine& engine)
@@ -109,9 +146,11 @@ OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
         return result;
     }
 
-    const int64_t guardFrames = settings.tailSeconds > 0.0
+    const int64_t userGuardFrames = settings.tailSeconds > 0.0
         ? static_cast<int64_t>(std::llround(settings.tailSeconds * static_cast<double>(settings.sampleRate)))
         : 0;
+    const int64_t engineStopDrainFrames = computeOfflineStopDrainFrames(engine, settings.sampleRate);
+    const int64_t guardFrames = std::max(userGuardFrames, engineStopDrainFrames);
     const int64_t hardStopSample = contentEndSample + guardFrames;
     const int64_t totalRenderFrames = std::max<int64_t>(1, hardStopSample - startSample);
     const double totalRenderSeconds = static_cast<double>(totalRenderFrames) / static_cast<double>(settings.sampleRate);
@@ -177,6 +216,7 @@ OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
         int64_t silenceFramesAccumulated = 0;
         std::vector<const float*> channelPtrs(settings.outputChannels, nullptr);
         OfflineRenderProgress progress{};
+        bool stopRequested = false;
 
         while (currentSample < hardStopSample) {
             if (callbacks.shouldCancel && callbacks.shouldCancel()) {
@@ -184,7 +224,13 @@ OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
                 break;
             }
 
-            const int64_t framesRemaining = hardStopSample - currentSample;
+            if (!stopRequested && currentSample >= contentEndSample) {
+                engine.stopPlayback();
+                stopRequested = true;
+            }
+
+            const int64_t phaseEndSample = stopRequested ? hardStopSample : contentEndSample;
+            const int64_t framesRemaining = phaseEndSample - currentSample;
             const uint32_t framesToRender = static_cast<uint32_t>(std::min<int64_t>(framesRemaining, settings.bufferSize));
             if (framesToRender == 0)
                 break;
@@ -202,6 +248,12 @@ OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
             }
 
             engine.processAudio(deviceContext);
+
+            const bool prerollActive =
+                engine.isPlaybackActive() &&
+                engine.renderPlaybackPosition() < engine.playbackPosition();
+            if (prerollActive)
+                continue;
 
             float peak = 0.0f;
             for (uint32_t ch = 0; ch < settings.outputChannels; ++ch) {
