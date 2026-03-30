@@ -45,6 +45,11 @@ namespace uapmd {
         virtual void setEventOutputCallback(std::function<void(int32_t instanceId, const uapmd_ump_t* data, size_t dataSizeInBytes)> callback) = 0;
 
         virtual int32_t processAudio(AudioProcessContext& process) = 0;
+        // Number of currently addressable graph output buses for latency/tail queries.
+        // Future graph implementations may expose different values per output bus.
+        virtual uint32_t outputBusCount() = 0;
+        virtual uint32_t outputLatencyInSamples(uint32_t outputBusIndex) = 0;
+        virtual double outputTailLengthInSeconds(uint32_t outputBusIndex) = 0;
         virtual uint32_t mainOutputLatencyInSamples() = 0;
         virtual double mainOutputTailLengthInSeconds() = 0;
 

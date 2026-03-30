@@ -17,6 +17,10 @@ namespace uapmd {
         std::function<uint8_t(int32_t)> group_resolver_;
         std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback_;
 
+        uint32_t currentOutputBusCount();
+        uint32_t aggregateLatencyInSamples();
+        double aggregateTailLengthInSeconds();
+
     public:
         explicit AudioPluginGraphImpl(size_t eventBufferSizeInBytes)
             : event_buffer_size_in_bytes_(eventBufferSizeInBytes) {
@@ -28,6 +32,9 @@ namespace uapmd {
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
         int32_t processAudio(AudioProcessContext& process) override;
+        uint32_t outputBusCount() override;
+        uint32_t outputLatencyInSamples(uint32_t outputBusIndex) override;
+        double outputTailLengthInSeconds(uint32_t outputBusIndex) override;
         uint32_t mainOutputLatencyInSamples() override;
         double mainOutputTailLengthInSeconds() override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
@@ -110,7 +117,30 @@ namespace uapmd {
         return 0;
     }
 
-    uint32_t AudioPluginGraphImpl::mainOutputLatencyInSamples() {
+    uint32_t AudioPluginGraphImpl::currentOutputBusCount() {
+        RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+        for (auto it = access->rbegin(); it != access->rend(); ++it) {
+            const auto& node = *it;
+            if (!node)
+                continue;
+            auto* instance = node->instance();
+            if (!instance || instance->bypassed())
+                continue;
+            auto* buses = instance->audioBuses();
+            if (!buses)
+                break;
+            uint32_t enabledOutputs = 0;
+            for (auto* bus : buses->audioOutputBuses())
+                if (bus && bus->enabled())
+                    ++enabledOutputs;
+            if (enabledOutputs > 0)
+                return enabledOutputs;
+            break;
+        }
+        return 1;
+    }
+
+    uint32_t AudioPluginGraphImpl::aggregateLatencyInSamples() {
         RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
         uint64_t total = 0;
         for (const auto& node : *access) {
@@ -126,7 +156,7 @@ namespace uapmd {
             static_cast<uint32_t>(total);
     }
 
-    double AudioPluginGraphImpl::mainOutputTailLengthInSeconds() {
+    double AudioPluginGraphImpl::aggregateTailLengthInSeconds() {
         RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
         double total = 0.0;
         for (const auto& node : *access) {
@@ -141,6 +171,30 @@ namespace uapmd {
             total += std::max(0.0, tail);
         }
         return total;
+    }
+
+    uint32_t AudioPluginGraphImpl::outputBusCount() {
+        return currentOutputBusCount();
+    }
+
+    uint32_t AudioPluginGraphImpl::outputLatencyInSamples(uint32_t outputBusIndex) {
+        if (outputBusIndex >= currentOutputBusCount())
+            return 0;
+        return aggregateLatencyInSamples();
+    }
+
+    double AudioPluginGraphImpl::outputTailLengthInSeconds(uint32_t outputBusIndex) {
+        if (outputBusIndex >= currentOutputBusCount())
+            return 0.0;
+        return aggregateTailLengthInSeconds();
+    }
+
+    uint32_t AudioPluginGraphImpl::mainOutputLatencyInSamples() {
+        return outputLatencyInSamples(0);
+    }
+
+    double AudioPluginGraphImpl::mainOutputTailLengthInSeconds() {
+        return outputTailLengthInSeconds(0);
     }
 
     uapmd_status_t AudioPluginGraphImpl::appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) {
