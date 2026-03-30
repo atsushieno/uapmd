@@ -861,40 +861,42 @@ namespace uapmd {
                 renderTimeline.seekTo(renderPosition, sampleRate_);
                 updateTransportMetaForPlayhead(renderTimeline);
 
-                const bool crossesLoopBoundary =
-                    timeline_.loopEnabled &&
-                    timeline_.loopEnd.samples > timeline_.loopStart.samples &&
-                    renderStartSample >= timeline_.loopStart.samples &&
-                    renderStartSample < timeline_.loopEnd.samples &&
-                    renderStartSample + safeFrames > timeline_.loopEnd.samples;
+                int32_t destinationOffsetFrames = 0;
+                int32_t remainingFrames = safeFrames;
+                int64_t segmentStartSample = renderStartSample;
+                while (remainingFrames > 0) {
+                    auto segmentTimeline = renderTransport;
+                    TimelinePosition segmentPosition{};
+                    segmentPosition.samples = wrapToLoopRange(segmentStartSample);
+                    segmentTimeline.seekTo(segmentPosition, sampleRate_);
+                    updateTransportMetaForPlayhead(segmentTimeline);
 
-                if (!crossesLoopBoundary) {
-                    (*snapshot)[i]->processAudioForRenderPosition(*trackContext, renderTimeline, renderStartSample);
-                    continue;
+                    int32_t segmentFrames = remainingFrames;
+                    bool wrapsAtLoopEnd = false;
+                    if (timeline_.loopEnabled &&
+                        timeline_.loopEnd.samples > timeline_.loopStart.samples &&
+                        segmentStartSample < timeline_.loopEnd.samples &&
+                        segmentStartSample + remainingFrames > timeline_.loopEnd.samples) {
+                        segmentFrames = static_cast<int32_t>(timeline_.loopEnd.samples - segmentStartSample);
+                        wrapsAtLoopEnd = true;
+                    }
+
+                    if (segmentFrames <= 0)
+                        break;
+
+                    (*snapshot)[i]->processAudioForRenderSegment(
+                        *trackContext,
+                        segmentTimeline,
+                        segmentStartSample,
+                        destinationOffsetFrames,
+                        segmentFrames);
+
+                    destinationOffsetFrames += segmentFrames;
+                    remainingFrames -= segmentFrames;
+                    segmentStartSample = wrapsAtLoopEnd
+                        ? timeline_.loopStart.samples
+                        : (segmentStartSample + segmentFrames);
                 }
-
-                const int32_t firstSegmentFrames = static_cast<int32_t>(timeline_.loopEnd.samples - renderStartSample);
-                const int32_t secondSegmentFrames = safeFrames - firstSegmentFrames;
-
-                (*snapshot)[i]->processAudioForRenderSegment(
-                    *trackContext,
-                    renderTimeline,
-                    renderStartSample,
-                    0,
-                    firstSegmentFrames);
-
-                auto wrappedTimeline = renderTransport;
-                TimelinePosition wrappedRenderPosition{};
-                wrappedRenderPosition.samples = timeline_.loopStart.samples;
-                wrappedTimeline.seekTo(wrappedRenderPosition, sampleRate_);
-                updateTransportMetaForPlayhead(wrappedTimeline);
-
-                (*snapshot)[i]->processAudioForRenderSegment(
-                    *trackContext,
-                    wrappedTimeline,
-                    timeline_.loopStart.samples,
-                    firstSegmentFrames,
-                    secondSegmentFrames);
             }
         }
 
