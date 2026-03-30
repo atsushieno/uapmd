@@ -63,6 +63,7 @@ namespace uapmd {
         uint32_t channelCount() const { return channel_count_; }
         double sampleRate() const { return sample_rate_; }
         const std::string& referenceId() const { return reference_id_; }
+        bool hasDeviceInputSource() const;
 
         // NRPN parameter mapping callback.
         // When set, MidiClipSourceNodes with nrpnToParameterMapping==true route Assignable

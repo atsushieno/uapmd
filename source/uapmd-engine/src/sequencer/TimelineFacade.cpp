@@ -736,6 +736,13 @@ namespace uapmd {
             return engine_.masterTrackRenderLeadInSamples();
         }
 
+        bool trackRequiresOutputAlignment(int32_t trackIndex) override {
+            if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= timeline_tracks_.size())
+                return false;
+            auto* track = timeline_tracks_[static_cast<size_t>(trackIndex)].get();
+            return track ? track->hasDeviceInputSource() : false;
+        }
+
         void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) override {
             // Hold a snapshot reference for the duration of this callback so that
             // tracks added or removed on the UI thread cannot destroy TrackList

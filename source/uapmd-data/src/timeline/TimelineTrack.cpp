@@ -302,6 +302,17 @@ namespace uapmd {
         std::atomic_store_explicit(&source_nodes_snapshot_, constSnapshot, std::memory_order_release);
     }
 
+    bool TimelineTrack::hasDeviceInputSource() const {
+        auto snapshot = std::atomic_load_explicit(&source_nodes_snapshot_, std::memory_order_acquire);
+        if (!snapshot)
+            return false;
+
+        return std::any_of(snapshot->begin(), snapshot->end(),
+            [](const std::shared_ptr<SourceNode>& node) {
+                return dynamic_cast<DeviceInputSourceNode*>(node.get()) != nullptr;
+            });
+    }
+
     void TimelineTrack::processAudio(
         remidy::AudioProcessContext& process,
         const TimelineState& timeline

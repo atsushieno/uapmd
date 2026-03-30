@@ -123,6 +123,7 @@ public:
     virtual uint32_t maxTrackLatencyInSamples() = 0;
     virtual uint32_t trackRenderOffsetInSamples(int32_t trackIndex) = 0;
     virtual uint32_t masterTrackRenderOffsetInSamples() = 0;
+    virtual bool trackRequiresOutputAlignment(int32_t trackIndex) = 0;
 
     // Audio preprocess callback — feeds clip source nodes into track input buffers.
     // Called by SequencerEngineImpl via the registered AudioPreprocessCallback.

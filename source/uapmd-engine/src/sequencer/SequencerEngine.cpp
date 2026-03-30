@@ -46,6 +46,24 @@ namespace uapmd {
         }
     };
 
+    struct OutputAlignmentDelayLine {
+        std::vector<std::vector<float>> channels;
+        size_t write_position{0};
+        size_t capacity_frames{0};
+
+        void reset() {
+            write_position = 0;
+            for (auto& channel : channels)
+                std::fill(channel.begin(), channel.end(), 0.0f);
+        }
+
+        void configure(uint32_t channelCount, size_t delayFrames) {
+            capacity_frames = std::max<size_t>(1, delayFrames + 1);
+            channels.assign(channelCount, std::vector<float>(capacity_frames, 0.0f));
+            write_position = 0;
+        }
+    };
+
     // ─────────────────────────────────────────────────────────────────────────
 
     class SequencerEngineImpl : public SequencerEngine {
@@ -118,6 +136,7 @@ namespace uapmd {
         // hot paths never allocate.
         std::vector<size_t> pump_slot_indices_;   // pump thread: slot acquired per track
         std::vector<size_t> rt_dequeued_slots_;   // RT thread: slot dequeued per track
+        std::vector<OutputAlignmentDelayLine> output_alignment_delay_lines_;
 
         void ensureTrackBusConfiguration(int32_t trackIndex, remidy::PluginAudioBuses* pluginBuses);
         void ensureContextBusConfiguration(AudioProcessContext* ctx, remidy::PluginAudioBuses* pluginBuses);
@@ -254,9 +273,12 @@ namespace uapmd {
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
         void schedulePrerollFromAudiblePosition(int64_t samples);
         uint32_t maxRenderLeadInSamples() const;
+        uint32_t maxOutputAlignmentLeadInSamples() const;
         int64_t maxStopDrainInSamples() const;
         double tailLengthSecondsToSamples(double seconds) const;
         void updateLatencyDrainState(int32_t frameCount);
+        void reconfigureOutputAlignmentBuffers();
+        void resetOutputAlignmentBuffers();
     };
 
     std::unique_ptr<SequencerEngine> SequencerEngine::create(int32_t sampleRate, size_t audioBufferSizeInFrames, size_t umpBufferSizeInInts) {
@@ -284,6 +306,7 @@ namespace uapmd {
         audio_preprocess_callback_ = [this](AudioProcessContext& process) {
             timeline_->processTracksAudio(process, pump_sequence_);
         };
+        reconfigureOutputAlignmentBuffers();
     }
 
     SequencerEngineImpl::~SequencerEngineImpl() {
@@ -413,6 +436,21 @@ namespace uapmd {
         return maxTrackLatency + masterLatency;
     }
 
+    uint32_t SequencerEngineImpl::maxOutputAlignmentLeadInSamples() const {
+        uint32_t maxLead = 0;
+        if (!timeline_)
+            return 0;
+        for (size_t i = 0; i < tracks_.size(); ++i) {
+            if (!timeline_->trackRequiresOutputAlignment(static_cast<int32_t>(i)))
+                continue;
+            auto* track = tracks_[i].get();
+            if (!track)
+                continue;
+            maxLead = std::max(maxLead, track->renderLeadInSamples());
+        }
+        return maxLead;
+    }
+
     double SequencerEngineImpl::tailLengthSecondsToSamples(double seconds) const {
         if (!(seconds > 0.0))
             return 0.0;
@@ -447,6 +485,18 @@ namespace uapmd {
         if (totalDrainSamples >= static_cast<double>(std::numeric_limits<int64_t>::max()))
             return std::numeric_limits<int64_t>::max();
         return static_cast<int64_t>(totalDrainSamples);
+    }
+
+    void SequencerEngineImpl::reconfigureOutputAlignmentBuffers() {
+        output_alignment_delay_lines_.resize(tracks_.size());
+        const size_t delayCapacityFrames = static_cast<size_t>(maxRenderLeadInSamples()) + audio_buffer_size_in_frames;
+        for (auto& delayLine : output_alignment_delay_lines_)
+            delayLine.configure(default_output_channels_, delayCapacityFrames);
+    }
+
+    void SequencerEngineImpl::resetOutputAlignmentBuffers() {
+        for (auto& delayLine : output_alignment_delay_lines_)
+            delayLine.reset();
     }
 
     void SequencerEngineImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
@@ -619,6 +669,7 @@ namespace uapmd {
         }
 
         // Mix all tracks into main output bus with additive mixing
+        const uint32_t maxOutputAlignmentLead = maxOutputAlignmentLeadInSamples();
         for (uint32_t t = 0, nTracks = tracks_.size(); t < nTracks; t++) {
             if (t >= data.tracks.size())
                 continue; // buffer not ready
@@ -633,14 +684,49 @@ namespace uapmd {
                 // Mix matching channels only — use trackFrameCount to
                 // stay within the track output buffer bounds.
                 uint32_t numChannels = std::min(ctx->outputChannelCount(0), process.outputChannelCount(0));
+                const bool requiresOutputAlignment =
+                    maxOutputAlignmentLead > 0 &&
+                    timeline_ &&
+                    timeline_->trackRequiresOutputAlignment(static_cast<int32_t>(t));
+                const uint32_t remainingTrackDelay = requiresOutputAlignment
+                    ? tracks_[t]->renderLeadInSamples()
+                    : 0;
+                const uint32_t outputAlignmentDelay =
+                    maxOutputAlignmentLead > remainingTrackDelay
+                        ? (maxOutputAlignmentLead - remainingTrackDelay)
+                        : 0;
+                auto* delayLine = t < output_alignment_delay_lines_.size()
+                    ? &output_alignment_delay_lines_[t]
+                    : nullptr;
+                const size_t startWritePosition =
+                    delayLine && delayLine->capacity_frames > 0 ? delayLine->write_position : 0;
                 for (uint32_t ch = 0; ch < numChannels; ch++) {
                     float* dst = process.getFloatOutBuffer(0, ch);
                     const float* src = ctx->getFloatOutBuffer(0, ch);
-                    // Additive mixing
+                    if (!dst || !src)
+                        continue;
+
+                    if (!delayLine || outputAlignmentDelay == 0 || ch >= delayLine->channels.size() || delayLine->capacity_frames == 0) {
+                        for (int32_t frame = 0; frame < trackFrameCount; frame++)
+                            dst[frame] += src[frame];
+                        continue;
+                    }
+
+                    auto& delayChannel = delayLine->channels[ch];
+                    const size_t maxDelayFrames = delayLine->capacity_frames > 0 ? delayLine->capacity_frames - 1 : 0;
+                    const size_t appliedDelayFrames = std::min<size_t>(outputAlignmentDelay, maxDelayFrames);
+                    size_t writePosition = startWritePosition;
                     for (int32_t frame = 0; frame < trackFrameCount; frame++) {
-                        dst[frame] += src[frame];
+                        delayChannel[writePosition] = src[frame];
+                        const size_t readPosition =
+                            (writePosition + delayLine->capacity_frames - appliedDelayFrames) %
+                            delayLine->capacity_frames;
+                        dst[frame] += delayChannel[readPosition];
+                        writePosition = (writePosition + 1) % delayLine->capacity_frames;
                     }
                 }
+                if (delayLine && outputAlignmentDelay > 0 && delayLine->capacity_frames > 0)
+                    delayLine->write_position = (startWritePosition + static_cast<size_t>(trackFrameCount)) % delayLine->capacity_frames;
             }
         }
 
@@ -796,6 +882,7 @@ namespace uapmd {
         if (master_track_context_) {
             master_track_context_->configureMainBus(default_output_channels_, default_output_channels_, audio_buffer_size_in_frames);
         }
+        reconfigureOutputAlignmentBuffers();
     }
 
     uapmd_track_index_t SequencerEngineImpl::addEmptyTrack() {
@@ -826,6 +913,7 @@ namespace uapmd {
             static_cast<double>(sampleRate),
             static_cast<uint32_t>(audio_buffer_size_in_frames)
         );
+        reconfigureOutputAlignmentBuffers();
 
         return trackIndex;
     }
@@ -843,6 +931,7 @@ namespace uapmd {
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
         rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
         timeline_->onTrackRemoved(static_cast<size_t>(index));
+        reconfigureOutputAlignmentBuffers();
         return true;
     }
 
@@ -927,6 +1016,7 @@ namespace uapmd {
             refreshFunctionBlockMappings();
 
             instance->bypassed(false);
+            reconfigureOutputAlignmentBuffers();
 
             callback(instanceId, targetMaster ? kMasterTrackIndex : trackIndex, "");
         });
@@ -964,11 +1054,13 @@ namespace uapmd {
                 // They have minimal overhead (no plugins to process) and can be removed manually
                 // by calling removeTrack() from a non-audio thread when appropriate.
                 refreshFunctionBlockMappings();
+                reconfigureOutputAlignmentBuffers();
                 return true;
             }
         }
         if (master_track_ && master_track_->graph().removeNodeSimple(instanceId)) {
             refreshFunctionBlockMappings();
+            reconfigureOutputAlignmentBuffers();
             return true;
         }
         return false;
@@ -985,6 +1077,7 @@ namespace uapmd {
         }
         track_processing_flags_.erase(track_processing_flags_.begin() + static_cast<long>(index));
         timeline_->onTrackRemoved(index);
+        reconfigureOutputAlignmentBuffers();
     }
 
     // Playback control
@@ -994,6 +1087,7 @@ namespace uapmd {
 
     void SequencerEngineImpl::playbackPosition(int64_t samples) {
         if (is_playback_active_.load(std::memory_order_acquire)) {
+            resetOutputAlignmentBuffers();
             schedulePrerollFromAudiblePosition(samples);
             return;
         }
@@ -1002,6 +1096,7 @@ namespace uapmd {
         reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
         playback_position_samples_.store(samples, std::memory_order_release);
         render_playback_position_samples_.store(samples, std::memory_order_release);
+        resetOutputAlignmentBuffers();
     }
 
     int64_t SequencerEngineImpl::playbackPosition() const {
@@ -1013,12 +1108,14 @@ namespace uapmd {
     }
 
     void uapmd::SequencerEngineImpl::startPlayback() {
+        resetOutputAlignmentBuffers();
         schedulePrerollFromAudiblePosition(0);
         is_playback_active_.store(true, std::memory_order_release);
     }
 
     void uapmd::SequencerEngineImpl::stopPlayback() {
         is_playback_active_.store(false, std::memory_order_release);
+        resetOutputAlignmentBuffers();
         const auto tailSamples = maxStopDrainInSamples();
         if (tailSamples > 0) {
             const auto quantum = static_cast<int64_t>(audio_buffer_size_in_frames > 0 ? audio_buffer_size_in_frames : 1);
@@ -1054,9 +1151,11 @@ namespace uapmd {
         reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
         render_playback_position_samples_.store(playback_position_samples_.load(std::memory_order_acquire),
                                                 std::memory_order_release);
+        resetOutputAlignmentBuffers();
     }
 
     void uapmd::SequencerEngineImpl::resumePlayback() {
+        resetOutputAlignmentBuffers();
         schedulePrerollFromAudiblePosition(playback_position_samples_.load(std::memory_order_acquire));
         is_playback_active_.store(true, std::memory_order_release);
     }
