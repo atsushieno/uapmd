@@ -2216,8 +2216,6 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                             return;
                         }
                         clipPath = exportPath;
-                        timelineTrack->clipManager().setClipFilepath(clip.clipId, clipPath.string());
-                        timelineTrack->clipManager().setClipNeedsFileSave(clip.clipId, false);
                     } else {
                         clipPath = std::filesystem::absolute(clipPath);
                     }
@@ -2257,8 +2255,6 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                         }
 
                         clipPath = destPath;
-                        timelineTrack->clipManager().setClipFilepath(clip.clipId, clipPath.string());
-                        timelineTrack->clipManager().setClipNeedsFileSave(clip.clipId, false);
                     } else if (!clipPath.empty()) {
                         clipPath = std::filesystem::absolute(clipPath);
                     }
@@ -2334,8 +2330,6 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                             return;
                         }
                         clipPath = exportPath;
-                        masterTimelineTrack->clipManager().setClipFilepath(clip.clipId, clipPath.string());
-                        masterTimelineTrack->clipManager().setClipNeedsFileSave(clip.clipId, false);
                     } else {
                         clipPath = std::filesystem::absolute(clipPath);
                     }
