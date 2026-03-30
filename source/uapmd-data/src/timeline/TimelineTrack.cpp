@@ -314,21 +314,35 @@ namespace uapmd {
         const TimelineState& timeline,
         int64_t renderStartSample
     ) {
-        const auto& renderTimeline = timeline;
+        processAudioForRenderSegment(process, timeline, renderStartSample, 0, process.frameCount());
+    }
 
-        const int32_t frameCount = process.frameCount();
+    void TimelineTrack::processAudioForRenderSegment(
+        remidy::AudioProcessContext& process,
+        const TimelineState& timeline,
+        int64_t renderStartSample,
+        int32_t destinationOffsetFrames,
+        int32_t renderFrameCount
+    ) {
+        const auto& renderTimeline = timeline;
+        const int32_t frameCount = renderFrameCount;
+        if (frameCount <= 0 || destinationOffsetFrames < 0)
+            return;
         const uint32_t numChannels = std::min(channel_count_,
             static_cast<uint32_t>(process.audioOutBusCount() > 0 ? process.outputChannelCount(0) : 0));
 
         if (numChannels == 0)
             return;
 
-        // Ensure our temporary buffers are allocated
-        ensureBuffersAllocated(numChannels, frameCount);
+        if (destinationOffsetFrames + frameCount > process.frameCount())
+            return;
 
-        // Clear mixed source buffers
+        // Ensure our temporary buffers are allocated
+        ensureBuffersAllocated(numChannels, destinationOffsetFrames + frameCount);
+
+        // Clear only the destination segment we are about to populate.
         for (uint32_t ch = 0; ch < numChannels && ch < mixed_source_buffers_.size(); ++ch)
-            std::memset(mixed_source_buffers_[ch].data(), 0, frameCount * sizeof(float));
+            std::memset(mixed_source_buffers_[ch].data() + destinationOffsetFrames, 0, frameCount * sizeof(float));
 
         // Get RT-safe clip snapshot (lock-free atomic load)
         auto clipSnapshot = clip_manager_.getSnapshotRT();
@@ -375,7 +389,7 @@ namespace uapmd {
                 const float gain = static_cast<float>(clip.gain);
                 for (uint32_t ch = 0; ch < numChannels; ++ch)
                     for (int32_t frame = 0; frame < renderWindow->processFrameCount; ++frame)
-                        mixed_source_buffers_[ch][renderWindow->destinationOffsetFrames + frame] +=
+                        mixed_source_buffers_[ch][destinationOffsetFrames + renderWindow->destinationOffsetFrames + frame] +=
                             temp_source_buffers_[ch][frame] * gain;
             }
 
@@ -409,7 +423,7 @@ namespace uapmd {
                     renderWindow->processFrameCount,
                     static_cast<int32_t>(sample_rate_),
                     renderTimeline.tempo,
-                    static_cast<uint32_t>(renderWindow->destinationOffsetFrames)
+                    static_cast<uint32_t>(destinationOffsetFrames + renderWindow->destinationOffsetFrames)
                 );
             }
         }
@@ -434,7 +448,7 @@ namespace uapmd {
                     float* devicePtrs[kMaxDeviceChannels];
                     const uint32_t usableChannels = std::min(deviceChannelCount, kMaxDeviceChannels);
                     for (uint32_t ch = 0; ch < usableChannels; ++ch)
-                        devicePtrs[ch] = const_cast<float*>(process.getFloatInBuffer(0, ch));
+                        devicePtrs[ch] = const_cast<float*>(process.getFloatInBuffer(0, ch)) + destinationOffsetFrames;
 
                     deviceInputNode->setDeviceInputBuffers(devicePtrs, usableChannels);
                     deviceInputNode->setPlaying(renderTimeline.isPlaying);
@@ -447,7 +461,7 @@ namespace uapmd {
 
                     for (uint32_t ch = 0; ch < numChannels; ++ch)
                         for (int32_t frame = 0; frame < frameCount; ++frame)
-                            mixed_source_buffers_[ch][frame] += temp_source_buffers_[ch][frame];
+                            mixed_source_buffers_[ch][destinationOffsetFrames + frame] += temp_source_buffers_[ch][frame];
                 }
             }
         }
@@ -457,7 +471,9 @@ namespace uapmd {
         for (uint32_t ch = 0; ch < numChannels && ch < mixed_source_buffer_ptrs_.size(); ++ch) {
             float* inBuffer = process.getFloatInBuffer(0, ch);
             if (inBuffer)
-                std::memcpy(inBuffer, mixed_source_buffer_ptrs_[ch], frameCount * sizeof(float));
+                std::memcpy(inBuffer + destinationOffsetFrames,
+                            mixed_source_buffer_ptrs_[ch] + destinationOffsetFrames,
+                            frameCount * sizeof(float));
         }
     }
 

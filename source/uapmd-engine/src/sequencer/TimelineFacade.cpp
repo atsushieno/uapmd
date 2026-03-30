@@ -853,7 +853,41 @@ namespace uapmd {
                 renderPosition.samples = renderStartSample;
                 renderTimeline.seekTo(renderPosition, sampleRate_);
                 updateTransportMetaForPlayhead(renderTimeline);
-                (*snapshot)[i]->processAudioForRenderPosition(*trackContext, renderTimeline, renderStartSample);
+
+                const bool crossesLoopBoundary =
+                    timeline_.loopEnabled &&
+                    timeline_.loopEnd.samples > timeline_.loopStart.samples &&
+                    renderStartSample >= timeline_.loopStart.samples &&
+                    renderStartSample < timeline_.loopEnd.samples &&
+                    renderStartSample + safeFrames > timeline_.loopEnd.samples;
+
+                if (!crossesLoopBoundary) {
+                    (*snapshot)[i]->processAudioForRenderPosition(*trackContext, renderTimeline, renderStartSample);
+                    continue;
+                }
+
+                const int32_t firstSegmentFrames = static_cast<int32_t>(timeline_.loopEnd.samples - renderStartSample);
+                const int32_t secondSegmentFrames = safeFrames - firstSegmentFrames;
+
+                (*snapshot)[i]->processAudioForRenderSegment(
+                    *trackContext,
+                    renderTimeline,
+                    renderStartSample,
+                    0,
+                    firstSegmentFrames);
+
+                auto wrappedTimeline = renderTransport;
+                TimelinePosition wrappedRenderPosition{};
+                wrappedRenderPosition.samples = timeline_.loopStart.samples;
+                wrappedTimeline.seekTo(wrappedRenderPosition, sampleRate_);
+                updateTransportMetaForPlayhead(wrappedTimeline);
+
+                (*snapshot)[i]->processAudioForRenderSegment(
+                    *trackContext,
+                    wrappedTimeline,
+                    timeline_.loopStart.samples,
+                    firstSegmentFrames,
+                    secondSegmentFrames);
             }
         }
 
