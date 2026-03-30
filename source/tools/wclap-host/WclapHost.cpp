@@ -51,6 +51,7 @@ using wclap32::wclap_plugin_note_ports;
 using wclap32::wclap_plugin_params;
 using wclap32::wclap_plugin_preset_load;
 using wclap32::wclap_plugin_latency;
+using wclap32::wclap_plugin_tail;
 using wclap32::wclap_process;
 using wclap32::wclap_plugin_webview;
 using wclap32::wclap_plugin_state;
