@@ -9,8 +9,8 @@
 
 #include <imgui.h>
 #include <ImTimeline.h>
-#include <uapmd-data/uapmd-data.hpp>
 
+#include <uapmd-data/uapmd-data.hpp>
 #include "ClipPreview.hpp"
 
 namespace uapmd::gui {
@@ -23,7 +23,7 @@ public:
         int32_t clipId{-1};
         std::string referenceId;
         std::string trackReferenceId;
-        std::string anchorReferenceId;  // Empty = track anchor
+        std::string anchorReferenceId;
         std::string anchorOrigin;   // "Start" or "End"
         std::string position;       // Display string: "+2.5s"
         std::string name;           // User-editable clip name

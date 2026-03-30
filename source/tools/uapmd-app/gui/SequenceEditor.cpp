@@ -503,7 +503,7 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
                 if (!canOpenPianoRoll)
                     ImGui::EndDisabled();
 
-                const bool canDelete = !contextClip->isMasterTrack && static_cast<bool>(context.removeClip);
+                const bool canDelete = static_cast<bool>(context.removeClip);
                 if (!canDelete) {
                     ImGui::BeginDisabled();
                 }
@@ -727,11 +727,11 @@ bool SequenceEditor::renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, 
 
         // Other clip anchors - show clip names
         auto anchorOptions = getAnchorOptions(trackIndex, clip.clipId);
-        for (const auto& anchorOption : anchorOptions) {
-            bool isSelected = (clip.anchorReferenceId == anchorOption.clipReferenceId);
-            if (ImGui::Selectable(anchorOption.label.c_str(), isSelected)) {
+        for (const auto& option : anchorOptions) {
+            bool isSelected = (clip.anchorReferenceId == option.clipReferenceId);
+            if (ImGui::Selectable(option.label.c_str(), isSelected)) {
                 if (context.updateClip) {
-                    context.updateClip(trackIndex, clip.clipId, anchorOption.clipReferenceId, clip.anchorOrigin, clip.position);
+                    context.updateClip(trackIndex, clip.clipId, option.clipReferenceId, clip.anchorOrigin, clip.position);
                     changed = true;
                 }
             }
@@ -808,23 +808,22 @@ bool SequenceEditor::renderNameInput(int32_t trackIndex, const ClipRow& clip, co
 
 std::vector<SequenceEditor::AnchorOption> SequenceEditor::getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const {
     std::vector<AnchorOption> options;
-    if (trackIndex < 0)
-        return options;
-
-    for (const auto& [windowTrackIndex, state] : windows_) {
+    for (const auto& [candidateTrackIndex, state] : windows_) {
         for (const auto& clip : state.displayClips) {
-            if (clip.clipId == currentClipId && windowTrackIndex == trackIndex)
+            if (clip.clipId <= 0)
                 continue;
-            if (clip.clipId <= 0 || clip.referenceId.empty())
+            if (candidateTrackIndex == trackIndex && clip.clipId == currentClipId)
                 continue;
 
-            auto label = clip.name.empty() ? std::format("Clip #{}", clip.clipId) : clip.name;
-            if (windowTrackIndex != trackIndex)
-                label = std::format("[{}] {}", windowTrackIndex, label);
-            options.push_back(AnchorOption{
-                windowTrackIndex,
-                clip.referenceId,
-                std::move(label)});
+            AnchorOption option;
+            option.trackIndex = candidateTrackIndex;
+            option.clipReferenceId = clip.referenceId;
+            const char* trackLabel = candidateTrackIndex == uapmd::kMasterTrackIndex ? "Master" : "Track";
+            std::string clipLabel = clip.name.empty() ? std::format("Clip #{}", clip.clipId) : clip.name;
+            option.label = candidateTrackIndex == uapmd::kMasterTrackIndex
+                ? std::format("{}: {}", trackLabel, clipLabel)
+                : std::format("{} {}: {}", trackLabel, candidateTrackIndex, clipLabel);
+            options.push_back(std::move(option));
         }
     }
 

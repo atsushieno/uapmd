@@ -2160,7 +2160,6 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
             std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
                 return a.clipId < b.clipId;
             });
-
             serializedTracks.push_back(SerializedTrackClips{
                 static_cast<int32_t>(trackIndex),
                 clips});

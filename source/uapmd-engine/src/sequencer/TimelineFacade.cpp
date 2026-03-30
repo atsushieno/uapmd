@@ -572,29 +572,34 @@ namespace uapmd {
                 }
             }
 
-            auto applyAnchorToLoadedClip = [&loadedClipRefs](UapmdProjectClipData* projectClip) {
+            auto applyAnchorToLoadedClip = [this, &loadedClipRefs](UapmdProjectClipData* projectClip) {
                 if (!projectClip)
                     return;
                 auto loadedIt = loadedClipRefs.find(projectClip);
-                if (loadedIt == loadedClipRefs.end() || !loadedIt->second.track)
+                if (loadedIt == loadedClipRefs.end())
                     return;
 
                 auto pos = projectClip->position();
+                auto* targetTrack = loadedIt->second.track;
+                if (!targetTrack)
+                    return;
+
                 std::string anchorReferenceId;
                 if (auto* anchorClip = dynamic_cast<UapmdProjectClipData*>(pos.anchor)) {
                     auto anchorIt = loadedClipRefs.find(anchorClip);
-                    if (anchorIt != loadedClipRefs.end())
+                    if (anchorIt != loadedClipRefs.end()) {
                         anchorReferenceId = anchorIt->second.clipReferenceId;
+                    }
                 }
                 auto anchorOrigin = pos.origin == UapmdAnchorOrigin::End
                     ? AnchorOrigin::End
                     : AnchorOrigin::Start;
-                loadedIt->second.track->clipManager().setClipAnchor(
+                targetTrack->clipManager().setClipAnchor(
                     loadedIt->second.clipId,
                     anchorReferenceId,
                     anchorOrigin,
                     TimelinePosition(static_cast<int64_t>(pos.samples)));
-                loadedIt->second.track->clipManager().setClipPosition(
+                targetTrack->clipManager().setClipPosition(
                     loadedIt->second.clipId,
                     TimelinePosition(static_cast<int64_t>(projectClip->absolutePositionInSamples())));
             };
@@ -851,6 +856,7 @@ namespace uapmd {
         void onTrackAdded(uint32_t outputChannels, double sampleRate, uint32_t bufferSizeInFrames) override {
             sampleRate_ = static_cast<int32_t>(sampleRate);
             bufferSizeInFrames_ = bufferSizeInFrames;
+            master_timeline_track_->reconfigureBuffers(0, bufferSizeInFrames);
 
             const std::string trackReferenceId = std::format("track_{}", next_timeline_track_reference_++);
             auto newTrack = std::make_shared<TimelineTrack>(trackReferenceId, outputChannels, sampleRate, bufferSizeInFrames);
@@ -859,8 +865,9 @@ namespace uapmd {
                 [this, trackReferenceId](uint8_t group, uint32_t paramIdx, uint32_t rawValue, bool isRelative) {
                     auto& seqTracks = engine_.tracks();
                     uapmd_track_index_t trackIndex = -1;
-                    for (size_t i = 0; i < timeline_tracks_.size(); ++i) {
-                        if (timeline_tracks_[i] && timeline_tracks_[i]->referenceId() == trackReferenceId) {
+                    auto tracks = this->tracks();
+                    for (size_t i = 0; i < tracks.size(); ++i) {
+                        if (tracks[i] && tracks[i]->referenceId() == trackReferenceId) {
                             trackIndex = static_cast<uapmd_track_index_t>(i);
                             break;
                         }

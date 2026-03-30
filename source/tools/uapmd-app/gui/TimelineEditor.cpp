@@ -41,7 +41,7 @@ struct ClipKey {
 };
 
 struct ClipKeyHash {
-    std::size_t operator()(const ClipKey& key) const noexcept {
+    size_t operator()(const ClipKey& key) const {
         return std::hash<std::string>{}(key.referenceId);
     }
 };
@@ -470,7 +470,6 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         std::vector<SequenceEditor::ClipRow> rows;
         SequenceEditor::ClipRow row;
         row.clipId = kMasterTrackClipId;
-        row.referenceId = "master_meta_row";
         row.trackReferenceId = "master_track";
         row.anchorReferenceId.clear();
         row.anchorOrigin = "Start";
@@ -1023,12 +1022,12 @@ std::string TimelineEditor::buildTrackContentSignature(int32_t trackIndex) const
 
         signature += std::format("|{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
             clip.clipId,
-            clip.referenceId,
             static_cast<int>(clip.clipType),
             clip.position.samples,
             clip.durationSamples,
             clip.sourceNodeInstanceId,
-            clip.anchorReferenceId,
+            std::hash<std::string>{}(clip.referenceId),
+            std::hash<std::string>{}(clip.anchorReferenceId),
             static_cast<int>(clip.anchorOrigin),
             clip.anchorOffset.samples,
             clip.tickResolution,
@@ -1039,70 +1038,73 @@ std::string TimelineEditor::buildTrackContentSignature(int32_t trackIndex) const
 }
 
 void TimelineEditor::resolveAllClipAnchors() {
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+
     struct ClipRecord {
-        uapmd::TimelineTrack* track{nullptr};
+        uapmd::ClipManager* clipManager{nullptr};
         uapmd::ClipData clip;
     };
 
-    auto& appModel = uapmd::AppModel::instance();
-    auto tracks = appModel.getTimelineTracks();
     std::unordered_map<ClipKey, ClipRecord, ClipKeyHash> clipRecords;
+    clipRecords.reserve(128);
 
-    for (auto* track : tracks) {
+    auto collectTrack = [&clipRecords](uapmd::TimelineTrack* track) {
         if (!track)
-            continue;
-        for (const auto& clip : track->clipManager().getAllClips()) {
-            if (clip.referenceId.empty())
-                continue;
-            clipRecords.emplace(ClipKey{clip.referenceId}, ClipRecord{track, clip});
-        }
-    }
-
-    struct ResolutionState {
-        bool resolved{false};
-        bool resolving{false};
-        uapmd::TimelinePosition position{};
+            return;
+        auto clips = track->clipManager().getAllClips();
+        for (const auto& clip : clips)
+            clipRecords.emplace(ClipKey{clip.referenceId}, ClipRecord{&track->clipManager(), clip});
     };
-    std::unordered_map<std::string, ResolutionState> states;
 
-    auto resolvePosition = [&](auto&& self, const std::string& referenceId) -> uapmd::TimelinePosition {
-        auto stateIt = states.find(referenceId);
-        if (stateIt != states.end() && stateIt->second.resolved)
-            return stateIt->second.position;
-        if (stateIt != states.end() && stateIt->second.resolving)
-            return {};
+    for (int32_t trackIndex = 0; trackIndex < static_cast<int32_t>(tracks.size()); ++trackIndex)
+        collectTrack(tracks[trackIndex]);
+    collectTrack(appModel.getMasterTimelineTrack());
 
-        auto recordIt = clipRecords.find(ClipKey{referenceId});
-        if (recordIt == clipRecords.end())
-            return {};
+    std::unordered_map<ClipKey, uapmd::TimelinePosition, ClipKeyHash> resolvedPositions;
+    std::unordered_set<ClipKey, ClipKeyHash> resolving;
 
-        auto& state = states[referenceId];
-        state.resolving = true;
+    std::function<uapmd::TimelinePosition(const ClipKey&)> resolveClipPosition =
+        [&](const ClipKey& key) -> uapmd::TimelinePosition {
+            auto resolvedIt = resolvedPositions.find(key);
+            if (resolvedIt != resolvedPositions.end())
+                return resolvedIt->second;
 
-        const auto& clip = recordIt->second.clip;
-        uapmd::TimelinePosition position = clip.anchorOffset;
-        if (!clip.anchorReferenceId.empty()) {
-            auto anchorPosition = self(self, clip.anchorReferenceId);
-            auto anchorIt = clipRecords.find(ClipKey{clip.anchorReferenceId});
-            if (anchorIt != clipRecords.end()) {
-                position = anchorPosition;
-                if (clip.anchorOrigin == uapmd::AnchorOrigin::End)
-                    position.samples += anchorIt->second.clip.durationSamples;
-                position = position + clip.anchorOffset;
+            auto recordIt = clipRecords.find(key);
+            if (recordIt == clipRecords.end())
+                return {};
+
+            const auto& clip = recordIt->second.clip;
+            if (clip.anchorReferenceId.empty()) {
+                resolvedPositions[key] = clip.anchorOffset;
+                return clip.anchorOffset;
             }
-        }
 
-        state.resolving = false;
-        state.resolved = true;
-        state.position = position;
-        return position;
-    };
+            if (!resolving.insert(key).second) {
+                resolvedPositions[key] = clip.anchorOffset;
+                return clip.anchorOffset;
+            }
 
-    for (const auto& [key, record] : clipRecords) {
-        auto resolvedPosition = resolvePosition(resolvePosition, key.referenceId);
-        if (record.track)
-            record.track->clipManager().setClipPosition(record.clip.clipId, resolvedPosition);
-    }
+            const ClipKey anchorKey{clip.anchorReferenceId};
+            auto anchorIt = clipRecords.find(anchorKey);
+            if (anchorIt == clipRecords.end()) {
+                resolving.erase(key);
+                resolvedPositions[key] = clip.anchorOffset;
+                return clip.anchorOffset;
+            }
+
+            auto anchorPosition = resolveClipPosition(anchorKey);
+            if (clip.anchorOrigin == uapmd::AnchorOrigin::End)
+                anchorPosition.samples += anchorIt->second.clip.durationSamples;
+
+            auto resolved = anchorPosition + clip.anchorOffset;
+            resolvedPositions[key] = resolved;
+            resolving.erase(key);
+            return resolved;
+        };
+
+    for (const auto& [key, record] : clipRecords)
+        record.clipManager->setClipPosition(record.clip.clipId, resolveClipPosition(key));
 }
 
 void TimelineEditor::addClipToTrack(int32_t trackIndex, const std::string& filepath) {
@@ -1266,8 +1268,12 @@ void TimelineEditor::addClipToTrackAtPosition(int32_t trackIndex, const std::str
 
 void TimelineEditor::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
     auto& appModel = uapmd::AppModel::instance();
+    if (trackIndex == uapmd::kMasterTrackIndex && clipId == kMasterTrackClipId) {
+        return;
+    }
     appModel.removeClipFromTrack(trackIndex, clipId);
     resolveAllClipAnchors();
+    invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
 }
 
@@ -1280,15 +1286,13 @@ void TimelineEditor::clearAllClipsFromTrack(int32_t trackIndex) {
 
     tracks[trackIndex]->clipManager().clearAll();
     resolveAllClipAnchors();
+    invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
 }
 
 void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::string& anchorReferenceId, const std::string& origin, const std::string& position) {
     auto& appModel = uapmd::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
-
-    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
-        return;
 
     double offsetSeconds = 0.0;
     try {
@@ -1306,8 +1310,15 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
         anchorOrigin = uapmd::AnchorOrigin::End;
 
     uapmd::TimelinePosition anchorOffset = uapmd::TimelinePosition::fromSeconds(offsetSeconds, appModel.sampleRate());
-    tracks[trackIndex]->clipManager().setClipAnchor(clipId, anchorReferenceId, anchorOrigin, anchorOffset);
+    auto* targetTrack = trackIndex == uapmd::kMasterTrackIndex
+        ? appModel.getMasterTimelineTrack()
+        : ((trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size())) ? tracks[trackIndex] : nullptr);
+    if (!targetTrack)
+        return;
+
+    targetTrack->clipManager().setClipAnchor(clipId, anchorReferenceId, anchorOrigin, anchorOffset);
     resolveAllClipAnchors();
+    invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
 }
 
@@ -1400,8 +1411,13 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
 
     double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
     uapmd::TimelinePosition newOffset = uapmd::TimelinePosition::fromSeconds(seconds, static_cast<int32_t>(sr));
-    tracks[trackIndex]->clipManager().setClipAnchor(clipId, {}, uapmd::AnchorOrigin::Start, newOffset);
+    tracks[trackIndex]->clipManager().setClipAnchor(
+        clipId,
+        {},
+        uapmd::AnchorOrigin::Start,
+        newOffset);
     resolveAllClipAnchors();
+    invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();
 }
 
@@ -1967,7 +1983,8 @@ void TimelineEditor::importMidiTracks(const std::string& filepath) {
             track.detectedTempo,
             std::move(track.tempoChanges),
             std::move(track.timeSignatureChanges),
-            track.clipName
+            track.clipName,
+            track.needsFileSave
         );
 
         if (!clipResult.success) {
@@ -1979,29 +1996,27 @@ void TimelineEditor::importMidiTracks(const std::string& filepath) {
         ++importedCount;
     }
 
-    uapmd::TimelinePosition masterPosition;
-    masterPosition.samples = 0;
-    masterPosition.legacy_beats = 0.0;
-    size_t importedMasterCount = 0;
-    for (auto& clip : importResult.masterTrackClips) {
-        auto clipResult = appModel.addMasterMidiClip(
-            masterPosition,
-            std::move(clip.umpEvents),
-            std::move(clip.umpTickTimestamps),
-            clip.tickResolution,
-            clip.detectedTempo,
-            std::move(clip.tempoChanges),
-            std::move(clip.timeSignatureChanges),
-            clip.clipName,
-            clip.needsFileSave);
-        if (!clipResult.success)
-            warnings.push_back(std::format("{}: {}", clip.clipName, clipResult.error));
-        else
-            ++importedMasterCount;
+    for (auto& masterTrackClip : importResult.masterTrackClips) {
+        uapmd::TimelinePosition position;
+        position.samples = 0;
+        position.legacy_beats = 0.0;
+        auto masterClipResult = appModel.addMasterMidiClip(
+            position,
+            {},
+            {},
+            masterTrackClip.tickResolution,
+            masterTrackClip.detectedTempo,
+            std::move(masterTrackClip.tempoChanges),
+            std::move(masterTrackClip.timeSignatureChanges),
+            masterTrackClip.clipName
+        );
+        if (!masterClipResult.success)
+            warnings.push_back(std::format("{}: {}", masterTrackClip.clipName, masterClipResult.error));
     }
+
     invalidateMasterTrackSnapshot();
 
-    if (importedCount == 0 && importedMasterCount == 0) {
+    if (importedCount == 0 && importResult.masterTrackClips.empty()) {
         std::string message = "No MIDI tracks were imported.";
         if (!warnings.empty()) {
             message += "\n\nWarnings:\n";
