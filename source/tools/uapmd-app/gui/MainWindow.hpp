@@ -65,6 +65,7 @@ class MainWindow {
 #endif
 
         bool showAudioGraphWindow_ = false;
+        bool showMixerMonitorWindow_ = false;
 
         // Spectrum analyzers
         SpectrumAnalyzer inputSpectrumAnalyzer_;
@@ -173,5 +174,6 @@ class MainWindow {
         void updateChildWindowSizeState(const std::string& id);
         void toggleTheme();
         void applyTheme(ThemeMode mode);
+        void renderMixerMonitorWindow();
     };
 }

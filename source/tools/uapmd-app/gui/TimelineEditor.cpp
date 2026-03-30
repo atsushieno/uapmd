@@ -432,6 +432,11 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
     }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Add track");
+    if (callbacks_.showMixerMonitor) {
+        ImGui::SameLine();
+        if (ImGui::Button("Mixer Monitor"))
+            callbacks_.showMixerMonitor();
+    }
     if (callbacks_.showPluginInstances) {
         ImGui::SameLine();
         if (ImGui::Button("Plugin Instances"))

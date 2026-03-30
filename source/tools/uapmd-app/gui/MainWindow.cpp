@@ -274,6 +274,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
         .savePluginState = [this](int32_t instanceId) { savePluginState(instanceId); },
         .loadPluginState = [this](int32_t instanceId) { loadPluginState(instanceId); },
         .onInstanceDetailsClosed = [this](int32_t) { trackList_.markDirty(); },
+        .showMixerMonitor = [this]() { showMixerMonitorWindow_ = !showMixerMonitorWindow_; },
         .showPluginInstances = [this]() { showAudioGraphWindow_ = !showAudioGraphWindow_; },
     });
 
@@ -631,6 +632,7 @@ void MainWindow::render(void* window) {
     timelineEditor_.renderPluginSelectorWindow(uiScale_);
     renderDeviceSettingsWindow();
     renderAudioGraphEditorWindow();
+    renderMixerMonitorWindow();
     exporterWindow_.render(uiScale_);
     audioImportWindow_.render(uiScale_);
 
@@ -665,6 +667,125 @@ void MainWindow::renderAudioGraphEditorWindow() {
         updateChildWindowSizeState(windowId);
         trackList_.update();
         trackList_.render();
+    }
+    ImGui::End();
+}
+
+void MainWindow::renderMixerMonitorWindow() {
+    if (!showMixerMonitorWindow_)
+        return;
+
+    const std::string windowId = "MixerMonitor";
+    setNextChildWindowSize(windowId, ImVec2(900.0f, 420.0f));
+    if (ImGui::Begin("Mixer Monitor", &showMixerMonitorWindow_)) {
+        updateChildWindowSizeState(windowId);
+
+        auto& appModel = uapmd::AppModel::instance();
+        auto* engine = appModel.sequencer().engine();
+        if (!engine) {
+            ImGui::TextDisabled("Sequencer engine is not available.");
+            ImGui::End();
+            return;
+        }
+
+        const auto audiblePosition = engine->playbackPosition();
+        const auto renderPosition = engine->renderPlaybackPosition();
+        const bool playbackActive = engine->isPlaybackActive();
+        const bool prerollActive = playbackActive && renderPosition < audiblePosition;
+        const bool latencyDrainActive = !playbackActive && renderPosition > audiblePosition;
+
+        ImGui::Text("Audible Position: %lld samples", static_cast<long long>(audiblePosition));
+        ImGui::SameLine();
+        ImGui::Text("Render Position: %lld samples", static_cast<long long>(renderPosition));
+        ImGui::Text("Playback: %s", playbackActive ? "active" : "idle");
+        ImGui::SameLine();
+        ImGui::Text("Preroll: %s", prerollActive ? "active" : "inactive");
+        ImGui::SameLine();
+        ImGui::Text("Latency Drain: %s", latencyDrainActive ? "active" : "inactive");
+
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("MixerMonitorTable", 7, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY)) {
+            ImGui::TableSetupColumn("Track", ImGuiTableColumnFlags_WidthFixed, 130.0f * uiScale_);
+            ImGui::TableSetupColumn("Plugins", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableSetupColumn("Main Latency", ImGuiTableColumnFlags_WidthFixed, 120.0f * uiScale_);
+            ImGui::TableSetupColumn("Render Lead", ImGuiTableColumnFlags_WidthFixed, 120.0f * uiScale_);
+            ImGui::TableSetupColumn("Tail", ImGuiTableColumnFlags_WidthFixed, 110.0f * uiScale_);
+            ImGui::TableSetupColumn("Out Buses", ImGuiTableColumnFlags_WidthFixed, 80.0f * uiScale_);
+            ImGui::TableSetupColumn("Per-Bus Latency", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableHeadersRow();
+
+            auto renderTrackRow = [engine, this](const char* label, uapmd::SequencerTrack* track, uint32_t mainLatency, uint32_t renderLead, double tailSeconds) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(label);
+
+                ImGui::TableSetColumnIndex(1);
+                std::string pluginSummary;
+                if (track) {
+                    const auto& ids = track->orderedInstanceIds();
+                    for (size_t i = 0; i < ids.size(); ++i) {
+                        auto* instance = engine->getPluginInstance(ids[i]);
+                        if (!instance)
+                            continue;
+                        if (!pluginSummary.empty())
+                            pluginSummary += " -> ";
+                        pluginSummary += instance->displayName();
+                    }
+                }
+                if (pluginSummary.empty())
+                    pluginSummary = "(none)";
+                ImGui::TextWrapped("%s", pluginSummary.c_str());
+
+                ImGui::TableSetColumnIndex(2);
+                ImGui::Text("%u samples", mainLatency);
+
+                ImGui::TableSetColumnIndex(3);
+                ImGui::Text("%u samples", renderLead);
+
+                ImGui::TableSetColumnIndex(4);
+                if (std::isinf(tailSeconds))
+                    ImGui::TextUnformatted("infinite");
+                else
+                    ImGui::Text("%.3f s", tailSeconds);
+
+                ImGui::TableSetColumnIndex(5);
+                const uint32_t outputBusCount = track ? track->graph().outputBusCount() : 0;
+                ImGui::Text("%u", outputBusCount);
+
+                ImGui::TableSetColumnIndex(6);
+                std::string busLatencySummary;
+                if (track) {
+                    for (uint32_t busIndex = 0; busIndex < outputBusCount; ++busIndex) {
+                        if (!busLatencySummary.empty())
+                            busLatencySummary += ", ";
+                        busLatencySummary += std::format("bus {}: {}", busIndex, track->graph().outputLatencyInSamples(busIndex));
+                    }
+                }
+                if (busLatencySummary.empty())
+                    busLatencySummary = "-";
+                ImGui::TextWrapped("%s", busLatencySummary.c_str());
+            };
+
+            renderTrackRow("Master Track",
+                           engine->masterTrack(),
+                           engine->masterTrackLatencyInSamples(),
+                           engine->masterTrackRenderLeadInSamples(),
+                           engine->masterTrack() ? engine->masterTrack()->tailLengthInSeconds() : 0.0);
+
+            const auto& tracks = engine->tracks();
+            for (size_t trackIndex = 0; trackIndex < tracks.size(); ++trackIndex) {
+                auto* track = tracks[trackIndex];
+                const std::string label = std::format("Track {}", trackIndex);
+                renderTrackRow(label.c_str(),
+                               track,
+                               engine->trackLatencyInSamples(static_cast<uapmd_track_index_t>(trackIndex)),
+                               engine->trackRenderLeadInSamples(static_cast<uapmd_track_index_t>(trackIndex)),
+                               track ? track->tailLengthInSeconds() : 0.0);
+            }
+
+            ImGui::EndTable();
+        }
     }
     ImGui::End();
 }
