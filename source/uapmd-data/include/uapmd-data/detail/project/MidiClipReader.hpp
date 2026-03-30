@@ -19,9 +19,25 @@ namespace uapmd {
             std::vector<uint64_t> ump_tick_timestamps{};  // Cumulative ticks for each UMP word
             std::vector<MidiTempoChange> tempo_changes;
             std::vector<MidiTimeSignatureChange> time_signature_changes;
+            bool has_explicit_tempo_changes{false};
+            bool has_explicit_time_signature_changes{false};
             double tempo{120.0};         // Detected tempo in BPM
             bool success{true};          // Conversion success flag
             std::string error;           // Error message if failed
+        };
+
+        struct SeparatedMasterTrackEvents {
+            ClipInfo musicalClip;
+            ClipInfo masterTrackClip;
+
+            bool hasMusicalClip() const {
+                return !musicalClip.ump_data.empty();
+            }
+
+            bool hasMasterTrackClip() const {
+                return masterTrackClip.has_explicit_tempo_changes ||
+                    masterTrackClip.has_explicit_time_signature_changes;
+            }
         };
 
         // Auto-detect MIDI file format and convert to UMP
@@ -29,6 +45,7 @@ namespace uapmd {
         //  - Traditional SMF (Format 0, 1, 2) with "MThd" header
         //  - SMF2 (MIDI 2.0 Clip File) with "SMF2CLIP" header per M2-116-U v1.0
         static ClipInfo readAnyFormat(const std::filesystem::path& file);
+        static SeparatedMasterTrackEvents separateMasterTrackEvents(ClipInfo clipInfo);
 
         // Check if a file is a valid SMF2 (MIDI 2.0 Clip File) with "SMF2CLIP" header
         // NOT the same as traditional SMF Format 2 which has "MThd" header

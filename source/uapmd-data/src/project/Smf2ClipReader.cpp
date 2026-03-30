@@ -64,6 +64,8 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
     result.ump_tick_timestamps.clear();
     result.tempo_changes.clear();
     result.time_signature_changes.clear();
+    result.has_explicit_tempo_changes = false;
+    result.has_explicit_time_signature_changes = false;
     result.tempo = 120.0;
 
     uint64_t currentTick = 0;
@@ -91,6 +93,7 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
         if (it->isTempo()) {
             double bpm = tempoFromRawUmpValue(it->getTempo());
             result.tempo_changes.push_back(MidiTempoChange{currentTick, bpm});
+            result.has_explicit_tempo_changes = true;
             if (result.tempo_changes.size() == 1)
                 result.tempo = bpm;
         } else if (it->isTimeSignature()) {
@@ -99,6 +102,7 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
             sig.numerator = it->getTimeSignatureNumerator();
             sig.denominator = it->getTimeSignatureDenominator();
             result.time_signature_changes.push_back(sig);
+            result.has_explicit_time_signature_changes = true;
         } else {
             const int byteCount = it->getSizeInBytes();
             const int words = byteCount / 4;
@@ -191,7 +195,26 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
         result.tick_resolution = convertResult.tickResolution;
         result.tempo_changes = std::move(convertResult.tempoChanges);
         result.time_signature_changes = std::move(convertResult.timeSignatureChanges);
+        result.has_explicit_tempo_changes = convertResult.hasExplicitTempoChanges;
+        result.has_explicit_time_signature_changes = convertResult.hasExplicitTimeSignatureChanges;
         result.tempo = convertResult.detectedTempo;
+
+        return result;
+    }
+
+    MidiClipReader::SeparatedMasterTrackEvents MidiClipReader::separateMasterTrackEvents(ClipInfo clipInfo) {
+        SeparatedMasterTrackEvents result;
+        result.musicalClip = clipInfo;
+
+        result.masterTrackClip.tick_resolution = clipInfo.tick_resolution;
+        result.masterTrackClip.tempo = clipInfo.tempo;
+        result.masterTrackClip.success = clipInfo.success;
+        result.masterTrackClip.has_explicit_tempo_changes = clipInfo.has_explicit_tempo_changes;
+        result.masterTrackClip.has_explicit_time_signature_changes = clipInfo.has_explicit_time_signature_changes;
+        if (clipInfo.has_explicit_tempo_changes)
+            result.masterTrackClip.tempo_changes = clipInfo.tempo_changes;
+        if (clipInfo.has_explicit_time_signature_changes)
+            result.masterTrackClip.time_signature_changes = clipInfo.time_signature_changes;
 
         return result;
     }

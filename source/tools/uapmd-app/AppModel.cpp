@@ -268,7 +268,7 @@ struct PendingProjectSaveContext {
     uapmd::AppModel::ProjectSaveCallback callback;
 };
 
-GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
+GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node, bool includeTimelineMeta) {
     GatheredClipEvents result;
     const auto& eventWords = node.umpEvents();
     const auto& eventTicks = node.eventTimestampsTicks();
@@ -356,41 +356,45 @@ GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
     if (!reachedEnd && !eventTicks.empty())
         result.endTick = std::max(result.endTick, eventTicks.back());
 
-    for (const auto& tempo : tempoChanges) {
-        if (tempoTicks.contains(tempo.tickPosition))
-            continue;
+    if (includeTimelineMeta) {
+        for (const auto& tempo : tempoChanges) {
+            if (tempoTicks.contains(tempo.tickPosition))
+                continue;
 
-        ScheduledUmp entry;
-        entry.tick = tempo.tickPosition;
-        entry.priority = 0;
-        const double bpm = tempo.bpm > 0.0 ? tempo.bpm : 120.0;
-        entry.message = umppi::UmpFactory::tempo(
-            kTempoGroup,
-            kTempoChannel,
-            bpmToTenNanoseconds(bpm));
-        result.events.push_back(entry);
-        tempoTicks.insert(entry.tick);
-        if (entry.tick > result.endTick)
-            result.endTick = entry.tick;
+            ScheduledUmp entry;
+            entry.tick = tempo.tickPosition;
+            entry.priority = 0;
+            const double bpm = tempo.bpm > 0.0 ? tempo.bpm : 120.0;
+            entry.message = umppi::UmpFactory::tempo(
+                kTempoGroup,
+                kTempoChannel,
+                bpmToTenNanoseconds(bpm));
+            result.events.push_back(entry);
+            tempoTicks.insert(entry.tick);
+            if (entry.tick > result.endTick)
+                result.endTick = entry.tick;
+        }
     }
 
-    for (const auto& sig : timeSigChanges) {
-        if (timeSigTicks.contains(sig.tickPosition))
-            continue;
+    if (includeTimelineMeta) {
+        for (const auto& sig : timeSigChanges) {
+            if (timeSigTicks.contains(sig.tickPosition))
+                continue;
 
-        ScheduledUmp entry;
-        entry.tick = sig.tickPosition;
-        entry.priority = 1;
-        entry.message = umppi::UmpFactory::timeSignatureDirect(
-            kTempoGroup,
-            kTempoChannel,
-            sig.numerator,
-            sig.denominator,
-            0);
-        result.events.push_back(entry);
-        timeSigTicks.insert(entry.tick);
-        if (entry.tick > result.endTick)
-            result.endTick = entry.tick;
+            ScheduledUmp entry;
+            entry.tick = sig.tickPosition;
+            entry.priority = 1;
+            entry.message = umppi::UmpFactory::timeSignatureDirect(
+                kTempoGroup,
+                kTempoChannel,
+                sig.numerator,
+                sig.denominator,
+                0);
+            result.events.push_back(entry);
+            timeSigTicks.insert(entry.tick);
+            if (entry.tick > result.endTick)
+                result.endTick = entry.tick;
+        }
     }
 
     std::stable_sort(result.events.begin(), result.events.end(), [](const ScheduledUmp& a, const ScheduledUmp& b) {
@@ -405,14 +409,14 @@ GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node) {
     return result;
 }
 
-std::vector<umppi::Ump> buildSmf2ClipFromMidiNode(const uapmd::MidiClipSourceNode& node) {
+std::vector<umppi::Ump> buildSmf2ClipFromMidiNode(const uapmd::MidiClipSourceNode& node, bool includeTimelineMeta) {
     std::vector<umppi::Ump> clip;
     clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(0)));
     clip.emplace_back(umppi::Ump(umppi::UmpFactory::dctpq(node.tickResolution())));
     clip.emplace_back(umppi::Ump(umppi::UmpFactory::deltaClockstamp(0)));
     clip.push_back(umppi::UmpFactory::startOfClip());
 
-    auto gathered = gatherMidiClipEvents(node);
+    auto gathered = gatherMidiClipEvents(node, includeTimelineMeta);
     uint64_t previousTick = 0;
     for (const auto& entry : gathered.events) {
         uint64_t delta = entry.tick >= previousTick ? entry.tick - previousTick : 0;
@@ -1616,11 +1620,56 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     const std::string& filepath
 ) {
     ClipAddResult result;
-    auto engineResult = sequencer_.engine()->timeline().addMidiClipToTrack(trackIndex, position, filepath);
-    result.clipId = engineResult.clipId;
-    result.sourceNodeId = engineResult.sourceNodeId;
-    result.success = engineResult.success;
-    result.error = engineResult.error;
+    auto clipInfo = uapmd::MidiClipReader::readAnyFormat(filepath);
+    if (!clipInfo.success) {
+        result.error = clipInfo.error;
+        return result;
+    }
+
+    auto separated = uapmd::MidiClipReader::separateMasterTrackEvents(std::move(clipInfo));
+    auto& musicalClip = separated.musicalClip;
+    auto clipTempo = musicalClip.tempo_changes.empty() ? musicalClip.tempo : musicalClip.tempo_changes.front().bpm;
+    if (clipTempo <= 0.0)
+        clipTempo = 120.0;
+
+    if (separated.hasMusicalClip()) {
+        auto engineResult = sequencer_.engine()->timeline().addMidiClipToTrack(
+            trackIndex, position,
+            std::move(musicalClip.ump_data),
+            std::move(musicalClip.ump_tick_timestamps),
+            musicalClip.tick_resolution,
+            clipTempo,
+            std::move(musicalClip.tempo_changes),
+            std::move(musicalClip.time_signature_changes),
+            std::filesystem::path(filepath).stem().string(),
+            false,
+            separated.hasMasterTrackClip());
+        result.clipId = engineResult.clipId;
+        result.sourceNodeId = engineResult.sourceNodeId;
+        result.success = engineResult.success;
+        result.error = engineResult.error;
+        if (!result.success)
+            return result;
+    } else {
+        result.success = true;
+    }
+
+    if (separated.hasMasterTrackClip()) {
+        auto& masterClip = separated.masterTrackClip;
+        auto masterResult = sequencer_.engine()->timeline().addMasterMidiClip(
+            position,
+            {},
+            {},
+            masterClip.tick_resolution,
+            masterClip.tempo,
+            std::move(masterClip.tempo_changes),
+            std::move(masterClip.time_signature_changes),
+            std::format("{} Meta", std::filesystem::path(filepath).stem().string()));
+        if (!masterResult.success) {
+            result.success = false;
+            result.error = masterResult.error;
+        }
+    }
     return result;
 }
 
@@ -1633,7 +1682,8 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     double clipTempo,
     std::vector<MidiTempoChange> tempoChanges,
     std::vector<MidiTimeSignatureChange> timeSignatureChanges,
-    const std::string& clipName
+    const std::string& clipName,
+    bool needsFileSave
 ) {
     ClipAddResult result;
     auto engineResult = sequencer_.engine()->timeline().addMidiClipToTrack(
@@ -1641,12 +1691,42 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
         std::move(umpEvents), std::move(umpTickTimestamps),
         tickResolution, clipTempo,
         std::move(tempoChanges), std::move(timeSignatureChanges),
-        clipName);
+        clipName,
+        false,
+        needsFileSave);
     result.clipId = engineResult.clipId;
     result.sourceNodeId = engineResult.sourceNodeId;
     result.success = engineResult.success;
     result.error = engineResult.error;
 
+    return result;
+}
+
+uapmd::AppModel::ClipAddResult uapmd::AppModel::addMasterMidiClip(
+    const uapmd::TimelinePosition& position,
+    std::vector<uapmd_ump_t> umpEvents,
+    std::vector<uint64_t> umpTickTimestamps,
+    uint32_t tickResolution,
+    double clipTempo,
+    std::vector<MidiTempoChange> tempoChanges,
+    std::vector<MidiTimeSignatureChange> timeSignatureChanges,
+    const std::string& clipName,
+    bool needsFileSave,
+    const std::string& filepath
+) {
+    ClipAddResult result;
+    auto engineResult = sequencer_.engine()->timeline().addMasterMidiClip(
+        position,
+        std::move(umpEvents), std::move(umpTickTimestamps),
+        tickResolution, clipTempo,
+        std::move(tempoChanges), std::move(timeSignatureChanges),
+        clipName,
+        needsFileSave,
+        filepath);
+    result.clipId = engineResult.clipId;
+    result.sourceNodeId = engineResult.sourceNodeId;
+    result.success = engineResult.success;
+    result.error = engineResult.error;
     return result;
 }
 
@@ -1842,6 +1922,10 @@ int32_t uapmd::AppModel::addDeviceInputToTrack(
 
 std::vector<uapmd::TimelineTrack*> uapmd::AppModel::getTimelineTracks() {
     return sequencer_.engine()->timeline().tracks();
+}
+
+uapmd::TimelineTrack* uapmd::AppModel::getMasterTimelineTrack() {
+    return sequencer_.engine()->timeline().masterTimelineTrack();
 }
 
 uapmd::AppModel::MasterTrackSnapshot uapmd::AppModel::buildMasterTrackSnapshot() {
@@ -2088,7 +2172,7 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
 
                 std::filesystem::path clipPath = clip.filepath;
                 if (clip.clipType == uapmd::ClipType::Midi) {
-                    bool needsExport = clipPath.empty() || !std::filesystem::exists(clipPath);
+                    bool needsExport = clip.needsFileSave || clipPath.empty() || !std::filesystem::exists(clipPath);
                     if (needsExport) {
                         std::filesystem::create_directories(clipDir);
                         auto exportName = std::format("track{}_clip_{}_{}.midi2",
@@ -2106,12 +2190,14 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                         }
 
                         std::string writeError;
-                        auto clipUmps = buildSmf2ClipFromMidiNode(*midiNode);
+                        auto clipUmps = buildSmf2ClipFromMidiNode(*midiNode, false);
                         if (!uapmd::Smf2ClipReaderWriter::write(exportPath, clipUmps, &writeError)) {
                             complete(ProjectResult{false, std::move(writeError)});
                             return;
                         }
                         clipPath = exportPath;
+                        timelineTrack->clipManager().setClipFilepath(clip.clipId, clipPath.string());
+                        timelineTrack->clipManager().setClipNeedsFileSave(clip.clipId, false);
                     } else {
                         clipPath = std::filesystem::absolute(clipPath);
                     }
@@ -2193,29 +2279,60 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
 
         if (auto* masterTrack = operation->project->masterTrack()) {
             masterTrack->clips().clear();
-            auto snapshot = buildMasterTrackSnapshot();
-            auto masterClip = uapmd::UapmdProjectClipData::create();
+            if (auto* masterTimelineTrack = getMasterTimelineTrack()) {
+                auto clips = masterTimelineTrack->clipManager().getAllClips();
+                std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
+                    return a.clipId < b.clipId;
+                });
+                serializedTracks.push_back(SerializedTrackClips{
+                    uapmd::kMasterTrackIndex,
+                    clips});
 
-            std::filesystem::path masterFile = clipDir / "master_track.midi2";
-            std::filesystem::create_directories(clipDir);
-            auto masterUmps = buildMasterTrackSmf2Clip(snapshot);
-            std::string writeError;
-            if (!uapmd::Smf2ClipReaderWriter::write(masterFile, masterUmps, &writeError)) {
-                complete(ProjectResult{false, std::move(writeError)});
-                return;
+                for (const auto& clip : clips) {
+                    if (clip.clipType != uapmd::ClipType::Midi)
+                        continue;
+
+                    auto projectClip = uapmd::UapmdProjectClipData::create();
+                    projectClip->clipType("midi");
+                    projectClip->tickResolution(clip.tickResolution);
+
+                    std::filesystem::path clipPath = clip.filepath;
+                    bool needsExport = clip.needsFileSave || clipPath.empty() || !std::filesystem::exists(clipPath);
+                    if (needsExport) {
+                        std::filesystem::create_directories(clipDir);
+                        auto exportName = std::format("master_clip_{}_{}.midi2",
+                                                      clip.clipId,
+                                                      midiExportCounter++);
+                        auto exportPath = clipDir / exportName;
+
+                        auto sourceNode = masterTimelineTrack->getSourceNode(clip.sourceNodeInstanceId);
+                        auto* midiNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
+                        if (!midiNode) {
+                            complete(ProjectResult{false, std::format("Master clip {} is missing MIDI data", clip.clipId)});
+                            return;
+                        }
+
+                        std::string writeError;
+                        auto clipUmps = buildSmf2ClipFromMidiNode(*midiNode, true);
+                        if (!uapmd::Smf2ClipReaderWriter::write(exportPath, clipUmps, &writeError)) {
+                            complete(ProjectResult{false, std::move(writeError)});
+                            return;
+                        }
+                        clipPath = exportPath;
+                        masterTimelineTrack->clipManager().setClipFilepath(clip.clipId, clipPath.string());
+                        masterTimelineTrack->clipManager().setClipNeedsFileSave(clip.clipId, false);
+                    } else {
+                        clipPath = std::filesystem::absolute(clipPath);
+                    }
+
+                    if (!clipPath.empty() && !operation->project_dir.empty())
+                        clipPath = makeRelativePath(operation->project_dir, clipPath);
+                    projectClip->file(clipPath);
+
+                    serializedClipLookup[clip.referenceId] = projectClip.get();
+                    masterTrack->clips().push_back(std::move(projectClip));
+                }
             }
-
-            if (!operation->project_dir.empty())
-                masterFile = makeRelativePath(operation->project_dir, masterFile);
-
-            uapmd::UapmdTimelinePosition pos{};
-            pos.anchor = nullptr;
-            pos.samples = 0;
-            masterClip->position(pos);
-            masterClip->clipType("midi");
-            masterClip->tickResolution(kDefaultDctpq);
-            masterClip->file(masterFile);
-            masterTrack->clips().push_back(std::move(masterClip));
 
             if (auto graphData = createSerializedPluginGraph(
                     sequencerEngine ? sequencerEngine->masterTrack() : nullptr,

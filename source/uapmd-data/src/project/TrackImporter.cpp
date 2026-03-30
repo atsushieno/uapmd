@@ -37,13 +37,28 @@ MidiImportResult TrackImporter::importMidiFile(const std::string& filepath) {
             track.tempoChanges = std::move(convertResult.tempoChanges);
             track.timeSignatureChanges = std::move(convertResult.timeSignatureChanges);
 
-            if (convertResult.umpEvents.empty())
-                continue;
+            MidiTrackImport masterTrackClip;
+            masterTrackClip.clipName = std::format("{} - Track {} Meta", baseFilename, trackIdx + 1);
+            masterTrackClip.tickResolution = track.tickResolution;
+            masterTrackClip.detectedTempo = track.detectedTempo;
+            masterTrackClip.needsFileSave = true;
+            const bool hasMasterTrackEvents =
+                convertResult.hasExplicitTempoChanges || convertResult.hasExplicitTimeSignatureChanges;
+            if (hasMasterTrackEvents) {
+                if (convertResult.hasExplicitTempoChanges)
+                    masterTrackClip.tempoChanges = track.tempoChanges;
+                if (convertResult.hasExplicitTimeSignatureChanges)
+                    masterTrackClip.timeSignatureChanges = track.timeSignatureChanges;
+                result.masterTrackClips.push_back(std::move(masterTrackClip));
+            }
 
-            result.tracks.push_back(std::move(track));
+            if (!track.umpEvents.empty()) {
+                track.needsFileSave = hasMasterTrackEvents;
+                result.tracks.push_back(std::move(track));
+            }
         }
 
-        if (result.tracks.empty()) {
+        if (result.tracks.empty() && result.masterTrackClips.empty()) {
             if (result.warnings.empty()) {
                 result.error = "No MIDI tracks were imported.";
             }

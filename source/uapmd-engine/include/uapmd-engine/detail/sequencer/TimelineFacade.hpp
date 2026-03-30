@@ -27,6 +27,7 @@ public:
 
     // One TimelineTrack* per SequencerTrack, at the same index
     virtual std::vector<TimelineTrack*> tracks() = 0;
+    virtual TimelineTrack* masterTimelineTrack() = 0;
 
     // Clip management
     struct ClipAddResult {
@@ -58,7 +59,20 @@ public:
         std::vector<MidiTempoChange> tempoChanges,
         std::vector<MidiTimeSignatureChange> timeSignatureChanges,
         const std::string& clipName = "",
-        bool nrpnToParameterMapping = false) = 0;
+        bool nrpnToParameterMapping = false,
+        bool needsFileSave = false) = 0;
+
+    virtual ClipAddResult addMasterMidiClip(
+        const TimelinePosition& position,
+        std::vector<uapmd_ump_t> umpEvents,
+        std::vector<uint64_t> umpTickTimestamps,
+        uint32_t tickResolution,
+        double clipTempo,
+        std::vector<MidiTempoChange> tempoChanges,
+        std::vector<MidiTimeSignatureChange> timeSignatureChanges,
+        const std::string& clipName = "",
+        bool needsFileSave = false,
+        const std::string& filepath = "") = 0;
 
     virtual bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) = 0;
 

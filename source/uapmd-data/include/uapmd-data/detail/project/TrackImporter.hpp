@@ -19,6 +19,7 @@ struct MidiTrackImport {
     double detectedTempo{120.0};
     std::vector<MidiTempoChange> tempoChanges;
     std::vector<MidiTimeSignatureChange> timeSignatureChanges;
+    bool needsFileSave{false};
 };
 
 struct MidiImportResult {
@@ -26,6 +27,7 @@ struct MidiImportResult {
     std::string error;
     std::vector<std::string> warnings;
     std::vector<MidiTrackImport> tracks;
+    std::vector<MidiTrackImport> masterTrackClips;
 };
 
 struct AudioStemImport {

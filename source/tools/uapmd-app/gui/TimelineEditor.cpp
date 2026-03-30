@@ -1979,7 +1979,29 @@ void TimelineEditor::importMidiTracks(const std::string& filepath) {
         ++importedCount;
     }
 
-    if (importedCount == 0) {
+    uapmd::TimelinePosition masterPosition;
+    masterPosition.samples = 0;
+    masterPosition.legacy_beats = 0.0;
+    size_t importedMasterCount = 0;
+    for (auto& clip : importResult.masterTrackClips) {
+        auto clipResult = appModel.addMasterMidiClip(
+            masterPosition,
+            std::move(clip.umpEvents),
+            std::move(clip.umpTickTimestamps),
+            clip.tickResolution,
+            clip.detectedTempo,
+            std::move(clip.tempoChanges),
+            std::move(clip.timeSignatureChanges),
+            clip.clipName,
+            clip.needsFileSave);
+        if (!clipResult.success)
+            warnings.push_back(std::format("{}: {}", clip.clipName, clipResult.error));
+        else
+            ++importedMasterCount;
+    }
+    invalidateMasterTrackSnapshot();
+
+    if (importedCount == 0 && importedMasterCount == 0) {
         std::string message = "No MIDI tracks were imported.";
         if (!warnings.empty()) {
             message += "\n\nWarnings:\n";

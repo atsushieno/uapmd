@@ -345,7 +345,21 @@ namespace uapmd {
             double clipTempo,
             std::vector<MidiTempoChange> tempoChanges,
             std::vector<MidiTimeSignatureChange> timeSignatureChanges,
-            const std::string& clipName = ""
+            const std::string& clipName = "",
+            bool needsFileSave = false
+        );
+
+        ClipAddResult addMasterMidiClip(
+            const uapmd::TimelinePosition& position,
+            std::vector<uapmd_ump_t> umpEvents,
+            std::vector<uint64_t> umpTickTimestamps,
+            uint32_t tickResolution,
+            double clipTempo,
+            std::vector<MidiTempoChange> tempoChanges,
+            std::vector<MidiTimeSignatureChange> timeSignatureChanges,
+            const std::string& clipName = "",
+            bool needsFileSave = false,
+            const std::string& filepath = ""
         );
 
         bool removeClipFromTrack(int32_t trackIndex, int32_t clipId);
@@ -370,6 +384,7 @@ namespace uapmd {
 
         // Timeline tracks access
         std::vector<uapmd::TimelineTrack*> getTimelineTracks();
+        uapmd::TimelineTrack* getMasterTimelineTrack();
         size_t trackCount() const { return sequencer_.engine()->tracks().size(); }
 
         // Track management

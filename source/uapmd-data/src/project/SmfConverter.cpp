@@ -78,6 +78,8 @@ void collectMetaEvent(const std::shared_ptr<umppi::Midi1Message>& msg,
 void ensureDefaultMetaEvents(SmfConverter::ConvertResult& result,
                              bool tempoDetected,
                              bool timeSignatureDetected) {
+    result.hasExplicitTempoChanges = tempoDetected;
+    result.hasExplicitTimeSignatureChanges = timeSignatureDetected;
     if (!tempoDetected) {
         result.tempoChanges.push_back(MidiTempoChange{0, result.detectedTempo});
     }
