@@ -217,6 +217,18 @@ uint32_t remidy::PluginInstanceAUv3::latencyInSamples() const {
     }
 }
 
+double remidy::PluginInstanceAUv3::tailLengthInSeconds() const {
+    @autoreleasepool {
+        if (audioUnit == nil)
+            return 0.0;
+
+        const NSTimeInterval tailSeconds = audioUnit.tailTime;
+        if (tailSeconds <= 0.0)
+            return 0.0;
+        return tailSeconds;
+    }
+}
+
 remidy::StatusCode remidy::PluginInstanceAUv3::process(AudioProcessContext &process) {
     @autoreleasepool {
         if (audioUnit == nil) {

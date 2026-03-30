@@ -111,7 +111,8 @@ namespace uapmd {
         remidy::EventSequence& eventOut,
         int32_t frameCount,
         int32_t sampleRate,
-        double tempo
+        double tempo,
+        uint32_t frameOffsetInBlock
     ) {
         if (bypassed_ || !is_playing_.load(std::memory_order_acquire))
             return;
@@ -140,7 +141,7 @@ namespace uapmd {
 
             // Within window - emit or intercept the complete multi-word message
             if (eventSamples >= static_cast<uint64_t>(currentPos)) {
-                uint32_t frameOffset = static_cast<uint32_t>(eventSamples - currentPos);
+                uint32_t frameOffset = frameOffsetInBlock + static_cast<uint32_t>(eventSamples - currentPos);
 
                 // NRPN intercept: MIDI2 channel voice messages (messageType==4) with 2 words
                 bool intercepted = false;

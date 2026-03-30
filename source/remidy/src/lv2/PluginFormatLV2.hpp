@@ -440,6 +440,8 @@ namespace remidy {
         PluginUISupport *ui() override;
 
         uint32_t latencyInSamples() const override { return cached_latency_samples_.load(std::memory_order_acquire); }
+        // https://github.com/lv2/lv2/issues/68
+        double tailLengthInSeconds() const override { return 0.0; }
         bool requiresReplacingProcess() const override { return false; }
     };
 

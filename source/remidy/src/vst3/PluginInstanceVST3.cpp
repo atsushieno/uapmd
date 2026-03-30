@@ -1,6 +1,7 @@
 
 #include <iostream>
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 #include "remidy/remidy.hpp"
@@ -603,6 +604,15 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
 
 uint32_t remidy::PluginInstanceVST3::latencyInSamples() const {
     return processor ? processor->getLatencySamples() : 0;
+}
+
+double remidy::PluginInstanceVST3::tailLengthInSeconds() const {
+    if (!processor || last_process_setup.sampleRate <= 0.0)
+        return 0.0;
+    const auto tailSamples = processor->getTailSamples();
+    if (tailSamples == Steinberg::Vst::kInfiniteTail)
+        return std::numeric_limits<double>::infinity();
+    return static_cast<double>(tailSamples) / last_process_setup.sampleRate;
 }
 
 remidy::PluginParameterSupport* remidy::PluginInstanceVST3::parameters() {

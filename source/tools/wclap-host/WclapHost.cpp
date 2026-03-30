@@ -230,6 +230,7 @@ struct SlotState {
     bool has_state_context = false;
     bool has_preset_load = false;
     uint32_t latency_in_samples = 0;
+    double tail_length_in_seconds = 0.0;
     uint32_t ui_width = 800;
     uint32_t ui_height = 600;
     wclap_plugin_params params{};
@@ -741,6 +742,7 @@ static std::string buildCapabilitiesJson(const SlotState* state) {
          << ",\"hasState\":" << (state && state->has_state ? "true" : "false")
          << ",\"hasPresetLoad\":" << (state && state->has_preset_load ? "true" : "false")
          << ",\"latencyInSamples\":" << (state ? state->latency_in_samples : 0)
+         << ",\"tailLengthInSeconds\":" << (state ? state->tail_length_in_seconds : 0.0)
          << "}";
     return json.str();
 }
@@ -1578,6 +1580,21 @@ int32_t _wclapPluginSetup(Instance *inst,
         if (latencyVoid.wasmPointer != 0) {
             auto latency = inst->get(Pointer<const wclap_plugin_latency>{latencyVoid.wasmPointer});
             state->latency_in_samples = inst->call(latency.get, plugPtr);
+        }
+    }
+    static const char kTailExtId[] = "clap.tail";
+    auto tailIdPtr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(kTailExtId),
+        sizeof(kTailExtId));
+    if (tailIdPtr) {
+        auto tailVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{tailIdPtr});
+        if (tailVoid.wasmPointer != 0) {
+            auto tail = inst->get(Pointer<const wclap_plugin_tail>{tailVoid.wasmPointer});
+            const auto tailSamples = inst->call(tail.get, plugPtr);
+            state->tail_length_in_seconds =
+                tailSamples >= static_cast<uint32_t>(std::numeric_limits<int32_t>::max())
+                    ? std::numeric_limits<double>::infinity()
+                    : (sampleRate > 0.0 ? static_cast<double>(tailSamples) / sampleRate : 0.0);
         }
     }
     rebuildUiJson(state);

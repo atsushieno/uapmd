@@ -442,6 +442,7 @@ namespace remidy {
         StatusCode stopProcessing() override;
         StatusCode process(AudioProcessContext &process) override;
         uint32_t latencyInSamples() const override;
+        double tailLengthInSeconds() const override;
 
         // port helpers
         PluginAudioBuses* audioBuses() override { return audio_buses; }

@@ -46,6 +46,7 @@ namespace remidy {
         bool hasState{};
         bool hasPresetLoad{};
         uint32_t latencyInSamples{};
+        double tailLengthInSeconds{};
     };
 
     // ── Scanning ──────────────────────────────────────────────────────────────
@@ -234,6 +235,7 @@ namespace remidy {
             return (ui_ ? ui_ : ui_ = std::make_unique<UISupportWebCLAP>(this)).get();
         }
         uint32_t latencyInSamples() const override { return latency_in_samples_.load(); }
+        double tailLengthInSeconds() const override { return tail_length_in_seconds_.load(); }
         bool requiresReplacingProcess() const override { return false; }
 
     private:
@@ -246,6 +248,7 @@ namespace remidy {
         bool has_state_support_{false};
         bool has_preset_load_support_{false};
         std::atomic<uint32_t> latency_in_samples_{0};
+        std::atomic<double> tail_length_in_seconds_{0.0};
     };
 
     // ── Format implementation ─────────────────────────────────────────────────

@@ -3,6 +3,8 @@
 #undef min
 #undef max
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 
 namespace remidy {
     PluginInstanceCLAP::PluginInstanceCLAP(
@@ -129,6 +131,20 @@ namespace remidy {
         cached_latency_samples_.store(latency, std::memory_order_release);
     }
 
+    void PluginInstanceCLAP::refreshTailOnMainThread() {
+        double tail = 0.0;
+        if (plugin && plugin->canUseTail()) {
+            const auto tailSamples = plugin->tailGet();
+            if (tailSamples >= static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))
+                tail = std::numeric_limits<double>::infinity();
+            else
+                tail = sample_rate_ > 0.0
+                    ? static_cast<double>(tailSamples) / sample_rate_
+                    : 0.0;
+        }
+        cached_tail_seconds_.store(tail, std::memory_order_release);
+    }
+
     StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {
         bool useDouble = configuration.dataType == AudioContentType::Float64;
         is_offline_ = configuration.offlineMode;
@@ -182,6 +198,7 @@ namespace remidy {
         EventLoop::runTaskOnMainThread([&] {
             plugin->activate(configuration.sampleRate, 1, configuration.bufferSizeInSamples);
             refreshLatencyOnMainThread();
+            refreshTailOnMainThread();
         });
         applyOfflineRenderingMode();
 

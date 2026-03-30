@@ -51,6 +51,7 @@ namespace remidy {
         virtual StatusCode process(AudioProcessContext& process) = 0;
 
         virtual uint32_t latencyInSamples() const = 0;
+        virtual double tailLengthInSeconds() const = 0;
 
         virtual PluginAudioBuses* audioBuses() = 0;
 

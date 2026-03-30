@@ -113,6 +113,10 @@ namespace uapmd {
             return instance ? instance->latencyInSamples() : 0;
         }
 
+        double tailLengthInSeconds() const override {
+            return instance ? instance->tailLengthInSeconds() : 0.0;
+        }
+
         std::vector<uapmd::ParameterMetadata> parameterMetadataList() override {
             std::vector<ParameterMetadata> ret{};
             auto pl = instance->parameters();

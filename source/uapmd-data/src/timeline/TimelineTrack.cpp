@@ -7,6 +7,37 @@
 
 namespace uapmd {
 
+    namespace {
+        struct ClipRenderWindow {
+            int32_t destinationOffsetFrames{0};
+            int32_t processFrameCount{0};
+            int64_t sourceStartSample{0};
+        };
+
+        std::optional<ClipRenderWindow> computeClipRenderWindow(
+            int64_t blockStartSample,
+            int32_t blockFrameCount,
+            int64_t clipStartSample,
+            int64_t clipDurationSamples
+        ) {
+            if (blockFrameCount <= 0 || clipDurationSamples <= 0)
+                return std::nullopt;
+
+            const int64_t blockEndSample = blockStartSample + blockFrameCount;
+            const int64_t clipEndSample = clipStartSample + clipDurationSamples;
+            const int64_t overlapStart = std::max(blockStartSample, clipStartSample);
+            const int64_t overlapEnd = std::min(blockEndSample, clipEndSample);
+            if (overlapEnd <= overlapStart)
+                return std::nullopt;
+
+            ClipRenderWindow window;
+            window.destinationOffsetFrames = static_cast<int32_t>(overlapStart - blockStartSample);
+            window.processFrameCount = static_cast<int32_t>(overlapEnd - overlapStart);
+            window.sourceStartSample = overlapStart - clipStartSample;
+            return window;
+        }
+    }
+
     TimelineTrack::TimelineTrack(std::string referenceId, uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames)
         : reference_id_(std::move(referenceId)), channel_count_(channelCount), sample_rate_(sampleRate) {
         source_nodes_snapshot_ = std::make_shared<SourceNodeList>();
@@ -283,7 +314,6 @@ namespace uapmd {
         const TimelineState& timeline,
         int64_t renderStartSample
     ) {
-        (void) renderStartSample;
         const auto& renderTimeline = timeline;
 
         const int32_t frameCount = process.frameCount();
@@ -312,10 +342,13 @@ namespace uapmd {
                 if (clip.clipType != ClipType::Audio || clip.muted)
                     continue;
 
-                // Check if clip is active at current playhead (anchor-aware)
                 TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
-                if (renderTimeline.playheadPosition.samples < absPos.samples ||
-                    renderTimeline.playheadPosition.samples >= absPos.samples + clip.durationSamples)
+                auto renderWindow = computeClipRenderWindow(
+                    renderStartSample,
+                    frameCount,
+                    absPos.samples,
+                    clip.durationSamples);
+                if (!renderWindow)
                     continue;
 
                 auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
@@ -326,24 +359,24 @@ namespace uapmd {
                 if (!audioSourceNode)
                     continue;
 
-                int64_t sourcePosition = renderTimeline.playheadPosition.samples - absPos.samples;
-                if (sourcePosition < 0)
-                    continue;
-
-                audioSourceNode->seek(sourcePosition);
+                audioSourceNode->seek(renderWindow->sourceStartSample);
                 audioSourceNode->setPlaying(renderTimeline.isPlaying);
 
                 // Zero pre-allocated scratch buffers and process
                 for (uint32_t ch = 0; ch < numChannels && ch < temp_source_buffers_.size(); ++ch)
                     std::memset(temp_source_buffers_[ch].data(), 0, frameCount * sizeof(float));
 
-                audioSourceNode->processAudio(temp_source_buffer_ptrs_.data(), numChannels, frameCount);
+                audioSourceNode->processAudio(
+                    temp_source_buffer_ptrs_.data(),
+                    numChannels,
+                    renderWindow->processFrameCount);
 
                 // Mix into mixed source buffer with gain
                 const float gain = static_cast<float>(clip.gain);
                 for (uint32_t ch = 0; ch < numChannels; ++ch)
-                    for (int32_t frame = 0; frame < frameCount; ++frame)
-                        mixed_source_buffers_[ch][frame] += temp_source_buffers_[ch][frame] * gain;
+                    for (int32_t frame = 0; frame < renderWindow->processFrameCount; ++frame)
+                        mixed_source_buffers_[ch][renderWindow->destinationOffsetFrames + frame] +=
+                            temp_source_buffers_[ch][frame] * gain;
             }
 
             // Process MIDI clips
@@ -352,8 +385,12 @@ namespace uapmd {
                     continue;
 
                 TimelinePosition absPos = clip.getAbsolutePosition(clipMap);
-                if (renderTimeline.playheadPosition.samples < absPos.samples ||
-                    renderTimeline.playheadPosition.samples >= absPos.samples + clip.durationSamples)
+                auto renderWindow = computeClipRenderWindow(
+                    renderStartSample,
+                    frameCount,
+                    absPos.samples,
+                    clip.durationSamples);
+                if (!renderWindow)
                     continue;
 
                 auto sourceNode = findSourceNode(clip.sourceNodeInstanceId);
@@ -364,18 +401,15 @@ namespace uapmd {
                 if (!midiNode)
                     continue;
 
-                int64_t sourcePosition = renderTimeline.playheadPosition.samples - absPos.samples;
-                if (sourcePosition < 0)
-                    continue;
-
-                midiNode->seek(sourcePosition);
+                midiNode->seek(renderWindow->sourceStartSample);
                 midiNode->setPlaying(renderTimeline.isPlaying);
 
                 midiNode->processEvents(
                     process.eventIn(),
-                    frameCount,
+                    renderWindow->processFrameCount,
                     static_cast<int32_t>(sample_rate_),
-                    renderTimeline.tempo
+                    renderTimeline.tempo,
+                    static_cast<uint32_t>(renderWindow->destinationOffsetFrames)
                 );
             }
         }

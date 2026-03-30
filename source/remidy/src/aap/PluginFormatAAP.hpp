@@ -339,6 +339,7 @@ namespace remidy {
         }
 
         uint32_t latencyInSamples() const override { return 0; }
+        double tailLengthInSeconds() const override { return 0.0; }
         bool requiresReplacingProcess() const override { return false; }
     };
 

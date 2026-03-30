@@ -259,6 +259,23 @@ uint32_t remidy::PluginInstanceAUv2::latencyInSamples() const {
     return static_cast<uint32_t>(std::llround(latencySeconds * sampleRateToUse));
 }
 
+double remidy::PluginInstanceAUv2::tailLengthInSeconds() const {
+    if (!instance)
+        return 0.0;
+
+    Float64 tailSeconds = 0.0;
+    UInt32 size = sizeof(tailSeconds);
+    const auto status = AudioUnitGetProperty(instance,
+                                             kAudioUnitProperty_TailTime,
+                                             kAudioUnitScope_Global,
+                                             0,
+                                             &tailSeconds,
+                                             &size);
+    if (status != noErr || tailSeconds <= 0.0)
+        return 0.0;
+    return tailSeconds;
+}
+
 remidy::StatusCode remidy::PluginInstanceAUv2::process(AudioProcessContext &process) {
 
     // It seems the AudioUnit framework resets this information every time...

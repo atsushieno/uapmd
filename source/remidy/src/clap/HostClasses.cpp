@@ -20,6 +20,7 @@ namespace remidy {
             if (!callbacksAlive->load(std::memory_order_acquire))
                 return;
             instance->refreshLatencyOnMainThread();
+            instance->refreshTailOnMainThread();
         });
 
         Logger::global()->logInfo("RemidyCLAPHost::requestRestart() is not implemented");

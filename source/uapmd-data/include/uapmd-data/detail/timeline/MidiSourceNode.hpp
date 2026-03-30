@@ -29,7 +29,8 @@ namespace uapmd {
             remidy::EventSequence& eventOut,
             int32_t frameCount,
             int32_t sampleRate,
-            double tempo
+            double tempo,
+            uint32_t frameOffsetInBlock = 0
         ) = 0;
     };
 
