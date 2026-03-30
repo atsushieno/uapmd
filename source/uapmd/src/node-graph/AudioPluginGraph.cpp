@@ -35,6 +35,7 @@ namespace uapmd {
         uint32_t outputBusCount() override;
         uint32_t outputLatencyInSamples(uint32_t outputBusIndex) override;
         double outputTailLengthInSeconds(uint32_t outputBusIndex) override;
+        uint32_t renderLeadInSamples() override;
         uint32_t mainOutputLatencyInSamples() override;
         double mainOutputTailLengthInSeconds() override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
@@ -187,6 +188,14 @@ namespace uapmd {
         if (outputBusIndex >= currentOutputBusCount())
             return 0.0;
         return aggregateTailLengthInSeconds();
+    }
+
+    uint32_t AudioPluginGraphImpl::renderLeadInSamples() {
+        uint32_t maxLatency = 0;
+        const auto count = outputBusCount();
+        for (uint32_t outputBusIndex = 0; outputBusIndex < count; ++outputBusIndex)
+            maxLatency = std::max(maxLatency, outputLatencyInSamples(outputBusIndex));
+        return maxLatency;
     }
 
     uint32_t AudioPluginGraphImpl::mainOutputLatencyInSamples() {

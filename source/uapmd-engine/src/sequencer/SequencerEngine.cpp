@@ -139,6 +139,8 @@ namespace uapmd {
         SequencerTrack* masterTrack() override;
         uint32_t trackLatencyInSamples(uapmd_track_index_t trackIndex) override;
         uint32_t masterTrackLatencyInSamples() override;
+        uint32_t trackRenderLeadInSamples(uapmd_track_index_t trackIndex) override;
+        uint32_t masterTrackRenderLeadInSamples() override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         uapmd_track_index_t addEmptyTrack() override;
@@ -388,15 +390,26 @@ namespace uapmd {
         return master_track_ ? master_track_->latencyInSamples() : 0;
     }
 
+    uint32_t SequencerEngineImpl::trackRenderLeadInSamples(uapmd_track_index_t trackIndex) {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return 0;
+        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+        return track ? track->renderLeadInSamples() : 0;
+    }
+
+    uint32_t SequencerEngineImpl::masterTrackRenderLeadInSamples() {
+        return master_track_ ? master_track_->renderLeadInSamples() : 0;
+    }
+
     uint32_t SequencerEngineImpl::maxRenderLeadInSamples() const {
         uint32_t maxTrackLatency = 0;
         for (size_t i = 0; i < tracks_.size(); ++i) {
             auto* track = tracks_[i].get();
             if (!track)
                 continue;
-            maxTrackLatency = std::max(maxTrackLatency, track->latencyInSamples());
+            maxTrackLatency = std::max(maxTrackLatency, track->renderLeadInSamples());
         }
-        const uint32_t masterLatency = master_track_ ? master_track_->latencyInSamples() : 0;
+        const uint32_t masterLatency = master_track_ ? master_track_->renderLeadInSamples() : 0;
         return maxTrackLatency + masterLatency;
     }
 
@@ -410,7 +423,7 @@ namespace uapmd {
 
     int64_t SequencerEngineImpl::maxStopDrainInSamples() const {
         const double masterPathSamples =
-            static_cast<double>(master_track_ ? master_track_->latencyInSamples() : 0) +
+            static_cast<double>(master_track_ ? master_track_->renderLeadInSamples() : 0) +
             tailLengthSecondsToSamples(master_track_ ? master_track_->tailLengthInSeconds() : 0.0);
 
         double maxTrackPathSamples = 0.0;
@@ -418,7 +431,7 @@ namespace uapmd {
             if (!track)
                 continue;
             const double trackPathSamples =
-                static_cast<double>(track->latencyInSamples()) +
+                static_cast<double>(track->renderLeadInSamples()) +
                 tailLengthSecondsToSamples(track->tailLengthInSeconds());
             if (!std::isfinite(trackPathSamples) || !std::isfinite(masterPathSamples))
                 return static_cast<int64_t>(maxRenderLeadInSamples());

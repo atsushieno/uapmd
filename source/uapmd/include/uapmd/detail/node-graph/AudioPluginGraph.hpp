@@ -50,6 +50,10 @@ namespace uapmd {
         virtual uint32_t outputBusCount() = 0;
         virtual uint32_t outputLatencyInSamples(uint32_t outputBusIndex) = 0;
         virtual double outputTailLengthInSeconds(uint32_t outputBusIndex) = 0;
+        // Scheduling-oriented render lead for the graph. Current linear graphs use the
+        // maximum reported output latency, while future DAG graphs may compute a richer
+        // topology-aware lead without changing sequencer code.
+        virtual uint32_t renderLeadInSamples() = 0;
         virtual uint32_t mainOutputLatencyInSamples() = 0;
         virtual double mainOutputTailLengthInSeconds() = 0;
 

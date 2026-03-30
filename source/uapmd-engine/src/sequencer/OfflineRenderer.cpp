@@ -32,7 +32,7 @@ double tailLengthSecondsToSamples(double seconds, int32_t sampleRate) {
 int64_t computeOfflineStopDrainFrames(SequencerEngine& engine, int32_t sampleRate) {
     auto* masterTrack = engine.masterTrack();
     const double masterPathSamples =
-        static_cast<double>(engine.masterTrackLatencyInSamples()) +
+        static_cast<double>(engine.masterTrackRenderLeadInSamples()) +
         tailLengthSecondsToSamples(masterTrack ? masterTrack->tailLengthInSeconds() : 0.0, sampleRate);
 
     double maxTrackPathSamples = 0.0;
@@ -42,7 +42,7 @@ int64_t computeOfflineStopDrainFrames(SequencerEngine& engine, int32_t sampleRat
         if (!track)
             continue;
         const double trackPathSamples =
-            static_cast<double>(engine.trackLatencyInSamples(static_cast<uapmd_track_index_t>(i))) +
+            static_cast<double>(engine.trackRenderLeadInSamples(static_cast<uapmd_track_index_t>(i))) +
             tailLengthSecondsToSamples(track->tailLengthInSeconds(), sampleRate);
         if (!std::isfinite(trackPathSamples) || !std::isfinite(masterPathSamples))
             return 0;

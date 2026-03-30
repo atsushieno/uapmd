@@ -20,6 +20,7 @@ namespace uapmd {
 
         AudioPluginGraph& graph() override { return *graph_; }
         uint32_t latencyInSamples() override { return graph_ ? graph_->mainOutputLatencyInSamples() : 0; }
+        uint32_t renderLeadInSamples() override { return graph_ ? graph_->renderLeadInSamples() : 0; }
         double tailLengthInSeconds() override { return graph_ ? graph_->mainOutputTailLengthInSeconds() : 0.0; }
 
         std::vector<int32_t>& orderedInstanceIds() override {

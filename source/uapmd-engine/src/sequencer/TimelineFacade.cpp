@@ -720,20 +720,20 @@ namespace uapmd {
             auto& tracks = engine_.tracks();
             for (size_t i = 0; i < tracks.size(); ++i)
                 maxLatency = std::max(maxLatency,
-                                      engine_.trackLatencyInSamples(static_cast<int32_t>(i)));
+                                      engine_.trackRenderLeadInSamples(static_cast<int32_t>(i)));
             return maxLatency;
         }
 
         uint32_t trackRenderOffsetInSamples(int32_t trackIndex) override {
             if (trackIndex < 0)
                 return 0;
-            auto trackLatency = engine_.trackLatencyInSamples(trackIndex);
-            auto masterLatency = engine_.masterTrackLatencyInSamples();
+            auto trackLatency = engine_.trackRenderLeadInSamples(trackIndex);
+            auto masterLatency = engine_.masterTrackRenderLeadInSamples();
             return masterLatency + trackLatency;
         }
 
         uint32_t masterTrackRenderOffsetInSamples() override {
-            return engine_.masterTrackLatencyInSamples();
+            return engine_.masterTrackRenderLeadInSamples();
         }
 
         void processTracksAudio(AudioProcessContext& process, SequenceProcessContext& targetSequence) override {
