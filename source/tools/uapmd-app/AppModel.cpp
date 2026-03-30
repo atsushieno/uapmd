@@ -102,6 +102,26 @@ std::string bundleDisplayName(const std::filesystem::path& bundlePath) {
 
 namespace uapmd {
 
+namespace {
+
+void markTimelineTrackClipsNeedsFileSave(TimelineTrack* track) {
+    if (!track)
+        return;
+
+    auto clips = track->clipManager().getAllClips();
+    for (const auto& clip : clips)
+        track->clipManager().setClipNeedsFileSave(clip.clipId, true);
+}
+
+void markLoadedArchiveClipsNeedsFileSave(AppModel& appModel) {
+    auto timelineTracks = appModel.getTimelineTracks();
+    for (auto* track : timelineTracks)
+        markTimelineTrackClipsNeedsFileSave(track);
+    markTimelineTrackClipsNeedsFileSave(appModel.getMasterTimelineTrack());
+}
+
+} // namespace
+
 struct ScopedTempDir {
     explicit ScopedTempDir(std::filesystem::path dir)
         : path(std::move(dir)) {}
@@ -2095,6 +2115,7 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromResolvedPath(
 
     auto result = loadProject(extract.projectFile);
     if (result.success) {
+        markLoadedArchiveClipsNeedsFileSave(*this);
         activeProjectTempDir_ = std::move(stage);
     }
     return result;
@@ -2238,11 +2259,6 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                         clipPath = destPath;
                         timelineTrack->clipManager().setClipFilepath(clip.clipId, clipPath.string());
                         timelineTrack->clipManager().setClipNeedsFileSave(clip.clipId, false);
-
-                        if (sourcePath != destPath) {
-                            std::error_code removeEc;
-                            std::filesystem::remove(sourcePath, removeEc);
-                        }
                     } else if (!clipPath.empty()) {
                         clipPath = std::filesystem::absolute(clipPath);
                     }
