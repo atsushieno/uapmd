@@ -838,11 +838,15 @@ namespace uapmd {
                     }
                 }
 
-                auto renderTimeline = timeline_;
+                auto renderTimeline = renderTransport;
                 TimelinePosition renderPosition{};
                 const auto trackOffset = trackRenderOffsetInSamples(static_cast<int32_t>(i));
+                const auto renderBaseSample =
+                    (timeline_.isPlaying || renderPlayheadRaw != audiblePlayheadSamples) ?
+                        renderPlayheadRaw :
+                        audiblePlayheadSamples;
                 int64_t renderStartSample =
-                    timeline_.playheadPosition.samples + static_cast<int64_t>(trackOffset);
+                    renderBaseSample + static_cast<int64_t>(trackOffset);
                 if (renderStartSample < 0)
                     renderStartSample = 0;
                 renderStartSample = wrapToLoopRange(renderStartSample);
