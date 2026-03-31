@@ -115,6 +115,56 @@ bool referencesThisClipEnd(const uapmd::AudioWarpPoint& warp, std::string_view c
     return warp.referenceClipId.empty() || warp.referenceClipId == clipReferenceId;
 }
 
+bool wouldCreateClipAnchorCycle(
+    const std::vector<uapmd::TimelineTrack*>& tracks,
+    uapmd::TimelineTrack* masterTrack,
+    int32_t targetTrackIndex,
+    int32_t targetClipId,
+    std::string_view newAnchorReferenceId
+) {
+    if (newAnchorReferenceId.empty())
+        return false;
+
+    std::unordered_map<std::string, uapmd::ClipData> clipsByReferenceId;
+    clipsByReferenceId.reserve(128);
+    std::string targetReferenceId;
+
+    auto collectTrack = [&](uapmd::TimelineTrack* track, int32_t trackIndex) {
+        if (!track)
+            return;
+        for (const auto& clip : track->clipManager().getAllClips()) {
+            clipsByReferenceId.emplace(clip.referenceId, clip);
+            if (trackIndex == targetTrackIndex && clip.clipId == targetClipId)
+                targetReferenceId = clip.referenceId;
+        }
+    };
+
+    for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i)
+        collectTrack(tracks[i], i);
+    collectTrack(masterTrack, uapmd::kMasterTrackIndex);
+
+    if (targetReferenceId.empty())
+        return false;
+    if (targetReferenceId == newAnchorReferenceId)
+        return true;
+
+    std::unordered_set<std::string> visited;
+    std::string currentReferenceId(newAnchorReferenceId);
+    while (!currentReferenceId.empty()) {
+        if (!visited.insert(currentReferenceId).second)
+            return true;
+        if (currentReferenceId == targetReferenceId)
+            return true;
+
+        auto it = clipsByReferenceId.find(currentReferenceId);
+        if (it == clipsByReferenceId.end())
+            return false;
+
+        currentReferenceId = it->second.anchorReferenceId;
+    }
+    return false;
+}
+
 int32_t toTimelineFrame(double units) {
     if (!std::isfinite(units))
         return 0;
@@ -1828,7 +1878,15 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
     if (!targetTrack)
         return;
 
-    targetTrack->clipManager().setClipAnchor(clipId, anchorReferenceId, anchorOrigin, anchorOffset);
+    if (wouldCreateClipAnchorCycle(tracks, appModel.getMasterTimelineTrack(), trackIndex, clipId, anchorReferenceId)) {
+        std::cerr << "Rejected recursive clip anchor change for clip " << clipId << std::endl;
+        return;
+    }
+
+    if (!targetTrack->clipManager().setClipAnchor(clipId, anchorReferenceId, anchorOrigin, anchorOffset)) {
+        std::cerr << "Failed to apply clip anchor change for clip " << clipId << std::endl;
+        return;
+    }
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();

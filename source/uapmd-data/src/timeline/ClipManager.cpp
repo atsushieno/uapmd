@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <atomic>
 #include <format>
+#include <unordered_set>
 #include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
@@ -10,6 +11,46 @@ namespace uapmd {
             if (!referencePrefix.empty())
                 return std::format("{}::clip_{:08x}", referencePrefix, static_cast<uint32_t>(clipId));
             return std::format("clip_{:08x}", static_cast<uint32_t>(clipId));
+        }
+
+        bool wouldCreateLocalAnchorCycle(
+            const std::unordered_map<int32_t, ClipData>& clips,
+            int32_t targetClipId,
+            std::string_view targetReferenceId,
+            std::string_view newAnchorReferenceId
+        ) {
+            if (newAnchorReferenceId.empty())
+                return false;
+            if (targetReferenceId == newAnchorReferenceId)
+                return true;
+
+            std::unordered_map<std::string, const ClipData*> byReferenceId;
+            byReferenceId.reserve(clips.size());
+            for (const auto& [_, clip] : clips)
+                byReferenceId.emplace(clip.referenceId, &clip);
+
+            std::unordered_set<std::string> visited;
+            std::string currentReferenceId(newAnchorReferenceId);
+            while (!currentReferenceId.empty()) {
+                if (!visited.insert(currentReferenceId).second)
+                    return true;
+                if (currentReferenceId == targetReferenceId)
+                    return true;
+
+                auto it = byReferenceId.find(currentReferenceId);
+                if (it == byReferenceId.end())
+                    return false;
+
+                const auto* clip = it->second;
+                if (!clip)
+                    return false;
+
+                if (clip->clipId == targetClipId)
+                    currentReferenceId = std::string(newAnchorReferenceId);
+                else
+                    currentReferenceId = clip->anchorReferenceId;
+            }
+            return false;
         }
     } // namespace
 
@@ -228,6 +269,9 @@ namespace uapmd {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
+            return false;
+
+        if (wouldCreateLocalAnchorCycle(clips_, clipId, it->second.referenceId, anchorReferenceId))
             return false;
 
         it->second.anchorReferenceId = anchorReferenceId;
