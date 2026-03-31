@@ -50,6 +50,8 @@ public:
     struct RenderContext {
         std::function<ClipData(int32_t trackIndex, int32_t clipId)> reloadClip;
         std::function<std::vector<ClipData::ReferencePointOption>(int32_t trackIndex, int32_t clipId)> buildExternalReferenceOptions;
+        std::function<bool(int32_t trackIndex, int32_t clipId, const std::string& markerId,
+            uapmd::AudioWarpReferenceType referenceType, const std::string& referenceClipId, const std::string& referenceMarkerId)> validateMarkerReference;
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;
         std::function<bool(const EditPayload& payload, std::string& error)> applyEdits;
@@ -64,15 +66,17 @@ public:
 
     struct MarkerRow {
         std::array<char, 96> markerId{};
-        int64_t clipPositionSamples{0};
+        int64_t clipPositionOffset{0};
+        uapmd::AudioWarpReferenceType referenceType{uapmd::AudioWarpReferenceType::ClipStart};
+        std::array<char, 96> referenceClipId{};
+        std::array<char, 96> referenceMarkerId{};
         std::array<char, 128> name{};
     };
 
     struct WarpRow {
-        int64_t clipPositionSamples{0};
-        int64_t sourcePositionSamples{0};
+        int64_t clipPositionOffset{0};
         double speedRatio{1.0};
-        uapmd::AudioWarpReferenceType referenceType{uapmd::AudioWarpReferenceType::Manual};
+        uapmd::AudioWarpReferenceType referenceType{uapmd::AudioWarpReferenceType::ClipStart};
         std::array<char, 96> referenceClipId{};
         std::array<char, 96> referenceMarkerId{};
     };

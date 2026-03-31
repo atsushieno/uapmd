@@ -72,27 +72,23 @@ namespace uapmd {
         }
 
         std::vector<AudioWarpPoint> normalizeWarps(std::vector<AudioWarpPoint> audioWarps, int64_t sourceFrames) {
-            std::sort(audioWarps.begin(), audioWarps.end(), [](const AudioWarpPoint& a, const AudioWarpPoint& b) {
-                if (a.clipPositionSamples != b.clipPositionSamples)
-                    return a.clipPositionSamples < b.clipPositionSamples;
-                return a.sourcePositionSamples < b.sourcePositionSamples;
+            std::stable_sort(audioWarps.begin(), audioWarps.end(), [](const AudioWarpPoint& a, const AudioWarpPoint& b) {
+                return a.clipPositionOffset < b.clipPositionOffset;
             });
 
             std::vector<AudioWarpPoint> normalized;
             normalized.reserve(audioWarps.size() + 1);
             normalized.push_back(AudioWarpPoint{});
-            normalized.back().clipPositionSamples = 0;
-            normalized.back().sourcePositionSamples = 0;
+            normalized.back().clipPositionOffset = 0;
             normalized.back().speedRatio = 1.0;
 
             for (const auto& warp : audioWarps) {
                 AudioWarpPoint value = warp;
-                value.clipPositionSamples = std::max<int64_t>(0, value.clipPositionSamples);
-                value.sourcePositionSamples = std::clamp<int64_t>(value.sourcePositionSamples, 0, std::max<int64_t>(0, sourceFrames));
+                value.clipPositionOffset = std::max<int64_t>(0, value.clipPositionOffset);
                 if (!std::isfinite(value.speedRatio) || value.speedRatio <= 0.0)
                     value.speedRatio = 1.0;
 
-                if (value.clipPositionSamples == normalized.back().clipPositionSamples)
+                if (value.clipPositionOffset == normalized.back().clipPositionOffset)
                     normalized.back() = std::move(value);
                 else
                     normalized.push_back(std::move(value));
@@ -107,20 +103,29 @@ namespace uapmd {
                 return segments;
 
             segments.reserve(warps.size());
+            int64_t currentSourcePosition = 0;
             for (size_t i = 0; i + 1 < warps.size(); ++i) {
                 const auto& start = warps[i];
                 const auto& end = warps[i + 1];
                 WarpSegment segment;
-                segment.inputStart = std::clamp<int64_t>(start.sourcePositionSamples, 0, sourceFrames);
-                segment.inputSamples = std::max<int64_t>(0, end.sourcePositionSamples - start.sourcePositionSamples);
-                segment.outputSamples = std::max<int64_t>(0, end.clipPositionSamples - start.clipPositionSamples);
+                currentSourcePosition = std::clamp<int64_t>(currentSourcePosition, 0, sourceFrames);
+                segment.inputStart = currentSourcePosition;
+                const int64_t outputSamples = std::max<int64_t>(0, end.clipPositionOffset - start.clipPositionOffset);
+                const int64_t nextSourcePosition = std::clamp<int64_t>(
+                    currentSourcePosition + static_cast<int64_t>(std::llround(
+                        static_cast<double>(outputSamples) * std::max(start.speedRatio, kMinimumRatio))),
+                    0,
+                    sourceFrames);
+                segment.inputSamples = std::max<int64_t>(0, nextSourcePosition - currentSourcePosition);
+                segment.outputSamples = outputSamples;
                 segment.speedRatio = start.speedRatio;
                 segments.push_back(segment);
+                currentSourcePosition = nextSourcePosition;
             }
 
             const auto& last = warps.back();
             WarpSegment tail;
-            tail.inputStart = std::clamp<int64_t>(last.sourcePositionSamples, 0, sourceFrames);
+            tail.inputStart = currentSourcePosition;
             tail.inputSamples = std::max<int64_t>(0, sourceFrames - tail.inputStart);
             tail.speedRatio = std::max(last.speedRatio, kMinimumRatio);
             tail.outputSamples = static_cast<int64_t>(std::llround(static_cast<double>(tail.inputSamples) / tail.speedRatio));

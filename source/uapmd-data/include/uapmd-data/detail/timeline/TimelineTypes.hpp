@@ -94,12 +94,6 @@ namespace uapmd {
         Midi    // filepath points to MIDI file (SMF/SMF2)
     };
 
-    struct ClipMarker {
-        std::string markerId;
-        int64_t clipPositionSamples{0};
-        std::string name;
-    };
-
     enum class AudioWarpReferenceType {
         Manual,
         ClipStart,
@@ -108,11 +102,19 @@ namespace uapmd {
         MasterMarker
     };
 
+    struct ClipMarker {
+        std::string markerId;
+        int64_t clipPositionOffset{0};
+        AudioWarpReferenceType referenceType{AudioWarpReferenceType::ClipStart};
+        std::string referenceClipId;
+        std::string referenceMarkerId;
+        std::string name;
+    };
+
     struct AudioWarpPoint {
-        int64_t clipPositionSamples{0};
-        int64_t sourcePositionSamples{0};
+        int64_t clipPositionOffset{0};
         double speedRatio{1.0};
-        AudioWarpReferenceType referenceType{AudioWarpReferenceType::Manual};
+        AudioWarpReferenceType referenceType{AudioWarpReferenceType::ClipStart};
         std::string referenceClipId;
         std::string referenceMarkerId;
     };
@@ -144,7 +146,7 @@ namespace uapmd {
         // Clip markers shared by audio and MIDI clips.
         std::vector<ClipMarker> markers;
         // Audio-only warp anchors. Each point defines the source anchor and speed
-        // ratio starting at clipPositionSamples until the next point.
+        // ratio starting at the resolved clip-local position until the next point.
         std::vector<AudioWarpPoint> audioWarps;
 
         // Anchor support (NEW)

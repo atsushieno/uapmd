@@ -87,23 +87,85 @@ std::string referenceSelectorLabel(const AudioEventListEditor::WarpRow& row,
     return "(unresolved)";
 }
 
-void syncWarpRowsToMarkers(AudioEventListEditor::WindowState& state) {
-    for (auto& row : state.warpRows) {
-        if (row.referenceType == AudioWarpReferenceType::ClipMarker &&
-            trimmedString(row.referenceClipId.data()) == state.data.clipReferenceId) {
-            const auto* marker = findMarkerRow(state.markerRows, trimView(row.referenceMarkerId.data()));
-            if (marker) {
-                row.clipPositionSamples = marker->clipPositionSamples;
-                continue;
-            }
-        }
-        for (const auto& option : state.data.externalReferenceOptions) {
-            if (warpMatchesOption(row, option) && option.resolved) {
-                row.clipPositionSamples = option.clipPositionSamples;
+bool markerMatchesOption(const AudioEventListEditor::MarkerRow& row,
+                         const AudioEventListEditor::ClipData::ReferencePointOption& option,
+                         std::string_view clipReferenceId) {
+    const std::string rowReferenceClipId = trimmedString(row.referenceClipId.data());
+    const std::string effectiveReferenceClipId = rowReferenceClipId.empty() ? std::string(clipReferenceId) : rowReferenceClipId;
+    return row.referenceType == option.referenceType &&
+           effectiveReferenceClipId == option.referenceClipId &&
+           trimmedString(row.referenceMarkerId.data()) == option.referenceMarkerId;
+}
+
+std::optional<int64_t> resolveMarkerRowClipPosition(
+    const AudioEventListEditor::WindowState& state,
+    const AudioEventListEditor::MarkerRow& row,
+    const std::vector<AudioEventListEditor::ClipData::ReferencePointOption>& externalReferenceOptions,
+    std::set<std::string>& resolvingMarkerIds
+) {
+    int64_t referencePosition = 0;
+    switch (row.referenceType) {
+        case AudioWarpReferenceType::Manual:
+        case AudioWarpReferenceType::ClipStart:
+            if (trimmedString(row.referenceClipId.data()).empty() ||
+                trimmedString(row.referenceClipId.data()) == state.data.clipReferenceId) {
+                referencePosition = 0;
                 break;
             }
+            [[fallthrough]];
+        case AudioWarpReferenceType::ClipEnd:
+        case AudioWarpReferenceType::MasterMarker: {
+            const auto it = std::find_if(externalReferenceOptions.begin(), externalReferenceOptions.end(), [&](const auto& option) {
+                return markerMatchesOption(row, option, state.data.clipReferenceId);
+            });
+            if (it == externalReferenceOptions.end() || !it->resolved)
+                return std::nullopt;
+            referencePosition = it->clipPositionSamples;
+            break;
+        }
+        case AudioWarpReferenceType::ClipMarker: {
+            const std::string referenceClipId = trimmedString(row.referenceClipId.data()).empty()
+                ? state.data.clipReferenceId
+                : trimmedString(row.referenceClipId.data());
+            const std::string referenceMarkerId = trimmedString(row.referenceMarkerId.data());
+            if (referenceClipId == state.data.clipReferenceId) {
+                if (!resolvingMarkerIds.insert(referenceMarkerId).second)
+                    return std::nullopt;
+                const auto* marker = findMarkerRow(state.markerRows, referenceMarkerId);
+                if (!marker) {
+                    resolvingMarkerIds.erase(referenceMarkerId);
+                    return std::nullopt;
+                }
+                auto resolved = resolveMarkerRowClipPosition(state, *marker, externalReferenceOptions, resolvingMarkerIds);
+                resolvingMarkerIds.erase(referenceMarkerId);
+                if (!resolved)
+                    return std::nullopt;
+                referencePosition = *resolved;
+                break;
+            }
+            const auto it = std::find_if(externalReferenceOptions.begin(), externalReferenceOptions.end(), [&](const auto& option) {
+                return markerMatchesOption(row, option, state.data.clipReferenceId);
+            });
+            if (it == externalReferenceOptions.end() || !it->resolved)
+                return std::nullopt;
+            referencePosition = it->clipPositionSamples;
+            break;
         }
     }
+
+    const int64_t clipPosition = referencePosition + row.clipPositionOffset;
+    if (clipPosition < 0 || clipPosition > state.data.durationSamples)
+        return std::nullopt;
+    return clipPosition;
+}
+
+std::optional<int64_t> resolveMarkerRowClipPosition(
+    const AudioEventListEditor::WindowState& state,
+    const AudioEventListEditor::MarkerRow& row,
+    const std::vector<AudioEventListEditor::ClipData::ReferencePointOption>& externalReferenceOptions
+) {
+    std::set<std::string> resolvingMarkerIds{trimmedString(row.markerId.data())};
+    return resolveMarkerRowClipPosition(state, row, externalReferenceOptions, resolvingMarkerIds);
 }
 
 std::vector<AudioEventListEditor::ClipData::ReferencePointOption> buildCurrentReferenceOptions(
@@ -113,21 +175,21 @@ std::vector<AudioEventListEditor::ClipData::ReferencePointOption> buildCurrentRe
     std::vector<AudioEventListEditor::ClipData::ReferencePointOption> options;
     options.reserve(externalReferenceOptions.size() + state.markerRows.size() + 2);
 
-    AudioEventListEditor::ClipData::ReferencePointOption clipStart;
-    clipStart.label = "This Clip Start";
-    clipStart.referenceType = AudioWarpReferenceType::ClipStart;
-    clipStart.referenceClipId = state.data.clipReferenceId;
-    clipStart.clipPositionSamples = 0;
-    clipStart.resolved = true;
-    options.push_back(std::move(clipStart));
+    options.push_back(AudioEventListEditor::ClipData::ReferencePointOption{
+        .label = "This Clip Start",
+        .referenceType = AudioWarpReferenceType::ClipStart,
+        .referenceClipId = state.data.clipReferenceId,
+        .clipPositionSamples = 0,
+        .resolved = true
+    });
 
-    AudioEventListEditor::ClipData::ReferencePointOption clipEnd;
-    clipEnd.label = "This Clip End";
-    clipEnd.referenceType = AudioWarpReferenceType::ClipEnd;
-    clipEnd.referenceClipId = state.data.clipReferenceId;
-    clipEnd.clipPositionSamples = state.data.durationSamples;
-    clipEnd.resolved = state.data.durationSamples >= 0;
-    options.push_back(std::move(clipEnd));
+    options.push_back(AudioEventListEditor::ClipData::ReferencePointOption{
+        .label = "This Clip End",
+        .referenceType = AudioWarpReferenceType::ClipEnd,
+        .referenceClipId = state.data.clipReferenceId,
+        .clipPositionSamples = state.data.durationSamples,
+        .resolved = state.data.durationSamples >= 0
+    });
 
     for (size_t i = 0; i < state.markerRows.size(); ++i) {
         const auto& markerRow = state.markerRows[i];
@@ -136,10 +198,10 @@ std::vector<AudioEventListEditor::ClipData::ReferencePointOption> buildCurrentRe
         option.referenceClipId = state.data.clipReferenceId;
         option.referenceMarkerId = trimmedString(markerRow.markerId.data());
         option.label = std::format("This Clip Marker {}", markerDisplayLabel(markerRow, i));
-        option.clipPositionSamples = markerRow.clipPositionSamples;
-        option.resolved = !option.referenceMarkerId.empty() &&
-            markerRow.clipPositionSamples >= 0 &&
-            markerRow.clipPositionSamples <= state.data.durationSamples;
+        if (auto clipPosition = resolveMarkerRowClipPosition(state, markerRow, externalReferenceOptions)) {
+            option.clipPositionSamples = *clipPosition;
+            option.resolved = true;
+        }
         if (!option.resolved)
             option.label += " (out of range)";
         options.push_back(std::move(option));
@@ -185,8 +247,9 @@ bool buildPayload(int32_t trackIndex,
             error = std::format("Marker {} requires a non-empty ID.", i + 1);
             return false;
         }
-        if (row.clipPositionSamples < 0) {
-            error = std::format("Marker {} has a negative clip position.", i + 1);
+        if (row.clipPositionOffset < 0 && row.referenceType == AudioWarpReferenceType::ClipStart &&
+            trimmedString(row.referenceClipId.data()).empty()) {
+            error = std::format("Marker {} has a negative clip offset.", i + 1);
             return false;
         }
 
@@ -197,26 +260,20 @@ bool buildPayload(int32_t trackIndex,
 
         uapmd::ClipMarker marker;
         marker.markerId = markerId;
-        marker.clipPositionSamples = row.clipPositionSamples;
+        marker.clipPositionOffset = row.clipPositionOffset;
+        marker.referenceType = row.referenceType;
+        marker.referenceClipId = trimmedString(row.referenceClipId.data());
+        marker.referenceMarkerId = trimmedString(row.referenceMarkerId.data());
         marker.name = trimmedString(row.name.data());
         payload.markers.push_back(std::move(marker));
     }
 
-    std::sort(payload.markers.begin(), payload.markers.end(), [](const auto& a, const auto& b) {
-        if (a.clipPositionSamples != b.clipPositionSamples)
-            return a.clipPositionSamples < b.clipPositionSamples;
-        return a.markerId < b.markerId;
-    });
-
     payload.audioWarps.reserve(warpRows.size());
     for (size_t i = 0; i < warpRows.size(); ++i) {
         const auto& row = warpRows[i];
-        if (row.clipPositionSamples < 0) {
-            error = std::format("Warp {} has a negative clip position.", i + 1);
-            return false;
-        }
-        if (row.sourcePositionSamples < 0) {
-            error = std::format("Warp {} has a negative source position.", i + 1);
+        if (row.clipPositionOffset < 0 && row.referenceType == AudioWarpReferenceType::ClipStart &&
+            trimmedString(row.referenceClipId.data()).empty()) {
+            error = std::format("Warp {} has a negative clip offset.", i + 1);
             return false;
         }
         if (!std::isfinite(row.speedRatio) || row.speedRatio <= 0.0) {
@@ -225,15 +282,14 @@ bool buildPayload(int32_t trackIndex,
         }
 
         uapmd::AudioWarpPoint warp;
-        warp.clipPositionSamples = row.clipPositionSamples;
-        warp.sourcePositionSamples = row.sourcePositionSamples;
+        warp.clipPositionOffset = row.clipPositionOffset;
         warp.speedRatio = row.speedRatio;
         warp.referenceType = row.referenceType;
         warp.referenceClipId = trimmedString(row.referenceClipId.data());
         warp.referenceMarkerId = trimmedString(row.referenceMarkerId.data());
 
         if (warp.referenceType == AudioWarpReferenceType::ClipMarker &&
-            warp.referenceClipId.empty() &&
+            (warp.referenceClipId.empty()) &&
             !warp.referenceMarkerId.empty() &&
             !markerIds.contains(warp.referenceMarkerId)) {
             error = std::format("Warp {} references unknown local marker ID '{}'.", i + 1, warp.referenceMarkerId);
@@ -241,18 +297,6 @@ bool buildPayload(int32_t trackIndex,
         }
         payload.audioWarps.push_back(std::move(warp));
     }
-
-    std::sort(payload.audioWarps.begin(), payload.audioWarps.end(), [](const auto& a, const auto& b) {
-        if (a.clipPositionSamples != b.clipPositionSamples)
-            return a.clipPositionSamples < b.clipPositionSamples;
-        if (a.sourcePositionSamples != b.sourcePositionSamples)
-            return a.sourcePositionSamples < b.sourcePositionSamples;
-        if (a.referenceType != b.referenceType)
-            return static_cast<int>(a.referenceType) < static_cast<int>(b.referenceType);
-        if (a.referenceClipId != b.referenceClipId)
-            return a.referenceClipId < b.referenceClipId;
-        return a.referenceMarkerId < b.referenceMarkerId;
-    });
 
     return true;
 }
@@ -281,7 +325,10 @@ std::unordered_map<std::string, std::vector<uapmd::ClipMarker>> AudioEventListEd
         for (const auto& row : window.markerRows) {
             uapmd::ClipMarker marker;
             marker.markerId = trimmedString(row.markerId.data());
-            marker.clipPositionSamples = row.clipPositionSamples;
+            marker.clipPositionOffset = row.clipPositionOffset;
+            marker.referenceType = row.referenceType;
+            marker.referenceClipId = trimmedString(row.referenceClipId.data());
+            marker.referenceMarkerId = trimmedString(row.referenceMarkerId.data());
             marker.name = trimmedString(row.name.data());
             markers.push_back(std::move(marker));
         }
@@ -298,7 +345,10 @@ std::vector<uapmd::ClipMarker> AudioEventListEditor::draftMasterMarkers() const 
             for (const auto& row : window.markerRows) {
                 uapmd::ClipMarker marker;
                 marker.markerId = trimmedString(row.markerId.data());
-                marker.clipPositionSamples = row.clipPositionSamples;
+                marker.clipPositionOffset = row.clipPositionOffset;
+                marker.referenceType = row.referenceType;
+                marker.referenceClipId = trimmedString(row.referenceClipId.data());
+                marker.referenceMarkerId = trimmedString(row.referenceMarkerId.data());
                 marker.name = trimmedString(row.name.data());
                 markers.push_back(std::move(marker));
             }
@@ -341,7 +391,10 @@ void AudioEventListEditor::populateRows(WindowState& state) {
     for (const auto& marker : state.data.markers) {
         MarkerRow row;
         copyStringToBuffer(marker.markerId.empty() ? generatedMarkerId(state.markerRows.size()) : marker.markerId, row.markerId);
-        row.clipPositionSamples = marker.clipPositionSamples;
+        row.clipPositionOffset = marker.clipPositionOffset;
+        row.referenceType = marker.referenceType;
+        copyStringToBuffer(marker.referenceClipId, row.referenceClipId);
+        copyStringToBuffer(marker.referenceMarkerId, row.referenceMarkerId);
         copyStringToBuffer(marker.name, row.name);
         state.markerRows.push_back(std::move(row));
     }
@@ -349,8 +402,7 @@ void AudioEventListEditor::populateRows(WindowState& state) {
     state.warpRows.reserve(state.data.audioWarps.size());
     for (const auto& warp : state.data.audioWarps) {
         WarpRow row;
-        row.clipPositionSamples = warp.clipPositionSamples;
-        row.sourcePositionSamples = warp.sourcePositionSamples;
+        row.clipPositionOffset = warp.clipPositionOffset;
         row.speedRatio = warp.speedRatio;
         row.referenceType = warp.referenceType;
         copyStringToBuffer(warp.referenceClipId, row.referenceClipId);
@@ -358,7 +410,6 @@ void AudioEventListEditor::populateRows(WindowState& state) {
         state.warpRows.push_back(std::move(row));
     }
 
-    syncWarpRowsToMarkers(state);
 }
 
 void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext& context) {
@@ -381,7 +432,6 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
         if (context.buildExternalReferenceOptions)
             externalReferenceOptions = context.buildExternalReferenceOptions(state.data.trackIndex, state.data.clipId);
         state.data.externalReferenceOptions = externalReferenceOptions;
-        syncWarpRowsToMarkers(state);
         const auto referenceOptions = buildCurrentReferenceOptions(state, externalReferenceOptions);
 
         if (context.updateChildWindowSizeState)
@@ -394,7 +444,7 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
         if (!state.data.error.empty())
             ImGui::TextColored(kErrorTextColor, "%s", state.data.error.c_str());
         ImGui::TextColored(kHintTextColor,
-            "Clip samples are timeline output positions. Source samples are positions inside the audio file after load-time resampling.");
+            "Markers and warps use offsets relative to the selected reference point.");
         ImGui::TextColored(kHintTextColor,
             "Reference points can resolve from this clip, other clips, or master-track markers. Unresolved references are preserved and ignored for rendering.");
         ImGui::Spacing();
@@ -443,10 +493,11 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
                 ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
             const float markerHeight = std::max(120.0f * context.uiScale,
                 ImGui::GetTextLineHeightWithSpacing() * 6.0f);
-            if (ImGui::BeginTable("AudioMarkersTable", 3, flags, ImVec2(0, markerHeight))) {
-                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
-                const std::string markerClipColumn = sampleColumnLabel("Clip Sample", state.data.sampleRate);
+            if (ImGui::BeginTable("AudioMarkersTable", 4, flags, ImVec2(0, markerHeight))) {
+                ImGui::TableSetupColumn("Reference Point", ImGuiTableColumnFlags_WidthStretch);
+                const std::string markerClipColumn = sampleColumnLabel("Clip Offset", state.data.sampleRate);
                 ImGui::TableSetupColumn(markerClipColumn.c_str(), ImGuiTableColumnFlags_WidthFixed, 130.0f * context.uiScale);
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 180.0f * context.uiScale);
                 ImGui::TableSetupColumn("Delete", ImGuiTableColumnFlags_WidthFixed, 70.0f * context.uiScale);
                 ImGui::TableHeadersRow();
 
@@ -458,15 +509,55 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
 
                     ImGui::TableSetColumnIndex(0);
                     ImGui::SetNextItemWidth(-FLT_MIN);
-                    ImGui::InputText("##marker_name", row.name.data(), row.name.size());
+                    std::string previewLabel = "(unresolved)";
+                    for (const auto& option : referenceOptions) {
+                        if (markerMatchesOption(row, option, state.data.clipReferenceId)) {
+                            previewLabel = option.label;
+                            break;
+                        }
+                    }
+                    if (ImGui::BeginCombo("##marker_reference", previewLabel.c_str())) {
+                        for (const auto& option : referenceOptions) {
+                            const bool isSelected = markerMatchesOption(row, option, state.data.clipReferenceId);
+                            if (ImGui::Selectable(option.label.c_str(), isSelected)) {
+                                const auto previousType = row.referenceType;
+                                const auto previousClipId = std::string(trimView(row.referenceClipId.data()));
+                                const auto previousMarkerId = std::string(trimView(row.referenceMarkerId.data()));
+                                row.referenceType = option.referenceType;
+                                copyStringToBuffer(option.referenceClipId, row.referenceClipId);
+                                copyStringToBuffer(option.referenceMarkerId, row.referenceMarkerId);
+                                if (context.validateMarkerReference &&
+                                    !context.validateMarkerReference(
+                                        state.data.trackIndex,
+                                        state.data.clipId,
+                                        trimmedString(row.markerId.data()),
+                                        row.referenceType,
+                                        trimmedString(row.referenceClipId.data()),
+                                        trimmedString(row.referenceMarkerId.data()))) {
+                                    row.referenceType = previousType;
+                                    copyStringToBuffer(previousClipId, row.referenceClipId);
+                                    copyStringToBuffer(previousMarkerId, row.referenceMarkerId);
+                                    state.statusMessage = "Recursive marker references are not allowed.";
+                                    state.statusColor = kErrorTextColor;
+                                }
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
 
                     ImGui::TableSetColumnIndex(1);
                     ImGui::SetNextItemWidth(-FLT_MIN);
-                    ImGui::InputScalar("##marker_clip_position", ImGuiDataType_S64, &row.clipPositionSamples);
-                    if (state.data.sampleRate > 0)
-                        ImGui::SetItemTooltip("%.6fs", samplesToSeconds(row.clipPositionSamples, state.data.sampleRate));
+                    ImGui::InputScalar("##marker_clip_offset", ImGuiDataType_S64, &row.clipPositionOffset);
+                    if (auto resolvedClipPosition = resolveMarkerRowClipPosition(state, row, externalReferenceOptions);
+                        resolvedClipPosition && state.data.sampleRate > 0) {
+                        ImGui::SetItemTooltip("Resolved %.6fs", samplesToSeconds(*resolvedClipPosition, state.data.sampleRate));
+                    }
 
                     ImGui::TableSetColumnIndex(2);
+                    ImGui::SetNextItemWidth(-FLT_MIN);
+                    ImGui::InputText("##marker_name", row.name.data(), row.name.size());
+
+                    ImGui::TableSetColumnIndex(3);
                     if (ImGui::Button("Delete"))
                         erase = true;
 
@@ -494,7 +585,7 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
             if (ImGui::BeginTable("AudioWarpsTable", 5, flags, ImVec2(0, warpHeight))) {
                 ImGui::TableSetupColumn("Reference Point", ImGuiTableColumnFlags_WidthStretch);
                 const std::string clipColumn = sampleColumnLabel("Clip Sample", state.data.sampleRate);
-                const std::string sourceColumn = sampleColumnLabel("Source Sample", state.data.sampleRate);
+                const std::string sourceColumn = sampleColumnLabel("Offset", state.data.sampleRate);
                 ImGui::TableSetupColumn(clipColumn.c_str(), ImGuiTableColumnFlags_WidthFixed, 130.0f * context.uiScale);
                 ImGui::TableSetupColumn(sourceColumn.c_str(), ImGuiTableColumnFlags_WidthFixed, 130.0f * context.uiScale);
                 ImGui::TableSetupColumn("Ratio", ImGuiTableColumnFlags_WidthFixed, 100.0f * context.uiScale);
@@ -524,32 +615,30 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
                                 row.referenceType = option.referenceType;
                                 copyStringToBuffer(option.referenceClipId, row.referenceClipId);
                                 copyStringToBuffer(option.referenceMarkerId, row.referenceMarkerId);
-                                if (option.resolved)
-                                    row.clipPositionSamples = option.clipPositionSamples;
                             }
                         }
                         ImGui::EndCombo();
                     }
 
                     ImGui::TableSetColumnIndex(1);
-                    const bool hasResolvedReference = row.referenceType != AudioWarpReferenceType::Manual &&
-                        std::any_of(referenceOptions.begin(), referenceOptions.end(), [&](const auto& option) {
-                            return option.resolved && warpMatchesOption(row, option);
-                        });
-                    if (hasResolvedReference)
-                        ImGui::BeginDisabled();
+                    auto resolvedReference = std::find_if(referenceOptions.begin(), referenceOptions.end(), [&](const auto& option) {
+                        return option.resolved && warpMatchesOption(row, option);
+                    });
+                    int64_t displayedClipSample = row.clipPositionOffset;
+                    if (resolvedReference != referenceOptions.end())
+                        displayedClipSample = resolvedReference->clipPositionSamples + row.clipPositionOffset;
+                    ImGui::BeginDisabled();
                     ImGui::SetNextItemWidth(-FLT_MIN);
-                    ImGui::InputScalar("##warp_clip_position", ImGuiDataType_S64, &row.clipPositionSamples);
-                    if (hasResolvedReference)
-                        ImGui::EndDisabled();
+                    ImGui::InputScalar("##warp_clip_sample", ImGuiDataType_S64, &displayedClipSample);
+                    ImGui::EndDisabled();
                     if (state.data.sampleRate > 0)
-                        ImGui::SetItemTooltip("%.6fs", samplesToSeconds(row.clipPositionSamples, state.data.sampleRate));
+                        ImGui::SetItemTooltip("%.6fs", samplesToSeconds(displayedClipSample, state.data.sampleRate));
 
-                    ImGui::TableSetColumnIndex(2);
+                ImGui::TableSetColumnIndex(2);
                     ImGui::SetNextItemWidth(-FLT_MIN);
-                    ImGui::InputScalar("##warp_source_position", ImGuiDataType_S64, &row.sourcePositionSamples);
+                    ImGui::InputScalar("##warp_clip_offset", ImGuiDataType_S64, &row.clipPositionOffset);
                     if (state.data.sampleRate > 0)
-                        ImGui::SetItemTooltip("%.6fs", samplesToSeconds(row.sourcePositionSamples, state.data.sampleRate));
+                        ImGui::SetItemTooltip("%.6fs", samplesToSeconds(row.clipPositionOffset, state.data.sampleRate));
 
                     ImGui::TableSetColumnIndex(3);
                     ImGui::SetNextItemWidth(-FLT_MIN);

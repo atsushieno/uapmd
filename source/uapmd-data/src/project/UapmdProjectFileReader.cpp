@@ -148,7 +148,16 @@ namespace uapmd {
                 ClipMarker marker;
                 if (markerObj.hasObjectMember("id"))
                     marker.markerId = std::string(markerObj["id"].getString());
-                marker.clipPositionSamples = markerObj["position_samples"].getWithDefault<int64_t>(0);
+                marker.clipPositionOffset = markerObj.hasObjectMember("position_offset_samples")
+                    ? markerObj["position_offset_samples"].getWithDefault<int64_t>(0)
+                    : markerObj["position_samples"].getWithDefault<int64_t>(0);
+                marker.referenceType = markerObj.hasObjectMember("reference_type")
+                    ? parseAudioWarpReferenceType(markerObj)
+                    : AudioWarpReferenceType::ClipStart;
+                if (markerObj.hasObjectMember("reference_clip_id"))
+                    marker.referenceClipId = std::string(markerObj["reference_clip_id"].getString());
+                if (markerObj.hasObjectMember("reference_marker_id"))
+                    marker.referenceMarkerId = std::string(markerObj["reference_marker_id"].getString());
                 if (markerObj.hasObjectMember("name"))
                     marker.name = std::string(markerObj["name"].getString());
                 markers.push_back(std::move(marker));
@@ -159,8 +168,15 @@ namespace uapmd {
             std::vector<AudioWarpPoint> audioWarps;
             for (const auto& warpObj : clipObj["audio_warps"]) {
                 AudioWarpPoint warp;
-                warp.clipPositionSamples = warpObj["clip_position_samples"].getWithDefault<int64_t>(0);
-                warp.sourcePositionSamples = warpObj["source_position_samples"].getWithDefault<int64_t>(0);
+                warp.clipPositionOffset = warpObj.hasObjectMember("clip_position_offset_samples")
+                    ? warpObj["clip_position_offset_samples"].getWithDefault<int64_t>(0)
+                    : warpObj.hasObjectMember("offset_samples")
+                    ? warpObj["offset_samples"].getWithDefault<int64_t>(0)
+                    : warpObj.hasObjectMember("source_offset_samples")
+                    ? warpObj["source_offset_samples"].getWithDefault<int64_t>(0)
+                    : warpObj.hasObjectMember("source_position_samples")
+                    ? warpObj["source_position_samples"].getWithDefault<int64_t>(0)
+                    : warpObj["clip_position_samples"].getWithDefault<int64_t>(0);
                 warp.speedRatio = warpObj["speed_ratio"].getWithDefault<double>(1.0);
                 warp.referenceType = parseAudioWarpReferenceType(warpObj);
                 if (warpObj.hasObjectMember("reference_clip_id"))
@@ -223,7 +239,16 @@ namespace uapmd {
                 ClipMarker marker;
                 if (markerObj.hasObjectMember("id"))
                     marker.markerId = std::string(markerObj["id"].getString());
-                marker.clipPositionSamples = markerObj["position_samples"].getWithDefault<int64_t>(0);
+                marker.clipPositionOffset = markerObj.hasObjectMember("position_offset_samples")
+                    ? markerObj["position_offset_samples"].getWithDefault<int64_t>(0)
+                    : markerObj["position_samples"].getWithDefault<int64_t>(0);
+                marker.referenceType = markerObj.hasObjectMember("reference_type")
+                    ? parseAudioWarpReferenceType(markerObj)
+                    : AudioWarpReferenceType::ClipStart;
+                if (markerObj.hasObjectMember("reference_clip_id"))
+                    marker.referenceClipId = std::string(markerObj["reference_clip_id"].getString());
+                if (markerObj.hasObjectMember("reference_marker_id"))
+                    marker.referenceMarkerId = std::string(markerObj["reference_marker_id"].getString());
                 if (markerObj.hasObjectMember("name"))
                     marker.name = std::string(markerObj["name"].getString());
                 markers.push_back(std::move(marker));

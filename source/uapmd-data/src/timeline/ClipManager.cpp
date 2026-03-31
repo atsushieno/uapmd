@@ -6,7 +6,9 @@
 namespace uapmd {
 
     namespace {
-        std::string makeClipReferenceId(int32_t clipId) {
+        std::string makeClipReferenceId(std::string_view referencePrefix, int32_t clipId) {
+            if (!referencePrefix.empty())
+                return std::format("{}::clip_{:08x}", referencePrefix, static_cast<uint32_t>(clipId));
             return std::format("clip_{:08x}", static_cast<uint32_t>(clipId));
         }
     } // namespace
@@ -48,7 +50,7 @@ namespace uapmd {
             next_clip_id_ = std::max(next_clip_id_, newClip.clipId + 1);
         }
         if (newClip.referenceId.empty())
-            newClip.referenceId = makeClipReferenceId(newClip.clipId);
+            newClip.referenceId = makeClipReferenceId(reference_prefix_, newClip.clipId);
 
         clips_[newClip.clipId] = newClip;
         rebuildSnapshotLocked();

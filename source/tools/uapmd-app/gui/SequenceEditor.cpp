@@ -57,7 +57,12 @@ uint64_t clipWarpFingerprint(const uapmd::ClipData& clipData) {
     uint64_t hash = 1469598103934665603ull;
     hash = mixHash(hash, clipData.markers.size());
     for (const auto& marker : clipData.markers) {
-        hash = mixHash(hash, static_cast<uint64_t>(marker.clipPositionSamples));
+        hash = mixHash(hash, static_cast<uint64_t>(marker.clipPositionOffset));
+        hash = mixHash(hash, static_cast<uint64_t>(marker.referenceType));
+        for (unsigned char ch : marker.referenceClipId)
+            hash = mixHash(hash, ch);
+        for (unsigned char ch : marker.referenceMarkerId)
+            hash = mixHash(hash, ch);
         for (unsigned char ch : marker.markerId)
             hash = mixHash(hash, ch);
         for (unsigned char ch : marker.name)
@@ -66,8 +71,7 @@ uint64_t clipWarpFingerprint(const uapmd::ClipData& clipData) {
 
     hash = mixHash(hash, clipData.audioWarps.size());
     for (const auto& warp : clipData.audioWarps) {
-        hash = mixHash(hash, static_cast<uint64_t>(warp.clipPositionSamples));
-        hash = mixHash(hash, static_cast<uint64_t>(warp.sourcePositionSamples));
+        hash = mixHash(hash, static_cast<uint64_t>(warp.clipPositionOffset));
         hash = mixHash(hash, std::bit_cast<uint64_t>(warp.speedRatio));
         hash = mixHash(hash, static_cast<uint64_t>(warp.referenceType));
         for (unsigned char ch : warp.referenceClipId)

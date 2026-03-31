@@ -19,7 +19,8 @@ namespace uapmd {
             std::unordered_map<std::string, const ClipData*> clipReferenceMap; // pointers into clips
         };
 
-        ClipManager() = default;
+        explicit ClipManager(std::string referencePrefix = {})
+            : reference_prefix_(std::move(referencePrefix)) {}
         ~ClipManager() = default;
 
         // Clip CRUD operations (UI thread)
@@ -61,6 +62,7 @@ namespace uapmd {
         mutable std::mutex clips_mutex_;  // Protects clips_ map
         std::unordered_map<int32_t, ClipData> clips_;
         int32_t next_clip_id_{1};  // Start from 1, 0 is invalid
+        std::string reference_prefix_;
 
         // Helper to generate unique clip IDs
         int32_t generateClipId();

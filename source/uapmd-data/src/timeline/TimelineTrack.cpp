@@ -39,7 +39,10 @@ namespace uapmd {
     }
 
     TimelineTrack::TimelineTrack(std::string referenceId, uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames)
-        : reference_id_(std::move(referenceId)), channel_count_(channelCount), sample_rate_(sampleRate) {
+        : reference_id_(std::move(referenceId)),
+          channel_count_(channelCount),
+          sample_rate_(sampleRate),
+          clip_manager_(reference_id_) {
         source_nodes_snapshot_ = std::make_shared<SourceNodeList>();
 
         // Pre-allocate buffers to avoid real-time allocations
