@@ -12,6 +12,8 @@ namespace uapmd {
         std::string clip_type_{"audio"};  // Default to audio for backward compatibility
         uint32_t tick_resolution_{480};
         bool nrpn_to_parameter_mapping_{false};
+        std::vector<ClipMarker> markers_{};
+        std::vector<AudioWarpPoint> audio_warps_{};
 
     public:
         UapmdProjectClipDataImpl() = default;
@@ -32,6 +34,12 @@ namespace uapmd {
 
         bool nrpnToParameterMapping() override { return nrpn_to_parameter_mapping_; }
         void nrpnToParameterMapping(bool enabled) override { nrpn_to_parameter_mapping_ = enabled; }
+
+        std::vector<ClipMarker> markers() override { return markers_; }
+        void markers(std::vector<ClipMarker> values) override { markers_ = std::move(values); }
+
+        std::vector<AudioWarpPoint> audioWarps() override { return audio_warps_; }
+        void audioWarps(std::vector<AudioWarpPoint> values) override { audio_warps_ = std::move(values); }
 
     };
 

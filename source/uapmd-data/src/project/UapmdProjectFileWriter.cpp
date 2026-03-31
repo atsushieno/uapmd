@@ -63,6 +63,36 @@ namespace uapmd {
         if (!clipType.empty())
             obj.addMember("clip_type", clipType);
 
+        auto markers = clip->markers();
+        if (!markers.empty()) {
+            auto markersArray = choc::value::createEmptyArray();
+            for (const auto& marker : markers) {
+                auto markerObj = choc::value::createObject("ClipMarker");
+                if (!marker.markerId.empty())
+                    markerObj.addMember("id", marker.markerId);
+                markerObj.addMember("position_samples", marker.clipPositionSamples);
+                if (!marker.name.empty())
+                    markerObj.addMember("name", marker.name);
+                markersArray.addArrayElement(markerObj);
+            }
+            obj.addMember("markers", markersArray);
+        }
+
+        auto audioWarps = clip->audioWarps();
+        if (!audioWarps.empty()) {
+            auto warpsArray = choc::value::createEmptyArray();
+            for (const auto& warp : audioWarps) {
+                auto warpObj = choc::value::createObject("AudioWarpPoint");
+                if (!warp.markerId.empty())
+                    warpObj.addMember("marker_id", warp.markerId);
+                warpObj.addMember("clip_position_samples", warp.clipPositionSamples);
+                warpObj.addMember("source_position_samples", warp.sourcePositionSamples);
+                warpObj.addMember("speed_ratio", warp.speedRatio);
+                warpsArray.addArrayElement(warpObj);
+            }
+            obj.addMember("audio_warps", warpsArray);
+        }
+
         // Serialize MIDI-specific metadata (only for MIDI clips)
         if (clipType == "midi") {
             obj.addMember("tick_resolution", static_cast<int64_t>(clip->tickResolution()));

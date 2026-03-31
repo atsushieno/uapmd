@@ -122,6 +122,32 @@ namespace uapmd {
         }
         if (clipObj.hasObjectMember("nrpn_to_parameter_mapping"))
             clip->nrpnToParameterMapping(clipObj["nrpn_to_parameter_mapping"].getWithDefault<bool>(false));
+        if (clipObj.hasObjectMember("markers") && clipObj["markers"].isArray()) {
+            std::vector<ClipMarker> markers;
+            for (const auto& markerObj : clipObj["markers"]) {
+                ClipMarker marker;
+                if (markerObj.hasObjectMember("id"))
+                    marker.markerId = std::string(markerObj["id"].getString());
+                marker.clipPositionSamples = markerObj["position_samples"].getWithDefault<int64_t>(0);
+                if (markerObj.hasObjectMember("name"))
+                    marker.name = std::string(markerObj["name"].getString());
+                markers.push_back(std::move(marker));
+            }
+            clip->markers(std::move(markers));
+        }
+        if (clipObj.hasObjectMember("audio_warps") && clipObj["audio_warps"].isArray()) {
+            std::vector<AudioWarpPoint> audioWarps;
+            for (const auto& warpObj : clipObj["audio_warps"]) {
+                AudioWarpPoint warp;
+                if (warpObj.hasObjectMember("marker_id"))
+                    warp.markerId = std::string(warpObj["marker_id"].getString());
+                warp.clipPositionSamples = warpObj["clip_position_samples"].getWithDefault<int64_t>(0);
+                warp.sourcePositionSamples = warpObj["source_position_samples"].getWithDefault<int64_t>(0);
+                warp.speedRatio = warpObj["speed_ratio"].getWithDefault<double>(1.0);
+                audioWarps.push_back(std::move(warp));
+            }
+            clip->audioWarps(std::move(audioWarps));
+        }
 
         return clip;
     }

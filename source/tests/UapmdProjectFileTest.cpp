@@ -290,6 +290,61 @@ TEST_F(UapmdProjectFileTest, PluginGraphSerialization) {
     EXPECT_EQ(plugins[1].state_file, "");
 }
 
+TEST_F(UapmdProjectFileTest, ClipMarkersAndAudioWarpsRoundTrip) {
+    auto project = uapmd::UapmdProjectData::create();
+    auto track = uapmd::UapmdProjectTrackData::create();
+
+    auto clip = uapmd::UapmdProjectClipData::create();
+    clip->file("/audio/warped.wav");
+    clip->clipType("audio");
+
+    uapmd::UapmdTimelinePosition pos;
+    pos.anchor = nullptr;
+    pos.samples = 12000;
+    clip->position(pos);
+
+    clip->markers({
+        uapmd::ClipMarker{"start", 0, "Start"},
+        uapmd::ClipMarker{"phrase_a", 48000, "Phrase A"},
+    });
+    clip->audioWarps({
+        uapmd::AudioWarpPoint{"start", 0, 0, 1.0},
+        uapmd::AudioWarpPoint{"phrase_a", 48000, 52000, 0.85},
+    });
+
+    track->clips().push_back(std::move(clip));
+    project->addTrack(std::move(track));
+
+    auto file_path = test_dir / "markers_warps_project.json";
+    ASSERT_TRUE(uapmd::UapmdProjectDataWriter::write(project.get(), file_path));
+
+    auto loaded_project = uapmd::UapmdProjectDataReader::read(file_path);
+    ASSERT_NE(loaded_project, nullptr);
+    ASSERT_EQ(loaded_project->tracks().size(), 1);
+    ASSERT_EQ(loaded_project->tracks()[0]->clips().size(), 1);
+
+    auto& loaded_clip = loaded_project->tracks()[0]->clips()[0];
+    auto markers = loaded_clip->markers();
+    ASSERT_EQ(markers.size(), 2);
+    EXPECT_EQ(markers[0].markerId, "start");
+    EXPECT_EQ(markers[0].clipPositionSamples, 0);
+    EXPECT_EQ(markers[0].name, "Start");
+    EXPECT_EQ(markers[1].markerId, "phrase_a");
+    EXPECT_EQ(markers[1].clipPositionSamples, 48000);
+    EXPECT_EQ(markers[1].name, "Phrase A");
+
+    auto warps = loaded_clip->audioWarps();
+    ASSERT_EQ(warps.size(), 2);
+    EXPECT_EQ(warps[0].markerId, "start");
+    EXPECT_EQ(warps[0].clipPositionSamples, 0);
+    EXPECT_EQ(warps[0].sourcePositionSamples, 0);
+    EXPECT_DOUBLE_EQ(warps[0].speedRatio, 1.0);
+    EXPECT_EQ(warps[1].markerId, "phrase_a");
+    EXPECT_EQ(warps[1].clipPositionSamples, 48000);
+    EXPECT_EQ(warps[1].sourcePositionSamples, 52000);
+    EXPECT_DOUBLE_EQ(warps[1].speedRatio, 0.85);
+}
+
 // Test: Master track
 TEST_F(UapmdProjectFileTest, MasterTrack) {
     auto project = uapmd::UapmdProjectData::create();

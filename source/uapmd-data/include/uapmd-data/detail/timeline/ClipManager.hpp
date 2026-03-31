@@ -41,6 +41,8 @@ namespace uapmd {
         bool clipNeedsFileSave(int32_t clipId) const;
         bool setClipAnchor(int32_t clipId, const std::string& anchorReferenceId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset);
         bool setClipPosition(int32_t clipId, const TimelinePosition& position);
+        bool setClipMarkers(int32_t clipId, std::vector<ClipMarker> markers);
+        bool setAudioWarps(int32_t clipId, std::vector<AudioWarpPoint> audioWarps);
 
         // Query clips at timeline position (RT-safe after initial query)
         std::vector<ClipData> getActiveClipsAt(const TimelinePosition& position);

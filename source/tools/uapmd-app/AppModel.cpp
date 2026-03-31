@@ -2189,6 +2189,8 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                 auto projectClip = uapmd::UapmdProjectClipData::create();
                 projectClip->clipType(clip.clipType == uapmd::ClipType::Midi ? "midi" : "audio");
                 projectClip->tickResolution(clip.tickResolution);
+                projectClip->markers(clip.markers);
+                projectClip->audioWarps(clip.audioWarps);
 
                 std::filesystem::path clipPath = clip.filepath;
                 if (clip.clipType == uapmd::ClipType::Midi) {
@@ -2306,6 +2308,8 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                     auto projectClip = uapmd::UapmdProjectClipData::create();
                     projectClip->clipType("midi");
                     projectClip->tickResolution(clip.tickResolution);
+                    projectClip->markers(clip.markers);
+                    projectClip->audioWarps(clip.audioWarps);
 
                     std::filesystem::path clipPath = clip.filepath;
                     bool needsExport = clip.needsFileSave || clipPath.empty() || !std::filesystem::exists(clipPath);

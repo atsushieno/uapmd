@@ -21,6 +21,8 @@ constexpr float kNodeContentPadding = 5.0f;
 constexpr float kLabelSpacing = 2.0f;
 constexpr float kMinimumNoteHeight = 4.0f;
 constexpr double kMinimumNoteDuration = 0.01;
+constexpr ImU32 kMarkerColor = IM_COL32(255, 222, 89, 220);
+constexpr ImU32 kWarpColor = IM_COL32(255, 120, 120, 230);
 
 class ClipContentNode : public CustomNodeBase {
 public:
@@ -141,6 +143,7 @@ private:
         const float centerY = rect.Min.y + height * 0.5f;
         const float halfHeight = height * 0.5f;
         const ImU32 lineColor = IM_COL32(120, 200, 255, 210);
+        const double safeDurationSamples = std::max<int64_t>(1, preview_->sourceDurationSamples);
 
         const size_t count = preview_->waveform.size();
         for (size_t i = 0; i < count; ++i) {
@@ -157,6 +160,25 @@ private:
             float y2 = centerY - minValue * halfHeight;
 
             drawList->AddLine(ImVec2(x, y1), ImVec2(x, y2), lineColor, 1.2f * uiScale_);
+        }
+
+        auto drawClipLine = [&](int64_t clipSamplePosition, ImU32 color, const char* label) {
+            double normalized = std::clamp(static_cast<double>(clipSamplePosition) / safeDurationSamples, 0.0, 1.0);
+            float x = rect.Min.x + static_cast<float>(normalized) * width;
+            drawList->AddLine(ImVec2(x, rect.Min.y), ImVec2(x, rect.Max.y), color, 1.5f * uiScale_);
+            if (label && label[0] != '\0') {
+                drawList->AddText(ImVec2(x + 3.0f * uiScale_, rect.Min.y + 3.0f * uiScale_), color, label);
+            }
+        };
+
+        for (const auto& marker : preview_->clipMarkers) {
+            const char* label = marker.name.empty() ? nullptr : marker.name.c_str();
+            drawClipLine(marker.clipPositionSamples, kMarkerColor, label);
+        }
+
+        for (const auto& warp : preview_->audioWarps) {
+            std::string label = std::format("{:.3f}x", warp.speedRatio);
+            drawClipLine(warp.clipPositionSamples, kWarpColor, label.c_str());
         }
 
         drawList->PopClipRect();
@@ -331,6 +353,11 @@ std::shared_ptr<ClipPreview> createAudioClipPreview(
         durationSeconds = fallbackDurationSeconds;
     }
     preview->clipDurationSeconds = std::max(0.001, durationSeconds);
+    preview->sourceDurationSamples = clipData ? std::max<int64_t>(0, clipData->durationSamples) : 0;
+    if (clipData) {
+        preview->clipMarkers = clipData->markers;
+        preview->audioWarps = clipData->audioWarps;
+    }
 
     if (filepath.empty()) {
         preview->hasError = true;

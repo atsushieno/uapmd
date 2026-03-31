@@ -68,7 +68,10 @@ struct ClipPreview {
     std::string signature;
     std::string displayName;
     double clipDurationSeconds{0.0};
+    int64_t sourceDurationSamples{0};
     std::vector<WaveformPoint> waveform;
+    std::vector<uapmd::ClipMarker> clipMarkers;
+    std::vector<uapmd::AudioWarpPoint> audioWarps;
     std::vector<MidiNote> midiNotes;
     uint8_t minNote{48};
     uint8_t maxNote{72};

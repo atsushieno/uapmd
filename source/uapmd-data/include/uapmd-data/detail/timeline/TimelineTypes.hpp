@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace uapmd {
 
@@ -93,6 +94,19 @@ namespace uapmd {
         Midi    // filepath points to MIDI file (SMF/SMF2)
     };
 
+    struct ClipMarker {
+        std::string markerId;
+        int64_t clipPositionSamples{0};
+        std::string name;
+    };
+
+    struct AudioWarpPoint {
+        std::string markerId;
+        int64_t clipPositionSamples{0};
+        int64_t sourcePositionSamples{0};
+        double speedRatio{1.0};
+    };
+
     // Represents a single clip on a track
     struct ClipData {
         int32_t clipId{-1};
@@ -116,6 +130,12 @@ namespace uapmd {
         // at playback time and remapped to plugin parameter changes instead of being forwarded
         // as raw UMP to the plugin.  Plugins that consume NRPNs natively should leave this false.
         bool nrpnToParameterMapping{false};
+
+        // Clip markers shared by audio and MIDI clips.
+        std::vector<ClipMarker> markers;
+        // Audio-only warp anchors. Each point defines the source anchor and speed
+        // ratio starting at clipPositionSamples until the next point.
+        std::vector<AudioWarpPoint> audioWarps;
 
         // Anchor support (NEW)
         std::string anchorReferenceId;     // Empty = track anchor (absolute position)

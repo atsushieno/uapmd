@@ -4,6 +4,8 @@
 #include <vector>
 #include <filesystem>
 
+#include "../timeline/TimelineTypes.hpp"
+
 namespace uapmd {
     class UapmdClipDataReferencible {
     public:
@@ -52,6 +54,10 @@ namespace uapmd {
         virtual void tickResolution(uint32_t ticks) = 0;
         virtual bool nrpnToParameterMapping() = 0;
         virtual void nrpnToParameterMapping(bool enabled) = 0;
+        virtual std::vector<ClipMarker> markers() = 0;
+        virtual void markers(std::vector<ClipMarker> values) = 0;
+        virtual std::vector<AudioWarpPoint> audioWarps() = 0;
+        virtual void audioWarps(std::vector<AudioWarpPoint> values) = 0;
 
         static std::unique_ptr<UapmdProjectClipData> create();
     };

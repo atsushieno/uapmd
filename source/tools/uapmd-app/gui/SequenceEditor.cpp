@@ -53,6 +53,28 @@ uint64_t midiSourceFingerprint(const uapmd::MidiClipSourceNode& midiSource) {
     return hash;
 }
 
+uint64_t clipWarpFingerprint(const uapmd::ClipData& clipData) {
+    uint64_t hash = 1469598103934665603ull;
+    hash = mixHash(hash, clipData.markers.size());
+    for (const auto& marker : clipData.markers) {
+        hash = mixHash(hash, static_cast<uint64_t>(marker.clipPositionSamples));
+        for (unsigned char ch : marker.markerId)
+            hash = mixHash(hash, ch);
+        for (unsigned char ch : marker.name)
+            hash = mixHash(hash, ch);
+    }
+
+    hash = mixHash(hash, clipData.audioWarps.size());
+    for (const auto& warp : clipData.audioWarps) {
+        hash = mixHash(hash, static_cast<uint64_t>(warp.clipPositionSamples));
+        hash = mixHash(hash, static_cast<uint64_t>(warp.sourcePositionSamples));
+        hash = mixHash(hash, std::bit_cast<uint64_t>(warp.speedRatio));
+        for (unsigned char ch : warp.markerId)
+            hash = mixHash(hash, ch);
+    }
+    return hash;
+}
+
 double secondsToUnits(const SequenceEditor::RenderContext& context, double seconds) {
     if (context.secondsToTimelineUnits) {
         return context.secondsToTimelineUnits(seconds);
@@ -947,6 +969,7 @@ std::string SequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow
     const int64_t durationSamples = clipData ? clipData->durationSamples : 0;
     const int32_t sourceNodeId = clipData ? clipData->sourceNodeInstanceId : -1;
     uint64_t midiHash = 0;
+    uint64_t warpHash = 0;
     if (clipData && clip.isMidiClip) {
         auto tracks = uapmd::AppModel::instance().getTimelineTracks();
         if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
@@ -954,14 +977,17 @@ std::string SequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow
             if (auto* midiSource = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get()))
                 midiHash = midiSourceFingerprint(*midiSource);
         }
+    } else if (clipData) {
+        warpHash = clipWarpFingerprint(*clipData);
     }
-    return std::format("{}|{}|{}|{}|{}|{}",
+    return std::format("{}|{}|{}|{}|{}|{}|{}",
                        sourcePath,
                        clip.isMidiClip ? 'm' : 'a',
                        clip.timelineEnd - clip.timelineStart,
                        durationSamples,
                        sourceNodeId,
-                       midiHash);
+                       midiHash,
+                       warpHash);
 }
 
 std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(

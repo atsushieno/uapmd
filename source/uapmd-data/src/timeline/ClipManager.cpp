@@ -246,6 +246,28 @@ namespace uapmd {
         return true;
     }
 
+    bool ClipManager::setClipMarkers(int32_t clipId, std::vector<ClipMarker> markers) {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        it->second.markers = std::move(markers);
+        rebuildSnapshotLocked();
+        return true;
+    }
+
+    bool ClipManager::setAudioWarps(int32_t clipId, std::vector<AudioWarpPoint> audioWarps) {
+        std::lock_guard<std::mutex> lock(clips_mutex_);
+        auto it = clips_.find(clipId);
+        if (it == clips_.end())
+            return false;
+
+        it->second.audioWarps = std::move(audioWarps);
+        rebuildSnapshotLocked();
+        return true;
+    }
+
     std::vector<ClipData> ClipManager::getActiveClipsAt(const TimelinePosition& position) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         return collectActiveClipCopies(clips_, position);

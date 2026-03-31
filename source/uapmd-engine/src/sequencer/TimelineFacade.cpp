@@ -488,6 +488,10 @@ namespace uapmd {
                                 result.error = loadResult.error.empty() ? "Failed to load MIDI clip" : loadResult.error;
                                 return result;
                             }
+                            if (auto* loadedClip = timeline_tracks_[static_cast<size_t>(trackIndex)]->clipManager().getClip(loadResult.clipId)) {
+                                loadedClip->markers = clip->markers();
+                                loadedClip->audioWarps = clip->audioWarps();
+                            }
                             auto* loadedClip = timeline_tracks_[static_cast<size_t>(trackIndex)]->clipManager().getClip(loadResult.clipId);
                             loadedClipRefs[clip.get()] = LoadedClipRef{
                                 timeline_tracks_[static_cast<size_t>(trackIndex)].get(),
@@ -523,6 +527,10 @@ namespace uapmd {
                             return result;
                         }
                         auto* loadedClip = timeline_tracks_[static_cast<size_t>(trackIndex)]->clipManager().getClip(loadResult.clipId);
+                        if (loadedClip) {
+                            loadedClip->markers = clip->markers();
+                            loadedClip->audioWarps = clip->audioWarps();
+                        }
                         loadedClipRefs[clip.get()] = LoadedClipRef{
                             timeline_tracks_[static_cast<size_t>(trackIndex)].get(),
                             loadResult.clipId,
@@ -565,6 +573,10 @@ namespace uapmd {
                         return result;
                     }
                     auto* loadedClip = master_timeline_track_->clipManager().getClip(masterLoadResult.clipId);
+                    if (loadedClip) {
+                        loadedClip->markers = clip->markers();
+                        loadedClip->audioWarps = clip->audioWarps();
+                    }
                     loadedClipRefs[clip.get()] = LoadedClipRef{
                         master_timeline_track_.get(),
                         masterLoadResult.clipId,
