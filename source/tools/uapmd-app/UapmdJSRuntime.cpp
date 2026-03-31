@@ -922,6 +922,136 @@ void UapmdJSRuntime::unregisterAllMetadataListeners()
     }
 }
 
+namespace {
+
+constexpr std::string_view kMasterMarkerReferenceId = "master_track";
+
+std::string timeReferenceTypeToString(uapmd::TimeReferenceType type) {
+    switch (type) {
+        case uapmd::TimeReferenceType::ContainerStart: return "containerStart";
+        case uapmd::TimeReferenceType::ContainerEnd: return "containerEnd";
+        case uapmd::TimeReferenceType::Point: return "point";
+    }
+    return "containerStart";
+}
+
+bool parseTimeReferenceType(std::string_view text, uapmd::TimeReferenceType& type) {
+    if (text == "containerStart") {
+        type = uapmd::TimeReferenceType::ContainerStart;
+        return true;
+    }
+    if (text == "containerEnd") {
+        type = uapmd::TimeReferenceType::ContainerEnd;
+        return true;
+    }
+    if (text == "point") {
+        type = uapmd::TimeReferenceType::Point;
+        return true;
+    }
+    return false;
+}
+
+choc::value::Value serializeTimeReference(const uapmd::TimeReference& reference) {
+    auto obj = choc::value::createObject("TimeReference");
+    obj.setMember("type", timeReferenceTypeToString(reference.type));
+    obj.setMember("referenceId", reference.referenceId);
+    obj.setMember("offset", reference.offset);
+    return obj;
+}
+
+choc::value::Value serializeMarker(const uapmd::ClipMarker& marker, std::string_view ownerReferenceId) {
+    auto obj = choc::value::createObject("ClipMarker");
+    obj.setMember("markerId", marker.markerId);
+    obj.setMember("name", marker.name);
+    obj.setMember("timeReference", serializeTimeReference(marker.timeReference(ownerReferenceId, kMasterMarkerReferenceId)));
+    return obj;
+}
+
+choc::value::Value serializeWarp(const uapmd::AudioWarpPoint& warp, std::string_view ownerReferenceId) {
+    auto obj = choc::value::createObject("AudioWarpPoint");
+    obj.setMember("speedRatio", warp.speedRatio);
+    obj.setMember("timeReference", serializeTimeReference(warp.timeReference(ownerReferenceId, kMasterMarkerReferenceId)));
+    return obj;
+}
+
+bool parseTimeReferenceValue(const choc::value::ValueView& value, uapmd::TimeReference& reference, std::string& error) {
+    if (!value.isObject()) {
+        error = "timeReference must be an object";
+        return false;
+    }
+    const auto typeText = value.hasObjectMember("type") ? value["type"].get<std::string>() : std::string{};
+    if (!parseTimeReferenceType(typeText, reference.type)) {
+        error = "timeReference.type is invalid";
+        return false;
+    }
+    reference.referenceId = value.hasObjectMember("referenceId") ? value["referenceId"].get<std::string>() : std::string{};
+    reference.offset = value.hasObjectMember("offset") ? value["offset"].get<double>() : 0.0;
+    return true;
+}
+
+bool parseMarkersValue(const choc::value::ValueView* value,
+                       std::string_view ownerReferenceId,
+                       std::vector<uapmd::ClipMarker>& markers,
+                       std::string& error) {
+    markers.clear();
+    if (!value)
+        return true;
+    if (!value->isArray()) {
+        error = "markers must be an array";
+        return false;
+    }
+
+    markers.reserve(value->size());
+    for (uint32_t i = 0; i < value->size(); ++i) {
+        const auto& item = (*value)[i];
+        if (!item.isObject()) {
+            error = "marker entry must be an object";
+            return false;
+        }
+        uapmd::ClipMarker marker;
+        marker.markerId = item.hasObjectMember("markerId") ? item["markerId"].get<std::string>() : std::string{};
+        marker.name = item.hasObjectMember("name") ? item["name"].get<std::string>() : std::string{};
+        uapmd::TimeReference reference;
+        if (!item.hasObjectMember("timeReference") || !parseTimeReferenceValue(item["timeReference"], reference, error))
+            return false;
+        marker.setTimeReference(reference, ownerReferenceId, kMasterMarkerReferenceId);
+        markers.push_back(std::move(marker));
+    }
+    return true;
+}
+
+bool parseWarpsValue(const choc::value::ValueView* value,
+                     std::string_view ownerReferenceId,
+                     std::vector<uapmd::AudioWarpPoint>& warps,
+                     std::string& error) {
+    warps.clear();
+    if (!value)
+        return true;
+    if (!value->isArray()) {
+        error = "audioWarps must be an array";
+        return false;
+    }
+
+    warps.reserve(value->size());
+    for (uint32_t i = 0; i < value->size(); ++i) {
+        const auto& item = (*value)[i];
+        if (!item.isObject()) {
+            error = "audioWarp entry must be an object";
+            return false;
+        }
+        uapmd::AudioWarpPoint warp;
+        warp.speedRatio = item.hasObjectMember("speedRatio") ? item["speedRatio"].get<double>() : 1.0;
+        uapmd::TimeReference reference;
+        if (!item.hasObjectMember("timeReference") || !parseTimeReferenceValue(item["timeReference"], reference, error))
+            return false;
+        warp.setTimeReference(reference, ownerReferenceId, kMasterMarkerReferenceId);
+        warps.push_back(std::move(warp));
+    }
+    return true;
+}
+
+} // namespace
+
 void UapmdJSRuntime::registerTimelineAPI()
 {
     jsContext_.registerFunction ("__remidy_timeline_get_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
@@ -975,6 +1105,102 @@ void UapmdJSRuntime::registerTimelineAPI()
             arr.addArrayElement (obj);
         }
         return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_get_clip_audio_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        auto clipId = args.get<int32_t> (1, -1);
+        std::vector<uapmd::ClipMarker> markers;
+        std::vector<uapmd::AudioWarpPoint> warps;
+        std::string error;
+        auto result = choc::value::createObject ("ClipAudioEvents");
+        if (!uapmd::AppModel::instance().getClipAudioEvents(trackIndex, clipId, markers, warps, error)) {
+            result.setMember ("success", false);
+            result.setMember ("error", error);
+            return result;
+        }
+
+        std::string ownerReferenceId = kMasterMarkerReferenceId.data();
+        if (trackIndex != uapmd::kMasterTrackIndex) {
+            auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+            if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
+                if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
+                    ownerReferenceId = clip->referenceId;
+            }
+        }
+
+        auto markerArray = choc::value::createEmptyArray();
+        for (const auto& marker : markers)
+            markerArray.addArrayElement(serializeMarker(marker, ownerReferenceId));
+        auto warpArray = choc::value::createEmptyArray();
+        for (const auto& warp : warps)
+            warpArray.addArrayElement(serializeWarp(warp, ownerReferenceId));
+
+        result.setMember ("success", true);
+        result.setMember ("markers", markerArray);
+        result.setMember ("audioWarps", warpArray);
+        return result;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_set_clip_audio_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        auto clipId = args.get<int32_t> (1, -1);
+        auto result = choc::value::createObject ("ClipAudioEventSetResult");
+        if (trackIndex < 0 || clipId < 0 || args.size() < 3 || args[2] == nullptr || !args[2]->isObject()) {
+            result.setMember ("success", false);
+            result.setMember ("error", "invalid arguments");
+            return result;
+        }
+
+        auto tracks = uapmd::AppModel::instance().getTimelineTracks();
+        std::string ownerReferenceId = kMasterMarkerReferenceId.data();
+        if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
+            if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
+                ownerReferenceId = clip->referenceId;
+        }
+
+        std::vector<uapmd::ClipMarker> markers;
+        std::vector<uapmd::AudioWarpPoint> warps;
+        std::string error;
+        auto payload = args[2]->getView();
+        auto markersView = payload.hasObjectMember("markers") ? std::optional(payload["markers"]) : std::nullopt;
+        auto warpsView = payload.hasObjectMember("audioWarps") ? std::optional(payload["audioWarps"]) : std::nullopt;
+        if (!parseMarkersValue(markersView ? &*markersView : nullptr, ownerReferenceId, markers, error) ||
+            !parseWarpsValue(warpsView ? &*warpsView : nullptr, ownerReferenceId, warps, error) ||
+            !uapmd::AppModel::instance().setClipAudioEvents(trackIndex, clipId, std::move(markers), std::move(warps), error)) {
+            result.setMember ("success", false);
+            result.setMember ("error", error);
+            return result;
+        }
+
+        result.setMember ("success", true);
+        return result;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_get_master_markers", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto array = choc::value::createEmptyArray();
+        for (const auto& marker : uapmd::AppModel::instance().masterTrackMarkers())
+            array.addArrayElement(serializeMarker(marker, kMasterMarkerReferenceId));
+        return array;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_set_master_markers", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto result = choc::value::createObject ("MasterMarkerSetResult");
+        std::vector<uapmd::ClipMarker> markers;
+        std::string error;
+        auto markersView = (args.size() > 0 && args[0] != nullptr) ? std::optional(args[0]->getView()) : std::nullopt;
+        if (!parseMarkersValue(markersView ? &*markersView : nullptr, kMasterMarkerReferenceId, markers, error) ||
+            !uapmd::AppModel::instance().setMasterTrackMarkersWithValidation(std::move(markers), error)) {
+            result.setMember ("success", false);
+            result.setMember ("error", error);
+            return result;
+        }
+        result.setMember ("success", true);
+        return result;
     });
 
     jsContext_.registerFunction ("__remidy_timeline_add_midi_clip", [] (choc::javascript::ArgumentList args) -> choc::value::Value

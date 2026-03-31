@@ -137,6 +137,10 @@ globalThis.uapmd = {
         getState: () => __remidy_timeline_get_state(),
         setTempo: (bpm) => __remidy_timeline_set_tempo(bpm),
         getClips: (trackIndex) => __remidy_timeline_get_clips(trackIndex),
+        getClipAudioEvents: (trackIndex, clipId) => __remidy_timeline_get_clip_audio_events(trackIndex, clipId),
+        setClipAudioEvents: (trackIndex, clipId, payload) => __remidy_timeline_set_clip_audio_events(trackIndex, clipId, payload),
+        getMasterMarkers: () => __remidy_timeline_get_master_markers(),
+        setMasterMarkers: (markers) => __remidy_timeline_set_master_markers(markers),
         addMidiClip: (trackIndex, positionSamples, filepath) => __remidy_timeline_add_midi_clip(trackIndex, positionSamples, filepath),
         removeClip: (trackIndex, clipId) => __remidy_timeline_remove_clip(trackIndex, clipId)
     }

@@ -372,6 +372,15 @@ namespace uapmd {
                                std::string& error);
         bool removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
                                     int32_t eventIndex, std::string& error);
+        bool getClipAudioEvents(int32_t trackIndex, int32_t clipId,
+                                std::vector<uapmd::ClipMarker>& markers,
+                                std::vector<uapmd::AudioWarpPoint>& audioWarps,
+                                std::string& error) const;
+        bool setClipAudioEvents(int32_t trackIndex, int32_t clipId,
+                                std::vector<uapmd::ClipMarker> markers,
+                                std::vector<uapmd::AudioWarpPoint> audioWarps,
+                                std::string& error);
+        bool setMasterTrackMarkersWithValidation(std::vector<uapmd::ClipMarker> markers, std::string& error);
         ClipAddResult createEmptyMidiClip(int32_t trackIndex,
                                           int64_t positionSamples = 0,
                                           uint32_t tickResolution = 480,

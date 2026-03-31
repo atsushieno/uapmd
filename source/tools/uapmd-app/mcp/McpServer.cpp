@@ -87,6 +87,127 @@ static double getDoubleArg(const choc::value::Value& args, const char* key, doub
     return fallback;
 }
 
+namespace {
+constexpr std::string_view kMasterMarkerReferenceId = "master_track";
+
+std::string timeReferenceTypeToString(uapmd::TimeReferenceType type)
+{
+    switch (type) {
+        case uapmd::TimeReferenceType::ContainerStart: return "containerStart";
+        case uapmd::TimeReferenceType::ContainerEnd: return "containerEnd";
+        case uapmd::TimeReferenceType::Point: return "point";
+    }
+    return "containerStart";
+}
+
+bool parseTimeReferenceType(std::string_view text, uapmd::TimeReferenceType& type)
+{
+    if (text == "containerStart") { type = uapmd::TimeReferenceType::ContainerStart; return true; }
+    if (text == "containerEnd") { type = uapmd::TimeReferenceType::ContainerEnd; return true; }
+    if (text == "point") { type = uapmd::TimeReferenceType::Point; return true; }
+    return false;
+}
+
+choc::value::Value serializeTimeReference(const uapmd::TimeReference& reference)
+{
+    auto obj = choc::value::createObject ("");
+    obj.setMember ("type", timeReferenceTypeToString(reference.type));
+    obj.setMember ("referenceId", reference.referenceId);
+    obj.setMember ("offset", reference.offset);
+    return obj;
+}
+
+choc::value::Value serializeMarker(const uapmd::ClipMarker& marker, std::string_view ownerReferenceId)
+{
+    auto obj = choc::value::createObject ("");
+    obj.setMember ("markerId", marker.markerId);
+    obj.setMember ("name", marker.name);
+    obj.setMember ("timeReference", serializeTimeReference(marker.timeReference(ownerReferenceId, kMasterMarkerReferenceId)));
+    return obj;
+}
+
+choc::value::Value serializeWarp(const uapmd::AudioWarpPoint& warp, std::string_view ownerReferenceId)
+{
+    auto obj = choc::value::createObject ("");
+    obj.setMember ("speedRatio", warp.speedRatio);
+    obj.setMember ("timeReference", serializeTimeReference(warp.timeReference(ownerReferenceId, kMasterMarkerReferenceId)));
+    return obj;
+}
+
+bool parseTimeReferenceValue(const choc::value::ValueView& value, uapmd::TimeReference& reference, std::string& error)
+{
+    if (!value.isObject()) {
+        error = "timeReference must be an object";
+        return false;
+    }
+    const auto typeText = value.hasObjectMember("type") ? std::string(value["type"].getString()) : std::string{};
+    if (!parseTimeReferenceType(typeText, reference.type)) {
+        error = "timeReference.type is invalid";
+        return false;
+    }
+    reference.referenceId = value.hasObjectMember("referenceId") ? std::string(value["referenceId"].getString()) : std::string{};
+    reference.offset = value.hasObjectMember("offset") ? value["offset"].getWithDefault<double>(0.0) : 0.0;
+    return true;
+}
+
+bool parseMarkersArg(const choc::value::Value& args, const char* key, std::string_view ownerReferenceId,
+                     std::vector<uapmd::ClipMarker>& markers, std::string& error)
+{
+    markers.clear();
+    if (!args.isObject() || !args.hasObjectMember(key))
+        return true;
+    auto array = args[key];
+    if (!array.isArray()) {
+        error = "markers must be an array";
+        return false;
+    }
+    for (const auto& item : array) {
+        if (!item.isObject()) {
+            error = "marker entry must be an object";
+            return false;
+        }
+        uapmd::ClipMarker marker;
+        if (item.hasObjectMember("markerId"))
+            marker.markerId = std::string(item["markerId"].getString());
+        if (item.hasObjectMember("name"))
+            marker.name = std::string(item["name"].getString());
+        uapmd::TimeReference reference;
+        if (!item.hasObjectMember("timeReference") || !parseTimeReferenceValue(item["timeReference"], reference, error))
+            return false;
+        marker.setTimeReference(reference, ownerReferenceId, kMasterMarkerReferenceId);
+        markers.push_back(std::move(marker));
+    }
+    return true;
+}
+
+bool parseWarpsArg(const choc::value::Value& args, const char* key, std::string_view ownerReferenceId,
+                   std::vector<uapmd::AudioWarpPoint>& warps, std::string& error)
+{
+    warps.clear();
+    if (!args.isObject() || !args.hasObjectMember(key))
+        return true;
+    auto array = args[key];
+    if (!array.isArray()) {
+        error = "audioWarps must be an array";
+        return false;
+    }
+    for (const auto& item : array) {
+        if (!item.isObject()) {
+            error = "audioWarp entry must be an object";
+            return false;
+        }
+        uapmd::AudioWarpPoint warp;
+        warp.speedRatio = item.hasObjectMember("speedRatio") ? item["speedRatio"].getWithDefault<double>(1.0) : 1.0;
+        uapmd::TimeReference reference;
+        if (!item.hasObjectMember("timeReference") || !parseTimeReferenceValue(item["timeReference"], reference, error))
+            return false;
+        warp.setTimeReference(reference, ownerReferenceId, kMasterMarkerReferenceId);
+        warps.push_back(std::move(warp));
+    }
+    return true;
+}
+}
+
 // ─────────────────────────────────────────────────
 //  Tool definitions
 // ─────────────────────────────────────────────────
@@ -133,6 +254,26 @@ static choc::value::Value buildToolDefinitions()
             "list_clips",
             "List all clips on a given track.",
             R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"}}})j"
+        },
+        {
+            "get_clip_audio_events",
+            "Get markers and audio warps for a clip.",
+            R"j({"type":"object","required":["trackIndex","clipId"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"}}})j"
+        },
+        {
+            "set_clip_audio_events",
+            "Replace markers and audio warps for an audio clip. Uses timeReference objects with type, referenceId, and offset.",
+            R"j({"type":"object","required":["trackIndex","clipId"],"properties":{"trackIndex":{"type":"integer"},"clipId":{"type":"integer"},"markers":{"type":"array"},"audioWarps":{"type":"array"}}})j"
+        },
+        {
+            "get_master_markers",
+            "Get master-track markers.",
+            R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "set_master_markers",
+            "Replace master-track markers. Uses timeReference objects with type, referenceId, and offset.",
+            R"j({"type":"object","required":["markers"],"properties":{"markers":{"type":"array"}}})j"
         },
         {
             "add_midi_clip",
@@ -378,6 +519,87 @@ static choc::value::Value toolListClips(const choc::value::Value& args)
 
     auto result = choc::value::createObject ("");
     result.setMember ("clips", arr);
+    return result;
+}
+
+static choc::value::Value toolGetClipAudioEvents(const choc::value::Value& args)
+{
+    auto trackIndex = getIntArg(args, "trackIndex", -1);
+    auto clipId = getIntArg(args, "clipId", -1);
+    std::vector<uapmd::ClipMarker> markers;
+    std::vector<uapmd::AudioWarpPoint> warps;
+    std::string error;
+
+    if (!AppModel::instance().getClipAudioEvents(trackIndex, clipId, markers, warps, error))
+        throw std::invalid_argument(error);
+
+    std::string ownerReferenceId = std::string(kMasterMarkerReferenceId);
+    if (trackIndex != uapmd::kMasterTrackIndex) {
+        auto tracks = AppModel::instance().getTimelineTracks();
+        if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
+            if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
+                ownerReferenceId = clip->referenceId;
+        }
+    }
+
+    auto result = choc::value::createObject ("");
+    auto markerArray = choc::value::createEmptyArray();
+    for (const auto& marker : markers)
+        markerArray.addArrayElement(serializeMarker(marker, ownerReferenceId));
+    auto warpArray = choc::value::createEmptyArray();
+    for (const auto& warp : warps)
+        warpArray.addArrayElement(serializeWarp(warp, ownerReferenceId));
+    result.setMember("markers", markerArray);
+    result.setMember("audioWarps", warpArray);
+    return result;
+}
+
+static choc::value::Value toolSetClipAudioEvents(const choc::value::Value& args)
+{
+    auto trackIndex = getIntArg(args, "trackIndex", -1);
+    auto clipId = getIntArg(args, "clipId", -1);
+    auto tracks = AppModel::instance().getTimelineTracks();
+    std::string ownerReferenceId = std::string(kMasterMarkerReferenceId);
+    if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex]) {
+        if (auto* clip = tracks[trackIndex]->clipManager().getClip(clipId))
+            ownerReferenceId = clip->referenceId;
+    }
+
+    std::vector<uapmd::ClipMarker> markers;
+    std::vector<uapmd::AudioWarpPoint> warps;
+    std::string error;
+    if (!parseMarkersArg(args, "markers", ownerReferenceId, markers, error) ||
+        !parseWarpsArg(args, "audioWarps", ownerReferenceId, warps, error) ||
+        !AppModel::instance().setClipAudioEvents(trackIndex, clipId, std::move(markers), std::move(warps), error)) {
+        throw std::invalid_argument(error);
+    }
+
+    auto result = choc::value::createObject ("");
+    result.setMember("success", true);
+    return result;
+}
+
+static choc::value::Value toolGetMasterMarkers(const choc::value::Value&)
+{
+    auto result = choc::value::createObject ("");
+    auto markerArray = choc::value::createEmptyArray();
+    for (const auto& marker : AppModel::instance().masterTrackMarkers())
+        markerArray.addArrayElement(serializeMarker(marker, kMasterMarkerReferenceId));
+    result.setMember("markers", markerArray);
+    return result;
+}
+
+static choc::value::Value toolSetMasterMarkers(const choc::value::Value& args)
+{
+    std::vector<uapmd::ClipMarker> markers;
+    std::string error;
+    if (!parseMarkersArg(args, "markers", kMasterMarkerReferenceId, markers, error) ||
+        !AppModel::instance().setMasterTrackMarkersWithValidation(std::move(markers), error)) {
+        throw std::invalid_argument(error);
+    }
+
+    auto result = choc::value::createObject ("");
+    result.setMember("success", true);
     return result;
 }
 
@@ -733,8 +955,12 @@ struct McpServer::Impl {
             else if (toolName == "add_plugin_to_track") toolResult = toolAddPluginToTrack (args);
             else if (toolName == "get_timeline_state")  toolResult = toolGetTimelineState (args);
             else if (toolName == "set_tempo")           toolResult = toolSetTempo (args);
-            else if (toolName == "list_clips")          toolResult = toolListClips (args);
-            else if (toolName == "add_midi_clip")       toolResult = toolAddMidiClip (args);
+            else if (toolName == "list_clips")               toolResult = toolListClips (args);
+            else if (toolName == "get_clip_audio_events")    toolResult = toolGetClipAudioEvents (args);
+            else if (toolName == "set_clip_audio_events")    toolResult = toolSetClipAudioEvents (args);
+            else if (toolName == "get_master_markers")       toolResult = toolGetMasterMarkers (args);
+            else if (toolName == "set_master_markers")       toolResult = toolSetMasterMarkers (args);
+            else if (toolName == "add_midi_clip")            toolResult = toolAddMidiClip (args);
             else if (toolName == "remove_clip")              toolResult = toolRemoveClip (args);
             else if (toolName == "get_clip_ump_events")      toolResult = toolGetClipUmpEvents (args);
             else if (toolName == "add_ump_event")            toolResult = toolAddUmpEvent (args);

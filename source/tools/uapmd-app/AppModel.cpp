@@ -1758,6 +1758,334 @@ bool uapmd::AppModel::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
 
 // Internal helper: look up a MIDI source node, run modifier(words, ticks, error),
 // then commit by replacing the clip source node.
+namespace {
+
+constexpr std::string_view kMasterMarkerReferenceId = "master_track";
+
+int64_t secondsToSamples(double seconds, double sampleRate) {
+    return static_cast<int64_t>(std::llround(seconds * sampleRate));
+}
+
+bool referencesThisClipEnd(const uapmd::ClipMarker& marker, std::string_view clipReferenceId) {
+    const auto reference = marker.timeReference(clipReferenceId, kMasterMarkerReferenceId);
+    return reference.type == uapmd::TimeReferenceType::ContainerEnd &&
+           (reference.referenceId.empty() || reference.referenceId == clipReferenceId);
+}
+
+bool referencesThisClipEnd(const uapmd::AudioWarpPoint& warp, std::string_view clipReferenceId) {
+    const auto reference = warp.timeReference(clipReferenceId, kMasterMarkerReferenceId);
+    return reference.type == uapmd::TimeReferenceType::ContainerEnd &&
+           (reference.referenceId.empty() || reference.referenceId == clipReferenceId);
+}
+
+std::unordered_map<std::string, uapmd::ClipData> buildClipReferenceMap(const std::vector<uapmd::TimelineTrack*>& tracks) {
+    std::unordered_map<std::string, uapmd::ClipData> clipLookup;
+    for (auto* track : tracks) {
+        if (!track)
+            continue;
+        for (auto& clip : track->clipManager().getAllClips())
+            clipLookup[clip.referenceId] = std::move(clip);
+    }
+    return clipLookup;
+}
+
+const uapmd::ClipMarker* findMarkerById(const std::vector<uapmd::ClipMarker>& markers, std::string_view markerId) {
+    auto it = std::find_if(markers.begin(), markers.end(), [markerId](const auto& marker) {
+        return marker.markerId == markerId;
+    });
+    return it == markers.end() ? nullptr : &(*it);
+}
+
+struct MarkerKey {
+    std::string clipReferenceId;
+    std::string markerId;
+
+    bool operator==(const MarkerKey& other) const {
+        return clipReferenceId == other.clipReferenceId && markerId == other.markerId;
+    }
+};
+
+struct MarkerKeyHash {
+    size_t operator()(const MarkerKey& key) const {
+        size_t seed = std::hash<std::string>{}(key.clipReferenceId);
+        seed ^= std::hash<std::string>{}(key.markerId) + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
+std::optional<int64_t> resolveMarkerAbsoluteSample(
+    std::string_view ownerReferenceId,
+    const uapmd::ClipMarker& marker,
+    const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
+    const std::vector<uapmd::ClipMarker>& masterTrackMarkers,
+    std::unordered_map<MarkerKey, std::optional<int64_t>, MarkerKeyHash>& cache,
+    std::unordered_set<MarkerKey, MarkerKeyHash>& resolving
+);
+
+std::optional<int64_t> resolveReferenceAbsoluteSample(
+    std::string_view ownerReferenceId,
+    const uapmd::ClipData* ownerClip,
+    const uapmd::TimeReference& reference,
+    const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
+    const std::vector<uapmd::ClipMarker>& masterTrackMarkers,
+    std::unordered_map<MarkerKey, std::optional<int64_t>, MarkerKeyHash>& cache,
+    std::unordered_set<MarkerKey, MarkerKeyHash>& resolving
+) {
+    switch (reference.type) {
+        case uapmd::TimeReferenceType::ContainerStart: {
+            const std::string effectiveReferenceId = reference.referenceId.empty()
+                ? std::string(ownerReferenceId)
+                : reference.referenceId;
+            if (effectiveReferenceId == kMasterMarkerReferenceId)
+                return 0;
+            if (effectiveReferenceId == ownerReferenceId)
+                return ownerClip ? std::optional<int64_t>(ownerClip->position.samples) : std::optional<int64_t>(0);
+            auto clipIt = clipLookup.find(effectiveReferenceId);
+            return clipIt == clipLookup.end() ? std::nullopt : std::optional<int64_t>(clipIt->second.position.samples);
+        }
+        case uapmd::TimeReferenceType::ContainerEnd: {
+            const std::string effectiveReferenceId = reference.referenceId.empty()
+                ? std::string(ownerReferenceId)
+                : reference.referenceId;
+            if (effectiveReferenceId == kMasterMarkerReferenceId)
+                return std::nullopt;
+            if (effectiveReferenceId == ownerReferenceId) {
+                if (!ownerClip)
+                    return std::nullopt;
+                return ownerClip->position.samples + ownerClip->durationSamples;
+            }
+            auto clipIt = clipLookup.find(effectiveReferenceId);
+            if (clipIt == clipLookup.end())
+                return std::nullopt;
+            return clipIt->second.position.samples + clipIt->second.durationSamples;
+        }
+        case uapmd::TimeReferenceType::Point: {
+            std::string containerReferenceId;
+            std::string pointReferenceId;
+            if (!uapmd::TimeReference::parsePointReferenceId(reference.referenceId, containerReferenceId, pointReferenceId))
+                return std::nullopt;
+            if (containerReferenceId == kMasterMarkerReferenceId) {
+                auto* marker = findMarkerById(masterTrackMarkers, pointReferenceId);
+                if (!marker)
+                    return std::nullopt;
+                return resolveMarkerAbsoluteSample(kMasterMarkerReferenceId, *marker, clipLookup, masterTrackMarkers, cache, resolving);
+            }
+            auto clipIt = clipLookup.find(containerReferenceId);
+            if (clipIt == clipLookup.end())
+                return std::nullopt;
+            auto* marker = findMarkerById(clipIt->second.markers, pointReferenceId);
+            if (!marker)
+                return std::nullopt;
+            return resolveMarkerAbsoluteSample(containerReferenceId, *marker, clipLookup, masterTrackMarkers, cache, resolving);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<int64_t> resolveMarkerAbsoluteSample(
+    std::string_view ownerReferenceId,
+    const uapmd::ClipMarker& marker,
+    const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
+    const std::vector<uapmd::ClipMarker>& masterTrackMarkers,
+    std::unordered_map<MarkerKey, std::optional<int64_t>, MarkerKeyHash>& cache,
+    std::unordered_set<MarkerKey, MarkerKeyHash>& resolving
+) {
+    MarkerKey key{std::string(ownerReferenceId), marker.markerId};
+    if (auto it = cache.find(key); it != cache.end())
+        return it->second;
+    if (!resolving.insert(key).second) {
+        cache[key] = std::nullopt;
+        return std::nullopt;
+    }
+
+    const uapmd::ClipData* ownerClip = nullptr;
+    if (ownerReferenceId != kMasterMarkerReferenceId) {
+        auto clipIt = clipLookup.find(std::string(ownerReferenceId));
+        if (clipIt != clipLookup.end())
+            ownerClip = &clipIt->second;
+    }
+
+    auto absoluteReferenceSample = resolveReferenceAbsoluteSample(
+        ownerReferenceId,
+        ownerClip,
+        marker.timeReference(ownerReferenceId, kMasterMarkerReferenceId),
+        clipLookup,
+        masterTrackMarkers,
+        cache,
+        resolving);
+
+    std::optional<int64_t> resolved;
+    if (absoluteReferenceSample) {
+        const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+        resolved = *absoluteReferenceSample + secondsToSamples(marker.clipPositionOffset, sampleRate);
+    }
+
+    resolving.erase(key);
+    cache[key] = resolved;
+    return resolved;
+}
+
+std::optional<int64_t> resolveAudioWarpClipPosition(
+    const uapmd::ClipData& targetClip,
+    const uapmd::AudioWarpPoint& warp,
+    const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
+    const std::vector<uapmd::ClipMarker>& masterTrackMarkers
+) {
+    std::unordered_map<MarkerKey, std::optional<int64_t>, MarkerKeyHash> cache;
+    std::unordered_set<MarkerKey, MarkerKeyHash> resolving;
+    auto absoluteReferenceSample = resolveReferenceAbsoluteSample(
+        targetClip.referenceId,
+        &targetClip,
+        warp.timeReference(targetClip.referenceId, kMasterMarkerReferenceId),
+        clipLookup,
+        masterTrackMarkers,
+        cache,
+        resolving);
+    if (!absoluteReferenceSample)
+        return std::nullopt;
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const int64_t absoluteSample = *absoluteReferenceSample + secondsToSamples(warp.clipPositionOffset, sampleRate);
+    const int64_t clipPosition = absoluteSample - targetClip.position.samples;
+    if (clipPosition < 0 || clipPosition > targetClip.durationSamples)
+        return std::nullopt;
+    return clipPosition;
+}
+
+std::vector<uapmd::AudioWarpPoint> resolveAudioWarpPoints(
+    const uapmd::ClipData& targetClip,
+    const std::vector<uapmd::AudioWarpPoint>& audioWarps,
+    const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
+    const std::vector<uapmd::ClipMarker>& masterTrackMarkers
+) {
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    std::vector<uapmd::AudioWarpPoint> resolved;
+    resolved.reserve(audioWarps.size());
+    for (auto warp : audioWarps) {
+        if (auto clipPosition = resolveAudioWarpClipPosition(targetClip, warp, clipLookup, masterTrackMarkers)) {
+            warp.clipPositionOffset = static_cast<double>(*clipPosition) / sampleRate;
+            resolved.push_back(std::move(warp));
+        }
+    }
+    return resolved;
+}
+
+bool validateMarkerGraphAcyclic(
+    std::string_view ownerReferenceId,
+    const std::vector<uapmd::ClipMarker>& markers,
+    const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
+    const std::vector<uapmd::ClipMarker>& masterTrackMarkers
+) {
+    std::unordered_map<std::string, std::vector<uapmd::ClipMarker>> markersByOwner;
+    for (const auto& [referenceId, clipData] : clipLookup)
+        markersByOwner[referenceId] = clipData.markers;
+    markersByOwner[std::string(ownerReferenceId)] = markers;
+    markersByOwner[std::string(kMasterMarkerReferenceId)] = masterTrackMarkers;
+
+    auto findMarker = [&](const MarkerKey& key) -> const uapmd::ClipMarker* {
+        auto ownerIt = markersByOwner.find(key.clipReferenceId);
+        if (ownerIt == markersByOwner.end())
+            return nullptr;
+        return findMarkerById(ownerIt->second, key.markerId);
+    };
+
+    for (const auto& marker : markers) {
+        MarkerKey start{std::string(ownerReferenceId), marker.markerId};
+        std::unordered_set<MarkerKey, MarkerKeyHash> visited;
+        std::function<bool(const MarkerKey&)> visit = [&](const MarkerKey& key) -> bool {
+            if (!visited.insert(key).second)
+                return true;
+            const auto* current = findMarker(key);
+            if (!current)
+                return false;
+            const auto reference = current->timeReference(key.clipReferenceId, kMasterMarkerReferenceId);
+            if (reference.type != uapmd::TimeReferenceType::Point)
+                return false;
+
+            std::string nextOwner;
+            std::string nextMarker;
+            if (!uapmd::TimeReference::parsePointReferenceId(reference.referenceId, nextOwner, nextMarker))
+                return false;
+            if (nextMarker.empty())
+                return false;
+            return visit(MarkerKey{std::move(nextOwner), std::move(nextMarker)});
+        };
+
+        if (visit(start))
+            return false;
+    }
+    return true;
+}
+
+void resolveAllClipAnchorsInAppModel(uapmd::AppModel& appModel) {
+    auto tracks = appModel.getTimelineTracks();
+
+    struct ClipRecord {
+        uapmd::ClipManager* clipManager{nullptr};
+        uapmd::ClipData clip;
+    };
+
+    std::unordered_map<std::string, ClipRecord> clipRecords;
+    auto collectTrack = [&clipRecords](uapmd::TimelineTrack* track) {
+        if (!track)
+            return;
+        for (const auto& clip : track->clipManager().getAllClips())
+            clipRecords.emplace(clip.referenceId, ClipRecord{&track->clipManager(), clip});
+    };
+
+    for (auto* track : tracks)
+        collectTrack(track);
+    collectTrack(appModel.getMasterTimelineTrack());
+
+    std::unordered_map<std::string, uapmd::TimelinePosition> resolvedPositions;
+    std::unordered_set<std::string> resolving;
+
+    std::function<uapmd::TimelinePosition(const std::string&)> resolveClipPosition =
+        [&](const std::string& key) -> uapmd::TimelinePosition {
+            if (auto it = resolvedPositions.find(key); it != resolvedPositions.end())
+                return it->second;
+
+            auto recordIt = clipRecords.find(key);
+            if (recordIt == clipRecords.end())
+                return {};
+
+            const auto& clip = recordIt->second.clip;
+            const auto timeReference = clip.timeReference(appModel.sampleRate());
+            if (timeReference.referenceId.empty()) {
+                auto resolved = uapmd::TimelinePosition::fromSeconds(timeReference.offset, appModel.sampleRate());
+                resolvedPositions[key] = resolved;
+                return resolved;
+            }
+
+            if (!resolving.insert(key).second) {
+                auto resolved = uapmd::TimelinePosition::fromSeconds(timeReference.offset, appModel.sampleRate());
+                resolvedPositions[key] = resolved;
+                return resolved;
+            }
+
+            auto anchorIt = clipRecords.find(timeReference.referenceId);
+            if (anchorIt == clipRecords.end()) {
+                resolving.erase(key);
+                auto resolved = uapmd::TimelinePosition::fromSeconds(timeReference.offset, appModel.sampleRate());
+                resolvedPositions[key] = resolved;
+                return resolved;
+            }
+
+            auto anchorPosition = resolveClipPosition(timeReference.referenceId);
+            if (timeReference.type == uapmd::TimeReferenceType::ContainerEnd)
+                anchorPosition.samples += anchorIt->second.clip.durationSamples;
+
+            auto resolved = anchorPosition + uapmd::TimelinePosition::fromSeconds(timeReference.offset, appModel.sampleRate());
+            resolvedPositions[key] = resolved;
+            resolving.erase(key);
+            return resolved;
+        };
+
+    for (const auto& [key, record] : clipRecords)
+        record.clipManager->setClipPosition(record.clip.clipId, resolveClipPosition(key));
+}
+
+} // namespace
+
 static bool modifyMidiClipUmp(
     int32_t trackIndex, int32_t clipId,
     const std::function<bool(std::vector<uapmd_ump_t>&,
@@ -1872,7 +2200,7 @@ bool uapmd::AppModel::addUmpEventToClip(int32_t trackIndex, int32_t clipId,
 }
 
 bool uapmd::AppModel::removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
-                                              int32_t eventIndex, std::string& error)
+                                             int32_t eventIndex, std::string& error)
 {
     if (eventIndex < 0) { error = "eventIndex must be >= 0"; return false; }
     return modifyMidiClipUmp(trackIndex, clipId,
@@ -1904,6 +2232,166 @@ bool uapmd::AppModel::removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
             }
             return true;
         }, error);
+}
+
+bool uapmd::AppModel::getClipAudioEvents(int32_t trackIndex, int32_t clipId,
+                                         std::vector<uapmd::ClipMarker>& markers,
+                                         std::vector<uapmd::AudioWarpPoint>& audioWarps,
+                                         std::string& error) const
+{
+    if (trackIndex == uapmd::kMasterTrackIndex) {
+        markers = master_track_markers_;
+        audioWarps.clear();
+        return true;
+    }
+
+    auto tracks = const_cast<AppModel*>(this)->getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex]) {
+        error = "Track not found";
+        return false;
+    }
+
+    auto* clip = tracks[trackIndex]->clipManager().getClip(clipId);
+    if (!clip) {
+        error = "Clip not found";
+        return false;
+    }
+
+    markers = clip->markers;
+    audioWarps = clip->audioWarps;
+    return true;
+}
+
+bool uapmd::AppModel::setMasterTrackMarkersWithValidation(std::vector<uapmd::ClipMarker> markers, std::string& error)
+{
+    std::unordered_set<std::string> ids;
+    for (size_t i = 0; i < markers.size(); ++i) {
+        if (markers[i].markerId.empty())
+            markers[i].markerId = std::format("marker_{}", i + 1);
+        if (!ids.insert(markers[i].markerId).second) {
+            error = std::format("Duplicate marker ID '{}'", markers[i].markerId);
+            return false;
+        }
+    }
+
+    auto clipLookup = buildClipReferenceMap(getTimelineTracks());
+    if (!validateMarkerGraphAcyclic(kMasterMarkerReferenceId, markers, clipLookup, markers)) {
+        error = "Recursive marker references are not allowed.";
+        return false;
+    }
+
+    setMasterTrackMarkers(std::move(markers));
+    return true;
+}
+
+bool uapmd::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
+                                         std::vector<uapmd::ClipMarker> markers,
+                                         std::vector<uapmd::AudioWarpPoint> audioWarps,
+                                         std::string& error)
+{
+    if (trackIndex == uapmd::kMasterTrackIndex)
+        return setMasterTrackMarkersWithValidation(std::move(markers), error);
+
+    auto tracks = getTimelineTracks();
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()) || !tracks[trackIndex]) {
+        error = "Track unavailable.";
+        return false;
+    }
+
+    auto& track = tracks[trackIndex];
+    auto* clip = track->clipManager().getClip(clipId);
+    if (!clip) {
+        error = "Clip not found.";
+        return false;
+    }
+    if (clip->clipType != uapmd::ClipType::Audio) {
+        error = "Selected clip is not an audio clip.";
+        return false;
+    }
+    if (clip->filepath.empty()) {
+        error = "Audio clip has no source file path.";
+        return false;
+    }
+
+    std::unordered_set<std::string> markerIds;
+    for (size_t i = 0; i < markers.size(); ++i) {
+        if (markers[i].markerId.empty())
+            markers[i].markerId = std::format("marker_{}", i + 1);
+        if (!markerIds.insert(markers[i].markerId).second) {
+            error = std::format("Duplicate marker ID '{}'.", markers[i].markerId);
+            return false;
+        }
+    }
+
+    auto clipLookup = buildClipReferenceMap(tracks);
+    auto proposedMasterMarkers = master_track_markers_;
+    if (!validateMarkerGraphAcyclic(clip->referenceId, markers, clipLookup, proposedMasterMarkers)) {
+        error = "Recursive marker references are not allowed.";
+        return false;
+    }
+
+    for (const auto& warp : audioWarps) {
+        if (!std::isfinite(warp.speedRatio) || warp.speedRatio <= 0.0) {
+            error = "Warp speed ratio must be positive and finite.";
+            return false;
+        }
+
+        const auto reference = warp.timeReference(clip->referenceId, kMasterMarkerReferenceId);
+        if (reference.type == uapmd::TimeReferenceType::Point) {
+            std::string ownerReferenceId;
+            std::string markerId;
+            if (!uapmd::TimeReference::parsePointReferenceId(reference.referenceId, ownerReferenceId, markerId)) {
+                error = "Warp point reference is invalid.";
+                return false;
+            }
+            if (ownerReferenceId == clip->referenceId && !markerIds.contains(markerId)) {
+                error = std::format("Warp references unknown local marker ID '{}'.", markerId);
+                return false;
+            }
+        }
+    }
+
+    const int64_t authoredDuration = clip->durationSamples;
+    const bool preserveClipDuration = std::ranges::any_of(markers, [&](const auto& marker) {
+            return referencesThisClipEnd(marker, clip->referenceId);
+        }) || std::ranges::any_of(audioWarps, [&](const auto& warp) {
+            return referencesThisClipEnd(warp, clip->referenceId);
+        });
+
+    auto reader = uapmd::createAudioFileReaderFromPath(clip->filepath);
+    if (!reader) {
+        error = "Could not reopen the audio file for warp rebuild.";
+        return false;
+    }
+
+    auto targetClip = *clip;
+    targetClip.markers = markers;
+    clipLookup[targetClip.referenceId] = targetClip;
+    auto resolvedWarps = resolveAudioWarpPoints(targetClip, audioWarps, clipLookup, master_track_markers_);
+    auto newNode = std::make_unique<uapmd::AudioFileSourceNode>(
+        clip->sourceNodeInstanceId,
+        std::move(reader),
+        static_cast<double>(sampleRate()),
+        resolvedWarps
+    );
+
+    if (!track->clipManager().setClipMarkers(clipId, markers)) {
+        error = "Failed to update clip markers.";
+        return false;
+    }
+    if (!track->clipManager().setAudioWarps(clipId, audioWarps)) {
+        error = "Failed to update audio warp points.";
+        return false;
+    }
+    if (!track->replaceClipSourceNode(clipId, std::move(newNode))) {
+        error = "Failed to rebuild warped audio source.";
+        return false;
+    }
+    if (preserveClipDuration)
+        track->clipManager().resizeClip(clipId, authoredDuration);
+
+    resolveAllClipAnchorsInAppModel(*this);
+    return true;
 }
 
 uapmd::AppModel::ClipAddResult uapmd::AppModel::createEmptyMidiClip(
