@@ -13,6 +13,10 @@ namespace uapmd {
         constexpr double kSampleRateTolerance = 0.01;
         constexpr double kMinimumRatio = 1.0e-9;
 
+        int64_t secondsToSamples(double seconds, double sampleRate) {
+            return static_cast<int64_t>(std::llround(seconds * sampleRate));
+        }
+
         struct WarpSegment {
             int64_t inputStart{0};
             int64_t inputSamples{0};
@@ -71,7 +75,7 @@ namespace uapmd {
             return resampled;
         }
 
-        std::vector<AudioWarpPoint> normalizeWarps(std::vector<AudioWarpPoint> audioWarps, int64_t sourceFrames) {
+        std::vector<AudioWarpPoint> normalizeWarps(std::vector<AudioWarpPoint> audioWarps) {
             std::stable_sort(audioWarps.begin(), audioWarps.end(), [](const AudioWarpPoint& a, const AudioWarpPoint& b) {
                 return a.clipPositionOffset < b.clipPositionOffset;
             });
@@ -84,7 +88,7 @@ namespace uapmd {
 
             for (const auto& warp : audioWarps) {
                 AudioWarpPoint value = warp;
-                value.clipPositionOffset = std::max<int64_t>(0, value.clipPositionOffset);
+                value.clipPositionOffset = std::max(0.0, value.clipPositionOffset);
                 if (!std::isfinite(value.speedRatio) || value.speedRatio <= 0.0)
                     value.speedRatio = 1.0;
 
@@ -97,7 +101,7 @@ namespace uapmd {
             return normalized;
         }
 
-        std::vector<WarpSegment> buildWarpSegments(const std::vector<AudioWarpPoint>& warps, int64_t sourceFrames) {
+        std::vector<WarpSegment> buildWarpSegments(const std::vector<AudioWarpPoint>& warps, int64_t sourceFrames, double targetSampleRate) {
             std::vector<WarpSegment> segments;
             if (warps.empty())
                 return segments;
@@ -110,7 +114,7 @@ namespace uapmd {
                 WarpSegment segment;
                 currentSourcePosition = std::clamp<int64_t>(currentSourcePosition, 0, sourceFrames);
                 segment.inputStart = currentSourcePosition;
-                const int64_t outputSamples = std::max<int64_t>(0, end.clipPositionOffset - start.clipPositionOffset);
+                const int64_t outputSamples = std::max<int64_t>(0, secondsToSamples(end.clipPositionOffset - start.clipPositionOffset, targetSampleRate));
                 const int64_t nextSourcePosition = std::clamp<int64_t>(
                     currentSourcePosition + static_cast<int64_t>(std::llround(
                         static_cast<double>(outputSamples) * std::max(start.speedRatio, kMinimumRatio))),
@@ -186,8 +190,8 @@ namespace uapmd {
                 return {};
 
             const int64_t sourceFrames = static_cast<int64_t>(source[0].size());
-            auto normalizedWarps = normalizeWarps(audioWarps, sourceFrames);
-            auto segments = buildWarpSegments(normalizedWarps, sourceFrames);
+            auto normalizedWarps = normalizeWarps(audioWarps);
+            auto segments = buildWarpSegments(normalizedWarps, sourceFrames, targetSampleRate);
 
             for (const auto& segment : segments)
                 renderedFrames += segment.outputSamples;

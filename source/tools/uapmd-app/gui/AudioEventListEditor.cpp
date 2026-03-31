@@ -97,6 +97,16 @@ bool markerMatchesOption(const AudioEventListEditor::MarkerRow& row,
            trimmedString(row.referenceMarkerId.data()) == option.referenceMarkerId;
 }
 
+std::string markerReferenceLabel(const AudioEventListEditor::MarkerRow& row,
+                                 const std::vector<AudioEventListEditor::ClipData::ReferencePointOption>& referenceOptions,
+                                 std::string_view clipReferenceId) {
+    for (const auto& option : referenceOptions) {
+        if (markerMatchesOption(row, option, clipReferenceId))
+            return option.label;
+    }
+    return "(unresolved)";
+}
+
 std::optional<int64_t> resolveMarkerRowClipPosition(
     const AudioEventListEditor::WindowState& state,
     const AudioEventListEditor::MarkerRow& row,
@@ -153,7 +163,8 @@ std::optional<int64_t> resolveMarkerRowClipPosition(
         }
     }
 
-    const int64_t clipPosition = referencePosition + row.clipPositionOffset;
+    const int64_t clipPosition = referencePosition + static_cast<int64_t>(std::llround(
+        row.clipPositionOffset * std::max(1, state.data.sampleRate)));
     if (clipPosition < 0 || clipPosition > state.data.durationSamples)
         return std::nullopt;
     return clipPosition;
@@ -221,6 +232,79 @@ std::string sampleColumnLabel(std::string_view prefix, int32_t sampleRate) {
     if (sampleRate <= 0)
         return std::string(prefix);
     return std::format("{} @ {} Hz", prefix, sampleRate);
+}
+
+std::string secondsColumnLabel(std::string_view prefix) {
+    return std::format("{} (s)", prefix);
+}
+
+template <typename T>
+bool compareValues(const T& lhs, const T& rhs, ImGuiSortDirection direction) {
+    if (direction == ImGuiSortDirection_Ascending)
+        return lhs < rhs;
+    return rhs < lhs;
+}
+
+void sortMarkerRows(
+    AudioEventListEditor::WindowState& state,
+    const std::vector<AudioEventListEditor::ClipData::ReferencePointOption>& referenceOptions,
+    const ImGuiTableSortSpecs* sortSpecs
+) {
+    if (!sortSpecs || sortSpecs->SpecsCount <= 0)
+        return;
+
+    const auto& spec = sortSpecs->Specs[0];
+    std::stable_sort(state.markerRows.begin(), state.markerRows.end(), [&](const auto& lhs, const auto& rhs) {
+        switch (spec.ColumnIndex) {
+            case 0:
+                return compareValues(
+                    markerReferenceLabel(lhs, referenceOptions, state.data.clipReferenceId),
+                    markerReferenceLabel(rhs, referenceOptions, state.data.clipReferenceId),
+                    spec.SortDirection);
+            case 1:
+                return compareValues(lhs.clipPositionOffset, rhs.clipPositionOffset, spec.SortDirection);
+            case 2:
+                return compareValues(trimmedString(lhs.name.data()), trimmedString(rhs.name.data()), spec.SortDirection);
+            default:
+                return false;
+        }
+    });
+}
+
+void sortWarpRows(
+    AudioEventListEditor::WindowState& state,
+    const std::vector<AudioEventListEditor::ClipData::ReferencePointOption>& referenceOptions,
+    const ImGuiTableSortSpecs* sortSpecs
+) {
+    if (!sortSpecs || sortSpecs->SpecsCount <= 0)
+        return;
+
+    const auto& spec = sortSpecs->Specs[0];
+    std::stable_sort(state.warpRows.begin(), state.warpRows.end(), [&](const auto& lhs, const auto& rhs) {
+        auto displayedClipTime = [&](const AudioEventListEditor::WarpRow& row) {
+            auto it = std::find_if(referenceOptions.begin(), referenceOptions.end(), [&](const auto& option) {
+                return option.resolved && warpMatchesOption(row, option);
+            });
+            if (it == referenceOptions.end())
+                return row.clipPositionOffset;
+            return samplesToSeconds(it->clipPositionSamples, state.data.sampleRate) + row.clipPositionOffset;
+        };
+
+        switch (spec.ColumnIndex) {
+            case 0:
+                return compareValues(referenceSelectorLabel(lhs, referenceOptions),
+                                     referenceSelectorLabel(rhs, referenceOptions),
+                                     spec.SortDirection);
+            case 1:
+                return compareValues(displayedClipTime(lhs), displayedClipTime(rhs), spec.SortDirection);
+            case 2:
+                return compareValues(lhs.clipPositionOffset, rhs.clipPositionOffset, spec.SortDirection);
+            case 3:
+                return compareValues(lhs.speedRatio, rhs.speedRatio, spec.SortDirection);
+            default:
+                return false;
+        }
+    });
 }
 
 bool buildPayload(int32_t trackIndex,
@@ -490,15 +574,19 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
             }
 
             ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
+                ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable;
             const float markerHeight = std::max(120.0f * context.uiScale,
                 ImGui::GetTextLineHeightWithSpacing() * 6.0f);
             if (ImGui::BeginTable("AudioMarkersTable", 4, flags, ImVec2(0, markerHeight))) {
                 ImGui::TableSetupColumn("Reference Point", ImGuiTableColumnFlags_WidthStretch);
-                const std::string markerClipColumn = sampleColumnLabel("Clip Offset", state.data.sampleRate);
+                const std::string markerClipColumn = secondsColumnLabel("Offset");
                 ImGui::TableSetupColumn(markerClipColumn.c_str(), ImGuiTableColumnFlags_WidthFixed, 130.0f * context.uiScale);
                 ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 180.0f * context.uiScale);
-                ImGui::TableSetupColumn("Delete", ImGuiTableColumnFlags_WidthFixed, 70.0f * context.uiScale);
+                ImGui::TableSetupColumn("Delete", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 70.0f * context.uiScale);
+                if (auto* sortSpecs = ImGui::TableGetSortSpecs(); sortSpecs && sortSpecs->SpecsDirty) {
+                    sortMarkerRows(state, referenceOptions, sortSpecs);
+                    sortSpecs->SpecsDirty = false;
+                }
                 ImGui::TableHeadersRow();
 
                 for (size_t i = 0; i < state.markerRows.size();) {
@@ -547,7 +635,7 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
 
                     ImGui::TableSetColumnIndex(1);
                     ImGui::SetNextItemWidth(-FLT_MIN);
-                    ImGui::InputScalar("##marker_clip_offset", ImGuiDataType_S64, &row.clipPositionOffset);
+                    ImGui::InputDouble("##marker_clip_offset", &row.clipPositionOffset, 0.0, 0.0, "%.6f");
                     if (auto resolvedClipPosition = resolveMarkerRowClipPosition(state, row, externalReferenceOptions);
                         resolvedClipPosition && state.data.sampleRate > 0) {
                         ImGui::SetItemTooltip("Resolved %.6fs", samplesToSeconds(*resolvedClipPosition, state.data.sampleRate));
@@ -575,21 +663,27 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
         if (!state.data.markerOnly && ImGui::CollapsingHeader("Warps", ImGuiTreeNodeFlags_DefaultOpen)) {
             if (ImGui::Button("Add Warp")) {
                 WarpRow row;
+                row.referenceType = AudioWarpReferenceType::ClipStart;
+                copyStringToBuffer(state.data.clipReferenceId, row.referenceClipId);
                 state.warpRows.push_back(row);
             }
 
             ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
+                ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable;
             const float warpHeight = std::max(180.0f * context.uiScale,
                 ImGui::GetTextLineHeightWithSpacing() * 8.0f);
             if (ImGui::BeginTable("AudioWarpsTable", 5, flags, ImVec2(0, warpHeight))) {
                 ImGui::TableSetupColumn("Reference Point", ImGuiTableColumnFlags_WidthStretch);
-                const std::string clipColumn = sampleColumnLabel("Clip Sample", state.data.sampleRate);
-                const std::string sourceColumn = sampleColumnLabel("Offset", state.data.sampleRate);
+                const std::string clipColumn = secondsColumnLabel("Clip Time");
+                const std::string sourceColumn = secondsColumnLabel("Offset");
                 ImGui::TableSetupColumn(clipColumn.c_str(), ImGuiTableColumnFlags_WidthFixed, 130.0f * context.uiScale);
                 ImGui::TableSetupColumn(sourceColumn.c_str(), ImGuiTableColumnFlags_WidthFixed, 130.0f * context.uiScale);
                 ImGui::TableSetupColumn("Ratio", ImGuiTableColumnFlags_WidthFixed, 100.0f * context.uiScale);
-                ImGui::TableSetupColumn("Delete", ImGuiTableColumnFlags_WidthFixed, 70.0f * context.uiScale);
+                ImGui::TableSetupColumn("Delete", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 70.0f * context.uiScale);
+                if (auto* sortSpecs = ImGui::TableGetSortSpecs(); sortSpecs && sortSpecs->SpecsDirty) {
+                    sortWarpRows(state, referenceOptions, sortSpecs);
+                    sortSpecs->SpecsDirty = false;
+                }
                 ImGui::TableHeadersRow();
 
                 for (size_t i = 0; i < state.warpRows.size();) {
@@ -624,21 +718,21 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
                     auto resolvedReference = std::find_if(referenceOptions.begin(), referenceOptions.end(), [&](const auto& option) {
                         return option.resolved && warpMatchesOption(row, option);
                     });
-                    int64_t displayedClipSample = row.clipPositionOffset;
+                    double displayedClipSample = row.clipPositionOffset;
                     if (resolvedReference != referenceOptions.end())
-                        displayedClipSample = resolvedReference->clipPositionSamples + row.clipPositionOffset;
+                        displayedClipSample = samplesToSeconds(resolvedReference->clipPositionSamples, state.data.sampleRate) + row.clipPositionOffset;
                     ImGui::BeginDisabled();
                     ImGui::SetNextItemWidth(-FLT_MIN);
-                    ImGui::InputScalar("##warp_clip_sample", ImGuiDataType_S64, &displayedClipSample);
+                    ImGui::InputDouble("##warp_clip_sample", &displayedClipSample, 0.0, 0.0, "%.6f");
                     ImGui::EndDisabled();
                     if (state.data.sampleRate > 0)
-                        ImGui::SetItemTooltip("%.6fs", samplesToSeconds(displayedClipSample, state.data.sampleRate));
+                        ImGui::SetItemTooltip("%.6fs", displayedClipSample);
 
-                ImGui::TableSetColumnIndex(2);
+                    ImGui::TableSetColumnIndex(2);
                     ImGui::SetNextItemWidth(-FLT_MIN);
-                    ImGui::InputScalar("##warp_clip_offset", ImGuiDataType_S64, &row.clipPositionOffset);
+                    ImGui::InputDouble("##warp_clip_offset", &row.clipPositionOffset, 0.0, 0.0, "%.6f");
                     if (state.data.sampleRate > 0)
-                        ImGui::SetItemTooltip("%.6fs", samplesToSeconds(row.clipPositionOffset, state.data.sampleRate));
+                        ImGui::SetItemTooltip("%.6fs", row.clipPositionOffset);
 
                     ImGui::TableSetColumnIndex(3);
                     ImGui::SetNextItemWidth(-FLT_MIN);

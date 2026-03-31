@@ -66,7 +66,7 @@ public:
 
     struct MarkerRow {
         std::array<char, 96> markerId{};
-        int64_t clipPositionOffset{0};
+        double clipPositionOffset{0.0};
         uapmd::AudioWarpReferenceType referenceType{uapmd::AudioWarpReferenceType::ClipStart};
         std::array<char, 96> referenceClipId{};
         std::array<char, 96> referenceMarkerId{};
@@ -74,7 +74,7 @@ public:
     };
 
     struct WarpRow {
-        int64_t clipPositionOffset{0};
+        double clipPositionOffset{0.0};
         double speedRatio{1.0};
         uapmd::AudioWarpReferenceType referenceType{uapmd::AudioWarpReferenceType::ClipStart};
         std::array<char, 96> referenceClipId{};

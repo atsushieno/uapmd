@@ -93,6 +93,16 @@ uint64_t midiSourceFingerprint(const uapmd::MidiClipSourceNode& midiSource) {
     return hash;
 }
 
+int64_t secondsToSamples(double seconds, double sampleRate) {
+    return static_cast<int64_t>(std::llround(seconds * sampleRate));
+}
+
+double samplesToSeconds(int64_t samples, double sampleRate) {
+    if (sampleRate <= 0.0)
+        return 0.0;
+    return static_cast<double>(samples) / sampleRate;
+}
+
 bool referencesThisClipEnd(const uapmd::ClipMarker& marker, std::string_view clipReferenceId) {
     if (marker.referenceType != uapmd::AudioWarpReferenceType::ClipEnd)
         return false;
@@ -331,8 +341,10 @@ std::optional<int64_t> resolveMarkerAbsoluteSample(
         resolving);
 
     std::optional<int64_t> resolved;
-    if (absoluteReferenceSample)
-        resolved = *absoluteReferenceSample + marker.clipPositionOffset;
+    if (absoluteReferenceSample) {
+        const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+        resolved = *absoluteReferenceSample + secondsToSamples(marker.clipPositionOffset, sampleRate);
+    }
 
     resolving.erase(key);
     cache[key] = resolved;
@@ -376,7 +388,8 @@ std::optional<int64_t> resolveAudioWarpClipPosition(
         resolving);
     if (!absoluteReferenceSample)
         return std::nullopt;
-    const int64_t absoluteSample = *absoluteReferenceSample + warp.clipPositionOffset;
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const int64_t absoluteSample = *absoluteReferenceSample + secondsToSamples(warp.clipPositionOffset, sampleRate);
     const int64_t clipPosition = absoluteSample - targetClip.position.samples;
     if (clipPosition < 0 || clipPosition > targetClip.durationSamples)
         return std::nullopt;
@@ -389,11 +402,12 @@ std::vector<uapmd::AudioWarpPoint> resolveAudioWarpPoints(
     const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
     const std::vector<uapmd::ClipMarker>& masterTrackMarkers
 ) {
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
     std::vector<uapmd::AudioWarpPoint> resolved;
     resolved.reserve(audioWarps.size());
     for (auto warp : audioWarps) {
         if (auto clipPosition = resolveAudioWarpClipPosition(targetClip, warp, clipLookup, masterTrackMarkers)) {
-            warp.clipPositionOffset = *clipPosition;
+            warp.clipPositionOffset = samplesToSeconds(*clipPosition, sampleRate);
             resolved.push_back(std::move(warp));
         }
     }

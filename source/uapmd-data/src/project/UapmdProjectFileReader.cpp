@@ -8,6 +8,12 @@
 
 namespace uapmd {
     namespace {
+        constexpr double kLegacyOffsetSampleRate = 48000.0;
+
+        double legacyOffsetSamplesToSeconds(int64_t samples) {
+            return static_cast<double>(samples) / kLegacyOffsetSampleRate;
+        }
+
         AudioWarpReferenceType parseAudioWarpReferenceType(const choc::value::ValueView& warpObj) {
             if (!warpObj.hasObjectMember("reference_type"))
                 return warpObj.hasObjectMember("marker_id")
@@ -148,9 +154,11 @@ namespace uapmd {
                 ClipMarker marker;
                 if (markerObj.hasObjectMember("id"))
                     marker.markerId = std::string(markerObj["id"].getString());
-                marker.clipPositionOffset = markerObj.hasObjectMember("position_offset_samples")
-                    ? markerObj["position_offset_samples"].getWithDefault<int64_t>(0)
-                    : markerObj["position_samples"].getWithDefault<int64_t>(0);
+                marker.clipPositionOffset = markerObj.hasObjectMember("position_offset_seconds")
+                    ? markerObj["position_offset_seconds"].getWithDefault<double>(0.0)
+                    : legacyOffsetSamplesToSeconds(markerObj.hasObjectMember("position_offset_samples")
+                        ? markerObj["position_offset_samples"].getWithDefault<int64_t>(0)
+                        : markerObj["position_samples"].getWithDefault<int64_t>(0));
                 marker.referenceType = markerObj.hasObjectMember("reference_type")
                     ? parseAudioWarpReferenceType(markerObj)
                     : AudioWarpReferenceType::ClipStart;
@@ -168,15 +176,17 @@ namespace uapmd {
             std::vector<AudioWarpPoint> audioWarps;
             for (const auto& warpObj : clipObj["audio_warps"]) {
                 AudioWarpPoint warp;
-                warp.clipPositionOffset = warpObj.hasObjectMember("clip_position_offset_samples")
-                    ? warpObj["clip_position_offset_samples"].getWithDefault<int64_t>(0)
-                    : warpObj.hasObjectMember("offset_samples")
-                    ? warpObj["offset_samples"].getWithDefault<int64_t>(0)
-                    : warpObj.hasObjectMember("source_offset_samples")
-                    ? warpObj["source_offset_samples"].getWithDefault<int64_t>(0)
-                    : warpObj.hasObjectMember("source_position_samples")
-                    ? warpObj["source_position_samples"].getWithDefault<int64_t>(0)
-                    : warpObj["clip_position_samples"].getWithDefault<int64_t>(0);
+                warp.clipPositionOffset = warpObj.hasObjectMember("offset_seconds")
+                    ? warpObj["offset_seconds"].getWithDefault<double>(0.0)
+                    : legacyOffsetSamplesToSeconds(warpObj.hasObjectMember("clip_position_offset_samples")
+                        ? warpObj["clip_position_offset_samples"].getWithDefault<int64_t>(0)
+                        : warpObj.hasObjectMember("offset_samples")
+                        ? warpObj["offset_samples"].getWithDefault<int64_t>(0)
+                        : warpObj.hasObjectMember("source_offset_samples")
+                        ? warpObj["source_offset_samples"].getWithDefault<int64_t>(0)
+                        : warpObj.hasObjectMember("source_position_samples")
+                        ? warpObj["source_position_samples"].getWithDefault<int64_t>(0)
+                        : warpObj["clip_position_samples"].getWithDefault<int64_t>(0));
                 warp.speedRatio = warpObj["speed_ratio"].getWithDefault<double>(1.0);
                 warp.referenceType = parseAudioWarpReferenceType(warpObj);
                 if (warpObj.hasObjectMember("reference_clip_id"))
@@ -239,9 +249,11 @@ namespace uapmd {
                 ClipMarker marker;
                 if (markerObj.hasObjectMember("id"))
                     marker.markerId = std::string(markerObj["id"].getString());
-                marker.clipPositionOffset = markerObj.hasObjectMember("position_offset_samples")
-                    ? markerObj["position_offset_samples"].getWithDefault<int64_t>(0)
-                    : markerObj["position_samples"].getWithDefault<int64_t>(0);
+                marker.clipPositionOffset = markerObj.hasObjectMember("position_offset_seconds")
+                    ? markerObj["position_offset_seconds"].getWithDefault<double>(0.0)
+                    : legacyOffsetSamplesToSeconds(markerObj.hasObjectMember("position_offset_samples")
+                        ? markerObj["position_offset_samples"].getWithDefault<int64_t>(0)
+                        : markerObj["position_samples"].getWithDefault<int64_t>(0));
                 marker.referenceType = markerObj.hasObjectMember("reference_type")
                     ? parseAudioWarpReferenceType(markerObj)
                     : AudioWarpReferenceType::ClipStart;

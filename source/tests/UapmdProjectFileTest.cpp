@@ -304,12 +304,12 @@ TEST_F(UapmdProjectFileTest, ClipMarkersAndAudioWarpsRoundTrip) {
     clip->position(pos);
 
     clip->markers({
-        uapmd::ClipMarker{"start", 0, uapmd::AudioWarpReferenceType::ClipStart, {}, {}, "Start"},
-        uapmd::ClipMarker{"phrase_a", 48000, uapmd::AudioWarpReferenceType::ClipStart, {}, {}, "Phrase A"},
+        uapmd::ClipMarker{"start", 0.0, uapmd::AudioWarpReferenceType::ClipStart, {}, {}, "Start"},
+        uapmd::ClipMarker{"phrase_a", 1.0, uapmd::AudioWarpReferenceType::ClipStart, {}, {}, "Phrase A"},
     });
     clip->audioWarps({
-        uapmd::AudioWarpPoint{0, 1.0, uapmd::AudioWarpReferenceType::ClipMarker, {}, "start"},
-        uapmd::AudioWarpPoint{48000, 0.85, uapmd::AudioWarpReferenceType::ClipMarker, {}, "phrase_a"},
+        uapmd::AudioWarpPoint{0.0, 1.0, uapmd::AudioWarpReferenceType::ClipMarker, {}, "start"},
+        uapmd::AudioWarpPoint{1.083333333333, 0.85, uapmd::AudioWarpReferenceType::ClipMarker, {}, "phrase_a"},
     });
 
     track->clips().push_back(std::move(clip));
@@ -327,20 +327,20 @@ TEST_F(UapmdProjectFileTest, ClipMarkersAndAudioWarpsRoundTrip) {
     auto markers = loaded_clip->markers();
     ASSERT_EQ(markers.size(), 2);
     EXPECT_EQ(markers[0].markerId, "start");
-    EXPECT_EQ(markers[0].clipPositionOffset, 0);
+    EXPECT_DOUBLE_EQ(markers[0].clipPositionOffset, 0.0);
     EXPECT_EQ(markers[0].name, "Start");
     EXPECT_EQ(markers[1].markerId, "phrase_a");
-    EXPECT_EQ(markers[1].clipPositionOffset, 48000);
+    EXPECT_DOUBLE_EQ(markers[1].clipPositionOffset, 1.0);
     EXPECT_EQ(markers[1].name, "Phrase A");
 
     auto warps = loaded_clip->audioWarps();
     ASSERT_EQ(warps.size(), 2);
-    EXPECT_EQ(warps[0].clipPositionOffset, 0);
+    EXPECT_DOUBLE_EQ(warps[0].clipPositionOffset, 0.0);
     EXPECT_DOUBLE_EQ(warps[0].speedRatio, 1.0);
     EXPECT_EQ(warps[0].referenceType, uapmd::AudioWarpReferenceType::ClipMarker);
     EXPECT_TRUE(warps[0].referenceClipId.empty());
     EXPECT_EQ(warps[0].referenceMarkerId, "start");
-    EXPECT_EQ(warps[1].clipPositionOffset, 48000);
+    EXPECT_DOUBLE_EQ(warps[1].clipPositionOffset, 1.083333333333);
     EXPECT_DOUBLE_EQ(warps[1].speedRatio, 0.85);
     EXPECT_EQ(warps[1].referenceType, uapmd::AudioWarpReferenceType::ClipMarker);
     EXPECT_TRUE(warps[1].referenceClipId.empty());

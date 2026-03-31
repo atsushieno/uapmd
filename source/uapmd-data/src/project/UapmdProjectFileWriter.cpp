@@ -84,13 +84,12 @@ namespace uapmd {
                 auto markerObj = choc::value::createObject("ClipMarker");
                 if (!marker.markerId.empty())
                     markerObj.addMember("id", marker.markerId);
-                markerObj.addMember("position_offset_samples", marker.clipPositionOffset);
+                markerObj.addMember("position_offset_seconds", marker.clipPositionOffset);
                 markerObj.addMember("reference_type", audioWarpReferenceTypeToString(marker.referenceType));
                 if (!marker.referenceClipId.empty())
                     markerObj.addMember("reference_clip_id", marker.referenceClipId);
                 if (!marker.referenceMarkerId.empty())
                     markerObj.addMember("reference_marker_id", marker.referenceMarkerId);
-                markerObj.addMember("position_samples", marker.clipPositionOffset);
                 if (!marker.name.empty())
                     markerObj.addMember("name", marker.name);
                 markersArray.addArrayElement(markerObj);
@@ -103,9 +102,7 @@ namespace uapmd {
             auto warpsArray = choc::value::createEmptyArray();
             for (const auto& warp : audioWarps) {
                 auto warpObj = choc::value::createObject("AudioWarpPoint");
-                warpObj.addMember("clip_position_offset_samples", warp.clipPositionOffset);
-                warpObj.addMember("offset_samples", warp.clipPositionOffset);
-                warpObj.addMember("clip_position_samples", warp.clipPositionOffset);
+                warpObj.addMember("offset_seconds", warp.clipPositionOffset);
                 warpObj.addMember("speed_ratio", warp.speedRatio);
                 warpObj.addMember("reference_type", audioWarpReferenceTypeToString(warp.referenceType));
                 if (!warp.referenceClipId.empty())
@@ -176,13 +173,12 @@ namespace uapmd {
                 auto markerObj = choc::value::createObject("TrackMarker");
                 if (!marker.markerId.empty())
                     markerObj.addMember("id", marker.markerId);
-                markerObj.addMember("position_offset_samples", marker.clipPositionOffset);
+                markerObj.addMember("position_offset_seconds", marker.clipPositionOffset);
                 markerObj.addMember("reference_type", audioWarpReferenceTypeToString(marker.referenceType));
                 if (!marker.referenceClipId.empty())
                     markerObj.addMember("reference_clip_id", marker.referenceClipId);
                 if (!marker.referenceMarkerId.empty())
                     markerObj.addMember("reference_marker_id", marker.referenceMarkerId);
-                markerObj.addMember("position_samples", marker.clipPositionOffset);
                 if (!marker.name.empty())
                     markerObj.addMember("name", marker.name);
                 markersArray.addArrayElement(markerObj);

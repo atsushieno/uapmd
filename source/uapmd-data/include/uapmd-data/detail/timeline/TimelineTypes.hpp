@@ -104,7 +104,7 @@ namespace uapmd {
 
     struct ClipMarker {
         std::string markerId;
-        int64_t clipPositionOffset{0};
+        double clipPositionOffset{0.0};
         AudioWarpReferenceType referenceType{AudioWarpReferenceType::ClipStart};
         std::string referenceClipId;
         std::string referenceMarkerId;
@@ -112,7 +112,7 @@ namespace uapmd {
     };
 
     struct AudioWarpPoint {
-        int64_t clipPositionOffset{0};
+        double clipPositionOffset{0.0};
         double speedRatio{1.0};
         AudioWarpReferenceType referenceType{AudioWarpReferenceType::ClipStart};
         std::string referenceClipId;

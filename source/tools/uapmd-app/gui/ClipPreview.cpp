@@ -26,6 +26,16 @@ constexpr double kMinimumNoteDuration = 0.01;
 constexpr ImU32 kMarkerColor = IM_COL32(255, 222, 89, 220);
 constexpr ImU32 kWarpColor = IM_COL32(255, 120, 120, 230);
 
+int64_t secondsToSamples(double seconds, double sampleRate) {
+    return static_cast<int64_t>(std::llround(seconds * sampleRate));
+}
+
+double samplesToSeconds(int64_t samples, double sampleRate) {
+    if (sampleRate <= 0.0)
+        return 0.0;
+    return static_cast<double>(samples) / sampleRate;
+}
+
 std::string markerDisplayName(const uapmd::ClipMarker& marker, size_t index) {
     if (!marker.name.empty())
         return marker.name;
@@ -216,7 +226,8 @@ std::optional<int64_t> resolveMarkerAbsoluteSample(
         cache[key] = std::nullopt;
         return std::nullopt;
     }
-    cache[key] = *absoluteReferenceSample + marker.clipPositionOffset;
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    cache[key] = *absoluteReferenceSample + secondsToSamples(marker.clipPositionOffset, sampleRate);
     return cache[key];
 }
 
@@ -249,7 +260,8 @@ std::optional<int64_t> resolveWarpClipPosition(
         warp.referenceClipId, warp.referenceMarkerId, clipLookup, masterTrackMarkers, cache, resolving);
     if (!absoluteReferenceSample)
         return std::nullopt;
-    const int64_t clipPosition = *absoluteReferenceSample + warp.clipPositionOffset - clipData.position.samples;
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const int64_t clipPosition = *absoluteReferenceSample + secondsToSamples(warp.clipPositionOffset, sampleRate) - clipData.position.samples;
     if (clipPosition < 0 || clipPosition > clipData.durationSamples)
         return std::nullopt;
     return clipPosition;
@@ -374,7 +386,7 @@ private:
         const float centerY = rect.Min.y + height * 0.5f;
         const float halfHeight = height * 0.5f;
         const ImU32 lineColor = IM_COL32(120, 200, 255, 210);
-        const double safeDurationSamples = std::max<int64_t>(1, preview_->sourceDurationSamples);
+        const double safeDurationSeconds = std::max(0.001, preview_->clipDurationSeconds);
 
         const size_t count = preview_->waveform.size();
         for (size_t i = 0; i < count; ++i) {
@@ -399,8 +411,8 @@ private:
         const float markerLabelY = rect.Min.y + labelYOffset;
         const float warpLabelY = markerLabelY + textLineHeight + labelYOffset;
 
-        auto drawClipLine = [&](int64_t clipSamplePosition, ImU32 color, const char* label, float labelY) {
-            double normalized = std::clamp(static_cast<double>(clipSamplePosition) / safeDurationSamples, 0.0, 1.0);
+        auto drawClipLine = [&](double clipPositionSeconds, ImU32 color, const char* label, float labelY) {
+            double normalized = std::clamp(clipPositionSeconds / safeDurationSeconds, 0.0, 1.0);
             float x = rect.Min.x + static_cast<float>(normalized) * width;
             drawList->AddLine(ImVec2(x, rect.Min.y), ImVec2(x, rect.Max.y), color, 1.5f * uiScale_);
             if (label && label[0] != '\0') {
@@ -600,9 +612,10 @@ std::shared_ptr<ClipPreview> createAudioClipPreview(
         const auto clipLookup = buildClipLookup();
         const auto& masterTrackMarkers = uapmd::AppModel::instance().masterTrackMarkers();
         preview->clipMarkers.reserve(clipData->markers.size());
+        const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
         for (auto marker : clipData->markers) {
             if (auto resolved = resolveMarkerClipPosition(*clipData, marker, clipLookup, masterTrackMarkers))
-                marker.clipPositionOffset = *resolved;
+                marker.clipPositionOffset = samplesToSeconds(*resolved, sampleRate);
             preview->clipMarkers.push_back(std::move(marker));
         }
         preview->audioWarps.reserve(clipData->audioWarps.size());
@@ -611,7 +624,7 @@ std::shared_ptr<ClipPreview> createAudioClipPreview(
             auto label = buildWarpReferenceLabel(*clipData, warp);
             preview->audioWarpReferenceLabels.push_back(label.value_or(std::string{}));
             if (auto resolved = resolveWarpClipPosition(*clipData, warp, clipLookup, masterTrackMarkers))
-                warp.clipPositionOffset = *resolved;
+                warp.clipPositionOffset = samplesToSeconds(*resolved, sampleRate);
             preview->audioWarps.push_back(std::move(warp));
         }
     }
