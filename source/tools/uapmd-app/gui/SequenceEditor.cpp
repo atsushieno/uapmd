@@ -69,7 +69,10 @@ uint64_t clipWarpFingerprint(const uapmd::ClipData& clipData) {
         hash = mixHash(hash, static_cast<uint64_t>(warp.clipPositionSamples));
         hash = mixHash(hash, static_cast<uint64_t>(warp.sourcePositionSamples));
         hash = mixHash(hash, std::bit_cast<uint64_t>(warp.speedRatio));
-        for (unsigned char ch : warp.markerId)
+        hash = mixHash(hash, static_cast<uint64_t>(warp.referenceType));
+        for (unsigned char ch : warp.referenceClipId)
+            hash = mixHash(hash, ch);
+        for (unsigned char ch : warp.referenceMarkerId)
             hash = mixHash(hash, ch);
     }
     return hash;
@@ -512,6 +515,19 @@ void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorSta
                 if (!canShowDump) {
                     ImGui::EndDisabled();
                 }
+
+                const bool canOpenAudioEvents = !contextClip->isMasterTrack &&
+                                                !contextClip->isMidiClip &&
+                                                static_cast<bool>(context.showAudioClipEvents);
+                if (!canOpenAudioEvents)
+                    ImGui::BeginDisabled();
+                if (ImGui::MenuItem("Edit Audio Events")) {
+                    if (context.showAudioClipEvents)
+                        context.showAudioClipEvents(trackIndex, contextClip->clipId);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (!canOpenAudioEvents)
+                    ImGui::EndDisabled();
 
                 const bool canOpenPianoRoll = contextClip->isMidiClip &&
                                               static_cast<bool>(context.showPianoRoll);

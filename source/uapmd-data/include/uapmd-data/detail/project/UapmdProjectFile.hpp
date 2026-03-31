@@ -96,6 +96,8 @@ namespace uapmd {
         virtual UapmdProjectPluginGraphData* graph() = 0;
 
         virtual std::vector<std::unique_ptr<UapmdProjectClipData>>& clips() = 0;
+        virtual std::vector<ClipMarker> markers() = 0;
+        virtual void markers(std::vector<ClipMarker> values) = 0;
 
         virtual void graph(std::unique_ptr<UapmdProjectPluginGraphData>&& g) = 0;
 

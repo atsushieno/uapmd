@@ -100,11 +100,21 @@ namespace uapmd {
         std::string name;
     };
 
+    enum class AudioWarpReferenceType {
+        Manual,
+        ClipStart,
+        ClipEnd,
+        ClipMarker,
+        MasterMarker
+    };
+
     struct AudioWarpPoint {
-        std::string markerId;
         int64_t clipPositionSamples{0};
         int64_t sourcePositionSamples{0};
         double speedRatio{1.0};
+        AudioWarpReferenceType referenceType{AudioWarpReferenceType::Manual};
+        std::string referenceClipId;
+        std::string referenceMarkerId;
     };
 
     // Represents a single clip on a track

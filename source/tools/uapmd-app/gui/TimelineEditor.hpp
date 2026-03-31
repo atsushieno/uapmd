@@ -10,6 +10,7 @@
 #include <imgui.h>
 #include <uapmd/uapmd.hpp>
 #include "SequenceEditor.hpp"
+#include "AudioEventListEditor.hpp"
 #include "MidiDumpWindow.hpp"
 #include "PianoRollEditor.hpp"
 #include "PluginSelector.hpp"
@@ -42,6 +43,7 @@ public:
 
     // UI component accessors
     SequenceEditor& sequenceEditor() { return sequenceEditor_; }
+    AudioEventListEditor& audioEventListEditor() { return audioEventListEditor_; }
     MidiDumpWindow& midiDumpWindow() { return midiDumpWindow_; }
     PluginSelector& pluginSelector() { return pluginSelector_; }
     InstanceDetails& instanceDetails() { return instanceDetails_; }
@@ -70,6 +72,8 @@ public:
 
     // MIDI dump
     void showMidiClipDump(int32_t trackIndex, int32_t clipId);
+    void showAudioClipEvents(int32_t trackIndex, int32_t clipId);
+    void showMasterMarkerEditor();
     void showMasterMetaDump();
 
     // Piano roll
@@ -88,6 +92,7 @@ public:
 
 private:
     SequenceEditor sequenceEditor_;
+    AudioEventListEditor audioEventListEditor_;
     MidiDumpWindow midiDumpWindow_;
     PianoRollEditor pianoRollEditor_;
     PluginSelector pluginSelector_;
@@ -132,8 +137,10 @@ private:
     // MIDI dump helpers
     MidiDumpWindow::ClipDumpData buildMidiClipDumpData(int32_t trackIndex, int32_t clipId);
     MidiDumpWindow::ClipDumpData buildMasterMetaDumpData();
+    AudioEventListEditor::ClipData buildAudioEventListData(int32_t trackIndex, int32_t clipId);
     void importMidiTracks(const std::string& filepath);
     bool applyMidiClipEdits(const MidiDumpWindow::EditPayload& payload, std::string& error);
+    bool applyAudioClipEdits(const AudioEventListEditor::EditPayload& payload, std::string& error);
 
     // Piano roll write-back
     bool applyPianoRollEdits(int32_t trackIndex, int32_t clipId,

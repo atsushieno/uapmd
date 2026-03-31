@@ -7,6 +7,26 @@
 #include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
+    namespace {
+        AudioWarpReferenceType parseAudioWarpReferenceType(const choc::value::ValueView& warpObj) {
+            if (!warpObj.hasObjectMember("reference_type"))
+                return warpObj.hasObjectMember("marker_id")
+                    ? AudioWarpReferenceType::ClipMarker
+                    : AudioWarpReferenceType::Manual;
+
+            auto type = std::string(warpObj["reference_type"].getString());
+            if (type == "clip_start")
+                return AudioWarpReferenceType::ClipStart;
+            if (type == "clip_end")
+                return AudioWarpReferenceType::ClipEnd;
+            if (type == "clip_marker")
+                return AudioWarpReferenceType::ClipMarker;
+            if (type == "master_marker")
+                return AudioWarpReferenceType::MasterMarker;
+            return AudioWarpReferenceType::Manual;
+        }
+    }
+
     // Helper to resolve clip anchors after all tracks and clips are loaded
     class AnchorResolver {
         UapmdProjectData* project_;
@@ -139,11 +159,16 @@ namespace uapmd {
             std::vector<AudioWarpPoint> audioWarps;
             for (const auto& warpObj : clipObj["audio_warps"]) {
                 AudioWarpPoint warp;
-                if (warpObj.hasObjectMember("marker_id"))
-                    warp.markerId = std::string(warpObj["marker_id"].getString());
                 warp.clipPositionSamples = warpObj["clip_position_samples"].getWithDefault<int64_t>(0);
                 warp.sourcePositionSamples = warpObj["source_position_samples"].getWithDefault<int64_t>(0);
                 warp.speedRatio = warpObj["speed_ratio"].getWithDefault<double>(1.0);
+                warp.referenceType = parseAudioWarpReferenceType(warpObj);
+                if (warpObj.hasObjectMember("reference_clip_id"))
+                    warp.referenceClipId = std::string(warpObj["reference_clip_id"].getString());
+                if (warpObj.hasObjectMember("reference_marker_id"))
+                    warp.referenceMarkerId = std::string(warpObj["reference_marker_id"].getString());
+                if (warp.referenceMarkerId.empty() && warpObj.hasObjectMember("marker_id"))
+                    warp.referenceMarkerId = std::string(warpObj["marker_id"].getString());
                 audioWarps.push_back(std::move(warp));
             }
             clip->audioWarps(std::move(audioWarps));
@@ -192,6 +217,20 @@ namespace uapmd {
         if (trackObj.hasObjectMember("graph"))
             track->graph(parsePluginGraph(trackObj["graph"]));
 
+        if (trackObj.hasObjectMember("markers") && trackObj["markers"].isArray()) {
+            std::vector<ClipMarker> markers;
+            for (const auto& markerObj : trackObj["markers"]) {
+                ClipMarker marker;
+                if (markerObj.hasObjectMember("id"))
+                    marker.markerId = std::string(markerObj["id"].getString());
+                marker.clipPositionSamples = markerObj["position_samples"].getWithDefault<int64_t>(0);
+                if (markerObj.hasObjectMember("name"))
+                    marker.name = std::string(markerObj["name"].getString());
+                markers.push_back(std::move(marker));
+            }
+            track->markers(std::move(markers));
+        }
+
         // Parse clips (first pass - without anchor resolution)
         if (trackObj.hasObjectMember("clips") && trackObj["clips"].isArray()) {
             size_t clipIdx = 0;
@@ -235,8 +274,13 @@ namespace uapmd {
             // Note: master track is already created in constructor
             // We need to populate it instead
             auto* master = dynamic_cast<UapmdProjectTrackData*>(project->masterTrack());
-            if (master && root["master_track"].hasObjectMember("graph"))
-                master->graph(parsePluginGraph(root["master_track"]["graph"]));
+            if (master) {
+                if (root["master_track"].hasObjectMember("graph"))
+                    master->graph(parsePluginGraph(root["master_track"]["graph"]));
+                master->markers(masterTrack->markers());
+                for (auto& clip : masterTrack->clips())
+                    master->clips().push_back(std::move(clip));
+            }
         }
 
         // Second pass: resolve anchors for all clips and validate them

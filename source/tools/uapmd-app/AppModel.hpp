@@ -128,6 +128,7 @@ namespace uapmd {
         int32_t sample_rate_;
         uint32_t audio_buffer_size_;
         bool auto_buffer_size_enabled_{false};
+        std::vector<uapmd::ClipMarker> master_track_markers_;
         std::unique_ptr<IDocumentProvider> documentProvider_;
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
@@ -385,6 +386,8 @@ namespace uapmd {
         // Timeline tracks access
         std::vector<uapmd::TimelineTrack*> getTimelineTracks();
         uapmd::TimelineTrack* getMasterTimelineTrack();
+        const std::vector<uapmd::ClipMarker>& masterTrackMarkers() const { return master_track_markers_; }
+        void setMasterTrackMarkers(std::vector<uapmd::ClipMarker> markers) { master_track_markers_ = std::move(markers); }
         size_t trackCount() const { return sequencer_.engine()->tracks().size(); }
 
         // Track management

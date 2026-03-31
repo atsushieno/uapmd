@@ -308,8 +308,8 @@ TEST_F(UapmdProjectFileTest, ClipMarkersAndAudioWarpsRoundTrip) {
         uapmd::ClipMarker{"phrase_a", 48000, "Phrase A"},
     });
     clip->audioWarps({
-        uapmd::AudioWarpPoint{"start", 0, 0, 1.0},
-        uapmd::AudioWarpPoint{"phrase_a", 48000, 52000, 0.85},
+        uapmd::AudioWarpPoint{0, 0, 1.0, uapmd::AudioWarpReferenceType::ClipMarker, {}, "start"},
+        uapmd::AudioWarpPoint{48000, 52000, 0.85, uapmd::AudioWarpReferenceType::ClipMarker, {}, "phrase_a"},
     });
 
     track->clips().push_back(std::move(clip));
@@ -335,14 +335,18 @@ TEST_F(UapmdProjectFileTest, ClipMarkersAndAudioWarpsRoundTrip) {
 
     auto warps = loaded_clip->audioWarps();
     ASSERT_EQ(warps.size(), 2);
-    EXPECT_EQ(warps[0].markerId, "start");
     EXPECT_EQ(warps[0].clipPositionSamples, 0);
     EXPECT_EQ(warps[0].sourcePositionSamples, 0);
     EXPECT_DOUBLE_EQ(warps[0].speedRatio, 1.0);
-    EXPECT_EQ(warps[1].markerId, "phrase_a");
+    EXPECT_EQ(warps[0].referenceType, uapmd::AudioWarpReferenceType::ClipMarker);
+    EXPECT_TRUE(warps[0].referenceClipId.empty());
+    EXPECT_EQ(warps[0].referenceMarkerId, "start");
     EXPECT_EQ(warps[1].clipPositionSamples, 48000);
     EXPECT_EQ(warps[1].sourcePositionSamples, 52000);
     EXPECT_DOUBLE_EQ(warps[1].speedRatio, 0.85);
+    EXPECT_EQ(warps[1].referenceType, uapmd::AudioWarpReferenceType::ClipMarker);
+    EXPECT_TRUE(warps[1].referenceClipId.empty());
+    EXPECT_EQ(warps[1].referenceMarkerId, "phrase_a");
 }
 
 // Test: Master track
@@ -364,6 +368,10 @@ TEST_F(UapmdProjectFileTest, MasterTrack) {
     limiter.display_name = "Master Limiter";
     graph->addPlugin(limiter);
     master->graph(std::move(graph));
+    master->markers({
+        uapmd::ClipMarker{"intro", 0, "Intro"},
+        uapmd::ClipMarker{"drop", 96000, "Drop"},
+    });
 
     // Write and read
     auto file_path = test_dir / "master_track_project.json";
@@ -381,6 +389,11 @@ TEST_F(UapmdProjectFileTest, MasterTrack) {
     auto plugins = master_graph->plugins();
     ASSERT_EQ(plugins.size(), 1);
     EXPECT_EQ(plugins[0].plugin_id, "com.example.limiter");
+
+    auto markers = loaded_master->markers();
+    ASSERT_EQ(markers.size(), 2);
+    EXPECT_EQ(markers[0].markerId, "intro");
+    EXPECT_EQ(markers[1].markerId, "drop");
 }
 
 // Test: Invalid anchor - not found

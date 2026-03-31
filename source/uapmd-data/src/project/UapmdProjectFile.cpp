@@ -72,6 +72,7 @@ namespace uapmd {
     class UapmdProjectTrackDataImpl : public UapmdProjectTrackData {
         std::unique_ptr<UapmdProjectPluginGraphData> graph_{};
         std::vector<std::unique_ptr<UapmdProjectClipData>> clips_{};
+        std::vector<ClipMarker> markers_{};
 
     public:
         UapmdProjectTrackDataImpl()
@@ -80,8 +81,10 @@ namespace uapmd {
 
         UapmdProjectPluginGraphData* graph() override { return graph_.get(); }
         std::vector<std::unique_ptr<UapmdProjectClipData>>& clips() override { return clips_; }
+        std::vector<ClipMarker> markers() override { return markers_; }
 
         void graph(std::unique_ptr<UapmdProjectPluginGraphData>&& g) override { graph_ = std::move(g); }
+        void markers(std::vector<ClipMarker> values) override { markers_ = std::move(values); }
     };
 
     std::unique_ptr<UapmdProjectTrackData> UapmdProjectTrackData::create() {

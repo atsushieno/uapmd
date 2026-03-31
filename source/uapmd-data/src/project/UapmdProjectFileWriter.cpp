@@ -4,6 +4,20 @@
 #include "uapmd-data/uapmd-data.hpp"
 
 namespace uapmd {
+    namespace {
+        std::string audioWarpReferenceTypeToString(AudioWarpReferenceType type) {
+            switch (type) {
+                case AudioWarpReferenceType::ClipStart: return "clip_start";
+                case AudioWarpReferenceType::ClipEnd: return "clip_end";
+                case AudioWarpReferenceType::ClipMarker: return "clip_marker";
+                case AudioWarpReferenceType::MasterMarker: return "master_marker";
+                case AudioWarpReferenceType::Manual:
+                default:
+                    return "manual";
+            }
+        }
+    }
+
     // Helper to generate unique anchor IDs for tracks and clips
     class AnchorIdGenerator {
         std::map<UapmdClipDataReferencible*, std::string> id_map_;
@@ -83,11 +97,17 @@ namespace uapmd {
             auto warpsArray = choc::value::createEmptyArray();
             for (const auto& warp : audioWarps) {
                 auto warpObj = choc::value::createObject("AudioWarpPoint");
-                if (!warp.markerId.empty())
-                    warpObj.addMember("marker_id", warp.markerId);
                 warpObj.addMember("clip_position_samples", warp.clipPositionSamples);
                 warpObj.addMember("source_position_samples", warp.sourcePositionSamples);
                 warpObj.addMember("speed_ratio", warp.speedRatio);
+                warpObj.addMember("reference_type", audioWarpReferenceTypeToString(warp.referenceType));
+                if (!warp.referenceClipId.empty())
+                    warpObj.addMember("reference_clip_id", warp.referenceClipId);
+                if (!warp.referenceMarkerId.empty()) {
+                    warpObj.addMember("reference_marker_id", warp.referenceMarkerId);
+                    if (warp.referenceType == AudioWarpReferenceType::ClipMarker)
+                        warpObj.addMember("marker_id", warp.referenceMarkerId);
+                }
                 warpsArray.addArrayElement(warpObj);
             }
             obj.addMember("audio_warps", warpsArray);
@@ -140,6 +160,21 @@ namespace uapmd {
             auto extFile = track->graph()->externalFile();
             if (!plugins.empty() || !extFile.empty())
                 obj.addMember("graph", serializePluginGraph(track->graph()));
+        }
+
+        auto markers = track->markers();
+        if (!markers.empty()) {
+            auto markersArray = choc::value::createEmptyArray();
+            for (const auto& marker : markers) {
+                auto markerObj = choc::value::createObject("TrackMarker");
+                if (!marker.markerId.empty())
+                    markerObj.addMember("id", marker.markerId);
+                markerObj.addMember("position_samples", marker.clipPositionSamples);
+                if (!marker.name.empty())
+                    markerObj.addMember("name", marker.name);
+                markersArray.addArrayElement(markerObj);
+            }
+            obj.addMember("markers", markersArray);
         }
 
         // Serialize clips

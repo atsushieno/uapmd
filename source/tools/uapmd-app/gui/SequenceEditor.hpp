@@ -53,6 +53,7 @@ public:
         std::function<void(int32_t trackIndex, int32_t clipId)> changeClipFile;
         std::function<void(int32_t trackIndex, int32_t clipId, double seconds)> moveClipAbsolute;
         std::function<void(int32_t trackIndex, int32_t clipId)> showMidiClipDump;
+        std::function<void(int32_t trackIndex, int32_t clipId)> showAudioClipEvents;
         std::function<void(int32_t trackIndex, int32_t clipId)> showPianoRoll;
         std::function<void()> showMasterTrackDump;
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;

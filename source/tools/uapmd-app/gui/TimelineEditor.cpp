@@ -171,6 +171,228 @@ bool looksLikeMidiFile(const std::string& path, std::string_view ext) {
 bool looksLikeAudioFile(std::string_view ext) {
     return hasExtension(ext, {".wav", ".flac", ".ogg"});
 }
+
+std::unordered_map<std::string, uapmd::ClipData> buildClipReferenceMap(const std::vector<uapmd::TimelineTrack*>& tracks) {
+    std::unordered_map<std::string, uapmd::ClipData> clipMap;
+    for (auto* track : tracks) {
+        if (!track)
+            continue;
+        auto clips = track->clipManager().getAllClips();
+        for (auto& clip : clips)
+            clipMap[clip.referenceId] = std::move(clip);
+    }
+    return clipMap;
+}
+
+std::optional<int64_t> resolveAudioWarpClipPosition(
+    const uapmd::ClipData& targetClip,
+    const uapmd::AudioWarpPoint& warp,
+    const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
+    const std::vector<uapmd::ClipMarker>& masterTrackMarkers
+) {
+    int64_t absoluteSample = targetClip.position.samples + warp.clipPositionSamples;
+    bool hasAbsoluteSample = (warp.referenceType == uapmd::AudioWarpReferenceType::Manual);
+
+    switch (warp.referenceType) {
+        case uapmd::AudioWarpReferenceType::Manual:
+            break;
+        case uapmd::AudioWarpReferenceType::ClipStart:
+        case uapmd::AudioWarpReferenceType::ClipEnd: {
+            const uapmd::ClipData* refClip = &targetClip;
+            if (!warp.referenceClipId.empty()) {
+                auto clipIt = clipLookup.find(warp.referenceClipId);
+                refClip = clipIt == clipLookup.end() ? nullptr : &clipIt->second;
+            }
+            if (!refClip)
+                return std::nullopt;
+            absoluteSample = refClip->position.samples;
+            if (warp.referenceType == uapmd::AudioWarpReferenceType::ClipEnd)
+                absoluteSample += refClip->durationSamples;
+            hasAbsoluteSample = true;
+            break;
+        }
+        case uapmd::AudioWarpReferenceType::ClipMarker: {
+            const uapmd::ClipData* refClip = &targetClip;
+            if (!warp.referenceClipId.empty()) {
+                auto clipIt = clipLookup.find(warp.referenceClipId);
+                refClip = clipIt == clipLookup.end() ? nullptr : &clipIt->second;
+            }
+            if (!refClip)
+                return std::nullopt;
+            auto markerIt = std::find_if(refClip->markers.begin(), refClip->markers.end(), [&](const auto& marker) {
+                return marker.markerId == warp.referenceMarkerId;
+            });
+            if (markerIt == refClip->markers.end())
+                return std::nullopt;
+            absoluteSample = refClip->position.samples + markerIt->clipPositionSamples;
+            hasAbsoluteSample = true;
+            break;
+        }
+        case uapmd::AudioWarpReferenceType::MasterMarker: {
+            auto markerIt = std::find_if(masterTrackMarkers.begin(), masterTrackMarkers.end(), [&](const auto& marker) {
+                return marker.markerId == warp.referenceMarkerId;
+            });
+            if (markerIt == masterTrackMarkers.end())
+                return std::nullopt;
+            absoluteSample = markerIt->clipPositionSamples;
+            hasAbsoluteSample = true;
+            break;
+        }
+    }
+
+    if (!hasAbsoluteSample)
+        return std::nullopt;
+
+    const int64_t clipPosition = absoluteSample - targetClip.position.samples;
+    if (clipPosition < 0 || clipPosition > targetClip.durationSamples)
+        return std::nullopt;
+    return clipPosition;
+}
+
+std::vector<uapmd::AudioWarpPoint> resolveAudioWarpPoints(
+    const uapmd::ClipData& targetClip,
+    const std::vector<uapmd::AudioWarpPoint>& audioWarps,
+    const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
+    const std::vector<uapmd::ClipMarker>& masterTrackMarkers
+) {
+    std::vector<uapmd::AudioWarpPoint> resolved;
+    resolved.reserve(audioWarps.size());
+    for (auto warp : audioWarps) {
+        if (auto clipPosition = resolveAudioWarpClipPosition(targetClip, warp, clipLookup, masterTrackMarkers)) {
+            warp.clipPositionSamples = *clipPosition;
+            resolved.push_back(std::move(warp));
+        }
+    }
+    return resolved;
+}
+
+std::string clipDisplayName(const uapmd::ClipData& clip) {
+    return clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
+}
+
+std::string markerDisplayName(const uapmd::ClipMarker& marker, size_t index) {
+    if (!marker.name.empty())
+        return marker.name;
+    if (!marker.markerId.empty())
+        return marker.markerId;
+    return std::format("Marker {}", index + 1);
+}
+
+void appendReferenceOptionsForClip(
+    std::vector<AudioEventListEditor::ClipData::ReferencePointOption>& options,
+    const uapmd::ClipData& targetClip,
+    const uapmd::ClipData& sourceClip,
+    const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
+    std::string_view prefix
+) {
+    auto makeWarp = [&](uapmd::AudioWarpReferenceType type, std::string markerId = {}) {
+        uapmd::AudioWarpPoint warp;
+        warp.referenceType = type;
+        warp.referenceClipId = sourceClip.referenceId;
+        warp.referenceMarkerId = std::move(markerId);
+        return warp;
+    };
+
+    for (const auto type : {uapmd::AudioWarpReferenceType::ClipStart, uapmd::AudioWarpReferenceType::ClipEnd}) {
+        AudioEventListEditor::ClipData::ReferencePointOption option;
+        option.referenceType = type;
+        option.referenceClipId = sourceClip.referenceId;
+        option.label = std::format("{} {}", prefix, type == uapmd::AudioWarpReferenceType::ClipStart ? "Start" : "End");
+        if (auto clipPosition = resolveAudioWarpClipPosition(targetClip, makeWarp(type), clipLookup, {})) {
+            option.clipPositionSamples = *clipPosition;
+            option.resolved = true;
+        }
+        if (!option.resolved)
+            option.label += " (out of range)";
+        options.push_back(std::move(option));
+    }
+
+    for (size_t markerIndex = 0; markerIndex < sourceClip.markers.size(); ++markerIndex) {
+        const auto& marker = sourceClip.markers[markerIndex];
+        AudioEventListEditor::ClipData::ReferencePointOption option;
+        option.referenceType = uapmd::AudioWarpReferenceType::ClipMarker;
+        option.referenceClipId = sourceClip.referenceId;
+        option.referenceMarkerId = marker.markerId;
+        option.label = std::format("{} Marker {}", prefix, markerDisplayName(marker, markerIndex));
+        uapmd::AudioWarpPoint warp;
+        warp.referenceType = option.referenceType;
+        warp.referenceClipId = option.referenceClipId;
+        warp.referenceMarkerId = option.referenceMarkerId;
+        if (auto clipPosition = resolveAudioWarpClipPosition(targetClip, warp, clipLookup, {})) {
+            option.clipPositionSamples = *clipPosition;
+            option.resolved = true;
+        }
+        if (!option.resolved)
+            option.label += " (out of range)";
+        options.push_back(std::move(option));
+    }
+}
+
+std::vector<AudioEventListEditor::ClipData::ReferencePointOption> buildExternalReferenceOptions(
+    int32_t targetTrackIndex,
+    int32_t targetClipId,
+    const AudioEventListEditor& editor,
+    const std::vector<uapmd::TimelineTrack*>& tracks,
+    const std::vector<uapmd::ClipMarker>& masterTrackMarkers
+) {
+    std::vector<AudioEventListEditor::ClipData::ReferencePointOption> options;
+    if (targetTrackIndex < 0 || targetTrackIndex >= static_cast<int32_t>(tracks.size()))
+        return options;
+
+    auto* targetTrack = tracks[targetTrackIndex];
+    if (!targetTrack)
+        return options;
+
+    auto* targetClip = targetTrack->clipManager().getClip(targetClipId);
+    if (!targetClip)
+        return options;
+
+    const auto draftMarkers = editor.draftMarkersByClipReference();
+    const auto draftMasterMarkers = editor.draftMasterMarkers();
+    auto clipLookup = buildClipReferenceMap(tracks);
+
+    for (auto& [referenceId, clipData] : clipLookup) {
+        auto draftIt = draftMarkers.find(referenceId);
+        if (draftIt != draftMarkers.end())
+            clipData.markers = draftIt->second;
+    }
+
+    for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
+        auto* sourceTrack = tracks[i];
+        if (!sourceTrack)
+            continue;
+        for (auto otherClip : sourceTrack->clipManager().getAllClips()) {
+            if (otherClip.referenceId == targetClip->referenceId)
+                continue;
+            auto draftIt = draftMarkers.find(otherClip.referenceId);
+            if (draftIt != draftMarkers.end())
+                otherClip.markers = draftIt->second;
+            const std::string prefix = std::format("Track {} / {}", i + 1, clipDisplayName(otherClip));
+            appendReferenceOptionsForClip(options, *targetClip, otherClip, clipLookup, prefix);
+        }
+    }
+
+    const auto& masterMarkers = draftMasterMarkers.empty() ? masterTrackMarkers : draftMasterMarkers;
+    for (size_t i = 0; i < masterMarkers.size(); ++i) {
+        const auto& marker = masterMarkers[i];
+        AudioEventListEditor::ClipData::ReferencePointOption option;
+        option.referenceType = uapmd::AudioWarpReferenceType::MasterMarker;
+        option.referenceMarkerId = marker.markerId;
+        option.label = std::format("Master Track Marker {}", markerDisplayName(marker, i));
+        uapmd::AudioWarpPoint warp;
+        warp.referenceType = option.referenceType;
+        warp.referenceMarkerId = option.referenceMarkerId;
+        if (auto clipPosition = resolveAudioWarpClipPosition(*targetClip, warp, clipLookup, masterMarkers)) {
+            option.clipPositionSamples = *clipPosition;
+            option.resolved = true;
+        }
+        if (!option.resolved)
+            option.label += " (out of range)";
+        options.push_back(std::move(option));
+    }
+
+    return options;
+}
 }  // namespace
 
 TimelineEditor::TimelineEditor() {
@@ -254,6 +476,9 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         },
         .showMidiClipDump = [this](int32_t trackIndex, int32_t clipId) {
             showMidiClipDump(trackIndex, clipId);
+        },
+        .showAudioClipEvents = [this](int32_t trackIndex, int32_t clipId) {
+            showAudioClipEvents(trackIndex, clipId);
         },
         .showPianoRoll = [this](int32_t trackIndex, int32_t clipId) {
             showPianoRoll(trackIndex, clipId);
@@ -340,6 +565,35 @@ void TimelineEditor::render(float uiScale) {
         .uiScale = uiScale,
     };
     midiDumpWindow_.render(midiDumpContext);
+
+    AudioEventListEditor::RenderContext audioEventContext{
+        .reloadClip = [this](int32_t trackIndex, int32_t clipId) {
+            return buildAudioEventListData(trackIndex, clipId);
+        },
+        .buildExternalReferenceOptions = [this](int32_t trackIndex, int32_t clipId) {
+            auto& appModel = uapmd::AppModel::instance();
+            return ::uapmd::gui::buildExternalReferenceOptions(
+                trackIndex,
+                clipId,
+                audioEventListEditor_,
+                appModel.getTimelineTracks(),
+                appModel.masterTrackMarkers()
+            );
+        },
+        .setNextChildWindowSize = [this](const std::string& id, ImVec2 defaultSize) {
+            if (setNextChildWindowSize_)
+                setNextChildWindowSize_(id, defaultSize);
+        },
+        .updateChildWindowSizeState = [this](const std::string& id) {
+            if (updateChildWindowSizeState_)
+                updateChildWindowSizeState_(id);
+        },
+        .applyEdits = [this](const AudioEventListEditor::EditPayload& payload, std::string& error) {
+            return applyAudioClipEdits(payload, error);
+        },
+        .uiScale = uiScale,
+    };
+    audioEventListEditor_.render(audioEventContext);
 
     PianoRollEditor::RenderContext pianoCtx;
     pianoCtx.uiScale = uiScale;
@@ -529,6 +783,8 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         ImGui::Spacing();
         if (ImGui::Button("Clips..."))
             sequenceEditor_.showWindow(uapmd::kMasterTrackIndex);
+        if (ImGui::Button("Markers..."))
+            showMasterMarkerEditor();
 
         auto& sequencer = uapmd::AppModel::instance().sequencer();
         auto* masterTrack = sequencer.engine()->masterTrack();
@@ -1365,7 +1621,11 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
             sourceNodeId,
             std::move(reader),
             static_cast<double>(appModel.sampleRate()),
-            clip->audioWarps
+            resolveAudioWarpPoints(
+                *clip,
+                clip->audioWarps,
+                buildClipReferenceMap(tracks),
+                appModel.masterTrackMarkers())
         );
 
         int64_t durationSamples = sourceNode->totalLength();
@@ -1429,6 +1689,14 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
 
 void TimelineEditor::showMidiClipDump(int32_t trackIndex, int32_t clipId) {
     midiDumpWindow_.showClipDump(buildMidiClipDumpData(trackIndex, clipId));
+}
+
+void TimelineEditor::showAudioClipEvents(int32_t trackIndex, int32_t clipId) {
+    audioEventListEditor_.showClip(buildAudioEventListData(trackIndex, clipId));
+}
+
+void TimelineEditor::showMasterMarkerEditor() {
+    audioEventListEditor_.showClip(buildAudioEventListData(uapmd::kMasterTrackIndex, kMasterTrackClipId));
 }
 
 void TimelineEditor::showPianoRoll(int32_t trackIndex, int32_t clipId) {
@@ -1621,6 +1889,80 @@ MidiDumpWindow::ClipDumpData TimelineEditor::buildMasterMetaDumpData() {
     return dump;
 }
 
+AudioEventListEditor::ClipData TimelineEditor::buildAudioEventListData(int32_t trackIndex, int32_t clipId) {
+    AudioEventListEditor::ClipData data;
+    data.trackIndex = trackIndex;
+    data.clipId = clipId;
+
+    auto& appModel = uapmd::AppModel::instance();
+    auto tracks = appModel.getTimelineTracks();
+    if (trackIndex == uapmd::kMasterTrackIndex) {
+        data.markerOnly = true;
+        data.clipName = "Markers";
+        data.clipReferenceId = "master_track";
+        data.sampleRate = appModel.sampleRate();
+        if (masterTrackSnapshot_)
+            data.durationSamples = static_cast<int64_t>(std::llround(std::max(0.0, masterTrackSnapshot_->maxTimeSeconds) * data.sampleRate));
+        data.markers = audioEventListEditor_.draftMasterMarkers().empty()
+            ? appModel.masterTrackMarkers()
+            : audioEventListEditor_.draftMasterMarkers();
+        data.fileLabel = "Master Track";
+        data.success = true;
+        return data;
+    }
+
+    if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
+        data.error = "Invalid track index";
+        return data;
+    }
+
+    auto* track = tracks[trackIndex];
+    if (!track) {
+        data.error = "Track is unavailable";
+        return data;
+    }
+
+    auto* clip = track->clipManager().getClip(clipId);
+    if (!clip) {
+        data.error = "Clip not found";
+        return data;
+    }
+    data.clipReferenceId = clip->referenceId;
+
+    data.clipName = clip->name.empty() ? std::format("Clip {}", clip->clipId) : clip->name;
+    data.filepath = clip->filepath;
+    data.sampleRate = appModel.sampleRate();
+    data.durationSamples = clip->durationSamples;
+    if (clip->clipType != uapmd::ClipType::Audio) {
+        data.error = "Selected clip is not an audio clip";
+        return data;
+    }
+
+    data.markers = clip->markers;
+    data.audioWarps = clip->audioWarps;
+    const auto draftMarkers = audioEventListEditor_.draftMarkersByClipReference();
+    if (auto it = draftMarkers.find(clip->referenceId); it != draftMarkers.end())
+        data.markers = it->second;
+    data.externalReferenceOptions = ::uapmd::gui::buildExternalReferenceOptions(
+        trackIndex,
+        clipId,
+        audioEventListEditor_,
+        tracks,
+        appModel.masterTrackMarkers()
+    );
+    if (clip->filepath.empty()) {
+        data.fileLabel = "(missing file path)";
+    } else {
+        std::filesystem::path clipPath(clip->filepath);
+        data.fileLabel = clipPath.filename().string();
+        if (data.fileLabel.empty())
+            data.fileLabel = clip->filepath;
+    }
+
+    data.success = true;
+    return data;
+}
+
 bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& payload, std::string& error) {
     if (payload.trackIndex < 0) {
         error = "Editing master track meta events is not supported.";
@@ -1701,6 +2043,79 @@ bool TimelineEditor::applyMidiClipEdits(const MidiDumpWindow::EditPayload& paylo
 
     track->clipManager().resizeClip(clip->clipId, newDuration);
     refreshSequenceEditorForTrack(payload.trackIndex);
+    return true;
+}
+
+bool TimelineEditor::applyAudioClipEdits(const AudioEventListEditor::EditPayload& payload, std::string& error) {
+    auto& appModel = uapmd::AppModel::instance();
+    if (payload.trackIndex == uapmd::kMasterTrackIndex) {
+        appModel.setMasterTrackMarkers(payload.markers);
+        invalidateMasterTrackSnapshot();
+        refreshAllSequenceEditorTracks();
+        return true;
+    }
+
+    auto tracks = appModel.getTimelineTracks();
+    if (payload.trackIndex < 0 || payload.trackIndex >= static_cast<int32_t>(tracks.size()) ||
+        !tracks[payload.trackIndex]) {
+        error = "Track unavailable.";
+        return false;
+    }
+
+    auto& track = tracks[payload.trackIndex];
+    auto* clip = track->clipManager().getClip(payload.clipId);
+    if (!clip) {
+        error = "Clip not found.";
+        return false;
+    }
+    if (clip->clipType != uapmd::ClipType::Audio) {
+        error = "Selected clip is not an audio clip.";
+        return false;
+    }
+    if (clip->filepath.empty()) {
+        error = "Audio clip has no source file path.";
+        return false;
+    }
+
+    auto reader = uapmd::createAudioFileReaderFromPath(clip->filepath);
+    if (!reader) {
+        error = "Could not reopen the audio file for warp rebuild.";
+        return false;
+    }
+
+    auto clipLookup = buildClipReferenceMap(tracks);
+    auto targetClip = *clip;
+    targetClip.markers = payload.markers;
+    clipLookup[targetClip.referenceId] = targetClip;
+    auto resolvedWarps = resolveAudioWarpPoints(targetClip, payload.audioWarps, clipLookup, appModel.masterTrackMarkers());
+    auto newNode = std::make_unique<uapmd::AudioFileSourceNode>(
+        clip->sourceNodeInstanceId,
+        std::move(reader),
+        static_cast<double>(appModel.sampleRate()),
+        resolvedWarps
+    );
+
+    if (!track->clipManager().setClipMarkers(payload.clipId, payload.markers)) {
+        error = "Failed to update clip markers.";
+        return false;
+    }
+    auto storedWarps = payload.audioWarps;
+    for (auto& storedWarp : storedWarps) {
+        if (auto clipPosition = resolveAudioWarpClipPosition(targetClip, storedWarp, clipLookup, appModel.masterTrackMarkers()))
+            storedWarp.clipPositionSamples = *clipPosition;
+    }
+    if (!track->clipManager().setAudioWarps(payload.clipId, std::move(storedWarps))) {
+        error = "Failed to update audio warp points.";
+        return false;
+    }
+    if (!track->replaceClipSourceNode(payload.clipId, std::move(newNode))) {
+        error = "Failed to rebuild warped audio source.";
+        return false;
+    }
+
+    resolveAllClipAnchors();
+    invalidateMasterTrackSnapshot();
+    refreshAllSequenceEditorTracks();
     return true;
 }
 

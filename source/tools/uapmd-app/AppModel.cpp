@@ -2292,6 +2292,7 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
 
         if (auto* masterTrack = operation->project->masterTrack()) {
             masterTrack->clips().clear();
+            masterTrack->markers(master_track_markers_);
             if (auto* masterTimelineTrack = getMasterTimelineTrack()) {
                 auto clips = masterTimelineTrack->clipManager().getAllClips();
                 std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
@@ -2437,6 +2438,12 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
     if (!engineResult.success) {
         result.error = engineResult.error;
         return result;
+    }
+
+    master_track_markers_.clear();
+    if (auto project = uapmd::UapmdProjectDataReader::read(projectFile)) {
+        if (auto* masterTrack = project->masterTrack())
+            master_track_markers_ = masterTrack->markers();
     }
 
     // Notify UI about all tracks that were created
