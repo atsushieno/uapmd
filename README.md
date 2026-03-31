@@ -215,6 +215,7 @@ There are third-party (and first-party) dependency libraries (git submodules, CM
 - [wang-bin/JMI](https://github.com/wang-bin/JMI) - MIT
 - [yhirose/cpp-httplib](https://github.com/yhirose/cpp-httplib) - MIT
 - [machinezone/IXWebSocket](https://github.com/machinezone/IXWebSocket) - BSD (3-clause)
+- [Signalsmith-Audio/signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) - MIT
 - [cpm-cmake/CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) - MIT
 - [google/googletest](https://github.com/google/googletest) - BSD (3-clause)
 
