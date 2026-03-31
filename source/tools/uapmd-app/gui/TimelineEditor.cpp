@@ -1364,7 +1364,8 @@ void TimelineEditor::changeClipFile(int32_t trackIndex, int32_t clipId) {
         auto sourceNode = std::make_unique<uapmd::AudioFileSourceNode>(
             sourceNodeId,
             std::move(reader),
-            static_cast<double>(appModel.sampleRate())
+            static_cast<double>(appModel.sampleRate()),
+            clip->audioWarps
         );
 
         int64_t durationSamples = sourceNode->totalLength();

@@ -3,9 +3,9 @@
 #include <memory>
 #include <vector>
 #include <atomic>
-#include <mutex>
 #include "AudioSourceNode.hpp"
-#include "uapmd-data/uapmd-data.hpp"
+#include "TimelineTypes.hpp"
+#include "../audio/AudioFileReader.hpp"
 
 namespace uapmd {
 
@@ -17,6 +17,12 @@ namespace uapmd {
             int32_t instanceId,
             std::unique_ptr<uapmd::AudioFileReader> reader,
             double targetSampleRate
+        );
+        AudioFileSourceNode(
+            int32_t instanceId,
+            std::unique_ptr<uapmd::AudioFileReader> reader,
+            double targetSampleRate,
+            std::vector<AudioWarpPoint> audioWarps
         );
 
         virtual ~AudioFileSourceNode() = default;
@@ -41,6 +47,7 @@ namespace uapmd {
         // Audio file specific
         double sampleRate() const { return sample_rate_; }
         int64_t numFrames() const { return num_frames_; }
+        const std::vector<AudioWarpPoint>& audioWarps() const { return audio_warps_; }
 
     private:
         int32_t instance_id_;
@@ -55,6 +62,7 @@ namespace uapmd {
         int64_t num_frames_{0};  // Number of frames at source sample rate
         double sample_rate_{0.0};  // Source file sample rate
         double target_sample_rate_{0.0};  // Target playback sample rate
+        std::vector<AudioWarpPoint> audio_warps_;
 
         // Resampling state
         std::atomic<double> source_position_{0.0};  // Current fractional position in source buffer

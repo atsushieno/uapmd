@@ -122,16 +122,13 @@ namespace uapmd {
         }
 
         ClipAddResult addAudioClipToTrack(
-            int32_t trackIndex,
+            TimelineTrack& timelineTrack,
             const TimelinePosition& position,
             std::unique_ptr<AudioFileReader> reader,
-            const std::string& filepath) override
-        {
+            const std::string& filepath,
+            std::vector<ClipMarker> markers,
+            std::vector<AudioWarpPoint> audioWarps) {
             ClipAddResult result;
-            if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
-                result.error = "Invalid track index";
-                return result;
-            }
             if (!reader) {
                 result.error = "Invalid audio file reader";
                 return result;
@@ -141,7 +138,8 @@ namespace uapmd {
             auto sourceNode = std::make_unique<AudioFileSourceNode>(
                 sourceNodeId,
                 std::move(reader),
-                static_cast<double>(sampleRate_)
+                static_cast<double>(sampleRate_),
+                audioWarps
             );
 
             int64_t durationSamples = sourceNode->totalLength();
@@ -156,8 +154,10 @@ namespace uapmd {
             clip.anchorReferenceId.clear();
             clip.anchorOrigin = AnchorOrigin::Start;
             clip.anchorOffset = position;
+            clip.markers = std::move(markers);
+            clip.audioWarps = std::move(audioWarps);
 
-            int32_t clipId = timeline_tracks_[static_cast<size_t>(trackIndex)]->addClip(clip, std::move(sourceNode));
+            int32_t clipId = timelineTrack.addClip(clip, std::move(sourceNode));
             if (clipId >= 0) {
                 result.success = true;
                 result.clipId = clipId;
@@ -166,6 +166,26 @@ namespace uapmd {
                 result.error = "Failed to add clip to track";
             }
             return result;
+        }
+
+        ClipAddResult addAudioClipToTrack(
+            int32_t trackIndex,
+            const TimelinePosition& position,
+            std::unique_ptr<AudioFileReader> reader,
+            const std::string& filepath) override
+        {
+            ClipAddResult result;
+            if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size())) {
+                result.error = "Invalid track index";
+                return result;
+            }
+            return addAudioClipToTrack(
+                *timeline_tracks_[static_cast<size_t>(trackIndex)],
+                position,
+                std::move(reader),
+                filepath,
+                {},
+                {});
         }
 
         ClipAddResult addMidiClipToTrack(
@@ -521,16 +541,18 @@ namespace uapmd {
                             result.error = std::format("Failed to open audio clip {}", resolvedPath.string());
                             return result;
                         }
-                        auto loadResult = addAudioClipToTrack(trackIndex, position, std::move(reader), resolvedPath.string());
+                        auto loadResult = addAudioClipToTrack(
+                            *timeline_tracks_[static_cast<size_t>(trackIndex)],
+                            position,
+                            std::move(reader),
+                            resolvedPath.string(),
+                            clip->markers(),
+                            clip->audioWarps());
                         if (!loadResult.success) {
                             result.error = loadResult.error.empty() ? "Failed to load audio clip" : loadResult.error;
                             return result;
                         }
                         auto* loadedClip = timeline_tracks_[static_cast<size_t>(trackIndex)]->clipManager().getClip(loadResult.clipId);
-                        if (loadedClip) {
-                            loadedClip->markers = clip->markers();
-                            loadedClip->audioWarps = clip->audioWarps();
-                        }
                         loadedClipRefs[clip.get()] = LoadedClipRef{
                             timeline_tracks_[static_cast<size_t>(trackIndex)].get(),
                             loadResult.clipId,

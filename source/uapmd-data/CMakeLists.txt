@@ -6,6 +6,13 @@ CPMAddPackage(
     DOWNLOAD_ONLY YES
 )
 
+CPMAddPackage(
+    NAME signalsmith-stretch
+    GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch
+    GIT_TAG 57b93f4e9206a089a45387eaa39bdc9f310d3308
+    EXCLUDE_FROM_ALL YES
+)
+
 set(_UAPMD_DEMUCS_PRIVATE_LIBS)
 set(_UAPMD_DEMUCS_PRIVATE_DEFINES)
 set(_UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS)
@@ -108,6 +115,7 @@ target_link_libraries(uapmd-data
         uapmd
         PRIVATE
         demucs-cpp
+        signalsmith-stretch
 )
 
 set(_UAPMD_AUDIO_FACTORY_SRC src/audio/ChocAudioFileFactory.cpp)
