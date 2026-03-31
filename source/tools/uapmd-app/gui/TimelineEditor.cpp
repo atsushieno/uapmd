@@ -1,5 +1,6 @@
 #include <cctype>
 #include <cstring>
+#include <bit>
 #include <algorithm>
 #include <map>
 #include <set>
@@ -160,7 +161,7 @@ bool wouldCreateClipAnchorCycle(
         if (it == clipsByReferenceId.end())
             return false;
 
-        currentReferenceId = it->second.anchorReferenceId;
+        currentReferenceId = it->second.timeReference(uapmd::AppModel::instance().sampleRate()).referenceId;
     }
     return false;
 }
@@ -294,61 +295,58 @@ std::optional<int64_t> resolveMarkerAbsoluteSample(
 std::optional<int64_t> resolveReferenceAbsoluteSample(
     std::string_view ownerReferenceId,
     const uapmd::ClipData* ownerClip,
-    uapmd::AudioWarpReferenceType referenceType,
-    std::string_view referenceClipId,
-    std::string_view referenceMarkerId,
+    const uapmd::TimeReference& reference,
     const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
     const std::vector<uapmd::ClipMarker>& masterTrackMarkers,
     std::unordered_map<MarkerKey, std::optional<int64_t>, MarkerKeyHash>& cache,
     std::unordered_set<MarkerKey, MarkerKeyHash>& resolving
 ) {
-    switch (referenceType) {
-        case uapmd::AudioWarpReferenceType::Manual:
-        case uapmd::AudioWarpReferenceType::ClipStart: {
-            if (referenceClipId.empty()) {
-                if (ownerClip)
-                    return ownerClip->position.samples;
+    switch (reference.type) {
+        case uapmd::TimeReferenceType::ContainerStart: {
+            const std::string effectiveReferenceId = reference.referenceId.empty()
+                ? std::string(ownerReferenceId)
+                : reference.referenceId;
+            if (effectiveReferenceId == kMasterMarkerReferenceId)
                 return 0;
-            }
-            if (referenceClipId == kMasterMarkerReferenceId)
-                return 0;
-            auto clipIt = clipLookup.find(std::string(referenceClipId));
+            if (effectiveReferenceId == ownerReferenceId)
+                return ownerClip ? std::optional<int64_t>(ownerClip->position.samples) : std::optional<int64_t>(0);
+            auto clipIt = clipLookup.find(effectiveReferenceId);
             return clipIt == clipLookup.end() ? std::nullopt : std::optional<int64_t>(clipIt->second.position.samples);
         }
-        case uapmd::AudioWarpReferenceType::ClipEnd: {
-            if (referenceClipId.empty()) {
+        case uapmd::TimeReferenceType::ContainerEnd: {
+            const std::string effectiveReferenceId = reference.referenceId.empty()
+                ? std::string(ownerReferenceId)
+                : reference.referenceId;
+            if (effectiveReferenceId == kMasterMarkerReferenceId)
+                return std::nullopt;
+            if (effectiveReferenceId == ownerReferenceId) {
                 if (!ownerClip)
                     return std::nullopt;
                 return ownerClip->position.samples + ownerClip->durationSamples;
             }
-            if (referenceClipId == kMasterMarkerReferenceId)
-                return std::nullopt;
-            auto clipIt = clipLookup.find(std::string(referenceClipId));
+            auto clipIt = clipLookup.find(effectiveReferenceId);
             if (clipIt == clipLookup.end())
                 return std::nullopt;
             return clipIt->second.position.samples + clipIt->second.durationSamples;
         }
-        case uapmd::AudioWarpReferenceType::ClipMarker: {
-            const std::string clipReferenceId = referenceClipId.empty() ? std::string(ownerReferenceId) : std::string(referenceClipId);
-            if (clipReferenceId == kMasterMarkerReferenceId) {
-                auto* marker = findMarkerById(masterTrackMarkers, referenceMarkerId);
+        case uapmd::TimeReferenceType::Point: {
+            std::string containerReferenceId;
+            std::string pointReferenceId;
+            if (!uapmd::TimeReference::parsePointReferenceId(reference.referenceId, containerReferenceId, pointReferenceId))
+                return std::nullopt;
+            if (containerReferenceId == kMasterMarkerReferenceId) {
+                auto* marker = findMarkerById(masterTrackMarkers, pointReferenceId);
                 if (!marker)
                     return std::nullopt;
                 return resolveMarkerAbsoluteSample(kMasterMarkerReferenceId, *marker, clipLookup, masterTrackMarkers, cache, resolving);
             }
-            auto clipIt = clipLookup.find(clipReferenceId);
+            auto clipIt = clipLookup.find(containerReferenceId);
             if (clipIt == clipLookup.end())
                 return std::nullopt;
-            auto* marker = findMarkerById(clipIt->second.markers, referenceMarkerId);
+            auto* marker = findMarkerById(clipIt->second.markers, pointReferenceId);
             if (!marker)
                 return std::nullopt;
-            return resolveMarkerAbsoluteSample(clipReferenceId, *marker, clipLookup, masterTrackMarkers, cache, resolving);
-        }
-        case uapmd::AudioWarpReferenceType::MasterMarker: {
-            auto* marker = findMarkerById(masterTrackMarkers, referenceMarkerId);
-            if (!marker)
-                return std::nullopt;
-            return resolveMarkerAbsoluteSample(kMasterMarkerReferenceId, *marker, clipLookup, masterTrackMarkers, cache, resolving);
+            return resolveMarkerAbsoluteSample(containerReferenceId, *marker, clipLookup, masterTrackMarkers, cache, resolving);
         }
     }
 
@@ -382,9 +380,7 @@ std::optional<int64_t> resolveMarkerAbsoluteSample(
     auto absoluteReferenceSample = resolveReferenceAbsoluteSample(
         ownerReferenceId,
         ownerClip,
-        marker.referenceType,
-        marker.referenceClipId,
-        marker.referenceMarkerId,
+        marker.timeReference(ownerReferenceId, kMasterMarkerReferenceId),
         clipLookup,
         masterTrackMarkers,
         cache,
@@ -429,9 +425,7 @@ std::optional<int64_t> resolveAudioWarpClipPosition(
     auto absoluteReferenceSample = resolveReferenceAbsoluteSample(
         targetClip.referenceId,
         &targetClip,
-        warp.referenceType,
-        warp.referenceClipId,
-        warp.referenceMarkerId,
+        warp.timeReference(targetClip.referenceId, kMasterMarkerReferenceId),
         clipLookup,
         masterTrackMarkers,
         cache,
@@ -1518,11 +1512,11 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
         row.clipId = clip.clipId;
         row.referenceId = clip.referenceId;
         row.trackReferenceId = track->referenceId();
-        row.anchorReferenceId = clip.anchorReferenceId;
+        const auto timeReference = clip.timeReference(appModel.sampleRate());
+        row.anchorReferenceId = timeReference.referenceId;
+        row.anchorOrigin = (timeReference.type == uapmd::TimeReferenceType::ContainerEnd) ? "End" : "Start";
 
-        row.anchorOrigin = (clip.anchorOrigin == uapmd::AnchorOrigin::Start) ? "Start" : "End";
-
-        double positionSeconds = clip.anchorOffset.toSeconds(appModel.sampleRate());
+        double positionSeconds = timeReference.offset;
         row.position = std::format("{:+.3f}s", positionSeconds);
 
         double durationSeconds = static_cast<double>(clip.durationSamples) / appModel.sampleRate();
@@ -1589,9 +1583,9 @@ std::string TimelineEditor::buildTrackContentSignature(int32_t trackIndex) const
             clip.durationSamples,
             clip.sourceNodeInstanceId,
             std::hash<std::string>{}(clip.referenceId),
-            std::hash<std::string>{}(clip.anchorReferenceId),
-            static_cast<int>(clip.anchorOrigin),
-            clip.anchorOffset.samples,
+            std::hash<std::string>{}(clip.timeReference(uapmd::AppModel::instance().sampleRate()).referenceId),
+            static_cast<int>(clip.timeReference(uapmd::AppModel::instance().sampleRate()).type),
+            std::bit_cast<uint64_t>(clip.timeReference(uapmd::AppModel::instance().sampleRate()).offset),
             clip.tickResolution,
             clip.name,
             midiHash);
@@ -1637,29 +1631,33 @@ void TimelineEditor::resolveAllClipAnchors() {
                 return {};
 
             const auto& clip = recordIt->second.clip;
-            if (clip.anchorReferenceId.empty()) {
-                resolvedPositions[key] = clip.anchorOffset;
-                return clip.anchorOffset;
+            const auto timeReference = clip.timeReference(appModel.sampleRate());
+            if (timeReference.referenceId.empty()) {
+                auto resolved = uapmd::TimelinePosition::fromSeconds(timeReference.offset, appModel.sampleRate());
+                resolvedPositions[key] = resolved;
+                return resolved;
             }
 
             if (!resolving.insert(key).second) {
-                resolvedPositions[key] = clip.anchorOffset;
-                return clip.anchorOffset;
+                auto resolved = uapmd::TimelinePosition::fromSeconds(timeReference.offset, appModel.sampleRate());
+                resolvedPositions[key] = resolved;
+                return resolved;
             }
 
-            const ClipKey anchorKey{clip.anchorReferenceId};
+            const ClipKey anchorKey{timeReference.referenceId};
             auto anchorIt = clipRecords.find(anchorKey);
             if (anchorIt == clipRecords.end()) {
                 resolving.erase(key);
-                resolvedPositions[key] = clip.anchorOffset;
-                return clip.anchorOffset;
+                auto resolved = uapmd::TimelinePosition::fromSeconds(timeReference.offset, appModel.sampleRate());
+                resolvedPositions[key] = resolved;
+                return resolved;
             }
 
             auto anchorPosition = resolveClipPosition(anchorKey);
-            if (clip.anchorOrigin == uapmd::AnchorOrigin::End)
+            if (timeReference.type == uapmd::TimeReferenceType::ContainerEnd)
                 anchorPosition.samples += anchorIt->second.clip.durationSamples;
 
-            auto resolved = anchorPosition + clip.anchorOffset;
+            auto resolved = anchorPosition + uapmd::TimelinePosition::fromSeconds(timeReference.offset, appModel.sampleRate());
             resolvedPositions[key] = resolved;
             resolving.erase(key);
             return resolved;
@@ -1867,23 +1865,21 @@ void TimelineEditor::updateClip(int32_t trackIndex, int32_t clipId, const std::s
         return;
     }
 
-    uapmd::AnchorOrigin anchorOrigin = uapmd::AnchorOrigin::Start;
-    if (origin == "End")
-        anchorOrigin = uapmd::AnchorOrigin::End;
-
-    uapmd::TimelinePosition anchorOffset = uapmd::TimelinePosition::fromSeconds(offsetSeconds, appModel.sampleRate());
+    uapmd::TimeReference anchor = origin == "End"
+        ? uapmd::TimeReference::fromContainerEnd(anchorReferenceId, offsetSeconds)
+        : uapmd::TimeReference::fromContainerStart(anchorReferenceId, offsetSeconds);
     auto* targetTrack = trackIndex == uapmd::kMasterTrackIndex
         ? appModel.getMasterTimelineTrack()
         : ((trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size())) ? tracks[trackIndex] : nullptr);
     if (!targetTrack)
         return;
 
-    if (wouldCreateClipAnchorCycle(tracks, appModel.getMasterTimelineTrack(), trackIndex, clipId, anchorReferenceId)) {
+    if (wouldCreateClipAnchorCycle(tracks, appModel.getMasterTimelineTrack(), trackIndex, clipId, anchor.referenceId)) {
         std::cerr << "Rejected recursive clip anchor change for clip " << clipId << std::endl;
         return;
     }
 
-    if (!targetTrack->clipManager().setClipAnchor(clipId, anchorReferenceId, anchorOrigin, anchorOffset)) {
+    if (!targetTrack->clipManager().setClipAnchor(clipId, anchor, appModel.sampleRate())) {
         std::cerr << "Failed to apply clip anchor change for clip " << clipId << std::endl;
         return;
     }
@@ -1985,12 +1981,10 @@ void TimelineEditor::moveClipAbsolute(int32_t trackIndex, int32_t clipId, double
         return;
 
     double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
-    uapmd::TimelinePosition newOffset = uapmd::TimelinePosition::fromSeconds(seconds, static_cast<int32_t>(sr));
     tracks[trackIndex]->clipManager().setClipAnchor(
         clipId,
-        {},
-        uapmd::AnchorOrigin::Start,
-        newOffset);
+        uapmd::TimeReference::fromContainerStart({}, seconds),
+        static_cast<int32_t>(sr));
     resolveAllClipAnchors();
     invalidateMasterTrackSnapshot();
     refreshAllSequenceEditorTracks();

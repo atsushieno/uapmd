@@ -105,9 +105,7 @@ namespace uapmd {
             clip.gain = 1.0;
             clip.muted = false;
             clip.name = clipName.empty() ? "MIDI Clip" : clipName;
-            clip.anchorReferenceId.clear();
-            clip.anchorOrigin = AnchorOrigin::Start;
-            clip.anchorOffset = position;
+            clip.setTimeReference(TimeReference::fromContainerStart({}, position.toSeconds(sampleRate_)), sampleRate_);
             clip.nrpnToParameterMapping = nrpnToParameterMapping;
 
             int32_t clipId = timelineTrack.addClip(clip, std::move(sourceNode));
@@ -151,9 +149,7 @@ namespace uapmd {
             clip.gain = 1.0;
             clip.muted = false;
             clip.filepath = filepath;
-            clip.anchorReferenceId.clear();
-            clip.anchorOrigin = AnchorOrigin::Start;
-            clip.anchorOffset = position;
+            clip.setTimeReference(TimeReference::fromContainerStart({}, position.toSeconds(sampleRate_)), sampleRate_);
             clip.markers = std::move(markers);
             clip.audioWarps = std::move(audioWarps);
 
@@ -618,21 +614,20 @@ namespace uapmd {
                 if (!targetTrack)
                     return;
 
-                std::string anchorReferenceId;
+                TimeReference anchor = TimeReference::fromContainerStart();
                 if (auto* anchorClip = dynamic_cast<UapmdProjectClipData*>(pos.anchor)) {
                     auto anchorIt = loadedClipRefs.find(anchorClip);
-                    if (anchorIt != loadedClipRefs.end()) {
-                        anchorReferenceId = anchorIt->second.clipReferenceId;
-                    }
+                    if (anchorIt != loadedClipRefs.end())
+                        anchor.referenceId = anchorIt->second.clipReferenceId;
                 }
-                auto anchorOrigin = pos.origin == UapmdAnchorOrigin::End
-                    ? AnchorOrigin::End
-                    : AnchorOrigin::Start;
+                anchor.type = pos.origin == UapmdAnchorOrigin::End
+                    ? TimeReferenceType::ContainerEnd
+                    : TimeReferenceType::ContainerStart;
+                anchor.offset = TimelinePosition(static_cast<int64_t>(pos.samples)).toSeconds(sampleRate_);
                 targetTrack->clipManager().setClipAnchor(
                     loadedIt->second.clipId,
-                    anchorReferenceId,
-                    anchorOrigin,
-                    TimelinePosition(static_cast<int64_t>(pos.samples)));
+                    anchor,
+                    sampleRate_);
                 targetTrack->clipManager().setClipPosition(
                     loadedIt->second.clipId,
                     TimelinePosition(static_cast<int64_t>(projectClip->absolutePositionInSamples())));

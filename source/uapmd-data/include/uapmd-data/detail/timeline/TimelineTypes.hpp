@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cmath>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -94,6 +95,96 @@ namespace uapmd {
         Midi    // filepath points to MIDI file (SMF/SMF2)
     };
 
+    // Shared authored-time reference representation.
+    // `referenceId` is empty when the reference is relative to the owning container.
+    // `offset` is always expressed in seconds.
+    enum class TimeReferenceType {
+        ContainerStart,
+        ContainerEnd,
+        Point
+    };
+
+    struct TimeReference {
+        TimeReferenceType type{TimeReferenceType::ContainerStart};
+        std::string referenceId;
+        double offset{0.0};  // seconds
+
+        bool operator==(const TimeReference& other) const {
+            return type == other.type &&
+                   referenceId == other.referenceId &&
+                   offset == other.offset;
+        }
+
+        bool isOwningContainerReference() const {
+            return referenceId.empty();
+        }
+
+        static TimeReference fromContainerStart(std::string referenceId = {}, double offset = 0.0) {
+            TimeReference reference;
+            reference.type = TimeReferenceType::ContainerStart;
+            reference.referenceId = std::move(referenceId);
+            reference.offset = offset;
+            return reference;
+        }
+
+        static TimeReference fromContainerEnd(std::string referenceId = {}, double offset = 0.0) {
+            TimeReference reference;
+            reference.type = TimeReferenceType::ContainerEnd;
+            reference.referenceId = std::move(referenceId);
+            reference.offset = offset;
+            return reference;
+        }
+
+        static TimeReference fromPoint(std::string referenceId, double offset = 0.0) {
+            TimeReference reference;
+            reference.type = TimeReferenceType::Point;
+            reference.referenceId = std::move(referenceId);
+            reference.offset = offset;
+            return reference;
+        }
+
+        static std::string makePointReferenceId(std::string_view containerReferenceId, std::string_view pointReferenceId) {
+            std::string encoded = "point:";
+            encoded += std::to_string(containerReferenceId.size());
+            encoded += ':';
+            encoded += containerReferenceId;
+            encoded += pointReferenceId;
+            return encoded;
+        }
+
+        static bool parsePointReferenceId(std::string_view encodedReferenceId,
+                                          std::string& containerReferenceId,
+                                          std::string& pointReferenceId) {
+            constexpr std::string_view prefix = "point:";
+            if (!encodedReferenceId.starts_with(prefix))
+                return false;
+
+            const auto lengthBegin = prefix.size();
+            const auto separator = encodedReferenceId.find(':', lengthBegin);
+            if (separator == std::string_view::npos)
+                return false;
+
+            const auto lengthText = encodedReferenceId.substr(lengthBegin, separator - lengthBegin);
+            if (lengthText.empty())
+                return false;
+
+            size_t containerLength = 0;
+            for (char ch : lengthText) {
+                if (ch < '0' || ch > '9')
+                    return false;
+                containerLength = containerLength * 10 + static_cast<size_t>(ch - '0');
+            }
+
+            const auto containerBegin = separator + 1;
+            if (containerBegin + containerLength > encodedReferenceId.size())
+                return false;
+
+            containerReferenceId = std::string(encodedReferenceId.substr(containerBegin, containerLength));
+            pointReferenceId = std::string(encodedReferenceId.substr(containerBegin + containerLength));
+            return !pointReferenceId.empty();
+        }
+    };
+
     enum class AudioWarpReferenceType {
         Manual,
         ClipStart,
@@ -109,6 +200,98 @@ namespace uapmd {
         std::string referenceClipId;
         std::string referenceMarkerId;
         std::string name;
+
+        TimeReference timeReference() const {
+            switch (referenceType) {
+                case AudioWarpReferenceType::Manual:
+                case AudioWarpReferenceType::ClipStart:
+                    return TimeReference::fromContainerStart(referenceClipId, clipPositionOffset);
+                case AudioWarpReferenceType::ClipEnd:
+                    return TimeReference::fromContainerEnd(referenceClipId, clipPositionOffset);
+                case AudioWarpReferenceType::ClipMarker:
+                case AudioWarpReferenceType::MasterMarker:
+                    return TimeReference::fromPoint(referenceMarkerId, clipPositionOffset);
+            }
+            return TimeReference::fromContainerStart(referenceClipId, clipPositionOffset);
+        }
+
+        TimeReference timeReference(std::string_view owningContainerReferenceId,
+                                    std::string_view masterContainerReferenceId = {}) const {
+            switch (referenceType) {
+                case AudioWarpReferenceType::Manual:
+                case AudioWarpReferenceType::ClipStart:
+                    return TimeReference::fromContainerStart(
+                        referenceClipId.empty() ? std::string(owningContainerReferenceId) : referenceClipId,
+                        clipPositionOffset);
+                case AudioWarpReferenceType::ClipEnd:
+                    return TimeReference::fromContainerEnd(
+                        referenceClipId.empty() ? std::string(owningContainerReferenceId) : referenceClipId,
+                        clipPositionOffset);
+                case AudioWarpReferenceType::ClipMarker:
+                    return TimeReference::fromPoint(
+                        TimeReference::makePointReferenceId(
+                            referenceClipId.empty() ? owningContainerReferenceId : std::string_view(referenceClipId),
+                            referenceMarkerId),
+                        clipPositionOffset);
+                case AudioWarpReferenceType::MasterMarker:
+                    return TimeReference::fromPoint(
+                        TimeReference::makePointReferenceId(masterContainerReferenceId, referenceMarkerId),
+                        clipPositionOffset);
+            }
+            return TimeReference::fromContainerStart(std::string(owningContainerReferenceId), clipPositionOffset);
+        }
+
+        void setTimeReference(const TimeReference& reference) {
+            clipPositionOffset = reference.offset;
+            referenceClipId.clear();
+            referenceMarkerId.clear();
+
+            switch (reference.type) {
+                case TimeReferenceType::ContainerStart:
+                    referenceType = AudioWarpReferenceType::ClipStart;
+                    referenceClipId = reference.referenceId;
+                    break;
+                case TimeReferenceType::ContainerEnd:
+                    referenceType = AudioWarpReferenceType::ClipEnd;
+                    referenceClipId = reference.referenceId;
+                    break;
+                case TimeReferenceType::Point:
+                    referenceType = AudioWarpReferenceType::ClipMarker;
+                    referenceMarkerId = reference.referenceId;
+                    break;
+            }
+        }
+
+        void setTimeReference(const TimeReference& reference,
+                              std::string_view owningContainerReferenceId,
+                              std::string_view masterContainerReferenceId = {}) {
+            if (reference.type != TimeReferenceType::Point) {
+                setTimeReference(reference);
+                if (reference.referenceId == owningContainerReferenceId)
+                    referenceClipId.clear();
+                return;
+            }
+
+            clipPositionOffset = reference.offset;
+            referenceClipId.clear();
+            referenceMarkerId.clear();
+
+            std::string containerReferenceId;
+            if (!TimeReference::parsePointReferenceId(reference.referenceId, containerReferenceId, referenceMarkerId)) {
+                referenceType = AudioWarpReferenceType::ClipMarker;
+                referenceMarkerId = reference.referenceId;
+                return;
+            }
+
+            if (!masterContainerReferenceId.empty() && containerReferenceId == masterContainerReferenceId) {
+                referenceType = AudioWarpReferenceType::MasterMarker;
+                return;
+            }
+
+            referenceType = AudioWarpReferenceType::ClipMarker;
+            if (containerReferenceId != owningContainerReferenceId)
+                referenceClipId = std::move(containerReferenceId);
+        }
     };
 
     struct AudioWarpPoint {
@@ -117,6 +300,98 @@ namespace uapmd {
         AudioWarpReferenceType referenceType{AudioWarpReferenceType::ClipStart};
         std::string referenceClipId;
         std::string referenceMarkerId;
+
+        TimeReference timeReference() const {
+            switch (referenceType) {
+                case AudioWarpReferenceType::Manual:
+                case AudioWarpReferenceType::ClipStart:
+                    return TimeReference::fromContainerStart(referenceClipId, clipPositionOffset);
+                case AudioWarpReferenceType::ClipEnd:
+                    return TimeReference::fromContainerEnd(referenceClipId, clipPositionOffset);
+                case AudioWarpReferenceType::ClipMarker:
+                case AudioWarpReferenceType::MasterMarker:
+                    return TimeReference::fromPoint(referenceMarkerId, clipPositionOffset);
+            }
+            return TimeReference::fromContainerStart(referenceClipId, clipPositionOffset);
+        }
+
+        TimeReference timeReference(std::string_view owningContainerReferenceId,
+                                    std::string_view masterContainerReferenceId = {}) const {
+            switch (referenceType) {
+                case AudioWarpReferenceType::Manual:
+                case AudioWarpReferenceType::ClipStart:
+                    return TimeReference::fromContainerStart(
+                        referenceClipId.empty() ? std::string(owningContainerReferenceId) : referenceClipId,
+                        clipPositionOffset);
+                case AudioWarpReferenceType::ClipEnd:
+                    return TimeReference::fromContainerEnd(
+                        referenceClipId.empty() ? std::string(owningContainerReferenceId) : referenceClipId,
+                        clipPositionOffset);
+                case AudioWarpReferenceType::ClipMarker:
+                    return TimeReference::fromPoint(
+                        TimeReference::makePointReferenceId(
+                            referenceClipId.empty() ? owningContainerReferenceId : std::string_view(referenceClipId),
+                            referenceMarkerId),
+                        clipPositionOffset);
+                case AudioWarpReferenceType::MasterMarker:
+                    return TimeReference::fromPoint(
+                        TimeReference::makePointReferenceId(masterContainerReferenceId, referenceMarkerId),
+                        clipPositionOffset);
+            }
+            return TimeReference::fromContainerStart(std::string(owningContainerReferenceId), clipPositionOffset);
+        }
+
+        void setTimeReference(const TimeReference& reference) {
+            clipPositionOffset = reference.offset;
+            referenceClipId.clear();
+            referenceMarkerId.clear();
+
+            switch (reference.type) {
+                case TimeReferenceType::ContainerStart:
+                    referenceType = AudioWarpReferenceType::ClipStart;
+                    referenceClipId = reference.referenceId;
+                    break;
+                case TimeReferenceType::ContainerEnd:
+                    referenceType = AudioWarpReferenceType::ClipEnd;
+                    referenceClipId = reference.referenceId;
+                    break;
+                case TimeReferenceType::Point:
+                    referenceType = AudioWarpReferenceType::ClipMarker;
+                    referenceMarkerId = reference.referenceId;
+                    break;
+            }
+        }
+
+        void setTimeReference(const TimeReference& reference,
+                              std::string_view owningContainerReferenceId,
+                              std::string_view masterContainerReferenceId = {}) {
+            if (reference.type != TimeReferenceType::Point) {
+                setTimeReference(reference);
+                if (reference.referenceId == owningContainerReferenceId)
+                    referenceClipId.clear();
+                return;
+            }
+
+            clipPositionOffset = reference.offset;
+            referenceClipId.clear();
+            referenceMarkerId.clear();
+
+            std::string containerReferenceId;
+            if (!TimeReference::parsePointReferenceId(reference.referenceId, containerReferenceId, referenceMarkerId)) {
+                referenceType = AudioWarpReferenceType::ClipMarker;
+                referenceMarkerId = reference.referenceId;
+                return;
+            }
+
+            if (!masterContainerReferenceId.empty() && containerReferenceId == masterContainerReferenceId) {
+                referenceType = AudioWarpReferenceType::MasterMarker;
+                return;
+            }
+
+            referenceType = AudioWarpReferenceType::ClipMarker;
+            if (containerReferenceId != owningContainerReferenceId)
+                referenceClipId = std::move(containerReferenceId);
+        }
     };
 
     // Represents a single clip on a track
@@ -153,6 +428,31 @@ namespace uapmd {
         std::string anchorReferenceId;     // Empty = track anchor (absolute position)
         AnchorOrigin anchorOrigin{AnchorOrigin::Start};  // Whether anchor is at start or end of reference
         TimelinePosition anchorOffset;      // Offset from anchor position
+
+        TimeReference timeReference(int32_t sampleRate) const {
+            return anchorOrigin == AnchorOrigin::Start
+                ? TimeReference::fromContainerStart(anchorReferenceId, anchorOffset.toSeconds(sampleRate))
+                : TimeReference::fromContainerEnd(anchorReferenceId, anchorOffset.toSeconds(sampleRate));
+        }
+
+        void setTimeReference(const TimeReference& reference, int32_t sampleRate) {
+            switch (reference.type) {
+                case TimeReferenceType::ContainerStart:
+                    anchorOrigin = AnchorOrigin::Start;
+                    anchorReferenceId = reference.referenceId;
+                    break;
+                case TimeReferenceType::ContainerEnd:
+                    anchorOrigin = AnchorOrigin::End;
+                    anchorReferenceId = reference.referenceId;
+                    break;
+                case TimeReferenceType::Point:
+                    anchorOrigin = AnchorOrigin::Start;
+                    anchorReferenceId = reference.referenceId;
+                    break;
+            }
+
+            anchorOffset = TimelinePosition::fromSeconds(reference.offset, sampleRate);
+        }
 
         // Note: Clip regions, looping, automation, and time-stretch NOT included in this phase
         // Each clip plays the entire audio file from start to finish

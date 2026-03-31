@@ -265,18 +265,16 @@ namespace uapmd {
         return it->second.needsFileSave;
     }
 
-    bool ClipManager::setClipAnchor(int32_t clipId, const std::string& anchorReferenceId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset) {
+    bool ClipManager::setClipAnchor(int32_t clipId, const TimeReference& anchor, int32_t sampleRate) {
         std::lock_guard<std::mutex> lock(clips_mutex_);
         auto it = clips_.find(clipId);
         if (it == clips_.end())
             return false;
 
-        if (wouldCreateLocalAnchorCycle(clips_, clipId, it->second.referenceId, anchorReferenceId))
+        if (wouldCreateLocalAnchorCycle(clips_, clipId, it->second.referenceId, anchor.referenceId))
             return false;
 
-        it->second.anchorReferenceId = anchorReferenceId;
-        it->second.anchorOrigin = anchorOrigin;
-        it->second.anchorOffset = anchorOffset;
+        it->second.setTimeReference(anchor, sampleRate);
         rebuildSnapshotLocked();
         return true;
     }

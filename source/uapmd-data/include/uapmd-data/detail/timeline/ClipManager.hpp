@@ -40,7 +40,7 @@ namespace uapmd {
         bool setClipFilepath(int32_t clipId, const std::string& filepath);
         bool setClipNeedsFileSave(int32_t clipId, bool needsSave);
         bool clipNeedsFileSave(int32_t clipId) const;
-        bool setClipAnchor(int32_t clipId, const std::string& anchorReferenceId, AnchorOrigin anchorOrigin, const TimelinePosition& anchorOffset);
+        bool setClipAnchor(int32_t clipId, const TimeReference& anchor, int32_t sampleRate);
         bool setClipPosition(int32_t clipId, const TimelinePosition& position);
         bool setClipMarkers(int32_t clipId, std::vector<ClipMarker> markers);
         bool setAudioWarps(int32_t clipId, std::vector<AudioWarpPoint> audioWarps);

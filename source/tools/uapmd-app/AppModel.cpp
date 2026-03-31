@@ -2363,16 +2363,18 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                 if (clipIt == serializedClipLookup.end())
                     continue;
 
+                const auto timeReference = clip.timeReference(sampleRate());
                 uapmd::UapmdTimelinePosition pos{};
-                if (!clip.anchorReferenceId.empty()) {
-                    auto anchorIt = serializedClipLookup.find(clip.anchorReferenceId);
+                if (!timeReference.referenceId.empty()) {
+                    auto anchorIt = serializedClipLookup.find(timeReference.referenceId);
                     if (anchorIt != serializedClipLookup.end())
                         pos.anchor = anchorIt->second;
                 }
-                pos.origin = (clip.anchorOrigin == uapmd::AnchorOrigin::End)
+                pos.origin = (timeReference.type == uapmd::TimeReferenceType::ContainerEnd)
                     ? uapmd::UapmdAnchorOrigin::End
                     : uapmd::UapmdAnchorOrigin::Start;
-                pos.samples = static_cast<uint64_t>(std::max<int64_t>(0, clip.anchorOffset.samples));
+                pos.samples = static_cast<uint64_t>(std::max<int64_t>(0,
+                    uapmd::TimelinePosition::fromSeconds(timeReference.offset, sampleRate()).samples));
                 clipIt->second->position(pos);
             }
         }

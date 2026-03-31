@@ -149,53 +149,55 @@ std::optional<int64_t> resolveMarkerAbsoluteSample(
 std::optional<int64_t> resolveReferenceAbsoluteSample(
     std::string_view ownerReferenceId,
     const uapmd::ClipData* ownerClip,
-    uapmd::AudioWarpReferenceType referenceType,
-    std::string_view referenceClipId,
-    std::string_view referenceMarkerId,
+    const uapmd::TimeReference& reference,
     const std::unordered_map<std::string, uapmd::ClipData>& clipLookup,
     const std::vector<uapmd::ClipMarker>& masterTrackMarkers,
     std::unordered_map<MarkerKey, std::optional<int64_t>, MarkerKeyHash>& cache,
     std::unordered_set<MarkerKey, MarkerKeyHash>& resolving
 ) {
-    switch (referenceType) {
-        case uapmd::AudioWarpReferenceType::Manual:
-        case uapmd::AudioWarpReferenceType::ClipStart:
-            if (referenceClipId.empty())
-                return ownerClip ? std::optional<int64_t>(ownerClip->position.samples) : std::optional<int64_t>(0);
-            if (referenceClipId == kMasterMarkerReferenceId)
+    switch (reference.type) {
+        case uapmd::TimeReferenceType::ContainerStart: {
+            const std::string effectiveReferenceId = reference.referenceId.empty()
+                ? std::string(ownerReferenceId)
+                : reference.referenceId;
+            if (effectiveReferenceId == kMasterMarkerReferenceId)
                 return 0;
-            if (auto it = clipLookup.find(std::string(referenceClipId)); it != clipLookup.end())
+            if (effectiveReferenceId == ownerReferenceId)
+                return ownerClip ? std::optional<int64_t>(ownerClip->position.samples) : std::optional<int64_t>(0);
+            if (auto it = clipLookup.find(effectiveReferenceId); it != clipLookup.end())
                 return it->second.position.samples;
             return std::nullopt;
-        case uapmd::AudioWarpReferenceType::ClipEnd:
-            if (referenceClipId.empty())
-                return ownerClip ? std::optional<int64_t>(ownerClip->position.samples + ownerClip->durationSamples) : std::nullopt;
-            if (referenceClipId == kMasterMarkerReferenceId)
+        }
+        case uapmd::TimeReferenceType::ContainerEnd: {
+            const std::string effectiveReferenceId = reference.referenceId.empty()
+                ? std::string(ownerReferenceId)
+                : reference.referenceId;
+            if (effectiveReferenceId == kMasterMarkerReferenceId)
                 return std::nullopt;
-            if (auto it = clipLookup.find(std::string(referenceClipId)); it != clipLookup.end())
+            if (effectiveReferenceId == ownerReferenceId)
+                return ownerClip ? std::optional<int64_t>(ownerClip->position.samples + ownerClip->durationSamples) : std::nullopt;
+            if (auto it = clipLookup.find(effectiveReferenceId); it != clipLookup.end())
                 return it->second.position.samples + it->second.durationSamples;
             return std::nullopt;
-        case uapmd::AudioWarpReferenceType::ClipMarker: {
-            const std::string effectiveClipId = referenceClipId.empty() ? std::string(ownerReferenceId) : std::string(referenceClipId);
-            if (effectiveClipId == kMasterMarkerReferenceId) {
-                auto* refMarker = findMarkerById(masterTrackMarkers, referenceMarkerId);
+        }
+        case uapmd::TimeReferenceType::Point: {
+            std::string containerReferenceId;
+            std::string pointReferenceId;
+            if (!uapmd::TimeReference::parsePointReferenceId(reference.referenceId, containerReferenceId, pointReferenceId))
+                return std::nullopt;
+            if (containerReferenceId == kMasterMarkerReferenceId) {
+                auto* refMarker = findMarkerById(masterTrackMarkers, pointReferenceId);
                 if (!refMarker)
                     return std::nullopt;
                 return resolveMarkerAbsoluteSample(kMasterMarkerReferenceId, *refMarker, clipLookup, masterTrackMarkers, cache, resolving);
             }
-            auto clipIt = clipLookup.find(effectiveClipId);
+            auto clipIt = clipLookup.find(containerReferenceId);
             if (clipIt == clipLookup.end())
                 return std::nullopt;
-            auto* refMarker = findMarkerById(clipIt->second.markers, referenceMarkerId);
+            auto* refMarker = findMarkerById(clipIt->second.markers, pointReferenceId);
             if (!refMarker)
                 return std::nullopt;
-            return resolveMarkerAbsoluteSample(effectiveClipId, *refMarker, clipLookup, masterTrackMarkers, cache, resolving);
-        }
-        case uapmd::AudioWarpReferenceType::MasterMarker: {
-            auto* refMarker = findMarkerById(masterTrackMarkers, referenceMarkerId);
-            if (!refMarker)
-                return std::nullopt;
-            return resolveMarkerAbsoluteSample(kMasterMarkerReferenceId, *refMarker, clipLookup, masterTrackMarkers, cache, resolving);
+            return resolveMarkerAbsoluteSample(containerReferenceId, *refMarker, clipLookup, masterTrackMarkers, cache, resolving);
         }
     }
     return std::nullopt;
@@ -219,8 +221,8 @@ std::optional<int64_t> resolveMarkerAbsoluteSample(
         if (auto clipIt = clipLookup.find(std::string(ownerReferenceId)); clipIt != clipLookup.end())
             ownerClip = &clipIt->second;
     }
-    auto absoluteReferenceSample = resolveReferenceAbsoluteSample(ownerReferenceId, ownerClip, marker.referenceType,
-        marker.referenceClipId, marker.referenceMarkerId, clipLookup, masterTrackMarkers, cache, resolving);
+    auto absoluteReferenceSample = resolveReferenceAbsoluteSample(ownerReferenceId, ownerClip,
+        marker.timeReference(ownerReferenceId, kMasterMarkerReferenceId), clipLookup, masterTrackMarkers, cache, resolving);
     resolving.erase(key);
     if (!absoluteReferenceSample) {
         cache[key] = std::nullopt;
@@ -256,8 +258,8 @@ std::optional<int64_t> resolveWarpClipPosition(
 ) {
     std::unordered_map<MarkerKey, std::optional<int64_t>, MarkerKeyHash> cache;
     std::unordered_set<MarkerKey, MarkerKeyHash> resolving;
-    auto absoluteReferenceSample = resolveReferenceAbsoluteSample(clipData.referenceId, &clipData, warp.referenceType,
-        warp.referenceClipId, warp.referenceMarkerId, clipLookup, masterTrackMarkers, cache, resolving);
+    auto absoluteReferenceSample = resolveReferenceAbsoluteSample(clipData.referenceId, &clipData,
+        warp.timeReference(clipData.referenceId, kMasterMarkerReferenceId), clipLookup, masterTrackMarkers, cache, resolving);
     if (!absoluteReferenceSample)
         return std::nullopt;
     const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
