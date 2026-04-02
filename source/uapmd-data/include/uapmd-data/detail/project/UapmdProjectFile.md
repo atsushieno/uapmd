@@ -10,33 +10,10 @@ The project file is a JSON object with the following top-level structure:
 
 ```json
 {
-  "settings": { /* project-level settings */ },
   "tracks": [ /* array of track objects */ ],
   "master_track": { /* single track object */ }
 }
 ```
-
-## Project Settings
-
-Project-level settings are stored in the optional `settings` object.
-
-### Schema
-
-```json
-{
-  "settings": {
-    "output_alignment_monitoring_policy": "low_latency_live_input"
-  }
-}
-```
-
-### Fields
-
-- **`output_alignment_monitoring_policy`** (string, optional): Realtime output-alignment monitoring policy
-  - Supported values:
-    - `"low_latency_live_input"` - live-input tracks bypass additional output holdback
-    - `"fully_compensated"` - live-input tracks are compensated like any other track
-  - If omitted, the default is `"low_latency_live_input"`
 
 ## Track Object
 
