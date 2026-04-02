@@ -86,6 +86,8 @@ namespace uapmd {
         UapmdFunctionBlockManager function_block_manager{};
         std::atomic<OutputAlignmentMonitoringPolicy> output_alignment_monitoring_policy_{
             OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT};
+        std::atomic<RealtimeInfiniteTailPolicy> realtime_infinite_tail_policy_{
+            RealtimeInfiniteTailPolicy::LATENCY_FALLBACK};
 
         // Playback state (managed by RealtimeSequencer)
         std::atomic<bool> is_playback_active_{false};
@@ -174,6 +176,8 @@ namespace uapmd {
         bool isOutputAlignmentActive() override;
         OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const override;
         void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) override;
+        RealtimeInfiniteTailPolicy realtimeInfiniteTailPolicy() const override;
+        void realtimeInfiniteTailPolicy(RealtimeInfiniteTailPolicy policy) override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         uapmd_track_index_t addEmptyTrack() override;
@@ -478,6 +482,14 @@ namespace uapmd {
         resetOutputAlignmentBuffers();
     }
 
+    RealtimeInfiniteTailPolicy SequencerEngineImpl::realtimeInfiniteTailPolicy() const {
+        return realtime_infinite_tail_policy_.load(std::memory_order_acquire);
+    }
+
+    void SequencerEngineImpl::realtimeInfiniteTailPolicy(RealtimeInfiniteTailPolicy policy) {
+        realtime_infinite_tail_policy_.store(policy, std::memory_order_release);
+    }
+
     uint32_t SequencerEngineImpl::maxTrackRenderLeadInSamples() const {
         uint32_t maxTrackLatency = 0;
         for (size_t i = 0; i < tracks_.size(); ++i) {
@@ -569,14 +581,20 @@ namespace uapmd {
                 static_cast<double>(track->renderLeadInSamples()) +
                 tailLengthSecondsToSamples(track->tailLengthInSeconds());
             if (!std::isfinite(trackPathSamples) || !std::isfinite(masterPathSamples))
-                return static_cast<int64_t>(maxRenderLeadInSamples());
+                return realtime_infinite_tail_policy_.load(std::memory_order_acquire) ==
+                    RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
+                    ? 0
+                    : static_cast<int64_t>(maxRenderLeadInSamples());
             maxTrackPathSamples = std::max(maxTrackPathSamples, trackPathSamples);
         }
 
         const double totalDrainSamples =
             tracks_.empty() ? masterPathSamples : maxTrackPathSamples + masterPathSamples;
         if (!std::isfinite(totalDrainSamples))
-            return static_cast<int64_t>(maxRenderLeadInSamples());
+            return realtime_infinite_tail_policy_.load(std::memory_order_acquire) ==
+                RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
+                ? 0
+                : static_cast<int64_t>(maxRenderLeadInSamples());
         if (totalDrainSamples <= 0.0)
             return 0;
         if (totalDrainSamples >= static_cast<double>(std::numeric_limits<int64_t>::max()))

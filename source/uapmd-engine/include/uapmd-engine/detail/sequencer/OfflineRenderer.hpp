@@ -10,6 +10,11 @@ namespace uapmd {
 
 class SequencerEngine;
 
+enum class OfflineInfiniteTailPolicy {
+    USE_GUARD_AND_SILENCE_STOP = 0,
+    LATENCY_FALLBACK = 1,
+};
+
 struct OfflineRenderSettings {
     std::filesystem::path outputPath;
     double startSeconds{0.0};
@@ -22,6 +27,7 @@ struct OfflineRenderSettings {
     bool enableSilenceStop{false};
     double silenceDurationSeconds{0.0};
     double silenceThresholdDb{-80.0};
+    OfflineInfiniteTailPolicy infiniteTailPolicy{OfflineInfiniteTailPolicy::USE_GUARD_AND_SILENCE_STOP};
     int32_t sampleRate{48000};
     uint32_t bufferSize{1024};
     uint32_t outputChannels{2};

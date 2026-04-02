@@ -465,6 +465,7 @@ namespace uapmd {
             bool enableSilenceStop{false};
             double silenceDurationSeconds{5.0};
             double silenceThresholdDb{-80.0};
+            OfflineInfiniteTailPolicy infiniteTailPolicy{OfflineInfiniteTailPolicy::USE_GUARD_AND_SILENCE_STOP};
         };
 
         struct RenderToFileStatus {

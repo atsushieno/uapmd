@@ -8,6 +8,7 @@
 
 #include <imgui.h>
 #include <uapmd-file/IDocumentProvider.hpp>
+#include <uapmd-engine/uapmd-engine.hpp>
 
 namespace uapmd::gui {
 
@@ -47,6 +48,7 @@ private:
         bool silenceStopEnabled{true};
         double silenceHoldSeconds{5.0};
         double silenceThresholdDb{-80.0};
+        uapmd::OfflineInfiniteTailPolicy infiniteTailPolicy{uapmd::OfflineInfiniteTailPolicy::USE_GUARD_AND_SILENCE_STOP};
         bool hasLoopRange{false};
         double loopStartSeconds{0.0};
         double loopEndSeconds{0.0};

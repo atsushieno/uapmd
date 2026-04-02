@@ -29,14 +29,21 @@ double tailLengthSecondsToSamples(double seconds, int32_t sampleRate) {
     return std::ceil(seconds * static_cast<double>(sampleRate));
 }
 
-int64_t computeOfflineStopDrainFrames(SequencerEngine& engine, int32_t sampleRate) {
+int64_t computeOfflineStopDrainFrames(SequencerEngine& engine,
+                                      int32_t sampleRate,
+                                      OfflineInfiniteTailPolicy infiniteTailPolicy) {
     auto* masterTrack = engine.masterTrack();
+    uint32_t maxTrackRenderLead = 0;
+    auto& tracks = engine.tracks();
+    for (size_t i = 0; i < tracks.size(); ++i)
+        maxTrackRenderLead = std::max(
+            maxTrackRenderLead,
+            engine.trackRenderLeadInSamples(static_cast<uapmd_track_index_t>(i)));
     const double masterPathSamples =
         static_cast<double>(engine.masterTrackRenderLeadInSamples()) +
         tailLengthSecondsToSamples(masterTrack ? masterTrack->tailLengthInSeconds() : 0.0, sampleRate);
 
     double maxTrackPathSamples = 0.0;
-    auto& tracks = engine.tracks();
     for (size_t i = 0; i < tracks.size(); ++i) {
         auto* track = tracks[i];
         if (!track)
@@ -45,13 +52,19 @@ int64_t computeOfflineStopDrainFrames(SequencerEngine& engine, int32_t sampleRat
             static_cast<double>(engine.trackRenderLeadInSamples(static_cast<uapmd_track_index_t>(i))) +
             tailLengthSecondsToSamples(track->tailLengthInSeconds(), sampleRate);
         if (!std::isfinite(trackPathSamples) || !std::isfinite(masterPathSamples))
-            return 0;
+            return infiniteTailPolicy == OfflineInfiniteTailPolicy::LATENCY_FALLBACK
+                ? static_cast<int64_t>(maxTrackRenderLead + engine.masterTrackRenderLeadInSamples())
+                : 0;
         maxTrackPathSamples = std::max(maxTrackPathSamples, trackPathSamples);
     }
 
     const double totalSamples =
         tracks.empty() ? masterPathSamples : maxTrackPathSamples + masterPathSamples;
-    if (!std::isfinite(totalSamples) || totalSamples <= 0.0)
+    if (!std::isfinite(totalSamples))
+        return infiniteTailPolicy == OfflineInfiniteTailPolicy::LATENCY_FALLBACK
+            ? static_cast<int64_t>(maxTrackRenderLead + engine.masterTrackRenderLeadInSamples())
+            : 0;
+    if (totalSamples <= 0.0)
         return 0;
     if (totalSamples >= static_cast<double>(std::numeric_limits<int64_t>::max()))
         return std::numeric_limits<int64_t>::max();
@@ -149,7 +162,8 @@ OfflineRenderResult renderOfflineProject(SequencerEngine& engine,
     const int64_t userGuardFrames = settings.tailSeconds > 0.0
         ? static_cast<int64_t>(std::llround(settings.tailSeconds * static_cast<double>(settings.sampleRate)))
         : 0;
-    const int64_t engineStopDrainFrames = computeOfflineStopDrainFrames(engine, settings.sampleRate);
+    const int64_t engineStopDrainFrames =
+        computeOfflineStopDrainFrames(engine, settings.sampleRate, settings.infiniteTailPolicy);
     const int64_t guardFrames = std::max(userGuardFrames, engineStopDrainFrames);
     const int64_t hardStopSample = contentEndSample + guardFrames;
     const int64_t totalRenderFrames = std::max<int64_t>(1, hardStopSample - startSample);

@@ -15,6 +15,11 @@ namespace uapmd {
         FULLY_COMPENSATED = 1,
     };
 
+    enum class RealtimeInfiniteTailPolicy {
+        LATENCY_FALLBACK = 0,
+        IMMEDIATE_STOP = 1,
+    };
+
     class AudioPluginHostingAPI;
 
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
@@ -49,6 +54,8 @@ namespace uapmd {
         virtual bool isOutputAlignmentActive() = 0;
         virtual OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const = 0;
         virtual void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) = 0;
+        virtual RealtimeInfiniteTailPolicy realtimeInfiniteTailPolicy() const = 0;
+        virtual void realtimeInfiniteTailPolicy(RealtimeInfiniteTailPolicy policy) = 0;
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
         virtual uapmd_track_index_t addEmptyTrack() = 0;
         // Add plugin to existing track

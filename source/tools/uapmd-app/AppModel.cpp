@@ -3131,6 +3131,7 @@ void uapmd::AppModel::runRenderToFile(RenderToFileSettings settings, std::shared
         renderSettings.enableSilenceStop = settings.enableSilenceStop;
         renderSettings.silenceDurationSeconds = settings.silenceDurationSeconds;
         renderSettings.silenceThresholdDb = settings.silenceThresholdDb;
+        renderSettings.infiniteTailPolicy = settings.infiniteTailPolicy;
         renderSettings.sampleRate = sampleRate;
         renderSettings.bufferSize = bufferSize;
         renderSettings.outputChannels = outputChannels;

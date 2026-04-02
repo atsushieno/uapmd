@@ -695,9 +695,14 @@ void MainWindow::renderMixerMonitorWindow() {
         const bool latencyDrainActive = !playbackActive && renderPosition > audiblePosition;
         const bool outputAlignmentActive = engine->isOutputAlignmentActive();
         int monitoringPolicy = static_cast<int>(engine->outputAlignmentMonitoringPolicy());
+        int realtimeInfiniteTailPolicy = static_cast<int>(engine->realtimeInfiniteTailPolicy());
         const char* monitoringPolicyItems[] = {
             "Low-Latency Live Input",
             "Fully Compensated",
+        };
+        const char* realtimeInfiniteTailPolicyItems[] = {
+            "Latency Fallback",
+            "Immediate Stop",
         };
 
         ImGui::Text("Audible Position: %lld samples", static_cast<long long>(audiblePosition));
@@ -712,6 +717,8 @@ void MainWindow::renderMixerMonitorWindow() {
         ImGui::Text("Output Alignment: %s", outputAlignmentActive ? "active" : "inactive");
         if (ImGui::Combo("Monitoring Policy", &monitoringPolicy, monitoringPolicyItems, IM_ARRAYSIZE(monitoringPolicyItems)))
             engine->outputAlignmentMonitoringPolicy(static_cast<uapmd::OutputAlignmentMonitoringPolicy>(monitoringPolicy));
+        if (ImGui::Combo("Realtime Infinite Tail", &realtimeInfiniteTailPolicy, realtimeInfiniteTailPolicyItems, IM_ARRAYSIZE(realtimeInfiniteTailPolicyItems)))
+            engine->realtimeInfiniteTailPolicy(static_cast<uapmd::RealtimeInfiniteTailPolicy>(realtimeInfiniteTailPolicy));
 
         ImGui::Separator();
 

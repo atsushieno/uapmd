@@ -128,6 +128,13 @@ void ExporterWindow::render(float uiScale) {
     ImGui::InputDouble("Tail / Guard (s)", &state_.guardSeconds, 0.1, 1.0, "%.2f");
     if (state_.guardSeconds < 0.0)
         state_.guardSeconds = 0.0;
+    int infiniteTailPolicy = static_cast<int>(state_.infiniteTailPolicy);
+    const char* infiniteTailPolicyItems[] = {
+        "Guard / Silence Stop",
+        "Latency Fallback",
+    };
+    if (ImGui::Combo("Infinite Tail", &infiniteTailPolicy, infiniteTailPolicyItems, IM_ARRAYSIZE(infiniteTailPolicyItems)))
+        state_.infiniteTailPolicy = static_cast<uapmd::OfflineInfiniteTailPolicy>(infiniteTailPolicy);
     ImGui::Checkbox("Stop after silence", &state_.silenceStopEnabled);
     if (state_.silenceStopEnabled) {
         ImGui::InputDouble("Hold Length (s)", &state_.silenceHoldSeconds, 0.5, 1.0, "%.1f");
@@ -157,6 +164,7 @@ void ExporterWindow::render(float uiScale) {
         settings.enableSilenceStop = state_.silenceStopEnabled;
         settings.silenceDurationSeconds = state_.silenceHoldSeconds;
         settings.silenceThresholdDb = state_.silenceThresholdDb;
+        settings.infiniteTailPolicy = state_.infiniteTailPolicy;
         settings.contentBoundsValid = bounds.hasContent;
         settings.contentStartSeconds = bounds.startSeconds;
         settings.contentEndSeconds = bounds.endSeconds;
