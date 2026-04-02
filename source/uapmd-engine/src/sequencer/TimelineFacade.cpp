@@ -765,7 +765,7 @@ namespace uapmd {
             return engine_.masterTrackRenderLeadInSamples();
         }
 
-        bool trackRequiresOutputAlignment(int32_t trackIndex) override {
+        bool trackHasLiveInput(int32_t trackIndex) override {
             if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= timeline_tracks_.size())
                 return false;
             auto* track = timeline_tracks_[static_cast<size_t>(trackIndex)].get();
