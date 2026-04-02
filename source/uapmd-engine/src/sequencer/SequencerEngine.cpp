@@ -70,6 +70,59 @@ namespace uapmd {
         }
     };
 
+    static void clearAudioInputBuses(AudioProcessContext& ctx) {
+        for (int32_t busIndex = 0; busIndex < ctx.audioInBusCount(); ++busIndex)
+            for (uint32_t ch = 0; ch < ctx.inputChannelCount(busIndex); ++ch) {
+                auto* buffer = ctx.getFloatInBuffer(busIndex, ch);
+                if (buffer)
+                    std::memset(buffer, 0, static_cast<size_t>(ctx.frameCount()) * sizeof(float));
+            }
+    }
+
+    static void accumulateAudioBus(
+        AudioProcessContext& dstCtx,
+        uint32_t dstBusIndex,
+        const AudioProcessContext& srcCtx,
+        uint32_t srcBusIndex,
+        int32_t frameCount) {
+        if (dstBusIndex >= static_cast<uint32_t>(dstCtx.audioOutBusCount()) ||
+            srcBusIndex >= static_cast<uint32_t>(srcCtx.audioOutBusCount()))
+            return;
+        const uint32_t numChannels = std::min(
+            static_cast<uint32_t>(dstCtx.outputChannelCount(static_cast<int32_t>(dstBusIndex))),
+            static_cast<uint32_t>(srcCtx.outputChannelCount(static_cast<int32_t>(srcBusIndex))));
+        for (uint32_t ch = 0; ch < numChannels; ++ch) {
+            auto* dst = dstCtx.getFloatOutBuffer(static_cast<int32_t>(dstBusIndex), ch);
+            const auto* src = srcCtx.getFloatOutBuffer(static_cast<int32_t>(srcBusIndex), ch);
+            if (!dst || !src)
+                continue;
+            for (int32_t frame = 0; frame < frameCount; ++frame)
+                dst[frame] += src[frame];
+        }
+    }
+
+    static void accumulateAudioBusToInput(
+        AudioProcessContext& dstCtx,
+        uint32_t dstBusIndex,
+        const AudioProcessContext& srcCtx,
+        uint32_t srcBusIndex,
+        int32_t frameCount) {
+        if (dstBusIndex >= static_cast<uint32_t>(dstCtx.audioInBusCount()) ||
+            srcBusIndex >= static_cast<uint32_t>(srcCtx.audioOutBusCount()))
+            return;
+        const uint32_t numChannels = std::min(
+            static_cast<uint32_t>(dstCtx.inputChannelCount(static_cast<int32_t>(dstBusIndex))),
+            static_cast<uint32_t>(srcCtx.outputChannelCount(static_cast<int32_t>(srcBusIndex))));
+        for (uint32_t ch = 0; ch < numChannels; ++ch) {
+            auto* dst = dstCtx.getFloatInBuffer(static_cast<int32_t>(dstBusIndex), ch);
+            const auto* src = srcCtx.getFloatOutBuffer(static_cast<int32_t>(srcBusIndex), ch);
+            if (!dst || !src)
+                continue;
+            for (int32_t frame = 0; frame < frameCount; ++frame)
+                dst[frame] += src[frame];
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
 
     class SequencerEngineImpl : public SequencerEngine {
@@ -80,6 +133,7 @@ namespace uapmd {
         std::vector<std::unique_ptr<SequencerTrack>> tracks_{};
         std::unique_ptr<SequencerTrack> master_track_;
         std::unique_ptr<AudioProcessContext> master_track_context_;
+        std::unique_ptr<AudioProcessContext> mix_bus_context_;
         SequenceProcessContext sequence{};
         int32_t sampleRate;
         std::unique_ptr<AudioPluginHostingAPI> plugin_host;
@@ -173,6 +227,7 @@ namespace uapmd {
         bool trackHasLiveInput(uapmd_track_index_t trackIndex) override;
         uint32_t trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) override;
         uint32_t trackOutputBusAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) override;
+        TrackOutputRoutingTarget trackOutputBusRoutingTarget(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) override;
         bool isOutputAlignmentActive() override;
         OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const override;
         void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) override;
@@ -295,9 +350,12 @@ namespace uapmd {
         uint32_t maxLiveInputRenderLeadInSamples() const;
         uint32_t maxOutputAlignmentHoldbackInSamples() const;
         uint32_t trackOutputAlignmentHoldbackInSamplesImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
+        TrackOutputRoutingTarget trackOutputBusRoutingTargetImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
         int64_t maxStopDrainInSamples() const;
         double tailLengthSecondsToSamples(double seconds) const;
+        void reconfigureMasterTrackInputBuses();
         void updateLatencyDrainState(int32_t frameCount);
+        void reconfigureMixBusContext();
         void reconfigureOutputAlignmentBuffers();
         void resetOutputAlignmentBuffers();
     };
@@ -315,9 +373,11 @@ namespace uapmd {
         plugin_output_scratch_(umpBufferSizeInInts, 0) {
         master_track_ = SequencerTrack::create(umpBufferSizeInInts);
         master_track_context_ = std::make_unique<AudioProcessContext>(sequence.masterContext(), ump_buffer_size_in_ints);
+        mix_bus_context_ = std::make_unique<AudioProcessContext>(sequence.masterContext(), ump_buffer_size_in_ints);
         if (master_track_context_) {
             master_track_context_->configureMainBus(default_output_channels_, default_output_channels_, audio_buffer_size_in_frames);
         }
+        reconfigureMixBusContext();
         configureTrackRouting(master_track_.get());
 
         // Create timeline facade and register its audio preprocess callback
@@ -459,6 +519,10 @@ namespace uapmd {
         return trackOutputAlignmentHoldbackInSamplesImpl(trackIndex, outputBusIndex);
     }
 
+    TrackOutputRoutingTarget SequencerEngineImpl::trackOutputBusRoutingTarget(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) {
+        return trackOutputBusRoutingTargetImpl(trackIndex, outputBusIndex);
+    }
+
     bool SequencerEngineImpl::isOutputAlignmentActive() {
         if (!timeline_)
             return false;
@@ -560,6 +624,37 @@ namespace uapmd {
         return liveInputReferenceLead + intraTrackHoldback;
     }
 
+    TrackOutputRoutingTarget SequencerEngineImpl::trackOutputBusRoutingTargetImpl(
+        uapmd_track_index_t trackIndex,
+        uint32_t outputBusIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return {};
+        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+        if (!track || outputBusIndex >= track->graph().outputBusCount())
+            return {};
+
+        if (master_track_ && master_track_context_ && !master_track_->orderedInstanceIds().empty() &&
+            master_track_context_->audioInBusCount() > 0) {
+            if (outputBusIndex < static_cast<uint32_t>(master_track_context_->audioInBusCount()))
+                return {
+                    TrackOutputRoutingTargetType::MASTER_INPUT_BUS,
+                    outputBusIndex,
+                    false,
+                };
+            return {
+                TrackOutputRoutingTargetType::MASTER_INPUT_BUS,
+                0,
+                true,
+            };
+        }
+
+        return {
+            TrackOutputRoutingTargetType::MAIN_MIX_BUS,
+            0,
+            outputBusIndex != 0,
+        };
+    }
+
     double SequencerEngineImpl::tailLengthSecondsToSamples(double seconds) const {
         if (!(seconds > 0.0))
             return 0.0;
@@ -600,6 +695,66 @@ namespace uapmd {
         if (totalDrainSamples >= static_cast<double>(std::numeric_limits<int64_t>::max()))
             return std::numeric_limits<int64_t>::max();
         return static_cast<int64_t>(totalDrainSamples);
+    }
+
+    void SequencerEngineImpl::reconfigureMasterTrackInputBuses() {
+        if (!master_track_context_ || !mix_bus_context_)
+            return;
+
+        std::vector<remidy::AudioBusSpec> mergedInputSpecs(
+            master_track_context_->audioInputSpecs().begin(),
+            master_track_context_->audioInputSpecs().end());
+        const auto& mixOutputSpecs = mix_bus_context_->audioOutputSpecs();
+        for (size_t busIndex = 0; busIndex < mixOutputSpecs.size(); ++busIndex) {
+            const auto& mixSpec = mixOutputSpecs[busIndex];
+            if (busIndex >= mergedInputSpecs.size()) {
+                mergedInputSpecs.push_back(mixSpec);
+                continue;
+            }
+            mergedInputSpecs[busIndex].channels = std::max(mergedInputSpecs[busIndex].channels, mixSpec.channels);
+            mergedInputSpecs[busIndex].bufferCapacityFrames = std::max(
+                mergedInputSpecs[busIndex].bufferCapacityFrames,
+                mixSpec.bufferCapacityFrames);
+            if (mixSpec.role == remidy::AudioBusRole::Main)
+                mergedInputSpecs[busIndex].role = remidy::AudioBusRole::Main;
+        }
+
+        if (mergedInputSpecs != master_track_context_->audioInputSpecs())
+            master_track_context_->configureAudioInputBuses(mergedInputSpecs);
+    }
+
+    void SequencerEngineImpl::reconfigureMixBusContext() {
+        if (!mix_bus_context_)
+            return;
+
+        std::vector<remidy::AudioBusSpec> mixSpecs;
+        for (const auto* ctx : sequence.tracks) {
+            if (!ctx)
+                continue;
+            const auto& outputSpecs = ctx->audioOutputSpecs();
+            for (size_t busIndex = 0; busIndex < outputSpecs.size(); ++busIndex) {
+                const auto& spec = outputSpecs[busIndex];
+                if (busIndex >= mixSpecs.size()) {
+                    mixSpecs.push_back(spec);
+                    continue;
+                }
+                mixSpecs[busIndex].channels = std::max(mixSpecs[busIndex].channels, spec.channels);
+                mixSpecs[busIndex].bufferCapacityFrames = std::max(
+                    mixSpecs[busIndex].bufferCapacityFrames,
+                    spec.bufferCapacityFrames);
+                if (spec.role == remidy::AudioBusRole::Main)
+                    mixSpecs[busIndex].role = remidy::AudioBusRole::Main;
+            }
+        }
+
+        if (mixSpecs.empty())
+            mixSpecs.push_back(
+                remidy::AudioBusSpec{
+                    remidy::AudioBusRole::Main,
+                    default_output_channels_,
+                    audio_buffer_size_in_frames});
+        mix_bus_context_->configureAudioOutputBuses(mixSpecs);
+        reconfigureMasterTrackInputBuses();
     }
 
     void SequencerEngineImpl::reconfigureOutputAlignmentBuffers() {
@@ -831,7 +986,15 @@ namespace uapmd {
             }
         }
 
-        // Mix all tracks into main output bus with additive mixing
+        auto* mixCtx = mix_bus_context_.get();
+        if (mixCtx) {
+            mixCtx->frameCount(trackFrameCount);
+            mixCtx->clearAudioOutputs();
+        }
+
+        // Stage compensated track output buses into a dedicated mixer context so
+        // downstream processing can still see per-bus structure before the final
+        // master/device fold.
         for (uint32_t t = 0, nTracks = tracks_.size(); t < nTracks; t++) {
             if (t >= data.tracks.size())
                 continue; // buffer not ready
@@ -841,18 +1004,10 @@ namespace uapmd {
             if (track_output_handler_ && track_output_handler_(static_cast<int32_t>(t), *tracks_[t], *ctx))
                 continue;
 
-            // Mix only main bus (bus 0)
-            if (process.audioOutBusCount() > 0 && ctx->audioOutBusCount() > 0) {
-                uint32_t numChannels = std::min(ctx->outputChannelCount(0), process.outputChannelCount(0));
-                for (uint32_t ch = 0; ch < numChannels; ch++) {
-                    float* dst = process.getFloatOutBuffer(0, ch);
-                    const float* src = ctx->getFloatOutBuffer(0, ch);
-                    if (!dst || !src)
-                        continue;
-                    for (int32_t frame = 0; frame < trackFrameCount; frame++)
-                        dst[frame] += src[frame];
-                }
-            }
+            if (!mixCtx)
+                continue;
+            for (uint32_t busIndex = 0; busIndex < ctx->audioOutBusCount(); ++busIndex)
+                accumulateAudioBus(*mixCtx, busIndex, *ctx, busIndex, trackFrameCount);
         }
 
         // Return consumed pump slots to the free queue so the pump can reuse them.
@@ -868,34 +1023,26 @@ namespace uapmd {
             masterCtx->frameCount(trackFrameCount);
             masterCtx->eventIn().position(0);
             masterCtx->eventOut().position(0);
+            clearAudioInputBuses(*masterCtx);
+            masterCtx->clearAudioOutputs();
 
-            if (masterCtx->audioInBusCount() > 0 && process.audioOutBusCount() > 0) {
-                uint32_t channels = std::min(
-                    static_cast<uint32_t>(masterCtx->inputChannelCount(0)),
-                    static_cast<uint32_t>(process.outputChannelCount(0))
-                );
-                for (uint32_t ch = 0; ch < channels; ++ch) {
-                    float* dst = masterCtx->getFloatInBuffer(0, ch);
-                    const float* src = process.getFloatOutBuffer(0, ch);
-                    if (dst && src)
-                        std::memcpy(dst, src, trackFrameCount * sizeof(float));
+            if (mixCtx && masterCtx->audioInBusCount() > 0) {
+                for (uint32_t busIndex = 0; busIndex < static_cast<uint32_t>(mixCtx->audioOutBusCount()); ++busIndex) {
+                    const uint32_t targetBus =
+                        busIndex < static_cast<uint32_t>(masterCtx->audioInBusCount()) ? busIndex : 0;
+                    accumulateAudioBusToInput(*masterCtx, targetBus, *mixCtx, busIndex, trackFrameCount);
                 }
             }
 
             master_track_->graph().processAudio(*masterCtx);
 
             if (masterCtx->audioOutBusCount() > 0 && process.audioOutBusCount() > 0) {
-                uint32_t channels = std::min(
-                    static_cast<uint32_t>(masterCtx->outputChannelCount(0)),
-                    static_cast<uint32_t>(process.outputChannelCount(0))
-                );
-                for (uint32_t ch = 0; ch < channels; ++ch) {
-                    float* dst = process.getFloatOutBuffer(0, ch);
-                    const float* src = masterCtx->getFloatOutBuffer(0, ch);
-                    if (dst && src)
-                        std::memcpy(dst, src, trackFrameCount * sizeof(float));
-                }
+                for (uint32_t busIndex = 0; busIndex < static_cast<uint32_t>(masterCtx->audioOutBusCount()); ++busIndex)
+                    accumulateAudioBus(process, 0, *masterCtx, busIndex, trackFrameCount);
             }
+        } else if (mixCtx && process.audioOutBusCount() > 0) {
+            for (uint32_t busIndex = 0; busIndex < static_cast<uint32_t>(mixCtx->audioOutBusCount()); ++busIndex)
+                accumulateAudioBus(process, 0, *mixCtx, busIndex, trackFrameCount);
         }
 
         if (prerollActive && process.audioOutBusCount() > 0) {
@@ -1007,6 +1154,7 @@ namespace uapmd {
         if (master_track_context_) {
             master_track_context_->configureMainBus(default_output_channels_, default_output_channels_, audio_buffer_size_in_frames);
         }
+        reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
     }
 
@@ -1038,6 +1186,7 @@ namespace uapmd {
             static_cast<double>(sampleRate),
             static_cast<uint32_t>(audio_buffer_size_in_frames)
         );
+        reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
 
         return trackIndex;
@@ -1056,6 +1205,7 @@ namespace uapmd {
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
         rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
         timeline_->onTrackRemoved(static_cast<size_t>(index));
+        reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
         return true;
     }
@@ -1141,6 +1291,7 @@ namespace uapmd {
             refreshFunctionBlockMappings();
 
             instance->bypassed(false);
+            reconfigureMixBusContext();
             reconfigureOutputAlignmentBuffers();
 
             callback(instanceId, targetMaster ? kMasterTrackIndex : trackIndex, "");
@@ -1179,12 +1330,14 @@ namespace uapmd {
                 // They have minimal overhead (no plugins to process) and can be removed manually
                 // by calling removeTrack() from a non-audio thread when appropriate.
                 refreshFunctionBlockMappings();
+                reconfigureMixBusContext();
                 reconfigureOutputAlignmentBuffers();
                 return true;
             }
         }
         if (master_track_ && master_track_->graph().removeNodeSimple(instanceId)) {
             refreshFunctionBlockMappings();
+            reconfigureMixBusContext();
             reconfigureOutputAlignmentBuffers();
             return true;
         }
@@ -1202,6 +1355,7 @@ namespace uapmd {
         }
         track_processing_flags_.erase(track_processing_flags_.begin() + static_cast<long>(index));
         timeline_->onTrackRemoved(index);
+        reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
     }
 

@@ -731,7 +731,7 @@ void MainWindow::renderMixerMonitorWindow() {
             ImGui::TableSetupColumn("Holdback", ImGuiTableColumnFlags_WidthFixed, 120.0f * uiScale_);
             ImGui::TableSetupColumn("Tail", ImGuiTableColumnFlags_WidthFixed, 110.0f * uiScale_);
             ImGui::TableSetupColumn("Out Buses", ImGuiTableColumnFlags_WidthFixed, 80.0f * uiScale_);
-            ImGui::TableSetupColumn("Per-Bus Timing", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableSetupColumn("Per-Bus Timing / Route", ImGuiTableColumnFlags_WidthStretch, 1.0f);
             ImGui::TableHeadersRow();
 
             auto renderTrackRow = [engine, this](const char* label, int32_t trackIndex, uapmd::SequencerTrack* track, uint32_t mainLatency, uint32_t renderLead, uint32_t outputHoldback, double tailSeconds) {
@@ -789,7 +789,31 @@ void MainWindow::renderMixerMonitorWindow() {
                             trackIndex >= 0
                                 ? engine->trackOutputBusAlignmentHoldbackInSamples(static_cast<uapmd_track_index_t>(trackIndex), busIndex)
                                 : 0;
-                        busLatencySummary += std::format("bus {}: lat {}, hold {}", busIndex, busLatency, busHoldback);
+                        std::string routeSummary = "route -";
+                        if (trackIndex >= 0) {
+                            const auto routeTarget =
+                                engine->trackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
+                            switch (routeTarget.type) {
+                            case uapmd::TrackOutputRoutingTargetType::MASTER_INPUT_BUS:
+                                routeSummary = std::format("master in {}", routeTarget.bus_index);
+                                break;
+                            case uapmd::TrackOutputRoutingTargetType::MAIN_MIX_BUS:
+                                routeSummary = std::format("main mix {}", routeTarget.bus_index);
+                                break;
+                            case uapmd::TrackOutputRoutingTargetType::DISABLED:
+                            default:
+                                routeSummary = "disabled";
+                                break;
+                            }
+                            if (routeTarget.folded)
+                                routeSummary += " (folded)";
+                        }
+                        busLatencySummary += std::format(
+                            "bus {}: lat {}, hold {}, {}",
+                            busIndex,
+                            busLatency,
+                            busHoldback,
+                            routeSummary);
                     }
                 }
                 if (busLatencySummary.empty())

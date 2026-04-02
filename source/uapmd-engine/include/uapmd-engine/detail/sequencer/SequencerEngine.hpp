@@ -20,6 +20,18 @@ namespace uapmd {
         IMMEDIATE_STOP = 1,
     };
 
+    enum class TrackOutputRoutingTargetType {
+        DISABLED = 0,
+        MASTER_INPUT_BUS = 1,
+        MAIN_MIX_BUS = 2,
+    };
+
+    struct TrackOutputRoutingTarget {
+        TrackOutputRoutingTargetType type{TrackOutputRoutingTargetType::DISABLED};
+        uint32_t bus_index{0};
+        bool folded{false};
+    };
+
     class AudioPluginHostingAPI;
 
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
@@ -51,6 +63,7 @@ namespace uapmd {
         virtual bool trackHasLiveInput(uapmd_track_index_t trackIndex) = 0;
         virtual uint32_t trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) = 0;
         virtual uint32_t trackOutputBusAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) = 0;
+        virtual TrackOutputRoutingTarget trackOutputBusRoutingTarget(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) = 0;
         virtual bool isOutputAlignmentActive() = 0;
         virtual OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const = 0;
         virtual void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) = 0;
