@@ -10,6 +10,11 @@ namespace uapmd {
     inline constexpr int32_t kMasterTrackIndex = std::numeric_limits<int32_t>::min();
     typedef int32_t uapmd_track_index_t;
 
+    enum class OutputAlignmentMonitoringPolicy {
+        LOW_LATENCY_LIVE_INPUT = 0,
+        FULLY_COMPENSATED = 1,
+    };
+
     class AudioPluginHostingAPI;
 
     // A sequence processor that works as a facade for the overall audio processing at each AudioPluginTrack.
@@ -42,6 +47,8 @@ namespace uapmd {
         virtual uint32_t trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) = 0;
         virtual uint32_t trackOutputBusAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) = 0;
         virtual bool isOutputAlignmentActive() = 0;
+        virtual OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const = 0;
+        virtual void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) = 0;
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
         virtual uapmd_track_index_t addEmptyTrack() = 0;
         // Add plugin to existing track

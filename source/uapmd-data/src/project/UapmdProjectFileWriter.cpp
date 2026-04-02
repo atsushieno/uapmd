@@ -215,6 +215,10 @@ namespace uapmd {
         // Create root JSON object
         auto root = choc::value::createObject("UapmdProject");
 
+        auto settings = choc::value::createObject("UapmdProjectSettings");
+        settings.addMember("output_alignment_monitoring_policy", data->outputAlignmentMonitoringPolicy());
+        root.addMember("settings", settings);
+
         // Serialize tracks
         auto& tracks = data->tracks();
         if (!tracks.empty()) {

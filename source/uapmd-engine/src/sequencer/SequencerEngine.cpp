@@ -84,6 +84,8 @@ namespace uapmd {
         int32_t sampleRate;
         std::unique_ptr<AudioPluginHostingAPI> plugin_host;
         UapmdFunctionBlockManager function_block_manager{};
+        std::atomic<OutputAlignmentMonitoringPolicy> output_alignment_monitoring_policy_{
+            OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT};
 
         // Playback state (managed by RealtimeSequencer)
         std::atomic<bool> is_playback_active_{false};
@@ -170,6 +172,8 @@ namespace uapmd {
         uint32_t trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) override;
         uint32_t trackOutputBusAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) override;
         bool isOutputAlignmentActive() override;
+        OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const override;
+        void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         uapmd_track_index_t addEmptyTrack() override;
@@ -465,6 +469,15 @@ namespace uapmd {
         return false;
     }
 
+    OutputAlignmentMonitoringPolicy SequencerEngineImpl::outputAlignmentMonitoringPolicy() const {
+        return output_alignment_monitoring_policy_.load(std::memory_order_acquire);
+    }
+
+    void SequencerEngineImpl::outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) {
+        output_alignment_monitoring_policy_.store(policy, std::memory_order_release);
+        resetOutputAlignmentBuffers();
+    }
+
     uint32_t SequencerEngineImpl::maxTrackRenderLeadInSamples() const {
         uint32_t maxTrackLatency = 0;
         for (size_t i = 0; i < tracks_.size(); ++i) {
@@ -520,14 +533,19 @@ namespace uapmd {
         if (outputBusIndex >= track->graph().outputBusCount())
             return 0;
 
-        const uint32_t liveInputReferenceLead = maxLiveInputRenderLeadInSamples();
-        if (liveInputReferenceLead > 0 && timeline_->trackHasLiveInput(trackIndex))
-            return 0;
-
         const uint32_t trackLead = track->renderLeadInSamples();
         const uint32_t outputLatency = track->graph().outputLatencyInSamples(outputBusIndex);
         const uint32_t intraTrackHoldback = trackLead > outputLatency ? trackLead - outputLatency : 0;
-        return liveInputReferenceLead > 0 ? liveInputReferenceLead + intraTrackHoldback : intraTrackHoldback;
+        if (output_alignment_monitoring_policy_.load(std::memory_order_acquire) !=
+            OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT)
+            return intraTrackHoldback;
+
+        const uint32_t liveInputReferenceLead = maxLiveInputRenderLeadInSamples();
+        if (liveInputReferenceLead == 0)
+            return intraTrackHoldback;
+        if (timeline_->trackHasLiveInput(trackIndex))
+            return 0;
+        return liveInputReferenceLead + intraTrackHoldback;
     }
 
     double SequencerEngineImpl::tailLengthSecondsToSamples(double seconds) const {

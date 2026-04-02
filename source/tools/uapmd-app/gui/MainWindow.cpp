@@ -694,6 +694,11 @@ void MainWindow::renderMixerMonitorWindow() {
         const bool prerollActive = playbackActive && renderPosition < audiblePosition;
         const bool latencyDrainActive = !playbackActive && renderPosition > audiblePosition;
         const bool outputAlignmentActive = engine->isOutputAlignmentActive();
+        int monitoringPolicy = static_cast<int>(engine->outputAlignmentMonitoringPolicy());
+        const char* monitoringPolicyItems[] = {
+            "Low-Latency Live Input",
+            "Fully Compensated",
+        };
 
         ImGui::Text("Audible Position: %lld samples", static_cast<long long>(audiblePosition));
         ImGui::SameLine();
@@ -705,6 +710,8 @@ void MainWindow::renderMixerMonitorWindow() {
         ImGui::Text("Latency Drain: %s", latencyDrainActive ? "active" : "inactive");
         ImGui::SameLine();
         ImGui::Text("Output Alignment: %s", outputAlignmentActive ? "active" : "inactive");
+        if (ImGui::Combo("Monitoring Policy", &monitoringPolicy, monitoringPolicyItems, IM_ARRAYSIZE(monitoringPolicyItems)))
+            engine->outputAlignmentMonitoringPolicy(static_cast<uapmd::OutputAlignmentMonitoringPolicy>(monitoringPolicy));
 
         ImGui::Separator();
 

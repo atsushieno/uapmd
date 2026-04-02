@@ -112,6 +112,8 @@ namespace uapmd {
         virtual bool removeTrack(size_t trackIndex) = 0;
         virtual std::vector<UapmdProjectTrackData*>& tracks() = 0;
         virtual UapmdProjectTrackData* masterTrack() = 0;
+        virtual std::string outputAlignmentMonitoringPolicy() = 0;
+        virtual void outputAlignmentMonitoringPolicy(std::string value) = 0;
 
         static std::unique_ptr<UapmdProjectData> create();
     };

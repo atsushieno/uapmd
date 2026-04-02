@@ -95,6 +95,7 @@ namespace uapmd {
     class UapmdProjectDataImpl : public UapmdProjectData {
         std::vector<std::unique_ptr<UapmdProjectTrackData>> tracks_{};
         std::unique_ptr<UapmdProjectTrackData> master_track_{};
+        std::string output_alignment_monitoring_policy_{"low_latency_live_input"};
 
     public:
         UapmdProjectDataImpl()
@@ -124,6 +125,10 @@ namespace uapmd {
         }
 
         UapmdProjectTrackData* masterTrack() override { return master_track_.get(); }
+        std::string outputAlignmentMonitoringPolicy() override { return output_alignment_monitoring_policy_; }
+        void outputAlignmentMonitoringPolicy(std::string value) override {
+            output_alignment_monitoring_policy_ = std::move(value);
+        }
 
         // Direct access for internal use
         std::vector<std::unique_ptr<UapmdProjectTrackData>>& tracksOwned() { return tracks_; }

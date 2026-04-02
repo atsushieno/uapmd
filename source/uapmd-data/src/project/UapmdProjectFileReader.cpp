@@ -296,6 +296,13 @@ namespace uapmd {
         auto root = choc::json::parse(content);
         auto project = UapmdProjectData::create();
 
+        if (root.hasObjectMember("settings")) {
+            auto settings = root["settings"];
+            if (settings.hasObjectMember("output_alignment_monitoring_policy"))
+                project->outputAlignmentMonitoringPolicy(
+                    std::string(settings["output_alignment_monitoring_policy"].getString()));
+        }
+
         // Parse tracks
         if (root.hasObjectMember("tracks") && root["tracks"].isArray()) {
             size_t trackIndex = 0;

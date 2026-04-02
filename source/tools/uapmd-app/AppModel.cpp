@@ -104,6 +104,22 @@ namespace uapmd {
 
 namespace {
 
+std::string outputAlignmentMonitoringPolicyToProjectString(OutputAlignmentMonitoringPolicy policy) {
+    switch (policy) {
+        case OutputAlignmentMonitoringPolicy::FULLY_COMPENSATED:
+            return "fully_compensated";
+        case OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT:
+        default:
+            return "low_latency_live_input";
+    }
+}
+
+OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicyFromProjectString(const std::string& value) {
+    if (value == "fully_compensated")
+        return OutputAlignmentMonitoringPolicy::FULLY_COMPENSATED;
+    return OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT;
+}
+
 void markTimelineTrackClipsNeedsFileSave(TimelineTrack* track) {
     if (!track)
         return;
@@ -2645,6 +2661,11 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
 
         operation->project = uapmd::UapmdProjectData::create();
         auto* sequencerEngine = sequencer_.engine();
+        if (sequencerEngine) {
+            operation->project->outputAlignmentMonitoringPolicy(
+                outputAlignmentMonitoringPolicyToProjectString(
+                    sequencerEngine->outputAlignmentMonitoringPolicy()));
+        }
         auto sequencerTracks = sequencerEngine ? sequencerEngine->tracks() : std::vector<uapmd::SequencerTrack*>{};
         auto timelineTracks = getTimelineTracks();
         struct SerializedTrackClips {
@@ -2934,6 +2955,12 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
     if (auto project = uapmd::UapmdProjectDataReader::read(projectFile)) {
         if (auto* masterTrack = project->masterTrack())
             master_track_markers_ = masterTrack->markers();
+        sequencer_.engine()->outputAlignmentMonitoringPolicy(
+            outputAlignmentMonitoringPolicyFromProjectString(
+                project->outputAlignmentMonitoringPolicy()));
+    } else {
+        sequencer_.engine()->outputAlignmentMonitoringPolicy(
+            OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT);
     }
 
     // Notify UI about all tracks that were created
