@@ -693,6 +693,7 @@ void MainWindow::renderMixerMonitorWindow() {
         const bool playbackActive = engine->isPlaybackActive();
         const bool prerollActive = playbackActive && renderPosition < audiblePosition;
         const bool latencyDrainActive = !playbackActive && renderPosition > audiblePosition;
+        const bool outputAlignmentActive = engine->isOutputAlignmentActive();
 
         ImGui::Text("Audible Position: %lld samples", static_cast<long long>(audiblePosition));
         ImGui::SameLine();
@@ -702,20 +703,23 @@ void MainWindow::renderMixerMonitorWindow() {
         ImGui::Text("Preroll: %s", prerollActive ? "active" : "inactive");
         ImGui::SameLine();
         ImGui::Text("Latency Drain: %s", latencyDrainActive ? "active" : "inactive");
+        ImGui::SameLine();
+        ImGui::Text("Output Alignment: %s", outputAlignmentActive ? "active" : "inactive");
 
         ImGui::Separator();
 
-        if (ImGui::BeginTable("MixerMonitorTable", 7, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY)) {
+        if (ImGui::BeginTable("MixerMonitorTable", 8, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY)) {
             ImGui::TableSetupColumn("Track", ImGuiTableColumnFlags_WidthFixed, 130.0f * uiScale_);
             ImGui::TableSetupColumn("Plugins", ImGuiTableColumnFlags_WidthStretch, 1.0f);
             ImGui::TableSetupColumn("Main Latency", ImGuiTableColumnFlags_WidthFixed, 120.0f * uiScale_);
             ImGui::TableSetupColumn("Render Lead", ImGuiTableColumnFlags_WidthFixed, 120.0f * uiScale_);
+            ImGui::TableSetupColumn("Holdback", ImGuiTableColumnFlags_WidthFixed, 120.0f * uiScale_);
             ImGui::TableSetupColumn("Tail", ImGuiTableColumnFlags_WidthFixed, 110.0f * uiScale_);
             ImGui::TableSetupColumn("Out Buses", ImGuiTableColumnFlags_WidthFixed, 80.0f * uiScale_);
             ImGui::TableSetupColumn("Per-Bus Latency", ImGuiTableColumnFlags_WidthStretch, 1.0f);
             ImGui::TableHeadersRow();
 
-            auto renderTrackRow = [engine, this](const char* label, uapmd::SequencerTrack* track, uint32_t mainLatency, uint32_t renderLead, double tailSeconds) {
+            auto renderTrackRow = [engine, this](const char* label, uapmd::SequencerTrack* track, uint32_t mainLatency, uint32_t renderLead, uint32_t outputHoldback, double tailSeconds) {
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::TextUnformatted(label);
@@ -744,16 +748,19 @@ void MainWindow::renderMixerMonitorWindow() {
                 ImGui::Text("%u samples", renderLead);
 
                 ImGui::TableSetColumnIndex(4);
+                ImGui::Text("%u samples", outputHoldback);
+
+                ImGui::TableSetColumnIndex(5);
                 if (std::isinf(tailSeconds))
                     ImGui::TextUnformatted("infinite");
                 else
                     ImGui::Text("%.3f s", tailSeconds);
 
-                ImGui::TableSetColumnIndex(5);
+                ImGui::TableSetColumnIndex(6);
                 const uint32_t outputBusCount = track ? track->graph().outputBusCount() : 0;
                 ImGui::Text("%u", outputBusCount);
 
-                ImGui::TableSetColumnIndex(6);
+                ImGui::TableSetColumnIndex(7);
                 std::string busLatencySummary;
                 if (track) {
                     for (uint32_t busIndex = 0; busIndex < outputBusCount; ++busIndex) {
@@ -771,6 +778,7 @@ void MainWindow::renderMixerMonitorWindow() {
                            engine->masterTrack(),
                            engine->masterTrackLatencyInSamples(),
                            engine->masterTrackRenderLeadInSamples(),
+                           0,
                            engine->masterTrack() ? engine->masterTrack()->tailLengthInSeconds() : 0.0);
 
             const auto& tracks = engine->tracks();
@@ -781,6 +789,7 @@ void MainWindow::renderMixerMonitorWindow() {
                                track,
                                engine->trackLatencyInSamples(static_cast<uapmd_track_index_t>(trackIndex)),
                                engine->trackRenderLeadInSamples(static_cast<uapmd_track_index_t>(trackIndex)),
+                               engine->trackOutputAlignmentHoldbackInSamples(static_cast<uapmd_track_index_t>(trackIndex)),
                                track ? track->tailLengthInSeconds() : 0.0);
             }
 

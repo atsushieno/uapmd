@@ -160,6 +160,8 @@ namespace uapmd {
         uint32_t masterTrackLatencyInSamples() override;
         uint32_t trackRenderLeadInSamples(uapmd_track_index_t trackIndex) override;
         uint32_t masterTrackRenderLeadInSamples() override;
+        uint32_t trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) override;
+        bool isOutputAlignmentActive() override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         uapmd_track_index_t addEmptyTrack() override;
@@ -274,6 +276,7 @@ namespace uapmd {
         void schedulePrerollFromAudiblePosition(int64_t samples);
         uint32_t maxRenderLeadInSamples() const;
         uint32_t maxOutputAlignmentLeadInSamples() const;
+        uint32_t trackOutputAlignmentHoldbackInSamplesImpl(uapmd_track_index_t trackIndex) const;
         int64_t maxStopDrainInSamples() const;
         double tailLengthSecondsToSamples(double seconds) const;
         void updateLatencyDrainState(int32_t frameCount);
@@ -424,6 +427,20 @@ namespace uapmd {
         return master_track_ ? master_track_->renderLeadInSamples() : 0;
     }
 
+    uint32_t SequencerEngineImpl::trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) {
+        return trackOutputAlignmentHoldbackInSamplesImpl(trackIndex);
+    }
+
+    bool SequencerEngineImpl::isOutputAlignmentActive() {
+        if (!timeline_)
+            return false;
+        for (size_t i = 0; i < tracks_.size(); ++i) {
+            if (trackOutputAlignmentHoldbackInSamplesImpl(static_cast<uapmd_track_index_t>(i)) > 0)
+                return true;
+        }
+        return false;
+    }
+
     uint32_t SequencerEngineImpl::maxRenderLeadInSamples() const {
         uint32_t maxTrackLatency = 0;
         for (size_t i = 0; i < tracks_.size(); ++i) {
@@ -449,6 +466,19 @@ namespace uapmd {
             maxLead = std::max(maxLead, track->renderLeadInSamples());
         }
         return maxLead;
+    }
+
+    uint32_t SequencerEngineImpl::trackOutputAlignmentHoldbackInSamplesImpl(uapmd_track_index_t trackIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size() || !timeline_)
+            return 0;
+        if (!timeline_->trackRequiresOutputAlignment(trackIndex))
+            return 0;
+        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+        if (!track)
+            return 0;
+        const uint32_t maxLead = maxOutputAlignmentLeadInSamples();
+        const uint32_t trackLead = track->renderLeadInSamples();
+        return maxLead > trackLead ? (maxLead - trackLead) : 0;
     }
 
     double SequencerEngineImpl::tailLengthSecondsToSamples(double seconds) const {
@@ -688,13 +718,9 @@ namespace uapmd {
                     maxOutputAlignmentLead > 0 &&
                     timeline_ &&
                     timeline_->trackRequiresOutputAlignment(static_cast<int32_t>(t));
-                const uint32_t remainingTrackDelay = requiresOutputAlignment
-                    ? tracks_[t]->renderLeadInSamples()
+                const uint32_t outputAlignmentDelay = requiresOutputAlignment
+                    ? trackOutputAlignmentHoldbackInSamplesImpl(static_cast<uapmd_track_index_t>(t))
                     : 0;
-                const uint32_t outputAlignmentDelay =
-                    maxOutputAlignmentLead > remainingTrackDelay
-                        ? (maxOutputAlignmentLead - remainingTrackDelay)
-                        : 0;
                 auto* delayLine = t < output_alignment_delay_lines_.size()
                     ? &output_alignment_delay_lines_[t]
                     : nullptr;
