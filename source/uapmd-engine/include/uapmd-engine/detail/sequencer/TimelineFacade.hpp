@@ -83,6 +83,23 @@ public:
     };
 
     virtual ProjectResult loadProject(const std::filesystem::path& file) = 0;
+    virtual AudioGraphProviderRegistry& audioGraphProviderRegistry() = 0;
+    virtual const AudioGraphProviderRegistry& audioGraphProviderRegistry() const = 0;
+    virtual bool replaceTrackGraphType(
+        int32_t trackIndex,
+        const std::string& graphTypeId,
+        size_t eventBufferSizeInBytes) = 0;
+    virtual bool materializeProjectGraph(
+        UapmdProjectTrackData* projectTrack,
+        SequencerTrack* sequencerTrack,
+        size_t eventBufferSizeInBytes) = 0;
+    virtual bool saveProjectGraph(
+        UapmdProjectTrackData* projectTrack,
+        SequencerTrack* sequencerTrack,
+        const std::filesystem::path& projectDir,
+        const std::filesystem::path& graphDir,
+        const std::string& scopeLabel,
+        std::string& error) = 0;
 
     // Tempo map and time-signature metadata extracted from master track MIDI clips
     struct MasterTrackSnapshot {

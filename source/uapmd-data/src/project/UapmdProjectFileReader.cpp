@@ -5,10 +5,30 @@
 #include <set>
 #include <iostream>
 #include "uapmd-data/uapmd-data.hpp"
+#include "UapmdAudioPluginFullDAGraphData.hpp"
+#include "UapmdProjectPluginListGraphData.hpp"
 
 namespace uapmd {
     namespace {
         constexpr double kLegacyOffsetSampleRate = 48000.0;
+
+        AudioPluginGraphEndpointType parseGraphEndpointType(std::string_view value) {
+            if (value == "graph_input")
+                return AudioPluginGraphEndpointType::GraphInput;
+            if (value == "graph_output")
+                return AudioPluginGraphEndpointType::GraphOutput;
+            return AudioPluginGraphEndpointType::Plugin;
+        }
+
+        AudioPluginGraphBusType parseGraphBusType(std::string_view value) {
+            return value == "event" ? AudioPluginGraphBusType::Event : AudioPluginGraphBusType::Audio;
+        }
+
+        std::string parseGraphType(std::string_view value) {
+            if (value.empty())
+                return {};
+            return std::string(value);
+        }
 
         double legacyOffsetSamplesToSeconds(int64_t samples) {
             return static_cast<double>(samples) / kLegacyOffsetSampleRate;
@@ -206,14 +226,30 @@ namespace uapmd {
     static std::unique_ptr<UapmdProjectPluginGraphData> parsePluginGraph(
         const choc::value::ValueView& graphObj)
     {
-        auto graph = UapmdProjectPluginGraphData::create();
+        const bool hasPlugins = graphObj.hasObjectMember("plugins") && graphObj["plugins"].isArray();
+        const bool hasConnections = graphObj.hasObjectMember("connections") && graphObj["connections"].isArray();
+        bool hasInlineGraphData = hasPlugins || hasConnections;
+
+        std::unique_ptr<UapmdProjectPluginGraphData> graph;
+        if (hasConnections)
+            graph = UapmdAudioPluginFullDAGraphData::create();
+        else if (hasPlugins)
+            graph = UapmdProjectPluginListGraphData::create();
+        else
+            graph = UapmdProjectPluginGraphData::create();
+
+        if (graphObj.hasObjectMember("graph_type"))
+            graph->graphType(parseGraphType(graphObj["graph_type"].getString()));
+        else if (graphObj.hasObjectMember("graph_kind"))
+            graph->graphType(parseGraphType(graphObj["graph_kind"].getString()));
 
         if (graphObj.hasObjectMember("external_file")) {
             auto file_view = graphObj["external_file"].getString();
             graph->externalFile(std::string(file_view));
         }
 
-        if (graphObj.hasObjectMember("plugins") && graphObj["plugins"].isArray()) {
+        if (hasPlugins) {
+            auto* pluginListGraph = dynamic_cast<UapmdProjectPluginListGraphData*>(graph.get());
             for (const auto& pluginObj : graphObj["plugins"]) {
                 UapmdProjectPluginNodeData node;
                 if (pluginObj.hasObjectMember("plugin_id"))
@@ -226,9 +262,52 @@ namespace uapmd {
                     node.state_file = std::string(pluginObj["state_file"].getString());
                 if (pluginObj.hasObjectMember("group_index"))
                     node.group_index = pluginObj["group_index"].getWithDefault<int32_t>(-1);
-                graph->addPlugin(std::move(node));
+                pluginListGraph->addPlugin(std::move(node));
             }
         }
+
+        if (hasConnections) {
+            auto* dagGraph = dynamic_cast<UapmdAudioPluginFullDAGraphData*>(graph.get());
+            if (!dagGraph) {
+                auto converted = UapmdAudioPluginFullDAGraphData::create();
+                converted->graphType(graph->graphType());
+                converted->externalFile(graph->externalFile());
+                if (auto* pluginListGraph = dynamic_cast<UapmdProjectPluginListGraphData*>(graph.get()))
+                    converted->setPlugins(pluginListGraph->plugins());
+                graph = std::move(converted);
+                dagGraph = dynamic_cast<UapmdAudioPluginFullDAGraphData*>(graph.get());
+            }
+            for (const auto& connectionObj : graphObj["connections"]) {
+                UapmdProjectPluginGraphConnectionData connection;
+                if (connectionObj.hasObjectMember("id"))
+                    connection.id = connectionObj["id"].getWithDefault<int64_t>(0);
+                if (connectionObj.hasObjectMember("bus_type"))
+                    connection.bus_type = parseGraphBusType(connectionObj["bus_type"].getString());
+                if (connectionObj.hasObjectMember("source") && connectionObj["source"].isObject()) {
+                    auto endpointObj = connectionObj["source"];
+                    if (endpointObj.hasObjectMember("type"))
+                        connection.source.type = parseGraphEndpointType(endpointObj["type"].getString());
+                    if (endpointObj.hasObjectMember("plugin_index"))
+                        connection.source.plugin_index = endpointObj["plugin_index"].getWithDefault<int32_t>(-1);
+                    if (endpointObj.hasObjectMember("bus_index"))
+                        connection.source.bus_index = endpointObj["bus_index"].getWithDefault<uint32_t>(0);
+                }
+                if (connectionObj.hasObjectMember("target") && connectionObj["target"].isObject()) {
+                    auto endpointObj = connectionObj["target"];
+                    if (endpointObj.hasObjectMember("type"))
+                        connection.target.type = parseGraphEndpointType(endpointObj["type"].getString());
+                    if (endpointObj.hasObjectMember("plugin_index"))
+                        connection.target.plugin_index = endpointObj["plugin_index"].getWithDefault<int32_t>(-1);
+                    if (endpointObj.hasObjectMember("bus_index"))
+                        connection.target.bus_index = endpointObj["bus_index"].getWithDefault<uint32_t>(0);
+                }
+                dagGraph->addConnection(std::move(connection));
+            }
+        }
+
+        // Legacy embedded graph data is treated as simple linear on load.
+        if (graph->externalFile().empty() && hasInlineGraphData)
+            graph->graphType({});
 
         return graph;
     }

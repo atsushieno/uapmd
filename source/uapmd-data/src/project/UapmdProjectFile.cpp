@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include "uapmd-data/uapmd-data.hpp"
+#include "UapmdProjectPluginListGraphData.hpp"
 
 namespace uapmd {
     // Concrete implementation of UapmdProjectClipData
@@ -49,23 +50,42 @@ namespace uapmd {
 
     // Concrete implementation of UapmdProjectPluginGraphData
     class UapmdProjectPluginGraphDataImpl : public UapmdProjectPluginGraphData {
+        std::string graph_type_{};
         std::filesystem::path external_file_{};
-        std::vector<UapmdProjectPluginNodeData> plugins_{};
 
     public:
         UapmdProjectPluginGraphDataImpl() = default;
 
+        std::string graphType() override { return graph_type_; }
+        std::filesystem::path externalFile() override { return external_file_; }
+
+        void graphType(const std::string& type) override { graph_type_ = type; }
+        void externalFile(const std::filesystem::path& f) override { external_file_ = f; }
+    };
+
+    std::unique_ptr<UapmdProjectPluginGraphData> UapmdProjectPluginGraphData::create() {
+        return std::make_unique<UapmdProjectPluginGraphDataImpl>();
+    }
+
+    class UapmdProjectPluginListGraphDataImpl : public UapmdProjectPluginListGraphData {
+        std::string graph_type_{};
+        std::filesystem::path external_file_{};
+        std::vector<UapmdProjectPluginNodeData> plugins_{};
+
+    public:
+        std::string graphType() override { return graph_type_; }
         std::filesystem::path externalFile() override { return external_file_; }
         std::vector<UapmdProjectPluginNodeData> plugins() override { return plugins_; }
 
+        void graphType(const std::string& type) override { graph_type_ = type; }
         void externalFile(const std::filesystem::path& f) override { external_file_ = f; }
         void addPlugin(UapmdProjectPluginNodeData node) override { plugins_.push_back(std::move(node)); }
         void setPlugins(std::vector<UapmdProjectPluginNodeData> nodes) override { plugins_ = std::move(nodes); }
         void clearPlugins() override { plugins_.clear(); }
     };
 
-    std::unique_ptr<UapmdProjectPluginGraphData> UapmdProjectPluginGraphData::create() {
-        return std::make_unique<UapmdProjectPluginGraphDataImpl>();
+    std::unique_ptr<UapmdProjectPluginListGraphData> UapmdProjectPluginListGraphData::create() {
+        return std::make_unique<UapmdProjectPluginListGraphDataImpl>();
     }
 
     // Concrete implementation of UapmdProjectTrackData
