@@ -1,4 +1,32 @@
 
+function(uapmd_optimize_heavy_audio_feature_target_in_debug target_name)
+    if(UAPMD_ENABLE_HEAVY_AUDIO_FEATURE_DEBUG)
+        return()
+    endif()
+
+    target_compile_definitions(${target_name} PRIVATE
+            "$<$<CONFIG:Debug>:NDEBUG>"
+    )
+    target_compile_options(${target_name} PRIVATE
+            "$<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/O2>"
+            "$<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-O3>"
+    )
+endfunction()
+
+function(uapmd_optimize_heavy_audio_feature_sources_in_debug target_name)
+    if(UAPMD_ENABLE_HEAVY_AUDIO_FEATURE_DEBUG)
+        return()
+    endif()
+
+    set_property(SOURCE ${ARGN} APPEND PROPERTY COMPILE_DEFINITIONS
+            "$<$<CONFIG:Debug>:NDEBUG>"
+    )
+    set_property(SOURCE ${ARGN} APPEND PROPERTY COMPILE_OPTIONS
+            "$<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/O2>"
+            "$<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-O3>"
+    )
+endfunction()
+
 CPMAddPackage(
     NAME demucscpp
     GIT_REPOSITORY https://github.com/sevagh/demucs.cpp
@@ -97,6 +125,7 @@ if(NOT TARGET demucs-cpp)
     if(_UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS)
         target_include_directories(demucs-cpp PRIVATE ${_UAPMD_DEMUCS_PRIVATE_INCLUDE_DIRS})
     endif()
+    uapmd_optimize_heavy_audio_feature_target_in_debug(demucs-cpp)
 endif()
 
 add_library(uapmd-data STATIC)
@@ -139,4 +168,9 @@ target_sources(uapmd-data PRIVATE
         src/timeline/MidiClipSourceNode.cpp
         src/timeline/ClipManager.cpp
         src/timeline/TimelineTrack.cpp
+)
+
+uapmd_optimize_heavy_audio_feature_sources_in_debug(uapmd-data
+        src/project/DemucsStemSeparator.cpp
+        src/timeline/AudioFileSourceNode.cpp
 )

@@ -15,6 +15,11 @@ option(UAPMD_CPPTRACE_DWARF_DEFAULT "Enable Windows MIDI Services backend integr
 option(UAPMD_TARGET_WASM "Build the WebAssembly variant of uapmd-app (requires emcmake/emscripten)" OFF)
 option(UAPMD_ENABLE_ASAN "Enable AddressSanitizer (MSVC: /fsanitize=address, GCC/Clang: -fsanitize=address)" OFF)
 option(UAPMD_DEMUCS_USE_OPENBLAS "Build Demucs (demucs.cpp) against OpenBLAS via CPM" OFF)
+# Keep the slow DSP-heavy paths usable in Debug builds by default, but allow source builders
+# to opt back into full Debug codegen when they need to inspect those features specifically.
+option(UAPMD_ENABLE_HEAVY_AUDIO_FEATURE_DEBUG
+        "Build Demucs and Signalsmith-Stretch code with debug settings in Debug configs"
+        OFF)
 
 if((UAPMD_TARGET_WASM OR EMSCRIPTEN) AND UAPMD_DEMUCS_USE_OPENBLAS)
     message(WARNING "UAPMD_DEMUCS_USE_OPENBLAS is not supported for WASM builds; disabling.")
