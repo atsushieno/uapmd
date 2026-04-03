@@ -264,6 +264,7 @@ add_subdirectory(uapmd)
 add_subdirectory(uapmd-file)
 add_subdirectory(uapmd-data)
 add_subdirectory(uapmd-engine)
+add_subdirectory(c-api)
 if(EMSCRIPTEN AND TARGET liblocate)
     target_compile_definitions(liblocate PRIVATE LIBLOCATE_DISABLE_DLOPEN)
 endif()
@@ -301,7 +302,9 @@ set(_UAPMD_PUBLIC_INCLUDE_SUBDIRS
         uapmd
         uapmd-data
         uapmd-engine
-        uapmd-file)
+        uapmd-file
+        c-api
+)
 
 foreach(_subdir IN LISTS _UAPMD_PUBLIC_INCLUDE_SUBDIRS)
     set(_include_dir "${CMAKE_CURRENT_SOURCE_DIR}/${_subdir}/include")
@@ -329,6 +332,7 @@ install(TARGETS
         uapmd-engine
         uapmd-data
         uapmd-file
+        uapmd-c-api
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         COMPONENT uapmd)
