@@ -8,11 +8,13 @@ enable_testing()
 # Find or add GoogleTest
 # For Windows: Prevent overriding the parent project's compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-CPMAddPackage(
-    NAME googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.14.0
-)
+if(NOT TARGET GTest::gtest OR NOT TARGET GTest::gtest_main)
+    CPMAddPackage(
+        NAME googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG v1.14.0
+    )
+endif()
 
 # uapmd-data tests
 add_executable(uapmd-project-file-tests
