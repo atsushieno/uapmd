@@ -354,6 +354,14 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         return choc::value::Value();
     });
 
+    jsContext_.registerFunction ("__remidy_instance_show_details", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto instanceId = args.get<int32_t> (0, -1);
+        if (instanceId >= 0)
+            uapmd::AppModel::instance().requestShowInstanceDetails(instanceId);
+        return choc::value::Value();
+    });
+
     jsContext_.registerFunction ("__remidy_instance_save_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto instanceId = args.get<int32_t> (0, -1);
@@ -1169,6 +1177,13 @@ void UapmdJSRuntime::registerTimelineAPI()
     {
         auto trackIndex = args.get<int32_t> (0, -1);
         return choc::value::createBool(uapmd::AppModel::instance().ensureTrackUsesEditorGraph(trackIndex));
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_show_track_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        uapmd::AppModel::instance().requestShowTrackGraph(trackIndex);
+        return choc::value::Value();
     });
 
     jsContext_.registerFunction ("__remidy_timeline_revert_track_graph_to_simple", [] (choc::javascript::ArgumentList args) -> choc::value::Value

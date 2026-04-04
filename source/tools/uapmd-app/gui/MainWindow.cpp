@@ -161,6 +161,20 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             handleShowUI(instanceId);
         });
 
+    uapmd::AppModel::instance().instanceDetailsShowRequested.push_back(
+        [this](int32_t instanceId) {
+            timelineEditor_.instanceDetails().showWindow(instanceId);
+            trackList_.markDirty();
+        });
+
+    uapmd::AppModel::instance().trackGraphShowRequested.push_back(
+        [this](int32_t trackIndex) {
+            if (trackIndex == uapmd::kMasterTrackIndex)
+                timelineEditor_.pluginGraphEditor().showMasterTrack();
+            else
+                timelineEditor_.pluginGraphEditor().showTrack(trackIndex);
+        });
+
     // Register callback for when plugin UIs are shown (from scripts or GUI)
     uapmd::AppModel::instance().uiShown.push_back(
         [this](const uapmd::AppModel::UIStateResult& result) {

@@ -273,9 +273,13 @@ namespace uapmd {
         // Global callback registry - called when user requests to show UI (from scripts)
         // MainWindow should handle this by preparing window and calling showPluginUI()
         std::vector<std::function<void(int32_t instanceId)>> uiShowRequested{};
+        std::vector<std::function<void(int32_t instanceId)>> instanceDetailsShowRequested{};
+        std::vector<std::function<void(int32_t trackIndex)>> trackGraphShowRequested{};
 
         // Request to show plugin UI (from scripts) - triggers uiShowRequested callbacks
         void requestShowPluginUI(int32_t instanceId);
+        void requestShowInstanceDetails(int32_t instanceId);
+        void requestShowTrackGraph(int32_t trackIndex);
 
         // Show plugin UI - creates (if needsCreate) and shows the UI
         // Notifies all registered callbacks when complete

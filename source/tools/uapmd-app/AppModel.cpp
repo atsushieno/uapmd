@@ -1411,6 +1411,16 @@ void uapmd::AppModel::requestShowPluginUI(int32_t instanceId) {
     }
 }
 
+void uapmd::AppModel::requestShowInstanceDetails(int32_t instanceId) {
+    for (auto& cb : instanceDetailsShowRequested)
+        cb(instanceId);
+}
+
+void uapmd::AppModel::requestShowTrackGraph(int32_t trackIndex) {
+    for (auto& cb : trackGraphShowRequested)
+        cb(trackIndex);
+}
+
 void uapmd::AppModel::showPluginUI(int32_t instanceId, bool needsCreate, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
     UIStateResult result;
     result.instanceId = instanceId;
