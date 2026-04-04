@@ -29,8 +29,8 @@ ScriptEditor::ScriptEditor()
     scriptBuffer_.resize(65536, '\0');
 
     // Register built-in script presets from embedded resources.
-    // To add a new preset: add the .js file to scripts/ and list it in CMakeLists.txt
-    // under the AppScripts res_embed_add block. No code change needed here.
+    // New preset .js files under scripts/ are embedded automatically unless
+    // they are reserved bridge library modules listed under AppJsLib.
     for (auto& [filename, data] : ResEmbed::getCategory ("AppScripts"))
     {
         // Strip the .js extension to form the display title

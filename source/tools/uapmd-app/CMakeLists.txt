@@ -491,12 +491,22 @@ res_embed_add(${UAPMD_COMPILE_TARGET}
 )
 
 # Embed built-in script presets into the app binary at build time.
-# Add new preset .js files here; each becomes accessible at runtime via
+# All .js files under scripts/ are treated as presets except the bridge
+# library modules embedded separately below in AppJsLib.
+file(GLOB UAPMD_APP_SCRIPT_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.js")
+set(UAPMD_APP_JS_LIB_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/remidy-bridge.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/uapmd-api.js"
+)
+list(REMOVE_ITEM UAPMD_APP_SCRIPT_FILES ${UAPMD_APP_JS_LIB_FILES})
+list(SORT UAPMD_APP_SCRIPT_FILES)
+
+# Each preset becomes accessible at runtime via
 # ResEmbed::get("<filename>", "AppScripts").
 res_embed_add(${UAPMD_COMPILE_TARGET}
     FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/Demo.js"
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/PluginState.js"
+        ${UAPMD_APP_SCRIPT_FILES}
     NAMESPACE AppScripts
     CATEGORY AppScripts
 )
@@ -507,8 +517,7 @@ res_embed_add(${UAPMD_COMPILE_TARGET}
 # development convenience when iterating on the JS sources without rebuilding.
 res_embed_add(${UAPMD_COMPILE_TARGET}
     FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/remidy-bridge.js"
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/uapmd-api.js"
+        ${UAPMD_APP_JS_LIB_FILES}
     NAMESPACE AppJsLib
     CATEGORY AppJsLib
 )
