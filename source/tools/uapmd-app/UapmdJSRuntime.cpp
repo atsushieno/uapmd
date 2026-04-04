@@ -1050,6 +1050,64 @@ bool parseWarpsValue(const choc::value::ValueView* value,
     return true;
 }
 
+std::string graphEndpointTypeToString(uapmd::AudioPluginGraphEndpointType type) {
+    switch (type) {
+        case uapmd::AudioPluginGraphEndpointType::GraphInput: return "graphInput";
+        case uapmd::AudioPluginGraphEndpointType::GraphOutput: return "graphOutput";
+        case uapmd::AudioPluginGraphEndpointType::Plugin: return "plugin";
+    }
+    return "plugin";
+}
+
+bool parseGraphEndpointType(std::string_view text, uapmd::AudioPluginGraphEndpointType& type) {
+    if (text == "graphInput") {
+        type = uapmd::AudioPluginGraphEndpointType::GraphInput;
+        return true;
+    }
+    if (text == "graphOutput") {
+        type = uapmd::AudioPluginGraphEndpointType::GraphOutput;
+        return true;
+    }
+    if (text == "plugin") {
+        type = uapmd::AudioPluginGraphEndpointType::Plugin;
+        return true;
+    }
+    return false;
+}
+
+std::string graphBusTypeToString(uapmd::AudioPluginGraphBusType type) {
+    return type == uapmd::AudioPluginGraphBusType::Event ? "event" : "audio";
+}
+
+bool parseGraphBusType(std::string_view text, uapmd::AudioPluginGraphBusType& type) {
+    if (text == "audio") {
+        type = uapmd::AudioPluginGraphBusType::Audio;
+        return true;
+    }
+    if (text == "event") {
+        type = uapmd::AudioPluginGraphBusType::Event;
+        return true;
+    }
+    return false;
+}
+
+choc::value::Value serializeGraphEndpoint(const uapmd::AudioPluginGraphEndpoint& endpoint) {
+    auto obj = choc::value::createObject("GraphEndpoint");
+    obj.setMember("type", graphEndpointTypeToString(endpoint.type));
+    obj.setMember("instanceId", endpoint.instance_id);
+    obj.setMember("busIndex", static_cast<int32_t>(endpoint.bus_index));
+    return obj;
+}
+
+choc::value::Value serializeGraphConnection(const uapmd::AudioPluginGraphConnection& connection) {
+    auto obj = choc::value::createObject("GraphConnection");
+    obj.setMember("id", connection.id);
+    obj.setMember("busType", graphBusTypeToString(connection.bus_type));
+    obj.setMember("source", serializeGraphEndpoint(connection.source));
+    obj.setMember("target", serializeGraphEndpoint(connection.target));
+    return obj;
+}
+
 } // namespace
 
 void UapmdJSRuntime::registerTimelineAPI()
@@ -1105,6 +1163,99 @@ void UapmdJSRuntime::registerTimelineAPI()
             arr.addArrayElement (obj);
         }
         return arr;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_ensure_dag_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        return choc::value::createBool(uapmd::AppModel::instance().ensureTrackUsesEditorGraph(trackIndex));
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_revert_track_graph_to_simple", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        return choc::value::createBool(uapmd::AppModel::instance().revertTrackToSimpleGraph(trackIndex));
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_get_track_graph_connections", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t> (0, -1);
+        std::vector<uapmd::AudioPluginGraphConnection> connections;
+        std::string error;
+
+        auto result = choc::value::createObject ("TrackGraphConnections");
+        if (!uapmd::AppModel::instance().getTrackGraphConnections(trackIndex, connections, error)) {
+            result.setMember("success", false);
+            result.setMember("error", error);
+            result.setMember("connections", choc::value::createEmptyArray());
+            return result;
+        }
+
+        auto array = choc::value::createEmptyArray();
+        for (const auto& connection : connections)
+            array.addArrayElement(serializeGraphConnection(connection));
+
+        result.setMember("success", true);
+        result.setMember("error", "");
+        result.setMember("connections", array);
+        return result;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_connect_track_graph", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t>(0, -1);
+        auto busTypeText = args.get<std::string>(1, "");
+        auto sourceTypeText = args.get<std::string>(2, "");
+        auto sourceInstanceId = args.get<int32_t>(3, -1);
+        auto sourceBusIndex = args.get<int32_t>(4, 0);
+        auto targetTypeText = args.get<std::string>(5, "");
+        auto targetInstanceId = args.get<int32_t>(6, -1);
+        auto targetBusIndex = args.get<int32_t>(7, 0);
+
+        auto result = choc::value::createObject("TrackGraphMutation");
+        uapmd::AudioPluginGraphBusType busType;
+        uapmd::AudioPluginGraphEndpointType sourceType, targetType;
+        if (!parseGraphBusType(busTypeText, busType) ||
+            !parseGraphEndpointType(sourceTypeText, sourceType) ||
+            !parseGraphEndpointType(targetTypeText, targetType)) {
+            result.setMember("success", false);
+            result.setMember("error", "Invalid graph bus or endpoint type");
+            return result;
+        }
+
+        std::string error;
+        const bool ok = uapmd::AppModel::instance().connectTrackGraph(
+            trackIndex,
+            uapmd::AudioPluginGraphConnection{
+                .id = 0,
+                .bus_type = busType,
+                .source = uapmd::AudioPluginGraphEndpoint{
+                    .type = sourceType,
+                    .instance_id = sourceInstanceId,
+                    .bus_index = static_cast<uint32_t>(std::max(0, sourceBusIndex)),
+                },
+                .target = uapmd::AudioPluginGraphEndpoint{
+                    .type = targetType,
+                    .instance_id = targetInstanceId,
+                    .bus_index = static_cast<uint32_t>(std::max(0, targetBusIndex)),
+                },
+            },
+            error);
+        result.setMember("success", ok);
+        result.setMember("error", error);
+        return result;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_disconnect_track_graph_connection", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto trackIndex = args.get<int32_t>(0, -1);
+        auto connectionId = args.get<int64_t>(1, 0);
+        std::string error;
+        const bool ok = uapmd::AppModel::instance().disconnectTrackGraphConnection(trackIndex, connectionId, error);
+        auto result = choc::value::createObject("TrackGraphMutation");
+        result.setMember("success", ok);
+        result.setMember("error", error);
+        return result;
     });
 
     jsContext_.registerFunction ("__remidy_timeline_get_clip_audio_events", [] (choc::javascript::ArgumentList args) -> choc::value::Value

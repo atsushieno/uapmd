@@ -720,6 +720,86 @@ bool uapmd::AppModel::revertTrackToSimpleGraph(int32_t trackIndex) {
         trackIndex, "", ump_buffer_size_in_bytes_);
 }
 
+bool uapmd::AppModel::getTrackGraphConnections(
+    int32_t trackIndex,
+    std::vector<AudioPluginGraphConnection>& connections,
+    std::string& error) const {
+    connections.clear();
+
+    SequencerTrack* track = trackIndex == kMasterTrackIndex
+        ? sequencer_.engine()->masterTrack()
+        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
+            ? sequencer_.engine()->tracks()[static_cast<size_t>(trackIndex)]
+            : nullptr);
+    if (!track) {
+        error = "Track not found";
+        return false;
+    }
+
+    auto* dag = dynamic_cast<AudioPluginFullDAGraph*>(&track->graph());
+    if (!dag) {
+        error = "Track graph is not a full DAG graph";
+        return false;
+    }
+
+    connections = dag->connections();
+    return true;
+}
+
+bool uapmd::AppModel::connectTrackGraph(
+    int32_t trackIndex,
+    const AudioPluginGraphConnection& connection,
+    std::string& error) {
+    SequencerTrack* track = trackIndex == kMasterTrackIndex
+        ? sequencer_.engine()->masterTrack()
+        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
+            ? sequencer_.engine()->tracks()[static_cast<size_t>(trackIndex)]
+            : nullptr);
+    if (!track) {
+        error = "Track not found";
+        return false;
+    }
+
+    auto* dag = dynamic_cast<AudioPluginFullDAGraph*>(&track->graph());
+    if (!dag) {
+        error = "Track graph is not a full DAG graph";
+        return false;
+    }
+
+    if (dag->connect(connection) != 0) {
+        error = "Failed to connect graph endpoints";
+        return false;
+    }
+    return true;
+}
+
+bool uapmd::AppModel::disconnectTrackGraphConnection(
+    int32_t trackIndex,
+    int64_t connectionId,
+    std::string& error) {
+    SequencerTrack* track = trackIndex == kMasterTrackIndex
+        ? sequencer_.engine()->masterTrack()
+        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
+            ? sequencer_.engine()->tracks()[static_cast<size_t>(trackIndex)]
+            : nullptr);
+    if (!track) {
+        error = "Track not found";
+        return false;
+    }
+
+    auto* dag = dynamic_cast<AudioPluginFullDAGraph*>(&track->graph());
+    if (!dag) {
+        error = "Track graph is not a full DAG graph";
+        return false;
+    }
+
+    if (!dag->disconnect(connectionId)) {
+        error = "Connection not found";
+        return false;
+    }
+    return true;
+}
+
 uapmd::IDocumentProvider* uapmd::AppModel::documentProvider() {
     if (!documentProvider_) {
         documentProvider_ = createDocumentProvider();

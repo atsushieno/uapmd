@@ -178,6 +178,9 @@ namespace uapmd {
         void notifyPersistentStorageReady();
         bool ensureTrackUsesEditorGraph(int32_t trackIndex);
         bool revertTrackToSimpleGraph(int32_t trackIndex);
+        bool getTrackGraphConnections(int32_t trackIndex, std::vector<AudioPluginGraphConnection>& connections, std::string& error) const;
+        bool connectTrackGraph(int32_t trackIndex, const AudioPluginGraphConnection& connection, std::string& error);
+        bool disconnectTrackGraphConnection(int32_t trackIndex, int64_t connectionId, std::string& error);
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
         std::vector<std::function<void(const std::string& reportText)>> scanReportReady{};
