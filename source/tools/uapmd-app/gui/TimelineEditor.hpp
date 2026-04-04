@@ -126,10 +126,13 @@ private:
     std::function<void(const std::string&, ImVec2)> setNextChildWindowSize_;
     std::function<void(const std::string&)> updateChildWindowSizeState_;
 
+    float currentUiScale_ = 1.0f;
+
     // Internal rendering
     void renderTrackList(const SequenceEditor::RenderContext& context);
     void renderMasterTrackRow(const SequenceEditor::RenderContext& context);
     void renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context);
+    void renderTrackLegendContent(int32_t trackIndex, const ImRect& legendArea);
     void deleteTrack(int32_t trackIndex);
     void syncExternalTimelineChanges();
     std::string buildTrackContentSignature(int32_t trackIndex) const;

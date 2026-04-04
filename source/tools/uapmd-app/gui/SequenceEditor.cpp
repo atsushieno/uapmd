@@ -10,6 +10,7 @@
 
 #include <imgui.h>
 #include <ImTimeline.h>
+#include "TrackLegendNodeView.hpp"
 #include "uapmd-data/detail/timeline/MidiClipSourceNode.hpp"
 
 #include "../AppModel.hpp"
@@ -107,9 +108,8 @@ SequenceEditor::~SequenceEditor() = default;
 void SequenceEditor::showWindow(int32_t trackIndex) {
     auto [it, inserted] = windows_.try_emplace(trackIndex);
     it->second.visible = true;
-    if (inserted) {
-        it->second.timelineDirty = true;
-    }
+    if (inserted)
+        unified_.dirty = true;
 }
 
 void SequenceEditor::hideWindow(int32_t trackIndex) {
@@ -127,56 +127,38 @@ bool SequenceEditor::isVisible(int32_t trackIndex) const {
 void SequenceEditor::refreshClips(int32_t trackIndex, const std::vector<ClipRow>& clips) {
     auto& state = windows_[trackIndex];
     state.displayClips = clips;
-    state.timelineDirty = true;
+    unified_.dirty = true;
     pruneClipPreviewCache(state);
 }
 
 void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
-    // Remove windows for track indices that no longer exist
+    bool removed = false;
     for (auto it = windows_.begin(); it != windows_.end();) {
         if (it->first > maxValidTrackIndex) {
             it = windows_.erase(it);
+            removed = true;
         } else {
             ++it;
         }
     }
+    if (removed)
+        unified_.dirty = true;
 }
 
-void SequenceEditor::renderTimelineInline(int32_t trackIndex, const RenderContext& context, float availableHeight) {
-    auto it = windows_.find(trackIndex);
-    if (it == windows_.end()) {
-        return;
-    }
-    renderTimelineContent(trackIndex, it->second, context, availableHeight, false);
-}
-
-float SequenceEditor::getInlineTimelineHeight(int32_t trackIndex, float uiScale) const {
+float SequenceEditor::getUnifiedTimelineHeight(float uiScale) const {
     const float baseSectionHeight = std::max(80.0f * uiScale, 40.0f);
     const float minHeight = 120.0f * uiScale;
-
-    size_t sectionCount = 1;
-    ImTimelineStyle style;
-    auto it = windows_.find(trackIndex);
-    if (it != windows_.end()) {
-        style = it->second.timelineStyle;
-    } else {
-        style.LegendWidth = 140.0f * uiScale;
-        style.HeaderHeight = static_cast<int>(24.0f * uiScale);
-        style.ScrollbarThickness = static_cast<int>(12.0f * uiScale);
-        style.SeekbarWidth = 2.0f * uiScale;
-    }
-
-    const float headerHeight = static_cast<float>(style.HeaderHeight);
-    const float scrollbarHeight = style.HasScrollbar ? static_cast<float>(style.ScrollbarThickness) : 0.0f;
-    const float sectionsHeight = static_cast<float>(sectionCount) * baseSectionHeight;
-    const float spacingHeight = static_cast<float>(sectionCount) * kTimelineSectionSpacing;
-    const float computedHeight = headerHeight + sectionsHeight + spacingHeight + kTimelineChildPadding + scrollbarHeight;
-
+    const auto sectionCount = static_cast<float>(windows_.size());
+    const float headerHeight = static_cast<float>(static_cast<int>(24.0f * uiScale));
+    const float sectionsHeight = sectionCount * baseSectionHeight;
+    const float spacingHeight = sectionCount * kTimelineSectionSpacing;
+    const float computedHeight = headerHeight + sectionsHeight + spacingHeight + kTimelineChildPadding;
     return std::max(computedHeight, minHeight);
 }
 
 void SequenceEditor::reset() {
     windows_.clear();
+    unified_ = UnifiedTimelineState{};
 }
 
 void SequenceEditor::render(const RenderContext& context) {
@@ -311,379 +293,310 @@ void SequenceEditor::renderClipTable(int32_t trackIndex, SequenceEditorState& st
     ImGui::EndChild();
 }
 
-void SequenceEditor::renderTimelineContent(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight, bool showLabel) {
-    if (availableHeight <= 0.0f) {
+void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float availableHeight) {
+    if (availableHeight <= 0.0f)
         availableHeight = ImGui::GetContentRegionAvail().y;
-    }
-    availableHeight = std::max(availableHeight, 0.0f);
+    availableHeight = std::max(availableHeight, 120.0f * context.uiScale);
 
-    float timelineHeight = availableHeight;
-    if (showLabel) {
-        const float infoHeight = ImGui::GetTextLineHeightWithSpacing();
-        timelineHeight -= infoHeight + ImGui::GetStyle().ItemSpacing.y;
-        timelineHeight = std::max(timelineHeight, 0.0f);
-        ImGui::TextDisabled("Timeline units: %s", timelineUnitsLabel(context));
-        ImGui::Spacing();
-    }
+    if (unified_.dirty)
+        rebuildUnifiedTimeline(context);
 
-    if (state.timelineDirty) {
-        rebuildTimelineModel(trackIndex, state, context);
-    }
-
-    if (!state.timeline) {
-        ImGui::TextUnformatted("Unable to build timeline for this track.");
+    if (!unified_.timeline) {
+        ImGui::TextUnformatted("Unable to build timeline.");
         return;
     }
 
-    timelineHeight = std::max(timelineHeight, 120.0f * context.uiScale);
-
-    std::string timelineChildId = std::format("##TimelineRegion{}", trackIndex);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    if (ImGui::BeginChild(timelineChildId.c_str(), ImVec2(0, timelineHeight), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
-        // Check if this window is actually hovered (will be false if another window is on top)
+    if (ImGui::BeginChild("##UnifiedTimeline", ImVec2(0, availableHeight), true,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         const bool timelineHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
-        const ImVec2 childWindowPos = ImGui::GetWindowPos();
-        const ImVec2 childWindowSize = ImGui::GetWindowSize();
-        const float clipAreaMinX = childWindowPos.x + state.timelineStyle.LegendWidth;
-        float clipAreaMinY = childWindowPos.y + static_cast<float>(state.timelineStyle.HeaderHeight);
-        const float clipAreaMaxX = childWindowPos.x + childWindowSize.x;
-        float clipAreaMaxY = childWindowPos.y + childWindowSize.y;
-        if (state.timelineStyle.HasScrollbar) {
-            clipAreaMaxY -= static_cast<float>(state.timelineStyle.ScrollbarThickness);
-        }
+        const ImVec2 winPos = ImGui::GetWindowPos();
+        const ImVec2 winSize = ImGui::GetWindowSize();
+        const float clipAreaMinX = winPos.x + unified_.style.LegendWidth;
+        const float clipAreaMinY = winPos.y + static_cast<float>(unified_.style.HeaderHeight);
+        const float clipAreaMaxX = winPos.x + winSize.x;
+        const float clipAreaMaxY = winPos.y + winSize.y;
 
-        // Block mouse input to ImTimeline when there's a popup/modal window on top,
-        // or when the timeline child window is not hovered (another overlay window has focus).
-        // ImTimeline reads directly from ImGui::GetIO(), so we temporarily clear mouse state.
         const bool popupBlocking = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
-        // Suppress input if another window (overlay/dragged) has captured the mouse.
-        // Check for any mouse activity (click/drag or scroll) so that scrolling an overlay
-        // window does not pan the inline timeline's horizontal position.
         ImGuiIO& io = ImGui::GetIO();
         const bool anyMouseActivity = io.MouseDown[0] || io.MouseDown[1] ||
                                       io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
-        const bool overlayBlocking = !timelineHovered && anyMouseActivity;
-        const bool shouldBlockInput = popupBlocking || overlayBlocking;
+        const bool shouldBlockInput = popupBlocking || (!timelineHovered && anyMouseActivity);
 
         bool savedMouseDown[5];
-        float savedMouseWheel = 0.0f;
-        float savedMouseWheelH = 0.0f;
+        float savedMouseWheel = 0.0f, savedMouseWheelH = 0.0f;
+        if (shouldBlockInput) {
+            for (int i = 0; i < 5; ++i) { savedMouseDown[i] = io.MouseDown[i]; io.MouseDown[i] = false; }
+            savedMouseWheel = io.MouseWheel; savedMouseWheelH = io.MouseWheelH;
+            io.MouseWheel = 0.0f; io.MouseWheelH = 0.0f;
+        }
+
+        unified_.timeline->DrawTimeline();
 
         if (shouldBlockInput) {
-            // Save and clear mouse state to prevent ImTimeline from reacting
-            for (int i = 0; i < 5; ++i) {
-                savedMouseDown[i] = io.MouseDown[i];
-                io.MouseDown[i] = false;
+            for (int i = 0; i < 5; ++i) io.MouseDown[i] = savedMouseDown[i];
+            io.MouseWheel = savedMouseWheel; io.MouseWheelH = savedMouseWheelH;
+        }
+
+        if (clipAreaMaxX > clipAreaMinX && clipAreaMinY > winPos.y)
+            drawPlayheadIndicator(context, clipAreaMinX, winPos.y, clipAreaMaxX, clipAreaMinY);
+
+        // Drag tracking
+        if (unified_.timeline->mDragData.DragState == eDragState::DragNode &&
+            unified_.activeDragNodeId == InvalidNodeID && !shouldBlockInput && timelineHovered)
+            unified_.activeDragNodeId = unified_.timeline->mDragData.DragNode.GetID();
+        if (unified_.activeDragNodeId != InvalidNodeID && shouldBlockInput)
+            unified_.activeDragNodeId = InvalidNodeID;
+
+        // Drag completion
+        if (unified_.activeDragNodeId != InvalidNodeID &&
+            unified_.timeline->mDragData.DragState == eDragState::None &&
+            !unified_.timeline->IsDragging()) {
+            const NodeID nodeId = unified_.activeDragNodeId;
+            unified_.activeDragNodeId = InvalidNodeID;
+            auto clipIt = unified_.nodeToClip.find(nodeId);
+            if (clipIt != unified_.nodeToClip.end() && clipIt->second.clipId >= 0) {
+                auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
+                if (node && context.moveClipAbsolute) {
+                    const double newStartSeconds = unitsToSeconds(context, static_cast<double>(node->start));
+                    context.moveClipAbsolute(clipIt->second.trackIndex, clipIt->second.clipId, newStartSeconds);
+                }
             }
-            savedMouseWheel = io.MouseWheel;
-            savedMouseWheelH = io.MouseWheelH;
-            io.MouseWheel = 0.0f;
-            io.MouseWheelH = 0.0f;
         }
 
-        state.timeline->DrawTimeline();
+        // Determine hovered track from selected section
+        const int32_t selectedSection = unified_.timeline->GetSelectedSection();
+        int32_t hoveredTrackIndex = -1;
+        if (selectedSection >= 0 && selectedSection < static_cast<int32_t>(unified_.sectionToTrack.size()))
+            hoveredTrackIndex = unified_.sectionToTrack[static_cast<size_t>(selectedSection)];
 
-        // Restore mouse state
-        if (shouldBlockInput) {
-            for (int i = 0; i < 5; ++i)
-                io.MouseDown[i] = savedMouseDown[i];
-            io.MouseWheel = savedMouseWheel;
-            io.MouseWheelH = savedMouseWheelH;
-        }
-
-        const float headerMinX = clipAreaMinX;
-        const float headerMaxX = clipAreaMaxX;
-        const float headerMinY = childWindowPos.y;
-        const float headerMaxY = clipAreaMinY;
-        if (headerMaxX > headerMinX && headerMaxY > headerMinY) {
-            drawPlayheadIndicator(state, context, headerMinX, headerMinY, headerMaxX, headerMaxY);
-        }
-
-        // Only start tracking drag if no popup/overlay is blocking and timeline is hovered
-        if (state.timeline->mDragData.DragState == eDragState::DragNode &&
-            state.activeDragNodeId == InvalidNodeID &&
-            !shouldBlockInput &&
-            timelineHovered) {
-            state.activeDragNodeId = state.timeline->mDragData.DragNode.GetID();
-        }
-
-        // Cancel active drag if a popup or overlay window captured mouse focus
-        if (state.activeDragNodeId != InvalidNodeID && shouldBlockInput) {
-            state.activeDragNodeId = InvalidNodeID;
-        }
-
-        int32_t requestedContextClip = -1;
-        bool requestedAddClipMenu = false;
+        // Double-click interaction
         const ImVec2 mousePos = ImGui::GetMousePos();
-        const bool mouseInClipArea =
-            mousePos.x >= clipAreaMinX && mousePos.x <= clipAreaMaxX &&
-            mousePos.y >= clipAreaMinY && mousePos.y <= clipAreaMaxY;
-        if (timelineHovered && mouseInClipArea && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            const float scale = state.timeline->GetScale();
-            const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
+        const bool mouseInClipArea = mousePos.x >= clipAreaMinX && mousePos.x <= clipAreaMaxX &&
+                                     mousePos.y >= clipAreaMinY && mousePos.y <= clipAreaMaxY;
 
+        int32_t requestedContextTrack = -1;
+        int32_t requestedAddClipTrack = -1;
+
+        if (timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 &&
+            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            auto& trackState = windows_[hoveredTrackIndex];
+            const float scale = unified_.timeline->GetScale();
+            const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
             bool clipUnderMouse = false;
             if (scale > 0.0f) {
-                // ImTimeline's HorizontalNodeView uses s32 (integer-truncated) scale for node
-                // x-positions but float scale for the mStartFrame scroll offset.  We must
-                // mirror that exactly or non-zero node.start values produce large X errors.
                 const float intScaleF = static_cast<float>(static_cast<int32_t>(scale));
-                // sfOffset == timelinePanelRect.Min.x inside ImTimeline
                 const float sfOffset = clipAreaMinX - static_cast<float>(startFrame) * scale;
-                for (const auto& [nodeId, clipId] : state.nodeToClip) {
-                    auto* node = state.timeline->FindNodeByNodeID(nodeId);
+                for (const auto& [nodeId, ref] : unified_.nodeToClip) {
+                    if (ref.trackIndex != hoveredTrackIndex) continue;
+                    auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
                     if (!node) continue;
-                    // slotP1.x = sfOffset + node.start * intScale
-                    // slotP2.x = sfOffset + (node.end + 1) * intScale  (ImTimeline adds +scale)
-                    const float clipMinX = sfOffset + static_cast<float>(node->start) * intScaleF;
-                    const float clipMaxX = sfOffset + static_cast<float>(node->end + 1) * intScaleF;
-                    const float visibleClipMinX = std::max(clipMinX, clipAreaMinX);
-                    const float visibleClipMaxX = std::min(clipMaxX, clipAreaMaxX);
-                    if (visibleClipMinX <= visibleClipMaxX &&
-                        mousePos.x >= visibleClipMinX && mousePos.x <= visibleClipMaxX) {
+                    const float nMinX = sfOffset + static_cast<float>(node->start) * intScaleF;
+                    const float nMaxX = sfOffset + static_cast<float>(node->end + 1) * intScaleF;
+                    if (mousePos.x >= std::max(nMinX, clipAreaMinX) && mousePos.x <= std::min(nMaxX, clipAreaMaxX)) {
                         clipUnderMouse = true;
-                        requestedContextClip = clipId;
+                        trackState.contextMenuClipId = ref.clipId;
+                        requestedContextTrack = hoveredTrackIndex;
                         break;
                     }
                 }
             }
-
-            if (!clipUnderMouse && scale > 0.0f && clipAreaMaxX > clipAreaMinX) {
-                // Double-clicked on empty timeline area - calculate position for new clip
+            if (!clipUnderMouse && scale > 0.0f) {
                 const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
-                const double timestampUnits = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
-                const double maxFrameSeconds = unitsToSeconds(context, static_cast<double>(state.timeline->GetMaxFrame()));
-                const double timestampSeconds = unitsToSeconds(context, timestampUnits);
-                state.requestedAddPosition = std::clamp(timestampSeconds, 0.0, maxFrameSeconds);
-                requestedAddClipMenu = true;
+                const double tsUnits = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
+                const double maxSec = unitsToSeconds(context, static_cast<double>(unified_.timeline->GetMaxFrame()));
+                trackState.requestedAddPosition = std::clamp(unitsToSeconds(context, tsUnits), 0.0, maxSec);
+                requestedAddClipTrack = hoveredTrackIndex;
             }
         }
 
+        // Open & render per-track context menus
+        for (int32_t trackIndex : unified_.sectionToTrack) {
+            auto it = windows_.find(trackIndex);
+            if (it == windows_.end()) continue;
+            auto& trackState = it->second;
 
-        if (state.activeDragNodeId != InvalidNodeID &&
-            state.timeline->mDragData.DragState == eDragState::None &&
-            !state.timeline->IsDragging()) {
-            const NodeID nodeId = state.activeDragNodeId;
-            state.activeDragNodeId = InvalidNodeID;
+            const std::string clipPopupId = std::format("TimelineClipContext##{}", trackIndex);
+            const std::string addPopupId  = std::format("TimelineAddClipContext##{}", trackIndex);
 
-            auto clipIt = state.nodeToClip.find(nodeId);
-            if (clipIt != state.nodeToClip.end() && clipIt->second >= 0) {
-                auto* node = state.timeline->FindNodeByNodeID(nodeId);
-                if (node && context.moveClipAbsolute) {
-                    double newStartUnits = static_cast<double>(node->start);
-                    double newStartSeconds = unitsToSeconds(context, newStartUnits);
-                    context.moveClipAbsolute(trackIndex, clipIt->second, newStartSeconds);
+            if (trackIndex == requestedContextTrack)
+                ImGui::OpenPopup(clipPopupId.c_str());
+            if (trackIndex == requestedAddClipTrack)
+                ImGui::OpenPopup(addPopupId.c_str());
+
+            if (ImGui::BeginPopup(clipPopupId.c_str())) {
+                const ClipRow* contextClip = nullptr;
+                if (trackState.contextMenuClipId != -1) {
+                    auto rowIt = std::find_if(trackState.displayClips.begin(), trackState.displayClips.end(),
+                        [id = trackState.contextMenuClipId](const ClipRow& r) { return r.clipId == id; });
+                    if (rowIt != trackState.displayClips.end())
+                        contextClip = &(*rowIt);
                 }
-            }
-        }
-
-        std::string popupId = std::format("TimelineClipContext##{}", trackIndex);
-        if (requestedContextClip != -1) {
-            state.contextMenuClipId = requestedContextClip;
-            ImGui::OpenPopup(popupId.c_str());
-        }
-
-        if (ImGui::BeginPopup(popupId.c_str())) {
-            const ClipRow* contextClip = nullptr;
-            if (state.contextMenuClipId != -1) {
-                auto clipRowIt = std::find_if(
-                    state.displayClips.begin(),
-                    state.displayClips.end(),
-                    [clipId = state.contextMenuClipId](const ClipRow& row) { return row.clipId == clipId; }
-                );
-                if (clipRowIt != state.displayClips.end()) {
-                    contextClip = &(*clipRowIt);
-                }
-            }
-
-            if (!contextClip) {
-                ImGui::TextDisabled("Clip not available.");
-            } else {
-                const bool canShowDump = (contextClip->isMasterTrack && static_cast<bool>(context.showMasterTrackDump)) ||
-                    (contextClip->isMidiClip && static_cast<bool>(context.showMidiClipDump));
-                if (!canShowDump) {
-                    ImGui::BeginDisabled();
-                }
-                if (ImGui::MenuItem("Show Dump List")) {
-                    if (contextClip->isMasterTrack) {
-                        if (context.showMasterTrackDump) {
-                            context.showMasterTrackDump();
-                        }
-                    } else if (context.showMidiClipDump) {
-                        context.showMidiClipDump(trackIndex, contextClip->clipId);
+                if (!contextClip) {
+                    ImGui::TextDisabled("Clip not available.");
+                } else {
+                    const bool canDump = (contextClip->isMasterTrack && static_cast<bool>(context.showMasterTrackDump)) ||
+                                        (contextClip->isMidiClip && static_cast<bool>(context.showMidiClipDump));
+                    if (!canDump) ImGui::BeginDisabled();
+                    if (ImGui::MenuItem("Show Dump List")) {
+                        if (contextClip->isMasterTrack && context.showMasterTrackDump) context.showMasterTrackDump();
+                        else if (context.showMidiClipDump) context.showMidiClipDump(trackIndex, contextClip->clipId);
+                        ImGui::CloseCurrentPopup();
                     }
-                    ImGui::CloseCurrentPopup();
-                }
-                if (!canShowDump) {
-                    ImGui::EndDisabled();
-                }
+                    if (!canDump) ImGui::EndDisabled();
 
-                const bool canOpenAudioEvents = !contextClip->isMasterTrack &&
-                                                !contextClip->isMidiClip &&
-                                                static_cast<bool>(context.showAudioClipEvents);
-                if (!canOpenAudioEvents)
-                    ImGui::BeginDisabled();
-                if (ImGui::MenuItem("Edit Audio Events")) {
-                    if (context.showAudioClipEvents)
-                        context.showAudioClipEvents(trackIndex, contextClip->clipId);
-                    ImGui::CloseCurrentPopup();
-                }
-                if (!canOpenAudioEvents)
-                    ImGui::EndDisabled();
-
-                const bool canOpenPianoRoll = contextClip->isMidiClip &&
-                                              static_cast<bool>(context.showPianoRoll);
-                if (!canOpenPianoRoll)
-                    ImGui::BeginDisabled();
-                if (ImGui::MenuItem("Open Piano Roll")) {
-                    if (context.showPianoRoll)
-                        context.showPianoRoll(trackIndex, contextClip->clipId);
-                    ImGui::CloseCurrentPopup();
-                }
-                if (!canOpenPianoRoll)
-                    ImGui::EndDisabled();
-
-                const bool canDelete = static_cast<bool>(context.removeClip);
-                if (!canDelete) {
-                    ImGui::BeginDisabled();
-                }
-                if (ImGui::MenuItem("Delete")) {
-                    if (context.removeClip) {
-                        context.removeClip(trackIndex, contextClip->clipId);
+                    const bool canAudio = !contextClip->isMasterTrack && !contextClip->isMidiClip && static_cast<bool>(context.showAudioClipEvents);
+                    if (!canAudio) ImGui::BeginDisabled();
+                    if (ImGui::MenuItem("Edit Audio Events")) {
+                        if (context.showAudioClipEvents) context.showAudioClipEvents(trackIndex, contextClip->clipId);
+                        ImGui::CloseCurrentPopup();
                     }
+                    if (!canAudio) ImGui::EndDisabled();
+
+                    const bool canRoll = contextClip->isMidiClip && static_cast<bool>(context.showPianoRoll);
+                    if (!canRoll) ImGui::BeginDisabled();
+                    if (ImGui::MenuItem("Open Piano Roll")) {
+                        if (context.showPianoRoll) context.showPianoRoll(trackIndex, contextClip->clipId);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    if (!canRoll) ImGui::EndDisabled();
+
+                    const bool canDelete = static_cast<bool>(context.removeClip);
+                    if (!canDelete) ImGui::BeginDisabled();
+                    if (ImGui::MenuItem("Delete")) {
+                        if (context.removeClip) context.removeClip(trackIndex, contextClip->clipId);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    if (!canDelete) ImGui::EndDisabled();
+                }
+                ImGui::EndPopup();
+            }
+
+            if (ImGui::BeginPopup(addPopupId.c_str())) {
+                if (ImGui::MenuItem("Edit Clips...", nullptr, isVisible(trackIndex))) {
+                    showWindow(trackIndex);
+                    if (context.refreshClips) context.refreshClips(trackIndex);
                     ImGui::CloseCurrentPopup();
                 }
-                if (!canDelete) {
-                    ImGui::EndDisabled();
+                ImGui::Separator();
+                if (ImGui::MenuItem("New Clip")) {
+                    if (context.addBlankMidiClipAtPosition)
+                        context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
+                    ImGui::CloseCurrentPopup();
                 }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Import Audio Clip...")) {
+                    if (context.addAudioClip) context.addAudioClip(trackIndex);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Import SMF as Clip...")) {
+                    if (context.addSmfClip) context.addSmfClip(trackIndex);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Import SMF2Clip...")) {
+                    if (context.addSmf2Clip) context.addSmf2Clip(trackIndex);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Clear All")) {
+                    if (context.clearAllClips) context.clearAllClips(trackIndex);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
             }
-
-            ImGui::EndPopup();
-        }
-
-        // Context menu for adding new clip at specific position
-        std::string addClipPopupId = std::format("TimelineAddClipContext##{}", trackIndex);
-        if (requestedAddClipMenu) {
-            ImGui::OpenPopup(addClipPopupId.c_str());
-        }
-
-        if (ImGui::BeginPopup(addClipPopupId.c_str())) {
-            if (ImGui::MenuItem("Edit Clips...", nullptr, isVisible(trackIndex))) {
-                showWindow(trackIndex);
-                if (context.refreshClips)
-                    context.refreshClips(trackIndex);
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("New Clip")) {
-                if (context.addBlankMidiClipAtPosition)
-                    context.addBlankMidiClipAtPosition(trackIndex, state.requestedAddPosition);
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Import Audio Clip...")) {
-                if (context.addAudioClip)
-                    context.addAudioClip(trackIndex);
-                ImGui::CloseCurrentPopup();
-            }
-            if (ImGui::MenuItem("Import SMF as Clip...")) {
-                if (context.addSmfClip)
-                    context.addSmfClip(trackIndex);
-                ImGui::CloseCurrentPopup();
-            }
-            if (ImGui::MenuItem("Import SMF2Clip...")) {
-                if (context.addSmf2Clip)
-                    context.addSmf2Clip(trackIndex);
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Clear All")) {
-                if (context.clearAllClips)
-                    context.clearAllClips(trackIndex);
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
         }
     }
     ImGui::EndChild();
     ImGui::PopStyleVar();
 }
 
-void SequenceEditor::rebuildTimelineModel(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context) {
-    state.timeline = std::make_unique<ImTimeline::Timeline>();
+void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
+    unified_.timeline = std::make_unique<ImTimeline::Timeline>();
+    unified_.nodeToClip.clear();
+    unified_.activeDragNodeId = InvalidNodeID;
+    unified_.sectionToTrack.clear();
 
-    if (!state.timeline) {
-        state.timelineDirty = false;
-        return;
-    }
-
-    state.timeline->mFlags.set(TimelineFlags_SkipTimelineRebuild, true);
+    unified_.timeline->mFlags.set(TimelineFlags_SkipTimelineRebuild, true);
 
     ImTimelineStyle style;
-    style.LegendWidth = 140.0f * context.uiScale;
+    style.LegendWidth = context.legendWidth;
     style.HeaderHeight = static_cast<int>(24.0f * context.uiScale);
     style.ScrollbarThickness = static_cast<int>(12.0f * context.uiScale);
     style.SeekbarWidth = 2.0f * context.uiScale;
     style.HasSeekbar = false;
-    state.timeline->SetTimelineStyle(style);
-    state.timelineStyle = style;
+    unified_.timeline->SetTimelineStyle(style);
+    unified_.style = style;
 
     const float baseHeight = std::max(80.0f * context.uiScale, 40.0f);
+
+    // Sort tracks: kMasterTrackIndex (INT32_MIN) naturally sorts first
+    std::vector<int32_t> sortedTracks;
+    sortedTracks.reserve(windows_.size());
+    for (const auto& [trackIndex, _] : windows_)
+        sortedTracks.push_back(trackIndex);
+    std::sort(sortedTracks.begin(), sortedTracks.end());
+    unified_.sectionToTrack = sortedTracks;
+
     int32_t maxFrame = 0;
-    state.nodeToClip.clear();
-    state.activeDragNodeId = InvalidNodeID;
 
-    const int sectionIndex = 0;
-    std::string sectionName = (trackIndex < 0) ? std::string("Master Track")
-                                              : std::format("Track {}", trackIndex + 1);
-    state.timeline->InitializeTimelineSection(sectionIndex, sectionName);
-    state.timeline->SetTimelineName(sectionIndex, sectionName);
+    for (int32_t sectionIdx = 0; sectionIdx < static_cast<int32_t>(sortedTracks.size()); ++sectionIdx) {
+        const int32_t trackIndex = sortedTracks[static_cast<size_t>(sectionIdx)];
+        auto& state = windows_[trackIndex];
 
-    auto& props = state.timeline->GetSectionDisplayProperties(sectionIndex);
-    props.mHeight = baseHeight;
-    props.mBackgroundColor = IM_COL32(63, 76, 107, 200);
-    props.mBackgroundColorTwo = IM_COL32(43, 54, 86, 200);
-    props.mForegroundColor = IM_COL32(255, 255, 255, 255);
-    props.BorderRadius = 6.0f * context.uiScale;
-    props.BorderThickness = 1.0f;
-    props.AccentThickness = 8;
-    state.timeline->SetTimelineHeight(sectionIndex, props.mHeight);
+        std::string sectionName = (trackIndex == uapmd::kMasterTrackIndex)
+            ? std::string("Master Track")
+            : std::format("Track {}", trackIndex + 1);
 
-    for (const auto& clip : state.displayClips) {
-
-        TimelineNode node;
-        node.Setup(sectionIndex, clip.timelineStart, clip.timelineEnd, sectionName);
-        node.displayProperties = props;
-        node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_UseSectionBackground, true);
-        node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_AutofitHeight, true);
-        node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MoveSurroundingNodesToTheRight, false);
-        node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MovedToDifferentTimeline, true);
-
-        auto preview = ensureClipPreview(trackIndex, clip, state);
-        auto clipLabel = clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
-        auto customNode = createClipContentNode(preview, context.uiScale, clipLabel);
-        if (customNode) {
-            node.InitalizeCustomNode(customNode);
+        if (context.renderLegendContent) {
+            auto legendView = std::make_shared<TrackLegendNodeView>();
+            legendView->trackIndex = trackIndex;
+            legendView->renderContent = context.renderLegendContent;
+            unified_.timeline->InitializeTimelineSectionEx(sectionIdx, sectionName, nullptr, nullptr, legendView);
+        } else {
+            unified_.timeline->InitializeTimelineSection(sectionIdx, sectionName);
         }
+        unified_.timeline->SetTimelineName(sectionIdx, sectionName);
 
-        auto* addedNode = state.timeline->AddNewNode(&node);
-        if (addedNode) {
-            addedNode->mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MovedToDifferentTimeline, false);
-            addedNode->mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MoveSurroundingNodesToTheRight, false);
-            state.nodeToClip[addedNode->GetID()] = clip.clipId;
+        auto& props = unified_.timeline->GetSectionDisplayProperties(sectionIdx);
+        props.mHeight = baseHeight;
+        props.mBackgroundColor = IM_COL32(63, 76, 107, 200);
+        props.mBackgroundColorTwo = IM_COL32(43, 54, 86, 200);
+        props.mForegroundColor = IM_COL32(255, 255, 255, 255);
+        props.BorderRadius = 6.0f * context.uiScale;
+        props.BorderThickness = 1.0f;
+        props.AccentThickness = 8;
+        unified_.timeline->SetTimelineHeight(sectionIdx, props.mHeight);
+
+        for (const auto& clip : state.displayClips) {
+            TimelineNode node;
+            node.Setup(sectionIdx, clip.timelineStart, clip.timelineEnd, sectionName);
+            node.displayProperties = props;
+            node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_UseSectionBackground, true);
+            node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_AutofitHeight, true);
+            node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MoveSurroundingNodesToTheRight, false);
+            node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MovedToDifferentTimeline, true);
+
+            auto preview = ensureClipPreview(trackIndex, clip, state);
+            auto clipLabel = clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
+            auto customNode = createClipContentNode(preview, context.uiScale, clipLabel);
+            if (customNode)
+                node.InitalizeCustomNode(customNode);
+
+            auto* addedNode = unified_.timeline->AddNewNode(&node);
+            if (addedNode) {
+                addedNode->mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MovedToDifferentTimeline, false);
+                addedNode->mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MoveSurroundingNodesToTheRight, false);
+                unified_.nodeToClip[addedNode->GetID()] = {trackIndex, clip.clipId};
+            }
+            maxFrame = std::max(maxFrame, clip.timelineEnd);
         }
-
-        maxFrame = std::max(maxFrame, clip.timelineEnd);
     }
 
-    if (maxFrame <= 0) {
-        maxFrame = 1000;
-    }
-
-    state.timeline->SetStartFrame(0);
-    state.timeline->SetMaxFrame(maxFrame + 200);
-    state.timeline->SetScale(std::max(1.0f, 5.0f * context.uiScale));
-    state.timelineDirty = false;
+    if (maxFrame <= 0) maxFrame = 1000;
+    unified_.timeline->SetStartFrame(0);
+    unified_.timeline->SetMaxFrame(maxFrame + 200);
+    unified_.timeline->SetScale(std::max(1.0f, 5.0f * context.uiScale));
+    unified_.dirty = false;
 }
 
 void SequenceEditor::renderClipRow(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
@@ -876,43 +789,36 @@ std::vector<SequenceEditor::AnchorOption> SequenceEditor::getAnchorOptions(int32
 }
 
 void SequenceEditor::drawPlayheadIndicator(
-    const SequenceEditorState& state,
     const RenderContext& context,
     float headerMinX,
     float headerMinY,
     float headerMaxX,
     float headerMaxY
 ) const {
-    if (!state.timeline) {
+    if (!unified_.timeline)
         return;
-    }
 
     auto& appModel = uapmd::AppModel::instance();
     const int32_t sampleRate = appModel.sampleRate();
-    if (sampleRate <= 0) {
+    if (sampleRate <= 0)
         return;
-    }
 
     const auto& timelineState = appModel.timeline();
     const double playheadSeconds = timelineState.playheadPosition.toSeconds(sampleRate);
-    if (!std::isfinite(playheadSeconds)) {
+    if (!std::isfinite(playheadSeconds))
         return;
-    }
 
-    const int32_t maxFrame = state.timeline->GetMaxFrame();
-    if (maxFrame <= 0) {
+    const int32_t maxFrame = unified_.timeline->GetMaxFrame();
+    if (maxFrame <= 0)
         return;
-    }
 
     const double playheadUnits = secondsToUnits(context, playheadSeconds);
-
     const double clampedFrame = std::clamp(playheadUnits, 0.0, static_cast<double>(maxFrame));
-    const double startFrame = static_cast<double>(state.timeline->GetStartTimestamp());
-    if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame)) {
+    const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
+    if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame))
         return;
-    }
 
-    const float scale = state.timeline->GetScale();
+    const float scale = unified_.timeline->GetScale();
     const float clipMinX = headerMinX;
     const float clipMaxX = headerMaxX;
     if (clipMaxX <= clipMinX) {

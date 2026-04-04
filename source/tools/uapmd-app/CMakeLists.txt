@@ -672,6 +672,7 @@ if(NOT UAPMD_BUILDING_WASM)
 endif()
 
 target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
+        ${ImTimeline_SOURCE_DIR}/TimelineViews
         ${choc_SOURCE_DIR}
         ${portable-file-dialogs_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include

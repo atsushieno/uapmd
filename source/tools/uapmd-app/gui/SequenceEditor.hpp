@@ -60,8 +60,10 @@ public:
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;
         std::function<double(double seconds)> secondsToTimelineUnits;
         std::function<double(double units)> timelineUnitsToSeconds;
+        std::function<void(int32_t trackIndex, const ImRect& legendArea)> renderLegendContent;
         const char* timelineUnitsLabel = "seconds";
         float uiScale = 1.0f;
+        float legendWidth = 0.0f; // required legend pixel width; computed by caller
     };
 
     void showWindow(int32_t trackIndex);
@@ -70,9 +72,10 @@ public:
     void refreshClips(int32_t trackIndex, const std::vector<ClipRow>& clips);
     void render(const RenderContext& context);
     void removeStaleWindows(int32_t maxValidTrackIndex);
-    void renderTimelineInline(int32_t trackIndex, const RenderContext& context, float availableHeight);
     void reset();
-    float getInlineTimelineHeight(int32_t trackIndex, float uiScale) const;
+
+    void renderUnifiedTimeline(const RenderContext& context, float availableHeight);
+    float getUnifiedTimelineHeight(float uiScale) const;
 
 private:
     struct SequenceEditorState {
@@ -85,22 +88,26 @@ private:
         bool visible = false;
         std::vector<ClipRow> displayClips;
         int32_t selectedClipId = -1;
-        std::unique_ptr<ImTimeline::Timeline> timeline;
-        ImTimelineStyle timelineStyle{};
-        bool timelineDirty = true;
-        std::unordered_map<NodeID, int32_t> nodeToClip; // Maps node IDs to clip IDs
-        NodeID activeDragNodeId = InvalidNodeID;
         int32_t contextMenuClipId = -1;
-        double requestedAddPosition = -1.0;  // Timeline position for "Add clip here" context menu
+        double requestedAddPosition = -1.0;
         std::unordered_map<int32_t, std::shared_ptr<ClipPreview>> clipPreviews;
     };
-
     std::unordered_map<int32_t, SequenceEditorState> windows_;
+
+    struct NodeClipRef { int32_t trackIndex; int32_t clipId; };
+    struct UnifiedTimelineState {
+        std::unique_ptr<ImTimeline::Timeline> timeline;
+        ImTimelineStyle style{};
+        bool dirty = true;
+        std::unordered_map<NodeID, NodeClipRef> nodeToClip;
+        NodeID activeDragNodeId = InvalidNodeID;
+        std::vector<int32_t> sectionToTrack; // section index -> track index
+    };
+    UnifiedTimelineState unified_;
 
     void renderWindow(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
     void renderClipTable(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight);
-    void renderTimelineContent(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight, bool showLabel);
-    void rebuildTimelineModel(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context);
+    void rebuildUnifiedTimeline(const RenderContext& context);
     void renderClipRow(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     bool renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
     bool renderOriginCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context);
@@ -114,7 +121,6 @@ private:
 
     std::vector<AnchorOption> getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const;
     void drawPlayheadIndicator(
-        const SequenceEditorState& state,
         const RenderContext& context,
         float clipAreaMinX,
         float clipAreaMinY,
