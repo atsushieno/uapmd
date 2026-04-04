@@ -64,6 +64,13 @@ struct ClipKeyHash {
     }
 };
 
+bool renderIconButtonWithTooltip(const char* label, const char* tooltip) {
+    const bool clicked = ImGui::Button(label);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tooltip);
+    return clicked;
+}
+
 uint64_t mixHash(uint64_t seed, uint64_t value) {
     constexpr uint64_t kPrime = 1099511628211ull;
     seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
@@ -952,6 +959,10 @@ void TimelineEditor::renderPluginSelectorWindow(float uiScale) {
     ImGui::End();
 }
 
+void TimelineEditor::renderPluginGraphWindow(float uiScale) {
+    pluginGraphEditor_.render(uiScale, setNextChildWindowSize_, updateChildWindowSizeState_);
+}
+
 void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& context) {
     auto& appModel = uapmd::AppModel::instance();
     auto tracks = appModel.getTimelineTracks();
@@ -1076,8 +1087,15 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         ImGui::Separator();
         ImGui::TextUnformatted("Master Track");
         ImGui::Spacing();
-        if (ImGui::Button("Clips..."))
+        if (renderIconButtonWithTooltip(std::format("{}##MasterTrackClips", icons::Clips).c_str(), "Edit clips"))
             sequenceEditor_.showWindow(uapmd::kMasterTrackIndex);
+        ImGui::SameLine();
+        if (renderIconButtonWithTooltip(std::format("{}##MasterTrackGraph", icons::Graph).c_str(), "Show plugin graph")) {
+            if (pluginGraphEditor_.isVisible(uapmd::kMasterTrackIndex))
+                pluginGraphEditor_.hideMasterTrack();
+            else
+                pluginGraphEditor_.showMasterTrack();
+        }
         if (ImGui::Button("Markers..."))
             showMasterMarkerEditor();
 
@@ -1216,8 +1234,15 @@ void TimelineEditor::renderTrackRow(int32_t trackIndex, const SequenceEditor::Re
         std::string popupId = std::format("TrackActions##{}", trackIndex);
         std::string clipPopupId = std::format("ClipActions##{}", trackIndex);
 
-        if (ImGui::Button("Clips..."))
+        if (renderIconButtonWithTooltip(std::format("{}##TrackClips{}", icons::Clips, trackIndex).c_str(), "Edit clips"))
             ImGui::OpenPopup(clipPopupId.c_str());
+        ImGui::SameLine();
+        if (renderIconButtonWithTooltip(std::format("{}##TrackGraph{}", icons::Graph, trackIndex).c_str(), "Show plugin graph")) {
+            if (pluginGraphEditor_.isVisible(trackIndex))
+                pluginGraphEditor_.hideTrack(trackIndex);
+            else
+                pluginGraphEditor_.showTrack(trackIndex);
+        }
         if (track) {
             bool bypassed = track->bypassed();
             if (bypassed)

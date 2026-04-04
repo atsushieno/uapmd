@@ -11,6 +11,7 @@
 #include "detail/project/DemucsStemSeparator.hpp"
 #include "detail/project/UapmdProjectFile.hpp"
 #include "detail/project/UapmdSequence.hpp"
+#include "detail/project/AudioGraphProvider.hpp"
 #include "detail/project/UapmdPluginGraphBuilder.hpp"
 #include "detail/project/ProjectArchive.hpp"
 #include "detail/timeline/TimelineTypes.hpp"

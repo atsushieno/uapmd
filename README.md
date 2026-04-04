@@ -208,6 +208,7 @@ There are third-party (and first-party) dependency libraries (git submodules, CM
 - [ocornut/imgui](https://github.com/ocornut/imgui) - MIT
 - [samhocevar/portable-file-dialogs](https://github.com/samhocevar/portable-file-dialogs) - WTFPL
 - [triplejam/ImTimeline](https://github.com/triplejam/ImTimeline) (a well-maintained and buildable fork of NickVanheer/ImTimeline) - MIT
+- [0aids/imnodes](https://github.com/0aids/imnodes/) (a well-maintained and buildable fork of Piratkopia13/imnodes) - MIT
 - [juliettef/IconFontCppHelpers](https://github.com/juliettef/IconFontCppHeaders) - Zlib license.
 - [eyalamirmusic/ResEmbed](https://github.com/eyalamirmusic/ResEmbed) - MIT
 - [sevagh/demucs.cpp](https://github.com/sevagh/demucs.cpp) - MIT

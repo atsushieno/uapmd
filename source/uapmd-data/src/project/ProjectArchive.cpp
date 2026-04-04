@@ -9,6 +9,7 @@
 #include <string>
 #include <system_error>
 #include <vector>
+#include <zlib.h>
 #include "uapmd-data/detail/project/ProjectArchive.hpp"
 
 namespace uapmd {
@@ -89,6 +90,7 @@ struct CentralDirectoryEntry {
     uint32_t localHeaderOffset{};
     uint16_t modTime{};
     uint16_t modDate{};
+    uint16_t flags{};
     uint16_t compression{};
     bool isDirectory{false};
 };
@@ -435,6 +437,7 @@ ProjectArchiveExtractResult ProjectArchive::extractArchive(
         entry.localHeaderOffset = localOffset;
         entry.modTime = modTime;
         entry.modDate = modDate;
+        entry.flags = flags;
         entry.compression = compression;
         entry.isDirectory = !name.empty() && name.back() == '/';
         entries.push_back(std::move(entry));
@@ -469,7 +472,12 @@ ProjectArchiveExtractResult ProjectArchive::extractArchive(
             return result;
         }
 
-        if (entry.compression != 0) {
+        if ((entry.flags & 0x1u) != 0) {
+            result.error = "Archive uses encrypted ZIP entries, which are unsupported.";
+            return result;
+        }
+
+        if (entry.compression != 0 && entry.compression != Z_DEFLATED) {
             result.error = "Archive uses unsupported compression method.";
             return result;
         }
@@ -512,8 +520,10 @@ ProjectArchiveExtractResult ProjectArchive::extractArchive(
             return result;
         }
 
-        if (compressedSize != entry.compressedSize ||
-            uncompressedSize != entry.uncompressedSize) {
+        const bool usesDataDescriptor = (entry.flags & 0x8u) != 0;
+        if (!usesDataDescriptor &&
+            (compressedSize != entry.compressedSize ||
+             uncompressedSize != entry.uncompressedSize)) {
             result.error = "Central directory mismatch detected.";
             return result;
         }
@@ -531,26 +541,79 @@ ProjectArchiveExtractResult ProjectArchive::extractArchive(
             return result;
         }
 
-        uint64_t remaining = entry.compressedSize;
         uint32_t runningCrc = 0xFFFFFFFFu;
-        while (remaining > 0) {
-            const auto chunk = static_cast<size_t>(std::min<uint64_t>(buffer.size(), remaining));
-            file.read(buffer.data(), static_cast<std::streamsize>(chunk));
-            if (static_cast<size_t>(file.gcount()) != chunk) {
-                result.error = "Unexpected end of file while extracting.";
+        uint64_t writtenSize = 0;
+
+        if (entry.compression == 0) {
+            uint64_t remaining = entry.compressedSize;
+            while (remaining > 0) {
+                const auto chunk = static_cast<size_t>(std::min<uint64_t>(buffer.size(), remaining));
+                file.read(buffer.data(), static_cast<std::streamsize>(chunk));
+                if (static_cast<size_t>(file.gcount()) != chunk) {
+                    result.error = "Unexpected end of file while extracting.";
+                    return result;
+                }
+                outFile.write(buffer.data(), static_cast<std::streamsize>(chunk));
+                if (!outFile) {
+                    result.error = "Failed to write extracted data.";
+                    return result;
+                }
+                runningCrc = crc32Update(runningCrc, reinterpret_cast<const uint8_t*>(buffer.data()), chunk);
+                writtenSize += chunk;
+                remaining -= chunk;
+            }
+        } else {
+            std::vector<uint8_t> compressedData(entry.compressedSize);
+            if (!compressedData.empty()) {
+                file.read(reinterpret_cast<char*>(compressedData.data()), static_cast<std::streamsize>(compressedData.size()));
+                if (static_cast<size_t>(file.gcount()) != compressedData.size()) {
+                    result.error = "Unexpected end of file while extracting compressed data.";
+                    return result;
+                }
+            }
+
+            z_stream stream{};
+            stream.next_in = compressedData.empty() ? Z_NULL : compressedData.data();
+            stream.avail_in = static_cast<uInt>(compressedData.size());
+            if (inflateInit2(&stream, -MAX_WBITS) != Z_OK) {
+                result.error = "Failed to initialize ZIP decompressor.";
                 return result;
             }
-            outFile.write(buffer.data(), static_cast<std::streamsize>(chunk));
-            if (!outFile) {
-                result.error = "Failed to write extracted data.";
-                return result;
-            }
-            runningCrc = crc32Update(runningCrc, reinterpret_cast<const uint8_t*>(buffer.data()), chunk);
-            remaining -= chunk;
+
+            int inflateStatus = Z_OK;
+            do {
+                stream.next_out = reinterpret_cast<Bytef*>(buffer.data());
+                stream.avail_out = static_cast<uInt>(buffer.size());
+                inflateStatus = inflate(&stream, Z_NO_FLUSH);
+                if (inflateStatus != Z_OK && inflateStatus != Z_STREAM_END) {
+                    inflateEnd(&stream);
+                    result.error = "Failed to decompress ZIP entry.";
+                    return result;
+                }
+
+                const size_t produced = buffer.size() - stream.avail_out;
+                if (produced > 0) {
+                    outFile.write(buffer.data(), static_cast<std::streamsize>(produced));
+                    if (!outFile) {
+                        inflateEnd(&stream);
+                        result.error = "Failed to write extracted data.";
+                        return result;
+                    }
+                    runningCrc = crc32Update(runningCrc, reinterpret_cast<const uint8_t*>(buffer.data()), produced);
+                    writtenSize += produced;
+                }
+            } while (inflateStatus != Z_STREAM_END);
+
+            inflateEnd(&stream);
         }
+
         runningCrc ^= 0xFFFFFFFFu;
         if (runningCrc != entry.crc32) {
             result.error = "CRC mismatch while extracting " + outputPath.string();
+            return result;
+        }
+        if (writtenSize != entry.uncompressedSize) {
+            result.error = "Uncompressed size mismatch while extracting " + outputPath.string();
             return result;
         }
 

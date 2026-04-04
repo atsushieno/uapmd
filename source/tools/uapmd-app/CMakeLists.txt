@@ -64,6 +64,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/PluginList.cpp
         gui/InstanceDetails.cpp
         gui/PluginSelector.cpp
+        gui/PluginGraphEditor.cpp
         gui/ParameterList.cpp
         gui/TrackList.cpp
         gui/AudioDeviceSettings.cpp
@@ -341,6 +342,13 @@ if(NOT DEFINED imgui_SOURCE_DIR)
     )
 endif()
 
+CPMAddPackage(
+    NAME imnodes
+    GIT_TAG 5025ad189b6a17c931bbdb39b8a575b63adf3e91
+    GIT_REPOSITORY https://github.com/0aids/imnodes
+    DOWNLOAD_ONLY YES
+)
+
 # ImTimeline for SequenceEditor timeline view
 CPMAddPackage(
     NAME ImTimeline
@@ -463,10 +471,6 @@ if(UAPMD_BUILDING_WASM)
     unset(_uapmd_resembed_host)
 endif()
 set(_resembed_patch "${UAPMD_REPO_ROOT}/external/patches/resembed-host-toolchain.patch")
-find_package(Git QUIET)
-if(NOT GIT_FOUND)
-    message(FATAL_ERROR "git is required to patch ResEmbed")
-endif()
 CPMAddPackage(
     NAME ResEmbed
     GIT_TAG 23ba82c
@@ -574,6 +578,16 @@ if(NOT TARGET imgui)
         # Windows OpenGL fallback
         target_link_libraries(imgui PUBLIC opengl32)
     endif()
+endif()
+
+if(NOT TARGET imnodes)
+    add_library(imnodes STATIC
+        ${imnodes_SOURCE_DIR}/imnodes.cpp
+    )
+    target_include_directories(imnodes PUBLIC
+        ${imnodes_SOURCE_DIR}
+    )
+    target_link_libraries(imnodes PUBLIC imgui)
 endif()
 
 # Build ImTimeline as a static library with controlled public API
@@ -695,6 +709,7 @@ endif ()
 
 set(_uapmd_app_link_libraries
         imgui
+        imnodes
         imtimeline
         ResEmbed
         remidy

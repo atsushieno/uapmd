@@ -5,6 +5,7 @@
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 
@@ -33,6 +34,7 @@ namespace uapmd {
         TimelineState timeline_;
         int32_t next_source_node_id_{1};
         uint32_t next_timeline_track_reference_{1};
+        AudioGraphProviderRegistry audio_graph_provider_registry_{};
 
     public:
         explicit TimelineFacadeImpl(SequencerEngine& engine)
@@ -41,6 +43,7 @@ namespace uapmd {
             , bufferSizeInFrames_(0)
             , master_timeline_track_(std::make_shared<TimelineTrack>(std::string("master_track"), 0, 44100.0, 0))
         {
+            audio_graph_provider_registry_ = AudioGraphProviderRegistry::create();
             timeline_.tempo = 120.0;
             timeline_.timeSignatureNumerator = 4;
             timeline_.timeSignatureDenominator = 4;
@@ -62,6 +65,107 @@ namespace uapmd {
 
         TimelineTrack* masterTimelineTrack() override {
             return master_timeline_track_.get();
+        }
+
+        AudioGraphProviderRegistry& audioGraphProviderRegistry() override {
+            return audio_graph_provider_registry_;
+        }
+
+        const AudioGraphProviderRegistry& audioGraphProviderRegistry() const override {
+            return audio_graph_provider_registry_;
+        }
+
+        bool replaceTrackGraphType(
+            int32_t trackIndex,
+            const std::string& graphTypeId,
+            size_t eventBufferSizeInBytes) override {
+            auto* provider = audio_graph_provider_registry_.get(graphTypeId);
+            if (!provider)
+                return false;
+
+            SequencerTrack* track = trackIndex == kMasterTrackIndex
+                ? engine_.masterTrack()
+                : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(engine_.tracks().size())
+                    ? engine_.tracks()[static_cast<size_t>(trackIndex)]
+                    : nullptr);
+            if (!track)
+                return false;
+
+            if (track->graph().providerId() == provider->id())
+                return true;
+
+            auto newGraph = provider->createGraph(eventBufferSizeInBytes);
+            return engine_.replaceTrackGraph(trackIndex, std::move(newGraph));
+        }
+
+        bool materializeProjectGraph(
+            UapmdProjectTrackData* projectTrack,
+            SequencerTrack* sequencerTrack,
+            size_t eventBufferSizeInBytes) override {
+            if (!projectTrack || !sequencerTrack || !projectTrack->graph())
+                return true;
+
+            auto* provider = audio_graph_provider_registry_.get(projectTrack->graph()->graphType());
+            if (!provider)
+                return false;
+
+            int32_t trackIndex = -1;
+            if (engine_.masterTrack() == sequencerTrack)
+                trackIndex = kMasterTrackIndex;
+            else {
+                auto tracks = engine_.tracks();
+                for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
+                    if (tracks[static_cast<size_t>(i)] == sequencerTrack) {
+                        trackIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (trackIndex == -1)
+                return false;
+            if (!replaceTrackGraphType(trackIndex, provider->id(), eventBufferSizeInBytes))
+                return false;
+            return provider->deserializeRuntimeGraph(
+                projectTrack->graph(), sequencerTrack->graph(), sequencerTrack->orderedInstanceIds());
+        }
+
+        bool saveProjectGraph(
+            UapmdProjectTrackData* projectTrack,
+            SequencerTrack* sequencerTrack,
+            const std::filesystem::path& projectDir,
+            const std::filesystem::path& graphDir,
+            const std::string& scopeLabel,
+            std::string& error) override {
+            if (!projectTrack || !sequencerTrack)
+                return true;
+
+            auto* provider = audio_graph_provider_registry_.get(sequencerTrack->graph());
+            if (!provider)
+                return false;
+
+            auto graphFilename = std::format(
+                "{}.graph.json",
+                urlEscapeFilenameComponent(scopeLabel));
+            auto graphPath = graphDir / graphFilename;
+            auto recordedPath = graphPath;
+            if (!projectDir.empty())
+                recordedPath = makeRelativePath(projectDir, graphPath);
+
+            std::vector<uint8_t> graphBytes;
+            if (!provider->saveProjectGraph(projectTrack->graph(), graphBytes)) {
+                error = std::format("Failed to serialize graph {}", graphPath.string());
+                return false;
+            }
+
+            if (!writeBinaryFile(graphPath, graphBytes, error))
+                return false;
+
+            auto graph = UapmdProjectPluginGraphData::create();
+            graph->graphType(provider->id());
+            graph->externalFile(recordedPath);
+            projectTrack->graph(std::move(graph));
+            return true;
         }
 
         ClipAddResult addMidiClipToTimelineTrack(
@@ -327,13 +431,39 @@ namespace uapmd {
             };
             std::unordered_map<UapmdProjectClipData*, LoadedClipRef> loadedClipRefs;
 
+            // FIXME: we might have to reconsider how we adapt plugin instances instantiated here to the graph.
+            //  Currently, `UapmdPluginGraphBuilder::build()` is practically no-op, but the project loads.
+            //  It is because it is already added in a linear manner.
+            //  But that may not be the right thing depending on the graphs (such as, full DAG).
             auto loadPluginsForTrack = [this, &projectDir, &pending_plugins](UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
                 if (!projectTrack)
                     return;
                 auto* graphData = projectTrack->graph();
                 if (!graphData)
                     return;
-                auto plugins = graphData->plugins();
+                auto* provider = audio_graph_provider_registry_.get(graphData->graphType());
+                auto externalGraphFile = graphData->externalFile();
+                if (!externalGraphFile.empty()) {
+                    if (provider) {
+                        auto resolvedGraphFile = makeAbsolutePath(projectDir, externalGraphFile);
+                        std::vector<uint8_t> graphBytes;
+                        std::ifstream graphInput(resolvedGraphFile, std::ios::binary);
+                        if (graphInput)
+                            graphBytes.assign(std::istreambuf_iterator<char>(graphInput), {});
+                        auto loadedGraphData = graphBytes.empty()
+                            ? std::unique_ptr<UapmdProjectPluginGraphData>{}
+                            : loadSerializedProjectGraph(*provider, *graphData, graphBytes);
+                        if (!loadedGraphData) {
+                            std::cerr << "Warning: Failed to load external graph file "
+                                      << resolvedGraphFile << ". Falling back to embedded graph data." << std::endl;
+                        } else {
+                            projectTrack->graph(std::move(loadedGraphData));
+                            graphData = projectTrack->graph();
+                        }
+                    }
+                }
+                if (!provider)
+                    return;
                 auto* pluginHost = engine_.pluginHost();
                 std::vector<remidy::PluginCatalogEntry> catalogEntries;
                 bool catalogLoaded = false;
@@ -371,7 +501,7 @@ namespace uapmd {
                     return resolvedId;
                 };
 
-                for (const auto& plugin : plugins) {
+                for (const auto& plugin : provider->getPluginNodeDataListFrom(graphData)) {
                     if (plugin.format.empty()) {
                         std::cerr << "Warning: Skipping plugin node with missing format while loading project." << std::endl;
                         continue;
@@ -643,6 +773,17 @@ namespace uapmd {
             // Wait for all async plugin instantiations to complete
             while (pending_plugins.load(std::memory_order_acquire) > 0)
                 std::this_thread::yield();
+
+            auto applyGraphConnections = [this](UapmdProjectTrackData* projectTrack, SequencerTrack* sequencerTrack) {
+                if (!projectTrack || !sequencerTrack || !projectTrack->graph())
+                    return;
+                materializeProjectGraph(projectTrack, sequencerTrack, engine_.umpBufferSizeInBytes());
+            };
+
+            for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i)
+                applyGraphConnections(tracks[i], engine_.tracks()[i]);
+            if (masterProjectTrack)
+                applyGraphConnections(masterProjectTrack, engine_.masterTrack());
 
             result.success = true;
             return result;
@@ -983,6 +1124,25 @@ namespace uapmd {
         }
 
     private:
+        static std::filesystem::path makeRelativePath(
+            const std::filesystem::path& baseDir,
+            const std::filesystem::path& target)
+        {
+            if (baseDir.empty() || target.empty())
+                return target;
+
+            std::error_code ec;
+            auto rel = std::filesystem::relative(target, baseDir, ec);
+            if (ec)
+                return target;
+
+            for (const auto& part : rel) {
+                if (part == "..")
+                    return target;
+            }
+            return rel;
+        }
+
         static std::filesystem::path makeAbsolutePath(
             const std::filesystem::path& baseDir,
             const std::filesystem::path& target)
@@ -992,6 +1152,53 @@ namespace uapmd {
             if (target.is_absolute() || baseDir.empty())
                 return std::filesystem::absolute(target);
             return std::filesystem::absolute(baseDir / target);
+        }
+
+        static std::string urlEscapeFilenameComponent(std::string_view value) {
+            static constexpr char kHex[] = "0123456789ABCDEF";
+            std::string escaped;
+            escaped.reserve(value.size() * 3);
+            for (unsigned char ch : value) {
+                if ((ch >= 'A' && ch <= 'Z') ||
+                    (ch >= 'a' && ch <= 'z') ||
+                    (ch >= '0' && ch <= '9') ||
+                    ch == '-' || ch == '_' || ch == '.' || ch == '~') {
+                    escaped.push_back(static_cast<char>(ch));
+                    continue;
+                }
+                escaped.push_back('%');
+                escaped.push_back(kHex[(ch >> 4) & 0xF]);
+                escaped.push_back(kHex[ch & 0xF]);
+            }
+            return escaped;
+        }
+
+        static bool writeBinaryFile(
+            const std::filesystem::path& path,
+            const std::vector<uint8_t>& bytes,
+            std::string& error)
+        {
+            std::error_code createDirEc;
+            std::filesystem::create_directories(path.parent_path(), createDirEc);
+            if (createDirEc) {
+                error = std::format(
+                    "Failed to create directory for {}: {}",
+                    path.string(),
+                    createDirEc.message());
+                return false;
+            }
+
+            std::ofstream out(path, std::ios::binary);
+            if (!out) {
+                error = std::format("Failed to open {} for writing", path.string());
+                return false;
+            }
+            out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            if (!out) {
+                error = std::format("Failed to write {}", path.string());
+                return false;
+            }
+            return true;
         }
     };
 

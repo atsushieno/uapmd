@@ -49,13 +49,13 @@ namespace uapmd {
 
         virtual AudioPluginHostingAPI* pluginHost() = 0;
         virtual AudioPluginInstanceAPI* getPluginInstance(int32_t instanceId) = 0;
-
         virtual UapmdFunctionBlockManager* functionBlockManager() = 0;
         // FIXME: we should probably remove this at some stage
         virtual int32_t findTrackIndexForInstance(int32_t instanceId) const = 0;
 
         virtual std::vector<SequencerTrack *> & tracks() const = 0;
         virtual SequencerTrack* masterTrack() = 0;
+        virtual size_t umpBufferSizeInBytes() const = 0;
         virtual uint32_t trackLatencyInSamples(uapmd_track_index_t trackIndex) = 0;
         virtual uint32_t masterTrackLatencyInSamples() = 0;
         virtual uint32_t trackRenderLeadInSamples(uapmd_track_index_t trackIndex) = 0;
@@ -75,6 +75,7 @@ namespace uapmd {
         virtual void addPluginToTrack(uapmd_track_index_t trackIndex, std::string& format, std::string& pluginId, std::function<void(int32_t instanceId, uapmd_track_index_t trackIndex, std::string error)> callback) = 0;
         virtual bool removePluginInstance(int32_t instanceId) = 0;
         virtual bool removeTrack(uapmd_track_index_t trackIndex) = 0;
+        virtual bool replaceTrackGraph(uapmd_track_index_t trackIndex, std::unique_ptr<AudioPluginGraph>&& graph) = 0;
 
         // UMP group assignment helpers — search all tracks for the given instanceId.
         // getInstanceGroup returns 0xFF if the instance is not found.

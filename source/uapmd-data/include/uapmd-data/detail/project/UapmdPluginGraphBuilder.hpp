@@ -5,7 +5,18 @@
 namespace uapmd {
     class UapmdPluginGraphBuilder {
     public:
-        static std::unique_ptr<AudioPluginGraph> build(UapmdProjectPluginGraphData* data);
+        static bool build(
+            UapmdProjectPluginGraphData* data,
+            AudioPluginGraph& graph,
+            const std::vector<int32_t>& orderedInstanceIds);
+    };
+
+    class UapmdAudioPluginFullDAGraphBuilder {
+    public:
+        static bool build(
+            UapmdProjectPluginGraphData* data,
+            AudioPluginGraph& graph,
+            const std::vector<int32_t>& orderedInstanceIds);
     };
 
     class UapmdSequenceBuilder {

@@ -242,27 +242,14 @@ TEST_F(UapmdProjectFileTest, ClipAnchoredPositioning) {
     EXPECT_EQ(clips[2]->position().samples, 96000);
 }
 
-// Test: Plugin graph serialization
+// Test: Plugin graph metadata serialization
 TEST_F(UapmdProjectFileTest, PluginGraphSerialization) {
     auto project = uapmd::UapmdProjectData::create();
     auto track = uapmd::UapmdProjectTrackData::create();
 
-    // Add plugins to graph
     auto graph = uapmd::UapmdProjectPluginGraphData::create();
-    uapmd::UapmdProjectPluginNodeData plugin1;
-    plugin1.plugin_id = "com.example.reverb";
-    plugin1.format = "VST3";
-    plugin1.display_name = "Studio Reverb";
-    plugin1.state_file = "/presets/reverb.vstpreset";
-    graph->addPlugin(plugin1);
-
-    uapmd::UapmdProjectPluginNodeData plugin2;
-    plugin2.plugin_id = "com.example.eq";
-    plugin2.format = "AU";
-    plugin2.display_name = "Parametric EQ";
-    plugin2.state_file = "";
-    graph->addPlugin(plugin2);
-
+    graph->graphType("urn:uapmd-graph:common/graph/dag/v1");
+    graph->externalFile("graphs/track0.graph.json");
     track->graph(std::move(graph));
     project->addTrack(std::move(track));
 
@@ -276,18 +263,8 @@ TEST_F(UapmdProjectFileTest, PluginGraphSerialization) {
     auto* loaded_graph = loaded_project->tracks()[0]->graph();
     ASSERT_NE(loaded_graph, nullptr);
 
-    auto plugins = loaded_graph->plugins();
-    ASSERT_EQ(plugins.size(), 2);
-
-    EXPECT_EQ(plugins[0].plugin_id, "com.example.reverb");
-    EXPECT_EQ(plugins[0].format, "VST3");
-    EXPECT_EQ(plugins[0].display_name, "Studio Reverb");
-    EXPECT_EQ(plugins[0].state_file, "/presets/reverb.vstpreset");
-
-    EXPECT_EQ(plugins[1].plugin_id, "com.example.eq");
-    EXPECT_EQ(plugins[1].format, "AU");
-    EXPECT_EQ(plugins[1].display_name, "Parametric EQ");
-    EXPECT_EQ(plugins[1].state_file, "");
+    EXPECT_EQ(loaded_graph->graphType(), "urn:uapmd-graph:common/graph/dag/v1");
+    EXPECT_EQ(loaded_graph->externalFile().generic_string(), "graphs/track0.graph.json");
 }
 
 TEST_F(UapmdProjectFileTest, ClipMarkersAndAudioWarpsRoundTrip) {
@@ -355,16 +332,13 @@ TEST_F(UapmdProjectFileTest, MasterTrack) {
     auto track = uapmd::UapmdProjectTrackData::create();
     project->addTrack(std::move(track));
 
-    // Add plugin to master track
+    // Add graph metadata to master track
     auto* master = project->masterTrack();
     ASSERT_NE(master, nullptr);
 
     auto graph = uapmd::UapmdProjectPluginGraphData::create();
-    uapmd::UapmdProjectPluginNodeData limiter;
-    limiter.plugin_id = "com.example.limiter";
-    limiter.format = "VST3";
-    limiter.display_name = "Master Limiter";
-    graph->addPlugin(limiter);
+    graph->graphType({});
+    graph->externalFile("graphs/master.graph.json");
     master->graph(std::move(graph));
     master->markers({
         uapmd::ClipMarker{"intro", 0, uapmd::AudioWarpReferenceType::ClipStart, {}, {}, "Intro"},
@@ -383,10 +357,8 @@ TEST_F(UapmdProjectFileTest, MasterTrack) {
 
     auto* master_graph = loaded_master->graph();
     ASSERT_NE(master_graph, nullptr);
-
-    auto plugins = master_graph->plugins();
-    ASSERT_EQ(plugins.size(), 1);
-    EXPECT_EQ(plugins[0].plugin_id, "com.example.limiter");
+    EXPECT_EQ(master_graph->graphType(), "");
+    EXPECT_EQ(master_graph->externalFile().generic_string(), "graphs/master.graph.json");
 
     auto markers = loaded_master->markers();
     ASSERT_EQ(markers.size(), 2);

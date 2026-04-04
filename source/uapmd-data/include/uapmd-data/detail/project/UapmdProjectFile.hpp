@@ -67,24 +67,18 @@ namespace uapmd {
         std::string format{};
         std::string display_name{};
         std::string state_file{};
-        int32_t group_index{-1}; // UMP group assignment (0–15); -1 = auto-assign on load
+        int32_t group_index{-1};
     };
 
     class UapmdProjectPluginGraphData {
     public:
         virtual ~UapmdProjectPluginGraphData() = default;
 
+        virtual std::string graphType() = 0;
         virtual std::filesystem::path externalFile() = 0;
 
-        // `external_file` might indicate more complicated graph.
-        // For example, we could implement extension support for `.filtergraph` file from JUCE AudioPluginHost.
-        // If empty, then it's a simple linear list.
-        virtual std::vector<UapmdProjectPluginNodeData> plugins() = 0;
-
+        virtual void graphType(const std::string& type) = 0;
         virtual void externalFile(const std::filesystem::path& f) = 0;
-        virtual void addPlugin(UapmdProjectPluginNodeData node) = 0;
-        virtual void setPlugins(std::vector<UapmdProjectPluginNodeData> nodes) = 0;
-        virtual void clearPlugins() = 0;
 
         static std::unique_ptr<UapmdProjectPluginGraphData> create();
     };

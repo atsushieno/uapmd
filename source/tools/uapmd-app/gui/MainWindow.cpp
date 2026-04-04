@@ -630,6 +630,7 @@ void MainWindow::render(void* window) {
 
     // Render floating windows
     timelineEditor_.renderPluginSelectorWindow(uiScale_);
+    timelineEditor_.renderPluginGraphWindow(uiScale_);
     renderDeviceSettingsWindow();
     renderAudioGraphEditorWindow();
     renderMixerMonitorWindow();

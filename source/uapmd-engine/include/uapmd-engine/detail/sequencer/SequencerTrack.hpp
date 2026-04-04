@@ -14,9 +14,13 @@ namespace uapmd {
 
     public:
         virtual ~SequencerTrack() = default;
-        static std::unique_ptr<SequencerTrack> create(size_t eventBufferSizeInBytes);
+        static std::unique_ptr<SequencerTrack> create(
+            const AudioGraphProviderRegistry& registry,
+            size_t eventBufferSizeInBytes,
+            const std::string& graphProviderId);
 
         virtual AudioPluginGraph& graph() = 0;
+        virtual bool replaceGraph(std::unique_ptr<AudioPluginGraph>&& graph) = 0;
         virtual uint32_t latencyInSamples() = 0;
         virtual uint32_t renderLeadInSamples() = 0;
         virtual double tailLengthInSeconds() = 0;
