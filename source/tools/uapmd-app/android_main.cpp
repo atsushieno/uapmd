@@ -9,6 +9,8 @@
 #include <SDL3/SDL_system.h>
 #include <jni.h>
 #include <uapmd-file/IDocumentProvider.hpp>
+#include <aap/core/android/android-application-context.h>
+#include "../../remidy/src/AndroidUiBridge.hpp"
 #endif
 
 // SDL3 automatically provides the entry point for Android
@@ -18,6 +20,8 @@ int main(int argc, char** argv) {
     JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
     jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
     if (env && activity) {
+        aap::set_application_context(env, activity);
+        remidy::initAndroidUiBridge(env, activity);
         uapmd::initDocumentProvider(env, activity);
     } else {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,

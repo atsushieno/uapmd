@@ -15,6 +15,8 @@
 #include <queue>
 #include <string>
 
+#include "../../remidy/src/AndroidUiBridge.hpp"
+
 #define UAPMD_FILE_LOG_TAG "uapmd-file"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, UAPMD_FILE_LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  UAPMD_FILE_LOG_TAG, __VA_ARGS__)
@@ -38,8 +40,6 @@ struct JContext : jmi::ClassTag {
 struct JActivity : jmi::ClassTag {
     static constexpr auto name() { return JMISTR("android/app/Activity"); }
 };
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 namespace {
 
@@ -146,55 +146,9 @@ std::string sanitizeForFilename(const std::string& id)
     return out;
 }
 
-std::mutex g_ui_task_mutex;
-std::map<jlong, std::function<void()>> g_ui_tasks;
-std::atomic<jlong> g_next_ui_task_id{1};
-
-jclass mainActivityClass(JNIEnv* env)
-{
-    static jclass cached = nullptr;
-    if (cached)
-        return cached;
-    jclass local = env->FindClass("dev/atsushieno/uapmd/MainActivity");
-    if (!local)
-        return nullptr;
-    cached = static_cast<jclass>(env->NewGlobalRef(local));
-    env->DeleteLocalRef(local);
-    return cached;
-}
-
-jmethodID postNativeUiTaskMethod(JNIEnv* env)
-{
-    static jmethodID method = nullptr;
-    if (method)
-        return method;
-    jclass cls = mainActivityClass(env);
-    if (!cls)
-        return nullptr;
-    method = env->GetStaticMethodID(cls, "postNativeUiTask", "(J)V");
-    return method;
-}
-
-jlong enqueueUiTask(std::function<void()> task)
-{
-    const jlong token = g_next_ui_task_id.fetch_add(1);
-    std::lock_guard lock(g_ui_task_mutex);
-    g_ui_tasks[token] = std::move(task);
-    return token;
-}
-
 void runOnAndroidUiThread(std::function<void()> task)
 {
-    JNIEnv* env = jmi::getEnv();
-    jclass cls = mainActivityClass(env);
-    jmethodID method = postNativeUiTaskMethod(env);
-    if (!cls || !method) {
-        LOGW("MainActivity UI bridge unavailable; executing task immediately.");
-        task();
-        return;
-    }
-    jlong token = enqueueUiTask(std::move(task));
-    env->CallStaticVoidMethod(cls, method, token);
+    remidy::runOnAndroidUiThread(std::move(task));
 }
 
 struct IntentJniCache {
@@ -374,23 +328,6 @@ jobject callCacheDir(JNIEnv* env, jobject context)
 
 
 } // anonymous namespace
-
-extern "C" JNIEXPORT void JNICALL
-Java_dev_atsushieno_uapmd_MainActivity_nativeExecuteUiThreadTask(
-    JNIEnv*, jclass, jlong token)
-{
-    std::function<void()> fn;
-    {
-        std::lock_guard lock(g_ui_task_mutex);
-        auto it = g_ui_tasks.find(token);
-        if (it != g_ui_tasks.end()) {
-            fn = std::move(it->second);
-            g_ui_tasks.erase(it);
-        }
-    }
-    if (fn)
-        fn();
-}
 
 extern "C" JNIEXPORT void JNICALL
 Java_dev_atsushieno_uapmd_MainActivity_nativeHandleActivityResult(

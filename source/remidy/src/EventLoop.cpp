@@ -13,30 +13,35 @@
 #endif
 #include "remidy/remidy.hpp"
 
+#if ANDROID
+#include "AndroidUiBridge.hpp"
+#endif
+
 namespace remidy {
 #if ANDROID
     EventLoop* eventLoop{getEventLoop()};
 
     class EventLoopAndroid : public EventLoop {
-        ALooper* looper;
-
         protected:
         void initializeOnUIThreadImpl() override {
-            ALooper_acquire(looper);
         }
         bool runningOnMainThreadImpl() override {
-            return ALooper_forThread() == looper;
+            // SDL3 main() runs on SDLThread, but we want UI tasks to run on Android UI thread.
+            // For now, we assume if we are on SDLThread we might need to delegate,
+            // or we can just check if we are on the actual UI thread.
+            // But runTaskOnMainThread uses this to decide if it should run immediately.
+            // If we want JNI calls to work, they MUST be on a thread with the class loader.
+            // SDLThread has it. Android UI thread has it.
+            // Let's just always delegate to Android UI thread for now if we want to be safe.
+            return false;
         }
         void enqueueTaskOnMainThreadImpl(std::function<void()>&& func) override {
-            std::cerr << "Android does not support enqueueing tasks on the main thread" << std::endl;
-            func();
+            runOnAndroidUiThread(std::move(func));
         }
         void startImpl() override {
-            // FIXME: what can we do here?
         }
 
         void stopImpl() override {
-            // FIXME: what can we do here?
         }
     };
     EventLoopAndroid androidEventLoop{};

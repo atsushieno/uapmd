@@ -136,6 +136,8 @@ if(ANDROID)
     add_library(uapmd-app SHARED ${UAPMD_APP_COMMON_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET uapmd-app)
     add_library(main SHARED android_main.cpp)
+
+    find_package(androidaudioplugin REQUIRED CONFIG)
 elseif(IOS)
     # iOS: standard app bundle; SDL3 provides UIApplicationDelegate.
     add_executable(uapmd-app MACOSX_BUNDLE ${UAPMD_APP_SOURCE_FILES})
@@ -755,7 +757,7 @@ endif()
 # Android: thin libmain.so links libuapmd-app.so (SDL3 JNI entry point).
 # Desktop: thin executables link the OBJECT library.
 if(ANDROID)
-    target_link_libraries(main PRIVATE uapmd-app)
+    target_link_libraries(main PRIVATE uapmd-app androidaudioplugin::androidaudioplugin)
 elseif(IOS)
     # iOS: uapmd-app is built directly from UAPMD_COMPILE_TARGET (no OBJECT indirection)
 elseif(NOT UAPMD_BUILDING_WASM)

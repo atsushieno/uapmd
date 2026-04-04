@@ -52,7 +52,7 @@ if (${REMIDY_SUPPORT_AAP})
     set(androidndk_LIBRARIES android)
     set(aap_LIBRARIES androidaudioplugin)
 
-    find_package(androidaudioplugin REQUIRED)
+    find_package(androidaudioplugin REQUIRED CONFIG)
 endif ()
 
 if (${REMIDY_LINUX_DESKTOP})
@@ -278,6 +278,7 @@ target_sources(remidy PRIVATE
         src/PluginBundlePool.cpp
         src/PluginFormat.cpp
         src/UmpInputDispatcher.cpp
+        $<$<BOOL:${ANDROID}>:src/AndroidUiBridge.cpp>
 
         ${REMIDY_VST3_SUPPORT_SOURCES}
         ${REMIDY_AU_SUPPORT_SOURCES}
