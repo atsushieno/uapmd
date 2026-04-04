@@ -26,6 +26,7 @@ void UapmdJSRuntime::reinitialize()
     jsContext_ = choc::javascript::createQuickJSContext();
 
     registerConsoleFunctions();
+    registerProjectAPI();
     registerPluginCatalogAPI();
     registerPluginScanToolAPI();
     registerPluginInstanceAPI();
@@ -58,6 +59,43 @@ void UapmdJSRuntime::registerConsoleFunctions()
         // Output to stdout for now (could be directed to an ImGui log window)
         std::cout << "[JS] " << output << std::endl;
         return choc::value::Value();
+    });
+}
+
+void UapmdJSRuntime::registerProjectAPI()
+{
+    jsContext_.registerFunction ("__remidy_project_save", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto filepath = args.get<std::string> (0, "");
+        auto result = choc::value::createObject ("ProjectResult");
+        if (filepath.empty())
+        {
+            result.setMember ("success", false);
+            result.setMember ("error", "Project path is empty");
+            return result;
+        }
+
+        auto projectResult = uapmd::AppModel::instance().saveProjectSync(filepath);
+        result.setMember ("success", projectResult.success);
+        result.setMember ("error", projectResult.error);
+        return result;
+    });
+
+    jsContext_.registerFunction ("__remidy_project_load", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto filepath = args.get<std::string> (0, "");
+        auto result = choc::value::createObject ("ProjectResult");
+        if (filepath.empty())
+        {
+            result.setMember ("success", false);
+            result.setMember ("error", "Project path is empty");
+            return result;
+        }
+
+        auto projectResult = uapmd::AppModel::instance().loadProjectFromResolvedPath(filepath);
+        result.setMember ("success", projectResult.success);
+        result.setMember ("error", projectResult.error);
+        return result;
     });
 }
 

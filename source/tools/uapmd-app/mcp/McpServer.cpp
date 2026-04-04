@@ -302,6 +302,16 @@ static choc::value::Value buildToolDefinitions()
             R"j({"type":"object","properties":{}})j"
         },
         {
+            "save_project",
+            "Save the current project to a filesystem path.",
+            R"j({"type":"object","required":["path"],"properties":{"path":{"type":"string","description":"Destination project path"}}})j"
+        },
+        {
+            "load_project",
+            "Load a project from a filesystem path.",
+            R"j({"type":"object","required":["path"],"properties":{"path":{"type":"string","description":"Project path or archive path"}}})j"
+        },
+        {
             "add_plugin_to_track",
             "Add a plugin instance to a track. Returns the instanceId.",
             R"j({"type":"object","required":["trackIndex","pluginId","format"],"properties":{"trackIndex":{"type":"integer"},"pluginId":{"type":"string","description":"Plugin ID from list_plugins"},"format":{"type":"string","description":"VST3, AU, LV2, or CLAP"}}})j"
@@ -506,6 +516,32 @@ static choc::value::Value toolCreateTrack(const choc::value::Value&)
     auto trackIndex = AppModel::instance().addTrack();
     auto result = choc::value::createObject ("");
     result.setMember ("trackIndex", trackIndex);
+    return result;
+}
+
+static choc::value::Value toolSaveProject(const choc::value::Value& args)
+{
+    auto path = getStringArg(args, "path");
+    if (path.empty())
+        throw std::invalid_argument("path is required");
+
+    auto saveResult = AppModel::instance().saveProjectSync(path);
+    auto result = choc::value::createObject ("");
+    result.setMember ("success", saveResult.success);
+    result.setMember ("error", saveResult.error);
+    return result;
+}
+
+static choc::value::Value toolLoadProject(const choc::value::Value& args)
+{
+    auto path = getStringArg(args, "path");
+    if (path.empty())
+        throw std::invalid_argument("path is required");
+
+    auto loadResult = AppModel::instance().loadProjectFromResolvedPath(path);
+    auto result = choc::value::createObject ("");
+    result.setMember ("success", loadResult.success);
+    result.setMember ("error", loadResult.error);
     return result;
 }
 
@@ -1124,6 +1160,8 @@ struct McpServer::Impl {
             if      (toolName == "list_plugins")        toolResult = toolListPlugins (args);
             else if (toolName == "list_tracks")         toolResult = toolListTracks (args);
             else if (toolName == "create_track")        toolResult = toolCreateTrack (args);
+            else if (toolName == "save_project")        toolResult = toolSaveProject (args);
+            else if (toolName == "load_project")        toolResult = toolLoadProject (args);
             else if (toolName == "add_plugin_to_track") toolResult = toolAddPluginToTrack (args);
             else if (toolName == "ensure_dag_track_graph")      toolResult = toolEnsureDAGTrackGraph (args);
             else if (toolName == "get_track_graph_connections") toolResult = toolGetTrackGraphConnections (args);

@@ -72,6 +72,11 @@ class PluginInstance {
 }
 
 globalThis.uapmd = {
+    project: {
+        save: (path) => __remidy_project_save(path),
+        load: (path) => __remidy_project_load(path)
+    },
+
     // Catalog API - Plugin discovery and management
     catalog: {
         getCount: () => __remidy_catalog_get_count(),

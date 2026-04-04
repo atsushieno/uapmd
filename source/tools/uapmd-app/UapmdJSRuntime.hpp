@@ -100,6 +100,7 @@ public:
 
 private:
     void registerConsoleFunctions();
+    void registerProjectAPI();
     void registerPluginCatalogAPI();
     void registerPluginScanToolAPI();
     void registerPluginInstanceAPI();
