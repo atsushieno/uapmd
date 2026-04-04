@@ -485,6 +485,17 @@ const AudioGraphProvider* AudioGraphProviderRegistry::get(const std::string& gra
 }
 
 const AudioGraphProvider* AudioGraphProviderRegistry::get(const AudioPluginGraph& graph) const {
+    if (!graph.providerId().empty())
+        return get(graph.providerId());
+
+    if (dynamic_cast<const AudioPluginFullDAGraph*>(&graph) != nullptr) {
+        auto it = std::ranges::find_if(providers_, [](const auto& provider) {
+            return provider && !provider->id().empty();
+        });
+        if (it != providers_.end())
+            return it->get();
+    }
+
     return get(graph.providerId());
 }
 

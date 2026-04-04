@@ -360,12 +360,44 @@ namespace uapmd {
             }
         };
 
+        auto connectEventSpan = [&](const AudioPluginGraphEndpoint& source,
+                                    uint32_t sourceBusCount,
+                                    const AudioPluginGraphEndpoint& target,
+                                    uint32_t targetBusCount) {
+            const uint32_t count = std::min(sourceBusCount, targetBusCount);
+            for (uint32_t bus = 0; bus < count; ++bus) {
+                auto src = source;
+                auto dst = target;
+                src.bus_index = bus;
+                dst.bus_index = bus;
+                state.connections.push_back(AudioPluginGraphConnection{
+                    nextId++,
+                    AudioPluginGraphBusType::Event,
+                    src,
+                    dst
+                });
+            }
+        };
+
         auto first = state.nodes.front();
         connectAudioSpan(
             AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphInput, -1, 0},
             state.runtime_layout.audio_input_bus_count,
             AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, first->instanceId(), 0},
             pluginAudioInputBusCount(first->instance()));
+        connectEventSpan(
+            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphInput, -1, 0},
+            state.runtime_layout.event_input_bus_count,
+            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, first->instanceId(), 0},
+            pluginEventInputBusCount(first->instance()));
+
+        for (const auto& node : state.nodes) {
+            connectEventSpan(
+                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->instanceId(), 0},
+                pluginEventOutputBusCount(node->instance()),
+                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphOutput, -1, 0},
+                state.runtime_layout.event_output_bus_count);
+        }
 
         for (size_t i = 0; i + 1 < state.nodes.size(); ++i) {
             auto src = state.nodes[i];
@@ -745,22 +777,32 @@ namespace uapmd {
             const auto group = resolveGroup(instanceId);
             runtime.node->fillEventBufferForGroup(runtime.process.eventIn(), group);
 
-            if (state.custom_topology) {
-                for (const auto& connection : runtime.incoming_event) {
-                    if (connection.source.type == AudioPluginGraphEndpointType::GraphInput) {
-                        appendEventsForGroup(runtime.process.eventIn(), process.eventIn(), group);
+            for (const auto& connection : runtime.incoming_event) {
+                if (connection.source.type == AudioPluginGraphEndpointType::GraphInput) {
+                    appendEventsForGroup(runtime.process.eventIn(), process.eventIn(), group);
+                    continue;
+                }
+                auto sourceRuntimeIt = state.runtimes.find(connection.source.instance_id);
+                if (sourceRuntimeIt == state.runtimes.end())
+                    continue;
+                appendEventBytes(
+                    runtime.process.eventIn(),
+                    static_cast<const uint8_t*>(sourceRuntimeIt->second->process.eventOut().getMessages()),
+                    sourceRuntimeIt->second->process.eventOut().position());
+            }
+
+            if (runtime.incoming_event.empty()) {
+                for (const auto& connection : runtime.incoming_audio) {
+                    if (connection.source.type != AudioPluginGraphEndpointType::Plugin)
                         continue;
-                    }
                     auto sourceRuntimeIt = state.runtimes.find(connection.source.instance_id);
                     if (sourceRuntimeIt == state.runtimes.end())
                         continue;
                     appendEventBytes(
                         runtime.process.eventIn(),
-                        static_cast<const uint8_t*>(sourceRuntimeIt->second->process.eventOut().getMessages()),
-                        sourceRuntimeIt->second->process.eventOut().position());
+                        static_cast<const uint8_t*>(sourceRuntimeIt->second->process.eventIn().getMessages()),
+                        sourceRuntimeIt->second->process.eventIn().position());
                 }
-            } else {
-                appendEventsForGroup(runtime.process.eventIn(), process.eventIn(), group);
             }
 
             runtime.node->drainPresetRequests();
