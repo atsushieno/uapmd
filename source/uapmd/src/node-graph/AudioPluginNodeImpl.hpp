@@ -79,6 +79,10 @@ namespace uapmd {
             return instance_;
         }
 
+        std::function<void()> releaseOnDelete() {
+            return std::move(on_delete_);
+        }
+
         ParameterUpdateEvent& parameterUpdateEvent() override {
             return parameter_update_event_;
         }

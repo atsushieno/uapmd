@@ -181,11 +181,15 @@ endif()
 # Ensure we use a static build of midicci regardless of parent defaults
 set(_UAPMD_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
+if(EXISTS "${CMAKE_BINARY_DIR}/_deps/libremidi-src/CMakeLists.txt")
+    set(FETCHCONTENT_SOURCE_DIR_LIBREMIDI "${CMAKE_BINARY_DIR}/_deps/libremidi-src" CACHE PATH
+        "Pre-populated libremidi source directory for nested FetchContent users" FORCE)
+endif()
 CPMAddPackage(midicci
         NAME            midicci
         GIT_TAG         7c0c6a5
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
-        OPTIONS         "MIDICCI_SKIP_TOOLS ON"
+        OPTIONS         "MIDICCI_SKIP_TOOLS ON" "BUILD_TESTS OFF" "BUILD_EXAMPLES OFF"
         EXCLUDE_FROM_ALL
 )
 # Restore previous BUILD_SHARED_LIBS setting

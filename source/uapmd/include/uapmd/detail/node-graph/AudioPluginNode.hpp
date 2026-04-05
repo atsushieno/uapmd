@@ -66,6 +66,10 @@ namespace uapmd {
     // AudioPluginNode wraps a plugin instance with its own event queue.
     // This allows per-instance event routing instead of per-track routing.
     // Managed internally by AudioPluginGraph.
+    //
+    // Note that we don't make it customizable; we have to support save migration between
+    // graphs from different providers.
+    // Making it custom is like having multiple DOM Factories and expect importNode() still works.
     class AudioPluginNode {
     public:
         virtual ~AudioPluginNode() = default;

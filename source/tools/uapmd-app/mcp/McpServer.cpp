@@ -206,6 +206,72 @@ bool parseWarpsArg(const choc::value::Value& args, const char* key, std::string_
     }
     return true;
 }
+
+std::string graphEndpointTypeToString(uapmd::AudioPluginGraphEndpointType type)
+{
+    switch (type) {
+        case uapmd::AudioPluginGraphEndpointType::GraphInput: return "graphInput";
+        case uapmd::AudioPluginGraphEndpointType::GraphOutput: return "graphOutput";
+        case uapmd::AudioPluginGraphEndpointType::Plugin: return "plugin";
+    }
+    return "plugin";
+}
+
+bool parseGraphEndpointType(std::string_view text, uapmd::AudioPluginGraphEndpointType& type)
+{
+    if (text == "graphInput") { type = uapmd::AudioPluginGraphEndpointType::GraphInput; return true; }
+    if (text == "graphOutput") { type = uapmd::AudioPluginGraphEndpointType::GraphOutput; return true; }
+    if (text == "plugin") { type = uapmd::AudioPluginGraphEndpointType::Plugin; return true; }
+    return false;
+}
+
+std::string graphBusTypeToString(uapmd::AudioPluginGraphBusType type)
+{
+    return type == uapmd::AudioPluginGraphBusType::Event ? "event" : "audio";
+}
+
+bool parseGraphBusType(std::string_view text, uapmd::AudioPluginGraphBusType& type)
+{
+    if (text == "audio") { type = uapmd::AudioPluginGraphBusType::Audio; return true; }
+    if (text == "event") { type = uapmd::AudioPluginGraphBusType::Event; return true; }
+    return false;
+}
+
+choc::value::Value serializeGraphEndpoint(const uapmd::AudioPluginGraphEndpoint& endpoint)
+{
+    auto obj = choc::value::createObject ("");
+    obj.setMember ("type", graphEndpointTypeToString(endpoint.type));
+    obj.setMember ("instanceId", endpoint.instance_id);
+    obj.setMember ("busIndex", static_cast<int32_t>(endpoint.bus_index));
+    return obj;
+}
+
+choc::value::Value serializeGraphConnection(const uapmd::AudioPluginGraphConnection& connection)
+{
+    auto obj = choc::value::createObject ("");
+    obj.setMember ("id", connection.id);
+    obj.setMember ("busType", graphBusTypeToString(connection.bus_type));
+    obj.setMember ("source", serializeGraphEndpoint(connection.source));
+    obj.setMember ("target", serializeGraphEndpoint(connection.target));
+    return obj;
+}
+
+bool parseGraphEndpointValue(const choc::value::ValueView& value, uapmd::AudioPluginGraphEndpoint& endpoint, std::string& error)
+{
+    if (!value.isObject()) {
+        error = "graph endpoint must be an object";
+        return false;
+    }
+
+    const auto typeText = value.hasObjectMember("type") ? std::string(value["type"].getString()) : std::string{};
+    if (!parseGraphEndpointType(typeText, endpoint.type)) {
+        error = "graph endpoint type is invalid";
+        return false;
+    }
+    endpoint.instance_id = value.hasObjectMember("instanceId") ? value["instanceId"].getWithDefault<int32_t>(-1) : -1;
+    endpoint.bus_index = value.hasObjectMember("busIndex") ? value["busIndex"].getWithDefault<uint32_t>(0) : 0;
+    return true;
+}
 }
 
 // ─────────────────────────────────────────────────
@@ -236,9 +302,44 @@ static choc::value::Value buildToolDefinitions()
             R"j({"type":"object","properties":{}})j"
         },
         {
+            "save_project",
+            "Save the current project to a filesystem path.",
+            R"j({"type":"object","required":["path"],"properties":{"path":{"type":"string","description":"Destination project path"}}})j"
+        },
+        {
+            "load_project",
+            "Load a project from a filesystem path.",
+            R"j({"type":"object","required":["path"],"properties":{"path":{"type":"string","description":"Project path or archive path"}}})j"
+        },
+        {
             "add_plugin_to_track",
             "Add a plugin instance to a track. Returns the instanceId.",
             R"j({"type":"object","required":["trackIndex","pluginId","format"],"properties":{"trackIndex":{"type":"integer"},"pluginId":{"type":"string","description":"Plugin ID from list_plugins"},"format":{"type":"string","description":"VST3, AU, LV2, or CLAP"}}})j"
+        },
+        {
+            "ensure_dag_track_graph",
+            "Promote a track graph to the built-in DAG graph editor implementation.",
+            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"}}})j"
+        },
+        {
+            "get_track_graph_connections",
+            "List connections for a track graph. Works on the built-in DAG graph.",
+            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"}}})j"
+        },
+        {
+            "connect_track_graph",
+            "Create a connection in a track DAG graph.",
+            R"j({"type":"object","required":["trackIndex","busType","source","target"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"},"busType":{"type":"string","description":"audio or event"},"source":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"instanceId":{"type":"integer"},"busIndex":{"type":"integer"}}},"target":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"instanceId":{"type":"integer"},"busIndex":{"type":"integer"}}}}})j"
+        },
+        {
+            "disconnect_track_graph_connection",
+            "Remove a connection from a track DAG graph by connection ID.",
+            R"j({"type":"object","required":["trackIndex","connectionId"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"},"connectionId":{"type":"integer"}}})j"
+        },
+        {
+            "revert_track_graph_to_simple",
+            "Replace the track graph with the simple linear graph.",
+            R"j({"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"}}})j"
         },
         {
             "get_timeline_state",
@@ -418,6 +519,32 @@ static choc::value::Value toolCreateTrack(const choc::value::Value&)
     return result;
 }
 
+static choc::value::Value toolSaveProject(const choc::value::Value& args)
+{
+    auto path = getStringArg(args, "path");
+    if (path.empty())
+        throw std::invalid_argument("path is required");
+
+    auto saveResult = AppModel::instance().saveProjectSync(path);
+    auto result = choc::value::createObject ("");
+    result.setMember ("success", saveResult.success);
+    result.setMember ("error", saveResult.error);
+    return result;
+}
+
+static choc::value::Value toolLoadProject(const choc::value::Value& args)
+{
+    auto path = getStringArg(args, "path");
+    if (path.empty())
+        throw std::invalid_argument("path is required");
+
+    auto loadResult = AppModel::instance().loadProjectFromResolvedPath(path);
+    auto result = choc::value::createObject ("");
+    result.setMember ("success", loadResult.success);
+    result.setMember ("error", loadResult.error);
+    return result;
+}
+
 static choc::value::Value toolAddPluginToTrack(const choc::value::Value& args)
 {
     auto trackIndex = getIntArg (args, "trackIndex");
@@ -458,6 +585,87 @@ static choc::value::Value toolAddPluginToTrack(const choc::value::Value& args)
 
     auto result = choc::value::createObject ("");
     result.setMember ("instanceId", resultId.load());
+    return result;
+}
+
+static choc::value::Value toolEnsureDAGTrackGraph(const choc::value::Value& args)
+{
+    auto result = choc::value::createObject ("");
+    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const bool success = AppModel::instance().ensureTrackUsesEditorGraph(trackIndex);
+    result.setMember("success", success);
+    result.setMember("error", success ? std::string{} : std::string{"Failed to promote track graph to DAG"});
+    return result;
+}
+
+static choc::value::Value toolGetTrackGraphConnections(const choc::value::Value& args)
+{
+    auto result = choc::value::createObject ("");
+    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    std::vector<uapmd::AudioPluginGraphConnection> connections;
+    std::string error;
+    const bool success = AppModel::instance().getTrackGraphConnections(trackIndex, connections, error);
+    result.setMember("success", success);
+    result.setMember("error", error);
+    auto array = choc::value::createEmptyArray();
+    if (success)
+        for (const auto& connection : connections)
+            array.addArrayElement(serializeGraphConnection(connection));
+    result.setMember("connections", array);
+    return result;
+}
+
+static choc::value::Value toolConnectTrackGraph(const choc::value::Value& args)
+{
+    auto result = choc::value::createObject ("");
+    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    if (!args.isObject() || !args.hasObjectMember("source") || !args.hasObjectMember("target"))
+        throw std::invalid_argument("source and target are required");
+
+    uapmd::AudioPluginGraphBusType busType;
+    if (!parseGraphBusType(getStringArg(args, "busType"), busType))
+        throw std::invalid_argument("busType must be 'audio' or 'event'");
+
+    uapmd::AudioPluginGraphEndpoint source;
+    uapmd::AudioPluginGraphEndpoint target;
+    std::string error;
+    if (!parseGraphEndpointValue(args["source"], source, error) ||
+        !parseGraphEndpointValue(args["target"], target, error))
+        throw std::invalid_argument(error);
+
+    const bool success = AppModel::instance().connectTrackGraph(
+        trackIndex,
+        uapmd::AudioPluginGraphConnection{
+            .id = 0,
+            .bus_type = busType,
+            .source = source,
+            .target = target,
+        },
+        error);
+    result.setMember("success", success);
+    result.setMember("error", error);
+    return result;
+}
+
+static choc::value::Value toolDisconnectTrackGraphConnection(const choc::value::Value& args)
+{
+    auto result = choc::value::createObject ("");
+    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const auto connectionId = getInt64Arg(args, "connectionId", 0);
+    std::string error;
+    const bool success = AppModel::instance().disconnectTrackGraphConnection(trackIndex, connectionId, error);
+    result.setMember("success", success);
+    result.setMember("error", error);
+    return result;
+}
+
+static choc::value::Value toolRevertTrackGraphToSimple(const choc::value::Value& args)
+{
+    auto result = choc::value::createObject ("");
+    const auto trackIndex = getIntArg(args, "trackIndex", -1);
+    const bool success = AppModel::instance().revertTrackToSimpleGraph(trackIndex);
+    result.setMember("success", success);
+    result.setMember("error", success ? std::string{} : std::string{"Failed to revert track graph to simple"});
     return result;
 }
 
@@ -952,7 +1160,14 @@ struct McpServer::Impl {
             if      (toolName == "list_plugins")        toolResult = toolListPlugins (args);
             else if (toolName == "list_tracks")         toolResult = toolListTracks (args);
             else if (toolName == "create_track")        toolResult = toolCreateTrack (args);
+            else if (toolName == "save_project")        toolResult = toolSaveProject (args);
+            else if (toolName == "load_project")        toolResult = toolLoadProject (args);
             else if (toolName == "add_plugin_to_track") toolResult = toolAddPluginToTrack (args);
+            else if (toolName == "ensure_dag_track_graph")      toolResult = toolEnsureDAGTrackGraph (args);
+            else if (toolName == "get_track_graph_connections") toolResult = toolGetTrackGraphConnections (args);
+            else if (toolName == "connect_track_graph")         toolResult = toolConnectTrackGraph (args);
+            else if (toolName == "disconnect_track_graph_connection") toolResult = toolDisconnectTrackGraphConnection (args);
+            else if (toolName == "revert_track_graph_to_simple") toolResult = toolRevertTrackGraphToSimple (args);
             else if (toolName == "get_timeline_state")  toolResult = toolGetTimelineState (args);
             else if (toolName == "set_tempo")           toolResult = toolSetTempo (args);
             else if (toolName == "list_clips")               toolResult = toolListClips (args);

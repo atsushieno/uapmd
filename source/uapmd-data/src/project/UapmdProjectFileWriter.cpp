@@ -5,6 +5,25 @@
 
 namespace uapmd {
     namespace {
+        std::string graphEndpointTypeToString(AudioPluginGraphEndpointType type) {
+            switch (type) {
+                case AudioPluginGraphEndpointType::GraphInput: return "graph_input";
+                case AudioPluginGraphEndpointType::GraphOutput: return "graph_output";
+                case AudioPluginGraphEndpointType::Plugin:
+                default:
+                    return "plugin";
+            }
+        }
+
+        std::string graphBusTypeToString(AudioPluginGraphBusType type) {
+            switch (type) {
+                case AudioPluginGraphBusType::Event: return "event";
+                case AudioPluginGraphBusType::Audio:
+                default:
+                    return "audio";
+            }
+        }
+
         std::string audioWarpReferenceTypeToString(AudioWarpReferenceType type) {
             switch (type) {
                 case AudioWarpReferenceType::ClipStart: return "clip_start";
@@ -129,25 +148,11 @@ namespace uapmd {
 
     static choc::value::Value serializePluginGraph(UapmdProjectPluginGraphData* graph) {
         auto obj = choc::value::createObject("UapmdPluginGraph");
+        obj.addMember("graph_type", graph->graphType());
 
         auto extFile = graph->externalFile();
         if (!extFile.empty())
             obj.addMember("external_file", extFile.string());
-
-        auto plugins = graph->plugins();
-        if (!plugins.empty()) {
-            auto pluginsArray = choc::value::createEmptyArray();
-            for (const auto& plugin : plugins) {
-                auto pluginObj = choc::value::createObject("Plugin");
-                pluginObj.addMember("plugin_id", plugin.plugin_id);
-                pluginObj.addMember("format", plugin.format);
-                pluginObj.addMember("display_name", plugin.display_name);
-                pluginObj.addMember("state_file", plugin.state_file);
-                pluginObj.addMember("group_index", static_cast<int64_t>(plugin.group_index));
-                pluginsArray.addArrayElement(pluginObj);
-            }
-            obj.addMember("plugins", pluginsArray);
-        }
 
         return obj;
     }
@@ -160,9 +165,8 @@ namespace uapmd {
 
         // Serialize plugin graph (only if it has plugins or external file)
         if (track->graph()) {
-            auto plugins = track->graph()->plugins();
             auto extFile = track->graph()->externalFile();
-            if (!plugins.empty() || !extFile.empty())
+            if (!extFile.empty())
                 obj.addMember("graph", serializePluginGraph(track->graph()));
         }
 

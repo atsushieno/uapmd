@@ -343,6 +343,14 @@ export const sequencer = {
         return __remidy_sequencer_isScanning();
     },
 
+    saveProject: function(filepath) {
+        return __remidy_project_save(filepath);
+    },
+
+    loadProject: function(filepath) {
+        return __remidy_project_load(filepath);
+    },
+
     // Plugin State Management
     savePluginState: function(instanceId, filepath) {
         return __remidy_instance_save_state(instanceId, filepath);

@@ -15,10 +15,11 @@ namespace uapmd {
         std::unordered_map<int32_t, uint8_t> instance_groups_{}; // instanceId → UMP group
 
     public:
-        explicit SequencerTrackImpl(size_t eventBufferSizeInBytes);
+        explicit SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph);
         ~SequencerTrackImpl() override = default;
 
         AudioPluginGraph& graph() override { return *graph_; }
+        bool replaceGraph(std::unique_ptr<AudioPluginGraph>&& graph) override;
         uint32_t latencyInSamples() override { return graph_ ? graph_->mainOutputLatencyInSamples() : 0; }
         uint32_t renderLeadInSamples() override { return graph_ ? graph_->renderLeadInSamples() : 0; }
         double tailLengthInSeconds() override { return graph_ ? graph_->mainOutputTailLengthInSeconds() : 0.0; }
@@ -52,12 +53,29 @@ namespace uapmd {
         }
     };
 
-    SequencerTrackImpl::SequencerTrackImpl(size_t eventBufferSizeInBytes) :
-        graph_(AudioPluginGraph::create(eventBufferSizeInBytes)) {
+    SequencerTrackImpl::SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph) :
+        graph_(std::move(graph)) {
     }
 
-    std::unique_ptr<SequencerTrack> SequencerTrack::create(size_t eventBufferSizeInBytes) {
-        return std::make_unique<SequencerTrackImpl>(eventBufferSizeInBytes);
+    std::unique_ptr<SequencerTrack> SequencerTrack::create(
+        const AudioGraphProviderRegistry& registry,
+        size_t eventBufferSizeInBytes,
+        const std::string& graphProviderId) {
+        auto graph = registry.createGraph(graphProviderId, eventBufferSizeInBytes);
+        if (!graph)
+            graph = AudioPluginGraph::create(eventBufferSizeInBytes);
+        return std::make_unique<SequencerTrackImpl>(std::move(graph));
+    }
+
+    bool SequencerTrackImpl::replaceGraph(std::unique_ptr<AudioPluginGraph>&& graph) {
+        if (!graph_ || !graph)
+            return false;
+
+        if (!AudioPluginGraph::migrate(*graph, *graph_))
+            return false;
+
+        graph_ = std::move(graph);
+        return true;
     }
 
 }

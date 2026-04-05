@@ -145,6 +145,7 @@ target_link_libraries(uapmd-data
         PRIVATE
         demucs-cpp
         signalsmith-stretch
+        zlib-ng
 )
 
 set(_UAPMD_AUDIO_FACTORY_SRC src/audio/ChocAudioFileFactory.cpp)
@@ -154,9 +155,13 @@ endif()
 
 target_sources(uapmd-data PRIVATE
         ${_UAPMD_AUDIO_FACTORY_SRC}
+        src/project/AudioGraphProvider.cpp
         src/project/UapmdProjectFileReader.cpp
         src/project/UapmdProjectFileWriter.cpp
         src/project/UapmdProjectFile.cpp
+        src/project/UapmdAudioPluginFullDAGraphData.cpp
+        src/project/UapmdPluginGraphBuilder.cpp
+        src/project/UapmdAudioPluginFullDAGraphBuilder.cpp
         src/project/SmfConverter.cpp
         src/project/Smf2ClipReader.cpp
         src/project/Smf2ClipReaderWriter.cpp

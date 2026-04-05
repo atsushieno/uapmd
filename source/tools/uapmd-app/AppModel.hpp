@@ -115,6 +115,9 @@ namespace uapmd {
         };
 
     private:
+        // FIXME: currently there is little to no chance of changing this size at runtime, so we should probably remove this
+        //  and define some system global constant somewhere in the core.
+        size_t ump_buffer_size_in_bytes_;
         RealtimeSequencer sequencer_;
         std::unique_ptr<remidy_tooling::PluginScanTool> pluginScanTool_;
         std::unique_ptr<TransportController> transportController_;
@@ -173,6 +176,11 @@ namespace uapmd {
         std::string generateScanReport();
         void notifyUiReady();
         void notifyPersistentStorageReady();
+        bool ensureTrackUsesEditorGraph(int32_t trackIndex);
+        bool revertTrackToSimpleGraph(int32_t trackIndex);
+        bool getTrackGraphConnections(int32_t trackIndex, std::vector<AudioPluginGraphConnection>& connections, std::string& error) const;
+        bool connectTrackGraph(int32_t trackIndex, const AudioPluginGraphConnection& connection, std::string& error);
+        bool disconnectTrackGraphConnection(int32_t trackIndex, int64_t connectionId, std::string& error);
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
         std::vector<std::function<void(const std::string& reportText)>> scanReportReady{};
@@ -265,9 +273,13 @@ namespace uapmd {
         // Global callback registry - called when user requests to show UI (from scripts)
         // MainWindow should handle this by preparing window and calling showPluginUI()
         std::vector<std::function<void(int32_t instanceId)>> uiShowRequested{};
+        std::vector<std::function<void(int32_t instanceId)>> instanceDetailsShowRequested{};
+        std::vector<std::function<void(int32_t trackIndex)>> trackGraphShowRequested{};
 
         // Request to show plugin UI (from scripts) - triggers uiShowRequested callbacks
         void requestShowPluginUI(int32_t instanceId);
+        void requestShowInstanceDetails(int32_t instanceId);
+        void requestShowTrackGraph(int32_t trackIndex);
 
         // Show plugin UI - creates (if needsCreate) and shows the UI
         // Notifies all registered callbacks when complete

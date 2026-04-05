@@ -14,6 +14,7 @@
 #include "MidiDumpWindow.hpp"
 #include "PianoRollEditor.hpp"
 #include "PluginSelector.hpp"
+#include "PluginGraphEditor.hpp"
 #include "InstanceDetails.hpp"
 #include "../AppModel.hpp"
 
@@ -46,11 +47,13 @@ public:
     AudioEventListEditor& audioEventListEditor() { return audioEventListEditor_; }
     MidiDumpWindow& midiDumpWindow() { return midiDumpWindow_; }
     PluginSelector& pluginSelector() { return pluginSelector_; }
+    PluginGraphEditor& pluginGraphEditor() { return pluginGraphEditor_; }
     InstanceDetails& instanceDetails() { return instanceDetails_; }
 
     // Plugin selector window
     bool& showPluginSelectorWindow() { return showPluginSelectorWindow_; }
     void renderPluginSelectorWindow(float uiScale);
+    void renderPluginGraphWindow(float uiScale);
 
     // Timeline unit conversion
     double secondsToTimelineUnits(double seconds) const;
@@ -96,6 +99,7 @@ private:
     MidiDumpWindow midiDumpWindow_;
     PianoRollEditor pianoRollEditor_;
     PluginSelector pluginSelector_;
+    PluginGraphEditor pluginGraphEditor_;
     InstanceDetails instanceDetails_;
 
     bool showPluginSelectorWindow_ = false;

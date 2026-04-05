@@ -64,6 +64,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/PluginList.cpp
         gui/InstanceDetails.cpp
         gui/PluginSelector.cpp
+        gui/PluginGraphEditor.cpp
         gui/ParameterList.cpp
         gui/TrackList.cpp
         gui/AudioDeviceSettings.cpp
@@ -341,6 +342,13 @@ if(NOT DEFINED imgui_SOURCE_DIR)
     )
 endif()
 
+CPMAddPackage(
+    NAME imnodes
+    GIT_TAG 5025ad189b6a17c931bbdb39b8a575b63adf3e91
+    GIT_REPOSITORY https://github.com/0aids/imnodes
+    DOWNLOAD_ONLY YES
+)
+
 # ImTimeline for SequenceEditor timeline view
 CPMAddPackage(
     NAME ImTimeline
@@ -463,10 +471,6 @@ if(UAPMD_BUILDING_WASM)
     unset(_uapmd_resembed_host)
 endif()
 set(_resembed_patch "${UAPMD_REPO_ROOT}/external/patches/resembed-host-toolchain.patch")
-find_package(Git QUIET)
-if(NOT GIT_FOUND)
-    message(FATAL_ERROR "git is required to patch ResEmbed")
-endif()
 CPMAddPackage(
     NAME ResEmbed
     GIT_TAG 23ba82c
@@ -487,12 +491,22 @@ res_embed_add(${UAPMD_COMPILE_TARGET}
 )
 
 # Embed built-in script presets into the app binary at build time.
-# Add new preset .js files here; each becomes accessible at runtime via
+# All .js files under scripts/ are treated as presets except the bridge
+# library modules embedded separately below in AppJsLib.
+file(GLOB UAPMD_APP_SCRIPT_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.js")
+set(UAPMD_APP_JS_LIB_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/remidy-bridge.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/uapmd-api.js"
+)
+list(REMOVE_ITEM UAPMD_APP_SCRIPT_FILES ${UAPMD_APP_JS_LIB_FILES})
+list(SORT UAPMD_APP_SCRIPT_FILES)
+
+# Each preset becomes accessible at runtime via
 # ResEmbed::get("<filename>", "AppScripts").
 res_embed_add(${UAPMD_COMPILE_TARGET}
     FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/Demo.js"
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/PluginState.js"
+        ${UAPMD_APP_SCRIPT_FILES}
     NAMESPACE AppScripts
     CATEGORY AppScripts
 )
@@ -503,8 +517,7 @@ res_embed_add(${UAPMD_COMPILE_TARGET}
 # development convenience when iterating on the JS sources without rebuilding.
 res_embed_add(${UAPMD_COMPILE_TARGET}
     FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/remidy-bridge.js"
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/uapmd-api.js"
+        ${UAPMD_APP_JS_LIB_FILES}
     NAMESPACE AppJsLib
     CATEGORY AppJsLib
 )
@@ -574,6 +587,16 @@ if(NOT TARGET imgui)
         # Windows OpenGL fallback
         target_link_libraries(imgui PUBLIC opengl32)
     endif()
+endif()
+
+if(NOT TARGET imnodes)
+    add_library(imnodes STATIC
+        ${imnodes_SOURCE_DIR}/imnodes.cpp
+    )
+    target_include_directories(imnodes PUBLIC
+        ${imnodes_SOURCE_DIR}
+    )
+    target_link_libraries(imnodes PUBLIC imgui)
 endif()
 
 # Build ImTimeline as a static library with controlled public API
@@ -695,6 +718,7 @@ endif ()
 
 set(_uapmd_app_link_libraries
         imgui
+        imnodes
         imtimeline
         ResEmbed
         remidy

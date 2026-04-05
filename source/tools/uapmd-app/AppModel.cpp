@@ -51,6 +51,8 @@ struct GatheredClipEvents {
     uint64_t endTick{0};
 };
 
+std::vector<umppi::Ump> buildSmf2ClipFromMidiNode(const uapmd::MidiClipSourceNode& node, bool includeTimelineMeta);
+
 std::filesystem::path makeRelativePath(const std::filesystem::path& baseDir, const std::filesystem::path& target) {
     if (baseDir.empty() || target.empty())
         return target;
@@ -165,77 +167,19 @@ std::optional<std::filesystem::path> createTempProjectDirectory(std::string& err
     }
 }
 
-class SerializedProjectPluginGraph final : public uapmd::UapmdProjectPluginGraphData {
-public:
-    std::filesystem::path external_file;
-    std::vector<uapmd::UapmdProjectPluginNodeData> nodes;
-
-    std::filesystem::path externalFile() override { return external_file; }
-    std::vector<uapmd::UapmdProjectPluginNodeData> plugins() override { return nodes; }
-    void externalFile(const std::filesystem::path& f) override { external_file = f; }
-    void addPlugin(uapmd::UapmdProjectPluginNodeData node) override { nodes.push_back(std::move(node)); }
-    void setPlugins(std::vector<uapmd::UapmdProjectPluginNodeData> newNodes) override { nodes = std::move(newNodes); }
-    void clearPlugins() override { nodes.clear(); }
-};
-
 struct PendingProjectPluginState {
     int32_t instance_id{-1};
     size_t plugin_order{0};
     uapmd::AudioPluginInstanceAPI* instance{};
-    SerializedProjectPluginGraph* graph{};
-    size_t node_index{0};
+    std::function<void(const std::string& relativePath)> set_state_file{};
     std::string scope_label;
 };
 
-std::unique_ptr<uapmd::UapmdProjectPluginGraphData> createSerializedPluginGraph(
-    uapmd::SequencerTrack* sequencerTrack,
-    uapmd::SequencerEngine* engine,
-    std::vector<PendingProjectPluginState>* pendingStates = nullptr,
-    std::string scopeLabel = {})
-{
-    if (!sequencerTrack)
-        return nullptr;
-
-    const auto& orderedIds = sequencerTrack->orderedInstanceIds();
-    auto graph = std::make_unique<SerializedProjectPluginGraph>();
-    graph->nodes.reserve(orderedIds.size());
-    size_t pluginIndex = 0;
-
-    for (int32_t instanceId : orderedIds) {
-        if (instanceId < 0)
-            continue;
-
-        uapmd::AudioPluginInstanceAPI* instance = nullptr;
-        if (auto* node = sequencerTrack->graph().getPluginNode(instanceId))
-            instance = node->instance();
-        if (!instance && engine)
-            instance = engine->getPluginInstance(instanceId);
-        if (!instance)
-            continue;
-
-        uapmd::UapmdProjectPluginNodeData nodeData;
-        nodeData.plugin_id = instance->pluginId();
-        nodeData.format = instance->formatName();
-        nodeData.display_name = instance->displayName();
-        if (pendingStates) {
-            nodeData.state_file.clear();
-        }
-        graph->nodes.push_back(std::move(nodeData));
-        if (pendingStates) {
-            pendingStates->push_back(PendingProjectPluginState{
-                .instance_id = instanceId,
-                .plugin_order = pluginIndex,
-                .instance = instance,
-                .graph = graph.get(),
-                .node_index = graph->nodes.size() - 1,
-                .scope_label = scopeLabel
-            });
-        }
-        ++pluginIndex;
-    }
-
-    return graph;
-}
+struct PendingProjectGraphSave {
+    uapmd::UapmdProjectTrackData* track{};
+    uapmd::SequencerTrack* sequencer_track{};
+    std::string scope_label;
+};
 
 std::string writePluginStateBlob(const std::filesystem::path& projectDir,
                                  const std::filesystem::path& pluginStateDir,
@@ -282,11 +226,158 @@ struct PendingProjectSaveContext {
     std::filesystem::path project_file;
     std::filesystem::path project_dir;
     std::filesystem::path plugin_state_dir;
+    std::filesystem::path graph_dir;
     std::unique_ptr<uapmd::UapmdProjectData> project;
     std::vector<PendingProjectPluginState> pending_states;
+    std::vector<PendingProjectGraphSave> pending_graphs;
     size_t next_pending_state{0};
     uapmd::AppModel::ProjectSaveCallback callback;
 };
+
+std::vector<uapmd::ClipData> sortedTrackClips(uapmd::TimelineTrack& timelineTrack) {
+    auto clips = timelineTrack.clipManager().getAllClips();
+    std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
+        return a.clipId < b.clipId;
+    });
+    return clips;
+}
+
+bool serializeProjectClip(
+    uapmd::TimelineTrack& timelineTrack,
+    const uapmd::ClipData& clip,
+    uapmd::UapmdProjectTrackData& projectTrack,
+    std::unordered_map<std::string, uapmd::UapmdProjectClipData*>& serializedClipLookup,
+    const std::filesystem::path& clipDir,
+    const std::filesystem::path& projectDir,
+    const std::string& midiExportNamePrefix,
+    const std::string& audioCopyNamePrefix,
+    const std::string& clipContextLabel,
+    bool includeTimelineMeta,
+    size_t& midiExportCounter,
+    std::string& error) {
+    auto projectClip = uapmd::UapmdProjectClipData::create();
+    projectClip->clipType(clip.clipType == uapmd::ClipType::Midi ? "midi" : "audio");
+    projectClip->tickResolution(clip.tickResolution);
+    projectClip->markers(clip.markers);
+    projectClip->audioWarps(clip.audioWarps);
+
+    std::filesystem::path clipPath = clip.filepath;
+    if (clip.clipType == uapmd::ClipType::Midi) {
+        bool needsExport = clip.needsFileSave || clipPath.empty() || !std::filesystem::exists(clipPath);
+        if (needsExport) {
+            std::filesystem::create_directories(clipDir);
+            auto exportName = std::format("{}{}_{}.midi2",
+                                          midiExportNamePrefix,
+                                          clip.clipId,
+                                          midiExportCounter++);
+            auto exportPath = clipDir / exportName;
+
+            auto sourceNode = timelineTrack.getSourceNode(clip.sourceNodeInstanceId);
+            auto* midiNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
+            if (!midiNode) {
+                error = std::format("{} is missing MIDI data", clipContextLabel);
+                return false;
+            }
+
+            std::string writeError;
+            auto clipUmps = buildSmf2ClipFromMidiNode(*midiNode, includeTimelineMeta);
+            if (!uapmd::Smf2ClipReaderWriter::write(exportPath, clipUmps, &writeError)) {
+                error = std::move(writeError);
+                return false;
+            }
+            clipPath = exportPath;
+        } else {
+            clipPath = std::filesystem::absolute(clipPath);
+        }
+    } else {
+        if (clip.needsFileSave) {
+            if (clipPath.empty()) {
+                error = std::format("{} has no source audio to save", clipContextLabel);
+                return false;
+            }
+
+            auto sourcePath = std::filesystem::absolute(clipPath);
+            if (!std::filesystem::exists(sourcePath)) {
+                error = std::format("{} is missing its audio file", clipContextLabel);
+                return false;
+            }
+
+            std::error_code dirEc;
+            std::filesystem::create_directories(clipDir, dirEc);
+            if (dirEc) {
+                error = std::format("Failed to create clip directory: {}", dirEc.message());
+                return false;
+            }
+
+            auto originalName = sourcePath.filename().string();
+            if (originalName.empty())
+                originalName = std::format("clip{}_audio.wav", clip.clipId);
+            auto destPath = clipDir / std::format("{}{}", audioCopyNamePrefix, originalName);
+
+            std::error_code copyEc;
+            std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing, copyEc);
+            if (copyEc) {
+                error = std::format("Failed to store audio clip {}: {}", clip.clipId, copyEc.message());
+                return false;
+            }
+
+            clipPath = destPath;
+        } else if (!clipPath.empty()) {
+            clipPath = std::filesystem::absolute(clipPath);
+        }
+    }
+
+    if (!clipPath.empty() && !projectDir.empty())
+        clipPath = makeRelativePath(projectDir, clipPath);
+
+    projectClip->file(clipPath);
+    serializedClipLookup[clip.referenceId] = projectClip.get();
+    projectTrack.clips().push_back(std::move(projectClip));
+    return true;
+}
+
+void queueProjectGraphSerialization(
+    PendingProjectSaveContext& operation,
+    uapmd::AudioGraphProviderRegistry& registry,
+    uapmd::SequencerEngine* sequencerEngine,
+    uapmd::SequencerTrack* sequencerTrack,
+    uapmd::UapmdProjectTrackData& projectTrack,
+    const std::string& scopeLabel) {
+    const auto* graphProvider = sequencerTrack
+        ? registry.get(sequencerTrack->graph())
+        : registry.get("");
+    if (!sequencerTrack || !graphProvider)
+        return;
+
+    auto graphData = uapmd::createSerializedProjectGraph(
+        *graphProvider,
+        sequencerTrack->orderedInstanceIds(),
+        sequencerTrack->graph(),
+        [sequencerEngine](int32_t instanceId) {
+            return sequencerEngine ? sequencerEngine->getPluginInstance(instanceId) : nullptr;
+        },
+        [&operation, &scopeLabel](int32_t instanceId, size_t pluginOrder, uapmd::AudioPluginInstanceAPI* instance,
+                                  const std::function<void(const std::string& relativePath)>& setStateFile) {
+            if (setStateFile)
+                setStateFile({});
+            operation.pending_states.push_back(PendingProjectPluginState{
+                .instance_id = instanceId,
+                .plugin_order = pluginOrder,
+                .instance = instance,
+                .set_state_file = setStateFile,
+                .scope_label = scopeLabel
+            });
+        });
+    if (!graphData)
+        return;
+
+    projectTrack.graph(std::move(graphData));
+    operation.pending_graphs.push_back(PendingProjectGraphSave{
+        .track = &projectTrack,
+        .sequencer_track = sequencerTrack,
+        .scope_label = scopeLabel
+    });
+}
 
 GatheredClipEvents gatherMidiClipEvents(const uapmd::MidiClipSourceNode& node, bool includeTimelineMeta) {
     GatheredClipEvents result;
@@ -565,6 +656,7 @@ void uapmd::AppModel::cleanupInstance() {
 }
 
 uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :
+        ump_buffer_size_in_bytes_(umpBufferSizeInBytes),
         sequencer_(audioBufferSizeInFrames, umpBufferSizeInBytes, sampleRate, dispatcher),
         pluginScanTool_(remidy_tooling::PluginScanTool::create()),
         transportController_(std::make_unique<TransportController>(this, &sequencer_)),
@@ -607,6 +699,106 @@ void uapmd::AppModel::maybeStartInitialPluginScan() {
 }
 
 uapmd::AppModel::~AppModel() = default;
+
+bool uapmd::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
+    SequencerTrack* track = trackIndex == kMasterTrackIndex
+        ? sequencer_.engine()->masterTrack()
+        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
+            ? sequencer_.engine()->tracks()[static_cast<size_t>(trackIndex)]
+            : nullptr);
+    if (!track)
+        return false;
+    if (dynamic_cast<AudioPluginFullDAGraph*>(&track->graph()))
+        return true;
+    auto graph = AudioPluginFullDAGraph::create(ump_buffer_size_in_bytes_);
+    return sequencer_.engine()->replaceTrackGraph(
+        trackIndex, std::unique_ptr<AudioPluginGraph>(graph.release()));
+}
+
+bool uapmd::AppModel::revertTrackToSimpleGraph(int32_t trackIndex) {
+    return sequencer_.engine()->timeline().replaceTrackGraphType(
+        trackIndex, "", ump_buffer_size_in_bytes_);
+}
+
+bool uapmd::AppModel::getTrackGraphConnections(
+    int32_t trackIndex,
+    std::vector<AudioPluginGraphConnection>& connections,
+    std::string& error) const {
+    connections.clear();
+
+    SequencerTrack* track = trackIndex == kMasterTrackIndex
+        ? sequencer_.engine()->masterTrack()
+        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
+            ? sequencer_.engine()->tracks()[static_cast<size_t>(trackIndex)]
+            : nullptr);
+    if (!track) {
+        error = "Track not found";
+        return false;
+    }
+
+    auto* dag = dynamic_cast<AudioPluginFullDAGraph*>(&track->graph());
+    if (!dag) {
+        error = "Track graph is not a full DAG graph";
+        return false;
+    }
+
+    connections = dag->connections();
+    return true;
+}
+
+bool uapmd::AppModel::connectTrackGraph(
+    int32_t trackIndex,
+    const AudioPluginGraphConnection& connection,
+    std::string& error) {
+    SequencerTrack* track = trackIndex == kMasterTrackIndex
+        ? sequencer_.engine()->masterTrack()
+        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
+            ? sequencer_.engine()->tracks()[static_cast<size_t>(trackIndex)]
+            : nullptr);
+    if (!track) {
+        error = "Track not found";
+        return false;
+    }
+
+    auto* dag = dynamic_cast<AudioPluginFullDAGraph*>(&track->graph());
+    if (!dag) {
+        error = "Track graph is not a full DAG graph";
+        return false;
+    }
+
+    if (dag->connect(connection) != 0) {
+        error = "Failed to connect graph endpoints";
+        return false;
+    }
+    return true;
+}
+
+bool uapmd::AppModel::disconnectTrackGraphConnection(
+    int32_t trackIndex,
+    int64_t connectionId,
+    std::string& error) {
+    SequencerTrack* track = trackIndex == kMasterTrackIndex
+        ? sequencer_.engine()->masterTrack()
+        : (trackIndex >= 0 && trackIndex < static_cast<int32_t>(sequencer_.engine()->tracks().size())
+            ? sequencer_.engine()->tracks()[static_cast<size_t>(trackIndex)]
+            : nullptr);
+    if (!track) {
+        error = "Track not found";
+        return false;
+    }
+
+    auto* dag = dynamic_cast<AudioPluginFullDAGraph*>(&track->graph());
+    if (!dag) {
+        error = "Track graph is not a full DAG graph";
+        return false;
+    }
+
+    if (!dag->disconnect(connectionId)) {
+        error = "Connection not found";
+        return false;
+    }
+    return true;
+}
 
 uapmd::IDocumentProvider* uapmd::AppModel::documentProvider() {
     if (!documentProvider_) {
@@ -1217,6 +1409,16 @@ void uapmd::AppModel::requestShowPluginUI(int32_t instanceId) {
     for (auto& cb : uiShowRequested) {
         cb(instanceId);
     }
+}
+
+void uapmd::AppModel::requestShowInstanceDetails(int32_t instanceId) {
+    for (auto& cb : instanceDetailsShowRequested)
+        cb(instanceId);
+}
+
+void uapmd::AppModel::requestShowTrackGraph(int32_t trackIndex) {
+    for (auto& cb : trackGraphShowRequested)
+        cb(trackIndex);
 }
 
 void uapmd::AppModel::showPluginUI(int32_t instanceId, bool needsCreate, bool isFloating, void* parentHandle, std::function<bool(uint32_t, uint32_t)> resizeHandler) {
@@ -2642,6 +2844,7 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
             std::filesystem::create_directories(operation->project_dir);
         auto clipDir = operation->project_dir / "clips";
         operation->plugin_state_dir = operation->project_dir / "plugin_states";
+        operation->graph_dir = operation->project_dir / "graphs";
 
         operation->project = uapmd::UapmdProjectData::create();
         auto* sequencerEngine = sequencer_.engine();
@@ -2665,113 +2868,44 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                 continue;
 
             auto projectTrack = uapmd::UapmdProjectTrackData::create();
-            auto clips = timelineTrack->clipManager().getAllClips();
-            std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
-                return a.clipId < b.clipId;
-            });
+            auto clips = sortedTrackClips(*timelineTrack);
             serializedTracks.push_back(SerializedTrackClips{
                 static_cast<int32_t>(trackIndex),
                 clips});
 
             for (const auto& clip : clips) {
-                auto projectClip = uapmd::UapmdProjectClipData::create();
-                projectClip->clipType(clip.clipType == uapmd::ClipType::Midi ? "midi" : "audio");
-                projectClip->tickResolution(clip.tickResolution);
-                projectClip->markers(clip.markers);
-                projectClip->audioWarps(clip.audioWarps);
-
-                std::filesystem::path clipPath = clip.filepath;
-                if (clip.clipType == uapmd::ClipType::Midi) {
-                    bool needsExport = clip.needsFileSave || clipPath.empty() || !std::filesystem::exists(clipPath);
-                    if (needsExport) {
-                        std::filesystem::create_directories(clipDir);
-                        auto exportName = std::format("track{}_clip_{}_{}.midi2",
-                                                      trackIndex,
-                                                      clip.clipId,
-                                                      midiExportCounter++);
-                        auto exportPath = clipDir / exportName;
-
-                        auto sourceNode = timelineTrack->getSourceNode(clip.sourceNodeInstanceId);
-                        auto* midiNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
-                        if (!midiNode) {
-                            complete(ProjectResult{false, std::format("Clip {} on track {} is missing MIDI data",
-                                                                      clip.clipId, trackIndex)});
-                            return;
-                        }
-
-                        std::string writeError;
-                        auto clipUmps = buildSmf2ClipFromMidiNode(*midiNode, false);
-                        if (!uapmd::Smf2ClipReaderWriter::write(exportPath, clipUmps, &writeError)) {
-                            complete(ProjectResult{false, std::move(writeError)});
-                            return;
-                        }
-                        clipPath = exportPath;
-                    } else {
-                        clipPath = std::filesystem::absolute(clipPath);
-                    }
-                } else {
-                    if (clip.needsFileSave) {
-                        if (clipPath.empty()) {
-                            complete(ProjectResult{false, std::format("Clip {} on track {} has no source audio to save",
-                                                                      clip.clipId, trackIndex)});
-                            return;
-                        }
-
-                        auto sourcePath = std::filesystem::absolute(clipPath);
-                        if (!std::filesystem::exists(sourcePath)) {
-                            complete(ProjectResult{false, std::format("Clip {} on track {} is missing its audio file",
-                                                                      clip.clipId, trackIndex)});
-                            return;
-                        }
-
-                        std::error_code dirEc;
-                        std::filesystem::create_directories(clipDir, dirEc);
-                        if (dirEc) {
-                            complete(ProjectResult{false, std::format("Failed to create clip directory: {}", dirEc.message())});
-                            return;
-                        }
-
-                        auto originalName = sourcePath.filename().string();
-                        if (originalName.empty())
-                            originalName = std::format("clip{}_audio.wav", clip.clipId);
-                        auto destPath = clipDir / std::format("track{}_{}", trackIndex, originalName);
-
-                        std::error_code copyEc;
-                        std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing, copyEc);
-                        if (copyEc) {
-                            complete(ProjectResult{false, std::format("Failed to store audio clip {}: {}",
-                                                                      clip.clipId, copyEc.message())});
-                            return;
-                        }
-
-                        clipPath = destPath;
-                    } else if (!clipPath.empty()) {
-                        clipPath = std::filesystem::absolute(clipPath);
-                    }
+                std::string clipError;
+                if (!serializeProjectClip(
+                        *timelineTrack,
+                        clip,
+                        *projectTrack,
+                        serializedClipLookup,
+                        clipDir,
+                        operation->project_dir,
+                        std::format("track{}_clip_", trackIndex),
+                        std::format("track{}_", trackIndex),
+                        std::format("Clip {} on track {}", clip.clipId, trackIndex),
+                        false,
+                        midiExportCounter,
+                        clipError)) {
+                    complete(ProjectResult{false, std::move(clipError)});
+                    return;
                 }
-
-                if (!clipPath.empty() && !operation->project_dir.empty())
-                    clipPath = makeRelativePath(operation->project_dir, clipPath);
-
-                projectClip->file(clipPath);
-
-                serializedClipLookup[clip.referenceId] = projectClip.get();
-                projectTrack->clips().push_back(std::move(projectClip));
             }
 
             uapmd::SequencerTrack* sequencerTrack = (sequencerEngine && trackIndex < sequencerTracks.size())
                 ? sequencerTracks[trackIndex]
                 : nullptr;
-            if (auto graphData = createSerializedPluginGraph(
-                    sequencerTrack,
-                    sequencerEngine,
-                    &operation->pending_states,
-                    std::format("track{}", trackIndex))) {
-                projectTrack->graph(std::move(graphData));
-            }
+            queueProjectGraphSerialization(
+                *operation,
+                sequencer_.engine()->timeline().audioGraphProviderRegistry(),
+                sequencerEngine,
+                sequencerTrack,
+                *projectTrack,
+                std::format("track{}", trackIndex));
 
             bool hasClips = !projectTrack->clips().empty();
-            bool hasPlugins = projectTrack->graph() && !projectTrack->graph()->plugins().empty();
+            bool hasPlugins = sequencerTrack && !sequencerTrack->orderedInstanceIds().empty();
             if (!hasClips && !hasPlugins)
                 continue;
 
@@ -2782,10 +2916,7 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
             masterTrack->clips().clear();
             masterTrack->markers(master_track_markers_);
             if (auto* masterTimelineTrack = getMasterTimelineTrack()) {
-                auto clips = masterTimelineTrack->clipManager().getAllClips();
-                std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
-                    return a.clipId < b.clipId;
-                });
+                auto clips = sortedTrackClips(*masterTimelineTrack);
                 serializedTracks.push_back(SerializedTrackClips{
                     uapmd::kMasterTrackIndex,
                     clips});
@@ -2794,55 +2925,33 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                     if (clip.clipType != uapmd::ClipType::Midi)
                         continue;
 
-                    auto projectClip = uapmd::UapmdProjectClipData::create();
-                    projectClip->clipType("midi");
-                    projectClip->tickResolution(clip.tickResolution);
-                    projectClip->markers(clip.markers);
-                    projectClip->audioWarps(clip.audioWarps);
-
-                    std::filesystem::path clipPath = clip.filepath;
-                    bool needsExport = clip.needsFileSave || clipPath.empty() || !std::filesystem::exists(clipPath);
-                    if (needsExport) {
-                        std::filesystem::create_directories(clipDir);
-                        auto exportName = std::format("master_clip_{}_{}.midi2",
-                                                      clip.clipId,
-                                                      midiExportCounter++);
-                        auto exportPath = clipDir / exportName;
-
-                        auto sourceNode = masterTimelineTrack->getSourceNode(clip.sourceNodeInstanceId);
-                        auto* midiNode = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
-                        if (!midiNode) {
-                            complete(ProjectResult{false, std::format("Master clip {} is missing MIDI data", clip.clipId)});
-                            return;
-                        }
-
-                        std::string writeError;
-                        auto clipUmps = buildSmf2ClipFromMidiNode(*midiNode, true);
-                        if (!uapmd::Smf2ClipReaderWriter::write(exportPath, clipUmps, &writeError)) {
-                            complete(ProjectResult{false, std::move(writeError)});
-                            return;
-                        }
-                        clipPath = exportPath;
-                    } else {
-                        clipPath = std::filesystem::absolute(clipPath);
+                    std::string clipError;
+                    if (!serializeProjectClip(
+                            *masterTimelineTrack,
+                            clip,
+                            *masterTrack,
+                            serializedClipLookup,
+                            clipDir,
+                            operation->project_dir,
+                            "master_clip_",
+                            "",
+                            "Master clip",
+                            true,
+                            midiExportCounter,
+                            clipError)) {
+                        complete(ProjectResult{false, std::move(clipError)});
+                        return;
                     }
-
-                    if (!clipPath.empty() && !operation->project_dir.empty())
-                        clipPath = makeRelativePath(operation->project_dir, clipPath);
-                    projectClip->file(clipPath);
-
-                    serializedClipLookup[clip.referenceId] = projectClip.get();
-                    masterTrack->clips().push_back(std::move(projectClip));
                 }
             }
 
-            if (auto graphData = createSerializedPluginGraph(
-                    sequencerEngine ? sequencerEngine->masterTrack() : nullptr,
-                    sequencerEngine,
-                    &operation->pending_states,
-                    "master")) {
-                masterTrack->graph(std::move(graphData));
-            }
+            queueProjectGraphSerialization(
+                *operation,
+                sequencer_.engine()->timeline().audioGraphProviderRegistry(),
+                sequencerEngine,
+                sequencerEngine ? sequencerEngine->masterTrack() : nullptr,
+                *masterTrack,
+                "master");
         }
 
         for (const auto& serializedTrack : serializedTracks) {
@@ -2871,9 +2980,26 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
         return;
     }
 
+    auto* timelineFacade = sequencer_.engine() ? &sequencer_.engine()->timeline() : nullptr;
     auto runNext = std::make_shared<std::function<void()>>();
-    *runNext = [operation, complete, runNext]() mutable {
+    *runNext = [operation, complete, runNext, timelineFacade]() mutable {
         if (operation->next_pending_state >= operation->pending_states.size()) {
+            for (const auto& pendingGraph : operation->pending_graphs) {
+                if (!pendingGraph.track || !pendingGraph.sequencer_track || !pendingGraph.track->graph() || !timelineFacade)
+                    continue;
+
+                std::string graphWriteError;
+                if (!timelineFacade->saveProjectGraph(
+                        pendingGraph.track,
+                        pendingGraph.sequencer_track,
+                        operation->project_dir,
+                        operation->graph_dir,
+                        pendingGraph.scope_label,
+                        graphWriteError)) {
+                    complete(ProjectResult{false, std::move(graphWriteError)});
+                    return;
+                }
+            }
             if (!uapmd::UapmdProjectDataWriter::write(operation->project.get(), operation->project_file)) {
                 complete(ProjectResult{false, "Failed to write project file"});
                 return;
@@ -2910,8 +3036,8 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                                                return;
                                            }
 
-                                           if (pending.graph && pending.node_index < pending.graph->nodes.size())
-                                               pending.graph->nodes[pending.node_index].state_file = std::move(relativePath);
+                                           if (pending.set_state_file)
+                                               pending.set_state_file(relativePath);
 
                                            ++operation->next_pending_state;
                                            (*runNext)();

@@ -22,10 +22,14 @@ namespace uapmd {
         double aggregateTailLengthInSeconds();
 
     public:
-        explicit AudioPluginGraphImpl(size_t eventBufferSizeInBytes)
-            : event_buffer_size_in_bytes_(eventBufferSizeInBytes) {
+        explicit AudioPluginGraphImpl(size_t eventBufferSizeInBytes, std::string providerId = {})
+            : AudioPluginGraph(std::move(providerId))
+            , event_buffer_size_in_bytes_(eventBufferSizeInBytes) {
         }
         ~AudioPluginGraphImpl() override = default;
+
+        AudioGraphExtension* getExtension(const std::type_info& type) override;
+        const AudioGraphExtension* getExtension(const std::type_info& type) const override;
 
         uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
         bool removeNodeSimple(int32_t instanceId) override;
@@ -40,7 +44,19 @@ namespace uapmd {
         double mainOutputTailLengthInSeconds() override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
+        std::vector<std::shared_ptr<AudioPluginNode>> releaseNodesForMigration() override;
+        bool adoptNodesFromMigration(std::vector<std::shared_ptr<AudioPluginNode>>&& nodes) override;
     };
+
+    AudioGraphExtension* AudioPluginGraphImpl::getExtension(const std::type_info& type) {
+        (void) type;
+        return nullptr;
+    }
+
+    const AudioGraphExtension* AudioPluginGraphImpl::getExtension(const std::type_info& type) const {
+        (void) type;
+        return nullptr;
+    }
 
     void AudioPluginGraphImpl::setGroupResolver(std::function<uint8_t(int32_t)> resolver) {
         group_resolver_ = std::move(resolver);
@@ -247,8 +263,42 @@ namespace uapmd {
         return nullptr;
     }
 
+    std::vector<std::shared_ptr<AudioPluginNode>> AudioPluginGraphImpl::releaseNodesForMigration() {
+        NodeList releasedNodes;
+        {
+            RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+            releasedNodes = std::move(*access);
+            access->clear();
+        }
+
+        std::vector<std::shared_ptr<AudioPluginNode>> result;
+        result.reserve(releasedNodes.size());
+        for (auto& node : releasedNodes)
+            if (node)
+                result.push_back(std::move(node));
+        return result;
+    }
+
+    bool AudioPluginGraphImpl::adoptNodesFromMigration(std::vector<std::shared_ptr<AudioPluginNode>>&& nodes) {
+        RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+        for (auto& transferred : nodes) {
+            auto node = std::dynamic_pointer_cast<AudioPluginNodeImpl>(transferred);
+            if (!node)
+                return false;
+            access->push_back(std::move(node));
+        }
+        return true;
+    }
+
     std::unique_ptr<AudioPluginGraph> AudioPluginGraph::create(size_t eventBufferSizeInBytes) {
         return std::make_unique<AudioPluginGraphImpl>(eventBufferSizeInBytes);
+    }
+
+    bool AudioPluginGraph::migrate(AudioPluginGraph& to, AudioPluginGraph& from) {
+        auto nodes = from.releaseNodesForMigration();
+        if (!to.adoptNodesFromMigration(std::move(nodes)))
+            return false;
+        return true;
     }
 
 }
