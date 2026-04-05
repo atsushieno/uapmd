@@ -323,10 +323,10 @@ typedef struct uapmd_project_plugin_node_data {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 UAPMD_C_EXPORT uapmd_project_graph_data_t uapmd_project_graph_data_create(void);
-UAPMD_C_EXPORT uint32_t uapmd_project_graph_plugin_count(uapmd_project_graph_data_t graph);
-UAPMD_C_EXPORT bool uapmd_project_graph_get_plugin(uapmd_project_graph_data_t graph, uint32_t index, uapmd_project_plugin_node_data_t* out);
-UAPMD_C_EXPORT void uapmd_project_graph_add_plugin(uapmd_project_graph_data_t graph, const uapmd_project_plugin_node_data_t* node);
-UAPMD_C_EXPORT void uapmd_project_graph_clear_plugins(uapmd_project_graph_data_t graph);
+UAPMD_C_EXPORT size_t uapmd_project_graph_get_graph_type(uapmd_project_graph_data_t graph, char* buf, size_t buf_size);
+UAPMD_C_EXPORT void   uapmd_project_graph_set_graph_type(uapmd_project_graph_data_t graph, const char* type);
+UAPMD_C_EXPORT size_t uapmd_project_graph_get_external_file(uapmd_project_graph_data_t graph, char* buf, size_t buf_size);
+UAPMD_C_EXPORT void   uapmd_project_graph_set_external_file(uapmd_project_graph_data_t graph, const char* path);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  TimelineTrack

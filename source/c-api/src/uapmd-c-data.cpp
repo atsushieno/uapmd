@@ -524,38 +524,20 @@ uapmd_project_graph_data_t uapmd_project_graph_data_create() {
     return reinterpret_cast<uapmd_project_graph_data_t>(raw);
 }
 
-static thread_local std::vector<uapmd::UapmdProjectPluginNodeData> tl_plugin_nodes;
-
-uint32_t uapmd_project_graph_plugin_count(uapmd_project_graph_data_t graph) {
-    tl_plugin_nodes = PGD(graph)->plugins();
-    return static_cast<uint32_t>(tl_plugin_nodes.size());
+size_t uapmd_project_graph_get_graph_type(uapmd_project_graph_data_t graph, char* buf, size_t buf_size) {
+    return copy_string(PGD(graph)->graphType(), buf, buf_size);
 }
 
-bool uapmd_project_graph_get_plugin(uapmd_project_graph_data_t graph, uint32_t index, uapmd_project_plugin_node_data_t* out) {
-    if (tl_plugin_nodes.empty())
-        tl_plugin_nodes = PGD(graph)->plugins();
-    if (index >= tl_plugin_nodes.size()) return false;
-    auto& src = tl_plugin_nodes[index];
-    out->plugin_id = src.plugin_id.c_str();
-    out->format = src.format.c_str();
-    out->display_name = src.display_name.c_str();
-    out->state_file = src.state_file.c_str();
-    out->group_index = src.group_index;
-    return true;
+void uapmd_project_graph_set_graph_type(uapmd_project_graph_data_t graph, const char* type) {
+    PGD(graph)->graphType(type ? type : "");
 }
 
-void uapmd_project_graph_add_plugin(uapmd_project_graph_data_t graph, const uapmd_project_plugin_node_data_t* node) {
-    uapmd::UapmdProjectPluginNodeData n;
-    if (node->plugin_id) n.plugin_id = node->plugin_id;
-    if (node->format) n.format = node->format;
-    if (node->display_name) n.display_name = node->display_name;
-    if (node->state_file) n.state_file = node->state_file;
-    n.group_index = node->group_index;
-    PGD(graph)->addPlugin(std::move(n));
+size_t uapmd_project_graph_get_external_file(uapmd_project_graph_data_t graph, char* buf, size_t buf_size) {
+    return copy_string(PGD(graph)->externalFile().string(), buf, buf_size);
 }
 
-void uapmd_project_graph_clear_plugins(uapmd_project_graph_data_t graph) {
-    PGD(graph)->clearPlugins();
+void uapmd_project_graph_set_external_file(uapmd_project_graph_data_t graph, const char* path) {
+    PGD(graph)->externalFile(path ? path : "");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
