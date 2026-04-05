@@ -104,6 +104,12 @@ UAPMD_C_EXPORT void uapmd_app_enable_ump_device(uapmd_app_model_t app, int32_t i
 UAPMD_C_EXPORT void uapmd_app_disable_ump_device(uapmd_app_model_t app, int32_t instance_id);
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  Instance details
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+UAPMD_C_EXPORT void uapmd_app_request_show_instance_details(uapmd_app_model_t app, int32_t instance_id);
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  Plugin UI
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -203,6 +209,123 @@ UAPMD_C_EXPORT uapmd_timeline_track_t uapmd_app_master_timeline_track(uapmd_app_
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 UAPMD_C_EXPORT bool uapmd_app_get_timeline_state(uapmd_app_model_t app, uapmd_timeline_state_t* out);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Track graph editing (DAG graph)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+typedef enum uapmd_graph_endpoint_type {
+    UAPMD_GRAPH_ENDPOINT_GRAPH_INPUT  = 0,
+    UAPMD_GRAPH_ENDPOINT_PLUGIN       = 1,
+    UAPMD_GRAPH_ENDPOINT_GRAPH_OUTPUT = 2
+} uapmd_graph_endpoint_type_t;
+
+typedef enum uapmd_graph_bus_type {
+    UAPMD_GRAPH_BUS_AUDIO = 0,
+    UAPMD_GRAPH_BUS_EVENT = 1
+} uapmd_graph_bus_type_t;
+
+typedef struct uapmd_graph_endpoint {
+    uapmd_graph_endpoint_type_t type;
+    int32_t instance_id;
+    uint32_t bus_index;
+} uapmd_graph_endpoint_t;
+
+typedef struct uapmd_graph_connection {
+    int64_t id;
+    uapmd_graph_bus_type_t bus_type;
+    uapmd_graph_endpoint_t source;
+    uapmd_graph_endpoint_t target;
+} uapmd_graph_connection_t;
+
+typedef struct uapmd_graph_connections_result {
+    bool success;
+    const char* error;
+    uint32_t count;
+    const uapmd_graph_connection_t* connections;
+} uapmd_graph_connections_result_t;
+
+typedef struct uapmd_op_result {
+    bool success;
+    const char* error;
+} uapmd_op_result_t;
+
+UAPMD_C_EXPORT bool uapmd_app_ensure_track_uses_editor_graph(uapmd_app_model_t app, int32_t track_index);
+UAPMD_C_EXPORT void uapmd_app_request_show_track_graph(uapmd_app_model_t app, int32_t track_index);
+UAPMD_C_EXPORT bool uapmd_app_revert_track_to_simple_graph(uapmd_app_model_t app, int32_t track_index);
+
+UAPMD_C_EXPORT uapmd_graph_connections_result_t uapmd_app_get_track_graph_connections(uapmd_app_model_t app, int32_t track_index);
+UAPMD_C_EXPORT uapmd_op_result_t uapmd_app_connect_track_graph(uapmd_app_model_t app,
+                                                                  int32_t track_index,
+                                                                  const uapmd_graph_connection_t* connection);
+UAPMD_C_EXPORT uapmd_op_result_t uapmd_app_disconnect_track_graph_connection(uapmd_app_model_t app,
+                                                                               int32_t track_index,
+                                                                               int64_t connection_id);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Clip audio events (markers + warps)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+typedef struct uapmd_clip_audio_events_result {
+    bool success;
+    const char* error;
+    uint32_t marker_count;
+    const uapmd_clip_marker_t* markers;
+    uint32_t audio_warp_count;
+    const uapmd_audio_warp_point_t* audio_warps;
+} uapmd_clip_audio_events_result_t;
+
+UAPMD_C_EXPORT uapmd_clip_audio_events_result_t uapmd_app_get_clip_audio_events(uapmd_app_model_t app,
+                                                                                   int32_t track_index,
+                                                                                   int32_t clip_id);
+UAPMD_C_EXPORT uapmd_op_result_t uapmd_app_set_clip_audio_events(uapmd_app_model_t app,
+                                                                     int32_t track_index,
+                                                                     int32_t clip_id,
+                                                                     const uapmd_clip_marker_t* markers,
+                                                                     uint32_t marker_count,
+                                                                     const uapmd_audio_warp_point_t* warps,
+                                                                     uint32_t warp_count);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Master track markers
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+UAPMD_C_EXPORT uint32_t uapmd_app_master_marker_count(uapmd_app_model_t app);
+UAPMD_C_EXPORT bool     uapmd_app_get_master_marker(uapmd_app_model_t app, uint32_t index, uapmd_clip_marker_t* out);
+UAPMD_C_EXPORT uapmd_op_result_t uapmd_app_set_master_markers(uapmd_app_model_t app,
+                                                                 const uapmd_clip_marker_t* markers,
+                                                                 uint32_t count);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  MIDI clip UMP event editing
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+typedef struct uapmd_ump_event {
+    uint64_t tick;
+    uint32_t word_count;
+    const uint32_t* words;
+} uapmd_ump_event_t;
+
+typedef struct uapmd_ump_events_result {
+    bool success;
+    const char* error;
+    uint32_t event_count;
+    const uapmd_ump_event_t* events;
+} uapmd_ump_events_result_t;
+
+UAPMD_C_EXPORT uapmd_ump_events_result_t uapmd_app_get_midi_clip_ump_events(uapmd_app_model_t app,
+                                                                               int32_t track_index,
+                                                                               int32_t clip_id);
+UAPMD_C_EXPORT bool uapmd_app_add_ump_event_to_clip(uapmd_app_model_t app,
+                                                       int32_t track_index,
+                                                       int32_t clip_id,
+                                                       uint64_t tick,
+                                                       const uint32_t* words,
+                                                       uint32_t word_count);
+UAPMD_C_EXPORT bool uapmd_app_remove_ump_event_from_clip(uapmd_app_model_t app,
+                                                            int32_t track_index,
+                                                            int32_t clip_id,
+                                                            int32_t event_index);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Project save/load
