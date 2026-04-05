@@ -6,6 +6,8 @@ set(UAPMD_C_API_HEADERS
     include/c-api/uapmd-c-data.h
     include/c-api/uapmd-c-file.h
     include/c-api/uapmd-c-engine.h
+    include/c-api/uapmd-c-tooling.h
+    include/c-api/uapmd-c-gui.h
     include/c-api/uapmd-c-app.h
 )
 
@@ -14,6 +16,8 @@ set(UAPMD_C_API_SOURCES
     src/uapmd-c-data.cpp
     src/uapmd-c-file.cpp
     src/uapmd-c-engine.cpp
+    src/uapmd-c-tooling.cpp
+    src/uapmd-c-gui.cpp
     src/uapmd-c-app.cpp
 )
 
@@ -32,6 +36,8 @@ target_link_libraries(uapmd-c-api
         uapmd-data
         uapmd-file
         uapmd-engine
+        remidy-tooling
+        remidy-gui
 )
 
 # These modules use PRIVATE includes, so we must re-add their paths here.
