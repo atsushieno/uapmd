@@ -187,8 +187,18 @@ int runMainLoop(int argc, char** argv) {
 
     // backend initialized
 
-    // Create window
-    uapmd::gui::WindowHandle* window = windowingBackend->createWindow("UAPMD: Audio Plugin MIDI 2.0 Devices", 800, 800);
+    // Create window with a desktop-default size closer to the intended portrait-leaning layout.
+#if defined(__ANDROID__)
+    constexpr int kInitialWindowWidth = 800;
+    constexpr int kInitialWindowHeight = 800;
+#else
+    constexpr int kInitialWindowWidth = 1000;
+    constexpr int kInitialWindowHeight = 640;
+#endif
+    uapmd::gui::WindowHandle* window = windowingBackend->createWindow(
+        "UAPMD: Audio Plugin MIDI 2.0 Devices",
+        kInitialWindowWidth,
+        kInitialWindowHeight);
     if (!window) {
         std::cerr << "Error: Failed to create window" << std::endl;
         windowingBackend->shutdown();
