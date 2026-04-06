@@ -321,7 +321,11 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         ImGuiIO& io = ImGui::GetIO();
         const bool anyMouseActivity = io.MouseDown[0] || io.MouseDown[1] ||
                                       io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
-        const bool shouldBlockInput = popupBlocking || (!timelineHovered && anyMouseActivity);
+        // Don't block input while the scrollbar is being dragged: if the mouse strays outside
+        // the child window mid-drag, timelineHovered goes false and zeroing io.MouseDown[0]
+        // causes CollectInputData to see a release, cancelling the drag immediately.
+        const bool scrollbarDragging = unified_.timeline->GetLastInputData().IsMovingScrollBar;
+        const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!timelineHovered && anyMouseActivity));
 
         bool savedMouseDown[5];
         float savedMouseWheel = 0.0f, savedMouseWheelH = 0.0f;

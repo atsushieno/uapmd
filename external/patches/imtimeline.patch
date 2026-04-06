@@ -1,5 +1,5 @@
 diff --git a/Timeline.cpp b/Timeline.cpp
-index dbe63d4..9a81090 100644
+index dbe63d4..4732318 100644
 --- a/Timeline.cpp
 +++ b/Timeline.cpp
 @@ -470,7 +470,7 @@ bool Timeline::DrawTimeline()
@@ -11,7 +11,26 @@ index dbe63d4..9a81090 100644
  
      const ImVec2 contentMin = ImGui::GetItemRectMin();
      const ImVec2 contentMax = ImGui::GetItemRectMax();
-@@ -1122,7 +1122,9 @@ void Timeline::CollectInputData(sInputData& a_outInputData, f32 aDeltaTime)
+@@ -656,6 +656,9 @@ void Timeline::DrawScrollbar()
+     const float barWidthInPixels = barWidthRatio * (canvas_size.x - mStyle.LegendWidth);
+ 
+     ImGui::InvisibleButton("scrollBar", scrollBarSize);
++    // Capture click state immediately: in ImGui 1.89+ ButtonBehavior claims input ownership
++    // so IsMouseClicked(0) returns false by the time we check it below.
++    bool scrollBarItemClicked = ImGui::IsItemClicked(0);
+     ImVec2 scrollBarMin = ImGui::GetItemRectMin();
+     ImVec2 scrollBarMax = ImGui::GetItemRectMax();
+ 
+@@ -698,7 +701,7 @@ void Timeline::DrawScrollbar()
+             mStartFrame = ImClamp(mStartFrame, mFrameMin, ImMax(mFrameMax - mVisibleFrameCount, mFrameMin));
+         }
+     } else {
+-        if (scrollBarThumb.Contains(mInputData.MousePos) && ImGui::IsMouseClicked(0)) {
++        if (scrollBarThumb.Contains(mInputData.MousePos) && scrollBarItemClicked) {
+             mInputData.IsMovingScrollBar = true;
+             mPanningData.panningViewSource = mInputData.MousePos;
+             mPanningData.panningViewFrame = -mStartFrame;
+@@ -1122,7 +1125,9 @@ void Timeline::CollectInputData(sInputData& a_outInputData, f32 aDeltaTime)
      mInputData.MousePos = io.MousePos;
      mInputData.LeftMouseDown = io.MouseDown[0];
      mInputData.RightMouseDown = io.MouseDown[1];
