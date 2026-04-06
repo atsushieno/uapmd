@@ -352,12 +352,15 @@ CPMAddPackage(
 )
 
 # ImTimeline for SequenceEditor timeline view
+set(_UAPMD_IMTIMELINE_PATCH "${CMAKE_CURRENT_LIST_DIR}/../../../external/patches/imtimeline.patch")
+file(SHA1 "${_UAPMD_IMTIMELINE_PATCH}" _UAPMD_IMTIMELINE_PATCH_SHA1)
 CPMAddPackage(
     NAME ImTimeline
     GIT_TAG fixes
     GIT_REPOSITORY https://github.com/triplejam/ImTimeline
+    CUSTOM_CACHE_KEY "fixes-${_UAPMD_IMTIMELINE_PATCH_SHA1}"
     DOWNLOAD_ONLY YES
-    PATCHES "${CMAKE_SOURCE_DIR}/external/patches/imtimeline.patch"
+    PATCHES "${_UAPMD_IMTIMELINE_PATCH}"
 )
 
 # IconFontCppHeaders provides Fontaudio glyph definitions used in the GUI
