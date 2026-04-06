@@ -721,6 +721,23 @@ void TimelineEditor::update() {
 }
 
 SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) {
+    // Row 1: 4 icon buttons (Clips, Graph, Bypass, Delete) + 3 gaps + left/right pad
+    const float pad = 4.0f * uiScale;
+    const float framePadX = ImGui::GetStyle().FramePadding.x;
+    const float gap = ImGui::GetStyle().ItemSpacing.x;
+    // All 4 icons; measure the widest one to be safe
+    const float iconBtnW = std::max({
+        ImGui::CalcTextSize(icons::Clips).x,
+        ImGui::CalcTextSize(icons::Graph).x,
+        ImGui::CalcTextSize(icons::ToggleOn).x,
+        ImGui::CalcTextSize(icons::DeleteTrack).x,
+    }) + framePadX * 2.0f;
+    const float row1W = pad + 4.0f * iconBtnW + 3.0f * gap + pad;
+    // Row 2: "⋮ Add Plugin" is the minimum plugin button label
+    const std::string minPluginLabel = std::format("{} Add Plugin", icons::ContextMenu);
+    const float row2W = pad + ImGui::CalcTextSize(minPluginLabel.c_str()).x + framePadX * 2.0f + pad;
+    const float legendWidth = std::max(row1W, row2W);
+
     return SequenceEditor::RenderContext{
         .refreshClips = [this](int32_t trackIndex) {
             refreshSequenceEditorForTrack(trackIndex);
@@ -731,11 +748,11 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .addClipAtPosition = [this](int32_t trackIndex, const std::string& filepath, double positionSeconds) {
             addClipToTrackAtPosition(trackIndex, filepath, positionSeconds);
         },
-        .addAudioClip = [this](int32_t trackIndex) {
-            addAudioClipToTrack(trackIndex);
+        .addAudioClip = [this](int32_t trackIndex, double positionSeconds) {
+            addAudioClipToTrack(trackIndex, positionSeconds);
         },
-        .addSmfClip = [this](int32_t trackIndex) {
-            addSmfClipToTrack(trackIndex);
+        .addSmfClip = [this](int32_t trackIndex, double positionSeconds) {
+            addSmfClipToTrack(trackIndex, positionSeconds);
         },
         .addSmf2Clip = [this](int32_t trackIndex) {
             addSmf2ClipToTrack(trackIndex);
@@ -787,12 +804,24 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .timelineUnitsToSeconds = [this](double units) {
             return timelineUnitsToSeconds(units);
         },
+        .renderLegendContent = [this](int32_t trackIndex, const ImRect& legendArea) {
+            renderTrackLegendContent(trackIndex, legendArea);
+        },
         .timelineUnitsLabel = timelineUnitsLabel_.c_str(),
         .uiScale = uiScale,
+        .legendWidth = legendWidth,
     };
 }
 
 void TimelineEditor::render(float uiScale) {
+    currentUiScale_ = uiScale;
+    if (pendingFullReset_) {
+        pendingFullReset_ = false;
+        sequenceEditor_.reset();
+        trackContentSignatures_.clear();
+        masterTrackSignature_.clear();
+        masterTrackSectionCreated_ = false;
+    }
     syncExternalTimelineChanges();
     auto context = buildRenderContext(uiScale);
     renderTrackList(context);
@@ -965,26 +994,18 @@ void TimelineEditor::renderPluginGraphWindow(float uiScale) {
 
 void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& context) {
     auto& appModel = uapmd::AppModel::instance();
-    auto tracks = appModel.getTimelineTracks();
     ImGui::TextUnformatted("Track List");
     ImGui::Spacing();
 
     ImGui::BeginChild("TrackListScroll", ImVec2(0, 0), true, ImGuiWindowFlags_None);
+
+    // Update master track clips if snapshot changed (runs every frame, cheap)
     renderMasterTrackRow(context);
+
+    const float totalHeight = sequenceEditor_.getUnifiedTimelineHeight(context.uiScale);
+    sequenceEditor_.renderUnifiedTimeline(context, totalHeight);
+
     ImGui::Spacing();
-
-    if (tracks.empty()) {
-        ImGui::TextDisabled("No tracks available.");
-        ImGui::Spacing();
-    }
-
-    for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
-        if (appModel.isTrackHidden(i))
-            continue;
-        renderTrackRow(i, context);
-        ImGui::Spacing();
-    }
-
     if (ImGui::Button(icons::Plus)) {
         int32_t newIndex = appModel.addTrack();
         if (newIndex >= 0)
@@ -1006,365 +1027,274 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
 }
 
 void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& context) {
+    auto& appModel = uapmd::AppModel::instance();
+
+    // Always keep the merged snapshot current for tempo-segment conversion.
     auto snapshot = std::make_shared<uapmd::AppModel::MasterTrackSnapshot>(
-        uapmd::AppModel::instance().buildMasterTrackSnapshot());
+        appModel.buildMasterTrackSnapshot());
+    masterTrackSnapshot_ = snapshot;
 
-    const double lastTempoTime = snapshot->tempoPoints.empty()
-        ? 0.0 : snapshot->tempoPoints.back().timeSeconds;
-    const double lastTempoBpm = snapshot->tempoPoints.empty()
-        ? 0.0 : snapshot->tempoPoints.back().bpm;
-    const double lastSigTime = snapshot->timeSignaturePoints.empty()
-        ? 0.0 : snapshot->timeSignaturePoints.back().timeSeconds;
-    const double lastSigNum = snapshot->timeSignaturePoints.empty()
-        ? 0.0 : snapshot->timeSignaturePoints.back().signature.numerator;
+    auto* masterTrack = appModel.getMasterTimelineTrack();
+    if (!masterTrack) return;
 
-    const std::string signature = std::format("{}:{}:{:.6f}:{:.6f}:{:.6f}:{:.6f}:{:.6f}",
-        snapshot->tempoPoints.size(),
-        snapshot->timeSignaturePoints.size(),
-        snapshot->maxTimeSeconds,
-        lastTempoTime,
-        lastTempoBpm,
-        lastSigTime,
-        lastSigNum);
+    const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
 
-    if (signature != masterTrackSignature_) {
+    // Gather individual clips; sort by timeline position so lanes are stable.
+    auto clips = masterTrack->clipManager().getAllClips();
+    std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
+        return a.position.samples < b.position.samples;
+    });
+
+    // Signature covers each clip's id, position, duration, and name.
+    std::string signature;
+    for (const auto& clip : clips)
+        signature += std::format("{}:{}:{}:{};",
+            clip.clipId, clip.position.samples, clip.durationSamples, clip.name);
+
+    const bool signatureChanged = (signature != masterTrackSignature_);
+    if (!signatureChanged && masterTrackSectionCreated_) return;
+
+    if (signatureChanged) {
         masterTrackSignature_ = signature;
-        masterTrackSnapshot_ = snapshot;
         rebuildTempoSegments(masterTrackSnapshot_);
+    }
 
-        std::vector<SequenceEditor::ClipRow> rows;
+    // Build one ClipRow per master-track clip so they can be moved / deleted independently.
+    std::vector<SequenceEditor::ClipRow> rows;
+    for (const auto& clip : clips) {
         SequenceEditor::ClipRow row;
-        row.clipId = kMasterTrackClipId;
-        row.trackReferenceId = "master_track";
+        row.clipId              = clip.clipId;
+        row.trackReferenceId   = "master_track";
         row.anchorReferenceId.clear();
-        row.anchorOrigin = "Start";
-        row.position = "+0.000s";
-        row.isMidiClip = false;
-        row.isMasterTrack = true;
-        row.name = snapshot->empty() ? "No Meta Events" : "SMF Meta Events";
-        row.filename = "-";
-        row.filepath = "";
-        const double durationSeconds = std::max(1.0, snapshot->maxTimeSeconds);
-        row.duration = std::format("{:.3f}s", durationSeconds);
-        row.timelineStart = toTimelineFrame(secondsToTimelineUnits(0.0));
-        row.timelineEnd = std::max(row.timelineStart + 1, toTimelineFrame(secondsToTimelineUnits(durationSeconds)));
+        row.anchorOrigin       = "Start";
+        row.position           = "+0.000s";
+        row.isMidiClip         = false;
+        row.isMasterTrack      = true;
+        row.name     = clip.name.empty() ? "SMF Meta Events" : clip.name;
+        row.filename = clip.filepath.empty() ? "-" : std::filesystem::path(clip.filepath).filename().string();
+        row.filepath = clip.filepath;
+
+        const double startSeconds    = static_cast<double>(clip.position.samples) / sampleRate;
+        const double durationSeconds = clip.durationSamples > 0
+            ? static_cast<double>(clip.durationSamples) / sampleRate
+            : std::max(1.0, snapshot->maxTimeSeconds - startSeconds);
+        row.duration       = std::format("{:.3f}s", durationSeconds);
+        row.timelineStart  = toTimelineFrame(secondsToTimelineUnits(startSeconds));
+        row.timelineEnd    = std::max(row.timelineStart + 1,
+                                      toTimelineFrame(secondsToTimelineUnits(startSeconds + durationSeconds)));
+
+        // Extract per-clip tempo / time-signature events for the waveform preview.
+        auto sourceNode = masterTrack->getSourceNode(clip.sourceNodeInstanceId);
+        auto* midiNode  = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
         std::vector<ClipPreview::TempoPoint> tempoPoints;
-        tempoPoints.reserve(snapshot->tempoPoints.size());
-        for (const auto& point : snapshot->tempoPoints)
-            tempoPoints.push_back(ClipPreview::TempoPoint{point.timeSeconds, point.bpm});
         std::vector<ClipPreview::TimeSignaturePoint> sigPoints;
-        sigPoints.reserve(snapshot->timeSignaturePoints.size());
-        for (const auto& sig : snapshot->timeSignaturePoints) {
-            sigPoints.push_back(ClipPreview::TimeSignaturePoint{
-                sig.timeSeconds,
-                sig.signature.numerator,
-                sig.signature.denominator
-            });
+        if (midiNode) {
+            const auto& tSamples = midiNode->tempoChangeSamples();
+            const auto& tEvents  = midiNode->tempoChanges();
+            for (size_t i = 0; i < std::min(tSamples.size(), tEvents.size()); ++i)
+                tempoPoints.push_back({static_cast<double>(tSamples[i]) / sampleRate, tEvents[i].bpm});
+
+            const auto& sSamples = midiNode->timeSignatureChangeSamples();
+            const auto& sEvents  = midiNode->timeSignatureChanges();
+            for (size_t i = 0; i < std::min(sSamples.size(), sEvents.size()); ++i)
+                sigPoints.push_back({static_cast<double>(sSamples[i]) / sampleRate,
+                                     sEvents[i].numerator, sEvents[i].denominator});
         }
         row.customPreview = createMasterMetaPreview(std::move(tempoPoints), std::move(sigPoints), durationSeconds);
         rows.push_back(std::move(row));
+    }
 
-        sequenceEditor_.refreshClips(uapmd::kMasterTrackIndex, rows);
+    if (rows.empty()) {
+        // Placeholder row when the master track has no clips yet.
+        SequenceEditor::ClipRow row;
+        row.clipId         = kMasterTrackClipId;
+        row.trackReferenceId = "master_track";
+        row.isMasterTrack  = true;
+        row.name           = "No Meta Events";
+        row.filename       = "-";
+        const double dur   = std::max(1.0, snapshot->maxTimeSeconds);
+        row.timelineStart  = toTimelineFrame(secondsToTimelineUnits(0.0));
+        row.timelineEnd    = std::max(row.timelineStart + 1, toTimelineFrame(secondsToTimelineUnits(dur)));
+        row.customPreview  = createMasterMetaPreview({}, {}, dur);
+        rows.push_back(std::move(row));
+    }
 
-        // Refresh all regular tracks since tempo segments changed
-        auto& appModel = uapmd::AppModel::instance();
+    sequenceEditor_.refreshClips(uapmd::kMasterTrackIndex, rows);
+    masterTrackSectionCreated_ = true;
+
+    // Only refresh regular tracks when tempo segments actually changed.
+    if (signatureChanged) {
         auto tracks = appModel.getTimelineTracks();
         for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
             if (!appModel.isTrackHidden(i))
                 refreshSequenceEditorForTrack(i);
         }
-    } else {
-        masterTrackSnapshot_ = snapshot;
     }
-
-    ImGui::PushID("MasterTrackRow");
-    if (ImGui::BeginTable("##MasterTrackTable", 2, ImGuiTableFlags_SizingFixedFit)) {
-        ImGui::TableSetupColumn("Controls", ImGuiTableColumnFlags_WidthFixed, 160.0f * context.uiScale);
-        ImGui::TableSetupColumn("Timeline", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableNextRow();
-
-        ImGui::TableSetColumnIndex(0);
-        ImGui::Separator();
-        ImGui::TextUnformatted("Master Track");
-        ImGui::Spacing();
-        if (renderIconButtonWithTooltip(std::format("{}##MasterTrackClips", icons::Clips).c_str(), "Edit clips"))
-            sequenceEditor_.showWindow(uapmd::kMasterTrackIndex);
-        ImGui::SameLine();
-        if (renderIconButtonWithTooltip(std::format("{}##MasterTrackGraph", icons::Graph).c_str(), "Show plugin graph")) {
-            if (pluginGraphEditor_.isVisible(uapmd::kMasterTrackIndex))
-                pluginGraphEditor_.hideMasterTrack();
-            else
-                pluginGraphEditor_.showMasterTrack();
-        }
-        if (ImGui::Button("Markers..."))
-            showMasterMarkerEditor();
-
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto* masterTrack = sequencer.engine()->masterTrack();
-        std::vector<int32_t> validInstances;
-        if (masterTrack) {
-            auto& ids = masterTrack->orderedInstanceIds();
-            validInstances.reserve(ids.size());
-            for (int32_t instanceId : ids) {
-                if (sequencer.engine()->getPluginInstance(instanceId))
-                    validInstances.push_back(instanceId);
-            }
-        }
-
-        std::string pluginLabel = "Add Plugin";
-        if (!validInstances.empty()) {
-            if (auto* instance = sequencer.engine()->getPluginInstance(validInstances.front()))
-                pluginLabel = instance->displayName();
-        }
-
-        std::string pluginPopupId = "MasterTrackActions";
-        if (ImGui::Button(std::format("{}...", pluginLabel).c_str()))
-            ImGui::OpenPopup(pluginPopupId.c_str());
-        if (ImGui::BeginPopup(pluginPopupId.c_str())) {
-            if (masterTrack) {
-                for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
-                    int32_t instanceId = validInstances[static_cast<size_t>(i)];
-                    auto* instance = sequencer.engine()->getPluginInstance(instanceId);
-                    if (!instance)
-                        continue;
-                    std::string pluginName = instance->displayName();
-
-                    bool detailsVisible = instanceDetails_.isVisible(instanceId);
-                    std::string detailsLabel = std::format("{} {} Details##details{}",
-                                                           detailsVisible ? "Hide" : "Show",
-                                                           pluginName,
-                                                           instanceId);
-                    if (ImGui::MenuItem(detailsLabel.c_str())) {
-                        if (detailsVisible)
-                            instanceDetails_.hideWindow(instanceId);
-                        else
-                            instanceDetails_.showWindow(instanceId);
-                    }
-
-                    // Show|Hide GUI button
-                    if (callbacks_.buildTrackInstanceInfo) {
-                        if (auto trackInstance = callbacks_.buildTrackInstanceInfo(instanceId)) {
-                            bool disableShowUIButton = !trackInstance->hasUI;
-                            if (disableShowUIButton)
-                                ImGui::BeginDisabled();
-                            std::string uiLabel = std::format("{} {} GUI##gui{}",
-                                                              trackInstance->uiVisible ? "Hide" : "Show",
-                                                              pluginName,
-                                                              instanceId);
-                            if (ImGui::MenuItem(uiLabel.c_str())) {
-                                if (trackInstance->uiVisible)
-                                    uapmd::AppModel::instance().hidePluginUI(instanceId);
-                                else
-                                    uapmd::AppModel::instance().requestShowPluginUI(instanceId);
-                            }
-                            if (disableShowUIButton)
-                                ImGui::EndDisabled();
-                        }
-                    }
-                }
-
-                if (!validInstances.empty()) {
-                    ImGui::Separator();
-                    for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
-                        int32_t instanceId = validInstances[static_cast<size_t>(i)];
-                        auto* instance = sequencer.engine()->getPluginInstance(instanceId);
-                        if (!instance)
-                            continue;
-                        std::string pluginName = instance->displayName();
-
-                        std::string deleteLabel = std::format("Delete {} (at [{}])##delete{}",
-                                                              pluginName,
-                                                              i + 1,
-                                                              instanceId);
-                        if (ImGui::MenuItem(deleteLabel.c_str())) {
-                            if (callbacks_.handleRemoveInstance)
-                                callbacks_.handleRemoveInstance(instanceId);
-                        }
-                    }
-                    ImGui::Separator();
-                }
-            }
-
-            if (ImGui::MenuItem("Add Plugin")) {
-                pluginSelector_.setTargetMasterTrack(uapmd::kMasterTrackIndex);
-                showPluginSelectorWindow_ = true;
-            }
-            ImGui::EndPopup();
-        }
-
-        ImGui::TableSetColumnIndex(1);
-        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(uapmd::kMasterTrackIndex, context.uiScale);
-        sequenceEditor_.renderTimelineInline(uapmd::kMasterTrackIndex, context, timelineHeight);
-
-        ImGui::EndTable();
-    }
-    ImGui::PopID();
 }
 
-void TimelineEditor::renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context) {
+void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& legendArea) {
+    auto& sequencer = uapmd::AppModel::instance().sequencer();
+    auto tracksRef = sequencer.engine()->tracks();
+    SequencerTrack* track = nullptr;
+    if (trackIndex == uapmd::kMasterTrackIndex)
+        track = sequencer.engine()->masterTrack();
+    else if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracksRef.size()))
+        track = tracksRef[trackIndex];
+
+    std::vector<int32_t> validInstances;
+    if (track) {
+        auto& ids = track->orderedInstanceIds();
+        validInstances.reserve(ids.size());
+        for (int32_t instanceId : ids)
+            if (sequencer.engine()->getPluginInstance(instanceId))
+                validInstances.push_back(instanceId);
+    }
+
+    std::string pluginLabel = "Add Plugin";
+    if (!validInstances.empty())
+        if (auto* instance = sequencer.engine()->getPluginInstance(validInstances.front()))
+            pluginLabel = instance->displayName();
+
+    std::string popupId = std::format("TrackActions##{}", trackIndex);
+    std::string clipPopupId = std::format("ClipActions##{}", trackIndex);
+
+    const float pad = 4.0f * currentUiScale_;
+    const float legendWidth = legendArea.GetWidth();
+    ImGui::PushClipRect(legendArea.Min, legendArea.Max, true);
+    ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, legendArea.Min.y + pad));
     ImGui::PushID(trackIndex);
-    if (ImGui::BeginTable("##TrackRowTable", 2, ImGuiTableFlags_SizingFixedFit)) {
-        ImGui::TableSetupColumn("Controls", ImGuiTableColumnFlags_WidthFixed, 160.0f * context.uiScale);
-        ImGui::TableSetupColumn("Timeline", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableNextRow();
 
-        // Control column
-        ImGui::TableSetColumnIndex(0);
-        ImGui::Separator();
-        auto& sequencer = uapmd::AppModel::instance().sequencer();
-        auto tracksRef = sequencer.engine()->tracks();
-        SequencerTrack* track = (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracksRef.size()))
-            ? tracksRef[trackIndex]
-            : nullptr;
-        std::vector<int32_t> validInstances;
-        if (track) {
-            auto& ids = track->orderedInstanceIds();
-            validInstances.reserve(ids.size());
-            for (int32_t instanceId : ids) {
-                if (sequencer.engine()->getPluginInstance(instanceId))
-                    validInstances.push_back(instanceId);
-            }
-        }
-        std::string pluginLabel = "Add Plugin";
-        if (!validInstances.empty()) {
-            if (auto* instance = sequencer.engine()->getPluginInstance(validInstances.front()))
-                pluginLabel = instance->displayName();
-        }
-
-        std::string popupId = std::format("TrackActions##{}", trackIndex);
-        std::string clipPopupId = std::format("ClipActions##{}", trackIndex);
-
-        if (renderIconButtonWithTooltip(std::format("{}##TrackClips{}", icons::Clips, trackIndex).c_str(), "Edit clips"))
-            ImGui::OpenPopup(clipPopupId.c_str());
+    // Row 1: Clips + Graph + [Bypass] + Delete
+    if (renderIconButtonWithTooltip(std::format("{}##LegClips{}", icons::Clips, trackIndex).c_str(), "Edit clips"))
+        ImGui::OpenPopup(clipPopupId.c_str());
+    ImGui::SameLine();
+    if (renderIconButtonWithTooltip(std::format("{}##LegGraph{}", icons::Graph, trackIndex).c_str(), "Show plugin graph")) {
+        if (pluginGraphEditor_.isVisible(trackIndex))
+            pluginGraphEditor_.hideTrack(trackIndex);
+        else
+            pluginGraphEditor_.showTrack(trackIndex);
+    }
+    if (track) {
         ImGui::SameLine();
-        if (renderIconButtonWithTooltip(std::format("{}##TrackGraph{}", icons::Graph, trackIndex).c_str(), "Show plugin graph")) {
-            if (pluginGraphEditor_.isVisible(trackIndex))
-                pluginGraphEditor_.hideTrack(trackIndex);
-            else
-                pluginGraphEditor_.showTrack(trackIndex);
-        }
-        if (track) {
-            bool bypassed = track->bypassed();
-            if (bypassed)
-                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-            const char* toggleIcon = bypassed ? uapmd::gui::icons::ToggleOff : uapmd::gui::icons::ToggleOn;
-            std::string toggleLabel = std::format("{}##TrackBypass{}", toggleIcon, trackIndex);
-            if (ImGui::Button(toggleLabel.c_str()))
-                track->bypassed(!bypassed);
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(bypassed ? "Track bypassed (click to enable)" : "Bypass track");
-            if (bypassed)
-                ImGui::PopStyleColor();
-            ImGui::SameLine();
-        }
-        if (ImGui::Button(uapmd::gui::icons::DeleteTrack))
-            deleteTrack(trackIndex);
+        bool bypassed = track->bypassed();
+        if (bypassed)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        const char* toggleIcon = bypassed ? uapmd::gui::icons::ToggleOff : uapmd::gui::icons::ToggleOn;
+        if (ImGui::Button(std::format("{}##LegByp{}", toggleIcon, trackIndex).c_str()))
+            track->bypassed(!bypassed);
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Delete track");
+            ImGui::SetTooltip("%s", bypassed ? "Track bypassed (click to enable)" : "Bypass track");
+        if (bypassed)
+            ImGui::PopStyleColor();
+        if (trackIndex != uapmd::kMasterTrackIndex) {
+            ImGui::SameLine();
+            if (ImGui::Button(std::format("{}##LegDel{}", uapmd::gui::icons::DeleteTrack, trackIndex).c_str()))
+                deleteTrack(trackIndex);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Delete track");
+        }
+    }
 
-        if (ImGui::Button(std::format("{}...", pluginLabel).c_str()))
-            ImGui::OpenPopup(popupId.c_str());
-        if (ImGui::BeginPopup(clipPopupId.c_str())) {
-            if (ImGui::MenuItem("Edit Clips...", nullptr, sequenceEditor_.isVisible(trackIndex))) {
-                sequenceEditor_.showWindow(trackIndex);
-                refreshSequenceEditorForTrack(trackIndex);
-            }
+    // Row 2: Plugin context button (full legend width)
+    ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, ImGui::GetCursorScreenPos().y));
+    const float buttonWidth = legendWidth - pad * 2;
+    if (ImGui::Button(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(buttonWidth, 0)))
+        ImGui::OpenPopup(popupId.c_str());
+
+    // Clips popup
+    if (ImGui::BeginPopup(clipPopupId.c_str())) {
+        const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
+        if (ImGui::MenuItem("Edit Clips...", nullptr, sequenceEditor_.isVisible(trackIndex))) {
+            sequenceEditor_.showWindow(trackIndex);
+            refreshSequenceEditorForTrack(trackIndex);
+        }
+        if (!isMasterTrack) {
             ImGui::Separator();
             if (ImGui::MenuItem("New Clip"))
                 addBlankMidi2ClipToTrack(trackIndex);
             ImGui::Separator();
             if (ImGui::MenuItem("Import Audio Clip..."))
                 addAudioClipToTrack(trackIndex);
-            if (ImGui::MenuItem("Import SMF as Clip..."))
-                addSmfClipToTrack(trackIndex);
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Import SMF as Clip..."))
+            addSmfClipToTrack(trackIndex);
+        if (!isMasterTrack) {
             if (ImGui::MenuItem("Import SMF2Clip..."))
                 addSmf2ClipToTrack(trackIndex);
             ImGui::Separator();
             if (ImGui::MenuItem("Clear All"))
-                context.clearAllClips(trackIndex);
-            ImGui::EndPopup();
+                clearAllClipsFromTrack(trackIndex);
         }
-        if (ImGui::BeginPopup(popupId.c_str())) {
-            if (track) {
+        ImGui::EndPopup();
+    }
+
+    // Plugin popup
+    if (ImGui::BeginPopup(popupId.c_str())) {
+        if (track) {
+            for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
+                int32_t instanceId = validInstances[static_cast<size_t>(i)];
+                auto* instance = sequencer.engine()->getPluginInstance(instanceId);
+                if (!instance)
+                    continue;
+                std::string pluginName = instance->displayName();
+
+                bool detailsVisible = instanceDetails_.isVisible(instanceId);
+                if (ImGui::MenuItem(std::format("{} {} Details##details{}", detailsVisible ? "Hide" : "Show", pluginName, instanceId).c_str())) {
+                    if (detailsVisible)
+                        instanceDetails_.hideWindow(instanceId);
+                    else
+                        instanceDetails_.showWindow(instanceId);
+                }
+
+                if (callbacks_.buildTrackInstanceInfo) {
+                    if (auto trackInstance = callbacks_.buildTrackInstanceInfo(instanceId)) {
+                        bool disableShowUIButton = !trackInstance->hasUI;
+                        if (disableShowUIButton)
+                            ImGui::BeginDisabled();
+                        if (ImGui::MenuItem(std::format("{} {} GUI##gui{}", trackInstance->uiVisible ? "Hide" : "Show", pluginName, instanceId).c_str())) {
+                            if (trackInstance->uiVisible)
+                                uapmd::AppModel::instance().hidePluginUI(instanceId);
+                            else
+                                uapmd::AppModel::instance().requestShowPluginUI(instanceId);
+                        }
+                        if (disableShowUIButton)
+                            ImGui::EndDisabled();
+                    }
+                }
+            }
+
+            if (!validInstances.empty()) {
+                ImGui::Separator();
                 for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
                     int32_t instanceId = validInstances[static_cast<size_t>(i)];
                     auto* instance = sequencer.engine()->getPluginInstance(instanceId);
                     if (!instance)
                         continue;
-                    std::string pluginName = instance->displayName();
-
-                    bool detailsVisible = instanceDetails_.isVisible(instanceId);
-                    std::string detailsLabel = std::format("{} {} Details##details{}",
-                                                           detailsVisible ? "Hide" : "Show",
-                                                           pluginName,
-                                                           instanceId);
-                    if (ImGui::MenuItem(detailsLabel.c_str())) {
-                        if (detailsVisible)
-                            instanceDetails_.hideWindow(instanceId);
-                        else
-                            instanceDetails_.showWindow(instanceId);
-                    }
-
-                    // Show|Hide GUI button
-                    if (callbacks_.buildTrackInstanceInfo) {
-                        if (auto trackInstance = callbacks_.buildTrackInstanceInfo(instanceId)) {
-                            bool disableShowUIButton = !trackInstance->hasUI;
-                            if (disableShowUIButton)
-                                ImGui::BeginDisabled();
-                            std::string uiLabel = std::format("{} {} GUI##gui{}",
-                                                              trackInstance->uiVisible ? "Hide" : "Show",
-                                                              pluginName,
-                                                              instanceId);
-                            if (ImGui::MenuItem(uiLabel.c_str())) {
-                                if (trackInstance->uiVisible)
-                                    uapmd::AppModel::instance().hidePluginUI(instanceId);
-                                else
-                                    uapmd::AppModel::instance().requestShowPluginUI(instanceId);
-                            }
-                            if (disableShowUIButton)
-                                ImGui::EndDisabled();
-                        }
-                    }
+                    if (ImGui::MenuItem(std::format("Delete {} (at [{}])##delete{}", instance->displayName(), i + 1, instanceId).c_str()))
+                        if (callbacks_.handleRemoveInstance)
+                            callbacks_.handleRemoveInstance(instanceId);
                 }
-
-                if (!validInstances.empty()) {
-                    ImGui::Separator();
-                    for (int i = 0; i < static_cast<int>(validInstances.size()); ++i) {
-                        int32_t instanceId = validInstances[static_cast<size_t>(i)];
-                        auto* instance = sequencer.engine()->getPluginInstance(instanceId);
-                        if (!instance)
-                            continue;
-                        std::string pluginName = instance->displayName();
-
-                        std::string deleteLabel = std::format("Delete {} (at [{}])##delete{}",
-                                                              pluginName,
-                                                              i + 1,
-                                                              instanceId);
-                        if (ImGui::MenuItem(deleteLabel.c_str())) {
-                            if (callbacks_.handleRemoveInstance)
-                                callbacks_.handleRemoveInstance(instanceId);
-                        }
-                    }
-                    ImGui::Separator();
-                }
+                ImGui::Separator();
             }
-
-            if (ImGui::MenuItem("Add Plugin")) {
-                pluginSelector_.setTargetTrackIndex(trackIndex);
-                showPluginSelectorWindow_ = true;
-            }
-
-            ImGui::EndPopup();
         }
 
-        // Timeline column
-        ImGui::TableSetColumnIndex(1);
-        const float timelineHeight = sequenceEditor_.getInlineTimelineHeight(trackIndex, context.uiScale);
-        sequenceEditor_.renderTimelineInline(trackIndex, context, timelineHeight);
-
-        ImGui::EndTable();
+        if (ImGui::MenuItem("Add Plugin")) {
+            if (trackIndex == uapmd::kMasterTrackIndex)
+                pluginSelector_.setTargetMasterTrack(trackIndex);
+            else
+                pluginSelector_.setTargetTrackIndex(trackIndex);
+            showPluginSelectorWindow_ = true;
+        }
+        ImGui::EndPopup();
     }
+
     ImGui::PopID();
+    ImGui::PopClipRect();
+}
+
+void TimelineEditor::renderTrackRow(int32_t /*trackIndex*/, const SequenceEditor::RenderContext& /*context*/) {
+    // Tracks are rendered via renderUnifiedTimeline; this stub satisfies the vtable.
 }
 
 void TimelineEditor::deleteTrack(int32_t trackIndex) {
@@ -1409,12 +1339,16 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutC
             refreshSequenceEditorForTrack(change.trackIndex);
             break;
         case uapmd::AppModel::TrackLayoutChange::Type::Removed:
-            sequenceEditor_.hideWindow(change.trackIndex);
-            trackContentSignatures_.erase(change.trackIndex);
+            // Defer the reset to the start of the next render() call. Resetting here
+            // would destroy unified_.timeline while DrawTimeline() may still be on the
+            // call stack (deletion can be triggered from within the legend callback).
+            pendingFullReset_ = true;
             break;
         case uapmd::AppModel::TrackLayoutChange::Type::Cleared:
             sequenceEditor_.reset();
             trackContentSignatures_.clear();
+            masterTrackSignature_.clear();
+            masterTrackSectionCreated_ = false;
             break;
     }
 }
@@ -2573,7 +2507,11 @@ void TimelineEditor::addBlankMidi2ClipToTrackAtPosition(int32_t trackIndex, doub
         refreshSequenceEditorForTrack(trackIndex);
 }
 
-void TimelineEditor::addAudioClipToTrack(int32_t trackIndex) {
+void TimelineEditor::addAudioClipToTrack(int32_t trackIndex, double positionSeconds) {
+    if (trackIndex == uapmd::kMasterTrackIndex) {
+        platformError("Unsupported", "The master track only accepts MIDI/SMF clips.");
+        return;
+    }
     std::vector<uapmd::DocumentFilter> filters{
         {"Audio Files", {}, {"*.wav", "*.flac", "*.ogg"}},
         {"WAV Files",   {}, {"*.wav"}},
@@ -2584,11 +2522,13 @@ void TimelineEditor::addAudioClipToTrack(int32_t trackIndex) {
     if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters, false,
-            [this, trackIndex](uapmd::DocumentPickResult result) {
+            [this, trackIndex, positionSeconds](uapmd::DocumentPickResult result) {
                 if (!result.success || result.handles.empty()) return;
                 resolveDocumentHandle(
                     result.handles[0],
-                    [this, trackIndex](const std::filesystem::path& resolved) {
+                    [this, trackIndex, positionSeconds](const std::filesystem::path& resolved) {
+                        auto& appModel = uapmd::AppModel::instance();
+                        const double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
                         auto reader = uapmd::createAudioFileReaderFromPath(resolved.string());
                         if (!reader) {
                             platformError("Load Failed",
@@ -2596,10 +2536,9 @@ void TimelineEditor::addAudioClipToTrack(int32_t trackIndex) {
                             return;
                         }
                         uapmd::TimelinePosition pos;
-                        pos.samples = 0;
+                        pos.samples      = static_cast<int64_t>(std::llround(std::max(0.0, positionSeconds) * sr));
                         pos.legacy_beats = 0.0;
-                        auto r = uapmd::AppModel::instance().addClipToTrack(
-                            trackIndex, pos, std::move(reader), resolved.string());
+                        auto r = appModel.addClipToTrack(trackIndex, pos, std::move(reader), resolved.string());
                         if (!r.success)
                             platformError("Add Clip Failed", r.error);
                         else
@@ -2611,7 +2550,7 @@ void TimelineEditor::addAudioClipToTrack(int32_t trackIndex) {
     }
 }
 
-void TimelineEditor::addSmfClipToTrack(int32_t trackIndex) {
+void TimelineEditor::addSmfClipToTrack(int32_t trackIndex, double positionSeconds) {
     std::vector<uapmd::DocumentFilter> filters{
         {"SMF Files", {}, {"*.mid", "*.midi", "*.smf"}},
         {"All Files", {}, {"*"}}
@@ -2619,16 +2558,17 @@ void TimelineEditor::addSmfClipToTrack(int32_t trackIndex) {
     if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters, false,
-            [this, trackIndex](uapmd::DocumentPickResult result) {
+            [this, trackIndex, positionSeconds](uapmd::DocumentPickResult result) {
                 if (!result.success || result.handles.empty()) return;
                 resolveDocumentHandle(
                     result.handles[0],
-                    [this, trackIndex](const std::filesystem::path& resolved) {
+                    [this, trackIndex, positionSeconds](const std::filesystem::path& resolved) {
+                        auto& appModel = uapmd::AppModel::instance();
+                        const double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
                         uapmd::TimelinePosition pos;
-                        pos.samples = 0;
+                        pos.samples      = static_cast<int64_t>(std::llround(std::max(0.0, positionSeconds) * sr));
                         pos.legacy_beats = 0.0;
-                        auto r = uapmd::AppModel::instance().addClipToTrack(
-                            trackIndex, pos, nullptr, resolved.string());
+                        auto r = appModel.addClipToTrack(trackIndex, pos, nullptr, resolved.string());
                         if (!r.success)
                             platformError("Add Clip Failed", r.error);
                         else

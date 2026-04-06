@@ -3049,6 +3049,26 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
 uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesystem::path& projectFile) {
     ProjectResult result;
 
+    // Master-track plugins own AppModel-level device state, so remove them through
+    // the normal AppModel path before delegating to the engine's project loader.
+    if (auto* mt = sequencer_.engine()->masterTrack()) {
+        auto ids = mt->orderedInstanceIds();
+        for (int32_t instanceId : ids)
+            removePluginInstance(instanceId);
+    }
+
+    // Announce all current plugin instances as removed before the engine discards them.
+    // This lets UI subscribers (instanceDetails windows, plugin UI windows, etc.) clean up
+    // while the engine objects are still alive.
+    {
+        // Regular track plugins (pluginHost() may be null in RemoteEngineProxy mode).
+        if (auto* host = sequencer_.engine()->pluginHost()) {
+            for (int32_t instanceId : host->instanceIds())
+                for (auto& cb : instanceRemoved)
+                    cb(instanceId);
+        }
+    }
+
     // Delegate project loading to SequencerEngine (which owns timeline tracks and plugins)
     auto engineResult = sequencer_.engine()->timeline().loadProject(projectFile);
     if (!engineResult.success) {
@@ -3071,17 +3091,18 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
 
     // Rebuild device entries and notify listeners for each plugin instance
     clearDeviceEntries();
-    sequencer().engine()->functionBlockManager()->deleteEmptyDevices();
+    if (auto* fbm = sequencer().engine()->functionBlockManager())
+        fbm->deleteEmptyDevices();
 
-    auto instanceIds = sequencer_.engine()->pluginHost()->instanceIds();
-    for (int32_t instanceId : instanceIds) {
-        auto result = registerPluginInstanceInternal(instanceId, std::nullopt);
-        if (!result.error.empty()) {
-            std::cerr << "Failed to register plugin instance " << instanceId
-                      << ": " << result.error << std::endl;
-        }
-        for (auto& cb : instanceCreated) {
-            cb(result);
+    if (auto* host = sequencer_.engine()->pluginHost()) {
+        for (int32_t instanceId : host->instanceIds()) {
+            auto result = registerPluginInstanceInternal(instanceId, std::nullopt);
+            if (!result.error.empty()) {
+                std::cerr << "Failed to register plugin instance " << instanceId
+                          << ": " << result.error << std::endl;
+            }
+            for (auto& cb : instanceCreated)
+                cb(result);
         }
     }
 

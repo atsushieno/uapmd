@@ -51,6 +51,11 @@ namespace uapmd {
             }
             return 0xFFu; // all 16 groups taken
         }
+
+        void removeInstance(int32_t instanceId) override {
+            std::erase(instance_ids, instanceId);
+            instance_groups_.erase(instanceId);
+        }
     };
 
     SequencerTrackImpl::SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph) :

@@ -357,6 +357,7 @@ CPMAddPackage(
     GIT_TAG fixes
     GIT_REPOSITORY https://github.com/triplejam/ImTimeline
     DOWNLOAD_ONLY YES
+    PATCHES "${CMAKE_SOURCE_DIR}/external/patches/imtimeline.patch"
 )
 
 # IconFontCppHeaders provides Fontaudio glyph definitions used in the GUI
@@ -674,6 +675,7 @@ if(NOT UAPMD_BUILDING_WASM)
 endif()
 
 target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
+        ${ImTimeline_SOURCE_DIR}/TimelineViews
         ${choc_SOURCE_DIR}
         ${portable-file-dialogs_SOURCE_DIR}
         ${midicci_SOURCE_DIR}/include

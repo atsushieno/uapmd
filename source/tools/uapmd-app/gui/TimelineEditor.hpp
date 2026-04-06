@@ -107,6 +107,7 @@ private:
     // Master track snapshot and signature for change detection
     std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot> masterTrackSnapshot_;
     std::string masterTrackSignature_;
+    bool masterTrackSectionCreated_ = false; // guards first-time refreshClips call
     std::unordered_map<int32_t, std::string> trackContentSignatures_;
 
     // Tempo segments for timeline unit conversion
@@ -126,10 +127,17 @@ private:
     std::function<void(const std::string&, ImVec2)> setNextChildWindowSize_;
     std::function<void(const std::string&)> updateChildWindowSizeState_;
 
+    float currentUiScale_ = 1.0f;
+
+    // Set by handleTrackLayoutChange(Removed) and applied at the top of the next render()
+    // call, safely outside any ongoing ImTimeline::DrawTimeline() call stack.
+    bool pendingFullReset_ = false;
+
     // Internal rendering
     void renderTrackList(const SequenceEditor::RenderContext& context);
     void renderMasterTrackRow(const SequenceEditor::RenderContext& context);
     void renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context);
+    void renderTrackLegendContent(int32_t trackIndex, const ImRect& legendArea);
     void deleteTrack(int32_t trackIndex);
     void syncExternalTimelineChanges();
     std::string buildTrackContentSignature(int32_t trackIndex) const;
@@ -155,8 +163,8 @@ private:
     // Per-type clip import helpers (called from Clips... popup)
     void addBlankMidi2ClipToTrack(int32_t trackIndex);
     void addBlankMidi2ClipToTrackAtPosition(int32_t trackIndex, double positionSeconds);
-    void addAudioClipToTrack(int32_t trackIndex);
-    void addSmfClipToTrack(int32_t trackIndex);
+    void addAudioClipToTrack(int32_t trackIndex, double positionSeconds = 0.0);
+    void addSmfClipToTrack(int32_t trackIndex, double positionSeconds = 0.0);
     void addSmf2ClipToTrack(int32_t trackIndex);
 
     // Returns one PluginParamEntry per plugin instance on the track.

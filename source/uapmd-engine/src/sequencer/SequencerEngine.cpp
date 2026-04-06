@@ -426,8 +426,10 @@ namespace uapmd {
         // delayed destructions won't access freed PluginParameterSupport objects.
         function_block_manager.detachAllOutputMappers();
         function_block_manager.clearAllDevices();
-        // Make sure to clean up tracks before plugin_host so that we don't release plugin instances ahead of these.
+        // Make sure to clean up all track graphs before plugin_host so that
+        // AudioPluginNodeImpl destructors can still touch the live instances.
         tracks_.clear();
+        master_track_.reset();
     }
 
     std::vector<remidy::AudioBusSpec> SequencerEngineImpl::mergeBusSpecs(
@@ -1418,6 +1420,7 @@ namespace uapmd {
             if (!track)
                 continue;
             if (track->graph().removeNodeSimple(instanceId)) {
+                track->removeInstance(instanceId);
                 // NOTE: Empty tracks are intentionally left in place to avoid real-time safety issues.
                 // They have minimal overhead (no plugins to process) and can be removed manually
                 // by calling removeTrack() from a non-audio thread when appropriate.
@@ -1428,6 +1431,7 @@ namespace uapmd {
             }
         }
         if (master_track_ && master_track_->graph().removeNodeSimple(instanceId)) {
+            master_track_->removeInstance(instanceId);
             refreshFunctionBlockMappings();
             reconfigureMixBusContext();
             reconfigureOutputAlignmentBuffers();

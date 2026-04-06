@@ -36,6 +36,7 @@ namespace uapmd {
         virtual void    setInstanceGroup(int32_t instanceId, uint8_t group) = 0;
         virtual uint8_t getInstanceGroup(int32_t instanceId) const = 0; // 0xFF = unknown
         virtual uint8_t findAvailableGroup() const = 0;
+        virtual void removeInstance(int32_t instanceId) = 0;
     };
 
 }

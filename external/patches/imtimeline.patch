@@ -1,0 +1,85 @@
+diff --git a/Timeline.cpp b/Timeline.cpp
+index dbe63d4..4732318 100644
+--- a/Timeline.cpp
++++ b/Timeline.cpp
+@@ -470,7 +470,7 @@ bool Timeline::DrawTimeline()
+     ImVec2 childFrameSize(canvas_size.x, canvas_size.y - 8.f - headerRect.GetHeight() - (mStyle.HasScrollbar ? static_cast<int>(mStyle.ScrollbarThickness) : 0.f));
+ 
+     ImGui::PushStyleColor(ImGuiCol_FrameBg, 0);
+-    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle);
++    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle, ImGuiWindowFlags_NoScrollWithMouse);
+ 
+     const ImVec2 contentMin = ImGui::GetItemRectMin();
+     const ImVec2 contentMax = ImGui::GetItemRectMax();
+@@ -656,6 +656,9 @@ void Timeline::DrawScrollbar()
+     const float barWidthInPixels = barWidthRatio * (canvas_size.x - mStyle.LegendWidth);
+ 
+     ImGui::InvisibleButton("scrollBar", scrollBarSize);
++    // Capture click state immediately: in ImGui 1.89+ ButtonBehavior claims input ownership
++    // so IsMouseClicked(0) returns false by the time we check it below.
++    bool scrollBarItemClicked = ImGui::IsItemClicked(0);
+     ImVec2 scrollBarMin = ImGui::GetItemRectMin();
+     ImVec2 scrollBarMax = ImGui::GetItemRectMax();
+ 
+@@ -698,7 +701,7 @@ void Timeline::DrawScrollbar()
+             mStartFrame = ImClamp(mStartFrame, mFrameMin, ImMax(mFrameMax - mVisibleFrameCount, mFrameMin));
+         }
+     } else {
+-        if (scrollBarThumb.Contains(mInputData.MousePos) && ImGui::IsMouseClicked(0)) {
++        if (scrollBarThumb.Contains(mInputData.MousePos) && scrollBarItemClicked) {
+             mInputData.IsMovingScrollBar = true;
+             mPanningData.panningViewSource = mInputData.MousePos;
+             mPanningData.panningViewFrame = -mStartFrame;
+@@ -1122,7 +1125,9 @@ void Timeline::CollectInputData(sInputData& a_outInputData, f32 aDeltaTime)
+     mInputData.MousePos = io.MousePos;
+     mInputData.LeftMouseDown = io.MouseDown[0];
+     mInputData.RightMouseDown = io.MouseDown[1];
+-    mInputData.MouseScrollVertical = io.MouseWheel;
++    // Use horizontal scroll axis (trackpad swipe / Shift+wheel) for timeline pan so that
++    // the vertical axis remains available for the outer container's track-list scroll.
++    mInputData.MouseScrollVertical = io.MouseWheelH != 0.0f ? io.MouseWheelH : 0.0f;
+     // mInputData.MouseDownDuration += io.MouseDownDuration[0];
+ 
+     if (ImGui::IsKeyDown(ImGuiKey_Delete) || ImGui::IsKeyDown(ImGuiKey_Backspace)) {
+diff --git a/TimelineCore/TimelineDefines.h b/TimelineCore/TimelineDefines.h
+index 7f769bc..94a12ed 100644
+--- a/TimelineCore/TimelineDefines.h
++++ b/TimelineCore/TimelineDefines.h
+@@ -3,6 +3,7 @@
+ #include "../Core/ImTimelineLog.h"
+ 
+ #include <bitset>
++#include <map>
+ 
+ #define IMTIMELINE_VERSION_STR "0.2.0 WIP"
+ #define IMTIMELINE_VERSION_NUM 002010
+@@ -62,6 +63,7 @@ struct sGenericDisplayProperties {
+     f32 Spacing = 0.0f;
+     f32 BorderRadius = 0.0f;
+     f32 BorderThickness = 1;
++    f32 yOffset = 0.0f; // vertical offset within section for lane (overlap) layout
+ };
+ 
+ class CustomNodeBase;
+@@ -181,7 +183,7 @@ struct sTimelineSection {
+     void OnFinalize();
+ };
+ 
+-using TimelineDataMap = std::unordered_map<u32, sTimelineSection>;
++using TimelineDataMap = std::map<u32, sTimelineSection>;
+ 
+ namespace ImTimeline {
+ class Timeline;
+diff --git a/TimelineViews/HorizontalNodeView.cpp b/TimelineViews/HorizontalNodeView.cpp
+index db75acd..16f4833 100644
+--- a/TimelineViews/HorizontalNodeView.cpp
++++ b/TimelineViews/HorizontalNodeView.cpp
+@@ -74,7 +74,7 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
+ 
+         s32 scale = pContext->GetScale();
+ 
+-        ImVec2 slotP1(timelinePanelRect.Min.x + node.start * scale, timelinePanelRect.Min.y);
++        ImVec2 slotP1(timelinePanelRect.Min.x + node.start * scale, timelinePanelRect.Min.y + node.displayProperties.yOffset);
+         ImVec2 slotP2(timelinePanelRect.Min.x + node.end * scale + scale, slotP1.y + sectionHeight - node.displayProperties.AccentThickness);
+ 
+         ImRect nodeRect = ImRect(slotP1, slotP2);
