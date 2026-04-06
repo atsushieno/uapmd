@@ -11,15 +11,21 @@ remidy::PluginInstanceAAP::PluginInstanceAAP(
 
 remidy::StatusCode
 remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationRequest &configuration) {
-    // FIXME: not verified at all.
+    auto* instance = aapInstance();
+    if (!instance)
+        return StatusCode::FAILED_TO_INSTANTIATE;
 
-    aapInstance()->prepare(configuration.bufferSizeInSamples);
+    instance->prepare(configuration.bufferSizeInSamples);
+    if (instance->getInstanceState() != aap::PLUGIN_INSTANTIATION_STATE_INACTIVE ||
+        instance->getAudioPluginBuffer() == nullptr)
+        return StatusCode::FAILED_TO_INSTANTIATE;
+
     // generate port mappings
     remidy_to_aap_port_index_map_audio_in.clear();
     remidy_to_aap_port_index_map_audio_out.clear();
 
-    for (auto i = 0, n = aapInstance()->getNumPorts(); i < n; i++) {
-        auto port = aapInstance()->getPort(i);
+    for (auto i = 0, n = instance->getNumPorts(); i < n; i++) {
+        auto port = instance->getPort(i);
         if (port->getContentType() == AAP_CONTENT_TYPE_AUDIO) {
             if (port->getPortDirection() == AAP_PORT_DIRECTION_INPUT)
                 remidy_to_aap_port_index_map_audio_in.push_back(i);
@@ -38,21 +44,31 @@ remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationReques
 }
 
 remidy::StatusCode remidy::PluginInstanceAAP::startProcessing() {
-    aapInstance()->activate();
+    auto* instance = aapInstance();
+    if (!instance)
+        return StatusCode::FAILED_TO_START_PROCESSING;
+    instance->activate();
+    if (instance->getInstanceState() != aap::PLUGIN_INSTANTIATION_STATE_ACTIVE)
+        return StatusCode::FAILED_TO_START_PROCESSING;
     return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::PluginInstanceAAP::stopProcessing() {
-    aapInstance()->deactivate();
+    auto* instance = aapInstance();
+    if (!instance)
+        return StatusCode::FAILED_TO_STOP_PROCESSING;
+    instance->deactivate();
     return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::PluginInstanceAAP::process(remidy::AudioProcessContext &process) {
-    // FIXME: not verified at all.
-
     size_t aapIdx;
     auto instance = aapInstance();
+    if (!instance)
+        return StatusCode::FAILED_TO_PROCESS;
     auto buffer = instance->getAudioPluginBuffer();
+    if (!buffer)
+        return StatusCode::FAILED_TO_PROCESS;
 
     aapIdx = 0;
     for (auto iBus = 0, nBus = process.audioInBusCount(); iBus < nBus; iBus++) {

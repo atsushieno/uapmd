@@ -1338,15 +1338,20 @@ void MainWindow::refreshInstances() {
 void MainWindow::refreshPluginList() {
     std::vector<PluginEntry> plugins;
 
-    auto& scanTool = uapmd::AppModel::instance().pluginScanTool();
-    auto rawEntries = scanTool.catalog().getPlugins();
+    auto* host = uapmd::AppModel::instance().sequencer().engine()->pluginHost();
+    if (!host) {
+        timelineEditor_.pluginSelector().setPlugins(plugins);
+        return;
+    }
+
+    auto rawEntries = host->pluginCatalogEntries();
     plugins.reserve(rawEntries.size());
-    for (auto* plugin : rawEntries) {
+    for (auto& plugin : rawEntries) {
         plugins.push_back({
-            .format = plugin->format(),
-            .id = plugin->pluginId(),
-            .name = plugin->displayName(),
-            .vendor = plugin->vendorName()
+            .format = plugin.format(),
+            .id = plugin.pluginId(),
+            .name = plugin.displayName(),
+            .vendor = plugin.vendorName()
         });
     }
 

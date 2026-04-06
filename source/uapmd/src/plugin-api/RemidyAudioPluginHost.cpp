@@ -4,6 +4,9 @@
 #include <functional>
 #include <mutex>
 #include <ranges>
+#if ANDROID
+#include <android/log.h>
+#endif
 #if _WIN32
 #include <Windows.h>
 #endif
@@ -377,6 +380,11 @@ std::unique_ptr<uapmd::AudioPluginHostingAPI> uapmd::AudioPluginHostingAPI::crea
 
 uapmd::RemidyAudioPluginHost::RemidyAudioPluginHost() {
     scanning = remidy_tooling::PluginScanTool::create();
+#if ANDROID
+    // Android has no persistent plugin cache path here. Populate fast-scan entries
+    // eagerly so formats like AAP appear in the catalog without a manual scan.
+    scanning->performPluginScanning(true, remidy_tooling::ScanMode::InProcess, false);
+#endif
 #if _WIN32
     // VST3 plugins (especially NI and JUCE-based ones) use COM and require STA.
     // Initialize COM before any DLL loading so initDll / GetPluginFactory run
@@ -415,8 +423,13 @@ void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
 
 void uapmd::RemidyAudioPluginHost::reloadPluginCatalogFromCache() {
     auto& cacheFile = scanning->pluginListCacheFile();
-    if (cacheFile.empty())
+    if (cacheFile.empty()) {
+#if ANDROID
+        scanning->catalog().clear();
+        scanning->performPluginScanning(true, remidy_tooling::ScanMode::InProcess, false);
+#endif
         return;
+    }
 
     std::error_code ec;
     if (!std::filesystem::exists(cacheFile, ec) || ec)

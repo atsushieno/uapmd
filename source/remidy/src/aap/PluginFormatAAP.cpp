@@ -1,6 +1,5 @@
 #include "PluginFormatAAP.hpp"
 #include "detail/plugin-format-aap.hpp"
-#include "../AndroidUiBridge.hpp"
 
 #include <aap/core/host/plugin-client-system.h>
 #include <aap/core/host/android/audio-plugin-host-android.h>
@@ -13,28 +12,23 @@ PluginFormatAAP::create() {
 }
 
 PluginFormatAAPImpl::PluginFormatAAPImpl() {
-    runOnAndroidUiThreadSync([&] {
-        plugin_list_snapshot = aap::PluginListSnapshot::queryServices();
-        // FIXME: retrieve serviceConnectorInstanceId, not 0
-        plugin_client_connections = aap::getPluginConnectionListByConnectorInstanceId(0, true);
-        android_host = std::make_unique<aap::PluginClient>(plugin_client_connections, &plugin_list_snapshot);
-    });
+    plugin_list_snapshot = aap::PluginListSnapshot::queryServices();
+    // FIXME: retrieve serviceConnectorInstanceId, not 0
+    plugin_client_connections = aap::getPluginConnectionListByConnectorInstanceId(0, true);
+    android_host = std::make_unique<aap::PluginClient>(plugin_client_connections, &plugin_list_snapshot);
 }
 
 const aap::PluginInformation *
 findPluginInformationFrom(PluginCatalogEntry *info) {
-    const aap::PluginInformation* pluginInfo = nullptr;
-    runOnAndroidUiThreadSync([&] {
-        auto list = aap::PluginListSnapshot::queryServices();
-        pluginInfo = list.getPluginInformation(info->pluginId());
-    });
-    return pluginInfo;
+    auto list = aap::PluginListSnapshot::queryServices();
+    return list.getPluginInformation(info->pluginId());
 }
 
 void PluginFormatAAPImpl::createInstance(PluginCatalogEntry *info,
                                              PluginFormat::PluginInstantiationOptions options,
                                              std::function<void(std::unique_ptr<PluginInstance>,
                                                                 std::string)> callback) {
+    (void) options;
     const aap::PluginInformation* pluginInfo = findPluginInformationFrom(info);
 
     if (pluginInfo == nullptr) {
@@ -45,10 +39,7 @@ void PluginFormatAAPImpl::createInstance(PluginCatalogEntry *info,
         // that processes instancing and invoke user callback (PluginCreationCallback).
         std::function<void(int32_t,std::string&)> aapCallback = [this, info, callback](int32_t instanceID, std::string& error) {
             auto androidInstance = android_host->getInstanceById(instanceID);
-
-            EventLoop::enqueueTaskOnMainThread([this, info, androidInstance, callback, error]() mutable {
-                callback(std::make_unique<PluginInstanceAAP>(this, info, androidInstance), error);
-            });
+            callback(std::make_unique<PluginInstanceAAP>(this, info, androidInstance), error);
         };
         // FIXME: just like LV2, we have to pass initial sample rate at instantiation time,
         //  which does not match what remidy passes at `createInstance()` (it is passed at `configure()`).
@@ -68,10 +59,7 @@ void PluginFormatAAPImpl::createInstance(PluginCatalogEntry *info,
                 else
                     aapCallback(-1, error);
             };
-            // Not sure if this is good, in aap-juce it must be NON-main thread (as JUCE createPluginInstance() is invoked on the main thread)
-            runOnAndroidUiThread([this, pluginInfo, cb] {
-                aap::PluginClientSystem::getInstance()->ensurePluginServiceConnected(plugin_client_connections, pluginInfo->getPluginPackageName(), cb);
-            });
+            aap::PluginClientSystem::getInstance()->ensurePluginServiceConnected(plugin_client_connections, pluginInfo->getPluginPackageName(), cb);
         }
     }
 }
@@ -79,10 +67,7 @@ void PluginFormatAAPImpl::createInstance(PluginCatalogEntry *info,
 std::vector<PluginCatalogEntry>
 PluginScanningAAP::getAllFastScannablePlugins() {
     std::vector<PluginCatalogEntry> ret{};
-    std::vector<aap::PluginInformation*> infos;
-    runOnAndroidUiThreadSync([&] {
-        infos = aap::PluginClientSystem::getInstance()->getInstalledPlugins();
-    });
+    auto infos = aap::PluginClientSystem::getInstance()->getInstalledPlugins();
     for (auto* plugin : infos) {
         PluginCatalogEntry e{};
         std::string format = owner->name();

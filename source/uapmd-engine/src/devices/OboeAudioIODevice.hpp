@@ -5,8 +5,10 @@
 #include "uapmd/uapmd.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
 #include <oboe/Oboe.h>
+#include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 namespace uapmd {
@@ -29,6 +31,8 @@ namespace uapmd {
         std::vector<float> stabilized_render_scratch_;
         size_t stabilized_buffered_frames_{0};
         uint32_t stabilized_block_frames_{0};
+        std::mutex stream_mutex_{};
+        std::atomic<bool> should_restart_after_error_{false};
 
         uint32_t requested_sample_rate_{48000};
         uint32_t requested_output_channels_{2};
@@ -85,6 +89,7 @@ namespace uapmd {
                                               void* audioData,
                                               int32_t numFrames) override;
         bool onError(oboe::AudioStream* audioStream, oboe::Result error) override;
+        void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
     };
 
     class OboeAudioIODeviceManager : public AudioIODeviceManager {

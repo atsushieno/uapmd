@@ -122,6 +122,7 @@ namespace uapmd {
     }
 
     bool OboeAudioIODevice::openStream() {
+        std::lock_guard<std::mutex> lock(stream_mutex_);
         if (stream_)
             return true;
 
@@ -243,6 +244,7 @@ namespace uapmd {
     }
 
     void OboeAudioIODevice::closeStream() {
+        std::lock_guard<std::mutex> lock(stream_mutex_);
         if (stream_) {
             stream_->close();
             stream_.reset();
@@ -253,9 +255,11 @@ namespace uapmd {
         if (!openStream())
             return -1;
         primeStabilizedBuffer();
+        should_restart_after_error_.store(true);
         const auto result = stream_->requestStart();
         if (result != Result::OK) {
             logger_->logError("OboeAudioIODevice: requestStart failed: %s", convertToText(result));
+            should_restart_after_error_.store(false);
             closeStream();
             return -1;
         }
@@ -264,9 +268,14 @@ namespace uapmd {
     }
 
     uapmd_status_t OboeAudioIODevice::stop() {
+        should_restart_after_error_.store(false);
+        std::lock_guard<std::mutex> lock(stream_mutex_);
         if (stream_) {
-            stream_->requestStop();
-            closeStream();
+            const auto stopResult = stream_->stop();
+            if (stopResult != Result::OK)
+                logger_->logWarning("OboeAudioIODevice: stop failed: %s", convertToText(stopResult));
+            stream_->close();
+            stream_.reset();
         }
         playing_ = false;
         return 0;
@@ -472,22 +481,26 @@ namespace uapmd {
         logger_->logError("OboeAudioIODevice: stream error %s (xrunCount=%d)",
                           convertToText(error), xruns);
         playing_ = false;
-        closeStream(); // safe — Oboe close() is idempotent
-
-        // Attempt to restart the stream so audio recovers from
-        // transient HAL errors and device disconnections.
-        if (openStream()) {
-            const auto startResult = stream_->requestStart();
-            if (startResult == Result::OK) {
-                playing_ = true;
-                logger_->logInfo("OboeAudioIODevice: stream restarted after error");
-                return true;
-            }
-            logger_->logError("OboeAudioIODevice: restart failed: %s",
-                              convertToText(startResult));
-            closeStream();
-        }
+        // Let Oboe perform the stop/close work on its own thread. We will optionally
+        // reopen from onErrorAfterClose(), outside the before-close callback stage.
         return false;
+    }
+
+    void OboeAudioIODevice::onErrorAfterClose(AudioStream* audioStream, Result error) {
+        (void) audioStream;
+        if (!should_restart_after_error_.load())
+            return;
+        logger_->logWarning("OboeAudioIODevice: reopening stream after error %s", convertToText(error));
+        if (!openStream())
+            return;
+        const auto startResult = stream_->requestStart();
+        if (startResult == Result::OK) {
+            playing_ = true;
+            logger_->logInfo("OboeAudioIODevice: stream restarted after close");
+            return;
+        }
+        logger_->logError("OboeAudioIODevice: restart after close failed: %s", convertToText(startResult));
+        closeStream();
     }
 
     void OboeAudioIODeviceManager::initialize(Configuration &config) {
