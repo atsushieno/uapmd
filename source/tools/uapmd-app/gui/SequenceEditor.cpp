@@ -520,34 +520,40 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             }
 
             if (ImGui::BeginPopup(addPopupId.c_str())) {
+                const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
                 if (ImGui::MenuItem("Edit Clips...", nullptr, isVisible(trackIndex))) {
                     showWindow(trackIndex);
                     if (context.refreshClips) context.refreshClips(trackIndex);
                     ImGui::CloseCurrentPopup();
                 }
-                ImGui::Separator();
-                if (ImGui::MenuItem("New Clip")) {
-                    if (context.addBlankMidiClipAtPosition)
-                        context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
-                    ImGui::CloseCurrentPopup();
+                if (!isMasterTrack) {
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("New Clip")) {
+                        if (context.addBlankMidiClipAtPosition)
+                            context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Import Audio Clip...")) {
+                        if (context.addAudioClip) context.addAudioClip(trackIndex, trackState.requestedAddPosition);
+                        ImGui::CloseCurrentPopup();
+                    }
                 }
                 ImGui::Separator();
-                if (ImGui::MenuItem("Import Audio Clip...")) {
-                    if (context.addAudioClip) context.addAudioClip(trackIndex, trackState.requestedAddPosition);
-                    ImGui::CloseCurrentPopup();
-                }
                 if (ImGui::MenuItem("Import SMF as Clip...")) {
                     if (context.addSmfClip) context.addSmfClip(trackIndex, trackState.requestedAddPosition);
                     ImGui::CloseCurrentPopup();
                 }
-                if (ImGui::MenuItem("Import SMF2Clip...")) {
-                    if (context.addSmf2Clip) context.addSmf2Clip(trackIndex);
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::Separator();
-                if (ImGui::MenuItem("Clear All")) {
-                    if (context.clearAllClips) context.clearAllClips(trackIndex);
-                    ImGui::CloseCurrentPopup();
+                if (!isMasterTrack) {
+                    if (ImGui::MenuItem("Import SMF2Clip...")) {
+                        if (context.addSmf2Clip) context.addSmf2Clip(trackIndex);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Clear All")) {
+                        if (context.clearAllClips) context.clearAllClips(trackIndex);
+                        ImGui::CloseCurrentPopup();
+                    }
                 }
                 ImGui::EndPopup();
             }

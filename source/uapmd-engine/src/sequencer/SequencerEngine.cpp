@@ -1418,6 +1418,7 @@ namespace uapmd {
             if (!track)
                 continue;
             if (track->graph().removeNodeSimple(instanceId)) {
+                track->removeInstance(instanceId);
                 // NOTE: Empty tracks are intentionally left in place to avoid real-time safety issues.
                 // They have minimal overhead (no plugins to process) and can be removed manually
                 // by calling removeTrack() from a non-audio thread when appropriate.
@@ -1428,6 +1429,7 @@ namespace uapmd {
             }
         }
         if (master_track_ && master_track_->graph().removeNodeSimple(instanceId)) {
+            master_track_->removeInstance(instanceId);
             refreshFunctionBlockMappings();
             reconfigureMixBusContext();
             reconfigureOutputAlignmentBuffers();

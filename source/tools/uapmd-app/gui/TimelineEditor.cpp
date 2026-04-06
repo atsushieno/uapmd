@@ -820,6 +820,7 @@ void TimelineEditor::render(float uiScale) {
         sequenceEditor_.reset();
         trackContentSignatures_.clear();
         masterTrackSignature_.clear();
+        masterTrackSectionCreated_ = false;
     }
     syncExternalTimelineChanges();
     auto context = buildRenderContext(uiScale);
@@ -1050,10 +1051,13 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         signature += std::format("{}:{}:{}:{};",
             clip.clipId, clip.position.samples, clip.durationSamples, clip.name);
 
-    if (signature == masterTrackSignature_) return;
+    const bool signatureChanged = (signature != masterTrackSignature_);
+    if (!signatureChanged && masterTrackSectionCreated_) return;
 
-    masterTrackSignature_ = signature;
-    rebuildTempoSegments(masterTrackSnapshot_);
+    if (signatureChanged) {
+        masterTrackSignature_ = signature;
+        rebuildTempoSegments(masterTrackSnapshot_);
+    }
 
     // Build one ClipRow per master-track clip so they can be moved / deleted independently.
     std::vector<SequenceEditor::ClipRow> rows;
@@ -1116,21 +1120,26 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
     }
 
     sequenceEditor_.refreshClips(uapmd::kMasterTrackIndex, rows);
+    masterTrackSectionCreated_ = true;
 
-    // Refresh all regular tracks since tempo segments changed.
-    auto tracks = appModel.getTimelineTracks();
-    for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
-        if (!appModel.isTrackHidden(i))
-            refreshSequenceEditorForTrack(i);
+    // Only refresh regular tracks when tempo segments actually changed.
+    if (signatureChanged) {
+        auto tracks = appModel.getTimelineTracks();
+        for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
+            if (!appModel.isTrackHidden(i))
+                refreshSequenceEditorForTrack(i);
+        }
     }
 }
 
 void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& legendArea) {
     auto& sequencer = uapmd::AppModel::instance().sequencer();
     auto tracksRef = sequencer.engine()->tracks();
-    SequencerTrack* track = (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracksRef.size()))
-        ? tracksRef[trackIndex]
-        : nullptr;
+    SequencerTrack* track = nullptr;
+    if (trackIndex == uapmd::kMasterTrackIndex)
+        track = sequencer.engine()->masterTrack();
+    else if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracksRef.size()))
+        track = tracksRef[trackIndex];
 
     std::vector<int32_t> validInstances;
     if (track) {
@@ -1177,11 +1186,13 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             ImGui::SetTooltip("%s", bypassed ? "Track bypassed (click to enable)" : "Bypass track");
         if (bypassed)
             ImGui::PopStyleColor();
-        ImGui::SameLine();
-        if (ImGui::Button(std::format("{}##LegDel{}", uapmd::gui::icons::DeleteTrack, trackIndex).c_str()))
-            deleteTrack(trackIndex);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Delete track");
+        if (trackIndex != uapmd::kMasterTrackIndex) {
+            ImGui::SameLine();
+            if (ImGui::Button(std::format("{}##LegDel{}", uapmd::gui::icons::DeleteTrack, trackIndex).c_str()))
+                deleteTrack(trackIndex);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Delete track");
+        }
     }
 
     // Row 2: Plugin context button (full legend width)
@@ -1192,23 +1203,29 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
 
     // Clips popup
     if (ImGui::BeginPopup(clipPopupId.c_str())) {
+        const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
         if (ImGui::MenuItem("Edit Clips...", nullptr, sequenceEditor_.isVisible(trackIndex))) {
             sequenceEditor_.showWindow(trackIndex);
             refreshSequenceEditorForTrack(trackIndex);
         }
+        if (!isMasterTrack) {
+            ImGui::Separator();
+            if (ImGui::MenuItem("New Clip"))
+                addBlankMidi2ClipToTrack(trackIndex);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Import Audio Clip..."))
+                addAudioClipToTrack(trackIndex);
+        }
         ImGui::Separator();
-        if (ImGui::MenuItem("New Clip"))
-            addBlankMidi2ClipToTrack(trackIndex);
-        ImGui::Separator();
-        if (ImGui::MenuItem("Import Audio Clip..."))
-            addAudioClipToTrack(trackIndex);
         if (ImGui::MenuItem("Import SMF as Clip..."))
             addSmfClipToTrack(trackIndex);
-        if (ImGui::MenuItem("Import SMF2Clip..."))
-            addSmf2ClipToTrack(trackIndex);
-        ImGui::Separator();
-        if (ImGui::MenuItem("Clear All"))
-            clearAllClipsFromTrack(trackIndex);
+        if (!isMasterTrack) {
+            if (ImGui::MenuItem("Import SMF2Clip..."))
+                addSmf2ClipToTrack(trackIndex);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Clear All"))
+                clearAllClipsFromTrack(trackIndex);
+        }
         ImGui::EndPopup();
     }
 
@@ -1263,7 +1280,10 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         }
 
         if (ImGui::MenuItem("Add Plugin")) {
-            pluginSelector_.setTargetTrackIndex(trackIndex);
+            if (trackIndex == uapmd::kMasterTrackIndex)
+                pluginSelector_.setTargetMasterTrack(trackIndex);
+            else
+                pluginSelector_.setTargetTrackIndex(trackIndex);
             showPluginSelectorWindow_ = true;
         }
         ImGui::EndPopup();
@@ -1327,6 +1347,8 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutC
         case uapmd::AppModel::TrackLayoutChange::Type::Cleared:
             sequenceEditor_.reset();
             trackContentSignatures_.clear();
+            masterTrackSignature_.clear();
+            masterTrackSectionCreated_ = false;
             break;
     }
 }
@@ -2486,6 +2508,10 @@ void TimelineEditor::addBlankMidi2ClipToTrackAtPosition(int32_t trackIndex, doub
 }
 
 void TimelineEditor::addAudioClipToTrack(int32_t trackIndex, double positionSeconds) {
+    if (trackIndex == uapmd::kMasterTrackIndex) {
+        platformError("Unsupported", "The master track only accepts MIDI/SMF clips.");
+        return;
+    }
     std::vector<uapmd::DocumentFilter> filters{
         {"Audio Files", {}, {"*.wav", "*.flac", "*.ogg"}},
         {"WAV Files",   {}, {"*.wav"}},

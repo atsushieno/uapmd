@@ -107,6 +107,7 @@ private:
     // Master track snapshot and signature for change detection
     std::shared_ptr<uapmd::AppModel::MasterTrackSnapshot> masterTrackSnapshot_;
     std::string masterTrackSignature_;
+    bool masterTrackSectionCreated_ = false; // guards first-time refreshClips call
     std::unordered_map<int32_t, std::string> trackContentSignatures_;
 
     // Tempo segments for timeline unit conversion
