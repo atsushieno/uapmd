@@ -42,7 +42,7 @@ index dbe63d4..4732318 100644
  
      if (ImGui::IsKeyDown(ImGuiKey_Delete) || ImGui::IsKeyDown(ImGuiKey_Backspace)) {
 diff --git a/TimelineCore/TimelineDefines.h b/TimelineCore/TimelineDefines.h
-index 7f769bc..20f9fac 100644
+index 7f769bc..94a12ed 100644
 --- a/TimelineCore/TimelineDefines.h
 +++ b/TimelineCore/TimelineDefines.h
 @@ -3,6 +3,7 @@
@@ -53,7 +53,15 @@ index 7f769bc..20f9fac 100644
  
  #define IMTIMELINE_VERSION_STR "0.2.0 WIP"
  #define IMTIMELINE_VERSION_NUM 002010
-@@ -181,7 +182,7 @@ struct sTimelineSection {
+@@ -62,6 +63,7 @@ struct sGenericDisplayProperties {
+     f32 Spacing = 0.0f;
+     f32 BorderRadius = 0.0f;
+     f32 BorderThickness = 1;
++    f32 yOffset = 0.0f; // vertical offset within section for lane (overlap) layout
+ };
+ 
+ class CustomNodeBase;
+@@ -181,7 +183,7 @@ struct sTimelineSection {
      void OnFinalize();
  };
  
@@ -62,3 +70,16 @@ index 7f769bc..20f9fac 100644
  
  namespace ImTimeline {
  class Timeline;
+diff --git a/TimelineViews/HorizontalNodeView.cpp b/TimelineViews/HorizontalNodeView.cpp
+index db75acd..16f4833 100644
+--- a/TimelineViews/HorizontalNodeView.cpp
++++ b/TimelineViews/HorizontalNodeView.cpp
+@@ -74,7 +74,7 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
+ 
+         s32 scale = pContext->GetScale();
+ 
+-        ImVec2 slotP1(timelinePanelRect.Min.x + node.start * scale, timelinePanelRect.Min.y);
++        ImVec2 slotP1(timelinePanelRect.Min.x + node.start * scale, timelinePanelRect.Min.y + node.displayProperties.yOffset);
+         ImVec2 slotP2(timelinePanelRect.Min.x + node.end * scale + scale, slotP1.y + sectionHeight - node.displayProperties.AccentThickness);
+ 
+         ImRect nodeRect = ImRect(slotP1, slotP2);

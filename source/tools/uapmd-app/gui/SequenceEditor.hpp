@@ -102,6 +102,7 @@ private:
         std::unordered_map<NodeID, NodeClipRef> nodeToClip;
         NodeID activeDragNodeId = InvalidNodeID;
         std::vector<int32_t> sectionToTrack; // section index -> track index
+        float computedTimelineHeight = 0.0f;  // actual height after lane expansion; 0 = use estimate
     };
     UnifiedTimelineState unified_;
 

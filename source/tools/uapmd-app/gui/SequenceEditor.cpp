@@ -146,8 +146,12 @@ void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
 }
 
 float SequenceEditor::getUnifiedTimelineHeight(float uiScale) const {
-    const float baseSectionHeight = std::max(80.0f * uiScale, 40.0f);
     const float minHeight = 120.0f * uiScale;
+    // After a rebuild, computedTimelineHeight reflects the actual expanded section heights
+    // (including multi-lane tracks). Fall back to a simple estimate before the first rebuild.
+    if (unified_.computedTimelineHeight > 0.0f)
+        return std::max(unified_.computedTimelineHeight, minHeight);
+    const float baseSectionHeight = std::max(80.0f * uiScale, 40.0f);
     const auto sectionCount = static_cast<float>(windows_.size());
     const float headerHeight = static_cast<float>(static_cast<int>(24.0f * uiScale));
     const float sectionsHeight = sectionCount * baseSectionHeight;
@@ -389,6 +393,15 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
             bool clipUnderMouse = false;
             if (scale > 0.0f) {
+                // Compute the top Y of the hovered section by summing preceding section heights.
+                float sectionTopY = clipAreaMinY;
+                for (int32_t si = 0; si < static_cast<int32_t>(unified_.sectionToTrack.size()); ++si) {
+                    if (unified_.sectionToTrack[static_cast<size_t>(si)] == hoveredTrackIndex)
+                        break;
+                    const float h = unified_.timeline->GetSectionDisplayProperties(si).mHeight;
+                    sectionTopY += h + kTimelineSectionSpacing;
+                }
+
                 const float intScaleF = static_cast<float>(static_cast<int32_t>(scale));
                 const float sfOffset = clipAreaMinX - static_cast<float>(startFrame) * scale;
                 for (const auto& [nodeId, ref] : unified_.nodeToClip) {
@@ -397,7 +410,15 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                     if (!node) continue;
                     const float nMinX = sfOffset + static_cast<float>(node->start) * intScaleF;
                     const float nMaxX = sfOffset + static_cast<float>(node->end + 1) * intScaleF;
-                    if (mousePos.x >= std::max(nMinX, clipAreaMinX) && mousePos.x <= std::min(nMaxX, clipAreaMaxX)) {
+                    // Also check Y so overlapping clips in different lanes are disambiguated.
+                    const float nodeH = node->displayProperties.mHeight > 0.0f
+                        ? node->displayProperties.mHeight
+                        : unified_.timeline->GetSectionDisplayProperties(
+                              unified_.timeline->GetSelectedSection()).mHeight;
+                    const float nMinY = sectionTopY + node->displayProperties.yOffset;
+                    const float nMaxY = nMinY + nodeH;
+                    if (mousePos.x >= std::max(nMinX, clipAreaMinX) && mousePos.x <= std::min(nMaxX, clipAreaMaxX) &&
+                        mousePos.y >= nMinY && mousePos.y <= nMaxY) {
                         clipUnderMouse = true;
                         trackState.contextMenuClipId = ref.clipId;
                         requestedContextTrack = hoveredTrackIndex;
@@ -542,6 +563,8 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
     unified_.sectionToTrack = sortedTracks;
 
     int32_t maxFrame = 0;
+    float totalSectionHeight = 0.0f;
+    const float headerHeight = static_cast<float>(static_cast<int>(24.0f * context.uiScale));
 
     for (int32_t sectionIdx = 0; sectionIdx < static_cast<int32_t>(sortedTracks.size()); ++sectionIdx) {
         const int32_t trackIndex = sortedTracks[static_cast<size_t>(sectionIdx)];
@@ -561,22 +584,66 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
         }
         unified_.timeline->SetTimelineName(sectionIdx, sectionName);
 
+        // Greedy lane assignment: sort clips by start, then assign each to the first lane
+        // whose last clip ends at or before this clip's start. This distributes overlapping
+        // clips into separate vertical lanes within the same section.
+        std::unordered_map<int32_t, int> clipLaneMap;
+        std::vector<int32_t> laneEndFrames; // last-used end frame per lane
+        {
+            std::vector<const ClipRow*> sorted;
+            sorted.reserve(state.displayClips.size());
+            for (const auto& c : state.displayClips)
+                sorted.push_back(&c);
+            std::sort(sorted.begin(), sorted.end(),
+                [](const ClipRow* a, const ClipRow* b) { return a->timelineStart < b->timelineStart; });
+
+            for (const auto* c : sorted) {
+                int lane = -1;
+                for (int l = 0; l < static_cast<int>(laneEndFrames.size()); ++l) {
+                    if (laneEndFrames[l] <= c->timelineStart) {
+                        lane = l;
+                        laneEndFrames[l] = c->timelineEnd;
+                        break;
+                    }
+                }
+                if (lane < 0) {
+                    lane = static_cast<int>(laneEndFrames.size());
+                    laneEndFrames.push_back(c->timelineEnd);
+                }
+                clipLaneMap[c->clipId] = lane;
+            }
+        }
+        const int numLanes = std::max(1, static_cast<int>(laneEndFrames.size()));
+        const float laneHeight = baseHeight;
+        const float sectionHeight = numLanes * laneHeight;
+
         auto& props = unified_.timeline->GetSectionDisplayProperties(sectionIdx);
-        props.mHeight = baseHeight;
+        props.mHeight = sectionHeight;
         props.mBackgroundColor = IM_COL32(63, 76, 107, 200);
         props.mBackgroundColorTwo = IM_COL32(43, 54, 86, 200);
         props.mForegroundColor = IM_COL32(255, 255, 255, 255);
         props.BorderRadius = 6.0f * context.uiScale;
         props.BorderThickness = 1.0f;
         props.AccentThickness = 8;
-        unified_.timeline->SetTimelineHeight(sectionIdx, props.mHeight);
+        unified_.timeline->SetTimelineHeight(sectionIdx, sectionHeight);
+        totalSectionHeight += sectionHeight + kTimelineSectionSpacing;
 
         for (const auto& clip : state.displayClips) {
+            const int lane = clipLaneMap.count(clip.clipId) ? clipLaneMap.at(clip.clipId) : 0;
+
             TimelineNode node;
             node.Setup(sectionIdx, clip.timelineStart, clip.timelineEnd, sectionName);
             node.displayProperties = props;
+            node.displayProperties.yOffset = lane * laneHeight;
             node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_UseSectionBackground, true);
-            node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_AutofitHeight, true);
+            // With multiple lanes each node has a fixed lane height; with a single lane
+            // keep AutofitHeight so the node fills the section as before.
+            if (numLanes > 1) {
+                node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_AutofitHeight, false);
+                node.displayProperties.mHeight = laneHeight - 2.0f; // 2 px gap between lanes
+            } else {
+                node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_AutofitHeight, true);
+            }
             node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MoveSurroundingNodesToTheRight, false);
             node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MovedToDifferentTimeline, true);
 
@@ -595,6 +662,8 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
             maxFrame = std::max(maxFrame, clip.timelineEnd);
         }
     }
+
+    unified_.computedTimelineHeight = headerHeight + totalSectionHeight + kTimelineChildPadding;
 
     if (maxFrame <= 0) maxFrame = 1000;
     unified_.timeline->SetStartFrame(0);
