@@ -1604,6 +1604,7 @@ void MainWindow::applyTheme(ThemeMode mode) {
     SetupImGuiStyle(mode);
     baseStyle_ = ImGui::GetStyle();
     applyUiScale(uiScale_);
+    timelineEditor_.sequenceEditor().invalidateTimeline();
 }
 
 }  // namespace uapmd::gui

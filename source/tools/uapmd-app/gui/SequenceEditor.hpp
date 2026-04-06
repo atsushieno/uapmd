@@ -72,6 +72,7 @@ public:
     void refreshClips(int32_t trackIndex, const std::vector<ClipRow>& clips);
     void render(const RenderContext& context);
     void removeStaleWindows(int32_t maxValidTrackIndex);
+    void invalidateTimeline();
     void reset();
 
     void renderUnifiedTimeline(const RenderContext& context, float availableHeight);

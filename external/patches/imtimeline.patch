@@ -1,5 +1,4 @@
 diff --git a/Timeline.cpp b/Timeline.cpp
-index dbe63d4..4732318 100644
 --- a/Timeline.cpp
 +++ b/Timeline.cpp
 @@ -470,7 +470,7 @@ bool Timeline::DrawTimeline()
@@ -21,7 +20,43 @@ index dbe63d4..4732318 100644
      ImVec2 scrollBarMin = ImGui::GetItemRectMin();
      ImVec2 scrollBarMax = ImGui::GetItemRectMax();
  
-@@ -698,7 +701,7 @@ void Timeline::DrawScrollbar()
+@@ -664,17 +667,17 @@ void Timeline::DrawScrollbar()
+     float startFrameOffset = ((float)(mStartFrame - mFrameMin) / (float)frameCount) * (canvas_size.x - mStyle.LegendWidth);
+     ImVec2 scrollBarA(scrollBarMin.x + mStyle.LegendWidth, scrollBarMin.y - 2);
+     ImVec2 scrollBarB(scrollBarMin.x + canvas_size.x, scrollBarMax.y - 1);
+-    draw_list->AddRectFilled(scrollBarA, scrollBarB, 0xFF222222, 0);
++    draw_list->AddRectFilled(scrollBarA, scrollBarB, mStyle.ScrollbarBackgroundColor, 0);
+ 
+     ImRect scrollBarRect(scrollBarA, scrollBarB);
+     bool inScrollBar = scrollBarRect.Contains(mInputData.MousePos);
+ 
+-    draw_list->AddRectFilled(scrollBarA, scrollBarB, 0xFF101010, 8);
++    draw_list->AddRectFilled(scrollBarA, scrollBarB, mStyle.ScrollbarTrackColor, 8);
+ 
+     ImVec2 scrollBarC(scrollBarMin.x + mStyle.LegendWidth + startFrameOffset, scrollBarMin.y);
+     ImVec2 scrollBarD(scrollBarMin.x + mStyle.LegendWidth + barWidthInPixels + startFrameOffset, scrollBarMax.y - 2);
+-    draw_list->AddRectFilled(scrollBarC, scrollBarD, (inScrollBar || mInputData.IsMovingScrollBar) ? 0xFF606060 : 0xFF505050, 6);
++    draw_list->AddRectFilled(scrollBarC, scrollBarD, (inScrollBar || mInputData.IsMovingScrollBar) ? mStyle.ScrollbarThumbHoveredColor : mStyle.ScrollbarThumbColor, 6);
+ 
+     ImRect barHandleLeft(scrollBarC, ImVec2(scrollBarC.x + 14, scrollBarD.y));
+     ImRect barHandleRight(ImVec2(scrollBarD.x - 14, scrollBarC.y), scrollBarD);
+@@ -684,15 +687,15 @@ void Timeline::DrawScrollbar()
+     static bool sizingRBar = false;
+     static bool sizingLBar = false;
+ 
+-    draw_list->AddRectFilled(barHandleLeft.Min, barHandleLeft.Max, (onLeft || sizingLBar) ? 0xFFAAAAAA : 0xFF666666, 6);
+-    draw_list->AddRectFilled(barHandleRight.Min, barHandleRight.Max, (onRight || sizingRBar) ? 0xFFAAAAAA : 0xFF666666, 6);
++    draw_list->AddRectFilled(barHandleLeft.Min, barHandleLeft.Max, (onLeft || sizingLBar) ? mStyle.ScrollbarHandleHoveredColor : mStyle.ScrollbarHandleColor, 6);
++    draw_list->AddRectFilled(barHandleRight.Min, barHandleRight.Max, (onRight || sizingRBar) ? mStyle.ScrollbarHandleHoveredColor : mStyle.ScrollbarHandleColor, 6);
+ 
+     ImRect scrollBarThumb(scrollBarC, scrollBarD);
+ 
+     if (mInputData.IsMovingScrollBar) {
+         if (mInputData.LeftMouseDown == false) {
+             mInputData.IsMovingScrollBar = false;
+         } else {
+             float framesPerPixelInBar = barWidthInPixels / (f32)mVisibleFrameCount;
+             mStartFrame = int((mInputData.MousePos.x - mPanningData.panningViewSource.x) / framesPerPixelInBar) - mPanningData.panningViewFrame;
              mStartFrame = ImClamp(mStartFrame, mFrameMin, ImMax(mFrameMax - mVisibleFrameCount, mFrameMin));
          }
      } else {
@@ -42,7 +77,6 @@ index dbe63d4..4732318 100644
  
      if (ImGui::IsKeyDown(ImGuiKey_Delete) || ImGui::IsKeyDown(ImGuiKey_Backspace)) {
 diff --git a/TimelineCore/TimelineDefines.h b/TimelineCore/TimelineDefines.h
-index 7f769bc..94a12ed 100644
 --- a/TimelineCore/TimelineDefines.h
 +++ b/TimelineCore/TimelineDefines.h
 @@ -3,6 +3,7 @@
@@ -70,11 +104,67 @@ index 7f769bc..94a12ed 100644
  
  namespace ImTimeline {
  class Timeline;
+@@ -223,9 +225,18 @@ struct ImTimelineStyle {
+     int ScrollbarThickness = 12;
+     unsigned int HeaderBackgroundColor = 0xFF3D3837;
+     unsigned int HeaderTimeStampColor = 0xFFC4C4C4;
++    unsigned int LegendTextColor = 0xFFFFFFFF;
++    unsigned int SectionBackgroundColor = 0xFF283232;
++    unsigned int SectionBackgroundHoveredColor = 0x30201008;
+     ImU32 SelectedNodeOutlineColor = 0xEA7915FF;
++    ImU32 NodeHoveredOverlayColor = 0x00201000;
++    ImU32 ScrollbarBackgroundColor = 0xFF222222;
++    ImU32 ScrollbarTrackColor = 0xFF101010;
++    ImU32 ScrollbarThumbColor = 0xFF505050;
++    ImU32 ScrollbarThumbHoveredColor = 0xFF606060;
++    ImU32 ScrollbarHandleColor = 0xFF666666;
++    ImU32 ScrollbarHandleHoveredColor = 0xFFAAAAAA;
+     bool HasScrollbar = true;
+     bool HasSeekbar = true;
+     ImU32 SeekbarColor = 0xFF2A2AFF;
+     f32 SeekbarWidth = 3.0f;
+ };
 diff --git a/TimelineViews/HorizontalNodeView.cpp b/TimelineViews/HorizontalNodeView.cpp
-index db75acd..16f4833 100644
 --- a/TimelineViews/HorizontalNodeView.cpp
 +++ b/TimelineViews/HorizontalNodeView.cpp
-@@ -74,7 +74,7 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
+@@ -5,6 +5,23 @@
+ #include "../TimelineData/ImDataController.h"
+ #include "../Timeline.h"
+ 
++namespace {
++
++ImU32 blendColor(ImU32 base, ImU32 overlay)
++{
++    ImVec4 baseColor = ImGui::ColorConvertU32ToFloat4(base);
++    ImVec4 overlayColor = ImGui::ColorConvertU32ToFloat4(overlay);
++    const float alpha = overlayColor.w;
++    ImVec4 mixed;
++    mixed.x = baseColor.x * (1.0f - alpha) + overlayColor.x * alpha;
++    mixed.y = baseColor.y * (1.0f - alpha) + overlayColor.y * alpha;
++    mixed.z = baseColor.z * (1.0f - alpha) + overlayColor.z * alpha;
++    mixed.w = baseColor.w;
++    return ImGui::ColorConvertFloat4ToU32(mixed);
++}
++
++} // namespace
++
+ 
+ void HorizontalNodeView::PreDraw() 
+ {
+@@ -25,10 +42,10 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
+ 
+     // background
+ 
+-    auto bgColorFullBar = IM_COL32(40, 50, 50, 255);
++    auto bgColorFullBar = pContext->mStyle.SectionBackgroundColor;
+ 
+     if (area.Contains(pContext->GetLastInputData().MousePos)) {
+-        bgColorFullBar += 0x80201008;
++        bgColorFullBar = blendColor(bgColorFullBar, pContext->mStyle.SectionBackgroundHoveredColor);
+         pContext->SetSelectedTimeline(timeline.mID);
+     }
+ 
+@@ -74,7 +91,7 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
  
          s32 scale = pContext->GetScale();
  
@@ -83,3 +173,29 @@ index db75acd..16f4833 100644
          ImVec2 slotP2(timelinePanelRect.Min.x + node.end * scale + scale, slotP1.y + sectionHeight - node.displayProperties.AccentThickness);
  
          ImRect nodeRect = ImRect(slotP1, slotP2);
+@@ -133,14 +150,13 @@ void HorizontalNodeView::defaultNodeDraw(const ImRect& area, const TimelineNode&
+         bgColor = timeline->GetSectionDisplayProperties(node.GetSection()).mBackgroundColor;
+         bgColor2 = timeline->GetSectionDisplayProperties(node.GetSection()).mBackgroundColorTwo;
+     }
+-    if (area.Contains(timeline->GetLastInputData().MousePos)) {
+-        bgColor += 0x00201000;
+-    }
+ 
+-    ImU32 gradientStart = bgColor;
+-    ImU32 gradientEnd = bgColor + 0xFF402000;
++    const bool hovered = area.Contains(timeline->GetLastInputData().MousePos);
++    ImU32 gradientStart = hovered ? blendColor(bgColor, timeline->mStyle.NodeHoveredOverlayColor) : bgColor;
++    ImU32 gradientEnd = hovered ? blendColor(bgColor2, timeline->mStyle.NodeHoveredOverlayColor) : bgColor2;
+ 
+ 
+     f32 borderRadius = node.displayProperties.BorderRadius;
+     ImU32 fgColor = bSelected ? timeline->mStyle.SelectedNodeOutlineColor : node.displayProperties.mForegroundColor;
+@@ -173,7 +189,7 @@ void HorizontalNodeView::DrawLegendArea(const sTimelineSection& timeline, ImTime
+ 
+     auto* draw_list = ImGui::GetWindowDrawList();
+     ImVec2 tpos(area.Min.x + 3, area.Min.y);
+-    draw_list->AddText(tpos, 0xFFFFFFFF, label.c_str());
++    draw_list->AddText(tpos, pContext->mStyle.LegendTextColor, label.c_str());
+ 
+ #if defined IM_TIMELINE_DEBUG_INFO
+     // BUG improper drawing starting from the second timeline onwards

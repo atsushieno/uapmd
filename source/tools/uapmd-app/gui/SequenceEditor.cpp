@@ -25,6 +25,14 @@ constexpr float kTimelineSectionSpacing = 5.0f; // Matches Timeline::DrawTimelin
 constexpr float kTimelineChildPadding = 8.0f;   // Matches Timeline::DrawTimeline padding
 constexpr ImU32 kTimelinePlayheadColor = IM_COL32(255, 230, 0, 255);
 
+ImVec4 withAlpha(const ImVec4& color, float alpha) {
+    return ImVec4(color.x, color.y, color.z, alpha);
+}
+
+ImVec4 mixColor(const ImVec4& a, const ImVec4& b, float t) {
+    return ImLerp(a, b, t);
+}
+
 uint64_t mixHash(uint64_t seed, uint64_t value) {
     constexpr uint64_t kPrime = 1099511628211ull;
     seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
@@ -143,6 +151,10 @@ void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
     }
     if (removed)
         unified_.dirty = true;
+}
+
+void SequenceEditor::invalidateTimeline() {
+    unified_.dirty = true;
 }
 
 float SequenceEditor::getUnifiedTimelineHeight(float uiScale) const {
@@ -572,11 +584,34 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
     unified_.timeline->mFlags.set(TimelineFlags_SkipTimelineRebuild, true);
 
     ImTimelineStyle style;
+    const ImGuiStyle& imguiStyle = ImGui::GetStyle();
+    const ImVec4 frameBg = imguiStyle.Colors[ImGuiCol_FrameBg];
+    const ImVec4 childBg = imguiStyle.Colors[ImGuiCol_ChildBg];
+    const ImVec4 windowBg = imguiStyle.Colors[ImGuiCol_WindowBg];
+    const ImVec4 header = imguiStyle.Colors[ImGuiCol_Header];
+    const ImVec4 headerHovered = imguiStyle.Colors[ImGuiCol_HeaderHovered];
+    const ImVec4 text = imguiStyle.Colors[ImGuiCol_Text];
+    const ImVec4 textDisabled = imguiStyle.Colors[ImGuiCol_TextDisabled];
+
     style.LegendWidth = context.legendWidth;
     style.HeaderHeight = static_cast<int>(24.0f * context.uiScale);
     style.ScrollbarThickness = static_cast<int>(12.0f * context.uiScale);
     style.SeekbarWidth = 2.0f * context.uiScale;
     style.HasSeekbar = false;
+    style.HeaderBackgroundColor = ImGui::GetColorU32(mixColor(frameBg, windowBg, 0.35f));
+    style.HeaderTimeStampColor = ImGui::GetColorU32(withAlpha(textDisabled, 1.0f));
+    style.LegendTextColor = ImGui::GetColorU32(withAlpha(textDisabled, 1.0f));
+    style.SectionBackgroundColor = ImGui::GetColorU32(mixColor(childBg, frameBg, 0.65f));
+    style.SectionBackgroundHoveredColor = ImGui::GetColorU32(withAlpha(headerHovered, 0.18f));
+    style.SelectedNodeOutlineColor = ImGui::GetColorU32(mixColor(headerHovered, text, 0.15f));
+    style.NodeHoveredOverlayColor = ImGui::GetColorU32(withAlpha(headerHovered, 0.14f));
+    style.ScrollbarBackgroundColor = ImGui::GetColorU32(mixColor(windowBg, childBg, 0.55f));
+    style.ScrollbarTrackColor = ImGui::GetColorU32(mixColor(frameBg, childBg, 0.75f));
+    style.ScrollbarThumbColor = ImGui::GetColorU32(withAlpha(textDisabled, 0.55f));
+    style.ScrollbarThumbHoveredColor = ImGui::GetColorU32(withAlpha(textDisabled, 0.8f));
+    style.ScrollbarHandleColor = ImGui::GetColorU32(withAlpha(text, 0.18f));
+    style.ScrollbarHandleHoveredColor = ImGui::GetColorU32(withAlpha(text, 0.32f));
+    style.SeekbarColor = ImGui::GetColorU32(withAlpha(text, 0.9f));
     unified_.timeline->SetTimelineStyle(style);
     unified_.style = style;
 
@@ -647,9 +682,9 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
 
         auto& props = unified_.timeline->GetSectionDisplayProperties(sectionIdx);
         props.mHeight = sectionHeight;
-        props.mBackgroundColor = IM_COL32(63, 76, 107, 200);
-        props.mBackgroundColorTwo = IM_COL32(43, 54, 86, 200);
-        props.mForegroundColor = IM_COL32(255, 255, 255, 255);
+        props.mBackgroundColor = ImGui::GetColorU32(mixColor(frameBg, header, 0.20f));
+        props.mBackgroundColorTwo = ImGui::GetColorU32(mixColor(childBg, header, 0.10f));
+        props.mForegroundColor = ImGui::GetColorU32(withAlpha(text, 1.0f));
         props.BorderRadius = 6.0f * context.uiScale;
         props.BorderThickness = 1.0f;
         props.AccentThickness = 8;

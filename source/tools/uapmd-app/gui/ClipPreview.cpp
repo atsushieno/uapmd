@@ -26,6 +26,14 @@ constexpr double kMinimumNoteDuration = 0.01;
 constexpr ImU32 kMarkerColor = IM_COL32(255, 222, 89, 220);
 constexpr ImU32 kWarpColor = IM_COL32(255, 120, 120, 230);
 
+ImVec4 withAlpha(const ImVec4& color, float alpha) {
+    return ImVec4(color.x, color.y, color.z, alpha);
+}
+
+ImVec4 mixColor(const ImVec4& a, const ImVec4& b, float t) {
+    return ImLerp(a, b, t);
+}
+
 int64_t secondsToSamples(double seconds, double sampleRate) {
     return static_cast<int64_t>(std::llround(seconds * sampleRate));
 }
@@ -304,6 +312,7 @@ private:
 
     void drawContent(const ImRect& area) const {
         auto* drawList = ImGui::GetWindowDrawList();
+        const ImGuiStyle& style = ImGui::GetStyle();
         ImRect padded = area;
         float padding = kNodeContentPadding * uiScale_;
         padded.Min.x += padding;
@@ -318,13 +327,13 @@ private:
         std::string titleStr = clipName_.empty()
             ? (preview_ && !preview_->displayName.empty() ? preview_->displayName : "Clip")
             : clipName_;
-        drawList->AddText(padded.Min, IM_COL32(255, 255, 255, 220), titleStr.c_str());
+        drawList->AddText(padded.Min, ImGui::GetColorU32(withAlpha(style.Colors[ImGuiCol_Text], 0.92f)), titleStr.c_str());
 
         std::string typeLabel = (preview_ && preview_->isMidiClip) ? "MIDI" : "Audio";
         ImVec2 labelSize = ImGui::CalcTextSize(typeLabel.c_str());
         drawList->AddText(
             ImVec2(padded.Max.x - labelSize.x, padded.Min.y),
-            IM_COL32(200, 200, 200, 200),
+            ImGui::GetColorU32(withAlpha(style.Colors[ImGuiCol_TextDisabled], 0.92f)),
             typeLabel.c_str()
         );
 
@@ -364,7 +373,7 @@ private:
             rect.Min.x + ((rect.Max.x - rect.Min.x) - textSize.x) * 0.5f,
             rect.Min.y + ((rect.Max.y - rect.Min.y) - textSize.y) * 0.5f
         );
-        drawList->AddText(center, IM_COL32(220, 220, 220, 200), text ? text : "");
+        drawList->AddText(center, ImGui::GetColorU32(withAlpha(ImGui::GetStyle().Colors[ImGuiCol_TextDisabled], 0.92f)), text ? text : "");
         drawList->PopClipRect();
     }
 
@@ -387,7 +396,8 @@ private:
 
         const float centerY = rect.Min.y + height * 0.5f;
         const float halfHeight = height * 0.5f;
-        const ImU32 lineColor = IM_COL32(120, 200, 255, 210);
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const ImU32 lineColor = ImGui::GetColorU32(withAlpha(mixColor(style.Colors[ImGuiCol_Text], style.Colors[ImGuiCol_HeaderActive], 0.35f), 0.70f));
         const double safeDurationSeconds = std::max(0.001, preview_->clipDurationSeconds);
 
         const size_t count = preview_->waveform.size();
