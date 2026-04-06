@@ -42,8 +42,8 @@ public:
         std::function<void(int32_t trackIndex)> refreshClips;
         std::function<void(int32_t trackIndex, const std::string& filepath)> addClip;
         std::function<void(int32_t trackIndex, const std::string& filepath, double positionSeconds)> addClipAtPosition;
-        std::function<void(int32_t trackIndex)> addAudioClip;
-        std::function<void(int32_t trackIndex)> addSmfClip;
+        std::function<void(int32_t trackIndex, double positionSeconds)> addAudioClip;
+        std::function<void(int32_t trackIndex, double positionSeconds)> addSmfClip;
         std::function<void(int32_t trackIndex)> addSmf2Clip;
         std::function<void(int32_t trackIndex, double positionSeconds)> addBlankMidiClipAtPosition;
         std::function<void(int32_t trackIndex, int32_t clipId)> removeClip;

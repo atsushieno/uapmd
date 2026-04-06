@@ -505,11 +505,13 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                             ImGui::CloseCurrentPopup();
                         }
                         if (ImGui::MenuItem("Import Audio Clip Here...")) {
-                            if (context.addAudioClip) context.addAudioClip(trackIndex);
+                            if (context.addAudioClip)
+                                context.addAudioClip(trackIndex, trackState.requestedAddPosition);
                             ImGui::CloseCurrentPopup();
                         }
                         if (ImGui::MenuItem("Import SMF Here...")) {
-                            if (context.addSmfClip) context.addSmfClip(trackIndex);
+                            if (context.addSmfClip)
+                                context.addSmfClip(trackIndex, trackState.requestedAddPosition);
                             ImGui::CloseCurrentPopup();
                         }
                     }
@@ -531,11 +533,11 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Import Audio Clip...")) {
-                    if (context.addAudioClip) context.addAudioClip(trackIndex);
+                    if (context.addAudioClip) context.addAudioClip(trackIndex, trackState.requestedAddPosition);
                     ImGui::CloseCurrentPopup();
                 }
                 if (ImGui::MenuItem("Import SMF as Clip...")) {
-                    if (context.addSmfClip) context.addSmfClip(trackIndex);
+                    if (context.addSmfClip) context.addSmfClip(trackIndex, trackState.requestedAddPosition);
                     ImGui::CloseCurrentPopup();
                 }
                 if (ImGui::MenuItem("Import SMF2Clip...")) {

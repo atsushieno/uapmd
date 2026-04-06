@@ -162,8 +162,8 @@ private:
     // Per-type clip import helpers (called from Clips... popup)
     void addBlankMidi2ClipToTrack(int32_t trackIndex);
     void addBlankMidi2ClipToTrackAtPosition(int32_t trackIndex, double positionSeconds);
-    void addAudioClipToTrack(int32_t trackIndex);
-    void addSmfClipToTrack(int32_t trackIndex);
+    void addAudioClipToTrack(int32_t trackIndex, double positionSeconds = 0.0);
+    void addSmfClipToTrack(int32_t trackIndex, double positionSeconds = 0.0);
     void addSmf2ClipToTrack(int32_t trackIndex);
 
     // Returns one PluginParamEntry per plugin instance on the track.

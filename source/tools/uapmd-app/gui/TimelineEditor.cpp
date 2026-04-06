@@ -748,11 +748,11 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         .addClipAtPosition = [this](int32_t trackIndex, const std::string& filepath, double positionSeconds) {
             addClipToTrackAtPosition(trackIndex, filepath, positionSeconds);
         },
-        .addAudioClip = [this](int32_t trackIndex) {
-            addAudioClipToTrack(trackIndex);
+        .addAudioClip = [this](int32_t trackIndex, double positionSeconds) {
+            addAudioClipToTrack(trackIndex, positionSeconds);
         },
-        .addSmfClip = [this](int32_t trackIndex) {
-            addSmfClipToTrack(trackIndex);
+        .addSmfClip = [this](int32_t trackIndex, double positionSeconds) {
+            addSmfClipToTrack(trackIndex, positionSeconds);
         },
         .addSmf2Clip = [this](int32_t trackIndex) {
             addSmf2ClipToTrack(trackIndex);
@@ -1026,77 +1026,103 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
 }
 
 void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& context) {
+    auto& appModel = uapmd::AppModel::instance();
+
+    // Always keep the merged snapshot current for tempo-segment conversion.
     auto snapshot = std::make_shared<uapmd::AppModel::MasterTrackSnapshot>(
-        uapmd::AppModel::instance().buildMasterTrackSnapshot());
+        appModel.buildMasterTrackSnapshot());
+    masterTrackSnapshot_ = snapshot;
 
-    const double lastTempoTime = snapshot->tempoPoints.empty()
-        ? 0.0 : snapshot->tempoPoints.back().timeSeconds;
-    const double lastTempoBpm = snapshot->tempoPoints.empty()
-        ? 0.0 : snapshot->tempoPoints.back().bpm;
-    const double lastSigTime = snapshot->timeSignaturePoints.empty()
-        ? 0.0 : snapshot->timeSignaturePoints.back().timeSeconds;
-    const double lastSigNum = snapshot->timeSignaturePoints.empty()
-        ? 0.0 : snapshot->timeSignaturePoints.back().signature.numerator;
+    auto* masterTrack = appModel.getMasterTimelineTrack();
+    if (!masterTrack) return;
 
-    const std::string signature = std::format("{}:{}:{:.6f}:{:.6f}:{:.6f}:{:.6f}:{:.6f}",
-        snapshot->tempoPoints.size(),
-        snapshot->timeSignaturePoints.size(),
-        snapshot->maxTimeSeconds,
-        lastTempoTime,
-        lastTempoBpm,
-        lastSigTime,
-        lastSigNum);
+    const double sampleRate = std::max(1.0, static_cast<double>(appModel.sampleRate()));
 
-    if (signature != masterTrackSignature_) {
-        masterTrackSignature_ = signature;
-        masterTrackSnapshot_ = snapshot;
-        rebuildTempoSegments(masterTrackSnapshot_);
+    // Gather individual clips; sort by timeline position so lanes are stable.
+    auto clips = masterTrack->clipManager().getAllClips();
+    std::sort(clips.begin(), clips.end(), [](const uapmd::ClipData& a, const uapmd::ClipData& b) {
+        return a.position.samples < b.position.samples;
+    });
 
-        std::vector<SequenceEditor::ClipRow> rows;
+    // Signature covers each clip's id, position, duration, and name.
+    std::string signature;
+    for (const auto& clip : clips)
+        signature += std::format("{}:{}:{}:{};",
+            clip.clipId, clip.position.samples, clip.durationSamples, clip.name);
+
+    if (signature == masterTrackSignature_) return;
+
+    masterTrackSignature_ = signature;
+    rebuildTempoSegments(masterTrackSnapshot_);
+
+    // Build one ClipRow per master-track clip so they can be moved / deleted independently.
+    std::vector<SequenceEditor::ClipRow> rows;
+    for (const auto& clip : clips) {
         SequenceEditor::ClipRow row;
-        row.clipId = kMasterTrackClipId;
-        row.trackReferenceId = "master_track";
+        row.clipId              = clip.clipId;
+        row.trackReferenceId   = "master_track";
         row.anchorReferenceId.clear();
-        row.anchorOrigin = "Start";
-        row.position = "+0.000s";
-        row.isMidiClip = false;
-        row.isMasterTrack = true;
-        row.name = snapshot->empty() ? "No Meta Events" : "SMF Meta Events";
-        row.filename = "-";
-        row.filepath = "";
-        const double durationSeconds = std::max(1.0, snapshot->maxTimeSeconds);
-        row.duration = std::format("{:.3f}s", durationSeconds);
-        row.timelineStart = toTimelineFrame(secondsToTimelineUnits(0.0));
-        row.timelineEnd = std::max(row.timelineStart + 1, toTimelineFrame(secondsToTimelineUnits(durationSeconds)));
+        row.anchorOrigin       = "Start";
+        row.position           = "+0.000s";
+        row.isMidiClip         = false;
+        row.isMasterTrack      = true;
+        row.name     = clip.name.empty() ? "SMF Meta Events" : clip.name;
+        row.filename = clip.filepath.empty() ? "-" : std::filesystem::path(clip.filepath).filename().string();
+        row.filepath = clip.filepath;
+
+        const double startSeconds    = static_cast<double>(clip.position.samples) / sampleRate;
+        const double durationSeconds = clip.durationSamples > 0
+            ? static_cast<double>(clip.durationSamples) / sampleRate
+            : std::max(1.0, snapshot->maxTimeSeconds - startSeconds);
+        row.duration       = std::format("{:.3f}s", durationSeconds);
+        row.timelineStart  = toTimelineFrame(secondsToTimelineUnits(startSeconds));
+        row.timelineEnd    = std::max(row.timelineStart + 1,
+                                      toTimelineFrame(secondsToTimelineUnits(startSeconds + durationSeconds)));
+
+        // Extract per-clip tempo / time-signature events for the waveform preview.
+        auto sourceNode = masterTrack->getSourceNode(clip.sourceNodeInstanceId);
+        auto* midiNode  = dynamic_cast<uapmd::MidiClipSourceNode*>(sourceNode.get());
         std::vector<ClipPreview::TempoPoint> tempoPoints;
-        tempoPoints.reserve(snapshot->tempoPoints.size());
-        for (const auto& point : snapshot->tempoPoints)
-            tempoPoints.push_back(ClipPreview::TempoPoint{point.timeSeconds, point.bpm});
         std::vector<ClipPreview::TimeSignaturePoint> sigPoints;
-        sigPoints.reserve(snapshot->timeSignaturePoints.size());
-        for (const auto& sig : snapshot->timeSignaturePoints) {
-            sigPoints.push_back(ClipPreview::TimeSignaturePoint{
-                sig.timeSeconds,
-                sig.signature.numerator,
-                sig.signature.denominator
-            });
+        if (midiNode) {
+            const auto& tSamples = midiNode->tempoChangeSamples();
+            const auto& tEvents  = midiNode->tempoChanges();
+            for (size_t i = 0; i < std::min(tSamples.size(), tEvents.size()); ++i)
+                tempoPoints.push_back({static_cast<double>(tSamples[i]) / sampleRate, tEvents[i].bpm});
+
+            const auto& sSamples = midiNode->timeSignatureChangeSamples();
+            const auto& sEvents  = midiNode->timeSignatureChanges();
+            for (size_t i = 0; i < std::min(sSamples.size(), sEvents.size()); ++i)
+                sigPoints.push_back({static_cast<double>(sSamples[i]) / sampleRate,
+                                     sEvents[i].numerator, sEvents[i].denominator});
         }
         row.customPreview = createMasterMetaPreview(std::move(tempoPoints), std::move(sigPoints), durationSeconds);
         rows.push_back(std::move(row));
-
-        sequenceEditor_.refreshClips(uapmd::kMasterTrackIndex, rows);
-
-        // Refresh all regular tracks since tempo segments changed
-        auto& appModel = uapmd::AppModel::instance();
-        auto tracks = appModel.getTimelineTracks();
-        for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
-            if (!appModel.isTrackHidden(i))
-                refreshSequenceEditorForTrack(i);
-        }
-    } else {
-        masterTrackSnapshot_ = snapshot;
     }
 
+    if (rows.empty()) {
+        // Placeholder row when the master track has no clips yet.
+        SequenceEditor::ClipRow row;
+        row.clipId         = kMasterTrackClipId;
+        row.trackReferenceId = "master_track";
+        row.isMasterTrack  = true;
+        row.name           = "No Meta Events";
+        row.filename       = "-";
+        const double dur   = std::max(1.0, snapshot->maxTimeSeconds);
+        row.timelineStart  = toTimelineFrame(secondsToTimelineUnits(0.0));
+        row.timelineEnd    = std::max(row.timelineStart + 1, toTimelineFrame(secondsToTimelineUnits(dur)));
+        row.customPreview  = createMasterMetaPreview({}, {}, dur);
+        rows.push_back(std::move(row));
+    }
+
+    sequenceEditor_.refreshClips(uapmd::kMasterTrackIndex, rows);
+
+    // Refresh all regular tracks since tempo segments changed.
+    auto tracks = appModel.getTimelineTracks();
+    for (int32_t i = 0; i < static_cast<int32_t>(tracks.size()); ++i) {
+        if (!appModel.isTrackHidden(i))
+            refreshSequenceEditorForTrack(i);
+    }
 }
 
 void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& legendArea) {
@@ -2459,7 +2485,7 @@ void TimelineEditor::addBlankMidi2ClipToTrackAtPosition(int32_t trackIndex, doub
         refreshSequenceEditorForTrack(trackIndex);
 }
 
-void TimelineEditor::addAudioClipToTrack(int32_t trackIndex) {
+void TimelineEditor::addAudioClipToTrack(int32_t trackIndex, double positionSeconds) {
     std::vector<uapmd::DocumentFilter> filters{
         {"Audio Files", {}, {"*.wav", "*.flac", "*.ogg"}},
         {"WAV Files",   {}, {"*.wav"}},
@@ -2470,11 +2496,13 @@ void TimelineEditor::addAudioClipToTrack(int32_t trackIndex) {
     if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters, false,
-            [this, trackIndex](uapmd::DocumentPickResult result) {
+            [this, trackIndex, positionSeconds](uapmd::DocumentPickResult result) {
                 if (!result.success || result.handles.empty()) return;
                 resolveDocumentHandle(
                     result.handles[0],
-                    [this, trackIndex](const std::filesystem::path& resolved) {
+                    [this, trackIndex, positionSeconds](const std::filesystem::path& resolved) {
+                        auto& appModel = uapmd::AppModel::instance();
+                        const double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
                         auto reader = uapmd::createAudioFileReaderFromPath(resolved.string());
                         if (!reader) {
                             platformError("Load Failed",
@@ -2482,10 +2510,9 @@ void TimelineEditor::addAudioClipToTrack(int32_t trackIndex) {
                             return;
                         }
                         uapmd::TimelinePosition pos;
-                        pos.samples = 0;
+                        pos.samples      = static_cast<int64_t>(std::llround(std::max(0.0, positionSeconds) * sr));
                         pos.legacy_beats = 0.0;
-                        auto r = uapmd::AppModel::instance().addClipToTrack(
-                            trackIndex, pos, std::move(reader), resolved.string());
+                        auto r = appModel.addClipToTrack(trackIndex, pos, std::move(reader), resolved.string());
                         if (!r.success)
                             platformError("Add Clip Failed", r.error);
                         else
@@ -2497,7 +2524,7 @@ void TimelineEditor::addAudioClipToTrack(int32_t trackIndex) {
     }
 }
 
-void TimelineEditor::addSmfClipToTrack(int32_t trackIndex) {
+void TimelineEditor::addSmfClipToTrack(int32_t trackIndex, double positionSeconds) {
     std::vector<uapmd::DocumentFilter> filters{
         {"SMF Files", {}, {"*.mid", "*.midi", "*.smf"}},
         {"All Files", {}, {"*"}}
@@ -2505,16 +2532,17 @@ void TimelineEditor::addSmfClipToTrack(int32_t trackIndex) {
     if (auto* provider = uapmd::AppModel::instance().documentProvider()) {
         provider->pickOpenDocuments(
             filters, false,
-            [this, trackIndex](uapmd::DocumentPickResult result) {
+            [this, trackIndex, positionSeconds](uapmd::DocumentPickResult result) {
                 if (!result.success || result.handles.empty()) return;
                 resolveDocumentHandle(
                     result.handles[0],
-                    [this, trackIndex](const std::filesystem::path& resolved) {
+                    [this, trackIndex, positionSeconds](const std::filesystem::path& resolved) {
+                        auto& appModel = uapmd::AppModel::instance();
+                        const double sr = std::max(1.0, static_cast<double>(appModel.sampleRate()));
                         uapmd::TimelinePosition pos;
-                        pos.samples = 0;
+                        pos.samples      = static_cast<int64_t>(std::llround(std::max(0.0, positionSeconds) * sr));
                         pos.legacy_beats = 0.0;
-                        auto r = uapmd::AppModel::instance().addClipToTrack(
-                            trackIndex, pos, nullptr, resolved.string());
+                        auto r = appModel.addClipToTrack(trackIndex, pos, nullptr, resolved.string());
                         if (!r.success)
                             platformError("Add Clip Failed", r.error);
                         else
