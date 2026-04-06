@@ -426,12 +426,15 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                     }
                 }
             }
-            if (!clipUnderMouse && scale > 0.0f) {
+            // Always record the clicked timeline position so "Add New Clip Here" works
+            // even when the click lands on an existing clip.
+            if (scale > 0.0f) {
                 const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
                 const double tsUnits = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
                 const double maxSec = unitsToSeconds(context, static_cast<double>(unified_.timeline->GetMaxFrame()));
                 trackState.requestedAddPosition = std::clamp(unitsToSeconds(context, tsUnits), 0.0, maxSec);
-                requestedAddClipTrack = hoveredTrackIndex;
+                if (!clipUnderMouse)
+                    requestedAddClipTrack = hoveredTrackIndex;
             }
         }
 
@@ -493,6 +496,23 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                         ImGui::CloseCurrentPopup();
                     }
                     if (!canDelete) ImGui::EndDisabled();
+
+                    if (!contextClip->isMasterTrack) {
+                        ImGui::Separator();
+                        if (ImGui::MenuItem("New Clip Here")) {
+                            if (context.addBlankMidiClipAtPosition)
+                                context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
+                            ImGui::CloseCurrentPopup();
+                        }
+                        if (ImGui::MenuItem("Import Audio Clip Here...")) {
+                            if (context.addAudioClip) context.addAudioClip(trackIndex);
+                            ImGui::CloseCurrentPopup();
+                        }
+                        if (ImGui::MenuItem("Import SMF Here...")) {
+                            if (context.addSmfClip) context.addSmfClip(trackIndex);
+                            ImGui::CloseCurrentPopup();
+                        }
+                    }
                 }
                 ImGui::EndPopup();
             }
