@@ -1,4 +1,5 @@
 diff --git a/Timeline.cpp b/Timeline.cpp
+index dbe63d4..8819398 100644
 --- a/Timeline.cpp
 +++ b/Timeline.cpp
 @@ -470,7 +470,7 @@ bool Timeline::DrawTimeline()
@@ -20,7 +21,7 @@ diff --git a/Timeline.cpp b/Timeline.cpp
      ImVec2 scrollBarMin = ImGui::GetItemRectMin();
      ImVec2 scrollBarMax = ImGui::GetItemRectMax();
  
-@@ -664,17 +667,17 @@ void Timeline::DrawScrollbar()
+@@ -664,16 +667,16 @@ void Timeline::DrawScrollbar()
      float startFrameOffset = ((float)(mStartFrame - mFrameMin) / (float)frameCount) * (canvas_size.x - mStyle.LegendWidth);
      ImVec2 scrollBarA(scrollBarMin.x + mStyle.LegendWidth, scrollBarMin.y - 2);
      ImVec2 scrollBarB(scrollBarMin.x + canvas_size.x, scrollBarMax.y - 1);
@@ -40,7 +41,7 @@ diff --git a/Timeline.cpp b/Timeline.cpp
  
      ImRect barHandleLeft(scrollBarC, ImVec2(scrollBarC.x + 14, scrollBarD.y));
      ImRect barHandleRight(ImVec2(scrollBarD.x - 14, scrollBarC.y), scrollBarD);
-@@ -684,15 +687,15 @@ void Timeline::DrawScrollbar()
+@@ -684,8 +687,8 @@ void Timeline::DrawScrollbar()
      static bool sizingRBar = false;
      static bool sizingLBar = false;
  
@@ -51,12 +52,7 @@ diff --git a/Timeline.cpp b/Timeline.cpp
  
      ImRect scrollBarThumb(scrollBarC, scrollBarD);
  
-     if (mInputData.IsMovingScrollBar) {
-         if (mInputData.LeftMouseDown == false) {
-             mInputData.IsMovingScrollBar = false;
-         } else {
-             float framesPerPixelInBar = barWidthInPixels / (f32)mVisibleFrameCount;
-             mStartFrame = int((mInputData.MousePos.x - mPanningData.panningViewSource.x) / framesPerPixelInBar) - mPanningData.panningViewFrame;
+@@ -698,7 +701,7 @@ void Timeline::DrawScrollbar()
              mStartFrame = ImClamp(mStartFrame, mFrameMin, ImMax(mFrameMax - mVisibleFrameCount, mFrameMin));
          }
      } else {
@@ -77,6 +73,7 @@ diff --git a/Timeline.cpp b/Timeline.cpp
  
      if (ImGui::IsKeyDown(ImGuiKey_Delete) || ImGui::IsKeyDown(ImGuiKey_Backspace)) {
 diff --git a/TimelineCore/TimelineDefines.h b/TimelineCore/TimelineDefines.h
+index 7f769bc..59b53ed 100644
 --- a/TimelineCore/TimelineDefines.h
 +++ b/TimelineCore/TimelineDefines.h
 @@ -3,6 +3,7 @@
@@ -104,7 +101,7 @@ diff --git a/TimelineCore/TimelineDefines.h b/TimelineCore/TimelineDefines.h
  
  namespace ImTimeline {
  class Timeline;
-@@ -223,9 +225,18 @@ struct ImTimelineStyle {
+@@ -226,7 +228,17 @@ struct ImTimelineStyle {
      int ScrollbarThickness = 12;
      unsigned int HeaderBackgroundColor = 0xFF3D3837;
      unsigned int HeaderTimeStampColor = 0xFFC4C4C4;
@@ -122,9 +119,15 @@ diff --git a/TimelineCore/TimelineDefines.h b/TimelineCore/TimelineDefines.h
      bool HasScrollbar = true;
      bool HasSeekbar = true;
      ImU32 SeekbarColor = 0xFF2A2AFF;
-     f32 SeekbarWidth = 3.0f;
- };
+@@ -291,4 +303,4 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+ )";
+-}
+\ No newline at end of file
++}
 diff --git a/TimelineViews/HorizontalNodeView.cpp b/TimelineViews/HorizontalNodeView.cpp
+index db75acd..d480f26 100644
 --- a/TimelineViews/HorizontalNodeView.cpp
 +++ b/TimelineViews/HorizontalNodeView.cpp
 @@ -5,6 +5,23 @@
@@ -151,7 +154,7 @@ diff --git a/TimelineViews/HorizontalNodeView.cpp b/TimelineViews/HorizontalNode
  
  void HorizontalNodeView::PreDraw() 
  {
-@@ -25,10 +42,10 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
+@@ -27,10 +44,10 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
  
      // background
  
@@ -173,14 +176,14 @@ diff --git a/TimelineViews/HorizontalNodeView.cpp b/TimelineViews/HorizontalNode
          ImVec2 slotP2(timelinePanelRect.Min.x + node.end * scale + scale, slotP1.y + sectionHeight - node.displayProperties.AccentThickness);
  
          ImRect nodeRect = ImRect(slotP1, slotP2);
-@@ -133,14 +150,13 @@ void HorizontalNodeView::defaultNodeDraw(const ImRect& area, const TimelineNode&
+@@ -134,12 +151,9 @@ void HorizontalNodeView::defaultNodeDraw(const ImRect& area, const TimelineNode&
          bgColor = timeline->GetSectionDisplayProperties(node.GetSection()).mBackgroundColor;
          bgColor2 = timeline->GetSectionDisplayProperties(node.GetSection()).mBackgroundColorTwo;
      }
 -    if (area.Contains(timeline->GetLastInputData().MousePos)) {
 -        bgColor += 0x00201000;
 -    }
- 
+-
 -    ImU32 gradientStart = bgColor;
 -    ImU32 gradientEnd = bgColor + 0xFF402000;
 +    const bool hovered = area.Contains(timeline->GetLastInputData().MousePos);
@@ -189,8 +192,7 @@ diff --git a/TimelineViews/HorizontalNodeView.cpp b/TimelineViews/HorizontalNode
  
  
      f32 borderRadius = node.displayProperties.BorderRadius;
-     ImU32 fgColor = bSelected ? timeline->mStyle.SelectedNodeOutlineColor : node.displayProperties.mForegroundColor;
-@@ -173,7 +189,7 @@ void HorizontalNodeView::DrawLegendArea(const sTimelineSection& timeline, ImTime
+@@ -174,7 +188,7 @@ void HorizontalNodeView::DrawLegendArea(const sTimelineSection& timeline, ImTime
  
      auto* draw_list = ImGui::GetWindowDrawList();
      ImVec2 tpos(area.Min.x + 3, area.Min.y);
