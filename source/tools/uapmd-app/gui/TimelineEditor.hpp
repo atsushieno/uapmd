@@ -128,6 +128,10 @@ private:
 
     float currentUiScale_ = 1.0f;
 
+    // Set by handleTrackLayoutChange(Removed) and applied at the top of the next render()
+    // call, safely outside any ongoing ImTimeline::DrawTimeline() call stack.
+    bool pendingFullReset_ = false;
+
     // Internal rendering
     void renderTrackList(const SequenceEditor::RenderContext& context);
     void renderMasterTrackRow(const SequenceEditor::RenderContext& context);

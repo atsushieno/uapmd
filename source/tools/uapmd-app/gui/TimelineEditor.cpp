@@ -815,6 +815,12 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
 
 void TimelineEditor::render(float uiScale) {
     currentUiScale_ = uiScale;
+    if (pendingFullReset_) {
+        pendingFullReset_ = false;
+        sequenceEditor_.reset();
+        trackContentSignatures_.clear();
+        masterTrackSignature_.clear();
+    }
     syncExternalTimelineChanges();
     auto context = buildRenderContext(uiScale);
     renderTrackList(context);
@@ -1287,8 +1293,10 @@ void TimelineEditor::handleTrackLayoutChange(const uapmd::AppModel::TrackLayoutC
             refreshSequenceEditorForTrack(change.trackIndex);
             break;
         case uapmd::AppModel::TrackLayoutChange::Type::Removed:
-            sequenceEditor_.hideWindow(change.trackIndex);
-            trackContentSignatures_.erase(change.trackIndex);
+            // Defer the reset to the start of the next render() call. Resetting here
+            // would destroy unified_.timeline while DrawTimeline() may still be on the
+            // call stack (deletion can be triggered from within the legend callback).
+            pendingFullReset_ = true;
             break;
         case uapmd::AppModel::TrackLayoutChange::Type::Cleared:
             sequenceEditor_.reset();
