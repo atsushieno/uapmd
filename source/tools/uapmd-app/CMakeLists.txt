@@ -355,6 +355,7 @@ CPMAddPackage(
     GIT_TAG fixes
     GIT_REPOSITORY https://github.com/triplejam/ImTimeline
     DOWNLOAD_ONLY YES
+    PATCHES "${CMAKE_SOURCE_DIR}/external/patches/imtimeline.patch"
 )
 
 # IconFontCppHeaders provides Fontaudio glyph definitions used in the GUI
