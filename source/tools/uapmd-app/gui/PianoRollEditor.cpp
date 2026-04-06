@@ -13,6 +13,104 @@
 
 namespace uapmd::gui {
 
+namespace {
+
+ImVec4 withAlpha(const ImVec4& color, float alpha) {
+    return ImVec4(color.x, color.y, color.z, alpha);
+}
+
+ImVec4 mixColor(const ImVec4& a, const ImVec4& b, float t) {
+    return ImLerp(a, b, t);
+}
+
+struct PianoRollTheme {
+    ImU32 key_panel_bg;
+    ImU32 key_ruler_bg;
+    ImU32 key_black;
+    ImU32 key_white;
+    ImU32 key_preview_black;
+    ImU32 key_preview_white;
+    ImU32 key_label;
+    ImU32 key_separator;
+    ImU32 key_border;
+    ImU32 editor_bg;
+    ImU32 lane_black;
+    ImU32 lane_white;
+    ImU32 lane_octave;
+    ImU32 lane_separator;
+    ImU32 bar_line;
+    ImU32 beat_line;
+    ImU32 note_selected_fill;
+    ImU32 note_fill_low;
+    ImU32 note_fill_high;
+    ImU32 note_selected_border;
+    ImU32 note_border;
+    ImU32 automation_dot;
+    ImU32 ruler_bg;
+    ImU32 ruler_line;
+    ImU32 ruler_text;
+    ImU32 ruler_bottom_line;
+    ImU32 automation_related_text;
+};
+
+PianoRollTheme getPianoRollTheme() {
+    const auto& style = ImGui::GetStyle();
+    const auto& c = style.Colors;
+    const bool dark = c[ImGuiCol_WindowBg].x + c[ImGuiCol_WindowBg].y + c[ImGuiCol_WindowBg].z < 1.5f;
+
+    const ImVec4 window_bg = c[ImGuiCol_WindowBg];
+    const ImVec4 child_bg = c[ImGuiCol_ChildBg].w > 0.0f ? c[ImGuiCol_ChildBg] : window_bg;
+    const ImVec4 frame_bg = c[ImGuiCol_FrameBg];
+    const ImVec4 border = c[ImGuiCol_Border];
+    const ImVec4 text = c[ImGuiCol_Text];
+    const ImVec4 text_disabled = c[ImGuiCol_TextDisabled];
+    const ImVec4 accent = c[ImGuiCol_Button];
+    const ImVec4 accent_hover = c[ImGuiCol_ButtonHovered];
+    const ImVec4 accent_active = c[ImGuiCol_ButtonActive];
+    const ImVec4 header = c[ImGuiCol_Header];
+
+    const ImVec4 editor_bg = mixColor(child_bg, frame_bg, dark ? 0.22f : 0.45f);
+    const ImVec4 lane_white = mixColor(editor_bg, text, dark ? 0.03f : 0.05f);
+    const ImVec4 lane_black = mixColor(editor_bg, text, dark ? 0.08f : 0.10f);
+    const ImVec4 lane_octave = mixColor(header, lane_white, dark ? 0.18f : 0.30f);
+    const ImVec4 ruler_bg = mixColor(frame_bg, header, dark ? 0.30f : 0.18f);
+    const ImVec4 note_fill_low = mixColor(editor_bg, accent, dark ? 0.50f : 0.30f);
+    const ImVec4 note_fill_high = mixColor(accent_hover, accent_active, 0.45f);
+    const ImVec4 selected_fill = mixColor(accent_active, header, 0.35f);
+
+    PianoRollTheme theme{};
+    theme.key_panel_bg = ImGui::GetColorU32(mixColor(window_bg, frame_bg, dark ? 0.35f : 0.18f));
+    theme.key_ruler_bg = ImGui::GetColorU32(ruler_bg);
+    theme.key_black = IM_COL32(25, 25, 28, 255);
+    theme.key_white = IM_COL32(218, 218, 218, 255);
+    theme.key_preview_black = ImGui::GetColorU32(mixColor(accent_active, ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 0.20f));
+    theme.key_preview_white = ImGui::GetColorU32(mixColor(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), accent_hover, 0.35f));
+    theme.key_label = ImGui::GetColorU32(withAlpha(text, dark ? 0.58f : 0.70f));
+    theme.key_separator = ImGui::GetColorU32(withAlpha(border, dark ? 0.55f : 0.45f));
+    theme.key_border = ImGui::GetColorU32(withAlpha(border, dark ? 0.85f : 0.75f));
+    theme.editor_bg = ImGui::GetColorU32(editor_bg);
+    theme.lane_black = ImGui::GetColorU32(lane_black);
+    theme.lane_white = ImGui::GetColorU32(lane_white);
+    theme.lane_octave = ImGui::GetColorU32(lane_octave);
+    theme.lane_separator = ImGui::GetColorU32(withAlpha(border, dark ? 0.28f : 0.22f));
+    theme.bar_line = ImGui::GetColorU32(withAlpha(text, dark ? 0.22f : 0.12f));
+    theme.beat_line = ImGui::GetColorU32(withAlpha(text_disabled, dark ? 0.28f : 0.18f));
+    theme.note_selected_fill = ImGui::GetColorU32(withAlpha(selected_fill, 0.95f));
+    theme.note_fill_low = ImGui::GetColorU32(withAlpha(note_fill_low, 0.88f));
+    theme.note_fill_high = ImGui::GetColorU32(withAlpha(note_fill_high, 0.95f));
+    theme.note_selected_border = ImGui::GetColorU32(withAlpha(accent_active, 0.95f));
+    theme.note_border = ImGui::GetColorU32(withAlpha(border, dark ? 0.72f : 0.60f));
+    theme.automation_dot = ImGui::GetColorU32(withAlpha(mixColor(accent_hover, accent_active, 0.5f), 0.96f));
+    theme.ruler_bg = ImGui::GetColorU32(withAlpha(ruler_bg, dark ? 0.96f : 0.92f));
+    theme.ruler_line = ImGui::GetColorU32(withAlpha(border, dark ? 0.85f : 0.65f));
+    theme.ruler_text = ImGui::GetColorU32(withAlpha(text, dark ? 0.78f : 0.62f));
+    theme.ruler_bottom_line = ImGui::GetColorU32(withAlpha(border, dark ? 0.88f : 0.72f));
+    theme.automation_related_text = ImGui::GetColorU32(withAlpha(mixColor(text, accent_hover, 0.45f), 1.0f));
+    return theme;
+}
+
+} // namespace
+
 // ── static helpers ──────────────────────────────────────────────────────────
 
 bool PianoRollEditor::isBlackKey(int midiNote) noexcept {
@@ -708,15 +806,16 @@ void PianoRollEditor::renderControls(WindowState& state, float uiScale) {
 void PianoRollEditor::renderPianoKeys(ImDrawList* dl, ImVec2 origin, float width, float height,
                                       float noteH, float vScrollPx, float uiScale, int previewNote) const {
     dl->PushClipRect(origin, {origin.x + width, origin.y + height}, true);
+    const auto theme = getPianoRollTheme();
 
     const float rulerH     = kRulerHeight * uiScale;
     const float noteAreaY  = origin.y + rulerH;
     const float noteAreaH  = height - rulerH;
 
     // Background
-    dl->AddRectFilled(origin, {origin.x + width, origin.y + height}, IM_COL32(45, 45, 48, 255));
+    dl->AddRectFilled(origin, {origin.x + width, origin.y + height}, theme.key_panel_bg);
     // Ruler header strip
-    dl->AddRectFilled(origin, {origin.x + width, noteAreaY}, IM_COL32(35, 35, 40, 255));
+    dl->AddRectFilled(origin, {origin.x + width, noteAreaY}, theme.key_ruler_bg);
 
     if (noteAreaH > 0.0f && noteH > 0.0f) {
         int firstIdx = static_cast<int>(vScrollPx / noteH);
@@ -733,10 +832,10 @@ void PianoRollEditor::renderPianoKeys(ImDrawList* dl, ImVec2 origin, float width
 
             const bool isPreview = (midiNote == previewNote);
             if (isBlackKey(midiNote)) {
-                ImU32 keyCol = isPreview ? IM_COL32(60, 100, 220, 255) : IM_COL32(25, 25, 28, 255);
+                ImU32 keyCol = isPreview ? theme.key_preview_black : theme.key_black;
                 dl->AddRectFilled({origin.x, y0}, {origin.x + blackKeyW, y1 - 0.5f}, keyCol);
             } else {
-                ImU32 keyCol = isPreview ? IM_COL32(100, 160, 255, 255) : IM_COL32(218, 218, 218, 255);
+                ImU32 keyCol = isPreview ? theme.key_preview_white : theme.key_white;
                 dl->AddRectFilled({origin.x, y0}, {origin.x + width, y1 - 0.5f}, keyCol);
                 // Octave label on every C note
                 if (midiNote % 12 == 0) {
@@ -744,19 +843,19 @@ void PianoRollEditor::renderPianoKeys(ImDrawList* dl, ImVec2 origin, float width
                     float fontH = ImGui::GetFontSize();
                     float textY = y0 + (noteH - fontH) * 0.5f;
                     if (textY >= noteAreaY && textY + fontH <= noteAreaY + noteAreaH)
-                        dl->AddText({origin.x + 2.0f, textY}, IM_COL32(55, 55, 55, 255), label.c_str());
+                        dl->AddText({origin.x + 2.0f, textY}, theme.key_label, label.c_str());
                 }
             }
             // Row separator
             dl->AddLine({origin.x, y1 - 0.5f}, {origin.x + width, y1 - 0.5f},
-                         IM_COL32(80, 80, 80, 140));
+                         theme.key_separator);
         }
     }
 
     // Right border
     dl->AddLine({origin.x + width - 1.0f, origin.y + rulerH},
                  {origin.x + width - 1.0f, origin.y + height},
-                 IM_COL32(90, 90, 95, 255));
+                 theme.key_border);
 
     dl->PopClipRect();
 }
@@ -767,6 +866,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                                      float noteH, float pxPerSec, float hScroll, float vScrollPx,
                                      WindowState& state, float uiScale) const {
     if (width <= 0.0f || height <= 0.0f) return;
+    const auto theme = getPianoRollTheme();
 
     const float rulerH    = kRulerHeight * uiScale;
     const float noteAreaY = origin.y + rulerH;
@@ -775,7 +875,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
     dl->PushClipRect(origin, {origin.x + width, origin.y + height}, true);
 
     // ── Background ───────────────────────────────────────────────────────────
-    dl->AddRectFilled(origin, {origin.x + width, origin.y + height}, IM_COL32(28, 28, 30, 255));
+    dl->AddRectFilled(origin, {origin.x + width, origin.y + height}, theme.editor_bg);
 
     // ── Note lane bands ──────────────────────────────────────────────────────
     if (noteAreaH > 0.0f && noteH > 0.0f) {
@@ -789,12 +889,11 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             float y0 = noteAreaY + idx * noteH - vScrollPx;
             float y1 = y0 + noteH;
 
-            ImU32 laneCol = isBlackKey(midiNote) ? IM_COL32(23, 23, 25, 255)
-                                                  : IM_COL32(33, 33, 36, 255);
-            if (midiNote % 12 == 0) laneCol = IM_COL32(20, 20, 28, 255); // C octave boundary
+            ImU32 laneCol = isBlackKey(midiNote) ? theme.lane_black : theme.lane_white;
+            if (midiNote % 12 == 0) laneCol = theme.lane_octave;
             dl->AddRectFilled({origin.x, y0}, {origin.x + width, y1}, laneCol);
             dl->AddLine({origin.x, y1 - 0.5f}, {origin.x + width, y1 - 0.5f},
-                         IM_COL32(50, 50, 52, 90));
+                         theme.lane_separator);
         }
     }
 
@@ -813,13 +912,13 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             float firstBarX = origin.x - std::fmod(hScroll, barPx);
             for (float x = firstBarX; x <= origin.x + width; x += barPx)
                 dl->AddLine({x, noteAreaY}, {x, origin.y + height},
-                             IM_COL32(88, 88, 100, 120), 1.5f);
+                             theme.bar_line, 1.5f);
 
             if (beatPx >= 6.0f) {
                 float firstBeatX = origin.x - std::fmod(hScroll, beatPx);
                 for (float x = firstBeatX; x <= origin.x + width; x += beatPx)
                     dl->AddLine({x, noteAreaY}, {x, origin.y + height},
-                                 IM_COL32(52, 52, 58, 80));
+                                 theme.beat_line);
             }
         }
     }
@@ -909,16 +1008,17 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
             const float vel      = note.velocity; // already 0-1
 
             ImU32 fillCol = (selected || dragging)
-                ? ImGui::GetColorU32(ImVec4(0.95f, 0.75f, 0.15f, 0.95f))
-                : ImGui::GetColorU32(ImVec4(0.15f + 0.55f * vel,
-                                            0.40f + 0.30f * vel,
-                                            0.90f - 0.40f * vel, 0.95f));
+                ? theme.note_selected_fill
+                : ImGui::GetColorU32(mixColor(
+                    ImGui::ColorConvertU32ToFloat4(theme.note_fill_low),
+                    ImGui::ColorConvertU32ToFloat4(theme.note_fill_high),
+                    std::clamp(vel, 0.0f, 1.0f)));
 
             float r = std::min(2.0f * uiScale, noteH * 0.35f);
             dl->AddRectFilled({x0, y0}, {x1, y1}, fillCol, r);
             dl->AddRect({x0, y0}, {x1, y1},
-                         (selected || dragging) ? IM_COL32(255, 220, 80, 220)
-                                                : IM_COL32(10, 10, 12, 160),
+                         (selected || dragging) ? theme.note_selected_border
+                                                : theme.note_border,
                          r, 0, 1.0f);
 
             // Dot indicator on notes with per-note automation events
@@ -926,7 +1026,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
                 float dotR = std::min(3.0f * uiScale, noteH * 0.25f);
                 float dotX = std::min(x1 - dotR - 1.0f * uiScale, x0 + (x1 - x0) * 0.8f);
                 float dotY = y0 + (y1 - y0) * 0.5f;
-                dl->AddCircleFilled({dotX, dotY}, dotR, IM_COL32(255, 200, 50, 230));
+                dl->AddCircleFilled({dotX, dotY}, dotR, theme.automation_dot);
             }
 
             // Resize-edge hit zones (30% of width, max kResizeEdgePx*uiScale).
@@ -1040,7 +1140,7 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
     }
 
     // ── Time ruler (top strip — H-scrolled, not V-scrolled) ──────────────────
-    dl->AddRectFilled(origin, {origin.x + width, origin.y + rulerH}, IM_COL32(46, 46, 56, 235));
+    dl->AddRectFilled(origin, {origin.x + width, origin.y + rulerH}, theme.ruler_bg);
 
     if (pxPerSec > 0.0f && state.preview) {
         // bpm already computed above
@@ -1052,18 +1152,18 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
 
             while (x <= origin.x + width) {
                 dl->AddLine({x, origin.y}, {x, origin.y + rulerH},
-                             IM_COL32(155, 155, 165, 200));
+                             theme.ruler_line);
                 std::string label = std::to_string(barNum + 1);
                 float textY = origin.y + (rulerH - ImGui::GetFontSize()) * 0.5f;
                 if (x + 2.0f < origin.x + width - 4.0f)
-                    dl->AddText({x + 2.0f, textY}, IM_COL32(205, 205, 215, 220), label.c_str());
+                    dl->AddText({x + 2.0f, textY}, theme.ruler_text, label.c_str());
                 x += barPx;
                 ++barNum;
             }
         }
     }
     dl->AddLine({origin.x, origin.y + rulerH}, {origin.x + width, origin.y + rulerH},
-                 IM_COL32(75, 75, 82, 200));
+                 theme.ruler_bottom_line);
 
     dl->PopClipRect();
 }
@@ -1164,6 +1264,7 @@ bool PianoRollEditor::renderNrpnPicker(
 
 void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderContext& ctx) const {
     const float uiScale = ctx.uiScale;
+    const auto theme = getPianoRollTheme();
     if (!state.preview) {
         ImGui::TextDisabled("No clip loaded.");
         return;
@@ -1453,7 +1554,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
 
             ImGui::PushID(1000 + ci); // offset avoids ID collision with per-note rows
             ImGui::TableNextRow();
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.85f, 1.0f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, theme.automation_related_text);
 
             // Context-menu button (col 0 — always visible, never clipped)
             ImGui::TableSetColumnIndex(0);
