@@ -124,6 +124,18 @@ std::vector<int> PluginList::filterAndBuildIndices() {
 void PluginList::sortIndices(std::vector<int>& indices) {
     if (indices.empty()) return;
 
+    auto compareCI = [](const std::string& lhs, const std::string& rhs) {
+        for (size_t i = 0, n = std::min(lhs.size(), rhs.size()); i < n; ++i) {
+            auto a = static_cast<unsigned char>(lhs[i]);
+            auto b = static_cast<unsigned char>(rhs[i]);
+            // Case-insensitive for ASCII letters; non-ASCII compared by codepoint
+            if (a >= 'A' && a <= 'Z') a += 'a' - 'A';
+            if (b >= 'A' && b <= 'Z') b += 'a' - 'A';
+            if (a != b) return static_cast<int>(a) - static_cast<int>(b);
+        }
+        return static_cast<int>(lhs.size()) - static_cast<int>(rhs.size());
+    };
+
     if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
         if (sort_specs->SpecsCount > 0) {
             auto cmp = [&](int lhsIdx, int rhsIdx) {
@@ -133,10 +145,10 @@ void PluginList::sortIndices(std::vector<int>& indices) {
                     const ImGuiTableColumnSortSpecs* s = &sort_specs->Specs[n];
                     int delta = 0;
                     switch (s->ColumnIndex) {
-                        case 0: delta = a.format.compare(b.format); break;
-                        case 1: delta = a.name.compare(b.name); break;
-                        case 2: delta = a.vendor.compare(b.vendor); break;
-                        case 3: delta = a.id.compare(b.id); break;
+                        case 0: delta = compareCI(a.format, b.format); break;
+                        case 1: delta = compareCI(a.name, b.name); break;
+                        case 2: delta = compareCI(a.vendor, b.vendor); break;
+                        case 3: delta = compareCI(a.id, b.id); break;
                         default: break;
                     }
                     if (delta != 0) {
@@ -144,10 +156,10 @@ void PluginList::sortIndices(std::vector<int>& indices) {
                     }
                 }
                 // Tiebreaker to get deterministic order
-                if (int t = a.name.compare(b.name); t != 0) return t < 0;
-                if (int t = a.vendor.compare(b.vendor); t != 0) return t < 0;
-                if (int t = a.id.compare(b.id); t != 0) return t < 0;
-                return a.format < b.format;
+                if (int t = compareCI(a.name, b.name); t != 0) return t < 0;
+                if (int t = compareCI(a.vendor, b.vendor); t != 0) return t < 0;
+                if (int t = compareCI(a.id, b.id); t != 0) return t < 0;
+                return compareCI(a.format, b.format) < 0;
             };
             std::sort(indices.begin(), indices.end(), cmp);
         }
