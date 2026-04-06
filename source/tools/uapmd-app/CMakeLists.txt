@@ -353,15 +353,22 @@ CPMAddPackage(
 
 # ImTimeline for SequenceEditor timeline view
 set(_UAPMD_IMTIMELINE_PATCH "${CMAKE_CURRENT_LIST_DIR}/../../../external/patches/imtimeline.patch")
+set(_UAPMD_IMTIMELINE_CACHE_EPOCH "2")
 file(SHA1 "${_UAPMD_IMTIMELINE_PATCH}" _UAPMD_IMTIMELINE_PATCH_SHA1)
 CPMAddPackage(
     NAME ImTimeline
     GIT_TAG fixes
     GIT_REPOSITORY https://github.com/triplejam/ImTimeline
-    CUSTOM_CACHE_KEY "fixes-${_UAPMD_IMTIMELINE_PATCH_SHA1}"
+    CUSTOM_CACHE_KEY "fixes-v${_UAPMD_IMTIMELINE_CACHE_EPOCH}-${_UAPMD_IMTIMELINE_PATCH_SHA1}"
     DOWNLOAD_ONLY YES
     PATCHES "${_UAPMD_IMTIMELINE_PATCH}"
 )
+file(READ "${ImTimeline_SOURCE_DIR}/TimelineCore/TimelineDefines.h" _UAPMD_IMTIMELINE_DEFINES)
+if(NOT _UAPMD_IMTIMELINE_DEFINES MATCHES "LegendTextColor")
+    message(FATAL_ERROR
+        "ImTimeline source cache is stale or patch application failed: ${ImTimeline_SOURCE_DIR}\n"
+        "Expected patched style fields were not found in TimelineCore/TimelineDefines.h.")
+endif()
 
 # IconFontCppHeaders provides Fontaudio glyph definitions used in the GUI
 CPMAddPackage(
