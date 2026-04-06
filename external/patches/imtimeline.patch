@@ -1,0 +1,45 @@
+diff --git a/Timeline.cpp b/Timeline.cpp
+index dbe63d4..9a81090 100644
+--- a/Timeline.cpp
++++ b/Timeline.cpp
+@@ -470,7 +470,7 @@ bool Timeline::DrawTimeline()
+     ImVec2 childFrameSize(canvas_size.x, canvas_size.y - 8.f - headerRect.GetHeight() - (mStyle.HasScrollbar ? static_cast<int>(mStyle.ScrollbarThickness) : 0.f));
+ 
+     ImGui::PushStyleColor(ImGuiCol_FrameBg, 0);
+-    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle);
++    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle, ImGuiWindowFlags_NoScrollWithMouse);
+ 
+     const ImVec2 contentMin = ImGui::GetItemRectMin();
+     const ImVec2 contentMax = ImGui::GetItemRectMax();
+@@ -1122,7 +1122,9 @@ void Timeline::CollectInputData(sInputData& a_outInputData, f32 aDeltaTime)
+     mInputData.MousePos = io.MousePos;
+     mInputData.LeftMouseDown = io.MouseDown[0];
+     mInputData.RightMouseDown = io.MouseDown[1];
+-    mInputData.MouseScrollVertical = io.MouseWheel;
++    // Use horizontal scroll axis (trackpad swipe / Shift+wheel) for timeline pan so that
++    // the vertical axis remains available for the outer container's track-list scroll.
++    mInputData.MouseScrollVertical = io.MouseWheelH != 0.0f ? io.MouseWheelH : 0.0f;
+     // mInputData.MouseDownDuration += io.MouseDownDuration[0];
+ 
+     if (ImGui::IsKeyDown(ImGuiKey_Delete) || ImGui::IsKeyDown(ImGuiKey_Backspace)) {
+diff --git a/TimelineCore/TimelineDefines.h b/TimelineCore/TimelineDefines.h
+index 7f769bc..20f9fac 100644
+--- a/TimelineCore/TimelineDefines.h
++++ b/TimelineCore/TimelineDefines.h
+@@ -3,6 +3,7 @@
+ #include "../Core/ImTimelineLog.h"
+ 
+ #include <bitset>
++#include <map>
+ 
+ #define IMTIMELINE_VERSION_STR "0.2.0 WIP"
+ #define IMTIMELINE_VERSION_NUM 002010
+@@ -181,7 +182,7 @@ struct sTimelineSection {
+     void OnFinalize();
+ };
+ 
+-using TimelineDataMap = std::unordered_map<u32, sTimelineSection>;
++using TimelineDataMap = std::map<u32, sTimelineSection>;
+ 
+ namespace ImTimeline {
+ class Timeline;
