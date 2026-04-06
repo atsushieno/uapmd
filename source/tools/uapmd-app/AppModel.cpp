@@ -2780,7 +2780,8 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromResolvedPath(
     if (!ProjectArchive::isArchive(projectFile)) {
         auto result = loadProject(projectFile);
         if (result.success) {
-            activeProjectTempDir_.reset();
+            if (activeProjectTempDir_)
+                retiredProjectTempDirs_.push_back(std::move(activeProjectTempDir_));
         }
         return result;
     }
@@ -2806,6 +2807,8 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromResolvedPath(
     auto result = loadProject(extract.projectFile);
     if (result.success) {
         markLoadedArchiveClipsNeedsFileSave(*this);
+        if (activeProjectTempDir_)
+            retiredProjectTempDirs_.push_back(std::move(activeProjectTempDir_));
         activeProjectTempDir_ = std::move(stage);
     }
     return result;

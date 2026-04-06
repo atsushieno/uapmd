@@ -136,6 +136,7 @@ namespace uapmd {
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
         std::unique_ptr<ScopedTempDir> activeProjectTempDir_;
+        std::vector<std::unique_ptr<ScopedTempDir>> retiredProjectTempDirs_;
         SlowScanProgressState slowScanProgress_{};
         mutable std::mutex slowScanMutex_;
         std::atomic<bool> scanCancelRequested_{false};
