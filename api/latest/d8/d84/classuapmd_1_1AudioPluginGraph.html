@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -76,13 +76,26 @@ $(function() {
   <div class="summary">
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="#pub-static-methods">Static Public Member Functions</a> &#124;
+<a href="#pro-methods">Protected Member Functions</a> &#124;
 <a href="../../d2/d39/classuapmd_1_1AudioPluginGraph-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">uapmd::AudioPluginGraph Class Reference<span class="mlabels"><span class="mlabel">abstract</span></span></div></div>
 </div><!--header-->
 <div class="contents">
+<div class="dynheader">
+Inheritance diagram for uapmd::AudioPluginGraph:</div>
+<div class="dyncontent">
+ <div class="center">
+  <img src="../../d8/d84/classuapmd_1_1AudioPluginGraph.png" usemap="#uapmd::AudioPluginGraph_map" alt=""/>
+  <map id="uapmd::AudioPluginGraph_map" name="uapmd::AudioPluginGraph_map">
+<area href="../../d7/d5a/classuapmd_1_1AudioPluginFullDAGraph.html" alt="uapmd::AudioPluginFullDAGraph" shape="rect" coords="0,56,197,80"/>
+  </map>
+</div></div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:a58073d515b1cf019c21f197503515f46" id="r_a58073d515b1cf019c21f197503515f46"><td class="memItemLeft" align="right" valign="top"><a id="a58073d515b1cf019c21f197503515f46" name="a58073d515b1cf019c21f197503515f46"></a>
+const std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>providerId</b> () const</td></tr>
+<tr class="separator:a58073d515b1cf019c21f197503515f46"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5152d61fddc9d0e8d5a3fa3ac04b030f" id="r_a5152d61fddc9d0e8d5a3fa3ac04b030f"><td class="memItemLeft" align="right" valign="top"><a id="a5152d61fddc9d0e8d5a3fa3ac04b030f" name="a5152d61fddc9d0e8d5a3fa3ac04b030f"></a>
 virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>appendNodeSimple</b> (int32_t instanceId, <a class="el" href="../../dd/dab/classuapmd_1_1AudioPluginInstanceAPI.html">AudioPluginInstanceAPI</a> *instance, std::function&lt; void()&gt; &amp;&amp;onDelete)=0</td></tr>
 <tr class="separator:a5152d61fddc9d0e8d5a3fa3ac04b030f"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -104,15 +117,56 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setEventOutpu
 <tr class="memitem:a00388c3fa1db7117aae4ea94fa652bd2" id="r_a00388c3fa1db7117aae4ea94fa652bd2"><td class="memItemLeft" align="right" valign="top"><a id="a00388c3fa1db7117aae4ea94fa652bd2" name="a00388c3fa1db7117aae4ea94fa652bd2"></a>
 virtual int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process)=0</td></tr>
 <tr class="separator:a00388c3fa1db7117aae4ea94fa652bd2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2b76fe86759c10f11e2ac9b6f6d9db7f" id="r_a2b76fe86759c10f11e2ac9b6f6d9db7f"><td class="memItemLeft" align="right" valign="top"><a id="a2b76fe86759c10f11e2ac9b6f6d9db7f" name="a2b76fe86759c10f11e2ac9b6f6d9db7f"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>outputBusCount</b> ()=0</td></tr>
+<tr class="separator:a2b76fe86759c10f11e2ac9b6f6d9db7f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae29c1918343f8be94e4fcd8f9e35ded8" id="r_ae29c1918343f8be94e4fcd8f9e35ded8"><td class="memItemLeft" align="right" valign="top"><a id="ae29c1918343f8be94e4fcd8f9e35ded8" name="ae29c1918343f8be94e4fcd8f9e35ded8"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>outputLatencyInSamples</b> (uint32_t outputBusIndex)=0</td></tr>
+<tr class="separator:ae29c1918343f8be94e4fcd8f9e35ded8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:add35c4c162758fe56b07375a564e679c" id="r_add35c4c162758fe56b07375a564e679c"><td class="memItemLeft" align="right" valign="top"><a id="add35c4c162758fe56b07375a564e679c" name="add35c4c162758fe56b07375a564e679c"></a>
+virtual double&#160;</td><td class="memItemRight" valign="bottom"><b>outputTailLengthInSeconds</b> (uint32_t outputBusIndex)=0</td></tr>
+<tr class="separator:add35c4c162758fe56b07375a564e679c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a24699123f594e08441cb8c6886362aef" id="r_a24699123f594e08441cb8c6886362aef"><td class="memItemLeft" align="right" valign="top"><a id="a24699123f594e08441cb8c6886362aef" name="a24699123f594e08441cb8c6886362aef"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>renderLeadInSamples</b> ()=0</td></tr>
+<tr class="separator:a24699123f594e08441cb8c6886362aef"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4266d5a150e230e1d3b37833881edbce" id="r_a4266d5a150e230e1d3b37833881edbce"><td class="memItemLeft" align="right" valign="top"><a id="a4266d5a150e230e1d3b37833881edbce" name="a4266d5a150e230e1d3b37833881edbce"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>mainOutputLatencyInSamples</b> ()=0</td></tr>
+<tr class="separator:a4266d5a150e230e1d3b37833881edbce"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5c9184ff5ab007aca8f4685f710041ab" id="r_a5c9184ff5ab007aca8f4685f710041ab"><td class="memItemLeft" align="right" valign="top"><a id="a5c9184ff5ab007aca8f4685f710041ab" name="a5c9184ff5ab007aca8f4685f710041ab"></a>
+virtual double&#160;</td><td class="memItemRight" valign="bottom"><b>mainOutputTailLengthInSeconds</b> ()=0</td></tr>
+<tr class="separator:a5c9184ff5ab007aca8f4685f710041ab"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7629267b88d9377bc546da5a698d43ea" id="r_a7629267b88d9377bc546da5a698d43ea"><td class="memTemplParams" colspan="2"><a id="a7629267b88d9377bc546da5a698d43ea" name="a7629267b88d9377bc546da5a698d43ea"></a>
+template&lt;typename T &gt; </td></tr>
+<tr class="memitem:a7629267b88d9377bc546da5a698d43ea"><td class="memTemplItemLeft" align="right" valign="top">T *&#160;</td><td class="memTemplItemRight" valign="bottom"><b>getExtension</b> ()</td></tr>
+<tr class="separator:a7629267b88d9377bc546da5a698d43ea"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad5fee33f95cf998f386993779d191f68" id="r_ad5fee33f95cf998f386993779d191f68"><td class="memTemplParams" colspan="2"><a id="ad5fee33f95cf998f386993779d191f68" name="ad5fee33f95cf998f386993779d191f68"></a>
+template&lt;typename T &gt; </td></tr>
+<tr class="memitem:ad5fee33f95cf998f386993779d191f68"><td class="memTemplItemLeft" align="right" valign="top">const T *&#160;</td><td class="memTemplItemRight" valign="bottom"><b>getExtension</b> () const</td></tr>
+<tr class="separator:ad5fee33f95cf998f386993779d191f68"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
 <tr class="memitem:a80aa48b1c88504d558c1876345d48303" id="r_a80aa48b1c88504d558c1876345d48303"><td class="memItemLeft" align="right" valign="top"><a id="a80aa48b1c88504d558c1876345d48303" name="a80aa48b1c88504d558c1876345d48303"></a>
 static std::unique_ptr&lt; <a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (size_t eventBufferSizeInBytes)</td></tr>
 <tr class="separator:a80aa48b1c88504d558c1876345d48303"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a75780431011accf5ae0d93d2865c9603" id="r_a75780431011accf5ae0d93d2865c9603"><td class="memItemLeft" align="right" valign="top"><a id="a75780431011accf5ae0d93d2865c9603" name="a75780431011accf5ae0d93d2865c9603"></a>
+static bool&#160;</td><td class="memItemRight" valign="bottom"><b>migrate</b> (<a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &amp;to, <a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &amp;from)</td></tr>
+<tr class="separator:a75780431011accf5ae0d93d2865c9603"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-methods" name="pro-methods"></a>
+Protected Member Functions</h2></td></tr>
+<tr class="memitem:a1b51708ed59bbc2d0a5daeea662e6918" id="r_a1b51708ed59bbc2d0a5daeea662e6918"><td class="memItemLeft" align="right" valign="top"><a id="a1b51708ed59bbc2d0a5daeea662e6918" name="a1b51708ed59bbc2d0a5daeea662e6918"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><b>AudioPluginGraph</b> (std::string providerId={})</td></tr>
+<tr class="separator:a1b51708ed59bbc2d0a5daeea662e6918"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab6ef8005189342394494220540f3edef" id="r_ab6ef8005189342394494220540f3edef"><td class="memItemLeft" align="right" valign="top"><a id="ab6ef8005189342394494220540f3edef" name="ab6ef8005189342394494220540f3edef"></a>
+virtual <a class="el" href="../../d3/d49/classuapmd_1_1AudioGraphExtension.html">AudioGraphExtension</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>getExtension</b> (const std::type_info &amp;type)=0</td></tr>
+<tr class="separator:ab6ef8005189342394494220540f3edef"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0ce58421d784fc9c448b85052fb87d34" id="r_a0ce58421d784fc9c448b85052fb87d34"><td class="memItemLeft" align="right" valign="top"><a id="a0ce58421d784fc9c448b85052fb87d34" name="a0ce58421d784fc9c448b85052fb87d34"></a>
+virtual const <a class="el" href="../../d3/d49/classuapmd_1_1AudioGraphExtension.html">AudioGraphExtension</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>getExtension</b> (const std::type_info &amp;type) const =0</td></tr>
+<tr class="separator:a0ce58421d784fc9c448b85052fb87d34"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd/include/uapmd/priv/node-graph/<a class="el" href="../../d0/d3f/AudioPluginGraph_8hpp_source.html">AudioPluginGraph.hpp</a></li>
+<li>source/uapmd/include/uapmd/detail/node-graph/<a class="el" href="../../d0/d3f/AudioPluginGraph_8hpp_source.html">AudioPluginGraph.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

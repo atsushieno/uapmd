@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -88,6 +88,9 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:af4cd95590fbfa733f773eeb4824f606c" id="r_af4cd95590fbfa733f773eeb4824f606c"><td class="memItemLeft" align="right" valign="top"><a id="af4cd95590fbfa733f773eeb4824f606c" name="af4cd95590fbfa733f773eeb4824f606c"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><b>ClipManager</b> (std::string referencePrefix={})</td></tr>
+<tr class="separator:af4cd95590fbfa733f773eeb4824f606c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae97aabbb177f4ea9441923020b5be7a8" id="r_ae97aabbb177f4ea9441923020b5be7a8"><td class="memItemLeft" align="right" valign="top"><a id="ae97aabbb177f4ea9441923020b5be7a8" name="ae97aabbb177f4ea9441923020b5be7a8"></a>
 int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>addClip</b> (const <a class="el" href="../../d4/d9f/structuapmd_1_1ClipData.html">ClipData</a> &amp;clip)</td></tr>
 <tr class="separator:ae97aabbb177f4ea9441923020b5be7a8"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -130,9 +133,18 @@ bool&#160;</td><td class="memItemRight" valign="bottom"><b>setClipNeedsFileSave<
 <tr class="memitem:aa64df3b954b02d24787d8e6f2e7c9ac4" id="r_aa64df3b954b02d24787d8e6f2e7c9ac4"><td class="memItemLeft" align="right" valign="top"><a id="aa64df3b954b02d24787d8e6f2e7c9ac4" name="aa64df3b954b02d24787d8e6f2e7c9ac4"></a>
 bool&#160;</td><td class="memItemRight" valign="bottom"><b>clipNeedsFileSave</b> (int32_t clipId) const</td></tr>
 <tr class="separator:aa64df3b954b02d24787d8e6f2e7c9ac4"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a22ae59b416fd020e52a1e9fa47ddc0bc" id="r_a22ae59b416fd020e52a1e9fa47ddc0bc"><td class="memItemLeft" align="right" valign="top"><a id="a22ae59b416fd020e52a1e9fa47ddc0bc" name="a22ae59b416fd020e52a1e9fa47ddc0bc"></a>
-bool&#160;</td><td class="memItemRight" valign="bottom"><b>setClipAnchor</b> (int32_t clipId, int32_t anchorClipId, AnchorOrigin anchorOrigin, const <a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a> &amp;anchorOffset)</td></tr>
-<tr class="separator:a22ae59b416fd020e52a1e9fa47ddc0bc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1450525758e080ff86de5afad0fdae7f" id="r_a1450525758e080ff86de5afad0fdae7f"><td class="memItemLeft" align="right" valign="top"><a id="a1450525758e080ff86de5afad0fdae7f" name="a1450525758e080ff86de5afad0fdae7f"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>setClipAnchor</b> (int32_t clipId, const <a class="el" href="../../d3/d55/structuapmd_1_1TimeReference.html">TimeReference</a> &amp;anchor, int32_t sampleRate)</td></tr>
+<tr class="separator:a1450525758e080ff86de5afad0fdae7f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1b95e60beb238b5cdd7b10db0bf76bcc" id="r_a1b95e60beb238b5cdd7b10db0bf76bcc"><td class="memItemLeft" align="right" valign="top"><a id="a1b95e60beb238b5cdd7b10db0bf76bcc" name="a1b95e60beb238b5cdd7b10db0bf76bcc"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>setClipPosition</b> (int32_t clipId, const <a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a> &amp;position)</td></tr>
+<tr class="separator:a1b95e60beb238b5cdd7b10db0bf76bcc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae8d442591761e8856d6139a6dd5466ff" id="r_ae8d442591761e8856d6139a6dd5466ff"><td class="memItemLeft" align="right" valign="top"><a id="ae8d442591761e8856d6139a6dd5466ff" name="ae8d442591761e8856d6139a6dd5466ff"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>setClipMarkers</b> (int32_t clipId, std::vector&lt; <a class="el" href="../../d6/d34/structuapmd_1_1ClipMarker.html">ClipMarker</a> &gt; markers)</td></tr>
+<tr class="separator:ae8d442591761e8856d6139a6dd5466ff"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a17bcac5ab8e6c640c8e3b52d73aa4ac5" id="r_a17bcac5ab8e6c640c8e3b52d73aa4ac5"><td class="memItemLeft" align="right" valign="top"><a id="a17bcac5ab8e6c640c8e3b52d73aa4ac5" name="a17bcac5ab8e6c640c8e3b52d73aa4ac5"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>setAudioWarps</b> (int32_t clipId, std::vector&lt; <a class="el" href="../../de/dba/structuapmd_1_1AudioWarpPoint.html">AudioWarpPoint</a> &gt; audioWarps)</td></tr>
+<tr class="separator:a17bcac5ab8e6c640c8e3b52d73aa4ac5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae147fea93130b608f95c3e6f53ae32eb" id="r_ae147fea93130b608f95c3e6f53ae32eb"><td class="memItemLeft" align="right" valign="top"><a id="ae147fea93130b608f95c3e6f53ae32eb" name="ae147fea93130b608f95c3e6f53ae32eb"></a>
 std::vector&lt; <a class="el" href="../../d4/d9f/structuapmd_1_1ClipData.html">ClipData</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>getActiveClipsAt</b> (const <a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a> &amp;position)</td></tr>
 <tr class="separator:ae147fea93130b608f95c3e6f53ae32eb"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -150,7 +162,7 @@ std::shared_ptr&lt; const <a class="el" href="../../d4/d17/structuapmd_1_1ClipMa
 <tr class="separator:ac6772cd38865b259404f07142c8eb16e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd-data/include/uapmd-data/priv/timeline/<a class="el" href="../../da/dae/ClipManager_8hpp_source.html">ClipManager.hpp</a></li>
+<li>source/uapmd-data/include/uapmd-data/detail/timeline/<a class="el" href="../../da/dae/ClipManager_8hpp_source.html">ClipManager.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

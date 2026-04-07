@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>UAPMD: source/remidy/include/remidy/priv/plugin-instance.hpp Source File</title>
+<title>UAPMD: source/remidy/include/remidy/detail/plugin-instance.hpp Source File</title>
 <link href="../../tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="../../jquery.js"></script>
 <script type="text/javascript" src="../../dynsections.js"></script>
@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -74,7 +74,7 @@ $(document).ready(function() { init_codefold(1); });
 
 <div id="nav-path" class="navpath">
   <ul>
-<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_14a9784670c8eb1118efc6b9355b3743.html">remidy</a></li><li class="navelem"><a class="el" href="../../dir_06baa96f4d5977c8e2aebd6af854b3bb.html">include</a></li><li class="navelem"><a class="el" href="../../dir_78ded3c9909e1b8ee93c951998ca4857.html">remidy</a></li><li class="navelem"><a class="el" href="../../dir_95b994062bb9fb85348702b10a2ba9a1.html">priv</a></li>  </ul>
+<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_14a9784670c8eb1118efc6b9355b3743.html">remidy</a></li><li class="navelem"><a class="el" href="../../dir_06baa96f4d5977c8e2aebd6af854b3bb.html">include</a></li><li class="navelem"><a class="el" href="../../dir_78ded3c9909e1b8ee93c951998ca4857.html">remidy</a></li><li class="navelem"><a class="el" href="../../dir_c7c7b8c0eff744ff33fa148f4c02d003.html">detail</a></li>  </ul>
 </div>
 </div><!-- top -->
 <div class="header">
@@ -136,23 +136,26 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span> </div>
 <div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        <span class="keyword">virtual</span> StatusCode process(AudioProcessContext&amp; process) = 0;</div>
 <div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span> </div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>        <span class="keyword">virtual</span> PluginAudioBuses* audioBuses() = 0;</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span> </div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>        <span class="keyword">virtual</span> PluginParameterSupport* parameters() = 0;</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>        <span class="keyword">virtual</span> PluginStateSupport* states() = 0;</div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>        <span class="keyword">virtual</span> PluginPresetsSupport* presets() = 0;</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span> </div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>        <span class="keyword">virtual</span> PluginUISupport* ui() = 0;</div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span> </div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>        <span class="comment">// Some plugin APIs (e.g. CLAP in-place pairs) require the host to provide replacing buffers.</span></div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>        <span class="comment">// Hosts can query this flag to prepare AudioProcessContext inputs accordingly.</span></div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>        <span class="keyword">virtual</span> <span class="keywordtype">bool</span> requiresReplacingProcess() <span class="keyword">const</span> = 0;</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>    };</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>        <span class="keyword">virtual</span> uint32_t latencyInSamples() <span class="keyword">const</span> = 0;</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>        <span class="keyword">virtual</span> <span class="keywordtype">double</span> tailLengthInSeconds() <span class="keyword">const</span> = 0;</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span> </div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>        <span class="keyword">virtual</span> PluginAudioBuses* audioBuses() = 0;</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span> </div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>        <span class="keyword">virtual</span> PluginParameterSupport* parameters() = 0;</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span> </div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>        <span class="keyword">virtual</span> PluginStateSupport* states() = 0;</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>        <span class="keyword">virtual</span> PluginPresetsSupport* presets() = 0;</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span> </div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>        <span class="keyword">virtual</span> PluginUISupport* ui() = 0;</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>        <span class="comment">// Some plugin APIs (e.g. CLAP in-place pairs) require the host to provide replacing buffers.</span></div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>        <span class="comment">// Hosts can query this flag to prepare AudioProcessContext inputs accordingly.</span></div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>        <span class="keyword">virtual</span> <span class="keywordtype">bool</span> requiresReplacingProcess() <span class="keyword">const</span> = 0;</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    };</div>
 </div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span> </div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>}</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span> </div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>}</div>
 <div class="ttc" id="aclassremidy_1_1PluginCatalogEntry_html"><div class="ttname"><a href="../../d7/d03/classremidy_1_1PluginCatalogEntry.html">remidy::PluginCatalogEntry</a></div><div class="ttdef"><b>Definition</b> plugin-catalog.hpp:10</div></div>
 <div class="ttc" id="aclassremidy_1_1PluginExtensibility_html"><div class="ttname"><a href="../../d9/d46/classremidy_1_1PluginExtensibility.html">remidy::PluginExtensibility</a></div><div class="ttdef"><b>Definition</b> common.hpp:77</div></div>
 <div class="ttc" id="aclassremidy_1_1PluginInstance_html"><div class="ttname"><a href="../../d3/dcc/classremidy_1_1PluginInstance.html">remidy::PluginInstance</a></div><div class="ttdef"><b>Definition</b> plugin-instance.hpp:21</div></div>

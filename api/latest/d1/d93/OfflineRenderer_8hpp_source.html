@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>UAPMD: source/uapmd-engine/include/uapmd-engine/priv/sequencer/OfflineRenderer.hpp Source File</title>
+<title>UAPMD: source/uapmd-engine/include/uapmd-engine/detail/sequencer/OfflineRenderer.hpp Source File</title>
 <link href="../../tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="../../jquery.js"></script>
 <script type="text/javascript" src="../../dynsections.js"></script>
@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -74,7 +74,7 @@ $(document).ready(function() { init_codefold(1); });
 
 <div id="nav-path" class="navpath">
   <ul>
-<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_abe8020803138ebe9e7660cd22905970.html">uapmd-engine</a></li><li class="navelem"><a class="el" href="../../dir_4ca0723368b3254274d5e51c0cc2748e.html">include</a></li><li class="navelem"><a class="el" href="../../dir_8c0fe02d2e3fdabb0051e5f8a1dd5cc3.html">uapmd-engine</a></li><li class="navelem"><a class="el" href="../../dir_c28257cd6acd4a3b7ac52a762461f9d8.html">priv</a></li><li class="navelem"><a class="el" href="../../dir_7d45638644793ed78aa195ae7e233214.html">sequencer</a></li>  </ul>
+<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_abe8020803138ebe9e7660cd22905970.html">uapmd-engine</a></li><li class="navelem"><a class="el" href="../../dir_4ca0723368b3254274d5e51c0cc2748e.html">include</a></li><li class="navelem"><a class="el" href="../../dir_8c0fe02d2e3fdabb0051e5f8a1dd5cc3.html">uapmd-engine</a></li><li class="navelem"><a class="el" href="../../dir_fc8b8e8ca5279813def011f094c305b1.html">detail</a></li><li class="navelem"><a class="el" href="../../dir_b30b7100ec34e9c28ba02894a985aa48.html">sequencer</a></li>  </ul>
 </div>
 </div><!-- top -->
 <div class="header">
@@ -93,62 +93,68 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span> </div>
 <div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span><span class="keyword">class </span>SequencerEngine;</div>
 <div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span> </div>
-<div class="foldopen" id="foldopen00013" data-start="{" data-end="};">
-<div class="line"><a id="l00013" name="l00013"></a><span class="lineno"><a class="line" href="../../da/dbd/structuapmd_1_1OfflineRenderSettings.html">   13</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../da/dbd/structuapmd_1_1OfflineRenderSettings.html">OfflineRenderSettings</a> {</div>
-<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span>    std::filesystem::path outputPath;</div>
-<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span>    <span class="keywordtype">double</span> startSeconds{0.0};</div>
-<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span>    std::optional&lt;double&gt; endSeconds;</div>
-<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span>    <span class="keywordtype">bool</span> useContentFallback{<span class="keyword">false</span>};</div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span>    <span class="keywordtype">bool</span> contentBoundsValid{<span class="keyword">false</span>};</div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>    <span class="keywordtype">double</span> contentStartSeconds{0.0};</div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>    <span class="keywordtype">double</span> contentEndSeconds{0.0};</div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>    <span class="keywordtype">double</span> tailSeconds{0.0};</div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>    <span class="keywordtype">bool</span> enableSilenceStop{<span class="keyword">false</span>};</div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>    <span class="keywordtype">double</span> silenceDurationSeconds{0.0};</div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>    <span class="keywordtype">double</span> silenceThresholdDb{-80.0};</div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>    int32_t sampleRate{48000};</div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>    uint32_t bufferSize{1024};</div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>    uint32_t outputChannels{2};</div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>    uint32_t umpBufferSize{65536};</div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>};</div>
+<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="keyword">enum class</span> OfflineInfiniteTailPolicy {</div>
+<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span>    USE_GUARD_AND_SILENCE_STOP = 0,</div>
+<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span>    LATENCY_FALLBACK = 1,</div>
+<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span>};</div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span> </div>
+<div class="foldopen" id="foldopen00018" data-start="{" data-end="};">
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno"><a class="line" href="../../da/dbd/structuapmd_1_1OfflineRenderSettings.html">   18</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../da/dbd/structuapmd_1_1OfflineRenderSettings.html">OfflineRenderSettings</a> {</div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>    std::filesystem::path outputPath;</div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>    <span class="keywordtype">double</span> startSeconds{0.0};</div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>    std::optional&lt;double&gt; endSeconds;</div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>    <span class="keywordtype">bool</span> useContentFallback{<span class="keyword">false</span>};</div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>    <span class="keywordtype">bool</span> contentBoundsValid{<span class="keyword">false</span>};</div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>    <span class="keywordtype">double</span> contentStartSeconds{0.0};</div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>    <span class="keywordtype">double</span> contentEndSeconds{0.0};</div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>    <span class="keywordtype">double</span> tailSeconds{0.0};</div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>    <span class="keywordtype">bool</span> enableSilenceStop{<span class="keyword">false</span>};</div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>    <span class="keywordtype">double</span> silenceDurationSeconds{0.0};</div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>    <span class="keywordtype">double</span> silenceThresholdDb{-80.0};</div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>    OfflineInfiniteTailPolicy infiniteTailPolicy{OfflineInfiniteTailPolicy::USE_GUARD_AND_SILENCE_STOP};</div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>    int32_t sampleRate{48000};</div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>    uint32_t bufferSize{1024};</div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    uint32_t outputChannels{2};</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>    uint32_t umpBufferSize{65536};</div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>};</div>
 </div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span> </div>
-<div class="foldopen" id="foldopen00031" data-start="{" data-end="};">
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno"><a class="line" href="../../de/d77/structuapmd_1_1OfflineRenderProgress.html">   31</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../de/d77/structuapmd_1_1OfflineRenderProgress.html">OfflineRenderProgress</a> {</div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>    <span class="keywordtype">double</span> progress{0.0};</div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    <span class="keywordtype">double</span> renderedSeconds{0.0};</div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>    <span class="keywordtype">double</span> totalSeconds{0.0};</div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>    int64_t renderedFrames{0};</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    int64_t totalFrames{0};</div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>};</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span> </div>
+<div class="foldopen" id="foldopen00037" data-start="{" data-end="};">
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno"><a class="line" href="../../de/d77/structuapmd_1_1OfflineRenderProgress.html">   37</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../de/d77/structuapmd_1_1OfflineRenderProgress.html">OfflineRenderProgress</a> {</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    <span class="keywordtype">double</span> progress{0.0};</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    <span class="keywordtype">double</span> renderedSeconds{0.0};</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    <span class="keywordtype">double</span> totalSeconds{0.0};</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    int64_t renderedFrames{0};</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    int64_t totalFrames{0};</div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>};</div>
 </div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
-<div class="foldopen" id="foldopen00039" data-start="{" data-end="};">
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno"><a class="line" href="../../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html">   39</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html">OfflineRenderCallbacks</a> {</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    std::function&lt;void(<span class="keyword">const</span> <a class="code hl_struct" href="../../de/d77/structuapmd_1_1OfflineRenderProgress.html">OfflineRenderProgress</a>&amp;)&gt; onProgress;</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    std::function&lt;bool()&gt; shouldCancel;</div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>};</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span> </div>
+<div class="foldopen" id="foldopen00045" data-start="{" data-end="};">
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno"><a class="line" href="../../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html">   45</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html">OfflineRenderCallbacks</a> {</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    std::function&lt;void(<span class="keyword">const</span> <a class="code hl_struct" href="../../de/d77/structuapmd_1_1OfflineRenderProgress.html">OfflineRenderProgress</a>&amp;)&gt; onProgress;</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    std::function&lt;bool()&gt; shouldCancel;</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>};</div>
 </div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span> </div>
-<div class="foldopen" id="foldopen00044" data-start="{" data-end="};">
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno"><a class="line" href="../../df/da3/structuapmd_1_1OfflineRenderResult.html">   44</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../df/da3/structuapmd_1_1OfflineRenderResult.html">OfflineRenderResult</a> {</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    <span class="keywordtype">bool</span> success{<span class="keyword">false</span>};</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keywordtype">bool</span> canceled{<span class="keyword">false</span>};</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    <span class="keywordtype">double</span> renderedSeconds{0.0};</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    std::string errorMessage;</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>};</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span> </div>
+<div class="foldopen" id="foldopen00050" data-start="{" data-end="};">
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno"><a class="line" href="../../df/da3/structuapmd_1_1OfflineRenderResult.html">   50</a></span><span class="keyword">struct </span><a class="code hl_struct" href="../../df/da3/structuapmd_1_1OfflineRenderResult.html">OfflineRenderResult</a> {</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    <span class="keywordtype">bool</span> success{<span class="keyword">false</span>};</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    <span class="keywordtype">bool</span> canceled{<span class="keyword">false</span>};</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    <span class="keywordtype">double</span> renderedSeconds{0.0};</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    std::string errorMessage;</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>};</div>
 </div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span> </div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span><a class="code hl_struct" href="../../df/da3/structuapmd_1_1OfflineRenderResult.html">OfflineRenderResult</a> renderOfflineProject(<a class="code hl_class" href="../../d1/dee/classuapmd_1_1SequencerEngine.html">SequencerEngine</a>&amp; engine,</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>                                         <span class="keyword">const</span> <a class="code hl_struct" href="../../da/dbd/structuapmd_1_1OfflineRenderSettings.html">OfflineRenderSettings</a>&amp; settings,</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>                                         <span class="keyword">const</span> <a class="code hl_struct" href="../../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html">OfflineRenderCallbacks</a>&amp; callbacks = {});</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span> </div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>} <span class="comment">// namespace uapmd</span></div>
-<div class="ttc" id="aclassuapmd_1_1SequencerEngine_html"><div class="ttname"><a href="../../d1/dee/classuapmd_1_1SequencerEngine.html">uapmd::SequencerEngine</a></div><div class="ttdef"><b>Definition</b> SequencerEngine.hpp:19</div></div>
-<div class="ttc" id="astructuapmd_1_1OfflineRenderCallbacks_html"><div class="ttname"><a href="../../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html">uapmd::OfflineRenderCallbacks</a></div><div class="ttdef"><b>Definition</b> OfflineRenderer.hpp:39</div></div>
-<div class="ttc" id="astructuapmd_1_1OfflineRenderProgress_html"><div class="ttname"><a href="../../de/d77/structuapmd_1_1OfflineRenderProgress.html">uapmd::OfflineRenderProgress</a></div><div class="ttdef"><b>Definition</b> OfflineRenderer.hpp:31</div></div>
-<div class="ttc" id="astructuapmd_1_1OfflineRenderResult_html"><div class="ttname"><a href="../../df/da3/structuapmd_1_1OfflineRenderResult.html">uapmd::OfflineRenderResult</a></div><div class="ttdef"><b>Definition</b> OfflineRenderer.hpp:44</div></div>
-<div class="ttc" id="astructuapmd_1_1OfflineRenderSettings_html"><div class="ttname"><a href="../../da/dbd/structuapmd_1_1OfflineRenderSettings.html">uapmd::OfflineRenderSettings</a></div><div class="ttdef"><b>Definition</b> OfflineRenderer.hpp:13</div></div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span><a class="code hl_struct" href="../../df/da3/structuapmd_1_1OfflineRenderResult.html">OfflineRenderResult</a> renderOfflineProject(<a class="code hl_class" href="../../d1/dee/classuapmd_1_1SequencerEngine.html">SequencerEngine</a>&amp; engine,</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>                                         <span class="keyword">const</span> <a class="code hl_struct" href="../../da/dbd/structuapmd_1_1OfflineRenderSettings.html">OfflineRenderSettings</a>&amp; settings,</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>                                         <span class="keyword">const</span> <a class="code hl_struct" href="../../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html">OfflineRenderCallbacks</a>&amp; callbacks = {});</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span> </div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>} <span class="comment">// namespace uapmd</span></div>
+<div class="ttc" id="aclassuapmd_1_1SequencerEngine_html"><div class="ttname"><a href="../../d1/dee/classuapmd_1_1SequencerEngine.html">uapmd::SequencerEngine</a></div><div class="ttdef"><b>Definition</b> SequencerEngine.hpp:41</div></div>
+<div class="ttc" id="astructuapmd_1_1OfflineRenderCallbacks_html"><div class="ttname"><a href="../../de/d8d/structuapmd_1_1OfflineRenderCallbacks.html">uapmd::OfflineRenderCallbacks</a></div><div class="ttdef"><b>Definition</b> OfflineRenderer.hpp:45</div></div>
+<div class="ttc" id="astructuapmd_1_1OfflineRenderProgress_html"><div class="ttname"><a href="../../de/d77/structuapmd_1_1OfflineRenderProgress.html">uapmd::OfflineRenderProgress</a></div><div class="ttdef"><b>Definition</b> OfflineRenderer.hpp:37</div></div>
+<div class="ttc" id="astructuapmd_1_1OfflineRenderResult_html"><div class="ttname"><a href="../../df/da3/structuapmd_1_1OfflineRenderResult.html">uapmd::OfflineRenderResult</a></div><div class="ttdef"><b>Definition</b> OfflineRenderer.hpp:50</div></div>
+<div class="ttc" id="astructuapmd_1_1OfflineRenderSettings_html"><div class="ttname"><a href="../../da/dbd/structuapmd_1_1OfflineRenderSettings.html">uapmd::OfflineRenderSettings</a></div><div class="ttdef"><b>Definition</b> OfflineRenderer.hpp:18</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

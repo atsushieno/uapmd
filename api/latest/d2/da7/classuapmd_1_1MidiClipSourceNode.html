@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -124,8 +124,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:aef19c00d8d7a58ca3504c43937ea4ffd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae9b543d5bf419768856d18a54e3bc184" id="r_ae9b543d5bf419768856d18a54e3bc184"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/da7/classuapmd_1_1MidiClipSourceNode.html#ae9b543d5bf419768856d18a54e3bc184">setPlaying</a> (bool playing) override</td></tr>
 <tr class="separator:ae9b543d5bf419768856d18a54e3bc184"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a39c3344762b5c0925b84231c72d310f1" id="r_a39c3344762b5c0925b84231c72d310f1"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/da7/classuapmd_1_1MidiClipSourceNode.html#a39c3344762b5c0925b84231c72d310f1">processEvents</a> (<a class="el" href="../../dc/dbf/classremidy_1_1EventSequence.html">remidy::EventSequence</a> &amp;eventOut, int32_t frameCount, int32_t sampleRate, double tempo) override</td></tr>
-<tr class="separator:a39c3344762b5c0925b84231c72d310f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4b48345758a552f3e8cb2956f1d9a2c8" id="r_a4b48345758a552f3e8cb2956f1d9a2c8"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/da7/classuapmd_1_1MidiClipSourceNode.html#a4b48345758a552f3e8cb2956f1d9a2c8">processEvents</a> (<a class="el" href="../../dc/dbf/classremidy_1_1EventSequence.html">remidy::EventSequence</a> &amp;eventOut, int32_t frameCount, int32_t sampleRate, double tempo, uint32_t frameOffsetInBlock=0) override</td></tr>
+<tr class="separator:a4b48345758a552f3e8cb2956f1d9a2c8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a23d5f30615811fad62116be42cc2ca5c" id="r_a23d5f30615811fad62116be42cc2ca5c"><td class="memItemLeft" align="right" valign="top"><a id="a23d5f30615811fad62116be42cc2ca5c" name="a23d5f30615811fad62116be42cc2ca5c"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>setNrpnInterceptCallback</b> (NrpnInterceptCallback cb)</td></tr>
 <tr class="separator:a23d5f30615811fad62116be42cc2ca5c"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -349,8 +349,8 @@ double&#160;</td><td class="memItemRight" valign="bottom"><b>clipTempo</b> () co
 
 </div>
 </div>
-<a id="a39c3344762b5c0925b84231c72d310f1" name="a39c3344762b5c0925b84231c72d310f1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a39c3344762b5c0925b84231c72d310f1">&#9670;&#160;</a></span>processEvents()</h2>
+<a id="a4b48345758a552f3e8cb2956f1d9a2c8" name="a4b48345758a552f3e8cb2956f1d9a2c8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4b48345758a552f3e8cb2956f1d9a2c8">&#9670;&#160;</a></span>processEvents()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -380,7 +380,13 @@ double&#160;</td><td class="memItemRight" valign="bottom"><b>clipTempo</b> () co
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">double&#160;</td>
-          <td class="paramname"><em>tempo</em>&#160;</td>
+          <td class="paramname"><em>tempo</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>frameOffsetInBlock</em> = <code>0</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -510,7 +516,7 @@ double&#160;</td><td class="memItemRight" valign="bottom"><b>clipTempo</b> () co
 </div>
 </div>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd-data/include/uapmd-data/priv/timeline/<a class="el" href="../../d0/d25/MidiClipSourceNode_8hpp_source.html">MidiClipSourceNode.hpp</a></li>
+<li>source/uapmd-data/include/uapmd-data/detail/timeline/<a class="el" href="../../d0/d25/MidiClipSourceNode_8hpp_source.html">MidiClipSourceNode.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

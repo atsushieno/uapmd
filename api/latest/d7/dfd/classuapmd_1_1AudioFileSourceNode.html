@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -95,6 +95,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a39351a9a4e9be0c90f193877562c1ae9" id="r_a39351a9a4e9be0c90f193877562c1ae9"><td class="memItemLeft" align="right" valign="top"><a id="a39351a9a4e9be0c90f193877562c1ae9" name="a39351a9a4e9be0c90f193877562c1ae9"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><b>AudioFileSourceNode</b> (int32_t instanceId, std::unique_ptr&lt; <a class="el" href="../../d6/d8d/classuapmd_1_1AudioFileReader.html">uapmd::AudioFileReader</a> &gt; reader, double targetSampleRate)</td></tr>
 <tr class="separator:a39351a9a4e9be0c90f193877562c1ae9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aeb3589558a8ef11c127e5d1c74676db7" id="r_aeb3589558a8ef11c127e5d1c74676db7"><td class="memItemLeft" align="right" valign="top"><a id="aeb3589558a8ef11c127e5d1c74676db7" name="aeb3589558a8ef11c127e5d1c74676db7"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><b>AudioFileSourceNode</b> (int32_t instanceId, std::unique_ptr&lt; <a class="el" href="../../d6/d8d/classuapmd_1_1AudioFileReader.html">uapmd::AudioFileReader</a> &gt; reader, double targetSampleRate, std::vector&lt; <a class="el" href="../../de/dba/structuapmd_1_1AudioWarpPoint.html">AudioWarpPoint</a> &gt; audioWarps)</td></tr>
+<tr class="separator:aeb3589558a8ef11c127e5d1c74676db7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae7dcb6d7614cf9e62d5ef87e5c4d936c" id="r_ae7dcb6d7614cf9e62d5ef87e5c4d936c"><td class="memItemLeft" align="right" valign="top">int32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d7/dfd/classuapmd_1_1AudioFileSourceNode.html#ae7dcb6d7614cf9e62d5ef87e5c4d936c">instanceId</a> () const override</td></tr>
 <tr class="separator:ae7dcb6d7614cf9e62d5ef87e5c4d936c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2d2b5fb2c8d4d363a19742e4020f3861" id="r_a2d2b5fb2c8d4d363a19742e4020f3861"><td class="memItemLeft" align="right" valign="top">SourceNodeType&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d7/dfd/classuapmd_1_1AudioFileSourceNode.html#a2d2b5fb2c8d4d363a19742e4020f3861">nodeType</a> () const override</td></tr>
@@ -127,6 +130,9 @@ double&#160;</td><td class="memItemRight" valign="bottom"><b>sampleRate</b> () c
 <tr class="memitem:a8b69f67306c9ecac3586de000db49fc8" id="r_a8b69f67306c9ecac3586de000db49fc8"><td class="memItemLeft" align="right" valign="top"><a id="a8b69f67306c9ecac3586de000db49fc8" name="a8b69f67306c9ecac3586de000db49fc8"></a>
 int64_t&#160;</td><td class="memItemRight" valign="bottom"><b>numFrames</b> () const</td></tr>
 <tr class="separator:a8b69f67306c9ecac3586de000db49fc8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a474eb9995f6b399ef60669295f603f1a" id="r_a474eb9995f6b399ef60669295f603f1a"><td class="memItemLeft" align="right" valign="top"><a id="a474eb9995f6b399ef60669295f603f1a" name="a474eb9995f6b399ef60669295f603f1a"></a>
+const std::vector&lt; <a class="el" href="../../de/dba/structuapmd_1_1AudioWarpPoint.html">AudioWarpPoint</a> &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>audioWarps</b> () const</td></tr>
+<tr class="separator:a474eb9995f6b399ef60669295f603f1a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Member Function Documentation</h2>
 <a id="a4db4f48e1ad4f3550abd1af9225913da" name="a4db4f48e1ad4f3550abd1af9225913da"></a>
@@ -502,7 +508,7 @@ int64_t&#160;</td><td class="memItemRight" valign="bottom"><b>numFrames</b> () c
 </div>
 </div>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd-data/include/uapmd-data/priv/timeline/<a class="el" href="../../da/d03/AudioFileSourceNode_8hpp_source.html">AudioFileSourceNode.hpp</a></li>
+<li>source/uapmd-data/include/uapmd-data/detail/timeline/<a class="el" href="../../da/d03/AudioFileSourceNode_8hpp_source.html">AudioFileSourceNode.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

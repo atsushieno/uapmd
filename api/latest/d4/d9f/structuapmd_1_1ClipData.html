@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -83,24 +83,33 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:ab3296777f8bf419415b8c14d42a923dc" id="r_ab3296777f8bf419415b8c14d42a923dc"><td class="memItemLeft" align="right" valign="top"><a id="ab3296777f8bf419415b8c14d42a923dc" name="ab3296777f8bf419415b8c14d42a923dc"></a>
+<a class="el" href="../../d3/d55/structuapmd_1_1TimeReference.html">TimeReference</a>&#160;</td><td class="memItemRight" valign="bottom"><b>timeReference</b> (int32_t sampleRate) const</td></tr>
+<tr class="separator:ab3296777f8bf419415b8c14d42a923dc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6bd7021d9c653dbd08cbb9d473823682" id="r_a6bd7021d9c653dbd08cbb9d473823682"><td class="memItemLeft" align="right" valign="top"><a id="a6bd7021d9c653dbd08cbb9d473823682" name="a6bd7021d9c653dbd08cbb9d473823682"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>setTimeReference</b> (const <a class="el" href="../../d3/d55/structuapmd_1_1TimeReference.html">TimeReference</a> &amp;reference, int32_t sampleRate)</td></tr>
+<tr class="separator:a6bd7021d9c653dbd08cbb9d473823682"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a50c89e24b1086acc36637802941fc5f4" id="r_a50c89e24b1086acc36637802941fc5f4"><td class="memItemLeft" align="right" valign="top"><a id="a50c89e24b1086acc36637802941fc5f4" name="a50c89e24b1086acc36637802941fc5f4"></a>
 bool&#160;</td><td class="memItemRight" valign="bottom"><b>contains</b> (const <a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a> &amp;pos) const</td></tr>
 <tr class="separator:a50c89e24b1086acc36637802941fc5f4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acfb6b0a1d6a1803ffdf040ee4c185e39" id="r_acfb6b0a1d6a1803ffdf040ee4c185e39"><td class="memItemLeft" align="right" valign="top"><a id="acfb6b0a1d6a1803ffdf040ee4c185e39" name="acfb6b0a1d6a1803ffdf040ee4c185e39"></a>
 int64_t&#160;</td><td class="memItemRight" valign="bottom"><b>getSourcePosition</b> (const <a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a> &amp;timelinePos) const</td></tr>
 <tr class="separator:acfb6b0a1d6a1803ffdf040ee4c185e39"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a786f03af20a95b6a328279ffe8f1c747" id="r_a786f03af20a95b6a328279ffe8f1c747"><td class="memItemLeft" align="right" valign="top"><a id="a786f03af20a95b6a328279ffe8f1c747" name="a786f03af20a95b6a328279ffe8f1c747"></a>
-int64_t&#160;</td><td class="memItemRight" valign="bottom"><b>getSourcePosition</b> (const <a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a> &amp;timelinePos, const std::unordered_map&lt; int32_t, const <a class="el" href="../../d4/d9f/structuapmd_1_1ClipData.html">ClipData</a> * &gt; &amp;clips) const</td></tr>
-<tr class="separator:a786f03af20a95b6a328279ffe8f1c747"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5ee637be403630383149b1a8d2753f87" id="r_a5ee637be403630383149b1a8d2753f87"><td class="memItemLeft" align="right" valign="top"><a id="a5ee637be403630383149b1a8d2753f87" name="a5ee637be403630383149b1a8d2753f87"></a>
-<a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a>&#160;</td><td class="memItemRight" valign="bottom"><b>getAbsolutePosition</b> (const std::unordered_map&lt; int32_t, const <a class="el" href="../../d4/d9f/structuapmd_1_1ClipData.html">ClipData</a> * &gt; &amp;clips) const</td></tr>
-<tr class="separator:a5ee637be403630383149b1a8d2753f87"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a31747dc7f6c341c00964bd5ea08f0c06" id="r_a31747dc7f6c341c00964bd5ea08f0c06"><td class="memItemLeft" align="right" valign="top"><a id="a31747dc7f6c341c00964bd5ea08f0c06" name="a31747dc7f6c341c00964bd5ea08f0c06"></a>
+int64_t&#160;</td><td class="memItemRight" valign="bottom"><b>getSourcePosition</b> (const <a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a> &amp;timelinePos, const std::unordered_map&lt; std::string, const <a class="el" href="../../d4/d9f/structuapmd_1_1ClipData.html">ClipData</a> * &gt; &amp;clips) const</td></tr>
+<tr class="separator:a31747dc7f6c341c00964bd5ea08f0c06"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae3eaaff98e84519fc09035989c5d3ec4" id="r_ae3eaaff98e84519fc09035989c5d3ec4"><td class="memItemLeft" align="right" valign="top"><a id="ae3eaaff98e84519fc09035989c5d3ec4" name="ae3eaaff98e84519fc09035989c5d3ec4"></a>
+<a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a>&#160;</td><td class="memItemRight" valign="bottom"><b>getAbsolutePosition</b> (const std::unordered_map&lt; std::string, const <a class="el" href="../../d4/d9f/structuapmd_1_1ClipData.html">ClipData</a> * &gt; &amp;clips) const</td></tr>
+<tr class="separator:ae3eaaff98e84519fc09035989c5d3ec4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
 <tr class="memitem:a5b082214f202cf47fd08d5d28aadb150" id="r_a5b082214f202cf47fd08d5d28aadb150"><td class="memItemLeft" align="right" valign="top"><a id="a5b082214f202cf47fd08d5d28aadb150" name="a5b082214f202cf47fd08d5d28aadb150"></a>
 int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>clipId</b> {-1}</td></tr>
 <tr class="separator:a5b082214f202cf47fd08d5d28aadb150"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a399edbb75b80c2cf552fa377a500e1dd" id="r_a399edbb75b80c2cf552fa377a500e1dd"><td class="memItemLeft" align="right" valign="top"><a id="a399edbb75b80c2cf552fa377a500e1dd" name="a399edbb75b80c2cf552fa377a500e1dd"></a>
+std::string&#160;</td><td class="memItemRight" valign="bottom"><b>referenceId</b></td></tr>
+<tr class="separator:a399edbb75b80c2cf552fa377a500e1dd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1d191c16a8f952c5862cb4bf55aaa601" id="r_a1d191c16a8f952c5862cb4bf55aaa601"><td class="memItemLeft" align="right" valign="top"><a id="a1d191c16a8f952c5862cb4bf55aaa601" name="a1d191c16a8f952c5862cb4bf55aaa601"></a>
 <a class="el" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a>&#160;</td><td class="memItemRight" valign="bottom"><b>position</b></td></tr>
 <tr class="separator:a1d191c16a8f952c5862cb4bf55aaa601"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -137,9 +146,15 @@ double&#160;</td><td class="memItemRight" valign="bottom"><b>clipTempo</b> {120.
 <tr class="memitem:ae6da1e19ec8f0a8c2f123232c7887937" id="r_ae6da1e19ec8f0a8c2f123232c7887937"><td class="memItemLeft" align="right" valign="top"><a id="ae6da1e19ec8f0a8c2f123232c7887937" name="ae6da1e19ec8f0a8c2f123232c7887937"></a>
 bool&#160;</td><td class="memItemRight" valign="bottom"><b>nrpnToParameterMapping</b> {false}</td></tr>
 <tr class="separator:ae6da1e19ec8f0a8c2f123232c7887937"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a80b74ebcd575bd46b2b4cdd5f4b93d9a" id="r_a80b74ebcd575bd46b2b4cdd5f4b93d9a"><td class="memItemLeft" align="right" valign="top"><a id="a80b74ebcd575bd46b2b4cdd5f4b93d9a" name="a80b74ebcd575bd46b2b4cdd5f4b93d9a"></a>
-int32_t&#160;</td><td class="memItemRight" valign="bottom"><b>anchorClipId</b> {-1}</td></tr>
-<tr class="separator:a80b74ebcd575bd46b2b4cdd5f4b93d9a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a13307433cccbfa11ffac885573ea5836" id="r_a13307433cccbfa11ffac885573ea5836"><td class="memItemLeft" align="right" valign="top"><a id="a13307433cccbfa11ffac885573ea5836" name="a13307433cccbfa11ffac885573ea5836"></a>
+std::vector&lt; <a class="el" href="../../d6/d34/structuapmd_1_1ClipMarker.html">ClipMarker</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>markers</b></td></tr>
+<tr class="separator:a13307433cccbfa11ffac885573ea5836"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5f0b47ae631e701c7761ea0002fd1006" id="r_a5f0b47ae631e701c7761ea0002fd1006"><td class="memItemLeft" align="right" valign="top"><a id="a5f0b47ae631e701c7761ea0002fd1006" name="a5f0b47ae631e701c7761ea0002fd1006"></a>
+std::vector&lt; <a class="el" href="../../de/dba/structuapmd_1_1AudioWarpPoint.html">AudioWarpPoint</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>audioWarps</b></td></tr>
+<tr class="separator:a5f0b47ae631e701c7761ea0002fd1006"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae7d3c942a2634386f4142754c13a9410" id="r_ae7d3c942a2634386f4142754c13a9410"><td class="memItemLeft" align="right" valign="top"><a id="ae7d3c942a2634386f4142754c13a9410" name="ae7d3c942a2634386f4142754c13a9410"></a>
+std::string&#160;</td><td class="memItemRight" valign="bottom"><b>anchorReferenceId</b></td></tr>
+<tr class="separator:ae7d3c942a2634386f4142754c13a9410"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8b4e54ae2a58e3b8ab0e71eb959b0583" id="r_a8b4e54ae2a58e3b8ab0e71eb959b0583"><td class="memItemLeft" align="right" valign="top"><a id="a8b4e54ae2a58e3b8ab0e71eb959b0583" name="a8b4e54ae2a58e3b8ab0e71eb959b0583"></a>
 AnchorOrigin&#160;</td><td class="memItemRight" valign="bottom"><b>anchorOrigin</b> {AnchorOrigin::Start}</td></tr>
 <tr class="separator:a8b4e54ae2a58e3b8ab0e71eb959b0583"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -148,7 +163,7 @@ AnchorOrigin&#160;</td><td class="memItemRight" valign="bottom"><b>anchorOrigin<
 <tr class="separator:aff33ecf399b35fed73a25d787c2d3cbb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this struct was generated from the following file:<ul>
-<li>source/uapmd-data/include/uapmd-data/priv/timeline/<a class="el" href="../../dc/d22/TimelineTypes_8hpp_source.html">TimelineTypes.hpp</a></li>
+<li>source/uapmd-data/include/uapmd-data/detail/timeline/<a class="el" href="../../dc/d22/TimelineTypes_8hpp_source.html">TimelineTypes.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>UAPMD: source/uapmd-data/include/uapmd-data/priv/project/MidiClipReader.hpp Source File</title>
+<title>UAPMD: source/uapmd-data/include/uapmd-data/detail/project/MidiClipReader.hpp Source File</title>
 <link href="../../tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="../../jquery.js"></script>
 <script type="text/javascript" src="../../dynsections.js"></script>
@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -74,7 +74,7 @@ $(document).ready(function() { init_codefold(1); });
 
 <div id="nav-path" class="navpath">
   <ul>
-<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_b7b780eed56d4373b5e6df7ef99a10de.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_5de5eeeaee26236c72aa1c7186ab8a40.html">include</a></li><li class="navelem"><a class="el" href="../../dir_8ec3bceb6a8e337a231180dc44ac4cdc.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_f8e7781317bb793b36802a525eb27835.html">priv</a></li><li class="navelem"><a class="el" href="../../dir_fb29ccfaed44fccdae56c89d752c8022.html">project</a></li>  </ul>
+<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_b7b780eed56d4373b5e6df7ef99a10de.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_5de5eeeaee26236c72aa1c7186ab8a40.html">include</a></li><li class="navelem"><a class="el" href="../../dir_8ec3bceb6a8e337a231180dc44ac4cdc.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_679c06b89e930b50561e9b775f46f689.html">detail</a></li><li class="navelem"><a class="el" href="../../dir_04b6d99b2b4dc3181d284445d1e6ddf7.html">project</a></li>  </ul>
 </div>
 </div><!-- top -->
 <div class="header">
@@ -104,30 +104,50 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>            std::vector&lt;uint64_t&gt; ump_tick_timestamps{};  <span class="comment">// Cumulative ticks for each UMP word</span></div>
 <div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>            std::vector&lt;MidiTempoChange&gt; tempo_changes;</div>
 <div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>            std::vector&lt;MidiTimeSignatureChange&gt; time_signature_changes;</div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>            <span class="keywordtype">double</span> tempo{120.0};         <span class="comment">// Detected tempo in BPM</span></div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>            <span class="keywordtype">bool</span> success{<span class="keyword">true</span>};          <span class="comment">// Conversion success flag</span></div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>            std::string error;           <span class="comment">// Error message if failed</span></div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>        };</div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span>            <span class="keywordtype">bool</span> has_explicit_tempo_changes{<span class="keyword">false</span>};</div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>            <span class="keywordtype">bool</span> has_explicit_time_signature_changes{<span class="keyword">false</span>};</div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>            <span class="keywordtype">double</span> tempo{120.0};         <span class="comment">// Detected tempo in BPM</span></div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>            <span class="keywordtype">bool</span> success{<span class="keyword">true</span>};          <span class="comment">// Conversion success flag</span></div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>            std::string error;           <span class="comment">// Error message if failed</span></div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>        };</div>
 </div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span> </div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>        <span class="comment">// Auto-detect MIDI file format and convert to UMP</span></div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>        <span class="comment">// Handles:</span></div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>        <span class="comment">//  - Traditional SMF (Format 0, 1, 2) with &quot;MThd&quot; header</span></div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>        <span class="comment">//  - SMF2 (MIDI 2.0 Clip File) with &quot;SMF2CLIP&quot; header per M2-116-U v1.0</span></div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>        <span class="keyword">static</span> <a class="code hl_struct" href="../../d6/d90/structuapmd_1_1MidiClipReader_1_1ClipInfo.html">ClipInfo</a> readAnyFormat(<span class="keyword">const</span> std::filesystem::path&amp; file);</div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span> </div>
+<div class="foldopen" id="foldopen00029" data-start="{" data-end="};">
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno"><a class="line" href="../../d8/de9/structuapmd_1_1MidiClipReader_1_1SeparatedMasterTrackEvents.html">   29</a></span>        <span class="keyword">struct </span><a class="code hl_struct" href="../../d8/de9/structuapmd_1_1MidiClipReader_1_1SeparatedMasterTrackEvents.html">SeparatedMasterTrackEvents</a> {</div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>            <a class="code hl_struct" href="../../d6/d90/structuapmd_1_1MidiClipReader_1_1ClipInfo.html">ClipInfo</a> musicalClip;</div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>            <a class="code hl_struct" href="../../d6/d90/structuapmd_1_1MidiClipReader_1_1ClipInfo.html">ClipInfo</a> masterTrackClip;</div>
 <div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span> </div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>        <span class="comment">// Check if a file is a valid SMF2 (MIDI 2.0 Clip File) with &quot;SMF2CLIP&quot; header</span></div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>        <span class="comment">// NOT the same as traditional SMF Format 2 which has &quot;MThd&quot; header</span></div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>        <span class="keyword">static</span> <span class="keywordtype">bool</span> isValidSmf2Clip(<span class="keyword">const</span> std::filesystem::path&amp; file);</div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>            <span class="keywordtype">bool</span> hasMusicalClip()<span class="keyword"> const </span>{</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>                <span class="keywordflow">return</span> !musicalClip.ump_data.empty();</div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>            }</div>
 <div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span> </div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        <span class="comment">// Check if a file is a valid traditional SMF (Standard MIDI File) with &quot;MThd&quot; header</span></div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>        <span class="comment">// Covers Format 0, 1, and 2 (all traditional MIDI 1.0 files)</span></div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>        <span class="keyword">static</span> <span class="keywordtype">bool</span> isValidSmfFile(<span class="keyword">const</span> std::filesystem::path&amp; file);</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    };</div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>            <span class="keywordtype">bool</span> hasMasterTrackClip()<span class="keyword"> const </span>{</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>                <span class="keywordflow">return</span> masterTrackClip.has_explicit_tempo_changes ||</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>                    masterTrackClip.has_explicit_time_signature_changes;</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>            }</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>        };</div>
 </div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>}</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>        <span class="comment">// Auto-detect MIDI file format and convert to UMP</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>        <span class="comment">// Handles:</span></div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>        <span class="comment">//  - Traditional SMF (Format 0, 1, 2) with &quot;MThd&quot; header</span></div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>        <span class="comment">//  - SMF2 (MIDI 2.0 Clip File) with &quot;SMF2CLIP&quot; header per M2-116-U v1.0</span></div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        <span class="keyword">static</span> <a class="code hl_struct" href="../../d6/d90/structuapmd_1_1MidiClipReader_1_1ClipInfo.html">ClipInfo</a> readAnyFormat(<span class="keyword">const</span> std::filesystem::path&amp; file);</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>        <span class="keyword">static</span> <a class="code hl_struct" href="../../d8/de9/structuapmd_1_1MidiClipReader_1_1SeparatedMasterTrackEvents.html">SeparatedMasterTrackEvents</a> separateMasterTrackEvents(<a class="code hl_struct" href="../../d6/d90/structuapmd_1_1MidiClipReader_1_1ClipInfo.html">ClipInfo</a> clipInfo);</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span> </div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        <span class="comment">// Check if a file is a valid SMF2 (MIDI 2.0 Clip File) with &quot;SMF2CLIP&quot; header</span></div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        <span class="comment">// NOT the same as traditional SMF Format 2 which has &quot;MThd&quot; header</span></div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        <span class="keyword">static</span> <span class="keywordtype">bool</span> isValidSmf2Clip(<span class="keyword">const</span> std::filesystem::path&amp; file);</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span> </div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>        <span class="comment">// Check if a file is a valid traditional SMF (Standard MIDI File) with &quot;MThd&quot; header</span></div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>        <span class="comment">// Covers Format 0, 1, and 2 (all traditional MIDI 1.0 files)</span></div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>        <span class="keyword">static</span> <span class="keywordtype">bool</span> isValidSmfFile(<span class="keyword">const</span> std::filesystem::path&amp; file);</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    };</div>
+</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>}</div>
 <div class="ttc" id="aclassuapmd_1_1MidiClipReader_html"><div class="ttname"><a href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></div><div class="ttdef"><b>Definition</b> MidiClipReader.hpp:14</div></div>
 <div class="ttc" id="astructuapmd_1_1MidiClipReader_1_1ClipInfo_html"><div class="ttname"><a href="../../d6/d90/structuapmd_1_1MidiClipReader_1_1ClipInfo.html">uapmd::MidiClipReader::ClipInfo</a></div><div class="ttdef"><b>Definition</b> MidiClipReader.hpp:16</div></div>
+<div class="ttc" id="astructuapmd_1_1MidiClipReader_1_1SeparatedMasterTrackEvents_html"><div class="ttname"><a href="../../d8/de9/structuapmd_1_1MidiClipReader_1_1SeparatedMasterTrackEvents.html">uapmd::MidiClipReader::SeparatedMasterTrackEvents</a></div><div class="ttdef"><b>Definition</b> MidiClipReader.hpp:29</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

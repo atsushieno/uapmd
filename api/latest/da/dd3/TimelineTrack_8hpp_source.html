@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>UAPMD: source/uapmd-data/include/uapmd-data/priv/timeline/TimelineTrack.hpp Source File</title>
+<title>UAPMD: source/uapmd-data/include/uapmd-data/detail/timeline/TimelineTrack.hpp Source File</title>
 <link href="../../tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="../../jquery.js"></script>
 <script type="text/javascript" src="../../dynsections.js"></script>
@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -74,7 +74,7 @@ $(document).ready(function() { init_codefold(1); });
 
 <div id="nav-path" class="navpath">
   <ul>
-<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_b7b780eed56d4373b5e6df7ef99a10de.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_5de5eeeaee26236c72aa1c7186ab8a40.html">include</a></li><li class="navelem"><a class="el" href="../../dir_8ec3bceb6a8e337a231180dc44ac4cdc.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_f8e7781317bb793b36802a525eb27835.html">priv</a></li><li class="navelem"><a class="el" href="../../dir_1111628336efa991ff1e7b1fe54d761c.html">timeline</a></li>  </ul>
+<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_b7b780eed56d4373b5e6df7ef99a10de.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_5de5eeeaee26236c72aa1c7186ab8a40.html">include</a></li><li class="navelem"><a class="el" href="../../dir_8ec3bceb6a8e337a231180dc44ac4cdc.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_679c06b89e930b50561e9b775f46f689.html">detail</a></li><li class="navelem"><a class="el" href="../../dir_d7a84af0ebedae0c80e3e25ee3cca654.html">timeline</a></li>  </ul>
 </div>
 </div><!-- top -->
 <div class="header">
@@ -106,7 +106,7 @@ $(document).ready(function() { init_codefold(1); });
 <div class="foldopen" id="foldopen00023" data-start="{" data-end="};">
 <div class="line"><a id="l00023" name="l00023"></a><span class="lineno"><a class="line" href="../../d3/d29/classuapmd_1_1TimelineTrack.html">   23</a></span>    <span class="keyword">class </span><a class="code hl_class" href="../../d3/d29/classuapmd_1_1TimelineTrack.html">TimelineTrack</a> {</div>
 <div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>    <span class="keyword">public</span>:</div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>        <span class="keyword">explicit</span> <a class="code hl_class" href="../../d3/d29/classuapmd_1_1TimelineTrack.html">TimelineTrack</a>(uint32_t channelCount, <span class="keywordtype">double</span> sampleRate, uint32_t bufferSizeInFrames);</div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>        <span class="keyword">explicit</span> <a class="code hl_class" href="../../d3/d29/classuapmd_1_1TimelineTrack.html">TimelineTrack</a>(std::string referenceId, uint32_t channelCount, <span class="keywordtype">double</span> sampleRate, uint32_t bufferSizeInFrames);</div>
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>        <a class="code hl_class" href="../../d3/d29/classuapmd_1_1TimelineTrack.html">~TimelineTrack</a>() = <span class="keywordflow">default</span>;</div>
 <div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span> </div>
 <div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>        <span class="comment">// Clip management</span></div>
@@ -130,57 +130,72 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>            <a class="code hl_class" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a>&amp; process,</div>
 <div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>            <span class="keyword">const</span> <a class="code hl_struct" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a>&amp; timeline</div>
 <div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>        );</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span> </div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        <span class="comment">// Channel information</span></div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        uint32_t channelCount()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> channel_count_; }</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        <span class="keywordtype">double</span> sampleRate()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> sample_rate_; }</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span> </div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>        <span class="comment">// NRPN parameter mapping callback.</span></div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>        <span class="comment">// When set, MidiClipSourceNodes with nrpnToParameterMapping==true route Assignable</span></div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>        <span class="comment">// Controller events to this callback instead of forwarding them as raw UMP.</span></div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>        <span class="comment">// Must be called from non-audio thread before playback begins.</span></div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>        <span class="keyword">using </span>NrpnParameterCallback = std::function&lt;void(uint8_t group, uint32_t parameterIndex, uint32_t rawValue, <span class="keywordtype">bool</span> isRelative)&gt;;</div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>        <span class="keywordtype">void</span> setNrpnParameterCallback(NrpnParameterCallback cb);</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span> </div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>        <span class="comment">// Configuration changes (call from non-audio thread only!)</span></div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>        <span class="comment">// Pre-allocates buffers to avoid real-time allocations during processAudio</span></div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>        <span class="keywordtype">void</span> reconfigureBuffers(uint32_t channelCount, uint32_t bufferSizeInFrames);</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span> </div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>    <span class="keyword">private</span>:</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>        uint32_t channel_count_;</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>        <span class="keywordtype">double</span> sample_rate_;</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span> </div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>        <a class="code hl_class" href="../../de/dab/classuapmd_1_1ClipManager.html">ClipManager</a> clip_manager_;</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>        <span class="keyword">using </span>SourceNodeList = std::vector&lt;std::shared_ptr&lt;SourceNode&gt;&gt;;</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>        SourceNodeList source_nodes_;</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>        <span class="keyword">mutable</span> std::mutex source_nodes_mutex_;</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>        std::shared_ptr&lt;const SourceNodeList&gt; source_nodes_snapshot_;</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        <span class="keywordtype">void</span> processAudioForRenderPosition(</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>            <a class="code hl_class" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a>&amp; process,</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>            <span class="keyword">const</span> <a class="code hl_struct" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a>&amp; timeline,</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>            int64_t renderStartSample</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>        );</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>        <span class="keywordtype">void</span> processAudioForRenderSegment(</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>            <a class="code hl_class" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a>&amp; process,</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>            <span class="keyword">const</span> <a class="code hl_struct" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a>&amp; timeline,</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>            int64_t renderStartSample,</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>            int32_t destinationOffsetFrames,</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>            int32_t renderFrameCount</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>        );</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>        <span class="comment">// Channel information</span></div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>        uint32_t channelCount()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> channel_count_; }</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>        <span class="keywordtype">double</span> sampleRate()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> sample_rate_; }</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>        <span class="keyword">const</span> std::string&amp; referenceId()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> reference_id_; }</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>        <span class="keywordtype">bool</span> hasDeviceInputSource() <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span> </div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>        <span class="comment">// NRPN parameter mapping callback.</span></div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>        <span class="comment">// When set, MidiClipSourceNodes with nrpnToParameterMapping==true route Assignable</span></div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>        <span class="comment">// Controller events to this callback instead of forwarding them as raw UMP.</span></div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>        <span class="comment">// Must be called from non-audio thread before playback begins.</span></div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>        <span class="keyword">using </span>NrpnParameterCallback = std::function&lt;void(uint8_t group, uint32_t parameterIndex, uint32_t rawValue, <span class="keywordtype">bool</span> isRelative)&gt;;</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>        <span class="keywordtype">void</span> setNrpnParameterCallback(NrpnParameterCallback cb);</div>
 <div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span> </div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>        <span class="comment">// Temporary buffers for mixing sources</span></div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>        std::vector&lt;std::vector&lt;float&gt;&gt; mixed_source_buffers_;  <span class="comment">// [channel][samples]</span></div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>        std::vector&lt;float*&gt; mixed_source_buffer_ptrs_;  <span class="comment">// Pointers to buffer channels</span></div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>        <span class="comment">// Configuration changes (call from non-audio thread only!)</span></div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>        <span class="comment">// Pre-allocates buffers to avoid real-time allocations during processAudio</span></div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>        <span class="keywordtype">void</span> reconfigureBuffers(uint32_t channelCount, uint32_t bufferSizeInFrames);</div>
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span> </div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>        <span class="comment">// Scratch buffers for per-source processing (reused for each source node)</span></div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>        std::vector&lt;std::vector&lt;float&gt;&gt; temp_source_buffers_;   <span class="comment">// [channel][samples]</span></div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>        std::vector&lt;float*&gt; temp_source_buffer_ptrs_;</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span> </div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>        NrpnParameterCallback nrpn_parameter_callback_{};</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span> </div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>        <span class="comment">// Helper to ensure buffers are allocated</span></div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>        <span class="keywordtype">void</span> ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount);</div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>        <span class="comment">// Source node snapshot helpers</span></div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>        <span class="keywordtype">void</span> rebuildSourceNodeSnapshotLocked();</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>        std::shared_ptr&lt;SourceNode&gt; findSourceNode(int32_t instanceId) <span class="keyword">const</span>;</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>    };</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    <span class="keyword">private</span>:</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>        std::string reference_id_;</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>        uint32_t channel_count_;</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>        <span class="keywordtype">double</span> sample_rate_;</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span> </div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>        <a class="code hl_class" href="../../de/dab/classuapmd_1_1ClipManager.html">ClipManager</a> clip_manager_;</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>        <span class="keyword">using </span>SourceNodeList = std::vector&lt;std::shared_ptr&lt;SourceNode&gt;&gt;;</div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>        SourceNodeList source_nodes_;</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>        <span class="keyword">mutable</span> std::mutex source_nodes_mutex_;</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>        std::shared_ptr&lt;const SourceNodeList&gt; source_nodes_snapshot_;</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span> </div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>        <span class="comment">// Temporary buffers for mixing sources</span></div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>        std::vector&lt;std::vector&lt;float&gt;&gt; mixed_source_buffers_;  <span class="comment">// [channel][samples]</span></div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>        std::vector&lt;float*&gt; mixed_source_buffer_ptrs_;  <span class="comment">// Pointers to buffer channels</span></div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span> </div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>        <span class="comment">// Scratch buffers for per-source processing (reused for each source node)</span></div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>        std::vector&lt;std::vector&lt;float&gt;&gt; temp_source_buffers_;   <span class="comment">// [channel][samples]</span></div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>        std::vector&lt;float*&gt; temp_source_buffer_ptrs_;</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span> </div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>        NrpnParameterCallback nrpn_parameter_callback_{};</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span> </div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>        <span class="comment">// Helper to ensure buffers are allocated</span></div>
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>        <span class="keywordtype">void</span> ensureBuffersAllocated(uint32_t numChannels, int32_t frameCount);</div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span> </div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>        <span class="comment">// Source node snapshot helpers</span></div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>        <span class="keywordtype">void</span> rebuildSourceNodeSnapshotLocked();</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>        std::shared_ptr&lt;SourceNode&gt; findSourceNode(int32_t instanceId) <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>    };</div>
 </div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span> </div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>} <span class="comment">// namespace uapmd</span></div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span> </div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>} <span class="comment">// namespace uapmd</span></div>
 <div class="ttc" id="aclassremidy_1_1AudioProcessContext_html"><div class="ttname"><a href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a></div><div class="ttdef"><b>Definition</b> processing-context.hpp:97</div></div>
 <div class="ttc" id="aclassuapmd_1_1ClipManager_html"><div class="ttname"><a href="../../de/dab/classuapmd_1_1ClipManager.html">uapmd::ClipManager</a></div><div class="ttdef"><b>Definition</b> ClipManager.hpp:13</div></div>
 <div class="ttc" id="aclassuapmd_1_1TimelineTrack_html"><div class="ttname"><a href="../../d3/d29/classuapmd_1_1TimelineTrack.html">uapmd::TimelineTrack</a></div><div class="ttdef"><b>Definition</b> TimelineTrack.hpp:23</div></div>
-<div class="ttc" id="astructuapmd_1_1ClipData_html"><div class="ttname"><a href="../../d4/d9f/structuapmd_1_1ClipData.html">uapmd::ClipData</a></div><div class="ttdef"><b>Definition</b> TimelineTypes.hpp:97</div></div>
-<div class="ttc" id="astructuapmd_1_1TimelineState_html"><div class="ttname"><a href="../../df/d2b/structuapmd_1_1TimelineState.html">uapmd::TimelineState</a></div><div class="ttdef"><b>Definition</b> TimelineTypes.hpp:187</div></div>
+<div class="ttc" id="astructuapmd_1_1ClipData_html"><div class="ttname"><a href="../../d4/d9f/structuapmd_1_1ClipData.html">uapmd::ClipData</a></div><div class="ttdef"><b>Definition</b> TimelineTypes.hpp:398</div></div>
+<div class="ttc" id="astructuapmd_1_1TimelineState_html"><div class="ttname"><a href="../../df/d2b/structuapmd_1_1TimelineState.html">uapmd::TimelineState</a></div><div class="ttdef"><b>Definition</b> TimelineTypes.hpp:520</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

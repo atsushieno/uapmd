@@ -1,9 +1,9 @@
 var searchData=
 [
-  ['master_20track_0',['Master Track',['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md13',1,'']]],
+  ['master_20track_0',['Master Track',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md13',1,'']]],
   ['mastercontext_1',['MasterContext',['../dd/d92/classremidy_1_1MasterContext.html',1,'remidy']]],
   ['mastertracksnapshot_2',['MasterTrackSnapshot',['../da/dbc/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot.html',1,'uapmd::TimelineFacade']]],
-  ['midi_20format_3',['Supported MIDI Format',['../db/dc4/md_source_2uapmd-data_2include_2uapmd-data_2priv_2project_2UapmdProjectFile.html#autotoc_md25',1,'']]],
+  ['midi_20format_3',['Supported MIDI Format',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md25',1,'']]],
   ['midiclipreader_4',['MidiClipReader',['../d9/d5e/classuapmd_1_1MidiClipReader.html',1,'uapmd']]],
   ['midiclipsourcenode_5',['MidiClipSourceNode',['../d2/da7/classuapmd_1_1MidiClipSourceNode.html',1,'uapmd']]],
   ['midiimportresult_6',['MidiImportResult',['../de/df0/structuapmd_1_1import_1_1MidiImportResult.html',1,'uapmd::import']]],

@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -86,6 +86,18 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:aaee8caa82e1ed9ef2efa00eb59a12b00" id="r_aaee8caa82e1ed9ef2efa00eb59a12b00"><td class="memItemLeft" align="right" valign="top"><a id="aaee8caa82e1ed9ef2efa00eb59a12b00" name="aaee8caa82e1ed9ef2efa00eb59a12b00"></a>
 virtual <a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>graph</b> ()=0</td></tr>
 <tr class="separator:aaee8caa82e1ed9ef2efa00eb59a12b00"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a44863a71bcded13a9f3268d48a96b7b0" id="r_a44863a71bcded13a9f3268d48a96b7b0"><td class="memItemLeft" align="right" valign="top"><a id="a44863a71bcded13a9f3268d48a96b7b0" name="a44863a71bcded13a9f3268d48a96b7b0"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceGraph</b> (std::unique_ptr&lt; <a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &gt; &amp;&amp;graph)=0</td></tr>
+<tr class="separator:a44863a71bcded13a9f3268d48a96b7b0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab29c0c33e661c4a5abe486368fc04f21" id="r_ab29c0c33e661c4a5abe486368fc04f21"><td class="memItemLeft" align="right" valign="top"><a id="ab29c0c33e661c4a5abe486368fc04f21" name="ab29c0c33e661c4a5abe486368fc04f21"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>latencyInSamples</b> ()=0</td></tr>
+<tr class="separator:ab29c0c33e661c4a5abe486368fc04f21"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a722e3f0b5a4bf4712ca7cbbb0e449e1b" id="r_a722e3f0b5a4bf4712ca7cbbb0e449e1b"><td class="memItemLeft" align="right" valign="top"><a id="a722e3f0b5a4bf4712ca7cbbb0e449e1b" name="a722e3f0b5a4bf4712ca7cbbb0e449e1b"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>renderLeadInSamples</b> ()=0</td></tr>
+<tr class="separator:a722e3f0b5a4bf4712ca7cbbb0e449e1b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae6bb107d5024f1a4da76af8ce64e4d39" id="r_ae6bb107d5024f1a4da76af8ce64e4d39"><td class="memItemLeft" align="right" valign="top"><a id="ae6bb107d5024f1a4da76af8ce64e4d39" name="ae6bb107d5024f1a4da76af8ce64e4d39"></a>
+virtual double&#160;</td><td class="memItemRight" valign="bottom"><b>tailLengthInSeconds</b> ()=0</td></tr>
+<tr class="separator:ae6bb107d5024f1a4da76af8ce64e4d39"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad0ebb1005161deab37ea4098cb162da3" id="r_ad0ebb1005161deab37ea4098cb162da3"><td class="memItemLeft" align="right" valign="top"><a id="ad0ebb1005161deab37ea4098cb162da3" name="ad0ebb1005161deab37ea4098cb162da3"></a>
 virtual std::vector&lt; int32_t &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>orderedInstanceIds</b> ()=0</td></tr>
 <tr class="separator:ad0ebb1005161deab37ea4098cb162da3"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -110,15 +122,18 @@ virtual uint8_t&#160;</td><td class="memItemRight" valign="bottom"><b>getInstanc
 <tr class="memitem:a0a5db05c7d336b070715a71b246b7cfd" id="r_a0a5db05c7d336b070715a71b246b7cfd"><td class="memItemLeft" align="right" valign="top"><a id="a0a5db05c7d336b070715a71b246b7cfd" name="a0a5db05c7d336b070715a71b246b7cfd"></a>
 virtual uint8_t&#160;</td><td class="memItemRight" valign="bottom"><b>findAvailableGroup</b> () const =0</td></tr>
 <tr class="separator:a0a5db05c7d336b070715a71b246b7cfd"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3f5398406bc2e87b98278dc9aaf8efb9" id="r_a3f5398406bc2e87b98278dc9aaf8efb9"><td class="memItemLeft" align="right" valign="top"><a id="a3f5398406bc2e87b98278dc9aaf8efb9" name="a3f5398406bc2e87b98278dc9aaf8efb9"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>removeInstance</b> (int32_t instanceId)=0</td></tr>
+<tr class="separator:a3f5398406bc2e87b98278dc9aaf8efb9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
-<tr class="memitem:abd8dfec1e89b7a01bea4b484399bc373" id="r_abd8dfec1e89b7a01bea4b484399bc373"><td class="memItemLeft" align="right" valign="top"><a id="abd8dfec1e89b7a01bea4b484399bc373" name="abd8dfec1e89b7a01bea4b484399bc373"></a>
-static std::unique_ptr&lt; <a class="el" href="../../d0/dc0/classuapmd_1_1SequencerTrack.html">SequencerTrack</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (size_t eventBufferSizeInBytes)</td></tr>
-<tr class="separator:abd8dfec1e89b7a01bea4b484399bc373"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4e3800ac07ce2e379f65940824ab67d7" id="r_a4e3800ac07ce2e379f65940824ab67d7"><td class="memItemLeft" align="right" valign="top"><a id="a4e3800ac07ce2e379f65940824ab67d7" name="a4e3800ac07ce2e379f65940824ab67d7"></a>
+static std::unique_ptr&lt; <a class="el" href="../../d0/dc0/classuapmd_1_1SequencerTrack.html">SequencerTrack</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>create</b> (const <a class="el" href="../../dd/dd3/classuapmd_1_1AudioGraphProviderRegistry.html">AudioGraphProviderRegistry</a> &amp;registry, size_t eventBufferSizeInBytes, const std::string &amp;graphProviderId)</td></tr>
+<tr class="separator:a4e3800ac07ce2e379f65940824ab67d7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd-engine/include/uapmd-engine/priv/sequencer/<a class="el" href="../../d3/d99/SequencerTrack_8hpp_source.html">SequencerTrack.hpp</a></li>
+<li>source/uapmd-engine/include/uapmd-engine/detail/sequencer/<a class="el" href="../../d3/d99/SequencerTrack_8hpp_source.html">SequencerTrack.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

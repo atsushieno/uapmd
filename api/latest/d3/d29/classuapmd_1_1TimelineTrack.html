@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -89,9 +89,9 @@ using&#160;</td><td class="memItemRight" valign="bottom"><b>NrpnParameterCallbac
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a40fa65613343cb84eedd821a8675cd3c" id="r_a40fa65613343cb84eedd821a8675cd3c"><td class="memItemLeft" align="right" valign="top"><a id="a40fa65613343cb84eedd821a8675cd3c" name="a40fa65613343cb84eedd821a8675cd3c"></a>
-&#160;</td><td class="memItemRight" valign="bottom"><b>TimelineTrack</b> (uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames)</td></tr>
-<tr class="separator:a40fa65613343cb84eedd821a8675cd3c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5ee35d74a105f36d9f66a3c1418aa1ce" id="r_a5ee35d74a105f36d9f66a3c1418aa1ce"><td class="memItemLeft" align="right" valign="top"><a id="a5ee35d74a105f36d9f66a3c1418aa1ce" name="a5ee35d74a105f36d9f66a3c1418aa1ce"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><b>TimelineTrack</b> (std::string referenceId, uint32_t channelCount, double sampleRate, uint32_t bufferSizeInFrames)</td></tr>
+<tr class="separator:a5ee35d74a105f36d9f66a3c1418aa1ce"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8e9c5e32abd5e649508e45a9907abb1a" id="r_a8e9c5e32abd5e649508e45a9907abb1a"><td class="memItemLeft" align="right" valign="top"><a id="a8e9c5e32abd5e649508e45a9907abb1a" name="a8e9c5e32abd5e649508e45a9907abb1a"></a>
 <a class="el" href="../../de/dab/classuapmd_1_1ClipManager.html">ClipManager</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>clipManager</b> ()</td></tr>
 <tr class="separator:a8e9c5e32abd5e649508e45a9907abb1a"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -125,12 +125,24 @@ std::shared_ptr&lt; <a class="el" href="../../d6/dbc/classuapmd_1_1SourceNode.ht
 <tr class="memitem:af25c562d07d5dec9f04712bbe63abcd4" id="r_af25c562d07d5dec9f04712bbe63abcd4"><td class="memItemLeft" align="right" valign="top"><a id="af25c562d07d5dec9f04712bbe63abcd4" name="af25c562d07d5dec9f04712bbe63abcd4"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a> &amp;process, const <a class="el" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a> &amp;timeline)</td></tr>
 <tr class="separator:af25c562d07d5dec9f04712bbe63abcd4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac7b7c4ddd6fab6824109b1beb1a86bcf" id="r_ac7b7c4ddd6fab6824109b1beb1a86bcf"><td class="memItemLeft" align="right" valign="top"><a id="ac7b7c4ddd6fab6824109b1beb1a86bcf" name="ac7b7c4ddd6fab6824109b1beb1a86bcf"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>processAudioForRenderPosition</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a> &amp;process, const <a class="el" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a> &amp;timeline, int64_t renderStartSample)</td></tr>
+<tr class="separator:ac7b7c4ddd6fab6824109b1beb1a86bcf"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8ffd8593eb2e954f2547d215c3c8bc36" id="r_a8ffd8593eb2e954f2547d215c3c8bc36"><td class="memItemLeft" align="right" valign="top"><a id="a8ffd8593eb2e954f2547d215c3c8bc36" name="a8ffd8593eb2e954f2547d215c3c8bc36"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>processAudioForRenderSegment</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">remidy::AudioProcessContext</a> &amp;process, const <a class="el" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a> &amp;timeline, int64_t renderStartSample, int32_t destinationOffsetFrames, int32_t renderFrameCount)</td></tr>
+<tr class="separator:a8ffd8593eb2e954f2547d215c3c8bc36"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af8f3a30d305b8f6aa306c0b0a6afd949" id="r_af8f3a30d305b8f6aa306c0b0a6afd949"><td class="memItemLeft" align="right" valign="top"><a id="af8f3a30d305b8f6aa306c0b0a6afd949" name="af8f3a30d305b8f6aa306c0b0a6afd949"></a>
 uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>channelCount</b> () const</td></tr>
 <tr class="separator:af8f3a30d305b8f6aa306c0b0a6afd949"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa6d4e8bb9eaa105b677ee44b48e0e15e" id="r_aa6d4e8bb9eaa105b677ee44b48e0e15e"><td class="memItemLeft" align="right" valign="top"><a id="aa6d4e8bb9eaa105b677ee44b48e0e15e" name="aa6d4e8bb9eaa105b677ee44b48e0e15e"></a>
 double&#160;</td><td class="memItemRight" valign="bottom"><b>sampleRate</b> () const</td></tr>
 <tr class="separator:aa6d4e8bb9eaa105b677ee44b48e0e15e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af9fe887e8a99124f0fb41dff31000257" id="r_af9fe887e8a99124f0fb41dff31000257"><td class="memItemLeft" align="right" valign="top"><a id="af9fe887e8a99124f0fb41dff31000257" name="af9fe887e8a99124f0fb41dff31000257"></a>
+const std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>referenceId</b> () const</td></tr>
+<tr class="separator:af9fe887e8a99124f0fb41dff31000257"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a819d5a210e67235c9b672ac95cbe9e79" id="r_a819d5a210e67235c9b672ac95cbe9e79"><td class="memItemLeft" align="right" valign="top"><a id="a819d5a210e67235c9b672ac95cbe9e79" name="a819d5a210e67235c9b672ac95cbe9e79"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>hasDeviceInputSource</b> () const</td></tr>
+<tr class="separator:a819d5a210e67235c9b672ac95cbe9e79"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8cab7d7df30bb55bb0fe72f42d11ef5b" id="r_a8cab7d7df30bb55bb0fe72f42d11ef5b"><td class="memItemLeft" align="right" valign="top"><a id="a8cab7d7df30bb55bb0fe72f42d11ef5b" name="a8cab7d7df30bb55bb0fe72f42d11ef5b"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>setNrpnParameterCallback</b> (NrpnParameterCallback cb)</td></tr>
 <tr class="separator:a8cab7d7df30bb55bb0fe72f42d11ef5b"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -139,7 +151,7 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>reconfigureBuffers</b
 <tr class="separator:a53906b4bdd120caa4c9f870f9327f746"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd-data/include/uapmd-data/priv/timeline/<a class="el" href="../../da/dd3/TimelineTrack_8hpp_source.html">TimelineTrack.hpp</a></li>
+<li>source/uapmd-data/include/uapmd-data/detail/timeline/<a class="el" href="../../da/dd3/TimelineTrack_8hpp_source.html">TimelineTrack.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

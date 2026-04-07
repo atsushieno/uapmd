@@ -5,7 +5,9 @@ var searchData=
   ['timelineposition_2',['TimelinePosition',['../d1/d17/structuapmd_1_1TimelinePosition.html',1,'uapmd']]],
   ['timelinestate_3',['TimelineState',['../df/d2b/structuapmd_1_1TimelineState.html',1,'uapmd']]],
   ['timelinetrack_4',['TimelineTrack',['../d3/d29/classuapmd_1_1TimelineTrack.html',1,'uapmd']]],
-  ['timesignaturepoint_5',['TimeSignaturePoint',['../de/d13/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot_1_1TimeSignaturePoint.html',1,'uapmd::TimelineFacade::MasterTrackSnapshot']]],
-  ['trackimporter_6',['TrackImporter',['../dc/de3/classuapmd_1_1import_1_1TrackImporter.html',1,'uapmd::import']]],
-  ['typedumpinputdispatcher_7',['TypedUmpInputDispatcher',['../d8/d29/classremidy_1_1TypedUmpInputDispatcher.html',1,'remidy']]]
+  ['timereference_5',['TimeReference',['../d3/d55/structuapmd_1_1TimeReference.html',1,'uapmd']]],
+  ['timesignaturepoint_6',['TimeSignaturePoint',['../de/d13/structuapmd_1_1TimelineFacade_1_1MasterTrackSnapshot_1_1TimeSignaturePoint.html',1,'uapmd::TimelineFacade::MasterTrackSnapshot']]],
+  ['trackimporter_7',['TrackImporter',['../dc/de3/classuapmd_1_1import_1_1TrackImporter.html',1,'uapmd::import']]],
+  ['trackoutputroutingtarget_8',['TrackOutputRoutingTarget',['../df/d3f/structuapmd_1_1TrackOutputRoutingTarget.html',1,'uapmd']]],
+  ['typedumpinputdispatcher_9',['TypedUmpInputDispatcher',['../d8/d29/classremidy_1_1TypedUmpInputDispatcher.html',1,'remidy']]]
 ];

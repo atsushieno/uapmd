@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -114,6 +114,48 @@ virtual std::vector&lt; <a class="el" href="../../d0/dc0/classuapmd_1_1Sequencer
 <tr class="memitem:ac34e42230902217a17bf41586929cbb1" id="r_ac34e42230902217a17bf41586929cbb1"><td class="memItemLeft" align="right" valign="top"><a id="ac34e42230902217a17bf41586929cbb1" name="ac34e42230902217a17bf41586929cbb1"></a>
 virtual <a class="el" href="../../d0/dc0/classuapmd_1_1SequencerTrack.html">SequencerTrack</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>masterTrack</b> ()=0</td></tr>
 <tr class="separator:ac34e42230902217a17bf41586929cbb1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac4b901c50cf5abfb96e0160e57ce554d" id="r_ac4b901c50cf5abfb96e0160e57ce554d"><td class="memItemLeft" align="right" valign="top"><a id="ac4b901c50cf5abfb96e0160e57ce554d" name="ac4b901c50cf5abfb96e0160e57ce554d"></a>
+virtual size_t&#160;</td><td class="memItemRight" valign="bottom"><b>umpBufferSizeInBytes</b> () const =0</td></tr>
+<tr class="separator:ac4b901c50cf5abfb96e0160e57ce554d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac290f09c48c360690d8e631f390c782d" id="r_ac290f09c48c360690d8e631f390c782d"><td class="memItemLeft" align="right" valign="top"><a id="ac290f09c48c360690d8e631f390c782d" name="ac290f09c48c360690d8e631f390c782d"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>trackLatencyInSamples</b> (uapmd_track_index_t trackIndex)=0</td></tr>
+<tr class="separator:ac290f09c48c360690d8e631f390c782d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af1e7665ade55784973d03a23e8c2c509" id="r_af1e7665ade55784973d03a23e8c2c509"><td class="memItemLeft" align="right" valign="top"><a id="af1e7665ade55784973d03a23e8c2c509" name="af1e7665ade55784973d03a23e8c2c509"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>masterTrackLatencyInSamples</b> ()=0</td></tr>
+<tr class="separator:af1e7665ade55784973d03a23e8c2c509"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4e64a22ff08bc4c37c4206a16ed4c130" id="r_a4e64a22ff08bc4c37c4206a16ed4c130"><td class="memItemLeft" align="right" valign="top"><a id="a4e64a22ff08bc4c37c4206a16ed4c130" name="a4e64a22ff08bc4c37c4206a16ed4c130"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>trackRenderLeadInSamples</b> (uapmd_track_index_t trackIndex)=0</td></tr>
+<tr class="separator:a4e64a22ff08bc4c37c4206a16ed4c130"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a753e291cda6c161997a0032a1c951237" id="r_a753e291cda6c161997a0032a1c951237"><td class="memItemLeft" align="right" valign="top"><a id="a753e291cda6c161997a0032a1c951237" name="a753e291cda6c161997a0032a1c951237"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>masterTrackRenderLeadInSamples</b> ()=0</td></tr>
+<tr class="separator:a753e291cda6c161997a0032a1c951237"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:adb5468b4f4e66db7ceeffbd1555bc6b0" id="r_adb5468b4f4e66db7ceeffbd1555bc6b0"><td class="memItemLeft" align="right" valign="top"><a id="adb5468b4f4e66db7ceeffbd1555bc6b0" name="adb5468b4f4e66db7ceeffbd1555bc6b0"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>trackHasLiveInput</b> (uapmd_track_index_t trackIndex)=0</td></tr>
+<tr class="separator:adb5468b4f4e66db7ceeffbd1555bc6b0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a83470264e5086e2895c0d245195e3700" id="r_a83470264e5086e2895c0d245195e3700"><td class="memItemLeft" align="right" valign="top"><a id="a83470264e5086e2895c0d245195e3700" name="a83470264e5086e2895c0d245195e3700"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>trackOutputAlignmentHoldbackInSamples</b> (uapmd_track_index_t trackIndex)=0</td></tr>
+<tr class="separator:a83470264e5086e2895c0d245195e3700"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a824d78ec443646cb54205e1357f613bd" id="r_a824d78ec443646cb54205e1357f613bd"><td class="memItemLeft" align="right" valign="top"><a id="a824d78ec443646cb54205e1357f613bd" name="a824d78ec443646cb54205e1357f613bd"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>trackOutputBusAlignmentHoldbackInSamples</b> (uapmd_track_index_t trackIndex, uint32_t outputBusIndex)=0</td></tr>
+<tr class="separator:a824d78ec443646cb54205e1357f613bd"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae02161738793ab1fdb33feb23adaeb68" id="r_ae02161738793ab1fdb33feb23adaeb68"><td class="memItemLeft" align="right" valign="top"><a id="ae02161738793ab1fdb33feb23adaeb68" name="ae02161738793ab1fdb33feb23adaeb68"></a>
+virtual <a class="el" href="../../df/d3f/structuapmd_1_1TrackOutputRoutingTarget.html">TrackOutputRoutingTarget</a>&#160;</td><td class="memItemRight" valign="bottom"><b>trackOutputBusRoutingTarget</b> (uapmd_track_index_t trackIndex, uint32_t outputBusIndex)=0</td></tr>
+<tr class="separator:ae02161738793ab1fdb33feb23adaeb68"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7505793b8ca5388354f708c449d0c72b" id="r_a7505793b8ca5388354f708c449d0c72b"><td class="memItemLeft" align="right" valign="top"><a id="a7505793b8ca5388354f708c449d0c72b" name="a7505793b8ca5388354f708c449d0c72b"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>isOutputAlignmentActive</b> ()=0</td></tr>
+<tr class="separator:a7505793b8ca5388354f708c449d0c72b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acfdc92a6872fa4b2e009114e7f927d97" id="r_acfdc92a6872fa4b2e009114e7f927d97"><td class="memItemLeft" align="right" valign="top"><a id="acfdc92a6872fa4b2e009114e7f927d97" name="acfdc92a6872fa4b2e009114e7f927d97"></a>
+virtual OutputAlignmentMonitoringPolicy&#160;</td><td class="memItemRight" valign="bottom"><b>outputAlignmentMonitoringPolicy</b> () const =0</td></tr>
+<tr class="separator:acfdc92a6872fa4b2e009114e7f927d97"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6afd79b643dcd9d1ccf10989e1613520" id="r_a6afd79b643dcd9d1ccf10989e1613520"><td class="memItemLeft" align="right" valign="top"><a id="a6afd79b643dcd9d1ccf10989e1613520" name="a6afd79b643dcd9d1ccf10989e1613520"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>outputAlignmentMonitoringPolicy</b> (OutputAlignmentMonitoringPolicy policy)=0</td></tr>
+<tr class="separator:a6afd79b643dcd9d1ccf10989e1613520"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aaeb3ca39b2ab381da3500f795c4625b7" id="r_aaeb3ca39b2ab381da3500f795c4625b7"><td class="memItemLeft" align="right" valign="top"><a id="aaeb3ca39b2ab381da3500f795c4625b7" name="aaeb3ca39b2ab381da3500f795c4625b7"></a>
+virtual RealtimeInfiniteTailPolicy&#160;</td><td class="memItemRight" valign="bottom"><b>realtimeInfiniteTailPolicy</b> () const =0</td></tr>
+<tr class="separator:aaeb3ca39b2ab381da3500f795c4625b7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afc1dd93119085ab37e8f792e52602d0d" id="r_afc1dd93119085ab37e8f792e52602d0d"><td class="memItemLeft" align="right" valign="top"><a id="afc1dd93119085ab37e8f792e52602d0d" name="afc1dd93119085ab37e8f792e52602d0d"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>realtimeInfiniteTailPolicy</b> (RealtimeInfiniteTailPolicy policy)=0</td></tr>
+<tr class="separator:afc1dd93119085ab37e8f792e52602d0d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a07ab655e556fcbdf2b52b91c45802354" id="r_a07ab655e556fcbdf2b52b91c45802354"><td class="memItemLeft" align="right" valign="top"><a id="a07ab655e556fcbdf2b52b91c45802354" name="a07ab655e556fcbdf2b52b91c45802354"></a>
 virtual uapmd_track_index_t&#160;</td><td class="memItemRight" valign="bottom"><b>addEmptyTrack</b> ()=0</td></tr>
 <tr class="separator:a07ab655e556fcbdf2b52b91c45802354"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -126,6 +168,9 @@ virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>removePluginI
 <tr class="memitem:ae0bfdf385ca57b5e287a5c26ec2e60b8" id="r_ae0bfdf385ca57b5e287a5c26ec2e60b8"><td class="memItemLeft" align="right" valign="top"><a id="ae0bfdf385ca57b5e287a5c26ec2e60b8" name="ae0bfdf385ca57b5e287a5c26ec2e60b8"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>removeTrack</b> (uapmd_track_index_t trackIndex)=0</td></tr>
 <tr class="separator:ae0bfdf385ca57b5e287a5c26ec2e60b8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af81c3b0de4d5ab1d6d55de21d8fa8494" id="r_af81c3b0de4d5ab1d6d55de21d8fa8494"><td class="memItemLeft" align="right" valign="top"><a id="af81c3b0de4d5ab1d6d55de21d8fa8494" name="af81c3b0de4d5ab1d6d55de21d8fa8494"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>replaceTrackGraph</b> (uapmd_track_index_t trackIndex, std::unique_ptr&lt; <a class="el" href="../../d8/d84/classuapmd_1_1AudioPluginGraph.html">AudioPluginGraph</a> &gt; &amp;&amp;graph)=0</td></tr>
+<tr class="separator:af81c3b0de4d5ab1d6d55de21d8fa8494"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6ff133c2187098bfac1aa4bb54aab387" id="r_a6ff133c2187098bfac1aa4bb54aab387"><td class="memItemLeft" align="right" valign="top"><a id="a6ff133c2187098bfac1aa4bb54aab387" name="a6ff133c2187098bfac1aa4bb54aab387"></a>
 virtual uint8_t&#160;</td><td class="memItemRight" valign="bottom"><b>getInstanceGroup</b> (int32_t instanceId) const =0</td></tr>
 <tr class="separator:a6ff133c2187098bfac1aa4bb54aab387"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -174,6 +219,9 @@ virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>playbackPosit
 <tr class="memitem:a716bfebae266f1a6c2464106f7f6639f" id="r_a716bfebae266f1a6c2464106f7f6639f"><td class="memItemLeft" align="right" valign="top"><a id="a716bfebae266f1a6c2464106f7f6639f" name="a716bfebae266f1a6c2464106f7f6639f"></a>
 virtual int64_t&#160;</td><td class="memItemRight" valign="bottom"><b>playbackPosition</b> () const =0</td></tr>
 <tr class="separator:a716bfebae266f1a6c2464106f7f6639f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac1482dde975ba5e998f4d2d42f141155" id="r_ac1482dde975ba5e998f4d2d42f141155"><td class="memItemLeft" align="right" valign="top"><a id="ac1482dde975ba5e998f4d2d42f141155" name="ac1482dde975ba5e998f4d2d42f141155"></a>
+virtual int64_t&#160;</td><td class="memItemRight" valign="bottom"><b>renderPlaybackPosition</b> () const =0</td></tr>
+<tr class="separator:ac1482dde975ba5e998f4d2d42f141155"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8ea83d402d28d85e2019f8a8ef2d581a" id="r_a8ea83d402d28d85e2019f8a8ef2d581a"><td class="memItemLeft" align="right" valign="top"><a id="a8ea83d402d28d85e2019f8a8ef2d581a" name="a8ea83d402d28d85e2019f8a8ef2d581a"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>startPlayback</b> ()=0</td></tr>
 <tr class="separator:a8ea83d402d28d85e2019f8a8ef2d581a"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -218,7 +266,7 @@ static std::unique_ptr&lt; <a class="el" href="../../d1/dee/classuapmd_1_1Sequen
 <tr class="separator:aff0161024333b5884e670cbd25172828"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd-engine/include/uapmd-engine/priv/sequencer/<a class="el" href="../../d5/d96/SequencerEngine_8hpp_source.html">SequencerEngine.hpp</a></li>
+<li>source/uapmd-engine/include/uapmd-engine/detail/sequencer/<a class="el" href="../../d5/d96/SequencerEngine_8hpp_source.html">SequencerEngine.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -83,24 +83,18 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:a2454687713fcba78ad0970f8f0dc14b0" id="r_a2454687713fcba78ad0970f8f0dc14b0"><td class="memItemLeft" align="right" valign="top"><a id="a2454687713fcba78ad0970f8f0dc14b0" name="a2454687713fcba78ad0970f8f0dc14b0"></a>
+virtual std::string&#160;</td><td class="memItemRight" valign="bottom"><b>graphType</b> ()=0</td></tr>
+<tr class="separator:a2454687713fcba78ad0970f8f0dc14b0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa34873afffd1f3956244b974000861c0" id="r_aa34873afffd1f3956244b974000861c0"><td class="memItemLeft" align="right" valign="top"><a id="aa34873afffd1f3956244b974000861c0" name="aa34873afffd1f3956244b974000861c0"></a>
 virtual std::filesystem::path&#160;</td><td class="memItemRight" valign="bottom"><b>externalFile</b> ()=0</td></tr>
 <tr class="separator:aa34873afffd1f3956244b974000861c0"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7f2b1089378da33708f037d4c951ee1e" id="r_a7f2b1089378da33708f037d4c951ee1e"><td class="memItemLeft" align="right" valign="top"><a id="a7f2b1089378da33708f037d4c951ee1e" name="a7f2b1089378da33708f037d4c951ee1e"></a>
-virtual std::vector&lt; <a class="el" href="../../d8/d09/structuapmd_1_1UapmdProjectPluginNodeData.html">UapmdProjectPluginNodeData</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>plugins</b> ()=0</td></tr>
-<tr class="separator:a7f2b1089378da33708f037d4c951ee1e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a272a2b7172e8e31f3be7b1a575e54b8e" id="r_a272a2b7172e8e31f3be7b1a575e54b8e"><td class="memItemLeft" align="right" valign="top"><a id="a272a2b7172e8e31f3be7b1a575e54b8e" name="a272a2b7172e8e31f3be7b1a575e54b8e"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>graphType</b> (const std::string &amp;type)=0</td></tr>
+<tr class="separator:a272a2b7172e8e31f3be7b1a575e54b8e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a17449c01b0fadd6182d2b819b35de102" id="r_a17449c01b0fadd6182d2b819b35de102"><td class="memItemLeft" align="right" valign="top"><a id="a17449c01b0fadd6182d2b819b35de102" name="a17449c01b0fadd6182d2b819b35de102"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>externalFile</b> (const std::filesystem::path &amp;f)=0</td></tr>
 <tr class="separator:a17449c01b0fadd6182d2b819b35de102"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5cf2a0e7ea3312d49ff754803d8fbf50" id="r_a5cf2a0e7ea3312d49ff754803d8fbf50"><td class="memItemLeft" align="right" valign="top"><a id="a5cf2a0e7ea3312d49ff754803d8fbf50" name="a5cf2a0e7ea3312d49ff754803d8fbf50"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>addPlugin</b> (<a class="el" href="../../d8/d09/structuapmd_1_1UapmdProjectPluginNodeData.html">UapmdProjectPluginNodeData</a> node)=0</td></tr>
-<tr class="separator:a5cf2a0e7ea3312d49ff754803d8fbf50"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7090f0f9421ca809570b660b8fe2680c" id="r_a7090f0f9421ca809570b660b8fe2680c"><td class="memItemLeft" align="right" valign="top"><a id="a7090f0f9421ca809570b660b8fe2680c" name="a7090f0f9421ca809570b660b8fe2680c"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>setPlugins</b> (std::vector&lt; <a class="el" href="../../d8/d09/structuapmd_1_1UapmdProjectPluginNodeData.html">UapmdProjectPluginNodeData</a> &gt; nodes)=0</td></tr>
-<tr class="separator:a7090f0f9421ca809570b660b8fe2680c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a4837d77b8deb3a40d43240fa49cbd4a0" id="r_a4837d77b8deb3a40d43240fa49cbd4a0"><td class="memItemLeft" align="right" valign="top"><a id="a4837d77b8deb3a40d43240fa49cbd4a0" name="a4837d77b8deb3a40d43240fa49cbd4a0"></a>
-virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearPlugins</b> ()=0</td></tr>
-<tr class="separator:a4837d77b8deb3a40d43240fa49cbd4a0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
@@ -109,7 +103,7 @@ static std::unique_ptr&lt; <a class="el" href="../../da/daf/classuapmd_1_1UapmdP
 <tr class="separator:afbe377b99e60acde8ea2417c252743ea"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd-data/include/uapmd-data/priv/project/<a class="el" href="../../df/d49/UapmdProjectFile_8hpp_source.html">UapmdProjectFile.hpp</a></li>
+<li>source/uapmd-data/include/uapmd-data/detail/project/<a class="el" href="../../df/d49/UapmdProjectFile_8hpp_source.html">UapmdProjectFile.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

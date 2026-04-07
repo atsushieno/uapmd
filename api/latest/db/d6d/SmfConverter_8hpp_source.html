@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>UAPMD: source/uapmd-data/include/uapmd-data/priv/project/SmfConverter.hpp Source File</title>
+<title>UAPMD: source/uapmd-data/include/uapmd-data/detail/project/SmfConverter.hpp Source File</title>
 <link href="../../tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="../../jquery.js"></script>
 <script type="text/javascript" src="../../dynsections.js"></script>
@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -74,7 +74,7 @@ $(document).ready(function() { init_codefold(1); });
 
 <div id="nav-path" class="navpath">
   <ul>
-<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_b7b780eed56d4373b5e6df7ef99a10de.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_5de5eeeaee26236c72aa1c7186ab8a40.html">include</a></li><li class="navelem"><a class="el" href="../../dir_8ec3bceb6a8e337a231180dc44ac4cdc.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_f8e7781317bb793b36802a525eb27835.html">priv</a></li><li class="navelem"><a class="el" href="../../dir_fb29ccfaed44fccdae56c89d752c8022.html">project</a></li>  </ul>
+<li class="navelem"><a class="el" href="../../dir_b2f33c71d4aa5e7af42a1ca61ff5af1b.html">source</a></li><li class="navelem"><a class="el" href="../../dir_b7b780eed56d4373b5e6df7ef99a10de.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_5de5eeeaee26236c72aa1c7186ab8a40.html">include</a></li><li class="navelem"><a class="el" href="../../dir_8ec3bceb6a8e337a231180dc44ac4cdc.html">uapmd-data</a></li><li class="navelem"><a class="el" href="../../dir_679c06b89e930b50561e9b775f46f689.html">detail</a></li><li class="navelem"><a class="el" href="../../dir_04b6d99b2b4dc3181d284445d1e6ddf7.html">project</a></li>  </ul>
 </div>
 </div><!-- top -->
 <div class="header">
@@ -109,35 +109,37 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>            std::vector&lt;uint64_t&gt; umpEventTicksStamps;  <span class="comment">// Cumulative ticks for each UMP event</span></div>
 <div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>            std::vector&lt;MidiTempoChange&gt; tempoChanges;   <span class="comment">// Ordered tempo changes with tick offsets</span></div>
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>            std::vector&lt;MidiTimeSignatureChange&gt; timeSignatureChanges; <span class="comment">// Ordered time signature changes</span></div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>            uint32_t tickResolution{480};</div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>            <span class="keywordtype">double</span> detectedTempo{120.0};  <span class="comment">// BPM from SMF tempo meta-events</span></div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>        };</div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>            <span class="keywordtype">bool</span> hasExplicitTempoChanges{<span class="keyword">false</span>};</div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>            <span class="keywordtype">bool</span> hasExplicitTimeSignatureChanges{<span class="keyword">false</span>};</div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>            uint32_t tickResolution{480};</div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>            <span class="keywordtype">double</span> detectedTempo{120.0};  <span class="comment">// BPM from SMF tempo meta-events</span></div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>        };</div>
 </div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span> </div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>        <span class="comment">// Convert any SMF format to UMP</span></div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>        <span class="comment">// Handles SMF Format 0 and Format 1 (merges tracks)</span></div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>        <span class="keyword">static</span> <a class="code hl_struct" href="../../da/d3e/structuapmd_1_1SmfConverter_1_1ConvertResult.html">ConvertResult</a> convertToUmp(<span class="keyword">const</span> std::filesystem::path&amp; smfFile);</div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span> </div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>        <span class="comment">// Convert a single track from an SMF file to UMP</span></div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>        <span class="comment">// trackIndex: 0-based index of the track to convert</span></div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        <span class="keyword">static</span> <a class="code hl_struct" href="../../da/d3e/structuapmd_1_1SmfConverter_1_1ConvertResult.html">ConvertResult</a> convertTrackToUmp(<span class="keyword">const</span> std::filesystem::path&amp; smfFile, <span class="keywordtype">size_t</span> trackIndex);</div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>        <span class="comment">// Convert a single track from already-loaded MIDI music to UMP</span></div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>        <span class="comment">// music: Already loaded Midi1Music object</span></div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>        <span class="comment">// trackIndex: 0-based index of the track to convert</span></div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>        <span class="keyword">static</span> <a class="code hl_struct" href="../../da/d3e/structuapmd_1_1SmfConverter_1_1ConvertResult.html">ConvertResult</a> convertTrackToUmp(<span class="keyword">const</span> umppi::Midi1Music&amp; music, <span class="keywordtype">size_t</span> trackIndex);</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span> </div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="keyword">private</span>:</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>        <span class="comment">// Extract tempo from SMF meta-events (0xFF 0x51)</span></div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>        <span class="comment">// Returns tempo in BPM</span></div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        <span class="keyword">static</span> <span class="keywordtype">double</span> extractTempoFromSmf(<span class="keyword">const</span> std::vector&lt;uint8_t&gt;&amp; smfData);</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span> </div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        <span class="comment">// Check if file is valid SMF</span></div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        <span class="keyword">static</span> <span class="keywordtype">bool</span> isValidSmfFile(<span class="keyword">const</span> std::filesystem::path&amp; file);</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    };</div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span> </div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>        <span class="comment">// Convert any SMF format to UMP</span></div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>        <span class="comment">// Handles SMF Format 0 and Format 1 (merges tracks)</span></div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>        <span class="keyword">static</span> <a class="code hl_struct" href="../../da/d3e/structuapmd_1_1SmfConverter_1_1ConvertResult.html">ConvertResult</a> convertToUmp(<span class="keyword">const</span> std::filesystem::path&amp; smfFile);</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span> </div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        <span class="comment">// Convert a single track from an SMF file to UMP</span></div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>        <span class="comment">// trackIndex: 0-based index of the track to convert</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>        <span class="keyword">static</span> <a class="code hl_struct" href="../../da/d3e/structuapmd_1_1SmfConverter_1_1ConvertResult.html">ConvertResult</a> convertTrackToUmp(<span class="keyword">const</span> std::filesystem::path&amp; smfFile, <span class="keywordtype">size_t</span> trackIndex);</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span> </div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>        <span class="comment">// Convert a single track from already-loaded MIDI music to UMP</span></div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>        <span class="comment">// music: Already loaded Midi1Music object</span></div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>        <span class="comment">// trackIndex: 0-based index of the track to convert</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>        <span class="keyword">static</span> <a class="code hl_struct" href="../../da/d3e/structuapmd_1_1SmfConverter_1_1ConvertResult.html">ConvertResult</a> convertTrackToUmp(<span class="keyword">const</span> umppi::Midi1Music&amp; music, <span class="keywordtype">size_t</span> trackIndex);</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span> </div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keyword">private</span>:</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        <span class="comment">// Extract tempo from SMF meta-events (0xFF 0x51)</span></div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>        <span class="comment">// Returns tempo in BPM</span></div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        <span class="keyword">static</span> <span class="keywordtype">double</span> extractTempoFromSmf(<span class="keyword">const</span> std::vector&lt;uint8_t&gt;&amp; smfData);</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span> </div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        <span class="comment">// Check if file is valid SMF</span></div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        <span class="keyword">static</span> <span class="keywordtype">bool</span> isValidSmfFile(<span class="keyword">const</span> std::filesystem::path&amp; file);</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    };</div>
 </div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span> </div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>} <span class="comment">// namespace uapmd</span></div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span> </div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>} <span class="comment">// namespace uapmd</span></div>
 <div class="ttc" id="aclassuapmd_1_1SmfConverter_html"><div class="ttname"><a href="../../de/d16/classuapmd_1_1SmfConverter.html">uapmd::SmfConverter</a></div><div class="ttdef"><b>Definition</b> SmfConverter.hpp:18</div></div>
 <div class="ttc" id="astructuapmd_1_1SmfConverter_1_1ConvertResult_html"><div class="ttname"><a href="../../da/d3e/structuapmd_1_1SmfConverter_1_1ConvertResult.html">uapmd::SmfConverter::ConvertResult</a></div><div class="ttdef"><b>Definition</b> SmfConverter.hpp:20</div></div>
 </div><!-- fragment --></div><!-- contents -->

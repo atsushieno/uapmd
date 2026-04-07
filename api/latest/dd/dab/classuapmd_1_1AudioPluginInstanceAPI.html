@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.3.1</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -106,6 +106,12 @@ virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>sto
 <tr class="memitem:a407d9174ea866e8a6b3c277e635d4b0a" id="r_a407d9174ea866e8a6b3c277e635d4b0a"><td class="memItemLeft" align="right" valign="top"><a id="a407d9174ea866e8a6b3c277e635d4b0a" name="a407d9174ea866e8a6b3c277e635d4b0a"></a>
 virtual uapmd_status_t&#160;</td><td class="memItemRight" valign="bottom"><b>processAudio</b> (<a class="el" href="../../dd/da4/classremidy_1_1AudioProcessContext.html">AudioProcessContext</a> &amp;process)=0</td></tr>
 <tr class="separator:a407d9174ea866e8a6b3c277e635d4b0a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2016231b3f3610f422898722bd01586f" id="r_a2016231b3f3610f422898722bd01586f"><td class="memItemLeft" align="right" valign="top"><a id="a2016231b3f3610f422898722bd01586f" name="a2016231b3f3610f422898722bd01586f"></a>
+virtual uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>latencyInSamples</b> () const =0</td></tr>
+<tr class="separator:a2016231b3f3610f422898722bd01586f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a725e4481233a8a849932ddefd49d16fb" id="r_a725e4481233a8a849932ddefd49d16fb"><td class="memItemLeft" align="right" valign="top"><a id="a725e4481233a8a849932ddefd49d16fb" name="a725e4481233a8a849932ddefd49d16fb"></a>
+virtual double&#160;</td><td class="memItemRight" valign="bottom"><b>tailLengthInSeconds</b> () const =0</td></tr>
+<tr class="separator:a725e4481233a8a849932ddefd49d16fb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a50200910fb94c4f7129d98f7acbeec99" id="r_a50200910fb94c4f7129d98f7acbeec99"><td class="memItemLeft" align="right" valign="top"><a id="a50200910fb94c4f7129d98f7acbeec99" name="a50200910fb94c4f7129d98f7acbeec99"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>requiresReplacingProcess</b> () const =0</td></tr>
 <tr class="separator:a50200910fb94c4f7129d98f7acbeec99"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -183,7 +189,7 @@ virtual <a class="el" href="../../d3/d8b/classremidy_1_1PluginAudioBuses.html">r
 <tr class="separator:af366ccd0b52bffb1b6f79c2b93b1c3f9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
-<li>source/uapmd/include/uapmd/priv/plugin-api/<a class="el" href="../../da/de8/AudioPluginInstanceAPI_8hpp_source.html">AudioPluginInstanceAPI.hpp</a></li>
+<li>source/uapmd/include/uapmd/detail/plugin-api/<a class="el" href="../../da/de8/AudioPluginInstanceAPI_8hpp_source.html">AudioPluginInstanceAPI.hpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->
