@@ -17,7 +17,6 @@
             android:name=".MainActivity"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:configChanges="orientation|keyboardHidden|screenSize"
-            android:screenOrientation="landscape"
             android:exported="true">
 
             <property
@@ -30,6 +29,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".AutomationReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="dev.atsushieno.uapmd.RUN_JS" />
+                <action android:name="dev.atsushieno.uapmd.RUN_JS_ASYNC" />
+                <action android:name="dev.atsushieno.uapmd.GET_JS_JOB" />
+                <action android:name="dev.atsushieno.uapmd.CLEAR_JS_JOB" />
+            </intent-filter>
+        </receiver>
 
         <provider android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.juce_app_initializer"

@@ -4,6 +4,9 @@
 #include <mutex>
 #include <functional>
 #include <thread>
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 
 #include <remidy/detail/event-loop.hpp>
 #include <remidy-gui/remidy-gui.hpp>
@@ -35,6 +38,11 @@ protected:
     void enqueueTaskOnMainThreadImpl(std::function<void()>&& func) override {
         std::lock_guard<std::mutex> lock(queueMutex_);
         taskQueue_.push(std::move(func));
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "uapmd-adb",
+                            "ImGuiEventLoop: queued task, size=%zu",
+                            taskQueue_.size());
+#endif
     }
 
     void startImpl() override {
@@ -58,6 +66,13 @@ public:
             std::lock_guard<std::mutex> lock(queueMutex_);
             std::swap(localQueue, taskQueue_);
         }
+#if defined(__ANDROID__)
+        if (!localQueue.empty()) {
+            __android_log_print(ANDROID_LOG_INFO, "uapmd-adb",
+                                "ImGuiEventLoop: draining %zu task(s)",
+                                localQueue.size());
+        }
+#endif
         while (!localQueue.empty()) {
             auto task = std::move(localQueue.front());
             localQueue.pop();

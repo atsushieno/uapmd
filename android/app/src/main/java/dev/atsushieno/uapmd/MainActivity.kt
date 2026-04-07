@@ -8,6 +8,10 @@ class MainActivity : SDLActivity() {
         @JvmStatic external fun nativeExecuteUiThreadTask(token: Long)
         @JvmStatic external fun nativeHandleActivityResult(requestCode: Int, resultCode: Int, data: Intent?)
         @JvmStatic external fun nativeOnOverlayClosed(handle: Long)
+        @JvmStatic external fun nativeRunAutomationScript(code: String): String
+        @JvmStatic external fun nativeStartAutomationScriptJob(code: String): String
+        @JvmStatic external fun nativeGetAutomationScriptJob(jobId: String): String
+        @JvmStatic external fun nativeClearAutomationScriptJob(jobId: String)
 
         @JvmStatic
         fun getInstance(): SDLActivity? = SDLActivity.mSingleton

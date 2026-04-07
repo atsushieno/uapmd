@@ -82,6 +82,9 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         Configuration/AudioDeviceConfiguration.cpp
         Configuration/VirtualMidiDeviceConfiguration.cpp
 )
+if(ANDROID)
+    list(APPEND UAPMD_APP_COMMON_SOURCE_FILES AndroidAutomationBridge.cpp)
+endif()
 
 list(APPEND UAPMD_APP_COMMON_SOURCE_FILES mcp/McpServer.cpp)
 

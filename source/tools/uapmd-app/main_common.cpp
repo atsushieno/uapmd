@@ -310,6 +310,11 @@ int runMainLoop(int argc, char** argv) {
 #if defined(__ANDROID__)
         const auto frameStart = std::chrono::steady_clock::now();
 #endif
+        // Drain queued main-thread work before platform event processing.
+        // On Android, SDL event pumping may block long enough to starve tasks posted from
+        // automation, plugin callbacks, or other background threads.
+        eventLoopPtr->processQueuedTasks();
+
         // Process events and forward to ImGui
         // SDL3 handles all platform events including Android lifecycle
         imguiPlatformBackend->processEvents();
@@ -318,9 +323,6 @@ int runMainLoop(int argc, char** argv) {
         if (windowingBackend->shouldClose(window)) {
             done = true;
         }
-
-        // Process queued tasks from remidy
-        eventLoopPtr->processQueuedTasks();
 
 #if !defined(USE_DIRECTX11_RENDERER) && !defined(USE_SDL_RENDERER)
         // CRITICAL: Make our GL context current BEFORE any ImGui/GL operations

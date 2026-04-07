@@ -71,6 +71,53 @@ class PluginInstance {
     }
 }
 
+const __uapmdAutomationState = globalThis.__uapmdAutomationState ??= {
+    jobs: Object.create(null)
+};
+
+function __uapmdClone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function __uapmdFindMatchingInstance(format, pluginId, trackIndex) {
+    const tracks = __remidy_sequencer_getTrackInfos();
+    if (trackIndex >= 0 && trackIndex < tracks.length) {
+        const track = tracks[trackIndex];
+        const node = (track.nodes || []).find(n => n.format === format && n.pluginId === pluginId);
+        if (node)
+            return node;
+    }
+
+    for (const track of tracks) {
+        const node = (track.nodes || []).find(n => n.format === format && n.pluginId === pluginId);
+        if (node)
+            return node;
+    }
+
+    return null;
+}
+
+function __uapmdGetCreateJob(jobId) {
+    return __uapmdAutomationState.jobs[jobId] ?? null;
+}
+
+function __uapmdPollCreateJob(jobId) {
+    const job = __uapmdGetCreateJob(jobId);
+    if (!job)
+        return null;
+
+    if (job.state === "running") {
+        const node = __uapmdFindMatchingInstance(job.format, job.pluginId, job.trackIndex);
+        if (node) {
+            job.state = "completed";
+            job.instanceId = node.instanceId;
+            job.completedAtMs = Date.now();
+        }
+    }
+
+    return __uapmdClone(job);
+}
+
 globalThis.uapmd = {
     project: {
         save: (path) => __remidy_project_save(path),
@@ -94,7 +141,52 @@ globalThis.uapmd = {
 
     // Instance creation and management
     instancing: {
-        create: (format, pluginId, trackIndex = -1) => __remidy_instance_create(format, pluginId, trackIndex)
+        create: (format, pluginId, trackIndex = -1) => __remidy_instance_create(format, pluginId, trackIndex),
+        startCreateJob: (jobId, format, pluginId, trackIndex = -1) => {
+            if (!jobId)
+                throw new Error("jobId is required");
+
+            const existing = __uapmdPollCreateJob(jobId);
+            if (existing)
+                return existing;
+
+            const job = {
+                jobId,
+                state: "running",
+                format,
+                pluginId,
+                trackIndex,
+                instanceId: -1,
+                startedAtMs: Date.now()
+            };
+            __uapmdAutomationState.jobs[jobId] = job;
+
+            try {
+                const instanceId = __remidy_instance_create(format, pluginId, trackIndex);
+                if (instanceId >= 0) {
+                    job.state = "completed";
+                    job.instanceId = instanceId;
+                    job.completedAtMs = Date.now();
+                } else {
+                    const node = __uapmdFindMatchingInstance(format, pluginId, trackIndex);
+                    if (node) {
+                        job.state = "completed";
+                        job.instanceId = node.instanceId;
+                        job.completedAtMs = Date.now();
+                    }
+                }
+            } catch (e) {
+                job.state = "failed";
+                job.error = String(e);
+                job.completedAtMs = Date.now();
+            }
+
+            return __uapmdClone(job);
+        },
+        getCreateJob: (jobId) => __uapmdPollCreateJob(jobId),
+        clearCreateJob: (jobId) => {
+            delete __uapmdAutomationState.jobs[jobId];
+        }
     },
 
     // Factory function to create PluginInstance wrapper for an existing instance
