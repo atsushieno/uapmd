@@ -209,6 +209,11 @@ int runMainLoop(int argc, char** argv) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+#if ANDROID
+    io.MouseDoubleClickMaxDist = 12;
+    io.MouseDragThreshold = 12;
+    io.MouseDoubleClickTime = 1.0f;  // compensate for 10 FPS frame cap
+#endif
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = nullptr; // disable ImGui's built-in ini persistence
     ImGui::LoadIniSettingsFromMemory("", 0);
