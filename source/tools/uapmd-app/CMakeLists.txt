@@ -98,6 +98,7 @@ if(UAPMD_BUILDING_WASM)
     set(_UAPMD_WASM_WEB_DST "${CMAKE_CURRENT_BINARY_DIR}")
     set(_UAPMD_WASM_WEB_RUNTIME_FILES
             "index.html"
+            "favicon.png"
             "coop-coep-sw.js"
             "audioworklet-env-fix.js"
             "uapmd-webclap-worklet.js"

@@ -14,6 +14,7 @@ endif()
 
 set(WEB_RUNTIME_ASSETS
     "index.html"
+    "favicon.png"
     "coop-coep-sw.js"
     "audioworklet-env-fix.js"
     "uapmd-webclap-worklet.js"
