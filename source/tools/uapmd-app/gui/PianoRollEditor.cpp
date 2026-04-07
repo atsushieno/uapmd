@@ -7,7 +7,6 @@
 #include <unordered_map>
 
 #include "FontIcons.hpp"
-#include "ImGuiUtils.hpp"
 
 #include <imgui.h>
 #include <umppi/umppi.hpp>
@@ -1079,12 +1078,11 @@ void PianoRollEditor::renderNoteGrid(ImDrawList* dl, ImVec2 origin, float width,
         }
     }
 
-    // ── Double-click / long-press: delete existing note or insert a new 1/4-note
-    const bool noteAreaActivated = noteAreaH > 0.0f && noteH > 0.0f &&
-            ImGui::IsWindowHovered() && state.preview && state.preview->rawMidiData &&
-            (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
-             isLongPressedForMobiles(ImGui::GetID("##noteArea"), ImGui::IsWindowHovered()));
-    if (noteAreaActivated) {
+    // ── Double-click: delete existing note or insert a new 1/4-note ──────────
+    if (noteAreaH > 0.0f && noteH > 0.0f &&
+            ImGui::IsWindowHovered() &&
+            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+            state.preview && state.preview->rawMidiData) {
         const ImVec2 mp = ImGui::GetMousePos();
         if (mp.y > noteAreaY && mp.y < noteAreaY + noteAreaH) {
             // Find any existing, non-deleted note under the cursor.

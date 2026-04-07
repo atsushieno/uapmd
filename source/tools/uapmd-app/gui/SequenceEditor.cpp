@@ -15,7 +15,6 @@
 
 #include "../AppModel.hpp"
 #include "ClipPreview.hpp"
-#include "ImGuiUtils.hpp"
 
 namespace uapmd::gui {
 
@@ -399,10 +398,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         int32_t requestedContextTrack = -1;
         int32_t requestedAddClipTrack = -1;
 
-        const bool clipAreaHit = timelineHovered && mouseInClipArea && hoveredTrackIndex != -1;
-        if (clipAreaHit &&
-                (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
-                 isLongPressedForMobiles(ImGui::GetID("##clipArea"), clipAreaHit))) {
+        if (timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 &&
+            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             auto& trackState = windows_[hoveredTrackIndex];
             const float scale = unified_.timeline->GetScale();
             const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());

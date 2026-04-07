@@ -13,7 +13,6 @@
 
 #include "MidiDumpWindow.hpp"
 #include "FontIcons.hpp"
-#include "ImGuiUtils.hpp"
 #include <imgui.h>
 
 namespace uapmd::gui {
@@ -845,8 +844,7 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
                             ImGui::PushStyleColor(ImGuiCol_Text, textColor);
                             ImGui::Selectable(lengthDisplay.c_str(), false, selectableFlags, ImVec2(contentWidth, 0.0f));
                             ImGui::PopStyleColor();
-                            if (editingEnabled && ImGui::IsItemHovered() &&
-                                    (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) || isItemLongPressedForMobiles())) {
+                            if (editingEnabled && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                                 startLengthEdit(state, lengthIndex);
                             }
                             if (!row.lengthError.empty() && ImGui::IsItemHovered())
@@ -926,8 +924,7 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
                             ImGui::PushStyleColor(ImGuiCol_Text, textColor);
                             ImGui::Selectable(row.hexBuffer.data(), false, selectableFlags, ImVec2(messageWidth, 0.0f));
                             ImGui::PopStyleColor();
-                            if (editingEnabled && ImGui::IsItemHovered() &&
-                                    (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) || isItemLongPressedForMobiles())) {
+                            if (editingEnabled && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                                 startHexEdit(state, static_cast<size_t>(rowIndex));
                             }
                         }

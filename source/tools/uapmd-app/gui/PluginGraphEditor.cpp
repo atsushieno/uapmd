@@ -11,7 +11,6 @@
 #include <imgui.h>
 
 #include "../AppModel.hpp"
-#include "ImGuiUtils.hpp"
 
 namespace uapmd::gui {
 
@@ -439,11 +438,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
     }
 
     int hoveredLinkId = 0;
-    const bool linkHovered = ImNodes::IsLinkHovered(&hoveredLinkId);
-    // Use a namespace offset to avoid colliding with regular ImGui widget IDs.
-    constexpr ImGuiID kLinkIdOffset = 0xAB000000u;
-    if (linkHovered && (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
-            isLongPressedForMobiles(kLinkIdOffset | static_cast<ImGuiID>(hoveredLinkId), linkHovered))) {
+    if (ImNodes::IsLinkHovered(&hoveredLinkId) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto it = links.find(hoveredLinkId);
         if (it != links.end()) {
             fullGraph->disconnect(it->second);
