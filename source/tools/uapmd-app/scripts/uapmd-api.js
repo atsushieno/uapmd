@@ -239,6 +239,19 @@ globalThis.uapmd = {
         getMasterMarkers: () => __remidy_timeline_get_master_markers(),
         setMasterMarkers: (markers) => __remidy_timeline_set_master_markers(markers),
         addMidiClip: (trackIndex, positionSamples, filepath) => __remidy_timeline_add_midi_clip(trackIndex, positionSamples, filepath),
-        removeClip: (trackIndex, clipId) => __remidy_timeline_remove_clip(trackIndex, clipId)
+        removeClip: (trackIndex, clipId) => __remidy_timeline_remove_clip(trackIndex, clipId),
+        createEmptyMidiClip: (trackIndex, positionSamples = 0, tickResolution = 480, bpm = 120.0) =>
+            __remidy_timeline_create_empty_midi_clip(trackIndex, positionSamples, tickResolution, bpm),
+        getClipUmpEvents: (trackIndex, clipId) => __remidy_timeline_get_clip_ump_events(trackIndex, clipId),
+        addUmpEvent: (trackIndex, clipId, tick, words) => __remidy_timeline_add_ump_event(trackIndex, clipId, tick, words),
+        removeUmpEvent: (trackIndex, clipId, eventIndex) => __remidy_timeline_remove_ump_event(trackIndex, clipId, eventIndex)
+    },
+
+    render: {
+        start: (outputPath, startSeconds = 0.0, endSeconds = -1.0, tailSeconds = 2.0, useContentFallback = true) =>
+            __remidy_render_start(outputPath, startSeconds, endSeconds, tailSeconds, useContentFallback),
+        getStatus: () => __remidy_render_get_status(),
+        clearStatus: () => __remidy_render_clear_status(),
+        cancel: () => __remidy_render_cancel()
     }
 };

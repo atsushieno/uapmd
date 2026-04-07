@@ -36,6 +36,7 @@ void UapmdJSRuntime::reinitialize()
     registerSequencerAudioAnalysisAPI();
     registerSequencerAudioDeviceAPI();
     registerTimelineAPI();
+    registerRenderAPI();
 }
 
 void UapmdJSRuntime::registerConsoleFunctions()
@@ -1497,6 +1498,60 @@ void UapmdJSRuntime::registerTimelineAPI()
         auto r = uapmd::AppModel::instance().createEmptyMidiClip (
             trackIndex, positionSamples, tickResolution, bpm);
         return choc::value::createInt32 (r.clipId);
+    });
+}
+
+void UapmdJSRuntime::registerRenderAPI()
+{
+    jsContext_.registerFunction ("__remidy_render_start", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto outputPath = args.get<std::string> (0, "");
+        if (outputPath.empty())
+            return choc::value::createBool (false);
+
+        uapmd::AppModel::RenderToFileSettings settings;
+        settings.outputPath = outputPath;
+        settings.startSeconds = std::max (0.0, args.get<double> (1, 0.0));
+
+        auto endSeconds = args.get<double> (2, -1.0);
+        if (endSeconds > settings.startSeconds)
+            settings.endSeconds = endSeconds;
+
+        settings.tailSeconds = std::max (0.0, args.get<double> (3, 2.0));
+        settings.useContentFallback = args.get<bool> (4, true);
+
+        auto bounds = uapmd::AppModel::instance().timelineContentBounds();
+        settings.contentBoundsValid = bounds.hasContent;
+        settings.contentStartSeconds = bounds.startSeconds;
+        settings.contentEndSeconds = bounds.endSeconds;
+
+        return choc::value::createBool (uapmd::AppModel::instance().startRenderToFile (settings));
+    });
+
+    jsContext_.registerFunction ("__remidy_render_get_status", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto status = uapmd::AppModel::instance().getRenderToFileStatus();
+        auto obj = choc::value::createObject ("RenderToFileStatus");
+        obj.setMember ("running", status.running);
+        obj.setMember ("completed", status.completed);
+        obj.setMember ("success", status.success);
+        obj.setMember ("progress", status.progress);
+        obj.setMember ("renderedSeconds", status.renderedSeconds);
+        obj.setMember ("message", status.message);
+        obj.setMember ("outputPath", status.outputPath.string());
+        return obj;
+    });
+
+    jsContext_.registerFunction ("__remidy_render_clear_status", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        uapmd::AppModel::instance().clearCompletedRenderStatus();
+        return choc::value::Value();
+    });
+
+    jsContext_.registerFunction ("__remidy_render_cancel", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        uapmd::AppModel::instance().cancelRenderToFile();
+        return choc::value::Value();
     });
 }
 

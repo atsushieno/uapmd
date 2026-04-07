@@ -110,6 +110,7 @@ private:
     void registerSequencerAudioAnalysisAPI();
     void registerSequencerAudioDeviceAPI();
     void registerTimelineAPI();
+    void registerRenderAPI();
 };
 
 } // namespace uapmd
