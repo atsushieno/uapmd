@@ -10,6 +10,3 @@
 [submodule "external/rtlog-cpp"]
 	path = external/rtlog-cpp
 	url = https://github.com/cjappl/rtlog-cpp
-[submodule "android/external/aap-core"]
-	path = android/external/aap-core
-	url = https://github.com/atsushieno/aap-core.git

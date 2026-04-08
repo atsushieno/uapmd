@@ -27,6 +27,7 @@ android {
         externalNativeBuild {
             cmake {
                 arguments.addAll(listOf(
+                    "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
                     "-DAAP_DIR=$aapDir",
                     "-DMIDICCI_SKIP_TOOLS=ON",
                     "-DCPM_SOURCE_CACHE=$cpmSourceCacheDir",
