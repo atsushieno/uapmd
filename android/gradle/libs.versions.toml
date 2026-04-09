@@ -1,4 +1,7 @@
 [versions]
+androidTargetSdk = "36"
+androidMinSdk = "31"
+androidSdkTools = "36.1"
 agp = "9.1.0"
 androidaudioplugin = "0.9.4"
 coreKtx = "1.18.0"

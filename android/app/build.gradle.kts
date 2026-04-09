@@ -10,15 +10,15 @@ val aapDir = project.projectDir.parentFile.listFiles {
 android {
     namespace = "dev.atsushieno.uapmd"
     compileSdk {
-        version = release(36) {
+        version = release(libs.versions.androidTargetSdk.get().toInt()) {
             minorApiLevel = 1
         }
     }
 
     defaultConfig {
         applicationId = "dev.atsushieno.uapmd"
-        minSdk = 31 // libremidi kinda expects AMIDI
-        targetSdk = 36
+        minSdk = libs.versions.androidMinSdk.get().toInt() // libremidi kinda expects AMIDI
+        targetSdk = libs.versions.androidTargetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
 
