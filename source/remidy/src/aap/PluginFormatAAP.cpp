@@ -44,7 +44,7 @@ void PluginFormatAAPImpl::createInstance(PluginCatalogEntry *info,
         // FIXME: just like LV2, we have to pass initial sample rate at instantiation time,
         //  which does not match what remidy passes at `createInstance()` (it is passed at `configure()`).
         //  Until then, we have to pass a stub value.
-        int sampleRate = (int) 44100;
+        int sampleRate = (int) 48000;
         auto identifier = pluginInfo->getPluginID();
         auto service = plugin_client_connections->getServiceHandleForConnectedPlugin(pluginInfo->getPluginPackageName(), pluginInfo->getPluginLocalName());
         if (service != nullptr) {

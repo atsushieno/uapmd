@@ -115,13 +115,10 @@ bool uapmd::RealtimeSequencer::reconfigureAudioDevice(int inputDeviceIndex, int 
     }
     newDevice->useAutoBufferSize(auto_buffer_size_enabled_ && supportsAuto);
 
-    // Update the sample rate if specified
-    if (sampleRate > 0) {
-        sample_rate = sampleRate;
-    } else {
-        // Use the device's actual sample rate
-        sample_rate = static_cast<int32_t>(newDevice->sampleRate());
-    }
+    // Always use the device's actual opened sample rate. On Android/Oboe the
+    // hardware can reject the requested rate and open at a different one.
+    sample_rate = static_cast<int32_t>(newDevice->sampleRate());
+    sequencer->setSampleRate(sample_rate);
 
     // Update the buffer size if specified
     if (bufferSize > 0) {

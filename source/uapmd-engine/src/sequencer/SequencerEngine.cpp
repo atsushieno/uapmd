@@ -248,6 +248,7 @@ namespace uapmd {
         void realtimeInfiniteTailPolicy(RealtimeInfiniteTailPolicy policy) override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
+        void setSampleRate(int32_t newSampleRate) override;
         uapmd_track_index_t addEmptyTrack() override;
         bool removeTrack(uapmd_track_index_t trackIndex) override;
         bool replaceTrackGraph(uapmd_track_index_t trackIndex, std::unique_ptr<AudioPluginGraph>&& graph) override;
@@ -1206,6 +1207,11 @@ namespace uapmd {
         }
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
+    }
+
+    void SequencerEngineImpl::setSampleRate(int32_t newSampleRate) {
+        if (newSampleRate > 0)
+            sampleRate = newSampleRate;
     }
 
     uapmd_track_index_t SequencerEngineImpl::addEmptyTrack() {

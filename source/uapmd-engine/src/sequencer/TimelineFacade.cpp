@@ -41,7 +41,7 @@ namespace uapmd {
             : engine_(engine)
             , sampleRate_(0)
             , bufferSizeInFrames_(0)
-            , master_timeline_track_(std::make_shared<TimelineTrack>(std::string("master_track"), 0, 44100.0, 0))
+            , master_timeline_track_(std::make_shared<TimelineTrack>(std::string("master_track"), 0, 48000.0, 0))
         {
             audio_graph_provider_registry_ = AudioGraphProviderRegistry::create();
             timeline_.tempo = 120.0;
@@ -410,7 +410,7 @@ namespace uapmd {
             master_timeline_track_ = std::make_shared<TimelineTrack>(
                 std::string("master_track"),
                 0,
-                sampleRate_ > 0 ? static_cast<double>(sampleRate_) : 44100.0,
+                sampleRate_ > 0 ? static_cast<double>(sampleRate_) : 48000.0,
                 bufferSizeInFrames_);
 
             // Clear all existing tracks via engine (which calls onTrackRemoved for each)

@@ -87,6 +87,7 @@ namespace uapmd {
 
         // Set default channel configuration (called by RealtimeSequencer when device changes)
         virtual void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) = 0;
+        virtual void setSampleRate(int32_t sampleRate) = 0;
         virtual bool offlineRendering() const = 0;
         virtual void offlineRendering(bool enabled) = 0;
 

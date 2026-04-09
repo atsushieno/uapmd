@@ -785,7 +785,7 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
 
     jsContext_.registerFunction ("__remidy_sequencer_setSampleRate", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
-        auto sampleRate = args.get<int32_t> (0, 44100);
+        auto sampleRate = args.get<int32_t> (0, 48000);
         if (sampleRate <= 0)
             return choc::value::createBool (false);
 
