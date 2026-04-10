@@ -82,6 +82,7 @@ namespace uapmd {
 
         // Flush any active note-ons by enqueueing the necessary note-off messages
         virtual void sendAllNotesOff() = 0;
+        virtual void requestStopFlush() = 0;
 
         // Parameter update event - allows multiple consumers to listen for parameter changes
         virtual ParameterUpdateEvent& parameterUpdateEvent() = 0;

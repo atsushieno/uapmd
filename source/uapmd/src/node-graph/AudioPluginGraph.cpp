@@ -94,7 +94,10 @@ namespace uapmd {
 
             // Fill event buffer with events for this group
             auto& eventIn = process.eventIn();
-            node->fillEventBufferForGroup(eventIn, group);
+            if (node->consumeStopFlushRequest())
+                node->prepareStopFlush(eventIn, group);
+            else
+                node->fillEventBufferForGroup(eventIn, group);
 
             bool bypassed = node->instance()->bypassed();
             if (!bypassed)

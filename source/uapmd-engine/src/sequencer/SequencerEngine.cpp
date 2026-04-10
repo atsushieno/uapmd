@@ -1517,7 +1517,7 @@ namespace uapmd {
             auto plugin_nodes = track->graph().plugins();
             for (auto& entry : plugin_nodes) {
                 if (entry.second)
-                    entry.second->sendAllNotesOff();
+                    entry.second->requestStopFlush();
             }
         };
         for (auto& track : tracks_)
@@ -1533,6 +1533,18 @@ namespace uapmd {
         render_playback_position_samples_.store(playback_position_samples_.load(std::memory_order_acquire),
                                                 std::memory_order_release);
         resetOutputAlignmentBuffers();
+        auto flushTrackNotes = [](SequencerTrack* track) {
+            if (!track)
+                return;
+            auto plugin_nodes = track->graph().plugins();
+            for (auto& entry : plugin_nodes) {
+                if (entry.second)
+                    entry.second->requestStopFlush();
+            }
+        };
+        for (auto& track : tracks_)
+            flushTrackNotes(track.get());
+        flushTrackNotes(master_track_.get());
     }
 
     void uapmd::SequencerEngineImpl::resumePlayback() {
