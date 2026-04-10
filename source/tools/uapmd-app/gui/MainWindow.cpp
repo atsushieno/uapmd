@@ -738,15 +738,15 @@ void MainWindow::renderMixerMonitorWindow() {
         ImGui::Separator();
 
         if (ImGui::BeginTable("MixerMonitorTable", 9, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY)) {
-            ImGui::TableSetupColumn("Track", ImGuiTableColumnFlags_WidthFixed, 130.0f * uiScale_);
-            ImGui::TableSetupColumn("Plugins", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-            ImGui::TableSetupColumn("Main Latency", ImGuiTableColumnFlags_WidthFixed, 120.0f * uiScale_);
-            ImGui::TableSetupColumn("Render Lead", ImGuiTableColumnFlags_WidthFixed, 120.0f * uiScale_);
-            ImGui::TableSetupColumn("Live Input", ImGuiTableColumnFlags_WidthFixed, 90.0f * uiScale_);
-            ImGui::TableSetupColumn("Holdback", ImGuiTableColumnFlags_WidthFixed, 120.0f * uiScale_);
-            ImGui::TableSetupColumn("Tail", ImGuiTableColumnFlags_WidthFixed, 110.0f * uiScale_);
-            ImGui::TableSetupColumn("Out Buses", ImGuiTableColumnFlags_WidthFixed, 80.0f * uiScale_);
-            ImGui::TableSetupColumn("Per-Bus Timing / Route", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableSetupColumn("Track", ImGuiTableColumnFlags_WidthFixed, 110.0f * uiScale_);
+            ImGui::TableSetupColumn("Plugins", ImGuiTableColumnFlags_WidthStretch, 0.9f);
+            ImGui::TableSetupColumn("Main Latency", ImGuiTableColumnFlags_WidthFixed, 95.0f * uiScale_);
+            ImGui::TableSetupColumn("Render Lead", ImGuiTableColumnFlags_WidthFixed, 95.0f * uiScale_);
+            ImGui::TableSetupColumn("Live Input", ImGuiTableColumnFlags_WidthFixed, 72.0f * uiScale_);
+            ImGui::TableSetupColumn("Holdback", ImGuiTableColumnFlags_WidthFixed, 95.0f * uiScale_);
+            ImGui::TableSetupColumn("Tail", ImGuiTableColumnFlags_WidthFixed, 85.0f * uiScale_);
+            ImGui::TableSetupColumn("Out Buses", ImGuiTableColumnFlags_WidthFixed, 68.0f * uiScale_);
+            ImGui::TableSetupColumn("Per-Bus Timing / Route", ImGuiTableColumnFlags_WidthStretch, 1.8f);
             ImGui::TableHeadersRow();
 
             auto renderTrackRow = [engine, this](const char* label, int32_t trackIndex, uapmd::SequencerTrack* track, uint32_t mainLatency, uint32_t renderLead, uint32_t outputHoldback, double tailSeconds) {
