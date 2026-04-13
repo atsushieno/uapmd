@@ -1,4 +1,5 @@
 #include "ParameterList.hpp"
+#include "ContextActions.hpp"
 #include <algorithm>
 #include <iostream>
 #include <cmath>
@@ -266,7 +267,7 @@ void ParameterList::render() {
                     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
                 }
 
-                if (ImGui::ArrowButton(comboButtonId.c_str(), ImGuiDir_Down)) {
+                if (contextActionArrowButton(comboButtonId.c_str(), ImGuiDir_Down)) {
                     if (popupOpen) {
                         requestPopupClose = true;
                     } else {

@@ -24,6 +24,7 @@
 #include "TimelineEditor.hpp"
 #include "ClipPreview.hpp"
 #include "../DocumentProviderHelpers.hpp"
+#include "ContextActions.hpp"
 #include "FontIcons.hpp"
 #include "../AppModel.hpp"
 
@@ -65,10 +66,7 @@ struct ClipKeyHash {
 };
 
 bool renderIconButtonWithTooltip(const char* label, const char* tooltip) {
-    const bool clicked = ImGui::Button(label);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", tooltip);
-    return clicked;
+    return contextActionButton(label, ImVec2(0.0f, 0.0f), tooltip);
 }
 
 uint64_t mixHash(uint64_t seed, uint64_t value) {
@@ -1180,50 +1178,48 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
         if (bypassed)
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
         const char* toggleIcon = bypassed ? uapmd::gui::icons::ToggleOff : uapmd::gui::icons::ToggleOn;
-        if (ImGui::Button(std::format("{}##LegByp{}", toggleIcon, trackIndex).c_str()))
+        if (contextActionButton(std::format("{}##LegByp{}", toggleIcon, trackIndex).c_str(), ImVec2(0.0f, 0.0f),
+                bypassed ? "Track bypassed (click to enable)" : "Bypass track"))
             track->bypassed(!bypassed);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", bypassed ? "Track bypassed (click to enable)" : "Bypass track");
         if (bypassed)
             ImGui::PopStyleColor();
         if (trackIndex != uapmd::kMasterTrackIndex) {
             ImGui::SameLine();
-            if (ImGui::Button(std::format("{}##LegDel{}", uapmd::gui::icons::DeleteTrack, trackIndex).c_str()))
+            if (contextActionButton(std::format("{}##LegDel{}", uapmd::gui::icons::DeleteTrack, trackIndex).c_str(), ImVec2(0.0f, 0.0f),
+                    "Delete track"))
                 deleteTrack(trackIndex);
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Delete track");
         }
     }
 
     // Row 2: Plugin context button (full legend width)
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, ImGui::GetCursorScreenPos().y));
     const float buttonWidth = legendWidth - pad * 2;
-    if (ImGui::Button(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(buttonWidth, 0)))
+    if (contextActionButton(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(buttonWidth, 0)))
         ImGui::OpenPopup(popupId.c_str());
 
     // Clips popup
     if (ImGui::BeginPopup(clipPopupId.c_str())) {
         const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
-        if (ImGui::MenuItem("Edit Clips...", nullptr, sequenceEditor_.isVisible(trackIndex))) {
+        if (contextActionMenuItem("Edit Clips...", sequenceEditor_.isVisible(trackIndex))) {
             sequenceEditor_.showWindow(trackIndex);
             refreshSequenceEditorForTrack(trackIndex);
         }
         if (!isMasterTrack) {
             ImGui::Separator();
-            if (ImGui::MenuItem("New Clip"))
+            if (contextActionMenuItem("New Clip"))
                 addBlankMidi2ClipToTrack(trackIndex);
             ImGui::Separator();
-            if (ImGui::MenuItem("Import Audio Clip..."))
+            if (contextActionMenuItem("Import Audio Clip..."))
                 addAudioClipToTrack(trackIndex);
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Import SMF as Clip..."))
+        if (contextActionMenuItem("Import SMF as Clip..."))
             addSmfClipToTrack(trackIndex);
         if (!isMasterTrack) {
-            if (ImGui::MenuItem("Import SMF2Clip..."))
+            if (contextActionMenuItem("Import SMF2Clip..."))
                 addSmf2ClipToTrack(trackIndex);
             ImGui::Separator();
-            if (ImGui::MenuItem("Clear All"))
+            if (contextActionMenuItem("Clear All"))
                 clearAllClipsFromTrack(trackIndex);
         }
         ImGui::EndPopup();
@@ -1240,11 +1236,12 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 std::string pluginName = instance->displayName();
 
                 bool detailsVisible = instanceDetails_.isVisible(instanceId);
-                if (ImGui::MenuItem(std::format("{} {} Details##details{}", detailsVisible ? "Hide" : "Show", pluginName, instanceId).c_str())) {
+                if (contextActionMenuItem(std::format("{} {} Details##details{}", detailsVisible ? "Hide" : "Show", pluginName, instanceId).c_str())) {
                     if (detailsVisible)
                         instanceDetails_.hideWindow(instanceId);
                     else
                         instanceDetails_.showWindow(instanceId);
+                    ImGui::CloseCurrentPopup();
                 }
 
                 if (callbacks_.buildTrackInstanceInfo) {
@@ -1252,11 +1249,12 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                         bool disableShowUIButton = !trackInstance->hasUI;
                         if (disableShowUIButton)
                             ImGui::BeginDisabled();
-                        if (ImGui::MenuItem(std::format("{} {} GUI##gui{}", trackInstance->uiVisible ? "Hide" : "Show", pluginName, instanceId).c_str())) {
+                        if (contextActionMenuItem(std::format("{} {} GUI##gui{}", trackInstance->uiVisible ? "Hide" : "Show", pluginName, instanceId).c_str())) {
                             if (trackInstance->uiVisible)
                                 uapmd::AppModel::instance().hidePluginUI(instanceId);
                             else
                                 uapmd::AppModel::instance().requestShowPluginUI(instanceId);
+                            ImGui::CloseCurrentPopup();
                         }
                         if (disableShowUIButton)
                             ImGui::EndDisabled();
@@ -1271,20 +1269,23 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                     auto* instance = sequencer.engine()->getPluginInstance(instanceId);
                     if (!instance)
                         continue;
-                    if (ImGui::MenuItem(std::format("Delete {} (at [{}])##delete{}", instance->displayName(), i + 1, instanceId).c_str()))
+                    if (contextActionMenuItem(std::format("Delete {} (at [{}])##delete{}", instance->displayName(), i + 1, instanceId).c_str())) {
                         if (callbacks_.handleRemoveInstance)
                             callbacks_.handleRemoveInstance(instanceId);
+                        ImGui::CloseCurrentPopup();
+                    }
                 }
                 ImGui::Separator();
             }
         }
 
-        if (ImGui::MenuItem("Add Plugin")) {
+        if (contextActionMenuItem("Add Plugin")) {
             if (trackIndex == uapmd::kMasterTrackIndex)
                 pluginSelector_.setTargetMasterTrack(trackIndex);
             else
                 pluginSelector_.setTargetTrackIndex(trackIndex);
             showPluginSelectorWindow_ = true;
+            ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }

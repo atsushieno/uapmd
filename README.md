@@ -147,7 +147,7 @@ There are some notable docs:
 
 ## Code modules
 
-There are two primary libraries in this repository:
+There are handful of libraries in this repository:
 
 ### remidy
 

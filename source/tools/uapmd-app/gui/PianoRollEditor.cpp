@@ -6,6 +6,7 @@
 #include <format>
 #include <unordered_map>
 
+#include "ContextActions.hpp"
 #include "FontIcons.hpp"
 
 #include <imgui.h>
@@ -1406,15 +1407,15 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
             ImGui::TableSetColumnIndex(0);
             {
                 const std::string menuId = std::format("RowActionsN##{}", ei);
-                if (ImGui::Button(std::format("{}##N{}", icons::ContextMenu, ei).c_str(),
+                if (contextActionButton(std::format("{}##N{}", icons::ContextMenu, ei).c_str(),
                         ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight())))
                     ImGui::OpenPopup(menuId.c_str());
                 if (ImGui::BeginPopup(menuId.c_str())) {
-                    if (ImGui::MenuItem("Insert Event Before")) {
+                    if (contextActionMenuItem("Insert Event Before")) {
                         pendingInsertNote = ei;
                         ImGui::CloseCurrentPopup();
                     }
-                    if (ImGui::MenuItem("Delete Event")) {
+                    if (contextActionMenuItem("Delete Event")) {
                         pendingDelete = ei;
                         ImGui::CloseCurrentPopup();
                     }
@@ -1513,7 +1514,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 // [▼] picker arrow (NRPN only, when entries are available)
                 if (hasPickerBtn) {
                     ImGui::SameLine();
-                    if (ImGui::ArrowButton("##nrpnpick", ImGuiDir_Down))
+                    if (contextActionArrowButton("##nrpnpick", ImGuiDir_Down))
                         ImGui::OpenPopup("##nrpnpicker");
                     if (renderNrpnPicker("##nrpnpicker", ae.paramIndex, ae.umpGroup,
                             state.nrpnPickerHoveredPlugin, nrpnEntries))
@@ -1560,15 +1561,15 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
             ImGui::TableSetColumnIndex(0);
             {
                 const std::string menuId = std::format("RowActionsC##{}", ci);
-                if (ImGui::Button(std::format("{}##C{}", icons::ContextMenu, ci).c_str(),
+                if (contextActionButton(std::format("{}##C{}", icons::ContextMenu, ci).c_str(),
                         ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight())))
                     ImGui::OpenPopup(menuId.c_str());
                 if (ImGui::BeginPopup(menuId.c_str())) {
-                    if (ImGui::MenuItem("Insert Event Before")) {
+                    if (contextActionMenuItem("Insert Event Before")) {
                         pendingInsertClip = ci;
                         ImGui::CloseCurrentPopup();
                     }
-                    if (ImGui::MenuItem("Delete Event")) {
+                    if (contextActionMenuItem("Delete Event")) {
                         pendingDeleteClip = ci;
                         ImGui::CloseCurrentPopup();
                     }
@@ -1666,7 +1667,7 @@ void PianoRollEditor::renderAutomationPanel(WindowState& state, const RenderCont
                 // [▼] picker arrow (NRPN only, when entries are available)
                 if (hasPickerBtn) {
                     ImGui::SameLine();
-                    if (ImGui::ArrowButton("##nrpnpick", ImGuiDir_Down))
+                    if (contextActionArrowButton("##nrpnpick", ImGuiDir_Down))
                         ImGui::OpenPopup("##nrpnpicker");
                     if (renderNrpnPicker("##nrpnpicker", ae.paramIndex, ae.umpGroup,
                             state.nrpnPickerHoveredPlugin, nrpnEntries))

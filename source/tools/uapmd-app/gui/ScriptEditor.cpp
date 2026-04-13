@@ -1,4 +1,5 @@
 #include "ScriptEditor.hpp"
+#include "ContextActions.hpp"
 #include "../AppModel.hpp"
 #include <imgui.h>
 #if defined(__APPLE__)
@@ -83,14 +84,14 @@ void ScriptEditor::render()
         ImGui::SameLine();
 
         // Preset menu button — loads a built-in script preset into the editor
-        if (ImGui::Button ("Preset"))
+        if (contextActionButton ("Preset"))
             ImGui::OpenPopup ("preset_popup");
 
         if (ImGui::BeginPopup ("preset_popup"))
         {
             for (auto& preset : presets_)
             {
-                if (ImGui::MenuItem (preset.title.c_str()))
+                if (contextActionMenuItem (preset.title.c_str()))
                 {
                     auto len = std::min (preset.content.size(), scriptBuffer_.size() - 1);
                     std::memcpy (scriptBuffer_.data(), preset.content.c_str(), len);
@@ -104,19 +105,19 @@ void ScriptEditor::render()
         ImGui::SameLine();
 
         // Load menu button — opens a file or picks from recent file history
-        if (ImGui::Button ("Load"))
+        if (contextActionButton ("Load"))
             ImGui::OpenPopup ("load_popup");
 
         if (ImGui::BeginPopup ("load_popup"))
         {
-            if (ImGui::MenuItem ("Open File..."))
+            if (contextActionMenuItem ("Open File..."))
                 loadScriptFromFile();
 
             if (! fileHistory_.empty())
             {
                 ImGui::Separator();
                 for (size_t i = 0; i < fileHistory_.size(); ++i)
-                    if (ImGui::MenuItem (fileHistory_[i].displayName.c_str()))
+                    if (contextActionMenuItem (fileHistory_[i].displayName.c_str()))
                         loadScriptFromHistoryEntry (i);
             }
 

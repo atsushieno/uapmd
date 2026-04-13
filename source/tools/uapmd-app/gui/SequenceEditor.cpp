@@ -15,6 +15,7 @@
 
 #include "../AppModel.hpp"
 #include "ClipPreview.hpp"
+#include "ContextActions.hpp"
 
 namespace uapmd::gui {
 
@@ -243,7 +244,7 @@ void SequenceEditor::renderWindow(int32_t trackIndex, SequenceEditorState& state
 
             ImGui::SameLine();
 
-            if (ImGui::Button("Clear All")) {
+            if (contextActionButton("Clear All")) {
                 if (!state.displayClips.empty()) {
                     ImGui::OpenPopup("Clear All Clips?");
                 }
@@ -478,7 +479,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                     const bool canDump = (contextClip->isMasterTrack && static_cast<bool>(context.showMasterTrackDump)) ||
                                         (contextClip->isMidiClip && static_cast<bool>(context.showMidiClipDump));
                     if (!canDump) ImGui::BeginDisabled();
-                    if (ImGui::MenuItem("Show Dump List")) {
+                    if (contextActionMenuItem("Show Dump List")) {
                         if (contextClip->isMasterTrack && context.showMasterTrackDump) context.showMasterTrackDump();
                         else if (context.showMidiClipDump) context.showMidiClipDump(trackIndex, contextClip->clipId);
                         ImGui::CloseCurrentPopup();
@@ -487,7 +488,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
                     const bool canAudio = !contextClip->isMasterTrack && !contextClip->isMidiClip && static_cast<bool>(context.showAudioClipEvents);
                     if (!canAudio) ImGui::BeginDisabled();
-                    if (ImGui::MenuItem("Edit Audio Events")) {
+                    if (contextActionMenuItem("Edit Audio Events")) {
                         if (context.showAudioClipEvents) context.showAudioClipEvents(trackIndex, contextClip->clipId);
                         ImGui::CloseCurrentPopup();
                     }
@@ -495,7 +496,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
                     const bool canRoll = contextClip->isMidiClip && static_cast<bool>(context.showPianoRoll);
                     if (!canRoll) ImGui::BeginDisabled();
-                    if (ImGui::MenuItem("Open Piano Roll")) {
+                    if (contextActionMenuItem("Open Piano Roll")) {
                         if (context.showPianoRoll) context.showPianoRoll(trackIndex, contextClip->clipId);
                         ImGui::CloseCurrentPopup();
                     }
@@ -503,7 +504,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
                     const bool canDelete = static_cast<bool>(context.removeClip);
                     if (!canDelete) ImGui::BeginDisabled();
-                    if (ImGui::MenuItem("Delete")) {
+                    if (contextActionMenuItem("Delete")) {
                         if (context.removeClip) context.removeClip(trackIndex, contextClip->clipId);
                         ImGui::CloseCurrentPopup();
                     }
@@ -511,17 +512,17 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
                     if (!contextClip->isMasterTrack) {
                         ImGui::Separator();
-                        if (ImGui::MenuItem("New Clip Here")) {
+                        if (contextActionMenuItem("New Clip Here")) {
                             if (context.addBlankMidiClipAtPosition)
                                 context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
                             ImGui::CloseCurrentPopup();
                         }
-                        if (ImGui::MenuItem("Import Audio Clip Here...")) {
+                        if (contextActionMenuItem("Import Audio Clip Here...")) {
                             if (context.addAudioClip)
                                 context.addAudioClip(trackIndex, trackState.requestedAddPosition);
                             ImGui::CloseCurrentPopup();
                         }
-                        if (ImGui::MenuItem("Import SMF Here...")) {
+                        if (contextActionMenuItem("Import SMF Here...")) {
                             if (context.addSmfClip)
                                 context.addSmfClip(trackIndex, trackState.requestedAddPosition);
                             ImGui::CloseCurrentPopup();
@@ -533,36 +534,36 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
             if (ImGui::BeginPopup(addPopupId.c_str())) {
                 const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
-                if (ImGui::MenuItem("Edit Clips...", nullptr, isVisible(trackIndex))) {
+                if (contextActionMenuItem("Edit Clips...", isVisible(trackIndex))) {
                     showWindow(trackIndex);
                     if (context.refreshClips) context.refreshClips(trackIndex);
                     ImGui::CloseCurrentPopup();
                 }
                 if (!isMasterTrack) {
                     ImGui::Separator();
-                    if (ImGui::MenuItem("New Clip")) {
+                    if (contextActionMenuItem("New Clip")) {
                         if (context.addBlankMidiClipAtPosition)
                             context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::Separator();
-                    if (ImGui::MenuItem("Import Audio Clip...")) {
+                    if (contextActionMenuItem("Import Audio Clip...")) {
                         if (context.addAudioClip) context.addAudioClip(trackIndex, trackState.requestedAddPosition);
                         ImGui::CloseCurrentPopup();
                     }
                 }
                 ImGui::Separator();
-                if (ImGui::MenuItem("Import SMF as Clip...")) {
+                if (contextActionMenuItem("Import SMF as Clip...")) {
                     if (context.addSmfClip) context.addSmfClip(trackIndex, trackState.requestedAddPosition);
                     ImGui::CloseCurrentPopup();
                 }
                 if (!isMasterTrack) {
-                    if (ImGui::MenuItem("Import SMF2Clip...")) {
+                    if (contextActionMenuItem("Import SMF2Clip...")) {
                         if (context.addSmf2Clip) context.addSmf2Clip(trackIndex);
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::Separator();
-                    if (ImGui::MenuItem("Clear All")) {
+                    if (contextActionMenuItem("Clear All")) {
                         if (context.clearAllClips) context.clearAllClips(trackIndex);
                         ImGui::CloseCurrentPopup();
                     }

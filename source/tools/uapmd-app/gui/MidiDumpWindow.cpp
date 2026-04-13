@@ -12,6 +12,7 @@
 #include <umppi/umppi.hpp>
 
 #include "MidiDumpWindow.hpp"
+#include "ContextActions.hpp"
 #include "FontIcons.hpp"
 #include <imgui.h>
 
@@ -649,7 +650,7 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
         if (context.reloadClip) {
             if (editingEnabled) {
                 ImGui::BeginDisabled(!state.hasPendingChanges);
-                if (ImGui::Button("Discard Changes")) {
+                if (contextActionButton("Discard Changes")) {
                     if (state.hasPendingChanges) {
                         ImGui::OpenPopup("ConfirmDiscard");
                     }
@@ -760,15 +761,15 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
                         if (editingEnabled) {
                             ImGui::TableSetColumnIndex(0);
                             const std::string rowMenuId = std::format("RowActions##{}", rowIndex);
-                            if (ImGui::Button(std::format("{}##RowActionBtn{}", icons::ContextMenu, rowIndex).c_str())) {
+                            if (contextActionButton(std::format("{}##RowActionBtn{}", icons::ContextMenu, rowIndex).c_str())) {
                                 ImGui::OpenPopup(rowMenuId.c_str());
                             }
                             if (ImGui::BeginPopup(rowMenuId.c_str())) {
-                                if (ImGui::MenuItem("Insert Event Before")) {
+                                if (contextActionMenuItem("Insert Event Before")) {
                                     pendingInsert = rowIndex;
                                     ImGui::CloseCurrentPopup();
                                 }
-                                if (ImGui::MenuItem("Delete Event")) {
+                                if (contextActionMenuItem("Delete Event")) {
                                     pendingDelete = rowIndex;
                                     ImGui::CloseCurrentPopup();
                                 }

@@ -17,6 +17,7 @@
 
 #include "MainWindow.hpp"
 
+#include "ContextActions.hpp"
 #include "FontIcons.hpp"
 #include "../AppModel.hpp"
 #include "../DocumentProviderHelpers.hpp"
@@ -477,11 +478,9 @@ void MainWindow::render(void* window) {
 #ifdef __EMSCRIPTEN__
                 // Wasm: MCP is always active as a C export — static green button.
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.55f, 0.28f, 1.0f));
-                if (ImGui::Button("MCP"))
+                if (contextActionButton("MCP", ImVec2(0.0f, 0.0f), "MCP active — call via Module.ccall('uapmd_mcp_call',...)"))
                     ImGui::OpenPopup("MCPSettings");
                 ImGui::PopStyleColor();
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("MCP active — call via Module.ccall('uapmd_mcp_call',...)");
                 ImGui::SetNextWindowSizeConstraints(
                     ImVec2(280.0f * uiScale_, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
                 if (ImGui::BeginPopup("MCPSettings")) {
@@ -514,13 +513,10 @@ void MainWindow::render(void* window) {
                 default:                              mcpColor = ImVec4(0.35f, 0.35f, 0.35f, 1.0f); break;
                 }
                 ImGui::PushStyleColor(ImGuiCol_Button, mcpColor);
-                if (ImGui::Button("MCP"))
+                const auto tip = mcpServer_ ? mcpServer_->statusMessage() : std::string("Click to configure MCP");
+                if (contextActionButton("MCP", ImVec2(0.0f, 0.0f), tip.c_str()))
                     ImGui::OpenPopup("MCPSettings");
                 ImGui::PopStyleColor();
-                if (ImGui::IsItemHovered()) {
-                    const auto tip = mcpServer_ ? mcpServer_->statusMessage() : std::string("Click to configure MCP");
-                    ImGui::SetTooltip("%s", tip.c_str());
-                }
 
                 ImGui::SetNextWindowSizeConstraints(
                     ImVec2(280.0f * uiScale_, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
@@ -583,35 +579,35 @@ void MainWindow::render(void* window) {
             ImGui::SameLine();
 #endif // UAPMD_HAS_MCP_SERVER
             bool openImportPopup = false;
-            if (ImGui::Button("Import")) {
+            if (contextActionButton("Import")) {
                 openImportPopup = true;
             }
             if (openImportPopup)
                 ImGui::OpenPopup("ImportActions");
             if (ImGui::BeginPopup("ImportActions")) {
-                if (ImGui::MenuItem("Import MIDI Tracks (SMF)")) {
+                if (contextActionMenuItem("Import MIDI Tracks (SMF)")) {
                     timelineEditor_.importMidiTracksWithPicker();
                     ImGui::CloseCurrentPopup();
                 }
-                if (ImGui::MenuItem("Import Split Audio Tracks (Demucs)")) {
+                if (contextActionMenuItem("Import Split Audio Tracks (Demucs)")) {
                     audioImportWindow_.open();
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Project")) {
+            if (contextActionButton("Project")) {
                 ImGui::OpenPopup("ProjectActions");
             }
             if (ImGui::BeginPopup("ProjectActions")) {
-                if (ImGui::MenuItem("Load Project")) {
+                if (contextActionMenuItem("Load Project")) {
                     handleLoadProject();
                 }
-                if (ImGui::MenuItem("Save Project")) {
+                if (contextActionMenuItem("Save Project")) {
                     handleSaveProject();
                 }
                 ImGui::Separator();
-                if (ImGui::MenuItem("Render To File")) {
+                if (contextActionMenuItem("Render To File")) {
                     exporterWindow_.open();
                 }
                 ImGui::EndPopup();
