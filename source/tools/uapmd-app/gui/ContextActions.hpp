@@ -20,6 +20,14 @@ inline bool contextActionArrowButton(const char* label, ImGuiDir dir)
     return ImGui::ArrowButton(label, dir);
 }
 
+inline bool UapmdSelectable(const char* label, bool selected = false, ImGuiSelectableFlags flags = ImGuiSelectableFlags_None)
+{
+    ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.0f, 0.5f));
+    const bool clicked = ImGui::Selectable(label, selected, flags, ImVec2(0.0f, ImGui::GetFrameHeight()));
+    ImGui::PopStyleVar();
+    return clicked;
+}
+
 inline bool contextActionMenuItem(const char* label, bool selected = false)
 {
     ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.0f, 0.5f));

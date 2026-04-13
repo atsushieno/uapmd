@@ -10,6 +10,7 @@
 #include <remidy-gui/remidy-gui.hpp>
 
 #include "../AppModel.hpp"
+#include "ContextActions.hpp"
 #include "FontIcons.hpp"
 
 namespace {
@@ -422,7 +423,7 @@ void InstanceDetails::render(const RenderContext& context) {
                                 displayName = "(Unnamed preset)";
                             }
                             std::string selectableLabel = displayName + "##Preset" + std::to_string(i);
-                            if (ImGui::Selectable(selectableLabel.c_str(), isSelected)) {
+                            if (UapmdSelectable(selectableLabel.c_str(), isSelected)) {
                                 detailsState.selectedPreset = static_cast<int>(i);
                                 loadSelectedPreset(instanceId, detailsState);
                             }
@@ -474,7 +475,7 @@ void InstanceDetails::render(const RenderContext& context) {
                             if (inUse) ImGui::BeginDisabled();
                             char itemLabel[8];
                             snprintf(itemLabel, sizeof(itemLabel), "%u", g);
-                            if (ImGui::Selectable(itemLabel, g == currentGroup))
+                            if (UapmdSelectable(itemLabel, g == currentGroup))
                                 appModel.setInstanceGroup(instanceId, g);
                             if (inUse) ImGui::EndDisabled();
                         }

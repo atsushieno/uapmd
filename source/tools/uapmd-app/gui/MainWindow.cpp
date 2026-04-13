@@ -439,7 +439,7 @@ void MainWindow::render(void* window) {
             if (ImGui::BeginCombo("##UiScaleCombo", kUiScaleLabels[currentScaleIndex])) {
                 for (int i = 0; i < static_cast<int>(kUiScaleOptions.size()); ++i) {
                     bool isSelected = (selectedIndex == i);
-                    if (ImGui::Selectable(kUiScaleLabels[i], isSelected)) {
+                    if (UapmdSelectable(kUiScaleLabels[i], isSelected)) {
                         selectedIndex = i;
                     }
                     if (isSelected) {

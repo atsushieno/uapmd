@@ -1,4 +1,5 @@
 #include "AudioDeviceSettings.hpp"
+#include "ContextActions.hpp"
 
 namespace uapmd::gui {
 
@@ -117,7 +118,7 @@ void AudioDeviceSettings::render() {
     if (ImGui::BeginCombo("Input Device", selectedInputDevice_ < static_cast<int>(inputDevices_.size()) ? inputDevices_[selectedInputDevice_].c_str() : "None")) {
         for (size_t i = 0; i < inputDevices_.size(); i++) {
             bool isSelected = (selectedInputDevice_ == static_cast<int>(i));
-            if (ImGui::Selectable(inputDevices_[i].c_str(), isSelected)) {
+            if (UapmdSelectable(inputDevices_[i].c_str(), isSelected)) {
                 selectedInputDevice_ = static_cast<int>(i);
                 if (onDeviceChanged_) {
                     onDeviceChanged_();
@@ -134,7 +135,7 @@ void AudioDeviceSettings::render() {
     if (ImGui::BeginCombo("Output Device", selectedOutputDevice_ < static_cast<int>(outputDevices_.size()) ? outputDevices_[selectedOutputDevice_].c_str() : "None")) {
         for (size_t i = 0; i < outputDevices_.size(); i++) {
             bool isSelected = (selectedOutputDevice_ == static_cast<int>(i));
-            if (ImGui::Selectable(outputDevices_[i].c_str(), isSelected)) {
+            if (UapmdSelectable(outputDevices_[i].c_str(), isSelected)) {
                 selectedOutputDevice_ = static_cast<int>(i);
                 if (onDeviceChanged_) {
                     onDeviceChanged_();
@@ -168,7 +169,7 @@ void AudioDeviceSettings::render() {
         for (size_t i = 0; i < availableBufferSizes_.size(); i++) {
             bool isSelected = (selectedBufferSizeIndex_ == static_cast<int>(i));
             std::string label = std::to_string(availableBufferSizes_[i]);
-            if (ImGui::Selectable(label.c_str(), isSelected)) {
+            if (UapmdSelectable(label.c_str(), isSelected)) {
                 selectedBufferSizeIndex_ = static_cast<int>(i);
                 bufferSize_ = availableBufferSizes_[i];
                 if (onDeviceChanged_) {
@@ -194,7 +195,7 @@ void AudioDeviceSettings::render() {
         for (size_t i = 0; i < inputAvailableSampleRates_.size(); i++) {
             bool isSelected = (selectedInputSampleRateIndex_ == static_cast<int>(i));
             std::string label = std::to_string(inputAvailableSampleRates_[i]) + " Hz";
-            if (ImGui::Selectable(label.c_str(), isSelected)) {
+            if (UapmdSelectable(label.c_str(), isSelected)) {
                 selectedInputSampleRateIndex_ = static_cast<int>(i);
                 inputSampleRate_ = static_cast<int>(inputAvailableSampleRates_[i]);
                 if (onDeviceChanged_) {
@@ -217,7 +218,7 @@ void AudioDeviceSettings::render() {
         for (size_t i = 0; i < outputAvailableSampleRates_.size(); i++) {
             bool isSelected = (selectedOutputSampleRateIndex_ == static_cast<int>(i));
             std::string label = std::to_string(outputAvailableSampleRates_[i]) + " Hz";
-            if (ImGui::Selectable(label.c_str(), isSelected)) {
+            if (UapmdSelectable(label.c_str(), isSelected)) {
                 selectedOutputSampleRateIndex_ = static_cast<int>(i);
                 outputSampleRate_ = static_cast<int>(outputAvailableSampleRates_[i]);
                 if (onDeviceChanged_) {

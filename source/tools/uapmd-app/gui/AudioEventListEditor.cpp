@@ -1,4 +1,5 @@
 #include "AudioEventListEditor.hpp"
+#include "ContextActions.hpp"
 
 #include <algorithm>
 #include <cfloat>
@@ -607,7 +608,7 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
                     if (ImGui::BeginCombo("##marker_reference", previewLabel.c_str())) {
                         for (const auto& option : referenceOptions) {
                             const bool isSelected = markerMatchesOption(row, option, state.data.clipReferenceId);
-                            if (ImGui::Selectable(option.label.c_str(), isSelected)) {
+                            if (UapmdSelectable(option.label.c_str(), isSelected)) {
                                 const auto previousType = row.referenceType;
                                 const auto previousClipId = std::string(trimView(row.referenceClipId.data()));
                                 const auto previousMarkerId = std::string(trimView(row.referenceMarkerId.data()));
@@ -697,7 +698,7 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
                     const std::string previewLabel = referenceSelectorLabel(row, referenceOptions);
                     if (ImGui::BeginCombo("##warp_reference", previewLabel.c_str())) {
                         const bool isManual = row.referenceType == AudioWarpReferenceType::Manual;
-                        if (ImGui::Selectable(kManualReferenceSelection, isManual)) {
+                        if (UapmdSelectable(kManualReferenceSelection, isManual)) {
                             row.referenceType = AudioWarpReferenceType::Manual;
                             row.referenceClipId[0] = '\0';
                             row.referenceMarkerId[0] = '\0';
@@ -705,7 +706,7 @@ void AudioEventListEditor::renderWindow(WindowState& state, const RenderContext&
 
                         for (const auto& option : referenceOptions) {
                             const bool isSelected = warpMatchesOption(row, option);
-                            if (ImGui::Selectable(option.label.c_str(), isSelected)) {
+                            if (UapmdSelectable(option.label.c_str(), isSelected)) {
                                 row.referenceType = option.referenceType;
                                 copyStringToBuffer(option.referenceClipId, row.referenceClipId);
                                 copyStringToBuffer(option.referenceMarkerId, row.referenceMarkerId);

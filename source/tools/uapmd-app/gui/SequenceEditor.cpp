@@ -808,7 +808,7 @@ bool SequenceEditor::renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, 
     if (ImGui::BeginCombo(comboId.c_str(), anchorLabel.c_str())) {
         // Track anchor option
         bool isTrackAnchor = clip.anchorReferenceId.empty();
-        if (ImGui::Selectable("Track", isTrackAnchor)) {
+        if (UapmdSelectable("Track", isTrackAnchor)) {
             if (context.updateClip) {
                 context.updateClip(trackIndex, clip.clipId, {}, clip.anchorOrigin, clip.position);
                 changed = true;
@@ -819,7 +819,7 @@ bool SequenceEditor::renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, 
         auto anchorOptions = getAnchorOptions(trackIndex, clip.clipId);
         for (const auto& option : anchorOptions) {
             bool isSelected = (clip.anchorReferenceId == option.clipReferenceId);
-            if (ImGui::Selectable(option.label.c_str(), isSelected)) {
+            if (UapmdSelectable(option.label.c_str(), isSelected)) {
                 if (context.updateClip) {
                     context.updateClip(trackIndex, clip.clipId, option.clipReferenceId, clip.anchorOrigin, clip.position);
                     changed = true;
@@ -839,7 +839,7 @@ bool SequenceEditor::renderOriginCombo(int32_t trackIndex, const ClipRow& clip, 
     std::string originComboId = std::format("##OriginCombo{}", clip.clipId);
     if (ImGui::BeginCombo(originComboId.c_str(), clip.anchorOrigin.c_str())) {
         bool isStart = (clip.anchorOrigin == "Start");
-        if (ImGui::Selectable("Start", isStart)) {
+        if (UapmdSelectable("Start", isStart)) {
             if (context.updateClip) {
                 context.updateClip(trackIndex, clip.clipId, clip.anchorReferenceId, "Start", clip.position);
                 changed = true;
@@ -847,7 +847,7 @@ bool SequenceEditor::renderOriginCombo(int32_t trackIndex, const ClipRow& clip, 
         }
 
         bool isEnd = (clip.anchorOrigin == "End");
-        if (ImGui::Selectable("End", isEnd)) {
+        if (UapmdSelectable("End", isEnd)) {
             if (context.updateClip) {
                 context.updateClip(trackIndex, clip.clipId, clip.anchorReferenceId, "End", clip.position);
                 changed = true;

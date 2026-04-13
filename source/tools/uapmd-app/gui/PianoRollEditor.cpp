@@ -1202,7 +1202,7 @@ bool PianoRollEditor::renderNrpnPicker(
                  static_cast<unsigned>(entries[pi].group),
                  entries[pi].pluginName.c_str());
         const bool sel = (pi == hoveredPlugin);
-        if (ImGui::Selectable(label, sel))
+        if (UapmdSelectable(label, sel))
             hoveredPlugin = pi;
         if (ImGui::IsItemHovered())
             hoveredPlugin = pi;
@@ -1238,8 +1238,7 @@ bool PianoRollEditor::renderNrpnPicker(
                 char idxBuf[16];
                 snprintf(idxBuf, sizeof(idxBuf), "%u", static_cast<unsigned>(p.nrpnIndex));
                 const bool rowSel = (p.nrpnIndex == paramIndex && entry.group == umpGroup);
-                if (ImGui::Selectable(idxBuf, rowSel,
-                        ImGuiSelectableFlags_SpanAllColumns)) {
+                if (UapmdSelectable(idxBuf, rowSel, ImGuiSelectableFlags_SpanAllColumns)) {
                     paramIndex = p.nrpnIndex;
                     umpGroup   = entry.group;
                     changed = true;

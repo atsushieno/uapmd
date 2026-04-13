@@ -145,10 +145,16 @@ void ParameterList::render() {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(contextComboWidth);
         int contextIndex = static_cast<int>(context_);
-        if (ImGui::Combo("##ParameterContext", &contextIndex, kContextLabels,
-                         IM_ARRAYSIZE(kContextLabels))) {
-            contextIndex = std::clamp(contextIndex, 0, IM_ARRAYSIZE(kContextLabels) - 1);
-            setContext(static_cast<ParameterContext>(contextIndex));
+        contextIndex = std::clamp(contextIndex, 0, IM_ARRAYSIZE(kContextLabels) - 1);
+        if (ImGui::BeginCombo("##ParameterContext", kContextLabels[contextIndex])) {
+            for (int i = 0; i < IM_ARRAYSIZE(kContextLabels); ++i) {
+                const bool isSelected = (i == contextIndex);
+                if (UapmdSelectable(kContextLabels[i], isSelected))
+                    setContext(static_cast<ParameterContext>(i));
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
         }
 
         ImGui::SameLine();
@@ -160,7 +166,7 @@ void ParameterList::render() {
         if (ImGui::BeginCombo("##ParameterContextValue", previewLabel.c_str())) {
             for (int idx = 0; idx < contextValueCount; ++idx) {
                 bool isSelected = (idx == contextValue_);
-                if (ImGui::Selectable(contextValueLabels_[static_cast<size_t>(idx)].c_str(), isSelected)) {
+                if (UapmdSelectable(contextValueLabels_[static_cast<size_t>(idx)].c_str(), isSelected)) {
                     setContextValue(static_cast<uint8_t>(idx));
                 }
                 if (isSelected) {
@@ -285,18 +291,9 @@ void ParameterList::render() {
                     if (requestPopupClose) {
                         ImGui::CloseCurrentPopup();
                     } else {
-                        const std::string& currentLabel = parameterValueStrings_[paramIndex].empty()
-                                                               ? std::to_string(parameterValues_[paramIndex])
-                                                               : parameterValueStrings_[paramIndex];
-
-                        if (!currentLabel.empty()) {
-                            ImGui::TextUnformatted(currentLabel.c_str());
-                            ImGui::Separator();
-                        }
-
                         for (const auto& namedValue : param.namedValues) {
                             bool isSelected = (std::abs(namedValue.value - parameterValues_[paramIndex]) < 0.0001);
-                            if (ImGui::Selectable(namedValue.name.c_str(), isSelected)) {
+                            if (UapmdSelectable(namedValue.name.c_str(), isSelected)) {
                                 parameterValues_[paramIndex] = static_cast<float>(namedValue.value);
                                 parameterChanged = true;
                                 ImGui::CloseCurrentPopup();

@@ -863,7 +863,7 @@ void MidiDumpWindow::renderWindow(WindowState& state, const RenderContext& conte
                                     ? "0 ticks"
                                     : std::format("{} ({} ticks)", opt.label, presetTicks);
                                 bool selected = currentDelta == presetTicks;
-                                if (ImGui::Selectable(itemLabel.c_str(), selected)) {
+                                if (UapmdSelectable(itemLabel.c_str(), selected)) {
                                     applyLengthPreset(state, lengthIndex, presetTicks);
                                 }
                             }
