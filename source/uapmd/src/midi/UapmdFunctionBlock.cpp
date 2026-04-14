@@ -71,6 +71,8 @@ namespace uapmd {
     }
 
     void UapmdFunctionBlock::detachOutputMapper() {
+        if (ump_output_mapper_)
+            ump_output_mapper_->detach();
         ump_output_mapper_.reset();
     }
 

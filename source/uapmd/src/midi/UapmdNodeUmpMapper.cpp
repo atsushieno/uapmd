@@ -69,13 +69,26 @@ namespace uapmd {
             });
     }
 
-    UapmdNodeUmpOutputMapper::~UapmdNodeUmpOutputMapper() {
+    UapmdNodeUmpOutputMapper::~UapmdNodeUmpOutputMapper() noexcept {
+        detach();
+    }
+
+    void UapmdNodeUmpOutputMapper::detach() noexcept {
         if (plugin && parameter_support) {
-            if (param_change_listener_id >= 0)
-                parameter_support->parameterChangeEvent().removeListener(param_change_listener_id);
-            if (per_note_change_listener_id >= 0)
-                parameter_support->perNoteControllerChangeEvent().removeListener(per_note_change_listener_id);
+            try {
+                if (param_change_listener_id >= 0)
+                    parameter_support->parameterChangeEvent().removeListener(param_change_listener_id);
+                if (per_note_change_listener_id >= 0)
+                    parameter_support->perNoteControllerChangeEvent().removeListener(per_note_change_listener_id);
+            } catch (...) {
+                // Some plugin backends tear parameter support down during shutdown; destructors must not terminate.
+            }
         }
+        device = nullptr;
+        plugin = nullptr;
+        parameter_support = nullptr;
+        param_change_listener_id = -1;
+        per_note_change_listener_id = -1;
     }
 
     void UapmdNodeUmpOutputMapper::sendParameterValue(uint16_t index, double value) {

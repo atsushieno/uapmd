@@ -43,7 +43,9 @@ namespace uapmd {
 
     public:
         explicit UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin);
-        ~UapmdNodeUmpOutputMapper() override;
+        ~UapmdNodeUmpOutputMapper() noexcept override;
+
+        void detach() noexcept;
 
         void sendParameterValue(uint16_t index, double value) override;
         void sendPerNoteControllerValue(uint8_t note, uint8_t index, double value) override;

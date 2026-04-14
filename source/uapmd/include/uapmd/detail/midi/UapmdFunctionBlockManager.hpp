@@ -26,6 +26,10 @@ namespace uapmd {
             return it != blocks.end() ? it->second : nullptr;
         }
 
+        bool containsInstance(int32_t instanceId) const {
+            return blocks.contains(instanceId);
+        }
+
         void destroyDevice(const int32_t instanceId) {
             blocks.erase(instanceId);
         }
@@ -64,9 +68,8 @@ namespace uapmd {
         // return the containing `UapmdFunctionDevice` of the `UapmdFunctionBlock` for the instance indicated by `instanceId`
         UapmdFunctionDevice* getFunctionDeviceForInstance(int32_t instanceId) {
             for (auto& block : devices) {
-                for (auto& device : block.devices())
-                    if (device->instanceId() == instanceId)
-                        return &block;
+                if (block.containsInstance(instanceId))
+                    return &block;
             }
             return nullptr;
         }
