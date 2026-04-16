@@ -87,6 +87,12 @@ private class PluginUiOverlay(
             val params = layoutParams as? FrameLayout.LayoutParams ?: return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    if (params.gravity != Gravity.NO_GRAVITY) {
+                        params.leftMargin = left
+                        params.topMargin = top
+                        params.gravity = Gravity.NO_GRAVITY
+                        layoutParams = params
+                    }
                     dragStartX = event.rawX
                     dragStartY = event.rawY
                     initialLeft = params.leftMargin
