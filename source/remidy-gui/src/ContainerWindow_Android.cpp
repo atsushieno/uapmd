@@ -1,5 +1,6 @@
 #if defined(__ANDROID__)
 
+#include <cmath>
 #include <utility>
 #include <string>
 #include <jni.h>
@@ -67,6 +68,25 @@ void callResize(JNIEnv* env, jlong handle, jint width, jint height) {
     env->CallStaticVoidMethod(cls, mid, handle, width, height);
 }
 
+void constrainContentSize(JNIEnv* env, jint& width, jint& height) {
+    auto cls = getOverlayManagerClass(env);
+    if (!cls)
+        return;
+    auto mid = env->GetStaticMethodID(cls, "constrainContentSize", "(II)[I");
+    if (!mid)
+        return;
+    auto result = static_cast<jintArray>(env->CallStaticObjectMethod(cls, mid, width, height));
+    if (!result)
+        return;
+    if (env->GetArrayLength(result) >= 2) {
+        jint values[2] = {};
+        env->GetIntArrayRegion(result, 0, 2, values);
+        width = values[0];
+        height = values[1];
+    }
+    env->DeleteLocalRef(result);
+}
+
 void callAttachSurfaceView(JNIEnv* env, jlong handle, jobject surfaceView) {
     auto cls = getOverlayManagerClass(env);
     if (!cls)
@@ -89,17 +109,23 @@ int scaledDimension(int value) {
     int base = value > 0 ? value : kFallbackDimension;
     return static_cast<int>(base * kAndroidUiScale);
 }
+
+int unscaledDimension(int value) {
+    int base = value > 0 ? value : kFallbackDimension;
+    return static_cast<int>(std::round(static_cast<float>(base) / kAndroidUiScale));
+}
 } // namespace
 
 class AndroidContainerWindow : public ContainerWindow {
 public:
     AndroidContainerWindow(const char* title, int width, int height, std::function<void()> closeCallback)
         : title_(title ? title : "Plugin UI"),
-          width_(scaledDimension(width)),
-          height_(scaledDimension(height)),
           closeCallback_(std::move(closeCallback)),
           overlayHandle_(reinterpret_cast<jlong>(this)) {
+        width_ = scaledDimension(width);
+        height_ = scaledDimension(height);
         if (auto* env = getEnv()) {
+            constrainContentSize(env, width_, height_);
             auto jTitle = env->NewStringUTF(title_.c_str());
             callCreateOverlay(env, overlayHandle_, jTitle, width_, height_);
             env->DeleteLocalRef(jTitle);
@@ -124,8 +150,10 @@ public:
     void resize(int width, int height) override {
         width_ = scaledDimension(width);
         height_ = scaledDimension(height);
-        if (auto* env = getEnv())
+        if (auto* env = getEnv()) {
+            constrainContentSize(env, width_, height_);
             callResize(env, overlayHandle_, width_, height_);
+        }
         if (resizeCallback_)
             resizeCallback_(width_, height_);
     }
@@ -203,6 +231,11 @@ void queryDimensions(void* windowHandle, int& width, int& height) {
     auto bounds = window->getBounds();
     width = bounds.width;
     height = bounds.height;
+}
+
+void androidPixelsToWindowSize(int& width, int& height) {
+    width = unscaledDimension(width);
+    height = unscaledDimension(height);
 }
 
 void notifyOverlayClosed(void* windowHandle) {

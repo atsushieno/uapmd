@@ -13,6 +13,7 @@ namespace remidy::gui::android {
     void attachSurfaceView(void* windowHandle, jobject surfaceView);
     void detachSurfaceView(void* windowHandle);
     void queryDimensions(void* windowHandle, int& width, int& height);
+    void androidPixelsToWindowSize(int& width, int& height);
 }
 #endif
 
@@ -169,6 +170,19 @@ namespace remidy {
                 if (!remote || parent_handle_ == nullptr)
                     return false;
                 remote->prepareSurfaceControlForRemoteNativeUI();
+#if defined(AAP_CORE_REMOTE_NATIVE_UI_PREFERRED_SIZE)
+                int preferred_width = 0;
+                int preferred_height = 0;
+                if (remote->getRemoteNativeViewPreferredSize(preferred_width, preferred_height)) {
+                    int window_width = preferred_width;
+                    int window_height = preferred_height;
+                    remidy::gui::android::androidPixelsToWindowSize(window_width, window_height);
+                    surface_width_ = static_cast<uint32_t>(preferred_width);
+                    surface_height_ = static_cast<uint32_t>(preferred_height);
+                    if (host_resize_handler_)
+                        host_resize_handler_(static_cast<uint32_t>(window_width), static_cast<uint32_t>(window_height));
+                }
+#endif
                 auto nativeView = static_cast<jobject>(remote->getRemoteNativeView());
                 if (!nativeView)
                     return false;

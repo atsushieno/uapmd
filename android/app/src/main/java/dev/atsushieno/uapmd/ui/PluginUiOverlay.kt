@@ -1,16 +1,19 @@
 package dev.atsushieno.uapmd.ui
 
 import android.graphics.Color
+import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.util.DisplayMetrics
 import android.util.TypedValue
 import dev.atsushieno.uapmd.MainActivity
 import java.util.concurrent.ConcurrentHashMap
@@ -160,6 +163,72 @@ object PluginUiOverlayManager {
     private val handler = Handler(Looper.getMainLooper())
     private val overlays = ConcurrentHashMap<Long, PluginUiOverlay>()
     private const val MIN_DIMENSION_DP = 200
+    private const val HEADER_HEIGHT_DP = 40
+
+    private fun dpToPx(activity: Activity, dp: Int): Int =
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            dp.toFloat(),
+            activity.resources.displayMetrics
+        ).toInt()
+
+    private fun constrainContentSize(activity: Activity, width: Int, height: Int): IntArray {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            val metrics = activity.windowManager.currentWindowMetrics
+            val systemBars = metrics.windowInsets.getInsets(WindowInsets.Type.systemBars())
+            return constrainContentSize(
+                width,
+                height,
+                metrics.bounds.width() - systemBars.left - systemBars.right,
+                metrics.bounds.height() - systemBars.top - systemBars.bottom,
+                dpToPx(activity, MIN_DIMENSION_DP),
+                dpToPx(activity, HEADER_HEIGHT_DP)
+            )
+        } else {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            activity.windowManager.defaultDisplay.getMetrics(metrics)
+            var availableWidth = metrics.widthPixels
+            var availableHeight = metrics.heightPixels
+            @Suppress("DEPRECATION")
+            activity.window.decorView.rootWindowInsets?.let { insets ->
+                availableWidth -= insets.systemWindowInsetLeft + insets.systemWindowInsetRight
+                availableHeight -= insets.systemWindowInsetTop + insets.systemWindowInsetBottom
+            }
+            return constrainContentSize(
+                width,
+                height,
+                availableWidth,
+                availableHeight,
+                dpToPx(activity, MIN_DIMENSION_DP),
+                dpToPx(activity, HEADER_HEIGHT_DP)
+            )
+        }
+    }
+
+    private fun constrainContentSize(
+        width: Int,
+        height: Int,
+        availableWidth: Int,
+        availableHeight: Int,
+        minContentSizePx: Int,
+        headerHeightPx: Int
+    ): IntArray {
+        val maxContentWidth = availableWidth.coerceAtLeast(1)
+        val maxContentHeight = (availableHeight - headerHeightPx).coerceAtLeast(1)
+        val minContentWidth = minContentSizePx.coerceAtMost(maxContentWidth)
+        val minContentHeight = minContentSizePx.coerceAtMost(maxContentHeight)
+        return intArrayOf(
+            width.coerceIn(minContentWidth, maxContentWidth),
+            height.coerceIn(minContentHeight, maxContentHeight)
+        )
+    }
+
+    @JvmStatic
+    fun constrainContentSize(width: Int, height: Int): IntArray {
+        val activity = MainActivity.getInstance() ?: return intArrayOf(width, height)
+        return constrainContentSize(activity, width, height)
+    }
 
     @JvmStatic
     fun createOverlay(handle: Long, title: String?, width: Int, height: Int) {
@@ -171,7 +240,8 @@ object PluginUiOverlayManager {
                 contentDescription = title ?: "Plugin UI"
                 visibility = View.GONE
             }
-            overlay.updateContentSize(width, height)
+            val constrained = constrainContentSize(activity, width, height)
+            overlay.updateContentSize(constrained[0], constrained[1])
             overlays[handle] = overlay
             val params = FrameLayout.LayoutParams(
                 overlay.contentWidth,
@@ -201,8 +271,10 @@ object PluginUiOverlayManager {
     @JvmStatic
     fun resizeOverlay(handle: Long, width: Int, height: Int) {
         handler.post {
+            val activity = MainActivity.getInstance() ?: return@post
             overlays[handle]?.let { overlay ->
-                overlay.updateContentSize(width, height)
+                val constrained = constrainContentSize(activity, width, height)
+                overlay.updateContentSize(constrained[0], constrained[1])
                 val params = overlay.layoutParams as? FrameLayout.LayoutParams
                 if (params != null) {
                     params.width = overlay.contentWidth
