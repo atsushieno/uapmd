@@ -147,6 +147,9 @@ private class PluginUiOverlay(
         if (childCount > 0) {
             requestLayout()
         }
+        if (contentContainer.childCount > 0) {
+            contentContainer.getChildAt(0).layoutParams = LayoutParams(contentWidthPx, contentHeightPx)
+        }
     }
 
     fun setSurfaceView(view: View?) {

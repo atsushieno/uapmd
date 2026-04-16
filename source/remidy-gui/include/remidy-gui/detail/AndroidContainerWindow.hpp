@@ -18,6 +18,9 @@ namespace remidy::gui::android {
     // Converts Android pixel sizes to the units expected by ContainerWindow::resize().
     void androidPixelsToWindowSize(int& width, int& height);
 
+    // Resizes the Android overlay content directly in Android pixels.
+    void resizeContentPixels(void* windowHandle, int width, int height);
+
     // Called when the Kotlin overlay close button is pressed.
     void notifyOverlayClosed(void* windowHandle);
 

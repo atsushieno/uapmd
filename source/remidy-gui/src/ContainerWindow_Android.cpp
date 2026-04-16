@@ -1,6 +1,5 @@
 #if defined(__ANDROID__)
 
-#include <cmath>
 #include <utility>
 #include <string>
 #include <jni.h>
@@ -102,17 +101,15 @@ void callAttachSurfaceView(JNIEnv* env, jlong handle, jobject surfaceView) {
 namespace remidy::gui {
 
 namespace {
-constexpr float kAndroidUiScale = 2.0f;
 constexpr int kFallbackDimension = 200;
+constexpr int kAndroidUiScale = 2;
 
 int scaledDimension(int value) {
-    int base = value > 0 ? value : kFallbackDimension;
-    return static_cast<int>(base * kAndroidUiScale);
+    return (value > 0 ? value : kFallbackDimension) * kAndroidUiScale;
 }
 
 int unscaledDimension(int value) {
-    int base = value > 0 ? value : kFallbackDimension;
-    return static_cast<int>(std::round(static_cast<float>(base) / kAndroidUiScale));
+    return (value > 0 ? value : kFallbackDimension) / kAndroidUiScale;
 }
 } // namespace
 
@@ -156,6 +153,15 @@ public:
         }
         if (resizeCallback_)
             resizeCallback_(width_, height_);
+    }
+
+    void resizeContentPixels(int width, int height) {
+        width_ = width > 0 ? width : kFallbackDimension;
+        height_ = height > 0 ? height : kFallbackDimension;
+        if (auto* env = getEnv()) {
+            constrainContentSize(env, width_, height_);
+            callResize(env, overlayHandle_, width_, height_);
+        }
     }
 
     void setResizeCallback(std::function<void(int, int)> callback) override {
@@ -236,6 +242,13 @@ void queryDimensions(void* windowHandle, int& width, int& height) {
 void androidPixelsToWindowSize(int& width, int& height) {
     width = unscaledDimension(width);
     height = unscaledDimension(height);
+}
+
+void resizeContentPixels(void* windowHandle, int width, int height) {
+    if (!windowHandle)
+        return;
+    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    window->resizeContentPixels(width, height);
 }
 
 void notifyOverlayClosed(void* windowHandle) {
