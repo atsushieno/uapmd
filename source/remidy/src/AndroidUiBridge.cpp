@@ -19,6 +19,44 @@ std::atomic<jlong> g_next_ui_task_id{1};
 jobject g_activity = nullptr;
 JavaVM* g_vm = nullptr;
 
+bool isAndroidUiThread(JNIEnv* env)
+{
+    if (!env || !g_activity)
+        return false;
+
+    jclass activityClass = env->GetObjectClass(g_activity);
+    if (!activityClass)
+        return false;
+    jmethodID getMainLooper = env->GetMethodID(activityClass, "getMainLooper", "()Landroid/os/Looper;");
+    env->DeleteLocalRef(activityClass);
+    if (!getMainLooper)
+        return false;
+
+    jobject mainLooper = env->CallObjectMethod(g_activity, getMainLooper);
+    if (!mainLooper)
+        return false;
+
+    jclass looperClass = env->FindClass("android/os/Looper");
+    if (!looperClass) {
+        env->DeleteLocalRef(mainLooper);
+        return false;
+    }
+    jmethodID myLooper = env->GetStaticMethodID(looperClass, "myLooper", "()Landroid/os/Looper;");
+    if (!myLooper) {
+        env->DeleteLocalRef(looperClass);
+        env->DeleteLocalRef(mainLooper);
+        return false;
+    }
+
+    jobject currentLooper = env->CallStaticObjectMethod(looperClass, myLooper);
+    bool isUiThread = currentLooper && env->IsSameObject(mainLooper, currentLooper);
+    if (currentLooper)
+        env->DeleteLocalRef(currentLooper);
+    env->DeleteLocalRef(looperClass);
+    env->DeleteLocalRef(mainLooper);
+    return isUiThread;
+}
+
 jclass mainActivityClass(JNIEnv* env)
 {
     static jclass cached = nullptr;
@@ -93,6 +131,13 @@ void runOnAndroidUiThread(std::function<void()> task)
 
 void runOnAndroidUiThreadSync(std::function<void()> task)
 {
+    if (g_vm) {
+        JNIEnv* env = nullptr;
+        if (g_vm->GetEnv((void**) &env, JNI_VERSION_1_6) == JNI_OK && isAndroidUiThread(env)) {
+            task();
+            return;
+        }
+    }
     std::atomic<bool> done{false};
     runOnAndroidUiThread([&] {
         task();

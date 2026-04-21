@@ -22,6 +22,14 @@ namespace remidy::gui::android {
     // Resizes the Android overlay content directly in Android pixels.
     void resizeContentPixels(void* windowHandle, int width, int height);
 
+    // Queries the preferred remote UI content size via the Java SurfaceControl client path.
+    bool queryRemoteViewPreferredSize(
+        const char* pluginPackageName,
+        const char* pluginId,
+        int instanceId,
+        int& width,
+        int& height);
+
     // Registers a callback that fires once the attached SurfaceView is ready to connect.
     void setSurfaceReadyCallback(void* windowHandle, std::function<void()> callback);
 
