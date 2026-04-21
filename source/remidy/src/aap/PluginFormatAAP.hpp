@@ -15,6 +15,10 @@ namespace remidy::gui::android {
     void queryDimensions(void* windowHandle, int& width, int& height);
     void androidPixelsToWindowSize(int& width, int& height);
     void resizeContentPixels(void* windowHandle, int width, int height);
+    void setSurfaceReadyCallback(void* windowHandle, std::function<void()> callback);
+    void setViewportCallback(
+        void* windowHandle,
+        std::function<void(int, int, int, int, int, int)> callback);
 }
 #endif
 
@@ -180,17 +184,34 @@ namespace remidy {
                     remidy::gui::android::resizeContentPixels(parent_handle_, preferred_width, preferred_height);
                 }
 #endif
+                remidy::gui::android::setSurfaceReadyCallback(
+                    parent_handle_,
+                    [remote, this]() {
+                        remote->connectRemoteNativeView(
+                            static_cast<int>(surface_width_),
+                            static_cast<int>(surface_height_));
+                    });
+                remidy::gui::android::setViewportCallback(
+                    parent_handle_,
+                    [remote](int viewportWidth,
+                             int viewportHeight,
+                             int contentWidth,
+                             int contentHeight,
+                             int scrollX,
+                             int scrollY) {
+                        remote->configureRemoteNativeView(
+                            viewportWidth,
+                            viewportHeight,
+                            contentWidth,
+                            contentHeight,
+                            scrollX,
+                            scrollY);
+                    });
                 auto nativeView = static_cast<jobject>(remote->getRemoteNativeView());
                 if (!nativeView)
                     return false;
                 remidy::gui::android::attachSurfaceView(parent_handle_, nativeView);
                 surface_attached_ = true;
-                int width = static_cast<int>(surface_width_);
-                int height = static_cast<int>(surface_height_);
-                remidy::gui::android::queryDimensions(parent_handle_, width, height);
-                surface_width_ = static_cast<uint32_t>(width);
-                surface_height_ = static_cast<uint32_t>(height);
-                remote->connectRemoteNativeView(width, height);
                 gui_instance_id = 0;
                 return true;
 #else
@@ -204,6 +225,10 @@ namespace remidy {
                 if (surface_attached_ && parent_handle_) {
                     remidy::gui::android::detachSurfaceView(parent_handle_);
                     surface_attached_ = false;
+                }
+                if (parent_handle_) {
+                    remidy::gui::android::setSurfaceReadyCallback(parent_handle_, {});
+                    remidy::gui::android::setViewportCallback(parent_handle_, {});
                 }
                 parent_handle_ = nullptr;
                 host_resize_handler_ = {};

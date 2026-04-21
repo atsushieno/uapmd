@@ -119,12 +119,14 @@ public:
         : title_(title ? title : "Plugin UI"),
           closeCallback_(std::move(closeCallback)),
           overlayHandle_(reinterpret_cast<jlong>(this)) {
-        width_ = scaledDimension(width);
-        height_ = scaledDimension(height);
+        contentWidth_ = scaledDimension(width);
+        contentHeight_ = scaledDimension(height);
+        width_ = contentWidth_;
+        height_ = contentHeight_;
         if (auto* env = getEnv()) {
             constrainContentSize(env, width_, height_);
             auto jTitle = env->NewStringUTF(title_.c_str());
-            callCreateOverlay(env, overlayHandle_, jTitle, width_, height_);
+            callCreateOverlay(env, overlayHandle_, jTitle, contentWidth_, contentHeight_);
             env->DeleteLocalRef(jTitle);
         }
     }
@@ -145,27 +147,39 @@ public:
     }
 
     void resize(int width, int height) override {
-        width_ = scaledDimension(width);
-        height_ = scaledDimension(height);
+        contentWidth_ = scaledDimension(width);
+        contentHeight_ = scaledDimension(height);
+        width_ = contentWidth_;
+        height_ = contentHeight_;
         if (auto* env = getEnv()) {
             constrainContentSize(env, width_, height_);
-            callResize(env, overlayHandle_, width_, height_);
+            callResize(env, overlayHandle_, contentWidth_, contentHeight_);
         }
         if (resizeCallback_)
             resizeCallback_(width_, height_);
     }
 
     void resizeContentPixels(int width, int height) {
-        width_ = width > 0 ? width : kFallbackDimension;
-        height_ = height > 0 ? height : kFallbackDimension;
+        contentWidth_ = width > 0 ? width : kFallbackDimension;
+        contentHeight_ = height > 0 ? height : kFallbackDimension;
+        width_ = contentWidth_;
+        height_ = contentHeight_;
         if (auto* env = getEnv()) {
             constrainContentSize(env, width_, height_);
-            callResize(env, overlayHandle_, width_, height_);
+            callResize(env, overlayHandle_, contentWidth_, contentHeight_);
         }
     }
 
     void setResizeCallback(std::function<void(int, int)> callback) override {
         resizeCallback_ = std::move(callback);
+    }
+
+    void setSurfaceReadyCallback(std::function<void()> callback) {
+        surfaceReadyCallback_ = std::move(callback);
+    }
+
+    void setViewportCallback(std::function<void(int, int, int, int, int, int)> callback) {
+        viewportCallback_ = std::move(callback);
     }
 
     void setResizable(bool) override {
@@ -178,6 +192,14 @@ public:
 
     void* getHandle() const override {
         return reinterpret_cast<void*>(const_cast<AndroidContainerWindow*>(this));
+    }
+
+    int contentWidth() const {
+        return contentWidth_;
+    }
+
+    int contentHeight() const {
+        return contentHeight_;
     }
 
     void attachSurface(jobject surfaceView) {
@@ -197,11 +219,36 @@ public:
             closeCallback_();
     }
 
+    void requestSurfaceConnectionFromOverlay() {
+        if (surfaceReadyCallback_)
+            surfaceReadyCallback_();
+    }
+
+    void configureViewportFromOverlay(
+        int viewportWidth,
+        int viewportHeight,
+        int contentWidth,
+        int contentHeight,
+        int scrollX,
+        int scrollY)
+    {
+        width_ = viewportWidth > 0 ? viewportWidth : width_;
+        height_ = viewportHeight > 0 ? viewportHeight : height_;
+        contentWidth_ = contentWidth > 0 ? contentWidth : contentWidth_;
+        contentHeight_ = contentHeight > 0 ? contentHeight : contentHeight_;
+        if (viewportCallback_)
+            viewportCallback_(width_, height_, contentWidth_, contentHeight_, scrollX, scrollY);
+    }
+
 private:
     std::string title_;
     int width_{0};
     int height_{0};
+    int contentWidth_{0};
+    int contentHeight_{0};
     std::function<void(int, int)> resizeCallback_{};
+    std::function<void()> surfaceReadyCallback_{};
+    std::function<void(int, int, int, int, int, int)> viewportCallback_{};
     std::function<void()> closeCallback_{};
     bool visible_{false};
     jlong overlayHandle_{0};
@@ -234,9 +281,8 @@ void queryDimensions(void* windowHandle, int& width, int& height) {
     if (!windowHandle)
         return;
     auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
-    auto bounds = window->getBounds();
-    width = bounds.width;
-    height = bounds.height;
+    width = window->getBounds().width;
+    height = window->getBounds().height;
 }
 
 void androidPixelsToWindowSize(int& width, int& height) {
@@ -249,6 +295,23 @@ void resizeContentPixels(void* windowHandle, int width, int height) {
         return;
     auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
     window->resizeContentPixels(width, height);
+}
+
+void setSurfaceReadyCallback(void* windowHandle, std::function<void()> callback) {
+    if (!windowHandle)
+        return;
+    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    window->setSurfaceReadyCallback(std::move(callback));
+}
+
+void setViewportCallback(
+    void* windowHandle,
+    std::function<void(int, int, int, int, int, int)> callback)
+{
+    if (!windowHandle)
+        return;
+    auto* window = reinterpret_cast<AndroidContainerWindow*>(windowHandle);
+    window->setViewportCallback(std::move(callback));
 }
 
 void notifyOverlayClosed(void* windowHandle) {
@@ -265,6 +328,40 @@ Java_dev_atsushieno_uapmd_MainActivity_nativeOnOverlayClosed(
     JNIEnv*, jclass, jlong handle)
 {
     remidy::gui::android::notifyOverlayClosed(reinterpret_cast<void*>(handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_atsushieno_uapmd_MainActivity_nativeOnOverlaySurfaceReady(
+    JNIEnv*, jclass, jlong handle)
+{
+    if (!handle)
+        return;
+    auto* window = reinterpret_cast<remidy::gui::AndroidContainerWindow*>(handle);
+    window->requestSurfaceConnectionFromOverlay();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_atsushieno_uapmd_MainActivity_nativeConfigureOverlayViewport(
+    JNIEnv*,
+    jclass,
+    jlong handle,
+    jint viewportWidth,
+    jint viewportHeight,
+    jint contentWidth,
+    jint contentHeight,
+    jint scrollX,
+    jint scrollY)
+{
+    if (!handle)
+        return;
+    auto* window = reinterpret_cast<remidy::gui::AndroidContainerWindow*>(handle);
+    window->configureViewportFromOverlay(
+        viewportWidth,
+        viewportHeight,
+        contentWidth,
+        contentHeight,
+        scrollX,
+        scrollY);
 }
 
 #endif // __ANDROID__
