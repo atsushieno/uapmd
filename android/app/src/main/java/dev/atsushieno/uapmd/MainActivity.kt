@@ -5,7 +5,8 @@ import android.os.Build
 import android.util.DisplayMetrics
 import android.view.View
 import android.view.WindowInsets
-import org.androidaudioplugin.hosting.AudioPluginHostHelper
+import kotlinx.coroutines.runBlocking
+import org.androidaudioplugin.hosting.GuiHelper
 import org.libsdl.app.SDLActivity
 
 class MainActivity : SDLActivity() {
@@ -50,16 +51,20 @@ class MainActivity : SDLActivity() {
             val activity = SDLActivity.mSingleton ?: return intArrayOf(0, 0)
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R)
                 return queryCurrentContentAreaSize(activity)
-            val surfaceControl = AudioPluginHostHelper.createSurfaceControl(activity)
+            val guiHost = GuiHelper.NativeEmbeddedSurfaceControlHost(
+                activity,
+                pluginPackageName,
+                pluginId,
+                instanceId
+            )
             return try {
-                val preferred = surfaceControl.getPreferredSize(pluginPackageName, pluginId, instanceId)
-                if (preferred.getOrNull(0)?.let { it > 0 } == true &&
-                    preferred.getOrNull(1)?.let { it > 0 } == true)
-                    preferred
+                val preferred = runBlocking { guiHost.getPreferredSizeOrFallback(0, 0) }
+                if (preferred.width > 0 && preferred.height > 0)
+                    intArrayOf(preferred.width, preferred.height)
                 else
                     queryCurrentContentAreaSize(activity)
             } finally {
-                surfaceControl.close()
+                guiHost.close()
             }
         }
 

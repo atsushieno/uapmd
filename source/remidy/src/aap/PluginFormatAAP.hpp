@@ -3,6 +3,7 @@
 #include "remidy/remidy.hpp"
 #include "remidy/detail/queued-state-operations.hpp"
 #include <stdexcept>
+#include <aap/core/host/gui-helper.h>
 #include <aap/core/host/plugin-connections.h>
 #include <aap/core/host/plugin-host.h>
 #include <aap/core/host/plugin-instance.h>
@@ -182,18 +183,14 @@ namespace remidy {
                 auto remote = dynamic_cast<aap::RemotePluginInstance*>(aap);
                 if (!remote || parent_handle_ == nullptr)
                     return false;
-                remote->prepareSurfaceControlForRemoteNativeUI();
 #if defined(AAP_CORE_REMOTE_NATIVE_UI_PREFERRED_SIZE)
-                int preferred_width = 0;
-                int preferred_height = 0;
-                auto pluginInfo = remote->getPluginInformation();
-                if (pluginInfo &&
-                    remidy::gui::android::queryRemoteViewPreferredSize(
-                        pluginInfo->getPluginPackageName().c_str(),
-                        pluginInfo->getPluginID().c_str(),
-                        remote->getInstanceId(),
-                        preferred_width,
-                        preferred_height)) {
+                auto preferredSize = aap::getGuiPreferredSizeOrFallback(
+                    remote,
+                    static_cast<int32_t>(surface_width_),
+                    static_cast<int32_t>(surface_height_));
+                auto preferred_width = preferredSize.width;
+                auto preferred_height = preferredSize.height;
+                if (preferred_width > 0 && preferred_height > 0) {
                     surface_width_ = static_cast<uint32_t>(preferred_width);
                     surface_height_ = static_cast<uint32_t>(preferred_height);
                     remidy::gui::android::resizeContentPixels(parent_handle_, preferred_width, preferred_height);
@@ -221,18 +218,19 @@ namespace remidy {
                             "connect content=%ux%u",
                             surface_width_,
                             surface_height_);
+                        remote->prepareSurfaceControlForRemoteNativeUI();
                         remote->connectRemoteNativeView(
                             static_cast<int>(surface_width_),
                             static_cast<int>(surface_height_));
                     });
                 remidy::gui::android::setViewportCallback(
                     parent_handle_,
-                    [remote, this](int viewportWidth,
-                                   int viewportHeight,
-                                   int contentWidth,
-                                   int contentHeight,
-                                   int scrollX,
-                                   int scrollY) {
+                    [remote](int viewportWidth,
+                             int viewportHeight,
+                             int contentWidth,
+                             int contentHeight,
+                             int scrollX,
+                             int scrollY) {
                         __android_log_print(
                             ANDROID_LOG_INFO,
                             "uapmd-aap-ui",
@@ -243,16 +241,25 @@ namespace remidy {
                             contentHeight,
                             scrollX,
                             scrollY);
-                        remote->configureRemoteNativeView(
+                        auto configuration = aap::GuiViewportConfiguration{
                             viewportWidth,
                             viewportHeight,
                             contentWidth,
                             contentHeight,
                             scrollX,
-                            scrollY);
+                            scrollY}.clamp();
+                        remote->prepareSurfaceControlForRemoteNativeUI();
+                        remote->configureRemoteNativeView(
+                            configuration.viewportWidth,
+                            configuration.viewportHeight,
+                            configuration.contentWidth,
+                            configuration.contentHeight,
+                            configuration.scrollX,
+                            configuration.scrollY);
                     });
                 bool attached = false;
                 remidy::runOnAndroidUiThreadSync([&]() {
+                    remote->prepareSurfaceControlForRemoteNativeUI();
                     auto nativeView = static_cast<jobject>(remote->getRemoteNativeView());
                     if (!nativeView)
                         return;
