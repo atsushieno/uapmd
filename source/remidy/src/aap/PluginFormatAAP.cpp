@@ -18,6 +18,12 @@ PluginFormatAAPImpl::PluginFormatAAPImpl() {
     android_host = std::make_unique<aap::PluginClient>(plugin_client_connections, &plugin_list_snapshot);
 }
 
+void PluginFormatAAPImpl::destroyInstance(aap::PluginInstance* instance) {
+    if (!android_host || !instance)
+        return;
+    android_host->destroyInstance(instance);
+}
+
 const aap::PluginInformation *
 findPluginInformationFrom(PluginCatalogEntry *info) {
     auto list = aap::PluginListSnapshot::queryServices();

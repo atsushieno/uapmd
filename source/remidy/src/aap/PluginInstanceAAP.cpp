@@ -9,6 +9,13 @@ remidy::PluginInstanceAAP::PluginInstanceAAP(
 ) : PluginInstance(entry), format(format), instance(aapInstance) {
 }
 
+remidy::PluginInstanceAAP::~PluginInstanceAAP() {
+    if (!format || !instance)
+        return;
+    format->destroyInstance(instance);
+    instance = nullptr;
+}
+
 remidy::StatusCode
 remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationRequest &configuration) {
     auto* instance = aapInstance();

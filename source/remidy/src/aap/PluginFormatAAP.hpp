@@ -398,6 +398,7 @@ namespace remidy {
 
     public:
         PluginInstanceAAP(PluginFormatAAPImpl* format, PluginCatalogEntry* entry, aap::PluginInstance* aapInstance);
+        ~PluginInstanceAAP() override;
 
         aap::PluginInstance* aapInstance() { return instance; };
 
@@ -446,6 +447,8 @@ namespace remidy {
         PluginFormatAAPImpl();
 
         PluginScanning *scanning() override { return &scanning_; }
+
+        void destroyInstance(aap::PluginInstance* instance);
 
         void createInstance(PluginCatalogEntry *info, PluginInstantiationOptions options,
                             std::function<void(std::unique_ptr<PluginInstance>,
