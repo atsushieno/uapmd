@@ -30,13 +30,26 @@ void remidy::PluginInstanceAAP::StateSupport::requestState(
         void* callbackContext,
         std::function<void(std::vector<uint8_t> state, std::string error, void* callbackContext)> receiver) {
     queue_.enqueueRequest(callbackContext, std::move(receiver),
-                          [this, stateContextType, includeUiState](std::function<bool()> isCancelled,
-                                                                    std::function<void(std::vector<uint8_t> state, std::string error)> finish) mutable {
+                          [this](std::function<bool()> isCancelled,
+                                 std::function<void(std::vector<uint8_t> state, std::string error)> finish) mutable {
                               if (isCancelled()) {
                                   finish({}, "instance destroyed");
                                   return;
                               }
-                              finish(getState(stateContextType, includeUiState), "");
+                              auto requestId = owner->aapInstance()->getStandardExtensions().requestStateAsync(
+                                      [isCancelled = std::move(isCancelled), finish = std::move(finish)](aap_state_t stateObj) mutable {
+                                          if (isCancelled()) {
+                                              finish({}, "instance destroyed");
+                                              return;
+                                          }
+                                          std::vector<uint8_t> ret{};
+                                          ret.resize(stateObj.data_size);
+                                          if (stateObj.data_size > 0)
+                                              memcpy(ret.data(), stateObj.data, stateObj.data_size);
+                                          finish(std::move(ret), "");
+                                      });
+                              if (requestId < 0)
+                                  finish({}, "failed to request AAP state");
                           });
 }
 
@@ -47,13 +60,25 @@ void remidy::PluginInstanceAAP::StateSupport::loadState(
         void* callbackContext,
         std::function<void(std::string error, void* callbackContext)> completed) {
     queue_.enqueueLoad(callbackContext, std::move(completed),
-                       [this, state = std::move(state), stateContextType, includeUiState](std::function<bool()> isCancelled,
-                                                                                           std::function<void(std::string error)> finish) mutable {
+                       [this, state = std::move(state)](std::function<bool()> isCancelled,
+                                                        std::function<void(std::string error)> finish) mutable {
                            if (isCancelled()) {
                                finish("instance destroyed");
                                return;
                            }
-                           setState(state, stateContextType, includeUiState);
-                           finish("");
+                           aap_state_t stateObj;
+                           stateObj.data = state.data();
+                           stateObj.data_size = state.size();
+                           auto requestId = owner->aapInstance()->getStandardExtensions().setStateAsync(
+                                   stateObj,
+                                   [isCancelled = std::move(isCancelled), finish = std::move(finish)]() mutable {
+                                       if (isCancelled()) {
+                                           finish("instance destroyed");
+                                           return;
+                                       }
+                                       finish("");
+                                   });
+                           if (requestId < 0)
+                               finish("failed to load AAP state");
                        });
 }
