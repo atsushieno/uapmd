@@ -356,7 +356,7 @@ CPMAddPackage(
 )
 
 # ImTimeline for SequenceEditor timeline view
-set(_UAPMD_IMTIMELINE_PATCH "${CMAKE_CURRENT_LIST_DIR}/../../../external/patches/imtimeline.patch")
+set(_UAPMD_IMTIMELINE_PATCH "${UAPMD_EXTERNAL_DIR}/patches/imtimeline.patch")
 set(_UAPMD_IMTIMELINE_CACHE_EPOCH "2")
 file(SHA1 "${_UAPMD_IMTIMELINE_PATCH}" _UAPMD_IMTIMELINE_PATCH_SHA1)
 CPMAddPackage(
