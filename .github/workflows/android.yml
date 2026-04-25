@@ -1,0 +1,86 @@
+name: build android
+
+# Opt-in only: Android build depends on an unpublished aap-core, so we do not
+# run it on every push. Trigger manually from the Actions tab when aap-core's
+# `main` (or the ref you choose) is in a state where uapmd builds.
+
+on:
+  workflow_dispatch:
+    inputs:
+      aap_core_ref:
+        description: 'aap-core git ref to build against (branch / tag / sha)'
+        required: false
+        type: string
+        default: 'main'
+
+jobs:
+  build-android:
+    name: 'build uapmd-app APK'
+    runs-on: ubuntu-24.04
+    steps:
+    - name: checkout uapmd
+      uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    # android/.gitmodules declares external/aap-core, but android/ is not a
+    # standalone repo, so the top-level checkout doesn't fetch it. Clone it
+    # explicitly into the path that android/app/build.gradle.kts expects.
+    - name: checkout aap-core
+      uses: actions/checkout@v6
+      with:
+        repository: atsushieno/aap-core
+        ref: ${{ inputs.aap_core_ref }}
+        submodules: recursive
+        path: android/external/aap-core
+
+    - name: set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: temurin
+
+    - name: cache gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-android-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties', 'android/external/aap-core/**/*.gradle*') }}
+        restore-keys: ${{ runner.os }}-gradle-android-
+
+    # uapmd-app's native side pulls dependencies via CPM during the CMake
+    # configure that gradle runs through externalNativeBuild.
+    - name: cache CPM
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/CPM/uapmd
+        key: cpm-android-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
+        restore-keys: cpm-android-${{ runner.os }}-
+
+    - name: publish aap-core to mavenLocal
+      working-directory: android/external/aap-core
+      run: ./gradlew --no-daemon publishToMavenLocal
+
+    - name: build uapmd-app
+      working-directory: android
+      env:
+        CPM_SOURCE_CACHE: /home/runner/.cache/CPM/uapmd
+      run: ./gradlew --no-daemon assembleDebug
+
+    - name: upload APK
+      if: success()
+      uses: actions/upload-artifact@v6
+      with:
+        name: uapmd-android-apk
+        path: android/app/build/outputs/apk/debug/*.apk
+
+    - name: upload build failure logs
+      if: failure()
+      uses: actions/upload-artifact@v6
+      with:
+        name: uapmd-android-failure
+        path: |
+          android/app/build/reports
+          android/app/build/outputs
+          android/app/.cxx
