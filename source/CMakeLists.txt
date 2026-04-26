@@ -28,7 +28,7 @@ endif()
 
 #### end of section ####
 
-set(UAPMD_VERSION "0.3.1" CACHE STRING "UAPMD version for packaging")
+set(UAPMD_VERSION "0.4.0" CACHE STRING "UAPMD version for packaging")
 
 if (UNIX) # N/A on Windows
 set(_UAPMD_CPPTRACE_DWARF_DEFAULT ${UAPMD_CPPTRACE_DWARF_DEFAULT})
