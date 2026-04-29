@@ -97,6 +97,7 @@ UAPMD_C_EXPORT uint32_t uapmd_engine_master_track_render_lead(uapmd_sequencer_en
 
 /* Configuration */
 UAPMD_C_EXPORT void uapmd_engine_set_default_channels(uapmd_sequencer_engine_t engine, uint32_t input_channels, uint32_t output_channels);
+UAPMD_C_EXPORT void uapmd_engine_set_sample_rate(uapmd_sequencer_engine_t engine, int32_t sample_rate);
 UAPMD_C_EXPORT bool uapmd_engine_get_offline_rendering(uapmd_sequencer_engine_t engine);
 UAPMD_C_EXPORT void uapmd_engine_set_offline_rendering(uapmd_sequencer_engine_t engine, bool enabled);
 UAPMD_C_EXPORT void uapmd_engine_set_active(uapmd_sequencer_engine_t engine, bool active);
@@ -146,6 +147,7 @@ UAPMD_C_EXPORT bool     uapmd_track_get_ordered_instance_ids(uapmd_sequencer_tra
 UAPMD_C_EXPORT void    uapmd_track_set_instance_group(uapmd_sequencer_track_t track, int32_t instance_id, uint8_t group);
 UAPMD_C_EXPORT uint8_t uapmd_track_get_instance_group(uapmd_sequencer_track_t track, int32_t instance_id);
 UAPMD_C_EXPORT uint8_t uapmd_track_find_available_group(uapmd_sequencer_track_t track);
+UAPMD_C_EXPORT void    uapmd_track_remove_instance(uapmd_sequencer_track_t track, int32_t instance_id);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  TimelineFacade

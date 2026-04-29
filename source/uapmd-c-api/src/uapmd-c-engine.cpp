@@ -144,6 +144,7 @@ uint32_t uapmd_engine_master_track_render_lead(uapmd_sequencer_engine_t engine) 
 /* Configuration */
 
 void uapmd_engine_set_default_channels(uapmd_sequencer_engine_t engine, uint32_t in_ch, uint32_t out_ch) { E(engine)->setDefaultChannels(in_ch, out_ch); }
+void uapmd_engine_set_sample_rate(uapmd_sequencer_engine_t engine, int32_t sample_rate)                  { E(engine)->setSampleRate(sample_rate); }
 bool uapmd_engine_get_offline_rendering(uapmd_sequencer_engine_t engine)          { return E(engine)->offlineRendering(); }
 void uapmd_engine_set_offline_rendering(uapmd_sequencer_engine_t engine, bool en) { E(engine)->offlineRendering(en); }
 void uapmd_engine_set_active(uapmd_sequencer_engine_t engine, bool active)        { E(engine)->setEngineActive(active); }
@@ -210,6 +211,7 @@ bool uapmd_track_get_ordered_instance_ids(uapmd_sequencer_track_t track, int32_t
 void    uapmd_track_set_instance_group(uapmd_sequencer_track_t track, int32_t id, uint8_t g)  { ST(track)->setInstanceGroup(id, g); }
 uint8_t uapmd_track_get_instance_group(uapmd_sequencer_track_t track, int32_t id)             { return ST(track)->getInstanceGroup(id); }
 uint8_t uapmd_track_find_available_group(uapmd_sequencer_track_t track)                       { return ST(track)->findAvailableGroup(); }
+void    uapmd_track_remove_instance(uapmd_sequencer_track_t track, int32_t instance_id)       { ST(track)->removeInstance(instance_id); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  TimelineFacade
