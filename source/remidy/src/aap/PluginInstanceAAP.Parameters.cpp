@@ -4,6 +4,7 @@
 #include <limits>
 #include <sstream>
 #include <umppi/umppi.hpp>
+#include <aap/ext/midi.h>
 
 #include "remidy/remidy.hpp"
 #include <aap/plugin-meta-info.h>
@@ -55,17 +56,13 @@ remidy::PluginInstanceAAP::ParameterSupport::setParameter(uint32_t index, double
     const double normalized = std::clamp(param->normalizedValue(clamped), 0.0, 1.0);
     parameter_values[index] = clamped;
 
-    // Convert to MIDI 2.0 NRPN per AAP parameter mapping (bank = index >> 7, controller = index & 0x7F)
-    constexpr uint8_t group = 0;
-    constexpr uint8_t channel = 0;
-    const uint8_t bankMsb = static_cast<uint8_t>((index >> 7) & 0x7F);
-    const uint8_t controller = static_cast<uint8_t>(index & 0x7F);
+    // AAP plugins expect parameter changes on the dedicated AAP parameter SysEx8 path.
+    // Injecting raw NRPN here bypasses the host-side translator path that would otherwise
+    // convert controller messages for the plugin/UI/state layers.
     const auto data = static_cast<uint32_t>(normalized * static_cast<double>(std::numeric_limits<uint32_t>::max()));
-    auto umpValue = umppi::UmpFactory::midi2NRPN(group, channel, bankMsb, controller, data);
-    const uint32_t words[2]{
-        static_cast<uint32_t>(umpValue >> 32),
-        static_cast<uint32_t>(umpValue & 0xFFFFFFFFu)
-    };
+    uint32_t words[4]{};
+    aapMidi2ParameterSysex8(words, words + 1, words + 2, words + 3,
+                            0, 0, 0, 0, static_cast<uint16_t>(index), data);
 
     owner->aapInstance()->addEventUmpInput((void*) words, sizeof(words));
 
@@ -168,6 +165,26 @@ void remidy::PluginInstanceAAP::ParameterSupport::ingestPluginParameterUpdates(c
                 }
                 default:
                     break;
+            }
+        } else if (messageType == 5 && wordCount >= 4) {
+            uint8_t group = 0;
+            uint8_t channel = 0;
+            uint8_t key = 0;
+            uint8_t extra = 0;
+            uint16_t parameterIndex = 0;
+            uint32_t transportValue = 0;
+            if (aapReadMidi2ParameterSysex8(&group, &channel, &key, &extra, &parameterIndex, &transportValue,
+                                            words[0], words[1], words[2], words[3]) &&
+                channel == 0 &&
+                key == 0 &&
+                parameterIndex < parameter_list.size()) {
+                auto* param = parameter_list[parameterIndex];
+                const double plain = aapParameterTransportUint32ToPlain(
+                    param->minPlainValue(),
+                    param->maxPlainValue(),
+                    transportValue);
+                parameter_values[parameterIndex] = plain;
+                parameterChangeEvent().notify(parameterIndex, plain);
             }
         }
         offset += messageSize;
