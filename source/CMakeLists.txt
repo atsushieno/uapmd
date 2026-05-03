@@ -187,7 +187,7 @@ if(EXISTS "${CMAKE_BINARY_DIR}/_deps/libremidi-src/CMakeLists.txt")
 endif()
 CPMAddPackage(midicci
         NAME            midicci
-        GIT_TAG         7c0c6a5
+        GIT_TAG         d5728b3
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
         OPTIONS         "MIDICCI_SKIP_TOOLS ON" "BUILD_TESTS OFF" "BUILD_EXAMPLES OFF"
         EXCLUDE_FROM_ALL
