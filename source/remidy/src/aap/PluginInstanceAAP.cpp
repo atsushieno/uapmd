@@ -22,7 +22,7 @@ remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationReques
     if (!instance)
         return StatusCode::FAILED_TO_INSTANTIATE;
 
-    instance->prepare(configuration.bufferSizeInSamples);
+    instance->prepare((int) configuration.bufferSizeInSamples, (int32_t) configuration.sampleRate);
     if (instance->getInstanceState() != aap::PLUGIN_INSTANTIATION_STATE_INACTIVE ||
         instance->getAudioPluginBuffer() == nullptr)
         return StatusCode::FAILED_TO_INSTANTIATE;
@@ -84,7 +84,7 @@ remidy::StatusCode remidy::PluginInstanceAAP::process(remidy::AudioProcessContex
                 break;
             auto aapPortIdx = remidy_to_aap_port_index_map_audio_in[aapIdx++];
             auto src = process.getFloatInBuffer(iBus, iCh);
-            auto dst = buffer->get_buffer(*buffer, aapPortIdx);
+            auto dst = buffer->get_buffer(buffer, aapPortIdx);
             memcpy(dst, src, sizeof(float) * process.frameCount());
         }
         // FIXME: we should iterate non-main buses too once AAP is ready for that.
@@ -104,7 +104,7 @@ remidy::StatusCode remidy::PluginInstanceAAP::process(remidy::AudioProcessContex
                 break;
             auto aapPortIdx = remidy_to_aap_port_index_map_audio_out[aapIdx++];
             auto dst = process.getFloatOutBuffer(iBus, iCh);
-            auto src = buffer->get_buffer(*buffer, aapPortIdx);
+            auto src = buffer->get_buffer(buffer, aapPortIdx);
             memcpy(dst, src, sizeof(float) * process.frameCount());
         }
         // FIXME: we should iterate non-main buses too once AAP is ready for that.
@@ -112,8 +112,8 @@ remidy::StatusCode remidy::PluginInstanceAAP::process(remidy::AudioProcessContex
     }
     if (aap_port_midi2_out >= 0) {
         auto& eOut = process.eventOut();
-        auto src = buffer->get_buffer(*buffer, aap_port_midi2_out);
-        auto size = buffer->get_buffer_size(*buffer, aap_port_midi2_out);
+        auto src = buffer->get_buffer(buffer, aap_port_midi2_out);
+        auto size = buffer->get_buffer_size(buffer, aap_port_midi2_out);
         if (src && size > static_cast<int32_t>(sizeof(AAPMidiBufferHeader))) {
             auto* header = reinterpret_cast<AAPMidiBufferHeader*>(src);
             auto* payload = reinterpret_cast<uint8_t*>(header + 1);
