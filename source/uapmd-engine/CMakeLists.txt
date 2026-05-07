@@ -26,6 +26,66 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 
+if(WIN32)
+    set(_uapmd_libremidi_error_helpers [[  static bool is_error_set(const stdx::error& err) noexcept
+  {
+    if (err.domain() == stdx::generic_domain)
+      return stdx::error_cast<std::errc>(err) != std::errc{};
+
+    return err != stdx::error{};
+  }
+
+  bool has_client_open_error() const noexcept { return is_error_set(client_open_); }]])
+    set(_uapmd_libremidi_midi_api_hpp "${libremidi_SOURCE_DIR}/include/libremidi/detail/midi_api.hpp")
+    file(READ "${_uapmd_libremidi_midi_api_hpp}" _uapmd_libremidi_midi_api_hpp_contents)
+    string(REPLACE "\r\n" "\n" _uapmd_libremidi_midi_api_hpp_contents "${_uapmd_libremidi_midi_api_hpp_contents}")
+    set(_uapmd_libremidi_midi_api_start [[  virtual stdx::error close_port() = 0;]])
+    set(_uapmd_libremidi_midi_api_end [[  bool is_port_open() const noexcept { return port_open_; }]])
+    string(FIND "${_uapmd_libremidi_midi_api_hpp_contents}" "${_uapmd_libremidi_midi_api_start}" _uapmd_libremidi_midi_api_start_pos)
+    string(FIND "${_uapmd_libremidi_midi_api_hpp_contents}" "${_uapmd_libremidi_midi_api_end}" _uapmd_libremidi_midi_api_end_pos)
+    if(NOT _uapmd_libremidi_midi_api_start_pos EQUAL -1 AND NOT _uapmd_libremidi_midi_api_end_pos EQUAL -1)
+        string(SUBSTRING "${_uapmd_libremidi_midi_api_hpp_contents}" 0 ${_uapmd_libremidi_midi_api_start_pos} _uapmd_libremidi_midi_api_prefix)
+        string(SUBSTRING "${_uapmd_libremidi_midi_api_hpp_contents}" ${_uapmd_libremidi_midi_api_end_pos} -1 _uapmd_libremidi_midi_api_suffix)
+        set(_uapmd_libremidi_midi_api_hpp_contents
+                "${_uapmd_libremidi_midi_api_prefix}${_uapmd_libremidi_midi_api_start}\n\n${_uapmd_libremidi_error_helpers}\n\n  stdx::error is_client_open() const noexcept { return client_open_; }\n${_uapmd_libremidi_midi_api_suffix}")
+    endif()
+    file(WRITE "${_uapmd_libremidi_midi_api_hpp}" "${_uapmd_libremidi_midi_api_hpp_contents}")
+
+    set(_uapmd_libremidi_midi_in_cpp "${libremidi_SOURCE_DIR}/include/libremidi/midi_in.cpp")
+    file(READ "${_uapmd_libremidi_midi_in_cpp}" _uapmd_libremidi_midi_in_cpp_contents)
+    string(REPLACE "\r\n" "\n" _uapmd_libremidi_midi_in_cpp_contents "${_uapmd_libremidi_midi_in_cpp_contents}")
+    string(REPLACE
+            [[if (auto err = m_impl->is_client_open(); err != stdx::error{})]]
+            [[if (m_impl->has_client_open_error())]]
+            _uapmd_libremidi_midi_in_cpp_contents
+            "${_uapmd_libremidi_midi_in_cpp_contents}"
+    )
+    string(REPLACE
+            [[if (ret == stdx::error{})]]
+            [[if (!midi_api::is_error_set(ret))]]
+            _uapmd_libremidi_midi_in_cpp_contents
+            "${_uapmd_libremidi_midi_in_cpp_contents}"
+    )
+    file(WRITE "${_uapmd_libremidi_midi_in_cpp}" "${_uapmd_libremidi_midi_in_cpp_contents}")
+
+    set(_uapmd_libremidi_midi_out_cpp "${libremidi_SOURCE_DIR}/include/libremidi/midi_out.cpp")
+    file(READ "${_uapmd_libremidi_midi_out_cpp}" _uapmd_libremidi_midi_out_cpp_contents)
+    string(REPLACE "\r\n" "\n" _uapmd_libremidi_midi_out_cpp_contents "${_uapmd_libremidi_midi_out_cpp_contents}")
+    string(REPLACE
+            [[if (auto err = m_impl->is_client_open(); err != stdx::error{})]]
+            [[if (m_impl->has_client_open_error())]]
+            _uapmd_libremidi_midi_out_cpp_contents
+            "${_uapmd_libremidi_midi_out_cpp_contents}"
+    )
+    string(REPLACE
+            [[if (ret == stdx::error{})]]
+            [[if (!midi_api::is_error_set(ret))]]
+            _uapmd_libremidi_midi_out_cpp_contents
+            "${_uapmd_libremidi_midi_out_cpp_contents}"
+    )
+    file(WRITE "${_uapmd_libremidi_midi_out_cpp}" "${_uapmd_libremidi_midi_out_cpp_contents}")
+endif()
+
 target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
         ${libremidi_SOURCE_DIR}

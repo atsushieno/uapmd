@@ -7,6 +7,15 @@
 #include <libremidi/libremidi.hpp>
 
 namespace uapmd {
+    namespace {
+        std::string sanitizeVirtualPortName(std::string name) {
+            std::replace(name.begin(), name.end(), '[', '_');
+            std::replace(name.begin(), name.end(), ']', '_');
+            std::replace(name.begin(), name.end(), ' ', '_');
+            std::replace(name.begin(), name.end(), ' ', '_');
+            return name;
+        }
+    }
 
     LibreMidiIODevice::LibreMidiIODevice(std::string apiName, std::string deviceName, std::string manufacturer, std::string version, uint64_t sysexDelayInMicroseconds)
         : api_name(std::move(apiName)),
@@ -22,9 +31,11 @@ namespace uapmd {
         // Use distinct names for input and output ports to avoid ALSA/UIs confusion.
         in_port_name = device_name + " In";
         out_port_name = device_name + " Out";
+        in_port_name = sanitizeVirtualPortName(in_port_name);
+        out_port_name = sanitizeVirtualPortName(out_port_name);
 
         // Create input with callback
-        libremidi::ump_input_configuration inConfig{};
+        libremidi::ump_input_configuration inConfig;
         inConfig.on_message = [this](libremidi::ump&& message) {
             inputCallback(std::move(message));
         };
