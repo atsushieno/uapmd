@@ -86,6 +86,25 @@ if(WIN32)
     file(WRITE "${_uapmd_libremidi_midi_out_cpp}" "${_uapmd_libremidi_midi_out_cpp_contents}")
 endif()
 
+# Patch libremidi Emscripten backend: newer revisions of observer.hpp added a
+# 'bool notify' third parameter to update(), but midi_access.hpp still calls
+# with two arguments. Guard with a content-check so the patch is idempotent.
+set(_uapmd_libremidi_em_observer_hpp "${libremidi_SOURCE_DIR}/include/libremidi/backends/emscripten/observer.hpp")
+set(_uapmd_libremidi_em_midi_access_hpp "${libremidi_SOURCE_DIR}/include/libremidi/backends/emscripten/midi_access.hpp")
+file(READ "${_uapmd_libremidi_em_observer_hpp}" _uapmd_libremidi_em_observer_contents)
+string(FIND "${_uapmd_libremidi_em_observer_contents}" "bool notify" _uapmd_libremidi_em_has_notify)
+if(NOT _uapmd_libremidi_em_has_notify EQUAL -1)
+    file(READ "${_uapmd_libremidi_em_midi_access_hpp}" _uapmd_libremidi_em_midi_access_contents)
+    string(REPLACE "\r\n" "\n" _uapmd_libremidi_em_midi_access_contents "${_uapmd_libremidi_em_midi_access_contents}")
+    string(REPLACE
+            [[obs->update(m_current_inputs, m_current_outputs);]]
+            [[obs->update(m_current_inputs, m_current_outputs, true);]]
+            _uapmd_libremidi_em_midi_access_contents
+            "${_uapmd_libremidi_em_midi_access_contents}"
+    )
+    file(WRITE "${_uapmd_libremidi_em_midi_access_hpp}" "${_uapmd_libremidi_em_midi_access_contents}")
+endif()
+
 target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
         ${libremidi_SOURCE_DIR}
