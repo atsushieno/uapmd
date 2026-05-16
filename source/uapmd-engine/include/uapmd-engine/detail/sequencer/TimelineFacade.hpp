@@ -1,7 +1,9 @@
 #pragma once
 #include <algorithm>
 #include <filesystem>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -136,6 +138,19 @@ public:
     };
 
     virtual ContentBounds calculateContentBounds() const = 0;
+
+    // Preview note data for a MIDI clip. Returns empty optional if track/clip not found or not MIDI.
+    struct MidiNotePreview {
+        double startSeconds{0.0};
+        double durationSeconds{0.0};
+        float  velocity{0.0f};   // 0.0–1.0
+        uint8_t note{0};
+    };
+    virtual std::optional<std::vector<MidiNotePreview>> getMidiClipNotes(int32_t trackIndex, int32_t clipId) const = 0;
+
+    // Fired on the calling thread after every clip add/remove and after loadProject() completes.
+    // Pass nullptr to clear.
+    virtual void setTimelineChangedCallback(std::function<void()> callback) = 0;
 
     virtual uint32_t maxTrackLatencyInSamples() = 0;
     virtual uint32_t trackRenderOffsetInSamples(int32_t trackIndex) = 0;

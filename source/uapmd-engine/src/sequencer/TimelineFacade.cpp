@@ -12,6 +12,7 @@
 #include "remidy/remidy.hpp"
 #include "uapmd-data/uapmd-data.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
+#include <umppi/umppi.hpp>
 
 namespace uapmd {
 
@@ -34,6 +35,8 @@ namespace uapmd {
         TimelineState timeline_;
         int32_t next_source_node_id_{1};
         uint32_t next_timeline_track_reference_{1};
+        std::function<void()> timeline_changed_callback_{};
+        bool suppress_timeline_notification_{false};
         AudioGraphProviderRegistry audio_graph_provider_registry_{};
 
     public:
@@ -49,6 +52,11 @@ namespace uapmd {
             timeline_.timeSignatureDenominator = 4;
             timeline_.isPlaying = false;
             timeline_.loopEnabled = false;
+        }
+
+        void notifyTimelineChanged() {
+            if (!suppress_timeline_notification_ && timeline_changed_callback_)
+                timeline_changed_callback_();
         }
 
         // ---- TimelineFacade interface ----
@@ -217,6 +225,7 @@ namespace uapmd {
                 result.success = true;
                 result.clipId = clipId;
                 result.sourceNodeId = sourceNodeId;
+                notifyTimelineChanged();
             } else {
                 result.error = "Failed to add MIDI clip to track";
             }
@@ -262,6 +271,7 @@ namespace uapmd {
                 result.success = true;
                 result.clipId = clipId;
                 result.sourceNodeId = sourceNodeId;
+                notifyTimelineChanged();
             } else {
                 result.error = "Failed to add clip to track";
             }
@@ -381,14 +391,23 @@ namespace uapmd {
         }
 
         bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) override {
+            bool ok;
             if (trackIndex == kMasterTrackIndex)
-                return master_timeline_track_ ? master_timeline_track_->removeClip(clipId) : false;
-            if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size()))
-                return false;
-            return timeline_tracks_[static_cast<size_t>(trackIndex)]->removeClip(clipId);
+                ok = master_timeline_track_ ? master_timeline_track_->removeClip(clipId) : false;
+            else if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size()))
+                ok = false;
+            else
+                ok = timeline_tracks_[static_cast<size_t>(trackIndex)]->removeClip(clipId);
+            if (ok) notifyTimelineChanged();
+            return ok;
         }
 
         ProjectResult loadProject(const std::filesystem::path& projectFile) override {
+            suppress_timeline_notification_ = true;
+            struct SuppressGuard {
+                bool& flag;
+                ~SuppressGuard() { flag = false; }
+            } suppressGuard{suppress_timeline_notification_};
             ProjectResult result;
             if (projectFile.empty()) {
                 result.error = "Project path is empty";
@@ -785,7 +804,9 @@ namespace uapmd {
             if (masterProjectTrack)
                 applyGraphConnections(masterProjectTrack, engine_.masterTrack());
 
+            suppress_timeline_notification_ = false;
             result.success = true;
+            notifyTimelineChanged();
             return result;
         }
 
@@ -883,6 +904,101 @@ namespace uapmd {
                 bounds.lastSeconds = 0.0;
             }
             return bounds;
+        }
+
+        void setTimelineChangedCallback(std::function<void()> cb) override {
+            timeline_changed_callback_ = std::move(cb);
+        }
+
+        std::optional<std::vector<MidiNotePreview>> getMidiClipNotes(int32_t trackIndex, int32_t clipId) const override {
+            TimelineTrack* track = nullptr;
+            if (trackIndex == kMasterTrackIndex) {
+                track = master_timeline_track_.get();
+            } else if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())) {
+                track = timeline_tracks_[static_cast<size_t>(trackIndex)].get();
+            }
+            if (!track) return std::nullopt;
+
+            const ClipData* clip = track->clipManager().getClip(clipId);
+            if (!clip || clip->clipType != ClipType::Midi) return std::nullopt;
+
+            auto sourceNode = const_cast<TimelineTrack*>(track)->getSourceNode(clip->sourceNodeInstanceId);
+            auto* midiSource = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
+            if (!midiSource) return std::nullopt;
+
+            const auto& events    = midiSource->umpEvents();
+            const auto& timestamps = midiSource->eventTimestampsSamples();
+            const double safeSR   = std::max(1.0, static_cast<double>(sampleRate_));
+            const double clipDur  = std::max(0.01, static_cast<double>(midiSource->totalLength()) / safeSR);
+            const double kMinDur  = 1.0 / 32.0;
+
+            std::vector<MidiNotePreview> notes;
+            std::unordered_map<uint32_t, size_t> activeNoteIndices;
+            activeNoteIndices.reserve(64);
+
+            const size_t eventCount = std::min(events.size(), timestamps.size());
+            size_t i = 0;
+            while (i < eventCount) {
+                umppi::Ump ump1(events[i]);
+                const int wordCount = ump1.getSizeInInts();
+                const size_t safeCount = std::min(static_cast<size_t>(wordCount), eventCount - i);
+                umppi::Ump ump = (safeCount >= 2) ? umppi::Ump(events[i], events[i + 1]) : ump1;
+                const double eventSeconds = static_cast<double>(timestamps[i]) / safeSR;
+                const auto msgType = ump.getMessageType();
+
+                if (msgType == umppi::MessageType::MIDI1) {
+                    const uint8_t status   = ump.getStatusCode();
+                    const uint8_t channel  = ump.getChannelInGroup();
+                    const uint8_t group    = ump.getGroup();
+                    if (status == umppi::MidiChannelStatus::NOTE_ON || status == umppi::MidiChannelStatus::NOTE_OFF) {
+                        const uint8_t noteNum  = ump.getMidi1Note();
+                        const uint8_t velocity = ump.getMidi1Velocity();
+                        const uint32_t key     = (static_cast<uint32_t>(group) << 12) | (static_cast<uint32_t>(channel) << 7) | noteNum;
+                        if (status == umppi::MidiChannelStatus::NOTE_ON && velocity > 0) {
+                            MidiNotePreview n{};
+                            n.startSeconds = eventSeconds;
+                            n.note     = noteNum;
+                            n.velocity = velocity / 127.0f;
+                            activeNoteIndices[key] = notes.size();
+                            notes.push_back(n);
+                        } else {
+                            auto it = activeNoteIndices.find(key);
+                            if (it != activeNoteIndices.end()) {
+                                notes[it->second].durationSeconds = std::max(kMinDur, eventSeconds - notes[it->second].startSeconds);
+                                activeNoteIndices.erase(it);
+                            }
+                        }
+                    }
+                } else if (msgType == umppi::MessageType::MIDI2) {
+                    const uint8_t  status  = ump.getStatusCode();
+                    const uint8_t  channel = ump.getChannelInGroup();
+                    const uint8_t  group   = ump.getGroup();
+                    if (status == umppi::MidiChannelStatus::NOTE_ON || status == umppi::MidiChannelStatus::NOTE_OFF) {
+                        const uint8_t  noteNum = ump.getMidi2Note();
+                        const uint16_t vel16   = ump.getMidi2Velocity16();
+                        const uint32_t key     = (static_cast<uint32_t>(group) << 12) | (static_cast<uint32_t>(channel) << 7) | noteNum;
+                        if (status == umppi::MidiChannelStatus::NOTE_ON && vel16 > 0) {
+                            MidiNotePreview n{};
+                            n.startSeconds = eventSeconds;
+                            n.note     = noteNum;
+                            n.velocity = vel16 / 65535.0f;
+                            activeNoteIndices[key] = notes.size();
+                            notes.push_back(n);
+                        } else {
+                            auto it = activeNoteIndices.find(key);
+                            if (it != activeNoteIndices.end()) {
+                                notes[it->second].durationSeconds = std::max(kMinDur, eventSeconds - notes[it->second].startSeconds);
+                                activeNoteIndices.erase(it);
+                            }
+                        }
+                    }
+                }
+                i += static_cast<size_t>(std::max(1, wordCount));
+            }
+            for (auto& [key, idx] : activeNoteIndices)
+                notes[idx].durationSeconds = std::max(kMinDur, clipDur - notes[idx].startSeconds);
+
+            return notes;
         }
 
         uint32_t maxTrackLatencyInSamples() override {
