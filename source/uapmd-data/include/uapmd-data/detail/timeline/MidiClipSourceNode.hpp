@@ -71,6 +71,8 @@ namespace uapmd {
         const std::vector<uint64_t>& timeSignatureChangeSamples() const { return time_signature_change_samples_; }
         uint32_t tickResolution() const { return tick_resolution_; }
         double clipTempo() const { return clip_tempo_; }
+        void setPlaybackTempoMap(std::vector<MidiTempoChange> tempoChanges);
+        void clearPlaybackTempoMap();
 
     private:
         int32_t instance_id_;
@@ -83,6 +85,7 @@ namespace uapmd {
         std::vector<uint64_t> event_timestamps_ticks_;   // Original tick timestamps (for UI/dump)
         std::vector<uint64_t> event_timestamps_samples_; // Converted to samples (for playback)
         std::vector<MidiTempoChange> tempo_changes_;
+        std::vector<MidiTempoChange> playback_tempo_changes_;
         std::vector<MidiTimeSignatureChange> time_signature_changes_;
         std::vector<uint64_t> tempo_change_samples_;
         std::vector<uint64_t> time_signature_change_samples_;
@@ -108,7 +111,9 @@ namespace uapmd {
 
         // Pre-compute sample timestamps using tempo change map
         void rebuildSampleTimelines();
-        std::vector<uint64_t> computeSampleTimeline(const std::vector<uint64_t>& ticks) const;
+        std::vector<uint64_t> computeSampleTimeline(
+            const std::vector<uint64_t>& ticks,
+            const std::vector<MidiTempoChange>& tempoChanges) const;
     };
 
 } // namespace uapmd

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -25,6 +26,126 @@ namespace uapmd {
         TrackList timeline_tracks_;                          // UI-thread owned
         std::shared_ptr<const TrackList> timeline_tracks_snapshot_; // RT-thread read via atomic
         std::shared_ptr<TimelineTrack> master_timeline_track_;
+
+        static bool clipHasMeaningfulTempoMap(const MidiClipSourceNode& node) {
+            const auto& tempoChanges = node.tempoChanges();
+            if (tempoChanges.size() > 1)
+                return true;
+            if (!tempoChanges.empty() && std::abs(tempoChanges.front().bpm - 120.0) > 1.0e-6)
+                return true;
+            return false;
+        }
+
+        static bool clipHasMeaningfulTimeSignatureMap(const MidiClipSourceNode& node) {
+            const auto& changes = node.timeSignatureChanges();
+            if (changes.size() > 1)
+                return true;
+            if (!changes.empty() &&
+                (changes.front().numerator != 4 || changes.front().denominator != 4))
+                return true;
+            return false;
+        }
+
+        struct TimelineMetaSource {
+            ClipData clip;
+            MidiClipSourceNode* node{nullptr};
+        };
+
+        std::optional<TimelineMetaSource> findAuthoritativeTimelineMetaSource(bool preferMasterTrack) const {
+            auto findOnTrack = [this](const std::shared_ptr<TimelineTrack>& track) -> std::optional<TimelineMetaSource> {
+                if (!track)
+                    return std::nullopt;
+
+                auto clips = track->clipManager().getAllClips();
+                std::sort(clips.begin(), clips.end(), [](const ClipData& a, const ClipData& b) {
+                    return a.clipId < b.clipId;
+                });
+
+                for (const auto& clip : clips) {
+                    if (clip.clipType != ClipType::Midi)
+                        continue;
+                    auto sourceNode = track->getSourceNode(clip.sourceNodeInstanceId);
+                    auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
+                    if (!midiNode)
+                        continue;
+                    if (clipHasMeaningfulTempoMap(*midiNode) || clipHasMeaningfulTimeSignatureMap(*midiNode))
+                        return TimelineMetaSource{clip, midiNode};
+                }
+                return std::nullopt;
+            };
+
+            if (preferMasterTrack) {
+                if (auto masterSource = findOnTrack(master_timeline_track_))
+                    return masterSource;
+            }
+
+            for (const auto& track : timeline_tracks_) {
+                if (auto source = findOnTrack(track))
+                    return source;
+            }
+
+            if (!preferMasterTrack) {
+                if (auto masterSource = findOnTrack(master_timeline_track_))
+                    return masterSource;
+            }
+
+            return std::nullopt;
+        }
+
+        void applyAuthoritativeTempoMapToMusicalClips() {
+            auto authoritative = findAuthoritativeTimelineMetaSource(true);
+            for (const auto& track : timeline_tracks_) {
+                if (!track)
+                    continue;
+                auto clips = track->clipManager().getAllClips();
+                for (const auto& clip : clips) {
+                    if (clip.clipType != ClipType::Midi)
+                        continue;
+                    auto sourceNode = track->getSourceNode(clip.sourceNodeInstanceId);
+                    auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
+                    if (!midiNode)
+                        continue;
+                    if (authoritative && authoritative->node)
+                        midiNode->setPlaybackTempoMap(authoritative->node->tempoChanges());
+                    else
+                        midiNode->clearPlaybackTempoMap();
+                }
+            }
+
+            if (authoritative && authoritative->node && !authoritative->node->tempoChanges().empty())
+                timeline_.tempo = authoritative->node->tempoChanges().front().bpm;
+        }
+
+        static void appendMidiNodeMetaToSnapshot(MasterTrackSnapshot& snapshot,
+                                                 const ClipData& clip,
+                                                 MidiClipSourceNode& midiNode,
+                                                 double sampleRate) {
+            const double clipStartSamples = static_cast<double>(clip.position.samples);
+
+            const auto& tempoSamples = midiNode.tempoChangeSamples();
+            const auto& tempoEvents = midiNode.tempoChanges();
+            const size_t tempoCount = std::min(tempoSamples.size(), tempoEvents.size());
+            for (size_t i = 0; i < tempoCount; ++i) {
+                MasterTrackSnapshot::TempoPoint point;
+                point.timeSeconds = (clipStartSamples + static_cast<double>(tempoSamples[i])) / sampleRate;
+                point.tickPosition = tempoEvents[i].tickPosition;
+                point.bpm = tempoEvents[i].bpm;
+                snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
+                snapshot.tempoPoints.push_back(point);
+            }
+
+            const auto& sigSamples = midiNode.timeSignatureChangeSamples();
+            const auto& sigEvents = midiNode.timeSignatureChanges();
+            const size_t sigCount = std::min(sigSamples.size(), sigEvents.size());
+            for (size_t i = 0; i < sigCount; ++i) {
+                MasterTrackSnapshot::TimeSignaturePoint point;
+                point.timeSeconds = (clipStartSamples + static_cast<double>(sigSamples[i])) / sampleRate;
+                point.tickPosition = sigEvents[i].tickPosition;
+                point.signature = sigEvents[i];
+                snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
+                snapshot.timeSignaturePoints.push_back(point);
+            }
+        }
 
         void rebuildTrackSnapshot() {
             auto snap = std::make_shared<TrackList>(timeline_tracks_);
@@ -225,6 +346,7 @@ namespace uapmd {
                 result.success = true;
                 result.clipId = clipId;
                 result.sourceNodeId = sourceNodeId;
+                applyAuthoritativeTempoMapToMusicalClips();
                 notifyTimelineChanged();
             } else {
                 result.error = "Failed to add MIDI clip to track";
@@ -391,15 +513,17 @@ namespace uapmd {
         }
 
         bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) override {
-            bool ok;
-            if (trackIndex == kMasterTrackIndex)
-                ok = master_timeline_track_ ? master_timeline_track_->removeClip(clipId) : false;
-            else if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(timeline_tracks_.size()))
-                ok = false;
-            else
-                ok = timeline_tracks_[static_cast<size_t>(trackIndex)]->removeClip(clipId);
-            if (ok) notifyTimelineChanged();
-            return ok;
+            bool removed = false;
+            if (trackIndex == kMasterTrackIndex) {
+                removed = master_timeline_track_ ? master_timeline_track_->removeClip(clipId) : false;
+            } else if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())) {
+                removed = timeline_tracks_[static_cast<size_t>(trackIndex)]->removeClip(clipId);
+            }
+            if (removed) {
+                applyAuthoritativeTempoMapToMusicalClips();
+                notifyTimelineChanged();
+            }
+            return removed;
         }
 
         ProjectResult loadProject(const std::filesystem::path& projectFile) override {
@@ -813,45 +937,30 @@ namespace uapmd {
         MasterTrackSnapshot buildMasterTrackSnapshot() override {
             MasterTrackSnapshot snapshot;
             const double sr = std::max(1.0, static_cast<double>(sampleRate_));
-            auto clips = master_timeline_track_->clipManager().getAllClips();
-            std::sort(clips.begin(), clips.end(), [](const ClipData& a, const ClipData& b) {
-                return a.clipId < b.clipId;
-            });
+            auto appendTrackMeta = [&snapshot, sr](const std::shared_ptr<TimelineTrack>& track) {
+                if (!track)
+                    return;
+                auto clips = track->clipManager().getAllClips();
+                std::sort(clips.begin(), clips.end(), [](const ClipData& a, const ClipData& b) {
+                    return a.clipId < b.clipId;
+                });
 
-            for (const auto& clip : clips) {
-                if (clip.clipType != ClipType::Midi)
-                    continue;
-                auto sourceNode = master_timeline_track_->getSourceNode(clip.sourceNodeInstanceId);
-                auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
-                if (!midiNode)
-                    continue;
-
-                const auto absolutePosition = clip.position;
-                const double clipStartSamples = static_cast<double>(absolutePosition.samples);
-
-                const auto& tempoSamples = midiNode->tempoChangeSamples();
-                const auto& tempoEvents = midiNode->tempoChanges();
-                const size_t tempoCount = std::min(tempoSamples.size(), tempoEvents.size());
-                for (size_t i = 0; i < tempoCount; ++i) {
-                    MasterTrackSnapshot::TempoPoint point;
-                    point.timeSeconds = (clipStartSamples + static_cast<double>(tempoSamples[i])) / sr;
-                    point.tickPosition = tempoEvents[i].tickPosition;
-                    point.bpm = tempoEvents[i].bpm;
-                    snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
-                    snapshot.tempoPoints.push_back(point);
+                for (const auto& clip : clips) {
+                    if (clip.clipType != ClipType::Midi)
+                        continue;
+                    auto sourceNode = track->getSourceNode(clip.sourceNodeInstanceId);
+                    auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
+                    if (!midiNode)
+                        continue;
+                    appendMidiNodeMetaToSnapshot(snapshot, clip, *midiNode, sr);
                 }
+            };
 
-                const auto& sigSamples = midiNode->timeSignatureChangeSamples();
-                const auto& sigEvents = midiNode->timeSignatureChanges();
-                const size_t sigCount = std::min(sigSamples.size(), sigEvents.size());
-                for (size_t i = 0; i < sigCount; ++i) {
-                    MasterTrackSnapshot::TimeSignaturePoint point;
-                    point.timeSeconds = (clipStartSamples + static_cast<double>(sigSamples[i])) / sr;
-                    point.tickPosition = sigEvents[i].tickPosition;
-                    point.signature = sigEvents[i];
-                    snapshot.maxTimeSeconds = std::max(snapshot.maxTimeSeconds, point.timeSeconds);
-                    snapshot.timeSignaturePoints.push_back(point);
-                }
+            appendTrackMeta(master_timeline_track_);
+            if (snapshot.empty()) {
+                auto authoritative = findAuthoritativeTimelineMetaSource(false);
+                if (authoritative && authoritative->node)
+                    appendMidiNodeMetaToSnapshot(snapshot, authoritative->clip, *authoritative->node, sr);
             }
 
             std::stable_sort(snapshot.tempoPoints.begin(), snapshot.tempoPoints.end(),
