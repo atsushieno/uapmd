@@ -18,6 +18,7 @@
 #include "detail/plugin-ui.hpp"
 
 #include "detail/plugin-instance.hpp"
+#include "detail/plugin-instance-aap.hpp"
 
 #include "detail/plugin-format.hpp"
 #include "detail/plugin-format-aap.hpp"

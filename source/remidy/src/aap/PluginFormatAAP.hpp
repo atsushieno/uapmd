@@ -54,6 +54,19 @@ namespace remidy {
     };
 
     class PluginInstanceAAP : public PluginInstance {
+        class Extensibility : public PluginInstanceAAPExt {
+            PluginInstanceAAP& owner_;
+            std::string plugin_package_name_{};
+            std::string plugin_local_name_{};
+
+        public:
+            explicit Extensibility(PluginInstanceAAP& owner) : PluginInstanceAAPExt(owner), owner_(owner) {}
+
+            void refresh();
+            const std::string& pluginPackageName() const override { return plugin_package_name_; }
+            const std::string& pluginLocalName() const override { return plugin_local_name_; }
+            int32_t instanceId() const override;
+        };
 
         class PluginBusesAAP : public PluginAudioBuses {
             remidy::PluginInstanceAAP* owner;
@@ -389,6 +402,7 @@ namespace remidy {
         std::unique_ptr<PresetsSupport> presets_{};
         std::unique_ptr<StateSupport> state_{};
         std::unique_ptr<UISupport> ui_{};
+        std::unique_ptr<Extensibility> extensibility_{};
         aap::PluginInstance* instance;
 
         std::vector<int32_t> remidy_to_aap_port_index_map_audio_in{};
@@ -401,6 +415,9 @@ namespace remidy {
         ~PluginInstanceAAP() override;
 
         aap::PluginInstance* aapInstance() { return instance; };
+        PluginExtensibility<PluginInstance>* getExtensibility() override {
+            return (extensibility_ ? extensibility_ : extensibility_ = std::make_unique<Extensibility>(*this)).get();
+        }
 
         PluginUIThreadRequirement requiresUIThreadOn() override { return PluginUIThreadRequirement::None; }
 

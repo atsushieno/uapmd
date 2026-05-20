@@ -4,9 +4,31 @@
 
 #include "PluginFormatAAP.hpp"
 
+void remidy::PluginInstanceAAP::Extensibility::refresh() {
+    plugin_package_name_.clear();
+    plugin_local_name_.clear();
+    auto* aap = owner_.aapInstance();
+    if (!aap)
+        return;
+    auto* info = aap->getPluginInformation();
+    if (!info)
+        return;
+    if (std::string package_name = info->getPluginPackageName(); !package_name.empty())
+        plugin_package_name_ = package_name;
+    if (std::string local_name = info->getPluginLocalName(); !local_name.empty())
+        plugin_local_name_ = local_name;
+}
+
+int32_t remidy::PluginInstanceAAP::Extensibility::instanceId() const {
+    auto* aap = owner_.aapInstance();
+    return aap ? aap->getInstanceId() : -1;
+}
+
 remidy::PluginInstanceAAP::PluginInstanceAAP(
         PluginFormatAAPImpl* format, PluginCatalogEntry* entry, aap::PluginInstance* aapInstance
 ) : PluginInstance(entry), format(format), instance(aapInstance) {
+    extensibility_ = std::make_unique<Extensibility>(*this);
+    extensibility_->refresh();
 }
 
 remidy::PluginInstanceAAP::~PluginInstanceAAP() {

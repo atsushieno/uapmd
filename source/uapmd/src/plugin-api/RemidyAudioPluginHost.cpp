@@ -193,6 +193,18 @@ namespace uapmd {
         std::string& displayName() const override { return instance->info()->displayName(); }
         std::string& formatName() const override { return instance->info()->format(); }
         std::string& pluginId() const override { return instance->info()->pluginId(); }
+        std::optional<uapmd::AapUiHostDetails> aapUiHostDetails() const override {
+            if (!instance)
+                return std::nullopt;
+            auto* extensibility = dynamic_cast<remidy::PluginInstanceAAPExt*>(instance->getExtensibility());
+            if (!extensibility)
+                return std::nullopt;
+            return uapmd::AapUiHostDetails{
+                .pluginPackageName = extensibility->pluginPackageName(),
+                .pluginLocalName = extensibility->pluginLocalName(),
+                .instanceId = extensibility->instanceId()
+            };
+        }
 
         void loadPreset(int32_t presetIndex) override {
             instance->presets()->loadPreset(presetIndex);
