@@ -15,7 +15,7 @@ MIDI 2.0 is still an interface that interacts with instruments and it is NOT for
 
 When we edit audio plugin presets (or more precisely, states), we mostly resort to their GUI. MIDI 2.0 is not there to alter this workflow. Yet MIDI 2.0 lets you save and load state of an instrument, just like an audio plugin does in its context track.
 
-Other individual aspects of plugin API features that cannot be achived in MIDI 2.0:
+Other individual aspects of plugin API features that cannot be achieved in MIDI 2.0:
 
 - Dynamic parameter list changes: VST3 has `IComponentHandler::restartComponent()`, AUv3 has update notifications on `AUParameterTree`, AUv2 can notify value changes in AudioUnit properties, CLAP has `clap_host.request_restart()`, but there is nothing comparable to it in MIDI 2.0.
 - Range of Program, Bank MSB, and Bank LSB: Preset index can often span beyond 128, so simply assigning the index to program number will limit the range of supported presets. On the other hand, VST3 preset banks can also go beyond 128, and it's up to each plugin product whether they prefer larger bank count over preset index, or larger preset index over the bank count.

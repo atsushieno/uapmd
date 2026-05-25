@@ -243,6 +243,16 @@ namespace uapmd {
                 total_length_samples_ = static_cast<int64_t>(samples);
             }
         }
+        for (uint64_t samples : tempo_change_samples_) {
+            if (static_cast<int64_t>(samples) > total_length_samples_) {
+                total_length_samples_ = static_cast<int64_t>(samples);
+            }
+        }
+        for (uint64_t samples : time_signature_change_samples_) {
+            if (static_cast<int64_t>(samples) > total_length_samples_) {
+                total_length_samples_ = static_cast<int64_t>(samples);
+            }
+        }
     }
 
     std::vector<uint64_t> MidiClipSourceNode::computeSampleTimeline(

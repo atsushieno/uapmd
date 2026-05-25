@@ -20,6 +20,7 @@ namespace uapmd {
         struct ConvertResult {
             bool success{false};
             std::string error;
+            std::string clipName;
             std::vector<uapmd_ump_t> umpEvents;
             std::vector<uint64_t> umpEventTicksStamps;  // Cumulative ticks for each UMP event
             std::vector<MidiTempoChange> tempoChanges;   // Ordered tempo changes with tick offsets

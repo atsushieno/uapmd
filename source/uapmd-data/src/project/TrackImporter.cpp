@@ -21,6 +21,7 @@ MidiImportResult TrackImporter::importMidiFile(const std::string& filepath) {
         }
 
         const std::string baseFilename = std::filesystem::path(filepath).stem().string();
+        bool masterTrackClipCaptured = false;
         for (size_t trackIdx = 0; trackIdx < music.tracks.size(); ++trackIdx) {
             auto convertResult = uapmd::SmfConverter::convertTrackToUmp(music, trackIdx);
             if (!convertResult.success) {
@@ -28,8 +29,13 @@ MidiImportResult TrackImporter::importMidiFile(const std::string& filepath) {
                 continue;
             }
 
+            const std::string fallbackTrackName = std::format("{} - Track {}", baseFilename, trackIdx + 1);
+            const std::string trackClipName = convertResult.clipName.empty()
+                ? fallbackTrackName
+                : convertResult.clipName;
+
             MidiTrackImport track;
-            track.clipName = std::format("{} - Track {}", baseFilename, trackIdx + 1);
+            track.clipName = trackClipName;
             track.umpEvents = std::move(convertResult.umpEvents);
             track.umpTickTimestamps = std::move(convertResult.umpEventTicksStamps);
             track.tickResolution = convertResult.tickResolution;
@@ -37,16 +43,18 @@ MidiImportResult TrackImporter::importMidiFile(const std::string& filepath) {
             track.tempoChanges = std::move(convertResult.tempoChanges);
             track.timeSignatureChanges = std::move(convertResult.timeSignatureChanges);
 
-            MidiTrackImport masterTrackClip;
-            masterTrackClip.clipName = std::format("{} - Track {} Meta", baseFilename, trackIdx + 1);
-            masterTrackClip.tickResolution = track.tickResolution;
-            masterTrackClip.detectedTempo = track.detectedTempo;
-            if (convertResult.hasExplicitTempoChanges || convertResult.hasExplicitTimeSignatureChanges) {
+            if (!masterTrackClipCaptured &&
+                (convertResult.hasExplicitTempoChanges || convertResult.hasExplicitTimeSignatureChanges)) {
+                MidiTrackImport masterTrackClip;
+                masterTrackClip.clipName = std::format("{} Meta", baseFilename.empty() ? "Imported MIDI" : baseFilename);
+                masterTrackClip.tickResolution = track.tickResolution;
+                masterTrackClip.detectedTempo = track.detectedTempo;
                 if (convertResult.hasExplicitTempoChanges)
                     masterTrackClip.tempoChanges = track.tempoChanges;
                 if (convertResult.hasExplicitTimeSignatureChanges)
                     masterTrackClip.timeSignatureChanges = track.timeSignatureChanges;
                 result.masterTrackClips.push_back(std::move(masterTrackClip));
+                masterTrackClipCaptured = true;
             }
 
             if (!track.umpEvents.empty())

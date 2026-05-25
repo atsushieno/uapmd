@@ -10,6 +10,7 @@ namespace {
 
 constexpr uint8_t kTempoMetaType = 0x51;
 constexpr uint8_t kTimeSignatureMetaType = 0x58;
+constexpr uint8_t kTrackNameMetaType = 0x03;
 
 double microsecondsPerQuarterToBpm(uint32_t value) {
     if (value == 0)
@@ -75,6 +76,35 @@ void collectMetaEvent(const std::shared_ptr<umppi::Midi1Message>& msg,
     }
 }
 
+void collectTrackClipName(const std::vector<umppi::Midi1Event>& events,
+                          SmfConverter::ConvertResult& result) {
+    if (!result.clipName.empty())
+        return;
+
+    for (const auto& event : events) {
+        const auto& msg = event.message;
+        if (!msg || msg->getStatusByte() != umppi::Midi1Status::META || msg->getMetaType() != kTrackNameMetaType)
+            continue;
+
+        auto* compound = dynamic_cast<umppi::Midi1CompoundMessage*>(msg.get());
+        if (!compound)
+            continue;
+
+        const auto& extraData = compound->getExtraData();
+        size_t offset = compound->getExtraDataOffset();
+        size_t length = compound->getExtraDataLength();
+        if (offset >= extraData.size())
+            continue;
+
+        size_t available = std::min(length, extraData.size() - offset);
+        if (available == 0)
+            continue;
+
+        result.clipName.assign(reinterpret_cast<const char*>(extraData.data() + offset), available);
+        return;
+    }
+}
+
 void ensureDefaultMetaEvents(SmfConverter::ConvertResult& result,
                              bool tempoDetected,
                              bool timeSignatureDetected) {
@@ -119,6 +149,7 @@ void collectMetaEventsFromMusic(const umppi::Midi1Music& music,
     if (source->tracks.empty())
         return;
 
+    collectTrackClipName(source->tracks.front().events, result);
     collectMetaEventsFromEvents(source->tracks.front().events, result);
 }
 
@@ -264,6 +295,7 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
             }
 
             result = convertEventsToUmp(musicToConvert->tracks.front().events, result.tickResolution, true);
+            collectTrackClipName(musicToConvert->tracks.front().events, result);
 
         } catch (const std::exception& e) {
             result.error = std::string("Exception during SMF conversion: ") + e.what();
@@ -310,6 +342,7 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
             }
 
             result = convertEventsToUmp(music.tracks[trackIndex].events, result.tickResolution, false);
+            collectTrackClipName(music.tracks[trackIndex].events, result);
 
             // Tempo/time-signature events may reside on any track, so collect them
             collectMetaEventsFromMusic(music, result);

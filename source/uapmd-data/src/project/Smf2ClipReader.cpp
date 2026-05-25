@@ -31,6 +31,41 @@ void ensureDefaultTimeSignature(MidiClipReader::ClipInfo& clipInfo) {
     }
 }
 
+bool extractFlexTempo(const umppi::Ump& ump, double& bpm) {
+    if (ump.getMessageType() != umppi::MessageType::FLEX_DATA)
+        return false;
+
+    const auto address = static_cast<uint8_t>((ump.getStatusByte() >> 4) & 0xF);
+    const auto statusBank = static_cast<uint8_t>((ump.int1 >> 8) & 0xFF);
+    const auto status = static_cast<uint8_t>(ump.int1 & 0xFF);
+    if (address != umppi::FlexDataAddress::GROUP ||
+        statusBank != umppi::FlexDataStatusBank::SETUP_AND_PERFORMANCE ||
+        status != umppi::FlexDataStatus::TEMPO) {
+        return false;
+    }
+
+    bpm = tempoFromRawUmpValue(ump.int2);
+    return true;
+}
+
+bool extractFlexTimeSignature(const umppi::Ump& ump, MidiTimeSignatureChange& sig) {
+    if (ump.getMessageType() != umppi::MessageType::FLEX_DATA)
+        return false;
+
+    const auto address = static_cast<uint8_t>((ump.getStatusByte() >> 4) & 0xF);
+    const auto statusBank = static_cast<uint8_t>((ump.int1 >> 8) & 0xFF);
+    const auto status = static_cast<uint8_t>(ump.int1 & 0xFF);
+    if (address != umppi::FlexDataAddress::GROUP ||
+        statusBank != umppi::FlexDataStatusBank::SETUP_AND_PERFORMANCE ||
+        status != umppi::FlexDataStatus::TIME_SIGNATURE) {
+        return false;
+    }
+
+    sig.numerator = static_cast<uint8_t>((ump.int2 >> 24) & 0xFF);
+    sig.denominator = static_cast<uint8_t>((ump.int2 >> 16) & 0xFF);
+    return true;
+}
+
 bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
                                   MidiClipReader::ClipInfo& result,
                                   std::string& errorMessage) {
@@ -90,17 +125,24 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
             break;
         }
 
-        if (it->isTempo()) {
-            double bpm = tempoFromRawUmpValue(it->getTempo());
+        double flexTempo = 0.0;
+        MidiTimeSignatureChange flexSig{};
+        if (it->isTempo() || extractFlexTempo(*it, flexTempo)) {
+            double bpm = it->isTempo() ? tempoFromRawUmpValue(it->getTempo()) : flexTempo;
             result.tempo_changes.push_back(MidiTempoChange{currentTick, bpm});
             result.has_explicit_tempo_changes = true;
             if (result.tempo_changes.size() == 1)
                 result.tempo = bpm;
-        } else if (it->isTimeSignature()) {
+        } else if (it->isTimeSignature() || extractFlexTimeSignature(*it, flexSig)) {
             MidiTimeSignatureChange sig{};
             sig.tickPosition = currentTick;
-            sig.numerator = it->getTimeSignatureNumerator();
-            sig.denominator = it->getTimeSignatureDenominator();
+            if (it->isTimeSignature()) {
+                sig.numerator = it->getTimeSignatureNumerator();
+                sig.denominator = it->getTimeSignatureDenominator();
+            } else {
+                sig.numerator = flexSig.numerator;
+                sig.denominator = flexSig.denominator;
+            }
             result.time_signature_changes.push_back(sig);
             result.has_explicit_time_signature_changes = true;
         } else {
