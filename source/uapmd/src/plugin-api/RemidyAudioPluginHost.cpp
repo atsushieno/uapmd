@@ -1,8 +1,6 @@
 
 #include "RemidyAudioPluginHost.hpp"
-#include <condition_variable>
 #include <functional>
-#include <mutex>
 #include <ranges>
 #if ANDROID
 #include <android/log.h>
@@ -211,39 +209,11 @@ namespace uapmd {
         }
 
         std::vector<uint8_t> saveStateSync() override {
-            std::mutex mutex;
-            std::condition_variable cv;
-            bool done = false;
-            std::vector<uint8_t> result{};
-
-            requestState(StateContextType::Project, false, nullptr,
-                         [&](std::vector<uint8_t> state, std::string error, void* callbackContext) {
-                             std::lock_guard lock(mutex);
-                             if (error.empty())
-                                 result = std::move(state);
-                             done = true;
-                             cv.notify_one();
-                         });
-
-            std::unique_lock lock(mutex);
-            cv.wait(lock, [&] { return done; });
-            return result;
+            return instance->states()->getState(remidy::PluginStateSupport::StateContextType::Project, false);
         }
 
         void loadStateSync(std::vector<uint8_t> &state) override {
-            std::mutex mutex;
-            std::condition_variable cv;
-            bool done = false;
-
-            loadState(state, StateContextType::Project, false, nullptr,
-                      [&](std::string error, void* callbackContext) {
-                          std::lock_guard lock(mutex);
-                          done = true;
-                          cv.notify_one();
-                      });
-
-            std::unique_lock lock(mutex);
-            cv.wait(lock, [&] { return done; });
+            instance->states()->setState(state, remidy::PluginStateSupport::StateContextType::Project, false);
         }
 
         void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,

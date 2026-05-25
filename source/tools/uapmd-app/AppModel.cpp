@@ -346,7 +346,7 @@ void queueProjectGraphSerialization(
     const auto* graphProvider = sequencerTrack
         ? registry.get(sequencerTrack->graph())
         : registry.get("");
-    if (!sequencerTrack || !graphProvider)
+    if (!sequencerTrack || !graphProvider || sequencerTrack->orderedInstanceIds().empty())
         return;
 
     auto graphData = uapmd::createSerializedProjectGraph(
@@ -2899,6 +2899,11 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
             uapmd::SequencerTrack* sequencerTrack = (sequencerEngine && trackIndex < sequencerTracks.size())
                 ? sequencerTracks[trackIndex]
                 : nullptr;
+            bool hasClips = !projectTrack->clips().empty();
+            bool hasPlugins = sequencerTrack && !sequencerTrack->orderedInstanceIds().empty();
+            if (!hasClips && !hasPlugins)
+                continue;
+
             queueProjectGraphSerialization(
                 *operation,
                 sequencer_.engine()->timeline().audioGraphProviderRegistry(),
@@ -2906,11 +2911,6 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
                 sequencerTrack,
                 *projectTrack,
                 std::format("track{}", trackIndex));
-
-            bool hasClips = !projectTrack->clips().empty();
-            bool hasPlugins = sequencerTrack && !sequencerTrack->orderedInstanceIds().empty();
-            if (!hasClips && !hasPlugins)
-                continue;
 
             operation->project->addTrack(std::move(projectTrack));
         }
