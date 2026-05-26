@@ -279,34 +279,44 @@ void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint
     auto unitInfo = owner->unit_info;
     auto states = owner->_states;
 
-    int32_t bank = (bankMSB << 7) + bankLSB;
+    if (unitInfo == nullptr)
+        return; // the plugin does not provide program list.
 
-    ProgramListInfo pl;
-    auto result = unitInfo->getProgramListInfo(bank, pl);
-    if (result != kResultOk) {
-        std::cerr << std::format("Could not retrieve program list: result code: {}, bank: {}, program: {}", result, bank, program) << std::endl;
-        return; // could not retrieve program list
-    }
+    // Program selection in UnitInfo and State loading must happen on the main thread, in non-RT manner.
+    EventLoop::runTaskOnMainThread([&] {
+        int32_t bank = (bankMSB << 7) + bankLSB;
 
-    IBStream *stream;
-    result = unitInfo->setUnitProgramData(pl.id, program, stream);
-    if (result != kResultOk) {
-        std::cerr << std::format("Failed to set unit program data: result code: {}, bank: {}, program: {}", result, bank, program) << std::endl;
-        return;
-    }
+        ProgramListInfo pl;
+        if (int32_t programListCount = unitInfo->getProgramListCount(); bank > programListCount) {
+            Logger::global()->logError("bank index goes beyond programList count: %d > %d", bank, programListCount);
+            return;
+        }
+        auto result = unitInfo->getProgramListInfo(bank, pl);
+        if (result != kResultOk) {
+            Logger::global()->logError("Could not retrieve program list: result code: %d, bank: %d, program: %d", result, bank, program);
+            return;
+        }
 
-    int64_t size;
-    stream->seek(0, IBStream::kIBSeekEnd, &size);
-    std::vector<uint8_t> buf(size);
-    int32_t read;
-    stream->read(buf.data(), size, &read);
-    auto loadPromise = std::make_shared<std::promise<void>>();
-    auto loadFuture = loadPromise->get_future();
-    states->loadState(std::move(buf), remidy::PluginStateSupport::StateContextType::Preset, true, nullptr,
-                      [loadPromise](std::string error, void* callbackContext) {
-                          loadPromise->set_value();
-                      });
-    loadFuture.get();
+        IBStream *stream;
+        result = unitInfo->setUnitProgramData(pl.id, program, stream);
+        if (result != kResultOk) {
+            Logger::global()->logError("Failed to set unit program data: result code: %d, bank: %d, program: %d", result, bank, program);
+            return;
+        }
+
+        int64_t size;
+        stream->seek(0, IBStream::kIBSeekEnd, &size);
+        std::vector<uint8_t> buf(size);
+        int32_t read;
+        stream->read(buf.data(), size, &read);
+        auto loadPromise = std::make_shared<std::promise<void>>();
+        auto loadFuture = loadPromise->get_future();
+        states->loadState(std::move(buf), remidy::PluginStateSupport::StateContextType::Preset, true, nullptr,
+                          [loadPromise](std::string error, void* callbackContext) {
+                              loadPromise->set_value();
+                          });
+        loadFuture.get();
+    });
 }
 
 std::string remidy::PluginInstanceVST3::ParameterSupport::valueToString(uint32_t index, double value) {
