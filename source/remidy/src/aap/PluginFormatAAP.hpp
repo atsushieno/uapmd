@@ -403,7 +403,7 @@ namespace remidy {
         std::unique_ptr<StateSupport> state_{};
         std::unique_ptr<UISupport> ui_{};
         std::unique_ptr<Extensibility> extensibility_{};
-        aap::PluginInstance* instance;
+        aap::PluginInstance* instance{};
 
         std::vector<int32_t> remidy_to_aap_port_index_map_audio_in{};
         std::vector<int32_t> remidy_to_aap_port_index_map_audio_out{};

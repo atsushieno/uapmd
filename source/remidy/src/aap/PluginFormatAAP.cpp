@@ -45,7 +45,10 @@ void PluginFormatAAPImpl::createInstance(PluginCatalogEntry *info,
         // that processes instancing and invoke user callback (PluginCreationCallback).
         std::function<void(int32_t,std::string&)> aapCallback = [this, info, callback](int32_t instanceID, std::string& error) {
             auto androidInstance = android_host->getInstanceById(instanceID);
-            callback(std::make_unique<PluginInstanceAAP>(this, info, androidInstance), error);
+            if (error.empty())
+                callback(std::make_unique<PluginInstanceAAP>(this, info, androidInstance), "");
+            else
+                callback(nullptr, error);
         };
         // FIXME: just like LV2, we have to pass initial sample rate at instantiation time,
         //  which does not match what remidy passes at `createInstance()` (it is passed at `configure()`).
