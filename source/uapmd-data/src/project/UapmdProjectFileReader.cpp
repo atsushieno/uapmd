@@ -4,6 +4,7 @@
 #include <map>
 #include <set>
 #include <iostream>
+#include <string_view>
 #include "uapmd-data/uapmd-data.hpp"
 #include "UapmdAudioPluginFullDAGraphData.hpp"
 #include "UapmdProjectPluginListGraphData.hpp"
@@ -11,11 +12,21 @@
 namespace uapmd {
     namespace {
         constexpr double kLegacyOffsetSampleRate = 48000.0;
+        constexpr std::string_view kGraphInputNodeId = "graph:input";
+        constexpr std::string_view kGraphOutputNodeId = "graph:output";
 
         AudioPluginGraphEndpointType parseGraphEndpointType(std::string_view value) {
             if (value == "graph_input")
                 return AudioPluginGraphEndpointType::GraphInput;
             if (value == "graph_output")
+                return AudioPluginGraphEndpointType::GraphOutput;
+            return AudioPluginGraphEndpointType::Plugin;
+        }
+
+        AudioPluginGraphEndpointType parseGraphEndpointTypeFromNodeId(std::string_view nodeId) {
+            if (nodeId == kGraphInputNodeId)
+                return AudioPluginGraphEndpointType::GraphInput;
+            if (nodeId == kGraphOutputNodeId)
                 return AudioPluginGraphEndpointType::GraphOutput;
             return AudioPluginGraphEndpointType::Plugin;
         }
@@ -316,6 +327,10 @@ namespace uapmd {
                     auto endpointObj = connectionObj["source"];
                     if (endpointObj.hasObjectMember("type"))
                         connection.source.type = parseGraphEndpointType(endpointObj["type"].getString());
+                    if (endpointObj.hasObjectMember("node_id"))
+                        connection.source.node_id = std::string(endpointObj["node_id"].getString());
+                    if (!endpointObj.hasObjectMember("type") && !connection.source.node_id.empty())
+                        connection.source.type = parseGraphEndpointTypeFromNodeId(connection.source.node_id);
                     if (endpointObj.hasObjectMember("plugin_index"))
                         connection.source.plugin_index = endpointObj["plugin_index"].getWithDefault<int32_t>(-1);
                     if (endpointObj.hasObjectMember("bus_index"))
@@ -325,6 +340,10 @@ namespace uapmd {
                     auto endpointObj = connectionObj["target"];
                     if (endpointObj.hasObjectMember("type"))
                         connection.target.type = parseGraphEndpointType(endpointObj["type"].getString());
+                    if (endpointObj.hasObjectMember("node_id"))
+                        connection.target.node_id = std::string(endpointObj["node_id"].getString());
+                    if (!endpointObj.hasObjectMember("type") && !connection.target.node_id.empty())
+                        connection.target.type = parseGraphEndpointTypeFromNodeId(connection.target.node_id);
                     if (endpointObj.hasObjectMember("plugin_index"))
                         connection.target.plugin_index = endpointObj["plugin_index"].getWithDefault<int32_t>(-1);
                     if (endpointObj.hasObjectMember("bus_index"))

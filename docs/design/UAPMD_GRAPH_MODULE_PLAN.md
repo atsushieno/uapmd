@@ -9,11 +9,13 @@
 - Track/master fader persistence now uses top-level track JSON `volume` rather than depending on graph serialization
 - Graph JSON now persists generic built-in node descriptors under `nodes[]` while retaining the existing `plugins[]` and DAG `connections[]` payloads
 - Loading project graphs now recreates built-in runtime nodes from persisted descriptors for both simple and DAG graph providers
-- The serialization migration remains intentionally partial: plugin graph connections still use legacy plugin-index endpoints rather than generic `node_id` endpoint descriptors
+- DAG graph connections now serialize stable `node_id` endpoint identifiers, while the loader still accepts deprecated `plugin_index` fields for backward compatibility with older project files
 
 ## Remaining Work
 
-- Stage 7b: finish DAG serialization migration from plugin-index endpoints to generic `node_id` endpoints
+- Stage 7b: finish DAG serialization migration beyond the current compatibility bridge
+  - remove runtime/plugin-only assumptions that still prevent fully generic built-in-node connection endpoints
+  - eventually remove the deprecated `plugin_index` read fallback when old project compatibility is no longer required
 - Reconcile default track-gain node persistence policy with the new track-level `volume` field
   - `track.volume` should remain the source of truth for the default track/master fader
   - graph `nodes[]` should be reserved for graph-authored built-in nodes, not the implicit per-track fader

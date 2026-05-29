@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include <uapmd/uapmd.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
 #include "uapmd-data/detail/project/UapmdProjectFile.hpp"
@@ -8,7 +10,8 @@ namespace uapmd {
 
 struct UapmdProjectPluginGraphEndpointData {
     AudioPluginGraphEndpointType type{AudioPluginGraphEndpointType::Plugin};
-    int32_t plugin_index{-1};
+    std::string node_id{};
+    int32_t plugin_index{-1}; // Deprecated: use node_id for plugin endpoints.
     uint32_t bus_index{0};
 };
 

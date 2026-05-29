@@ -6,10 +6,14 @@
 #include <fstream>
 #include <optional>
 #include <sstream>
+#include <string_view>
 
 namespace uapmd {
 
 namespace {
+
+constexpr std::string_view kGraphInputNodeId = "graph:input";
+constexpr std::string_view kGraphOutputNodeId = "graph:output";
 
 const char* graphEndpointTypeToString(AudioPluginGraphEndpointType type) {
     switch (type) {
@@ -37,6 +41,26 @@ const char* graphBusTypeToString(AudioPluginGraphBusType type) {
 
 AudioPluginGraphBusType parseGraphBusType(std::string_view value) {
     return value == "event" ? AudioPluginGraphBusType::Event : AudioPluginGraphBusType::Audio;
+}
+
+AudioPluginGraphEndpointType parseGraphEndpointTypeFromNodeId(std::string_view nodeId) {
+    if (nodeId == kGraphInputNodeId)
+        return AudioPluginGraphEndpointType::GraphInput;
+    if (nodeId == kGraphOutputNodeId)
+        return AudioPluginGraphEndpointType::GraphOutput;
+    return AudioPluginGraphEndpointType::Plugin;
+}
+
+std::string defaultNodeIdForEndpointType(AudioPluginGraphEndpointType type) {
+    switch (type) {
+        case AudioPluginGraphEndpointType::GraphInput:
+            return std::string(kGraphInputNodeId);
+        case AudioPluginGraphEndpointType::GraphOutput:
+            return std::string(kGraphOutputNodeId);
+        case AudioPluginGraphEndpointType::Plugin:
+        default:
+            return {};
+    }
 }
 
 std::optional<choc::value::Value> parseGraphJsonObject(const std::vector<uint8_t>& bytes) {
@@ -268,6 +292,10 @@ bool loadFullDAGGraphJsonFile(UapmdAudioPluginFullDAGraphData* graph, const std:
                 auto endpointObj = connectionObj["source"];
                 if (endpointObj.hasObjectMember("type"))
                     connection.source.type = parseGraphEndpointType(endpointObj["type"].getString());
+                if (endpointObj.hasObjectMember("node_id"))
+                    connection.source.node_id = std::string(endpointObj["node_id"].getString());
+                if (!endpointObj.hasObjectMember("type") && !connection.source.node_id.empty())
+                    connection.source.type = parseGraphEndpointTypeFromNodeId(connection.source.node_id);
                 if (endpointObj.hasObjectMember("plugin_index"))
                     connection.source.plugin_index = endpointObj["plugin_index"].getWithDefault<int32_t>(-1);
                 if (endpointObj.hasObjectMember("bus_index"))
@@ -277,6 +305,10 @@ bool loadFullDAGGraphJsonFile(UapmdAudioPluginFullDAGraphData* graph, const std:
                 auto endpointObj = connectionObj["target"];
                 if (endpointObj.hasObjectMember("type"))
                     connection.target.type = parseGraphEndpointType(endpointObj["type"].getString());
+                if (endpointObj.hasObjectMember("node_id"))
+                    connection.target.node_id = std::string(endpointObj["node_id"].getString());
+                if (!endpointObj.hasObjectMember("type") && !connection.target.node_id.empty())
+                    connection.target.type = parseGraphEndpointTypeFromNodeId(connection.target.node_id);
                 if (endpointObj.hasObjectMember("plugin_index"))
                     connection.target.plugin_index = endpointObj["plugin_index"].getWithDefault<int32_t>(-1);
                 if (endpointObj.hasObjectMember("bus_index"))
@@ -305,15 +337,15 @@ bool saveFullDAGGraphJsonFile(UapmdAudioPluginFullDAGraphData* graph, std::vecto
             auto sourceObj = choc::value::createObject("Endpoint");
             sourceObj.addMember("type", graphEndpointTypeToString(connection.source.type));
             sourceObj.addMember("bus_index", static_cast<int64_t>(connection.source.bus_index));
-            if (connection.source.type == AudioPluginGraphEndpointType::Plugin)
-                sourceObj.addMember("plugin_index", static_cast<int64_t>(connection.source.plugin_index));
+            if (!connection.source.node_id.empty())
+                sourceObj.addMember("node_id", connection.source.node_id);
             connectionObj.addMember("source", sourceObj);
 
             auto targetObj = choc::value::createObject("Endpoint");
             targetObj.addMember("type", graphEndpointTypeToString(connection.target.type));
             targetObj.addMember("bus_index", static_cast<int64_t>(connection.target.bus_index));
-            if (connection.target.type == AudioPluginGraphEndpointType::Plugin)
-                targetObj.addMember("plugin_index", static_cast<int64_t>(connection.target.plugin_index));
+            if (!connection.target.node_id.empty())
+                targetObj.addMember("node_id", connection.target.node_id);
             connectionObj.addMember("target", targetObj);
 
             connectionArray.addArrayElement(connectionObj);
@@ -427,10 +459,15 @@ public:
                 result.type = endpoint.type;
                 result.bus_index = endpoint.bus_index;
                 if (endpoint.type == AudioPluginGraphEndpointType::Plugin) {
-                    auto it = instanceToIndex.find(endpoint.instance_id);
-                    if (it == instanceToIndex.end())
+                    auto* node = runtimeGraph.getPluginNode(endpoint.instance_id);
+                    if (!node)
                         return std::nullopt;
-                    result.plugin_index = it->second;
+                    result.node_id = node->nodeId();
+                    auto it = instanceToIndex.find(endpoint.instance_id);
+                    if (it != instanceToIndex.end())
+                        result.plugin_index = it->second;
+                } else {
+                    result.node_id = defaultNodeIdForEndpointType(endpoint.type);
                 }
                 return result;
             };

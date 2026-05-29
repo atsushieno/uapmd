@@ -2,18 +2,40 @@
 #include "UapmdAudioPluginFullDAGraphData.hpp"
 
 #include <optional>
+#include <string_view>
 
 namespace uapmd {
 
 namespace {
 
+constexpr std::string_view kGraphInputNodeId = "graph:input";
+constexpr std::string_view kGraphOutputNodeId = "graph:output";
+
 std::optional<AudioPluginGraphEndpoint> toRuntimeEndpoint(
     const UapmdProjectPluginGraphEndpointData& endpoint,
+    AudioPluginGraph& graph,
     const std::vector<int32_t>& orderedInstanceIds
 ) {
     AudioPluginGraphEndpoint result;
     result.type = endpoint.type;
     result.bus_index = endpoint.bus_index;
+
+    if (!endpoint.node_id.empty()) {
+        if (endpoint.node_id == kGraphInputNodeId) {
+            result.type = AudioPluginGraphEndpointType::GraphInput;
+            return result;
+        }
+        if (endpoint.node_id == kGraphOutputNodeId) {
+            result.type = AudioPluginGraphEndpointType::GraphOutput;
+            return result;
+        }
+        if (auto* node = dynamic_cast<AudioPluginNode*>(graph.getNode(endpoint.node_id))) {
+            result.type = AudioPluginGraphEndpointType::Plugin;
+            result.instance_id = node->instanceId();
+            return result;
+        }
+    }
+
     if (endpoint.type == AudioPluginGraphEndpointType::Plugin) {
         if (endpoint.plugin_index < 0 || endpoint.plugin_index >= static_cast<int32_t>(orderedInstanceIds.size()))
             return std::nullopt;
@@ -45,8 +67,8 @@ bool UapmdAudioPluginFullDAGraphBuilder::build(
 
     fullGraph->clearConnections();
     for (const auto& serialized : dagData->connections()) {
-        auto source = toRuntimeEndpoint(serialized.source, orderedInstanceIds);
-        auto target = toRuntimeEndpoint(serialized.target, orderedInstanceIds);
+        auto source = toRuntimeEndpoint(serialized.source, graph, orderedInstanceIds);
+        auto target = toRuntimeEndpoint(serialized.target, graph, orderedInstanceIds);
         if (!source || !target)
             continue;
         fullGraph->connect(AudioPluginGraphConnection{
