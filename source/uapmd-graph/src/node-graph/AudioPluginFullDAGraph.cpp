@@ -260,6 +260,8 @@ namespace uapmd {
 
         uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
         bool removeNodeSimple(int32_t instanceId) override;
+        std::map<std::string, AudioGraphNode*> nodes() override;
+        AudioGraphNode* getNode(const std::string& nodeId) override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
         std::vector<AudioPluginGraphConnection> connections() override;
@@ -612,6 +614,23 @@ namespace uapmd {
             if (node)
                 result[node->instanceId()] = node.get();
         return result;
+    }
+
+    std::map<std::string, AudioGraphNode*> AudioPluginFullDAGraphImpl::nodes() {
+        RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
+        std::map<std::string, AudioGraphNode*> result;
+        for (const auto& node : access->nodes)
+            if (node)
+                result[node->nodeId()] = node.get();
+        return result;
+    }
+
+    AudioGraphNode* AudioPluginFullDAGraphImpl::getNode(const std::string& nodeId) {
+        RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
+        for (const auto& node : access->nodes)
+            if (node && node->nodeId() == nodeId)
+                return node.get();
+        return nullptr;
     }
 
     AudioPluginNode* AudioPluginFullDAGraphImpl::getPluginNode(int32_t instanceId) {

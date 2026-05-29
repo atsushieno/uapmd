@@ -14,6 +14,8 @@ namespace uapmd {
 
     class AudioPluginNodeImpl : public AudioPluginNode {
         int32_t instance_id_;
+        std::string node_id_;
+        std::string node_type_;
         AudioPluginInstanceAPI* instance_;
         moodycamel::ConcurrentQueue<umppi::Ump> queue_;
         std::vector<umppi::Ump> pending_events_;
@@ -32,6 +34,8 @@ namespace uapmd {
             size_t eventBufferSizeInBytes,
             std::function<void()>&& onDelete
         ) : instance_id_(instanceId),
+            node_id_("plugin:" + std::to_string(instanceId)),
+            node_type_(instance && !instance->formatName().empty() ? "plugin:" + instance->formatName() : "plugin"),
             instance_(instance),
             queue_(eventBufferSizeInBytes),
             on_delete_(std::move(onDelete)) {
@@ -69,8 +73,46 @@ namespace uapmd {
             return instance_id_;
         }
 
+        const std::string& nodeId() const override {
+            return node_id_;
+        }
+
+        const std::string& nodeType() const override {
+            return node_type_;
+        }
+
+        const std::string& displayName() const override {
+            static const std::string empty{};
+            return instance_ ? instance_->displayName() : empty;
+        }
+
+        bool bypassed() const override {
+            return instance_ && instance_->bypassed();
+        }
+
+        void bypassed(bool value) override {
+            if (instance_)
+                instance_->bypassed(value);
+        }
+
         AudioPluginInstanceAPI* instance() override {
             return instance_;
+        }
+
+        int32_t processAudio(AudioProcessContext& process) override {
+            return instance_ ? instance_->processAudio(process) : 0;
+        }
+
+        uint32_t latencyInSamples() const override {
+            return instance_ ? instance_->latencyInSamples() : 0;
+        }
+
+        double tailLengthInSeconds() const override {
+            return instance_ ? instance_->tailLengthInSeconds() : 0.0;
+        }
+
+        remidy::PluginAudioBuses* audioBuses() override {
+            return instance_ ? instance_->audioBuses() : nullptr;
         }
 
         std::function<void()> releaseOnDelete() {

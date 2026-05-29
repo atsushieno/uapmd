@@ -4,7 +4,9 @@
 
 - Approved for implementation
 - Schema direction documented in [source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md](/Users/atsushi/sources/uapmd/source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md)
-- C++ implementation not started yet
+- `uapmd-graph` module is in place
+- generic graph/node API scaffolding has started
+- runtime behavior is still plugin-backed only
 
 ## Goal
 
@@ -261,6 +263,12 @@ Initial `webaudio:GainNode` behavior:
 - replace plugin-only runtime node assumptions with generic `AudioGraphNode`
 - keep plugin-backed node implementation as one concrete node type
 - preserve current engine behavior for plugin-only graphs
+- current progress:
+  - `AudioGraphNode` and `AudioGraph` exist in `uapmd-graph`
+  - `AudioPluginNode` now derives from `AudioGraphNode`
+  - `AudioPluginGraph` now derives from `AudioGraph`
+  - existing linear/DAG graphs expose generic node lookup by `nodeId`
+  - built-in node processing is not implemented yet
 
 ### Stage 4: Add Descriptor And Registry APIs
 
@@ -290,7 +298,7 @@ Initial `webaudio:GainNode` behavior:
 - [x] Document module/API plan
 - [x] Add `uapmd-graph` CMake target
 - [x] Move current graph runtime code into `uapmd-graph`
-- [ ] Introduce generic `AudioGraphNode` runtime model
+- [~] Introduce generic `AudioGraphNode` runtime model
 - [ ] Introduce graph descriptor types
 - [ ] Introduce built-in node registry
 - [ ] Implement `webaudio:GainNode`

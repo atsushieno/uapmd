@@ -43,6 +43,8 @@ namespace uapmd {
         uint32_t renderLeadInSamples() override;
         uint32_t mainOutputLatencyInSamples() override;
         double mainOutputTailLengthInSeconds() override;
+        std::map<std::string, AudioGraphNode*> nodes() override;
+        AudioGraphNode* getNode(const std::string& nodeId) override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
         std::vector<std::shared_ptr<AudioPluginNode>> releaseNodesForMigration() override;
@@ -100,7 +102,7 @@ namespace uapmd {
             else
                 node->fillEventBufferForGroup(eventIn, group);
 
-            bool bypassed = node->instance()->bypassed();
+            bool bypassed = node->bypassed();
             if (!bypassed)
                 node->processInputMapping(process);
             if (bypassed) {
@@ -115,7 +117,7 @@ namespace uapmd {
             }
 
             // Process audio
-            auto status = node->instance()->processAudio(process);
+            auto status = node->processAudio(process);
             if (status != 0)
                 return status;
 
@@ -144,12 +146,9 @@ namespace uapmd {
             const auto& node = *it;
             if (!node)
                 continue;
-            auto* instance = node->instance();
-            if (!instance || instance->bypassed())
+            auto* buses = node->audioBuses();
+            if (!buses || node->bypassed())
                 continue;
-            auto* buses = instance->audioBuses();
-            if (!buses)
-                break;
             uint32_t enabledOutputs = 0;
             for (auto* bus : buses->audioOutputBuses())
                 if (bus && bus->enabled())
@@ -167,10 +166,9 @@ namespace uapmd {
         for (const auto& node : *access) {
             if (!node)
                 continue;
-            auto* instance = node->instance();
-            if (!instance || instance->bypassed())
+            if (node->bypassed())
                 continue;
-            total += instance->latencyInSamples();
+            total += node->latencyInSamples();
         }
         return total > std::numeric_limits<uint32_t>::max() ?
             std::numeric_limits<uint32_t>::max() :
@@ -183,10 +181,9 @@ namespace uapmd {
         for (const auto& node : *access) {
             if (!node)
                 continue;
-            auto* instance = node->instance();
-            if (!instance || instance->bypassed())
+            if (node->bypassed())
                 continue;
-            const auto tail = instance->tailLengthInSeconds();
+            const auto tail = node->tailLengthInSeconds();
             if (std::isinf(tail))
                 return std::numeric_limits<double>::infinity();
             total += std::max(0.0, tail);
@@ -257,6 +254,22 @@ namespace uapmd {
         for (auto& node : *access)
             ret[node->instanceId()] = node.get();
         return ret;
+    }
+
+    std::map<std::string, AudioGraphNode*> AudioPluginGraphImpl::nodes() {
+        RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+        std::map<std::string, AudioGraphNode*> ret{};
+        for (auto& node : *access)
+            ret[node->nodeId()] = node.get();
+        return ret;
+    }
+
+    AudioGraphNode* AudioPluginGraphImpl::getNode(const std::string& nodeId) {
+        RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+        for (auto& node : *access)
+            if (node && node->nodeId() == nodeId)
+                return node.get();
+        return nullptr;
     }
 
     AudioPluginNode* AudioPluginGraphImpl::getPluginNode(int32_t instanceId) {
