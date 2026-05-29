@@ -2,12 +2,20 @@
 
 ## Overview
 
-UAPMD project files are JSON-based documents that define a timeline-based audio/MIDI project structure. The format supports multiple tracks, each containing clips (audio or MIDI) and audio processing graphs.
+UAPMD project files are JSON-based documents that define a timeline-based audio/MIDI project structure. The format supports multiple tracks, each containing clips (audio or MIDI) and optional audio graph state.
 
 This document currently serves two purposes:
 
-- it documents the legacy graph representation that the codebase can already load and save today;
+- it documents the currently implemented on-disk project and graph format that the codebase can already load and save today;
 - it records the draft generic graph schema that new graph work should target.
+
+The currently implemented format has these important properties:
+
+- `track.volume` persists the implicit track/master fader even when no audio graph exists;
+- `track.graph` is optional and may be omitted entirely;
+- the default runtime fader node `builtin:track_gain` is not serialized in `graph.nodes[]`;
+- external DAG graph data uses `node_id` endpoint identifiers when newly written;
+- older DAG graph data that still uses `plugin_index` remains readable for backward compatibility.
 
 The generic graph schema is intended to describe common DAW-style audio graphs without baking UAPMD-specific DSP node names into the interchange format. Utility nodes should therefore be identified by public semantics, currently based on Web Audio API node concepts such as `GainNode`, `ChannelMergerNode`, and `ChannelSplitterNode`.
 
@@ -43,6 +51,7 @@ Each track represents an independent timeline with its own clips and optional au
   - Recommended UAPMD-supported range is `0.0 .. 8.0`
   - This is the persisted source of truth for the implicit per-track/master fader
 - **`graph`** (object, optional): Defines the audio graph for this track
+  - The field may be omitted when the track does not need explicit graph topology or plugin state
 - **`clips`** (array, optional): List of audio or MIDI clips on this track's timeline
 
 ### Track Volume Persistence
@@ -52,6 +61,20 @@ The implicit per-track and master-track fader is stored only in the top-level tr
 It is intentionally not serialized as a graph node in `graph.nodes[]`, even though the runtime currently realizes that fader using an internal `webaudio:GainNode` with node id `builtin:track_gain`.
 
 `graph.nodes[]` is reserved for graph-authored nodes that are part of the authored topology rather than the default track/master fader.
+
+### Current Graph Persistence Behavior
+
+Today a track can persist audio processing state in one of these ways:
+
+- no `graph` field at all
+  - valid when only `volume` and clips are needed
+- a simple inline graph object with `plugins[]`
+  - used for linear plugin-chain style graphs
+- an external graph file referenced through `graph.external_file`
+  - used for more complex graph topologies
+  - the external graph payload may contain `plugins[]`, generic authored `nodes[]`, and DAG `connections[]`
+
+When DAG `connections[]` are written by current code, endpoint objects use `node_id`. Readers still accept deprecated `plugin_index` endpoint data from older project files.
 
 ## Clip Object
 
@@ -98,7 +121,7 @@ Clips represent either audio files or MIDI data positioned on the timeline.
 
 ## Generic Graph Schema Draft
 
-This is the proposed direction for new graph serialization work.
+This is the proposed direction for future graph serialization work. It is not yet the complete description of the currently written project format.
 
 ### Goals
 
@@ -351,11 +374,15 @@ The following are intentionally out of scope for the first generic graph schema 
 - implicit browser-style channel interpretation rules;
 - modulation/control-rate signal connections.
 
-## Legacy Plugin Graph Object
+## Current Implemented Graph Object
 
-The following legacy representation is still documented because current code can load and save it. New schema work should prefer the generic graph draft above.
+This section describes the graph object shape that current code can load and save today.
 
-Defines an audio processing chain for a track.
+New schema work should still prefer the generic graph draft above, but the current implemented format remains the compatibility contract for existing project files.
+
+### Inline Graph Object
+
+Defines an inline audio graph for a track.
 
 ### Schema
 
@@ -373,17 +400,27 @@ Defines an audio processing chain for a track.
 }
 ```
 
-Legacy DAG external graph files may also contain connection endpoint objects that use deprecated `plugin_index` fields. New graph JSON should write `node_id` endpoint identifiers instead, but readers continue to accept `plugin_index` for backward compatibility with older project files.
-
 ### Fields
 
 - **`external_file`** (string, optional): Path to external graph definition file
-  - If specified, represents a complex graph (e.g., JUCE `.filtergraph` format)
-  - When present, the `plugins` array may be empty or used for simple plugin list
-
+  - If specified, represents a complex graph payload stored outside the main project JSON
+  - When present, the inline `plugins` array may still exist for compatibility or simple cases
 - **`plugins`** (array, optional): Linear list of plugin nodes
-  - Plugins are processed in array order (linear signal chain)
-  - Each plugin object contains:
+  - Plugins are processed in array order for simple chain-style graphs
+
+### External Graph File Behavior
+
+When `external_file` is present, the referenced graph JSON is currently allowed to contain:
+
+- `plugins[]` for plugin-backed nodes
+- `nodes[]` for graph-authored generic nodes such as built-in utility nodes
+- `connections[]` for DAG routing
+
+Newly written DAG endpoint objects use `node_id`. Readers also accept deprecated `plugin_index` endpoint objects for backward compatibility with older project files.
+
+## Legacy Linear Plugin Node Object
+
+The following plugin node payload remains important because it is still part of the currently implemented format and may appear inline or in older external graph files.
 
 #### Plugin Node Object
 
@@ -482,6 +519,7 @@ Clip starts 0.5 seconds before the anchor point (crossfade scenario):
 {
   "tracks": [
     {
+      "volume": 1.0,
       "graph": {
         "plugins": [
         {
@@ -513,6 +551,7 @@ Clip starts 0.5 seconds before the anchor point (crossfade scenario):
       ]
     },
     {
+      "volume": 0.8,
       "graph": {
         "plugins": []
       },
@@ -525,6 +564,7 @@ Clip starts 0.5 seconds before the anchor point (crossfade scenario):
     }
   ],
   "master_track": {
+    "volume": 0.95,
     "graph": {
       "plugins": [
         {
