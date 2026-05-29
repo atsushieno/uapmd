@@ -163,6 +163,8 @@ namespace uapmd {
     {
         auto obj = choc::value::createObject("UapmdTrack");
 
+        obj.addMember("volume", track->volume());
+
         // Serialize plugin graph (only if it has plugins or external file)
         if (track->graph()) {
             auto extFile = track->graph()->externalFile();

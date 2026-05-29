@@ -227,8 +227,9 @@ namespace uapmd {
         const choc::value::ValueView& graphObj)
     {
         const bool hasPlugins = graphObj.hasObjectMember("plugins") && graphObj["plugins"].isArray();
+        const bool hasNodes = graphObj.hasObjectMember("nodes") && graphObj["nodes"].isArray();
         const bool hasConnections = graphObj.hasObjectMember("connections") && graphObj["connections"].isArray();
-        bool hasInlineGraphData = hasPlugins || hasConnections;
+        bool hasInlineGraphData = hasPlugins || hasNodes || hasConnections;
 
         std::unique_ptr<UapmdProjectPluginGraphData> graph;
         if (hasConnections)
@@ -266,6 +267,33 @@ namespace uapmd {
             }
         }
 
+        if (hasNodes) {
+            for (const auto& nodeObj : graphObj["nodes"]) {
+                if (!nodeObj.isObject() || !nodeObj.hasObjectMember("node_id") || !nodeObj.hasObjectMember("type"))
+                    continue;
+                AudioGraphNodeDescriptor descriptor;
+                descriptor.node_id = std::string(nodeObj["node_id"].getString());
+                descriptor.node_type = std::string(nodeObj["type"].getString());
+                if (nodeObj.hasObjectMember("display_name"))
+                    descriptor.display_name = std::string(nodeObj["display_name"].getString());
+                if (nodeObj.hasObjectMember("parameters") && nodeObj["parameters"].isObject()) {
+                    auto paramsObj = nodeObj["parameters"];
+                    for (uint32_t i = 0; i < paramsObj.size(); ++i) {
+                        auto entry = paramsObj[i];
+                        if (entry.isBool())
+                            descriptor.parameters.emplace(std::string(paramsObj.getObjectMemberAt(i).name), entry.getBool());
+                        else if (entry.isInt32() || entry.isInt64())
+                            descriptor.parameters.emplace(std::string(paramsObj.getObjectMemberAt(i).name), static_cast<int64_t>(entry.get<int64_t>()));
+                        else if (entry.isFloat32() || entry.isFloat64())
+                            descriptor.parameters.emplace(std::string(paramsObj.getObjectMemberAt(i).name), entry.get<double>());
+                        else if (entry.isString())
+                            descriptor.parameters.emplace(std::string(paramsObj.getObjectMemberAt(i).name), std::string(entry.getString()));
+                    }
+                }
+                graph->addGenericNode(std::move(descriptor));
+            }
+        }
+
         if (hasConnections) {
             auto* dagGraph = dynamic_cast<UapmdAudioPluginFullDAGraphData*>(graph.get());
             if (!dagGraph) {
@@ -274,6 +302,7 @@ namespace uapmd {
                 converted->externalFile(graph->externalFile());
                 if (auto* pluginListGraph = dynamic_cast<UapmdProjectPluginListGraphData*>(graph.get()))
                     converted->setPlugins(pluginListGraph->plugins());
+                converted->setGenericNodes(graph->genericNodes());
                 graph = std::move(converted);
                 dagGraph = dynamic_cast<UapmdAudioPluginFullDAGraphData*>(graph.get());
             }
@@ -321,6 +350,9 @@ namespace uapmd {
         // Parse plugin graph
         if (trackObj.hasObjectMember("graph"))
             track->graph(parsePluginGraph(trackObj["graph"]));
+
+        if (trackObj.hasObjectMember("volume"))
+            track->volume(trackObj["volume"].getWithDefault<double>(1.0));
 
         if (trackObj.hasObjectMember("markers") && trackObj["markers"].isArray()) {
             std::vector<ClipMarker> markers;
@@ -393,6 +425,7 @@ namespace uapmd {
             if (master) {
                 if (root["master_track"].hasObjectMember("graph"))
                     master->graph(parsePluginGraph(root["master_track"]["graph"]));
+                master->volume(masterTrack->volume());
                 master->markers(masterTrack->markers());
                 for (auto& clip : masterTrack->clips())
                     master->clips().push_back(std::move(clip));

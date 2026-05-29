@@ -2,11 +2,13 @@
 
 ## Status
 
-- Implemented through Stage 6 (engine integration)
+- Implemented through Stage 7 (built-in node serialization)
 - Schema direction documented in [source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md](/Users/atsushi/sources/uapmd/source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md)
 - `uapmd-graph` module owns the graph runtime, node interfaces, registry, and all built-in node implementations
-- `webaudio:GainNode` is fully integrated: created per-track by `SequencerEngine`, routed through both graph types, and controlled via the volume slider in uapmd-app
-- Stage 7 (serialization update) remains pending
+- `webaudio:GainNode` is fully integrated: created per-track by `SequencerEngine`, routed through both graph types, controlled via the volume slider in uapmd-app, and persisted through project graph JSON
+- Graph JSON now persists generic built-in node descriptors under `nodes[]` while retaining the existing `plugins[]` and DAG `connections[]` payloads
+- Loading project graphs now recreates built-in runtime nodes from persisted descriptors for both simple and DAG graph providers
+- The serialization migration is intentionally partial: plugin graph connections still use legacy plugin-index endpoints rather than generic `node_id` endpoint descriptors
 
 ## Goal
 

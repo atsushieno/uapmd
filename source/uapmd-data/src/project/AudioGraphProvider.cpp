@@ -54,9 +54,133 @@ void writeGraphJsonObject(const choc::value::Value& object, std::vector<uint8_t>
     bytes.assign(json.begin(), json.end());
 }
 
+std::optional<AudioGraphScalarValue> parseScalarValue(const choc::value::ValueView& value) {
+    if (value.isBool())
+        return value.getBool();
+    if (value.isInt32() || value.isInt64())
+        return static_cast<int64_t>(value.get<int64_t>());
+    if (value.isFloat32() || value.isFloat64())
+        return value.get<double>();
+    if (value.isString())
+        return std::string(value.getString());
+    return std::nullopt;
+}
+
+choc::value::Value toJsonScalarValue(const AudioGraphScalarValue& value) {
+    return std::visit([](const auto& v) -> choc::value::Value {
+        return choc::value::Value(v);
+    }, value);
+}
+
+std::unordered_map<std::string, AudioGraphScalarValue> parseScalarMap(const choc::value::ValueView& object) {
+    std::unordered_map<std::string, AudioGraphScalarValue> result;
+    if (!object.isObject())
+        return result;
+    for (uint32_t i = 0; i < object.size(); ++i) {
+        auto member = object[i];
+        auto parsed = parseScalarValue(member);
+        if (!parsed)
+            continue;
+        result.emplace(std::string(object.getObjectMemberAt(i).name), std::move(*parsed));
+    }
+    return result;
+}
+
+choc::value::Value toJsonScalarMap(
+    const char* className,
+    const std::unordered_map<std::string, AudioGraphScalarValue>& values) {
+    auto object = choc::value::createObject(className);
+    for (const auto& [key, value] : values)
+        object.addMember(key, toJsonScalarValue(value));
+    return object;
+}
+
+std::optional<AudioGraphNodeDescriptor> parseGenericNodeDescriptor(const choc::value::ValueView& nodeObj) {
+    if (!nodeObj.isObject() || !nodeObj.hasObjectMember("node_id") || !nodeObj.hasObjectMember("type"))
+        return std::nullopt;
+
+    AudioGraphNodeDescriptor descriptor;
+    descriptor.node_id = std::string(nodeObj["node_id"].getString());
+    descriptor.node_type = std::string(nodeObj["type"].getString());
+    if (nodeObj.hasObjectMember("display_name"))
+        descriptor.display_name = std::string(nodeObj["display_name"].getString());
+    if (nodeObj.hasObjectMember("options"))
+        descriptor.options = parseScalarMap(nodeObj["options"]);
+    if (nodeObj.hasObjectMember("parameters"))
+        descriptor.parameters = parseScalarMap(nodeObj["parameters"]);
+    if (nodeObj.hasObjectMember("metadata"))
+        descriptor.metadata = parseScalarMap(nodeObj["metadata"]);
+    if (nodeObj.hasObjectMember("plugin") && nodeObj["plugin"].isObject()) {
+        AudioGraphPluginPayload payload;
+        auto pluginObj = nodeObj["plugin"];
+        if (pluginObj.hasObjectMember("format"))
+            payload.format = std::string(pluginObj["format"].getString());
+        if (pluginObj.hasObjectMember("plugin_id"))
+            payload.plugin_id = std::string(pluginObj["plugin_id"].getString());
+        if (pluginObj.hasObjectMember("state_file"))
+            payload.state_file = std::string(pluginObj["state_file"].getString());
+        descriptor.plugin = std::move(payload);
+    }
+    return descriptor;
+}
+
+choc::value::Value toJsonGenericNodeDescriptor(const AudioGraphNodeDescriptor& descriptor) {
+    auto nodeObj = choc::value::createObject("AudioGraphNode");
+    nodeObj.addMember("node_id", descriptor.node_id);
+    nodeObj.addMember("type", descriptor.node_type);
+    if (!descriptor.display_name.empty())
+        nodeObj.addMember("display_name", descriptor.display_name);
+    if (!descriptor.options.empty())
+        nodeObj.addMember("options", toJsonScalarMap("Options", descriptor.options));
+    if (!descriptor.parameters.empty())
+        nodeObj.addMember("parameters", toJsonScalarMap("Parameters", descriptor.parameters));
+    if (!descriptor.metadata.empty())
+        nodeObj.addMember("metadata", toJsonScalarMap("Metadata", descriptor.metadata));
+    if (descriptor.plugin) {
+        auto pluginObj = choc::value::createObject("PluginPayload");
+        if (!descriptor.plugin->format.empty())
+            pluginObj.addMember("format", descriptor.plugin->format);
+        if (!descriptor.plugin->plugin_id.empty())
+            pluginObj.addMember("plugin_id", descriptor.plugin->plugin_id);
+        if (!descriptor.plugin->state_file.empty())
+            pluginObj.addMember("state_file", descriptor.plugin->state_file);
+        nodeObj.addMember("plugin", pluginObj);
+    }
+    return nodeObj;
+}
+
+template <typename GraphT>
+void parseGenericNodesPayload(const choc::value::ValueView& root, GraphT& graph) {
+    graph.clearGenericNodes();
+    if (!root.hasObjectMember("nodes") || !root["nodes"].isArray())
+        return;
+    for (const auto& nodeObj : root["nodes"]) {
+        auto descriptor = parseGenericNodeDescriptor(nodeObj);
+        if (descriptor)
+            graph.addGenericNode(std::move(*descriptor));
+    }
+}
+
+template <typename GraphT>
+void serializeGenericNodesPayload(choc::value::Value& obj, GraphT& graph) {
+    auto nodes = graph.genericNodes();
+    if (nodes.empty())
+        return;
+    auto nodeArray = choc::value::createEmptyArray();
+    for (const auto& node : nodes)
+        nodeArray.addArrayElement(toJsonGenericNodeDescriptor(node));
+    obj.addMember("nodes", nodeArray);
+}
+
+template <typename GraphDataType>
+void populateProjectGraphGenericNodes(
+    GraphDataType& graphData,
+    AudioPluginGraph& runtimeGraph);
+
 template <typename GraphT>
 void parsePluginListPayload(const choc::value::ValueView& root, GraphT& graph) {
     graph.clearPlugins();
+    graph.clearGenericNodes();
 
     if (root.hasObjectMember("graph_type"))
         graph.graphType(std::string(root["graph_type"].getString()));
@@ -77,6 +201,8 @@ void parsePluginListPayload(const choc::value::ValueView& root, GraphT& graph) {
             graph.addPlugin(std::move(node));
         }
     }
+
+    parseGenericNodesPayload(root, graph);
 }
 
 template <typename GraphT>
@@ -98,6 +224,8 @@ choc::value::Value serializePluginListPayload(GraphT& graph) {
         }
         obj.addMember("plugins", pluginsArray);
     }
+
+    serializeGenericNodesPayload(obj, graph);
 
     return obj;
 }
@@ -193,6 +321,8 @@ bool saveFullDAGGraphJsonFile(UapmdAudioPluginFullDAGraphData* graph, std::vecto
         obj.addMember("connections", connectionArray);
     }
 
+    serializeGenericNodesPayload(obj, *graph);
+
     writeGraphJsonObject(obj, bytes);
     return true;
 }
@@ -232,8 +362,8 @@ public:
         auto* pluginListGraph = dynamic_cast<UapmdProjectPluginListGraphData*>(graphData);
         if (!pluginListGraph)
             return;
-        (void) runtimeGraph;
         (void) instanceToIndex;
+        populateProjectGraphGenericNodes(*pluginListGraph, runtimeGraph);
     }
 
     bool saveProjectGraph(
@@ -288,6 +418,7 @@ public:
             return;
 
         dagData->clearConnections();
+        populateProjectGraphGenericNodes(*dagData, runtimeGraph);
 
         for (const auto& connection : fullGraph->connections()) {
             auto toProjectEndpoint = [&](const AudioPluginGraphEndpoint& endpoint)
@@ -372,6 +503,28 @@ void populateProjectGraphPlugins(
                 });
         }
         ++pluginIndex;
+    }
+}
+
+template <typename GraphDataType>
+void populateProjectGraphGenericNodes(
+    GraphDataType& graphData,
+    AudioPluginGraph& runtimeGraph)
+{
+    graphData.clearGenericNodes();
+    for (const auto& [nodeId, node] : runtimeGraph.nodes()) {
+        if (!node || dynamic_cast<AudioPluginNode*>(node) != nullptr)
+            continue;
+
+        AudioGraphNodeDescriptor descriptor;
+        descriptor.node_id = node->nodeId();
+        descriptor.node_type = node->nodeType();
+        descriptor.display_name = node->displayName();
+
+        if (auto* gainNode = dynamic_cast<builtin::GainNode*>(node))
+            descriptor.parameters.emplace("gain", gainNode->gain());
+
+        graphData.addGenericNode(std::move(descriptor));
     }
 }
 

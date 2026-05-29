@@ -37,6 +37,12 @@ bool UapmdAudioPluginFullDAGraphBuilder::build(
     if (!fullGraph)
         return false;
 
+    for (const auto& node : dagData->genericNodes()) {
+        if (node.plugin)
+            continue;
+        fullGraph->appendBuiltInNodeSimple(node);
+    }
+
     fullGraph->clearConnections();
     for (const auto& serialized : dagData->connections()) {
         auto source = toRuntimeEndpoint(serialized.source, orderedInstanceIds);

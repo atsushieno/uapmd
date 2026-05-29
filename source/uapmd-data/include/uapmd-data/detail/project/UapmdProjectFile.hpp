@@ -76,9 +76,13 @@ namespace uapmd {
 
         virtual std::string graphType() = 0;
         virtual std::filesystem::path externalFile() = 0;
+        virtual std::vector<AudioGraphNodeDescriptor> genericNodes() = 0;
 
         virtual void graphType(const std::string& type) = 0;
         virtual void externalFile(const std::filesystem::path& f) = 0;
+        virtual void addGenericNode(AudioGraphNodeDescriptor node) = 0;
+        virtual void setGenericNodes(std::vector<AudioGraphNodeDescriptor> nodes) = 0;
+        virtual void clearGenericNodes() = 0;
 
         static std::unique_ptr<UapmdProjectPluginGraphData> create();
     };
@@ -88,12 +92,14 @@ namespace uapmd {
         uint64_t absolutePositionInSamples() override { return 0; }
 
         virtual UapmdProjectPluginGraphData* graph() = 0;
+        virtual double volume() = 0;
 
         virtual std::vector<std::unique_ptr<UapmdProjectClipData>>& clips() = 0;
         virtual std::vector<ClipMarker> markers() = 0;
         virtual void markers(std::vector<ClipMarker> values) = 0;
 
         virtual void graph(std::unique_ptr<UapmdProjectPluginGraphData>&& g) = 0;
+        virtual void volume(double value) = 0;
 
         static std::unique_ptr<UapmdProjectTrackData> create();
     };

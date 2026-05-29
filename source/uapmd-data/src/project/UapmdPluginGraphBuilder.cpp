@@ -7,9 +7,16 @@ bool UapmdPluginGraphBuilder::build(
     AudioPluginGraph& graph,
     const std::vector<int32_t>& orderedInstanceIds
 ) {
-    (void) graph;
     (void) orderedInstanceIds;
-    return data != nullptr;
+    if (!data)
+        return false;
+
+    for (const auto& node : data->genericNodes()) {
+        if (node.plugin)
+            continue;
+        graph.appendBuiltInNodeSimple(node);
+    }
+    return true;
 }
 
 } // namespace uapmd

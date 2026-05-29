@@ -52,15 +52,20 @@ namespace uapmd {
     class UapmdProjectPluginGraphDataImpl : public UapmdProjectPluginGraphData {
         std::string graph_type_{};
         std::filesystem::path external_file_{};
+        std::vector<AudioGraphNodeDescriptor> generic_nodes_{};
 
     public:
         UapmdProjectPluginGraphDataImpl() = default;
 
         std::string graphType() override { return graph_type_; }
         std::filesystem::path externalFile() override { return external_file_; }
+        std::vector<AudioGraphNodeDescriptor> genericNodes() override { return generic_nodes_; }
 
         void graphType(const std::string& type) override { graph_type_ = type; }
         void externalFile(const std::filesystem::path& f) override { external_file_ = f; }
+        void addGenericNode(AudioGraphNodeDescriptor node) override { generic_nodes_.push_back(std::move(node)); }
+        void setGenericNodes(std::vector<AudioGraphNodeDescriptor> nodes) override { generic_nodes_ = std::move(nodes); }
+        void clearGenericNodes() override { generic_nodes_.clear(); }
     };
 
     std::unique_ptr<UapmdProjectPluginGraphData> UapmdProjectPluginGraphData::create() {
@@ -71,17 +76,22 @@ namespace uapmd {
         std::string graph_type_{};
         std::filesystem::path external_file_{};
         std::vector<UapmdProjectPluginNodeData> plugins_{};
+        std::vector<AudioGraphNodeDescriptor> generic_nodes_{};
 
     public:
         std::string graphType() override { return graph_type_; }
         std::filesystem::path externalFile() override { return external_file_; }
         std::vector<UapmdProjectPluginNodeData> plugins() override { return plugins_; }
+        std::vector<AudioGraphNodeDescriptor> genericNodes() override { return generic_nodes_; }
 
         void graphType(const std::string& type) override { graph_type_ = type; }
         void externalFile(const std::filesystem::path& f) override { external_file_ = f; }
         void addPlugin(UapmdProjectPluginNodeData node) override { plugins_.push_back(std::move(node)); }
         void setPlugins(std::vector<UapmdProjectPluginNodeData> nodes) override { plugins_ = std::move(nodes); }
         void clearPlugins() override { plugins_.clear(); }
+        void addGenericNode(AudioGraphNodeDescriptor node) override { generic_nodes_.push_back(std::move(node)); }
+        void setGenericNodes(std::vector<AudioGraphNodeDescriptor> nodes) override { generic_nodes_ = std::move(nodes); }
+        void clearGenericNodes() override { generic_nodes_.clear(); }
     };
 
     std::unique_ptr<UapmdProjectPluginListGraphData> UapmdProjectPluginListGraphData::create() {
@@ -91,6 +101,7 @@ namespace uapmd {
     // Concrete implementation of UapmdProjectTrackData
     class UapmdProjectTrackDataImpl : public UapmdProjectTrackData {
         std::unique_ptr<UapmdProjectPluginGraphData> graph_{};
+        double volume_{1.0};
         std::vector<std::unique_ptr<UapmdProjectClipData>> clips_{};
         std::vector<ClipMarker> markers_{};
 
@@ -100,10 +111,12 @@ namespace uapmd {
         }
 
         UapmdProjectPluginGraphData* graph() override { return graph_.get(); }
+        double volume() override { return volume_; }
         std::vector<std::unique_ptr<UapmdProjectClipData>>& clips() override { return clips_; }
         std::vector<ClipMarker> markers() override { return markers_; }
 
         void graph(std::unique_ptr<UapmdProjectPluginGraphData>&& g) override { graph_ = std::move(g); }
+        void volume(double value) override { volume_ = value; }
         void markers(std::vector<ClipMarker> values) override { markers_ = std::move(values); }
     };
 
