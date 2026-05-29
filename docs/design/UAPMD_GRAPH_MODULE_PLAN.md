@@ -8,18 +8,19 @@
 - `webaudio:GainNode` is fully integrated: created per-track by `SequencerEngine`, routed through both graph types, and controlled via the volume slider in uapmd-app
 - Track/master fader persistence now uses top-level track JSON `volume` rather than depending on graph serialization
 - Graph JSON now persists generic built-in node descriptors under `nodes[]` while retaining the existing `plugins[]` and DAG `connections[]` payloads
+- The implicit per-track/master gain node (`builtin:track_gain`) is no longer serialized through graph `nodes[]`; `track.volume` is its only persisted source of truth
 - Loading project graphs now recreates built-in runtime nodes from persisted descriptors for both simple and DAG graph providers
 - DAG graph connections now serialize stable `node_id` endpoint identifiers, while the loader still accepts deprecated `plugin_index` fields for backward compatibility with older project files
+- DAG runtime and editor now treat built-in nodes as addressable graph nodes by `node_id` instead of only as a post-graph special case
 
 ## Remaining Work
 
 - Stage 7b: finish DAG serialization migration beyond the current compatibility bridge
-  - remove runtime/plugin-only assumptions that still prevent fully generic built-in-node connection endpoints
   - eventually remove the deprecated `plugin_index` read fallback when old project compatibility is no longer required
 - Reconcile default track-gain node persistence policy with the new track-level `volume` field
-  - `track.volume` should remain the source of truth for the default track/master fader
-  - graph `nodes[]` should be reserved for graph-authored built-in nodes, not the implicit per-track fader
-- Update graph editor / project tooling assumptions that still treat runtime topology as plugin-only
+  - completed for the implicit per-track/master fader
+  - keep graph `nodes[]` reserved for graph-authored built-in nodes, not the implicit per-track fader
+- Update remaining project tooling assumptions that still treat runtime topology as plugin-only
 - Add regression coverage for:
   - track volume save/load
   - master volume save/load

@@ -244,7 +244,25 @@ globalThis.uapmd = {
             __remidy_timeline_create_empty_midi_clip(trackIndex, positionSamples, tickResolution, bpm),
         getClipUmpEvents: (trackIndex, clipId) => __remidy_timeline_get_clip_ump_events(trackIndex, clipId),
         addUmpEvent: (trackIndex, clipId, tick, words) => __remidy_timeline_add_ump_event(trackIndex, clipId, tick, words),
-        removeUmpEvent: (trackIndex, clipId, eventIndex) => __remidy_timeline_remove_ump_event(trackIndex, clipId, eventIndex)
+        removeUmpEvent: (trackIndex, clipId, eventIndex) => __remidy_timeline_remove_ump_event(trackIndex, clipId, eventIndex),
+        ensureDagGraph: (trackIndex) => __remidy_timeline_ensure_dag_graph(trackIndex),
+        showTrackGraph: (trackIndex) => __remidy_timeline_show_track_graph(trackIndex),
+        revertTrackGraphToSimple: (trackIndex) => __remidy_timeline_revert_track_graph_to_simple(trackIndex),
+        getTrackGraphConnections: (trackIndex) => __remidy_timeline_get_track_graph_connections(trackIndex),
+        connectTrackGraph: (trackIndex, busType, source, target) => __remidy_timeline_connect_track_graph(
+            trackIndex,
+            busType,
+            source.type,
+            source.instanceId ?? -1,
+            source.busIndex ?? 0,
+            target.type,
+            target.instanceId ?? -1,
+            target.busIndex ?? 0,
+            source.nodeId ?? "",
+            target.nodeId ?? ""
+        ),
+        disconnectTrackGraphConnection: (trackIndex, connectionId) =>
+            __remidy_timeline_disconnect_track_graph_connection(trackIndex, connectionId)
     },
 
     render: {

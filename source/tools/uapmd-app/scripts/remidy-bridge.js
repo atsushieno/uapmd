@@ -154,6 +154,9 @@ export class ParameterUpdate {
 
 export class PluginNodeInfo {
     constructor(data) {
+        this.nodeId = data.nodeId || '';
+        this.nodeType = data.nodeType || '';
+        this.isPlugin = data.isPlugin !== undefined ? !!data.isPlugin : true;
         this.instanceId = data.instanceId || -1;
         this.pluginId = data.pluginId || '';
         this.format = data.format || '';

@@ -1,6 +1,14 @@
 #include "uapmd-data/uapmd-data.hpp"
 
+#include <string_view>
+
 namespace uapmd {
+
+namespace {
+
+constexpr std::string_view kImplicitTrackGainNodeId = "builtin:track_gain";
+
+}
 
 bool UapmdPluginGraphBuilder::build(
     UapmdProjectPluginGraphData* data,
@@ -13,6 +21,8 @@ bool UapmdPluginGraphBuilder::build(
 
     for (const auto& node : data->genericNodes()) {
         if (node.plugin)
+            continue;
+        if (node.node_id == kImplicitTrackGainNodeId)
             continue;
         graph.appendBuiltInNodeSimple(node);
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "AudioPluginGraph.hpp"
@@ -20,6 +21,7 @@ namespace uapmd {
 
     struct AudioPluginGraphEndpoint {
         AudioPluginGraphEndpointType type{AudioPluginGraphEndpointType::Plugin};
+        std::string node_id{};
         int32_t instance_id{-1};
         uint32_t bus_index{0};
     };

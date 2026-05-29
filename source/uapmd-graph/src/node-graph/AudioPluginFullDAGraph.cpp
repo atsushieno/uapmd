@@ -20,8 +20,13 @@ namespace uapmd {
     namespace {
 
         constexpr size_t kGraphScratchCapacityFrames = 16384;
+        constexpr uint32_t kDefaultBuiltInChannelCount = 2;
 
         using NodePtr = std::shared_ptr<AudioPluginNodeImpl>;
+
+        std::string defaultNodeIdForInstance(int32_t instanceId) {
+            return "plugin:" + std::to_string(instanceId);
+        }
 
         uint32_t pluginAudioInputBusCount(AudioPluginInstanceAPI* instance) {
             if (!instance || !instance->audioBuses())
@@ -190,23 +195,21 @@ namespace uapmd {
         }
 
         struct GraphNodeRuntime {
-            NodePtr node;
+            std::shared_ptr<AudioGraphNode> node;
             remidy::MasterContext master_context{};
             remidy::AudioProcessContext process;
             std::vector<AudioPluginGraphConnection> incoming_audio{};
             std::vector<AudioPluginGraphConnection> incoming_event{};
 
-            GraphNodeRuntime(const NodePtr& nodeRef, size_t eventBufferSizeInBytes)
+            GraphNodeRuntime(const std::shared_ptr<AudioGraphNode>& nodeRef, size_t eventBufferSizeInBytes)
                 : node(nodeRef), process(master_context, static_cast<uint32_t>(eventBufferSizeInBytes)) {}
         };
 
         struct GraphState {
             std::vector<NodePtr> nodes{};
-            // Built-in nodes (e.g. GainNode) that are not part of the plugin DAG.
-            // They are applied in order to `process` after the DAG output is routed.
             std::vector<std::shared_ptr<AudioGraphNode>> builtin_nodes{};
-            std::unordered_map<int32_t, std::shared_ptr<GraphNodeRuntime>> runtimes{};
-            std::vector<int32_t> topo_order{};
+            std::unordered_map<std::string, std::shared_ptr<GraphNodeRuntime>> runtimes{};
+            std::vector<std::string> topo_order{};
             std::vector<AudioPluginGraphConnection> connections{};
             std::vector<AudioPluginGraphConnection> output_audio_links{};
             std::vector<AudioPluginGraphConnection> output_event_links{};
@@ -224,15 +227,79 @@ namespace uapmd {
             return endpoint.type == AudioPluginGraphEndpointType::Plugin;
         }
 
+        std::string endpointNodeId(const AudioPluginGraphEndpoint& endpoint) {
+            if (!endpoint.node_id.empty())
+                return endpoint.node_id;
+            if (endpoint.type != AudioPluginGraphEndpointType::Plugin || endpoint.instance_id < 0)
+                return {};
+            return defaultNodeIdForInstance(endpoint.instance_id);
+        }
+
         bool isValidEndpointDirection(const AudioPluginGraphConnection& connection) {
             if (connection.source.type == AudioPluginGraphEndpointType::GraphOutput)
                 return false;
             if (connection.target.type == AudioPluginGraphEndpointType::GraphInput)
                 return false;
-            if (connection.source.type == AudioPluginGraphEndpointType::GraphInput &&
-                connection.target.type == AudioPluginGraphEndpointType::GraphOutput)
-                return true;
+        if (connection.source.type == AudioPluginGraphEndpointType::GraphInput &&
+            connection.target.type == AudioPluginGraphEndpointType::GraphOutput)
             return true;
+        return true;
+        }
+
+        std::shared_ptr<AudioGraphNode> findNodeById(const GraphState& state, const std::string& nodeId) {
+            if (nodeId.empty())
+                return nullptr;
+            for (const auto& node : state.nodes)
+                if (node && node->nodeId() == nodeId)
+                    return node;
+            for (const auto& node : state.builtin_nodes)
+                if (node && node->nodeId() == nodeId)
+                    return node;
+            return nullptr;
+        }
+
+        std::vector<std::shared_ptr<AudioGraphNode>> allNodes(const GraphState& state) {
+            std::vector<std::shared_ptr<AudioGraphNode>> result;
+            result.reserve(state.nodes.size() + state.builtin_nodes.size());
+            for (const auto& node : state.nodes)
+                if (node)
+                    result.push_back(node);
+            for (const auto& node : state.builtin_nodes)
+                if (node)
+                    result.push_back(node);
+            return result;
+        }
+
+        uint32_t nodeInputBusCount(const GraphState& state, const std::shared_ptr<AudioGraphNode>& node, AudioPluginGraphBusType busType) {
+            if (!node)
+                return 0;
+            if (auto* pluginNode = dynamic_cast<AudioPluginNode*>(node.get())) {
+                auto* instance = pluginNode->instance();
+                if (!instance)
+                    return 0;
+                return busType == AudioPluginGraphBusType::Audio
+                    ? pluginAudioInputBusCount(instance)
+                    : pluginEventInputBusCount(instance);
+            }
+            return busType == AudioPluginGraphBusType::Audio
+                ? state.runtime_layout.audio_input_bus_count
+                : state.runtime_layout.event_input_bus_count;
+        }
+
+        uint32_t nodeOutputBusCount(const GraphState& state, const std::shared_ptr<AudioGraphNode>& node, AudioPluginGraphBusType busType) {
+            if (!node)
+                return 0;
+            if (auto* pluginNode = dynamic_cast<AudioPluginNode*>(node.get())) {
+                auto* instance = pluginNode->instance();
+                if (!instance)
+                    return 0;
+                return busType == AudioPluginGraphBusType::Audio
+                    ? pluginAudioOutputBusCount(instance)
+                    : pluginEventOutputBusCount(instance);
+            }
+            return busType == AudioPluginGraphBusType::Audio
+                ? state.runtime_layout.audio_output_bus_count
+                : state.runtime_layout.event_output_bus_count;
         }
 
     } // namespace
@@ -322,16 +389,30 @@ namespace uapmd {
                     ? endpoint.bus_index < state.runtime_layout.audio_output_bus_count
                     : endpoint.bus_index < state.runtime_layout.event_output_bus_count;
             case AudioPluginGraphEndpointType::Plugin: {
-                auto node = findNode(state, endpoint.instance_id);
-                if (!node || !node->instance())
+                auto nodeId = endpointNodeId(endpoint);
+                auto node = findNodeById(state, nodeId);
+                if (!node)
                     return false;
-                if (busType == AudioPluginGraphBusType::Audio) {
-                    const bool sourceSide = endpoint.bus_index < pluginAudioOutputBusCount(node->instance());
-                    const bool targetSide = endpoint.bus_index < pluginAudioInputBusCount(node->instance());
+                if (auto* pluginNode = dynamic_cast<AudioPluginNode*>(node.get())) {
+                    auto* instance = pluginNode->instance();
+                    if (!instance)
+                        return false;
+                    if (busType == AudioPluginGraphBusType::Audio) {
+                        const bool sourceSide = endpoint.bus_index < pluginAudioOutputBusCount(instance);
+                        const bool targetSide = endpoint.bus_index < pluginAudioInputBusCount(instance);
+                        return sourceSide || targetSide;
+                    }
+                    const bool sourceSide = endpoint.bus_index < pluginEventOutputBusCount(instance);
+                    const bool targetSide = endpoint.bus_index < pluginEventInputBusCount(instance);
                     return sourceSide || targetSide;
                 }
-                const bool sourceSide = endpoint.bus_index < pluginEventOutputBusCount(node->instance());
-                const bool targetSide = endpoint.bus_index < pluginEventInputBusCount(node->instance());
+                if (busType == AudioPluginGraphBusType::Audio) {
+                    const bool sourceSide = endpoint.bus_index < state.runtime_layout.audio_output_bus_count;
+                    const bool targetSide = endpoint.bus_index < state.runtime_layout.audio_input_bus_count;
+                    return sourceSide || targetSide;
+                }
+                const bool sourceSide = endpoint.bus_index < state.runtime_layout.event_output_bus_count;
+                const bool targetSide = endpoint.bus_index < state.runtime_layout.event_input_bus_count;
                 return sourceSide || targetSide;
             }
         }
@@ -346,7 +427,8 @@ namespace uapmd {
             return;
 
         int64_t nextId = 1;
-        if (state.nodes.empty()) {
+        auto orderedNodes = allNodes(state);
+        if (orderedNodes.empty()) {
             state.next_connection_id = nextId;
             rebuildCompiledState(state);
             return;
@@ -390,41 +472,46 @@ namespace uapmd {
             }
         };
 
-        auto first = state.nodes.front();
+        auto first = orderedNodes.front();
+        const int32_t firstInstanceId = dynamic_cast<AudioPluginNode*>(first.get()) ? dynamic_cast<AudioPluginNode*>(first.get())->instanceId() : -1;
         connectAudioSpan(
-            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphInput, -1, 0},
+            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphInput, {}, -1, 0},
             state.runtime_layout.audio_input_bus_count,
-            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, first->instanceId(), 0},
-            pluginAudioInputBusCount(first->instance()));
+            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, first->nodeId(), firstInstanceId, 0},
+            nodeInputBusCount(state, first, AudioPluginGraphBusType::Audio));
         connectEventSpan(
-            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphInput, -1, 0},
+            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphInput, {}, -1, 0},
             state.runtime_layout.event_input_bus_count,
-            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, first->instanceId(), 0},
-            pluginEventInputBusCount(first->instance()));
+            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, first->nodeId(), firstInstanceId, 0},
+            nodeInputBusCount(state, first, AudioPluginGraphBusType::Event));
 
-        for (const auto& node : state.nodes) {
+        for (const auto& node : orderedNodes) {
+            const int32_t instanceId = dynamic_cast<AudioPluginNode*>(node.get()) ? dynamic_cast<AudioPluginNode*>(node.get())->instanceId() : -1;
             connectEventSpan(
-                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->instanceId(), 0},
-                pluginEventOutputBusCount(node->instance()),
-                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphOutput, -1, 0},
+                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->nodeId(), instanceId, 0},
+                nodeOutputBusCount(state, node, AudioPluginGraphBusType::Event),
+                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphOutput, {}, -1, 0},
                 state.runtime_layout.event_output_bus_count);
         }
 
-        for (size_t i = 0; i + 1 < state.nodes.size(); ++i) {
-            auto src = state.nodes[i];
-            auto dst = state.nodes[i + 1];
+        for (size_t i = 0; i + 1 < orderedNodes.size(); ++i) {
+            auto src = orderedNodes[i];
+            auto dst = orderedNodes[i + 1];
+            const int32_t srcInstanceId = dynamic_cast<AudioPluginNode*>(src.get()) ? dynamic_cast<AudioPluginNode*>(src.get())->instanceId() : -1;
+            const int32_t dstInstanceId = dynamic_cast<AudioPluginNode*>(dst.get()) ? dynamic_cast<AudioPluginNode*>(dst.get())->instanceId() : -1;
             connectAudioSpan(
-                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, src->instanceId(), 0},
-                pluginAudioOutputBusCount(src->instance()),
-                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, dst->instanceId(), 0},
-                pluginAudioInputBusCount(dst->instance()));
+                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, src->nodeId(), srcInstanceId, 0},
+                nodeOutputBusCount(state, src, AudioPluginGraphBusType::Audio),
+                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, dst->nodeId(), dstInstanceId, 0},
+                nodeInputBusCount(state, dst, AudioPluginGraphBusType::Audio));
         }
 
-        auto last = state.nodes.back();
+        auto last = orderedNodes.back();
+        const int32_t lastInstanceId = dynamic_cast<AudioPluginNode*>(last.get()) ? dynamic_cast<AudioPluginNode*>(last.get())->instanceId() : -1;
         connectAudioSpan(
-            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, last->instanceId(), 0},
-            pluginAudioOutputBusCount(last->instance()),
-            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphOutput, -1, 0},
+            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, last->nodeId(), lastInstanceId, 0},
+            nodeOutputBusCount(state, last, AudioPluginGraphBusType::Audio),
+            AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::GraphOutput, {}, -1, 0},
             state.runtime_layout.audio_output_bus_count);
 
         state.next_connection_id = nextId;
@@ -440,14 +527,16 @@ namespace uapmd {
         state.output_tails.assign(state.runtime_layout.audio_output_bus_count, 0.0);
         state.has_cycle = false;
 
-        std::unordered_map<int32_t, std::vector<int32_t>> adjacency;
-        std::unordered_map<int32_t, uint32_t> indegree;
-        for (const auto& node : state.nodes) {
+        std::unordered_map<std::string, std::vector<std::string>> adjacency;
+        std::unordered_map<std::string, uint32_t> indegree;
+        auto orderedNodes = allNodes(state);
+        for (const auto& node : orderedNodes) {
             if (!node)
                 continue;
-            indegree[node->instanceId()] = 0;
+            indegree[node->nodeId()] = 0;
             auto runtime = std::make_shared<GraphNodeRuntime>(node, event_buffer_size_in_bytes_);
-            if (auto* instance = node->instance()) {
+            if (auto* pluginNode = dynamic_cast<AudioPluginNode*>(node.get())) {
+                auto* instance = pluginNode->instance();
                 auto* buses = instance->audioBuses();
                 if (buses) {
                     runtime->process.configureAudioInputBuses(
@@ -455,8 +544,19 @@ namespace uapmd {
                     runtime->process.configureAudioOutputBuses(
                         buildAudioBusSpecs(buses->audioOutputBuses(), kGraphScratchCapacityFrames));
                 }
+            } else {
+                std::vector<remidy::AudioBusSpec> audioInputSpecs;
+                std::vector<remidy::AudioBusSpec> audioOutputSpecs;
+                audioInputSpecs.reserve(state.runtime_layout.audio_input_bus_count);
+                audioOutputSpecs.reserve(state.runtime_layout.audio_output_bus_count);
+                for (uint32_t bus = 0; bus < state.runtime_layout.audio_input_bus_count; ++bus)
+                    audioInputSpecs.push_back(remidy::AudioBusSpec{remidy::AudioBusRole::Main, kDefaultBuiltInChannelCount, kGraphScratchCapacityFrames});
+                for (uint32_t bus = 0; bus < state.runtime_layout.audio_output_bus_count; ++bus)
+                    audioOutputSpecs.push_back(remidy::AudioBusSpec{remidy::AudioBusRole::Main, kDefaultBuiltInChannelCount, kGraphScratchCapacityFrames});
+                runtime->process.configureAudioInputBuses(audioInputSpecs);
+                runtime->process.configureAudioOutputBuses(audioOutputSpecs);
             }
-            state.runtimes[node->instanceId()] = std::move(runtime);
+            state.runtimes[node->nodeId()] = std::move(runtime);
         }
 
         for (const auto& connection : state.connections) {
@@ -471,15 +571,15 @@ namespace uapmd {
                     state.output_audio_links.push_back(connection);
                 else
                     state.output_event_links.push_back(connection);
-                if (isPluginEndpoint(connection.source))
-                    adjacency[connection.source.instance_id];
+                if (!endpointNodeId(connection.source).empty())
+                    adjacency[endpointNodeId(connection.source)];
                 continue;
             }
 
             if (connection.target.type != AudioPluginGraphEndpointType::Plugin)
                 continue;
 
-            auto runtimeIt = state.runtimes.find(connection.target.instance_id);
+            auto runtimeIt = state.runtimes.find(endpointNodeId(connection.target));
             if (runtimeIt == state.runtimes.end())
                 continue;
             if (connection.bus_type == AudioPluginGraphBusType::Audio)
@@ -487,22 +587,22 @@ namespace uapmd {
             else
                 runtimeIt->second->incoming_event.push_back(connection);
 
-            if (isPluginEndpoint(connection.source)) {
-                adjacency[connection.source.instance_id].push_back(connection.target.instance_id);
-                indegree[connection.target.instance_id] += 1;
+            if (!endpointNodeId(connection.source).empty()) {
+                adjacency[endpointNodeId(connection.source)].push_back(endpointNodeId(connection.target));
+                indegree[endpointNodeId(connection.target)] += 1;
             }
         }
 
-        std::queue<int32_t> ready;
-        for (const auto& [instanceId, degree] : indegree)
+        std::queue<std::string> ready;
+        for (const auto& [nodeId, degree] : indegree)
             if (degree == 0)
-                ready.push(instanceId);
+                ready.push(nodeId);
 
         while (!ready.empty()) {
-            const int32_t instanceId = ready.front();
+            const auto nodeId = ready.front();
             ready.pop();
-            state.topo_order.push_back(instanceId);
-            for (int32_t nextId : adjacency[instanceId]) {
+            state.topo_order.push_back(nodeId);
+            for (const auto& nextId : adjacency[nodeId]) {
                 auto it = indegree.find(nextId);
                 if (it == indegree.end() || it->second == 0)
                     continue;
@@ -515,49 +615,51 @@ namespace uapmd {
         if (state.topo_order.size() != state.runtimes.size()) {
             state.has_cycle = true;
             state.topo_order.clear();
-            for (const auto& node : state.nodes)
+            for (const auto& node : orderedNodes)
                 if (node)
-                    state.topo_order.push_back(node->instanceId());
+                    state.topo_order.push_back(node->nodeId());
         }
 
-        std::unordered_map<int32_t, uint32_t> nodeLatencies;
-        std::unordered_map<int32_t, double> nodeTails;
-        for (int32_t instanceId : state.topo_order) {
-            auto runtimeIt = state.runtimes.find(instanceId);
-            if (runtimeIt == state.runtimes.end() || !runtimeIt->second->node || !runtimeIt->second->node->instance())
+        std::unordered_map<std::string, uint32_t> nodeLatencies;
+        std::unordered_map<std::string, double> nodeTails;
+        for (const auto& nodeId : state.topo_order) {
+            auto runtimeIt = state.runtimes.find(nodeId);
+            if (runtimeIt == state.runtimes.end() || !runtimeIt->second->node)
                 continue;
             uint32_t baseLatency = 0;
             double baseTail = 0.0;
             for (const auto& connection : runtimeIt->second->incoming_audio) {
-                if (connection.source.type != AudioPluginGraphEndpointType::Plugin)
+                auto sourceNodeId = endpointNodeId(connection.source);
+                if (sourceNodeId.empty())
                     continue;
-                baseLatency = std::max(baseLatency, nodeLatencies[connection.source.instance_id]);
-                const auto tail = nodeTails[connection.source.instance_id];
+                baseLatency = std::max(baseLatency, nodeLatencies[sourceNodeId]);
+                const auto tail = nodeTails[sourceNodeId];
                 if (std::isinf(tail))
                     baseTail = std::numeric_limits<double>::infinity();
                 else if (!std::isinf(baseTail))
                     baseTail = std::max(baseTail, tail);
             }
-            const auto latency = runtimeIt->second->node->instance()->latencyInSamples();
-            const auto tail = runtimeIt->second->node->instance()->tailLengthInSeconds();
-            nodeLatencies[instanceId] = baseLatency > std::numeric_limits<uint32_t>::max() - latency
+            const auto latency = runtimeIt->second->node->latencyInSamples();
+            const auto tail = runtimeIt->second->node->tailLengthInSeconds();
+            nodeLatencies[nodeId] = baseLatency > std::numeric_limits<uint32_t>::max() - latency
                 ? std::numeric_limits<uint32_t>::max()
                 : baseLatency + latency;
             if (std::isinf(baseTail) || std::isinf(tail))
-                nodeTails[instanceId] = std::numeric_limits<double>::infinity();
+                nodeTails[nodeId] = std::numeric_limits<double>::infinity();
             else
-                nodeTails[instanceId] = baseTail + std::max(0.0, tail);
+                nodeTails[nodeId] = baseTail + std::max(0.0, tail);
         }
 
         for (const auto& connection : state.output_audio_links) {
             if (connection.target.bus_index >= state.output_latencies.size())
                 continue;
-            if (connection.source.type != AudioPluginGraphEndpointType::Plugin)
+            auto sourceNodeId = endpointNodeId(connection.source);
+            if (sourceNodeId.empty())
                 continue;
             state.output_latencies[connection.target.bus_index] = std::max(
                 state.output_latencies[connection.target.bus_index],
-                nodeLatencies[connection.source.instance_id]);
-            const auto tail = nodeTails[connection.source.instance_id];
+                nodeLatencies[sourceNodeId]);
+            const auto tail = nodeTails[sourceNodeId];
             if (std::isinf(tail))
                 state.output_tails[connection.target.bus_index] = std::numeric_limits<double>::infinity();
             else if (!std::isinf(state.output_tails[connection.target.bus_index]))
@@ -600,6 +702,10 @@ namespace uapmd {
             if (existing && existing->nodeId() == descriptor.node_id)
                 return -1;
         access->builtin_nodes.push_back(std::move(node));
+        if (access->custom_topology)
+            rebuildCompiledState(*access);
+        else
+            rebuildSimpleConnections(*access);
         return 0;
     }
 
@@ -799,27 +905,23 @@ namespace uapmd {
         RTGraphState::ScopedAccess<farbot::ThreadType::realtime> access(state_);
         auto& state = *access;
 
-        // Trivial pass-through: no plugins and no built-in nodes.
         if (state.nodes.empty() && state.builtin_nodes.empty()) {
             process.copyInputsToOutputs();
             return 0;
         }
 
-        if (state.nodes.empty()) {
-            // No plugins but built-in nodes exist — they read directly from graph input.
-            // Do not clear outputs; each built-in's processAudio copies input→output itself.
-        } else {
-            process.clearAudioOutputs();
-        }
+        process.clearAudioOutputs();
 
-        for (int32_t instanceId : state.topo_order) {
-            auto runtimeIt = state.runtimes.find(instanceId);
+        for (const auto& nodeId : state.topo_order) {
+            auto runtimeIt = state.runtimes.find(nodeId);
             if (runtimeIt == state.runtimes.end())
                 continue;
             auto& runtime = *runtimeIt->second;
-            auto* instance = runtime.node ? runtime.node->instance() : nullptr;
-            if (!instance)
+            if (!runtime.node)
                 continue;
+            auto* pluginImpl = dynamic_cast<AudioPluginNodeImpl*>(runtime.node.get());
+            auto* pluginNode = dynamic_cast<AudioPluginNode*>(runtime.node.get());
+            auto* instance = pluginNode ? pluginNode->instance() : nullptr;
 
             syncMasterContext(runtime.master_context, process.masterContext());
             runtime.process.frameCount(process.frameCount());
@@ -831,23 +933,26 @@ namespace uapmd {
                     copyInputToInput(runtime.process, connection.target.bus_index, process, connection.source.bus_index);
                     continue;
                 }
-                auto sourceRuntimeIt = state.runtimes.find(connection.source.instance_id);
+                auto sourceRuntimeIt = state.runtimes.find(endpointNodeId(connection.source));
                 if (sourceRuntimeIt == state.runtimes.end())
                     continue;
                 accumulateAudioBus(runtime.process, true, connection.target.bus_index,
                                    sourceRuntimeIt->second->process, false, connection.source.bus_index);
             }
 
-            runtime.node->drainQueueToPending();
-            const auto group = resolveGroup(instanceId);
-            runtime.node->fillEventBufferForGroup(runtime.process.eventIn(), group);
+            uint8_t group = 0xFF;
+            if (pluginImpl && pluginNode) {
+                pluginImpl->drainQueueToPending();
+                group = resolveGroup(pluginNode->instanceId());
+                pluginImpl->fillEventBufferForGroup(runtime.process.eventIn(), group);
+            }
 
             for (const auto& connection : runtime.incoming_event) {
                 if (connection.source.type == AudioPluginGraphEndpointType::GraphInput) {
                     appendEventsForGroup(runtime.process.eventIn(), process.eventIn(), group);
                     continue;
                 }
-                auto sourceRuntimeIt = state.runtimes.find(connection.source.instance_id);
+                auto sourceRuntimeIt = state.runtimes.find(endpointNodeId(connection.source));
                 if (sourceRuntimeIt == state.runtimes.end())
                     continue;
                 appendEventBytes(
@@ -858,9 +963,10 @@ namespace uapmd {
 
             if (runtime.incoming_event.empty()) {
                 for (const auto& connection : runtime.incoming_audio) {
-                    if (connection.source.type != AudioPluginGraphEndpointType::Plugin)
+                    auto sourceNodeId = endpointNodeId(connection.source);
+                    if (sourceNodeId.empty())
                         continue;
-                    auto sourceRuntimeIt = state.runtimes.find(connection.source.instance_id);
+                    auto sourceRuntimeIt = state.runtimes.find(sourceNodeId);
                     if (sourceRuntimeIt == state.runtimes.end())
                         continue;
                     appendEventBytes(
@@ -870,23 +976,29 @@ namespace uapmd {
                 }
             }
 
-            runtime.node->drainPresetRequests();
-            if (!instance->bypassed())
-                runtime.node->processInputMapping(runtime.process);
+            if (pluginImpl && pluginNode && instance) {
+                pluginImpl->drainPresetRequests();
+                if (!instance->bypassed())
+                    pluginImpl->processInputMapping(runtime.process);
 
-            if (instance->bypassed()) {
-                runtime.process.copyInputsToOutputs();
+                if (instance->bypassed()) {
+                    runtime.process.copyInputsToOutputs();
+                } else {
+                    auto status = instance->processAudio(runtime.process);
+                    if (status != 0)
+                        return status;
+                }
+
+                if (!state.custom_topology && event_output_callback_ && runtime.process.eventOut().position() > 0) {
+                    event_output_callback_(
+                        pluginNode->instanceId(),
+                        static_cast<uapmd_ump_t*>(runtime.process.eventOut().getMessages()),
+                        runtime.process.eventOut().position());
+                }
             } else {
-                auto status = instance->processAudio(runtime.process);
+                auto status = runtime.node->processAudio(runtime.process);
                 if (status != 0)
                     return status;
-            }
-
-            if (!state.custom_topology && event_output_callback_ && runtime.process.eventOut().position() > 0) {
-                event_output_callback_(
-                    instanceId,
-                    static_cast<uapmd_ump_t*>(runtime.process.eventOut().getMessages()),
-                    runtime.process.eventOut().position());
             }
         }
 
@@ -895,7 +1007,7 @@ namespace uapmd {
                 copyInputToOutput(process, connection.target.bus_index, process, connection.source.bus_index);
                 continue;
             }
-            auto sourceRuntimeIt = state.runtimes.find(connection.source.instance_id);
+            auto sourceRuntimeIt = state.runtimes.find(endpointNodeId(connection.source));
             if (sourceRuntimeIt == state.runtimes.end())
                 continue;
             accumulateAudioBus(process, false, connection.target.bus_index,
@@ -910,30 +1022,17 @@ namespace uapmd {
                                            process.eventIn().position());
                     continue;
                 }
-                auto sourceRuntimeIt = state.runtimes.find(connection.source.instance_id);
+                auto sourceRuntimeIt = state.runtimes.find(endpointNodeId(connection.source));
                 if (sourceRuntimeIt == state.runtimes.end())
                     continue;
                 auto& eventOut = sourceRuntimeIt->second->process.eventOut();
                 if (eventOut.position() == 0)
                     continue;
-                event_output_callback_(connection.source.instance_id,
-                                       static_cast<uapmd_ump_t*>(eventOut.getMessages()),
-                                       eventOut.position());
-            }
-        }
-
-        // Process built-in nodes (e.g. GainNode) after the DAG output has been assembled.
-        // When there were plugin nodes, advance the context first so the DAG result
-        // becomes their input — matching the advanceToNextNode() semantics used in
-        // AudioPluginGraph's serial chain.
-        if (!state.builtin_nodes.empty()) {
-            if (!state.nodes.empty())
-                process.advanceToNextNode();
-            for (size_t i = 0; i < state.builtin_nodes.size(); ++i) {
-                if (state.builtin_nodes[i])
-                    state.builtin_nodes[i]->processAudio(process);
-                if (i + 1 < state.builtin_nodes.size())
-                    process.advanceToNextNode();
+                if (auto* sourcePluginNode = dynamic_cast<AudioPluginNode*>(sourceRuntimeIt->second->node.get())) {
+                    event_output_callback_(sourcePluginNode->instanceId(),
+                                           static_cast<uapmd_ump_t*>(eventOut.getMessages()),
+                                           eventOut.position());
+                }
             }
         }
 

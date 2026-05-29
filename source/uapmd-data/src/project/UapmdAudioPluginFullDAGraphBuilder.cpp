@@ -10,6 +10,7 @@ namespace {
 
 constexpr std::string_view kGraphInputNodeId = "graph:input";
 constexpr std::string_view kGraphOutputNodeId = "graph:output";
+constexpr std::string_view kImplicitTrackGainNodeId = "builtin:track_gain";
 
 std::optional<AudioPluginGraphEndpoint> toRuntimeEndpoint(
     const UapmdProjectPluginGraphEndpointData& endpoint,
@@ -18,6 +19,7 @@ std::optional<AudioPluginGraphEndpoint> toRuntimeEndpoint(
 ) {
     AudioPluginGraphEndpoint result;
     result.type = endpoint.type;
+    result.node_id = endpoint.node_id;
     result.bus_index = endpoint.bus_index;
 
     if (!endpoint.node_id.empty()) {
@@ -31,14 +33,18 @@ std::optional<AudioPluginGraphEndpoint> toRuntimeEndpoint(
         }
         if (auto* node = dynamic_cast<AudioPluginNode*>(graph.getNode(endpoint.node_id))) {
             result.type = AudioPluginGraphEndpointType::Plugin;
+            result.node_id = endpoint.node_id;
             result.instance_id = node->instanceId();
             return result;
         }
+        result.type = AudioPluginGraphEndpointType::Plugin;
+        return result;
     }
 
     if (endpoint.type == AudioPluginGraphEndpointType::Plugin) {
         if (endpoint.plugin_index < 0 || endpoint.plugin_index >= static_cast<int32_t>(orderedInstanceIds.size()))
             return std::nullopt;
+        result.node_id = "plugin:" + std::to_string(orderedInstanceIds[static_cast<size_t>(endpoint.plugin_index)]);
         result.instance_id = orderedInstanceIds[static_cast<size_t>(endpoint.plugin_index)];
     }
     return result;
@@ -61,6 +67,8 @@ bool UapmdAudioPluginFullDAGraphBuilder::build(
 
     for (const auto& node : dagData->genericNodes()) {
         if (node.plugin)
+            continue;
+        if (node.node_id == kImplicitTrackGainNodeId)
             continue;
         fullGraph->appendBuiltInNodeSimple(node);
     }

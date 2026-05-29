@@ -57,6 +57,11 @@ int allocateStableId(std::unordered_map<int64_t, int>& ids, int64_t key, int& ne
     return it->second;
 }
 
+int64_t hashCombine(int64_t seed, std::string_view text) {
+    const auto hashed = static_cast<int64_t>(std::hash<std::string_view>{}(text));
+    return seed ^ (hashed + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
+}
+
 } // namespace
 
 PluginGraphEditor::WindowState& PluginGraphEditor::ensureWindow(int32_t trackIndex) {
@@ -92,9 +97,21 @@ void PluginGraphEditor::destroyWindow(int32_t trackIndex) {
     std::erase(window_order_, trackIndex);
 }
 
-int PluginGraphEditor::nodeIdForTrackEndpoint(WindowState& window, AudioPluginGraphEndpointType type, int32_t instanceId) {
+std::string PluginGraphEditor::endpointNodeId(const AudioPluginGraphEndpoint& endpoint) const {
+    if (!endpoint.node_id.empty())
+        return endpoint.node_id;
+    if (endpoint.type == AudioPluginGraphEndpointType::GraphInput)
+        return "graph:input";
+    if (endpoint.type == AudioPluginGraphEndpointType::GraphOutput)
+        return "graph:output";
+    if (endpoint.instance_id >= 0)
+        return "plugin:" + std::to_string(endpoint.instance_id);
+    return {};
+}
+
+int PluginGraphEditor::nodeIdForTrackEndpoint(WindowState& window, AudioPluginGraphEndpointType type, const std::string& nodeId) {
     return allocateStableId(window.node_ids,
-                            nodeKeyForTrackEndpoint(window.track_index, type, instanceId),
+                            nodeKeyForTrackEndpoint(window.track_index, type, nodeId),
                             window.next_node_id);
 }
 
@@ -138,19 +155,19 @@ bool PluginGraphEditor::isVisible(int32_t trackIndex) const {
 int64_t PluginGraphEditor::nodeKeyForTrackEndpoint(
     int32_t trackIndex,
     AudioPluginGraphEndpointType type,
-    int32_t instanceId
+    const std::string& nodeId
 ) const {
     const int64_t trackKey = static_cast<int64_t>(trackIndex == kMasterEditorTrack ? 1000000 : trackIndex + 1);
     const int64_t typeKey = type == AudioPluginGraphEndpointType::GraphInput ? 1 :
         type == AudioPluginGraphEndpointType::GraphOutput ? 2 : 3;
-    const int64_t instanceKey = type == AudioPluginGraphEndpointType::Plugin ? static_cast<int64_t>(instanceId + 1) : 0;
-    return (trackKey << 40) | (typeKey << 32) | instanceKey;
+    int64_t seed = (trackKey << 40) | (typeKey << 32);
+    return hashCombine(seed, nodeId);
 }
 
 int64_t PluginGraphEditor::pinKeyForDescriptor(const PinDescriptor& descriptor) const {
     const int64_t nodeKey = nodeKeyForTrackEndpoint(descriptor.track_index,
                                                     descriptor.endpoint.type,
-                                                    descriptor.endpoint.instance_id);
+                                                    endpointNodeId(descriptor.endpoint));
     const int64_t busTypeKey = descriptor.bus_type == AudioPluginGraphBusType::Audio ? 1 : 2;
     const int64_t dirKey = descriptor.is_input ? 1 : 2;
     return (nodeKey << 8) ^ (busTypeKey << 5) ^ (dirKey << 3) ^ static_cast<int64_t>(descriptor.endpoint.bus_index + 1);
@@ -231,7 +248,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
         ImGui::TextDisabled("Advanced DAG editor is unavailable for this graph type.");
         return;
     }
-    auto plugins = graph.plugins();
+    auto nodes = graph.nodes();
     auto connections = fullGraph->connections();
     auto* layoutExtension = graph.getExtension<AudioBusesLayoutExtension>();
     auto layout = layoutExtension ? layoutExtension->busesLayout() : AudioGraphBusesLayout{};
@@ -250,7 +267,8 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
     ImNodes::BeginNodeEditor();
 
     auto renderEndpointNode = [&](AudioPluginGraphEndpointType type, const char* titleText) {
-        const auto nodeId = nodeIdForTrackEndpoint(window, type, -1);
+        const auto endpointId = type == AudioPluginGraphEndpointType::GraphInput ? std::string{"graph:input"} : std::string{"graph:output"};
+        const auto nodeId = nodeIdForTrackEndpoint(window, type, endpointId);
         ImNodes::BeginNode(nodeId);
         ImNodes::BeginNodeTitleBar();
         ImGui::TextUnformatted(titleText);
@@ -265,7 +283,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
         for (uint32_t bus = 0; bus < audioBusCount; ++bus) {
             PinDescriptor descriptor{
                 window.track_index,
-                AudioPluginGraphEndpoint{type, -1, bus},
+                AudioPluginGraphEndpoint{type, endpointId, -1, bus},
                 AudioPluginGraphBusType::Audio,
                 type == AudioPluginGraphEndpointType::GraphOutput
             };
@@ -282,7 +300,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
         for (uint32_t bus = 0; bus < eventBusCount; ++bus) {
             PinDescriptor descriptor{
                 window.track_index,
-                AudioPluginGraphEndpoint{type, -1, bus},
+                AudioPluginGraphEndpoint{type, endpointId, -1, bus},
                 AudioPluginGraphBusType::Event,
                 type == AudioPluginGraphEndpointType::GraphOutput
             };
@@ -298,7 +316,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
         }
         ImNodes::EndNode();
 
-        const int64_t initKey = nodeKeyForTrackEndpoint(window.track_index, type, -1);
+        const int64_t initKey = nodeKeyForTrackEndpoint(window.track_index, type, endpointId);
         if (!window.initialized_node_keys.contains(initKey)) {
             ImNodes::SetNodeGridSpacePos(nodeId, type == AudioPluginGraphEndpointType::GraphInput
                 ? ImVec2(24.0f * uiScale, 96.0f * uiScale)
@@ -310,22 +328,27 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
     renderEndpointNode(AudioPluginGraphEndpointType::GraphInput, "Graph Input");
     renderEndpointNode(AudioPluginGraphEndpointType::GraphOutput, "Graph Output");
 
-    int pluginOrder = 0;
-    for (const auto& [instanceId, node] : plugins) {
-        if (!node || !node->instance())
+    int nodeOrder = 0;
+    for (const auto& [nodeKey, node] : nodes) {
+        if (!node)
             continue;
-        auto* instance = node->instance();
-        const auto nodeId = nodeIdForTrackEndpoint(window, AudioPluginGraphEndpointType::Plugin, instanceId);
+        auto* pluginNode = dynamic_cast<AudioPluginNode*>(node);
+        auto* gainNode = dynamic_cast<builtin::GainNode*>(node);
+        auto* instance = pluginNode ? pluginNode->instance() : nullptr;
+        const auto nodeId = nodeIdForTrackEndpoint(window, AudioPluginGraphEndpointType::Plugin, node->nodeId());
         ImNodes::BeginNode(nodeId);
         ImNodes::BeginNodeTitleBar();
-        ImGui::TextUnformatted(instance->displayName().c_str());
+        ImGui::TextUnformatted(node->displayName().c_str());
         ImNodes::EndNodeTitleBar();
 
-        const uint32_t eventInputCount = instance->audioBuses() && instance->audioBuses()->hasEventInputs() ? 1u : 0u;
+        const uint32_t eventInputCount = instance && instance->audioBuses() && instance->audioBuses()->hasEventInputs()
+            ? 1u
+            : (gainNode ? layout.event_input_bus_count : 0u);
         for (uint32_t bus = 0; bus < eventInputCount; ++bus) {
             PinDescriptor descriptor{
                 window.track_index,
-                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, instanceId, bus},
+                AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->nodeId(),
+                    pluginNode ? pluginNode->instanceId() : -1, bus},
                 AudioPluginGraphBusType::Event,
                 true
             };
@@ -334,14 +357,14 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
             ImNodes::EndInputAttribute();
         }
 
-        if (instance->audioBuses()) {
+        if (instance && instance->audioBuses()) {
             uint32_t bus = 0;
             for (auto* inputBus : instance->audioBuses()->audioInputBuses()) {
                 if (!inputBus || !inputBus->enabled())
                     continue;
                 PinDescriptor descriptor{
                     window.track_index,
-                    AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, instanceId, bus},
+                    AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->nodeId(), pluginNode->instanceId(), bus},
                     AudioPluginGraphBusType::Audio,
                     true
                 };
@@ -357,7 +380,7 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
                     continue;
                 PinDescriptor descriptor{
                     window.track_index,
-                    AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, instanceId, bus},
+                    AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->nodeId(), pluginNode->instanceId(), bus},
                     AudioPluginGraphBusType::Audio,
                     false
                 };
@@ -371,7 +394,41 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
             for (uint32_t eventBus = 0; eventBus < eventOutputCount; ++eventBus) {
                 PinDescriptor descriptor{
                     window.track_index,
-                    AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, instanceId, eventBus},
+                    AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->nodeId(), pluginNode->instanceId(), eventBus},
+                    AudioPluginGraphBusType::Event,
+                    false
+                };
+                ImNodes::BeginOutputAttribute(registerPin(descriptor));
+                ImGui::Text("Event Out %u", eventBus);
+                ImNodes::EndOutputAttribute();
+            }
+        } else if (gainNode) {
+            for (uint32_t bus = 0; bus < layout.audio_input_bus_count; ++bus) {
+                PinDescriptor descriptor{
+                    window.track_index,
+                    AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->nodeId(), -1, bus},
+                    AudioPluginGraphBusType::Audio,
+                    true
+                };
+                ImNodes::BeginInputAttribute(registerPin(descriptor));
+                ImGui::Text("Audio In %u", bus);
+                ImNodes::EndInputAttribute();
+            }
+            for (uint32_t bus = 0; bus < layout.audio_output_bus_count; ++bus) {
+                PinDescriptor descriptor{
+                    window.track_index,
+                    AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->nodeId(), -1, bus},
+                    AudioPluginGraphBusType::Audio,
+                    false
+                };
+                ImNodes::BeginOutputAttribute(registerPin(descriptor));
+                ImGui::Text("Audio Out %u", bus);
+                ImNodes::EndOutputAttribute();
+            }
+            for (uint32_t eventBus = 0; eventBus < layout.event_output_bus_count; ++eventBus) {
+                PinDescriptor descriptor{
+                    window.track_index,
+                    AudioPluginGraphEndpoint{AudioPluginGraphEndpointType::Plugin, node->nodeId(), -1, eventBus},
                     AudioPluginGraphBusType::Event,
                     false
                 };
@@ -385,12 +442,12 @@ void PluginGraphEditor::renderGraph(WindowState& window, float uiScale) {
 
         const int64_t initKey = nodeKeyForTrackEndpoint(window.track_index,
                                                         AudioPluginGraphEndpointType::Plugin,
-                                                        instanceId);
+                                                        node->nodeId());
         if (!window.initialized_node_keys.contains(initKey)) {
-            ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(180.0f * uiScale, (80.0f + pluginOrder * 170.0f) * uiScale));
+            ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(180.0f * uiScale, (80.0f + nodeOrder * 170.0f) * uiScale));
             window.initialized_node_keys.insert(initKey);
         }
-        ++pluginOrder;
+        ++nodeOrder;
     }
 
     for (const auto& connection : connections) {

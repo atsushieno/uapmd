@@ -57,10 +57,11 @@ private:
 
     WindowState& ensureWindow(int32_t trackIndex);
     void destroyWindow(int32_t trackIndex);
-    int64_t nodeKeyForTrackEndpoint(int32_t trackIndex, AudioPluginGraphEndpointType type, int32_t instanceId) const;
+    std::string endpointNodeId(const AudioPluginGraphEndpoint& endpoint) const;
+    int64_t nodeKeyForTrackEndpoint(int32_t trackIndex, AudioPluginGraphEndpointType type, const std::string& nodeId) const;
     int64_t pinKeyForDescriptor(const PinDescriptor& descriptor) const;
     int64_t linkKey(int32_t trackIndex, int64_t connectionId) const;
-    int nodeIdForTrackEndpoint(WindowState& window, AudioPluginGraphEndpointType type, int32_t instanceId);
+    int nodeIdForTrackEndpoint(WindowState& window, AudioPluginGraphEndpointType type, const std::string& nodeId);
     int pinIdForDescriptor(WindowState& window, const PinDescriptor& descriptor);
     int linkIdForConnection(WindowState& window, int64_t connectionId);
     std::string windowId(int32_t trackIndex) const;

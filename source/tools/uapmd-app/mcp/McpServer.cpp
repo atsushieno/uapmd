@@ -241,6 +241,8 @@ choc::value::Value serializeGraphEndpoint(const uapmd::AudioPluginGraphEndpoint&
 {
     auto obj = choc::value::createObject ("");
     obj.setMember ("type", graphEndpointTypeToString(endpoint.type));
+    if (!endpoint.node_id.empty())
+        obj.setMember ("nodeId", endpoint.node_id);
     obj.setMember ("instanceId", endpoint.instance_id);
     obj.setMember ("busIndex", static_cast<int32_t>(endpoint.bus_index));
     return obj;
@@ -268,6 +270,7 @@ bool parseGraphEndpointValue(const choc::value::ValueView& value, uapmd::AudioPl
         error = "graph endpoint type is invalid";
         return false;
     }
+    endpoint.node_id = value.hasObjectMember("nodeId") ? std::string(value["nodeId"].getString()) : std::string{};
     endpoint.instance_id = value.hasObjectMember("instanceId") ? value["instanceId"].getWithDefault<int32_t>(-1) : -1;
     endpoint.bus_index = value.hasObjectMember("busIndex") ? value["busIndex"].getWithDefault<uint32_t>(0) : 0;
     return true;
@@ -293,7 +296,7 @@ static choc::value::Value buildToolDefinitions()
         },
         {
             "list_tracks",
-            "List all sequencer tracks with their plugin instances.",
+            "List all sequencer tracks with their graph nodes and plugin instances.",
             R"j({"type":"object","properties":{}})j"
         },
         {
@@ -329,7 +332,7 @@ static choc::value::Value buildToolDefinitions()
         {
             "connect_track_graph",
             "Create a connection in a track DAG graph.",
-            R"j({"type":"object","required":["trackIndex","busType","source","target"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"},"busType":{"type":"string","description":"audio or event"},"source":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"instanceId":{"type":"integer"},"busIndex":{"type":"integer"}}},"target":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"instanceId":{"type":"integer"},"busIndex":{"type":"integer"}}}}})j"
+            R"j({"type":"object","required":["trackIndex","busType","source","target"],"properties":{"trackIndex":{"type":"integer","description":"Use -1 for master track"},"busType":{"type":"string","description":"audio or event"},"source":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"nodeId":{"type":"string","description":"Graph node identifier for plugin or built-in nodes"},"instanceId":{"type":"integer","description":"Legacy plugin instance id fallback"},"busIndex":{"type":"integer"}}},"target":{"type":"object","required":["type","busIndex"],"properties":{"type":{"type":"string","description":"graphInput, plugin, or graphOutput"},"nodeId":{"type":"string","description":"Graph node identifier for plugin or built-in nodes"},"instanceId":{"type":"integer","description":"Legacy plugin instance id fallback"},"busIndex":{"type":"integer"}}}}})j"
         },
         {
             "disconnect_track_graph_connection",
@@ -493,16 +496,29 @@ static choc::value::Value toolListTracks(const choc::value::Value&)
         auto t = choc::value::createObject ("");
         t.setMember ("trackIndex", i);
         auto instances = choc::value::createEmptyArray();
-        for (const auto& [instanceId, node] : tracks[static_cast<size_t>(i)]->graph().plugins())
+        auto nodes = choc::value::createEmptyArray();
+        for (const auto& [nodeId, graphNode] : tracks[static_cast<size_t>(i)]->graph().nodes())
         {
-            if (!node) continue;
-            auto inst = choc::value::createObject ("");
-            inst.setMember ("instanceId", instanceId);
-            auto* pluginInst = engine.getPluginInstance (instanceId);
-            inst.setMember ("pluginName", pluginInst ? pluginInst->displayName() : std::string (""));
-            instances.addArrayElement (inst);
+            if (!graphNode) continue;
+            auto nodeObj = choc::value::createObject ("");
+            nodeObj.setMember ("nodeId", nodeId);
+            nodeObj.setMember ("nodeType", graphNode->nodeType());
+            nodeObj.setMember ("displayName", graphNode->displayName());
+            if (auto* pluginNode = dynamic_cast<uapmd::AudioPluginNode*>(graphNode)) {
+                nodeObj.setMember ("isPlugin", true);
+                nodeObj.setMember ("instanceId", pluginNode->instanceId());
+                auto* pluginInst = engine.getPluginInstance (pluginNode->instanceId());
+                nodeObj.setMember ("pluginName", pluginInst ? pluginInst->displayName() : std::string (""));
+                instances.addArrayElement (nodeObj);
+            } else {
+                nodeObj.setMember ("isPlugin", false);
+                nodeObj.setMember ("instanceId", -1);
+                nodeObj.setMember ("pluginName", std::string (""));
+            }
+            nodes.addArrayElement (nodeObj);
         }
         t.setMember ("instances", instances);
+        t.setMember ("nodes", nodes);
         arr.addArrayElement (t);
     }
 

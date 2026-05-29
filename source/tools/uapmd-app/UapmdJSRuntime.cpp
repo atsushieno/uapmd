@@ -651,16 +651,30 @@ void UapmdJSRuntime::registerSequencerInstanceAPI()
             trackObj.setMember ("trackIndex", i);
 
             auto nodesArr = choc::value::createEmptyArray();
-            for (const int32_t instanceId : track->orderedInstanceIds()) {
-                auto p = track->graph().getPluginNode(instanceId);
-                if (!p)
+            for (const auto& [nodeId, graphNode] : track->graph().nodes()) {
+                if (!graphNode)
                     continue;
-                auto node = p->instance();
-                auto nodeObj = choc::value::createObject ("PluginNodeInfo");
-                nodeObj.setMember ("instanceId", instanceId);
-                nodeObj.setMember ("pluginId", node->pluginId());
-                nodeObj.setMember ("format", node->formatName());
-                nodeObj.setMember ("displayName", node->displayName());
+                auto nodeObj = choc::value::createObject ("GraphNodeInfo");
+                nodeObj.setMember ("nodeId", nodeId);
+                nodeObj.setMember ("nodeType", graphNode->nodeType());
+                nodeObj.setMember ("displayName", graphNode->displayName());
+                if (auto* pluginNode = dynamic_cast<uapmd::AudioPluginNode*>(graphNode)) {
+                    auto* instance = pluginNode->instance();
+                    nodeObj.setMember ("isPlugin", true);
+                    nodeObj.setMember ("instanceId", pluginNode->instanceId());
+                    if (instance) {
+                        nodeObj.setMember ("pluginId", instance->pluginId());
+                        nodeObj.setMember ("format", instance->formatName());
+                    } else {
+                        nodeObj.setMember ("pluginId", std::string{});
+                        nodeObj.setMember ("format", std::string{});
+                    }
+                } else {
+                    nodeObj.setMember ("isPlugin", false);
+                    nodeObj.setMember ("instanceId", -1);
+                    nodeObj.setMember ("pluginId", std::string{});
+                    nodeObj.setMember ("format", std::string{});
+                }
                 nodesArr.addArrayElement (nodeObj);
             }
             trackObj.setMember ("nodes", nodesArr);
@@ -1141,6 +1155,8 @@ bool parseGraphBusType(std::string_view text, uapmd::AudioPluginGraphBusType& ty
 choc::value::Value serializeGraphEndpoint(const uapmd::AudioPluginGraphEndpoint& endpoint) {
     auto obj = choc::value::createObject("GraphEndpoint");
     obj.setMember("type", graphEndpointTypeToString(endpoint.type));
+    if (!endpoint.node_id.empty())
+        obj.setMember("nodeId", endpoint.node_id);
     obj.setMember("instanceId", endpoint.instance_id);
     obj.setMember("busIndex", static_cast<int32_t>(endpoint.bus_index));
     return obj;
@@ -1153,6 +1169,20 @@ choc::value::Value serializeGraphConnection(const uapmd::AudioPluginGraphConnect
     obj.setMember("source", serializeGraphEndpoint(connection.source));
     obj.setMember("target", serializeGraphEndpoint(connection.target));
     return obj;
+}
+
+uapmd::AudioPluginGraphEndpoint makeGraphEndpoint(
+    uapmd::AudioPluginGraphEndpointType type,
+    std::string nodeId,
+    int32_t instanceId,
+    int32_t busIndex
+) {
+    return uapmd::AudioPluginGraphEndpoint{
+        .type = type,
+        .node_id = std::move(nodeId),
+        .instance_id = instanceId,
+        .bus_index = static_cast<uint32_t>(std::max(0, busIndex)),
+    };
 }
 
 } // namespace
@@ -1265,6 +1295,8 @@ void UapmdJSRuntime::registerTimelineAPI()
         auto targetTypeText = args.get<std::string>(5, "");
         auto targetInstanceId = args.get<int32_t>(6, -1);
         auto targetBusIndex = args.get<int32_t>(7, 0);
+        auto sourceNodeId = args.get<std::string>(8, "");
+        auto targetNodeId = args.get<std::string>(9, "");
 
         auto result = choc::value::createObject("TrackGraphMutation");
         uapmd::AudioPluginGraphBusType busType;
@@ -1283,16 +1315,8 @@ void UapmdJSRuntime::registerTimelineAPI()
             uapmd::AudioPluginGraphConnection{
                 .id = 0,
                 .bus_type = busType,
-                .source = uapmd::AudioPluginGraphEndpoint{
-                    .type = sourceType,
-                    .instance_id = sourceInstanceId,
-                    .bus_index = static_cast<uint32_t>(std::max(0, sourceBusIndex)),
-                },
-                .target = uapmd::AudioPluginGraphEndpoint{
-                    .type = targetType,
-                    .instance_id = targetInstanceId,
-                    .bus_index = static_cast<uint32_t>(std::max(0, targetBusIndex)),
-                },
+                .source = makeGraphEndpoint(sourceType, sourceNodeId, sourceInstanceId, sourceBusIndex),
+                .target = makeGraphEndpoint(targetType, targetNodeId, targetInstanceId, targetBusIndex),
             },
             error);
         result.setMember("success", ok);

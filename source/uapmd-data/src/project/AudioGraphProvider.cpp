@@ -14,6 +14,7 @@ namespace {
 
 constexpr std::string_view kGraphInputNodeId = "graph:input";
 constexpr std::string_view kGraphOutputNodeId = "graph:output";
+constexpr std::string_view kImplicitTrackGainNodeId = "builtin:track_gain";
 
 const char* graphEndpointTypeToString(AudioPluginGraphEndpointType type) {
     switch (type) {
@@ -458,14 +459,19 @@ public:
                 UapmdProjectPluginGraphEndpointData result;
                 result.type = endpoint.type;
                 result.bus_index = endpoint.bus_index;
+                result.node_id = endpoint.node_id;
                 if (endpoint.type == AudioPluginGraphEndpointType::Plugin) {
-                    auto* node = runtimeGraph.getPluginNode(endpoint.instance_id);
-                    if (!node)
-                        return std::nullopt;
-                    result.node_id = node->nodeId();
-                    auto it = instanceToIndex.find(endpoint.instance_id);
-                    if (it != instanceToIndex.end())
-                        result.plugin_index = it->second;
+                    if (result.node_id.empty()) {
+                        auto* node = runtimeGraph.getPluginNode(endpoint.instance_id);
+                        if (!node)
+                            return std::nullopt;
+                        result.node_id = node->nodeId();
+                    }
+                    if (auto* pluginNode = dynamic_cast<AudioPluginNode*>(runtimeGraph.getNode(result.node_id))) {
+                        auto it = instanceToIndex.find(pluginNode->instanceId());
+                        if (it != instanceToIndex.end())
+                            result.plugin_index = it->second;
+                    }
                 } else {
                     result.node_id = defaultNodeIdForEndpointType(endpoint.type);
                 }
@@ -551,6 +557,8 @@ void populateProjectGraphGenericNodes(
     graphData.clearGenericNodes();
     for (const auto& [nodeId, node] : runtimeGraph.nodes()) {
         if (!node || dynamic_cast<AudioPluginNode*>(node) != nullptr)
+            continue;
+        if (nodeId == kImplicitTrackGainNodeId)
             continue;
 
         AudioGraphNodeDescriptor descriptor;
