@@ -2,7 +2,7 @@
 
 ## Status
 
-- Implemented through Stage 7a
+- Implemented through Stage 7 for the current scope
 - Schema direction documented in [source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md](/Users/atsushi/sources/uapmd/source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md)
 - `uapmd-graph` module owns the graph runtime, node interfaces, registry, and all built-in node implementations
 - `webaudio:GainNode` is fully integrated: created per-track by `SequencerEngine`, routed through both graph types, and controlled via the volume slider in uapmd-app
@@ -16,11 +16,17 @@
 
 ## Remaining Work
 
-- Stage 7b: implementation complete enough for current scope
+- Compatibility policy
   - keep the deprecated `plugin_index` reader fallback for backward compatibility with older project files
-- Expand built-in graph node support beyond `webaudio:GainNode`
-- Refine generic graph-node UX and tooling further as needed
-- Keep project/schema documentation aligned with the implemented runtime and persistence behavior
+  - consider retiring that reader path only when old-project compatibility is no longer required
+- Built-in node expansion
+  - implement additional built-in graph node kinds beyond `webaudio:GainNode`
+  - planned next targets include channel utilities such as `webaudio:ChannelMergerNode` and `webaudio:ChannelSplitterNode`
+- Bus and layout semantics
+  - refine built-in node input/output layout semantics so graph-authored utility nodes do not rely on coarse track-level assumptions
+  - make channel-routing behavior clearer for future mixer/remapper-style nodes
+- Additional regression coverage if needed
+  - broaden coverage around generic built-in nodes and future channel-utility nodes as they are implemented
 
 ## Goal
 
@@ -260,6 +266,8 @@ Initial `webaudio:GainNode` behavior:
 
 ## Migration Strategy
 
+Everything is done. They are left for history.
+
 ### Stage 1: Create Module
 
 - add `source/uapmd-graph`
@@ -323,26 +331,3 @@ Initial `webaudio:GainNode` behavior:
 - migrate `uapmd-data` graph serialization toward descriptor-based generic nodes and `node_id`-based connections
 - retain compatibility handling for legacy graph formats as needed
 
-## Progress Checklist
-
-- [x] Document generic graph schema direction
-- [x] Approve dedicated `uapmd-graph` module direction
-- [x] Document module/API plan
-- [x] Add `uapmd-graph` CMake target
-- [x] Move current graph runtime code into `uapmd-graph`
-- [x] Introduce generic `AudioGraphNode` runtime model
-- [x] Introduce graph descriptor types
-- [x] Introduce built-in node registry
-- [x] Implement `webaudio:GainNode`
-- [x] Integrate generic graph nodes into `uapmd-engine`
-- [ ] Update `uapmd-data` to consume graph descriptors (Stage 7)
-- [ ] Revisit graph editor API after generic nodes land
-
-## Open Questions
-
-- ~~whether `uapmd` should temporarily re-export `uapmd-graph` headers during migration, or whether call sites should be updated directly~~ — resolved: call sites were updated directly, no re-export;
-- ~~how much of the current `AudioGraphExtension` API should remain unchanged~~ — resolved: kept unchanged for now;
-- ~~whether built-in node parameters should share the existing plugin parameter event API~~ — resolved: `GainNode` uses `ParameterUpdateEvent` from `AudioGraphNode`, the same mechanism plugin nodes use;
-- ~~whether descriptor value types should stay scalar-only in the first C++ iteration~~ — resolved: scalar-only for now (`std::variant<double, int64_t, std::string>`);
-- how `uapmd-data` serialization should evolve to persist built-in node state (specifically the gain value per track) — currently the gain is not saved/loaded, which will be addressed in Stage 7;
-- whether the graph editor UI should expose built-in nodes as first-class draggable/connectable entities or keep them as implicit track endpoints.
