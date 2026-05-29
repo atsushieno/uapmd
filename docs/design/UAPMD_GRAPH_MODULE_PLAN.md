@@ -284,6 +284,11 @@ Initial `webaudio:GainNode` behavior:
 
 - add runtime built-in gain node implementation
 - support parameter update path and smoothed DSP
+- current progress:
+  - `webaudio:GainNode` runtime node exists in `uapmd-graph`
+  - default graph registry registers a gain-node factory
+  - gain node applies smoothed linear gain and passes events through
+  - graph/engine/data layers do not create or host gain nodes yet
 
 ### Stage 6: Update Engine Integration
 
@@ -306,7 +311,7 @@ Initial `webaudio:GainNode` behavior:
 - [~] Introduce generic `AudioGraphNode` runtime model
 - [~] Introduce graph descriptor types
 - [~] Introduce built-in node registry
-- [ ] Implement `webaudio:GainNode`
+- [~] Implement `webaudio:GainNode`
 - [ ] Integrate generic graph nodes into `uapmd-engine`
 - [ ] Update `uapmd-data` to consume graph descriptors
 - [ ] Revisit graph editor API after generic nodes land

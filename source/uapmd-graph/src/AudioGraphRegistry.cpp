@@ -1,4 +1,5 @@
 #include "uapmd-graph/detail/node-graph/AudioGraphRegistry.hpp"
+#include "uapmd-graph/detail/builtin/GainNode.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -26,7 +27,9 @@ namespace uapmd {
     }
 
     std::unique_ptr<AudioGraphRegistry> AudioGraphRegistry::createDefault() {
-        return std::make_unique<AudioGraphRegistryImpl>();
+        auto registry = std::make_unique<AudioGraphRegistryImpl>();
+        registry->registerBuiltInFactory(builtin::createGainNodeFactory());
+        return registry;
     }
 
 }
