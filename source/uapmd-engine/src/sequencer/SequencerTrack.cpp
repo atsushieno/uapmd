@@ -96,10 +96,8 @@ namespace uapmd {
     bool SequencerTrackImpl::replaceGraph(std::unique_ptr<AudioPluginGraph>&& graph) {
         if (!graph_ || !graph)
             return false;
-
         if (!AudioPluginGraph::migrate(*graph, *graph_))
             return false;
-
         graph_ = std::move(graph);
         ensureTrackGainNode();
         return true;
@@ -124,9 +122,7 @@ namespace uapmd {
 
     double SequencerTrackImpl::trackGain() const {
         auto* gain = findTrackGainNode();
-        if (!gain)
-            return 1.0;
-        return gain->gain();
+        return gain ? gain->gain() : 1.0;
     }
 
     bool SequencerTrackImpl::trackGain(double value) {

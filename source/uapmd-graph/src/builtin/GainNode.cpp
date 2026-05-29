@@ -103,9 +103,13 @@ namespace uapmd::builtin {
             int32_t processAudio(AudioProcessContext& process) override {
                 process.copyInputsToOutputs();
                 copyEvents(process.eventOut(), process.eventIn());
+                applyToOutputs(process);
+                return 0;
+            }
 
+            void applyToOutputs(AudioProcessContext& process) override {
                 if (bypassed())
-                    return 0;
+                    return;
 
                 const auto targetGain = target_gain_.load(std::memory_order_acquire);
                 const auto frameCount = static_cast<size_t>(std::max(process.frameCount(), 0));
@@ -118,7 +122,6 @@ namespace uapmd::builtin {
                     applyGainToOutputs<float>(process, gainStep, gainStart);
 
                 current_gain_ = targetGain;
-                return 0;
             }
 
             uint32_t latencyInSamples() const override {
@@ -167,6 +170,10 @@ namespace uapmd::builtin {
 
     std::unique_ptr<AudioGraphBuiltInNodeFactory> createGainNodeFactory() {
         return std::make_unique<GainNodeFactory>();
+    }
+
+    std::unique_ptr<GainNode> createGainNode(const AudioGraphNodeDescriptor& descriptor) {
+        return std::make_unique<GainNodeImpl>(descriptor);
     }
 
 }

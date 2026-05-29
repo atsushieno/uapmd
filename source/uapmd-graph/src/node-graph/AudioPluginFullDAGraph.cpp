@@ -1,6 +1,7 @@
 #include "uapmd/uapmd.hpp"
 #include "uapmd-graph/detail/node-graph/AudioPluginFullDAGraph.hpp"
 #include "uapmd-graph/detail/node-graph/AudioBusesLayoutExtension.hpp"
+#include "uapmd-graph/detail/node-graph/AudioGraphRegistry.hpp"
 #include "farbot/RealtimeObject.hpp"
 #include "AudioPluginNodeImpl.hpp"
 
@@ -201,6 +202,9 @@ namespace uapmd {
 
         struct GraphState {
             std::vector<NodePtr> nodes{};
+            // Built-in nodes (e.g. GainNode) that are not part of the plugin DAG.
+            // They are applied in order to `process` after the DAG output is routed.
+            std::vector<std::shared_ptr<AudioGraphNode>> builtin_nodes{};
             std::unordered_map<int32_t, std::shared_ptr<GraphNodeRuntime>> runtimes{};
             std::vector<int32_t> topo_order{};
             std::vector<AudioPluginGraphConnection> connections{};
@@ -235,6 +239,7 @@ namespace uapmd {
 
     class AudioPluginFullDAGraphImpl : public AudioPluginFullDAGraph, public AudioBusesLayoutExtension {
         RTGraphState state_;
+        std::unique_ptr<AudioGraphRegistry> registry_;
         size_t event_buffer_size_in_bytes_;
         std::function<uint8_t(int32_t)> group_resolver_;
         std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback_;
@@ -248,6 +253,7 @@ namespace uapmd {
     public:
         explicit AudioPluginFullDAGraphImpl(size_t eventBufferSizeInBytes, std::string providerId)
             : AudioPluginFullDAGraph(std::move(providerId))
+            , registry_(AudioGraphRegistry::createDefault())
             , event_buffer_size_in_bytes_(eventBufferSizeInBytes) {
             RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
             rebuildSimpleConnections(*access);
@@ -581,8 +587,20 @@ namespace uapmd {
     }
 
     uapmd_status_t AudioPluginFullDAGraphImpl::appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) {
-        (void) descriptor;
-        return -1;
+        if (descriptor.node_type.empty() || !registry_)
+            return -1;
+        auto* factory = registry_->findBuiltInFactory(descriptor.node_type);
+        if (!factory)
+            return -1;
+        auto node = factory->create(descriptor);
+        if (!node)
+            return -1;
+        RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
+        for (const auto& existing : access->builtin_nodes)
+            if (existing && existing->nodeId() == descriptor.node_id)
+                return -1;
+        access->builtin_nodes.push_back(std::move(node));
+        return 0;
     }
 
     bool AudioPluginFullDAGraphImpl::removeNodeSimple(int32_t instanceId) {
@@ -628,12 +646,18 @@ namespace uapmd {
         for (const auto& node : access->nodes)
             if (node)
                 result[node->nodeId()] = node.get();
+        for (const auto& node : access->builtin_nodes)
+            if (node)
+                result[node->nodeId()] = node.get();
         return result;
     }
 
     AudioGraphNode* AudioPluginFullDAGraphImpl::getNode(const std::string& nodeId) {
         RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
         for (const auto& node : access->nodes)
+            if (node && node->nodeId() == nodeId)
+                return node.get();
+        for (const auto& node : access->builtin_nodes)
             if (node && node->nodeId() == nodeId)
                 return node.get();
         return nullptr;
@@ -696,11 +720,14 @@ namespace uapmd {
     }
 
     std::vector<std::shared_ptr<AudioGraphNode>> AudioPluginFullDAGraphImpl::releaseNodesForMigration() {
-        std::vector<NodePtr> releasedNodes;
+        std::vector<NodePtr> releasedPlugins;
+        std::vector<std::shared_ptr<AudioGraphNode>> releasedBuiltins;
         {
             RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
-            releasedNodes = std::move(access->nodes);
+            releasedPlugins = std::move(access->nodes);
+            releasedBuiltins = std::move(access->builtin_nodes);
             access->nodes.clear();
+            access->builtin_nodes.clear();
             access->runtimes.clear();
             access->topo_order.clear();
             access->connections.clear();
@@ -714,8 +741,11 @@ namespace uapmd {
         }
 
         std::vector<std::shared_ptr<AudioGraphNode>> result;
-        result.reserve(releasedNodes.size());
-        for (auto& node : releasedNodes)
+        result.reserve(releasedPlugins.size() + releasedBuiltins.size());
+        for (auto& node : releasedPlugins)
+            if (node)
+                result.push_back(std::move(node));
+        for (auto& node : releasedBuiltins)
             if (node)
                 result.push_back(std::move(node));
         return result;
@@ -724,10 +754,12 @@ namespace uapmd {
     bool AudioPluginFullDAGraphImpl::adoptNodesFromMigration(std::vector<std::shared_ptr<AudioGraphNode>>&& nodes) {
         RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
         for (auto& transferred : nodes) {
-            auto node = std::dynamic_pointer_cast<AudioPluginNodeImpl>(transferred);
-            if (!node)
-                return false;
-            access->nodes.push_back(std::move(node));
+            if (auto pluginNode = std::dynamic_pointer_cast<AudioPluginNodeImpl>(transferred)) {
+                access->nodes.push_back(std::move(pluginNode));
+            } else {
+                // Built-in node (e.g. GainNode) — store in the separate list.
+                access->builtin_nodes.push_back(std::move(transferred));
+            }
         }
         if (access->custom_topology)
             rebuildCompiledState(*access);
@@ -767,12 +799,18 @@ namespace uapmd {
         RTGraphState::ScopedAccess<farbot::ThreadType::realtime> access(state_);
         auto& state = *access;
 
-        if (state.nodes.empty()) {
+        // Trivial pass-through: no plugins and no built-in nodes.
+        if (state.nodes.empty() && state.builtin_nodes.empty()) {
             process.copyInputsToOutputs();
             return 0;
         }
 
-        process.clearAudioOutputs();
+        if (state.nodes.empty()) {
+            // No plugins but built-in nodes exist — they read directly from graph input.
+            // Do not clear outputs; each built-in's processAudio copies input→output itself.
+        } else {
+            process.clearAudioOutputs();
+        }
 
         for (int32_t instanceId : state.topo_order) {
             auto runtimeIt = state.runtimes.find(instanceId);
@@ -881,6 +919,21 @@ namespace uapmd {
                 event_output_callback_(connection.source.instance_id,
                                        static_cast<uapmd_ump_t*>(eventOut.getMessages()),
                                        eventOut.position());
+            }
+        }
+
+        // Process built-in nodes (e.g. GainNode) after the DAG output has been assembled.
+        // When there were plugin nodes, advance the context first so the DAG result
+        // becomes their input — matching the advanceToNextNode() semantics used in
+        // AudioPluginGraph's serial chain.
+        if (!state.builtin_nodes.empty()) {
+            if (!state.nodes.empty())
+                process.advanceToNextNode();
+            for (size_t i = 0; i < state.builtin_nodes.size(); ++i) {
+                if (state.builtin_nodes[i])
+                    state.builtin_nodes[i]->processAudio(process);
+                if (i + 1 < state.builtin_nodes.size())
+                    process.advanceToNextNode();
             }
         }
 
