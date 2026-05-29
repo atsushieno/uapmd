@@ -24,21 +24,34 @@ The project file is a JSON object with the following top-level structure:
 
 ## Track Object
 
-Each track represents an independent timeline with its own clips and audio processing chain.
+Each track represents an independent timeline with its own clips and optional audio graph state.
 
 ### Schema
 
 ```json
 {
-  "graph": { /* plugin graph object */ },
+  "volume": 1.0,
+  "graph": { /* graph object */ },
   "clips": [ /* array of clip objects */ ]
 }
 ```
 
 ### Fields
 
-- **`graph`** (object, optional): Defines the audio plugin processing chain for this track
+- **`volume`** (number, optional): Track/master fader gain as a linear scalar
+  - Default is `1.0`
+  - Recommended UAPMD-supported range is `0.0 .. 8.0`
+  - This is the persisted source of truth for the implicit per-track/master fader
+- **`graph`** (object, optional): Defines the audio graph for this track
 - **`clips`** (array, optional): List of audio or MIDI clips on this track's timeline
+
+### Track Volume Persistence
+
+The implicit per-track and master-track fader is stored only in the top-level track object's `volume` field.
+
+It is intentionally not serialized as a graph node in `graph.nodes[]`, even though the runtime currently realizes that fader using an internal `webaudio:GainNode` with node id `builtin:track_gain`.
+
+`graph.nodes[]` is reserved for graph-authored nodes that are part of the authored topology rather than the default track/master fader.
 
 ## Clip Object
 
@@ -112,6 +125,11 @@ This is the proposed direction for new graph serialization work.
 - **`graph_type`** (string, required): Graph format identifier
 - **`nodes`** (array, required): Graph-local node definitions
 - **`connections`** (array, required): Directed edges between node ports
+
+### Generic Graph Persistence Notes
+
+- The implicit track/master fader is not serialized in `nodes[]`; use the parent track object's `volume` field instead.
+- Graph-authored built-in nodes, including authored `webaudio:GainNode` instances that are not the implicit default fader, are serialized in `nodes[]`.
 
 ### Node Object
 
@@ -355,6 +373,8 @@ Defines an audio processing chain for a track.
 }
 ```
 
+Legacy DAG external graph files may also contain connection endpoint objects that use deprecated `plugin_index` fields. New graph JSON should write `node_id` endpoint identifiers instead, but readers continue to accept `plugin_index` for backward compatibility with older project files.
+
 ### Fields
 
 - **`external_file`** (string, optional): Path to external graph definition file
@@ -400,7 +420,8 @@ The master track is a special track that processes the final mix output. It foll
 ```json
 {
   "master_track": {
-    "graph": { /* plugin graph for master bus */ },
+    "volume": 1.0,
+    "graph": { /* graph object for master bus */ },
     "clips": [ /* clips on master timeline */ ]
   }
 }

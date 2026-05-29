@@ -1215,7 +1215,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     if (renderIconButtonWithTooltip(std::format("{}##LegClips{}", icons::Clips, trackIndex).c_str(), "Edit clips"))
         ImGui::OpenPopup(clipPopupId.c_str());
     ImGui::SameLine();
-    if (renderIconButtonWithTooltip(std::format("{}##LegGraph{}", icons::Graph, trackIndex).c_str(), "Show plugin graph")) {
+    if (renderIconButtonWithTooltip(std::format("{}##LegGraph{}", icons::Graph, trackIndex).c_str(), "Show track graph")) {
         if (pluginGraphEditor_.isVisible(trackIndex))
             pluginGraphEditor_.hideTrack(trackIndex);
         else

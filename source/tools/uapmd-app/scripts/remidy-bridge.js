@@ -152,7 +152,7 @@ export class ParameterUpdate {
     }
 }
 
-export class PluginNodeInfo {
+export class GraphNodeInfo {
     constructor(data) {
         this.nodeId = data.nodeId || '';
         this.nodeType = data.nodeType || '';
@@ -164,10 +164,13 @@ export class PluginNodeInfo {
     }
 }
 
+export class PluginNodeInfo extends GraphNodeInfo {
+}
+
 export class TrackInfo {
     constructor(data) {
         this.trackIndex = data.trackIndex || -1;
-        this.nodes = (data.nodes || []).map(n => new PluginNodeInfo(n));
+        this.nodes = (data.nodes || []).map(n => new GraphNodeInfo(n));
     }
 }
 

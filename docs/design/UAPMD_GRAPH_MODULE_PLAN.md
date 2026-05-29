@@ -12,20 +12,15 @@
 - Loading project graphs now recreates built-in runtime nodes from persisted descriptors for both simple and DAG graph providers
 - DAG graph connections now serialize stable `node_id` endpoint identifiers, while the loader still accepts deprecated `plugin_index` fields for backward compatibility with older project files
 - DAG runtime and editor now treat built-in nodes as addressable graph nodes by `node_id` instead of only as a post-graph special case
+- UI and scripting surfaces now use generic graph-node terminology instead of treating all graph nodes as plugins
 
 ## Remaining Work
 
-- Stage 7b: finish DAG serialization migration beyond the current compatibility bridge
-  - eventually remove the deprecated `plugin_index` read fallback when old project compatibility is no longer required
-- Reconcile default track-gain node persistence policy with the new track-level `volume` field
-  - completed for the implicit per-track/master fader
-  - keep graph `nodes[]` reserved for graph-authored built-in nodes, not the implicit per-track fader
-- Update remaining project tooling assumptions that still treat runtime topology as plugin-only
-- Add regression coverage for:
-  - track volume save/load
-  - master volume save/load
-  - simple graph vs DAG graph built-in node round-trip
-  - backward compatibility with project files that predate `volume` and `nodes[]`
+- Stage 7b: implementation complete enough for current scope
+  - keep the deprecated `plugin_index` reader fallback for backward compatibility with older project files
+- Expand built-in graph node support beyond `webaudio:GainNode`
+- Refine generic graph-node UX and tooling further as needed
+- Keep project/schema documentation aligned with the implemented runtime and persistence behavior
 
 ## Goal
 

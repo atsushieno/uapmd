@@ -26,11 +26,11 @@ struct TrackAccess {
 TrackAccess getTrackAccess(int32_t trackIndex) {
     auto& sequencer = AppModel::instance().sequencer();
     if (trackIndex == kMasterEditorTrack)
-        return {sequencer.engine()->masterTrack(), "Master Plugin Graph"};
+        return {sequencer.engine()->masterTrack(), "Master Track Graph"};
     auto tracks = sequencer.engine()->tracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size()))
         return {};
-    return {tracks[static_cast<size_t>(trackIndex)], std::format("Track {} Plugin Graph", trackIndex)};
+    return {tracks[static_cast<size_t>(trackIndex)], std::format("Track {} Graph", trackIndex)};
 }
 
 const char* endpointLabel(AudioPluginGraphBusType busType, bool isInput, uint32_t busIndex) {
@@ -187,7 +187,7 @@ std::string PluginGraphEditor::windowId(int32_t trackIndex) const {
 std::string PluginGraphEditor::windowTitle(int32_t trackIndex) const {
     auto access = getTrackAccess(trackIndex);
     if (access.label.empty())
-        return std::format("Plugin Graph##{}", windowId(trackIndex));
+        return std::format("Track Graph##{}", windowId(trackIndex));
     return std::format("{}##{}", access.label, windowId(trackIndex));
 }
 
