@@ -3,6 +3,7 @@
 #include <sstream>
 #include <gtest/gtest.h>
 #include "uapmd-data/uapmd-data.hpp"
+#include "../uapmd-data/src/project/UapmdAudioPluginFullDAGraphData.hpp"
 
 namespace fs = std::filesystem;
 
@@ -364,6 +365,136 @@ TEST_F(UapmdProjectFileTest, MasterTrack) {
     ASSERT_EQ(markers.size(), 2);
     EXPECT_EQ(markers[0].markerId, "intro");
     EXPECT_EQ(markers[1].markerId, "drop");
+}
+
+TEST_F(UapmdProjectFileTest, TrackAndMasterVolumeRoundTrip) {
+    auto project = uapmd::UapmdProjectData::create();
+
+    auto track = uapmd::UapmdProjectTrackData::create();
+    track->volume(0.8);
+    project->addTrack(std::move(track));
+
+    auto* master = project->masterTrack();
+    ASSERT_NE(master, nullptr);
+    master->volume(0.65);
+
+    auto file_path = test_dir / "track_master_volume_project.json";
+    ASSERT_TRUE(uapmd::UapmdProjectDataWriter::write(project.get(), file_path));
+
+    auto loaded_project = uapmd::UapmdProjectDataReader::read(file_path);
+    ASSERT_NE(loaded_project, nullptr);
+    ASSERT_EQ(loaded_project->tracks().size(), 1);
+    ASSERT_NE(loaded_project->masterTrack(), nullptr);
+
+    EXPECT_DOUBLE_EQ(loaded_project->tracks()[0]->volume(), 0.8);
+    EXPECT_DOUBLE_EQ(loaded_project->masterTrack()->volume(), 0.65);
+}
+
+TEST_F(UapmdProjectFileTest, EmbeddedDagGraphParsesNodeIdEndpoints) {
+    std::string json = R"({
+  "tracks": [
+    {
+      "graph": {
+        "graph_type": "urn:uapmd-graph:common/graph/dag/v1",
+        "plugins": [
+          {
+            "plugin_id": "com.example.synth",
+            "format": "vst3",
+            "display_name": "Synth"
+          }
+        ],
+        "nodes": [
+          {
+            "node_id": "builtin:graph_gain",
+            "type": "webaudio:GainNode",
+            "display_name": "Graph Gain",
+            "parameters": {
+              "gain": 0.5
+            }
+          }
+        ],
+        "connections": [
+          {
+            "id": 1,
+            "bus_type": "audio",
+            "source": { "type": "plugin", "node_id": "plugin:42", "bus_index": 0 },
+            "target": { "type": "plugin", "node_id": "builtin:graph_gain", "bus_index": 0 }
+          },
+          {
+            "id": 2,
+            "bus_type": "audio",
+            "source": { "node_id": "builtin:graph_gain", "bus_index": 0 },
+            "target": { "node_id": "graph:output", "bus_index": 0 }
+          }
+        ]
+      },
+      "clips": []
+    }
+  ]
+})";
+
+    auto file_path = createTestFile("embedded_dag_node_id_project.json", json);
+    auto project = uapmd::UapmdProjectDataReader::read(file_path);
+    ASSERT_NE(project, nullptr);
+    ASSERT_EQ(project->tracks().size(), 1);
+
+    auto* graph = dynamic_cast<uapmd::UapmdAudioPluginFullDAGraphData*>(project->tracks()[0]->graph());
+    ASSERT_NE(graph, nullptr);
+
+    auto genericNodes = graph->genericNodes();
+    ASSERT_EQ(genericNodes.size(), 1);
+    EXPECT_EQ(genericNodes[0].node_id, "builtin:graph_gain");
+    EXPECT_EQ(genericNodes[0].node_type, "webaudio:GainNode");
+
+    auto connections = graph->connections();
+    ASSERT_EQ(connections.size(), 2);
+    EXPECT_EQ(connections[0].source.node_id, "plugin:42");
+    EXPECT_EQ(connections[0].target.node_id, "builtin:graph_gain");
+    EXPECT_EQ(connections[1].source.node_id, "builtin:graph_gain");
+    EXPECT_EQ(connections[1].target.node_id, "graph:output");
+    EXPECT_EQ(connections[1].target.type, uapmd::AudioPluginGraphEndpointType::GraphOutput);
+}
+
+TEST_F(UapmdProjectFileTest, EmbeddedDagGraphParsesLegacyPluginIndexEndpoints) {
+    std::string json = R"({
+  "tracks": [
+    {
+      "graph": {
+        "graph_type": "urn:uapmd-graph:common/graph/dag/v1",
+        "plugins": [
+          {
+            "plugin_id": "com.example.synth",
+            "format": "vst3",
+            "display_name": "Synth"
+          }
+        ],
+        "connections": [
+          {
+            "id": 1,
+            "bus_type": "audio",
+            "source": { "type": "plugin", "plugin_index": 0, "bus_index": 0 },
+            "target": { "type": "graph_output", "bus_index": 0 }
+          }
+        ]
+      },
+      "clips": []
+    }
+  ]
+})";
+
+    auto file_path = createTestFile("embedded_dag_plugin_index_project.json", json);
+    auto project = uapmd::UapmdProjectDataReader::read(file_path);
+    ASSERT_NE(project, nullptr);
+    ASSERT_EQ(project->tracks().size(), 1);
+
+    auto* graph = dynamic_cast<uapmd::UapmdAudioPluginFullDAGraphData*>(project->tracks()[0]->graph());
+    ASSERT_NE(graph, nullptr);
+
+    auto connections = graph->connections();
+    ASSERT_EQ(connections.size(), 1);
+    EXPECT_EQ(connections[0].source.plugin_index, 0);
+    EXPECT_TRUE(connections[0].source.node_id.empty());
+    EXPECT_EQ(connections[0].target.type, uapmd::AudioPluginGraphEndpointType::GraphOutput);
 }
 
 // Test: Invalid anchor - not found

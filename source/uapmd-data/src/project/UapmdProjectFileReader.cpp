@@ -261,7 +261,6 @@ namespace uapmd {
         }
 
         if (hasPlugins) {
-            auto* pluginListGraph = dynamic_cast<UapmdProjectPluginListGraphData*>(graph.get());
             for (const auto& pluginObj : graphObj["plugins"]) {
                 UapmdProjectPluginNodeData node;
                 if (pluginObj.hasObjectMember("plugin_id"))
@@ -274,7 +273,10 @@ namespace uapmd {
                     node.state_file = std::string(pluginObj["state_file"].getString());
                 if (pluginObj.hasObjectMember("group_index"))
                     node.group_index = pluginObj["group_index"].getWithDefault<int32_t>(-1);
-                pluginListGraph->addPlugin(std::move(node));
+                if (auto* pluginListGraph = dynamic_cast<UapmdProjectPluginListGraphData*>(graph.get()))
+                    pluginListGraph->addPlugin(node);
+                if (auto* dagGraph = dynamic_cast<UapmdAudioPluginFullDAGraphData*>(graph.get()))
+                    dagGraph->addPlugin(std::move(node));
             }
         }
 
