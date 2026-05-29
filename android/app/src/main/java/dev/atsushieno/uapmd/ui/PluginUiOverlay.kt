@@ -20,6 +20,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import dev.atsushieno.uapmd.MainActivity
+import org.androidaudioplugin.hosting.AudioPluginSurfaceControlClient
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 
@@ -336,6 +337,37 @@ private class PluginUiOverlay(
         updateAttachedViewSize()
         if (notifyNative && surfaceReadyNotified)
             notifyViewportConfiguration()
+    }
+
+    /**
+     * Called when the plugin itself reports a content size change (e.g. zoom change).
+     * Updates host-side scrollbars and viewport WITHOUT triggering notifyViewportConfiguration,
+     * which would cause an infinite loop (relayout -> JUCE re-layout -> OPCODE_CONTENT_SIZE_CHANGED).
+     */
+    fun updateContentSizeFromPlugin(width: Int, height: Int) {
+        // Ignore any notifications that arrive before the surface is ready.
+        // OPCODE_CONTENT_SIZE_CHANGED can fire during plugin initialization; processing it
+        // then would corrupt the overlay dimensions before the surface is connected.
+        if (!surfaceReadyNotified) return
+        // Reject invalid sizes (JUCE may emit a 0x0 notification before its first real layout).
+        if (width <= 0 || height <= 0) return
+        val newContentW = width.coerceAtLeast(minContentSizePx)
+        val newContentH = height.coerceAtLeast(minContentSizePx)
+        // Skip if nothing actually changed (handles the initial layout notification that
+        // arrives right after connectRemoteNativeView at the same preferred size).
+        if (newContentW == contentWidthPx && newContentH == contentHeightPx) return
+        contentWidthPx = newContentW
+        contentHeightPx = newContentH
+        // Shrink the viewport if it now exceeds the new (smaller) content size.
+        val clampedViewportW = viewportWidthPx.coerceAtMost(contentWidthPx)
+        val clampedViewportH = viewportHeightPx.coerceAtMost(contentHeightPx)
+        if (clampedViewportW != viewportWidthPx || clampedViewportH != viewportHeightPx) {
+            updateViewportSize(clampedViewportW, clampedViewportH, notifyNative = false)
+            syncOverlayLayoutSize()
+        } else {
+            clampScroll()
+            syncBars()
+        }
     }
 
     fun updateViewportSize(width: Int, height: Int, notifyNative: Boolean) {
@@ -704,6 +736,14 @@ object PluginUiOverlayManager {
     fun attachSurfaceView(handle: Long, surfaceView: View?) {
         handler.post {
             overlays[handle]?.setSurfaceView(surfaceView)
+            if (surfaceView != null) {
+                val client = AudioPluginSurfaceControlClient.fromSurfaceView(surfaceView)
+                client?.contentSizeChangedListeners?.add { w: Int, h: Int ->
+                    handler.post {
+                        overlays[handle]?.updateContentSizeFromPlugin(w, h)
+                    }
+                }
+            }
         }
     }
 
