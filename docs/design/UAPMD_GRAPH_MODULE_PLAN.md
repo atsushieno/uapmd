@@ -2,11 +2,11 @@
 
 ## Status
 
-- Approved for implementation
+- Implemented through Stage 6 (engine integration)
 - Schema direction documented in [source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md](/Users/atsushi/sources/uapmd/source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md)
-- `uapmd-graph` module is in place
-- generic graph/node API scaffolding has started
-- runtime behavior is still plugin-backed only
+- `uapmd-graph` module owns the graph runtime, node interfaces, registry, and all built-in node implementations
+- `webaudio:GainNode` is fully integrated: created per-track by `SequencerEngine`, routed through both graph types, and controlled via the volume slider in uapmd-app
+- Stage 7 (serialization update) remains pending
 
 ## Goal
 
@@ -263,44 +263,46 @@ Initial `webaudio:GainNode` behavior:
 - replace plugin-only runtime node assumptions with generic `AudioGraphNode`
 - keep plugin-backed node implementation as one concrete node type
 - preserve current engine behavior for plugin-only graphs
-- current progress:
+- **complete**:
   - `AudioGraphNode` and `AudioGraph` exist in `uapmd-graph`
-  - `AudioPluginNode` now derives from `AudioGraphNode`
-  - `AudioPluginGraph` now derives from `AudioGraph`
-  - existing linear/DAG graphs expose generic node lookup by `nodeId`
-  - built-in node processing is not implemented yet
+  - `AudioPluginNode` derives from `AudioGraphNode`
+  - `AudioPluginGraph` and `AudioPluginFullDAGraph` both derive from `AudioGraph`
+  - both graph implementations expose generic node lookup by `nodeId`
+  - both graph implementations process built-in nodes at the end of the audio chain
 
 ### Stage 4: Add Descriptor And Registry APIs
 
 - add descriptor types under `uapmd-graph`
 - add built-in node registry and factory interfaces
-- current progress:
+- **complete**:
   - graph descriptor structs exist in `uapmd-graph`
-  - built-in node type constants exist
-  - built-in registry/factory scaffolding exists
-  - no runtime code consumes descriptors or the registry yet
+  - built-in node type constants exist under `builtin::kGainNodeType`
+  - `AudioGraphRegistry` with `createDefault()` registers all built-in factories
+  - both `AudioPluginGraph` and `AudioPluginFullDAGraph` use the registry to instantiate built-in nodes via `appendBuiltInNodeSimple`
 
 ### Stage 5: Implement `webaudio:GainNode`
 
 - add runtime built-in gain node implementation
 - support parameter update path and smoothed DSP
-- current progress:
-  - `webaudio:GainNode` runtime node exists in `uapmd-graph`
-  - default graph registry registers a gain-node factory
-  - gain node applies smoothed linear gain and passes events through
-  - graph/engine/data layers do not create or host gain nodes yet
+- **complete**:
+  - `webaudio:GainNode` runtime node (`builtin::GainNode`) exists in `uapmd-graph`
+  - default registry registers the factory; node is created via `AudioGraphNodeDescriptor`
+  - applies per-buffer linear gain ramp (`current_gain_` → `target_gain_`) to avoid zipper noise
+  - passes MIDI events through unchanged
+  - `SequencerTrack::create` appends a terminal gain node (node id `builtin:track_gain`) to every new track's graph regardless of graph type
 
 ### Stage 6: Update Engine Integration
 
 - let tracks host both plugin-backed nodes and built-in nodes
 - keep plugin instance bookkeeping separate from generic graph node identity
 - maintain plugin routing via plugin-node lookup only
-- current progress:
-  - simple linear graph stores generic `AudioGraphNode` objects
-  - simple linear graph can append built-in nodes through the registry
-  - new sequencer tracks create a terminal built-in gain node when the graph implementation supports it
-  - plugin insertion in the simple graph keeps built-in nodes at the tail of the chain
-  - full DAG graph still rejects built-in node insertion and migration from simple graphs with built-ins is not supported yet
+- **complete**:
+  - `AudioPluginGraph` stores generic `AudioGraphNode` objects; plugin nodes are inserted before built-in nodes; built-in nodes process last in the serial chain
+  - `AudioPluginFullDAGraph` stores built-in nodes in a dedicated `builtin_nodes` list separate from the DAG plugin nodes; they are applied in order after DAG output routing via `advanceToNextNode()` + `processAudio()`, matching serial-graph semantics
+  - migration between graph types (`AudioPluginGraph::migrate`) correctly transfers both plugin nodes and built-in nodes; `adoptNodesFromMigration` routes each to the appropriate list
+  - `SequencerTrack::trackGain()` / `trackGain(double)` read and write the gain node found by `nodeId` in whichever graph is currently active
+  - `SequencerEngine::processAudio` routes the final mix through the master track's graph unconditionally so the master `GainNode` always controls the output volume
+  - uapmd-app exposes a per-track volume slider (non-linear dB taper, 0 dB at 70% position) and a master track volume slider, both wired to `SequencerTrack::trackGain`
 
 ### Stage 7: Update Serialization Layer
 
@@ -314,17 +316,19 @@ Initial `webaudio:GainNode` behavior:
 - [x] Document module/API plan
 - [x] Add `uapmd-graph` CMake target
 - [x] Move current graph runtime code into `uapmd-graph`
-- [~] Introduce generic `AudioGraphNode` runtime model
-- [~] Introduce graph descriptor types
-- [~] Introduce built-in node registry
-- [~] Implement `webaudio:GainNode`
-- [~] Integrate generic graph nodes into `uapmd-engine`
-- [ ] Update `uapmd-data` to consume graph descriptors
+- [x] Introduce generic `AudioGraphNode` runtime model
+- [x] Introduce graph descriptor types
+- [x] Introduce built-in node registry
+- [x] Implement `webaudio:GainNode`
+- [x] Integrate generic graph nodes into `uapmd-engine`
+- [ ] Update `uapmd-data` to consume graph descriptors (Stage 7)
 - [ ] Revisit graph editor API after generic nodes land
 
 ## Open Questions
 
-- whether `uapmd` should temporarily re-export `uapmd-graph` headers during migration, or whether call sites should be updated directly;
-- how much of the current `AudioGraphExtension` API should remain unchanged versus being renamed or generalized;
-- whether built-in node parameters should share the existing plugin parameter event API or get a graph-native parameter surface first;
-- whether descriptor value types should stay scalar-only in the first C++ iteration or already allow small typed arrays for channel-routing-related options.
+- ~~whether `uapmd` should temporarily re-export `uapmd-graph` headers during migration, or whether call sites should be updated directly~~ — resolved: call sites were updated directly, no re-export;
+- ~~how much of the current `AudioGraphExtension` API should remain unchanged~~ — resolved: kept unchanged for now;
+- ~~whether built-in node parameters should share the existing plugin parameter event API~~ — resolved: `GainNode` uses `ParameterUpdateEvent` from `AudioGraphNode`, the same mechanism plugin nodes use;
+- ~~whether descriptor value types should stay scalar-only in the first C++ iteration~~ — resolved: scalar-only for now (`std::variant<double, int64_t, std::string>`);
+- how `uapmd-data` serialization should evolve to persist built-in node state (specifically the gain value per track) — currently the gain is not saved/loaded, which will be addressed in Stage 7;
+- whether the graph editor UI should expose built-in nodes as first-class draggable/connectable entities or keep them as implicit track endpoints.
