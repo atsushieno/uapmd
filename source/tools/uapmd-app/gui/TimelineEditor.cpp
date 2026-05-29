@@ -768,7 +768,7 @@ void TimelineEditor::update() {
 }
 
 SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) {
-    // Row 1: Clips + Graph + Slider(2 slots) + Bypass = 5 icon slots, 4 gaps + left/right pad
+    // Row 1: Clips + Graph + Slider(1.5 slots) + Bypass = 4.5 icon slots, 3 gaps + left/right pad
     const float pad = 4.0f * uiScale;
     const float framePadX = ImGui::GetStyle().FramePadding.x;
     const float gap = ImGui::GetStyle().ItemSpacing.x;
@@ -778,10 +778,12 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         ImGui::CalcTextSize(icons::ToggleOn).x,
         ImGui::CalcTextSize(icons::DeleteTrack).x,
     }) + framePadX * 2.0f;
-    const float row1W = pad + 5.0f * iconBtnW + 4.0f * gap + pad;
+    const float row1W = pad + 4.5f * iconBtnW + 3.0f * gap + pad;
     // Row 2: "⋮ Add Plugin" plus optional delete button on the right.
     const std::string minPluginLabel = std::format("{} Add Plugin", icons::ContextMenu);
-    const float pluginMinW = ImGui::CalcTextSize(minPluginLabel.c_str()).x + framePadX * 2.0f;
+    const float pluginTextW = ImGui::CalcTextSize(minPluginLabel.c_str()).x + framePadX * 2.0f;
+    const float pluginMaxW = std::max(0.0f, row1W - pad - gap - iconBtnW - pad);
+    const float pluginMinW = std::min(pluginTextW, pluginMaxW);
     const float row2W = pad + pluginMinW + gap + iconBtnW + pad;
     const float legendWidth = std::max(row1W, row2W);
 
@@ -1229,7 +1231,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             ImGui::CalcTextSize(icons::ToggleOn).x,
             ImGui::CalcTextSize(icons::DeleteTrack).x,
         }) + ImGui::GetStyle().FramePadding.x * 2.0f;
-        const float sliderWidth = iconButtonWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
+        const float sliderWidth = iconButtonWidth * 1.5f;
         const float gainDb = linearGainToSliderDb(track->trackGain());
         float sliderPos = dbToSliderPos(gainDb);
         ImGui::SetNextItemWidth(sliderWidth);
