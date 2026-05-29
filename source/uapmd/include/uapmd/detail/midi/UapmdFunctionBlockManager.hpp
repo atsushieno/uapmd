@@ -14,7 +14,7 @@ namespace uapmd {
         std::vector<UapmdFunctionBlock*> devices();
 
         bool createFunctionBlock(const std::string& apiName,
-                AudioPluginNode* pluginNode,
+                AudioPluginNodeFeature* pluginNodeFeature,
                 int32_t instanceId,
                 std::string deviceName,
                 std::string manufacturer,

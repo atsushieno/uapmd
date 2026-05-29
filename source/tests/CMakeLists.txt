@@ -25,6 +25,7 @@ target_include_directories(uapmd-project-file-tests PRIVATE
         ../remidy/include
         ../remidy-tooling/include
         ../uapmd/include
+        ../uapmd-graph/include
         ../uapmd-file/include
         ../uapmd-data/include
         ../uapmd-engine/include

@@ -3,6 +3,7 @@ add_executable(uapmd-apply)
 target_include_directories(uapmd-apply PRIVATE
         ../../remidy/include
         ../../uapmd/include
+        ../../uapmd-graph/include
         ../../uapmd-engine/include
         ../../uapmd-data/include
         ${choc_SOURCE_DIR}

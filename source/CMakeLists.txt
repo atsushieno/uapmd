@@ -261,6 +261,7 @@ add_subdirectory(remidy)
 add_subdirectory(remidy-gui)
 add_subdirectory(remidy-tooling)
 add_subdirectory(uapmd)
+add_subdirectory(uapmd-graph)
 add_subdirectory(uapmd-file)
 add_subdirectory(uapmd-data)
 add_subdirectory(uapmd-engine)
@@ -299,6 +300,7 @@ set(_UAPMD_PUBLIC_INCLUDE_SUBDIRS
         remidy-gui
         remidy-tooling
         uapmd
+        uapmd-graph
         uapmd-data
         uapmd-engine
         uapmd-file)

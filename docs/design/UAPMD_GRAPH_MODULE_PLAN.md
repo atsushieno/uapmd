@@ -288,8 +288,8 @@ Initial `webaudio:GainNode` behavior:
 - [x] Document generic graph schema direction
 - [x] Approve dedicated `uapmd-graph` module direction
 - [x] Document module/API plan
-- [ ] Add `uapmd-graph` CMake target
-- [ ] Move current graph runtime code into `uapmd-graph`
+- [x] Add `uapmd-graph` CMake target
+- [x] Move current graph runtime code into `uapmd-graph`
 - [ ] Introduce generic `AudioGraphNode` runtime model
 - [ ] Introduce graph descriptor types
 - [ ] Introduce built-in node registry

@@ -24,7 +24,7 @@ namespace uapmd {
     }
 
     bool UapmdFunctionDevice::createFunctionBlock(const std::string& apiName,
-                AudioPluginNode* pluginNode,
+                AudioPluginNodeFeature* pluginNodeFeature,
                 int32_t instanceId,
                 std::string deviceName,
                 std::string manufacturer,
@@ -45,22 +45,28 @@ namespace uapmd {
         std::shared_ptr<MidiIOFeature> midiDevice  = midi_io_manager->createMidiIOFeature(apiName, deviceName, manufacturer, version);
         if (!midiDevice) return false;
 
-        const auto fb = std::make_shared<UapmdFunctionBlock>(midiDevice, pluginNode, deviceName, manufacturer, version);
+        const auto fb = std::make_shared<UapmdFunctionBlock>(
+            midiDevice,
+            pluginNodeFeature,
+            deviceName,
+            manufacturer,
+            version);
         fb->group(group);
         blocks[instanceId] = fb;
         return true;
     }
 
     UapmdFunctionBlock::UapmdFunctionBlock(std::shared_ptr<MidiIOFeature> midiDevice,
-                                     AudioPluginNode* pluginNode,
+                                     AudioPluginNodeFeature* pluginNodeFeature,
                                      std::string deviceName,
                                      std::string manufacturerName,
                                      std::string versionString)
-      : plugin_node(pluginNode),
+      : plugin_node_feature(pluginNodeFeature),
         midi_device(std::move(midiDevice)) {
-        uapmd_sessions = UapmdMidiCISession::create(this, pluginNode->instance(), deviceName, manufacturerName, versionString);
-        if (midi_device && plugin_node && plugin_node->instance())
-            ump_output_mapper_ = std::make_unique<UapmdNodeUmpOutputMapper>(midi_device.get(), plugin_node->instance());
+        auto* instance = plugin_node_feature ? plugin_node_feature->instance() : nullptr;
+        uapmd_sessions = UapmdMidiCISession::create(this, instance, deviceName, manufacturerName, versionString);
+        if (midi_device && instance)
+            ump_output_mapper_ = std::make_unique<UapmdNodeUmpOutputMapper>(midi_device.get(), instance);
         if (midi_device)
             midi_device->addInputHandler(umpReceived, this);
     }
@@ -85,12 +91,12 @@ namespace uapmd {
     }
 
     void UapmdFunctionBlock::umpReceived(uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
-        if (!plugin_node)
+        if (!plugin_node_feature)
             return;
 
         uapmd_sessions->interceptUmpInput(ump, sizeInBytes, timestamp);
 
-        plugin_node->scheduleEvents(timestamp, ump, sizeInBytes);
+        plugin_node_feature->scheduleEvents(timestamp, ump, sizeInBytes);
     }
 
 }

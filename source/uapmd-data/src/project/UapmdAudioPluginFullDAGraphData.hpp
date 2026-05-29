@@ -1,6 +1,7 @@
 #pragma once
 
 #include <uapmd/uapmd.hpp>
+#include <uapmd-graph/uapmd-graph.hpp>
 #include "uapmd-data/detail/project/UapmdProjectFile.hpp"
 
 namespace uapmd {

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <uapmd/uapmd.hpp>
+#include <uapmd-graph/uapmd-graph.hpp>
 #include "UapmdProjectFile.hpp"
 
 namespace uapmd {

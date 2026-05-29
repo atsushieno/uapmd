@@ -1,5 +1,6 @@
 
 #include "uapmd/uapmd.hpp"
+#include "uapmd-graph/detail/node-graph/AudioPluginGraph.hpp"
 #include "farbot/RealtimeObject.hpp"
 #include "AudioPluginNodeImpl.hpp"
 

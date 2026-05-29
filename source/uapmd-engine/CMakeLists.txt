@@ -114,6 +114,7 @@ target_include_directories(uapmd-engine PRIVATE
         ${readerwriterqueue_SOURCE_DIR}
         ../remidy/include
         ../uapmd/include
+        ../uapmd-graph/include
         ../uapmd-file/include
         ../uapmd-data/include
         include
@@ -127,6 +128,7 @@ target_link_libraries(uapmd-engine
         remidy::remidy
         remidy::remidy-tooling
         uapmd
+        uapmd-graph
         uapmd-data
 )
 

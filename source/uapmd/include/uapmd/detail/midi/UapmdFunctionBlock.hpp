@@ -13,7 +13,7 @@ namespace uapmd {
     class UapmdNodeUmpOutputMapper;
 
     class UapmdFunctionBlock {
-        AudioPluginNode* plugin_node;
+        AudioPluginNodeFeature* plugin_node_feature;
         uint8_t ump_group{0xFF}; // invalid
 
         std::shared_ptr<MidiIOFeature> midi_device{};
@@ -26,7 +26,7 @@ namespace uapmd {
 
     public:
         UapmdFunctionBlock(std::shared_ptr<MidiIOFeature> midiDevice,
-                        AudioPluginNode* pluginNode,
+                        AudioPluginNodeFeature* pluginNodeFeature,
                         std::string deviceName,
                         std::string manufacturer,
                         std::string version);
@@ -34,8 +34,6 @@ namespace uapmd {
         ~UapmdFunctionBlock();
 
         MidiIOFeature* midiIO() { return midi_device.get(); }
-
-        int32_t instanceId() const { return plugin_node->instanceId(); }
         uint8_t group() const { return ump_group; }
         void group(uint8_t groupId) { ump_group = groupId; }
 

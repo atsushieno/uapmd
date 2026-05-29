@@ -10,6 +10,7 @@
 
 #include <imnodes.h>
 #include <uapmd/uapmd.hpp>
+#include <uapmd-graph/uapmd-graph.hpp>
 
 namespace uapmd::gui {
 

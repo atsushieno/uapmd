@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 #include <uapmd/uapmd.hpp>
+#include <uapmd-graph/uapmd-graph.hpp>
 #include "../audio/AudioFileReader.hpp"
 #include "UapmdProjectFile.hpp"
 #undef Success // X11...!

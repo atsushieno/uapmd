@@ -7,15 +7,10 @@
 #include <mutex>
 #include <vector>
 
-#include "../plugin-api/AudioPluginInstanceAPI.hpp"
+#include "uapmd/detail/plugin-api/AudioPluginNodeFeature.hpp"
 
 namespace uapmd {
 
-    using EventListenerId = int64_t;
-
-    // Generic event system for multiple listeners
-    // Not RT-safe due to mutex usage
-    // Listeners are called in the order they were registered (insertion order)
     template<typename ...TArgs>
     class EventBase {
     public:
@@ -23,7 +18,7 @@ namespace uapmd {
 
     private:
         std::atomic<EventListenerId> listener_id_counter_{1};
-        std::map<EventListenerId, EventListener> listeners_; // std::map maintains order by key
+        std::map<EventListenerId, EventListener> listeners_;
         std::mutex listener_mutex_;
 
     public:
@@ -57,37 +52,19 @@ namespace uapmd {
         }
     };
 
-    // Event for parameter updates: (parameterIndex, value)
     using ParameterUpdateEvent = EventBase<int32_t, double>;
-
-    // Event for parameter metadata refresh (no parameters - just a notification)
     using ParameterMetadataRefreshEvent = EventBase<>;
 
-    // AudioPluginNode wraps a plugin instance with its own event queue.
-    // This allows per-instance event routing instead of per-track routing.
-    // Managed internally by AudioPluginGraph.
-    //
-    // Note that we don't make it customizable; we have to support save migration between
-    // graphs from different providers.
-    // Making it custom is like having multiple DOM Factories and expect importNode() still works.
-    class AudioPluginNode {
+    class AudioPluginNode : public AudioPluginNodeFeature {
     public:
-        virtual ~AudioPluginNode() = default;
+        ~AudioPluginNode() override = default;
 
         virtual int32_t instanceId() const = 0;
-        virtual AudioPluginInstanceAPI* instance() = 0;
-
-        // Schedule UMP events to this plugin instance's queue
-        virtual bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) = 0;
-
-        // Flush any active note-ons by enqueueing the necessary note-off messages
+        virtual AudioPluginInstanceAPI* instance() override = 0;
+        virtual bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) override = 0;
         virtual void sendAllNotesOff() = 0;
         virtual void requestStopFlush() = 0;
-
-        // Parameter update event - allows multiple consumers to listen for parameter changes
         virtual ParameterUpdateEvent& parameterUpdateEvent() = 0;
-
-        // Parameter metadata refresh event - notifies when parameter list changes
         virtual ParameterMetadataRefreshEvent& parameterMetadataRefreshEvent() = 0;
     };
 

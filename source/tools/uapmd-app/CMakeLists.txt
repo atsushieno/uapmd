@@ -697,6 +697,7 @@ target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
         ../../remidy/include
         ../../remidy-tooling/include
         ../../uapmd/include
+        ../../uapmd-graph/include
         ../../uapmd-file/include
         ../../uapmd-data/include
         ../../uapmd-engine/include

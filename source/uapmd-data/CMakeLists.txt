@@ -136,12 +136,14 @@ target_include_directories(uapmd-data PRIVATE
         ${miniaudio_SOURCE_DIR}
         ../remidy/include
         ../uapmd/include
+        ../uapmd-graph/include
         include
 )
 
 target_link_libraries(uapmd-data
         PUBLIC
         uapmd
+        uapmd-graph
         PRIVATE
         demucs-cpp
         signalsmith-stretch

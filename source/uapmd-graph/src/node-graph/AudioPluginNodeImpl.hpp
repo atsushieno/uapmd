@@ -7,7 +7,8 @@
 #include <memory>
 #include <vector>
 #include "uapmd/uapmd.hpp"
-#include "../midi/UapmdNodeUmpMapper.hpp"
+#include "uapmd-graph/detail/node-graph/AudioPluginNode.hpp"
+#include "midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
 

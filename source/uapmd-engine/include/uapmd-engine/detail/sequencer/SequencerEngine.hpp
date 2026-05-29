@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <uapmd/uapmd.hpp>
+#include <uapmd-graph/uapmd-graph.hpp>
 #include "TimelineFacade.hpp"
 
 namespace uapmd {

@@ -111,8 +111,6 @@ namespace uapmd {
     }
 
     void UapmdMidiCISessionImpl::setupMidiCISession() {
-        auto instance_id = device->instanceId();
-
         midicci::MidiCIDeviceConfiguration ci_config{
             midicci::DEFAULT_RECEIVABLE_MAX_SYSEX_SIZE,
             midicci::DEFAULT_MAX_PROPERTY_CHUNK_SIZE,
@@ -283,7 +281,7 @@ namespace uapmd {
             }
         };
 
-        ciDevice.getMessenger().addMessageCallback([this, instance_id](const Message& req) {
+        ciDevice.getMessenger().addMessageCallback([this](const Message& req) {
             if (req.getType() == MessageType::MidiMessageReportInquiry) {
                 if (on_process_midi_message_report)
                     on_process_midi_message_report();
