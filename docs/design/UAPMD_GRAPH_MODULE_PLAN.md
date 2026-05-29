@@ -2,13 +2,27 @@
 
 ## Status
 
-- Implemented through Stage 7 (built-in node serialization)
+- Implemented through Stage 7a
 - Schema direction documented in [source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md](/Users/atsushi/sources/uapmd/source/uapmd-data/include/uapmd-data/detail/project/UapmdProjectFile.md)
 - `uapmd-graph` module owns the graph runtime, node interfaces, registry, and all built-in node implementations
-- `webaudio:GainNode` is fully integrated: created per-track by `SequencerEngine`, routed through both graph types, controlled via the volume slider in uapmd-app, and persisted through project graph JSON
+- `webaudio:GainNode` is fully integrated: created per-track by `SequencerEngine`, routed through both graph types, and controlled via the volume slider in uapmd-app
+- Track/master fader persistence now uses top-level track JSON `volume` rather than depending on graph serialization
 - Graph JSON now persists generic built-in node descriptors under `nodes[]` while retaining the existing `plugins[]` and DAG `connections[]` payloads
 - Loading project graphs now recreates built-in runtime nodes from persisted descriptors for both simple and DAG graph providers
-- The serialization migration is intentionally partial: plugin graph connections still use legacy plugin-index endpoints rather than generic `node_id` endpoint descriptors
+- The serialization migration remains intentionally partial: plugin graph connections still use legacy plugin-index endpoints rather than generic `node_id` endpoint descriptors
+
+## Remaining Work
+
+- Stage 7b: finish DAG serialization migration from plugin-index endpoints to generic `node_id` endpoints
+- Reconcile default track-gain node persistence policy with the new track-level `volume` field
+  - `track.volume` should remain the source of truth for the default track/master fader
+  - graph `nodes[]` should be reserved for graph-authored built-in nodes, not the implicit per-track fader
+- Update graph editor / project tooling assumptions that still treat runtime topology as plugin-only
+- Add regression coverage for:
+  - track volume save/load
+  - master volume save/load
+  - simple graph vs DAG graph built-in node round-trip
+  - backward compatibility with project files that predate `volume` and `nodes[]`
 
 ## Goal
 
