@@ -20,6 +20,7 @@ target_link_libraries(uapmd-graph
 )
 
 target_sources(uapmd-graph PRIVATE
+        src/AudioGraphRegistry.cpp
         src/node-graph/AudioPluginGraph.cpp
         src/node-graph/AudioPluginFullDAGraph.cpp
 )

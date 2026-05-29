@@ -274,6 +274,11 @@ Initial `webaudio:GainNode` behavior:
 
 - add descriptor types under `uapmd-graph`
 - add built-in node registry and factory interfaces
+- current progress:
+  - graph descriptor structs exist in `uapmd-graph`
+  - built-in node type constants exist
+  - built-in registry/factory scaffolding exists
+  - no runtime code consumes descriptors or the registry yet
 
 ### Stage 5: Implement `webaudio:GainNode`
 
@@ -299,8 +304,8 @@ Initial `webaudio:GainNode` behavior:
 - [x] Add `uapmd-graph` CMake target
 - [x] Move current graph runtime code into `uapmd-graph`
 - [~] Introduce generic `AudioGraphNode` runtime model
-- [ ] Introduce graph descriptor types
-- [ ] Introduce built-in node registry
+- [~] Introduce graph descriptor types
+- [~] Introduce built-in node registry
 - [ ] Implement `webaudio:GainNode`
 - [ ] Integrate generic graph nodes into `uapmd-engine`
 - [ ] Update `uapmd-data` to consume graph descriptors

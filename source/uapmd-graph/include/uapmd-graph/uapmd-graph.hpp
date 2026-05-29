@@ -1,5 +1,8 @@
 #pragma once
 
+#include "detail/node-graph/AudioGraphDescriptor.hpp"
+#include "detail/node-graph/AudioGraphBuiltInNodeFactory.hpp"
+#include "detail/node-graph/AudioGraphRegistry.hpp"
 #include "detail/node-graph/AudioGraphNode.hpp"
 #include "detail/node-graph/AudioGraph.hpp"
 #include "detail/node-graph/AudioGraphExtension.hpp"
@@ -7,3 +10,4 @@
 #include "detail/node-graph/AudioPluginNode.hpp"
 #include "detail/node-graph/AudioPluginGraph.hpp"
 #include "detail/node-graph/AudioPluginFullDAGraph.hpp"
+#include "detail/builtin/BuiltInNodeTypes.hpp"
