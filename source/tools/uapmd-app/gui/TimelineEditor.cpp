@@ -35,6 +35,11 @@ constexpr int32_t kMasterTrackClipId = -1000;
 constexpr double kDisplayDefaultBpm = 120.0;
 constexpr float kTrackGainUiMinDb = -60.0f;
 constexpr float kTrackGainUiMaxDb = 18.0618f;
+// Slider position where 0 dB (unity gain) sits — 70% from left.
+constexpr float kSliderUnityPos = 0.7f;
+// Exponent for the sub-unity power curve: > 1 compresses the far-left extreme
+// and expands the region near 0 dB so the practical mixing range feels wider.
+constexpr float kSliderCurve = 2.0f;
 
 struct ClipKey {
     std::string referenceId;
@@ -87,6 +92,30 @@ double sliderDbToLinearGain(float db) {
         static_cast<double>(std::pow(10.0f, db / 20.0f)),
         0.0,
         8.0);
+}
+
+// Maps a dB value to a slider position in [0, 1].
+// Below 0 dB a power curve (exponent kSliderCurve) expands the region near
+// unity; above 0 dB the mapping is linear.  0 dB always lands at kSliderUnityPos.
+float dbToSliderPos(float db) {
+    if (db <= kTrackGainUiMinDb) return 0.0f;
+    if (db >= kTrackGainUiMaxDb) return 1.0f;
+    if (db <= 0.0f) {
+        const float norm = (db - kTrackGainUiMinDb) / (0.0f - kTrackGainUiMinDb);
+        return kSliderUnityPos * std::pow(norm, kSliderCurve);
+    }
+    return kSliderUnityPos + (1.0f - kSliderUnityPos) * (db / kTrackGainUiMaxDb);
+}
+
+// Inverse of dbToSliderPos.
+float sliderPosToDb(float t) {
+    if (t <= 0.0f) return kTrackGainUiMinDb;
+    if (t >= 1.0f) return kTrackGainUiMaxDb;
+    if (t <= kSliderUnityPos) {
+        const float norm = std::pow(t / kSliderUnityPos, 1.0f / kSliderCurve);
+        return kTrackGainUiMinDb + norm * (0.0f - kTrackGainUiMinDb);
+    }
+    return kTrackGainUiMaxDb * (t - kSliderUnityPos) / (1.0f - kSliderUnityPos);
 }
 
 uint64_t mixHash(uint64_t seed, uint64_t value) {
@@ -1201,16 +1230,16 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             ImGui::CalcTextSize(icons::DeleteTrack).x,
         }) + ImGui::GetStyle().FramePadding.x * 2.0f;
         const float sliderWidth = iconButtonWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
-        float gainDb = linearGainToSliderDb(track->trackGain());
+        const float gainDb = linearGainToSliderDb(track->trackGain());
+        float sliderPos = dbToSliderPos(gainDb);
         ImGui::SetNextItemWidth(sliderWidth);
         if (ImGui::SliderFloat(
                 std::format("##LegGain{}", trackIndex).c_str(),
-                &gainDb,
-                kTrackGainUiMinDb,
-                kTrackGainUiMaxDb,
-                gainDb <= kTrackGainUiMinDb ? "Mute" : "",
+                &sliderPos,
+                0.0f, 1.0f,
+                sliderPos <= 0.0f ? "Mute" : "",
                 ImGuiSliderFlags_NoInput))
-            track->trackGain(sliderDbToLinearGain(gainDb));
+            track->trackGain(sliderDbToLinearGain(sliderPosToDb(sliderPos)));
         if (ImGui::IsItemHovered()) {
             const double linearGain = track->trackGain();
             if (linearGain <= 0.0)

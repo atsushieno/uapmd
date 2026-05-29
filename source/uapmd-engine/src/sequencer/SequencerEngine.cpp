@@ -1062,8 +1062,10 @@ namespace uapmd {
             if (rt_dequeued_slots_[t] != SIZE_MAX)
                 pump_rings_[t]->free_slots.try_enqueue(rt_dequeued_slots_[t]);
 
-        // Process master track plugins if present
-        if (master_track_ && master_track_context_ && !master_track_->orderedInstanceIds().empty()) {
+        // Route the mix through the master track graph unconditionally so that the
+        // master GainNode (always present) applies the master volume even when no
+        // plugins have been added to the master track.
+        if (master_track_ && master_track_context_) {
             auto* masterCtx = master_track_context_.get();
             masterCtx->frameCount(trackFrameCount);
             masterCtx->eventIn().position(0);
