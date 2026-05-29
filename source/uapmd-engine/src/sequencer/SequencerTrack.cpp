@@ -7,6 +7,10 @@
 #include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd {
+    namespace {
+        constexpr std::string_view kTrackGainNodeId = "builtin:track_gain";
+    }
+
     class SequencerTrackImpl : public SequencerTrack {
         bool bypass_{false};
         bool frozen_{false};
@@ -23,6 +27,8 @@ namespace uapmd {
         uint32_t latencyInSamples() override { return graph_ ? graph_->mainOutputLatencyInSamples() : 0; }
         uint32_t renderLeadInSamples() override { return graph_ ? graph_->renderLeadInSamples() : 0; }
         double tailLengthInSeconds() override { return graph_ ? graph_->mainOutputTailLengthInSeconds() : 0.0; }
+        double trackGain() const override;
+        bool trackGain(double value) override;
 
         std::vector<int32_t>& orderedInstanceIds() override {
             return instance_ids;
@@ -69,6 +75,14 @@ namespace uapmd {
         auto graph = registry.createGraph(graphProviderId, eventBufferSizeInBytes);
         if (!graph)
             graph = AudioPluginGraph::create(eventBufferSizeInBytes);
+        if (graph) {
+            AudioGraphNodeDescriptor gainNode;
+            gainNode.node_id = "builtin:track_gain";
+            gainNode.node_type = std::string(builtin::kGainNodeType);
+            gainNode.display_name = "Track Volume";
+            gainNode.parameters.emplace("gain", 1.0);
+            graph->appendBuiltInNodeSimple(gainNode);
+        }
         return std::make_unique<SequencerTrackImpl>(std::move(graph));
     }
 
@@ -80,6 +94,27 @@ namespace uapmd {
             return false;
 
         graph_ = std::move(graph);
+        return true;
+    }
+
+    double SequencerTrackImpl::trackGain() const {
+        if (!graph_)
+            return 1.0;
+        auto* node = graph_->getNode(std::string(kTrackGainNodeId));
+        auto* gain = dynamic_cast<builtin::GainNode*>(node);
+        if (!gain)
+            return 1.0;
+        return gain->gain();
+    }
+
+    bool SequencerTrackImpl::trackGain(double value) {
+        if (!graph_)
+            return false;
+        auto* node = graph_->getNode(std::string(kTrackGainNodeId));
+        auto* gain = dynamic_cast<builtin::GainNode*>(node);
+        if (!gain)
+            return false;
+        gain->gain(value);
         return true;
     }
 

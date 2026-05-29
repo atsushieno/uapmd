@@ -295,6 +295,12 @@ Initial `webaudio:GainNode` behavior:
 - let tracks host both plugin-backed nodes and built-in nodes
 - keep plugin instance bookkeeping separate from generic graph node identity
 - maintain plugin routing via plugin-node lookup only
+- current progress:
+  - simple linear graph stores generic `AudioGraphNode` objects
+  - simple linear graph can append built-in nodes through the registry
+  - new sequencer tracks create a terminal built-in gain node when the graph implementation supports it
+  - plugin insertion in the simple graph keeps built-in nodes at the tail of the chain
+  - full DAG graph still rejects built-in node insertion and migration from simple graphs with built-ins is not supported yet
 
 ### Stage 7: Update Serialization Layer
 
@@ -312,7 +318,7 @@ Initial `webaudio:GainNode` behavior:
 - [~] Introduce graph descriptor types
 - [~] Introduce built-in node registry
 - [~] Implement `webaudio:GainNode`
-- [ ] Integrate generic graph nodes into `uapmd-engine`
+- [~] Integrate generic graph nodes into `uapmd-engine`
 - [ ] Update `uapmd-data` to consume graph descriptors
 - [ ] Revisit graph editor API after generic nodes land
 

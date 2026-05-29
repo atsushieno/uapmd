@@ -11,3 +11,4 @@
 #include "detail/node-graph/AudioPluginGraph.hpp"
 #include "detail/node-graph/AudioPluginFullDAGraph.hpp"
 #include "detail/builtin/BuiltInNodeTypes.hpp"
+#include "detail/builtin/GainNode.hpp"

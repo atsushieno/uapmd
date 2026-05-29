@@ -29,7 +29,7 @@ namespace uapmd::builtin {
             return fallback;
         }
 
-        class GainNode final : public AudioGraphNode {
+        class GainNodeImpl final : public GainNode {
             std::string node_id_;
             std::string display_name_;
             std::atomic<bool> bypassed_{false};
@@ -72,7 +72,7 @@ namespace uapmd::builtin {
             }
 
         public:
-            explicit GainNode(const AudioGraphNodeDescriptor& descriptor)
+            explicit GainNodeImpl(const AudioGraphNodeDescriptor& descriptor)
                 : node_id_(descriptor.node_id)
                 , display_name_(descriptor.display_name.empty() ? "Gain" : descriptor.display_name) {
                 current_gain_ = clampGain(getDescriptorDouble(descriptor.parameters, "gain", 1.0));
@@ -141,7 +141,11 @@ namespace uapmd::builtin {
                 return parameter_metadata_refresh_event_;
             }
 
-            void gain(double value) {
+            double gain() const override {
+                return target_gain_.load(std::memory_order_acquire);
+            }
+
+            void gain(double value) override {
                 const auto clamped = clampGain(value);
                 target_gain_.store(clamped, std::memory_order_release);
                 parameter_update_event_.notify(0, clamped);
@@ -155,7 +159,7 @@ namespace uapmd::builtin {
             }
 
             std::unique_ptr<AudioGraphNode> create(const AudioGraphNodeDescriptor& descriptor) const override {
-                return std::make_unique<GainNode>(descriptor);
+                return std::make_unique<GainNodeImpl>(descriptor);
             }
         };
 

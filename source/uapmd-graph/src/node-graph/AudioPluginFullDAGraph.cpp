@@ -259,6 +259,7 @@ namespace uapmd {
         const AudioGraphExtension* getExtension(const std::type_info& type) const override;
 
         uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
+        uapmd_status_t appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) override;
         bool removeNodeSimple(int32_t instanceId) override;
         std::map<std::string, AudioGraphNode*> nodes() override;
         AudioGraphNode* getNode(const std::string& nodeId) override;
@@ -268,8 +269,8 @@ namespace uapmd {
         uapmd_status_t connect(const AudioPluginGraphConnection& connection) override;
         bool disconnect(int64_t connectionId) override;
         void clearConnections() override;
-        std::vector<std::shared_ptr<AudioPluginNode>> releaseNodesForMigration() override;
-        bool adoptNodesFromMigration(std::vector<std::shared_ptr<AudioPluginNode>>&& nodes) override;
+        std::vector<std::shared_ptr<AudioGraphNode>> releaseNodesForMigration() override;
+        bool adoptNodesFromMigration(std::vector<std::shared_ptr<AudioGraphNode>>&& nodes) override;
         AudioGraphBusesLayout busesLayout() override;
         void applyBusesLayout(const AudioGraphBusesLayout& layout) override;
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
@@ -579,6 +580,11 @@ namespace uapmd {
         return 0;
     }
 
+    uapmd_status_t AudioPluginFullDAGraphImpl::appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) {
+        (void) descriptor;
+        return -1;
+    }
+
     bool AudioPluginFullDAGraphImpl::removeNodeSimple(int32_t instanceId) {
         std::shared_ptr<AudioPluginNodeImpl> removed;
         {
@@ -689,7 +695,7 @@ namespace uapmd {
         rebuildCompiledState(*access);
     }
 
-    std::vector<std::shared_ptr<AudioPluginNode>> AudioPluginFullDAGraphImpl::releaseNodesForMigration() {
+    std::vector<std::shared_ptr<AudioGraphNode>> AudioPluginFullDAGraphImpl::releaseNodesForMigration() {
         std::vector<NodePtr> releasedNodes;
         {
             RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
@@ -707,7 +713,7 @@ namespace uapmd {
             access->next_connection_id = 1;
         }
 
-        std::vector<std::shared_ptr<AudioPluginNode>> result;
+        std::vector<std::shared_ptr<AudioGraphNode>> result;
         result.reserve(releasedNodes.size());
         for (auto& node : releasedNodes)
             if (node)
@@ -715,7 +721,7 @@ namespace uapmd {
         return result;
     }
 
-    bool AudioPluginFullDAGraphImpl::adoptNodesFromMigration(std::vector<std::shared_ptr<AudioPluginNode>>&& nodes) {
+    bool AudioPluginFullDAGraphImpl::adoptNodesFromMigration(std::vector<std::shared_ptr<AudioGraphNode>>&& nodes) {
         RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
         for (auto& transferred : nodes) {
             auto node = std::dynamic_pointer_cast<AudioPluginNodeImpl>(transferred);

@@ -8,6 +8,8 @@
 #include <vector>
 
 #include "AudioGraph.hpp"
+#include "AudioGraphDescriptor.hpp"
+#include "AudioGraphRegistry.hpp"
 #include "AudioPluginNode.hpp"
 
 namespace uapmd {
@@ -34,6 +36,7 @@ namespace uapmd {
         virtual ~AudioPluginGraph() = default;
 
         virtual uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) = 0;
+        virtual uapmd_status_t appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) = 0;
         virtual bool removeNodeSimple(int32_t instanceId) = 0;
 
         virtual std::map<int32_t, AudioPluginNode*> plugins() = 0;
@@ -43,8 +46,8 @@ namespace uapmd {
         static bool migrate(AudioPluginGraph& to, AudioPluginGraph& from);
 
     private:
-        virtual std::vector<std::shared_ptr<AudioPluginNode>> releaseNodesForMigration() = 0;
-        virtual bool adoptNodesFromMigration(std::vector<std::shared_ptr<AudioPluginNode>>&& nodes) = 0;
+        virtual std::vector<std::shared_ptr<AudioGraphNode>> releaseNodesForMigration() = 0;
+        virtual bool adoptNodesFromMigration(std::vector<std::shared_ptr<AudioGraphNode>>&& nodes) = 0;
     };
 
 }

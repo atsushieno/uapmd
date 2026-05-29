@@ -9,12 +9,13 @@
 
 namespace uapmd {
 
-    using NodeList = std::vector<std::shared_ptr<AudioPluginNodeImpl>>;
+    using NodeList = std::vector<std::shared_ptr<AudioGraphNode>>;
     using RTNodeList = farbot::RealtimeObject<NodeList, farbot::RealtimeObjectOptions::nonRealtimeMutatable>;
 
     class AudioPluginGraphImpl : public AudioPluginGraph {
         RTNodeList nodes_;
         size_t event_buffer_size_in_bytes_;
+        std::unique_ptr<AudioGraphRegistry> registry_;
         std::function<uint8_t(int32_t)> group_resolver_;
         std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback_;
 
@@ -25,7 +26,8 @@ namespace uapmd {
     public:
         explicit AudioPluginGraphImpl(size_t eventBufferSizeInBytes, std::string providerId = {})
             : AudioPluginGraph(std::move(providerId))
-            , event_buffer_size_in_bytes_(eventBufferSizeInBytes) {
+            , event_buffer_size_in_bytes_(eventBufferSizeInBytes)
+            , registry_(AudioGraphRegistry::createDefault()) {
         }
         ~AudioPluginGraphImpl() override = default;
 
@@ -33,6 +35,7 @@ namespace uapmd {
         const AudioGraphExtension* getExtension(const std::type_info& type) const override;
 
         uapmd_status_t appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) override;
+        uapmd_status_t appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) override;
         bool removeNodeSimple(int32_t instanceId) override;
         void setGroupResolver(std::function<uint8_t(int32_t)> resolver) override;
         void setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) override;
@@ -47,8 +50,8 @@ namespace uapmd {
         AudioGraphNode* getNode(const std::string& nodeId) override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
-        std::vector<std::shared_ptr<AudioPluginNode>> releaseNodesForMigration() override;
-        bool adoptNodesFromMigration(std::vector<std::shared_ptr<AudioPluginNode>>&& nodes) override;
+        std::vector<std::shared_ptr<AudioGraphNode>> releaseNodesForMigration() override;
+        bool adoptNodesFromMigration(std::vector<std::shared_ptr<AudioGraphNode>>&& nodes) override;
     };
 
     AudioGraphExtension* AudioPluginGraphImpl::getExtension(const std::type_info& type) {
@@ -85,53 +88,50 @@ namespace uapmd {
             auto& node = nodes[i];
             if (!node)
                 continue;
-            auto instanceId = node->instanceId();
+            if (auto pluginNode = std::dynamic_pointer_cast<AudioPluginNodeImpl>(node)) {
+                auto instanceId = pluginNode->instanceId();
 
-            // Drain queue to pending events
-            node->drainQueueToPending();
+                pluginNode->drainQueueToPending();
 
-            // Get group for this instance
-            uint8_t group = 0xFF;
-            if (group_resolver_)
-                group = group_resolver_(instanceId);
+                uint8_t group = 0xFF;
+                if (group_resolver_)
+                    group = group_resolver_(instanceId);
 
-            // Fill event buffer with events for this group
-            auto& eventIn = process.eventIn();
-            if (node->consumeStopFlushRequest())
-                node->prepareStopFlush(eventIn, group);
-            else
-                node->fillEventBufferForGroup(eventIn, group);
+                auto& eventIn = process.eventIn();
+                if (pluginNode->consumeStopFlushRequest())
+                    pluginNode->prepareStopFlush(eventIn, group);
+                else
+                    pluginNode->fillEventBufferForGroup(eventIn, group);
 
-            bool bypassed = node->bypassed();
-            if (!bypassed)
-                node->processInputMapping(process);
-            if (bypassed) {
-                // Pass audio through regardless of position so the signal is
-                // preserved when a plugin is disabled.  For a synthesizer that
-                // is the sole node on a track, inputs are empty and
-                // copyInputsToOutputs() produces silence — which is correct.
-                process.copyInputsToOutputs();
-                if (i + 1 < nodes.size())
-                    process.advanceToNextNode();
-                continue;
-            }
-
-            // Process audio
-            auto status = node->processAudio(process);
-            if (status != 0)
-                return status;
-
-            // Handle event output
-            auto& eventOut = process.eventOut();
-            if (eventOut.position() > 0) {
-                if (event_output_callback_) {
-                    event_output_callback_(
-                        instanceId,
-                        static_cast<uapmd_ump_t*>(eventOut.getMessages()),
-                        eventOut.position()
-                    );
+                bool bypassed = pluginNode->bypassed();
+                if (!bypassed)
+                    pluginNode->processInputMapping(process);
+                if (bypassed) {
+                    process.copyInputsToOutputs();
+                    if (i + 1 < nodes.size())
+                        process.advanceToNextNode();
+                    continue;
                 }
-                eventOut.position(0);
+
+                auto status = pluginNode->processAudio(process);
+                if (status != 0)
+                    return status;
+
+                auto& eventOut = process.eventOut();
+                if (eventOut.position() > 0) {
+                    if (event_output_callback_) {
+                        event_output_callback_(
+                            instanceId,
+                            static_cast<uapmd_ump_t*>(eventOut.getMessages()),
+                            eventOut.position()
+                        );
+                    }
+                    eventOut.position(0);
+                }
+            } else {
+                auto status = node->processAudio(process);
+                if (status != 0)
+                    return status;
             }
 
             if (i + 1 < nodes.size())
@@ -147,7 +147,9 @@ namespace uapmd {
             if (!node)
                 continue;
             auto* buses = node->audioBuses();
-            if (!buses || node->bypassed())
+            if (node->bypassed())
+                continue;
+            if (!buses)
                 continue;
             uint32_t enabledOutputs = 0;
             for (auto* bus : buses->audioOutputBuses())
@@ -226,18 +228,37 @@ namespace uapmd {
     uapmd_status_t AudioPluginGraphImpl::appendNodeSimple(int32_t instanceId, AudioPluginInstanceAPI* instance, std::function<void()>&& onDelete) {
         auto newNode = std::make_shared<AudioPluginNodeImpl>(instanceId, instance, event_buffer_size_in_bytes_, std::move(onDelete));
         RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
+        auto insertPos = std::find_if(access->begin(), access->end(), [](const auto& node) {
+            return node && dynamic_cast<AudioPluginNode*>(node.get()) == nullptr;
+        });
+        access->insert(insertPos, std::move(newNode));
+        return 0;
+    }
+
+    uapmd_status_t AudioPluginGraphImpl::appendBuiltInNodeSimple(const AudioGraphNodeDescriptor& descriptor) {
+        if (descriptor.node_type.empty() || !registry_)
+            return -1;
+        if (getNode(descriptor.node_id))
+            return -1;
+        auto* factory = registry_->findBuiltInFactory(descriptor.node_type);
+        if (!factory)
+            return -1;
+        auto newNode = factory->create(descriptor);
+        if (!newNode)
+            return -1;
+        RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
         access->push_back(std::move(newNode));
-        // FIXME: define return codes
         return 0;
     }
 
     bool AudioPluginGraphImpl::removeNodeSimple(int32_t instanceId) {
-        std::shared_ptr<AudioPluginNodeImpl> removed;
+        std::shared_ptr<AudioGraphNode> removed;
         {
             RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
             auto& nodes = *access;
             for (size_t i = 0; i < nodes.size(); ++i) {
-                if (nodes[i]->instanceId() == instanceId) {
+                auto pluginNode = std::dynamic_pointer_cast<AudioPluginNodeImpl>(nodes[i]);
+                if (pluginNode && pluginNode->instanceId() == instanceId) {
                     removed = std::move(nodes[i]);
                     nodes.erase(nodes.begin() + static_cast<ptrdiff_t>(i));
                     break;
@@ -252,7 +273,8 @@ namespace uapmd {
         RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
         std::map<int32_t, AudioPluginNode*> ret{};
         for (auto& node : *access)
-            ret[node->instanceId()] = node.get();
+            if (auto pluginNode = std::dynamic_pointer_cast<AudioPluginNodeImpl>(node))
+                ret[pluginNode->instanceId()] = pluginNode.get();
         return ret;
     }
 
@@ -275,12 +297,13 @@ namespace uapmd {
     AudioPluginNode* AudioPluginGraphImpl::getPluginNode(int32_t instanceId) {
         RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
         for (auto& node : *access)
-            if (node->instanceId() == instanceId)
-                return node.get();
+            if (auto pluginNode = std::dynamic_pointer_cast<AudioPluginNodeImpl>(node);
+                pluginNode && pluginNode->instanceId() == instanceId)
+                return pluginNode.get();
         return nullptr;
     }
 
-    std::vector<std::shared_ptr<AudioPluginNode>> AudioPluginGraphImpl::releaseNodesForMigration() {
+    std::vector<std::shared_ptr<AudioGraphNode>> AudioPluginGraphImpl::releaseNodesForMigration() {
         NodeList releasedNodes;
         {
             RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
@@ -288,7 +311,7 @@ namespace uapmd {
             access->clear();
         }
 
-        std::vector<std::shared_ptr<AudioPluginNode>> result;
+        std::vector<std::shared_ptr<AudioGraphNode>> result;
         result.reserve(releasedNodes.size());
         for (auto& node : releasedNodes)
             if (node)
@@ -296,13 +319,12 @@ namespace uapmd {
         return result;
     }
 
-    bool AudioPluginGraphImpl::adoptNodesFromMigration(std::vector<std::shared_ptr<AudioPluginNode>>&& nodes) {
+    bool AudioPluginGraphImpl::adoptNodesFromMigration(std::vector<std::shared_ptr<AudioGraphNode>>&& nodes) {
         RTNodeList::ScopedAccess<farbot::ThreadType::nonRealtime> access(nodes_);
         for (auto& transferred : nodes) {
-            auto node = std::dynamic_pointer_cast<AudioPluginNodeImpl>(transferred);
-            if (!node)
-                return false;
-            access->push_back(std::move(node));
+            if (!transferred)
+                continue;
+            access->push_back(std::move(transferred));
         }
         return true;
     }
