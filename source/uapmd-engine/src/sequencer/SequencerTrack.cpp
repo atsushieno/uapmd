@@ -9,6 +9,15 @@
 namespace uapmd {
     namespace {
         constexpr std::string_view kTrackGainNodeId = "builtin:track_gain";
+
+        AudioGraphNodeDescriptor createTrackGainNodeDescriptor() {
+            AudioGraphNodeDescriptor gainNode;
+            gainNode.node_id = std::string(kTrackGainNodeId);
+            gainNode.node_type = std::string(builtin::kGainNodeType);
+            gainNode.display_name = "Track Volume";
+            gainNode.parameters.emplace("gain", 1.0);
+            return gainNode;
+        }
     }
 
     class SequencerTrackImpl : public SequencerTrack {
@@ -62,6 +71,10 @@ namespace uapmd {
             std::erase(instance_ids, instanceId);
             instance_groups_.erase(instanceId);
         }
+
+    private:
+        builtin::GainNode* findTrackGainNode() const;
+        builtin::GainNode* ensureTrackGainNode();
     };
 
     SequencerTrackImpl::SequencerTrackImpl(std::unique_ptr<AudioPluginGraph>&& graph) :
@@ -75,14 +88,8 @@ namespace uapmd {
         auto graph = registry.createGraph(graphProviderId, eventBufferSizeInBytes);
         if (!graph)
             graph = AudioPluginGraph::create(eventBufferSizeInBytes);
-        if (graph) {
-            AudioGraphNodeDescriptor gainNode;
-            gainNode.node_id = "builtin:track_gain";
-            gainNode.node_type = std::string(builtin::kGainNodeType);
-            gainNode.display_name = "Track Volume";
-            gainNode.parameters.emplace("gain", 1.0);
-            graph->appendBuiltInNodeSimple(gainNode);
-        }
+        if (graph)
+            graph->appendBuiltInNodeSimple(createTrackGainNodeDescriptor());
         return std::make_unique<SequencerTrackImpl>(std::move(graph));
     }
 
@@ -94,24 +101,36 @@ namespace uapmd {
             return false;
 
         graph_ = std::move(graph);
+        ensureTrackGainNode();
         return true;
     }
 
-    double SequencerTrackImpl::trackGain() const {
+    builtin::GainNode* SequencerTrackImpl::findTrackGainNode() const {
         if (!graph_)
-            return 1.0;
+            return nullptr;
         auto* node = graph_->getNode(std::string(kTrackGainNodeId));
-        auto* gain = dynamic_cast<builtin::GainNode*>(node);
+        return dynamic_cast<builtin::GainNode*>(node);
+    }
+
+    builtin::GainNode* SequencerTrackImpl::ensureTrackGainNode() {
+        if (auto* gain = findTrackGainNode())
+            return gain;
+        if (!graph_)
+            return nullptr;
+        if (graph_->appendBuiltInNodeSimple(createTrackGainNodeDescriptor()) != 0)
+            return nullptr;
+        return findTrackGainNode();
+    }
+
+    double SequencerTrackImpl::trackGain() const {
+        auto* gain = findTrackGainNode();
         if (!gain)
             return 1.0;
         return gain->gain();
     }
 
     bool SequencerTrackImpl::trackGain(double value) {
-        if (!graph_)
-            return false;
-        auto* node = graph_->getNode(std::string(kTrackGainNodeId));
-        auto* gain = dynamic_cast<builtin::GainNode*>(node);
+        auto* gain = ensureTrackGainNode();
         if (!gain)
             return false;
         gain->gain(value);

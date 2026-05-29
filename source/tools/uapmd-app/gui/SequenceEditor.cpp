@@ -338,11 +338,14 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         ImGuiIO& io = ImGui::GetIO();
         const bool anyMouseActivity = io.MouseDown[0] || io.MouseDown[1] ||
                                       io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
-        // Don't block input while the scrollbar is being dragged: if the mouse strays outside
-        // the child window mid-drag, timelineHovered goes false and zeroing io.MouseDown[0]
-        // causes CollectInputData to see a release, cancelling the drag immediately.
+        // Don't block input while the scrollbar is being dragged or while an ImGui item is
+        // active (e.g. a slider being dragged): straying outside the window mid-drag would
+        // zero io.MouseDown[0], causing the active widget to think the mouse was released.
+        // The imguiItemActive exemption is scoped only to the "mouse outside window" branch so
+        // that popup-blocking is always honoured regardless of active items.
         const bool scrollbarDragging = unified_.timeline->GetLastInputData().IsMovingScrollBar;
-        const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!timelineHovered && anyMouseActivity));
+        const bool imguiItemActive = ImGui::GetActiveID() != 0;
+        const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!imguiItemActive && !timelineHovered && anyMouseActivity));
 
         bool savedMouseDown[5];
         float savedMouseWheel = 0.0f, savedMouseWheelH = 0.0f;

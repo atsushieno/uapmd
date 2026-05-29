@@ -33,6 +33,8 @@ namespace uapmd::gui {
 namespace {
 constexpr int32_t kMasterTrackClipId = -1000;
 constexpr double kDisplayDefaultBpm = 120.0;
+constexpr float kTrackGainUiMinDb = -60.0f;
+constexpr float kTrackGainUiMaxDb = 18.0618f;
 
 struct ClipKey {
     std::string referenceId;
@@ -67,6 +69,24 @@ struct ClipKeyHash {
 
 bool renderIconButtonWithTooltip(const char* label, const char* tooltip) {
     return contextActionButton(label, ImVec2(0.0f, 0.0f), tooltip);
+}
+
+float linearGainToSliderDb(double gain) {
+    if (gain <= 0.0)
+        return kTrackGainUiMinDb;
+    return std::clamp(
+        static_cast<float>(20.0 * std::log10(gain)),
+        kTrackGainUiMinDb,
+        kTrackGainUiMaxDb);
+}
+
+double sliderDbToLinearGain(float db) {
+    if (db <= kTrackGainUiMinDb)
+        return 0.0;
+    return std::clamp(
+        static_cast<double>(std::pow(10.0f, db / 20.0f)),
+        0.0,
+        8.0);
 }
 
 uint64_t mixHash(uint64_t seed, uint64_t value) {
@@ -719,21 +739,21 @@ void TimelineEditor::update() {
 }
 
 SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) {
-    // Row 1: 4 icon buttons (Clips, Graph, Bypass, Delete) + 3 gaps + left/right pad
+    // Row 1: Clips + Graph + Slider(2 slots) + Bypass = 5 icon slots, 4 gaps + left/right pad
     const float pad = 4.0f * uiScale;
     const float framePadX = ImGui::GetStyle().FramePadding.x;
     const float gap = ImGui::GetStyle().ItemSpacing.x;
-    // All 4 icons; measure the widest one to be safe
     const float iconBtnW = std::max({
         ImGui::CalcTextSize(icons::Clips).x,
         ImGui::CalcTextSize(icons::Graph).x,
         ImGui::CalcTextSize(icons::ToggleOn).x,
         ImGui::CalcTextSize(icons::DeleteTrack).x,
     }) + framePadX * 2.0f;
-    const float row1W = pad + 4.0f * iconBtnW + 3.0f * gap + pad;
-    // Row 2: "⋮ Add Plugin" is the minimum plugin button label
+    const float row1W = pad + 5.0f * iconBtnW + 4.0f * gap + pad;
+    // Row 2: "⋮ Add Plugin" plus optional delete button on the right.
     const std::string minPluginLabel = std::format("{} Add Plugin", icons::ContextMenu);
-    const float row2W = pad + ImGui::CalcTextSize(minPluginLabel.c_str()).x + framePadX * 2.0f + pad;
+    const float pluginMinW = ImGui::CalcTextSize(minPluginLabel.c_str()).x + framePadX * 2.0f;
+    const float row2W = pad + pluginMinW + gap + iconBtnW + pad;
     const float legendWidth = std::max(row1W, row2W);
 
     return SequenceEditor::RenderContext{
@@ -1162,7 +1182,7 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, legendArea.Min.y + pad));
     ImGui::PushID(trackIndex);
 
-    // Row 1: Clips + Graph + [Bypass] + Delete
+    // Row 1: Clips + Graph + Gain Slider + [Bypass]
     if (renderIconButtonWithTooltip(std::format("{}##LegClips{}", icons::Clips, trackIndex).c_str(), "Edit clips"))
         ImGui::OpenPopup(clipPopupId.c_str());
     ImGui::SameLine();
@@ -1174,6 +1194,32 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
     }
     if (track) {
         ImGui::SameLine();
+        const float iconButtonWidth = std::max({
+            ImGui::CalcTextSize(icons::Clips).x,
+            ImGui::CalcTextSize(icons::Graph).x,
+            ImGui::CalcTextSize(icons::ToggleOn).x,
+            ImGui::CalcTextSize(icons::DeleteTrack).x,
+        }) + ImGui::GetStyle().FramePadding.x * 2.0f;
+        const float sliderWidth = iconButtonWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
+        float gainDb = linearGainToSliderDb(track->trackGain());
+        ImGui::SetNextItemWidth(sliderWidth);
+        if (ImGui::SliderFloat(
+                std::format("##LegGain{}", trackIndex).c_str(),
+                &gainDb,
+                kTrackGainUiMinDb,
+                kTrackGainUiMaxDb,
+                gainDb <= kTrackGainUiMinDb ? "Mute" : "",
+                ImGuiSliderFlags_NoInput))
+            track->trackGain(sliderDbToLinearGain(gainDb));
+        if (ImGui::IsItemHovered()) {
+            const double linearGain = track->trackGain();
+            if (linearGain <= 0.0)
+                ImGui::SetTooltip("Track volume: muted");
+            else
+                ImGui::SetTooltip("Track volume: %.1f dB (%.3fx)", linearGainToSliderDb(linearGain), linearGain);
+        }
+
+        ImGui::SameLine();
         bool bypassed = track->bypassed();
         if (bypassed)
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
@@ -1183,19 +1229,25 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             track->bypassed(!bypassed);
         if (bypassed)
             ImGui::PopStyleColor();
-        if (trackIndex != uapmd::kMasterTrackIndex) {
-            ImGui::SameLine();
-            if (contextActionButton(std::format("{}##LegDel{}", uapmd::gui::icons::DeleteTrack, trackIndex).c_str(), ImVec2(0.0f, 0.0f),
-                    "Delete track"))
-                deleteTrack(trackIndex);
-        }
     }
 
-    // Row 2: Plugin context button (full legend width)
+    // Row 2: Plugin context button + Delete on the right
     ImGui::SetCursorScreenPos(ImVec2(legendArea.Min.x + pad, ImGui::GetCursorScreenPos().y));
     const float buttonWidth = legendWidth - pad * 2;
-    if (contextActionButton(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(buttonWidth, 0)))
+    float deleteButtonWidth = 0.0f;
+    if (track && trackIndex != uapmd::kMasterTrackIndex)
+        deleteButtonWidth = ImGui::CalcTextSize(icons::DeleteTrack).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    const float pluginButtonWidth = deleteButtonWidth > 0.0f
+        ? std::max(0.0f, buttonWidth - deleteButtonWidth - ImGui::GetStyle().ItemSpacing.x)
+        : buttonWidth;
+    if (contextActionButton(std::format("{} {}##LegPlug{}", icons::ContextMenu, pluginLabel, trackIndex).c_str(), ImVec2(pluginButtonWidth, 0)))
         ImGui::OpenPopup(popupId.c_str());
+    if (deleteButtonWidth > 0.0f) {
+        ImGui::SameLine();
+        if (contextActionButton(std::format("{}##LegDel{}", uapmd::gui::icons::DeleteTrack, trackIndex).c_str(), ImVec2(deleteButtonWidth, 0.0f),
+                "Delete track"))
+            deleteTrack(trackIndex);
+    }
 
     // Clips popup
     if (ImGui::BeginPopup(clipPopupId.c_str())) {
