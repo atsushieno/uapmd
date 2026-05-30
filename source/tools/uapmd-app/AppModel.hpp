@@ -433,6 +433,7 @@ namespace uapmd {
         ProjectResult loadProject(const std::filesystem::path& file);
         void saveProjectToDocument(DocumentHandle handle, IDocumentProvider::WriteCallback callback);
         ProjectResult loadProjectFromResolvedPath(const std::filesystem::path& file);
+        ProjectResult loadProjectFromHandleToken(const std::string& token);
 
         struct MasterTrackSnapshot {
             struct TempoPoint {

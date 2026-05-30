@@ -98,6 +98,23 @@ void UapmdJSRuntime::registerProjectAPI()
         result.setMember ("error", projectResult.error);
         return result;
     });
+
+    jsContext_.registerFunction ("__remidy_project_load_handle", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto token = args.get<std::string> (0, "");
+        auto result = choc::value::createObject ("ProjectResult");
+        if (token.empty())
+        {
+            result.setMember ("success", false);
+            result.setMember ("error", "Project handle token is empty");
+            return result;
+        }
+
+        auto projectResult = uapmd::AppModel::instance().loadProjectFromHandleToken(token);
+        result.setMember ("success", projectResult.success);
+        result.setMember ("error", projectResult.error);
+        return result;
+    });
 }
 
 void UapmdJSRuntime::registerPluginCatalogAPI()

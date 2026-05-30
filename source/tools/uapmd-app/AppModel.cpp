@@ -2814,6 +2814,39 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromResolvedPath(
     return result;
 }
 
+uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromHandleToken(const std::string& token)
+{
+    ProjectResult failureResult;
+    if (token.empty()) {
+        failureResult.error = "Project handle token is empty.";
+        return failureResult;
+    }
+
+    auto* provider = documentProvider();
+    if (!provider) {
+        failureResult.error = "Document provider unavailable";
+        return failureResult;
+    }
+
+    auto handle = provider->restoreHandle(token);
+    if (!handle || !handle->valid()) {
+        failureResult.error = "Project handle token is invalid or no longer accessible.";
+        return failureResult;
+    }
+
+    auto promise = std::make_shared<std::promise<ProjectResult>>();
+    auto future = promise->get_future();
+    provider->resolveToPath(*handle,
+        [this, promise](DocumentIOResult ioResult, std::filesystem::path path) mutable {
+            if (!ioResult.success) {
+                promise->set_value(ProjectResult{false, ioResult.error});
+                return;
+            }
+            promise->set_value(loadProjectFromResolvedPath(path));
+        });
+    return future.get();
+}
+
 uapmd::AppModel::ProjectResult uapmd::AppModel::saveProjectSync(const std::filesystem::path& projectFile) {
     auto promise = std::make_shared<std::promise<ProjectResult>>();
     auto future = promise->get_future();

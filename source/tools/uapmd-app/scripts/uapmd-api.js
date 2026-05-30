@@ -121,7 +121,8 @@ function __uapmdPollCreateJob(jobId) {
 globalThis.uapmd = {
     project: {
         save: (path) => __remidy_project_save(path),
-        load: (path) => __remidy_project_load(path)
+        load: (path) => __remidy_project_load(path),
+        loadHandle: (token) => __remidy_project_load_handle(token)
     },
 
     // Catalog API - Plugin discovery and management

@@ -357,6 +357,10 @@ export const sequencer = {
         return __remidy_project_load(filepath);
     },
 
+    loadProjectHandle: function(token) {
+        return __remidy_project_load_handle(token);
+    },
+
     // Plugin State Management
     savePluginState: function(instanceId, filepath) {
         return __remidy_instance_save_state(instanceId, filepath);
