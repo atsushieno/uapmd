@@ -153,6 +153,8 @@ namespace uapmd {
                                                             const std::optional<PluginInstanceConfig>& configOverride);
         void clearDeviceEntries();
         void maybeStartInitialPluginScan();
+        bool pauseTransportForPluginMutation();
+        void resumeTransportAfterPluginMutation(bool resumeTransport);
 
     public:
         static void instantiate();

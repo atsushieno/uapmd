@@ -1053,6 +1053,21 @@ void uapmd::AppModel::setAutoBufferSizeEnabled(bool enabled) {
     auto_buffer_size_enabled_ = sequencer_.useAutoBufferSize();
 }
 
+bool uapmd::AppModel::pauseTransportForPluginMutation() {
+    if (!transportController_ || !transportController_->isPlaying())
+        return false;
+
+    transportController_->pause();
+    return true;
+}
+
+void uapmd::AppModel::resumeTransportAfterPluginMutation(bool resumeTransport) {
+    if (!resumeTransport || !transportController_ || !transportController_->isPaused())
+        return;
+
+    transportController_->resume();
+}
+
 void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const std::string& pluginId,
                                                  int32_t trackIndex,
@@ -1076,14 +1091,16 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
     // but we call the callback instead of managing state
     std::string formatCopy = format;
     std::string pluginIdCopy = pluginId;
+    const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
 
-    auto instantiateCallback = [this, config, pluginName, completionCallback](int32_t instanceId, int32_t trackIndex, std::string error) {
+    auto instantiateCallback = [this, config, pluginName, completionCallback, resumeTransportAfterMutation](int32_t instanceId, int32_t trackIndex, std::string error) {
         PluginInstanceResult result;
         result.instanceId = instanceId;
         result.pluginName = pluginName;
         result.error = std::move(error);
 
         if (!result.error.empty() || instanceId < 0) {
+            resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
             if (completionCallback) {
                 completionCallback(result);
             }
@@ -1095,6 +1112,7 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
 
         std::optional<PluginInstanceConfig> configOverride{config};
         result = registerPluginInstanceInternal(instanceId, configOverride);
+        resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
 
         if (completionCallback) {
             completionCallback(result);
@@ -1211,6 +1229,8 @@ void uapmd::AppModel::clearDeviceEntries() {
 }
 
 void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
+    const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
+
     // Hide and destroy plugin UI before removing the instance
     auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (instance) {
@@ -1244,6 +1264,8 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     for (auto& cb : instanceRemoved) {
         cb(instanceId);
     }
+
+    resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
 }
 
 void uapmd::AppModel::enableUmpDevice(int32_t instanceId, const std::string& deviceName) {
