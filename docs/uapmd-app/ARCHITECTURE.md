@@ -58,3 +58,7 @@ We split DAW features like this:
   - AudioGraph (-> AudioPluginInstanceAPI)
 - Platform Audio Out
 - Platform MIDI Out (TBD)
+
+## Related Notes
+
+- Android project-load automation without the document picker: `docs/uapmd-app/ANDROID_AUTOMATION.md`
