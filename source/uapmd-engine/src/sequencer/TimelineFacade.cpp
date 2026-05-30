@@ -9,6 +9,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include <remidy/detail/event-loop.hpp>
 #include "remidy/remidy.hpp"
 #include "uapmd-data/uapmd-data.hpp"
 #include "uapmd-engine/uapmd-engine.hpp"
@@ -903,8 +904,10 @@ namespace uapmd {
                     applyAnchorToLoadedClip(clip.get());
 
             // Wait for all async plugin instantiations to complete
-            while (pending_plugins.load(std::memory_order_acquire) > 0)
+            while (pending_plugins.load(std::memory_order_acquire) > 0) {
+                remidy::EventLoop::processQueuedTasks();
                 std::this_thread::yield();
+            }
 
             auto applyGraphConnections = [this](UapmdProjectTrackData* projectTrack, SequencerTrack* sequencerTrack) {
                 if (!projectTrack || !sequencerTrack || !projectTrack->graph())

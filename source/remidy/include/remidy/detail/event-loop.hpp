@@ -29,6 +29,7 @@ namespace remidy {
         virtual void enqueueTaskOnMainThreadImpl(std::function<void()>&& func) = 0;
         virtual void startImpl() = 0;
         virtual void stopImpl() = 0;
+        virtual void processQueuedTasksImpl() {}
     public:
         virtual ~EventLoop() = default;
 
@@ -50,6 +51,7 @@ namespace remidy {
         }
         // Enqueue task on the main thread to run asynchronously.
         static void enqueueTaskOnMainThread(std::function<void()>&& func) { getEventLoop()->enqueueTaskOnMainThreadImpl(std::move(func)); }
+        static void processQueuedTasks() { getEventLoop()->processQueuedTasksImpl(); }
         static void start() { getEventLoop()->startImpl(); }
         static void stop() { getEventLoop()->stopImpl(); }
     };

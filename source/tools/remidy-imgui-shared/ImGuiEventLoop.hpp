@@ -53,6 +53,10 @@ protected:
         running_ = false;
     }
 
+    void processQueuedTasksImpl() override {
+        processQueuedTasks();
+    }
+
 public:
     ImGuiEventLoop() : mainThreadId_(std::this_thread::get_id()) {}
 

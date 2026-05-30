@@ -9,6 +9,7 @@
 #include <chrono>
 #include <umppi/umppi.hpp>
 
+#include <remidy/detail/event-loop.hpp>
 #include <remidy/remidy.hpp>
 #include "uapmd-engine/uapmd-engine.hpp"
 #include "readerwriterqueue.h"
@@ -1324,79 +1325,86 @@ namespace uapmd {
                                           format,
                                           pluginId,
                                           [this, trackIndex, targetMaster, callback](int32_t instanceId, std::string error) {
-            if (instanceId < 0) {
-                callback(-1, targetMaster ? kMasterTrackIndex : trackIndex, "Could not create plugin: " + error);
-                return;
-            }
-
-            // Re-validate track (may have been removed during async operation)
-            if (!targetMaster) {
-                if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size()) {
-                    callback(-1, -1, std::format("Track {} no longer exists", trackIndex));
+            auto complete = [this, trackIndex, targetMaster, callback, instanceId, error = std::move(error)]() mutable {
+                if (instanceId < 0) {
+                    callback(-1, targetMaster ? kMasterTrackIndex : trackIndex, "Could not create plugin: " + error);
                     return;
                 }
-            }
 
-            auto instance = plugin_host->getInstance(instanceId);
-            auto* track = targetMaster ? master_track_.get() : tracks_[static_cast<size_t>(trackIndex)].get();
-            if (!track) {
-                callback(-1, targetMaster ? kMasterTrackIndex : trackIndex, "Track unavailable for plugin insertion");
-                return;
-            }
+                // Re-validate track (may have been removed during async operation)
+                if (!targetMaster) {
+                    if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size()) {
+                        callback(-1, -1, std::format("Track {} no longer exists", trackIndex));
+                        return;
+                    }
+                }
 
-            if (targetMaster) {
-                ensureContextBusConfiguration(master_track_context_.get(), instance->audioBuses());
-                applyTrackBusesLayout(master_track_.get(), AudioGraphBusesLayout{
-                    static_cast<uint32_t>(master_track_context_->audioInBusCount()),
-                    static_cast<uint32_t>(master_track_context_->audioOutBusCount()),
-                    1,
-                    1,
-                });
-            } else {
-                ensureTrackBusConfiguration(trackIndex, instance->audioBuses());
-            }
-
-            // Append to track's graph
-            auto status = track->graph().appendNodeSimple(instanceId, instance, [this,instanceId] {
                 auto instance = plugin_host->getInstance(instanceId);
-                instance->bypassed(true);
-                plugin_host->deletePluginInstance(instanceId);
-            });
-            if (status != 0) {
-                callback(-1, -1, std::format("Failed to append plugin to track {} (status {})", trackIndex, status));
-                return;
-            }
+                auto* track = targetMaster ? master_track_.get() : tracks_[static_cast<size_t>(trackIndex)].get();
+                if (!track) {
+                    callback(-1, targetMaster ? kMasterTrackIndex : trackIndex, "Track unavailable for plugin insertion");
+                    return;
+                }
 
-            track->orderedInstanceIds().push_back(instanceId);
-            plugin_host->onTrackGraphNodeAdded(
-                instanceId,
-                targetMaster ? kMasterTrackIndex : trackIndex,
-                targetMaster,
-                static_cast<uint32_t>(track->orderedInstanceIds().size() - 1));
+                if (targetMaster) {
+                    ensureContextBusConfiguration(master_track_context_.get(), instance->audioBuses());
+                    applyTrackBusesLayout(master_track_.get(), AudioGraphBusesLayout{
+                        static_cast<uint32_t>(master_track_context_->audioInBusCount()),
+                        static_cast<uint32_t>(master_track_context_->audioOutBusCount()),
+                        1,
+                        1,
+                    });
+                } else {
+                    ensureTrackBusConfiguration(trackIndex, instance->audioBuses());
+                }
 
-            // Auto-assign the lowest available UMP group (0–15) on this track.
-            uint8_t autoGroup = track->findAvailableGroup();
-            if (autoGroup <= 15)
-                track->setInstanceGroup(instanceId, autoGroup);
+                // Append to track's graph
+                auto status = track->graph().appendNodeSimple(instanceId, instance, [this,instanceId] {
+                    auto instance = plugin_host->getInstance(instanceId);
+                    instance->bypassed(true);
+                    plugin_host->deletePluginInstance(instanceId);
+                });
+                if (status != 0) {
+                    callback(-1, -1, std::format("Failed to append plugin to track {} (status {})", trackIndex, status));
+                    return;
+                }
 
-            // Function block setup
-            configureTrackRouting(track);
+                track->orderedInstanceIds().push_back(instanceId);
+                plugin_host->onTrackGraphNodeAdded(
+                    instanceId,
+                    targetMaster ? kMasterTrackIndex : trackIndex,
+                    targetMaster,
+                    static_cast<uint32_t>(track->orderedInstanceIds().size() - 1));
 
-            // Plugin instance management
-            {
-                std::lock_guard<std::mutex> lock(instance_map_mutex_);
-                plugin_instances_[instanceId] = instance;
-            }
+                // Auto-assign the lowest available UMP group (0–15) on this track.
+                uint8_t autoGroup = track->findAvailableGroup();
+                if (autoGroup <= 15)
+                    track->setInstanceGroup(instanceId, autoGroup);
 
-            // Parameter metadata change events are now handled in AudioPluginNode directly
+                // Function block setup
+                configureTrackRouting(track);
 
-            refreshFunctionBlockMappings();
+                // Plugin instance management
+                {
+                    std::lock_guard<std::mutex> lock(instance_map_mutex_);
+                    plugin_instances_[instanceId] = instance;
+                }
 
-            instance->bypassed(false);
-            reconfigureMixBusContext();
-            reconfigureOutputAlignmentBuffers();
+                // Parameter metadata change events are now handled in AudioPluginNode directly
 
-            callback(instanceId, targetMaster ? kMasterTrackIndex : trackIndex, "");
+                refreshFunctionBlockMappings();
+
+                instance->bypassed(false);
+                reconfigureMixBusContext();
+                reconfigureOutputAlignmentBuffers();
+
+                callback(instanceId, targetMaster ? kMasterTrackIndex : trackIndex, "");
+            };
+
+            if (remidy::EventLoop::runningOnMainThread())
+                complete();
+            else
+                remidy::EventLoop::enqueueTaskOnMainThread(std::move(complete));
         });
     }
 
