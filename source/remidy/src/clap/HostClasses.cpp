@@ -94,25 +94,7 @@ namespace remidy {
         if (!instance)
             return;
 
-        bool isAudioThread = threadCheckIsAudioThread();
         bool isProcessing = instance->is_processing.load(std::memory_order_relaxed);
-
-        if (isAudioThread) {
-            // According to CLAP spec, request_flush should not be called from audio thread
-            if (isProcessing) {
-                // If process() is running, defer to next process() call
-                instance->flush_requested_.store(true, std::memory_order_release);
-            } else {
-                // If process() is not running, we can't defer - schedule on main thread
-                auto callbacksAlive = instance->callbacks_alive_;
-                EventLoop::enqueueTaskOnMainThread([instance, callbacksAlive]{
-                    if (!callbacksAlive->load(std::memory_order_acquire))
-                        return;
-                    instance->processParamsFlush();
-                });
-            }
-            return;
-        }
 
         if (isProcessing) {
             instance->flush_requested_.store(true, std::memory_order_release);
