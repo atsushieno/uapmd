@@ -1,3 +1,4 @@
+add_library(remidy STATIC)
 
 if(APPLE)
     set(REMIDY_SUPPORT_AU ON)
@@ -224,8 +225,6 @@ if (WIN32)
     set(remidy_LIBS_PLAT ws2_32)
 endif()
 
-
-add_library(remidy STATIC)
 
 target_link_libraries(remidy PUBLIC
         ${X11_LIBRARIES}

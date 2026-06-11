@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(UbiquitousAudioPluginMidiDevice LANGUAGES C CXX)
+
 set(CMAKE_CXX_STANDARD 23)
 get_filename_component(_UAPMD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" REALPATH)
 get_filename_component(UAPMD_REPO_ROOT "${_UAPMD_SOURCE_DIR}" DIRECTORY)
