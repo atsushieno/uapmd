@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <format>
+#include <filesystem>
 #include "clap/entry.h"
 #include "clap/factory/preset-discovery.h"
 #include "remidy/remidy.hpp"
@@ -15,7 +16,7 @@ namespace remidy_clap {
 
     struct CLAPPresetInfo {
         std::string name;
-        std::string load_key;
+        const char *load_key;
         std::string description;
     };
     
@@ -83,7 +84,7 @@ namespace remidy_clap {
         bool begin_preset(const char *name, const char *load_key) {
             presets.emplace_back(CLAPPresetInfo{
                     .name = name,
-                    .load_key = load_key,
+                    .load_key = load_key ? load_key : "",
             });
             return true;
         }
@@ -169,11 +170,28 @@ namespace remidy_clap {
                 providers.emplace_back(provider);
                 provider->init(provider);
 
-                for (auto& location : locations)
-                    if (!provider->get_metadata(provider, location.kind, location.location.c_str(), &receiver))
-                        remidy::Logger::global()->logWarning(std::format("Failed to get preset metadata from provider: {} location: ({}) {}", desc->name, location.kind, location.location).c_str());
+                for (auto& location : locations) {
+                    if (location.kind == CLAP_PRESET_DISCOVERY_LOCATION_FILE) {
+                        std::filesystem::path path(location.location);
+                        for (auto& f : std::filesystem::recursive_directory_iterator(path, std::filesystem::directory_options::skip_permission_denied)) {
+                            if (!f.is_regular_file())
+                                continue;
+                            for (const auto& filetype : filetypes) {
+                                if (f.path().extension().string().ends_with(filetype.file_extension)) {
+                                    if (!provider->get_metadata(provider, location.kind, f.path().c_str(), &receiver)) {
+                                        remidy::Logger::global()->logWarning(
+                                            std::format("Failed to get preset metadata from provider: {} location: ({}) {} path: {}",
+                                                        desc->name, location.kind, location.location, f.path().string()).c_str()
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // FIXME: what to do for CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN?
+                    }
+                }
             }
-            
         }
         
         ~PresetLoader() {

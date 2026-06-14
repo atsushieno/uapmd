@@ -31,7 +31,7 @@ void PluginInstanceCLAP::PresetsSupport::loadPreset(int32_t index) {
 
     EventLoop::runTaskOnMainThread([&] {
         // So, how do you specify the preset at index when the specification says "for factory presets, location must be NULL" ? load_key is just a category like "Bass"
-        if (!owner->plugin->presetLoadFromLocation(CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, presets[index].load_key.c_str()))
+        if (!owner->plugin->presetLoadFromLocation(CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, presets[index].load_key))
             Logger::global()->logWarning("Failed to load preset: %s", presets[index].name.c_str());
 
         // Refresh parameter metadata and poll values after preset load
