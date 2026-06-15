@@ -13,6 +13,7 @@
 #include "detail/project/DemucsStemSeparator.hpp"
 #include "detail/project/ProjectDocumentEvents.hpp"
 #include "detail/project/ProjectDocumentView.hpp"
+#include "detail/project/ProjectSerializationExtension.hpp"
 #include "detail/project/UapmdProjectFile.hpp"
 #include "detail/project/UapmdSequence.hpp"
 #include "detail/project/AudioGraphProvider.hpp"

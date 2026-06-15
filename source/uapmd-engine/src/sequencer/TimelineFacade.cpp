@@ -1707,6 +1707,19 @@ namespace uapmd {
             }
         }
 
+        void onTrackGraphChanged(int32_t trackIndex) override {
+            ProjectDocumentEvent event(ProjectDocumentEventKind::PluginGraphChanged, "plugin-graph-changed");
+            event.setTrackIndex(trackIndex);
+            if (trackIndex == kMasterTrackIndex) {
+                if (master_timeline_track_)
+                    event.setTrackId(master_timeline_track_->referenceId());
+            } else if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())) {
+                if (auto& track = timeline_tracks_[static_cast<size_t>(trackIndex)])
+                    event.setTrackId(track->referenceId());
+            }
+            emitProjectDocumentEvent(std::move(event));
+        }
+
     private:
         static std::filesystem::path makeRelativePath(
             const std::filesystem::path& baseDir,

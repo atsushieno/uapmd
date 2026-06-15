@@ -171,6 +171,7 @@ public:
                               double sampleRate,
                               uint32_t bufferSizeInFrames) = 0;
     virtual void onTrackRemoved(size_t trackIndex) = 0;
+    virtual void onTrackGraphChanged(int32_t trackIndex) = 0;
 
     static std::unique_ptr<TimelineFacade> create(SequencerEngine& engine);
 };

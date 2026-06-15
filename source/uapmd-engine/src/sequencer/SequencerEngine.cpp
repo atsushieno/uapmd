@@ -1304,6 +1304,7 @@ namespace uapmd {
         });
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
+        timeline_->onTrackGraphChanged(trackIndex);
         return true;
     }
 
@@ -1397,6 +1398,7 @@ namespace uapmd {
                 instance->bypassed(false);
                 reconfigureMixBusContext();
                 reconfigureOutputAlignmentBuffers();
+                timeline_->onTrackGraphChanged(targetMaster ? kMasterTrackIndex : trackIndex);
 
                 callback(instanceId, targetMaster ? kMasterTrackIndex : trackIndex, "");
             };
@@ -1443,6 +1445,7 @@ namespace uapmd {
                 refreshFunctionBlockMappings();
                 reconfigureMixBusContext();
                 reconfigureOutputAlignmentBuffers();
+                timeline_->onTrackGraphChanged(static_cast<int32_t>(i));
                 return true;
             }
         }
@@ -1451,6 +1454,7 @@ namespace uapmd {
             refreshFunctionBlockMappings();
             reconfigureMixBusContext();
             reconfigureOutputAlignmentBuffers();
+            timeline_->onTrackGraphChanged(kMasterTrackIndex);
             return true;
         }
         return false;
