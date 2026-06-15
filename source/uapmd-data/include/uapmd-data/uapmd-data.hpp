@@ -10,6 +10,7 @@
 #include "detail/project/Smf2ClipReaderWriter.hpp"
 #include "detail/project/TrackImporter.hpp"
 #include "detail/project/DemucsStemSeparator.hpp"
+#include "detail/project/ProjectDocumentEvents.hpp"
 #include "detail/project/UapmdProjectFile.hpp"
 #include "detail/project/UapmdSequence.hpp"
 #include "detail/project/AudioGraphProvider.hpp"

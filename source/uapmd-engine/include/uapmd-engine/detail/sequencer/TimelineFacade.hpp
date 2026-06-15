@@ -87,6 +87,7 @@ public:
     virtual ProjectResult loadProject(const std::filesystem::path& file) = 0;
     virtual AudioGraphProviderRegistry& audioGraphProviderRegistry() = 0;
     virtual const AudioGraphProviderRegistry& audioGraphProviderRegistry() const = 0;
+    virtual ProjectDocumentEventSource& projectDocumentEvents() = 0;
     virtual bool replaceTrackGraphType(
         int32_t trackIndex,
         const std::string& graphTypeId,

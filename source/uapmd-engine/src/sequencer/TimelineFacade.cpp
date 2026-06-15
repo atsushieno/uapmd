@@ -158,7 +158,9 @@ namespace uapmd {
         uint32_t next_timeline_track_reference_{1};
         std::function<void()> timeline_changed_callback_{};
         bool suppress_timeline_notification_{false};
+        bool suppress_project_document_events_{false};
         AudioGraphProviderRegistry audio_graph_provider_registry_{};
+        ProjectDocumentEventDispatcher project_document_events_{};
 
     public:
         explicit TimelineFacadeImpl(SequencerEngine& engine)
@@ -178,6 +180,59 @@ namespace uapmd {
         void notifyTimelineChanged() {
             if (!suppress_timeline_notification_ && timeline_changed_callback_)
                 timeline_changed_callback_();
+        }
+
+        void emitProjectDocumentEvent(ProjectDocumentEvent event) {
+            if (!suppress_project_document_events_)
+                project_document_events_.emit(std::move(event));
+        }
+
+        static std::string clipObjectId(const TimelineTrack& track, const ClipData* clip, int32_t clipId) {
+            if (clip && !clip->referenceId.empty())
+                return clip->referenceId;
+            return std::format("{}::clip_{:08x}", track.referenceId(), static_cast<uint32_t>(clipId));
+        }
+
+        int32_t trackIndexFor(const TimelineTrack& track) const {
+            if (&track == master_timeline_track_.get())
+                return kMasterTrackIndex;
+            for (int32_t i = 0; i < static_cast<int32_t>(timeline_tracks_.size()); ++i)
+                if (timeline_tracks_[static_cast<size_t>(i)].get() == &track)
+                    return i;
+            return -1;
+        }
+
+        void emitClipAdded(TimelineTrack& track, int32_t clipId, int32_t sourceNodeId) {
+            auto* clip = track.clipManager().getClip(clipId);
+            ProjectDocumentEvent event(ProjectDocumentEventKind::ClipAdded, "clip-added");
+            event.setTrackId(track.referenceId())
+                .setClipId(clipObjectId(track, clip, clipId))
+                .setTrackIndex(trackIndexFor(track))
+                .setClipNumericId(clipId)
+                .setDetail("source-node-id", static_cast<int64_t>(sourceNodeId));
+            if (clip) {
+                event.setDetail("clip-type", std::string(clip->clipType == ClipType::Audio ? "audio" : "midi"));
+                if (!clip->filepath.empty())
+                    event.setDetail("source.file", clip->filepath);
+            }
+            emitProjectDocumentEvent(std::move(event));
+        }
+
+        void emitClipRemoved(TimelineTrack& track, const ClipData& clip) {
+            ProjectDocumentEvent event(ProjectDocumentEventKind::ClipRemoved, "clip-removed");
+            event.setTrackId(track.referenceId())
+                .setClipId(clipObjectId(track, &clip, clip.clipId))
+                .setTrackIndex(trackIndexFor(track))
+                .setClipNumericId(clip.clipId)
+                .setDetail("source-node-id", static_cast<int64_t>(clip.sourceNodeInstanceId));
+            emitProjectDocumentEvent(std::move(event));
+        }
+
+        void emitMasterTrackChanged(std::string type = "master-track-changed") {
+            ProjectDocumentEvent event(ProjectDocumentEventKind::MasterTrackChanged, std::move(type));
+            event.setTrackId(master_timeline_track_ ? master_timeline_track_->referenceId() : "master_track")
+                .setTrackIndex(kMasterTrackIndex);
+            emitProjectDocumentEvent(std::move(event));
         }
 
         // ---- TimelineFacade interface ----
@@ -202,6 +257,10 @@ namespace uapmd {
 
         const AudioGraphProviderRegistry& audioGraphProviderRegistry() const override {
             return audio_graph_provider_registry_;
+        }
+
+        ProjectDocumentEventSource& projectDocumentEvents() override {
+            return project_document_events_;
         }
 
         bool replaceTrackGraphType(
@@ -347,6 +406,8 @@ namespace uapmd {
                 result.clipId = clipId;
                 result.sourceNodeId = sourceNodeId;
                 applyAuthoritativeTempoMapToMusicalClips();
+                emitClipAdded(timelineTrack, clipId, sourceNodeId);
+                emitMasterTrackChanged("master-track-content-changed");
                 notifyTimelineChanged();
             } else {
                 result.error = "Failed to add MIDI clip to track";
@@ -393,6 +454,7 @@ namespace uapmd {
                 result.success = true;
                 result.clipId = clipId;
                 result.sourceNodeId = sourceNodeId;
+                emitClipAdded(timelineTrack, clipId, sourceNodeId);
                 notifyTimelineChanged();
             } else {
                 result.error = "Failed to add clip to track";
@@ -514,13 +576,24 @@ namespace uapmd {
 
         bool removeClipFromTrack(int32_t trackIndex, int32_t clipId) override {
             bool removed = false;
+            TimelineTrack* targetTrack = nullptr;
+            std::optional<ClipData> removedClip{};
             if (trackIndex == kMasterTrackIndex) {
-                removed = master_timeline_track_ ? master_timeline_track_->removeClip(clipId) : false;
+                targetTrack = master_timeline_track_.get();
             } else if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(timeline_tracks_.size())) {
-                removed = timeline_tracks_[static_cast<size_t>(trackIndex)]->removeClip(clipId);
+                targetTrack = timeline_tracks_[static_cast<size_t>(trackIndex)].get();
+            }
+            if (targetTrack) {
+                if (auto* clip = targetTrack->clipManager().getClip(clipId))
+                    removedClip = *clip;
+                removed = targetTrack->removeClip(clipId);
             }
             if (removed) {
                 applyAuthoritativeTempoMapToMusicalClips();
+                if (targetTrack && removedClip)
+                    emitClipRemoved(*targetTrack, *removedClip);
+                if (removedClip && removedClip->clipType == ClipType::Midi)
+                    emitMasterTrackChanged("master-track-content-changed");
                 notifyTimelineChanged();
             }
             return removed;
@@ -528,10 +601,15 @@ namespace uapmd {
 
         ProjectResult loadProject(const std::filesystem::path& projectFile) override {
             suppress_timeline_notification_ = true;
+            suppress_project_document_events_ = true;
             struct SuppressGuard {
-                bool& flag;
-                ~SuppressGuard() { flag = false; }
-            } suppressGuard{suppress_timeline_notification_};
+                bool& timelineFlag;
+                bool& projectDocumentEventsFlag;
+                ~SuppressGuard() {
+                    timelineFlag = false;
+                    projectDocumentEventsFlag = false;
+                }
+            } suppressGuard{suppress_timeline_notification_, suppress_project_document_events_};
             ProjectResult result;
             if (projectFile.empty()) {
                 result.error = "Project path is empty";
@@ -928,7 +1006,14 @@ namespace uapmd {
                 engine_.masterTrack()->trackGain(masterProjectTrack->volume());
 
             suppress_timeline_notification_ = false;
+            suppress_project_document_events_ = false;
             result.success = true;
+            ProjectDocumentEvent loadedEvent(ProjectDocumentEventKind::ProjectLoaded, "project-loaded");
+            loadedEvent.setProjectId(projectFile.string())
+                .setFullResyncRecommended(true)
+                .setDetail("source.file", projectFile.string());
+            emitProjectDocumentEvent(std::move(loadedEvent));
+            emitMasterTrackChanged("master-track-content-changed");
             notifyTimelineChanged();
             return result;
         }
@@ -1336,14 +1421,27 @@ namespace uapmd {
                     }
                 });
 
+            const auto trackIndex = static_cast<int32_t>(timeline_tracks_.size());
+            const auto eventTrackId = newTrack->referenceId();
             timeline_tracks_.emplace_back(std::move(newTrack));
             rebuildTrackSnapshot();
+
+            ProjectDocumentEvent event(ProjectDocumentEventKind::TrackAdded, "track-added");
+            event.setTrackId(eventTrackId)
+                .setTrackIndex(trackIndex);
+            emitProjectDocumentEvent(std::move(event));
         }
 
         void onTrackRemoved(size_t trackIndex) override {
             if (trackIndex < timeline_tracks_.size()) {
+                const auto eventTrackId = timeline_tracks_[trackIndex]->referenceId();
                 timeline_tracks_.erase(timeline_tracks_.begin() + static_cast<long>(trackIndex));
                 rebuildTrackSnapshot();
+
+                ProjectDocumentEvent event(ProjectDocumentEventKind::TrackRemoved, "track-removed");
+                event.setTrackId(eventTrackId)
+                    .setTrackIndex(static_cast<int32_t>(trackIndex));
+                emitProjectDocumentEvent(std::move(event));
             }
         }
 
