@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-latest]
+        os: [ubuntu-24.04, macos-15, windows-2025-vs2026]
     steps:
     - name: checkout
       uses: actions/checkout@v6
@@ -60,18 +60,18 @@ jobs:
         brew install sdl3
 
     - name: prepare dependency cache directories on Windows
-      if: matrix.os == 'windows-latest'
+      if: matrix.os == 'windows-2025-vs2026'
       run: cmake -E make_directory build/_deps
     - name: cache Windows dependencies
-      if: matrix.os == 'windows-latest'
+      if: matrix.os == 'windows-2025-vs2026'
       uses: actions/cache@v4
       with:
         path: build/_deps
         key: ${{ runner.os }}-deps-${{ hashFiles('cmake/UapmdVcpkgSDL3.cmake', 'tools/uapmd-app/CMakeLists.txt') }}
     - name: setup build on Windows
-      if: matrix.os == 'windows-latest'
+      if: matrix.os == 'windows-2025-vs2026'
       run: |
-        cmake -B build -G "Visual Studio 17 2022" -DBUILD_SHARED_LIBS=OFF -DREMIDY_BUILD_CONFIG=Debug -DUAPMD_ENABLE_WINMIDI=ON
+        cmake -B build -G "Visual Studio 18 2026" -DBUILD_SHARED_LIBS=OFF -DREMIDY_BUILD_CONFIG=Debug -DUAPMD_ENABLE_WINMIDI=ON
     - name: setup build on Darwin
       if: matrix.os == 'macos-15'
       run: |
