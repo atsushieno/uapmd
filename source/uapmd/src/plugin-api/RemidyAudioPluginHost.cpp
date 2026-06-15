@@ -194,7 +194,8 @@ namespace uapmd {
         std::optional<uapmd::AapUiHostDetails> aapUiHostDetails() const override {
             if (!instance)
                 return std::nullopt;
-            auto* extensibility = dynamic_cast<remidy::PluginInstanceAAPExt*>(instance->getExtensibility());
+            auto* extensibility = dynamic_cast<remidy::PluginInstanceAAPExt*>(
+                instance->getExtensibility(remidy::kAAPPluginInstanceExtensionId));
             if (!extensibility)
                 return std::nullopt;
             return uapmd::AapUiHostDetails{
@@ -360,6 +361,15 @@ namespace uapmd {
 
         bool requiresReplacingProcess() const override {
             return instance && instance->requiresReplacingProcess();
+        }
+
+        AudioPluginInstanceExtension* extension(std::string_view extensionId) override {
+            if (!instance)
+                return nullptr;
+            auto* remidyExtension = instance->getExtensibility(extensionId);
+            if (!remidyExtension)
+                return nullptr;
+            return dynamic_cast<AudioPluginInstanceExtension*>(remidyExtension);
         }
     };
 }

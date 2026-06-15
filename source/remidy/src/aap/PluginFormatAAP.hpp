@@ -419,7 +419,9 @@ namespace remidy {
         ~PluginInstanceAAP() override;
 
         aap::PluginInstance* aapInstance() { return instance; };
-        PluginExtensibility<PluginInstance>* getExtensibility() override {
+        PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
+            if (extensionId != kAAPPluginInstanceExtensionId)
+                return nullptr;
             return (extensibility_ ? extensibility_ : extensibility_ = std::make_unique<Extensibility>(*this)).get();
         }
 

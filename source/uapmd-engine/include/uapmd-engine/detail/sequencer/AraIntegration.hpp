@@ -76,7 +76,14 @@ namespace uapmd {
         virtual void cancelAnalysis(AraRequestId requestId) = 0;
     };
 
-    class AraPluginExtension : public AudioPluginInstanceExtension {
+    class AraPluginExtension
+        : public remidy::PluginExtensibility<remidy::PluginInstance>
+        , public AudioPluginInstanceExtension {
+    protected:
+        explicit AraPluginExtension(remidy::PluginInstance& owner)
+            : remidy::PluginExtensibility<remidy::PluginInstance>(owner) {
+        }
+
     public:
         std::string_view extensionId() const override {
             return kAraPluginExtensionId;
