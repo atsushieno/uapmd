@@ -105,9 +105,11 @@ namespace remidy {
             std::vector<PluginParameter*>& parameters() override;
             std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes,
                                                               PerNoteControllerContext) override;
-            StatusCode setParameter(uint32_t index, double plainValue, uint64_t timestamp) override;
+            StatusCode setParameter(uint32_t index, double plainValue) override;
+            StatusCode enqueueParameterRT(uint32_t index, double plainValue, uint64_t timestamp) override;
             StatusCode getParameter(uint32_t index, double* plainValue) override;
-            StatusCode setPerNoteController(PerNoteControllerContext, uint32_t index, double plainValue,
+            StatusCode setPerNoteController(PerNoteControllerContext, uint32_t index, double plainValue) override;
+            StatusCode enqueuePerNoteControllerRT(PerNoteControllerContext, uint32_t index, double plainValue,
                                             uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext, uint32_t,
                                             double*) override;

@@ -73,7 +73,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onAC(remidy::uint4_t gr
     }
 
     if (mappingFound) {
-        owner->parameters()->setParameter(id, value, timestamp());
+        owner->parameters()->enqueueParameterRT(id, value, timestamp());
     }
     // If no mapping found, UAPMD handles AC-to-parameter mappings
 }
@@ -82,7 +82,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPNAC(remidy::uint4_t 
                                                                      uint8_t index, uint32_t data) {
     // Per-note controller
     double value = static_cast<double>(data) / UINT32_MAX;
-    owner->parameters()->setPerNoteController({ .note = note, .channel = channel, .group = group }, index, value, timestamp());
+    owner->parameters()->enqueuePerNoteControllerRT({ .note = note, .channel = channel, .group = group }, index, value, timestamp());
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t index,
@@ -137,7 +137,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onCC(remidy::uint4_t gr
         Logger::global()->logInfo("VST3 MIDI mapping does not give any mapping to CC index %d. Directly using it as a parameter Id.", index);
     }
 
-    owner->parameters()->setParameter(id, value, timestamp());
+    owner->parameters()->enqueueParameterRT(id, value, timestamp());
 }
 
 void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onProgramChange(remidy::uint4_t group, remidy::uint4_t channel, remidy::uint7_t flags,
@@ -170,7 +170,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onRC(remidy::uint4_t gr
     }
 
     if (mappingFound) {
-        owner->parameters()->setParameter(id, value, timestamp());
+        owner->parameters()->enqueueParameterRT(id, value, timestamp());
     }
 }
 
@@ -216,9 +216,9 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPitchBend(remidy::uin
     }
 
     if (perNoteOrMinus < 0)
-        owner->parameters()->setParameter(id, value, timestamp());
+        owner->parameters()->enqueueParameterRT(id, value, timestamp());
     else
-        owner->parameters()->setPerNoteController(
+        owner->parameters()->enqueuePerNoteControllerRT(
             { .note = static_cast<uint8_t>(perNoteOrMinus), .channel = channel, .group = group },
             id, value, timestamp());
 }
@@ -262,7 +262,7 @@ void remidy::PluginInstanceVST3::VST3UmpInputDispatcher::onPressure(remidy::uint
         }
 
         if (mappingFound) {
-            owner->parameters()->setParameter(id, value, timestamp());
+            owner->parameters()->enqueueParameterRT(id, value, timestamp());
         }
         // If no mapping found, channel aftertouch is ignored
     } else {

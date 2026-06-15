@@ -77,9 +77,11 @@ namespace remidy {
             std::vector<PluginParameter*>& parameters() override;
             std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext note) override;
 
-            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode setParameter(uint32_t index, double value) override;
+            StatusCode enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getParameter(uint32_t index, double *value) override;
-            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) override;
+            StatusCode enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
             std::string valueToString(uint32_t index, double value) override;
             std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override;
@@ -292,9 +294,11 @@ namespace remidy {
             std::vector<PluginParameter*>& parameters() override;
             std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext note) override;
 
-            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode setParameter(uint32_t index, double value) override;
+            StatusCode enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getParameter(uint32_t index, double *value) override;
-            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) override;
+            StatusCode enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) override;
             std::string valueToString(uint32_t index, double value) override;
             std::string valueToStringPerNote(PerNoteControllerContext context, uint32_t index, double value) override;

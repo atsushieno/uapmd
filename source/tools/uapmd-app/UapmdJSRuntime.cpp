@@ -330,7 +330,6 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
 
         if (instance)
         {
-            // FIXME: it must not directly invoke this function from this non-RT-safe context.
             instance->setParameterValue (paramId, value);
         }
 

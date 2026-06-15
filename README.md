@@ -81,7 +81,7 @@ $ bash build-ios-sim.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd   # you can skip CPM
 If you target Web:
 
 ```
-$ bash build-wasm-imgui.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd   # you can skip CPM_SOURCE_CACHE
+$ bash build-wasm.sh CPM_SOURCE_CACHE=~/.cache/CPM/uapmd   # you can skip CPM_SOURCE_CACHE
 ```
 
 Then you can run it like:

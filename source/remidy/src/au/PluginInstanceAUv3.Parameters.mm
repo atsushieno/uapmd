@@ -210,7 +210,7 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceAUv3::ParameterSupp
     return empty;
 }
 
-remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::setParameter(uint32_t index, double value) {
     @autoreleasepool {
         if (owner->audioUnit == nil)
             return StatusCode::INVALID_PARAMETER_OPERATION;
@@ -229,10 +229,16 @@ remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::setParameter(ui
         [param setValue:static_cast<AUValue>(value)];
 
         // Notify parameter change event listeners (e.g., UMP output mapper)
+        // FIXME: we should examine if this is really expected here (especially on the RT case)
         parameterChangeEvent().notify(index, value);
 
         return StatusCode::OK;
     }
+}
+
+remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
+    // FIXME: there should be different implementation for RT-safe method (also respect timestamp)
+    return enqueueParameterRT(index, value, 0);
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::getParameter(uint32_t index, double* value) {
@@ -263,12 +269,21 @@ remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::getParameter(ui
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::setPerNoteController(
+    PerNoteControllerContext context, uint32_t index, double value) {
+    // FIXME: implement
+    owner->logger()->logInfo("remidy::PluginInstanceAUv3::setPerNoteController not implemented");
+    return StatusCode::NOT_IMPLEMENTED;
+}
+
+remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::enqueuePerNoteControllerRT(
     PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
+    // FIXME: implement
     owner->logger()->logInfo("remidy::PluginInstanceAUv3::setPerNoteController not implemented");
     return StatusCode::NOT_IMPLEMENTED;
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::getPerNoteController(
+    // FIXME: implement
     PerNoteControllerContext context, uint32_t index, double* value) {
     owner->logger()->logInfo("remidy::PluginInstanceAUv3::getPerNoteController not implemented");
     if (!value)

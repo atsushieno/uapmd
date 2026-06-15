@@ -140,7 +140,12 @@ namespace remidy {
         return per_note_parameter_defs;
     }
 
-    StatusCode PluginInstanceCLAP::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+    StatusCode PluginInstanceCLAP::ParameterSupport::setParameter(uint32_t index, double value) {
+        // FIXME: there should be non-RT-safe implementation
+        return enqueueParameterRT(index, value, 0);
+    }
+
+    StatusCode PluginInstanceCLAP::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
         if (index >= parameter_ids.size() || index >= parameter_cookies.size())
             return StatusCode::INVALID_PARAMETER_OPERATION;
         auto a = owner->events_in->tryAllocate(alignof(void *), sizeof(clap_event_param_value_t));
@@ -164,7 +169,12 @@ namespace remidy {
         return StatusCode::OK;
     }
 
-    StatusCode PluginInstanceCLAP::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
+    StatusCode PluginInstanceCLAP::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) {
+        // FIXME: there should be non-RT-safe implementation
+        return enqueuePerNoteControllerRT(context, index, value, 0);
+    }
+
+    StatusCode PluginInstanceCLAP::ParameterSupport::enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
         if (index >= parameter_ids.size() || index >= parameter_cookies.size())
             return StatusCode::INVALID_PARAMETER_OPERATION;
         auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events_in->tryAllocate(alignof(void *),

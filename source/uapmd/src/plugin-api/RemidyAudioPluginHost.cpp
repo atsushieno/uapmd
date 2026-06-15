@@ -233,7 +233,11 @@ namespace uapmd {
         }
 
         void setParameterValue(int32_t index, double value) override {
-            instance->parameters()->setParameter(index, value, 0);
+            instance->parameters()->setParameter(index, value);
+        }
+
+        void enqueueParameterValueRT(int32_t index, double value, uapmd_timestamp_t timestamp) override {
+            instance->parameters()->enqueueParameterRT(index, value, timestamp);
         }
 
         std::string getParameterValueString(int32_t index, double value) override {
@@ -241,7 +245,11 @@ namespace uapmd {
         }
 
         void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override {
-            instance->parameters()->setPerNoteController({.note = note }, index, value, 0);
+            instance->parameters()->setPerNoteController({.note = note }, index, value);
+        }
+
+        void enqueuePerNoteControllerValueRT(uint8_t note, uint8_t index, double value, uapmd_timestamp_t timestamp) override {
+            instance->parameters()->enqueuePerNoteControllerRT({.note = note }, index, value, timestamp);
         }
 
         std::string getPerNoteControllerValueString(uint8_t note, uint8_t index, double value) override {

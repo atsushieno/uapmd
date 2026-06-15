@@ -115,9 +115,14 @@ namespace remidy {
                 return empty;
             }
 
-            StatusCode setParameter(uint32_t index, double value, uint64_t timestamp) override;
+            StatusCode setParameter(uint32_t index, double value) override;
+            StatusCode enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) override;
             StatusCode getParameter(uint32_t index, double *value) override;
-            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override {
+            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) override {
+                owner->formatImpl->getLogger()->logError("Per-note controller is not supported in LV2");
+                return StatusCode::INVALID_PARAMETER_OPERATION;
+            }
+            StatusCode enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) override {
                 owner->formatImpl->getLogger()->logError("Per-note controller is not supported in LV2");
                 return StatusCode::INVALID_PARAMETER_OPERATION;
             }
@@ -179,6 +184,7 @@ namespace remidy {
                 return StatusCode::INVALID_PARAMETER_OPERATION;
             }
 
+            // FIXME: this should handle both RT and non-RT cases
             StatusCode setParameter(double value, remidy_timestamp_t timestamp) override {
                 // timestamp cannot be supported for ControlPort.
                 if (port_index < owner->owner->lv2_ports.size()) {
@@ -445,6 +451,7 @@ namespace remidy {
         bool requiresReplacingProcess() const override { return false; }
     };
 
+    // FIXME: this should handle both RT and non-RT cases
     inline StatusCode PluginInstanceLV2::LV2AtomParameterHandler::setParameter(double value, remidy_timestamp_t timestamp) {
         current = value;
         owner->owner->enqueueParameterChange(def->index(), value, timestamp);

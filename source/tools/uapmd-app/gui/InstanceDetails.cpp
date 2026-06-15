@@ -104,7 +104,6 @@ void InstanceDetails::showWindow(int32_t instanceId) {
             }();
 
             if (!perNoteSelection) {
-                // FIXME: it must not invoke thid function from this non-RT-safe context.
                 seq.engine()->setParameterValue(instanceId, parameterIndex, value);
                 return;
             }
@@ -121,7 +120,7 @@ void InstanceDetails::showWindow(int32_t instanceId) {
                 return;
             }
             if (auto* parameterSupport = pal->parameterSupport())
-                parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value, 0);
+                parameterSupport->setPerNoteController(perNoteSelection->context, parameterIndex, value);
         });
 
         state.parameterList.setOnGetParameterValueString([this, instanceId](uint32_t parameterIndex, float value) -> std::string {

@@ -170,18 +170,23 @@ namespace remidy {
         // See `perNoteControllerDefinitionsMayBeDistinctPerNote()` for details.
         virtual std::vector<PluginParameter*>& perNoteControllers(PerNoteControllerContextTypes types, PerNoteControllerContext context) = 0;
 
-        // Sets (schedules) a plain parameter value by index.
-        // FIXME: we have to use it only in the RT-safe code. Needs review and fixes on all the usages.
-        // FIXME: we should split what each plugin format should implement vs. what is accessible by apps.
-        virtual StatusCode setParameter(uint32_t index, double plainValue, uint64_t timestamp) = 0;
+        // Sets a plain parameter value by index.
+        // It can be invoked by any thread. The plugin format implementation is supposed to appropriately handle it in each way.
+        virtual StatusCode setParameter(uint32_t index, double plainValue) = 0;
+        // Schedules a plain parameter value by index in realtime thread.
+        // on: audio-thread
+        virtual StatusCode enqueueParameterRT(uint32_t index, double plainValue, uint64_t timestamp) = 0;
         // Retrieves current plain parameter, if possible.
         virtual StatusCode getParameter(uint32_t index, double *plainValue) = 0;
 
-        // Sets (schedules) a normalized per-note controller value by index.
-        // covers both parameter changes and per-note parameter changes (controllers).
+        // Sets a normalized per-note controller value by index.
         // Note that only some plugin formats support per-note controllers beyond 127.
-        // FIXME: we have to use it only in the RT-safe code. Needs review and fixes on all the usages.
-        virtual StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) = 0;
+        // It can be invoked by any thread. The plugin format implementation is supposed to appropriately handle it in each way.
+        virtual StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) = 0;
+        // Schedules a normalized per-note controller value by index.
+        // Note that only some plugin formats support per-note controllers beyond 127.
+        // on: audio-thread
+        virtual StatusCode enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) = 0;
 
         // Retrieves current per-note controller value, if possible.
         virtual StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index, double *value) = 0;

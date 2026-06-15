@@ -47,7 +47,12 @@ remidy::PluginInstanceAAP::ParameterSupport::~ParameterSupport() {
 }
 
 remidy::StatusCode
-remidy::PluginInstanceAAP::ParameterSupport::setParameter(uint32_t index, double plainValue,
+remidy::PluginInstanceAAP::ParameterSupport::setParameter(uint32_t index, double plainValue) {
+    return enqueueParameterRT(index, plainValue, 0);
+}
+
+remidy::StatusCode
+remidy::PluginInstanceAAP::ParameterSupport::enqueueParameterRT(uint32_t index, double plainValue,
                                                 uint64_t timestamp) {
     if (index >= parameter_list.size())
         return StatusCode::INVALID_PARAMETER_OPERATION;
@@ -80,9 +85,33 @@ remidy::PluginInstanceAAP::ParameterSupport::getParameter(uint32_t index, double
 
 remidy::StatusCode
 remidy::PluginInstanceAAP::ParameterSupport::setPerNoteController(remidy::PerNoteControllerContext context,
-                                                        uint32_t index, double value,
+                                                                  uint32_t index, double value) {
+    return enqueuePerNoteControllerRT(context, index, value, 0);
+}
+
+remidy::StatusCode
+remidy::PluginInstanceAAP::ParameterSupport::enqueuePerNoteControllerRT(remidy::PerNoteControllerContext context,
+                                                        uint32_t index, double plainValue,
                                                         uint64_t timestamp) {
-    return StatusCode::INVALID_PARAMETER_OPERATION;
+    if (index >= per_note_controller_list.size())
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+    auto* param = per_note_controller_list[index];
+    double clamped = std::clamp(plainValue, param->minPlainValue(), param->maxPlainValue());
+    const double normalized = std::clamp(param->normalizedValue(clamped), 0.0, 1.0);
+    parameter_values[index] = clamped;
+
+    // AAP plugins expect parameter changes on the dedicated AAP parameter SysEx8 path.
+    // Injecting raw NRPN here bypasses the host-side translator path that would otherwise
+    // convert controller messages for the plugin/UI/state layers.
+    const auto data = static_cast<uint32_t>(normalized * static_cast<double>(std::numeric_limits<uint32_t>::max()));
+    uint32_t words[4]{};
+    aapMidi2ParameterSysex8(words, words + 1, words + 2, words + 3,
+                            context.group, context.channel, context.note, context.extra, static_cast<uint16_t>(index), data);
+
+    owner->aapInstance()->addEventUmpInput((void*) words, sizeof(words));
+
+    parameterChangeEvent().notify(index, clamped);
+    return StatusCode::OK;
 }
 
 remidy::StatusCode

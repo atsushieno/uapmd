@@ -152,7 +152,13 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
     return per_note_controller_defs;
 }
 
-remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value) {
+    // FIXME: it has to delegate to IComponentHandler::performEdit() instead (but to do so we need to implement that function first).
+    // enqueueParameterRT() is not safe to call from here.
+    return enqueueParameterRT(index, value, 0);
+}
+
+remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
     // use IParameterChanges.
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
     auto pvc = owner->processDataInputParameterChanges.asInterface();
@@ -181,7 +187,13 @@ remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(ui
     return StatusCode::INVALID_PARAMETER_OPERATION;
 }
 
-remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) {
+    // FIXME: it has to delegate to IComponentHandler::performEdit() instead (but to do so we need to implement that function first).
+    // enqueueParameterRT() is not safe to call from here.
+    return enqueuePerNoteControllerRT(context, index, value, 0);
+}
+
+remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
     int32_t sampleOffset = 0; // FIXME: calculate from timestamp
     double ppqPosition = owner->ump_input_dispatcher.masterContext()->ppqPosition(); // I guess only either of those time options are needed.
     uint16_t flags = owner->processData.processMode == kRealtime ? Event::kIsLive : 0; // am I right?

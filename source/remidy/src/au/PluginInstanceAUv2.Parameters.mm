@@ -283,7 +283,7 @@ std::optional<remidy::PerNoteControllerContextTypes> remidy::PluginInstanceAUv2:
     }
 }
 
-remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setParameter(uint32_t index, double value) {
     if (!au_param_id_list || index >= parameter_list.size())
         return StatusCode::INVALID_PARAMETER_OPERATION;
     // FIXME: calculate inBufferOffsetInFrames from timestamp.
@@ -294,6 +294,11 @@ remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setParameter(ui
     parameterChangeEvent().notify(index, value);
 
     return StatusCode::OK;
+}
+
+remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
+    // FIXME: there should be different implementation for RT-safe method (also respect timestamp)
+    return setParameter(index, value);
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::getParameter(uint32_t index, double* value) {
@@ -309,13 +314,18 @@ remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::getParameter(ui
     return StatusCode::OK;
 }
 
-remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
+remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) {
     if (!au_param_id_list || index >= parameter_list.size())
         return StatusCode::INVALID_PARAMETER_OPERATION;
     // FIXME: calculate inBufferOffsetInFrames from timestamp.
     auto inBufferOffsetInFrames = 0;
     AudioUnitSetParameter(owner->instance, au_param_id_list[index], kAudioUnitScope_Note, context.note, (float) value, inBufferOffsetInFrames);
     return StatusCode::OK;
+}
+
+remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
+    // FIXME: there should be different implementation for RT-safe method (also respect timestamp)
+    return setPerNoteController(context, index, value);
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double* value) {

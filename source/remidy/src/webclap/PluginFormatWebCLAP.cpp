@@ -293,15 +293,20 @@ std::vector<PluginParameter*>& PluginInstanceWebCLAP::ParamSupportWebCLAP::perNo
     return filtered;
 }
 
-StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setParameter(
-    uint32_t index, double plainValue, uint64_t)
-{
+StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setParameter(uint32_t index, double plainValue) {
     owner_->setCachedParameterValue(index, plainValue);
     std::ostringstream args;
     args << "[" << owner_->slot() << "," << index << "," << plainValue << "]";
     postWclapRpc("setParameter", args.str());
     parameterChangeEvent().notify(index, plainValue);
     return StatusCode::OK;
+}
+
+StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::enqueueParameterRT(
+    uint32_t index, double plainValue, uint64_t /*timestamp*/)
+{
+    // FIXME: there should be RT-safe implementation that is invokable from the audio thread.
+    return setParameter(index, plainValue);
 }
 
 StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::getParameter(
@@ -315,7 +320,7 @@ StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::getParameter(
 }
 
 StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setPerNoteController(
-    PerNoteControllerContext context, uint32_t index, double plainValue, uint64_t)
+    PerNoteControllerContext context, uint32_t index, double plainValue)
 {
     owner_->setCachedParameterValue(index, plainValue);
     std::ostringstream args;
@@ -341,6 +346,13 @@ StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setPerNoteController(
     perNoteControllerChangeEvent().notify(contextType, contextValue, index, plainValue);
     return StatusCode::OK;
 }
+
+StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::enqueuePerNoteControllerRT(
+    PerNoteControllerContext context, uint32_t index, double plainValue, uint64_t /*timestamp*/) {
+    // FIXME: there should be RT-safe implementation that is invokable from the audio thread.
+    return setPerNoteController(context, index, plainValue);
+}
+
 
 StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::getPerNoteController(
     PerNoteControllerContext, uint32_t index, double* value)

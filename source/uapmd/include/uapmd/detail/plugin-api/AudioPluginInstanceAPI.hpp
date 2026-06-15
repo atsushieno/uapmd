@@ -92,9 +92,16 @@ namespace uapmd {
                 std::function<void(std::string error, void* callbackContext)> completed) = 0;
 
         virtual double getParameterValue(int32_t index) = 0;
+        // set parameter value from non-RT thread (such as GUI).
         virtual void setParameterValue(int32_t index, double value) = 0;
+        // enqueue parameter value on RT thread (such as UmpInputDispatcher message processor).
+        virtual void enqueueParameterValueRT(int32_t index, double value, uapmd_timestamp_t timestamp) = 0;
         virtual std::string getParameterValueString(int32_t index, double value) = 0;
+
+        // set per-note controller value from non-RT thread (such as GUI).
         virtual void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) = 0;
+        // enqueue per-note controller value on RT thread (such as UmpInputDispatcher message processor).
+        virtual void enqueuePerNoteControllerValueRT(uint8_t note, uint8_t index, double value, uapmd_timestamp_t timestamp) = 0;
         virtual std::string getPerNoteControllerValueString(uint8_t node, uint8_t index, double value) = 0;
 
         virtual bool hasUISupport() = 0;

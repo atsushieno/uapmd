@@ -321,8 +321,11 @@ remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::getParameter(uin
     return parameter_handlers[index]->getParameter(value);
 }
 
-remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value, uint64_t timestamp) {
-    // Public API - called from host, should notify UI
+remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value) {
+    return setParameterInternal(index, value, 0, true);
+}
+
+remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
     return setParameterInternal(index, value, timestamp, true);
 }
 

@@ -112,15 +112,19 @@ namespace remidy {
                 return per_note_controller_list;
             }
 
-            StatusCode setParameter(uint32_t index, double plainValue, uint64_t timestamp) override;
+            StatusCode setParameter(uint32_t index, double plainValue) override;
+
+            StatusCode enqueueParameterRT(uint32_t index, double plainValue, uint64_t timestamp) override;
 
             StatusCode getParameter(uint32_t index, double *plainValue) override;
 
-            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index,
-                                            double value, uint64_t timestamp) override;
+            StatusCode setPerNoteController(PerNoteControllerContext context, uint32_t index, double plainValue) override;
+
+            StatusCode enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index,
+                                                  double plainValue, uint64_t timestamp) override;
 
             StatusCode getPerNoteController(PerNoteControllerContext context, uint32_t index,
-                                            double *value) override;
+                                            double *plainValue) override;
 
             std::string valueToString(uint32_t index, double value) override;
 

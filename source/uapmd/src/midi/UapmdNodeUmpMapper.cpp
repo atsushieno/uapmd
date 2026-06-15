@@ -19,7 +19,7 @@ namespace uapmd {
     // UAPMD maps a parameter ID to an assignable controller bank and index, which totals only up to 14 bytes.
     // We use uint16_t to match that.
     void UapmdNodeUmpInputMapper::setParameterValue(uint16_t index, double value) {
-        plugin->setParameterValue(index, value);
+        plugin->enqueueParameterValueRT(index, value, 0);
     }
 
     // Same for uint16_t index as `setParameter()`.
@@ -29,7 +29,7 @@ namespace uapmd {
     }
 
     void UapmdNodeUmpInputMapper::setPerNoteControllerValue(uint8_t note, uint8_t index, double value) {
-        plugin->setPerNoteControllerValue(note, index, value);
+        plugin->enqueuePerNoteControllerValueRT(note, index, value, 0);
     }
 
     // Unlike Assignable Controllers, We use bank MSB, LSB and program index, which totals to 24-bits.
