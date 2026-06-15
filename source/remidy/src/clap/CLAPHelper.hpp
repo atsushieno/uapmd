@@ -178,7 +178,7 @@ namespace remidy_clap {
                                 continue;
                             for (const auto& filetype : filetypes) {
                                 if (f.path().extension().string().ends_with(filetype.file_extension)) {
-                                    if (!provider->get_metadata(provider, location.kind, f.path().c_str(), &receiver)) {
+                                    if (!provider->get_metadata(provider, location.kind, f.path().string().c_str(), &receiver)) {
                                         remidy::Logger::global()->logWarning(
                                             std::format("Failed to get preset metadata from provider: {} location: ({}) {} path: {}",
                                                         desc->name, location.kind, location.location, f.path().string()).c_str()
