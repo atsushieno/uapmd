@@ -45,9 +45,9 @@ namespace remidy {
     public:
         RemidyCLAPHost(
             const char* name = "remidy",
-            const char* url = "",
-            const char* vendor = "",
-            const char* version = ""
+            const char* url = "https://github.com/atsushieno/uapmd",
+            const char* vendor = "UAPMD Project",
+            const char* version = "x"
         ) : CLAPHelperHost(name, vendor, url, version) {
         }
         ~RemidyCLAPHost() override;
