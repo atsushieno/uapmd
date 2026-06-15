@@ -161,6 +161,7 @@ namespace uapmd {
         bool suppress_project_document_events_{false};
         AudioGraphProviderRegistry audio_graph_provider_registry_{};
         ProjectDocumentEventDispatcher project_document_events_{};
+        std::shared_ptr<AudioSourceRepository> audio_source_repository_{std::make_shared<FileAudioSourceRepository>()};
 
     public:
         explicit TimelineFacadeImpl(SequencerEngine& engine)
@@ -197,6 +198,23 @@ namespace uapmd {
             if (!clip.filepath.empty())
                 return "audio-source:" + clip.filepath;
             return "audio-source:" + clipObjectId(track, &clip, clip.clipId);
+        }
+
+        size_t audioSourceReferenceCount(const std::string& audioSourceId) const {
+            auto countOnTrack = [&](const std::shared_ptr<TimelineTrack>& track) -> size_t {
+                if (!track)
+                    return 0;
+                size_t count = 0;
+                for (const auto& clip : track->clipManager().getAllClips())
+                    if (clip.clipType == ClipType::Audio && audioSourceObjectId(*track, clip) == audioSourceId)
+                        ++count;
+                return count;
+            };
+
+            size_t count = countOnTrack(master_timeline_track_);
+            for (const auto& track : timeline_tracks_)
+                count += countOnTrack(track);
+            return count;
         }
 
         int32_t trackIndexFor(const TimelineTrack& track) const {
@@ -268,6 +286,17 @@ namespace uapmd {
                     event.setDetail("source.file", clip->filepath);
             }
             emitProjectDocumentEvent(std::move(event));
+
+            if (clip && clip->clipType == ClipType::Audio) {
+                const auto audioSourceId = audioSourceObjectId(track, *clip);
+                if (audioSourceReferenceCount(audioSourceId) == 1) {
+                    ProjectDocumentEvent sourceEvent(ProjectDocumentEventKind::AudioSourceAdded, "audio-source-added");
+                    sourceEvent.setAudioSourceId(audioSourceId)
+                        .setClipId(clipObjectId(track, clip, clipId))
+                        .setDetail("source.file", clip->filepath);
+                    emitProjectDocumentEvent(std::move(sourceEvent));
+                }
+            }
         }
 
         void emitClipRemoved(TimelineTrack& track, const ClipData& clip) {
@@ -278,6 +307,17 @@ namespace uapmd {
                 .setClipNumericId(clip.clipId)
                 .setDetail("source-node-id", static_cast<int64_t>(clip.sourceNodeInstanceId));
             emitProjectDocumentEvent(std::move(event));
+
+            if (clip.clipType == ClipType::Audio) {
+                const auto audioSourceId = audioSourceObjectId(track, clip);
+                if (audioSourceReferenceCount(audioSourceId) == 0) {
+                    ProjectDocumentEvent sourceEvent(ProjectDocumentEventKind::AudioSourceRemoved, "audio-source-removed");
+                    sourceEvent.setAudioSourceId(audioSourceId)
+                        .setClipId(clipObjectId(track, &clip, clip.clipId))
+                        .setDetail("source.file", clip.filepath);
+                    emitProjectDocumentEvent(std::move(sourceEvent));
+                }
+            }
         }
 
         void emitMasterTrackChanged(std::string type = "master-track-changed") {
@@ -317,6 +357,17 @@ namespace uapmd {
 
         ProjectDocumentView& projectDocumentView() override {
             return *this;
+        }
+
+        AudioSourceRepository& audioSourceRepository() override {
+            return *audio_source_repository_;
+        }
+
+        void setAudioSourceRepository(std::shared_ptr<AudioSourceRepository> repository) override {
+            if (repository)
+                audio_source_repository_ = std::move(repository);
+            else
+                audio_source_repository_ = std::make_shared<FileAudioSourceRepository>();
         }
 
         ProjectRevision currentRevision() const override {
@@ -399,11 +450,10 @@ namespace uapmd {
                     snapshot.clipId = clipObjectId(*track, &clip, clip.clipId);
                     snapshot.filepath = clip.filepath;
                     snapshot.sourceNodeId = clip.sourceNodeInstanceId;
-                    auto sourceNode = track->getSourceNode(clip.sourceNodeInstanceId);
-                    if (auto* audioNode = dynamic_cast<AudioFileSourceNode*>(sourceNode.get())) {
-                        snapshot.channelCount = audioNode->channelCount();
-                        snapshot.sampleRate = audioNode->sampleRate();
-                        snapshot.frameCount = audioNode->numFrames();
+                    if (auto info = audio_source_repository_->getAudioSourceInfo(audioSourceId, clip.filepath)) {
+                        snapshot.channelCount = info->channelCount;
+                        snapshot.sampleRate = info->sampleRate;
+                        snapshot.frameCount = info->frameCount;
                     }
                     return snapshot;
                 }
@@ -448,11 +498,30 @@ namespace uapmd {
             int64_t frameCount,
             float** destination,
             uint32_t destinationChannels) const override {
-            (void) audioSourceId;
-            (void) startFrame;
-            (void) frameCount;
-            (void) destination;
-            (void) destinationChannels;
+            auto findOnTrack = [&](const std::shared_ptr<TimelineTrack>& track) {
+                if (!track)
+                    return false;
+                for (const auto& clip : track->clipManager().getAllClips()) {
+                    if (clip.clipType != ClipType::Audio)
+                        continue;
+                    if (audioSourceObjectId(*track, clip) != audioSourceId)
+                        continue;
+                    return audio_source_repository_->readAudioSourceSamples(
+                        audioSourceId,
+                        clip.filepath,
+                        startFrame,
+                        frameCount,
+                        destination,
+                        destinationChannels);
+                }
+                return false;
+            };
+
+            if (findOnTrack(master_timeline_track_))
+                return true;
+            for (const auto& track : timeline_tracks_)
+                if (findOnTrack(track))
+                    return true;
             return false;
         }
 

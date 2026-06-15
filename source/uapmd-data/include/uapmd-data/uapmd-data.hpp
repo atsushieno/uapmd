@@ -5,6 +5,7 @@
 #include "detail/midi/MidiTimelineEvents.hpp"
 #include "detail/audio/AudioFileReader.hpp"
 #include "detail/audio/AudioFileFactory.hpp"
+#include "detail/audio/AudioSourceRepository.hpp"
 #include "detail/project/SmfConverter.hpp"
 #include "detail/project/MidiClipReader.hpp"
 #include "detail/project/Smf2ClipReaderWriter.hpp"
