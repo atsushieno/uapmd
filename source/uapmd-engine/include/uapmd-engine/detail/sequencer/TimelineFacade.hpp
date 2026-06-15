@@ -88,6 +88,7 @@ public:
     virtual AudioGraphProviderRegistry& audioGraphProviderRegistry() = 0;
     virtual const AudioGraphProviderRegistry& audioGraphProviderRegistry() const = 0;
     virtual ProjectDocumentEventSource& projectDocumentEvents() = 0;
+    virtual ProjectDocumentView& projectDocumentView() = 0;
     virtual bool replaceTrackGraphType(
         int32_t trackIndex,
         const std::string& graphTypeId,

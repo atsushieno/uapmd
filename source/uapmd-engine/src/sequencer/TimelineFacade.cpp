@@ -17,7 +17,7 @@
 
 namespace uapmd {
 
-    class TimelineFacadeImpl : public TimelineFacade {
+    class TimelineFacadeImpl : public TimelineFacade, public ProjectDocumentView {
         SequencerEngine& engine_;
         int32_t sampleRate_;
         uint32_t bufferSizeInFrames_;
@@ -193,6 +193,12 @@ namespace uapmd {
             return std::format("{}::clip_{:08x}", track.referenceId(), static_cast<uint32_t>(clipId));
         }
 
+        static std::string audioSourceObjectId(const TimelineTrack& track, const ClipData& clip) {
+            if (!clip.filepath.empty())
+                return "audio-source:" + clip.filepath;
+            return "audio-source:" + clipObjectId(track, &clip, clip.clipId);
+        }
+
         int32_t trackIndexFor(const TimelineTrack& track) const {
             if (&track == master_timeline_track_.get())
                 return kMasterTrackIndex;
@@ -200,6 +206,52 @@ namespace uapmd {
                 if (timeline_tracks_[static_cast<size_t>(i)].get() == &track)
                     return i;
             return -1;
+        }
+
+        TimelineTrack* findTrackById(const ProjectObjectId& trackId) const {
+            if (master_timeline_track_ && master_timeline_track_->referenceId() == trackId)
+                return master_timeline_track_.get();
+            for (const auto& track : timeline_tracks_)
+                if (track && track->referenceId() == trackId)
+                    return track.get();
+            return nullptr;
+        }
+
+        std::optional<std::pair<TimelineTrack*, ClipData>> findClipById(const ProjectObjectId& clipId) const {
+            auto findOnTrack = [&](const std::shared_ptr<TimelineTrack>& track) -> std::optional<std::pair<TimelineTrack*, ClipData>> {
+                if (!track)
+                    return std::nullopt;
+                for (const auto& clip : track->clipManager().getAllClips())
+                    if (clipObjectId(*track, &clip, clip.clipId) == clipId)
+                        return std::make_pair(track.get(), clip);
+                return std::nullopt;
+            };
+
+            if (auto found = findOnTrack(master_timeline_track_))
+                return found;
+            for (const auto& track : timeline_tracks_)
+                if (auto found = findOnTrack(track))
+                    return found;
+            return std::nullopt;
+        }
+
+        ProjectClipSnapshot makeClipSnapshot(const TimelineTrack& track, const ClipData& clip) const {
+            return ProjectClipSnapshot{
+                .clipId = clipObjectId(track, &clip, clip.clipId),
+                .trackId = track.referenceId(),
+                .trackIndex = trackIndexFor(track),
+                .clipNumericId = clip.clipId,
+                .sourceNodeId = clip.sourceNodeInstanceId,
+                .clipType = clip.clipType,
+                .name = clip.name,
+                .filepath = clip.filepath,
+                .position = clip.position,
+                .durationSamples = clip.durationSamples,
+                .tickResolution = clip.tickResolution,
+                .clipTempo = clip.clipTempo,
+                .markers = clip.markers,
+                .audioWarps = clip.audioWarps
+            };
         }
 
         void emitClipAdded(TimelineTrack& track, int32_t clipId, int32_t sourceNodeId) {
@@ -261,6 +313,147 @@ namespace uapmd {
 
         ProjectDocumentEventSource& projectDocumentEvents() override {
             return project_document_events_;
+        }
+
+        ProjectDocumentView& projectDocumentView() override {
+            return *this;
+        }
+
+        ProjectRevision currentRevision() const override {
+            return project_document_events_.currentRevision();
+        }
+
+        std::optional<ProjectObjectId> masterTrackId() const override {
+            if (!master_timeline_track_)
+                return std::nullopt;
+            return master_timeline_track_->referenceId();
+        }
+
+        std::vector<ProjectObjectId> trackIds() const override {
+            std::vector<ProjectObjectId> result;
+            result.reserve(timeline_tracks_.size());
+            for (const auto& track : timeline_tracks_)
+                if (track)
+                    result.push_back(track->referenceId());
+            return result;
+        }
+
+        std::vector<ProjectObjectId> clipIds(ProjectObjectId trackId) const override {
+            std::vector<ProjectObjectId> result;
+            auto* track = findTrackById(trackId);
+            if (!track)
+                return result;
+            auto clips = track->clipManager().getAllClips();
+            result.reserve(clips.size());
+            for (const auto& clip : clips)
+                result.push_back(clipObjectId(*track, &clip, clip.clipId));
+            return result;
+        }
+
+        std::vector<ProjectObjectId> audioSourceIds() const override {
+            std::vector<ProjectObjectId> result;
+            auto collect = [&result](const std::shared_ptr<TimelineTrack>& track) {
+                if (!track)
+                    return;
+                for (const auto& clip : track->clipManager().getAllClips())
+                    if (clip.clipType == ClipType::Audio)
+                        result.push_back(audioSourceObjectId(*track, clip));
+            };
+            collect(master_timeline_track_);
+            for (const auto& track : timeline_tracks_)
+                collect(track);
+            std::sort(result.begin(), result.end());
+            result.erase(std::unique(result.begin(), result.end()), result.end());
+            return result;
+        }
+
+        std::optional<ProjectTrackSnapshot> getTrack(ProjectObjectId trackId) const override {
+            auto* track = findTrackById(trackId);
+            if (!track)
+                return std::nullopt;
+            return ProjectTrackSnapshot{
+                .trackId = track->referenceId(),
+                .trackIndex = trackIndexFor(*track),
+                .masterTrack = track == master_timeline_track_.get()
+            };
+        }
+
+        std::optional<ProjectClipSnapshot> getClip(ProjectObjectId clipId) const override {
+            auto found = findClipById(clipId);
+            if (!found)
+                return std::nullopt;
+            return makeClipSnapshot(*found->first, found->second);
+        }
+
+        std::optional<ProjectAudioSourceSnapshot> getAudioSource(ProjectObjectId audioSourceId) const override {
+            auto findOnTrack = [&](const std::shared_ptr<TimelineTrack>& track) -> std::optional<ProjectAudioSourceSnapshot> {
+                if (!track)
+                    return std::nullopt;
+                for (const auto& clip : track->clipManager().getAllClips()) {
+                    if (clip.clipType != ClipType::Audio)
+                        continue;
+                    if (audioSourceObjectId(*track, clip) != audioSourceId)
+                        continue;
+                    ProjectAudioSourceSnapshot snapshot;
+                    snapshot.audioSourceId = audioSourceId;
+                    snapshot.clipId = clipObjectId(*track, &clip, clip.clipId);
+                    snapshot.filepath = clip.filepath;
+                    snapshot.sourceNodeId = clip.sourceNodeInstanceId;
+                    auto sourceNode = track->getSourceNode(clip.sourceNodeInstanceId);
+                    if (auto* audioNode = dynamic_cast<AudioFileSourceNode*>(sourceNode.get())) {
+                        snapshot.channelCount = audioNode->channelCount();
+                        snapshot.sampleRate = audioNode->sampleRate();
+                        snapshot.frameCount = audioNode->numFrames();
+                    }
+                    return snapshot;
+                }
+                return std::nullopt;
+            };
+
+            if (auto found = findOnTrack(master_timeline_track_))
+                return found;
+            for (const auto& track : timeline_tracks_)
+                if (auto found = findOnTrack(track))
+                    return found;
+            return std::nullopt;
+        }
+
+        bool readClipUmpContent(
+            ProjectObjectId clipId,
+            std::vector<uapmd_ump_t>& events,
+            std::vector<uint64_t>& timestampsInTicks,
+            uint32_t& tickResolution) const override {
+            events.clear();
+            timestampsInTicks.clear();
+            tickResolution = 0;
+
+            auto found = findClipById(clipId);
+            if (!found || found->second.clipType != ClipType::Midi)
+                return false;
+
+            auto sourceNode = found->first->getSourceNode(found->second.sourceNodeInstanceId);
+            auto* midiSource = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
+            if (!midiSource)
+                return false;
+
+            events = midiSource->umpEvents();
+            timestampsInTicks = midiSource->eventTimestampsTicks();
+            tickResolution = midiSource->tickResolution();
+            return true;
+        }
+
+        bool readAudioSourceSamples(
+            ProjectObjectId audioSourceId,
+            int64_t startFrame,
+            int64_t frameCount,
+            float** destination,
+            uint32_t destinationChannels) const override {
+            (void) audioSourceId;
+            (void) startFrame;
+            (void) frameCount;
+            (void) destination;
+            (void) destinationChannels;
+            return false;
         }
 
         bool replaceTrackGraphType(
