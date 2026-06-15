@@ -320,25 +320,39 @@ std::vector<PluginCatalogEntry> PluginScannerCLAP::getAllFastScannablePlugins() 
         std::unique_ptr<PluginInstanceCLAP> ret{nullptr};
         std::string error{};
         auto bundle = info->bundlePath();
-        forEachPlugin(bundle, [info, this, &ret](void *module, clap_plugin_factory_t *factory, clap_preset_discovery_factory* presetDiscoveryFactory,
-                                                       const clap_plugin_descriptor_t *desc) {
+        auto instantiateMatchingPlugin = [info, this, &ret, &error](void *module,
+                                                                    clap_plugin_factory_t *factory,
+                                                                    clap_preset_discovery_factory* presetDiscoveryFactory,
+                                                                    const clap_plugin_descriptor_t *desc) {
             if (info->pluginId() != desc->id)
                 return;
 
             auto host = std::make_unique<RemidyCLAPHost>();
             auto plugin = factory->create_plugin(factory, host->clapHost(), desc->id);
-            if (plugin) {
-                // Initialize the plugin via the proxy
-                // Create the plugin proxy wrapper
-                auto pluginProxy = std::make_unique<CLAPPluginProxy>(*plugin, *host);
-
-                if (!pluginProxy->init()) {
-                    Logger::global()->logError("Failed to initialize CLAP plugin %s", info->displayName().data());
-                    return;
-                }
-
-                ret = std::make_unique<PluginInstanceCLAP>(this, info, presetDiscoveryFactory, module, std::move(pluginProxy), std::move(host));
+            if (!plugin) {
+                error = "factory->create_plugin() returned null";
+                return;
             }
+
+            // Initialize the plugin via the proxy.
+            auto pluginProxy = std::make_unique<CLAPPluginProxy>(*plugin, *host);
+            if (!pluginProxy->init()) {
+                error = "clap_plugin.init() returned false";
+                Logger::global()->logError("Failed to initialize CLAP plugin %s", info->displayName().data());
+                plugin->destroy(plugin);
+                return;
+            }
+
+            ret = std::make_unique<PluginInstanceCLAP>(this, info, presetDiscoveryFactory, module, std::move(pluginProxy), std::move(host));
+        };
+        forEachPlugin(bundle, [options, &instantiateMatchingPlugin](void *module, clap_plugin_factory_t *factory, clap_preset_discovery_factory* presetDiscoveryFactory,
+                                                                    const clap_plugin_descriptor_t *desc) {
+            if (options.uiThreadRequirement & PluginUIThreadRequirement::InstanceControl)
+                EventLoop::runTaskOnMainThread([&] {
+                    instantiateMatchingPlugin(module, factory, presetDiscoveryFactory, desc);
+                });
+            else
+                instantiateMatchingPlugin(module, factory, presetDiscoveryFactory, desc);
         }, [&](void *module) {
             // do not unload library here.
         });
