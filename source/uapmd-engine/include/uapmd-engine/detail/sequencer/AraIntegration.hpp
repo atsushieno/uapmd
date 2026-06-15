@@ -116,6 +116,8 @@ namespace uapmd {
         virtual std::vector<int32_t> attachedPluginInstanceIds() const = 0;
 
         virtual AraStatus resyncFromProjectDocument() = 0;
+
+        static std::unique_ptr<AraSession> create();
     };
 
 } // namespace uapmd
