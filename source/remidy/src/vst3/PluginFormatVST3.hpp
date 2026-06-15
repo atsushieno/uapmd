@@ -95,7 +95,6 @@ namespace remidy {
         Logger* logger;
         Extensibility extensibility;
         PluginScannerVST3 scanning_;
-        std::unique_ptr<ComponentHandlerImpl> handler;
 
         StatusCode doLoad(std::filesystem::path &vst3Dir, void** module) const;
         static StatusCode doUnload(std::filesystem::path &vst3Dir, void* module);
@@ -121,8 +120,6 @@ namespace remidy {
             // same process: global state torn down by exitDll is not fully restored
             // by a second initDll, causing factory->createInstance to crash.
             library_pool.setRetentionPolicy(PluginBundlePool::Retain);
-
-            handler = std::make_unique<ComponentHandlerImpl>(&host);
         }
 
         Logger* getLogger() { return logger; }
@@ -370,6 +367,7 @@ namespace remidy {
         };
 
         PluginFormatVST3Impl* owner;
+        std::unique_ptr<ComponentHandlerImpl> component_handler{};
         void* module;
         IPluginFactory* factory;
         std::string pluginName;
@@ -425,7 +423,6 @@ namespace remidy {
             PluginCatalogEntry* info,
             void* module,
             IPluginFactory* factory,
-            ComponentHandlerImpl *handler,
             IComponent* component,
             IAudioProcessor* processor,
             IEditController* controller,

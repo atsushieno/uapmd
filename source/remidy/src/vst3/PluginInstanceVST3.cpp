@@ -21,7 +21,6 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         PluginCatalogEntry *info,
         void *module,
         IPluginFactory *factory,
-        ComponentHandlerImpl *handler,
         IComponent *component,
         IAudioProcessor *processor,
         IEditController *controller,
@@ -33,7 +32,9 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
 
     pluginName = info->displayName();
 
-    auto result = controller->setComponentHandler(handler);
+    component_handler = std::make_unique<ComponentHandlerImpl>(owner->getHost());
+
+    auto result = controller->setComponentHandler(component_handler.get());
     if (result != kResultOk && result != kNoInterface)
         owner->getLogger()->logError(
                 "%s: IEditController failed to set IComponentHandler. Result: %d",
@@ -85,7 +86,7 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         midi_mapping = nullptr; // just to make sure
 
     // Register parameter edit handler for this plugin instance
-    handler->setParameterEditHandler([this, controller](ParamID paramId, double value) {
+    component_handler->setParameterEditHandler([this, controller](ParamID paramId, double value) {
         // Queue the parameter change for the next audio process call
         auto pvc = processDataInputParameterChanges.asInterface();
         int32_t index = 0;
@@ -99,7 +100,7 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
         dynamic_cast<ParameterSupport*>(parameters())->notifyParameterValue(paramId, plainValue);
     });
 
-    handler->setRestartComponentHandler([this](int32 flags) {
+    component_handler->setRestartComponentHandler([this](int32 flags) {
         handleRestartComponent(flags);
     });
 
@@ -202,6 +203,8 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
         }
 
         controller->setComponentHandler(nullptr);
+        component_handler->setParameterEditHandler(nullptr);
+        component_handler->setRestartComponentHandler(nullptr);
 
         if (isControllerDistinctFromComponent)
             controller->terminate();
@@ -809,8 +812,7 @@ tresult PLUGIN_API remidy::ComponentHandlerImpl::queryInterface(const TUID _iid,
 }
 
 tresult PLUGIN_API remidy::ComponentHandlerImpl::beginEdit(ParamID id) {
-    // Begin parameter edit - currently not implemented
-    remidy::Logger::global()->logWarning("ComponentHandler::beginEdit invoked (not implemented in this host)");
+    (void) id;
     return kResultOk;
 }
 
@@ -822,8 +824,7 @@ tresult PLUGIN_API remidy::ComponentHandlerImpl::performEdit(ParamID id, ParamVa
 }
 
 tresult PLUGIN_API remidy::ComponentHandlerImpl::endEdit(ParamID id) {
-    // End parameter edit - currently not implemented
-    remidy::Logger::global()->logWarning("ComponentHandler::endEdit invoked (not implemented in this host)");
+    (void) id;
     return kResultOk;
 }
 

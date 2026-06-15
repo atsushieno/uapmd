@@ -153,9 +153,18 @@ std::vector<remidy::PluginParameter*>& remidy::PluginInstanceVST3::ParameterSupp
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::setParameter(uint32_t index, double value) {
-    // FIXME: it has to delegate to IComponentHandler::performEdit() instead (but to do so we need to implement that function first).
-    // enqueueParameterRT() is not safe to call from here.
-    return enqueueParameterRT(index, value, 0);
+    if (index >= parameter_ids.size() || !owner->component_handler)
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+
+    const ParamID id = parameter_ids[index];
+    auto normalized = owner->controller->plainParamToNormalized(id, value);
+    auto handler = owner->component_handler.get();
+
+    if (handler->beginEdit(id) != kResultOk)
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+    auto result = handler->performEdit(id, normalized);
+    auto endResult = handler->endEdit(id);
+    return result == kResultOk && endResult == kResultOk ? StatusCode::OK : StatusCode::INVALID_PARAMETER_OPERATION;
 }
 
 remidy::StatusCode remidy::PluginInstanceVST3::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {

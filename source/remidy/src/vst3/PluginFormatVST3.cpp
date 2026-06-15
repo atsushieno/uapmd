@@ -68,8 +68,7 @@ PluginExtensibility<PluginFormat> *PluginFormatVST3Impl::getExtensibility() {
             IPluginFactory3 *factory3{nullptr};
             auto result = factory->queryInterface(IPluginFactory3::iid, (void **) &factory3);
             if (result == kResultOk) {
-                IComponentHandler *h = handler.get();
-                result = factory3->setHostContext(h);
+                result = factory3->setHostContext((FUnknown*) &host);
                 factory3->release(); // balance the addRef from queryInterface
                 if (result != kResultOk) {
                     // It seems common that a plugin often "implements IPluginFactory3" and then returns kNotImplemented...
@@ -186,7 +185,7 @@ PluginExtensibility<PluginFormat> *PluginFormatVST3Impl::getExtensibility() {
             }
             if (controllerValid) {
                 if (result == kResultOk) {
-                    ret = std::make_unique<PluginInstanceVST3>(this, entry, module, factory, handler.get(), component, processor,
+                    ret = std::make_unique<PluginInstanceVST3>(this, entry, module, factory, component, processor,
                                                                     controller, distinctControllerInstance, instance);
                     return;
                 }
