@@ -237,8 +237,18 @@ remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::setParameter(ui
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
-    // FIXME: there should be different implementation for RT-safe method (also respect timestamp)
-    return enqueueParameterRT(index, value, 0);
+    if (owner->audioUnit == nil)
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+    if (index >= parameter_list.size() || index >= parameter_addresses.size())
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+
+    AUScheduleParameterBlock scheduleParameterBlock = owner->audioUnit.scheduleParameterBlock;
+    if (scheduleParameterBlock == nil)
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+
+    auto sampleOffset = static_cast<AUEventSampleTime>(timestamp * owner->host_transport_info.sampleRate / 1000000000.0);
+    scheduleParameterBlock(AUEventSampleTimeImmediate + sampleOffset, 0, parameter_addresses[index], static_cast<AUValue>(value));
+    return StatusCode::OK;
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv3::ParameterSupport::getParameter(uint32_t index, double* value) {

@@ -4,6 +4,7 @@
 
 #include "remidy/remidy.hpp"
 #include "remidy/detail/queued-state-operations.hpp"
+#include "concurrentqueue.h"
 
 #include <atomic>
 #include <cstdint>
@@ -170,6 +171,15 @@ namespace remidy {
         };
 
         uint32_t slot_;
+        struct PendingParameterEvent {
+            uint32_t index{};
+            double value{};
+            bool per_note{};
+            uint32_t group{};
+            uint32_t channel{};
+            uint32_t note{};
+        };
+        moodycamel::ConcurrentQueue<PendingParameterEvent> pending_parameter_events_{};
         mutable std::mutex parameter_mutex_;
         std::vector<WebClapParamDescriptor> parameter_descriptors_{};
         std::vector<std::unique_ptr<PluginParameter>> parameter_defs_{};
@@ -212,6 +222,7 @@ namespace remidy {
         bool hasStateSupport() const { return has_state_support_; }
         bool hasPresetLoadSupport() const { return has_preset_load_support_; }
         bool parameterSupportsContext(uint32_t index, PerNoteControllerContextTypes types) const;
+        bool enqueueParameterEventRT(PendingParameterEvent event);
 
         StatusCode configure(ConfigurationRequest& configuration) override;
         StatusCode startProcessing() override;

@@ -322,14 +322,20 @@ remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::getParameter(uin
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameter(uint32_t index, double value) {
+    if (index >= parameter_handlers.size())
+        return StatusCode::INVALID_PARAMETER_OPERATION;
     return setParameterInternal(index, value, 0, true);
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
-    return setParameterInternal(index, value, timestamp, true);
+    if (index >= parameter_handlers.size())
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+    return parameter_handlers[index]->setParameter(value, timestamp);
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::ParameterSupport::setParameterInternal(uint32_t index, double value, uint64_t timestamp, bool notifyUI) {
+    if (index >= parameter_handlers.size())
+        return StatusCode::INVALID_PARAMETER_OPERATION;
     auto status = parameter_handlers[index]->setParameter(value, timestamp);
     if (status == StatusCode::OK) {
         notifyParameterValue(static_cast<uint32_t>(index), value);

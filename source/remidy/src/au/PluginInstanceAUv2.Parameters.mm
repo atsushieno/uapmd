@@ -297,8 +297,17 @@ remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setParameter(ui
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
-    // FIXME: there should be different implementation for RT-safe method (also respect timestamp)
-    return setParameter(index, value);
+    if (!au_param_id_list || index >= parameter_list.size())
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+
+    AudioUnitParameterEvent event{};
+    event.scope = kAudioUnitScope_Global;
+    event.element = 0;
+    event.parameter = au_param_id_list[index];
+    event.eventType = kParameterEvent_Immediate;
+    event.eventValues.immediate.bufferOffset = static_cast<UInt32>(timestamp * owner->host_transport_info.sampleRate / 1000000000.0);
+    event.eventValues.immediate.value = static_cast<AudioUnitParameterValue>(value);
+    return AudioUnitScheduleParameters(owner->instance, &event, 1) == noErr ? StatusCode::OK : StatusCode::INVALID_PARAMETER_OPERATION;
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::getParameter(uint32_t index, double* value) {
@@ -324,8 +333,17 @@ remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::setPerNoteContr
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
-    // FIXME: there should be different implementation for RT-safe method (also respect timestamp)
-    return setPerNoteController(context, index, value);
+    if (!au_param_id_list || index >= parameter_list.size())
+        return StatusCode::INVALID_PARAMETER_OPERATION;
+
+    AudioUnitParameterEvent event{};
+    event.scope = kAudioUnitScope_Note;
+    event.element = context.note;
+    event.parameter = au_param_id_list[index];
+    event.eventType = kParameterEvent_Immediate;
+    event.eventValues.immediate.bufferOffset = static_cast<UInt32>(timestamp * owner->host_transport_info.sampleRate / 1000000000.0);
+    event.eventValues.immediate.value = static_cast<AudioUnitParameterValue>(value);
+    return AudioUnitScheduleParameters(owner->instance, &event, 1) == noErr ? StatusCode::OK : StatusCode::INVALID_PARAMETER_OPERATION;
 }
 
 remidy::StatusCode remidy::PluginInstanceAUv2::ParameterSupport::getPerNoteController(PerNoteControllerContext context, uint32_t index, double* value) {

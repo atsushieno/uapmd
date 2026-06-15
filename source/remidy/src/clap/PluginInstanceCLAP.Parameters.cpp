@@ -141,8 +141,32 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setParameter(uint32_t index, double value) {
-        // FIXME: there should be non-RT-safe implementation
-        return enqueueParameterRT(index, value, 0);
+        if (index >= parameter_ids.size() || index >= parameter_cookies.size())
+            return StatusCode::INVALID_PARAMETER_OPERATION;
+        if (!owner->plugin || !owner->plugin->canUseParams())
+            return StatusCode::NOT_IMPLEMENTED;
+
+        clap::helpers::EventList inputEvents;
+        clap::helpers::EventList outputEvents;
+        auto a = inputEvents.tryAllocate(alignof(void *), sizeof(clap_event_param_value_t));
+        if (!a)
+            return StatusCode::INSUFFICIENT_MEMORY;
+        auto* evt = reinterpret_cast<clap_event_param_value_t *>(a);
+        *evt = {};
+        evt->header.type = CLAP_EVENT_PARAM_VALUE;
+        evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        evt->header.size = sizeof(clap_event_param_value_t);
+        evt->header.flags = 0;
+        evt->header.time = 0;
+        evt->cookie = parameter_cookies[index];
+        evt->port_index = 0;
+        evt->channel = 0;
+        evt->param_id = parameter_ids[index];
+        evt->value = value;
+
+        owner->plugin->paramsFlush(inputEvents.clapInputEvents(), outputEvents.clapOutputEvents());
+        parameterChangeEvent().notify(index, value);
+        return StatusCode::OK;
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::enqueueParameterRT(uint32_t index, double value, uint64_t timestamp) {
@@ -152,8 +176,10 @@ namespace remidy {
         if (!a)
             return StatusCode::INSUFFICIENT_MEMORY;
         const auto evt = reinterpret_cast<clap_event_param_value_t *>(a);
+        *evt = {};
         evt->header.type = CLAP_EVENT_PARAM_VALUE;
         evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        evt->header.size = sizeof(clap_event_param_value_t);
         evt->header.flags = CLAP_EVENT_IS_LIVE;
         // Convert timestamp from nanoseconds to samples
         evt->header.time = static_cast<uint32_t>((timestamp * owner->sample_rate_) / 1000000000.0);
@@ -163,35 +189,35 @@ namespace remidy {
         evt->param_id = parameter_ids[index];
         evt->value = value;
 
-        // Notify parameter change event listeners (e.g., UMP output mapper)
-        parameterChangeEvent().notify(index, value);
-
         return StatusCode::OK;
     }
 
     StatusCode PluginInstanceCLAP::ParameterSupport::setPerNoteController(PerNoteControllerContext context, uint32_t index, double value) {
-        // FIXME: there should be non-RT-safe implementation
-        return enqueuePerNoteControllerRT(context, index, value, 0);
-    }
-
-    StatusCode PluginInstanceCLAP::ParameterSupport::enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
         if (index >= parameter_ids.size() || index >= parameter_cookies.size())
             return StatusCode::INVALID_PARAMETER_OPERATION;
-        auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events_in->tryAllocate(alignof(void *),
-                                                                                              sizeof(clap_event_param_value_t)));
+        if (!owner->plugin || !owner->plugin->canUseParams())
+            return StatusCode::NOT_IMPLEMENTED;
+
+        clap::helpers::EventList inputEvents;
+        clap::helpers::EventList outputEvents;
+        auto a = inputEvents.tryAllocate(alignof(void *), sizeof(clap_event_param_value_t));
+        if (!a)
+            return StatusCode::INSUFFICIENT_MEMORY;
+        auto* evt = reinterpret_cast<clap_event_param_value_t *>(a);
+        *evt = {};
         evt->header.type = CLAP_EVENT_PARAM_VALUE;
         evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-        evt->header.flags |= CLAP_EVENT_IS_LIVE;
-        // Convert timestamp from nanoseconds to samples
-        evt->header.time = static_cast<uint32_t>((timestamp * owner->sample_rate_) / 1000000000.0);
+        evt->header.size = sizeof(clap_event_param_value_t);
+        evt->header.flags = 0;
+        evt->header.time = 0;
         evt->cookie = parameter_cookies[index];
         evt->port_index = context.group;
         evt->channel = context.channel;
-        evt->param_id = index;
+        evt->param_id = parameter_ids[index];
         evt->key = context.note;
         evt->value = value;
 
-        // Notify per-note controller change event listeners (e.g., UMP output mapper)
+        owner->plugin->paramsFlush(inputEvents.clapInputEvents(), outputEvents.clapOutputEvents());
         PerNoteControllerContextTypes contextType = PER_NOTE_CONTROLLER_NONE;
         if (context.group != 0)
             contextType = static_cast<PerNoteControllerContextTypes>(contextType | PER_NOTE_CONTROLLER_PER_GROUP);
@@ -199,9 +225,30 @@ namespace remidy {
             contextType = static_cast<PerNoteControllerContextTypes>(contextType | PER_NOTE_CONTROLLER_PER_CHANNEL);
         if (context.note != 0)
             contextType = static_cast<PerNoteControllerContextTypes>(contextType | PER_NOTE_CONTROLLER_PER_NOTE);
+        perNoteControllerChangeEvent().notify(contextType, context.note, index, value);
+        return StatusCode::OK;
+    }
 
-        uint32_t contextValue = context.note;  // For PER_NOTE context type
-        perNoteControllerChangeEvent().notify(contextType, contextValue, index, value);
+    StatusCode PluginInstanceCLAP::ParameterSupport::enqueuePerNoteControllerRT(PerNoteControllerContext context, uint32_t index, double value, uint64_t timestamp) {
+        if (index >= parameter_ids.size() || index >= parameter_cookies.size())
+            return StatusCode::INVALID_PARAMETER_OPERATION;
+        auto evt = reinterpret_cast<clap_event_param_value_t *>(owner->events_in->tryAllocate(alignof(void *),
+                                                                                              sizeof(clap_event_param_value_t)));
+        if (!evt)
+            return StatusCode::INSUFFICIENT_MEMORY;
+        *evt = {};
+        evt->header.type = CLAP_EVENT_PARAM_VALUE;
+        evt->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        evt->header.size = sizeof(clap_event_param_value_t);
+        evt->header.flags = CLAP_EVENT_IS_LIVE;
+        // Convert timestamp from nanoseconds to samples
+        evt->header.time = static_cast<uint32_t>((timestamp * owner->sample_rate_) / 1000000000.0);
+        evt->cookie = parameter_cookies[index];
+        evt->port_index = context.group;
+        evt->channel = context.channel;
+        evt->param_id = parameter_ids[index];
+        evt->key = context.note;
+        evt->value = value;
 
         return StatusCode::OK;
     }

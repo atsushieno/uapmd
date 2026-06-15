@@ -305,8 +305,9 @@ StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setParameter(uint32_t ind
 StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::enqueueParameterRT(
     uint32_t index, double plainValue, uint64_t /*timestamp*/)
 {
-    // FIXME: there should be RT-safe implementation that is invokable from the audio thread.
-    return setParameter(index, plainValue);
+    return owner_->enqueueParameterEventRT({index, plainValue, false, 0, 0, 0})
+        ? StatusCode::OK
+        : StatusCode::INSUFFICIENT_MEMORY;
 }
 
 StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::getParameter(
@@ -349,8 +350,9 @@ StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::setPerNoteController(
 
 StatusCode PluginInstanceWebCLAP::ParamSupportWebCLAP::enqueuePerNoteControllerRT(
     PerNoteControllerContext context, uint32_t index, double plainValue, uint64_t /*timestamp*/) {
-    // FIXME: there should be RT-safe implementation that is invokable from the audio thread.
-    return setPerNoteController(context, index, plainValue);
+    return owner_->enqueueParameterEventRT({index, plainValue, true, context.group, context.channel, context.note})
+        ? StatusCode::OK
+        : StatusCode::INSUFFICIENT_MEMORY;
 }
 
 
@@ -877,6 +879,10 @@ bool PluginInstanceWebCLAP::parameterSupportsContext(uint32_t index, PerNoteCont
     return true;
 }
 
+bool PluginInstanceWebCLAP::enqueueParameterEventRT(PendingParameterEvent event) {
+    return pending_parameter_events_.enqueue(event);
+}
+
 std::string PluginInstanceWebCLAP::buildParameterValueString(uint32_t index, double plainValue) const {
     char* formatted = uapmd_webclap_format_parameter_value(slot_, index, plainValue);
     if (formatted) {
@@ -1035,6 +1041,26 @@ void PluginInstanceWebCLAP::attachToTrackGraph(int32_t trackIndex, bool isMaster
 }
 
 StatusCode PluginInstanceWebCLAP::process(AudioProcessContext& ctx) {
+    PendingParameterEvent parameterEvent{};
+    bool hasParameterEvents = false;
+    std::ostringstream parameterArgs;
+    parameterArgs << "[" << slot_ << ",[";
+    while (pending_parameter_events_.try_dequeue(parameterEvent)) {
+        if (hasParameterEvents)
+            parameterArgs << ",";
+        hasParameterEvents = true;
+        parameterArgs << "{\"index\":" << parameterEvent.index
+                      << ",\"value\":" << parameterEvent.value
+                      << ",\"perNote\":" << (parameterEvent.per_note ? "true" : "false")
+                      << ",\"group\":" << parameterEvent.group
+                      << ",\"channel\":" << parameterEvent.channel
+                      << ",\"note\":" << parameterEvent.note
+                      << "}";
+    }
+    parameterArgs << "]]";
+    if (hasParameterEvents)
+        postWclapRpc("setParameterBatch", parameterArgs.str());
+
     if (auto args = buildWclapBatchUmpArgsJson(ctx.eventIn()); !args.empty()) {
         std::ostringstream rpcArgs;
         rpcArgs << "[" << slot_ << "," << args << "]";

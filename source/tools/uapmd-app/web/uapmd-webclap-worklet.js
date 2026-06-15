@@ -416,6 +416,21 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
             this._drainUiMessages(slot, info);
             return true;
         },
+        setParameterBatch(slot, events) {
+            const info = this._requireSlot(slot);
+            const exp = this._wclapHost.hostInstance.exports;
+            for (const ev of events || []) {
+                if (ev.perNote) {
+                    exp._wclapEnqueuePerNoteParameterValue(
+                        info.ptr, ev.index, ev.value, ev.group ?? 0, ev.channel ?? 0, ev.note ?? 0);
+                } else {
+                    exp._wclapEnqueueParameterValue(info.ptr, ev.index, ev.value);
+                }
+            }
+            exp._wclapFlushParameters(info.ptr);
+            this._drainUiMessages(slot, info);
+            return true;
+        },
         requestState(slot, stateContextType = 3) {
             return this._requestState(slot, stateContextType);
         },
@@ -552,6 +567,11 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                     msg.group ?? 0,
                     msg.channel ?? 0,
                     msg.note ?? 0);
+                break;
+            }
+
+            case 'wclap-set-parameter-batch': {
+                this.remoteMethods.setParameterBatch.call(this, msg.slot, msg.events);
                 break;
             }
 
