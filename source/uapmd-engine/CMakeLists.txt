@@ -139,6 +139,7 @@ target_sources(uapmd-engine PRIVATE
         src/devices/MidiIODevice.cpp
         src/sequencer/AraIntegration.cpp
         src/sequencer/OfflineRenderer.cpp
+        src/sequencer/ProjectSerialization.cpp
         src/sequencer/RealtimeSequencer.cpp
         src/sequencer/SequencerEngine.cpp
         src/sequencer/SequencerTrack.cpp
