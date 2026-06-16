@@ -1572,16 +1572,18 @@ void MainWindow::handleLoadProject() {
                     const bool wasEnabled = appModel.isAudioEngineEnabled();
                     if (wasEnabled)
                         appModel.setAudioEngineEnabled(false);
-                    auto result = appModel.loadProjectFromResolvedPath(projectPath);
-                    if (wasEnabled)
-                        appModel.setAudioEngineEnabled(true);
-                    if (!result.success) {
-                        platformError("Load Failed", result.error);
-                        return;
-                    }
-                    timelineEditor_.refreshAllSequenceEditorTracks();
-                    timelineEditor_.invalidateMasterTrackSnapshot();
-                    trackList_.markDirty();
+                    appModel.loadProjectFromResolvedPath(projectPath,
+                        [this, wasEnabled](uapmd::AppModel::ProjectResult result) {
+                            if (wasEnabled)
+                                uapmd::AppModel::instance().setAudioEngineEnabled(true);
+                            if (!result.success) {
+                                platformError("Load Failed", result.error);
+                                return;
+                            }
+                            timelineEditor_.refreshAllSequenceEditorTracks();
+                            timelineEditor_.invalidateMasterTrackSnapshot();
+                            trackList_.markDirty();
+                        });
                 },
                 [](const std::string& error) {
                     platformError("Load Failed", error);

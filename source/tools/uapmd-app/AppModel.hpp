@@ -438,9 +438,9 @@ namespace uapmd {
         void saveProject(const std::filesystem::path& file, ProjectSaveCallback callback);
         // OBSOLETE: use `saveProject()` with callback instead.
         ProjectResult saveProjectSync(const std::filesystem::path& file);
-        ProjectResult loadProject(const std::filesystem::path& file);
+        void loadProject(const std::filesystem::path& file, std::function<void(ProjectResult)> callback);
         void saveProjectToDocument(DocumentHandle handle, IDocumentProvider::WriteCallback callback);
-        ProjectResult loadProjectFromResolvedPath(const std::filesystem::path& file);
+        void loadProjectFromResolvedPath(const std::filesystem::path& file, std::function<void(ProjectResult)> callback);
         ProjectResult loadProjectFromHandleToken(const std::string& token);
 
         struct MasterTrackSnapshot {

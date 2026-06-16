@@ -559,7 +559,13 @@ static choc::value::Value toolLoadProject(const choc::value::Value& args)
     if (path.empty())
         throw std::invalid_argument("path is required");
 
-    auto loadResult = AppModel::instance().loadProjectFromResolvedPath(path);
+    auto loadPromise = std::make_shared<std::promise<AppModel::ProjectResult>>();
+    auto loadFuture = loadPromise->get_future();
+    AppModel::instance().loadProjectFromResolvedPath(path,
+        [loadPromise](AppModel::ProjectResult r) mutable {
+            loadPromise->set_value(std::move(r));
+        });
+    auto loadResult = loadFuture.get();
     auto result = choc::value::createObject ("");
     result.setMember ("success", loadResult.success);
     result.setMember ("error", loadResult.error);

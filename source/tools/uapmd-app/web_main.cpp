@@ -344,11 +344,13 @@ void uapmd_debug_load_project(const char* path) {
         return;
     }
     auto& appModel = uapmd::AppModel::instance();
-    auto result = appModel.loadProjectFromResolvedPath(std::filesystem::path(path));
-    if (!result.success)
-        std::cout << "[wasm-debug] load_project: failed: " << result.error << "\n";
-    else
-        std::cout << "[wasm-debug] load_project: OK\n";
+    appModel.loadProjectFromResolvedPath(std::filesystem::path(path),
+        [](uapmd::AppModel::ProjectResult result) {
+            if (!result.success)
+                std::cout << "[wasm-debug] load_project: failed: " << result.error << "\n";
+            else
+                std::cout << "[wasm-debug] load_project: OK\n";
+        });
 }
 
 EMSCRIPTEN_KEEPALIVE

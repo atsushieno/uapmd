@@ -1238,17 +1238,16 @@ namespace uapmd {
             return removed;
         }
 
-        ProjectResult loadProject(const std::filesystem::path& projectFile) override {
-            ProjectResult result;
+        void loadProject(const std::filesystem::path& projectFile, ProjectLoadCallback callback) override {
             if (projectFile.empty()) {
-                result.error = "Project path is empty";
-                return result;
+                callback({false, "Project path is empty"});
+                return;
             }
 
             auto project = UapmdProjectDataReader::read(projectFile);
             if (!project) {
-                result.error = "Failed to parse project file";
-                return result;
+                callback({false, "Failed to parse project file"});
+                return;
             }
 
             auto projectDir = projectFile.parent_path();
@@ -1261,14 +1260,6 @@ namespace uapmd {
 
             suppress_timeline_notification_ = true;
             suppress_project_document_events_ = true;
-            struct SuppressGuard {
-                bool& timelineFlag;
-                bool& projectDocumentEventsFlag;
-                ~SuppressGuard() {
-                    timelineFlag = false;
-                    projectDocumentEventsFlag = false;
-                }
-            } suppressGuard{suppress_timeline_notification_, suppress_project_document_events_};
 
             timeline_.isPlaying = false;
             timeline_.playheadPosition = TimelinePosition{};
@@ -1290,7 +1281,12 @@ namespace uapmd {
                 engine_.removeTrack(static_cast<uapmd_track_index_t>(snapshot.size() - 1));
             }
 
-            std::atomic<int> pending_plugins{0};
+            // Sentinel starts at 1 (representing the synchronous setup phase).
+            // Each addPluginToTrack call increments it; each callback decrements it.
+            // Releasing the sentinel at the end of setup triggers finish when no plugins are pending.
+            auto pending_plugins = std::make_shared<std::atomic<int>>(1);
+            auto finish_holder = std::make_shared<std::function<void()>>();
+
             struct LoadedClipRef {
                 TimelineTrack* track{nullptr};
                 int32_t clipId{-1};
@@ -1302,7 +1298,7 @@ namespace uapmd {
             //  Currently, `UapmdPluginGraphBuilder::build()` is practically no-op, but the project loads.
             //  It is because it is already added in a linear manner.
             //  But that may not be the right thing depending on the graphs (such as, full DAG).
-            auto loadPluginsForTrack = [this, &projectDir, &pending_plugins](UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
+            auto loadPluginsForTrack = [this, &projectDir, pending_plugins, finish_holder](UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
                 if (!projectTrack)
                     return;
                 auto* graphData = projectTrack->graph();
@@ -1407,9 +1403,9 @@ namespace uapmd {
 
                     const std::string pluginLabel = pluginName.empty() ? pluginId : pluginName;
 
-                    pending_plugins.fetch_add(1, std::memory_order_relaxed);
+                    pending_plugins->fetch_add(1, std::memory_order_relaxed);
                     engine_.addPluginToTrack(trackIndex, format, pluginId,
-                        [this, resolvedState, groupIndex, &pending_plugins, pluginLabel, pluginId, format](int32_t instanceId, int32_t, std::string error) {
+                        [this, resolvedState, groupIndex, pending_plugins, finish_holder, pluginLabel, pluginId, format](int32_t instanceId, int32_t, std::string error) mutable {
                             if (!error.empty()) {
                                 std::cerr << "Warning: Failed to instantiate plugin " << pluginLabel
                                           << " (" << format << ", ID=" << pluginId << "): " << error << std::endl;
@@ -1428,22 +1424,26 @@ namespace uapmd {
                                 if (groupIndex >= 0 && groupIndex <= 15)
                                     engine_.setInstanceGroup(instanceId, static_cast<uint8_t>(groupIndex));
                             }
-                            pending_plugins.fetch_sub(1, std::memory_order_release);
+                            if (pending_plugins->fetch_sub(1, std::memory_order_acq_rel) == 1)
+                                (*finish_holder)();
                         });
                 }
             };
 
             auto* masterProjectTrack = project->masterTrack();
+            std::vector<ClipMarker> masterTrackMarkers;
             if (masterProjectTrack)
-                result.masterTrackMarkers = masterProjectTrack->markers();
+                masterTrackMarkers = masterProjectTrack->markers();
             const bool hasExplicitMasterTrackClips = masterProjectTrack && !masterProjectTrack->clips().empty();
 
+            std::string earlyError;
             auto& tracks = project->tracks();
-            for (size_t i = 0; i < tracks.size(); ++i) {
+
+            for (size_t i = 0; i < tracks.size() && earlyError.empty(); ++i) {
                 int32_t trackIndex = engine_.addEmptyTrack();
                 if (trackIndex < 0) {
-                    result.error = "Failed to create track";
-                    return result;
+                    earlyError = "Failed to create track";
+                    break;
                 }
 
                 loadPluginsForTrack(tracks[i], trackIndex);
@@ -1464,13 +1464,13 @@ namespace uapmd {
 
                     if (clipType == "midi") {
                         if (resolvedPath.empty()) {
-                            result.error = "MIDI clip is missing file path";
-                            return result;
+                            earlyError = "MIDI clip is missing file path";
+                            break;
                         }
                         auto clipInfo = MidiClipReader::readAnyFormat(resolvedPath);
                         if (!clipInfo.success) {
-                            result.error = clipInfo.error.empty() ? "Failed to parse MIDI clip" : clipInfo.error;
-                            return result;
+                            earlyError = clipInfo.error.empty() ? "Failed to parse MIDI clip" : clipInfo.error;
+                            break;
                         }
                         auto separated = MidiClipReader::separateMasterTrackEvents(std::move(clipInfo));
                         auto& musicalClip = separated.musicalClip;
@@ -1490,8 +1490,8 @@ namespace uapmd {
                                 clip->nrpnToParameterMapping(),
                                 separated.hasMasterTrackClip());
                             if (!loadResult.success) {
-                                result.error = loadResult.error.empty() ? "Failed to load MIDI clip" : loadResult.error;
-                                return result;
+                                earlyError = loadResult.error.empty() ? "Failed to load MIDI clip" : loadResult.error;
+                                break;
                             }
                             if (auto* loadedClip = timeline_tracks_[static_cast<size_t>(trackIndex)]->clipManager().getClip(loadResult.clipId)) {
                                 loadedClip->markers = clip->markers();
@@ -1516,15 +1516,15 @@ namespace uapmd {
                                 false,
                                 "");
                             if (!masterLoadResult.success) {
-                                result.error = masterLoadResult.error.empty() ? "Failed to load master track clip" : masterLoadResult.error;
-                                return result;
+                                earlyError = masterLoadResult.error.empty() ? "Failed to load master track clip" : masterLoadResult.error;
+                                break;
                             }
                         }
                     } else {
                         auto reader = createAudioFileReaderFromPath(resolvedPath.string());
                         if (!reader) {
-                            result.error = std::format("Failed to open audio clip {}", resolvedPath.string());
-                            return result;
+                            earlyError = std::format("Failed to open audio clip {}", resolvedPath.string());
+                            break;
                         }
                         auto loadResult = addAudioClipToTrack(
                             *timeline_tracks_[static_cast<size_t>(trackIndex)],
@@ -1534,8 +1534,8 @@ namespace uapmd {
                             clip->markers(),
                             clip->audioWarps());
                         if (!loadResult.success) {
-                            result.error = loadResult.error.empty() ? "Failed to load audio clip" : loadResult.error;
-                            return result;
+                            earlyError = loadResult.error.empty() ? "Failed to load audio clip" : loadResult.error;
+                            break;
                         }
                         auto* loadedClip = timeline_tracks_[static_cast<size_t>(trackIndex)]->clipManager().getClip(loadResult.clipId);
                         loadedClipRefs[clip.get()] = LoadedClipRef{
@@ -1547,7 +1547,7 @@ namespace uapmd {
             }
 
             // Load master track clips (tempo/time-signature map)
-            if (masterProjectTrack) {
+            if (earlyError.empty() && masterProjectTrack) {
                 loadPluginsForTrack(masterProjectTrack, kMasterTrackIndex);
                 for (auto& clip : masterProjectTrack->clips()) {
                     if (!clip || clip->clipType() != "midi")
@@ -1576,8 +1576,8 @@ namespace uapmd {
                         false,
                         resolvedPath.string());
                     if (!masterLoadResult.success) {
-                        result.error = masterLoadResult.error.empty() ? "Failed to load master track clip" : masterLoadResult.error;
-                        return result;
+                        earlyError = masterLoadResult.error.empty() ? "Failed to load master track clip" : masterLoadResult.error;
+                        break;
                     }
                     auto* loadedClip = master_timeline_track_->clipManager().getClip(masterLoadResult.clipId);
                     if (loadedClip) {
@@ -1591,85 +1591,102 @@ namespace uapmd {
                 }
             }
 
-            auto applyAnchorToLoadedClip = [this, &loadedClipRefs](UapmdProjectClipData* projectClip) {
-                if (!projectClip)
-                    return;
-                auto loadedIt = loadedClipRefs.find(projectClip);
-                if (loadedIt == loadedClipRefs.end())
-                    return;
+            if (earlyError.empty()) {
+                auto applyAnchorToLoadedClip = [this, &loadedClipRefs](UapmdProjectClipData* projectClip) {
+                    if (!projectClip)
+                        return;
+                    auto loadedIt = loadedClipRefs.find(projectClip);
+                    if (loadedIt == loadedClipRefs.end())
+                        return;
 
-                auto pos = projectClip->position();
-                auto* targetTrack = loadedIt->second.track;
-                if (!targetTrack)
-                    return;
+                    auto pos = projectClip->position();
+                    auto* targetTrack = loadedIt->second.track;
+                    if (!targetTrack)
+                        return;
 
-                TimeReference anchor = TimeReference::fromContainerStart();
-                if (auto* anchorClip = dynamic_cast<UapmdProjectClipData*>(pos.anchor)) {
-                    auto anchorIt = loadedClipRefs.find(anchorClip);
-                    if (anchorIt != loadedClipRefs.end())
-                        anchor.referenceId = anchorIt->second.clipReferenceId;
-                }
-                anchor.type = pos.origin == UapmdAnchorOrigin::End
-                    ? TimeReferenceType::ContainerEnd
-                    : TimeReferenceType::ContainerStart;
-                anchor.offset = TimelinePosition(static_cast<int64_t>(pos.samples)).toSeconds(sampleRate_);
-                targetTrack->clipManager().setClipAnchor(
-                    loadedIt->second.clipId,
-                    anchor,
-                    sampleRate_);
-                targetTrack->clipManager().setClipPosition(
-                    loadedIt->second.clipId,
-                    TimelinePosition(static_cast<int64_t>(projectClip->absolutePositionInSamples())));
-            };
+                    TimeReference anchor = TimeReference::fromContainerStart();
+                    if (auto* anchorClip = dynamic_cast<UapmdProjectClipData*>(pos.anchor)) {
+                        auto anchorIt = loadedClipRefs.find(anchorClip);
+                        if (anchorIt != loadedClipRefs.end())
+                            anchor.referenceId = anchorIt->second.clipReferenceId;
+                    }
+                    anchor.type = pos.origin == UapmdAnchorOrigin::End
+                        ? TimeReferenceType::ContainerEnd
+                        : TimeReferenceType::ContainerStart;
+                    anchor.offset = TimelinePosition(static_cast<int64_t>(pos.samples)).toSeconds(sampleRate_);
+                    targetTrack->clipManager().setClipAnchor(
+                        loadedIt->second.clipId,
+                        anchor,
+                        sampleRate_);
+                    targetTrack->clipManager().setClipPosition(
+                        loadedIt->second.clipId,
+                        TimelinePosition(static_cast<int64_t>(projectClip->absolutePositionInSamples())));
+                };
 
-            for (auto* projectTrack : tracks)
-                for (auto& clip : projectTrack->clips())
-                    applyAnchorToLoadedClip(clip.get());
-            if (masterProjectTrack)
-                for (auto& clip : masterProjectTrack->clips())
-                    applyAnchorToLoadedClip(clip.get());
-
-            // Wait for all async plugin instantiations to complete
-            while (pending_plugins.load(std::memory_order_acquire) > 0) {
-                remidy::EventLoop::processQueuedTasks();
-                std::this_thread::yield();
+                for (auto* projectTrack : tracks)
+                    for (auto& clip : projectTrack->clips())
+                        applyAnchorToLoadedClip(clip.get());
+                if (masterProjectTrack)
+                    for (auto& clip : masterProjectTrack->clips())
+                        applyAnchorToLoadedClip(clip.get());
             }
 
-            auto applyGraphConnections = [this](UapmdProjectTrackData* projectTrack, SequencerTrack* sequencerTrack) {
-                if (!projectTrack || !sequencerTrack || !projectTrack->graph())
-                    return;
-                materializeProjectGraph(projectTrack, sequencerTrack, engine_.umpBufferSizeInBytes());
-            };
+            // Set finish_holder before releasing the sentinel.
+            // finish_holder is always set before any plugin callback can observe pending==0.
+            if (!earlyError.empty()) {
+                suppress_timeline_notification_ = false;
+                suppress_project_document_events_ = false;
+                *finish_holder = [callback = std::move(callback), earlyError = std::move(earlyError)]() mutable {
+                    callback({false, std::move(earlyError)});
+                };
+            } else {
+                auto sharedProject = std::shared_ptr<UapmdProjectData>(std::move(project));
+                *finish_holder = [this, projectFile, projectDir,
+                                  sharedProject = std::move(sharedProject),
+                                  masterTrackMarkers = std::move(masterTrackMarkers),
+                                  callback = std::move(callback)]() mutable {
+                    suppress_timeline_notification_ = false;
+                    suppress_project_document_events_ = false;
 
-            for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i)
-                applyGraphConnections(tracks[i], engine_.tracks()[i]);
-            if (masterProjectTrack)
-                applyGraphConnections(masterProjectTrack, engine_.masterTrack());
+                    auto applyGraphConnections = [this](UapmdProjectTrackData* projectTrack, SequencerTrack* sequencerTrack) {
+                        if (!projectTrack || !sequencerTrack || !projectTrack->graph())
+                            return;
+                        materializeProjectGraph(projectTrack, sequencerTrack, engine_.umpBufferSizeInBytes());
+                    };
 
-            for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i) {
-                if (tracks[i] && engine_.tracks()[i])
-                    engine_.tracks()[i]->trackGain(tracks[i]->volume());
+                    auto& tracks = sharedProject->tracks();
+                    auto* masterProjectTrack = sharedProject->masterTrack();
+                    for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i)
+                        applyGraphConnections(tracks[i], engine_.tracks()[i]);
+                    if (masterProjectTrack)
+                        applyGraphConnections(masterProjectTrack, engine_.masterTrack());
+
+                    for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i) {
+                        if (tracks[i] && engine_.tracks()[i])
+                            engine_.tracks()[i]->trackGain(tracks[i]->volume());
+                    }
+                    if (masterProjectTrack && engine_.masterTrack())
+                        engine_.masterTrack()->trackGain(masterProjectTrack->volume());
+
+                    ProjectDocumentEvent loadedEvent(ProjectDocumentEventKind::ProjectLoaded, "project-loaded");
+                    loadedEvent.setProjectId(projectFile.string())
+                        .setFullResyncRecommended(true)
+                        .setDetail("source.file", projectFile.string());
+                    emitProjectDocumentEvent(std::move(loadedEvent));
+                    emitMasterTrackChanged("master-track-content-changed");
+                    std::string extensionError;
+                    if (!loadProjectExtensionData(projectFile, projectDir, extensionError)) {
+                        callback({false, std::move(extensionError)});
+                        return;
+                    }
+                    notifyTimelineChanged();
+                    callback({true, {}, std::move(masterTrackMarkers)});
+                };
             }
-            if (masterProjectTrack && engine_.masterTrack())
-                engine_.masterTrack()->trackGain(masterProjectTrack->volume());
 
-            suppress_timeline_notification_ = false;
-            suppress_project_document_events_ = false;
-            result.success = true;
-            ProjectDocumentEvent loadedEvent(ProjectDocumentEventKind::ProjectLoaded, "project-loaded");
-            loadedEvent.setProjectId(projectFile.string())
-                .setFullResyncRecommended(true)
-                .setDetail("source.file", projectFile.string());
-            emitProjectDocumentEvent(std::move(loadedEvent));
-            emitMasterTrackChanged("master-track-content-changed");
-            std::string extensionError;
-            if (!loadProjectExtensionData(projectFile, projectDir, extensionError)) {
-                result.success = false;
-                result.error = std::move(extensionError);
-                return result;
-            }
-            notifyTimelineChanged();
-            return result;
+            // Release the sentinel; if it reaches 0 (no plugins pending), fire finish now.
+            if (pending_plugins->fetch_sub(1, std::memory_order_acq_rel) == 1)
+                (*finish_holder)();
         }
 
         MasterTrackSnapshot buildMasterTrackSnapshot() override {

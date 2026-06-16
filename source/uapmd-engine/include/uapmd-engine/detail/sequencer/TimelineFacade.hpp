@@ -89,12 +89,13 @@ public:
         std::vector<ClipMarker> masterTrackMarkers;
     };
     using ProjectSaveCallback = std::function<void(ProjectResult)>;
+    using ProjectLoadCallback = std::function<void(ProjectResult)>;
 
     virtual void saveProject(
         const std::filesystem::path& file,
         ProjectSaveOptions options,
         ProjectSaveCallback callback) = 0;
-    virtual ProjectResult loadProject(const std::filesystem::path& file) = 0;
+    virtual void loadProject(const std::filesystem::path& file, ProjectLoadCallback callback) = 0;
     virtual AudioGraphProviderRegistry& audioGraphProviderRegistry() = 0;
     virtual const AudioGraphProviderRegistry& audioGraphProviderRegistry() const = 0;
     virtual ProjectDocumentEventSource& projectDocumentEvents() = 0;

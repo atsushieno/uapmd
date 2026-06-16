@@ -11,6 +11,7 @@
 #include <chrono>
 #include <atomic>
 #include <filesystem>
+#include <future>
 
 namespace uapmd {
 
@@ -93,7 +94,13 @@ void UapmdJSRuntime::registerProjectAPI()
             return result;
         }
 
-        auto projectResult = uapmd::AppModel::instance().loadProjectFromResolvedPath(filepath);
+        auto loadPromise = std::make_shared<std::promise<uapmd::AppModel::ProjectResult>>();
+        auto loadFuture = loadPromise->get_future();
+        uapmd::AppModel::instance().loadProjectFromResolvedPath(filepath,
+            [loadPromise](uapmd::AppModel::ProjectResult r) mutable {
+                loadPromise->set_value(std::move(r));
+            });
+        auto projectResult = loadFuture.get();
         result.setMember ("success", projectResult.success);
         result.setMember ("error", projectResult.error);
         return result;

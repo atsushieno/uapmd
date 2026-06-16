@@ -2401,52 +2401,60 @@ void uapmd::AppModel::saveProjectToDocument(DocumentHandle handle,
                 });
 }
 
-uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromResolvedPath(
-    const std::filesystem::path& projectFile)
+void uapmd::AppModel::loadProjectFromResolvedPath(
+    const std::filesystem::path& projectFile,
+    std::function<void(ProjectResult)> callback)
 {
-    ProjectResult failureResult;
     // Keep the previously loaded archive data alive unless we successfully load a new project.
     std::error_code existsEc;
     if (projectFile.empty() || !std::filesystem::exists(projectFile, existsEc)) {
-        failureResult.error = existsEc ? existsEc.message() : "Project file is unavailable.";
-        return failureResult;
+        callback({false, existsEc ? existsEc.message() : "Project file is unavailable."});
+        return;
     }
 
     if (!ProjectArchive::isArchive(projectFile)) {
-        auto result = loadProject(projectFile);
-        if (result.success) {
-            if (activeProjectTempDir_)
-                retiredProjectTempDirs_.push_back(std::move(activeProjectTempDir_));
-        }
-        return result;
+        loadProject(projectFile,
+            [this, callback = std::move(callback)](ProjectResult result) mutable {
+                if (result.success) {
+                    if (activeProjectTempDir_)
+                        retiredProjectTempDirs_.push_back(std::move(activeProjectTempDir_));
+                }
+                callback(std::move(result));
+            });
+        return;
     }
 
     std::string tempDirError;
     auto tempDir = createTempProjectDirectory(tempDirError);
     if (!tempDir) {
-        failureResult.error = tempDirError;
-        return failureResult;
+        callback({false, std::move(tempDirError)});
+        return;
     }
     auto stage = std::make_unique<ScopedTempDir>(std::move(*tempDir));
 
     auto extract = ProjectArchive::extractArchive(projectFile, stage->get());
     if (!extract.success) {
-        failureResult.error = extract.error;
-        return failureResult;
+        callback({false, std::move(extract.error)});
+        return;
     }
     if (extract.projectFile.empty()) {
-        failureResult.error = "Project archive missing .uapmd file.";
-        return failureResult;
+        callback({false, "Project archive missing .uapmd file."});
+        return;
     }
 
-    auto result = loadProject(extract.projectFile);
-    if (result.success) {
-        markLoadedArchiveClipsNeedsFileSave(*this);
-        if (activeProjectTempDir_)
-            retiredProjectTempDirs_.push_back(std::move(activeProjectTempDir_));
-        activeProjectTempDir_ = std::move(stage);
-    }
-    return result;
+    // Wrap in shared_ptr<unique_ptr> so the lambda is copyable (required by std::function)
+    // while ownership of the ScopedTempDir can still be moved into activeProjectTempDir_.
+    auto stageHolder = std::make_shared<std::unique_ptr<ScopedTempDir>>(std::move(stage));
+    loadProject(extract.projectFile,
+        [this, stageHolder, callback = std::move(callback)](ProjectResult result) mutable {
+            if (result.success) {
+                markLoadedArchiveClipsNeedsFileSave(*this);
+                if (activeProjectTempDir_)
+                    retiredProjectTempDirs_.push_back(std::move(activeProjectTempDir_));
+                activeProjectTempDir_ = std::move(*stageHolder);
+            }
+            callback(std::move(result));
+        });
 }
 
 uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromHandleToken(const std::string& token)
@@ -2477,7 +2485,10 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProjectFromHandleToken(const
                 promise->set_value(ProjectResult{false, ioResult.error});
                 return;
             }
-            promise->set_value(loadProjectFromResolvedPath(path));
+            loadProjectFromResolvedPath(path,
+                [promise](ProjectResult result) mutable {
+                    promise->set_value(std::move(result));
+                });
         });
     return future.get();
 }
@@ -2513,9 +2524,7 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
         });
 }
 
-uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesystem::path& projectFile) {
-    ProjectResult result;
-
+void uapmd::AppModel::loadProject(const std::filesystem::path& projectFile, std::function<void(ProjectResult)> callback) {
     // Master-track plugins own AppModel-level device state, so remove them through
     // the normal AppModel path before delegating to the engine's project loader.
     if (auto* mt = sequencer_.engine()->masterTrack()) {
@@ -2536,41 +2545,42 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::loadProject(const std::filesyste
         }
     }
 
-    // Delegate project loading to SequencerEngine (which owns timeline tracks and plugins)
-    auto engineResult = sequencer_.engine()->timeline().loadProject(projectFile);
-    if (!engineResult.success) {
-        result.error = engineResult.error;
-        return result;
-    }
-
-    master_track_markers_ = std::move(engineResult.masterTrackMarkers);
-
-    // Notify UI about all tracks that were created
-    hidden_tracks_.clear();
-    notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
-    auto numTracks = static_cast<int32_t>(sequencer_.engine()->tracks().size());
-    for (int32_t i = 0; i < numTracks; ++i)
-        notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, i});
-
-    // Rebuild device entries and notify listeners for each plugin instance
-    clearDeviceEntries();
-    if (auto* fbm = sequencer().engine()->functionBlockManager())
-        fbm->deleteEmptyDevices();
-
-    if (auto* host = sequencer_.engine()->pluginHost()) {
-        for (int32_t instanceId : host->instanceIds()) {
-            auto result = registerPluginInstanceInternal(instanceId, std::nullopt);
-            if (!result.error.empty()) {
-                std::cerr << "Failed to register plugin instance " << instanceId
-                          << ": " << result.error << std::endl;
+    // Delegate project loading to SequencerEngine asynchronously.
+    sequencer_.engine()->timeline().loadProject(projectFile,
+        [this, callback = std::move(callback)](TimelineFacade::ProjectResult engineResult) mutable {
+            if (!engineResult.success) {
+                callback({false, std::move(engineResult.error)});
+                return;
             }
-            for (auto& cb : instanceCreated)
-                cb(result);
-        }
-    }
 
-    result.success = true;
-    return result;
+            master_track_markers_ = std::move(engineResult.masterTrackMarkers);
+
+            // Notify UI about all tracks that were created
+            hidden_tracks_.clear();
+            notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Cleared, -1});
+            auto numTracks = static_cast<int32_t>(sequencer_.engine()->tracks().size());
+            for (int32_t i = 0; i < numTracks; ++i)
+                notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, i});
+
+            // Rebuild device entries and notify listeners for each plugin instance
+            clearDeviceEntries();
+            if (auto* fbm = sequencer().engine()->functionBlockManager())
+                fbm->deleteEmptyDevices();
+
+            if (auto* host = sequencer_.engine()->pluginHost()) {
+                for (int32_t instanceId : host->instanceIds()) {
+                    auto result = registerPluginInstanceInternal(instanceId, std::nullopt);
+                    if (!result.error.empty()) {
+                        std::cerr << "Failed to register plugin instance " << instanceId
+                                  << ": " << result.error << std::endl;
+                    }
+                    for (auto& cb : instanceCreated)
+                        cb(result);
+                }
+            }
+
+            callback({true, {}});
+        });
 }
 
 bool uapmd::AppModel::startRenderToFile(const RenderToFileSettings& settings) {

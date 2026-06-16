@@ -1,4 +1,5 @@
 #include <iostream>
+#include <future>
 #include <thread>
 #include <format>
 #include <filesystem>
@@ -69,7 +70,13 @@ int run(int argc, const char* argv[]) {
         // ---- Load project (blocks until all plugins are instantiated) ----
         std::cerr << "Loading project: " << projectPath << std::endl;
 
-        auto result = engine->timeline().loadProject(projectPath);
+        std::promise<uapmd::TimelineFacade::ProjectResult> loadPromise;
+        auto loadFuture = loadPromise.get_future();
+        engine->timeline().loadProject(projectPath,
+            [&loadPromise](uapmd::TimelineFacade::ProjectResult r) mutable {
+                loadPromise.set_value(std::move(r));
+            });
+        auto result = loadFuture.get();
 
         if (!result.success) {
             std::cerr << "Failed to load project: " << result.error << std::endl;
