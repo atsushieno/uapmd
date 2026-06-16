@@ -67,7 +67,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: build/_deps
-        key: ${{ runner.os }}-vs2026-deps-${{ hashFiles('cmake/UapmdVcpkgSDL3.cmake', 'tools/uapmd-app/CMakeLists.txt') }}
+        key: ${{ runner.os }}-vs2026-deps-${{ hashFiles('source/cmake/UapmdVcpkgSDL3.cmake', 'source/tools/uapmd-app/CMakeLists.txt') }}
     - name: setup build on Windows
       if: matrix.os == 'windows-2025-vs2026'
       run: |
