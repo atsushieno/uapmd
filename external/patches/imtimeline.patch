@@ -1,17 +1,58 @@
 diff --git a/Timeline.cpp b/Timeline.cpp
-index dbe63d4..8819398 100644
+index dbe63d4..f2b6cbe 100644
 --- a/Timeline.cpp
 +++ b/Timeline.cpp
-@@ -470,7 +470,7 @@ bool Timeline::DrawTimeline()
-     ImVec2 childFrameSize(canvas_size.x, canvas_size.y - 8.f - headerRect.GetHeight() - (mStyle.HasScrollbar ? static_cast<int>(mStyle.ScrollbarThickness) : 0.f));
+@@ -467,25 +467,31 @@ bool Timeline::DrawTimeline()
+     headerRect.Max = ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + mStyle.HeaderHeight);
+     DrawHeader(headerRect);
+ 
+-    ImVec2 childFrameSize(canvas_size.x, canvas_size.y - 8.f - headerRect.GetHeight() - (mStyle.HasScrollbar ? static_cast<int>(mStyle.ScrollbarThickness) : 0.f));
++    constexpr f32 timeline_spacing = 5.0f;
++    f32 stackedTimelineHeight = 0.0f;
++    for (const auto& timeline : mTimelines)
++        stackedTimelineHeight += timeline.second.mProps.mDisplayProperties.mHeight + timeline_spacing;
++
++    ImVec2 childFrameSize(
++        canvas_size.x,
++        ImMax(canvas_size.y - 8.f - headerRect.GetHeight() - (mStyle.HasScrollbar ? static_cast<int>(mStyle.ScrollbarThickness) : 0.f),
++              stackedTimelineHeight + 1.0f));
  
      ImGui::PushStyleColor(ImGuiCol_FrameBg, 0);
 -    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle);
 +    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle, ImGuiWindowFlags_NoScrollWithMouse);
  
-     const ImVec2 contentMin = ImGui::GetItemRectMin();
-     const ImVec2 contentMax = ImGui::GetItemRectMax();
-@@ -656,6 +656,9 @@ void Timeline::DrawScrollbar()
+-    const ImVec2 contentMin = ImGui::GetItemRectMin();
+-    const ImVec2 contentMax = ImGui::GetItemRectMax();
++    const ImVec2 contentMin = ImGui::GetCursorScreenPos();
++    const ImVec2 contentMax(contentMin.x + childFrameSize.x, contentMin.y + childFrameSize.y);
+     const ImRect contentRect(contentMin, contentMax);
+     mContentAreaRect = contentRect;
+ 
+     draw_list->PushClipRect(contentMin, contentMax, true);
+ 
+-    size_t customHeight = 0;
++    f32 customHeight = 0.0f;
+ 
+     for (auto& timeline : mTimelines) {
+         ScopedTimer timer = ScopedTimer("NodeView Draw");
+-        f32 timeline_spacing = 5.0f;
+-
+-        size_t localCustomHeight = timeline.second.mProps.mDisplayProperties.mHeight;
++        f32 localCustomHeight = timeline.second.mProps.mDisplayProperties.mHeight;
+         ImVec2 pos = ImVec2(contentMin.x, contentMin.y + 1 + customHeight);
+         ImVec2 sz = ImVec2(canvas_size.x + canvas_pos.x, pos.y + localCustomHeight);
+         ImRect contentRect = ImRect(pos, sz);
+@@ -547,6 +553,9 @@ bool Timeline::DrawTimeline()
+ 
+     draw_list->PopClipRect();
+ 
++    ImGui::SetCursorScreenPos(contentMin);
++    ImGui::Dummy(ImVec2(1.0f, ImMax(customHeight, 1.0f)));
++
+     if (mStyle.HasSeekbar) {
+         drawSeekbarUI();
+     }
+@@ -656,6 +665,9 @@ void Timeline::DrawScrollbar()
      const float barWidthInPixels = barWidthRatio * (canvas_size.x - mStyle.LegendWidth);
  
      ImGui::InvisibleButton("scrollBar", scrollBarSize);
@@ -21,7 +62,7 @@ index dbe63d4..8819398 100644
      ImVec2 scrollBarMin = ImGui::GetItemRectMin();
      ImVec2 scrollBarMax = ImGui::GetItemRectMax();
  
-@@ -664,16 +667,16 @@ void Timeline::DrawScrollbar()
+@@ -664,16 +676,16 @@ void Timeline::DrawScrollbar()
      float startFrameOffset = ((float)(mStartFrame - mFrameMin) / (float)frameCount) * (canvas_size.x - mStyle.LegendWidth);
      ImVec2 scrollBarA(scrollBarMin.x + mStyle.LegendWidth, scrollBarMin.y - 2);
      ImVec2 scrollBarB(scrollBarMin.x + canvas_size.x, scrollBarMax.y - 1);
@@ -41,7 +82,7 @@ index dbe63d4..8819398 100644
  
      ImRect barHandleLeft(scrollBarC, ImVec2(scrollBarC.x + 14, scrollBarD.y));
      ImRect barHandleRight(ImVec2(scrollBarD.x - 14, scrollBarC.y), scrollBarD);
-@@ -684,8 +687,8 @@ void Timeline::DrawScrollbar()
+@@ -684,8 +696,8 @@ void Timeline::DrawScrollbar()
      static bool sizingRBar = false;
      static bool sizingLBar = false;
  
@@ -52,7 +93,7 @@ index dbe63d4..8819398 100644
  
      ImRect scrollBarThumb(scrollBarC, scrollBarD);
  
-@@ -698,7 +701,7 @@ void Timeline::DrawScrollbar()
+@@ -698,7 +710,7 @@ void Timeline::DrawScrollbar()
              mStartFrame = ImClamp(mStartFrame, mFrameMin, ImMax(mFrameMax - mVisibleFrameCount, mFrameMin));
          }
      } else {
@@ -61,7 +102,7 @@ index dbe63d4..8819398 100644
              mInputData.IsMovingScrollBar = true;
              mPanningData.panningViewSource = mInputData.MousePos;
              mPanningData.panningViewFrame = -mStartFrame;
-@@ -1122,7 +1125,9 @@ void Timeline::CollectInputData(sInputData& a_outInputData, f32 aDeltaTime)
+@@ -1122,7 +1134,9 @@ void Timeline::CollectInputData(sInputData& a_outInputData, f32 aDeltaTime)
      mInputData.MousePos = io.MousePos;
      mInputData.LeftMouseDown = io.MouseDown[0];
      mInputData.RightMouseDown = io.MouseDown[1];
