@@ -241,6 +241,11 @@ namespace remidy {
 
         class PresetsSupport : public PluginPresetsSupport {
             PluginInstanceCLAP *owner;
+            // Keep the PresetLoader alive for the instance lifetime so that the
+            // indexer/receiver (with indexer_data=this) remain valid — some plugins
+            // (e.g. Sforzando) keep background threads running after get_metadata()
+            // returns that dereference receiver_data after destroy() would free it.
+            std::unique_ptr<remidy_clap::PresetLoader> preset_loader{};
             std::vector<remidy_clap::CLAPPresetInfo> presets{};
 
         public:

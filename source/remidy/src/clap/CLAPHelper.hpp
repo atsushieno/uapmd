@@ -24,7 +24,7 @@ namespace remidy_clap {
         std::vector<const clap_preset_discovery_provider_t*> providers{};
         std::vector<CLAPPresetInfo> presets{};
 
-        // indexer
+        // indexer — must outlive providers (CLAP spec: indexer lifetime >= provider lifetime)
         std::vector<clap_preset_discovery_filetype_t> filetypes{};
         struct PresetLocation {
             uint32_t flags;
@@ -33,6 +33,8 @@ namespace remidy_clap {
             const std::string location;
         };
         std::vector<PresetLocation> locations{};
+        clap_preset_discovery_indexer_t indexer{};
+        clap_preset_discovery_metadata_receiver_t receiver{};
 
         static bool declare_filetype(const struct clap_preset_discovery_indexer *indexer,
                                      const clap_preset_discovery_filetype_t     *filetype) {
@@ -136,7 +138,8 @@ namespace remidy_clap {
         PresetLoader(clap_preset_discovery_factory* factory) {
             if (!factory)
                 return;
-            clap_preset_discovery_indexer_t indexer {
+            // Initialize member structs (must outlive providers per CLAP spec)
+            indexer = clap_preset_discovery_indexer_t {
                     .clap_version = CLAP_VERSION,
                     .name = "Remidy",
                     .vendor = "UAPMD Project",
@@ -148,7 +151,7 @@ namespace remidy_clap {
                     .declare_soundpack = declare_soundpack,
                     .get_extension = get_extension
             };
-            clap_preset_discovery_metadata_receiver_t receiver {
+            receiver = clap_preset_discovery_metadata_receiver_t {
                     .receiver_data = this,
                     .on_error = on_error,
                     .begin_preset = begin_preset,
@@ -187,22 +190,27 @@ namespace remidy_clap {
                                 }
                             }
                         }
-                    } else {
-                        // FIXME: what to do for CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN?
+                    } else if (location.kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN) {
+                        provider->get_metadata(provider, location.kind, nullptr, &receiver);
                     }
                 }
             }
         }
-        
+
         ~PresetLoader() {
             for (auto provider : providers)
                 provider->destroy(provider);
             providers.clear();
         }
 
-        static std::vector<CLAPPresetInfo> loadPresets(clap_preset_discovery_factory* factory) {
-            PresetLoader loader{factory};
-            return loader.presets;
+        // Returns {loader, presets}. Caller must keep the loader alive as long as the
+        // presets are in use — some plugins keep threads running after get_metadata()
+        // that dereference receiver_data (= the loader) even after destroy().
+        static std::pair<std::unique_ptr<PresetLoader>, std::vector<CLAPPresetInfo>>
+        createWithPresets(clap_preset_discovery_factory* factory) {
+            auto loader = std::make_unique<PresetLoader>(factory);
+            auto presets = loader->presets;
+            return {std::move(loader), std::move(presets)};
         }
     };
 }

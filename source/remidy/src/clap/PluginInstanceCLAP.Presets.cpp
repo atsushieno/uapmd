@@ -3,7 +3,9 @@
 using namespace remidy;
 
 PluginInstanceCLAP::PresetsSupport::PresetsSupport(PluginInstanceCLAP* owner) : owner(owner) {
-    presets = remidy_clap::PresetLoader::loadPresets(owner->preset_discovery_factory);
+    auto [loader, p] = remidy_clap::PresetLoader::createWithPresets(owner->preset_discovery_factory);
+    preset_loader = std::move(loader);
+    presets = std::move(p);
 }
 
 PluginInstanceCLAP::PresetsSupport::~PresetsSupport() {
