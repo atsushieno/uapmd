@@ -948,6 +948,10 @@ namespace uapmd {
                         complete(ProjectResult{false, std::move(extensionError)});
                         return;
                     }
+                    ProjectDocumentEvent savedEvent(ProjectDocumentEventKind::ProjectSaved, "project-saved");
+                    savedEvent.setProjectId(operation->project_file.string())
+                        .setDetail("source.file", operation->project_file.string());
+                    emitProjectDocumentEvent(std::move(savedEvent));
                     complete(ProjectResult{true, {}});
                     return;
                 }
@@ -1235,16 +1239,6 @@ namespace uapmd {
         }
 
         ProjectResult loadProject(const std::filesystem::path& projectFile) override {
-            suppress_timeline_notification_ = true;
-            suppress_project_document_events_ = true;
-            struct SuppressGuard {
-                bool& timelineFlag;
-                bool& projectDocumentEventsFlag;
-                ~SuppressGuard() {
-                    timelineFlag = false;
-                    projectDocumentEventsFlag = false;
-                }
-            } suppressGuard{suppress_timeline_notification_, suppress_project_document_events_};
             ProjectResult result;
             if (projectFile.empty()) {
                 result.error = "Project path is empty";
@@ -1258,6 +1252,23 @@ namespace uapmd {
             }
 
             auto projectDir = projectFile.parent_path();
+
+            ProjectDocumentEvent closingEvent(ProjectDocumentEventKind::ProjectClosing, "project-closing");
+            closingEvent.setProjectId(projectFile.string())
+                .setFullResyncRecommended(true)
+                .setDetail("source.file", projectFile.string());
+            emitProjectDocumentEvent(std::move(closingEvent));
+
+            suppress_timeline_notification_ = true;
+            suppress_project_document_events_ = true;
+            struct SuppressGuard {
+                bool& timelineFlag;
+                bool& projectDocumentEventsFlag;
+                ~SuppressGuard() {
+                    timelineFlag = false;
+                    projectDocumentEventsFlag = false;
+                }
+            } suppressGuard{suppress_timeline_notification_, suppress_project_document_events_};
 
             timeline_.isPlaying = false;
             timeline_.playheadPosition = TimelinePosition{};

@@ -22,6 +22,9 @@
 
 namespace uapmd {
     struct ScopedTempDir;
+    namespace ara {
+        class AraSupport;
+    }
     // Forward declarations
     class AppModel;
 
@@ -121,6 +124,9 @@ namespace uapmd {
         RealtimeSequencer sequencer_;
         std::unique_ptr<remidy_tooling::PluginScanTool> pluginScanTool_;
         std::unique_ptr<TransportController> transportController_;
+#ifdef UAPMD_HAS_ARA
+        std::unique_ptr<ara::AraSupport> araSupport_;
+#endif
         std::atomic<bool> isScanning_{false};
         std::atomic<bool> audioEngineEnabled_{false};
         std::atomic<bool> initialPluginScanStarted_{false};

@@ -44,6 +44,25 @@ namespace remidy {
     };
 
     class PluginInstanceAUv3 : public PluginInstance {
+        class NativeHandleExtension final : public NativePluginInstanceHandleExtension {
+            PluginInstanceAUv3& owner;
+
+        public:
+            explicit NativeHandleExtension(PluginInstanceAUv3& owner)
+                : NativePluginInstanceHandleExtension(owner), owner(owner) {
+            }
+
+            void* nativeHandle(NativePluginInstanceHandleKind kind) const override {
+                switch (kind) {
+                    case NativePluginInstanceHandleKind::AudioUnitV3:
+                        return owner.audioUnit;
+                    case NativePluginInstanceHandleKind::AudioUnitV3BridgedV2:
+                        return owner.bridgedAudioUnit;
+                    default:
+                        return nullptr;
+                }
+            }
+        };
 
         class MIDIEventConverter {
             // Pre-allocated storage for events to avoid malloc in audio thread
@@ -218,6 +237,7 @@ namespace remidy {
         size_t midi_output_count{0};
         MIDIEventList* midi_event_list{nullptr};
         size_t midi_event_list_capacity{0};
+        NativeHandleExtension native_handle_extension{*this};
 
     protected:
         PluginFormatAUImpl *format;
@@ -236,6 +256,12 @@ namespace remidy {
                            AUAudioUnit* audioUnit);
         ~PluginInstanceAUv3() override;
         Logger* logger() { return logger_; }
+
+        PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
+            if (extensionId == kNativePluginInstanceHandleExtensionId)
+                return &native_handle_extension;
+            return nullptr;
+        }
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             return format->requiresUIThreadOn(info());
@@ -277,6 +303,20 @@ namespace remidy {
     // AUv2
 
     class PluginInstanceAUv2 : public PluginInstance {
+        class NativeHandleExtension final : public NativePluginInstanceHandleExtension {
+            PluginInstanceAUv2& owner;
+
+        public:
+            explicit NativeHandleExtension(PluginInstanceAUv2& owner)
+                : NativePluginInstanceHandleExtension(owner), owner(owner) {
+            }
+
+            void* nativeHandle(NativePluginInstanceHandleKind kind) const override {
+                if (kind != NativePluginInstanceHandleKind::AudioUnitV2)
+                    return nullptr;
+                return owner.instance;
+            }
+        };
 
         class ParameterSupport : public PluginParameterSupport {
             remidy::PluginInstanceAUv2 *owner;
@@ -466,10 +506,17 @@ namespace remidy {
         AudioComponent component;
         AudioUnit instance;
         std::string name{};
+        NativeHandleExtension native_handle_extension{*this};
 
     public:
         PluginInstanceAUv2(PluginFormatAU* format, PluginFormat::PluginInstantiationOptions options, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
         ~PluginInstanceAUv2() override;
+
+        PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
+            if (extensionId == kNativePluginInstanceHandleExtensionId)
+                return &native_handle_extension;
+            return nullptr;
+        }
 
         enum AUVersion {
             AUV2 = 2,

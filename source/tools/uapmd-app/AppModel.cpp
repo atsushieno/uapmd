@@ -28,6 +28,9 @@
 #include <umppi/umppi.hpp>
 #include "uapmd/uapmd.hpp"
 #include "AppModel.hpp"
+#ifdef UAPMD_HAS_ARA
+#include <uapmd-ara/uapmd-ara.hpp>
+#endif
 
 #define DEFAULT_AUDIO_BUFFER_SIZE 1024
 #define DEFAULT_UMP_BUFFER_SIZE 65536
@@ -251,6 +254,14 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
         audio_buffer_size_(static_cast<uint32_t>(audioBufferSizeInFrames)),
         auto_buffer_size_enabled_(sequencer_.useAutoBufferSize()) {
     sequencer_.engine()->functionBlockManager()->setMidiIOManager(this);
+
+#ifdef UAPMD_HAS_ARA
+    try {
+        araSupport_ = ara::createAraSupport(*sequencer_.engine());
+    } catch (const std::exception& ex) {
+        std::cerr << "Failed to initialize ARA support: " << ex.what() << std::endl;
+    }
+#endif
 
     // Start with a few empty tracks for the DAW layout
     // (Timeline state and preprocess callback are now managed by SequencerEngine)
@@ -797,6 +808,16 @@ uapmd::AppModel::PluginInstanceResult uapmd::AppModel::registerPluginInstanceInt
         }
     }
 
+#ifdef UAPMD_HAS_ARA
+    if (araSupport_) {
+        auto status = araSupport_->attachPlugin(instanceId, *instance);
+        if (status != ara::AraStatus::Ok && status != ara::AraStatus::UnsupportedPlugin) {
+            std::cerr << "Failed to attach plugin instance " << instanceId
+                      << " to ARA support." << std::endl;
+        }
+    }
+#endif
+
     if (midiApiSupportsDynamicUmpEndpoints(config.apiName)) {
         enableUmpDevice(instanceId, deviceLabel);
     } else {
@@ -817,6 +838,11 @@ void uapmd::AppModel::clearDeviceEntries() {
 
 void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
+
+#ifdef UAPMD_HAS_ARA
+    if (araSupport_)
+        araSupport_->detachPlugin(instanceId);
+#endif
 
     // Hide and destroy plugin UI before removing the instance
     auto* instance = sequencer_.engine()->getPluginInstance(instanceId);

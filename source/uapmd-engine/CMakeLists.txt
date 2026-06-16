@@ -137,7 +137,6 @@ target_sources(uapmd-engine PRIVATE
         src/devices/DefaultDeviceIODispatcher.cpp
         src/devices/LibreMidiIODevice.cpp
         src/devices/MidiIODevice.cpp
-        src/sequencer/AraIntegration.cpp
         src/sequencer/OfflineRenderer.cpp
         src/sequencer/ProjectSerialization.cpp
         src/sequencer/RealtimeSequencer.cpp

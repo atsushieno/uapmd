@@ -30,9 +30,29 @@ namespace uapmd {
     }
 
     class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
+        class NativeHandleExtensionAdapter final : public NativePluginInstanceHandleExtension {
+            RemidyAudioPluginInstance& owner;
+
+        public:
+            explicit NativeHandleExtensionAdapter(RemidyAudioPluginInstance& owner)
+                : owner(owner) {
+            }
+
+            void* nativeHandle(remidy::NativePluginInstanceHandleKind kind) const override {
+                if (!owner.instance)
+                    return nullptr;
+                auto* extension = dynamic_cast<remidy::NativePluginInstanceHandleExtension*>(
+                    owner.instance->getExtensibility(remidy::kNativePluginInstanceHandleExtensionId));
+                if (!extension)
+                    return nullptr;
+                return extension->nativeHandle(kind);
+            }
+        };
+
         bool bypassed_{true};
         std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
+        NativeHandleExtensionAdapter native_handle_extension{*this};
         remidy::PluginUISupport* ui_support{nullptr};
         bool uiCreated{false};
         bool uiVisible{false};
@@ -366,6 +386,8 @@ namespace uapmd {
         AudioPluginInstanceExtension* extension(std::string_view extensionId) override {
             if (!instance)
                 return nullptr;
+            if (extensionId == kNativePluginInstanceHandleExtensionId)
+                return &native_handle_extension;
             auto* remidyExtension = instance->getExtensibility(extensionId);
             if (!remidyExtension)
                 return nullptr;

@@ -9,7 +9,6 @@
 #include "detail/sequencer/OfflineRenderer.hpp"
 #include "detail/sequencer/SequencerTrack.hpp"
 #include "detail/sequencer/SequenceProcessContext.hpp"
-#include "detail/sequencer/AraIntegration.hpp"
 #include "detail/sequencer/TimelineFacade.hpp"
 #include "detail/sequencer/SequencerEngine.hpp"
 #include "detail/sequencer/RealtimeSequencer.hpp"
