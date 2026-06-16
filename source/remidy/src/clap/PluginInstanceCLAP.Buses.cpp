@@ -271,6 +271,7 @@ namespace remidy {
         // If audio-ports-config extension is available, try to select a matching configuration
         if (portsConfigExt) {
             std::optional<clap_id> selectedConfigId;
+            uint32_t selectedConfigIndex = 0;
 
             if (configuration.mainInputChannels.has_value() || configuration.mainOutputChannels.has_value()) {
                 uint32_t configCount = portsConfigExt->count(rawPlugin);
@@ -281,13 +282,15 @@ namespace remidy {
 
                     bool inputMatches = !config.has_main_input ||
                         (!configuration.mainInputChannels.has_value() ||
-                         configuration.mainInputChannels.value() == config.main_input_channel_count);
+                         config.main_input_channel_count == 0 ||
+                         config.main_input_channel_count <= configuration.mainInputChannels.value());
                     bool outputMatches = !config.has_main_output ||
                         (!configuration.mainOutputChannels.has_value() ||
                          configuration.mainOutputChannels.value() == config.main_output_channel_count);
 
                     if (inputMatches && outputMatches) {
                         selectedConfigId = config.id;
+                        selectedConfigIndex = i;
                         break;
                     }
                 }
@@ -296,6 +299,20 @@ namespace remidy {
             if (selectedConfigId.has_value()) {
                 if (portsConfigExt->select(rawPlugin, selectedConfigId.value())) {
                     inspectBuses();
+
+                    // Some plugins (e.g. u-he) assign duplicate IDs across configs. If
+                    // id-based select picked the wrong config (port channel count doesn't
+                    // match expected), retry using the config's array index as the id —
+                    // a common workaround for plugins that treat ids as sequential indexes.
+                    if (configuration.mainOutputChannels.has_value() &&
+                        selectedConfigIndex != selectedConfigId.value() &&
+                        !output_bus_defs.empty() &&
+                        !output_bus_defs[0].supportedChannelLayouts().empty() &&
+                        output_bus_defs[0].supportedChannelLayouts()[0].channels() != configuration.mainOutputChannels.value()) {
+                        if (portsConfigExt->select(rawPlugin, selectedConfigIndex))
+                            inspectBuses();
+                    }
+
                     refreshedBuses = true;
                 }
             }
