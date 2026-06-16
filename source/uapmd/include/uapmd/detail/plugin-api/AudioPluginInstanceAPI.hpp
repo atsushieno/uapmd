@@ -3,6 +3,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <cstdint>
 #include "remidy/remidy.hpp"
@@ -40,6 +41,24 @@ namespace uapmd {
         std::string pluginPackageName;
         std::string pluginLocalName;
         int32_t instanceId;
+    };
+
+    class AudioPluginInstanceExtension {
+    public:
+        virtual ~AudioPluginInstanceExtension() = default;
+        virtual std::string_view extensionId() const = 0;
+    };
+
+    inline constexpr std::string_view kNativePluginInstanceHandleExtensionId =
+        "dev.atsushieno.uapmd.plugin-instance.native-handles.v1";
+
+    class NativePluginInstanceHandleExtension : public AudioPluginInstanceExtension {
+    public:
+        std::string_view extensionId() const override {
+            return kNativePluginInstanceHandleExtensionId;
+        }
+
+        virtual void* nativeHandle(remidy::NativePluginInstanceHandleKind kind) const = 0;
     };
 
     // usable only in LV2 and CLAP. VST3 and AU have no concept for them.
@@ -116,6 +135,11 @@ namespace uapmd {
         virtual remidy::PluginParameterSupport* parameterSupport() = 0;
 
         virtual remidy::PluginAudioBuses* audioBuses() = 0;
+
+        virtual AudioPluginInstanceExtension* extension(std::string_view extensionId) {
+            (void) extensionId;
+            return nullptr;
+        }
     };
 
 }

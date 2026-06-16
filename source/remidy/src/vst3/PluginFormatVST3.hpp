@@ -140,6 +140,30 @@ namespace remidy {
     };
 
     class PluginInstanceVST3 : public PluginInstance {
+        class NativeHandleExtension final : public NativePluginInstanceHandleExtension {
+            PluginInstanceVST3& owner;
+
+        public:
+            explicit NativeHandleExtension(PluginInstanceVST3& owner)
+                : NativePluginInstanceHandleExtension(owner), owner(owner) {
+            }
+
+            void* nativeHandle(NativePluginInstanceHandleKind kind) const override {
+                switch (kind) {
+                    case NativePluginInstanceHandleKind::VST3Factory:
+                        return owner.factory;
+                    case NativePluginInstanceHandleKind::VST3Component:
+                        return owner.component;
+                    case NativePluginInstanceHandleKind::VST3AudioProcessor:
+                        return owner.processor;
+                    case NativePluginInstanceHandleKind::VST3Unknown:
+                        return owner.instance;
+                    default:
+                        return nullptr;
+                }
+            }
+        };
+
         class ParameterSupport : public PluginParameterSupport {
             PluginInstanceVST3* owner;
             std::vector<PluginParameter*> parameter_defs{};
@@ -381,6 +405,7 @@ namespace remidy {
         IMidiMapping2* midi_mapping2{nullptr};
         bool isControllerDistinctFromComponent;
         FUnknown* instance;
+        NativeHandleExtension native_handle_extension{*this};
         // the connection point for IComponent, retrieved from the plugin.
         IConnectionPoint* connPointComp{nullptr};
         // the connection point for IEditController, retrieved from the plugin.
@@ -430,6 +455,12 @@ namespace remidy {
             FUnknown* instance
             );
         ~PluginInstanceVST3() override;
+
+        PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
+            if (extensionId == kNativePluginInstanceHandleExtensionId)
+                return &native_handle_extension;
+            return nullptr;
+        }
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             return owner->requiresUIThreadOn(info());

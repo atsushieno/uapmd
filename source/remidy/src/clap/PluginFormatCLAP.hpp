@@ -101,8 +101,24 @@ namespace remidy {
     class PluginInstanceCLAP : public PluginInstance {
         friend class RemidyCLAPHost;
 
+        class NativeHandleExtension final : public NativePluginInstanceHandleExtension {
+            PluginInstanceCLAP& owner;
+
+        public:
+            explicit NativeHandleExtension(PluginInstanceCLAP& owner)
+                : NativePluginInstanceHandleExtension(owner), owner(owner) {
+            }
+
+            void* nativeHandle(NativePluginInstanceHandleKind kind) const override {
+                if (kind != NativePluginInstanceHandleKind::CLAPPlugin || !owner.plugin)
+                    return nullptr;
+                return const_cast<clap_plugin*>(owner.plugin->clapPlugin());
+            }
+        };
+
         PluginFormatCLAPImpl* owner;
         std::unique_ptr<CLAPPluginProxy> plugin;
+        NativeHandleExtension native_handle_extension{*this};
         clap_preset_discovery_factory* preset_discovery_factory;
         void* module;
         clap_process_t clap_process;
@@ -303,6 +319,12 @@ namespace remidy {
             std::unique_ptr<RemidyCLAPHost> host
             );
         ~PluginInstanceCLAP() override;
+
+        PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
+            if (extensionId == kNativePluginInstanceHandleExtensionId)
+                return &native_handle_extension;
+            return nullptr;
+        }
 
         PluginUIThreadRequirement requiresUIThreadOn() override {
             // maybe we add some entries for known issues

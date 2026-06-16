@@ -82,11 +82,25 @@ public:
     struct ProjectResult {
         bool success{false};
         std::string error;
+        std::vector<ClipMarker> masterTrackMarkers;
     };
+    struct ProjectSaveOptions {
+        std::vector<int32_t> excludedTrackIndexes;
+        std::vector<ClipMarker> masterTrackMarkers;
+    };
+    using ProjectSaveCallback = std::function<void(ProjectResult)>;
 
+    virtual void saveProject(
+        const std::filesystem::path& file,
+        ProjectSaveOptions options,
+        ProjectSaveCallback callback) = 0;
     virtual ProjectResult loadProject(const std::filesystem::path& file) = 0;
     virtual AudioGraphProviderRegistry& audioGraphProviderRegistry() = 0;
     virtual const AudioGraphProviderRegistry& audioGraphProviderRegistry() const = 0;
+    virtual ProjectDocumentEventSource& projectDocumentEvents() = 0;
+    virtual ProjectDocumentView& projectDocumentView() = 0;
+    virtual AudioSourceRepository& audioSourceRepository() = 0;
+    virtual void setAudioSourceRepository(std::shared_ptr<AudioSourceRepository> repository) = 0;
     virtual bool replaceTrackGraphType(
         int32_t trackIndex,
         const std::string& graphTypeId,
@@ -101,6 +115,16 @@ public:
         const std::filesystem::path& projectDir,
         const std::filesystem::path& graphDir,
         const std::string& scopeLabel,
+        std::string& error) = 0;
+    virtual void addProjectSerializationExtension(ProjectSerializationExtension& extension) = 0;
+    virtual void removeProjectSerializationExtension(ProjectSerializationExtension& extension) = 0;
+    virtual bool saveProjectExtensionData(
+        const std::filesystem::path& projectFile,
+        const std::filesystem::path& projectDir,
+        std::string& error) = 0;
+    virtual bool loadProjectExtensionData(
+        const std::filesystem::path& projectFile,
+        const std::filesystem::path& projectDir,
         std::string& error) = 0;
 
     // Tempo map and time-signature metadata extracted from master track MIDI clips
@@ -167,6 +191,7 @@ public:
                               double sampleRate,
                               uint32_t bufferSizeInFrames) = 0;
     virtual void onTrackRemoved(size_t trackIndex) = 0;
+    virtual void onTrackGraphChanged(int32_t trackIndex) = 0;
 
     static std::unique_ptr<TimelineFacade> create(SequencerEngine& engine);
 };

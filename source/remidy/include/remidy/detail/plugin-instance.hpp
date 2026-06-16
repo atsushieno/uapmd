@@ -3,6 +3,7 @@
 #include "remidy/remidy.hpp"
 #include <cstddef>
 #include <optional>
+#include <string_view>
 
 namespace remidy {
 
@@ -38,7 +39,10 @@ namespace remidy {
 
         PluginCatalogEntry* info() { return entry; }
 
-        virtual PluginExtensibility<PluginInstance>* getExtensibility() { return nullptr; }
+        virtual PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) {
+            (void) extensionId;
+            return nullptr;
+        }
 
         virtual PluginUIThreadRequirement requiresUIThreadOn() = 0;
 

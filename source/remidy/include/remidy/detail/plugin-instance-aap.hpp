@@ -4,6 +4,9 @@
 
 namespace remidy {
 
+    inline constexpr std::string_view kAAPPluginInstanceExtensionId =
+        "dev.atsushieno.remidy.aap.instance.v1";
+
     class PluginInstanceAAPExt : public PluginExtensibility<PluginInstance> {
     protected:
         explicit PluginInstanceAAPExt(PluginInstance& owner) : PluginExtensibility(owner) {}
