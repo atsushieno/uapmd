@@ -74,14 +74,12 @@ namespace remidy {
     }
 
     void resizeCLAPAudioBuffers(clap_audio_buffer_t& a, size_t newSizeInSamples, bool isDouble) {
-        if (!isDouble && !a.data32)
-            a.data32 = new float*[a.channel_count];
-        if (isDouble && !a.data64)
-            a.data64 = new double*[a.channel_count];
         if (isDouble) {
+            a.data64 = new double*[a.channel_count];
             for (size_t ch = 0, nCh = a.channel_count; ch < nCh; ch++)
                 a.data64[ch] = static_cast<double *>(calloc(newSizeInSamples, sizeof(double)));
         } else {
+            a.data32 = new float*[a.channel_count];
             for (size_t ch = 0, nCh = a.channel_count; ch < nCh; ch++)
                 a.data32[ch] = static_cast<float *>(calloc(newSizeInSamples, sizeof(float)));
         }
@@ -150,37 +148,22 @@ namespace remidy {
         is_offline_ = configuration.offlineMode;
         sample_rate_ = configuration.sampleRate;
 
-        // Check if any port requires 64-bit processing
-        bool pluginRequires64Bit = false;
-        bool pluginPrefers64Bit = false;
-        for (const auto& portInfo : inputPortInfos) {
-            if (portInfo.flags & CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE) {
-                if (portInfo.flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS) {
-                    pluginPrefers64Bit = true;
-                    if (portInfo.flags & CLAP_AUDIO_PORT_PREFERS_64BITS)
-                        pluginRequires64Bit = true;
+        // If host requests 64-bit, verify every port supports it; disable the plugin if not.
+        if (useDouble) {
+            for (const auto& portInfo : inputPortInfos) {
+                if (!(portInfo.flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS)) {
+                    owner->getLogger()->logWarning("%s: Plugin does not support 64-bit processing, disabling plugin",
+                                                  info()->displayName().c_str());
+                    return StatusCode::FAILED_TO_CONFIGURE;
                 }
             }
-        }
-        for (const auto& portInfo : outputPortInfos) {
-            if (portInfo.flags & CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE) {
-                if (portInfo.flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS) {
-                    pluginPrefers64Bit = true;
-                    if (portInfo.flags & CLAP_AUDIO_PORT_PREFERS_64BITS)
-                        pluginRequires64Bit = true;
+            for (const auto& portInfo : outputPortInfos) {
+                if (!(portInfo.flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS)) {
+                    owner->getLogger()->logWarning("%s: Plugin does not support 64-bit processing, disabling plugin",
+                                                  info()->displayName().c_str());
+                    return StatusCode::FAILED_TO_CONFIGURE;
                 }
             }
-        }
-
-        // If plugin requires 64-bit but host requested 32-bit, log warning and use 64-bit
-        if (pluginRequires64Bit && !useDouble) {
-            owner->getLogger()->logWarning("%s: Plugin requires 64-bit processing, overriding host configuration",
-                                          info()->displayName().c_str());
-            useDouble = true;
-        }
-        // If plugin prefers 64-bit and host supports it, use 64-bit
-        else if (pluginPrefers64Bit && configuration.dataType == AudioContentType::Float64) {
-            useDouble = true;
         }
 
         // ensure to clean up old buffer. Note that buses in old configuration may be different,
@@ -216,10 +199,16 @@ namespace remidy {
         audio_in_port_buffers.resize(clap_process.audio_inputs_count);
         audio_out_port_buffers.resize(clap_process.audio_outputs_count);
 
-        for (size_t i = 0, n = clap_process.audio_inputs_count; i < n; i++)
+        for (size_t i = 0, n = clap_process.audio_inputs_count; i < n; i++) {
+            audio_in_port_buffers[i].data32 = nullptr;
+            audio_in_port_buffers[i].data64 = nullptr;
             audio_in_port_buffers[i].channel_count = audio_buses->audioInputBuses()[i]->channelLayout().channels();
-        for (size_t i = 0, n = clap_process.audio_outputs_count; i < n; i++)
+        }
+        for (size_t i = 0, n = clap_process.audio_outputs_count; i < n; i++) {
+            audio_out_port_buffers[i].data32 = nullptr;
+            audio_out_port_buffers[i].data64 = nullptr;
             audio_out_port_buffers[i].channel_count = audio_buses->audioOutputBuses()[i]->channelLayout().channels();
+        }
 
         // Allocate input buffers
         resizeAudioPortBuffers(configuration.bufferSizeInSamples, useDouble);
