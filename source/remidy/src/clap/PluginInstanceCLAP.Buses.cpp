@@ -353,7 +353,34 @@ namespace remidy {
                 bus->channelLayout() = layout;
         };
 
-        applyRequestedChannels(audio_in_buses, mainInputBusIndex(), configuration.mainInputChannels);
-        applyRequestedChannels(audio_out_buses, mainOutputBusIndex(), configuration.mainOutputChannels);
+        // For input buses, never exceed what the plugin declared — plugins can't handle
+        // more input channels than they advertise (e.g. DISTRHO_PLUGIN_NUM_INPUTS assert).
+        // Read from input_bus_defs (plugin declaration) not audio_in_buses (defaults to stereo).
+        std::optional<uint32_t> clampedInputChannels = configuration.mainInputChannels;
+        auto mainInIdx = mainInputBusIndex();
+        if (clampedInputChannels.has_value() && mainInIdx >= 0 && static_cast<size_t>(mainInIdx) < input_bus_defs.size()) {
+            const auto& layouts = input_bus_defs[static_cast<size_t>(mainInIdx)].supportedChannelLayouts();
+            if (!layouts.empty()) {
+                uint32_t pluginMax = layouts[0].channels();
+                if (pluginMax > 0 && clampedInputChannels.value() > pluginMax)
+                    clampedInputChannels = pluginMax;
+            }
+        }
+        applyRequestedChannels(audio_in_buses, mainInIdx, clampedInputChannels);
+
+        // Same clamp for outputs: after inspectBuses(), output_bus_defs reflects what the plugin
+        // can actually produce (post config-select). For plugins that can't do stereo, this
+        // prevents forcing 2 channels on a mono-only output port.
+        std::optional<uint32_t> clampedOutputChannels = configuration.mainOutputChannels;
+        auto mainOutIdx = mainOutputBusIndex();
+        if (clampedOutputChannels.has_value() && mainOutIdx >= 0 && static_cast<size_t>(mainOutIdx) < output_bus_defs.size()) {
+            const auto& layouts = output_bus_defs[static_cast<size_t>(mainOutIdx)].supportedChannelLayouts();
+            if (!layouts.empty()) {
+                uint32_t pluginMax = layouts[0].channels();
+                if (pluginMax > 0 && clampedOutputChannels.value() > pluginMax)
+                    clampedOutputChannels = pluginMax;
+            }
+        }
+        applyRequestedChannels(audio_out_buses, mainOutIdx, clampedOutputChannels);
     }
 }
