@@ -6,11 +6,14 @@
 std::vector<uint8_t>
 remidy::PluginInstanceAAP::StateSupport::getState(StateContextType stateContextType,
                                                   bool includeUiState) {
-    auto stateObj = owner->aapInstance()->getStandardExtensions().getState();
+    auto result = owner->aapInstance()->getStandardExtensions().getState();
     std::vector<uint8_t> ret{};
-    ret.resize(stateObj.data_size);
-    if (stateObj.data_size > 0)
-        memcpy(ret.data(), stateObj.data, stateObj.data_size);
+    if (result.error.empty()) {
+        auto& stateObj = result.value;
+        ret.resize(stateObj.data_size);
+        if (stateObj.data_size > 0)
+            memcpy(ret.data(), stateObj.data, stateObj.data_size);
+    }
     return ret;
 }
 
