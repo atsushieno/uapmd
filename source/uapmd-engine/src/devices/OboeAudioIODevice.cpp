@@ -191,6 +191,14 @@ namespace uapmd {
             buffer_capacity_frames_ = std::max(fallbackFrames, stabilized_block_frames_);
         else
             buffer_capacity_frames_ = fallbackFrames;
+        // A single HAL callback can request up to framesPerBurst frames, and the
+        // engine renders into buffers sized buffer_capacity_frames_. If the device
+        // reports a burst larger than the host buffer size (e.g. emulators where
+        // framesPerBurst can be ~2000+), the engine buffers must still be able to
+        // hold a full burst, otherwise rendering writes out of bounds.
+        if (framesPerBurst > 0)
+            buffer_capacity_frames_ = std::max(buffer_capacity_frames_,
+                                               static_cast<uint32_t>(framesPerBurst));
 
         master_context.sampleRate(static_cast<int32_t>(sample_rate_));
         data.configureMainBus(static_cast<int32_t>(input_channels_),
@@ -452,17 +460,21 @@ namespace uapmd {
         const size_t hardwareChannels = static_cast<size_t>(audioStream->getChannelCount());
         if (hardwareChannels == 0)
             return DataCallbackResult::Continue;
-        const uint32_t renderFrames = std::max<uint32_t>(
-            preferred_callback_frames_, static_cast<uint32_t>(numFrames));
+        // Render in fixed engine-sized blocks (never larger than the engine buffer
+        // capacity) and accumulate into the FIFO until it holds the HAL's request.
+        // Rendering numFrames directly would overflow the engine buffers when the
+        // device's framesPerBurst exceeds the host buffer size (e.g. on emulators).
+        const uint32_t renderFrames = std::min(preferred_callback_frames_, buffer_capacity_frames_);
         if (renderFrames == 0)
             return processImmediate(audioStream, audioData, numFrames);
 
+        // Enough blocks to cover the request, plus a small margin.
+        const size_t maxRenderAttempts = static_cast<size_t>(numFrames) / renderFrames + 2;
         size_t safetyCounter = 0;
-        constexpr size_t kMaxRenderAttempts = 8;
         while (stabilized_buffered_frames_ < static_cast<size_t>(numFrames)) {
             if (!renderEngineBlock(static_cast<int32_t>(renderFrames), hardwareChannels))
                 return DataCallbackResult::Stop;
-            if (++safetyCounter >= kMaxRenderAttempts)
+            if (++safetyCounter >= maxRenderAttempts)
                 break;
         }
 
