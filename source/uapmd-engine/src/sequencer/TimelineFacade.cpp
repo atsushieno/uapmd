@@ -1286,6 +1286,8 @@ namespace uapmd {
             // Releasing the sentinel at the end of setup triggers finish when no plugins are pending.
             auto pending_plugins = std::make_shared<std::atomic<int>>(1);
             auto finish_holder = std::make_shared<std::function<void()>>();
+            using PluginLoadStep = std::function<void(std::function<void()>)>;
+            auto plugin_load_steps = std::make_shared<std::vector<PluginLoadStep>>();
 
             struct LoadedClipRef {
                 TimelineTrack* track{nullptr};
@@ -1298,7 +1300,7 @@ namespace uapmd {
             //  Currently, `UapmdPluginGraphBuilder::build()` is practically no-op, but the project loads.
             //  It is because it is already added in a linear manner.
             //  But that may not be the right thing depending on the graphs (such as, full DAG).
-            auto loadPluginsForTrack = [this, &projectDir, pending_plugins, finish_holder](UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
+            auto loadPluginsForTrack = [this, &projectDir, plugin_load_steps](UapmdProjectTrackData* projectTrack, int32_t trackIndex) {
                 if (!projectTrack)
                     return;
                 auto* graphData = projectTrack->graph();
@@ -1403,13 +1405,24 @@ namespace uapmd {
 
                     const std::string pluginLabel = pluginName.empty() ? pluginId : pluginName;
 
-                    pending_plugins->fetch_add(1, std::memory_order_relaxed);
-                    engine_.addPluginToTrack(trackIndex, format, pluginId,
-                        [this, resolvedState, groupIndex, pending_plugins, finish_holder, pluginLabel, pluginId, format](int32_t instanceId, int32_t, std::string error) mutable {
+                    plugin_load_steps->push_back(
+                        [this, trackIndex, format = std::move(format), pluginId = std::move(pluginId),
+                         resolvedState, groupIndex, pluginLabel](std::function<void()> done) mutable {
+                            engine_.addPluginToTrack(trackIndex, format, pluginId,
+                                [this, resolvedState, groupIndex, pluginLabel, pluginId, format, done = std::move(done)](int32_t instanceId, int32_t, std::string error) mutable {
+                            auto finishPlugin = [done]() mutable {
+                                if (done)
+                                    done();
+                            };
+
                             if (!error.empty()) {
                                 std::cerr << "Warning: Failed to instantiate plugin " << pluginLabel
                                           << " (" << format << ", ID=" << pluginId << "): " << error << std::endl;
                             } else if (instanceId >= 0) {
+                                // Restore saved group assignment (overrides auto-assigned group).
+                                if (groupIndex >= 0 && groupIndex <= 15)
+                                    engine_.setInstanceGroup(instanceId, static_cast<uint8_t>(groupIndex));
+
                                 if (!resolvedState.empty()) {
                                     auto* instance = engine_.getPluginInstance(instanceId);
                                     if (instance) {
@@ -1417,16 +1430,19 @@ namespace uapmd {
                                         if (f) {
                                             std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), {});
                                             instance->loadStateSync(data);
+                                        } else {
+                                            std::cerr << "Warning: Failed to open state file for plugin "
+                                                      << pluginLabel << ": " << resolvedState << std::endl;
                                         }
+                                    } else {
+                                        std::cerr << "Warning: Failed to get plugin instance " << instanceId
+                                                  << " while restoring state for " << pluginLabel << std::endl;
                                     }
                                 }
-                                // Restore saved group assignment (overrides auto-assigned group)
-                                if (groupIndex >= 0 && groupIndex <= 15)
-                                    engine_.setInstanceGroup(instanceId, static_cast<uint8_t>(groupIndex));
                             }
-                            if (pending_plugins->fetch_sub(1, std::memory_order_acq_rel) == 1)
-                                (*finish_holder)();
+                            finishPlugin();
                         });
+                    });
                 }
             };
 
@@ -1682,6 +1698,24 @@ namespace uapmd {
                     notifyTimelineChanged();
                     callback({true, {}, std::move(masterTrackMarkers)});
                 };
+            }
+
+            if (earlyError.empty() && !plugin_load_steps->empty()) {
+                pending_plugins->fetch_add(1, std::memory_order_relaxed);
+                auto next_index = std::make_shared<size_t>(0);
+                auto run_next = std::make_shared<std::function<void()>>();
+                *run_next = [plugin_load_steps, next_index, run_next, pending_plugins, finish_holder]() mutable {
+                    if (*next_index >= plugin_load_steps->size()) {
+                        if (pending_plugins->fetch_sub(1, std::memory_order_acq_rel) == 1)
+                            (*finish_holder)();
+                        return;
+                    }
+                    auto step = (*plugin_load_steps)[(*next_index)++];
+                    step([run_next]() mutable {
+                        (*run_next)();
+                    });
+                };
+                (*run_next)();
             }
 
             // Release the sentinel; if it reaches 0 (no plugins pending), fire finish now.
