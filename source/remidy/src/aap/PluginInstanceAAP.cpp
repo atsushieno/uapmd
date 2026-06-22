@@ -44,7 +44,11 @@ remidy::PluginInstanceAAP::configure(remidy::PluginInstance::ConfigurationReques
     if (!instance)
         return StatusCode::FAILED_TO_INSTANTIATE;
 
-    instance->prepare((int) configuration.bufferSizeInSamples, (int32_t) configuration.sampleRate);
+    if (instance->getInstanceState() == aap::PLUGIN_INSTANTIATION_STATE_UNPREPARED)
+        instance->prepare((int) configuration.bufferSizeInSamples, (int32_t) configuration.sampleRate);
+    else if (instance->getInstanceState() == aap::PLUGIN_INSTANTIATION_STATE_ACTIVE)
+        instance->deactivate();
+
     if (instance->getInstanceState() != aap::PLUGIN_INSTANTIATION_STATE_INACTIVE ||
         instance->getAudioPluginBuffer() == nullptr)
         return StatusCode::FAILED_TO_INSTANTIATE;
