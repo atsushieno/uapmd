@@ -193,6 +193,13 @@ globalThis.uapmd = {
     // Factory function to create PluginInstance wrapper for an existing instance
     instance: (instanceId) => new PluginInstance(instanceId),
 
+    // Audio engine on/off. Disable before heavy operations (e.g. loading a large
+    // project) so the realtime render thread does not compete for CPU; re-enable after.
+    audio: {
+        setEngineEnabled: (enabled) => __remidy_set_audio_engine_enabled(enabled),
+        isEngineEnabled: () => __remidy_is_audio_engine_enabled()
+    },
+
     // Sequencer API - Audio engine control and queries
     sequencer: {
         // MIDI control

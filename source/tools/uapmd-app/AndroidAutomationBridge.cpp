@@ -150,7 +150,7 @@ std::string evaluateScriptOnAppThread(const std::string& code) {
     });
 
     std::unique_lock lock(mutex);
-    if (!cv.wait_for(lock, std::chrono::seconds(45), [&] { return done; }))
+    if (!cv.wait_for(lock, std::chrono::seconds(90), [&] { return done; }))
         return "ERROR: timed out waiting for app thread";
     if (!error.empty())
         return "ERROR: " + error;

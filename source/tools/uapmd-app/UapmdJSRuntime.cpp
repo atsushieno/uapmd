@@ -1,5 +1,6 @@
 #include "UapmdJSRuntime.hpp"
 #include "AppModel.hpp"
+#include <remidy/detail/event-loop.hpp>
 #if defined(_WIN32)
 #include <winsock2.h>
 #else
@@ -100,6 +101,14 @@ void UapmdJSRuntime::registerProjectAPI()
             [loadPromise](uapmd::AppModel::ProjectResult r) mutable {
                 loadPromise->set_value(std::move(r));
             });
+        // loadProjectFromResolvedPath instantiates plugins asynchronously, posting each
+        // completion back to the main thread; drain the queue while waiting so the load can
+        // progress instead of deadlocking against its own main-thread completions.
+        while (loadFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            if (remidy::EventLoop::runningOnMainThread())
+                remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
         auto projectResult = loadFuture.get();
         result.setMember ("success", projectResult.success);
         result.setMember ("error", projectResult.error);
@@ -255,12 +264,16 @@ void UapmdJSRuntime::registerPluginInstanceAPI()
         // Trigger instance creation (will call all callbacks including ours and MainWindow's)
         model.createPluginInstanceAsync(formatName, pluginId, trackIndex, config);
 
-        // Wait for completion with timeout (max 5 seconds)
+        // Wait for completion with timeout (max 5 seconds). This runs on the main thread,
+        // and createPluginInstanceAsync delivers its completion via enqueueTaskOnMainThread
+        // (from a worker thread), so we must drain the main-thread task queue while waiting;
+        // a plain sleep loop would block the very thread that has to run that completion.
         auto startTime = std::chrono::steady_clock::now();
         while (!completed) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            auto elapsed = std::chrono::steady_clock::now() - startTime;
-            if (elapsed > std::chrono::seconds(5)) {
+            if (remidy::EventLoop::runningOnMainThread())
+                remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            if (std::chrono::steady_clock::now() - startTime > std::chrono::seconds(5)) {
                 std::cerr << "[JS] Timeout creating plugin instance" << std::endl;
                 // Remove our callback
                 model.instanceCreated.pop_back();
@@ -835,6 +848,21 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
     {
         auto isScanning = uapmd::AppModel::instance().isScanning();
         return choc::value::createBool (isScanning);
+    });
+
+    // Audio engine on/off. Disabling it frees the realtime render thread, which is
+    // essential for heavy operations (e.g. loading a large project with many plugins)
+    // that would otherwise compete with the live engine for CPU.
+    jsContext_.registerFunction ("__remidy_set_audio_engine_enabled", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto enabled = args.get<bool> (0, true);
+        uapmd::AppModel::instance().setAudioEngineEnabled (enabled);
+        return choc::value::createBool (uapmd::AppModel::instance().isAudioEngineEnabled());
+    });
+
+    jsContext_.registerFunction ("__remidy_is_audio_engine_enabled", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        return choc::value::createBool (uapmd::AppModel::instance().isAudioEngineEnabled());
     });
 }
 

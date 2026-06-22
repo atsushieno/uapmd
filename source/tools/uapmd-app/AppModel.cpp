@@ -26,6 +26,7 @@
 #include <choc/audio/choc_AudioFileFormat_WAV.h>
 #include <choc/audio/choc_SampleBuffers.h>
 #include <umppi/umppi.hpp>
+#include <remidy/detail/event-loop.hpp>
 #include "uapmd/uapmd.hpp"
 #include "AppModel.hpp"
 #ifdef UAPMD_HAS_ARA
@@ -2500,6 +2501,14 @@ uapmd::AppModel::ProjectResult uapmd::AppModel::saveProjectSync(const std::files
                 [promise](ProjectResult result) {
                     promise->set_value(std::move(result));
                 });
+    // saveProject requests each plugin's state asynchronously, posting completions back to
+    // the main thread; drain the queue while waiting so the save can finish instead of
+    // deadlocking against its own main-thread completions.
+    while (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        if (remidy::EventLoop::runningOnMainThread())
+            remidy::EventLoop::processQueuedTasks();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
     return future.get();
 }
 
