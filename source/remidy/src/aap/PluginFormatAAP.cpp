@@ -43,11 +43,33 @@ void PluginFormatAAPImpl::createInstance(PluginCatalogEntry *info,
     } else {
         // If the plugin service is not connected yet, then connect asynchronously with the callback
         // that processes instancing and invoke user callback (PluginCreationCallback).
-        std::function<void(int32_t,std::string&)> aapCallback = [this, info, callback](int32_t instanceID, std::string& error) {
-            auto androidInstance = android_host->getInstanceById(instanceID);
-            if (error.empty())
+        auto resolveCreatedInstance = [this, info](size_t previousInstanceCount, int32_t instanceID) -> aap::PluginInstance* {
+            auto matches = [info, instanceID](aap::PluginInstance* instance) {
+                return instance &&
+                       instance->getInstanceId() == instanceID &&
+                       instance->getPluginInformation() &&
+                       instance->getPluginInformation()->getPluginID() == info->pluginId();
+            };
+
+            if (android_host->getInstanceCount() > previousInstanceCount) {
+                auto* created = android_host->getInstanceByIndex(static_cast<int32_t>(previousInstanceCount));
+                if (matches(created))
+                    return created;
+            }
+
+            auto* byId = android_host->getInstanceById(instanceID);
+            return matches(byId) ? byId : nullptr;
+        };
+
+        std::function<void(size_t,int32_t,std::string&)> aapCallback = [this, info, callback, resolveCreatedInstance](size_t previousInstanceCount, int32_t instanceID, std::string& error) {
+            if (error.empty()) {
+                auto androidInstance = resolveCreatedInstance(previousInstanceCount, instanceID);
+                if (!androidInstance) {
+                    callback(nullptr, std::format("Created AAP instance {} did not match plugin {}.", instanceID, info->pluginId()));
+                    return;
+                }
                 callback(std::make_unique<PluginInstanceAAP>(this, info, androidInstance), "");
-            else
+            } else
                 callback(nullptr, error);
         };
         // FIXME: just like LV2, we have to pass initial sample rate at instantiation time,
@@ -57,16 +79,18 @@ void PluginFormatAAPImpl::createInstance(PluginCatalogEntry *info,
         auto identifier = pluginInfo->getPluginID();
         auto service = plugin_client_connections->getServiceHandleForConnectedPlugin(pluginInfo->getPluginPackageName(), pluginInfo->getPluginLocalName());
         if (service != nullptr) {
+            auto previousInstanceCount = android_host->getInstanceCount();
             auto result = android_host->createInstance(identifier, true);
-            aapCallback(result.value, result.error);
+            aapCallback(previousInstanceCount, result.value, result.error);
         } else {
             std::function<void(std::string&)> cb = [identifier,aapCallback,this](std::string& error) {
                 if (error.empty()) {
+                    auto previousInstanceCount = android_host->getInstanceCount();
                     auto result = android_host->createInstance(identifier, true);
-                    aapCallback(result.value, result.error);
+                    aapCallback(previousInstanceCount, result.value, result.error);
                 }
                 else
-                    aapCallback(-1, error);
+                    aapCallback(android_host->getInstanceCount(), -1, error);
             };
             aap::PluginClientSystem::getInstance()->ensurePluginServiceConnected(plugin_client_connections, pluginInfo->getPluginPackageName(), cb);
         }

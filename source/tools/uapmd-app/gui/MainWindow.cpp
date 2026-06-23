@@ -186,6 +186,8 @@ MainWindow::MainWindow(GuiDefaults defaults) {
                 if (windowIt != pluginWindows_.end()) {
                     windowIt->second->show(false);
                 }
+                pluginWindowVisible_[result.instanceId] = false;
+                pluginWindowEmbedded_.erase(result.instanceId);
                 return;
             }
 
@@ -203,6 +205,7 @@ MainWindow::MainWindow(GuiDefaults defaults) {
                     windowIt->second->setResizable(canResize);
                 }
             }
+            pluginWindowVisible_[result.instanceId] = result.visible;
             trackList_.markDirty();
         });
 
@@ -1439,7 +1442,6 @@ void MainWindow::handleShowUI(int32_t instanceId) {
 
     std::string pluginName = instance->displayName();
     std::string pluginFormat = instance->formatName();
-
     // Create container window if needed
     auto windowIt = pluginWindows_.find(instanceId);
     remidy::gui::ContainerWindow* container = nullptr;
@@ -1477,8 +1479,7 @@ void MainWindow::handleShowUI(int32_t instanceId) {
     uapmd::AppModel::instance().showPluginUI(instanceId, needsCreate, false, parentHandle,
         [this, instanceId](uint32_t w, uint32_t h){ return handlePluginResizeRequest(instanceId, w, h); });
 
-    // Mark as visible
-    pluginWindowVisible_[instanceId] = true;
+    // UI visibility is updated from AppModel::uiShown after create/show succeeds.
 }
 
 void MainWindow::handleHideUI(int32_t instanceId) {
