@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 #include <sstream>
+#include <unordered_map>
 #include <umppi/umppi.hpp>
 #include <aap/ext/midi.h>
 
@@ -11,7 +12,24 @@
 #include "PluginFormatAAP.hpp"
 
 remidy::PluginInstanceAAP::ParameterSupport::ParameterSupport(PluginInstanceAAP *owner) : owner(owner) {
+    rebuildParameterListFromPlugin();
+    installParametersChangedHandler();
+}
+
+void remidy::PluginInstanceAAP::ParameterSupport::rebuildParameterListFromPlugin() {
     auto aap = owner->aapInstance();
+
+    // Preserve already-known values by stable id so a layout refresh (e.g. preset load) does
+    // not discard parameter values for parameters that still exist.
+    std::unordered_map<std::string, double> previousValues{};
+    for (size_t i = 0; i < parameter_list.size() && i < parameter_values.size(); i++)
+        previousValues[parameter_list[i]->stableId()] = parameter_values[i];
+
+    for (auto p : parameter_list)
+        delete p;
+    parameter_list.clear();
+    parameter_values.clear();
+
     for (auto i = 0, n = aap->getNumParameters(); i < n; i++) {
         auto src = aap->getParameter(i);
         std::vector<remidy::ParameterEnumeration> enums{};
@@ -33,13 +51,42 @@ remidy::PluginInstanceAAP::ParameterSupport::ParameterSupport(PluginInstanceAAP 
                                                      false,
                                                      src->getEnumCount() > 0,
                                                      enums));
-        parameter_values.push_back(src->getDefaultValue());
+        auto it = previousValues.find(id);
+        parameter_values.push_back(it != previousValues.end() ? it->second : src->getDefaultValue());
 
         // AAP does not have per-note controller yet.
     }
 }
 
+void remidy::PluginInstanceAAP::ParameterSupport::installParametersChangedHandler() {
+    // The handler is only available on the remote (client-side) instance; local instances do not
+    // receive the notification over AAPXS.
+    auto remote = dynamic_cast<aap::RemotePluginInstance*>(owner->aapInstance());
+    if (!remote)
+        return;
+    remote->parametersChangedHandler = [this](aap::RemotePluginInstance& inst) {
+        // Trigger a NON-BLOCKING rescan. rebuildParameterListAsync issues async AAPXS calls and
+        // returns immediately; its replies are delivered through the normal transport, so the
+        // refresh completes once the audio cycle resumes after the preset/script load settles --
+        // it never blocks this thread (a synchronous rescan here deadlocks: replies are pumped on
+        // the audio cycle, which is stalled during the load).
+        // Do NOT suspend processing or issue a synchronous AAPXS rescan here: that blocks the
+        // realtime process() output path (updateParameterValueCacheFromOutputBuffer) through which
+        // the plugin reports its new preset VALUES, producing "no parameter updates". Parameter
+        // VALUES propagate on their own via that RT path; here we only refresh remidy's view from
+        // aap-core's already-cached metadata and notify listeners so the UI re-reads the new values.
+        (void) inst;
+        remidy::EventLoop::enqueueTaskOnMainThread([this]() {
+            rebuildParameterListFromPlugin();  // reads aap-core cached_parameters only; no AAPXS IPC
+            parameterMetadataChangeEvent().notify();
+        });
+    };
+}
+
 remidy::PluginInstanceAAP::ParameterSupport::~ParameterSupport() {
+    // Detach the handler so a late AAPXS notification cannot dereference this destroyed support.
+    if (auto remote = dynamic_cast<aap::RemotePluginInstance*>(owner->aapInstance()))
+        remote->parametersChangedHandler = nullptr;
     for (auto p : parameter_list)
         delete p;
     for (auto p : per_note_controller_list)

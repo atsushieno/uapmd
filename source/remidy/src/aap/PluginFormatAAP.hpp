@@ -99,6 +99,15 @@ namespace remidy {
             std::vector<remidy::PluginParameter *> per_note_controller_list{};
             std::vector<double> parameter_values{};
 
+            // (Re)builds parameter_list/parameter_values from the current AAP instance metadata,
+            // preserving existing parameter values by stable id. Used both at construction and
+            // when the plugin notifies a parameter-layout change (e.g. ysfx loading a preset).
+            void rebuildParameterListFromPlugin();
+            // Registers an aap-core parametersChangedHandler that defers the rebuild onto the main
+            // thread (the AAPXS notification arrives on the Binder request thread, where issuing
+            // the synchronous parameter rescan would reenter the transport).
+            void installParametersChangedHandler();
+
         public:
             ParameterSupport(PluginInstanceAAP* owner);
             ~ParameterSupport() override;
