@@ -28,7 +28,7 @@ endif()
 
 #### end of section ####
 
-set(UAPMD_VERSION "0.4.0" CACHE STRING "UAPMD version for packaging")
+set(UAPMD_VERSION "0.5.0" CACHE STRING "UAPMD version for packaging")
 
 if (UNIX) # N/A on Windows
 set(_UAPMD_CPPTRACE_DWARF_DEFAULT ${UAPMD_CPPTRACE_DWARF_DEFAULT})
@@ -183,7 +183,7 @@ set(_UAPMD_OLD_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
 CPMAddPackage(midicci
         NAME            midicci
-        GIT_TAG         24cc7c4
+        GIT_TAG         0.4.0
         GIT_REPOSITORY  https://github.com/atsushieno/midicci
         OPTIONS         "MIDICCI_SKIP_TOOLS ON" "BUILD_TESTS OFF" "BUILD_EXAMPLES OFF"
         EXCLUDE_FROM_ALL
