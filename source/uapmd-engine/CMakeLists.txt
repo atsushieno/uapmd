@@ -91,19 +91,61 @@ endif()
 # with two arguments. Guard with a content-check so the patch is idempotent.
 set(_uapmd_libremidi_em_observer_hpp "${libremidi_SOURCE_DIR}/include/libremidi/backends/emscripten/observer.hpp")
 set(_uapmd_libremidi_em_midi_access_hpp "${libremidi_SOURCE_DIR}/include/libremidi/backends/emscripten/midi_access.hpp")
+set(_uapmd_libremidi_em_midi_access_tail [[    , id.c_str()
+    );
+  }
+
+  void stop_stream(int port_index)
+  {
+    if (!available())
+      return;
+
+    const auto& id = m_current_inputs[port_index].id;
+    EM_ASM(const id = UTF8ToString($1);
+
+           let input = globalThis.__libreMidi_access.inputs.get(id);
+           input.onmidimessage = undefined;, id.c_str());
+  }
+
+  std::vector<observer_emscripten*> m_observers;
+  std::vector<device_information> m_current_inputs;
+  std::vector<device_information> m_current_outputs;
+
+  std::map<int, std::vector<midi_in_emscripten*>> m_opened_inputs;
+
+  std::map<std::string, int> m_input_indices;
+  std::map<std::string, int> m_output_indices;
+};
+
+}
+}
+]])
+file(READ "${_uapmd_libremidi_em_midi_access_hpp}" _uapmd_libremidi_em_midi_access_contents)
+string(REPLACE "\r\n" "\n" _uapmd_libremidi_em_midi_access_contents "${_uapmd_libremidi_em_midi_access_contents}")
+string(FIND "${_uapmd_libremidi_em_midi_access_contents}" [[  void stop_stream(int port_index)]] _uapmd_libremidi_em_has_stop_stream)
+string(FIND "${_uapmd_libremidi_em_midi_access_contents}" [[    , id]] _uapmd_libremidi_em_truncated_tail_pos)
+if(_uapmd_libremidi_em_has_stop_stream EQUAL -1 AND NOT _uapmd_libremidi_em_truncated_tail_pos EQUAL -1)
+    string(SUBSTRING "${_uapmd_libremidi_em_midi_access_contents}" 0 ${_uapmd_libremidi_em_truncated_tail_pos} _uapmd_libremidi_em_midi_access_prefix)
+    set(_uapmd_libremidi_em_midi_access_contents
+            "${_uapmd_libremidi_em_midi_access_prefix}${_uapmd_libremidi_em_midi_access_tail}")
+endif()
+string(REPLACE
+        [[return EM_ASM_INT(return typeof globalThis.__libreMidi_access !== undefined;);]]
+        [[return EM_ASM_INT(return typeof globalThis.__libreMidi_access !== 'undefined';);]]
+        _uapmd_libremidi_em_midi_access_contents
+        "${_uapmd_libremidi_em_midi_access_contents}"
+)
 file(READ "${_uapmd_libremidi_em_observer_hpp}" _uapmd_libremidi_em_observer_contents)
 string(FIND "${_uapmd_libremidi_em_observer_contents}" "bool notify" _uapmd_libremidi_em_has_notify)
 if(NOT _uapmd_libremidi_em_has_notify EQUAL -1)
-    file(READ "${_uapmd_libremidi_em_midi_access_hpp}" _uapmd_libremidi_em_midi_access_contents)
-    string(REPLACE "\r\n" "\n" _uapmd_libremidi_em_midi_access_contents "${_uapmd_libremidi_em_midi_access_contents}")
     string(REPLACE
             [[obs->update(m_current_inputs, m_current_outputs);]]
             [[obs->update(m_current_inputs, m_current_outputs, true);]]
             _uapmd_libremidi_em_midi_access_contents
             "${_uapmd_libremidi_em_midi_access_contents}"
     )
-    file(WRITE "${_uapmd_libremidi_em_midi_access_hpp}" "${_uapmd_libremidi_em_midi_access_contents}")
 endif()
+file(WRITE "${_uapmd_libremidi_em_midi_access_hpp}" "${_uapmd_libremidi_em_midi_access_contents}")
 
 target_include_directories(uapmd-engine PRIVATE
         ${miniaudio_SOURCE_DIR}
