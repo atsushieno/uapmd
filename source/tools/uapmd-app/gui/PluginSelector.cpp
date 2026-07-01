@@ -6,7 +6,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include "../AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif

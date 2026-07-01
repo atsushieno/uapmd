@@ -9,7 +9,7 @@
 #include <imgui.h>
 #include <remidy-gui/remidy-gui.hpp>
 
-#include "../AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include "ContextActions.hpp"
 #include "FontIcons.hpp"
 

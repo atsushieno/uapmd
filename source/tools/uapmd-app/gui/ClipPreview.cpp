@@ -12,7 +12,7 @@
 #include <umppi/umppi.hpp>
 #include <uapmd-data/uapmd-data.hpp>
 
-#include "../AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include <imgui.h>
 
 namespace uapmd::gui {

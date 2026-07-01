@@ -16,7 +16,7 @@
 #include "PluginSelector.hpp"
 #include "PluginGraphEditor.hpp"
 #include "InstanceDetails.hpp"
-#include "../AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 
 namespace uapmd::gui {
 

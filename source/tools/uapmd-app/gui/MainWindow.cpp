@@ -19,8 +19,7 @@
 
 #include "ContextActions.hpp"
 #include "FontIcons.hpp"
-#include "../AppModel.hpp"
-#include "../DocumentProviderHelpers.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 
 namespace {
 constexpr std::array<float, 7> kUiScaleOptions{0.5f, 0.8f, 1.0f, 1.2f, 1.5f, 2.0f, 4.0f};

@@ -1,6 +1,5 @@
 #include "McpServer.hpp"
-#include "../AppModel.hpp"
-#include "../UapmdJSRuntime.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 
 #ifdef UAPMD_MCP_HAS_HTTP_SERVER
 #include <httplib.h>

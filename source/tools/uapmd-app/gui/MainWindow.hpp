@@ -22,7 +22,7 @@
 #include "InstanceDetails.hpp"
 #include <remidy-gui/remidy-gui.hpp>
 #include <PluginUIHelpers.hpp>
-#include "../AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include "SharedTheme.hpp"
 #ifdef UAPMD_HAS_MCP_SERVER
 #include "../mcp/McpServer.hpp"

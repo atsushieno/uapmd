@@ -23,10 +23,9 @@
 
 #include "TimelineEditor.hpp"
 #include "ClipPreview.hpp"
-#include "../DocumentProviderHelpers.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include "ContextActions.hpp"
 #include "FontIcons.hpp"
-#include "../AppModel.hpp"
 
 namespace uapmd::gui {
 

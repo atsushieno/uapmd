@@ -3,7 +3,7 @@
 #include <string>
 #include <memory>
 #include <vector>
-#include "../UapmdJSRuntime.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 
 namespace uapmd::gui {
 

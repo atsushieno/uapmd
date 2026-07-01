@@ -1,5 +1,5 @@
 #include "TrackList.hpp"
-#include "../AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include <algorithm>
 #include <array>
 #include <iostream>

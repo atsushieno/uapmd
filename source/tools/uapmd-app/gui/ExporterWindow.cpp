@@ -3,8 +3,7 @@
 #include <cstring>
 
 #include "PlatformDialogs.hpp"
-#include "../AppModel.hpp"
-#include "../DocumentProviderHelpers.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 
 namespace uapmd::gui {
 

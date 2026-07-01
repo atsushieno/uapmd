@@ -1,6 +1,6 @@
 #if defined(__ANDROID__)
 
-#include "UapmdJSRuntime.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 
 #include <AppJsLib.h>
 #include <ResEmbed/ResEmbed.h>

@@ -7,8 +7,7 @@
 #include <thread>
 #include <vector>
 
-#include "../AppModel.hpp"
-#include "../DocumentProviderHelpers.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include "PlatformDialogs.hpp"
 
 namespace uapmd::gui {

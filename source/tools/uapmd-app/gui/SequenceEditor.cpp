@@ -13,7 +13,7 @@
 #include "TrackLegendNodeView.hpp"
 #include "uapmd-data/detail/timeline/MidiClipSourceNode.hpp"
 
-#include "../AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include "ClipPreview.hpp"
 #include "ContextActions.hpp"
 

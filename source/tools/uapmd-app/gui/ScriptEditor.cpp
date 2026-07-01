@@ -1,6 +1,6 @@
 #include "ScriptEditor.hpp"
 #include "ContextActions.hpp"
-#include "../AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include <imgui.h>
 #if defined(__APPLE__)
 #include <TargetConditionals.h>

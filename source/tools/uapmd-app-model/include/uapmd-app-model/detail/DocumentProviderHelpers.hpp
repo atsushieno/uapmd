@@ -6,8 +6,6 @@
 
 #include <uapmd-file/IDocumentProvider.hpp>
 
-#include "AppModel.hpp"
-
 inline void resolveDocumentHandle(
     const uapmd::DocumentHandle& handle,
     std::function<void(const std::filesystem::path&)> onSuccess,

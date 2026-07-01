@@ -1,5 +1,4 @@
-#include "UapmdJSRuntime.hpp"
-#include "AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include <remidy/detail/event-loop.hpp>
 #if defined(_WIN32)
 #include <winsock2.h>

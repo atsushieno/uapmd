@@ -10,7 +10,7 @@
 
 #include <imgui.h>
 
-#include "../AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 
 namespace uapmd::gui {
 

@@ -1,6 +1,6 @@
 #define SDL_MAIN_HANDLED
 
-#include "AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include "gui/MainWindow.hpp"
 #include "gui/FontLoader.hpp"
 #include <ImGuiEventLoop.hpp>

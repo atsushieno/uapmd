@@ -1,5 +1,5 @@
 #include "main_common.hpp"
-#include "AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #include "gui/MainWindow.hpp"
 #include "gui/FontLoader.hpp"
 #include <../../remidy-tooling/include/remidy-tooling/detail/ScanOnlyRunner.hpp>

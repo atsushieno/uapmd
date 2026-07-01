@@ -28,7 +28,7 @@
 #include <umppi/umppi.hpp>
 #include <remidy/detail/event-loop.hpp>
 #include "uapmd/uapmd.hpp"
-#include "AppModel.hpp"
+#include <uapmd-app-model/uapmd-app-model.hpp>
 #ifdef UAPMD_HAS_ARA
 #include <uapmd-ara/uapmd-ara.hpp>
 #endif
@@ -38,11 +38,15 @@
 #define DEFAULT_SAMPLE_RATE 48000
 #define FIXED_CHANNEL_COUNT 2
 
-std::unique_ptr<uapmd::AppModel> model{};
-
 constexpr uint32_t kDefaultDctpq = 480;
 constexpr uint8_t kTempoGroup = 0;
 constexpr uint8_t kTempoChannel = 0;
+
+namespace {
+
+std::unique_ptr<uapmd::AppModel> appModelInstance;
+
+}
 
 uint32_t bpmToTenNanoseconds(double bpm) {
     double clampedBpm = std::clamp(bpm, 0.0001, 960.0);
@@ -235,15 +239,15 @@ std::shared_ptr<uapmd::MidiIOFeature> uapmd::AppModel::createMidiIOFeature(
 
 
 void uapmd::AppModel::instantiate() {
-    model = std::make_unique<uapmd::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());
+    appModelInstance = std::make_unique<uapmd::AppModel>(DEFAULT_AUDIO_BUFFER_SIZE, DEFAULT_UMP_BUFFER_SIZE, DEFAULT_SAMPLE_RATE, defaultDeviceIODispatcher());
 }
 
 uapmd::AppModel& uapmd::AppModel::instance() {
-    return *model;
+    return *appModelInstance;
 }
 
 void uapmd::AppModel::cleanupInstance() {
-    model.reset();
+    appModelInstance.reset();
 }
 
 uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeInBytes, int32_t sampleRate, DeviceIODispatcher* dispatcher) :

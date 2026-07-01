@@ -55,11 +55,9 @@ if(NOT UAPMD_BUILDING_WASM)
     )
 endif()
 
-# Common application sources
+# GUI/application shell sources.
 set(UAPMD_APP_COMMON_SOURCE_FILES
         main_common.cpp
-        AppModel.cpp
-        UapmdJSRuntime.cpp
         gui/MainWindow.cpp
         gui/PluginList.cpp
         gui/InstanceDetails.cpp
@@ -79,8 +77,6 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/MidiDumpWindow.cpp
         gui/PianoRollEditor.cpp
         gui/FontLoader.cpp
-        Configuration/AudioDeviceConfiguration.cpp
-        Configuration/VirtualMidiDeviceConfiguration.cpp
 )
 if(ANDROID)
     list(APPEND UAPMD_APP_COMMON_SOURCE_FILES AndroidAutomationBridge.cpp)
@@ -688,7 +684,8 @@ if(NOT UAPMD_BUILDING_WASM)
     endif()
 endif()
 
-target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
+set(_uapmd_app_common_include_dirs
+        ${CMAKE_CURRENT_SOURCE_DIR}
         ${ImTimeline_SOURCE_DIR}/TimelineViews
         ${choc_SOURCE_DIR}
         ${portable-file-dialogs_SOURCE_DIR}
@@ -704,6 +701,9 @@ target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
         ../remidy-imgui-shared
         ${IconFontCppHeaders_SOURCE_DIR}
 )
+target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
+        ${_uapmd_app_common_include_dirs}
+)
 if(UAPMD_ENABLE_CPPLOCATE)
     target_include_directories(${UAPMD_COMPILE_TARGET} PRIVATE
             ${cpplocate_SOURCE_DIR}/source/cpplocate/include
@@ -716,54 +716,15 @@ endif()
 target_compile_definitions(remidy-imgui-shared PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
 
-set(uapmd_LIBS_PLAT)
-if(WIN32 AND NOT UAPMD_BUILDING_WASM)
-    list(APPEND uapmd_LIBS_PLAT ws2_32)
-endif()
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-    set(uapmd_LIBS_PLAT
-            "-framework AudioToolbox"
-            "-framework AppKit"
-            "-framework Cocoa"
-    )
-elseif(IOS)
-    set(uapmd_LIBS_PLAT
-            "-framework AudioToolbox"
-            "-framework UIKit"
-            "-framework Metal"
-            "-framework MetalKit"
-    )
-endif ()
-
 set(_uapmd_app_link_libraries
+        uapmd-app-model
         imgui
         imnodes
         imtimeline
         ResEmbed
-        remidy
         remidy-gui
         remidy-imgui-shared
-        remidy-tooling
-        uapmd
-        uapmd-file
-        midicci_static
-        uapmd-engine
-        libremidi::libremidi
-        zlib-ng
 )
-if(TARGET uapmd::ara)
-    list(APPEND _uapmd_app_link_libraries uapmd::ara)
-    target_compile_definitions(${UAPMD_COMPILE_TARGET} PRIVATE UAPMD_HAS_ARA=1)
-endif()
-if(UAPMD_ENABLE_CPPTRACE)
-    list(APPEND _uapmd_app_link_libraries cpptrace::cpptrace)
-endif()
-if(NOT UAPMD_BUILDING_WASM)
-    list(APPEND _uapmd_app_link_libraries ${uapmd_LIBS_PLAT})
-endif()
-if(UAPMD_ENABLE_CPPLOCATE)
-    list(APPEND _uapmd_app_link_libraries ${cpplocate_LIBRARIES})
-endif()
 
 # Link the compile target (OBJECT library on desktop, direct executable on
 # Android/WASM) against all app libraries.  PUBLIC scope causes both
