@@ -237,9 +237,8 @@ void SequenceEditor::renderWindow(int32_t trackIndex, SequenceEditorState& state
         // Action buttons
         if (trackIndex >= 0) {
             if (ImGui::Button("New Clip")) {
-                if (context.addClip) {
-                    context.addClip(trackIndex, "");
-                }
+                if (context.addBlankMidiClipAtPosition)
+                    context.addBlankMidiClipAtPosition(trackIndex, 0.0);
             }
 
             ImGui::SameLine();

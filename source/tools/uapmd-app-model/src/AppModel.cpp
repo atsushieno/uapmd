@@ -77,6 +77,25 @@ namespace uapmd {
 
 namespace {
 
+int64_t defaultEmptyMidiClipDurationSamples(int32_t sampleRate,
+                                            double bpm,
+                                            const std::vector<MidiTimeSignatureChange>& timeSignatureChanges) {
+    const double safeBpm = bpm > 0.0 ? bpm : 120.0;
+    const int32_t safeSampleRate = std::max(1, sampleRate);
+    uint8_t numerator = 4;
+    uint8_t denominator = 4;
+    if (!timeSignatureChanges.empty()) {
+        if (timeSignatureChanges.front().numerator > 0)
+            numerator = timeSignatureChanges.front().numerator;
+        if (timeSignatureChanges.front().denominator > 0)
+            denominator = timeSignatureChanges.front().denominator;
+    }
+
+    const double quarterNotes = static_cast<double>(numerator) * 4.0 / static_cast<double>(denominator);
+    const double seconds = quarterNotes * 60.0 / safeBpm;
+    return std::max<int64_t>(1, static_cast<int64_t>(std::llround(seconds * safeSampleRate)));
+}
+
 void markTimelineTrackClipsNeedsFileSave(TimelineTrack* track) {
     if (!track)
         return;
@@ -1459,6 +1478,9 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
 ) {
     ClipAddResult result;
 
+    if (filepath.empty() && !reader)
+        return addMidiClipToTrack(trackIndex, position, {}, {}, 480, 120.0, {}, {}, "New Clip");
+
     // Detect MIDI files by extension and route to addMidiClipToTrack
     if (!filepath.empty()) {
         std::filesystem::path path(filepath);
@@ -1548,6 +1570,10 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     bool needsFileSave
 ) {
     ClipAddResult result;
+    const bool emptyMidiClip = umpEvents.empty() && umpTickTimestamps.empty();
+    const int64_t emptyMidiDurationSamples = emptyMidiClip
+        ? defaultEmptyMidiClipDurationSamples(sample_rate_, clipTempo, timeSignatureChanges)
+        : 0;
     auto engineResult = sequencer_.engine()->timeline().addMidiClipToTrack(
         trackIndex, position,
         std::move(umpEvents), std::move(umpTickTimestamps),
@@ -1560,6 +1586,11 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
     result.sourceNodeId = engineResult.sourceNodeId;
     result.success = engineResult.success;
     result.error = engineResult.error;
+    if (result.success && emptyMidiClip) {
+        auto tracks = getTimelineTracks();
+        if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex])
+            tracks[trackIndex]->clipManager().resizeClip(result.clipId, emptyMidiDurationSamples);
+    }
 
     return result;
 }

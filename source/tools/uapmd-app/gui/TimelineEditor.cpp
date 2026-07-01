@@ -1567,7 +1567,7 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
         row.name = clip.name.empty() ? std::format("Clip {}", clip.clipId) : clip.name;
         row.filepath = clip.filepath;
         if (clip.filepath.empty()) {
-            row.filename = "(no file)";
+            row.filename = clip.clipType == uapmd::ClipType::Midi ? "(MIDI UMP)" : "(no audio file)";
         } else {
             size_t lastSlash = clip.filepath.find_last_of("/\\");
             row.filename = (lastSlash != std::string::npos)
