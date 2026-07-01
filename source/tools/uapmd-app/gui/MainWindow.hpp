@@ -50,6 +50,10 @@ struct GuiDefaults {
 
 class MainWindow {
         bool isOpen_ = true;
+        bool closeRequested_ = false;
+        bool closeRequestHandled_ = false;
+        bool closeAfterProjectSave_ = false;
+        bool showUnsavedProjectDialog_ = false;
 
         // Device settings
         bool showDeviceSettingsWindow_ = false;
@@ -122,6 +126,8 @@ class MainWindow {
         void render(void* window);  // Generic window pointer
         void update();
         bool& isOpen() { return isOpen_; }
+        bool requestClose();
+        bool closeRequestHandled() const { return closeRequestHandled_; }
         bool consumePendingWindowResize(ImVec2& size);
         void applySystemUiScale(float scale);
         void setSafeAreaInsets(const float insets[4]);
@@ -175,5 +181,6 @@ class MainWindow {
         void toggleTheme();
         void applyTheme(ThemeMode mode);
         void renderMixerMonitorWindow();
+        void renderUnsavedProjectDialog();
     };
 }

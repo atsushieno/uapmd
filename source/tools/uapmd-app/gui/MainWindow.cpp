@@ -648,10 +648,57 @@ void MainWindow::render(void* window) {
     renderMixerMonitorWindow();
     exporterWindow_.render(uiScale_);
     audioImportWindow_.render(uiScale_);
+    renderUnsavedProjectDialog();
 
     scriptEditor_.render();
 
     uiScaleDirty_ = false;
+}
+
+bool MainWindow::requestClose() {
+    if (!uapmd::AppModel::instance().isProjectDirty()) {
+        isOpen_ = false;
+        return true;
+    }
+
+    closeRequested_ = true;
+    closeRequestHandled_ = true;
+    showUnsavedProjectDialog_ = true;
+    return false;
+}
+
+void MainWindow::renderUnsavedProjectDialog() {
+    if (showUnsavedProjectDialog_) {
+        ImGui::OpenPopup("Unsaved Project");
+        showUnsavedProjectDialog_ = false;
+    }
+
+    if (ImGui::BeginPopupModal("Unsaved Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("The project has unsaved changes.");
+        ImGui::Spacing();
+
+        if (ImGui::Button("Save Project", ImVec2(120.0f * uiScale_, 0.0f))) {
+            closeAfterProjectSave_ = true;
+            handleSaveProject();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Discard", ImVec2(100.0f * uiScale_, 0.0f))) {
+            uapmd::AppModel::instance().clearProjectDirtyState();
+            closeRequested_ = false;
+            isOpen_ = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(100.0f * uiScale_, 0.0f))) {
+            closeRequested_ = false;
+            closeAfterProjectSave_ = false;
+            closeRequestHandled_ = true;
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
 }
 
 void MainWindow::renderDeviceSettingsWindow() {
@@ -1532,20 +1579,26 @@ void MainWindow::handleSaveProject() {
     uapmd::AppModel::instance().documentProvider()->pickSaveDocument(
         "project.uapmdz",
         filters,
-        [](uapmd::DocumentPickResult pickResult) {
-            if (!pickResult.success || pickResult.handles.empty())
+        [this](uapmd::DocumentPickResult pickResult) {
+            if (!pickResult.success || pickResult.handles.empty()) {
+                closeAfterProjectSave_ = false;
                 return;
+            }
 
             auto handle = pickResult.handles[0];
-            std::string label = handle.display_name.empty() ? handle.id : handle.display_name;
-            if (label.empty())
-                label = "selected location";
 
             uapmd::AppModel::instance().saveProjectToDocument(
                 std::move(handle),
-                [label = std::move(label)](uapmd::DocumentIOResult ioResult) {
+                [this](uapmd::DocumentIOResult ioResult) {
                     if (!ioResult.success) {
+                        closeAfterProjectSave_ = false;
                         platformError("Save Failed", ioResult.error);
+                        return;
+                    }
+                    if (closeAfterProjectSave_) {
+                        closeAfterProjectSave_ = false;
+                        closeRequested_ = false;
+                        isOpen_ = false;
                     }
                 });
         }

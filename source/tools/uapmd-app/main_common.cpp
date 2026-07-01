@@ -320,8 +320,8 @@ int runMainLoop(int argc, char** argv) {
         imguiPlatformBackend->processEvents();
 
         // Check if window should close
-        if (windowingBackend->shouldClose(window)) {
-            done = true;
+        if (windowingBackend->shouldClose(window) && !mainWindow.closeRequestHandled()) {
+            done = mainWindow.requestClose();
         }
 
 #if !defined(USE_DIRECTX11_RENDERER) && !defined(USE_SDL_RENDERER)

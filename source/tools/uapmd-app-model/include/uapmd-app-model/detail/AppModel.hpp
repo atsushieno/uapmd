@@ -7,6 +7,7 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 #include <optional>
 #include <set>
 #include <mutex>
@@ -141,6 +142,11 @@ namespace uapmd {
         std::unique_ptr<IDocumentProvider> documentProvider_;
         int32_t next_source_node_id_ = 1;  // Used only by addDeviceInputToTrack
         std::set<int32_t> hidden_tracks_;
+        mutable std::mutex dirtyStateMutex_;
+        std::unordered_set<int32_t> dirty_tracks_;
+        std::unordered_set<int32_t> dirty_plugins_;
+        std::unordered_map<int32_t, remidy::EventListenerId> plugin_dirty_listener_ids_;
+        bool project_structure_dirty_{false};
         std::unique_ptr<ScopedTempDir> activeProjectTempDir_;
         std::vector<std::unique_ptr<ScopedTempDir>> retiredProjectTempDirs_;
         SlowScanProgressState slowScanProgress_{};
@@ -190,6 +196,13 @@ namespace uapmd {
         bool getTrackGraphConnections(int32_t trackIndex, std::vector<AudioPluginGraphConnection>& connections, std::string& error) const;
         bool connectTrackGraph(int32_t trackIndex, const AudioPluginGraphConnection& connection, std::string& error);
         bool disconnectTrackGraphConnection(int32_t trackIndex, int64_t connectionId, std::string& error);
+        bool isProjectDirty() const;
+        bool isTrackDirty(int32_t trackIndex) const;
+        bool isPluginDirty(int32_t instanceId) const;
+        void markProjectDirty();
+        void markTrackDirty(int32_t trackIndex, bool dirty = true);
+        void markPluginDirty(int32_t instanceId, bool dirty = true);
+        void clearProjectDirtyState();
 
         std::vector<std::function<void(bool success, std::string error)>> scanningCompleted{};
         std::vector<std::function<void(const std::string& reportText)>> scanReportReady{};

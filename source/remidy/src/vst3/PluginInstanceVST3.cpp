@@ -103,6 +103,9 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     component_handler->setRestartComponentHandler([this](int32 flags) {
         handleRestartComponent(flags);
     });
+    component_handler->setDirtyStateHandler([this](bool dirty) {
+        setDirtyState(dirty);
+    });
 
     // Leave the component inactive until startProcessing() explicitly activates it.
 
@@ -205,6 +208,7 @@ remidy::PluginInstanceVST3::~PluginInstanceVST3() {
         controller->setComponentHandler(nullptr);
         component_handler->setParameterEditHandler(nullptr);
         component_handler->setRestartComponentHandler(nullptr);
+        component_handler->setDirtyStateHandler(nullptr);
 
         if (isControllerDistinctFromComponent)
             controller->terminate();
@@ -838,8 +842,8 @@ tresult PLUGIN_API remidy::ComponentHandlerImpl::restartComponent(int32 flags) {
 }
 
 tresult PLUGIN_API remidy::ComponentHandlerImpl::setDirty(TBool state) {
-    remidy::Logger::global()->logWarning("ComponentHandler2::setDirty invoked (not implemented in this host)");
-    // Set dirty state - currently not implemented
+    if (dirty_state_handler)
+        dirty_state_handler(state != 0);
     return kResultOk;
 }
 

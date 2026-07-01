@@ -227,6 +227,7 @@ namespace uapmd {
 
         void loadPreset(int32_t presetIndex) override {
             instance->presets()->loadPreset(presetIndex);
+            instance->markDirty();
         }
 
         std::vector<uint8_t> saveStateSync() override {
@@ -255,6 +256,7 @@ namespace uapmd {
 
         void setParameterValue(int32_t index, double value) override {
             instance->parameters()->setParameter(index, value);
+            instance->markDirty();
         }
 
         void enqueueParameterValueRT(int32_t index, double value, uapmd_timestamp_t timestamp) override {
@@ -267,6 +269,7 @@ namespace uapmd {
 
         void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override {
             instance->parameters()->setPerNoteController({.note = note }, index, value);
+            instance->markDirty();
         }
 
         void enqueuePerNoteControllerValueRT(uint8_t note, uint8_t index, double value, uapmd_timestamp_t timestamp) override {
@@ -377,6 +380,26 @@ namespace uapmd {
             if (!instance)
                 return nullptr;
             return instance->audioBuses();
+        }
+
+        bool dirty() const override {
+            return instance && instance->dirty();
+        }
+
+        void clearDirty() override {
+            if (instance)
+                instance->clearDirty();
+        }
+
+        remidy::EventListenerId addDirtyStateListener(std::function<void(bool)> listener) override {
+            if (!instance)
+                return 0;
+            return instance->dirtyStateChangeEvent().addListener(std::move(listener));
+        }
+
+        void removeDirtyStateListener(remidy::EventListenerId listenerId) override {
+            if (instance)
+                instance->dirtyStateChangeEvent().removeListener(listenerId);
         }
 
         bool requiresReplacingProcess() const override {

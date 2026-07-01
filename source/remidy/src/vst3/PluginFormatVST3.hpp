@@ -50,6 +50,7 @@ namespace remidy {
         remidy_vst3::HostApplication* host{nullptr};
         std::function<void(int32)> restart_component_handler{};
         std::function<void(ParamID, double)> parameter_edit_handler{};
+        std::function<void(bool)> dirty_state_handler{};
 
     public:
         explicit ComponentHandlerImpl(remidy_vst3::HostApplication* host) : host(host) {}
@@ -87,6 +88,13 @@ namespace remidy {
                 restart_component_handler = std::move(handler_func);
             else
                 restart_component_handler = nullptr;
+        }
+
+        void setDirtyStateHandler(std::function<void(bool)> handler_func) {
+            if (handler_func)
+                dirty_state_handler = std::move(handler_func);
+            else
+                dirty_state_handler = nullptr;
         }
     };
 

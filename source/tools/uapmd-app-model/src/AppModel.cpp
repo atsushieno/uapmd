@@ -333,13 +333,19 @@ bool uapmd::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
     if (dynamic_cast<AudioPluginFullDAGraph*>(&track->graph()))
         return true;
     auto graph = AudioPluginFullDAGraph::create(ump_buffer_size_in_bytes_);
-    return sequencer_.engine()->replaceTrackGraph(
+    const bool changed = sequencer_.engine()->replaceTrackGraph(
         trackIndex, std::unique_ptr<AudioPluginGraph>(graph.release()));
+    if (changed)
+        markTrackDirty(trackIndex);
+    return changed;
 }
 
 bool uapmd::AppModel::revertTrackToSimpleGraph(int32_t trackIndex) {
-    return sequencer_.engine()->timeline().replaceTrackGraphType(
+    const bool changed = sequencer_.engine()->timeline().replaceTrackGraphType(
         trackIndex, "", ump_buffer_size_in_bytes_);
+    if (changed)
+        markTrackDirty(trackIndex);
+    return changed;
 }
 
 bool uapmd::AppModel::getTrackGraphConnections(
@@ -392,6 +398,7 @@ bool uapmd::AppModel::connectTrackGraph(
         error = "Failed to connect graph endpoints";
         return false;
     }
+    markTrackDirty(trackIndex);
     return true;
 }
 
@@ -419,6 +426,7 @@ bool uapmd::AppModel::disconnectTrackGraphConnection(
         error = "Connection not found";
         return false;
     }
+    markTrackDirty(trackIndex);
     return true;
 }
 
@@ -623,7 +631,10 @@ bool uapmd::AppModel::setInstanceGroup(int32_t instanceId, uint8_t group) {
     auto* engine = sequencer_.engine();
     if (!engine)
         return false;
-    return engine->setInstanceGroup(instanceId, group);
+    const bool changed = engine->setInstanceGroup(instanceId, group);
+    if (changed)
+        markPluginDirty(instanceId, true);
+    return changed;
 }
 
 void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
@@ -690,6 +701,59 @@ void uapmd::AppModel::resumeTransportAfterPluginMutation(bool resumeTransport) {
     transportController_->resume();
 }
 
+bool uapmd::AppModel::isProjectDirty() const {
+    std::lock_guard lock(dirtyStateMutex_);
+    return project_structure_dirty_ || !dirty_tracks_.empty() || !dirty_plugins_.empty();
+}
+
+bool uapmd::AppModel::isTrackDirty(int32_t trackIndex) const {
+    std::lock_guard lock(dirtyStateMutex_);
+    return dirty_tracks_.contains(trackIndex);
+}
+
+bool uapmd::AppModel::isPluginDirty(int32_t instanceId) const {
+    std::lock_guard lock(dirtyStateMutex_);
+    return dirty_plugins_.contains(instanceId);
+}
+
+void uapmd::AppModel::markProjectDirty() {
+    std::lock_guard lock(dirtyStateMutex_);
+    project_structure_dirty_ = true;
+}
+
+void uapmd::AppModel::markTrackDirty(int32_t trackIndex, bool dirty) {
+    std::lock_guard lock(dirtyStateMutex_);
+    if (dirty)
+        dirty_tracks_.insert(trackIndex);
+    else
+        dirty_tracks_.erase(trackIndex);
+}
+
+void uapmd::AppModel::markPluginDirty(int32_t instanceId, bool dirty) {
+    std::lock_guard lock(dirtyStateMutex_);
+    if (dirty)
+        dirty_plugins_.insert(instanceId);
+    else
+        dirty_plugins_.erase(instanceId);
+}
+
+void uapmd::AppModel::clearProjectDirtyState() {
+    std::vector<int32_t> pluginIds;
+    {
+        std::lock_guard lock(dirtyStateMutex_);
+        project_structure_dirty_ = false;
+        dirty_tracks_.clear();
+        dirty_plugins_.clear();
+        pluginIds.reserve(plugin_dirty_listener_ids_.size());
+        for (const auto& [instanceId, listenerId] : plugin_dirty_listener_ids_)
+            pluginIds.push_back(instanceId);
+    }
+
+    for (int32_t instanceId : pluginIds)
+        if (auto* instance = sequencer_.engine()->getPluginInstance(instanceId))
+            instance->clearDirty();
+}
+
 void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
                                                  const std::string& pluginId,
                                                  int32_t trackIndex,
@@ -734,6 +798,8 @@ void uapmd::AppModel::createPluginInstanceAsync(const std::string& format,
 
         std::optional<PluginInstanceConfig> configOverride{config};
         result = registerPluginInstanceInternal(instanceId, configOverride);
+        if (result.error.empty())
+            markProjectDirty();
         resumeTransportAfterPluginMutation(resumeTransportAfterMutation);
 
         if (completionCallback) {
@@ -775,6 +841,22 @@ uapmd::AppModel::PluginInstanceResult uapmd::AppModel::registerPluginInstanceInt
         result.error = "Plugin instance not found";
         return result;
     }
+    {
+        std::lock_guard lock(dirtyStateMutex_);
+        if (auto it = plugin_dirty_listener_ids_.find(instanceId); it != plugin_dirty_listener_ids_.end()) {
+            instance->removeDirtyStateListener(it->second);
+            plugin_dirty_listener_ids_.erase(it);
+        }
+    }
+    auto dirtyListenerId = instance->addDirtyStateListener([this, instanceId](bool dirty) {
+        markPluginDirty(instanceId, dirty);
+    });
+    if (dirtyListenerId != 0) {
+        std::lock_guard lock(dirtyStateMutex_);
+        plugin_dirty_listener_ids_[instanceId] = dirtyListenerId;
+    }
+    if (instance->dirty())
+        markPluginDirty(instanceId, true);
 
     std::string pluginName = instance->displayName();
     std::string pluginFormat = instance->formatName();
@@ -862,6 +944,7 @@ void uapmd::AppModel::clearDeviceEntries() {
 
 void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     const bool resumeTransportAfterMutation = pauseTransportForPluginMutation();
+    markProjectDirty();
 
 #ifdef UAPMD_HAS_ARA
     if (araSupport_)
@@ -871,6 +954,14 @@ void uapmd::AppModel::removePluginInstance(int32_t instanceId) {
     // Hide and destroy plugin UI before removing the instance
     auto* instance = sequencer_.engine()->getPluginInstance(instanceId);
     if (instance) {
+        {
+            std::lock_guard lock(dirtyStateMutex_);
+            if (auto it = plugin_dirty_listener_ids_.find(instanceId); it != plugin_dirty_listener_ids_.end()) {
+                instance->removeDirtyStateListener(it->second);
+                plugin_dirty_listener_ids_.erase(it);
+            }
+            dirty_plugins_.erase(instanceId);
+        }
         if (instance->hasUISupport() && instance->isUIVisible()) {
             instance->hideUI();
         }
@@ -1228,6 +1319,7 @@ void uapmd::AppModel::updateDeviceLabel(int32_t instanceId, const std::string& l
             std::lock_guard guard(state->mutex);
             if (state->pluginInstances.count(instanceId) > 0) {
                 state->label = label;
+                markPluginDirty(instanceId, true);
                 break;
             }
         }
@@ -1495,6 +1587,8 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addClipToTrack(
     result.sourceNodeId = engineResult.sourceNodeId;
     result.success = engineResult.success;
     result.error = engineResult.error;
+    if (result.success)
+        markTrackDirty(trackIndex);
     return result;
 }
 
@@ -1534,6 +1628,7 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
         result.error = engineResult.error;
         if (!result.success)
             return result;
+        markTrackDirty(trackIndex);
     } else {
         result.success = true;
     }
@@ -1552,6 +1647,8 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
         if (!masterResult.success) {
             result.success = false;
             result.error = masterResult.error;
+        } else {
+            markTrackDirty(kMasterTrackIndex);
         }
     }
     return result;
@@ -1591,6 +1688,8 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMidiClipToTrack(
         if (trackIndex >= 0 && trackIndex < static_cast<int32_t>(tracks.size()) && tracks[trackIndex])
             tracks[trackIndex]->clipManager().resizeClip(result.clipId, emptyMidiDurationSamples);
     }
+    if (result.success)
+        markTrackDirty(trackIndex);
 
     return result;
 }
@@ -1620,11 +1719,16 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::addMasterMidiClip(
     result.sourceNodeId = engineResult.sourceNodeId;
     result.success = engineResult.success;
     result.error = engineResult.error;
+    if (result.success)
+        markTrackDirty(kMasterTrackIndex);
     return result;
 }
 
 bool uapmd::AppModel::removeClipFromTrack(int32_t trackIndex, int32_t clipId) {
-    return sequencer_.engine()->timeline().removeClipFromTrack(trackIndex, clipId);
+    const bool removed = sequencer_.engine()->timeline().removeClipFromTrack(trackIndex, clipId);
+    if (removed)
+        markTrackDirty(trackIndex);
+    return removed;
 }
 
 // ── UMP-level clip editing ────────────────────────────────────────────────────
@@ -2056,7 +2160,7 @@ bool uapmd::AppModel::addUmpEventToClip(int32_t trackIndex, int32_t clipId,
                 std::to_string(expectedSz) + ")";
         return false;
     }
-    return modifyMidiClipUmp(trackIndex, clipId,
+    const bool changed = modifyMidiClipUmp(trackIndex, clipId,
         [tick, &wordsIn](std::vector<uapmd_ump_t>& w,
                          std::vector<uint64_t>& t,
                          std::string&) {
@@ -2070,13 +2174,16 @@ bool uapmd::AppModel::addUmpEventToClip(int32_t trackIndex, int32_t clipId,
                      wordsIn.size(), tick);
             return true;
         }, error);
+    if (changed)
+        markTrackDirty(trackIndex);
+    return changed;
 }
 
 bool uapmd::AppModel::removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
                                              int32_t eventIndex, std::string& error)
 {
     if (eventIndex < 0) { error = "eventIndex must be >= 0"; return false; }
-    return modifyMidiClipUmp(trackIndex, clipId,
+    const bool changed = modifyMidiClipUmp(trackIndex, clipId,
         [eventIndex](std::vector<uapmd_ump_t>& w,
                      std::vector<uint64_t>& t,
                      std::string& err) {
@@ -2105,6 +2212,9 @@ bool uapmd::AppModel::removeUmpEventFromClip(int32_t trackIndex, int32_t clipId,
             }
             return true;
         }, error);
+    if (changed)
+        markTrackDirty(trackIndex);
+    return changed;
 }
 
 bool uapmd::AppModel::getClipAudioEvents(int32_t trackIndex, int32_t clipId,
@@ -2154,6 +2264,7 @@ bool uapmd::AppModel::setMasterTrackMarkersWithValidation(std::vector<uapmd::Cli
     }
 
     setMasterTrackMarkers(std::move(markers));
+    markTrackDirty(kMasterTrackIndex);
     return true;
 }
 
@@ -2264,6 +2375,7 @@ bool uapmd::AppModel::setClipAudioEvents(int32_t trackIndex, int32_t clipId,
         track->clipManager().resizeClip(clipId, authoredDuration);
 
     resolveAllClipAnchorsInAppModel(*this);
+    markTrackDirty(trackIndex);
     return true;
 }
 
@@ -2295,8 +2407,10 @@ int32_t uapmd::AppModel::addDeviceInputToTrack(
         channelIndices
     );
 
-    if (timelineTracks[trackIndex]->addDeviceInputSource(std::move(sourceNode)))
+    if (timelineTracks[trackIndex]->addDeviceInputSource(std::move(sourceNode))) {
+        markTrackDirty(trackIndex);
         return sourceNodeId;
+    }
 
     return -1;
 }
@@ -2352,6 +2466,7 @@ int32_t uapmd::AppModel::addTrack() {
         int32_t reusedIndex = *it;
         hidden_tracks_.erase(it);
         notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, reusedIndex});
+        markProjectDirty();
         return reusedIndex;
     }
 
@@ -2360,6 +2475,7 @@ int32_t uapmd::AppModel::addTrack() {
         return -1;
 
     notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Added, trackIndex});
+    markProjectDirty();
     return trackIndex;
 }
 
@@ -2380,6 +2496,8 @@ bool uapmd::AppModel::removeTrack(int32_t trackIndex) {
     }
 
     hidden_tracks_.insert(trackIndex);
+    markProjectDirty();
+    markTrackDirty(trackIndex, false);
     notifyTrackLayoutChanged(TrackLayoutChange{TrackLayoutChange::Type::Removed, trackIndex});
     return true;
 }
@@ -2414,7 +2532,7 @@ void uapmd::AppModel::saveProjectToDocument(DocumentHandle handle,
     const auto stagePath = stage->get() / std::filesystem::path("project.uapmd");
 
     saveProject(stagePath,
-                [provider, handle = std::move(handle), callback = std::move(callback), stage](ProjectResult saveResult) mutable {
+                [this, provider, handle = std::move(handle), callback = std::move(callback), stage](ProjectResult saveResult) mutable {
                     if (!saveResult.success) {
                         if (callback)
                             callback({false, saveResult.error});
@@ -2430,7 +2548,11 @@ void uapmd::AppModel::saveProjectToDocument(DocumentHandle handle,
                     }
 
                     provider->writeDocument(std::move(handle), std::move(archive),
-                                            [callback = std::move(callback), stage](DocumentIOResult ioResult) mutable {
+                                            [this, callback = std::move(callback), stage](DocumentIOResult ioResult) mutable {
+                                                if (ioResult.success)
+                                                    clearProjectDirtyState();
+                                                else
+                                                    markProjectDirty();
                                                 if (callback)
                                                     callback(ioResult);
                                             });
@@ -2562,7 +2684,9 @@ void uapmd::AppModel::saveProject(const std::filesystem::path& projectFile, Proj
     engine->timeline().saveProject(
         projectFile,
         std::move(options),
-        [callback = std::move(callback)](TimelineFacade::ProjectResult result) mutable {
+        [this, callback = std::move(callback)](TimelineFacade::ProjectResult result) mutable {
+            if (result.success)
+                clearProjectDirtyState();
             if (callback)
                 callback(ProjectResult{result.success, std::move(result.error)});
         });
@@ -2583,9 +2707,18 @@ void uapmd::AppModel::loadProject(const std::filesystem::path& projectFile, std:
     {
         // Regular track plugins (pluginHost() may be null in RemoteEngineProxy mode).
         if (auto* host = sequencer_.engine()->pluginHost()) {
-            for (int32_t instanceId : host->instanceIds())
+            for (int32_t instanceId : host->instanceIds()) {
+                if (auto* instance = host->getInstance(instanceId)) {
+                    std::lock_guard lock(dirtyStateMutex_);
+                    if (auto it = plugin_dirty_listener_ids_.find(instanceId); it != plugin_dirty_listener_ids_.end()) {
+                        instance->removeDirtyStateListener(it->second);
+                        plugin_dirty_listener_ids_.erase(it);
+                    }
+                    dirty_plugins_.erase(instanceId);
+                }
                 for (auto& cb : instanceRemoved)
                     cb(instanceId);
+            }
         }
     }
 
@@ -2598,6 +2731,7 @@ void uapmd::AppModel::loadProject(const std::filesystem::path& projectFile, std:
             }
 
             master_track_markers_ = std::move(engineResult.masterTrackMarkers);
+            clearProjectDirtyState();
 
             // Notify UI about all tracks that were created
             hidden_tracks_.clear();
