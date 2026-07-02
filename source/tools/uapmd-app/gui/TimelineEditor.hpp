@@ -10,6 +10,7 @@
 #include <imgui.h>
 #include <uapmd/uapmd.hpp>
 #include "SequenceEditor.hpp"
+#include "BeatsSequenceEditor.hpp"
 #include "AudioEventListEditor.hpp"
 #include "MidiDumpWindow.hpp"
 #include "PianoRollEditor.hpp"
@@ -42,8 +43,12 @@ public:
     void render(float uiScale);
     void update();
 
+    // Track-list view mode: absolute-time (seconds) vs. beats/ticks.
+    enum class TimelineViewMode { AbsoluteTime, BeatsTicks };
+
     // UI component accessors
     SequenceEditor& sequenceEditor() { return sequenceEditor_; }
+    BeatsSequenceEditor& beatsSequenceEditor() { return beatsSequenceEditor_; }
     AudioEventListEditor& audioEventListEditor() { return audioEventListEditor_; }
     MidiDumpWindow& midiDumpWindow() { return midiDumpWindow_; }
     PluginSelector& pluginSelector() { return pluginSelector_; }
@@ -59,10 +64,12 @@ public:
     double secondsToTimelineUnits(double seconds) const;
     double timelineUnitsToSeconds(double units) const;
     const char* timelineUnitsLabel() const { return timelineUnitsLabel_.c_str(); }
+    const uapmd::TempoMap& tempoMap() const { return tempoMap_; }
     void invalidateMasterTrackSnapshot();
 
     // Clip management
     void refreshSequenceEditorForTrack(int32_t trackIndex);
+    void refreshBeatsSequenceEditorForTrack(int32_t trackIndex);
     void refreshAllSequenceEditorTracks();
     void addClipToTrack(int32_t trackIndex, const std::string& filepath);
     void addClipToTrackAtPosition(int32_t trackIndex, const std::string& filepath, double positionSeconds);
@@ -95,6 +102,8 @@ public:
 
 private:
     SequenceEditor sequenceEditor_;
+    BeatsSequenceEditor beatsSequenceEditor_;
+    TimelineViewMode timelineViewMode_ = TimelineViewMode::AbsoluteTime;
     AudioEventListEditor audioEventListEditor_;
     MidiDumpWindow midiDumpWindow_;
     PianoRollEditor pianoRollEditor_;
@@ -110,14 +119,8 @@ private:
     bool masterTrackSectionCreated_ = false; // guards first-time refreshClips call
     std::unordered_map<int32_t, std::string> trackContentSignatures_;
 
-    // Tempo segments for timeline unit conversion
-    struct TempoSegment {
-        double startTime{0.0};
-        double endTime{0.0};
-        double bpm{120.0};
-        double accumulatedBeats{0.0};
-    };
-    std::vector<TempoSegment> tempoSegments_;
+    // Tempo map for timeline unit conversion (seconds <-> beats)
+    uapmd::TempoMap tempoMap_;
     std::string timelineUnitsLabel_ = "seconds";
 
     // Callbacks to parent window
@@ -134,7 +137,7 @@ private:
     bool pendingFullReset_ = false;
 
     // Internal rendering
-    void renderTrackList(const SequenceEditor::RenderContext& context);
+    void renderTrackList(const SequenceEditor::RenderContext& context, const BeatsSequenceEditor::RenderContext& beatsContext);
     void renderMasterTrackRow(const SequenceEditor::RenderContext& context);
     void renderTrackRow(int32_t trackIndex, const SequenceEditor::RenderContext& context);
     void renderTrackLegendContent(int32_t trackIndex, const ImRect& legendArea);
@@ -167,12 +170,17 @@ private:
     void addSmfClipToTrack(int32_t trackIndex, double positionSeconds = 0.0);
     void addSmf2ClipToTrack(int32_t trackIndex);
 
+    // Range-selection add actions (from the drag-to-select-a-range gesture on either timeline view)
+    void addBlankMidiClipInRange(int32_t trackIndex, double startSeconds, double endSeconds);
+    void addEmptyAudioClipInRange(int32_t trackIndex, double startSeconds, double endSeconds);
+
     // Returns one PluginParamEntry per plugin instance on the track.
     // Used to populate the NRPN parameter picker in the piano roll.
     std::vector<PianoRollEditor::PluginParamEntry> getPluginParametersForTrack(int32_t trackIndex) const;
 
     // Build render context
     SequenceEditor::RenderContext buildRenderContext(float uiScale);
+    BeatsSequenceEditor::RenderContext buildBeatsRenderContext(float uiScale, float legendWidth);
 };
 
 }  // namespace uapmd::gui

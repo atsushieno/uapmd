@@ -1,17 +1,18 @@
-#include "SequenceEditor.hpp"
+#include "BeatsSequenceEditor.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <format>
-#include <iostream>
-#include <map>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include <imgui.h>
 #include <ImTimeline.h>
 #include "TrackLegendNodeView.hpp"
 #include "TimelineLaneAssignment.hpp"
+#include "BeatsTimelineConstants.hpp"
 #include "uapmd-data/detail/timeline/MidiClipSourceNode.hpp"
 
 #include <uapmd-app-model/uapmd-app-model.hpp>
@@ -22,7 +23,6 @@ namespace uapmd::gui {
 
 namespace {
 
-constexpr int32_t kTimelineSectionId = 0;
 constexpr float kTimelineSectionSpacing = 5.0f; // Matches Timeline::DrawTimeline spacing
 constexpr float kTimelineChildPadding = 8.0f;   // Matches Timeline::DrawTimeline padding
 constexpr ImU32 kTimelinePlayheadColor = IM_COL32(255, 230, 0, 255);
@@ -91,61 +91,34 @@ uint64_t clipWarpFingerprint(const uapmd::ClipData& clipData) {
     return hash;
 }
 
-double secondsToUnits(const SequenceEditor::RenderContext& context, double seconds) {
-    if (context.secondsToTimelineUnits) {
-        return context.secondsToTimelineUnits(seconds);
-    }
+double secondsToBeats(const BeatsSequenceEditor::RenderContext& context, double seconds) {
+    if (context.secondsToBeats)
+        return context.secondsToBeats(seconds);
     return seconds;
 }
 
-double unitsToSeconds(const SequenceEditor::RenderContext& context, double units) {
-    if (context.timelineUnitsToSeconds) {
-        return context.timelineUnitsToSeconds(units);
-    }
-    return units;
+double beatsToSeconds(const BeatsSequenceEditor::RenderContext& context, double beats) {
+    if (context.beatsToSeconds)
+        return context.beatsToSeconds(beats);
+    return beats;
 }
 
-const char* timelineUnitsLabel(const SequenceEditor::RenderContext& context) {
-    if (context.timelineUnitsLabel && context.timelineUnitsLabel[0] != '\0') {
-        return context.timelineUnitsLabel;
-    }
-    return "seconds";
-}
 } // namespace
 
-SequenceEditor::~SequenceEditor() = default;
+BeatsSequenceEditor::~BeatsSequenceEditor() = default;
 
-void SequenceEditor::showWindow(int32_t trackIndex) {
-    auto [it, inserted] = windows_.try_emplace(trackIndex);
-    it->second.visible = true;
-    if (inserted)
-        unified_.dirty = true;
-}
-
-void SequenceEditor::hideWindow(int32_t trackIndex) {
-    auto it = windows_.find(trackIndex);
-    if (it != windows_.end()) {
-        it->second.visible = false;
-    }
-}
-
-bool SequenceEditor::isVisible(int32_t trackIndex) const {
-    auto it = windows_.find(trackIndex);
-    return it != windows_.end() && it->second.visible;
-}
-
-void SequenceEditor::refreshClips(int32_t trackIndex, const std::vector<ClipRow>& clips) {
-    auto& state = windows_[trackIndex];
+void BeatsSequenceEditor::refreshClips(int32_t trackIndex, const std::vector<ClipRow>& clips) {
+    auto& state = tracks_[trackIndex];
     state.displayClips = clips;
     unified_.dirty = true;
     pruneClipPreviewCache(state);
 }
 
-void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
+void BeatsSequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
     bool removed = false;
-    for (auto it = windows_.begin(); it != windows_.end();) {
+    for (auto it = tracks_.begin(); it != tracks_.end();) {
         if (it->first > maxValidTrackIndex) {
-            it = windows_.erase(it);
+            it = tracks_.erase(it);
             removed = true;
         } else {
             ++it;
@@ -155,18 +128,16 @@ void SequenceEditor::removeStaleWindows(int32_t maxValidTrackIndex) {
         unified_.dirty = true;
 }
 
-void SequenceEditor::invalidateTimeline() {
+void BeatsSequenceEditor::invalidateTimeline() {
     unified_.dirty = true;
 }
 
-float SequenceEditor::getUnifiedTimelineHeight(float uiScale) const {
+float BeatsSequenceEditor::getUnifiedTimelineHeight(float uiScale) const {
     const float minHeight = 120.0f * uiScale;
-    // After a rebuild, computedTimelineHeight reflects the actual expanded section heights
-    // (including multi-lane tracks). Fall back to a simple estimate before the first rebuild.
     if (unified_.computedTimelineHeight > 0.0f)
         return std::max(unified_.computedTimelineHeight, minHeight);
     const float baseSectionHeight = std::max(80.0f * uiScale, 40.0f);
-    const auto sectionCount = static_cast<float>(windows_.size());
+    const auto sectionCount = static_cast<float>(tracks_.size());
     const float headerHeight = static_cast<float>(static_cast<int>(24.0f * uiScale));
     const float sectionsHeight = sectionCount * baseSectionHeight;
     const float spacingHeight = sectionCount * kTimelineSectionSpacing;
@@ -174,143 +145,12 @@ float SequenceEditor::getUnifiedTimelineHeight(float uiScale) const {
     return std::max(computedHeight, minHeight);
 }
 
-void SequenceEditor::reset() {
-    windows_.clear();
+void BeatsSequenceEditor::reset() {
+    tracks_.clear();
     unified_ = UnifiedTimelineState{};
 }
 
-void SequenceEditor::render(const RenderContext& context) {
-    // Collect track indices to avoid iterator invalidation
-    std::vector<int32_t> trackIndices;
-    trackIndices.reserve(windows_.size());
-    for (const auto& entry : windows_) {
-        trackIndices.push_back(entry.first);
-    }
-
-    for (int32_t trackIndex : trackIndices) {
-        auto it = windows_.find(trackIndex);
-        if (it == windows_.end()) {
-            continue;
-        }
-
-        auto& state = it->second;
-        if (!state.visible) {
-            continue;
-        }
-
-        renderWindow(trackIndex, state, context);
-    }
-}
-
-void SequenceEditor::renderWindow(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context) {
-    std::string windowTitle = std::format("Sequence Editor - Track {}###SequenceEditor{}", trackIndex, trackIndex);
-
-    bool windowOpen = state.visible;
-    std::string windowSizeId = std::format("SequenceEditorWindow{}", trackIndex);
-    float baseWidth = 600.0f;
-    const float viewportWidth = ImGui::GetIO().DisplaySize.x;
-    if (viewportWidth > 0.0f && context.uiScale > 0.0f) {
-        baseWidth = std::min(baseWidth, viewportWidth / context.uiScale);
-    }
-
-    if (context.setNextChildWindowSize) {
-        context.setNextChildWindowSize(windowSizeId, ImVec2(baseWidth * context.uiScale, 350.0f * context.uiScale));
-    }
-
-    ImGui::SetNextWindowSizeConstraints(
-        ImVec2(400.0f * context.uiScale, 150.0f * context.uiScale),
-        ImVec2(FLT_MAX, FLT_MAX)
-    );
-
-    if (ImGui::Begin(windowTitle.c_str(), &windowOpen, ImGuiWindowFlags_None)) {
-        if (context.updateChildWindowSizeState) {
-            context.updateChildWindowSizeState(windowSizeId);
-        }
-
-        float clipRegionHeight = ImGui::GetContentRegionAvail().y;
-        clipRegionHeight = std::max(150.0f * context.uiScale, clipRegionHeight);
-        renderClipTable(trackIndex, state, context, clipRegionHeight);
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // Action buttons
-        if (trackIndex >= 0) {
-            if (ImGui::Button("New Clip")) {
-                if (context.addBlankMidiClipAtPosition)
-                    context.addBlankMidiClipAtPosition(trackIndex, 0.0);
-            }
-
-            ImGui::SameLine();
-
-            if (contextActionButton("Clear All")) {
-                if (!state.displayClips.empty()) {
-                    ImGui::OpenPopup("Clear All Clips?");
-                }
-            }
-
-            if (ImGui::BeginPopupModal("Clear All Clips?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-                ImGui::Text("This will remove all clips from this track.");
-                ImGui::Text("Are you sure?");
-                ImGui::Spacing();
-
-                if (ImGui::Button("Yes, Clear All", ImVec2(120 * context.uiScale, 0))) {
-                    if (context.clearAllClips) {
-                        context.clearAllClips(trackIndex);
-                    }
-                    ImGui::CloseCurrentPopup();
-                }
-
-                ImGui::SameLine();
-
-                if (ImGui::Button("Cancel", ImVec2(120 * context.uiScale, 0))) {
-                    ImGui::CloseCurrentPopup();
-                }
-
-                ImGui::EndPopup();
-            }
-        } else {
-            ImGui::TextDisabled("Master track editing is not available.");
-        }
-    }
-    ImGui::End();
-
-    if (!windowOpen) {
-        state.visible = false;
-    }
-}
-
-void SequenceEditor::renderClipTable(int32_t trackIndex, SequenceEditorState& state, const RenderContext& context, float availableHeight) {
-    if (availableHeight <= 0.0f) {
-        availableHeight = ImGui::GetContentRegionAvail().y;
-    }
-    availableHeight = std::max(availableHeight, 0.0f);
-
-    std::string childId = std::format("##ClipTableRegion{}", trackIndex);
-    if (ImGui::BeginChild(childId.c_str(), ImVec2(0, availableHeight), false, ImGuiWindowFlags_None)) {
-        ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
-
-        if (ImGui::BeginTable("ClipTable", 6, flags)) {
-            ImGui::TableSetupColumn("Anchor",  ImGuiTableColumnFlags_WidthFixed, 120.0f * context.uiScale);
-            ImGui::TableSetupColumn("Origin",  ImGuiTableColumnFlags_WidthFixed, 100.0f * context.uiScale);
-            ImGui::TableSetupColumn("Position",  ImGuiTableColumnFlags_WidthFixed, 70.0f * context.uiScale);
-            ImGui::TableSetupColumn("Name",  ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Filename",  ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Delete", ImGuiTableColumnFlags_WidthFixed, 70.0f * context.uiScale);
-            ImGui::TableHeadersRow();
-
-            for (const auto& clip : state.displayClips) {
-                renderClipRow(trackIndex, clip, context);
-            }
-
-            ImGui::EndTable();
-        }
-    }
-    ImGui::EndChild();
-}
-
-void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float availableHeight) {
+void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, float availableHeight) {
     if (availableHeight <= 0.0f)
         availableHeight = ImGui::GetContentRegionAvail().y;
     availableHeight = std::max(availableHeight, 120.0f * context.uiScale);
@@ -324,7 +164,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
     }
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    if (ImGui::BeginChild("##UnifiedTimeline", ImVec2(0, availableHeight), true,
+    if (ImGui::BeginChild("##UnifiedBeatsTimeline", ImVec2(0, availableHeight), true,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         const bool timelineHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
         const ImVec2 winPos = ImGui::GetWindowPos();
@@ -338,11 +178,6 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         ImGuiIO& io = ImGui::GetIO();
         const bool anyMouseActivity = io.MouseDown[0] || io.MouseDown[1] ||
                                       io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
-        // Don't block input while the scrollbar is being dragged or while an ImGui item is
-        // active (e.g. a slider being dragged): straying outside the window mid-drag would
-        // zero io.MouseDown[0], causing the active widget to think the mouse was released.
-        // The imguiItemActive exemption is scoped only to the "mouse outside window" branch so
-        // that popup-blocking is always honoured regardless of active items.
         const bool scrollbarDragging = unified_.timeline->GetLastInputData().IsMovingScrollBar;
         const bool imguiItemActive = ImGui::GetActiveID() != 0;
         const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!imguiItemActive && !timelineHovered && anyMouseActivity));
@@ -361,6 +196,9 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             for (int i = 0; i < 5; ++i) io.MouseDown[i] = savedMouseDown[i];
             io.MouseWheel = savedMouseWheel; io.MouseWheelH = savedMouseWheelH;
         }
+
+        if (clipAreaMaxX > clipAreaMinX && clipAreaMaxY > clipAreaMinY)
+            drawBeatGridOverlay(context, clipAreaMinX, clipAreaMinY, clipAreaMaxX, clipAreaMaxY);
 
         if (clipAreaMaxX > clipAreaMinX && clipAreaMinY > winPos.y)
             drawPlayheadIndicator(context, clipAreaMinX, winPos.y, clipAreaMaxX, clipAreaMinY);
@@ -382,7 +220,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             if (clipIt != unified_.nodeToClip.end() && clipIt->second.clipId >= 0) {
                 auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
                 if (node && context.moveClipAbsolute) {
-                    const double newStartSeconds = unitsToSeconds(context, static_cast<double>(node->start));
+                    const double newStartBeats = static_cast<double>(node->start) / kTicksPerBeatDisplay;
+                    const double newStartSeconds = beatsToSeconds(context, newStartBeats);
                     context.moveClipAbsolute(clipIt->second.trackIndex, clipIt->second.clipId, newStartSeconds);
                 }
             }
@@ -393,6 +232,11 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         int32_t hoveredTrackIndex = -1;
         if (selectedSection >= 0 && selectedSection < static_cast<int32_t>(unified_.sectionToTrack.size()))
             hoveredTrackIndex = unified_.sectionToTrack[static_cast<size_t>(selectedSection)];
+
+        // Double-click interaction
+        const ImVec2 mousePos = ImGui::GetMousePos();
+        const bool mouseInClipArea = mousePos.x >= clipAreaMinX && mousePos.x <= clipAreaMaxX &&
+                                     mousePos.y >= clipAreaMinY && mousePos.y <= clipAreaMaxY;
 
         // Shared hit-testing helpers, used by both the double-click and range-drag interactions.
         auto sectionTopYFor = [&](int32_t trackIdx) -> float {
@@ -412,14 +256,13 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         };
         auto isOverClipNode = [&](int32_t trackIdx, ImVec2 pos, float scale, double startFrame, int32_t* outClipId) -> bool {
             const float sectionTopY = sectionTopYFor(trackIdx);
-            const float intScaleF = static_cast<float>(static_cast<int32_t>(scale));
             const float sfOffset = clipAreaMinX - static_cast<float>(startFrame) * scale;
             for (const auto& [nodeId, ref] : unified_.nodeToClip) {
                 if (ref.trackIndex != trackIdx) continue;
                 auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
                 if (!node) continue;
-                const float nMinX = sfOffset + static_cast<float>(node->start) * intScaleF;
-                const float nMaxX = sfOffset + static_cast<float>(node->end + 1) * intScaleF;
+                const float nMinX = sfOffset + static_cast<float>(node->start) * scale;
+                const float nMaxX = sfOffset + static_cast<float>(node->end + 1) * scale;
                 // Also check Y so overlapping clips in different lanes are disambiguated.
                 const float nodeH = node->displayProperties.mHeight > 0.0f
                     ? node->displayProperties.mHeight
@@ -435,17 +278,12 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             return false;
         };
 
-        // Double-click interaction
-        const ImVec2 mousePos = ImGui::GetMousePos();
-        const bool mouseInClipArea = mousePos.x >= clipAreaMinX && mousePos.x <= clipAreaMaxX &&
-                                     mousePos.y >= clipAreaMinY && mousePos.y <= clipAreaMaxY;
-
         int32_t requestedContextTrack = -1;
         int32_t requestedAddClipTrack = -1;
 
         if (timelineHovered && mouseInClipArea && hoveredTrackIndex != -1 &&
             ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            auto& trackState = windows_[hoveredTrackIndex];
+            auto& trackState = tracks_[hoveredTrackIndex];
             const float scale = unified_.timeline->GetScale();
             const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
             bool clipUnderMouse = false;
@@ -461,9 +299,9 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             // even when the click lands on an existing clip.
             if (scale > 0.0f) {
                 const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
-                const double tsUnits = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
-                const double maxSec = unitsToSeconds(context, static_cast<double>(unified_.timeline->GetMaxFrame()));
-                trackState.requestedAddPosition = std::clamp(unitsToSeconds(context, tsUnits), 0.0, maxSec);
+                const double clickedBeats = (startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale)) / kTicksPerBeatDisplay;
+                const double maxSec = beatsToSeconds(context, static_cast<double>(unified_.timeline->GetMaxFrame()) / kTicksPerBeatDisplay);
+                trackState.requestedAddPosition = std::clamp(beatsToSeconds(context, clickedBeats), 0.0, maxSec);
                 if (!clipUnderMouse)
                     requestedAddClipTrack = hoveredTrackIndex;
             }
@@ -471,7 +309,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
         // Range-selection drag: click-drag across empty space (not on an existing node) within
         // a track's lane selects a time range, offering "Add New MIDI Clip"/"Add Empty Audio
-        // Clip" sized to that range on release. Locked to the track the drag started on.
+        // Clip" sized to that range on release, snapped to the nearest quarter-note beat.
         int32_t requestedRangeTrack = -1;
         {
             const float scale = unified_.timeline->GetScale();
@@ -500,10 +338,15 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                         unified_.rangeDrag.currentFrame - unified_.rangeDrag.anchorFrame)) * scale;
                     if (finishRangeSelectionDrag(unified_.rangeDrag, pixelsDragged, 4.0f * context.uiScale,
                                                   rTrack, rStart, rEnd)) {
-                        auto& trackState = windows_[rTrack];
-                        const double maxSec = unitsToSeconds(context, static_cast<double>(unified_.timeline->GetMaxFrame()));
-                        trackState.requestedRangeStart = std::clamp(unitsToSeconds(context, static_cast<double>(rStart)), 0.0, maxSec);
-                        trackState.requestedRangeEnd = std::clamp(unitsToSeconds(context, static_cast<double>(rEnd)), 0.0, maxSec);
+                        auto& trackState = tracks_[rTrack];
+                        // Snap to the nearest quarter-note beat before converting to seconds.
+                        const double startBeats = std::round(static_cast<double>(rStart) / kTicksPerBeatDisplay);
+                        double endBeats = std::round(static_cast<double>(rEnd) / kTicksPerBeatDisplay);
+                        if (endBeats <= startBeats)
+                            endBeats = startBeats + 1.0;
+                        const double maxSec = beatsToSeconds(context, static_cast<double>(unified_.timeline->GetMaxFrame()) / kTicksPerBeatDisplay);
+                        trackState.requestedRangeStart = std::clamp(beatsToSeconds(context, startBeats), 0.0, maxSec);
+                        trackState.requestedRangeEnd = std::clamp(beatsToSeconds(context, endBeats), 0.0, maxSec);
                         requestedRangeTrack = rTrack;
                     }
                 }
@@ -512,13 +355,13 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
         // Open & render per-track context menus
         for (int32_t trackIndex : unified_.sectionToTrack) {
-            auto it = windows_.find(trackIndex);
-            if (it == windows_.end()) continue;
+            auto it = tracks_.find(trackIndex);
+            if (it == tracks_.end()) continue;
             auto& trackState = it->second;
 
-            const std::string clipPopupId = std::format("TimelineClipContext##{}", trackIndex);
-            const std::string addPopupId  = std::format("TimelineAddClipContext##{}", trackIndex);
-            const std::string rangePopupId = std::format("TimelineRangeAddContext##{}", trackIndex);
+            const std::string clipPopupId = std::format("BeatsTimelineClipContext##{}", trackIndex);
+            const std::string addPopupId  = std::format("BeatsTimelineAddClipContext##{}", trackIndex);
+            const std::string rangePopupId = std::format("BeatsTimelineRangeAddContext##{}", trackIndex);
 
             if (trackIndex == requestedContextTrack)
                 ImGui::OpenPopup(clipPopupId.c_str());
@@ -596,9 +439,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
             if (ImGui::BeginPopup(addPopupId.c_str())) {
                 const bool isMasterTrack = (trackIndex == uapmd::kMasterTrackIndex);
-                if (contextActionMenuItem("Edit Clips...", isVisible(trackIndex))) {
-                    showWindow(trackIndex);
-                    if (context.refreshClips) context.refreshClips(trackIndex);
+                if (contextActionMenuItem("Edit Clips...")) {
+                    if (context.showClipsWindow) context.showClipsWindow(trackIndex);
                     ImGui::CloseCurrentPopup();
                 }
                 if (!isMasterTrack) {
@@ -652,7 +494,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
     ImGui::PopStyleVar();
 }
 
-void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
+void BeatsSequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
     unified_.timeline = std::make_unique<ImTimeline::Timeline>();
     unified_.nodeToClip.clear();
     unified_.activeDragNodeId = InvalidNodeID;
@@ -696,8 +538,8 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
 
     // Sort tracks: kMasterTrackIndex (INT32_MIN) naturally sorts first
     std::vector<int32_t> sortedTracks;
-    sortedTracks.reserve(windows_.size());
-    for (const auto& [trackIndex, _] : windows_)
+    sortedTracks.reserve(tracks_.size());
+    for (const auto& [trackIndex, _] : tracks_)
         sortedTracks.push_back(trackIndex);
     std::sort(sortedTracks.begin(), sortedTracks.end());
     unified_.sectionToTrack = sortedTracks;
@@ -708,7 +550,7 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
 
     for (int32_t sectionIdx = 0; sectionIdx < static_cast<int32_t>(sortedTracks.size()); ++sectionIdx) {
         const int32_t trackIndex = sortedTracks[static_cast<size_t>(sectionIdx)];
-        auto& state = windows_[trackIndex];
+        auto& state = tracks_[trackIndex];
 
         std::string sectionName = (trackIndex == uapmd::kMasterTrackIndex)
             ? std::string("Master Track")
@@ -729,7 +571,7 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
         std::vector<LaneAssignmentInput> laneInputs;
         laneInputs.reserve(state.displayClips.size());
         for (const auto& c : state.displayClips)
-            laneInputs.push_back({c.clipId, c.timelineStart, c.timelineEnd});
+            laneInputs.push_back({c.clipId, c.timelineStartTicks, c.timelineEndTicks});
         int numLanes = 1;
         std::unordered_map<int32_t, int> clipLaneMap = assignLanes(laneInputs, numLanes);
         const float laneHeight = baseHeight;
@@ -750,12 +592,10 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
             const int lane = clipLaneMap.count(clip.clipId) ? clipLaneMap.at(clip.clipId) : 0;
 
             TimelineNode node;
-            node.Setup(sectionIdx, clip.timelineStart, clip.timelineEnd, sectionName);
+            node.Setup(sectionIdx, clip.timelineStartTicks, clip.timelineEndTicks, sectionName);
             node.displayProperties = props;
             node.displayProperties.yOffset = lane * laneHeight;
             node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_UseSectionBackground, true);
-            // With multiple lanes each node has a fixed lane height; with a single lane
-            // keep AutofitHeight so the node fills the section as before.
             if (numLanes > 1) {
                 node.mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_AutofitHeight, false);
                 node.displayProperties.mHeight = laneHeight - 2.0f; // 2 px gap between lanes
@@ -777,209 +617,107 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
                 addedNode->mFlags.set(eTimelineNodeFlags::TimelineNodeFlags_MoveSurroundingNodesToTheRight, false);
                 unified_.nodeToClip[addedNode->GetID()] = {trackIndex, clip.clipId};
             }
-            maxFrame = std::max(maxFrame, clip.timelineEnd);
+            maxFrame = std::max(maxFrame, clip.timelineEndTicks);
         }
     }
 
     unified_.computedTimelineHeight = headerHeight + totalSectionHeight + kTimelineChildPadding;
 
-    if (maxFrame <= 0) maxFrame = 1000;
+    if (maxFrame <= 0) maxFrame = 4 * kTicksPerBeatDisplay; // default to a few empty bars
     unified_.timeline->SetStartFrame(0);
-    unified_.timeline->SetMaxFrame(maxFrame + 200);
-    unified_.timeline->SetScale(std::max(1.0f, 5.0f * context.uiScale));
+    unified_.timeline->SetMaxFrame(maxFrame + 4 * kTicksPerBeatDisplay);
+    // Target ~48 px per quarter-note beat at 1.0 uiScale.
+    unified_.timeline->SetScale(std::max(0.01f, (48.0f * context.uiScale) / kTicksPerBeatDisplay));
     unified_.dirty = false;
 }
 
-void SequenceEditor::renderClipRow(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
-    ImGui::TableNextRow();
+void BeatsSequenceEditor::drawBeatGridOverlay(
+    const RenderContext& context,
+    float clipAreaMinX,
+    float clipAreaMinY,
+    float clipAreaMaxX,
+    float clipAreaMaxY
+) const {
+    if (!unified_.timeline || !context.tempoMap)
+        return;
 
-    bool anchorChanged = false;
-    bool originChanged = false;
-    bool positionChanged = false;
-    bool nameChanged = false;
+    const float scale = unified_.timeline->GetScale();
+    if (scale <= 0.0f || clipAreaMaxX <= clipAreaMinX || clipAreaMaxY <= clipAreaMinY)
+        return;
 
-    // Anchor column
-    ImGui::TableSetColumnIndex(0);
+    const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
+    const double startBeat = startFrame / kTicksPerBeatDisplay;
+    const double endBeat = startBeat + static_cast<double>(clipAreaMaxX - clipAreaMinX) / (scale * kTicksPerBeatDisplay);
 
-    ImGui::SetNextItemWidth(-FLT_MIN);  // Use all available width in column
-    anchorChanged = renderAnchorCombo(trackIndex, clip, context);
-
-    // Origin column
-    ImGui::TableSetColumnIndex(1);
-    originChanged = renderOriginCombo(trackIndex, clip, context);
-
-    // Position column
-    ImGui::TableSetColumnIndex(2);
-    positionChanged = renderPositionInput(trackIndex, clip, context);
-
-    // Name column (editable)
-    ImGui::TableSetColumnIndex(3);
-    nameChanged = renderNameInput(trackIndex, clip, context);
-
-    // Filename column (Change button first, then filename only)
-    ImGui::TableSetColumnIndex(4);
-    std::string changeButtonId = std::format("Change##{}", clip.clipId);
-    if (ImGui::Button(changeButtonId.c_str())) {
-        if (context.changeClipFile) {
-            context.changeClipFile(trackIndex, clip.clipId);
-        }
-    }
-    ImGui::SameLine();
-    ImGui::TextUnformatted(clip.filename.c_str());
-
-    // Delete column
-    ImGui::TableSetColumnIndex(5);
-    std::string deleteId = std::format("Delete##{}",  clip.clipId);
-    if (ImGui::Button(deleteId.c_str())) {
-        if (context.removeClip) {
-            context.removeClip(trackIndex, clip.clipId);
-        }
+    // Signature regions to walk: the tempo map's effective signatures, or a single implicit 4/4
+    // region over the whole visible range when no time-signature meta events exist yet.
+    std::vector<uapmd::TempoMap::EffectiveSignature> regions = context.tempoMap->effectiveSignatures();
+    if (regions.empty() || regions.front().startBeat > 1e-9) {
+        uapmd::TempoMap::EffectiveSignature defaultRegion;
+        defaultRegion.startBeat = 0.0;
+        defaultRegion.endBeat = regions.empty() ? std::numeric_limits<double>::infinity() : regions.front().startBeat;
+        defaultRegion.numerator = 4;
+        defaultRegion.denominator = 4;
+        regions.insert(regions.begin(), defaultRegion);
     }
 
-    if (anchorChanged || originChanged || positionChanged || nameChanged) {
-        auto refresh = context.refreshClips;
-        if (refresh) {
-            refresh(trackIndex);
-        }
-    }
-}
+    const ImGuiStyle& imguiStyle = ImGui::GetStyle();
+    const ImVec4 text = imguiStyle.Colors[ImGuiCol_Text];
+    const ImU32 barColor = ImGui::GetColorU32(withAlpha(text, 0.35f));
+    const ImU32 beatColor = ImGui::GetColorU32(withAlpha(text, 0.12f));
+    const float barThickness = 1.5f * context.uiScale;
+    const float beatThickness = 1.0f * context.uiScale;
 
-bool SequenceEditor::renderAnchorCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
-    bool changed = false;
-    std::string anchorLabel = "Track";
-    if (!clip.anchorReferenceId.empty()) {
-        auto anchorOptions = getAnchorOptions(trackIndex, clip.clipId);
-        for (const auto& option : anchorOptions) {
-            if (option.clipReferenceId == clip.anchorReferenceId) {
-                anchorLabel = option.label;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->PushClipRect(ImVec2(clipAreaMinX, clipAreaMinY), ImVec2(clipAreaMaxX, clipAreaMaxY), true);
+
+    for (const auto& region : regions) {
+        if (region.endBeat <= startBeat || region.startBeat >= endBeat)
+            continue;
+
+        const uint8_t numerator = region.numerator > 0 ? region.numerator : 4;
+        const uint8_t denominator = region.denominator > 0 ? region.denominator : 4;
+        // One "signature beat" (e.g. an eighth note in 6/8) spans this many quarter-note beats.
+        const double signatureBeatLength = 4.0 / static_cast<double>(denominator);
+        if (signatureBeatLength <= 0.0)
+            continue;
+
+        const double pixelsPerSignatureBeat = signatureBeatLength * kTicksPerBeatDisplay * static_cast<double>(scale);
+        const bool drawSubBeatLines = pixelsPerSignatureBeat >= 3.0;
+
+        const double regionEnd = std::min(region.endBeat, endBeat);
+        const double visibleStart = std::max(region.startBeat, startBeat);
+        if (visibleStart > regionEnd)
+            continue;
+
+        long long index = static_cast<long long>(std::floor((visibleStart - region.startBeat) / signatureBeatLength));
+        constexpr long long kMaxLinesPerRegion = 100000; // safety guard against pathological zoom/region combos
+        for (long long drawn = 0; drawn < kMaxLinesPerRegion; ++drawn, ++index) {
+            const double beatPos = region.startBeat + static_cast<double>(index) * signatureBeatLength;
+            if (beatPos > regionEnd + 1e-9)
                 break;
-            }
-        }
-    }
-
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    std::string comboId = std::format("##AnchorCombo{}", clip.clipId);
-    if (ImGui::BeginCombo(comboId.c_str(), anchorLabel.c_str())) {
-        // Track anchor option
-        bool isTrackAnchor = clip.anchorReferenceId.empty();
-        if (UapmdSelectable("Track", isTrackAnchor)) {
-            if (context.updateClip) {
-                context.updateClip(trackIndex, clip.clipId, {}, clip.anchorOrigin, clip.position);
-                changed = true;
-            }
-        }
-
-        // Other clip anchors - show clip names
-        auto anchorOptions = getAnchorOptions(trackIndex, clip.clipId);
-        for (const auto& option : anchorOptions) {
-            bool isSelected = (clip.anchorReferenceId == option.clipReferenceId);
-            if (UapmdSelectable(option.label.c_str(), isSelected)) {
-                if (context.updateClip) {
-                    context.updateClip(trackIndex, clip.clipId, option.clipReferenceId, clip.anchorOrigin, clip.position);
-                    changed = true;
-                }
-            }
-        }
-
-        ImGui::EndCombo();
-    }
-
-    return changed;
-}
-
-bool SequenceEditor::renderOriginCombo(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
-    bool changed = false;
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    std::string originComboId = std::format("##OriginCombo{}", clip.clipId);
-    if (ImGui::BeginCombo(originComboId.c_str(), clip.anchorOrigin.c_str())) {
-        bool isStart = (clip.anchorOrigin == "Start");
-        if (UapmdSelectable("Start", isStart)) {
-            if (context.updateClip) {
-                context.updateClip(trackIndex, clip.clipId, clip.anchorReferenceId, "Start", clip.position);
-                changed = true;
-            }
-        }
-
-        bool isEnd = (clip.anchorOrigin == "End");
-        if (UapmdSelectable("End", isEnd)) {
-            if (context.updateClip) {
-                context.updateClip(trackIndex, clip.clipId, clip.anchorReferenceId, "End", clip.position);
-                changed = true;
-            }
-        }
-
-        ImGui::EndCombo();
-    }
-    return changed;
-}
-
-bool SequenceEditor::renderPositionInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
-    bool changed = false;
-    char posBuffer[64];
-    strncpy(posBuffer, clip.position.c_str(), sizeof(posBuffer) - 1);
-    posBuffer[sizeof(posBuffer) - 1] = '\0';
-
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    std::string inputId = std::format("##PosInput{}", clip.clipId);
-    if (ImGui::InputText(inputId.c_str(), posBuffer, sizeof(posBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
-        if (context.updateClip) {
-            context.updateClip(trackIndex, clip.clipId, clip.anchorReferenceId, clip.anchorOrigin, std::string(posBuffer));
-            changed = true;
-        }
-    }
-    return changed;
-}
-
-bool SequenceEditor::renderNameInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
-    bool changed = false;
-    static std::map<int32_t, std::array<char, 256>> nameBuffers;
-    if (nameBuffers.find(clip.clipId) == nameBuffers.end()) {
-        nameBuffers[clip.clipId] = {};
-        strncpy(nameBuffers[clip.clipId].data(), clip.name.c_str(), nameBuffers[clip.clipId].size() - 1);
-    }
-
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    std::string nameInputId = std::format("##NameInput{}", clip.clipId);
-    if (ImGui::InputText(nameInputId.c_str(), nameBuffers[clip.clipId].data(),
-                        nameBuffers[clip.clipId].size(), ImGuiInputTextFlags_EnterReturnsTrue)) {
-        if (context.updateClipName) {
-            context.updateClipName(trackIndex, clip.clipId, std::string(nameBuffers[clip.clipId].data()));
-            changed = true;
-        }
-    }
-    return changed;
-}
-
-std::vector<SequenceEditor::AnchorOption> SequenceEditor::getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const {
-    std::vector<AnchorOption> options;
-    for (const auto& [candidateTrackIndex, state] : windows_) {
-        for (const auto& clip : state.displayClips) {
-            if (clip.clipId <= 0)
-                continue;
-            if (candidateTrackIndex == trackIndex && clip.clipId == currentClipId)
+            if (beatPos < visibleStart - 1e-9)
                 continue;
 
-            AnchorOption option;
-            option.trackIndex = candidateTrackIndex;
-            option.clipReferenceId = clip.referenceId;
-            const char* trackLabel = candidateTrackIndex == uapmd::kMasterTrackIndex ? "Master" : "Track";
-            std::string clipLabel = clip.name.empty() ? std::format("Clip #{}", clip.clipId) : clip.name;
-            option.label = candidateTrackIndex == uapmd::kMasterTrackIndex
-                ? std::format("{}: {}", trackLabel, clipLabel)
-                : std::format("{} {}: {}", trackLabel, candidateTrackIndex, clipLabel);
-            options.push_back(std::move(option));
+            const bool isBar = (index % static_cast<long long>(numerator)) == 0;
+            if (!isBar && !drawSubBeatLines)
+                continue;
+
+            const float x = clipAreaMinX + static_cast<float>((beatPos * kTicksPerBeatDisplay - startFrame) * static_cast<double>(scale));
+            if (x < clipAreaMinX || x > clipAreaMaxX)
+                continue;
+
+            drawList->AddLine(
+                ImVec2(x, clipAreaMinY), ImVec2(x, clipAreaMaxY),
+                isBar ? barColor : beatColor,
+                isBar ? barThickness : beatThickness);
         }
     }
 
-    std::sort(options.begin(), options.end(), [](const AnchorOption& a, const AnchorOption& b) {
-        if (a.trackIndex != b.trackIndex)
-            return a.trackIndex < b.trackIndex;
-        return a.clipReferenceId < b.clipReferenceId;
-    });
-    return options;
+    drawList->PopClipRect();
 }
 
-void SequenceEditor::drawRangeSelectionOverlay(
+void BeatsSequenceEditor::drawRangeSelectionOverlay(
     float clipAreaMinX,
     float scale,
     float startFrame,
@@ -1001,7 +739,7 @@ void SequenceEditor::drawRangeSelectionOverlay(
     drawList->AddRect(ImVec2(x0, sectionTopY), ImVec2(x1, sectionTopY + sectionHeight), IM_COL32(255, 255, 255, 140), 0.0f, 0, 1.5f);
 }
 
-void SequenceEditor::drawPlayheadIndicator(
+void BeatsSequenceEditor::drawPlayheadIndicator(
     const RenderContext& context,
     float headerMinX,
     float headerMinY,
@@ -1025,8 +763,9 @@ void SequenceEditor::drawPlayheadIndicator(
     if (maxFrame <= 0)
         return;
 
-    const double playheadUnits = secondsToUnits(context, playheadSeconds);
-    const double clampedFrame = std::clamp(playheadUnits, 0.0, static_cast<double>(maxFrame));
+    const double playheadBeats = secondsToBeats(context, playheadSeconds);
+    const double playheadFrame = playheadBeats * kTicksPerBeatDisplay;
+    const double clampedFrame = std::clamp(playheadFrame, 0.0, static_cast<double>(maxFrame));
     const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
     if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame))
         return;
@@ -1064,7 +803,7 @@ void SequenceEditor::drawPlayheadIndicator(
     drawList->PopClipRect();
 }
 
-void SequenceEditor::pruneClipPreviewCache(SequenceEditorState& state) {
+void BeatsSequenceEditor::pruneClipPreviewCache(TrackState& state) {
     std::unordered_set<int32_t> validIds;
     validIds.reserve(state.displayClips.size());
     for (const auto& clip : state.displayClips) {
@@ -1080,7 +819,7 @@ void SequenceEditor::pruneClipPreviewCache(SequenceEditorState& state) {
     }
 }
 
-const uapmd::ClipData* SequenceEditor::findClipData(int32_t trackIndex, int32_t clipId) const {
+const uapmd::ClipData* BeatsSequenceEditor::findClipData(int32_t trackIndex, int32_t clipId) const {
     auto tracks = uapmd::AppModel::instance().getTimelineTracks();
     if (trackIndex < 0 || trackIndex >= static_cast<int32_t>(tracks.size())) {
         return nullptr;
@@ -1092,7 +831,7 @@ const uapmd::ClipData* SequenceEditor::findClipData(int32_t trackIndex, int32_t 
     return track->clipManager().getClip(clipId);
 }
 
-std::string SequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow& clip, const uapmd::ClipData* clipData) const {
+std::string BeatsSequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow& clip, const uapmd::ClipData* clipData) const {
     std::string sourcePath;
     if (clipData && !clipData->filepath.empty()) {
         sourcePath = clipData->filepath;
@@ -1120,17 +859,17 @@ std::string SequenceEditor::buildClipSignature(int32_t trackIndex, const ClipRow
     return std::format("{}|{}|{}|{}|{}|{}|{}",
                        sourcePath,
                        clip.isMidiClip ? 'm' : 'a',
-                       clip.timelineEnd - clip.timelineStart,
+                       clip.timelineEndTicks - clip.timelineStartTicks,
                        durationSamples,
                        sourceNodeId,
                        midiHash,
                        warpHash);
 }
 
-std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
+std::shared_ptr<ClipPreview> BeatsSequenceEditor::ensureClipPreview(
     int32_t trackIndex,
     const ClipRow& clip,
-    SequenceEditorState& state
+    TrackState& state
 ) {
     if (clip.customPreview) {
         return clip.customPreview;
@@ -1146,10 +885,14 @@ std::shared_ptr<ClipPreview> SequenceEditor::ensureClipPreview(
         return existingIt->second;
     }
 
-    const double fallbackDurationSeconds = std::max(
-        0.0,
-        static_cast<double>(clip.timelineEnd - clip.timelineStart)
-    );
+    // clipData already carries the exact source duration (durationSamples), which is what the
+    // waveform/piano-roll preview actually needs -- no need to reconstruct it from the node's
+    // beat-domain width (which, for audio clips, is a tempo-integrated *display* quantity, not a
+    // 1:1 seconds measurement).
+    const double sampleRate = std::max(1.0, static_cast<double>(uapmd::AppModel::instance().sampleRate()));
+    const double fallbackDurationSeconds = clipData
+        ? static_cast<double>(clipData->durationSamples) / sampleRate
+        : 0.0;
 
     auto makeErrorPreview = [&](const std::string& message) {
         auto preview = std::make_shared<ClipPreview>();
