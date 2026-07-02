@@ -91,9 +91,14 @@ public:
                                PluginScanObserver* observer) override;
     void savePluginListCache() override { savePluginListCache(plugin_list_cache_file); }
     void savePluginListCache(std::filesystem::path& fileToSave) override {
-        catalog_.save(fileToSave);
-        if (!fileToSave.empty())
-            std::cout << "[uapmd] Saved plugin cache: " << fileToSave << std::endl;
+        if (fileToSave.empty())
+            return;
+        PluginCatalog cacheCatalog;
+        for (auto* entry : catalog_.getPlugins()) {
+            if (shouldStoreInPluginListCache(*entry))
+                cacheCatalog.add(*entry);
+        }
+        cacheCatalog.save(fileToSave);
         syncBrowserFsAsync(fileToSave, "plugin cache");
     }
     void flushBlocklist() override { saveBlocklistToDisk(); }
@@ -116,6 +121,7 @@ protected:
     void loadBlocklistFromDisk();
     void saveBlocklistToDisk() const;
     bool canPersistBlocklist() const;
+    bool shouldStoreInPluginListCache(const PluginCatalogEntry& entry) const;
     void setLastScanError(std::string message);
     void notifyBundleScanStarted(const std::filesystem::path& bundlePath,
                                  PluginScanObserver* observer) const override;
@@ -273,19 +279,23 @@ remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const
     SlowScanCatalog catalogPlan;
     plugin_list_cache_file = pluginListCacheFile;
     slowScanReportText.clear();
-    if (!forceRescan && !pluginListCacheFile.empty() && std::filesystem::exists(pluginListCacheFile)) {
-        catalog_.load(pluginListCacheFile);
-        slowScanReportText = "Slow scanning skipped (loaded plugin cache).\n";
-        return catalogPlan;
-    }
-
     if (forceRescan)
         catalog_.clear();
+    else if (!pluginListCacheFile.empty() && std::filesystem::exists(pluginListCacheFile)) {
+        PluginCatalog cachedCatalog;
+        cachedCatalog.load(pluginListCacheFile);
+        std::vector<PluginCatalogEntry> cachedSlowEntries;
+        for (auto* entry : cachedCatalog.getPlugins()) {
+            if (shouldStoreInPluginListCache(*entry))
+                cachedSlowEntries.emplace_back(*entry);
+        }
+        mergeScanResults(std::move(cachedSlowEntries));
+    }
 
     size_t slowBundleTotal = 0;
     std::ostringstream planStream;
     planStream << "Slow scanning catalog\n";
-    bool fastScanModified = false;
+    bool catalogModified = false;
 
     for (auto* format : formats) {
         if (!format)
@@ -295,21 +305,16 @@ remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const
             continue;
         auto fileScanning = dynamic_cast<FileOrUrlBasedPluginScanning*>(scanning);
 
-        bool scanMayBeSlow = scanning->scanningMayBeSlow();
-        auto cachedEntries = filterByFormat(catalog_.getPlugins(), format->name());
-        bool shouldScan = forceRescan || !scanMayBeSlow || cachedEntries.empty();
-        if (!shouldScan)
-            continue;
-
         auto fastResults = scanning->getAllFastScannablePlugins();
         if (!fastResults.empty()) {
             mergeScanResults(std::move(fastResults));
-            fastScanModified = true;
+            catalogModified = true;
         }
 
         if (requireFastScanning)
             continue;
 
+        bool scanMayBeSlow = scanning->scanningMayBeSlow();
         if (!scanMayBeSlow)
             continue;
 
@@ -317,6 +322,13 @@ remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const
             notifyScanError(std::format("Format {} reports slow scanning but does not implement FileOrUrlBasedPluginScanning.", format->name()), nullptr);
             continue;
         }
+
+        auto cachedEntries = filterByFormat(catalog_.getPlugins(), format->name());
+        bool hasCachedSlowEntries = std::any_of(cachedEntries.begin(), cachedEntries.end(), [this](auto* entry) {
+            return entry && shouldStoreInPluginListCache(*entry);
+        });
+        if (!forceRescan && hasCachedSlowEntries)
+            continue;
 
         auto bundles = fileScanning->enumerateCandidateBundles(requireFastScanning);
         std::vector<std::filesystem::path> slowBundles;
@@ -341,7 +353,7 @@ remidy_tooling::SlowScanCatalog PluginScanToolImpl::prepareSlowScanCatalog(const
 
     if (slowBundleTotal == 0)
         planStream << "\nAll plugin bundles were handled locally.\n";
-    if (fastScanModified && !plugin_list_cache_file.empty()) {
+    if (catalogModified && !plugin_list_cache_file.empty()) {
         try {
             savePluginListCache(plugin_list_cache_file);
         } catch (...) {
@@ -672,6 +684,28 @@ void PluginScanToolImpl::saveBlocklistToDisk() const {
 
 bool PluginScanToolImpl::canPersistBlocklist() const {
     return !blocklist_file_.empty();
+}
+
+bool PluginScanToolImpl::shouldStoreInPluginListCache(const PluginCatalogEntry& entry) const {
+    auto formats = formatManager_.formats();
+    auto it = std::find_if(formats.begin(), formats.end(), [&](PluginFormat* format) {
+        return format && format->name() == entry.format();
+    });
+    if (it == formats.end())
+        return false;
+
+    auto* scanning = (*it)->scanning();
+    if (!scanning || !scanning->scanningMayBeSlow())
+        return false;
+
+    auto* fileScanning = dynamic_cast<FileOrUrlBasedPluginScanning*>(scanning);
+    if (!fileScanning)
+        return true;
+
+    auto bundlePath = entry.bundlePath();
+    if (isBundleBlocklisted(entry.format(), bundlePath))
+        return false;
+    return scanning->scanRequiresLoadLibrary(bundlePath);
 }
 
 void PluginScanToolImpl::setLastScanError(std::string message) {

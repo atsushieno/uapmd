@@ -469,19 +469,13 @@ void uapmd::RemidyAudioPluginHost::performPluginScanning(bool rescan) {
 void uapmd::RemidyAudioPluginHost::reloadPluginCatalogFromCache() {
     auto& cacheFile = scanning->pluginListCacheFile();
     if (cacheFile.empty()) {
-#if ANDROID
         scanning->catalog().clear();
         scanning->performPluginScanning(true, remidy_tooling::ScanMode::InProcess, false);
-#endif
         return;
     }
 
-    std::error_code ec;
-    if (!std::filesystem::exists(cacheFile, ec) || ec)
-        return;
-
     scanning->catalog().clear();
-    scanning->catalog().load(cacheFile);
+    scanning->performPluginScanning(true, remidy_tooling::ScanMode::InProcess, false);
 }
 
 void uapmd::RemidyAudioPluginHost::createPluginInstance(uint32_t sampleRate,

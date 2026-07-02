@@ -198,18 +198,18 @@ void PluginSelector::render() {
     ImGui::Separator();
 
     auto blocklist = appModel.pluginBlocklist();
-    const std::string blocklistLabel = std::format("{} Blocked plugin{}", blocklist.size(), blocklist.size() == 1 ? "" : "s");
+    const std::string blocklistLabel = std::format("{} Blocked bundle{}", blocklist.size(), blocklist.size() == 1 ? "" : "s");
     ImGui::SetNextItemOpen(false, ImGuiCond_FirstUseEver);
     if (ImGui::CollapsingHeader(blocklistLabel.c_str())) {
         if (blocklist.empty()) {
-            ImGui::TextUnformatted("No blocklisted plugins.");
+            ImGui::TextUnformatted("No blocked plugin bundles.");
         } else {
             if (ImGui::Button("Clear blocklist")) {
                 appModel.clearPluginBlocklist();
             }
             ImGui::BeginTable("blocked_plugins_table", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable);
             ImGui::TableSetupColumn("Format");
-            ImGui::TableSetupColumn("Plugin ID");
+            ImGui::TableSetupColumn("Bundle");
             ImGui::TableSetupColumn("Reason");
             ImGui::TableSetupColumn("Timestamp");
             ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 90.0f);
@@ -245,6 +245,7 @@ void PluginSelector::render() {
     }
 
     // Render the plugin list component
+    ImGui::TextDisabled("Missing plugins? They may appear after a manual scan.");
     pluginList_.render();
 
     // Plugin instantiation controls
