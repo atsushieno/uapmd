@@ -293,6 +293,7 @@ uapmd::AppModel::AppModel(size_t audioBufferSizeInFrames, size_t umpBufferSizeIn
     for (int i = 0; i < kInitialTrackCount; ++i) {
         addTrack();
     }
+    clearProjectDirtyState();
 }
 
 void uapmd::AppModel::notifyUiReady() {
