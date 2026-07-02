@@ -230,7 +230,7 @@ std::vector<remidy::PluginParameter*> remidy::PluginInstanceAUv2::ParameterSuppo
 
     UInt32 listSize = 0;
     auto status = AudioUnitGetPropertyInfo(owner->instance, kAudioUnitProperty_ParameterList, scope, element, &listSize, nil);
-    if (status != noErr) {
+    if (status != noErr && status != kAudioUnitErr_InvalidScope) {
         if (owner->logger())
             owner->logger()->logError("%s: failed to query scoped parameter info (scope=%u, element=%u). Status: %d",
                 owner->name.c_str(), scope, element, status);
