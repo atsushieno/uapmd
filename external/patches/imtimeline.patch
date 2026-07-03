@@ -2,7 +2,7 @@ diff --git a/Timeline.cpp b/Timeline.cpp
 index dbe63d4..f2b6cbe 100644
 --- a/Timeline.cpp
 +++ b/Timeline.cpp
-@@ -467,25 +467,31 @@ bool Timeline::DrawTimeline()
+@@ -467,25 +467,37 @@ bool Timeline::DrawTimeline()
      headerRect.Max = ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + mStyle.HeaderHeight);
      DrawHeader(headerRect);
  
@@ -23,16 +23,22 @@ index dbe63d4..f2b6cbe 100644
  
 -    const ImVec2 contentMin = ImGui::GetItemRectMin();
 -    const ImVec2 contentMax = ImGui::GetItemRectMax();
-+    const ImVec2 contentMin = ImGui::GetCursorScreenPos();
++    // ImGuiChildFlags_FrameStyle silently sets this child's WindowPadding to the current
++    // FramePadding style value, so GetCursorScreenPos() here would otherwise land FramePadding.x
++    // to the right of canvas_pos (captured above, before BeginChild). headerRect/ruler ticks and
++    // the app's own playhead/hit-testing math all still assume the un-padded canvas_pos origin, so
++    // left uncorrected every clip node renders FramePadding.x pixels right of the ruler's frame 0.
++    ImVec2 contentMin = ImGui::GetCursorScreenPos();
++    contentMin.x -= ImGui::GetStyle().FramePadding.x;
 +    const ImVec2 contentMax(contentMin.x + childFrameSize.x, contentMin.y + childFrameSize.y);
      const ImRect contentRect(contentMin, contentMax);
      mContentAreaRect = contentRect;
- 
+
      draw_list->PushClipRect(contentMin, contentMax, true);
- 
+
 -    size_t customHeight = 0;
 +    f32 customHeight = 0.0f;
- 
+
      for (auto& timeline : mTimelines) {
          ScopedTimer timer = ScopedTimer("NodeView Draw");
 -        f32 timeline_spacing = 5.0f;
@@ -42,10 +48,10 @@ index dbe63d4..f2b6cbe 100644
          ImVec2 pos = ImVec2(contentMin.x, contentMin.y + 1 + customHeight);
          ImVec2 sz = ImVec2(canvas_size.x + canvas_pos.x, pos.y + localCustomHeight);
          ImRect contentRect = ImRect(pos, sz);
-@@ -547,6 +553,9 @@ bool Timeline::DrawTimeline()
- 
+@@ -547,6 +559,9 @@ bool Timeline::DrawTimeline()
+
      draw_list->PopClipRect();
- 
+
 +    ImGui::SetCursorScreenPos(contentMin);
 +    ImGui::Dummy(ImVec2(1.0f, ImMax(customHeight, 1.0f)));
 +
