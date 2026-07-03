@@ -91,20 +91,6 @@ uint64_t clipWarpFingerprint(const uapmd::ClipData& clipData) {
     return hash;
 }
 
-double secondsToUnits(const SequenceEditor::RenderContext& context, double seconds) {
-    if (context.secondsToTimelineUnits) {
-        return context.secondsToTimelineUnits(seconds);
-    }
-    return seconds;
-}
-
-double unitsToSeconds(const SequenceEditor::RenderContext& context, double units) {
-    if (context.timelineUnitsToSeconds) {
-        return context.timelineUnitsToSeconds(units);
-    }
-    return units;
-}
-
 const char* timelineUnitsLabel(const SequenceEditor::RenderContext& context) {
     if (context.timelineUnitsLabel && context.timelineUnitsLabel[0] != '\0') {
         return context.timelineUnitsLabel;
@@ -381,7 +367,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         }
 
         if (clipAreaMaxX > clipAreaMinX && clipAreaMinY > winPos.y)
-            drawPlayheadIndicator(context, clipAreaMinX, winPos.y, clipAreaMaxX, clipAreaMinY);
+            drawPlayheadIndicator(clipAreaMinX, winPos.y, clipAreaMaxX, clipAreaMinY);
 
         // Drag tracking
         if (unified_.timeline->mDragData.DragState == eDragState::DragNode &&
@@ -400,7 +386,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             if (clipIt != unified_.nodeToClip.end() && clipIt->second.clipId >= 0) {
                 auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
                 if (node && context.moveClipAbsolute) {
-                    const double newStartSeconds = unitsToSeconds(context, static_cast<double>(node->start));
+                    const double newStartSeconds = static_cast<double>(node->start);
                     context.moveClipAbsolute(clipIt->second.trackIndex, clipIt->second.clipId, newStartSeconds);
                 }
             }
@@ -479,8 +465,8 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             if (scale > 0.0f) {
                 const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
                 const double tsUnits = startFrame + static_cast<double>((clippedX - clipAreaMinX) / scale);
-                const double maxSec = unitsToSeconds(context, static_cast<double>(unified_.timeline->GetMaxFrame()));
-                trackState.requestedAddPosition = std::clamp(unitsToSeconds(context, tsUnits), 0.0, maxSec);
+                const double maxSec = static_cast<double>(unified_.timeline->GetMaxFrame());
+                trackState.requestedAddPosition = std::clamp(tsUnits, 0.0, maxSec);
                 if (!clipUnderMouse)
                     requestedAddClipTrack = hoveredTrackIndex;
             }
@@ -518,9 +504,9 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                     if (finishRangeSelectionDrag(unified_.rangeDrag, pixelsDragged, 4.0f * context.uiScale,
                                                   rTrack, rStart, rEnd)) {
                         auto& trackState = windows_[rTrack];
-                        const double maxSec = unitsToSeconds(context, static_cast<double>(unified_.timeline->GetMaxFrame()));
-                        trackState.requestedRangeStart = std::clamp(unitsToSeconds(context, static_cast<double>(rStart)), 0.0, maxSec);
-                        trackState.requestedRangeEnd = std::clamp(unitsToSeconds(context, static_cast<double>(rEnd)), 0.0, maxSec);
+                        const double maxSec = static_cast<double>(unified_.timeline->GetMaxFrame());
+                        trackState.requestedRangeStart = std::clamp(static_cast<double>(rStart), 0.0, maxSec);
+                        trackState.requestedRangeEnd = std::clamp(static_cast<double>(rEnd), 0.0, maxSec);
                         requestedRangeTrack = rTrack;
                     }
                 }
@@ -1050,7 +1036,6 @@ void SequenceEditor::drawRangeSelectionOverlay(
 }
 
 void SequenceEditor::drawPlayheadIndicator(
-    const RenderContext& context,
     float headerMinX,
     float headerMinY,
     float headerMaxX,
@@ -1073,8 +1058,7 @@ void SequenceEditor::drawPlayheadIndicator(
     if (maxFrame <= 0)
         return;
 
-    const double playheadUnits = secondsToUnits(context, playheadSeconds);
-    const double clampedFrame = std::clamp(playheadUnits, 0.0, static_cast<double>(maxFrame));
+    const double clampedFrame = std::clamp(playheadSeconds, 0.0, static_cast<double>(maxFrame));
     const double startFrame = static_cast<double>(unified_.timeline->GetStartTimestamp());
     if (clampedFrame < startFrame || clampedFrame > static_cast<double>(maxFrame))
         return;

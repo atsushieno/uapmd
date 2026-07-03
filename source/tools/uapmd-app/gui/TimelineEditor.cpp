@@ -853,12 +853,6 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
             if (updateChildWindowSizeState_)
                 updateChildWindowSizeState_(id);
         },
-        .secondsToTimelineUnits = [this](double seconds) {
-            return secondsToTimelineUnits(seconds);
-        },
-        .timelineUnitsToSeconds = [this](double units) {
-            return timelineUnitsToSeconds(units);
-        },
         .renderLegendContent = [this](int32_t trackIndex, const ImRect& legendArea) {
             renderTrackLegendContent(trackIndex, legendArea);
         },
@@ -1222,9 +1216,9 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
             ? static_cast<double>(clip.durationSamples) / sampleRate
             : std::max(1.0, snapshot->maxTimeSeconds - startSeconds);
         row.duration       = std::format("{:.3f}s", durationSeconds);
-        row.timelineStart  = toTimelineFrame(secondsToTimelineUnits(startSeconds));
+        row.timelineStart  = toTimelineFrame(startSeconds);
         row.timelineEnd    = std::max(row.timelineStart + 1,
-                                      toTimelineFrame(secondsToTimelineUnits(startSeconds + durationSeconds)));
+                                      toTimelineFrame(startSeconds + durationSeconds));
 
         // Extract per-clip tempo / time-signature events for the waveform preview.
         auto sourceNode = masterTrack->getSourceNode(clip.sourceNodeInstanceId);
@@ -1270,8 +1264,8 @@ void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& c
         row.name           = "No Meta Events";
         row.filename       = "-";
         const double dur   = std::max(1.0, snapshot->maxTimeSeconds);
-        row.timelineStart  = toTimelineFrame(secondsToTimelineUnits(0.0));
-        row.timelineEnd    = std::max(row.timelineStart + 1, toTimelineFrame(secondsToTimelineUnits(dur)));
+        row.timelineStart  = toTimelineFrame(0.0);
+        row.timelineEnd    = std::max(row.timelineStart + 1, toTimelineFrame(dur));
         row.customPreview  = createMasterMetaPreview({}, {}, dur);
 
         BeatsSequenceEditor::ClipRow beatsRow;
@@ -1583,14 +1577,6 @@ void TimelineEditor::rebuildTempoSegments(const std::shared_ptr<uapmd::AppModel:
         tempoPoints.size(), timeSignaturePoints.size());
 }
 
-double TimelineEditor::secondsToTimelineUnits(double seconds) const {
-    return tempoMap_.secondsToBeats(seconds);
-}
-
-double TimelineEditor::timelineUnitsToSeconds(double units) const {
-    return tempoMap_.beatsToSeconds(units);
-}
-
 void TimelineEditor::fitTimelineToContent(float uiScale) {
     auto bounds = uapmd::AppModel::instance().timelineContentBounds();
     if (!bounds.hasContent || bounds.durationSeconds <= 0.0)
@@ -1678,10 +1664,8 @@ void TimelineEditor::refreshSequenceEditorForTrack(int32_t trackIndex) {
         auto absolutePosition = clip.position;
         double absoluteStartSeconds = static_cast<double>(absolutePosition.samples) / sampleRate;
         double durationSecondsExact = static_cast<double>(clip.durationSamples) / sampleRate;
-        const double startUnits = secondsToTimelineUnits(absoluteStartSeconds);
-        const double endUnits = secondsToTimelineUnits(absoluteStartSeconds + durationSecondsExact);
-        row.timelineStart = toTimelineFrame(startUnits);
-        int32_t endFrame = toTimelineFrame(endUnits);
+        row.timelineStart = toTimelineFrame(absoluteStartSeconds);
+        int32_t endFrame = toTimelineFrame(absoluteStartSeconds + durationSecondsExact);
         if (endFrame <= row.timelineStart)
             endFrame = row.timelineStart + 1;
         row.timelineEnd = endFrame;

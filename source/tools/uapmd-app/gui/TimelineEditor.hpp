@@ -60,9 +60,6 @@ public:
     void renderPluginSelectorWindow(float uiScale);
     void renderPluginGraphWindow(float uiScale);
 
-    // Timeline unit conversion
-    double secondsToTimelineUnits(double seconds) const;
-    double timelineUnitsToSeconds(double units) const;
     const char* timelineUnitsLabel() const { return timelineUnitsLabel_.c_str(); }
     const uapmd::TempoMap& tempoMap() const { return tempoMap_; }
     void invalidateMasterTrackSnapshot();

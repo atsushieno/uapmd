@@ -62,8 +62,6 @@ public:
         std::function<void()> showMasterTrackDump;
         std::function<void(const std::string& windowId, ImVec2 defaultBaseSize)> setNextChildWindowSize;
         std::function<void(const std::string& windowId)> updateChildWindowSizeState;
-        std::function<double(double seconds)> secondsToTimelineUnits;
-        std::function<double(double units)> timelineUnitsToSeconds;
         std::function<void(int32_t trackIndex, const ImRect& legendArea)> renderLegendContent;
         const char* timelineUnitsLabel = "seconds";
         float uiScale = 1.0f;
@@ -142,7 +140,6 @@ private:
 
     std::vector<AnchorOption> getAnchorOptions(int32_t trackIndex, int32_t currentClipId) const;
     void drawPlayheadIndicator(
-        const RenderContext& context,
         float clipAreaMinX,
         float clipAreaMinY,
         float clipAreaMaxX,
