@@ -333,6 +333,11 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         const float clipAreaMinY = winPos.y + static_cast<float>(unified_.style.HeaderHeight);
         const float clipAreaMaxX = winPos.x + winSize.x;
         const float clipAreaMaxY = winPos.y + winSize.y;
+        unified_.lastVisibleWidthPixels = std::max(0.0f, clipAreaMaxX - clipAreaMinX);
+        if (unified_.hasPendingFit && unified_.lastVisibleWidthPixels > 0.0f) {
+            unified_.hasPendingFit = false;
+            fitToContent(unified_.pendingFitDurationSeconds, unified_.lastVisibleWidthPixels, unified_.pendingFitUiScale);
+        }
 
         const bool popupBlocking = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
         ImGuiIO& io = ImGui::GetIO();
@@ -346,6 +351,19 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         const bool scrollbarDragging = unified_.timeline->GetLastInputData().IsMovingScrollBar;
         const bool imguiItemActive = ImGui::GetActiveID() != 0;
         const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!imguiItemActive && !timelineHovered && anyMouseActivity));
+
+        // Vertical mouse-wheel/trackpad scroll over the header zooms. ImTimeline never reads
+        // io.MouseWheel itself (only io.MouseWheelH, for its own horizontal pan), so this doesn't
+        // need to suppress or fight the library's own input handling at all -- just consume the
+        // vertical wheel delta before DrawTimeline() sees it.
+        const bool overHeader = timelineHovered && io.MousePos.x >= clipAreaMinX && io.MousePos.x <= clipAreaMaxX &&
+                                io.MousePos.y >= winPos.y && io.MousePos.y <= clipAreaMinY;
+        if (overHeader && isIntentionalZoomWheel(io.MouseWheel, io.MouseWheelH)) {
+            const float newScale = unified_.timeline->GetScale() * std::pow(2.0f, io.MouseWheel * kZoomWheelSensitivity);
+            unified_.timeline->SetScale(std::clamp(newScale, kMinSafeTimelineScale, kMaxTimelineScale));
+            unified_.hasExplicitZoom = true;
+            io.MouseWheel = 0.0f;
+        }
 
         bool savedMouseDown[5];
         float savedMouseWheel = 0.0f, savedMouseWheelH = 0.0f;
@@ -652,7 +670,32 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
     ImGui::PopStyleVar();
 }
 
+void SequenceEditor::fitToContent(double contentDurationSeconds, float visibleWidthPixels, float uiScale) {
+    if (contentDurationSeconds <= 0.0)
+        return;
+    // No render has happened yet to know the real visible width (e.g. fitting right after a
+    // project load, before the timeline widget's first frame) -- defer until renderUnifiedTimeline
+    // knows the actual width, rather than silently doing nothing.
+    if (!unified_.timeline || visibleWidthPixels <= 0.0f) {
+        unified_.hasPendingFit = true;
+        unified_.pendingFitDurationSeconds = contentDurationSeconds;
+        unified_.pendingFitUiScale = uiScale;
+        return;
+    }
+    const float defaultScale = std::max(1.0f, 5.0f * uiScale);
+    const float idealScale = static_cast<float>(visibleWidthPixels / contentDurationSeconds);
+    const float fitted = std::clamp(idealScale, kMinSafeTimelineScale, defaultScale);
+    unified_.timeline->SetScale(fitted);
+    unified_.hasExplicitZoom = true;
+    unified_.hasPendingFit = false;
+}
+
 void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
+    // rebuildUnifiedTimeline replaces the Timeline object outright, so an explicit zoom has to be
+    // captured from the outgoing object and re-applied to the new one -- hasExplicitZoom alone
+    // only prevents the *default* from being set below, it doesn't carry the value across.
+    const float preservedScale = (unified_.timeline && unified_.hasExplicitZoom)
+        ? unified_.timeline->GetScale() : -1.0f;
     unified_.timeline = std::make_unique<ImTimeline::Timeline>();
     unified_.nodeToClip.clear();
     unified_.activeDragNodeId = InvalidNodeID;
@@ -786,7 +829,13 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
     if (maxFrame <= 0) maxFrame = 1000;
     unified_.timeline->SetStartFrame(0);
     unified_.timeline->SetMaxFrame(maxFrame + 200);
-    unified_.timeline->SetScale(std::max(1.0f, 5.0f * context.uiScale));
+    // Once the user (or fitToContent) has set an explicit zoom, ordinary rebuilds (triggered by
+    // any clip add/move/remove) must not reset it back to the default -- carry the prior scale
+    // forward onto the new Timeline object instead.
+    if (preservedScale >= 0.0f)
+        unified_.timeline->SetScale(preservedScale);
+    else
+        unified_.timeline->SetScale(std::max(1.0f, 5.0f * context.uiScale));
     unified_.dirty = false;
 }
 

@@ -113,6 +113,21 @@ index dbe63d4..f2b6cbe 100644
      // mInputData.MouseDownDuration += io.MouseDownDuration[0];
  
      if (ImGui::IsKeyDown(ImGuiKey_Delete) || ImGui::IsKeyDown(ImGuiKey_Backspace)) {
+diff --git a/Timeline.h b/Timeline.h
+--- a/Timeline.h
++++ b/Timeline.h
+@@ -72,7 +72,10 @@
+     s32 GetPixelPositionAtTimestamp(s32 timestamp);
+ 
+     f32 GetScale() const { return mZoom; }
+-    void SetScale(f32 scale) { mZoom = scale; }
++    // SetScale must also update mZoomLerpTarget: DrawTimeline() lerps mZoom toward
++    // mZoomLerpTarget every frame (mZoom = ImLerp(mZoom, mZoomLerpTarget, 0.10f)), so leaving
++    // it untouched silently pulls any caller-set scale back toward the old target frame by frame.
++    void SetScale(f32 scale) { mZoom = scale; mZoomLerpTarget = scale; }
+ 
+     f32 GetStartTimestamp() const { return mStartFrame; }
+     void SetStartTimestamp(s32 timestamp) { mStartFrame = timestamp; }
 diff --git a/TimelineCore/TimelineDefines.h b/TimelineCore/TimelineDefines.h
 index 7f769bc..59b53ed 100644
 --- a/TimelineCore/TimelineDefines.h

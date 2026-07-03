@@ -1591,6 +1591,26 @@ double TimelineEditor::timelineUnitsToSeconds(double units) const {
     return tempoMap_.beatsToSeconds(units);
 }
 
+void TimelineEditor::fitTimelineToContent(float uiScale) {
+    auto bounds = uapmd::AppModel::instance().timelineContentBounds();
+    if (!bounds.hasContent || bounds.durationSeconds <= 0.0)
+        return;
+
+    const float secondsWidth = sequenceEditor_.lastVisibleWidth();
+    if (secondsWidth > 0.0f)
+        sequenceEditor_.fitToContent(bounds.durationSeconds, secondsWidth, uiScale);
+
+    const float beatsWidth = beatsSequenceEditor_.lastVisibleWidth();
+    if (beatsWidth > 0.0f) {
+        // tempoMap_ must already be built (e.g. via refreshAllSequenceEditorTracks, called just
+        // before this) -- it's cleared by invalidateMasterTrackSnapshot(), so this must run
+        // before that call, not after.
+        const double durationBeats = tempoMap_.secondsToBeats(bounds.durationSeconds);
+        if (durationBeats > 0.0)
+            beatsSequenceEditor_.fitToContent(durationBeats, beatsWidth, uiScale);
+    }
+}
+
 void TimelineEditor::invalidateMasterTrackSnapshot() {
     masterTrackSnapshot_.reset();
     masterTrackSignature_.clear();

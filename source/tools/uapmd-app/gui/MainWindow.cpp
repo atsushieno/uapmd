@@ -268,6 +268,17 @@ MainWindow::MainWindow(GuiDefaults defaults) {
             handleTrackLayoutChange(change);
         });
 
+    // Project-loaded notifications (fires for any successful load, GUI-initiated or scripted)
+    uapmd::AppModel::instance().projectLoaded.push_back(
+        [this]() {
+            timelineEditor_.refreshAllSequenceEditorTracks();
+            // Must run before invalidateMasterTrackSnapshot(), which clears the tempo map
+            // fitTimelineToContent needs for the beats view.
+            timelineEditor_.fitTimelineToContent(uiScale_);
+            timelineEditor_.invalidateMasterTrackSnapshot();
+            trackList_.markDirty();
+        });
+
     // Set up AudioDeviceSettings callbacks
     audioDeviceSettings_.setOnDeviceChanged([this]() {
         handleAudioDeviceChange();
@@ -1633,9 +1644,9 @@ void MainWindow::handleLoadProject() {
                                 platformError("Load Failed", result.error);
                                 return;
                             }
-                            timelineEditor_.refreshAllSequenceEditorTracks();
-                            timelineEditor_.invalidateMasterTrackSnapshot();
-                            trackList_.markDirty();
+                            // GUI refresh (including fitTimelineToContent) happens generically
+                            // via AppModel::projectLoaded, registered in the constructor -- fires
+                            // for any successful load, GUI-initiated or scripted.
                         });
                 },
                 [](const std::string& error) {

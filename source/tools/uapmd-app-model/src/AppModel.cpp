@@ -2673,6 +2673,8 @@ void uapmd::AppModel::loadProjectFromResolvedPath(
                 if (result.success) {
                     if (activeProjectTempDir_)
                         retiredProjectTempDirs_.push_back(std::move(activeProjectTempDir_));
+                    for (auto& cb : projectLoaded)
+                        cb();
                 }
                 callback(std::move(result));
             });
@@ -2707,6 +2709,8 @@ void uapmd::AppModel::loadProjectFromResolvedPath(
                 if (activeProjectTempDir_)
                     retiredProjectTempDirs_.push_back(std::move(activeProjectTempDir_));
                 activeProjectTempDir_ = std::move(*stageHolder);
+                for (auto& cb : projectLoaded)
+                    cb();
             }
             callback(std::move(result));
         });

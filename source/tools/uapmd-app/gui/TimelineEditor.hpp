@@ -67,6 +67,10 @@ public:
     const uapmd::TempoMap& tempoMap() const { return tempoMap_; }
     void invalidateMasterTrackSnapshot();
 
+    // Zooms both editors so the entire loaded song's content fits within the visible area.
+    // Call after a project finishes loading.
+    void fitTimelineToContent(float uiScale);
+
     // Clip management
     void refreshSequenceEditorForTrack(int32_t trackIndex);
     void refreshBeatsSequenceEditorForTrack(int32_t trackIndex);

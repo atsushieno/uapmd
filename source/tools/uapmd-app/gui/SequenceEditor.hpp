@@ -13,6 +13,7 @@
 #include <uapmd-data/uapmd-data.hpp>
 #include "ClipPreview.hpp"
 #include "TimelineRangeSelection.hpp"
+#include "TimelineZoomDrag.hpp"
 
 namespace uapmd::gui {
 
@@ -81,6 +82,13 @@ public:
     void renderUnifiedTimeline(const RenderContext& context, float availableHeight);
     float getUnifiedTimelineHeight(float uiScale) const;
 
+    // Zooms so the given content duration fits within visibleWidthPixels, clamped to never zoom
+    // in past the default. Marks the zoom as user-explicit so the next ordinary rebuild doesn't
+    // reset it. No-op if visibleWidthPixels or contentDurationSeconds is non-positive.
+    void fitToContent(double contentDurationSeconds, float visibleWidthPixels, float uiScale);
+    // Clip-area width in pixels, cached from the most recent render (0 before any render).
+    float lastVisibleWidth() const { return unified_.lastVisibleWidthPixels; }
+
 private:
     struct SequenceEditorState {
         SequenceEditorState() = default;
@@ -110,6 +118,11 @@ private:
         std::vector<int32_t> sectionToTrack; // section index -> track index
         float computedTimelineHeight = 0.0f;  // actual height after lane expansion; 0 = use estimate
         RangeSelectionDrag rangeDrag;
+        bool hasExplicitZoom = false;  // once true, rebuildUnifiedTimeline stops resetting scale
+        float lastVisibleWidthPixels = 0.0f;  // clip-area width, cached from the previous frame
+        bool hasPendingFit = false;  // fitToContent was called before any width was known yet
+        double pendingFitDurationSeconds = 0.0;
+        float pendingFitUiScale = 1.0f;
     };
     UnifiedTimelineState unified_;
 

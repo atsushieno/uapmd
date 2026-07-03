@@ -248,6 +248,11 @@ namespace uapmd {
         // Track layout change notifications
         std::vector<std::function<void(const TrackLayoutChange&)>> trackLayoutChanged{};
 
+        // Fired after a project finishes loading successfully, regardless of how the load was
+        // initiated (GUI menu action or scripted via loadProjectFromResolvedPath directly) --
+        // see loadProjectFromResolvedPath.
+        std::vector<std::function<void()>> projectLoaded{};
+
         // Create plugin instance with virtual MIDI device
         // Notifies all registered callbacks when complete
         // Optional completionCallback is called after successful creation, before global callbacks
