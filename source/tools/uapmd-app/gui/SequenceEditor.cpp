@@ -430,14 +430,13 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         };
         auto isOverClipNode = [&](int32_t trackIdx, ImVec2 pos, float scale, double startFrame, int32_t* outClipId) -> bool {
             const float sectionTopY = sectionTopYFor(trackIdx);
-            const float intScaleF = static_cast<float>(static_cast<int32_t>(scale));
             const float sfOffset = clipAreaMinX - static_cast<float>(startFrame) * scale;
             for (const auto& [nodeId, ref] : unified_.nodeToClip) {
                 if (ref.trackIndex != trackIdx) continue;
                 auto* node = unified_.timeline->FindNodeByNodeID(nodeId);
                 if (!node) continue;
-                const float nMinX = sfOffset + static_cast<float>(node->start) * intScaleF;
-                const float nMaxX = sfOffset + static_cast<float>(node->end + 1) * intScaleF;
+                const float nMinX = sfOffset + static_cast<float>(node->start) * scale;
+                const float nMaxX = sfOffset + static_cast<float>(node->end + 1) * scale;
                 // Also check Y so overlapping clips in different lanes are disambiguated.
                 const float nodeH = node->displayProperties.mHeight > 0.0f
                     ? node->displayProperties.mHeight

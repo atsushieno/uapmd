@@ -1,5 +1,5 @@
 diff --git a/Timeline.cpp b/Timeline.cpp
-index dbe63d4..f2b6cbe 100644
+index dbe63d4..3ad1893 100644
 --- a/Timeline.cpp
 +++ b/Timeline.cpp
 @@ -467,25 +467,37 @@ bool Timeline::DrawTimeline()
@@ -11,18 +11,19 @@ index dbe63d4..f2b6cbe 100644
 +    f32 stackedTimelineHeight = 0.0f;
 +    for (const auto& timeline : mTimelines)
 +        stackedTimelineHeight += timeline.second.mProps.mDisplayProperties.mHeight + timeline_spacing;
-+
+ 
+-    ImGui::PushStyleColor(ImGuiCol_FrameBg, 0);
+-    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle);
 +    ImVec2 childFrameSize(
 +        canvas_size.x,
 +        ImMax(canvas_size.y - 8.f - headerRect.GetHeight() - (mStyle.HasScrollbar ? static_cast<int>(mStyle.ScrollbarThickness) : 0.f),
 +              stackedTimelineHeight + 1.0f));
  
-     ImGui::PushStyleColor(ImGuiCol_FrameBg, 0);
--    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle);
-+    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle, ImGuiWindowFlags_NoScrollWithMouse);
- 
 -    const ImVec2 contentMin = ImGui::GetItemRectMin();
 -    const ImVec2 contentMax = ImGui::GetItemRectMax();
++    ImGui::PushStyleColor(ImGuiCol_FrameBg, 0);
++    ImGui::BeginChild(889, childFrameSize, ImGuiChildFlags_FrameStyle, ImGuiWindowFlags_NoScrollWithMouse);
++
 +    // ImGuiChildFlags_FrameStyle silently sets this child's WindowPadding to the current
 +    // FramePadding style value, so GetCursorScreenPos() here would otherwise land FramePadding.x
 +    // to the right of canvas_pos (captured above, before BeginChild). headerRect/ruler ticks and
@@ -33,12 +34,12 @@ index dbe63d4..f2b6cbe 100644
 +    const ImVec2 contentMax(contentMin.x + childFrameSize.x, contentMin.y + childFrameSize.y);
      const ImRect contentRect(contentMin, contentMax);
      mContentAreaRect = contentRect;
-
+ 
      draw_list->PushClipRect(contentMin, contentMax, true);
-
+ 
 -    size_t customHeight = 0;
 +    f32 customHeight = 0.0f;
-
+ 
      for (auto& timeline : mTimelines) {
          ScopedTimer timer = ScopedTimer("NodeView Draw");
 -        f32 timeline_spacing = 5.0f;
@@ -49,16 +50,16 @@ index dbe63d4..f2b6cbe 100644
          ImVec2 sz = ImVec2(canvas_size.x + canvas_pos.x, pos.y + localCustomHeight);
          ImRect contentRect = ImRect(pos, sz);
 @@ -547,6 +559,9 @@ bool Timeline::DrawTimeline()
-
+ 
      draw_list->PopClipRect();
-
+ 
 +    ImGui::SetCursorScreenPos(contentMin);
 +    ImGui::Dummy(ImVec2(1.0f, ImMax(customHeight, 1.0f)));
 +
      if (mStyle.HasSeekbar) {
          drawSeekbarUI();
      }
-@@ -656,6 +665,9 @@ void Timeline::DrawScrollbar()
+@@ -656,6 +671,9 @@ void Timeline::DrawScrollbar()
      const float barWidthInPixels = barWidthRatio * (canvas_size.x - mStyle.LegendWidth);
  
      ImGui::InvisibleButton("scrollBar", scrollBarSize);
@@ -68,7 +69,7 @@ index dbe63d4..f2b6cbe 100644
      ImVec2 scrollBarMin = ImGui::GetItemRectMin();
      ImVec2 scrollBarMax = ImGui::GetItemRectMax();
  
-@@ -664,16 +676,16 @@ void Timeline::DrawScrollbar()
+@@ -664,16 +682,16 @@ void Timeline::DrawScrollbar()
      float startFrameOffset = ((float)(mStartFrame - mFrameMin) / (float)frameCount) * (canvas_size.x - mStyle.LegendWidth);
      ImVec2 scrollBarA(scrollBarMin.x + mStyle.LegendWidth, scrollBarMin.y - 2);
      ImVec2 scrollBarB(scrollBarMin.x + canvas_size.x, scrollBarMax.y - 1);
@@ -88,7 +89,7 @@ index dbe63d4..f2b6cbe 100644
  
      ImRect barHandleLeft(scrollBarC, ImVec2(scrollBarC.x + 14, scrollBarD.y));
      ImRect barHandleRight(ImVec2(scrollBarD.x - 14, scrollBarC.y), scrollBarD);
-@@ -684,8 +696,8 @@ void Timeline::DrawScrollbar()
+@@ -684,8 +702,8 @@ void Timeline::DrawScrollbar()
      static bool sizingRBar = false;
      static bool sizingLBar = false;
  
@@ -99,7 +100,7 @@ index dbe63d4..f2b6cbe 100644
  
      ImRect scrollBarThumb(scrollBarC, scrollBarD);
  
-@@ -698,7 +710,7 @@ void Timeline::DrawScrollbar()
+@@ -698,7 +716,7 @@ void Timeline::DrawScrollbar()
              mStartFrame = ImClamp(mStartFrame, mFrameMin, ImMax(mFrameMax - mVisibleFrameCount, mFrameMin));
          }
      } else {
@@ -108,7 +109,7 @@ index dbe63d4..f2b6cbe 100644
              mInputData.IsMovingScrollBar = true;
              mPanningData.panningViewSource = mInputData.MousePos;
              mPanningData.panningViewFrame = -mStartFrame;
-@@ -1122,7 +1134,9 @@ void Timeline::CollectInputData(sInputData& a_outInputData, f32 aDeltaTime)
+@@ -1122,7 +1140,9 @@ void Timeline::CollectInputData(sInputData& a_outInputData, f32 aDeltaTime)
      mInputData.MousePos = io.MousePos;
      mInputData.LeftMouseDown = io.MouseDown[0];
      mInputData.RightMouseDown = io.MouseDown[1];
@@ -120,9 +121,10 @@ index dbe63d4..f2b6cbe 100644
  
      if (ImGui::IsKeyDown(ImGuiKey_Delete) || ImGui::IsKeyDown(ImGuiKey_Backspace)) {
 diff --git a/Timeline.h b/Timeline.h
+index 8e7cfb0..97955cd 100644
 --- a/Timeline.h
 +++ b/Timeline.h
-@@ -72,7 +72,10 @@
+@@ -72,7 +72,10 @@ public:
      s32 GetPixelPositionAtTimestamp(s32 timestamp);
  
      f32 GetScale() const { return mZoom; }
@@ -189,7 +191,7 @@ index 7f769bc..59b53ed 100644
 \ No newline at end of file
 +}
 diff --git a/TimelineViews/HorizontalNodeView.cpp b/TimelineViews/HorizontalNodeView.cpp
-index db75acd..d480f26 100644
+index db75acd..36757f9 100644
 --- a/TimelineViews/HorizontalNodeView.cpp
 +++ b/TimelineViews/HorizontalNodeView.cpp
 @@ -5,6 +5,23 @@
@@ -229,16 +231,22 @@ index db75acd..d480f26 100644
          pContext->SetSelectedTimeline(timeline.mID);
      }
  
-@@ -74,7 +91,7 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
+@@ -72,9 +89,12 @@ void HorizontalNodeView::DrawNodeView(const ImRect &area, const sTimelineSection
+             return;
+         }
  
-         s32 scale = pContext->GetScale();
+-        s32 scale = pContext->GetScale();
++        // s32 truncated GetScale() to an integer, collapsing every clip to zero width once the
++        // zoom dropped below 1.0 -- which is exactly the scale range needed to fit a long song in
++        // view, so it silently capped how far anyone could ever zoom out to see the whole thing.
++        f32 scale = pContext->GetScale();
  
 -        ImVec2 slotP1(timelinePanelRect.Min.x + node.start * scale, timelinePanelRect.Min.y);
 +        ImVec2 slotP1(timelinePanelRect.Min.x + node.start * scale, timelinePanelRect.Min.y + node.displayProperties.yOffset);
          ImVec2 slotP2(timelinePanelRect.Min.x + node.end * scale + scale, slotP1.y + sectionHeight - node.displayProperties.AccentThickness);
  
          ImRect nodeRect = ImRect(slotP1, slotP2);
-@@ -134,12 +151,9 @@ void HorizontalNodeView::defaultNodeDraw(const ImRect& area, const TimelineNode&
+@@ -134,12 +154,9 @@ void HorizontalNodeView::defaultNodeDraw(const ImRect& area, const TimelineNode&
          bgColor = timeline->GetSectionDisplayProperties(node.GetSection()).mBackgroundColor;
          bgColor2 = timeline->GetSectionDisplayProperties(node.GetSection()).mBackgroundColorTwo;
      }
@@ -254,7 +262,7 @@ index db75acd..d480f26 100644
  
  
      f32 borderRadius = node.displayProperties.BorderRadius;
-@@ -174,7 +188,7 @@ void HorizontalNodeView::DrawLegendArea(const sTimelineSection& timeline, ImTime
+@@ -174,7 +191,7 @@ void HorizontalNodeView::DrawLegendArea(const sTimelineSection& timeline, ImTime
  
      auto* draw_list = ImGui::GetWindowDrawList();
      ImVec2 tpos(area.Min.x + 3, area.Min.y);

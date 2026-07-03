@@ -4,12 +4,14 @@
 
 namespace uapmd::gui {
 
-// ImTimeline's HorizontalNodeView truncates GetScale() to s32 before use, so any scale below 1.0
-// collapses every clip to zero width. kMinSafeTimelineScale keeps a safety margin above that hard
-// floor; kMaxTimelineScale is just a sane upper bound against absurd over-zoom. Shared by both
-// SequenceEditor and BeatsSequenceEditor since the underlying constraint is the same regardless
-// of what a "frame" represents (a second, or a kTicksPerBeatDisplay-th of a beat).
-constexpr float kMinSafeTimelineScale = 1.5f;
+// ImTimeline's HorizontalNodeView used to truncate GetScale() to s32 before use, so any scale
+// below 1.0 collapsed every clip to zero width -- that's now patched (see imtimeline.patch) to use
+// the float scale directly, so this floor only needs to stay clear of literal zero/degenerate
+// values, not the old truncation cliff. kMaxTimelineScale is just a sane upper bound against absurd
+// over-zoom. Shared by both SequenceEditor and BeatsSequenceEditor since the underlying constraint
+// is the same regardless of what a "frame" represents (a second, or a kTicksPerBeatDisplay-th of a
+// beat) -- a low floor here is what lets a very long song be zoomed out far enough to fit on screen.
+constexpr float kMinSafeTimelineScale = 0.05f;
 constexpr float kMaxTimelineScale = 400.0f;
 
 // Multiplier applied per unit of io.MouseWheel when scrolling over a timeline's header: each

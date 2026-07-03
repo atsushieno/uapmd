@@ -679,7 +679,7 @@ void BeatsSequenceEditor::fitToContent(double contentDurationBeats, float visibl
         kMinSafeTimelineScale, kMaxTimelineScale);
     const double contentFrames = contentDurationBeats * kTicksPerBeatDisplay;
     const float idealScale = static_cast<float>(visibleWidthPixels / contentFrames);
-    const float fitted = std::clamp(idealScale, kMinSafeTimelineScale, defaultScale);
+    const float fitted = std::min(idealScale, defaultScale);
     unified_.timeline->SetScale(fitted);
     unified_.hasExplicitZoom = true;
     unified_.hasPendingFit = false;
