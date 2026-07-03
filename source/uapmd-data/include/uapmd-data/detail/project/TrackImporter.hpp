@@ -20,6 +20,11 @@ struct MidiTrackImport {
     std::vector<MidiTempoChange> tempoChanges;
     std::vector<MidiTimeSignatureChange> timeSignatureChanges;
     bool needsFileSave{false};
+
+    // Meaningful only on entries in MidiImportResult::masterTrackClips: index into
+    // MidiImportResult::tracks identifying which regular-track clip this master clip was
+    // derived from (and should be anchored to), or -1 if not applicable.
+    int32_t sourceTrackIndex{-1};
 };
 
 struct MidiImportResult {

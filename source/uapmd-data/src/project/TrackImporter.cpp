@@ -21,7 +21,6 @@ MidiImportResult TrackImporter::importMidiFile(const std::string& filepath) {
         }
 
         const std::string baseFilename = std::filesystem::path(filepath).stem().string();
-        bool masterTrackClipCaptured = false;
         for (size_t trackIdx = 0; trackIdx < music.tracks.size(); ++trackIdx) {
             auto convertResult = uapmd::SmfConverter::convertTrackToUmp(music, trackIdx);
             if (!convertResult.success) {
@@ -43,22 +42,41 @@ MidiImportResult TrackImporter::importMidiFile(const std::string& filepath) {
             track.tempoChanges = std::move(convertResult.tempoChanges);
             track.timeSignatureChanges = std::move(convertResult.timeSignatureChanges);
 
-            if (!masterTrackClipCaptured &&
-                (convertResult.hasExplicitTempoChanges || convertResult.hasExplicitTimeSignatureChanges)) {
-                MidiTrackImport masterTrackClip;
-                masterTrackClip.clipName = std::format("{} Meta", baseFilename.empty() ? "Imported MIDI" : baseFilename);
-                masterTrackClip.tickResolution = track.tickResolution;
-                masterTrackClip.detectedTempo = track.detectedTempo;
-                if (convertResult.hasExplicitTempoChanges)
-                    masterTrackClip.tempoChanges = track.tempoChanges;
-                if (convertResult.hasExplicitTimeSignatureChanges)
-                    masterTrackClip.timeSignatureChanges = track.timeSignatureChanges;
-                result.masterTrackClips.push_back(std::move(masterTrackClip));
-                masterTrackClipCaptured = true;
+            // Every track whose *own* raw events embed tempo/time-signature meta gets its own
+            // master clip (not just the first one in the file). Note: hasExplicitTempoChanges/
+            // hasExplicitTimeSignatureChanges are collected file-wide (tempo/time-signature
+            // events may reside on any track) and would be true for every track in a file that
+            // has tempo data anywhere -- hasOwnExplicit* is scoped to this specific track, which
+            // is what determines whether *this* track should contribute a master clip.
+            std::optional<MidiTrackImport> masterTrackClip;
+            if (convertResult.hasOwnExplicitTempoChanges || convertResult.hasOwnExplicitTimeSignatureChanges) {
+                masterTrackClip.emplace();
+                masterTrackClip->clipName = std::format("{} Meta", trackClipName);
+                masterTrackClip->tickResolution = track.tickResolution;
+                masterTrackClip->detectedTempo = track.detectedTempo;
+                if (convertResult.hasOwnExplicitTempoChanges)
+                    masterTrackClip->tempoChanges = track.tempoChanges;
+                if (convertResult.hasOwnExplicitTimeSignatureChanges)
+                    masterTrackClip->timeSignatureChanges = track.timeSignatureChanges;
             }
 
-            if (!track.umpEvents.empty())
+            // The regular track's own copy becomes flat -- the curve now belongs to the master
+            // clip only (see MidiClipReader::separateMasterTrackEvents for the same invariant on
+            // the other import paths).
+            uapmd::MidiClipReader::stripToFlatTempo(track.tempoChanges, track.timeSignatureChanges, track.detectedTempo);
+
+            const bool trackHasEvents = !track.umpEvents.empty();
+            if (trackHasEvents)
                 result.tracks.push_back(std::move(track));
+
+            if (masterTrackClip) {
+                // Anchor to the just-created regular clip only if this track actually produced
+                // one (a pure meta/conductor track with no note events has nothing to anchor to,
+                // and keeps sourceTrackIndex == -1).
+                if (trackHasEvents)
+                    masterTrackClip->sourceTrackIndex = static_cast<int32_t>(result.tracks.size() - 1);
+                result.masterTrackClips.push_back(std::move(*masterTrackClip));
+            }
         }
 
         if (result.tracks.empty() && result.masterTrackClips.empty()) {

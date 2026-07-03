@@ -57,103 +57,12 @@ namespace uapmd {
         std::shared_ptr<const TrackList> timeline_tracks_snapshot_; // RT-thread read via atomic
         std::shared_ptr<TimelineTrack> master_timeline_track_;
 
-        static bool clipHasMeaningfulTempoMap(const MidiClipSourceNode& node) {
-            const auto& tempoChanges = node.tempoChanges();
-            if (tempoChanges.size() > 1)
-                return true;
-            if (!tempoChanges.empty() && std::abs(tempoChanges.front().bpm - 120.0) > 1.0e-6)
-                return true;
-            return false;
-        }
-
-        static bool clipHasMeaningfulTimeSignatureMap(const MidiClipSourceNode& node) {
-            const auto& changes = node.timeSignatureChanges();
-            if (changes.size() > 1)
-                return true;
-            if (!changes.empty() &&
-                (changes.front().numerator != 4 || changes.front().denominator != 4))
-                return true;
-            return false;
-        }
-
-        struct TimelineMetaSource {
-            ClipData clip;
-            MidiClipSourceNode* node{nullptr};
-        };
-
-        std::optional<TimelineMetaSource> findAuthoritativeTimelineMetaSource(bool preferMasterTrack) const {
-            auto findOnTrack = [this](const std::shared_ptr<TimelineTrack>& track) -> std::optional<TimelineMetaSource> {
-                if (!track)
-                    return std::nullopt;
-
-                auto clips = track->clipManager().getAllClips();
-                std::sort(clips.begin(), clips.end(), [](const ClipData& a, const ClipData& b) {
-                    return a.clipId < b.clipId;
-                });
-
-                for (const auto& clip : clips) {
-                    if (clip.clipType != ClipType::Midi)
-                        continue;
-                    auto sourceNode = track->getSourceNode(clip.sourceNodeInstanceId);
-                    auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
-                    if (!midiNode)
-                        continue;
-                    if (clipHasMeaningfulTempoMap(*midiNode) || clipHasMeaningfulTimeSignatureMap(*midiNode))
-                        return TimelineMetaSource{clip, midiNode};
-                }
-                return std::nullopt;
-            };
-
-            if (preferMasterTrack) {
-                if (auto masterSource = findOnTrack(master_timeline_track_))
-                    return masterSource;
-            }
-
-            for (const auto& track : timeline_tracks_) {
-                if (auto source = findOnTrack(track))
-                    return source;
-            }
-
-            if (!preferMasterTrack) {
-                if (auto masterSource = findOnTrack(master_timeline_track_))
-                    return masterSource;
-            }
-
-            return std::nullopt;
-        }
-
+        // Propagates the master track's tempo/time-signature authority to every regular-track
+        // MIDI clip (see MidiClipReader::applyAuthoritativeTempoMapToMusicalClips).
         void applyAuthoritativeTempoMapToMusicalClips() {
-            auto authoritative = findAuthoritativeTimelineMetaSource(true);
-            for (const auto& track : timeline_tracks_) {
-                if (!track)
-                    continue;
-                auto clips = track->clipManager().getAllClips();
-                for (const auto& clip : clips) {
-                    if (clip.clipType != ClipType::Midi)
-                        continue;
-                    auto sourceNode = track->getSourceNode(clip.sourceNodeInstanceId);
-                    auto* midiNode = dynamic_cast<MidiClipSourceNode*>(sourceNode.get());
-                    if (!midiNode)
-                        continue;
-                    if (authoritative && authoritative->node)
-                        midiNode->setPlaybackTempoMap(authoritative->node->tempoChanges());
-                    else
-                        midiNode->clearPlaybackTempoMap();
-
-                    // ClipData.durationSamples was cached from sourceNode->totalLength() at
-                    // add-time, using whichever tempo map the clip had *then* -- which may have
-                    // been this clip's own (possibly flat/stripped, e.g. after a save/reload
-                    // cycle) tempo before the authoritative map above corrected it. Refresh it
-                    // now so content-bounds/render-length calculations match the corrected
-                    // schedule instead of silently truncating or extending playback.
-                    const int64_t correctedDuration = midiNode->totalLength();
-                    if (correctedDuration != clip.durationSamples)
-                        track->clipManager().resizeClip(clip.clipId, correctedDuration);
-                }
-            }
-
-            if (authoritative && authoritative->node && !authoritative->node->tempoChanges().empty())
-                timeline_.tempo = authoritative->node->tempoChanges().front().bpm;
+            auto tempoChanges = MidiClipReader::applyAuthoritativeTempoMapToMusicalClips(master_timeline_track_, timeline_tracks_);
+            if (!tempoChanges.empty())
+                timeline_.tempo = tempoChanges.front().bpm;
         }
 
         static void appendMidiNodeMetaToSnapshot(MasterTrackSnapshot& snapshot,
@@ -1159,19 +1068,46 @@ namespace uapmd {
                 result.error = clipInfo.error;
                 return result;
             }
-            return addMidiClipToTimelineTrack(
-                *timeline_tracks_[static_cast<size_t>(trackIndex)],
+
+            auto separated = MidiClipReader::separateMasterTrackEvents(std::move(clipInfo));
+            auto& musicalClip = separated.musicalClip;
+            auto& track = *timeline_tracks_[static_cast<size_t>(trackIndex)];
+            result = addMidiClipToTimelineTrack(
+                track,
                 position,
                 filepath,
-                std::move(clipInfo.ump_data),
-                std::move(clipInfo.ump_tick_timestamps),
-                clipInfo.tick_resolution,
-                clipInfo.tempo,
-                std::move(clipInfo.tempo_changes),
-                std::move(clipInfo.time_signature_changes),
+                std::move(musicalClip.ump_data),
+                std::move(musicalClip.ump_tick_timestamps),
+                musicalClip.tick_resolution,
+                musicalClip.tempo,
+                std::move(musicalClip.tempo_changes),
+                std::move(musicalClip.time_signature_changes),
                 std::filesystem::path(filepath).stem().string(),
                 nrpnToParameterMapping,
-                false);
+                separated.hasMasterTrackClip());
+
+            if (result.success && separated.hasMasterTrackClip()) {
+                auto& masterClip = separated.masterTrackClip;
+                auto masterResult = addMasterMidiClip(
+                    position,
+                    {},
+                    {},
+                    masterClip.tick_resolution,
+                    masterClip.tempo,
+                    std::move(masterClip.tempo_changes),
+                    std::move(masterClip.time_signature_changes),
+                    std::format("{} Meta", std::filesystem::path(filepath).stem().string()),
+                    false,
+                    "");
+                if (masterResult.success) {
+                    if (const auto* regularClip = track.clipManager().getClip(result.clipId))
+                        master_timeline_track_->clipManager().setClipAnchor(
+                            masterResult.clipId,
+                            TimeReference::fromContainerStart(regularClip->referenceId, 0.0),
+                            sampleRate_);
+                }
+            }
+            return result;
         }
 
         ClipAddResult addMidiClipToTrack(
@@ -1557,6 +1493,11 @@ namespace uapmd {
                                 earlyError = masterLoadResult.error.empty() ? "Failed to load master track clip" : masterLoadResult.error;
                                 break;
                             }
+                            if (auto refIt = loadedClipRefs.find(clip.get()); refIt != loadedClipRefs.end() && !refIt->second.clipReferenceId.empty())
+                                master_timeline_track_->clipManager().setClipAnchor(
+                                    masterLoadResult.clipId,
+                                    TimeReference::fromContainerStart(refIt->second.clipReferenceId, 0.0),
+                                    sampleRate_);
                         }
                     } else {
                         auto reader = createAudioFileReaderFromPath(resolvedPath.string());
@@ -1767,12 +1708,10 @@ namespace uapmd {
                 }
             };
 
+            // Regular tracks can never carry meaningful tempo/time-signature data of their own
+            // (see MidiClipReader::stripToFlatTempo / TrackImporter::importMidiFile) -- the
+            // master track is always the sole source, so no fallback search is needed here.
             appendTrackMeta(master_timeline_track_);
-            if (snapshot.empty()) {
-                auto authoritative = findAuthoritativeTimelineMetaSource(false);
-                if (authoritative && authoritative->node)
-                    appendMidiNodeMetaToSnapshot(snapshot, authoritative->clip, *authoritative->node, sr);
-            }
 
             std::stable_sort(snapshot.tempoPoints.begin(), snapshot.tempoPoints.end(),
                 [](const MasterTrackSnapshot::TempoPoint& a, const MasterTrackSnapshot::TempoPoint& b) {

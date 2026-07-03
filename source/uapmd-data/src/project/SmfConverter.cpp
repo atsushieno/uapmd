@@ -344,6 +344,15 @@ SmfConverter::ConvertResult convertEventsToUmp(const std::vector<umppi::Midi1Eve
             result = convertEventsToUmp(music.tracks[trackIndex].events, result.tickResolution, false);
             collectTrackClipName(music.tracks[trackIndex].events, result);
 
+            // Scoped strictly to this track's own raw events, before the file-wide collection
+            // below overwrites tempoChanges/timeSignatureChanges with the merged result.
+            {
+                ConvertResult ownScan;
+                collectMetaEventsFromEvents(music.tracks[trackIndex].events, ownScan);
+                result.hasOwnExplicitTempoChanges = ownScan.hasExplicitTempoChanges;
+                result.hasOwnExplicitTimeSignatureChanges = ownScan.hasExplicitTimeSignatureChanges;
+            }
+
             // Tempo/time-signature events may reside on any track, so collect them
             collectMetaEventsFromMusic(music, result);
 

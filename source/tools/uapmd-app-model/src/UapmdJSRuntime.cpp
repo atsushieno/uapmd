@@ -1265,14 +1265,20 @@ void UapmdJSRuntime::registerTimelineAPI()
     jsContext_.registerFunction ("__remidy_timeline_get_clips", [] (choc::javascript::ArgumentList args) -> choc::value::Value
     {
         auto trackIndex = args.get<int32_t> (0, -1);
-        if (trackIndex < 0)
+        auto& appModel = uapmd::AppModel::instance();
+
+        uapmd::TimelineTrack* track = nullptr;
+        if (trackIndex < 0) {
+            track = appModel.getMasterTimelineTrack();
+        } else {
+            auto tracks = appModel.getTimelineTracks();
+            if (trackIndex < static_cast<int32_t> (tracks.size()))
+                track = tracks[static_cast<size_t> (trackIndex)];
+        }
+        if (!track)
             return choc::value::createEmptyArray();
 
-        auto tracks = uapmd::AppModel::instance().getTimelineTracks();
-        if (trackIndex >= static_cast<int32_t> (tracks.size()))
-            return choc::value::createEmptyArray();
-
-        const auto clips = tracks[static_cast<size_t> (trackIndex)]->clipManager().getAllClips();
+        const auto clips = track->clipManager().getAllClips();
         auto arr = choc::value::createEmptyArray();
         for (const auto& clip : clips)
         {
@@ -1287,6 +1293,8 @@ void UapmdJSRuntime::registerTimelineAPI()
             obj.setMember ("muted", clip.muted);
             obj.setMember ("tempo", clip.clipTempo);
             obj.setMember ("tickResolution", static_cast<int32_t> (clip.tickResolution));
+            obj.setMember ("referenceId", clip.referenceId);
+            obj.setMember ("anchorReferenceId", clip.anchorReferenceId);
             arr.addArrayElement (obj);
         }
         return arr;
@@ -1508,6 +1516,43 @@ void UapmdJSRuntime::registerTimelineAPI()
         obj.setMember ("clipId", result.clipId);
         obj.setMember ("success", result.success);
         obj.setMember ("error", result.error);
+        return obj;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_import_midi_tracks", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto filepath = args.get<std::string> (0, "");
+
+        auto obj = choc::value::createObject ("MidiTracksImportResult");
+        if (filepath.empty()) {
+            obj.setMember ("success", false);
+            obj.setMember ("error", "invalid arguments");
+            obj.setMember ("warnings", choc::value::createEmptyArray());
+            obj.setMember ("importedTracks", choc::value::createEmptyArray());
+            return obj;
+        }
+
+        auto result = uapmd::AppModel::instance().importMidiTracksFromFile (filepath);
+
+        obj.setMember ("success", result.success);
+        obj.setMember ("error", result.error);
+
+        auto warnings = choc::value::createEmptyArray();
+        for (const auto& warning : result.warnings)
+            warnings.addArrayElement (warning);
+        obj.setMember ("warnings", warnings);
+
+        auto importedTracks = choc::value::createEmptyArray();
+        for (const auto& track : result.importedTracks) {
+            auto trackObj = choc::value::createObject ("MidiTrackImportResult");
+            trackObj.setMember ("trackIndex", track.trackIndex);
+            trackObj.setMember ("clipName", track.clipName);
+            trackObj.setMember ("success", track.success);
+            trackObj.setMember ("error", track.error);
+            importedTracks.addArrayElement (trackObj);
+        }
+        obj.setMember ("importedTracks", importedTracks);
+
         return obj;
     });
 

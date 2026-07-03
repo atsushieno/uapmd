@@ -420,6 +420,23 @@ namespace uapmd {
                                           uint32_t tickResolution = 480,
                                           double bpm = 120.0);
 
+        struct MidiTracksImportResult {
+            struct TrackResult {
+                int32_t trackIndex{-1};
+                std::string clipName;
+                bool success{false};
+                std::string error;
+            };
+            bool success{false};
+            std::string error;
+            std::vector<std::string> warnings;
+            std::vector<TrackResult> importedTracks;
+        };
+        // Imports a (possibly multi-track) SMF file, creating one new track per SMF track and,
+        // for each source track that carries its own tempo/time-signature data, a master-track
+        // clip anchored to that track's clip so they move together.
+        MidiTracksImportResult importMidiTracksFromFile(const std::string& filepath);
+
         // Device input routing
         int32_t addDeviceInputToTrack(
             int32_t trackIndex,

@@ -27,6 +27,14 @@ namespace uapmd {
             std::vector<MidiTimeSignatureChange> timeSignatureChanges; // Ordered time signature changes
             bool hasExplicitTempoChanges{false};
             bool hasExplicitTimeSignatureChanges{false};
+            // Like hasExplicitTempoChanges/hasExplicitTimeSignatureChanges, but scoped to just
+            // this track's own raw events -- tempoChanges/timeSignatureChanges above are always
+            // collected file-wide (tempo/time-signature events may reside on any track), so
+            // hasExplicitTempoChanges is true for every track in a file that has tempo data
+            // *anywhere*. Use these instead when the question is "does this specific track embed
+            // its own tempo/time-signature meta events" (e.g. per-track master-clip synthesis).
+            bool hasOwnExplicitTempoChanges{false};
+            bool hasOwnExplicitTimeSignatureChanges{false};
             uint32_t tickResolution{480};
             double detectedTempo{120.0};  // BPM from SMF tempo meta-events
         };

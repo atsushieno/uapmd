@@ -2917,83 +2917,20 @@ void TimelineEditor::importMidiTracksWithPicker() {
 }
 
 void TimelineEditor::importMidiTracks(const std::string& filepath) {
-    auto importResult = uapmd::import::TrackImporter::importMidiFile(filepath);
-    auto warnings = importResult.warnings;
-
-    if (!importResult.success) {
-        std::string message = importResult.error.empty()
-            ? "Failed to import MIDI tracks."
-            : importResult.error;
-        if (!warnings.empty()) {
-            message += "\n\nWarnings:\n";
-            for (const auto& warning : warnings)
-                message += warning + "\n";
-        }
-        platformError("Import Failed", message);
-        return;
-    }
-
     auto& appModel = uapmd::AppModel::instance();
-    size_t importedCount = 0;
+    auto result = appModel.importMidiTracksFromFile(filepath);
 
-    for (auto& track : importResult.tracks) {
-        int32_t newTrackIndex = appModel.addTrack();
-        if (newTrackIndex < 0) {
-            warnings.push_back(std::format("{}: Failed to create track", track.clipName));
-            continue;
-        }
-
-        uapmd::TimelinePosition position;
-        position.samples = 0;
-        position.legacy_beats = 0.0;
-
-        auto clipResult = appModel.addMidiClipToTrack(
-            newTrackIndex,
-            position,
-            std::move(track.umpEvents),
-            std::move(track.umpTickTimestamps),
-            track.tickResolution,
-            track.detectedTempo,
-            std::move(track.tempoChanges),
-            std::move(track.timeSignatureChanges),
-            track.clipName,
-            track.needsFileSave
-        );
-
-        if (!clipResult.success) {
-            warnings.push_back(std::format("{}: {}", track.clipName, clipResult.error));
-            continue;
-        }
-
-        refreshSequenceEditorForTrack(newTrackIndex);
-        ++importedCount;
-    }
-
-    for (auto& masterTrackClip : importResult.masterTrackClips) {
-        uapmd::TimelinePosition position;
-        position.samples = 0;
-        position.legacy_beats = 0.0;
-        auto masterClipResult = appModel.addMasterMidiClip(
-            position,
-            {},
-            {},
-            masterTrackClip.tickResolution,
-            masterTrackClip.detectedTempo,
-            std::move(masterTrackClip.tempoChanges),
-            std::move(masterTrackClip.timeSignatureChanges),
-            masterTrackClip.clipName
-        );
-        if (!masterClipResult.success)
-            warnings.push_back(std::format("{}: {}", masterTrackClip.clipName, masterClipResult.error));
-    }
+    for (const auto& track : result.importedTracks)
+        if (track.success)
+            refreshSequenceEditorForTrack(track.trackIndex);
 
     invalidateMasterTrackSnapshot();
 
-    if (importedCount == 0 && importResult.masterTrackClips.empty()) {
-        std::string message = "No MIDI tracks were imported.";
-        if (!warnings.empty()) {
+    if (!result.success) {
+        std::string message = result.error.empty() ? "No MIDI tracks were imported." : result.error;
+        if (!result.warnings.empty()) {
             message += "\n\nWarnings:\n";
-            for (const auto& warning : warnings)
+            for (const auto& warning : result.warnings)
                 message += warning + "\n";
         }
         platformError("Import Failed", message);

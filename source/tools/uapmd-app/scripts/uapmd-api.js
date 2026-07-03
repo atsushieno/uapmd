@@ -247,6 +247,10 @@ globalThis.uapmd = {
         getMasterMarkers: () => __remidy_timeline_get_master_markers(),
         setMasterMarkers: (markers) => __remidy_timeline_set_master_markers(markers),
         addMidiClip: (trackIndex, positionSamples, filepath) => __remidy_timeline_add_midi_clip(trackIndex, positionSamples, filepath),
+        // Multi-track SMF import: creates one new track per SMF track, plus a master-track clip
+        // (anchored to its source track's clip) for each track that carries its own tempo/
+        // time-signature data. Mirrors the GUI's "Import MIDI Tracks (SMF)" menu action.
+        importMidiTracks: (filepath) => __remidy_timeline_import_midi_tracks(filepath),
         removeClip: (trackIndex, clipId) => __remidy_timeline_remove_clip(trackIndex, clipId),
         createEmptyMidiClip: (trackIndex, positionSamples = 0, tickResolution = 480, bpm = 120.0) =>
             __remidy_timeline_create_empty_midi_clip(trackIndex, positionSamples, tickResolution, bpm),

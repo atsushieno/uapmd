@@ -2389,6 +2389,102 @@ uapmd::AppModel::ClipAddResult uapmd::AppModel::createEmptyMidiClip(
     return addMidiClipToTrack(trackIndex, pos, {}, {}, tickResolution, bpm, {}, {});
 }
 
+uapmd::AppModel::MidiTracksImportResult uapmd::AppModel::importMidiTracksFromFile(const std::string& filepath) {
+    MidiTracksImportResult result;
+
+    auto importResult = uapmd::import::TrackImporter::importMidiFile(filepath);
+    result.warnings = importResult.warnings;
+
+    if (!importResult.success) {
+        result.error = importResult.error.empty() ? "Failed to import MIDI tracks." : importResult.error;
+        return result;
+    }
+
+    // Aligned with importResult.tracks -- records each successfully-created regular clip's
+    // referenceId (empty if creation failed), so master clips below can anchor to their source.
+    std::vector<std::string> regularClipReferenceIds(importResult.tracks.size());
+
+    for (size_t i = 0; i < importResult.tracks.size(); ++i) {
+        auto& track = importResult.tracks[i];
+        int32_t newTrackIndex = addTrack();
+        if (newTrackIndex < 0) {
+            result.warnings.push_back(std::format("{}: Failed to create track", track.clipName));
+            result.importedTracks.push_back({-1, track.clipName, false, "Failed to create track"});
+            continue;
+        }
+
+        uapmd::TimelinePosition position;
+        position.samples = 0;
+        position.legacy_beats = 0.0;
+
+        auto clipResult = addMidiClipToTrack(
+            newTrackIndex,
+            position,
+            std::move(track.umpEvents),
+            std::move(track.umpTickTimestamps),
+            track.tickResolution,
+            track.detectedTempo,
+            std::move(track.tempoChanges),
+            std::move(track.timeSignatureChanges),
+            track.clipName,
+            track.needsFileSave
+        );
+
+        if (!clipResult.success) {
+            result.warnings.push_back(std::format("{}: {}", track.clipName, clipResult.error));
+            result.importedTracks.push_back({newTrackIndex, track.clipName, false, clipResult.error});
+            continue;
+        }
+
+        if (auto tracks = getTimelineTracks(); newTrackIndex >= 0 && newTrackIndex < static_cast<int32_t>(tracks.size())) {
+            if (auto* createdClip = tracks[newTrackIndex]->clipManager().getClip(clipResult.clipId))
+                regularClipReferenceIds[i] = createdClip->referenceId;
+        }
+
+        result.importedTracks.push_back({newTrackIndex, track.clipName, true, ""});
+    }
+
+    bool anchoredAnyMasterClip = false;
+    for (auto& masterTrackClip : importResult.masterTrackClips) {
+        uapmd::TimelinePosition position;
+        position.samples = 0;
+        position.legacy_beats = 0.0;
+        auto masterClipResult = addMasterMidiClip(
+            position,
+            {},
+            {},
+            masterTrackClip.tickResolution,
+            masterTrackClip.detectedTempo,
+            std::move(masterTrackClip.tempoChanges),
+            std::move(masterTrackClip.timeSignatureChanges),
+            masterTrackClip.clipName
+        );
+        if (!masterClipResult.success) {
+            result.warnings.push_back(std::format("{}: {}", masterTrackClip.clipName, masterClipResult.error));
+            continue;
+        }
+
+        const int32_t sourceIdx = masterTrackClip.sourceTrackIndex;
+        if (sourceIdx >= 0 && sourceIdx < static_cast<int32_t>(regularClipReferenceIds.size()) &&
+            !regularClipReferenceIds[static_cast<size_t>(sourceIdx)].empty()) {
+            if (auto* masterTrack = getMasterTimelineTrack()) {
+                masterTrack->clipManager().setClipAnchor(
+                    masterClipResult.clipId,
+                    uapmd::TimeReference::fromContainerStart(regularClipReferenceIds[static_cast<size_t>(sourceIdx)], 0.0),
+                    static_cast<int32_t>(sampleRate()));
+                anchoredAnyMasterClip = true;
+            }
+        }
+    }
+    if (anchoredAnyMasterClip)
+        resolveAllClipAnchorsInAppModel(*this);
+
+    result.success = !result.importedTracks.empty() || !importResult.masterTrackClips.empty();
+    if (!result.success && result.error.empty())
+        result.error = "No MIDI tracks were imported.";
+    return result;
+}
+
 int32_t uapmd::AppModel::addDeviceInputToTrack(
     int32_t trackIndex,
     const std::vector<uint32_t>& channelIndices
