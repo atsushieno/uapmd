@@ -1,3 +1,4 @@
+#include <cmath>
 #include <fstream>
 #include <uapmd-data/uapmd-data.hpp>
 
@@ -291,6 +292,24 @@ bool populateClipInfoFromSmf2Clip(const Smf2Clip& clip,
         // NOT to be confused with SMF2 (MIDI 2.0 Clip File) which has "SMF2CLIP" header
         return (header[0] == 'M' && header[1] == 'T' &&
                 header[2] == 'h' && header[3] == 'd');
+    }
+
+    void MidiClipReader::rescaleTicks(
+        std::vector<uint64_t>& tickTimestamps,
+        std::vector<MidiTempoChange>& tempoChanges,
+        std::vector<MidiTimeSignatureChange>& timeSignatureChanges,
+        uint32_t fromResolution,
+        uint32_t toResolution
+    ) {
+        if (fromResolution == toResolution || fromResolution == 0)
+            return;
+        const double ratio = static_cast<double>(toResolution) / static_cast<double>(fromResolution);
+        for (auto& t : tickTimestamps)
+            t = static_cast<uint64_t>(std::llround(static_cast<double>(t) * ratio));
+        for (auto& change : tempoChanges)
+            change.tickPosition = static_cast<uint64_t>(std::llround(static_cast<double>(change.tickPosition) * ratio));
+        for (auto& change : timeSignatureChanges)
+            change.tickPosition = static_cast<uint64_t>(std::llround(static_cast<double>(change.tickPosition) * ratio));
     }
 
 } // namespace uapmd

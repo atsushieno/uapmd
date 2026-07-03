@@ -139,6 +139,16 @@ namespace uapmd {
                         midiNode->setPlaybackTempoMap(authoritative->node->tempoChanges());
                     else
                         midiNode->clearPlaybackTempoMap();
+
+                    // ClipData.durationSamples was cached from sourceNode->totalLength() at
+                    // add-time, using whichever tempo map the clip had *then* -- which may have
+                    // been this clip's own (possibly flat/stripped, e.g. after a save/reload
+                    // cycle) tempo before the authoritative map above corrected it. Refresh it
+                    // now so content-bounds/render-length calculations match the corrected
+                    // schedule instead of silently truncating or extending playback.
+                    const int64_t correctedDuration = midiNode->totalLength();
+                    if (correctedDuration != clip.durationSamples)
+                        track->clipManager().resizeClip(clip.clipId, correctedDuration);
                 }
             }
 
@@ -1010,6 +1020,17 @@ namespace uapmd {
             bool needsFileSave) {
             ClipAddResult result;
 
+            // Normalize incoming ticks to the single project-wide PPQ, established by whichever
+            // MIDI clip is added first. This keeps every clip's ticks directly comparable, so no
+            // clip-to-clip rescaling is needed anywhere else once ticks enter the system.
+            uint32_t effectiveResolution = tickResolution == 0 ? 480 : tickResolution;
+            if (timeline_.projectTickResolution == 0)
+                timeline_.projectTickResolution = effectiveResolution;
+            else if (effectiveResolution != timeline_.projectTickResolution)
+                MidiClipReader::rescaleTicks(umpTickTimestamps, tempoChanges, timeSignatureChanges,
+                    effectiveResolution, timeline_.projectTickResolution);
+            tickResolution = timeline_.projectTickResolution;
+
             int32_t sourceNodeId = next_source_node_id_++;
             auto sourceNode = std::make_unique<MidiClipSourceNode>(
                 sourceNodeId,
@@ -1264,6 +1285,7 @@ namespace uapmd {
             timeline_.isPlaying = false;
             timeline_.playheadPosition = TimelinePosition{};
             timeline_.loopEnabled = false;
+            timeline_.projectTickResolution = 0;
             next_timeline_track_reference_ = 1;
             master_timeline_track_ = std::make_shared<TimelineTrack>(
                 std::string("master_track"),

@@ -528,6 +528,7 @@ namespace uapmd {
         int32_t timeSignatureNumerator{4};
         int32_t timeSignatureDenominator{4};
         int32_t sample_rate{48000};             // Added for convenience
+        uint32_t projectTickResolution{0};      // PPQ; 0 = not yet established by any MIDI clip
 
         TimelineState() = default;
 

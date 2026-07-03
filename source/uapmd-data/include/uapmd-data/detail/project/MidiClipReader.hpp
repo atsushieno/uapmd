@@ -54,5 +54,17 @@ namespace uapmd {
         // Check if a file is a valid traditional SMF (Standard MIDI File) with "MThd" header
         // Covers Format 0, 1, and 2 (all traditional MIDI 1.0 files)
         static bool isValidSmfFile(const std::filesystem::path& file);
+
+        // Rescales tick-based fields (event timestamps, tempo/time-signature change positions)
+        // from one tick resolution to another, preserving musical (beat) position. Used by the
+        // timeline layer to normalize an imported clip's ticks to the project's single,
+        // established tick resolution. No-op if fromResolution == toResolution or is 0.
+        static void rescaleTicks(
+            std::vector<uint64_t>& tickTimestamps,
+            std::vector<MidiTempoChange>& tempoChanges,
+            std::vector<MidiTimeSignatureChange>& timeSignatureChanges,
+            uint32_t fromResolution,
+            uint32_t toResolution
+        );
     };
 }
