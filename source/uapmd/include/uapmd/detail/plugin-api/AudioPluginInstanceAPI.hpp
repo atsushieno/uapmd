@@ -37,12 +37,6 @@ namespace uapmd {
         std::string path;
     };
 
-    struct AapUiHostDetails {
-        std::string pluginPackageName;
-        std::string pluginLocalName;
-        int32_t instanceId;
-    };
-
     class AudioPluginInstanceExtension {
     public:
         virtual ~AudioPluginInstanceExtension() = default;
@@ -75,7 +69,6 @@ namespace uapmd {
         virtual std::string& displayName() const = 0;
         virtual std::string& formatName() const = 0;
         virtual std::string& pluginId() const = 0;
-        virtual std::optional<AapUiHostDetails> aapUiHostDetails() const = 0;
         virtual bool bypassed() const = 0;
         virtual void bypassed(bool value) = 0;
         virtual uapmd_status_t startProcessing() = 0;

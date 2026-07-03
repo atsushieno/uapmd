@@ -49,10 +49,27 @@ namespace uapmd {
             }
         };
 
+        class AapUiHostDetailsExtensionAdapter final : public AapUiHostDetailsExtension {
+            RemidyAudioPluginInstance& owner;
+
+        public:
+            explicit AapUiHostDetailsExtensionAdapter(RemidyAudioPluginInstance& owner)
+                : owner(owner) {
+            }
+
+            remidy::PluginInstanceAAPExt* aapExtensibility() const override {
+                if (!owner.instance)
+                    return nullptr;
+                return dynamic_cast<remidy::PluginInstanceAAPExt*>(
+                    owner.instance->getExtensibility(remidy::kAAPPluginInstanceExtensionId));
+            }
+        };
+
         bool bypassed_{true};
         std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
         NativeHandleExtensionAdapter native_handle_extension{*this};
+        AapUiHostDetailsExtensionAdapter aap_ui_host_details_extension{*this};
         remidy::PluginUISupport* ui_support{nullptr};
         bool uiCreated{false};
         bool uiVisible{false};
@@ -211,19 +228,6 @@ namespace uapmd {
         std::string& displayName() const override { return instance->info()->displayName(); }
         std::string& formatName() const override { return instance->info()->format(); }
         std::string& pluginId() const override { return instance->info()->pluginId(); }
-        std::optional<uapmd::AapUiHostDetails> aapUiHostDetails() const override {
-            if (!instance)
-                return std::nullopt;
-            auto* extensibility = dynamic_cast<remidy::PluginInstanceAAPExt*>(
-                instance->getExtensibility(remidy::kAAPPluginInstanceExtensionId));
-            if (!extensibility)
-                return std::nullopt;
-            return uapmd::AapUiHostDetails{
-                .pluginPackageName = extensibility->pluginPackageName(),
-                .pluginLocalName = extensibility->pluginLocalName(),
-                .instanceId = extensibility->instanceId()
-            };
-        }
 
         void loadPreset(int32_t presetIndex) override {
             instance->presets()->loadPreset(presetIndex);
@@ -411,6 +415,8 @@ namespace uapmd {
                 return nullptr;
             if (extensionId == kNativePluginInstanceHandleExtensionId)
                 return &native_handle_extension;
+            if (extensionId == kAapUiHostDetailsExtensionId)
+                return &aap_ui_host_details_extension;
             auto* remidyExtension = instance->getExtensibility(extensionId);
             if (!remidyExtension)
                 return nullptr;

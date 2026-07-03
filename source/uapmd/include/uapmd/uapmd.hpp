@@ -2,6 +2,7 @@
 
 #include "detail/CommonTypes.hpp"
 #include "detail/plugin-api/AudioPluginInstanceAPI.hpp"
+#include "detail/plugin-api/AapUiHostDetailsExtension.hpp"
 #include "detail/plugin-api/AudioPluginHostingAPI.hpp"
 #include "detail/plugin-api/AudioPluginNodeFeature.hpp"
 #include "detail/midi/MidiIOFeature.hpp"
