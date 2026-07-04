@@ -630,6 +630,8 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                     + this._accumCount * kQuantum;
                 out[ch].set(f32.subarray(srcOff, srcOff + kQuantum));
             }
+            for (let ch = chCount; ch < out.length; ch++)
+                out[ch].fill(0);
         }
 
         if (++this._accumCount >= this._quantaPerRender)

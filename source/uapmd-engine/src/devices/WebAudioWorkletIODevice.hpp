@@ -54,9 +54,9 @@ namespace uapmd {
 
     // ── WebAudioEngineThread ──────────────────────────────────────────────────
     //
-    // Owns two pthreads:
-    //   engine_thread_ — spins on host_seq, calls processAudio(), copies output
-    //   pump_thread_   — calls pumpAudio() in a loop (drives the ring-buffer pump)
+    // Owns one pthread:
+    //   engine_thread_ — spins on host_seq, calls pumpAudio() + processAudio(),
+    //                    then copies output
     //
     // Lifecycle: constructed by WebAudioWorkletIODevice::setEngine(), started by
     // start(), stopped by stop().
@@ -82,15 +82,13 @@ namespace uapmd {
 
         std::atomic<bool> running_{false};
         std::thread       engine_thread_;
-        std::thread       pump_thread_;
 
         MasterContext     engine_master_ctx_;
         MasterContext     pump_master_ctx_;
-        AudioProcessContext engine_ctx_;  // used by engine thread
-        AudioProcessContext pump_ctx_;    // used by pump thread
+        AudioProcessContext engine_ctx_;  // engine output render context
+        AudioProcessContext pump_ctx_;    // timeline/source pump context
 
         void engineLoop();
-        void pumpLoop();
     };
 
     // ── WebAudioWorkletIODevice / Manager ─────────────────────────────────────

@@ -70,7 +70,6 @@ namespace uapmd {
             }
             return true;
         });
-        pump_thread_   = std::thread([this]{ pumpLoop(); });
         engine_thread_ = std::thread([this]{ engineLoop(); });
     }
 
@@ -79,7 +78,6 @@ namespace uapmd {
             return;
         running_.store(false, std::memory_order_release);
         if (engine_thread_.joinable()) engine_thread_.join();
-        if (pump_thread_.joinable())   pump_thread_.join();
         engine_->setTrackOutputHandler({});
         engine_->setExternalPump(false);
     }
@@ -101,6 +99,7 @@ namespace uapmd {
                                 kWebAudioChannels *
                                 buffer_size_ *
                                 sizeof(float));
+                engine_->pumpAudio(pump_ctx_);
                 engine_->processAudio(engine_ctx_);
             } catch (const std::exception& e) {
                 std::cerr << "[WebAudio] engineLoop processAudio exception: " << e.what() << std::endl;
@@ -124,32 +123,6 @@ namespace uapmd {
                                     std::memory_order_release);
 
             sab_->engine_seq.store(seq, std::memory_order_release);
-        }
-    }
-
-    void WebAudioEngineThread::pumpLoop() {
-        using clock = std::chrono::steady_clock;
-        // One quantum (buffer_size_ frames) of wall-clock time between pump calls.
-        const auto pump_interval = std::chrono::nanoseconds(
-            static_cast<int64_t>(1'000'000'000LL * buffer_size_ / sample_rate_));
-        auto next_time = clock::now();
-        while (running_.load(std::memory_order_acquire)) {
-            const auto now = clock::now();
-            if (now < next_time) {
-                std::this_thread::sleep_for(std::chrono::microseconds(100));
-                continue;
-            }
-            next_time += pump_interval;
-            // If we fell far behind (scheduler hiccup), clamp to avoid spiral.
-            if (next_time < now)
-                next_time = now + pump_interval;
-            try {
-                engine_->pumpAudio(pump_ctx_);
-            } catch (const std::exception& e) {
-                std::cerr << "[WebAudio] pumpLoop pumpAudio exception: " << e.what() << std::endl;
-            } catch (...) {
-                std::cerr << "[WebAudio] pumpLoop pumpAudio unknown exception" << std::endl;
-            }
         }
     }
 
