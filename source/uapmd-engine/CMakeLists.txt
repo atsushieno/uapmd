@@ -26,6 +26,20 @@ CPMAddPackage(
         EXCLUDE_FROM_ALL
 )
 
+if(EMSCRIPTEN AND TARGET libremidi)
+    get_target_property(_uapmd_libremidi_interface_link_options libremidi INTERFACE_LINK_OPTIONS)
+    if(_uapmd_libremidi_interface_link_options)
+        set(_uapmd_libremidi_filtered_interface_link_options)
+        foreach(_uapmd_libremidi_link_option IN LISTS _uapmd_libremidi_interface_link_options)
+            if(NOT _uapmd_libremidi_link_option MATCHES "EXPORTED_(FUNCTIONS|RUNTIME_METHODS)")
+                list(APPEND _uapmd_libremidi_filtered_interface_link_options "${_uapmd_libremidi_link_option}")
+            endif()
+        endforeach()
+        set_target_properties(libremidi PROPERTIES
+                INTERFACE_LINK_OPTIONS "${_uapmd_libremidi_filtered_interface_link_options}")
+    endif()
+endif()
+
 if(WIN32)
     set(_uapmd_libremidi_error_helpers [[  static bool is_error_set(const stdx::error& err) noexcept
   {

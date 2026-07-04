@@ -8,26 +8,27 @@ if(UAPMD_TARGET_WASM)
         "Use vcpkg to provide SDL3 for WASM builds (OFF: Emscripten port via -s USE_SDL=3; ON: vcpkg SDL3::SDL3)"
         OFF)
     add_compile_definitions(EMSCRIPTEN DISABLE_VST3 DISABLE_AU DISABLE_LV2 DISABLE_CLAP)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
-        -s WASM=1 \
-        -s ALLOW_MEMORY_GROWTH=1 \
-        -s MAXIMUM_MEMORY=2GB \
-        -s USE_WEBGL2=1 \
-        -s FULL_ES3=1 \
-        -s MIN_WEBGL_VERSION=2 \
-        -s DISABLE_EXCEPTION_CATCHING=0 \
-        -s NO_EXIT_RUNTIME=1 \
-        -s ASSERTIONS=1 \
-        -s SHARED_MEMORY=1 \
-        -s WASM_WORKERS=1 \
-        -s AUDIO_WORKLET=1 \
-        -pthread \
-        -s PTHREAD_POOL_SIZE=8 \
-        -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8','allocateUTF8','FS'] \
-        -s EXPORTED_FUNCTIONS=['_main','_uapmd_mcp_call','_uapmd_eval','_uapmd_debug_import_audio','_uapmd_debug_load_project','_uapmd_debug_enable_audio_engine','_uapmd_debug_start_playback','_uapmd_debug_get_playback_position_samples','_uapmd_web_storage_ready','_uapmd_webclap_on_worklet_message','_uapmd_webclap_on_worklet_state_response','_uapmd_webclap_on_worklet_state_load_complete']")
+    set(UAPMD_WASM_LINK_OPTIONS
+        "-sWASM=1"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sMAXIMUM_MEMORY=2GB"
+        "-sUSE_WEBGL2=1"
+        "-sFULL_ES3=1"
+        "-sMIN_WEBGL_VERSION=2"
+        "-sDISABLE_EXCEPTION_CATCHING=0"
+        "-sNO_EXIT_RUNTIME=1"
+        "-sASSERTIONS=1"
+        "-sSHARED_MEMORY=1"
+        "-sWASM_WORKERS=1"
+        "-sAUDIO_WORKLET=1"
+        "-pthread"
+        "-sPTHREAD_POOL_SIZE=8"
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue','HEAPU8','UTF8ToString','stringToUTF8','lengthBytesUTF8','allocateUTF8','FS']"
+        "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_libremidi_devices_poll','_libremidi_devices_input','_uapmd_mcp_call','_uapmd_eval','_uapmd_debug_import_audio','_uapmd_debug_load_project','_uapmd_debug_enable_audio_engine','_uapmd_debug_start_playback','_uapmd_debug_get_playback_position_samples','_uapmd_web_storage_ready','_uapmd_webclap_on_worklet_message','_uapmd_webclap_on_worklet_state_response','_uapmd_webclap_on_worklet_state_load_complete','_uapmd_file_picked','_uapmd_file_pick_cancelled']"
+    )
     if(NOT UAPMD_WASM_USE_VCPKG_SDL3)
         # Emscripten port: the linker flag activates the bundled SDL3 port at link time.
-        string(APPEND CMAKE_EXE_LINKER_FLAGS " -s USE_SDL=3")
+        list(APPEND UAPMD_WASM_LINK_OPTIONS "-sUSE_SDL=3")
     endif()
 endif()
 
@@ -147,6 +148,7 @@ elseif(UAPMD_BUILDING_WASM)
     add_executable(uapmd-app ${UAPMD_APP_SOURCE_FILES})
     set(UAPMD_COMPILE_TARGET uapmd-app)
     add_dependencies(uapmd-app uapmd-app-web-assets)
+    target_link_options(uapmd-app PRIVATE ${UAPMD_WASM_LINK_OPTIONS})
     target_link_options(uapmd-app PRIVATE --bind -lidbfs.js)
     # Prepend the AudioWorklet environment shim so it runs before Emscripten's
     # runtime inside the AudioWorklet WASM Worker.  It backfills the missing
