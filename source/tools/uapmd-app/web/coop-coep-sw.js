@@ -25,6 +25,15 @@ function withIsolationHeaders(response) {
 }
 
 self.addEventListener('fetch', (event) => {
+    const requestUrl = new URL(event.request.url);
+
+    // Firefox can reject AudioWorklet module fetches when they are fulfilled
+    // through a service worker. The worklet script is same-origin, so it does
+    // not need COEP header injection here.
+    if (event.request.destination === 'audioworklet'
+            || requestUrl.pathname.endsWith('/uapmd-webclap-worklet.js'))
+        return;
+
     const url = event.request.url;
 
     // Force network fetch (bypass HTTP cache) for WASM and JS bundles so that a
