@@ -253,6 +253,9 @@ target_link_libraries(remidy PRIVATE
         ${AAP_LIBRARIES}
         ${lv2kit_LIBRARY}
 )
+if(TARGET uapmd::ara-api)
+    target_link_libraries(remidy PUBLIC uapmd::ara-api)
+endif()
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     target_compile_definitions(remidy PRIVATE

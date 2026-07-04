@@ -37,6 +37,9 @@ target_link_libraries(uapmd PUBLIC
         farbot::farbot
         midicci_static
 )
+if(TARGET uapmd::ara-api)
+    target_link_libraries(uapmd PRIVATE uapmd::ara-api)
+endif()
 
 target_sources(uapmd PRIVATE
         src/midi/UapmdFunctionBlock.cpp

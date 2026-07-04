@@ -16,6 +16,9 @@
 #include "remidy/detail/queued-state-operations.hpp"
 #include "HostClasses.hpp"
 #include "../GenericAudioBuses.hpp"
+#ifdef UAPMD_HAS_ARA
+#include <uapmd-ara/ara-plugin-instance-handles.hpp>
+#endif
 
 namespace remidy {
     // Type alias for CLAP plugin proxy with same settings as host
@@ -101,24 +104,30 @@ namespace remidy {
     class PluginInstanceCLAP : public PluginInstance {
         friend class RemidyCLAPHost;
 
-        class NativeHandleExtension final : public NativePluginInstanceHandleExtension {
+#ifdef UAPMD_HAS_ARA
+        class AraHandleExtension final
+            : public PluginExtensibility<PluginInstance>
+            , public uapmd::ara::AraPluginInstanceHandleExtension {
             PluginInstanceCLAP& owner;
 
         public:
-            explicit NativeHandleExtension(PluginInstanceCLAP& owner)
-                : NativePluginInstanceHandleExtension(owner), owner(owner) {
+            explicit AraHandleExtension(PluginInstanceCLAP& owner)
+                : PluginExtensibility(owner), owner(owner) {
             }
 
-            void* nativeHandle(NativePluginInstanceHandleKind kind) const override {
-                if (kind != NativePluginInstanceHandleKind::CLAPPlugin || !owner.plugin)
+            void* nativeHandle(uapmd::ara::AraPluginInstanceHandleKind kind) const override {
+                if (kind != uapmd::ara::AraPluginInstanceHandleKind::CLAPPlugin || !owner.plugin)
                     return nullptr;
                 return const_cast<clap_plugin*>(owner.plugin->clapPlugin());
             }
         };
+#endif
 
         PluginFormatCLAPImpl* owner;
         std::unique_ptr<CLAPPluginProxy> plugin;
-        NativeHandleExtension native_handle_extension{*this};
+#ifdef UAPMD_HAS_ARA
+        AraHandleExtension ara_handle_extension{*this};
+#endif
         clap_preset_discovery_factory* preset_discovery_factory;
         void* module;
         clap_process_t clap_process;
@@ -326,8 +335,12 @@ namespace remidy {
         ~PluginInstanceCLAP() override;
 
         PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
-            if (extensionId == kNativePluginInstanceHandleExtensionId)
-                return &native_handle_extension;
+#ifdef UAPMD_HAS_ARA
+            if (extensionId == uapmd::ara::kAraPluginInstanceHandleExtensionId)
+                return &ara_handle_extension;
+#else
+            (void) extensionId;
+#endif
             return nullptr;
         }
 

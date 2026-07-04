@@ -9,6 +9,9 @@
 #include "remidy/detail/queued-state-operations.hpp"
 #include "HostClasses.hpp"
 #include "../GenericAudioBuses.hpp"
+#ifdef UAPMD_HAS_ARA
+#include <uapmd-ara/ara-plugin-instance-handles.hpp>
+#endif
 
 using namespace remidy_vst3;
 
@@ -148,29 +151,33 @@ namespace remidy {
     };
 
     class PluginInstanceVST3 : public PluginInstance {
-        class NativeHandleExtension final : public NativePluginInstanceHandleExtension {
+#ifdef UAPMD_HAS_ARA
+        class AraHandleExtension final
+            : public PluginExtensibility<PluginInstance>
+            , public uapmd::ara::AraPluginInstanceHandleExtension {
             PluginInstanceVST3& owner;
 
         public:
-            explicit NativeHandleExtension(PluginInstanceVST3& owner)
-                : NativePluginInstanceHandleExtension(owner), owner(owner) {
+            explicit AraHandleExtension(PluginInstanceVST3& owner)
+                : PluginExtensibility(owner), owner(owner) {
             }
 
-            void* nativeHandle(NativePluginInstanceHandleKind kind) const override {
+            void* nativeHandle(uapmd::ara::AraPluginInstanceHandleKind kind) const override {
                 switch (kind) {
-                    case NativePluginInstanceHandleKind::VST3Factory:
+                    case uapmd::ara::AraPluginInstanceHandleKind::VST3Factory:
                         return owner.factory;
-                    case NativePluginInstanceHandleKind::VST3Component:
+                    case uapmd::ara::AraPluginInstanceHandleKind::VST3Component:
                         return owner.component;
-                    case NativePluginInstanceHandleKind::VST3AudioProcessor:
+                    case uapmd::ara::AraPluginInstanceHandleKind::VST3AudioProcessor:
                         return owner.processor;
-                    case NativePluginInstanceHandleKind::VST3Unknown:
+                    case uapmd::ara::AraPluginInstanceHandleKind::VST3Unknown:
                         return owner.instance;
                     default:
                         return nullptr;
                 }
             }
         };
+#endif
 
         class ParameterSupport : public PluginParameterSupport {
             PluginInstanceVST3* owner;
@@ -413,7 +420,9 @@ namespace remidy {
         IMidiMapping2* midi_mapping2{nullptr};
         bool isControllerDistinctFromComponent;
         FUnknown* instance;
-        NativeHandleExtension native_handle_extension{*this};
+#ifdef UAPMD_HAS_ARA
+        AraHandleExtension ara_handle_extension{*this};
+#endif
         // the connection point for IComponent, retrieved from the plugin.
         IConnectionPoint* connPointComp{nullptr};
         // the connection point for IEditController, retrieved from the plugin.
@@ -465,8 +474,12 @@ namespace remidy {
         ~PluginInstanceVST3() override;
 
         PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
-            if (extensionId == kNativePluginInstanceHandleExtensionId)
-                return &native_handle_extension;
+#ifdef UAPMD_HAS_ARA
+            if (extensionId == uapmd::ara::kAraPluginInstanceHandleExtensionId)
+                return &ara_handle_extension;
+#else
+            (void) extensionId;
+#endif
             return nullptr;
         }
 

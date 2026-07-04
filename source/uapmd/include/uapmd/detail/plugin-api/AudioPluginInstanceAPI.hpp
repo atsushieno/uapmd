@@ -43,18 +43,6 @@ namespace uapmd {
         virtual std::string_view extensionId() const = 0;
     };
 
-    inline constexpr std::string_view kNativePluginInstanceHandleExtensionId =
-        "dev.atsushieno.uapmd.plugin-instance.native-handles.v1";
-
-    class NativePluginInstanceHandleExtension : public AudioPluginInstanceExtension {
-    public:
-        std::string_view extensionId() const override {
-            return kNativePluginInstanceHandleExtensionId;
-        }
-
-        virtual void* nativeHandle(remidy::NativePluginInstanceHandleKind kind) const = 0;
-    };
-
     // usable only in LV2 and CLAP. VST3 and AU have no concept for them.
     enum class StateContextType {
         Remember, // LV2_STATE_IS_NATIVE

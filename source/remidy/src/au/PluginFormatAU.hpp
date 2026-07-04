@@ -11,6 +11,9 @@
 #include "remidy/remidy.hpp"
 #include "remidy/detail/queued-state-operations.hpp"
 #include "../GenericAudioBuses.hpp"
+#ifdef UAPMD_HAS_ARA
+#include <uapmd-ara/ara-plugin-instance-handles.hpp>
+#endif
 
 struct MIDIEventList;
 
@@ -44,25 +47,29 @@ namespace remidy {
     };
 
     class PluginInstanceAUv3 : public PluginInstance {
-        class NativeHandleExtension final : public NativePluginInstanceHandleExtension {
+#ifdef UAPMD_HAS_ARA
+        class AraHandleExtension final
+            : public PluginExtensibility<PluginInstance>
+            , public uapmd::ara::AraPluginInstanceHandleExtension {
             PluginInstanceAUv3& owner;
 
         public:
-            explicit NativeHandleExtension(PluginInstanceAUv3& owner)
-                : NativePluginInstanceHandleExtension(owner), owner(owner) {
+            explicit AraHandleExtension(PluginInstanceAUv3& owner)
+                : PluginExtensibility(owner), owner(owner) {
             }
 
-            void* nativeHandle(NativePluginInstanceHandleKind kind) const override {
+            void* nativeHandle(uapmd::ara::AraPluginInstanceHandleKind kind) const override {
                 switch (kind) {
-                    case NativePluginInstanceHandleKind::AudioUnitV3:
+                    case uapmd::ara::AraPluginInstanceHandleKind::AudioUnitV3:
                         return owner.audioUnit;
-                    case NativePluginInstanceHandleKind::AudioUnitV3BridgedV2:
+                    case uapmd::ara::AraPluginInstanceHandleKind::AudioUnitV3BridgedV2:
                         return owner.bridgedAudioUnit;
                     default:
                         return nullptr;
                 }
             }
         };
+#endif
 
         class MIDIEventConverter {
             // Pre-allocated storage for events to avoid malloc in audio thread
@@ -237,7 +244,9 @@ namespace remidy {
         size_t midi_output_count{0};
         MIDIEventList* midi_event_list{nullptr};
         size_t midi_event_list_capacity{0};
-        NativeHandleExtension native_handle_extension{*this};
+#ifdef UAPMD_HAS_ARA
+        AraHandleExtension ara_handle_extension{*this};
+#endif
 
     protected:
         PluginFormatAUImpl *format;
@@ -258,8 +267,12 @@ namespace remidy {
         Logger* logger() { return logger_; }
 
         PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
-            if (extensionId == kNativePluginInstanceHandleExtensionId)
-                return &native_handle_extension;
+#ifdef UAPMD_HAS_ARA
+            if (extensionId == uapmd::ara::kAraPluginInstanceHandleExtensionId)
+                return &ara_handle_extension;
+#else
+            (void) extensionId;
+#endif
             return nullptr;
         }
 
@@ -303,20 +316,24 @@ namespace remidy {
     // AUv2
 
     class PluginInstanceAUv2 : public PluginInstance {
-        class NativeHandleExtension final : public NativePluginInstanceHandleExtension {
+#ifdef UAPMD_HAS_ARA
+        class AraHandleExtension final
+            : public PluginExtensibility<PluginInstance>
+            , public uapmd::ara::AraPluginInstanceHandleExtension {
             PluginInstanceAUv2& owner;
 
         public:
-            explicit NativeHandleExtension(PluginInstanceAUv2& owner)
-                : NativePluginInstanceHandleExtension(owner), owner(owner) {
+            explicit AraHandleExtension(PluginInstanceAUv2& owner)
+                : PluginExtensibility(owner), owner(owner) {
             }
 
-            void* nativeHandle(NativePluginInstanceHandleKind kind) const override {
-                if (kind != NativePluginInstanceHandleKind::AudioUnitV2)
+            void* nativeHandle(uapmd::ara::AraPluginInstanceHandleKind kind) const override {
+                if (kind != uapmd::ara::AraPluginInstanceHandleKind::AudioUnitV2)
                     return nullptr;
                 return owner.instance;
             }
         };
+#endif
 
         class ParameterSupport : public PluginParameterSupport {
             remidy::PluginInstanceAUv2 *owner;
@@ -506,15 +523,21 @@ namespace remidy {
         AudioComponent component;
         AudioUnit instance;
         std::string name{};
-        NativeHandleExtension native_handle_extension{*this};
+#ifdef UAPMD_HAS_ARA
+        AraHandleExtension ara_handle_extension{*this};
+#endif
 
     public:
         PluginInstanceAUv2(PluginFormatAU* format, PluginFormat::PluginInstantiationOptions options, Logger* logger, PluginCatalogEntry* info, AudioComponent component, AudioUnit instance);
         ~PluginInstanceAUv2() override;
 
         PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
-            if (extensionId == kNativePluginInstanceHandleExtensionId)
-                return &native_handle_extension;
+#ifdef UAPMD_HAS_ARA
+            if (extensionId == uapmd::ara::kAraPluginInstanceHandleExtensionId)
+                return &ara_handle_extension;
+#else
+            (void) extensionId;
+#endif
             return nullptr;
         }
 

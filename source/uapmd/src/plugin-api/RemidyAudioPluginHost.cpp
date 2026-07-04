@@ -12,6 +12,9 @@
 #include "../../../remidy/src/webclap/PluginFormatWebCLAP.hpp"
 #endif
 #include "remidy-tooling/remidy-tooling.hpp"
+#ifdef UAPMD_HAS_ARA
+#include <uapmd-ara/ara-plugin-instance-handles.hpp>
+#endif
 
 namespace uapmd {
     int32_t instanceIdSerial{0};
@@ -30,24 +33,32 @@ namespace uapmd {
     }
 
     class RemidyAudioPluginInstance : public AudioPluginInstanceAPI {
-        class NativeHandleExtensionAdapter final : public NativePluginInstanceHandleExtension {
+#ifdef UAPMD_HAS_ARA
+        class AraHandleExtensionAdapter final
+            : public AudioPluginInstanceExtension
+            , public uapmd::ara::AraPluginInstanceHandleExtension {
             RemidyAudioPluginInstance& owner;
 
         public:
-            explicit NativeHandleExtensionAdapter(RemidyAudioPluginInstance& owner)
+            explicit AraHandleExtensionAdapter(RemidyAudioPluginInstance& owner)
                 : owner(owner) {
             }
 
-            void* nativeHandle(remidy::NativePluginInstanceHandleKind kind) const override {
+            std::string_view extensionId() const override {
+                return uapmd::ara::kAraPluginInstanceHandleExtensionId;
+            }
+
+            void* nativeHandle(uapmd::ara::AraPluginInstanceHandleKind kind) const override {
                 if (!owner.instance)
                     return nullptr;
-                auto* extension = dynamic_cast<remidy::NativePluginInstanceHandleExtension*>(
-                    owner.instance->getExtensibility(remidy::kNativePluginInstanceHandleExtensionId));
+                auto* extension = dynamic_cast<uapmd::ara::AraPluginInstanceHandleExtension*>(
+                    owner.instance->getExtensibility(uapmd::ara::kAraPluginInstanceHandleExtensionId));
                 if (!extension)
                     return nullptr;
                 return extension->nativeHandle(kind);
             }
         };
+#endif
 
         class AapUiHostDetailsExtensionAdapter final : public AapUiHostDetailsExtension {
             RemidyAudioPluginInstance& owner;
@@ -68,7 +79,9 @@ namespace uapmd {
         bool bypassed_{true};
         std::shared_ptr<remidy_tooling::PluginInstancing> instancing{};
         remidy::PluginInstance* instance{};
-        NativeHandleExtensionAdapter native_handle_extension{*this};
+#ifdef UAPMD_HAS_ARA
+        AraHandleExtensionAdapter ara_handle_extension{*this};
+#endif
         AapUiHostDetailsExtensionAdapter aap_ui_host_details_extension{*this};
         remidy::PluginUISupport* ui_support{nullptr};
         bool uiCreated{false};
@@ -413,8 +426,10 @@ namespace uapmd {
         AudioPluginInstanceExtension* extension(std::string_view extensionId) override {
             if (!instance)
                 return nullptr;
-            if (extensionId == kNativePluginInstanceHandleExtensionId)
-                return &native_handle_extension;
+#ifdef UAPMD_HAS_ARA
+            if (extensionId == uapmd::ara::kAraPluginInstanceHandleExtensionId)
+                return &ara_handle_extension;
+#endif
             if (extensionId == kAapUiHostDetailsExtensionId)
                 return &aap_ui_host_details_extension;
             auto* remidyExtension = instance->getExtensibility(extensionId);
