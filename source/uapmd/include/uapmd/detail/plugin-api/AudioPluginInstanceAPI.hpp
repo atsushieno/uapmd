@@ -69,6 +69,7 @@ namespace uapmd {
         virtual std::vector<ParameterMetadata> perNoteControllerMetadataList(remidy::PerNoteControllerContextTypes contextType, uint32_t context) = 0;
         virtual std::vector<PresetsMetadata> presetMetadataList() = 0;
         virtual void loadPreset(int32_t presetIndex) = 0;
+        virtual void loadPreset(int32_t presetIndex, std::function<void(std::string error, void* callbackContext)> completed) = 0;
 
 
         // OBSOLETE: use `requestState()` with appropriate callback instead.

@@ -1009,6 +1009,13 @@ void PluginInstanceWebCLAP::PresetsSupportWebCLAP::loadPreset(int32_t) {
         std::cerr << "[WebCLAP] preset loading is not implemented for worklet-owned instances\n";
 }
 
+void PluginInstanceWebCLAP::PresetsSupportWebCLAP::loadPreset(int32_t, std::function<void(std::string error, void* callbackContext)> completed) {
+    if (owner_ && owner_->hasPresetLoadSupport())
+        std::cerr << "[WebCLAP] preset loading is not implemented for worklet-owned instances\n";
+    if (completed)
+        completed("preset loading is not implemented for worklet-owned instances", nullptr);
+}
+
 StatusCode PluginInstanceWebCLAP::configure(ConfigurationRequest& cfg) {
     std::ostringstream args;
     args << "[" << slot_ << "," << cfg.sampleRate << "," << cfg.bufferSizeInSamples << "]";

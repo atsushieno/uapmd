@@ -104,3 +104,10 @@ void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index) {
     owner->handleRestartComponent(Vst::RestartFlags::kParamValuesChanged);
 }
 
+void remidy::PluginInstanceVST3::PresetsSupport::loadPreset(int32_t index, std::function<void(std::string error, void* callbackContext)> completed) {
+    EventLoop::enqueueTaskOnMainThread([this, index, completed = std::move(completed)]() mutable {
+        loadPreset(index);
+        if (completed)
+            completed("", nullptr);
+    });
+}

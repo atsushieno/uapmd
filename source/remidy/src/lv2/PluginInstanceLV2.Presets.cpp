@@ -105,3 +105,15 @@ void PluginInstanceLV2::PresetsSupport::loadPreset(int32_t index) {
     lilv_state_free(state);
     lilv_node_free(uri);
 }
+
+void PluginInstanceLV2::PresetsSupport::loadPreset(int32_t index, std::function<void(std::string error, void* callbackContext)> completed) {
+    if (index < 0 || index >= static_cast<int32_t>(items.size())) {
+        if (completed)
+            completed("invalid preset index", nullptr);
+        return;
+    }
+
+    loadPreset(index);
+    if (completed)
+        completed("", nullptr);
+}

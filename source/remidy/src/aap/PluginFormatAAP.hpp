@@ -162,19 +162,10 @@ namespace remidy {
                 return std::stol(id);
             }
 
-            int32_t getPresetCount() override {
-                return owner->aapInstance()->getStandardExtensions().getPresetCount();
-            }
-
-            PresetInfo getPresetInfo(int32_t index) override {
-                aap_preset_t preset;
-                owner->aapInstance()->getStandardExtensions().getPreset(index, preset);
-                return PresetInfo{std::to_string(preset.id), preset.name, 0, index};
-            }
-
-            void loadPreset(int32_t index) override {
-                owner->aapInstance()->getStandardExtensions().setCurrentPresetIndex(index);
-            }
+            int32_t getPresetCount() override;
+            PresetInfo getPresetInfo(int32_t index) override;
+            void loadPreset(int32_t index) override;
+            void loadPreset(int32_t index, std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
         class UISupport : public PluginUISupport {

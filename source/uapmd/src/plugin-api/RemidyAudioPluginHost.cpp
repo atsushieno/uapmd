@@ -247,6 +247,15 @@ namespace uapmd {
             instance->markDirty();
         }
 
+        void loadPreset(int32_t presetIndex, std::function<void(std::string error, void* callbackContext)> completed) override {
+            instance->presets()->loadPreset(presetIndex, [this, completed = std::move(completed)](std::string error, void* callbackContext) mutable {
+                if (error.empty())
+                    instance->markDirty();
+                if (completed)
+                    completed(std::move(error), callbackContext);
+            });
+        }
+
         std::vector<uint8_t> saveStateSync() override {
             return instance->states()->getState(remidy::PluginStateSupport::StateContextType::Project, false);
         }

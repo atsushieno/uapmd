@@ -56,3 +56,44 @@ void PluginInstanceCLAP::PresetsSupport::loadPreset(int32_t index) {
         }
     });
 }
+
+void PluginInstanceCLAP::PresetsSupport::loadPreset(int32_t index, std::function<void(std::string error, void* callbackContext)> completed) {
+    if (!owner->plugin || !owner->plugin->canUsePresetLoad()) {
+        if (completed)
+            completed("preset loading is not supported", nullptr);
+        return;
+    }
+    if (index < 0 || index >= static_cast<int32_t>(presets.size())) {
+        if (completed)
+            completed("invalid preset index", nullptr);
+        return;
+    }
+
+    EventLoop::enqueueTaskOnMainThread([this, index, completed = std::move(completed)]() mutable {
+        auto error = std::string{};
+        if (!owner->plugin->presetLoadFromLocation(CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, presets[index].load_key)) {
+            Logger::global()->logWarning("Failed to load preset: %s", presets[index].name.c_str());
+            error = "failed to load preset";
+        }
+
+        auto params = dynamic_cast<PluginInstanceCLAP::ParameterSupport*>(owner->parameters());
+        if (params) {
+            params->refreshAllParameterMetadata();
+            auto& paramList = params->parameters();
+            for (size_t i = 0; i < paramList.size(); i++) {
+                double value;
+                if (params->getParameter(static_cast<uint32_t>(i), &value) == StatusCode::OK) {
+                    auto paramId = params->getParameterId(static_cast<uint32_t>(i));
+                    params->notifyParameterValue(paramId, value);
+                } else {
+                    Logger::global()->logWarning("CLAP: Failed to get parameter %zu after preset load", i);
+                }
+            }
+        } else {
+            Logger::global()->logWarning("CLAP: ParameterSupport not available for preset refresh");
+        }
+
+        if (completed)
+            completed(std::move(error), nullptr);
+    });
+}

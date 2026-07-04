@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 
 namespace remidy {
@@ -27,8 +28,12 @@ namespace remidy {
         virtual bool isIndexId() = 0;
         virtual int32_t getPresetIndexForId(std::string& id) = 0;
         virtual int32_t getPresetCount() = 0;
+        // should we async-ify this too? Yes - in theory, in practice who cares...
         virtual PresetInfo getPresetInfo(int32_t index) = 0;
         // Loads the preset at `index`, which most likely resets the state.
+        // OBSOLETE: use async version instead.
         virtual void loadPreset(int32_t index) = 0;
+        // Loads the preset at `index`, which most likely resets the state.
+        virtual void loadPreset(int32_t index, std::function<void(std::string error, void* callbackContext)> completed) = 0;
     };
 }

@@ -143,6 +143,7 @@ namespace remidy {
             int32_t getPresetCount() override;
             PresetInfo getPresetInfo(int32_t) override;
             void loadPreset(int32_t) override;
+            void loadPreset(int32_t, std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
         class UISupportWebCLAP : public PluginUISupport {

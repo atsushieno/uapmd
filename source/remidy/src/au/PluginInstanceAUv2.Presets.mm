@@ -72,4 +72,42 @@ void PluginInstanceAUv2::PresetsSupport::loadPreset(int32_t index) {
         impl();
 }
 
+void PluginInstanceAUv2::PresetsSupport::loadPreset(int32_t index, std::function<void(std::string error, void* callbackContext)> completed) {
+    if (index < 0 || index >= static_cast<int32_t>(items.size())) {
+        if (completed)
+            completed("invalid preset index", nullptr);
+        return;
+    }
+
+    auto impl = [this, index, completed = std::move(completed)]() mutable {
+        auto& preset = items[(size_t) index];
+        AUPreset auPreset{};
+        auPreset.presetNumber = preset.index();
+        auPreset.presetName = CFStringCreateWithCString(nullptr, preset.name().c_str(), kCFStringEncodingUTF8);
+
+        auto status = AudioUnitSetProperty(owner->instance, kAudioUnitProperty_PresentPreset,
+                                           kAudioUnitScope_Global, 0, &auPreset, sizeof(auPreset));
+        auto error = std::string{};
+        if (status != noErr) {
+            owner->logger()->logWarning("%s: failed to load AU preset %s (%d). Status: %d",
+                                        owner->name.c_str(), preset.name().c_str(), preset.index(), status);
+            error = "failed to load preset";
+        }
+
+        if (auPreset.presetName)
+            CFRelease(auPreset.presetName);
+
+        auto params = dynamic_cast<PluginInstanceAUv2::ParameterSupport*>(owner->parameters());
+        if (params)
+            params->refreshAllParameterMetadata();
+
+        if (completed)
+            completed(std::move(error), nullptr);
+    };
+    if (owner->requiresUIThreadOn() & PluginUIThreadRequirement::State)
+        EventLoop::enqueueTaskOnMainThread(std::move(impl));
+    else
+        impl();
+}
+
 #endif

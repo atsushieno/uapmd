@@ -263,6 +263,7 @@ namespace remidy {
             int32_t getPresetCount() override;
             PresetInfo getPresetInfo(int32_t index) override;
             void loadPreset(int32_t index) override;
+            void loadPreset(int32_t index, std::function<void(std::string error, void* callbackContext)> completed) override;
         };
 
         class UISupport : public PluginUISupport {

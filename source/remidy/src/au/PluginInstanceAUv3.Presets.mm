@@ -79,4 +79,41 @@ void remidy::PluginInstanceAUv3::PresetsSupport::loadPreset(int32_t index) {
     }
 }
 
+void remidy::PluginInstanceAUv3::PresetsSupport::loadPreset(int32_t index, std::function<void(std::string error, void* callbackContext)> completed) {
+    @autoreleasepool {
+        if (owner->audioUnit == nil) {
+            owner->logger()->logError("%s: loadPreset - audioUnit is nil", owner->name.c_str());
+            if (completed)
+                completed("audioUnit is nil", nullptr);
+            return;
+        }
+
+        if (index < 0 || index >= static_cast<int32_t>(items.size())) {
+            owner->logger()->logError("%s: loadPreset - invalid index %d", owner->name.c_str(), index);
+            if (completed)
+                completed("invalid preset index", nullptr);
+            return;
+        }
+
+        NSArray<AUAudioUnitPreset*>* factoryPresets = [owner->audioUnit factoryPresets];
+        if (factoryPresets == nil || index >= [factoryPresets count]) {
+            owner->logger()->logError("%s: loadPreset - no factory presets", owner->name.c_str());
+            if (completed)
+                completed("no factory presets", nullptr);
+            return;
+        }
+
+        AUAudioUnitPreset* preset = factoryPresets[index];
+        [owner->audioUnit setCurrentPreset:preset];
+
+        owner->logger()->logInfo("%s: Loaded preset %d: %s",
+                                owner->name.c_str(),
+                                index,
+                                [[preset name] UTF8String]);
+
+        if (completed)
+            completed("", nullptr);
+    }
+}
+
 #endif
