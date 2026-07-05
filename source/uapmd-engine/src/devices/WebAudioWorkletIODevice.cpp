@@ -136,7 +136,6 @@ namespace uapmd {
 
     WebAudioWorkletIODevice::~WebAudioWorkletIODevice() {
         stop();
-        if (worklet_node_)  emscripten_destroy_web_audio_node(worklet_node_);
         if (audio_ctx_)     emscripten_destroy_audio_context(audio_ctx_);
     }
 
@@ -695,6 +694,7 @@ namespace uapmd {
            int hostSeqOffset,
            int engineSeqOffset,
            int trackCountOffset,
+           int engineActiveOffset,
            int masterOutOffset,
            int trackOutOffset),
     {
@@ -717,6 +717,7 @@ namespace uapmd {
                         hostSeq: hostSeqOffset,
                         engineSeq: engineSeqOffset,
                         trackCount: trackCountOffset,
+                        engineActive: engineActiveOffset,
                         masterOut: masterOutOffset,
                         trackOut: trackOutOffset,
                     }
@@ -855,31 +856,38 @@ namespace uapmd {
         if (is_playing_)
             return 0;
         is_playing_ = true;
+        sab_.engine_active.store(1, std::memory_order_release);
 
         if (engine_thread_) {
             engine_thread_->start();
             engine_thread_ready_.store(engine_thread_.get(), std::memory_order_release);
         }
 
-        EmscriptenWebAudioCreateAttributes attrs{
-            .latencyHint = "interactive",
-            .sampleRate  = sample_rate_,
-        };
-        audio_ctx_ = emscripten_create_audio_context(&attrs);
+        if (!audio_ctx_) {
+            EmscriptenWebAudioCreateAttributes attrs{
+                .latencyHint = "interactive",
+                .sampleRate  = sample_rate_,
+            };
+            audio_ctx_ = emscripten_create_audio_context(&attrs);
+        }
         emscripten_resume_audio_context_sync(audio_ctx_);
 
         uapmd_ensure_webclap_bridge();
-        // Load uapmd-webclap-worklet.js and create the AudioWorkletNode.
-        // The processor receives the WASM heap buffer + SAB byte offset via
-        // processorOptions and handles audio I/O and WebCLAP plugin processing.
-        uapmd_load_webclap_worklet(audio_ctx_,
-                                   static_cast<int>(reinterpret_cast<uintptr_t>(&sab_)),
-                                   static_cast<int>(buffer_size_),
-                                   static_cast<int>(offsetof(WebAudioSAB, host_seq)),
-                                   static_cast<int>(offsetof(WebAudioSAB, engine_seq)),
-                                   static_cast<int>(offsetof(WebAudioSAB, track_count)),
-                                   static_cast<int>(offsetof(WebAudioSAB, master_output)),
-                                   static_cast<int>(offsetof(WebAudioSAB, track_output)));
+        if (!worklet_loaded_) {
+            worklet_loaded_ = true;
+            // Load uapmd-webclap-worklet.js and create the AudioWorkletNode.
+            // The processor receives the WASM heap buffer + SAB byte offset via
+            // processorOptions and handles audio I/O and WebCLAP plugin processing.
+            uapmd_load_webclap_worklet(audio_ctx_,
+                                       static_cast<int>(reinterpret_cast<uintptr_t>(&sab_)),
+                                       static_cast<int>(buffer_size_),
+                                       static_cast<int>(offsetof(WebAudioSAB, host_seq)),
+                                       static_cast<int>(offsetof(WebAudioSAB, engine_seq)),
+                                       static_cast<int>(offsetof(WebAudioSAB, track_count)),
+                                       static_cast<int>(offsetof(WebAudioSAB, engine_active)),
+                                       static_cast<int>(offsetof(WebAudioSAB, master_output)),
+                                       static_cast<int>(offsetof(WebAudioSAB, track_output)));
+        }
         return 0;
     }
 
@@ -887,6 +895,7 @@ namespace uapmd {
         if (!is_playing_)
             return 0;
         is_playing_ = false;
+        sab_.engine_active.store(0, std::memory_order_release);
         engine_thread_ready_.store(nullptr, std::memory_order_release);
         if (engine_thread_)
             engine_thread_->stop();

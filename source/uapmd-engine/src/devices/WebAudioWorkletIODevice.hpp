@@ -44,7 +44,8 @@ namespace uapmd {
         std::atomic<uint32_t> host_seq{0};    //  bytes  0-3  — AudioWorklet → engine
         std::atomic<uint32_t> engine_seq{0};  //  bytes  4-7  — engine → AudioWorklet
         std::atomic<uint32_t> track_count{0}; //  bytes  8-11 — engine → AudioWorklet track stem count
-        // byte  8:  audio_input  [kWebAudioChannels * kWebAudioQuantum]  = 1024 bytes
+        std::atomic<uint32_t> engine_active{0}; // AudioWorklet may wait on engine thread only when non-zero.
+        // byte 16: audio_input [kWebAudioChannels * kWebAudioQuantum] = 1024 bytes
         float audio_input [kWebAudioChannels * kWebAudioQuantum]{};
         // engine → device (post-native mix, pre-master-WebCLAP)
         float master_output[kWebAudioBufferSize]{};
@@ -118,10 +119,6 @@ namespace uapmd {
         bool useAutoBufferSize() override { return false; }
         bool useAutoBufferSize(bool) override { return false; }
 
-        // Called by the worklet startup chain (file-static callbacks in the .cpp)
-        // once the AudioWorkletNode is created and connected.
-        void onWorkletNodeCreated(EMSCRIPTEN_AUDIO_WORKLET_NODE_T node) { worklet_node_ = node; }
-
     private:
         uint32_t sample_rate_;
         uint32_t buffer_size_;
@@ -139,7 +136,7 @@ namespace uapmd {
         std::atomic<WebAudioEngineThread*>    engine_thread_ready_{nullptr};
 
         EMSCRIPTEN_WEBAUDIO_T           audio_ctx_{0};
-        EMSCRIPTEN_AUDIO_WORKLET_NODE_T worklet_node_{0};
+        bool                            worklet_loaded_{false};
 
     };
 

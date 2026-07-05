@@ -34,6 +34,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         this._hostSeqIdx    = (sabByteOffset + offsets.hostSeq) >> 2;
         this._engineSeqIdx  = (sabByteOffset + offsets.engineSeq) >> 2;
         this._trackCountIdx = (sabByteOffset + offsets.trackCount) >> 2;
+        this._engineActiveIdx = (sabByteOffset + offsets.engineActive) >> 2;
         this._masterOutIdx  = (sabByteOffset + offsets.masterOut) >> 2;
         this._trackOutIdx   = (sabByteOffset + offsets.trackOut) >> 2;
         this._engineQuantum  = engineQuantum;
@@ -600,6 +601,15 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
     process(_inputs, outputs) {
         const i32 = this._i32;
         const f32 = this._f32;
+        const out = outputs[0];
+
+        if (Atomics.load(i32, this._engineActiveIdx) === 0) {
+            this._accumCount = 0;
+            if (out)
+                for (let ch = 0; ch < out.length; ch++)
+                    out[ch].fill(0);
+            return true;
+        }
 
         if (this._accumCount === 0) {
             // ① Signal the engine pthread to render native/dry track stems.
@@ -626,7 +636,6 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         }
 
         // Copy master_output slice _accumCount → outputs[0].
-        const out = outputs[0];
         if (out) {
             const chCount = Math.min(out.length, kChannels);
             for (let ch = 0; ch < chCount; ch++) {
