@@ -14,7 +14,7 @@ add_subdirectory(uapmd-app-model)
 add_subdirectory(uapmd-app)
 if(EMSCRIPTEN)
     add_subdirectory(wclap-host)
-    add_dependencies(uapmd-app uapmd-wclap-host)
+    add_dependencies(uapmd-app uapmd-wclap-web-assets)
 endif()
 
 # Install targets

@@ -48,6 +48,44 @@ static constexpr KnownBundle kKnownBundles[] = {
         "https://webclap.github.io/browser-test-host/examples/signalsmith-clap-cpp/"
             "example-plugins.wclap.tar.gz",
     },
+    // Individual bundles from the Plinken WCLAP shelf. The shelf.json catalog
+    // format is a Plinken draft, not an upstream WebCLAP standard.
+    {
+        "https://plinken.org/wclap/com.plinken.auto-pan.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.chorus.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.compressor.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.delay.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.eq.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.organ.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.piano.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.reverb.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.saturator.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.spectrum.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.synome.wclap.tar.gz",
+    },
+    {
+        "https://plinken.org/wclap/com.plinken.vocal-limiter.wclap.tar.gz",
+    },
 };
 
 struct WebClapUiMessage {

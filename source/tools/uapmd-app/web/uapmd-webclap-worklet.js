@@ -204,10 +204,15 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
 
         const wasmBuffer = tarFiles['module.wasm'];
         const wasmModule = await WebAssembly.compile(wasmBuffer);
+        const importsMemory = WebAssembly.Module.imports(wasmModule).some(entry => entry.kind === 'memory');
         const modulePages = Math.max(Math.ceil(wasmBuffer.byteLength / 65536) || 4, 4);
         const memorySpec = { initial: modulePages, maximum: 32768, shared: true };
 
-        const wclapInit = await getWclap({ url, files: tarFiles, module: wasmModule, memorySpec });
+        const options = { url, files: tarFiles, module: wasmModule, memorySpec };
+        if (importsMemory)
+            options.memory = new WebAssembly.Memory(memorySpec);
+
+        const wclapInit = await getWclap(options);
         wclapInit.pluginPath = pluginId ? `${url}#plugin=${pluginId}` : url;
 
         const fixedFiles = {};

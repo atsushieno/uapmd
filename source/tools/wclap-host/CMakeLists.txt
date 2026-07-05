@@ -160,3 +160,22 @@ add_custom_command(TARGET uapmd-wclap-host POST_BUILD
             "${_WCLAP_WEB_DST}/es6/wclap.mjs"
     COMMENT "Deploying uapmd-wclap-host.wasm, wclap.mjs, and es6/ to web build directory"
 )
+
+add_custom_target(uapmd-wclap-web-assets ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_BINARY_DIR}/uapmd-wclap-host.wasm"
+            "${_WCLAP_WEB_DST}/uapmd-wclap-host.wasm"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_UAPMD_WCLAP_JS_SOURCE_DIR}/wclap.mjs"
+            "${_WCLAP_WEB_DST}/wclap.mjs"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${_UAPMD_WCLAP_JS_SOURCE_DIR}/es6"
+            "${_WCLAP_WEB_DST}/es6"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/web-overrides/es6/wclap.mjs"
+            "${_WCLAP_WEB_DST}/es6/wclap.mjs"
+    DEPENDS
+            uapmd-wclap-host
+            "${CMAKE_CURRENT_SOURCE_DIR}/web-overrides/es6/wclap.mjs"
+    COMMENT "Deploying WebCLAP web assets"
+)

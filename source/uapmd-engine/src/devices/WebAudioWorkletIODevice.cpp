@@ -233,6 +233,74 @@ namespace uapmd {
                                     return key;
                             return null;
                         },
+                        normalizePath(path) {
+                            const out = [];
+                            String(path || "").split('/').forEach(function(part) {
+                                if (!part || part === '.')
+                                    return;
+                                if (part === '..')
+                                    out.pop();
+                                else
+                                    out.push(part);
+                            });
+                            return out.join('/');
+                        },
+                        relativePath(fromPath, toPath) {
+                            const from = this.normalizePath(fromPath).split('/');
+                            from.pop();
+                            const to = this.normalizePath(toPath).split('/');
+                            while (from.length && to.length && from[0] === to[0]) {
+                                from.shift();
+                                to.shift();
+                            }
+                            const parts = [];
+                            for (let i = 0; i < from.length; ++i)
+                                parts.push('..');
+                            parts.push(...to);
+                            const rel = parts.join('/');
+                            return rel.startsWith('.') ? rel : './' + rel;
+                        },
+                        rewriteAssetUrls(path, content, blobUrls) {
+                            if (!path.endsWith(".html") && !path.endsWith(".js") &&
+                                !path.endsWith(".mjs") && !path.endsWith(".css"))
+                                return content;
+                            let text = new TextDecoder('utf-8').decode(content);
+                            const sourcePath = path.replace(new RegExp("^/+"), "");
+                            for (const [assetPath, blobUrl] of Object.entries(blobUrls)) {
+                                const normalized = assetPath.replace(new RegExp("^/+"), "");
+                                const variants = [
+                                    normalized,
+                                    '/' + normalized,
+                                    this.relativePath(sourcePath, normalized),
+                                ];
+                                for (const variant of variants)
+                                    text = text.split(variant).join(blobUrl);
+                            }
+                            return text;
+                        },
+                        makeTextDataUrl(path, text) {
+                            return 'data:' + this.mimeFor(path) + ';charset=utf-8,' + encodeURIComponent(text);
+                        },
+                        createAssetUrls(files) {
+                            const blobUrls = {};
+                            const urls = {};
+                            for (const [path, content] of Object.entries(files)) {
+                                const blob = new Blob([content], { type: this.mimeFor(path) });
+                                const url = URL.createObjectURL(blob);
+                                blobUrls[path] = url;
+                                urls[path] = url;
+                            }
+                            for (let pass = 0; pass < 4; ++pass) {
+                                for (const [path, content] of Object.entries(files)) {
+                                    if (!path.endsWith(".html") && !path.endsWith(".js") &&
+                                        !path.endsWith(".mjs") && !path.endsWith(".css"))
+                                        continue;
+                                    const rewritten = this.rewriteAssetUrls(path, content, urls);
+                                    urls[path] = this.makeTextDataUrl(path, rewritten);
+                                }
+                            }
+                            return { blobUrls, urls };
+                        },
                         open(slot, uri, files) {
                             const binding = this.bindings.get(slot);
                             const body = this.getBody(slot);
@@ -260,24 +328,14 @@ namespace uapmd {
                                 const fileKey = this.findFileKey(files, uri);
                                 if (fileKey) {
                                     const root = files[fileKey];
-                                    const blobUrls = {};
-                                    for (const [path, content] of Object.entries(files)) {
-                                        const blob = new Blob([content], { type: this.mimeFor(path) });
-                                        blobUrls[path] = URL.createObjectURL(blob);
-                                    }
+                                    const assets = this.createAssetUrls(files);
                                     if (fileKey.endsWith('.html')) {
-                                        let html = new TextDecoder('utf-8').decode(root);
-                                        for (const [path, blobUrl] of Object.entries(blobUrls)) {
-                                            const basename = path.split('/').pop();
-                                            html = html.split(path).join(blobUrl);
-                                            if (basename)
-                                                html = html.split(basename).join(blobUrl);
-                                        }
+                                        const html = this.rewriteAssetUrls(fileKey, root, assets.urls);
                                         iframe.srcdoc = html;
                                     } else {
-                                        iframe.src = blobUrls[fileKey];
+                                        iframe.src = assets.urls[fileKey];
                                     }
-                                    binding.blobUrls = blobUrls;
+                                    binding.blobUrls = assets.blobUrls;
                                 } else {
                                     iframe.src = uri;
                                 }
@@ -454,9 +512,15 @@ namespace uapmd {
                     if (!wasmBuffer)
                         throw new Error('No module.wasm found in WebCLAP bundle');
                     return WebAssembly.compile(wasmBuffer).then(function(wasmModule) {
+                        var importsMemory = WebAssembly.Module.imports(wasmModule).some(function(entry) {
+                            return entry.kind === 'memory';
+                        });
                         var modulePages = Math.max(Math.ceil(wasmBuffer.byteLength / 65536) || 4, 4);
                         var memorySpec = { initial: modulePages, maximum: 32768, shared: true };
-                        return api.getWclap({ url: url, files: tarFiles, module: wasmModule, memorySpec });
+                        var options = { url: url, files: tarFiles, module: wasmModule, memorySpec };
+                        if (importsMemory)
+                            options.memory = new WebAssembly.Memory(memorySpec);
+                        return api.getWclap(options);
                     }).then(function(wclapInit) {
                         var fixedFiles = {};
                         Object.entries(wclapInit.files).forEach(function(entry) {
@@ -467,8 +531,6 @@ namespace uapmd {
                             fixedFiles[key.startsWith('/') ? key : '/' + key] = val;
                         });
                         wclapInit.files = fixedFiles;
-                        if (!wclapInit.memory && wclapInit.memorySpec)
-                            wclapInit.memory = new WebAssembly.Memory(wclapInit.memorySpec);
                         wclapInit.pluginPath = pluginPath;
                         return wclapInit;
                     });
