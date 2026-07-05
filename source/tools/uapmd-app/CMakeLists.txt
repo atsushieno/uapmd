@@ -156,6 +156,8 @@ elseif(UAPMD_BUILDING_WASM)
     # to prevent ReferenceErrors on the audio thread.
     target_link_options(uapmd-app PRIVATE
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/web/audioworklet-env-fix.js")
+    set_property(TARGET uapmd-app APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/web/audioworklet-env-fix.js")
 else()
     # Compile all sources once into a shared OBJECT library.
     # Both uapmd-app and uapmd-app-bundle link against it, avoiding duplicate
