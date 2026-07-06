@@ -16,7 +16,6 @@ VERSION_TAG="${5:-}"
 
 ROOT_INDEX="${SOURCE_DIR}/index.html"
 ROOT_STYLES="${SOURCE_DIR}/styles.css"
-PLAYGROUND_INDEX="${SOURCE_DIR}/playground/index.html"
 
 if [[ ! -f "${ROOT_INDEX}" || ! -f "${ROOT_STYLES}" ]]; then
     echo "error: missing site source files under ${SOURCE_DIR}" >&2
@@ -79,6 +78,78 @@ copy_tree() {
     rm -rf "${dst_dir}"
     mkdir -p "${dst_dir}"
     cp -R "${src_dir}/." "${dst_dir}/"
+}
+
+render_playground_index_page() {
+    local playground_dir="$1"
+    shift
+    local versions=("$@")
+    local versions_markup=""
+    local version
+
+    if [[ ${#versions[@]} -gt 0 ]]; then
+        for version in "${versions[@]}"; do
+            versions_markup="${versions_markup}            <li><a href=\"./${version}/\">${version}</a></li>
+"
+        done
+    else
+        versions_markup='            <li>No versioned browser builds have been published yet.</li>
+'
+    fi
+
+    cat > "${playground_dir}/index.html" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>uapmd playground</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+    <nav class="nav">
+        <a class="brand" href="../">uapmd web</a>
+        <div class="nav-links">
+            <a class="nav-link" href="./">Playground</a>
+            <a class="nav-link" href="../api/">API references</a>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <p class="eyebrow">Playground</p>
+        <h1>Browser builds of uapmd-app</h1>
+        <p class="lede">
+            The latest browser build is always refreshed on a manual Pages run.
+            Versioned build snapshots are retained on this site and can be
+            republished individually.
+        </p>
+        <div class="actions">
+            <a class="button button-primary" href="./latest/">Open latest build</a>
+            <a class="button button-secondary" href="https://github.com/atsushieno/uapmd/actions">Build artifacts</a>
+        </div>
+    </section>
+
+    <div class="grid two">
+        <section class="card">
+            <p class="eyebrow">Current</p>
+            <h2><a href="./latest/">latest</a></h2>
+            <p>
+                Stable entry point for the current playable browser-hosted uapmd-app build.
+            </p>
+        </section>
+
+        <section class="card">
+            <p class="eyebrow">Published versions</p>
+            <h2>Build snapshots</h2>
+            <ul class="list">
+${versions_markup}            </ul>
+        </section>
+    </div>
+</div>
+</body>
+</html>
+EOF
 }
 
 render_api_index_page() {
@@ -153,7 +224,6 @@ EOF
 
 copy_static_file "${ROOT_INDEX}" "${TARGET_DIR}/index.html"
 copy_static_file "${ROOT_STYLES}" "${TARGET_DIR}/styles.css"
-copy_static_file "${PLAYGROUND_INDEX}" "${TARGET_DIR}/playground/index.html"
 mkdir -p "${TARGET_DIR}/api"
 
 copy_tree "${PLAYGROUND_ARTIFACT_ROOT}" "${TARGET_DIR}/playground/latest"
@@ -166,6 +236,26 @@ if [[ -n "${VERSION_TAG}" ]]; then
     copy_tree "${PLAYGROUND_ARTIFACT_ROOT}" "${TARGET_DIR}/playground/${NORMALIZED_VERSION_TAG}"
 
     copy_tree "${API_ARTIFACT_ROOT}" "${TARGET_DIR}/api/${NORMALIZED_VERSION_TAG}"
+fi
+
+PLAYGROUND_VERSIONS=()
+for playground_subdir in "${TARGET_DIR}/playground"/*; do
+    if [[ ! -d "${playground_subdir}" ]]; then
+        continue
+    fi
+    playground_name="$(basename "${playground_subdir}")"
+    if [[ "${playground_name}" == "latest" ]]; then
+        continue
+    fi
+    PLAYGROUND_VERSIONS+=("${playground_name}")
+done
+
+if [[ ${#PLAYGROUND_VERSIONS[@]} -gt 0 ]]; then
+    SORTED_PLAYGROUND_VERSIONS=()
+    while IFS= read -r version; do
+        SORTED_PLAYGROUND_VERSIONS+=("${version}")
+    done < <(printf '%s\n' "${PLAYGROUND_VERSIONS[@]}" | sort)
+    PLAYGROUND_VERSIONS=("${SORTED_PLAYGROUND_VERSIONS[@]}")
 fi
 
 API_VERSIONS=()
@@ -188,6 +278,7 @@ if [[ ${#API_VERSIONS[@]} -gt 0 ]]; then
     API_VERSIONS=("${SORTED_API_VERSIONS[@]}")
 fi
 
+render_playground_index_page "${TARGET_DIR}/playground" "${PLAYGROUND_VERSIONS[@]}"
 render_api_index_page "${TARGET_DIR}/api" "${API_VERSIONS[@]}"
 
 touch "${TARGET_DIR}/.nojekyll"
