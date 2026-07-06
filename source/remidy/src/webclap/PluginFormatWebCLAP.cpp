@@ -19,6 +19,7 @@ extern "C" void uapmd_webclap_set_ui_size_rpc(uint32_t slot, uint32_t width, uin
 extern "C" void uapmd_webclap_load_plugin_async(const char* json);
 extern "C" void uapmd_webclap_request_state_rpc(uint32_t reqId, uint32_t slot, uint32_t stateContextType);
 extern "C" void uapmd_webclap_load_state_rpc(uint32_t reqId, uint32_t slot, uint32_t stateContextType, const uint8_t* data, size_t size);
+extern "C" bool uapmd_webclap_enqueue_shared_ump(uint32_t slot, const uint32_t* words, size_t wordCount);
 
 EM_JS(void, uapmd_webclap_bind_ui_slot, (uint32_t slot, const char* container_id), {
     Module._uapmdEnsureWebclapBridge().bindUiSlot(slot, UTF8ToString(container_id));
@@ -272,6 +273,83 @@ static void postWclapRpc(const char* method, const std::string& argsJson) {
     uapmd_post_to_webclap_worklet_rpc(method, argsJson.c_str());
 }
 
+static bool appendWclapUmpEventJson(std::ostringstream& payload, bool& hasEvents, const uint32_t* words, uint8_t wordCount) {
+    if (!words || wordCount == 0)
+        return false;
+
+    if (hasEvents)
+        payload << ",";
+    hasEvents = true;
+    payload << "{\"wordCount\":" << static_cast<int>(wordCount) << ",\"words\":[";
+    for (uint8_t i = 0; i < wordCount; ++i) {
+        if (i != 0)
+            payload << ",";
+        payload << words[i];
+    }
+    payload << "]}";
+    return true;
+}
+
+static bool convertWclapMidi1ToMidi2(uint32_t word, uint32_t (&midi2Words)[2]) {
+    umppi::Ump ump(word);
+    const auto group = ump.getGroup();
+    const auto channel = ump.getChannelInGroup();
+    const auto status = static_cast<uint8_t>(ump.getStatusCode());
+    uint64_t midi2 = 0;
+
+    switch (status) {
+        case umppi::MidiChannelStatus::NOTE_OFF:
+            midi2 = umppi::UmpFactory::midi2NoteOff(
+                group, channel, ump.getMidi1Note(), 0,
+                static_cast<uint16_t>(ump.getMidi1Velocity()) << 9, 0);
+            break;
+        case umppi::MidiChannelStatus::NOTE_ON:
+            if (ump.getMidi1Velocity() == 0)
+                midi2 = umppi::UmpFactory::midi2NoteOff(group, channel, ump.getMidi1Note(), 0, 0, 0);
+            else
+                midi2 = umppi::UmpFactory::midi2NoteOn(
+                    group, channel, ump.getMidi1Note(), 0,
+                    static_cast<uint16_t>(ump.getMidi1Velocity()) << 9, 0);
+            break;
+        case umppi::MidiChannelStatus::PAF:
+            midi2 = umppi::UmpFactory::midi2PAf(
+                group, channel, ump.getMidi1Note(),
+                static_cast<uint32_t>(ump.getMidi1CCData()) << 25);
+            break;
+        case umppi::MidiChannelStatus::CC:
+            midi2 = umppi::UmpFactory::midi2CC(
+                group, channel, ump.getMidi1CCIndex(),
+                static_cast<uint32_t>(ump.getMidi1CCData()) << 25);
+            break;
+        case umppi::MidiChannelStatus::PROGRAM:
+            midi2 = umppi::UmpFactory::midi2Program(group, channel, 0, ump.getMidi1Program(), 0, 0);
+            break;
+        case umppi::MidiChannelStatus::CAF:
+            midi2 = umppi::UmpFactory::midi2CAf(
+                group, channel,
+                static_cast<uint32_t>(ump.getMidi1CCIndex()) << 25);
+            break;
+        case umppi::MidiChannelStatus::PITCH_BEND:
+            midi2 = umppi::UmpFactory::midi2PitchBendDirect(
+                group, channel,
+                static_cast<uint32_t>(ump.getMidi1PitchBendData()) << 18);
+            break;
+        default:
+            return false;
+    }
+
+    midi2Words[0] = static_cast<uint32_t>(midi2 >> 32);
+    midi2Words[1] = static_cast<uint32_t>(midi2 & 0xFFFFFFFFu);
+    return true;
+}
+
+static bool appendWclapMidi1AsMidi2EventJson(std::ostringstream& payload, bool& hasEvents, uint32_t word) {
+    uint32_t midi2Words[2]{};
+    if (!convertWclapMidi1ToMidi2(word, midi2Words))
+        return false;
+    return appendWclapUmpEventJson(payload, hasEvents, midi2Words, 2);
+}
+
 static std::string buildWclapBatchUmpArgsJson(const void* messages, size_t bytesAvailable) {
     auto* bytes = static_cast<const uint8_t*>(messages);
     const size_t bytes_available = bytesAvailable;
@@ -291,16 +369,11 @@ static std::string buildWclapBatchUmpArgsJson(const void* messages, size_t bytes
         if (message_size == 0 || offset + message_size > bytes_available)
             break;
 
-        if (has_events)
-            payload << ",";
-        has_events = true;
-        payload << "{\"wordCount\":" << word_count << ",\"words\":[";
-        for (uint8_t i = 0; i < word_count; ++i) {
-            if (i != 0)
-                payload << ",";
-            payload << words[i];
-        }
-        payload << "]}";
+        // The WebCLAP worklet host entry point consumes MIDI 2.0 channel voice UMP.
+        if (message_type == static_cast<uint8_t>(umppi::MessageType::MIDI1))
+            appendWclapMidi1AsMidi2EventJson(payload, has_events, words[0]);
+        else if (message_type == static_cast<uint8_t>(umppi::MessageType::MIDI2))
+            appendWclapUmpEventJson(payload, has_events, words, word_count);
         offset += message_size;
     }
 
@@ -313,6 +386,33 @@ static std::string buildWclapBatchUmpArgsJson(const void* messages, size_t bytes
 
 static std::string buildWclapBatchUmpArgsJson(EventSequence& eventIn) {
     return buildWclapBatchUmpArgsJson(eventIn.getMessages(), eventIn.position());
+}
+
+static bool enqueueWclapSharedInputEvents(uint32_t slot, const void* messages, size_t bytesAvailable) {
+    auto* bytes = static_cast<const uint8_t*>(messages);
+    if (!bytes || bytesAvailable == 0)
+        return false;
+
+    bool enqueued = false;
+    size_t offset = 0;
+    while (offset + sizeof(uint32_t) <= bytesAvailable) {
+        auto* words = reinterpret_cast<const uint32_t*>(bytes + offset);
+        auto messageType = static_cast<uint8_t>(words[0] >> 28);
+        auto wordCount = umppi::umpSizeInInts(messageType);
+        auto messageSize = static_cast<size_t>(wordCount) * sizeof(uint32_t);
+        if (messageSize == 0 || offset + messageSize > bytesAvailable)
+            break;
+
+        if (messageType == static_cast<uint8_t>(umppi::MessageType::MIDI1)) {
+            uint32_t midi2Words[2]{};
+            if (convertWclapMidi1ToMidi2(words[0], midi2Words))
+                enqueued = uapmd_webclap_enqueue_shared_ump(slot, midi2Words, 2) || enqueued;
+        } else if (messageType == static_cast<uint8_t>(umppi::MessageType::MIDI2)) {
+            enqueued = uapmd_webclap_enqueue_shared_ump(slot, words, wordCount) || enqueued;
+        }
+        offset += messageSize;
+    }
+    return enqueued;
 }
 
 std::vector<PluginParameter*>& PluginInstanceWebCLAP::ParamSupportWebCLAP::parameters() {
@@ -1121,10 +1221,12 @@ StatusCode PluginInstanceWebCLAP::process(AudioProcessContext& ctx) {
     if (hasParameterEvents)
         postWclapRpc("setParameterBatch", parameterArgs.str());
 
-    if (auto args = buildWclapBatchUmpArgsJson(ctx.eventIn()); !args.empty()) {
-        std::ostringstream rpcArgs;
-        rpcArgs << "[" << slot_ << "," << args << "]";
-        postWclapRpc("sendUmpBatch", rpcArgs.str());
+    if (!enqueueWclapSharedInputEvents(static_cast<uint32_t>(slot_), ctx.eventIn().getMessages(), ctx.eventIn().position())) {
+        if (auto args = buildWclapBatchUmpArgsJson(ctx.eventIn()); !args.empty()) {
+            std::ostringstream rpcArgs;
+            rpcArgs << "[" << slot_ << "," << args << "]";
+            postWclapRpc("sendUmpBatch", rpcArgs.str());
+        }
     }
     ctx.copyInputsToOutputs();
     return StatusCode::OK;

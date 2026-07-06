@@ -36,6 +36,8 @@ namespace uapmd {
     static constexpr uint32_t kWebAudioMaxQuantum = 2048;
     static constexpr uint32_t kWebAudioBufferSize = kWebAudioChannels * kWebAudioMaxQuantum;
     static constexpr uint32_t kWebAudioMaxTracks  = 16;
+    static constexpr uint32_t kWebClapEventQueueCapacity = 512;
+    static constexpr uint32_t kWebClapEventRecordWords = 6; // slot, wordCount, w0, w1, w2, w3
 
     struct WebAudioSAB {
         // 32-bit counters: JS side accesses them via Int32Array + Atomics.load/store.
@@ -51,6 +53,9 @@ namespace uapmd {
         float master_output[kWebAudioBufferSize]{};
         // engine → AudioWorklet dry per-track stems for worklet-hosted WebCLAP chains
         float track_output[kWebAudioMaxTracks * kWebAudioBufferSize]{};
+        // engine → AudioWorklet WebCLAP input events produced during native graph processing
+        std::atomic<uint32_t> webclap_event_count{0};
+        uint32_t webclap_event_queue[kWebClapEventQueueCapacity * kWebClapEventRecordWords]{};
     };
 
     // ── WebAudioEngineThread ──────────────────────────────────────────────────

@@ -5,9 +5,32 @@
 #include <chrono>
 #include <cstring>
 #include <algorithm>
+#include <cstddef>
 #include <iostream>
 
 namespace uapmd {
+
+    namespace {
+        std::atomic<WebAudioSAB*> g_active_web_audio_sab{nullptr};
+    }
+
+    extern "C" bool uapmd_webclap_enqueue_shared_ump(uint32_t slot, const uint32_t* words, size_t wordCount) {
+        auto* sab = g_active_web_audio_sab.load(std::memory_order_acquire);
+        if (!sab || !words || wordCount == 0 || wordCount > 4)
+            return false;
+
+        const auto count = sab->webclap_event_count.load(std::memory_order_relaxed);
+        if (count >= kWebClapEventQueueCapacity)
+            return false;
+
+        auto* record = sab->webclap_event_queue + count * kWebClapEventRecordWords;
+        record[0] = slot;
+        record[1] = static_cast<uint32_t>(wordCount);
+        for (size_t i = 0; i < 4; ++i)
+            record[2 + i] = i < wordCount ? words[i] : 0;
+        sab->webclap_event_count.store(count + 1, std::memory_order_release);
+        return true;
+    }
 
     // ── WebAudioEngineThread ──────────────────────────────────────────────────
 
@@ -36,6 +59,7 @@ namespace uapmd {
         if (running_.load(std::memory_order_relaxed))
             return;
         running_.store(true, std::memory_order_release);
+        g_active_web_audio_sab.store(sab_, std::memory_order_release);
         engine_->setExternalPump(true);
         engine_->setTrackOutputHandler([this](uapmd_track_index_t trackIndex,
                                               SequencerTrack& track,
@@ -80,6 +104,8 @@ namespace uapmd {
         if (engine_thread_.joinable()) engine_thread_.join();
         engine_->setTrackOutputHandler({});
         engine_->setExternalPump(false);
+        auto* expected = sab_;
+        g_active_web_audio_sab.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
     }
 
     void WebAudioEngineThread::engineLoop() {
@@ -696,7 +722,9 @@ namespace uapmd {
            int trackCountOffset,
            int engineActiveOffset,
            int masterOutOffset,
-           int trackOutOffset),
+           int trackOutOffset,
+           int webclapEventCountOffset,
+           int webclapEventQueueOffset),
     {
         Module._uapmdEnsureWebclapBridge();
         var audioCtx = emscriptenGetAudioObject(ctx);
@@ -720,6 +748,8 @@ namespace uapmd {
                         engineActive: engineActiveOffset,
                         masterOut: masterOutOffset,
                         trackOut: trackOutOffset,
+                        webclapEventCount: webclapEventCountOffset,
+                        webclapEventQueue: webclapEventQueueOffset,
                     }
                 }
             });
@@ -886,7 +916,9 @@ namespace uapmd {
                                        static_cast<int>(offsetof(WebAudioSAB, track_count)),
                                        static_cast<int>(offsetof(WebAudioSAB, engine_active)),
                                        static_cast<int>(offsetof(WebAudioSAB, master_output)),
-                                       static_cast<int>(offsetof(WebAudioSAB, track_output)));
+                                       static_cast<int>(offsetof(WebAudioSAB, track_output)),
+                                       static_cast<int>(offsetof(WebAudioSAB, webclap_event_count)),
+                                       static_cast<int>(offsetof(WebAudioSAB, webclap_event_queue)));
         }
         return 0;
     }
