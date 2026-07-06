@@ -44,6 +44,8 @@ class WclapHost {
 		'_wclapHostParamsRescan',
 		'_wclapHostParamsClear',
 		'_wclapHostParamsRequestFlush',
+		'_wclapHostNotePortsSupportedDialects',
+		'_wclapHostNotePortsRescan',
 		'_wclapInEventsSize',
 		'_wclapInEventsGet',
 		'_wclapOutEventsTryPush',

@@ -160,6 +160,14 @@ namespace uapmd {
             return status;
         }
 
+#ifdef __EMSCRIPTEN__
+        bool trySendWebClapInputEvents(const uapmd_ump_t* events, size_t sizeInBytes) {
+            if (auto* webclap = dynamic_cast<remidy::PluginInstanceWebCLAP*>(instance))
+                return webclap->sendUmpInputEvents(events, sizeInBytes);
+            return false;
+        }
+#endif
+
         uint32_t latencyInSamples() const override {
             return instance ? instance->latencyInSamples() : 0;
         }
@@ -447,6 +455,13 @@ namespace uapmd {
             return dynamic_cast<AudioPluginInstanceExtension*>(remidyExtension);
         }
     };
+
+#ifdef __EMSCRIPTEN__
+    bool trySendWebClapInputEvents(AudioPluginInstanceAPI* instance, const uapmd_ump_t* events, size_t sizeInBytes) {
+        auto* remidyInstance = dynamic_cast<RemidyAudioPluginInstance*>(instance);
+        return remidyInstance && remidyInstance->trySendWebClapInputEvents(events, sizeInBytes);
+    }
+#endif
 }
 
 std::unique_ptr<uapmd::AudioPluginHostingAPI> uapmd::AudioPluginHostingAPI::create() {

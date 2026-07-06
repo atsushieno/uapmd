@@ -38,15 +38,18 @@ using wclap32::wclap_event_midi2;
 using wclap32::wclap_event_param_value;
 using wclap32::wclap_host;
 using wclap32::wclap_host_gui;
+using wclap32::wclap_host_note_ports;
 using wclap32::wclap_host_params;
 using wclap32::wclap_host_webview;
 using wclap32::wclap_input_events;
 using wclap32::wclap_output_events;
+using wclap32::wclap_event_note;
 using wclap32::wclap_param_info;
 using wclap32::wclap_plugin;
 using wclap32::wclap_plugin_entry;
 using wclap32::wclap_plugin_factory;
 using wclap32::wclap_plugin_gui;
+using wclap32::wclap_note_port_info;
 using wclap32::wclap_plugin_note_ports;
 using wclap32::wclap_plugin_params;
 using wclap32::wclap_plugin_preset_load;
@@ -100,6 +103,8 @@ static void host_gui_closed(void *, Pointer<const wclap_host>, bool) {}
 static void host_params_rescan(void *, Pointer<const wclap_host>, uint32_t);
 static void host_params_clear(void *, Pointer<const wclap_host>, wclap32::wclap_id, uint32_t) {}
 static void host_params_request_flush(void *, Pointer<const wclap_host>);
+static uint32_t host_note_ports_supported_dialects(void *, Pointer<const wclap_host>);
+static void host_note_ports_rescan(void *, Pointer<const wclap_host>, uint32_t) {}
 static bool host_webview_send(void *, Pointer<const wclap_host>, Pointer<const void>, uint32_t);
 
 static uint32_t in_events_size(void *ctx, Pointer<const wclap_input_events>);
@@ -171,6 +176,16 @@ void _wclapHostParamsRequestFlush(void *ctx, Pointer<const wclap_host> host) {
     host_params_request_flush(ctx, host);
 }
 
+extern "C" __attribute__((export_name("_wclapHostNotePortsSupportedDialects")))
+uint32_t _wclapHostNotePortsSupportedDialects(void *ctx, Pointer<const wclap_host> host) {
+    return host_note_ports_supported_dialects(ctx, host);
+}
+
+extern "C" __attribute__((export_name("_wclapHostNotePortsRescan")))
+void _wclapHostNotePortsRescan(void *ctx, Pointer<const wclap_host> host, uint32_t flags) {
+    host_note_ports_rescan(ctx, host, flags);
+}
+
 extern "C" __attribute__((export_name("_wclapHostWebviewSend")))
 bool _wclapHostWebviewSend(void *ctx, Pointer<const wclap_host> host, Pointer<const void> data, uint32_t size) {
     return host_webview_send(ctx, host, data, size);
@@ -200,6 +215,7 @@ struct SlotState {
     uint32_t host_gui_ptr  = 0;
     uint32_t host_params_ptr = 0;
     uint32_t host_webview_ptr = 0;
+    uint32_t host_note_ports_ptr = 0;
     uint32_t in_data_ptr   = 0; // float[2][maxFrames] — ch0 then ch1
     uint32_t in_ptrs_ptr   = 0; // float*[2]
     uint32_t in_buf_ptr    = 0; // wclap_audio_buffer (stereo input bus)
@@ -227,6 +243,8 @@ struct SlotState {
     bool ui_resize_pending = false;
     bool has_event_inputs = false;
     bool has_event_outputs = false;
+    uint32_t input_note_supported_dialects = 0;
+    uint32_t input_note_preferred_dialect = 0;
     bool has_state = false;
     bool has_state_context = false;
     bool has_preset_load = false;
@@ -940,6 +958,8 @@ host_get_ext(void *ctx, Pointer<const wclap_host>, Pointer<const char> id) {
         return {state->host_params_ptr};
     if (extId == wclap32::WCLAP_EXT_WEBVIEW && state->host_webview_ptr)
         return {state->host_webview_ptr};
+    if (extId == wclap32::WCLAP_EXT_NOTE_PORTS && state->host_note_ports_ptr)
+        return {state->host_note_ports_ptr};
     return {0};
 }
 
@@ -987,6 +1007,10 @@ static void host_params_request_flush(void *ctx, Pointer<const wclap_host>) {
     auto* state = static_cast<SlotState*>(ctx);
     if (state)
         state->flush_requested = true;
+}
+
+static uint32_t host_note_ports_supported_dialects(void *, Pointer<const wclap_host>) {
+    return wclap32::WCLAP_NOTE_DIALECT_CLAP | wclap32::WCLAP_NOTE_DIALECT_MIDI2;
 }
 
 static void rebuildParameterJson(Instance *inst, SlotState *state, Pointer<const wclap_plugin> plugPtr) {
@@ -1096,6 +1120,43 @@ static bool enqueueInputEvent(Instance *inst, SlotState *state, const void *even
     return true;
 }
 
+static bool shouldUseClapNoteEvents(const SlotState* state) {
+    if (!state)
+        return false;
+    const auto supported = state->input_note_supported_dialects;
+    if ((supported & wclap32::WCLAP_NOTE_DIALECT_CLAP) == 0)
+        return false;
+    if ((state->input_note_preferred_dialect & wclap32::WCLAP_NOTE_DIALECT_CLAP) != 0)
+        return true;
+    return (supported & wclap32::WCLAP_NOTE_DIALECT_MIDI2) == 0;
+}
+
+static bool enqueueClapNoteEventFromMidi2(Instance* inst, SlotState* state, uint32_t w0, uint32_t w1) {
+    if ((w0 >> 28) != 0x4)
+        return false;
+
+    const auto status = static_cast<uint8_t>((w0 >> 20) & 0x0F);
+    if (status != 0x8 && status != 0x9)
+        return false;
+
+    const auto channel = static_cast<int16_t>((w0 >> 16) & 0x0F);
+    const auto key = static_cast<int16_t>((w0 >> 8) & 0x7F);
+    const auto velocity = static_cast<double>((w1 >> 16) & 0xFFFF) / 65535.0;
+
+    wclap_event_note event{};
+    event.header.size = sizeof(event);
+    event.header.time = 0;
+    event.header.space_id = wclap32::WCLAP_CORE_EVENT_SPACE_ID;
+    event.header.type = status == 0x9 ? wclap32::WCLAP_EVENT_NOTE_ON : wclap32::WCLAP_EVENT_NOTE_OFF;
+    event.header.flags = wclap32::WCLAP_EVENT_IS_LIVE;
+    event.note_id = -1;
+    event.port_index = 0;
+    event.channel = channel;
+    event.key = key;
+    event.velocity = velocity;
+    return enqueueInputEvent(inst, state, &event, sizeof(event));
+}
+
 static void serviceMainThreadCallbacks(Instance *inst, SlotState *state, bool callOnce = false) {
     if (!inst || !state)
         return;
@@ -1196,6 +1257,12 @@ int32_t _wclapPluginSetup(Instance *inst,
         Pointer<const wclap_host>, wclap32::wclap_id, uint32_t>(state, host_params_clear);
     hostParams.request_flush = inst->registerHost32<void,
         Pointer<const wclap_host>>(state, host_params_request_flush);
+
+    wclap_host_note_ports hostNotePorts{};
+    hostNotePorts.supported_dialects = inst->registerHost32<uint32_t,
+        Pointer<const wclap_host>>(state, host_note_ports_supported_dialects);
+    hostNotePorts.rescan = inst->registerHost32<void,
+        Pointer<const wclap_host>, uint32_t>(state, host_note_ports_rescan);
 
     wclap_input_events ie{};
     ie.ctx  = {0};
@@ -1321,6 +1388,9 @@ int32_t _wclapPluginSetup(Instance *inst,
     state->host_webview_ptr = allocInPlugin(inst,
         reinterpret_cast<const uint8_t*>(&hostWebview),
         sizeof(hostWebview));
+    state->host_note_ports_ptr = allocInPlugin(inst,
+        reinterpret_cast<const uint8_t*>(&hostNotePorts),
+        sizeof(hostNotePorts));
 
     // create_plugin / init / activate
     auto plugPtr = inst->call(factVal.create_plugin,
@@ -1537,8 +1607,20 @@ int32_t _wclapPluginSetup(Instance *inst,
         auto notePortsVoid = inst->call(plugVal.get_extension, plugPtr, Pointer<const char>{notePortsIdPtr});
         if (notePortsVoid.wasmPointer != 0) {
             auto notePorts = inst->get(Pointer<const wclap_plugin_note_ports>{notePortsVoid.wasmPointer});
-            state->has_event_inputs = inst->call(notePorts.count, plugPtr, true) > 0;
+            const auto inputPortCount = inst->call(notePorts.count, plugPtr, true);
+            state->has_event_inputs = inputPortCount > 0;
             state->has_event_outputs = inst->call(notePorts.count, plugPtr, false) > 0;
+            if (inputPortCount > 0) {
+                wclap_note_port_info notePortInfo{};
+                const auto infoPtr = allocInPlugin(inst, &notePortInfo, sizeof(notePortInfo));
+                if (infoPtr) {
+                    if (inst->call(notePorts.get, plugPtr, 0u, true, Pointer<wclap_note_port_info>{infoPtr})) {
+                        auto info = inst->get(Pointer<wclap_note_port_info>{infoPtr});
+                        state->input_note_supported_dialects = info.supported_dialects;
+                        state->input_note_preferred_dialect = info.preferred_dialect;
+                    }
+                }
+            }
         }
     }
     static const char kStateExtId[] = "clap.state";
@@ -2207,6 +2289,10 @@ int32_t _wclapEnqueueMidi2Event(Instance *inst, uint32_t w0, uint32_t w1, uint32
     auto it = s_slots.find(inst);
     if (it == s_slots.end())
         return 0;
+    auto* state = it->second;
+
+    if (shouldUseClapNoteEvents(state) && enqueueClapNoteEventFromMidi2(inst, state, w0, w1))
+        return 1;
 
     wclap_event_midi2 event{};
     event.header.size = sizeof(event);
@@ -2219,7 +2305,7 @@ int32_t _wclapEnqueueMidi2Event(Instance *inst, uint32_t w0, uint32_t w1, uint32
     event.data[1] = w1;
     event.data[2] = w2;
     event.data[3] = w3;
-    return enqueueInputEvent(inst, it->second, &event, sizeof(event)) ? 1 : 0;
+    return enqueueInputEvent(inst, state, &event, sizeof(event)) ? 1 : 0;
 }
 
 extern "C" __attribute__((export_name("_wclapEnqueueParameterValue")))

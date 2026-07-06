@@ -11,6 +11,9 @@
 #include "midi/UapmdNodeUmpMapper.hpp"
 
 namespace uapmd {
+#ifdef __EMSCRIPTEN__
+    bool trySendWebClapInputEvents(AudioPluginInstanceAPI* instance, const uapmd_ump_t* events, size_t sizeInBytes);
+#endif
 
     class AudioPluginNodeImpl : public AudioPluginNode {
         int32_t instance_id_;
@@ -129,6 +132,13 @@ namespace uapmd {
 
         // Called from non-RT thread. Enqueues UMP events.
         bool scheduleEvents(uapmd_timestamp_t timestamp, void* events, size_t size) override {
+#ifdef __EMSCRIPTEN__
+            if (instance_) {
+                if (trySendWebClapInputEvents(instance_, static_cast<const uapmd_ump_t*>(events), size))
+                    return true;
+            }
+#endif
+
             auto* bytes = static_cast<const uint8_t*>(events);
             size_t offset = 0;
             while (offset + sizeof(uint32_t) <= size) {

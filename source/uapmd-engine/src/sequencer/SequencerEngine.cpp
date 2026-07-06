@@ -1705,18 +1705,49 @@ namespace uapmd {
 
     // UMP routing
     void SequencerEngineImpl::enqueueUmp(int32_t instanceId, uapmd_ump_t* ump, size_t sizeInBytes, uapmd_timestamp_t timestamp) {
+        auto scheduleForTrack = [&](SequencerTrack* track) {
+            if (!track)
+                return;
+            const auto node = track->graph().getPluginNode(instanceId);
+            if (!node)
+                return;
+
+            uint8_t group = 0xFF;
+            if (const auto fb = function_block_manager.getFunctionDeviceByInstanceId(instanceId))
+                group = fb->group();
+            else
+                group = track->getInstanceGroup(instanceId);
+
+            if (group > 15) {
+                node->scheduleEvents(timestamp, ump, sizeInBytes);
+                return;
+            }
+
+            std::vector<uapmd_ump_t> routedWords((sizeInBytes + sizeof(uapmd_ump_t) - 1) / sizeof(uapmd_ump_t));
+            std::memcpy(routedWords.data(), ump, sizeInBytes);
+
+            auto* bytes = reinterpret_cast<uint8_t*>(routedWords.data());
+            size_t offset = 0;
+            while (offset + sizeof(uint32_t) <= sizeInBytes) {
+                auto* words = reinterpret_cast<uint32_t*>(bytes + offset);
+                const auto messageType = static_cast<uint8_t>(words[0] >> 28);
+                const auto wordCount = umppi::umpSizeInInts(messageType);
+                const auto messageSize = static_cast<size_t>(wordCount) * sizeof(uint32_t);
+                if (messageSize == 0 || offset + messageSize > sizeInBytes)
+                    break;
+                words[0] = (words[0] & 0xF0FFFFFFu) | (static_cast<uint32_t>(group) << 24);
+                offset += messageSize;
+            }
+            node->scheduleEvents(timestamp, routedWords.data(), sizeInBytes);
+        };
+
         for (const auto& track : tracks())
-            if (const auto node = track->graph().getPluginNode(instanceId))
-                node->scheduleEvents(timestamp, ump, sizeInBytes);
-        if (master_track_) {
-            if (const auto node = master_track_->graph().getPluginNode(instanceId))
-                node->scheduleEvents(timestamp, ump, sizeInBytes);
-        }
+            scheduleForTrack(track);
+        scheduleForTrack(master_track_.get());
     }
 
     void SequencerEngineImpl::sendNoteOn(int32_t instanceId, int32_t note) {
         uapmd_ump_t umps[2];
-        // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
         auto ump = umppi::UmpFactory::midi2NoteOn(0, 0, note, 0, 0xF800, 0);
         umps[0] = static_cast<uapmd_ump_t>(ump >> 32);
         umps[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
@@ -1725,7 +1756,6 @@ namespace uapmd {
 
     void SequencerEngineImpl::sendNoteOff(int32_t instanceId, int32_t note) {
         uapmd_ump_t umps[2];
-        // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
         auto ump = umppi::UmpFactory::midi2NoteOff(0, 0, note, 0, 0xF800, 0);
         umps[0] = static_cast<uapmd_ump_t>(ump >> 32);
         umps[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
@@ -1736,7 +1766,6 @@ namespace uapmd {
         uapmd_ump_t umps[2];
         float clamped = std::clamp((normalizedValue + 1.0f) * 0.5f, 0.0f, 1.0f);
         uint32_t pitchValue = static_cast<uint32_t>(clamped * 4294967295.0f);
-        // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
         auto ump = umppi::UmpFactory::midi2PitchBendDirect(0, 0, pitchValue);
         umps[0] = static_cast<uapmd_ump_t>(ump >> 32);
         umps[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);
@@ -1747,7 +1776,6 @@ namespace uapmd {
         uapmd_ump_t umps[2];
         float clamped = std::clamp(pressure, 0.0f, 1.0f);
         uint32_t pressureValue = static_cast<uint32_t>(clamped * 4294967295.0f);
-        // FIXME: group is dummy, to be replaced by group for instanceId (see `enqueueUmp()` comment)
         auto ump = umppi::UmpFactory::midi2CAf(0, 0, pressureValue);
         umps[0] = static_cast<uapmd_ump_t>(ump >> 32);
         umps[1] = static_cast<uapmd_ump_t>(ump & 0xFFFFFFFFu);

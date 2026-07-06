@@ -272,9 +272,9 @@ static void postWclapRpc(const char* method, const std::string& argsJson) {
     uapmd_post_to_webclap_worklet_rpc(method, argsJson.c_str());
 }
 
-static std::string buildWclapBatchUmpArgsJson(EventSequence& eventIn) {
-    auto* bytes = static_cast<const uint8_t*>(eventIn.getMessages());
-    const size_t bytes_available = eventIn.position();
+static std::string buildWclapBatchUmpArgsJson(const void* messages, size_t bytesAvailable) {
+    auto* bytes = static_cast<const uint8_t*>(messages);
+    const size_t bytes_available = bytesAvailable;
     if (!bytes || bytes_available == 0)
         return {};
 
@@ -309,6 +309,10 @@ static std::string buildWclapBatchUmpArgsJson(EventSequence& eventIn) {
 
     payload << "]";
     return payload.str();
+}
+
+static std::string buildWclapBatchUmpArgsJson(EventSequence& eventIn) {
+    return buildWclapBatchUmpArgsJson(eventIn.getMessages(), eventIn.position());
 }
 
 std::vector<PluginParameter*>& PluginInstanceWebCLAP::ParamSupportWebCLAP::parameters() {
@@ -1083,6 +1087,17 @@ void PluginInstanceWebCLAP::attachToTrackGraph(int32_t trackIndex, bool isMaster
          << "," << order
          << "]";
     postWclapRpc("graphAddNode", args.str());
+}
+
+bool PluginInstanceWebCLAP::sendUmpInputEvents(const uint32_t* events, size_t sizeInBytes) {
+    auto args = buildWclapBatchUmpArgsJson(events, sizeInBytes);
+    if (args.empty())
+        return false;
+
+    std::ostringstream rpcArgs;
+    rpcArgs << "[" << slot_ << "," << args << "]";
+    postWclapRpc("sendUmpBatch", rpcArgs.str());
+    return true;
 }
 
 StatusCode PluginInstanceWebCLAP::process(AudioProcessContext& ctx) {

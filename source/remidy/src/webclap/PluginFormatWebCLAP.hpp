@@ -213,6 +213,7 @@ namespace remidy {
         void applyParameterValueUpdate(uint32_t index, double plainValue);
         std::string buildParameterValueString(uint32_t index, double plainValue) const;
         void attachToTrackGraph(int32_t trackIndex, bool isMasterTrack, uint32_t order);
+        bool sendUmpInputEvents(const uint32_t* events, size_t sizeInBytes);
         bool hasUiSupport() const;
         void updateUiInfo(bool hasUi, bool canResize, uint32_t width, uint32_t height);
         void notifyUiResizeRequest(bool canResize, uint32_t width, uint32_t height);
