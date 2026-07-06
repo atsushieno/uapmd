@@ -10,10 +10,11 @@
 //   1032    varies   master_output (float[2][engineQuantum], engine → device)
 //
 // Per-quantum flow when _accumCount === 0:
-//   ① _wclapPluginProcess for each active slot → localOut in host WASM
-//   ② Signal engine: Atomics.store(host_seq, n+1)
-//   ③ Spin-wait engine_seq === n+1
-//   ④ Mix localOut into master_output (in-place add)
+//   ① Signal engine: Atomics.store(host_seq, n+1)
+//   ② Spin-wait engine_seq === n+1
+//   ③ Drain WebCLAP input events produced during native graph rendering
+//   ④ _wclapPluginProcess for each active slot → localOut in host WASM
+//   ⑤ Mix localOut into master_output (in-place add)
 // Then always: copy master_output[_accumCount] slice → outputs[0].
 
 import { startHost, getWclap } from './wclap.mjs';
@@ -29,6 +30,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
 
         // Views over the Emscripten (uapmd-app) WASM heap SharedArrayBuffer.
         this._i32 = new Int32Array(heapBuffer);
+        this._u32 = new Uint32Array(heapBuffer);
         this._f32 = new Float32Array(heapBuffer);
 
         this._hostSeqIdx    = (sabByteOffset + offsets.hostSeq) >> 2;
@@ -37,6 +39,8 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         this._engineActiveIdx = (sabByteOffset + offsets.engineActive) >> 2;
         this._masterOutIdx  = (sabByteOffset + offsets.masterOut) >> 2;
         this._trackOutIdx   = (sabByteOffset + offsets.trackOut) >> 2;
+        this._webclapEventCountIdx = (sabByteOffset + offsets.webclapEventCount) >> 2;
+        this._webclapEventQueueIdx = (sabByteOffset + offsets.webclapEventQueue) >> 2;
         this._engineQuantum  = engineQuantum;
         this._quantaPerRender= engineQuantum / kQuantum;
         this._accumCount     = 0;
@@ -52,7 +56,6 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
         this._workR            = new Float32Array(engineQuantum);
         this._scratchL         = new Float32Array(engineQuantum);
         this._scratchR         = new Float32Array(engineQuantum);
-
         // Compiled WebAssembly.Module objects for uapmd-wclap-host.wasm and wasi.wasm,
         // sent from the main thread via wclap-init-host (fetch is unavailable here).
         this._wclapHostModule  = null;
@@ -173,6 +176,32 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
                 this._trackGraphs.delete(trackIndex);
         }
         this._masterGraph = this._masterGraph.filter(id => id !== slot);
+    }
+
+    _drainSharedInputEvents() {
+        if (!this._wclapHost)
+            return;
+        const count = Atomics.exchange(this._i32, this._webclapEventCountIdx, 0);
+        if (count <= 0)
+            return;
+
+        const exp = this._wclapHost.hostInstance.exports;
+        const words = this._u32;
+        const stride = 6;
+        const limit = Math.min(count, 512);
+        for (let i = 0; i < limit; ++i) {
+            const base = this._webclapEventQueueIdx + i * stride;
+            const slot = words[base];
+            const info = this._slots.get(slot);
+            if (!info)
+                continue;
+            exp._wclapEnqueueMidi2Event(
+                info.ptr,
+                words[base + 2] || 0,
+                words[base + 3] || 0,
+                words[base + 4] || 0,
+                words[base + 5] || 0);
+        }
     }
 
     _replaceInputBuffer(info, srcL, srcR) {
@@ -621,6 +650,7 @@ class UapmdWebclapProcessor extends AudioWorkletProcessor {
 
             // ③ Run worklet-owned WebCLAP graphs using dry track stems from the engine.
             if (this._hostF32) {
+                this._drainSharedInputEvents();
                 const trackCount = Atomics.load(i32, this._trackCountIdx);
                 for (let trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
                     const slots = this._trackGraphs.get(trackIndex);

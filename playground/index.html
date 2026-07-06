@@ -20,8 +20,9 @@
         <p class="eyebrow">Playground</p>
         <h1>Browser builds of uapmd-app</h1>
         <p class="lede">
-            This area is for published Emscripten builds. For now it exposes a stable
-            <code>latest</code> URL that can host the current playable build.
+            The latest browser build is always refreshed on a manual Pages run.
+            Versioned build snapshots are retained on this site and can be
+            republished individually.
         </p>
         <div class="actions">
             <a class="button button-primary" href="./latest/">Open latest build</a>
@@ -29,14 +30,25 @@
         </div>
     </section>
 
-    <section class="panel">
-        <h2>Planned URL layout</h2>
-        <ul class="list">
-            <li><code>/playground/latest/</code> for the current public build.</li>
-            <li><code>/playground/&lt;tag&gt;/</code> for archived builds if you decide to keep them later.</li>
-            <li>The landing page here stays stable even if the internal publishing flow changes.</li>
-        </ul>
-    </section>
+    <div class="grid two">
+        <section class="card">
+            <p class="eyebrow">Current</p>
+            <h2><a href="./latest/">latest</a></h2>
+            <p>
+                Stable entry point for the current playable browser-hosted uapmd-app build.
+            </p>
+        </section>
+
+        <section class="card">
+            <p class="eyebrow">Published versions</p>
+            <h2>Build snapshots</h2>
+            <ul class="list">
+            <li><a href="./0.3.1/">0.3.1</a></li>
+            <li><a href="./0.4.0/">0.4.0</a></li>
+            <li><a href="./0.5.0/">0.5.0</a></li>
+            </ul>
+        </section>
+    </div>
 </div>
 </body>
 </html>
