@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.0</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -79,10 +79,13 @@ $(function() {
 
 <p>This is the complete list of members for <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>, including all inherited members.</p>
 <table class="directory">
-  <tr bgcolor="#f0f0f0" class="even"><td class="entry"><b>isValidSmf2Clip</b>(const std::filesystem::path &amp;file) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
-  <tr bgcolor="#f0f0f0" class="odd"><td class="entry"><b>isValidSmfFile</b>(const std::filesystem::path &amp;file) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
-  <tr bgcolor="#f0f0f0" class="even"><td class="entry"><b>readAnyFormat</b>(const std::filesystem::path &amp;file) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
+  <tr bgcolor="#f0f0f0" class="even"><td class="entry"><b>applyAuthoritativeTempoMapToMusicalClips</b>(const std::shared_ptr&lt; TimelineTrack &gt; &amp;masterTrack, const std::vector&lt; std::shared_ptr&lt; TimelineTrack &gt; &gt; &amp;tracks) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
+  <tr bgcolor="#f0f0f0" class="odd"><td class="entry"><b>isValidSmf2Clip</b>(const std::filesystem::path &amp;file) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
+  <tr bgcolor="#f0f0f0" class="even"><td class="entry"><b>isValidSmfFile</b>(const std::filesystem::path &amp;file) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
+  <tr bgcolor="#f0f0f0" class="odd"><td class="entry"><b>readAnyFormat</b>(const std::filesystem::path &amp;file) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
+  <tr bgcolor="#f0f0f0" class="even"><td class="entry"><b>rescaleTicks</b>(std::vector&lt; uint64_t &gt; &amp;tickTimestamps, std::vector&lt; MidiTempoChange &gt; &amp;tempoChanges, std::vector&lt; MidiTimeSignatureChange &gt; &amp;timeSignatureChanges, uint32_t fromResolution, uint32_t toResolution) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
   <tr bgcolor="#f0f0f0" class="odd"><td class="entry"><b>separateMasterTrackEvents</b>(ClipInfo clipInfo) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
+  <tr bgcolor="#f0f0f0" class="even"><td class="entry"><b>stripToFlatTempo</b>(std::vector&lt; MidiTempoChange &gt; &amp;tempoChanges, std::vector&lt; MidiTimeSignatureChange &gt; &amp;timeSignatureChanges, double flatTempo) (defined in <a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a>)</td><td class="entry"><a class="el" href="../../d9/d5e/classuapmd_1_1MidiClipReader.html">uapmd::MidiClipReader</a></td><td class="entry"><span class="mlabel">static</span></td></tr>
 </table></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

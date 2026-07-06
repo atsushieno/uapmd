@@ -5,6 +5,26 @@ import generateForwardingWasm from "./generate-forwarding-wasm.mjs"
 /* These exported functions should work for any Wasm32 host using the `wclap-js-instance` version of `Instance`.*/
 export {getHost, startHost, getWclap, runThread};
 
+function exportValue(value) {
+	return value instanceof WebAssembly.Global ? value.value : value;
+}
+
+function bitcastFloatArgs(args, argTypes) {
+	let buffer = new ArrayBuffer(8);
+	let view = new DataView(buffer);
+	return args.map((arg, index) => {
+		if (argTypes[index] == 2) {
+			view.setFloat32(0, arg, true);
+			return view.getUint32(0, true);
+		}
+		if (argTypes[index] == 3) {
+			view.setFloat64(0, arg, true);
+			return view.getBigUint64(0, true);
+		}
+		return arg;
+	});
+}
+
 class WclapHost {
 	#config;
 	#wasi;
@@ -24,6 +44,8 @@ class WclapHost {
 		'_wclapHostParamsRescan',
 		'_wclapHostParamsClear',
 		'_wclapHostParamsRequestFlush',
+		'_wclapHostNotePortsSupportedDialects',
+		'_wclapHostNotePortsRescan',
 		'_wclapInEventsSize',
 		'_wclapInEventsGet',
 		'_wclapOutEventsTryPush',
@@ -157,7 +179,7 @@ class WclapHost {
 					entry.instance.exports._initialize();
 				}
 
-				return entry.instance.exports.clap_entry;
+				return exportValue(entry.instance.exports.clap_entry);
 			},
 			malloc32: (instancePtr, size) => {
 				let entry = getEntry(instancePtr);
@@ -189,9 +211,11 @@ class WclapHost {
 
 				let dataView = new DataView(this.hostMemory.buffer);
 				let args = [];
+				let argTypes = [];
 				for (let i = 0; i < argsCount; ++i) {
 					let ptr = argsPtr + i*16;
 					let type = dataView.getUint8(ptr);
+					argTypes.push(type);
 					if (type == 0) {
 						args.push(dataView.getUint32(ptr + 8, true));
 					} else if (type == 1) {
@@ -205,7 +229,15 @@ class WclapHost {
 					}
 				}
 
-				let result = entry.functionTable.get(wasmFn)(...args);
+				let fn = entry.functionTable.get(wasmFn);
+				let result;
+				try {
+					result = fn(...args);
+				} catch (e) {
+					if (!/BigInt/.test(String(e)))
+						throw e;
+					result = fn(...bitcastFloatArgs(args, argTypes));
+				}
 				if (result == null) {
 					dataView.setUint8(resultPtr, 0);
 					dataView.setUint32(resultPtr + 8, 0, true);
@@ -218,10 +250,10 @@ class WclapHost {
 				} else if (typeof result == 'number') {
 					dataView.setUint8(resultPtr, 3);
 					dataView.setFloat64(resultPtr + 8, result, true);
-				} else if (result instanceof BigInt && result >= 0n) {
+				} else if (typeof result === 'bigint' && result >= 0n) {
 					dataView.setUint8(resultPtr, 1);
 					dataView.setBigUint64(resultPtr + 8, result, true);
-				} else if (result instanceof BigInt && result < 0n) {
+				} else if (typeof result === 'bigint' && result < 0n) {
 					dataView.setUint8(resultPtr, 1);
 					dataView.setBigInt64(resultPtr + 8, result, true);
 				} else {
@@ -352,7 +384,8 @@ class WclapHost {
 		}
 		if (!functionTable) throw Error("WCLAP didn't export a function table");
 
-		let is64 = pluginInstance.exports.clap_entry instanceof BigInt;
+		let clapEntry = exportValue(pluginInstance.exports.clap_entry);
+		let is64 = typeof clapEntry === 'bigint';
 		let entry = {
 			is64: is64,
 			initObj: wclapInitObj,

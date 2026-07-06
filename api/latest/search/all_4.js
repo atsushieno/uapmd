@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['aapuihostdetails_0',['AapUiHostDetails',['../d6/db4/structuapmd_1_1AapUiHostDetails.html',1,'uapmd']]],
+  ['aapuihostdetailsextension_0',['AapUiHostDetailsExtension',['../d6/dd2/classuapmd_1_1AapUiHostDetailsExtension.html',1,'uapmd']]],
   ['absolute_20positioning_1',['Example 1: Absolute Positioning',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md40',1,'']]],
   ['anchor_20resolution_2',['Anchor Resolution',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md46',1,'']]],
   ['anchor_20validation_3',['Anchor Validation',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md47',1,'']]],

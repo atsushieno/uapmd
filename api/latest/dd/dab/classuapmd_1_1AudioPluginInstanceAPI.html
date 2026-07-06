@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.0</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -91,9 +91,6 @@ virtual std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>
 <tr class="memitem:a08741db9d4c8b74de4d0bb851c3d32d1" id="r_a08741db9d4c8b74de4d0bb851c3d32d1"><td class="memItemLeft" align="right" valign="top"><a id="a08741db9d4c8b74de4d0bb851c3d32d1" name="a08741db9d4c8b74de4d0bb851c3d32d1"></a>
 virtual std::string &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>pluginId</b> () const =0</td></tr>
 <tr class="separator:a08741db9d4c8b74de4d0bb851c3d32d1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a097b04c29088210c4341014e0b3ddfb4" id="r_a097b04c29088210c4341014e0b3ddfb4"><td class="memItemLeft" align="right" valign="top"><a id="a097b04c29088210c4341014e0b3ddfb4" name="a097b04c29088210c4341014e0b3ddfb4"></a>
-virtual std::optional&lt; <a class="el" href="../../d6/db4/structuapmd_1_1AapUiHostDetails.html">AapUiHostDetails</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>aapUiHostDetails</b> () const =0</td></tr>
-<tr class="separator:a097b04c29088210c4341014e0b3ddfb4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0c08b981df1ed32380212397ffa94a2c" id="r_a0c08b981df1ed32380212397ffa94a2c"><td class="memItemLeft" align="right" valign="top"><a id="a0c08b981df1ed32380212397ffa94a2c" name="a0c08b981df1ed32380212397ffa94a2c"></a>
 virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>bypassed</b> () const =0</td></tr>
 <tr class="separator:a0c08b981df1ed32380212397ffa94a2c"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -130,6 +127,9 @@ virtual std::vector&lt; <a class="el" href="../../d7/d86/structuapmd_1_1PresetsM
 <tr class="memitem:a514e3765f7bbaef39b6f093746eb232e" id="r_a514e3765f7bbaef39b6f093746eb232e"><td class="memItemLeft" align="right" valign="top"><a id="a514e3765f7bbaef39b6f093746eb232e" name="a514e3765f7bbaef39b6f093746eb232e"></a>
 virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadPreset</b> (int32_t presetIndex)=0</td></tr>
 <tr class="separator:a514e3765f7bbaef39b6f093746eb232e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6f4829ebcbdba8e9e032f4c977b9e276" id="r_a6f4829ebcbdba8e9e032f4c977b9e276"><td class="memItemLeft" align="right" valign="top"><a id="a6f4829ebcbdba8e9e032f4c977b9e276" name="a6f4829ebcbdba8e9e032f4c977b9e276"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>loadPreset</b> (int32_t presetIndex, std::function&lt; void(std::string error, void *callbackContext)&gt; completed)=0</td></tr>
+<tr class="separator:a6f4829ebcbdba8e9e032f4c977b9e276"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a09a211cd98fd7acaa3ab961ece254c1d" id="r_a09a211cd98fd7acaa3ab961ece254c1d"><td class="memItemLeft" align="right" valign="top"><a id="a09a211cd98fd7acaa3ab961ece254c1d" name="a09a211cd98fd7acaa3ab961ece254c1d"></a>
 virtual std::vector&lt; uint8_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>saveStateSync</b> ()=0</td></tr>
 <tr class="separator:a09a211cd98fd7acaa3ab961ece254c1d"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -196,6 +196,18 @@ virtual <a class="el" href="../../d4/dfc/classremidy_1_1PluginParameterSupport.h
 <tr class="memitem:af366ccd0b52bffb1b6f79c2b93b1c3f9" id="r_af366ccd0b52bffb1b6f79c2b93b1c3f9"><td class="memItemLeft" align="right" valign="top"><a id="af366ccd0b52bffb1b6f79c2b93b1c3f9" name="af366ccd0b52bffb1b6f79c2b93b1c3f9"></a>
 virtual <a class="el" href="../../d3/d8b/classremidy_1_1PluginAudioBuses.html">remidy::PluginAudioBuses</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>audioBuses</b> ()=0</td></tr>
 <tr class="separator:af366ccd0b52bffb1b6f79c2b93b1c3f9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a90aaebbe625dfde91c9a3169c803c0bb" id="r_a90aaebbe625dfde91c9a3169c803c0bb"><td class="memItemLeft" align="right" valign="top"><a id="a90aaebbe625dfde91c9a3169c803c0bb" name="a90aaebbe625dfde91c9a3169c803c0bb"></a>
+virtual bool&#160;</td><td class="memItemRight" valign="bottom"><b>dirty</b> () const =0</td></tr>
+<tr class="separator:a90aaebbe625dfde91c9a3169c803c0bb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a618b66160fa612d6fb21b1c17649cec1" id="r_a618b66160fa612d6fb21b1c17649cec1"><td class="memItemLeft" align="right" valign="top"><a id="a618b66160fa612d6fb21b1c17649cec1" name="a618b66160fa612d6fb21b1c17649cec1"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>clearDirty</b> ()=0</td></tr>
+<tr class="separator:a618b66160fa612d6fb21b1c17649cec1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af223f097be3c5270ad1e10ce0eebd166" id="r_af223f097be3c5270ad1e10ce0eebd166"><td class="memItemLeft" align="right" valign="top"><a id="af223f097be3c5270ad1e10ce0eebd166" name="af223f097be3c5270ad1e10ce0eebd166"></a>
+virtual remidy::EventListenerId&#160;</td><td class="memItemRight" valign="bottom"><b>addDirtyStateListener</b> (std::function&lt; void(bool)&gt; listener)=0</td></tr>
+<tr class="separator:af223f097be3c5270ad1e10ce0eebd166"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a472192d9fb79709f014a3d9b9b2ec610" id="r_a472192d9fb79709f014a3d9b9b2ec610"><td class="memItemLeft" align="right" valign="top"><a id="a472192d9fb79709f014a3d9b9b2ec610" name="a472192d9fb79709f014a3d9b9b2ec610"></a>
+virtual void&#160;</td><td class="memItemRight" valign="bottom"><b>removeDirtyStateListener</b> (remidy::EventListenerId listenerId)=0</td></tr>
+<tr class="separator:a472192d9fb79709f014a3d9b9b2ec610"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2361d500183845f27a7e3fa97253ebd2" id="r_a2361d500183845f27a7e3fa97253ebd2"><td class="memItemLeft" align="right" valign="top"><a id="a2361d500183845f27a7e3fa97253ebd2" name="a2361d500183845f27a7e3fa97253ebd2"></a>
 virtual <a class="el" href="../../d0/d24/classuapmd_1_1AudioPluginInstanceExtension.html">AudioPluginInstanceExtension</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>extension</b> (std::string_view extensionId)</td></tr>
 <tr class="separator:a2361d500183845f27a7e3fa97253ebd2"><td class="memSeparator" colspan="2">&#160;</td></tr>

@@ -8,11 +8,12 @@ var searchData=
   ['sequenceprocesscontext_5',['SequenceProcessContext',['../d1/d7c/classuapmd_1_1SequenceProcessContext.html',1,'uapmd']]],
   ['sequencerengine_6',['SequencerEngine',['../d1/dee/classuapmd_1_1SequencerEngine.html',1,'uapmd']]],
   ['sequencertrack_7',['SequencerTrack',['../d0/dc0/classuapmd_1_1SequencerTrack.html',1,'uapmd']]],
-  ['smf2clipreaderwriter_8',['Smf2ClipReaderWriter',['../dd/dc4/classuapmd_1_1Smf2ClipReaderWriter.html',1,'uapmd']]],
-  ['smfconverter_9',['SmfConverter',['../de/d16/classuapmd_1_1SmfConverter.html',1,'uapmd']]],
-  ['sourcenode_10',['SourceNode',['../d6/dbc/classuapmd_1_1SourceNode.html',1,'uapmd']]],
-  ['splitter_20node_11',['Example: Channel Splitter Node',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md26',1,'']]],
-  ['stemfile_12',['StemFile',['../de/d57/structuapmd_1_1import_1_1DemucsStemSeparator_1_1StemFile.html',1,'uapmd::import::DemucsStemSeparator']]],
-  ['structure_13',['File Structure',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md2',1,'']]],
-  ['supported_20midi_20format_14',['Supported MIDI Format',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md50',1,'']]]
+  ['silentaudiofilereader_8',['SilentAudioFileReader',['../d5/d8a/classuapmd_1_1SilentAudioFileReader.html',1,'uapmd']]],
+  ['smf2clipreaderwriter_9',['Smf2ClipReaderWriter',['../dd/dc4/classuapmd_1_1Smf2ClipReaderWriter.html',1,'uapmd']]],
+  ['smfconverter_10',['SmfConverter',['../de/d16/classuapmd_1_1SmfConverter.html',1,'uapmd']]],
+  ['sourcenode_11',['SourceNode',['../d6/dbc/classuapmd_1_1SourceNode.html',1,'uapmd']]],
+  ['splitter_20node_12',['Example: Channel Splitter Node',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md26',1,'']]],
+  ['stemfile_13',['StemFile',['../de/d57/structuapmd_1_1import_1_1DemucsStemSeparator_1_1StemFile.html',1,'uapmd::import::DemucsStemSeparator']]],
+  ['structure_14',['File Structure',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md2',1,'']]],
+  ['supported_20midi_20format_15',['Supported MIDI Format',['../d6/d9c/md_source_2uapmd-data_2include_2uapmd-data_2detail_2project_2UapmdProjectFile.html#autotoc_md50',1,'']]]
 ];

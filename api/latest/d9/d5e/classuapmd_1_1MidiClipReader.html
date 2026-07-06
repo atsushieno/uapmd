@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.0</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -102,6 +102,15 @@ static bool&#160;</td><td class="memItemRight" valign="bottom"><b>isValidSmf2Cli
 <tr class="memitem:a2f9e4878d1898266e2edeb8e79796ba2" id="r_a2f9e4878d1898266e2edeb8e79796ba2"><td class="memItemLeft" align="right" valign="top"><a id="a2f9e4878d1898266e2edeb8e79796ba2" name="a2f9e4878d1898266e2edeb8e79796ba2"></a>
 static bool&#160;</td><td class="memItemRight" valign="bottom"><b>isValidSmfFile</b> (const std::filesystem::path &amp;file)</td></tr>
 <tr class="separator:a2f9e4878d1898266e2edeb8e79796ba2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afda114911019e8aaf5ff27f5bbab6d97" id="r_afda114911019e8aaf5ff27f5bbab6d97"><td class="memItemLeft" align="right" valign="top"><a id="afda114911019e8aaf5ff27f5bbab6d97" name="afda114911019e8aaf5ff27f5bbab6d97"></a>
+static void&#160;</td><td class="memItemRight" valign="bottom"><b>rescaleTicks</b> (std::vector&lt; uint64_t &gt; &amp;tickTimestamps, std::vector&lt; <a class="el" href="../../d9/d30/structuapmd_1_1MidiTempoChange.html">MidiTempoChange</a> &gt; &amp;tempoChanges, std::vector&lt; <a class="el" href="../../d0/d34/structuapmd_1_1MidiTimeSignatureChange.html">MidiTimeSignatureChange</a> &gt; &amp;timeSignatureChanges, uint32_t fromResolution, uint32_t toResolution)</td></tr>
+<tr class="separator:afda114911019e8aaf5ff27f5bbab6d97"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0b3519c6c6a6c16c8d1dcd0c9a662ac4" id="r_a0b3519c6c6a6c16c8d1dcd0c9a662ac4"><td class="memItemLeft" align="right" valign="top"><a id="a0b3519c6c6a6c16c8d1dcd0c9a662ac4" name="a0b3519c6c6a6c16c8d1dcd0c9a662ac4"></a>
+static void&#160;</td><td class="memItemRight" valign="bottom"><b>stripToFlatTempo</b> (std::vector&lt; <a class="el" href="../../d9/d30/structuapmd_1_1MidiTempoChange.html">MidiTempoChange</a> &gt; &amp;tempoChanges, std::vector&lt; <a class="el" href="../../d0/d34/structuapmd_1_1MidiTimeSignatureChange.html">MidiTimeSignatureChange</a> &gt; &amp;timeSignatureChanges, double flatTempo)</td></tr>
+<tr class="separator:a0b3519c6c6a6c16c8d1dcd0c9a662ac4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afb97059e27f9cb1570c92d7e6b210476" id="r_afb97059e27f9cb1570c92d7e6b210476"><td class="memItemLeft" align="right" valign="top"><a id="afb97059e27f9cb1570c92d7e6b210476" name="afb97059e27f9cb1570c92d7e6b210476"></a>
+static std::vector&lt; <a class="el" href="../../d9/d30/structuapmd_1_1MidiTempoChange.html">MidiTempoChange</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>applyAuthoritativeTempoMapToMusicalClips</b> (const std::shared_ptr&lt; <a class="el" href="../../d3/d29/classuapmd_1_1TimelineTrack.html">TimelineTrack</a> &gt; &amp;masterTrack, const std::vector&lt; std::shared_ptr&lt; <a class="el" href="../../d3/d29/classuapmd_1_1TimelineTrack.html">TimelineTrack</a> &gt; &gt; &amp;tracks)</td></tr>
+<tr class="separator:afb97059e27f9cb1570c92d7e6b210476"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/uapmd-data/include/uapmd-data/detail/project/<a class="el" href="../../dc/dab/MidiClipReader_8hpp_source.html">MidiClipReader.hpp</a></li>

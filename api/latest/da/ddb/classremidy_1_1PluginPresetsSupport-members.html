@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.0</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -85,7 +85,8 @@ $(function() {
   <tr bgcolor="#f0f0f0" class="odd"><td class="entry"><b>isIndexId</b>()=0 (defined in <a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a>)</td><td class="entry"><a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a></td><td class="entry"><span class="mlabel">pure virtual</span></td></tr>
   <tr bgcolor="#f0f0f0" class="even"><td class="entry"><b>isIndexStable</b>()=0 (defined in <a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a>)</td><td class="entry"><a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a></td><td class="entry"><span class="mlabel">pure virtual</span></td></tr>
   <tr bgcolor="#f0f0f0" class="odd"><td class="entry"><b>loadPreset</b>(int32_t index)=0 (defined in <a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a>)</td><td class="entry"><a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a></td><td class="entry"><span class="mlabel">pure virtual</span></td></tr>
-  <tr bgcolor="#f0f0f0" class="even"><td class="entry"><b>~PluginPresetsSupport</b>()=default (defined in <a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a>)</td><td class="entry"><a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a></td><td class="entry"><span class="mlabel">virtual</span></td></tr>
+  <tr bgcolor="#f0f0f0" class="even"><td class="entry"><b>loadPreset</b>(int32_t index, std::function&lt; void(std::string error, void *callbackContext)&gt; completed)=0 (defined in <a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a>)</td><td class="entry"><a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a></td><td class="entry"><span class="mlabel">pure virtual</span></td></tr>
+  <tr bgcolor="#f0f0f0" class="odd"><td class="entry"><b>~PluginPresetsSupport</b>()=default (defined in <a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a>)</td><td class="entry"><a class="el" href="../../d3/d34/classremidy_1_1PluginPresetsSupport.html">remidy::PluginPresetsSupport</a></td><td class="entry"><span class="mlabel">virtual</span></td></tr>
 </table></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

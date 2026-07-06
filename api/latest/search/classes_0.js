@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['aapuihostdetails_0',['AapUiHostDetails',['../d6/db4/structuapmd_1_1AapUiHostDetails.html',1,'uapmd']]],
+  ['aapuihostdetailsextension_0',['AapUiHostDetailsExtension',['../d6/dd2/classuapmd_1_1AapUiHostDetailsExtension.html',1,'uapmd']]],
   ['audiobusconfiguration_1',['AudioBusConfiguration',['../d3/dbe/classremidy_1_1AudioBusConfiguration.html',1,'remidy']]],
   ['audiobusdefinition_2',['AudioBusDefinition',['../d6/d42/classremidy_1_1AudioBusDefinition.html',1,'remidy']]],
   ['audiobusspec_3',['AudioBusSpec',['../d5/d81/structremidy_1_1AudioBusSpec.html',1,'remidy']]],

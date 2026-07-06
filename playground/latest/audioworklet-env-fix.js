@@ -15,6 +15,70 @@
 //   assumes navigator exists (userAgent sniffing, hardwareConcurrency, Web MIDI stubs),
 //   so a structured shim is required to avoid ReferenceError crashes when the same
 //   runtime executes inside the worklet.
+//
+// Problem 3 — WebGL uniform uploads from shared/resizable WASM memory:
+//   With pthreads + memory growth, Emscripten's WebGL2 glue can pass HEAPF32/HEAP32
+//   directly to uniform*() using the WebGL2 srcOffset/srcLength overloads. Newer
+//   Chromium rejects typed arrays backed by SharedArrayBuffer or resizable
+//   ArrayBuffer for these calls. Copy just those upload arguments to temporary
+//   fixed ArrayBuffers; texture/buffer uploads stay on Emscripten's fast path.
+
+(() => {
+    const isUnsafeUniformView = (value) => {
+        if (!value || !ArrayBuffer.isView(value) || !value.buffer)
+            return false;
+        if (typeof SharedArrayBuffer !== 'undefined' && value.buffer instanceof SharedArrayBuffer)
+            return true;
+        return value.buffer.resizable === true || value.buffer.growable === true;
+    };
+
+    const copyUniformView = (value, offset, length) => {
+        if (typeof offset === 'number' && typeof length === 'number')
+            return new value.constructor(value.subarray(offset, offset + length));
+        if (typeof offset === 'number')
+            return new value.constructor(value.subarray(offset));
+        return new value.constructor(value);
+    };
+
+    const wrapUniformUpload = (proto, name, dataArgIndex) => {
+        if (!proto || typeof proto[name] !== 'function')
+            return;
+        const original = proto[name];
+        proto[name] = function(...args) {
+            const view = args[dataArgIndex];
+            if (!isUnsafeUniformView(view))
+                return original.apply(this, args);
+
+            const fixedArgs = args.slice(0, dataArgIndex);
+            fixedArgs.push(copyUniformView(view, args[dataArgIndex + 1], args[dataArgIndex + 2]));
+            return original.apply(this, fixedArgs);
+        };
+    };
+
+    const uniformVectorMethods = [
+        'uniform1fv', 'uniform2fv', 'uniform3fv', 'uniform4fv',
+        'uniform1iv', 'uniform2iv', 'uniform3iv', 'uniform4iv',
+        'uniform1uiv', 'uniform2uiv', 'uniform3uiv', 'uniform4uiv',
+    ];
+    const uniformMatrixMethods = [
+        'uniformMatrix2fv', 'uniformMatrix3fv', 'uniformMatrix4fv',
+        'uniformMatrix2x3fv', 'uniformMatrix2x4fv',
+        'uniformMatrix3x2fv', 'uniformMatrix3x4fv',
+        'uniformMatrix4x2fv', 'uniformMatrix4x3fv',
+    ];
+
+    const install = (ctor) => {
+        if (!ctor || !ctor.prototype)
+            return;
+        for (const name of uniformVectorMethods)
+            wrapUniformUpload(ctor.prototype, name, 1);
+        for (const name of uniformMatrixMethods)
+            wrapUniformUpload(ctor.prototype, name, 2);
+    };
+
+    install(globalThis.WebGLRenderingContext);
+    install(globalThis.WebGL2RenderingContext);
+})();
 
 if (typeof registerProcessor === 'function') {
     globalThis.AudioWorkletGlobalScope = globalThis;

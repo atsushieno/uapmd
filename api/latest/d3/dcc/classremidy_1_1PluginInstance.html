@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.0</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -92,6 +92,18 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:aa09308459d2038c777c25c7019eb3fe1" id="r_aa09308459d2038c777c25c7019eb3fe1"><td class="memItemLeft" align="right" valign="top"><a id="aa09308459d2038c777c25c7019eb3fe1" name="aa09308459d2038c777c25c7019eb3fe1"></a>
 <a class="el" href="../../d7/d03/classremidy_1_1PluginCatalogEntry.html">PluginCatalogEntry</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>info</b> ()</td></tr>
 <tr class="separator:aa09308459d2038c777c25c7019eb3fe1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5d17ad4fdff9d1c943428ab3bdadee95" id="r_a5d17ad4fdff9d1c943428ab3bdadee95"><td class="memItemLeft" align="right" valign="top"><a id="a5d17ad4fdff9d1c943428ab3bdadee95" name="a5d17ad4fdff9d1c943428ab3bdadee95"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>dirty</b> () const</td></tr>
+<tr class="separator:a5d17ad4fdff9d1c943428ab3bdadee95"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6e9cc4454aee579b10fc69f0e3a703b4" id="r_a6e9cc4454aee579b10fc69f0e3a703b4"><td class="memItemLeft" align="right" valign="top"><a id="a6e9cc4454aee579b10fc69f0e3a703b4" name="a6e9cc4454aee579b10fc69f0e3a703b4"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>markDirty</b> ()</td></tr>
+<tr class="separator:a6e9cc4454aee579b10fc69f0e3a703b4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af8f14ceccad5936a90b212dd6bc4f400" id="r_af8f14ceccad5936a90b212dd6bc4f400"><td class="memItemLeft" align="right" valign="top"><a id="af8f14ceccad5936a90b212dd6bc4f400" name="af8f14ceccad5936a90b212dd6bc4f400"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>clearDirty</b> ()</td></tr>
+<tr class="separator:af8f14ceccad5936a90b212dd6bc4f400"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aed8ea7dbc618c35148d3c6e961a47cee" id="r_aed8ea7dbc618c35148d3c6e961a47cee"><td class="memItemLeft" align="right" valign="top"><a id="aed8ea7dbc618c35148d3c6e961a47cee" name="aed8ea7dbc618c35148d3c6e961a47cee"></a>
+<a class="el" href="../../d4/de0/classremidy_1_1ParameterEventBase.html">PluginDirtyStateChangeEvent</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>dirtyStateChangeEvent</b> ()</td></tr>
+<tr class="separator:aed8ea7dbc618c35148d3c6e961a47cee"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4b4d731e7e3ad2bb089406c8774c6275" id="r_a4b4d731e7e3ad2bb089406c8774c6275"><td class="memItemLeft" align="right" valign="top"><a id="a4b4d731e7e3ad2bb089406c8774c6275" name="a4b4d731e7e3ad2bb089406c8774c6275"></a>
 virtual <a class="el" href="../../d9/d46/classremidy_1_1PluginExtensibility.html">PluginExtensibility</a>&lt; <a class="el" href="../../d3/dcc/classremidy_1_1PluginInstance.html">PluginInstance</a> &gt; *&#160;</td><td class="memItemRight" valign="bottom"><b>getExtensibility</b> (std::string_view extensionId)</td></tr>
 <tr class="separator:a4b4d731e7e3ad2bb089406c8774c6275"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -140,6 +152,9 @@ Protected Member Functions</h2></td></tr>
 <tr class="memitem:a53b4074e6c6a1f17fd49f475c00e4611" id="r_a53b4074e6c6a1f17fd49f475c00e4611"><td class="memItemLeft" align="right" valign="top"><a id="a53b4074e6c6a1f17fd49f475c00e4611" name="a53b4074e6c6a1f17fd49f475c00e4611"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><b>PluginInstance</b> (<a class="el" href="../../d7/d03/classremidy_1_1PluginCatalogEntry.html">PluginCatalogEntry</a> *entry)</td></tr>
 <tr class="separator:a53b4074e6c6a1f17fd49f475c00e4611"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abd1b471d5ec41e30f4f32eca47befa69" id="r_abd1b471d5ec41e30f4f32eca47befa69"><td class="memItemLeft" align="right" valign="top"><a id="abd1b471d5ec41e30f4f32eca47befa69" name="abd1b471d5ec41e30f4f32eca47befa69"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>setDirtyState</b> (bool dirty)</td></tr>
+<tr class="separator:abd1b471d5ec41e30f4f32eca47befa69"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following file:<ul>
 <li>source/remidy/include/remidy/detail/<a class="el" href="../../d6/d4a/plugin-instance_8hpp_source.html">plugin-instance.hpp</a></li>

@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">UAPMD<span id="projectnumber">&#160;0.5.0</span>
+   <div id="projectname">UAPMD<span id="projectnumber">&#160;main</span>
    </div>
   </td>
  </tr>
@@ -622,40 +622,41 @@ $(document).ready(function() { init_codefold(1); });
 <div class="line"><a id="l00528" name="l00528"></a><span class="lineno">  528</span>        int32_t timeSignatureNumerator{4};</div>
 <div class="line"><a id="l00529" name="l00529"></a><span class="lineno">  529</span>        int32_t timeSignatureDenominator{4};</div>
 <div class="line"><a id="l00530" name="l00530"></a><span class="lineno">  530</span>        int32_t sample_rate{48000};             <span class="comment">// Added for convenience</span></div>
-<div class="line"><a id="l00531" name="l00531"></a><span class="lineno">  531</span> </div>
-<div class="line"><a id="l00532" name="l00532"></a><span class="lineno">  532</span>        <a class="code hl_struct" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a>() = <span class="keywordflow">default</span>;</div>
-<div class="line"><a id="l00533" name="l00533"></a><span class="lineno">  533</span> </div>
-<div class="line"><a id="l00534" name="l00534"></a><span class="lineno">  534</span>        <span class="comment">// Update playhead position based on frame count</span></div>
-<div class="line"><a id="l00535" name="l00535"></a><span class="lineno">  535</span>        <span class="keywordtype">void</span> advancePlayhead(int32_t frameCount, int32_t sampleRate) {</div>
-<div class="line"><a id="l00536" name="l00536"></a><span class="lineno">  536</span>            <span class="keywordflow">if</span> (!isPlaying)</div>
-<div class="line"><a id="l00537" name="l00537"></a><span class="lineno">  537</span>                <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00538" name="l00538"></a><span class="lineno">  538</span> </div>
-<div class="line"><a id="l00539" name="l00539"></a><span class="lineno">  539</span>            playheadPosition.samples += frameCount;</div>
-<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span> </div>
-<div class="line"><a id="l00541" name="l00541"></a><span class="lineno">  541</span>            <span class="comment">// Handle loop region</span></div>
-<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>            <span class="keywordflow">if</span> (loopEnabled) {</div>
-<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span>                <span class="keywordflow">if</span> (playheadPosition.samples &gt;= loopEnd.samples) {</div>
-<div class="line"><a id="l00544" name="l00544"></a><span class="lineno">  544</span>                    playheadPosition.samples = loopStart.samples;</div>
-<div class="line"><a id="l00545" name="l00545"></a><span class="lineno">  545</span>                }</div>
-<div class="line"><a id="l00546" name="l00546"></a><span class="lineno">  546</span>            }</div>
-<div class="line"><a id="l00547" name="l00547"></a><span class="lineno">  547</span> </div>
-<div class="line"><a id="l00548" name="l00548"></a><span class="lineno">  548</span>            <span class="comment">// Update legacy_beats representation</span></div>
-<div class="line"><a id="l00549" name="l00549"></a><span class="lineno">  549</span>            playheadPosition.legacy_beats = TimelinePosition::samplesToBeats(</div>
-<div class="line"><a id="l00550" name="l00550"></a><span class="lineno">  550</span>                playheadPosition.samples, tempo, sampleRate</div>
-<div class="line"><a id="l00551" name="l00551"></a><span class="lineno">  551</span>            );</div>
-<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span>        }</div>
-<div class="line"><a id="l00553" name="l00553"></a><span class="lineno">  553</span> </div>
-<div class="line"><a id="l00554" name="l00554"></a><span class="lineno">  554</span>        <span class="comment">// Seek to a specific position</span></div>
-<div class="line"><a id="l00555" name="l00555"></a><span class="lineno">  555</span>        <span class="keywordtype">void</span> seekTo(<span class="keyword">const</span> <a class="code hl_struct" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a>&amp; position, int32_t sampleRate) {</div>
-<div class="line"><a id="l00556" name="l00556"></a><span class="lineno">  556</span>            playheadPosition = position;</div>
-<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span>            playheadPosition.legacy_beats = TimelinePosition::samplesToBeats(</div>
-<div class="line"><a id="l00558" name="l00558"></a><span class="lineno">  558</span>                playheadPosition.samples, tempo, sampleRate</div>
-<div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span>            );</div>
-<div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span>        }</div>
-<div class="line"><a id="l00561" name="l00561"></a><span class="lineno">  561</span>    };</div>
+<div class="line"><a id="l00531" name="l00531"></a><span class="lineno">  531</span>        uint32_t projectTickResolution{0};      <span class="comment">// PPQ; 0 = not yet established by any MIDI clip</span></div>
+<div class="line"><a id="l00532" name="l00532"></a><span class="lineno">  532</span> </div>
+<div class="line"><a id="l00533" name="l00533"></a><span class="lineno">  533</span>        <a class="code hl_struct" href="../../df/d2b/structuapmd_1_1TimelineState.html">TimelineState</a>() = <span class="keywordflow">default</span>;</div>
+<div class="line"><a id="l00534" name="l00534"></a><span class="lineno">  534</span> </div>
+<div class="line"><a id="l00535" name="l00535"></a><span class="lineno">  535</span>        <span class="comment">// Update playhead position based on frame count</span></div>
+<div class="line"><a id="l00536" name="l00536"></a><span class="lineno">  536</span>        <span class="keywordtype">void</span> advancePlayhead(int32_t frameCount, int32_t sampleRate) {</div>
+<div class="line"><a id="l00537" name="l00537"></a><span class="lineno">  537</span>            <span class="keywordflow">if</span> (!isPlaying)</div>
+<div class="line"><a id="l00538" name="l00538"></a><span class="lineno">  538</span>                <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00539" name="l00539"></a><span class="lineno">  539</span> </div>
+<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span>            playheadPosition.samples += frameCount;</div>
+<div class="line"><a id="l00541" name="l00541"></a><span class="lineno">  541</span> </div>
+<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>            <span class="comment">// Handle loop region</span></div>
+<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span>            <span class="keywordflow">if</span> (loopEnabled) {</div>
+<div class="line"><a id="l00544" name="l00544"></a><span class="lineno">  544</span>                <span class="keywordflow">if</span> (playheadPosition.samples &gt;= loopEnd.samples) {</div>
+<div class="line"><a id="l00545" name="l00545"></a><span class="lineno">  545</span>                    playheadPosition.samples = loopStart.samples;</div>
+<div class="line"><a id="l00546" name="l00546"></a><span class="lineno">  546</span>                }</div>
+<div class="line"><a id="l00547" name="l00547"></a><span class="lineno">  547</span>            }</div>
+<div class="line"><a id="l00548" name="l00548"></a><span class="lineno">  548</span> </div>
+<div class="line"><a id="l00549" name="l00549"></a><span class="lineno">  549</span>            <span class="comment">// Update legacy_beats representation</span></div>
+<div class="line"><a id="l00550" name="l00550"></a><span class="lineno">  550</span>            playheadPosition.legacy_beats = TimelinePosition::samplesToBeats(</div>
+<div class="line"><a id="l00551" name="l00551"></a><span class="lineno">  551</span>                playheadPosition.samples, tempo, sampleRate</div>
+<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span>            );</div>
+<div class="line"><a id="l00553" name="l00553"></a><span class="lineno">  553</span>        }</div>
+<div class="line"><a id="l00554" name="l00554"></a><span class="lineno">  554</span> </div>
+<div class="line"><a id="l00555" name="l00555"></a><span class="lineno">  555</span>        <span class="comment">// Seek to a specific position</span></div>
+<div class="line"><a id="l00556" name="l00556"></a><span class="lineno">  556</span>        <span class="keywordtype">void</span> seekTo(<span class="keyword">const</span> <a class="code hl_struct" href="../../d1/d17/structuapmd_1_1TimelinePosition.html">TimelinePosition</a>&amp; position, int32_t sampleRate) {</div>
+<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span>            playheadPosition = position;</div>
+<div class="line"><a id="l00558" name="l00558"></a><span class="lineno">  558</span>            playheadPosition.legacy_beats = TimelinePosition::samplesToBeats(</div>
+<div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span>                playheadPosition.samples, tempo, sampleRate</div>
+<div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span>            );</div>
+<div class="line"><a id="l00561" name="l00561"></a><span class="lineno">  561</span>        }</div>
+<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span>    };</div>
 </div>
-<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span> </div>
-<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span>} <span class="comment">// namespace uapmd</span></div>
+<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span> </div>
+<div class="line"><a id="l00564" name="l00564"></a><span class="lineno">  564</span>} <span class="comment">// namespace uapmd</span></div>
 <div class="ttc" id="astructuapmd_1_1AudioWarpPoint_html"><div class="ttname"><a href="../../de/dba/structuapmd_1_1AudioWarpPoint.html">uapmd::AudioWarpPoint</a></div><div class="ttdef"><b>Definition</b> TimelineTypes.hpp:297</div></div>
 <div class="ttc" id="astructuapmd_1_1ClipData_html"><div class="ttname"><a href="../../d4/d9f/structuapmd_1_1ClipData.html">uapmd::ClipData</a></div><div class="ttdef"><b>Definition</b> TimelineTypes.hpp:398</div></div>
 <div class="ttc" id="astructuapmd_1_1ClipMarker_html"><div class="ttname"><a href="../../d6/d34/structuapmd_1_1ClipMarker.html">uapmd::ClipMarker</a></div><div class="ttdef"><b>Definition</b> TimelineTypes.hpp:196</div></div>
