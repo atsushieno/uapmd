@@ -3,6 +3,8 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
+#undef None
+#include <remidy/remidy.hpp>
 #include <thread>
 #include <atomic>
 #include <chrono>
@@ -113,6 +115,7 @@ public:
         return reinterpret_cast<void*>(static_cast<uintptr_t>(holder_ ? holder_ : wnd_));
     }
     void setResizeCallback(std::function<void(int, int)> callback) override {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
         resizeCallback_ = std::move(callback);
     }
     void setResizable(bool resizable) override {
@@ -147,6 +150,7 @@ public:
     Window child_{};
     std::function<void()> closeCallback_;
     std::function<void(int, int)> resizeCallback_;
+    std::mutex callbackMutex_; // guards resizeCallback_ (read by pump thread, set from main thread)
 
     void eventPump() {
         // Only handle events targeted to our container window; don't drain the connection-wide queue.
@@ -162,9 +166,16 @@ public:
                     case ClientMessage:
                         if (ev.xclient.message_type == XInternAtom(dpy_, "WM_PROTOCOLS", False)
                             && static_cast<Atom>(ev.xclient.data.l[0]) == wmDelete_) {
-                            // Don't actually close the window - just hide it
+                            // Don't actually close the window - just hide it.
+                            // The callback touches host state owned by the main thread, so it must be
+                            // enqueued (not run or blocked on) here: the destructor joins this pump
+                            // thread from the main thread, so any blocking wait would deadlock.
+                            // Copy the function so the task stays valid if this window is destroyed
+                            // before the main thread runs it.
                             if (closeCallback_) {
-                                closeCallback_();
+                                remidy::EventLoop::enqueueTaskOnMainThread([cb = closeCallback_] {
+                                    cb();
+                                });
                             }
                             XUnmapWindow(dpy_, wnd_);
                             if (holder_) XUnmapWindow(dpy_, holder_);
@@ -181,9 +192,17 @@ public:
                                 b_.height = newHeight;
                                 // Resize holder to match
                                 if (holder_) XResizeWindow(dpy_, holder_, (unsigned)newWidth, (unsigned)newHeight);
-                                // Notify via callback
-                                if (resizeCallback_) {
-                                    resizeCallback_(newWidth, newHeight);
+                                // Notify via callback, on the main thread (same contract as
+                                // Win32/Cocoa, and same deadlock rationale as the close callback)
+                                std::function<void(int, int)> cb;
+                                {
+                                    std::lock_guard<std::mutex> lock(callbackMutex_);
+                                    cb = resizeCallback_;
+                                }
+                                if (cb) {
+                                    remidy::EventLoop::enqueueTaskOnMainThread([cb, newWidth, newHeight] {
+                                        cb(newWidth, newHeight);
+                                    });
                                 }
                             }
                         }
