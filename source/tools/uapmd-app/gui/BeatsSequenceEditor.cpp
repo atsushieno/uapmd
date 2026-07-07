@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <ImTimeline.h>
 #include "TrackLegendNodeView.hpp"
 #include "TimelineLaneAssignment.hpp"
@@ -184,8 +185,17 @@ void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, fl
         const bool anyMouseActivity = io.MouseDown[0] || io.MouseDown[1] ||
                                       io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
         const bool scrollbarDragging = unified_.timeline->GetLastInputData().IsMovingScrollBar;
-        const bool imguiItemActive = ImGui::GetActiveID() != 0;
-        const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!imguiItemActive && !timelineHovered && anyMouseActivity));
+        // Exempt only items owned by this timeline window (see SequenceEditor.cpp): items
+        // active in other windows (e.g. a dragged overlay) must not disable blocking.
+        const ImGuiWindow* timelineWindow = ImGui::GetCurrentWindow();
+        bool timelineItemActive = false;
+        if (ImGuiContext* ctx = ImGui::GetCurrentContext(); ctx->ActiveId != 0)
+            for (const ImGuiWindow* w = ctx->ActiveIdWindow; w; w = w->ParentWindow)
+                if (w == timelineWindow) {
+                    timelineItemActive = true;
+                    break;
+                }
+        const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!timelineItemActive && !timelineHovered && anyMouseActivity));
 
         // Vertical mouse-wheel/trackpad scroll over the header zooms. ImTimeline never reads
         // io.MouseWheel itself (only io.MouseWheelH, for its own horizontal pan), so this doesn't

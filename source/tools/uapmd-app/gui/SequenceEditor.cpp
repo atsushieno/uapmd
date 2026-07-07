@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <ImTimeline.h>
 #include "TrackLegendNodeView.hpp"
 #include "TimelineLaneAssignment.hpp"
@@ -329,14 +330,23 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         ImGuiIO& io = ImGui::GetIO();
         const bool anyMouseActivity = io.MouseDown[0] || io.MouseDown[1] ||
                                       io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
-        // Don't block input while the scrollbar is being dragged or while an ImGui item is
-        // active (e.g. a slider being dragged): straying outside the window mid-drag would
-        // zero io.MouseDown[0], causing the active widget to think the mouse was released.
-        // The imguiItemActive exemption is scoped only to the "mouse outside window" branch so
-        // that popup-blocking is always honoured regardless of active items.
+        // Don't block input while the scrollbar is being dragged or while an ImGui item owned
+        // by this timeline window is active (e.g. the legend volume slider): straying outside
+        // the window mid-drag would zero io.MouseDown[0], causing the active widget to think
+        // the mouse was released. The exemption must NOT apply to items active in other windows
+        // (e.g. an overlay window being dragged above the timeline), or ImTimeline would see
+        // the drag and move the underlying track. Scoped only to the "mouse outside window"
+        // branch so that popup-blocking is always honoured regardless of active items.
         const bool scrollbarDragging = unified_.timeline->GetLastInputData().IsMovingScrollBar;
-        const bool imguiItemActive = ImGui::GetActiveID() != 0;
-        const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!imguiItemActive && !timelineHovered && anyMouseActivity));
+        const ImGuiWindow* timelineWindow = ImGui::GetCurrentWindow();
+        bool timelineItemActive = false;
+        if (ImGuiContext* ctx = ImGui::GetCurrentContext(); ctx->ActiveId != 0)
+            for (const ImGuiWindow* w = ctx->ActiveIdWindow; w; w = w->ParentWindow)
+                if (w == timelineWindow) {
+                    timelineItemActive = true;
+                    break;
+                }
+        const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!timelineItemActive && !timelineHovered && anyMouseActivity));
 
         // Vertical mouse-wheel/trackpad scroll over the header zooms. ImTimeline never reads
         // io.MouseWheel itself (only io.MouseWheelH, for its own horizontal pan), so this doesn't
