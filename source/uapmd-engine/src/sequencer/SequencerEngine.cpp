@@ -1682,21 +1682,30 @@ namespace uapmd {
                 int32_t paramId = (bank * 128) + index;
                 double value = static_cast<double>(value32) / 4294967295.0;
 
-                // Find the AudioPluginNode and notify parameter update
-                bool handled = false;
-                for (const auto& track : tracks()) {
-                    auto node = track->graph().getPluginNode(instanceId);
-                    if (node) {
-                        node->parameterUpdateEvent().notify(paramId, value);
-                        handled = true;
-                        break;
+                // FIXME: we have to strictly determine whether the output event handler must be RT-safe or not.
+                // Defer the node lookup and notification to the main thread. This
+                // callback runs on the audio thread, where getPluginNode() is both
+                // forbidden (it takes the graph's non-realtime farbot access, a
+                // blocking mutex) and deadlock-prone: the UI thread holds that mutex
+                // while spin-waiting for the audio thread in nonRealtimeRelease().
+                // The parameter listeners are UI/JS code that expects the main
+                // thread anyway (all other notify sites run there).
+                // FIXME: enqueueTaskOnMainThread() allocates and briefly locks the
+                // task queue mutex, so this path is not strictly lock-free; NRPN
+                // output events are sporadic enough that this is acceptable for now.
+                remidy::EventLoop::enqueueTaskOnMainThread([this, instanceId, paramId, value] {
+                    for (const auto& track : tracks()) {
+                        if (auto* node = track->graph().getPluginNode(instanceId)) {
+                            node->parameterUpdateEvent().notify(paramId, value);
+                            return;
+                        }
                     }
-                }
-                if (!handled && master_track_) {
-                    if (auto* node = master_track_->graph().getPluginNode(instanceId)) {
-                        node->parameterUpdateEvent().notify(paramId, value);
+                    if (master_track_) {
+                        if (auto* node = master_track_->graph().getPluginNode(instanceId)) {
+                            node->parameterUpdateEvent().notify(paramId, value);
+                        }
                     }
-                }
+                });
             }
 
             // Rewrite group field
