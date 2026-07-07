@@ -851,17 +851,20 @@ namespace uapmd {
         const auto trackFrameCount = static_cast<int32_t>(
             std::min(static_cast<size_t>(process.frameCount()), audio_buffer_size_in_frames));
 
+        // Track add/remove on the main thread updates tracks_ and the pump-side
+        // vectors non-atomically, so clamp every loop below to the smallest size
+        // and skip the not-yet-published tracks for this quantum (lock-free).
+        const size_t pumpTrackCount = std::min(
+            std::min(tracks_.size(), pump_sequence_.tracks.size()),
+            std::min(pump_rings_.size(), pump_slot_indices_.size()));
+
         // ── Step 1: acquire a free ring-buffer slot per track ─────────────────
         // pump_sequence_.tracks[t] is redirected to the acquired slot's context so
         // audio_preprocess_callback_ (which calls
         // timeline_->processTracksAudio(process, pump_sequence_)) writes into the
         // ring slot rather than into the shared sequence.tracks[t].
         std::fill(pump_slot_indices_.begin(), pump_slot_indices_.end(), SIZE_MAX);
-        for (size_t t = 0; t < tracks_.size(); t++) {
-            if (t >= pump_rings_.size() || t >= pump_sequence_.tracks.size()) {
-                pump_sequence_.tracks[t] = (t < sequence.tracks.size()) ? sequence.tracks[t] : nullptr;
-                continue;
-            }
+        for (size_t t = 0; t < pumpTrackCount; t++) {
             size_t idx;
             if (pump_rings_[t]->free_slots.try_dequeue(idx)) {
                 pump_slot_indices_[t] = idx;
@@ -877,7 +880,7 @@ namespace uapmd {
         }
 
         // ── Step 2: fan out device input into pump contexts ───────────────────
-        for (size_t t = 0; t < tracks_.size(); t++) {
+        for (size_t t = 0; t < pumpTrackCount; t++) {
             auto* ctx = pump_sequence_.tracks[t];
             if (!ctx) continue;
             for (uint32_t i = 0; i < ctx->audioInBusCount(); i++) {
@@ -899,8 +902,8 @@ namespace uapmd {
             audio_preprocess_callback_(process);
 
         // ── Step 4: commit — enqueue filled slots to the RT consumer ──────────
-        for (size_t t = 0; t < tracks_.size(); t++)
-            if (t < pump_rings_.size() && pump_slot_indices_[t] != SIZE_MAX)
+        for (size_t t = 0; t < pumpTrackCount; t++)
+            if (pump_slot_indices_[t] != SIZE_MAX)
                 pump_rings_[t]->filled.try_enqueue(pump_slot_indices_[t]);
     }
 
@@ -950,7 +953,12 @@ namespace uapmd {
         // use the pump-filled data without modification.  In single-threaded mode the
         // pump ran just above (pumpAudio call), so the filled queue is non-empty.
         std::fill(rt_dequeued_slots_.begin(), rt_dequeued_slots_.end(), SIZE_MAX);
-        for (size_t t = 0; t < tracks_.size() && t < pump_rings_.size(); t++) {
+        // Same clamping rationale as pumpAudio(): the pump-side vectors may lag
+        // tracks_/sequence.tracks while the main thread is adding a track.
+        const size_t rtPumpTrackCount = std::min(
+            std::min(tracks_.size(), sequence.tracks.size()),
+            std::min(pump_rings_.size(), rt_dequeued_slots_.size()));
+        for (size_t t = 0; t < rtPumpTrackCount; t++) {
             size_t idx;
             if (pump_rings_[t]->filled.try_dequeue(idx)) {
                 rt_dequeued_slots_[t] = idx;
@@ -959,8 +967,12 @@ namespace uapmd {
             // If no slot available: keep sequence.tracks[t] as-is (stale fallback).
         }
 
-        // Process all tracks
-        for (auto i = 0; i < sequence.tracks.size(); i++) {
+        // Process all tracks (track_processing_flags_ may lag sequence.tracks
+        // while the main thread is adding a track, hence the extra clamp).
+        const size_t processTrackCount = std::min(
+            std::min(tracks_.size(), sequence.tracks.size()),
+            track_processing_flags_.size());
+        for (size_t i = 0; i < processTrackCount; i++) {
             // Set processing flag BEFORE accessing sequence.tracks[i]
             track_processing_flags_[i]->store(true, std::memory_order_release);
 
