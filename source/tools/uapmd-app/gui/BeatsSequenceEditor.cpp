@@ -212,6 +212,8 @@ void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, fl
         // Touch path to the same zoom: press-and-hold on the header opens a slider popup.
         updateZoomHoldPopup("##BeatsTimelineZoomPopup", overHeader, *unified_.timeline,
                             unified_.hasExplicitZoom, context.uiScale);
+        // Touch path to horizontal pan: drag on the header (wheelH never fires on touch).
+        updateHeaderPan(unified_.headerPan, overHeader, *unified_.timeline, context.uiScale);
 
         bool savedMouseDown[5];
         float savedMouseWheel = 0.0f, savedMouseWheelH = 0.0f;

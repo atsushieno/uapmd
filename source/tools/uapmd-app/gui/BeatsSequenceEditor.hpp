@@ -112,6 +112,7 @@ private:
         bool hasPendingFit = false;  // fitToContent was called before any width was known yet
         double pendingFitDurationBeats = 0.0;
         float pendingFitUiScale = 1.0f;
+        HeaderPanState headerPan;
     };
     UnifiedTimelineState unified_;
 

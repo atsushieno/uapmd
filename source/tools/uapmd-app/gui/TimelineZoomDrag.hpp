@@ -42,6 +42,47 @@ constexpr float kZoomHoldSeconds = 0.5f;
 // stationary press -- generous, since fingers wobble far more than mouse cursors.
 constexpr float kZoomHoldMaxDriftPx = 12.0f;
 
+// State for single-pointer drag-to-pan on the timeline header; one instance per editor.
+struct HeaderPanState {
+    bool pressArmed = false;  // the current press began over the header
+    bool panning = false;     // drag exceeded the drift allowance; pans until release
+    float accumFrames = 0.0f; // fractional frames carried across frames (matters when zoomed in)
+};
+
+// Dragging horizontally on the header pans the timeline, content following the pointer. This
+// is the touch path to ImTimeline's pan: its own pan reads io.MouseWheelH, and touch devices
+// never produce wheel events at all. Uses the same drift threshold as the zoom-hold popup so
+// the two gestures are mutually exclusive -- a press either stays put (popup) or moves (pan).
+inline void updateHeaderPan(HeaderPanState& state, bool overHeader,
+                            ImTimeline::Timeline& timeline, float uiScale) {
+    ImGuiIO& io = ImGui::GetIO();
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        state.pressArmed = overHeader;
+    if (!io.MouseDown[0]) {
+        state.pressArmed = false;
+        state.panning = false;
+        state.accumFrames = 0.0f;
+        return;
+    }
+    const float drift = kZoomHoldMaxDriftPx * uiScale;
+    if (state.pressArmed && !state.panning &&
+        std::abs(ImGui::GetMouseDragDelta(ImGuiMouseButton_Left, 0.0f).x) > drift)
+        state.panning = true;
+    if (!state.panning)
+        return;
+    const float scale = timeline.GetScale();
+    if (scale <= 0.0f)
+        return;
+    state.accumFrames += -io.MouseDelta.x / scale;
+    const float whole = std::trunc(state.accumFrames);
+    if (whole != 0.0f) {
+        // DrawTimeline() re-clamps mStartFrame to [frameMin, frameMax - visible] every frame,
+        // so no clamping is needed here.
+        timeline.SetStartTimestamp(static_cast<int>(timeline.GetStartTimestamp() + whole));
+        state.accumFrames -= whole;
+    }
+}
+
 // Call once per frame from inside the timeline's child window (so the popup shares its ID
 // scope). Opens a slider popup when the pointer is held still over the header for
 // kZoomHoldSeconds; the slider edits the timeline zoom live. ImGui closes the popup on any
