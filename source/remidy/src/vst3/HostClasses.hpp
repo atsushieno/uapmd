@@ -13,6 +13,7 @@
 #include <memory>
 #include <thread>
 #include <chrono>
+#include <condition_variable>
 
 #if defined(__linux__) || defined(__unix__)
 #ifdef HAVE_WAYLAND
@@ -552,14 +553,24 @@ namespace remidy_vst3 {
         };
 #endif
 
+    public:
+        // IRunLoop implementation. HostApplication owns a global one (handed out from
+        // its own queryInterface), and each PluginInstanceVST3::UISupport owns a
+        // per-view one (handed out from IPlugFrame::queryInterface) so that any
+        // handlers/timers a plugin leaves registered can be forcibly disarmed via
+        // stopAll() when the view goes away - before the plugin module is unloaded.
         struct RunLoopImpl : public IRunLoop {
             std::atomic<uint32_t> refCount{1};
-            HostApplication* owner;
+            HostApplication* owner; // may be null for per-view run loops
 
             struct TimerInfo {
                 ITimerHandler* handler;
                 uint64_t interval_ms;
                 std::atomic<bool> active{true};
+                std::atomic<bool> dispatch_pending{false};
+                std::thread worker{};
+                std::mutex cvMutex{};
+                std::condition_variable cv{};
             };
             std::vector<std::shared_ptr<TimerInfo>> timers{};
             std::mutex timers_mutex{};
@@ -568,12 +579,19 @@ namespace remidy_vst3 {
                 IEventHandler* handler;
                 int fd;
                 std::atomic<bool> active{true};
+                std::atomic<bool> dispatch_pending{false};
+                std::thread worker{};
             };
             std::vector<std::shared_ptr<EventHandlerInfo>> event_handlers{};
             std::mutex event_handlers_mutex{};
 
             explicit RunLoopImpl(HostApplication* owner) : owner(owner) {}
-            virtual ~RunLoopImpl() = default;
+            virtual ~RunLoopImpl() { stopAll(); }
+
+            // Disarm and join all remaining event handlers and timers, so their
+            // handlers are never invoked again. Safe to call from the main thread:
+            // worker threads never block on the main thread (dispatch is enqueued).
+            void stopAll();
 
             tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) SMTG_OVERRIDE;
             uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return ++refCount; }
@@ -588,6 +606,7 @@ namespace remidy_vst3 {
             tresult PLUGIN_API unregisterTimer(ITimerHandler* handler) SMTG_OVERRIDE;
         };
 
+    private:
         PlugInterfaceSupportImpl* support{nullptr};
         RunLoopImpl* run_loop{nullptr};
 #ifdef HAVE_WAYLAND

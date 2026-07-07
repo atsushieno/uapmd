@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cerrno>
 
 #include "remidy/remidy.hpp"
 #include "HostClasses.hpp"
@@ -215,16 +216,17 @@ namespace remidy_vst3 {
         if (!handler)
             return kInvalidArgument;
 
-        std::lock_guard<std::mutex> lock(event_handlers_mutex);
-
         auto info = std::make_shared<EventHandlerInfo>();
         info->handler = handler;
         info->fd = fd;
         info->active.store(true);
 
-        event_handlers.push_back(info);
-
-        std::thread monitor_thread([info]() {
+        // The worker must never block on the main thread: unregistration (and stopAll())
+        // joins it from the main thread, so a blocking dispatch would deadlock.
+        // dispatch_pending throttles like the former blocking dispatch did: no new task
+        // is enqueued until the previous one ran (select() is level-triggered, so a
+        // still-readable fd re-fires on the next iteration).
+        info->worker = std::thread([info]() {
             fd_set readfds;
             struct timeval tv;
 
@@ -237,67 +239,98 @@ namespace remidy_vst3 {
 
                 int result = select(info->fd + 1, &readfds, nullptr, nullptr, &tv);
 
-                if (result > 0 && FD_ISSET(info->fd, &readfds)) {
-                    remidy::EventLoop::runTaskOnMainThread([info]() {
-                        if (!info->active.load()) return;
-                        if (info->handler)
+                if (result < 0) {
+                    if (errno == EINTR)
+                        continue;
+                    // EBADF etc.: plugins may close the fd before unregistering the
+                    // handler; stop polling instead of spinning on the error.
+                    break;
+                }
+                if (result > 0 && FD_ISSET(info->fd, &readfds)
+                    && !info->dispatch_pending.exchange(true)) {
+                    remidy::EventLoop::enqueueTaskOnMainThread([info]() {
+                        if (info->active.load() && info->handler)
                             info->handler->onFDIsSet(info->fd);
+                        info->dispatch_pending.store(false);
                     });
                 }
             }
         });
-        monitor_thread.detach();
 
+        {
+            std::lock_guard<std::mutex> lock(event_handlers_mutex);
+            event_handlers.push_back(info);
+        }
         return kResultOk;
 #endif
+    }
+
+    namespace {
+        template<typename Info>
+        void stopWorker(Info& info) {
+            info.active.store(false);
+            if (info.worker.joinable()) {
+                if (info.worker.get_id() == std::this_thread::get_id())
+                    info.worker.detach();
+                else
+                    info.worker.join();
+            }
+        }
     }
 
     tresult PLUGIN_API HostApplication::RunLoopImpl::unregisterEventHandler(IEventHandler* handler) {
         if (!handler)
             return kInvalidArgument;
 
-        std::lock_guard<std::mutex> lock(event_handlers_mutex);
-
-        auto it = event_handlers.begin();
-        while (it != event_handlers.end()) {
-            if ((*it)->handler == handler) {
-                (*it)->active.store(false);
-                it = event_handlers.erase(it);
-                return kResultOk;
-            } else {
-                ++it;
-            }
+        std::shared_ptr<EventHandlerInfo> info;
+        {
+            std::lock_guard<std::mutex> lock(event_handlers_mutex);
+            auto it = std::find_if(event_handlers.begin(), event_handlers.end(),
+                                   [handler](auto& e) { return e->handler == handler; });
+            if (it == event_handlers.end())
+                return kInvalidArgument;
+            info = *it;
+            event_handlers.erase(it);
         }
-
-        return kInvalidArgument;
+        stopWorker(*info);
+        return kResultOk;
     }
 
     tresult PLUGIN_API HostApplication::RunLoopImpl::registerTimer(ITimerHandler* handler, TimerInterval milliseconds) {
         if (!handler)
             return kInvalidArgument;
 
-        std::lock_guard<std::mutex> lock(timers_mutex);
-
         auto timer_info = std::make_shared<TimerInfo>();
         timer_info->handler = handler;
         timer_info->interval_ms = milliseconds;
         timer_info->active.store(true);
 
-        timers.push_back(timer_info);
-
-        std::thread timer_thread([timer_info]() {
+        // Same non-blocking dispatch contract as registerEventHandler(); the cv lets
+        // unregisterTimer()/stopAll() interrupt the wait so join returns promptly.
+        timer_info->worker = std::thread([timer_info]() {
             while (timer_info->active.load()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(timer_info->interval_ms));
+                {
+                    std::unique_lock<std::mutex> lk(timer_info->cvMutex);
+                    timer_info->cv.wait_for(lk, std::chrono::milliseconds(timer_info->interval_ms),
+                                            [&] { return !timer_info->active.load(); });
+                }
+                if (!timer_info->active.load())
+                    break;
 
-                remidy::EventLoop::runTaskOnMainThread([timer_info]() {
-                    if (!timer_info->active.load()) return;
-                    if (timer_info->handler)
-                        timer_info->handler->onTimer();
-                });
+                if (!timer_info->dispatch_pending.exchange(true)) {
+                    remidy::EventLoop::enqueueTaskOnMainThread([timer_info]() {
+                        if (timer_info->active.load() && timer_info->handler)
+                            timer_info->handler->onTimer();
+                        timer_info->dispatch_pending.store(false);
+                    });
+                }
             }
         });
-        timer_thread.detach();
 
+        {
+            std::lock_guard<std::mutex> lock(timers_mutex);
+            timers.push_back(timer_info);
+        }
         return kResultOk;
     }
 
@@ -305,20 +338,41 @@ namespace remidy_vst3 {
         if (!handler)
             return kInvalidArgument;
 
-        std::lock_guard<std::mutex> lock(timers_mutex);
-
-        auto it = timers.begin();
-        while (it != timers.end()) {
-            if ((*it)->handler == handler) {
-                (*it)->active.store(false);
-                it = timers.erase(it);
-                return kResultOk;
-            } else {
-                ++it;
-            }
+        std::shared_ptr<TimerInfo> info;
+        {
+            std::lock_guard<std::mutex> lock(timers_mutex);
+            auto it = std::find_if(timers.begin(), timers.end(),
+                                   [handler](auto& t) { return t->handler == handler; });
+            if (it == timers.end())
+                return kInvalidArgument;
+            info = *it;
+            timers.erase(it);
         }
+        info->active.store(false);
+        info->cv.notify_all();
+        stopWorker(*info);
+        return kResultOk;
+    }
 
-        return kInvalidArgument;
+    void HostApplication::RunLoopImpl::stopAll() {
+        std::vector<std::shared_ptr<EventHandlerInfo>> handlersCopy;
+        {
+            std::lock_guard<std::mutex> lock(event_handlers_mutex);
+            handlersCopy.swap(event_handlers);
+        }
+        for (auto& info : handlersCopy)
+            stopWorker(*info);
+
+        std::vector<std::shared_ptr<TimerInfo>> timersCopy;
+        {
+            std::lock_guard<std::mutex> lock(timers_mutex);
+            timersCopy.swap(timers);
+        }
+        for (auto& info : timersCopy) {
+            info->active.store(false);
+            info->cv.notify_all();
+            stopWorker(*info);
+        }
     }
 
 #ifdef HAVE_WAYLAND

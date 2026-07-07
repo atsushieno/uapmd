@@ -182,6 +182,14 @@ void remidy::PluginInstanceVST3::refreshMidiMappings() {
 remidy::PluginInstanceVST3::~PluginInstanceVST3() {
     auto logger = owner->getLogger();
 
+    // Destroy the UI first (if the caller did not) so that any run-loop handlers or
+    // timers the plugin registered are disarmed before the module can be unloaded.
+    if (_ui) {
+        _ui->destroy();
+        delete _ui;
+        _ui = nullptr;
+    }
+
     auto result = processor->setProcessing(false);
     if (result == kResultOk)
         processingActive = false;

@@ -389,6 +389,10 @@ namespace remidy {
             std::vector<FIDString> supported_ui_types{};
             FIDString target_ui_string{};
             PlugFrameImpl* plug_frame{nullptr};
+            // Per-view IRunLoop handed out via PlugFrameImpl::queryInterface. Owning it
+            // per view lets us forcibly disarm handlers/timers the plugin failed to
+            // unregister (via stopAll()) before its module gets unloaded.
+            remidy_vst3::HostApplication::RunLoopImpl* run_loop{nullptr};
 
         public:
             explicit UISupport(PluginInstanceVST3* owner);

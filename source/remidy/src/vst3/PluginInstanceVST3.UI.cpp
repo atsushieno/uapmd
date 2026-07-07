@@ -32,9 +32,17 @@ namespace remidy {
         supported_ui_types = {kPlatformTypeHWND};
 #endif
         plug_frame = new PlugFrameImpl(this);
+        run_loop = new remidy_vst3::HostApplication::RunLoopImpl(nullptr);
     }
 
     PluginInstanceVST3::UISupport::~UISupport() {
+        if (run_loop) {
+            // Backstop: disarm anything the plugin left registered. The object itself
+            // is refcounted, so it stays alive if the plugin still holds a reference.
+            run_loop->stopAll();
+            run_loop->release();
+            run_loop = nullptr;
+        }
         if (plug_frame) plug_frame->release();
     }
 
@@ -139,6 +147,12 @@ namespace remidy {
                 view->release();
                 view = nullptr;
             }
+
+            // removed() gave the plugin its chance to unregister; forcibly disarm
+            // whatever it left behind (e.g. VSTGUI-based plugins can leak fd handlers
+            // and idle timers), so nothing dispatches into the module after teardown.
+            if (run_loop)
+                run_loop->stopAll();
 
             created = false;
             visible = false;
@@ -247,12 +261,17 @@ namespace remidy {
 #ifdef HAVE_WAYLAND
         QUERY_INTERFACE(_iid, obj, IWaylandFrame::iid, IWaylandFrame)
 #endif
-        // Delegate IRunLoop to the host-global HostApplication
+        // Hand out this view's own IRunLoop (not the host-global one) so that
+        // registrations are attributable to the view and can be purged on destroy.
         if (FUnknownPrivate::iidEqual(_iid, IRunLoop::iid)) {
-            auto* rl = owner->owner->owner->getHost()->getRunLoop();
-            if (rl) rl->addRef();
-            *obj = rl;
-            return kResultOk;
+            auto* rl = owner->run_loop;
+            if (rl) {
+                rl->addRef();
+                *obj = rl;
+                return kResultOk;
+            }
+            *obj = nullptr;
+            return kNoInterface;
         }
         logNoInterface("IPlugFrame::queryInterface", _iid);
         *obj = nullptr;
