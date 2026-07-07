@@ -288,9 +288,12 @@ MainWindow::MainWindow(GuiDefaults defaults) {
     auto audioManager = uapmd::AudioIODeviceManager::instance();
     audioDeviceSettings_.setPlatformProvidesAutoBufferSize(audioManager->platformProvidesAutoBufferSize());
     audioDeviceSettings_.setUseAutoBufferSize(uapmd::AppModel::instance().autoBufferSizeEnabled());
+    // Fires on miniaudio's device worker thread; enqueue (a blocking dispatch
+    // here deadlocks against the main thread reopening the device).
     audioManager->setDeviceChangeCallback([this](int32_t deviceId, AudioIODeviceChange change) {
-        // Refresh device list when devices are added or removed
-        refreshDeviceList();
+        remidy::EventLoop::enqueueTaskOnMainThread([this]() {
+            refreshDeviceList();
+        });
     });
 
     timelineEditor_.refreshAllSequenceEditorTracks();

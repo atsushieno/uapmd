@@ -234,6 +234,8 @@ globalThis.uapmd = {
         // Audio device settings
         getSampleRate: () => __remidy_sequencer_getSampleRate(),
         setSampleRate: (sampleRate) => __remidy_sequencer_setSampleRate(sampleRate),
+        reconfigureAudioDevice: (inputIndex, outputIndex, sampleRate, bufferSize) =>
+            __remidy_sequencer_reconfigureAudioDevice(inputIndex, outputIndex, sampleRate, bufferSize),
         isScanning: () => __remidy_sequencer_isScanning()
     },
 

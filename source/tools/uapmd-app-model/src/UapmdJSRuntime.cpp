@@ -843,6 +843,24 @@ void UapmdJSRuntime::registerSequencerAudioDeviceAPI()
         return choc::value::createBool (success);
     });
 
+    jsContext_.registerFunction ("__remidy_sequencer_reconfigureAudioDevice", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto inputIndex = args.get<int32_t> (0, -1);
+        auto outputIndex = args.get<int32_t> (1, -1);
+        auto sampleRate = args.get<int32_t> (2, 0);
+        auto bufferSize = args.get<int32_t> (3, 0);
+        if (sampleRate < 0 || bufferSize < 0)
+            return choc::value::createBool (false);
+
+        auto& sequencer = uapmd::AppModel::instance().sequencer();
+        if (!sequencer.reconfigureAudioDevice (inputIndex, outputIndex,
+                                               static_cast<uint32_t> (sampleRate),
+                                               static_cast<uint32_t> (bufferSize)))
+            return choc::value::createBool (false);
+        uapmd::AppModel::instance().updateAudioDeviceSettings (sequencer.sampleRate(), static_cast<uint32_t> (bufferSize));
+        return choc::value::createBool (true);
+    });
+
     jsContext_.registerFunction ("__remidy_sequencer_isScanning", [] (choc::javascript::ArgumentList) -> choc::value::Value
     {
         auto isScanning = uapmd::AppModel::instance().isScanning();
