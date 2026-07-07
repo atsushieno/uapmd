@@ -649,8 +649,12 @@ namespace remidy {
         if (!pluginPtr || !pluginPtr->canUseTimerSupport())
             return;
         auto callbacksAlive = callbacks_alive_;
-        // Ensure timer callback happens on the main/UI thread per CLAP expectations
-        EventLoop::runTaskOnMainThread([callbacksAlive, pluginPtr, timerId](){
+        // Ensure timer callback happens on the main/UI thread per CLAP expectations.
+        // This must be a non-blocking enqueue: the timer worker thread must never wait
+        // on the main thread, otherwise joining the worker (shutdownTimers() or
+        // clap_host_timer_support.unregister_timer() during plugin destruction) deadlocks
+        // against a worker that is blocked waiting for the main thread queue.
+        EventLoop::enqueueTaskOnMainThread([callbacksAlive, pluginPtr, timerId](){
             if (!callbacksAlive->load(std::memory_order_acquire))
                 return;
             pluginPtr->timerSupportOnTimer(timerId);
