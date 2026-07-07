@@ -360,6 +360,9 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
             unified_.hasExplicitZoom = true;
             io.MouseWheel = 0.0f;
         }
+        // Touch path to the same zoom: press-and-hold on the header opens a slider popup.
+        updateZoomHoldPopup("##TimelineZoomPopup", overHeader, *unified_.timeline,
+                            unified_.hasExplicitZoom, context.uiScale);
 
         bool savedMouseDown[5];
         float savedMouseWheel = 0.0f, savedMouseWheelH = 0.0f;
