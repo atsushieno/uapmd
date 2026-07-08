@@ -297,14 +297,14 @@ std::string remidy::PluginInstanceVST3::ParameterSupport::buildUnitPath(UnitID u
 void remidy::PluginInstanceVST3::ParameterSupport::setProgramChange(remidy::uint4_t group, remidy::uint4_t channel,
                                                                     remidy::uint7_t flags, remidy::uint7_t program,
                                                                     remidy::uint7_t bankMSB, remidy::uint7_t bankLSB) {
-    auto unitInfo = owner->unit_info;
-    auto states = owner->_states;
-
-    if (unitInfo == nullptr)
-        return; // the plugin does not provide program list.
-
     // Program selection in UnitInfo and State loading must happen on the main thread, in non-RT manner.
-    EventLoop::runTaskOnMainThread([&] {
+    EventLoop::enqueueTaskOnMainThread([&] {
+        auto unitInfo = owner->unit_info;
+        auto states = owner->_states;
+
+        if (unitInfo == nullptr)
+            return; // the plugin does not provide program list.
+
         int32_t bank = (bankMSB << 7) + bankLSB;
 
         ProgramListInfo pl;
