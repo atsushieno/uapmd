@@ -113,6 +113,10 @@ namespace uapmd {
                     continue;
                 }
 
+                // Keep the active-note bitmask in sync with what the plugin actually
+                // receives, so a stop flush can emit genuine note-offs later.
+                pluginNode->trackInputEvents(eventIn);
+
                 auto status = pluginNode->processAudio(process);
                 if (status != 0)
                     return status;

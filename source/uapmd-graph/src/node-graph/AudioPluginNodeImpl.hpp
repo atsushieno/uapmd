@@ -3,6 +3,7 @@
 #include "concurrentqueue.h"
 
 #include <atomic>
+#include <bit>
 #include <cstring>
 #include <memory>
 #include <vector>
@@ -29,6 +30,11 @@ namespace uapmd {
         remidy::EventListenerId metadata_listener_token_{0};
         std::atomic<bool> stop_flush_requested_{false};
         std::unique_ptr<UapmdNodeUmpInputMapper> ump_input_mapper_{};
+        // Active-note bitmask, indexed [group][channel][note / 64]. RT-thread only.
+        // Used by prepareStopFlush() to emit genuine note-offs: formats like VST3 have
+        // no All Sound Off event, so CC 120 alone cannot silence held voices.
+        uint64_t active_notes_[16][16][2]{};
+        bool has_active_notes_{false};
 
     public:
         AudioPluginNodeImpl(
@@ -219,19 +225,84 @@ namespace uapmd {
             return position;
         }
 
-        void clearQueuedEvents() {
+        void clearQueuedEvents() override {
             pending_events_.clear();
             umppi::Ump u128;
             while (queue_.try_dequeue(u128)) {
             }
         }
 
+        // Scan the finalized per-cycle input event buffer and keep the active-note
+        // bitmask in sync. Called from the RT thread right before the plugin processes.
+        void trackInputEvents(EventSequence& eventIn) {
+            const auto* words = static_cast<const uint32_t*>(eventIn.getMessages());
+            const size_t count = eventIn.position() / sizeof(uint32_t);
+            size_t i = 0;
+            while (i < count) {
+                const auto messageType = static_cast<uint8_t>(words[i] >> 28);
+                size_t wordCount = umppi::umpSizeInInts(messageType);
+                if (wordCount == 0) wordCount = 1;
+                if (i + wordCount > count)
+                    break;
+                if (messageType == umppi::MidiMessageType::MIDI2 ||
+                    messageType == umppi::MidiMessageType::MIDI1) {
+                    const auto group = static_cast<uint8_t>((words[i] >> 24) & 0xF);
+                    const auto status = static_cast<uint8_t>((words[i] >> 20) & 0xF) << 4;
+                    const auto channel = static_cast<uint8_t>((words[i] >> 16) & 0xF);
+                    const auto note = static_cast<uint8_t>((words[i] >> 8) & 0x7F);
+                    // MIDI 2.0 note-on with velocity 0 is a real note-on; only MIDI 1.0
+                    // treats it as a note-off.
+                    const bool midi1ZeroVelocity = messageType == umppi::MidiMessageType::MIDI1 &&
+                        (words[i] & 0x7Fu) == 0;
+                    if (status == umppi::MidiChannelStatus::NOTE_ON && !midi1ZeroVelocity) {
+                        active_notes_[group][channel][note >> 6] |= 1ull << (note & 63);
+                        has_active_notes_ = true;
+                    } else if (status == umppi::MidiChannelStatus::NOTE_OFF ||
+                               (status == umppi::MidiChannelStatus::NOTE_ON && midi1ZeroVelocity)) {
+                        active_notes_[group][channel][note >> 6] &= ~(1ull << (note & 63));
+                    }
+                }
+                i += wordCount;
+            }
+        }
+
         void prepareStopFlush(EventSequence& eventIn, uint8_t group) {
             clearQueuedEvents();
             eventIn.position(0);
-            const uint8_t flushGroup = group == 0xFF ? 0 : group;
             bool flushComplete = true;
-            for (uint8_t channel = 0; channel < 16; ++channel) {
+
+            // Emit a genuine note-off for every note still held. This is the only
+            // portable way to release voices: e.g. VST3 has no All Sound Off event,
+            // and CC 120 below only works when the plugin maps it via IMidiMapping.
+            if (has_active_notes_) {
+                for (uint8_t noteGroup = 0; noteGroup < 16 && flushComplete; ++noteGroup) {
+                    for (uint8_t channel = 0; channel < 16 && flushComplete; ++channel) {
+                        for (uint8_t half = 0; half < 2 && flushComplete; ++half) {
+                            auto& bits = active_notes_[noteGroup][channel][half];
+                            while (bits) {
+                                const auto bit = static_cast<uint8_t>(std::countr_zero(bits));
+                                const auto note = static_cast<uint8_t>(half * 64 + bit);
+                                const uint64_t ump64 = umppi::UmpFactory::midi2NoteOff(
+                                    noteGroup, channel, note, 0, 0x8000, 0);
+                                const uapmd_ump_t words[2]{
+                                    static_cast<uapmd_ump_t>(ump64 >> 32),
+                                    static_cast<uapmd_ump_t>(ump64 & 0xFFFFFFFFu)
+                                };
+                                if (!appendUmpToEventBuffer(eventIn, words, 2)) {
+                                    flushComplete = false;
+                                    break;
+                                }
+                                bits &= bits - 1;
+                            }
+                        }
+                    }
+                }
+                if (flushComplete)
+                    has_active_notes_ = false;
+            }
+
+            const uint8_t flushGroup = group == 0xFF ? 0 : group;
+            for (uint8_t channel = 0; channel < 16 && flushComplete; ++channel) {
                 const uint64_t ump64 = umppi::UmpFactory::midi2CC(flushGroup, channel, 120, 0);
                 const uapmd_ump_t words[2]{
                     static_cast<uapmd_ump_t>(ump64 >> 32),

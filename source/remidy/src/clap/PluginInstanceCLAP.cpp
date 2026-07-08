@@ -37,11 +37,18 @@ namespace remidy {
         if (host)
             host->shutdownTimers();
 
-        is_processing.store(false, std::memory_order_release);
-        // We can only call clap_plugin.stop_processing() from the audio thread.
-        // During teardown, audio callbacks may already be detached, so force local state
-        // to inactive and continue destruction without issuing stop_processing() here.
-        processing_active_ = false;
+        is_processing.store(false, std::memory_order_seq_cst);
+        // CLAP [audio-thread] is a logical role, not a physical thread. During teardown
+        // the audio callbacks are already detached from this node, so this thread may
+        // take the audio-thread role and complete the stop synchronously (unless a
+        // process() call is still in flight, in which case just force local state).
+        if (!in_process_.load(std::memory_order_seq_cst)) {
+            bool expected = true;
+            if (processing_active_.compare_exchange_strong(expected, false, std::memory_order_acq_rel) && plugin)
+                plugin->stopProcessing();
+        } else {
+            processing_active_.store(false, std::memory_order_release);
+        }
 
         // Stop processing first (audio thread is expected to honour the request before buffers change)
         cleanupBuffers(); // cleanup, optionally stop processing in prior.
@@ -253,7 +260,20 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::stopProcessing() {
-        is_processing.store(false, std::memory_order_release);
+        is_processing.store(false, std::memory_order_seq_cst);
+        // CLAP [audio-thread] is a logical role, not a physical thread. If no process()
+        // call is in flight after the flag flip (e.g. the audio callback has been
+        // stopped), this thread may take the audio-thread role and complete the stop
+        // synchronously; otherwise the next process() call performs it. The CAS on
+        // processing_active_ guarantees exactly one of the two paths runs the actual
+        // clap_plugin.stop_processing() + reset().
+        if (!in_process_.load(std::memory_order_seq_cst)) {
+            bool expected = true;
+            if (processing_active_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
+                plugin->stopProcessing();
+                plugin->reset();
+            }
+        }
         return StatusCode::OK;
     }
 
@@ -394,28 +414,38 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::process(AudioProcessContext &process) {
+        // Mark this call in flight so that stopProcessing() from a non-audio thread
+        // defers the actual stop to us instead of racing with plugin->process().
+        struct InProcessGuard {
+            std::atomic<bool>& flag;
+            ~InProcessGuard() { flag.store(false, std::memory_order_seq_cst); }
+        };
+        in_process_.store(true, std::memory_order_seq_cst);
+        InProcessGuard in_process_guard{in_process_};
+
         // CLAP requires parameter flush callbacks on the audio thread even when no audio is running
         if (flush_requested_.load(std::memory_order_acquire)) {
             flush_requested_.store(false, std::memory_order_release);
             processParamsFlush();
         }
 
-        auto shouldProcess = is_processing.load(std::memory_order_acquire);
+        auto shouldProcess = is_processing.load(std::memory_order_seq_cst);
         if (!shouldProcess) {
-            if (processing_active_) {
+            bool expected = true;
+            if (processing_active_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
                 plugin->stopProcessing();
-                processing_active_ = false;
+                plugin->reset();
             }
             return StatusCode::OK;
         }
-        if (!processing_active_) {
+        if (!processing_active_.load(std::memory_order_acquire)) {
             if (!plugin->startProcessing()) {
                 owner->getLogger()->logError("%s: clap_plugin.start_processing() failed on audio thread",
                                              info()->displayName().c_str());
                 is_processing.store(false, std::memory_order_release);
                 return StatusCode::FAILED_TO_START_PROCESSING;
             }
-            processing_active_ = true;
+            processing_active_.store(true, std::memory_order_release);
         }
 
         // fill clap_process from remidy input

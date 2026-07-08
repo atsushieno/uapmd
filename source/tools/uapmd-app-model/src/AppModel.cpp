@@ -321,7 +321,9 @@ void uapmd::AppModel::maybeStartInitialPluginScan() {
     performPluginScanning(false, PluginScanRequest::InProcess, 0.0, true);
 }
 
-uapmd::AppModel::~AppModel() = default;
+uapmd::AppModel::~AppModel() {
+    joinAudioShutdownWorker();
+}
 
 bool uapmd::AppModel::ensureTrackUsesEditorGraph(int32_t trackIndex) {
     SequencerTrack* track = trackIndex == kMasterTrackIndex
@@ -638,14 +640,58 @@ bool uapmd::AppModel::setInstanceGroup(int32_t instanceId, uint8_t group) {
     return changed;
 }
 
+// Cancel and reap any in-flight muted shutdown drain. Safe to call from the main
+// thread: the worker never blocks on main-thread tasks (it only enqueues them).
+void uapmd::AppModel::joinAudioShutdownWorker() {
+    if (audioShutdownThread_.joinable()) {
+        audioShutdownCancel_.store(true, std::memory_order_release);
+        audioShutdownThread_.join();
+    }
+}
+
+// Final phase of the engine-off sequence. Runs on the main thread, after the muted
+// drain has let plugin release/reverb tails render out.
+void uapmd::AppModel::completeAudioEngineShutdown() {
+    // Bail out if the engine was re-enabled while draining, or if an earlier queued
+    // completion already performed the shutdown.
+    if (isAudioEngineEnabled() || pluginsProcessingStopped_)
+        return;
+
+    const auto bufferPeriodMs = sample_rate_ > 0
+        ? static_cast<int64_t>(audio_buffer_size_ * 1000.0 / sample_rate_) : 10;
+    // Silence the output, then let the audio callback run for a couple more cycles
+    // so the hardware ring buffer drains with silence before we stop.
+    sequencer_.engine()->setEngineActive(false);
+    std::this_thread::sleep_for(std::chrono::milliseconds(std::max<int64_t>(30, bufferPeriodMs * 2)));
+    sequencer_.stopAudio();
+    // With the callback stopped, the plugin formats can complete their (possibly
+    // deferred) stop synchronously, deactivating plugins and resetting their DSP
+    // state so a restart does not resume stale voices or effect tails.
+    auto* host = sequencer_.engine()->pluginHost();
+    for (auto id : host->instanceIds())
+        host->getInstance(id)->stopProcessing();
+    pluginsProcessingStopped_ = true;
+    // Finally clear all host-side intermediate buffers (pump ring slots, alignment
+    // delay lines, queued events, ...) so nothing stale is replayed on restart.
+    sequencer_.engine()->resetProcessingState();
+    sequencer_.engine()->setOutputMuted(false);
+}
+
 void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
+    joinAudioShutdownWorker();
     audioEngineEnabled_.store(enabled, std::memory_order_release);
 
     auto* host = sequencer_.engine()->pluginHost();
     const bool isPlaying = sequencer_.isAudioPlaying() != 0;
     if (enabled) {
-        for (auto id : host->instanceIds())
-            host->getInstance(id)->startProcessing();
+        // Skip re-activation when a shutdown drain was cancelled before it reached
+        // plugin deactivation — the instances are still processing in that case.
+        if (pluginsProcessingStopped_) {
+            for (auto id : host->instanceIds())
+                host->getInstance(id)->startProcessing();
+            pluginsProcessingStopped_ = false;
+        }
+        sequencer_.engine()->setOutputMuted(false);
         sequencer_.engine()->setEngineActive(true);
         if (!isPlaying) {
             if (sequencer_.startAudio() != 0) {
@@ -656,13 +702,37 @@ void uapmd::AppModel::setAudioEngineEnabled(bool enabled) {
         }
     } else if (isPlaying) {
         transportController_->stop();
-        // Silence the output first, then let the audio callback run for a couple
-        // of cycles so the hardware ring buffer drains with silence before we stop.
-        sequencer_.engine()->setEngineActive(false);
-        std::this_thread::sleep_for(std::chrono::milliseconds(30));
-        sequencer_.stopAudio();
-        for (auto id : host->instanceIds())
-            host->getInstance(id)->stopProcessing();
+        // stop() requested a note-off flush on every plugin node; it is delivered by
+        // the next audio cycles. Mute the device output immediately, but keep the
+        // engine processing so the flush lands and the release/reverb tails render
+        // out inaudibly — several formats (notably VST3) preserve their DSP state
+        // across deactivation, so any audible tail left here would resume on restart.
+        sequencer_.engine()->setOutputMuted(true);
+        audioShutdownCancel_.store(false, std::memory_order_release);
+        audioShutdownThread_ = std::thread([this] {
+            constexpr int kPollIntervalMs = 100;
+            constexpr int kMaxDrainMs = 8000;
+            constexpr double kSilenceThreshold = 0.005;
+            constexpr int kSpectrumBars = 32;
+            float spectrum[kSpectrumBars];
+            for (int waited = 0; waited < kMaxDrainMs; waited += kPollIntervalMs) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+                if (audioShutdownCancel_.load(std::memory_order_acquire))
+                    break;
+                sequencer_.engine()->getOutputSpectrum(spectrum, kSpectrumBars);
+                double sum = 0.0;
+                for (float v : spectrum)
+                    sum += v;
+                if (sum < kSilenceThreshold)
+                    break;
+            }
+            // Plugin deactivation must run on the main thread (VST3 setActive() etc.).
+            // Enqueue — never block on it — so this worker can always be joined from
+            // the main thread without deadlocking.
+            remidy::EventLoop::enqueueTaskOnMainThread([this] {
+                completeAudioEngineShutdown();
+            });
+        });
     }
 }
 

@@ -130,6 +130,10 @@ namespace uapmd {
 #endif
         std::atomic<bool> isScanning_{false};
         std::atomic<bool> audioEngineEnabled_{false};
+        // Muted shutdown drain for the audio engine switch (see setAudioEngineEnabled).
+        std::thread audioShutdownThread_{};
+        std::atomic<bool> audioShutdownCancel_{false};
+        bool pluginsProcessingStopped_{false}; // main-thread only
         std::atomic<bool> initialPluginScanStarted_{false};
         mutable std::mutex devicesMutex_;
         std::vector<DeviceEntry> devices_;
@@ -167,6 +171,8 @@ namespace uapmd {
         void maybeStartInitialPluginScan();
         bool pauseTransportForPluginMutation();
         void resumeTransportAfterPluginMutation(bool resumeTransport);
+        void joinAudioShutdownWorker();
+        void completeAudioEngineShutdown();
 
     public:
         static void instantiate();

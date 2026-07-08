@@ -234,6 +234,13 @@ remidy::StatusCode remidy::PluginInstanceAUv2::startProcessing() {
 remidy::StatusCode remidy::PluginInstanceAUv2::stopProcessing() {
     host_transport_info.isPlaying = false;
     host_transport_info.transportStateChanged = true;
+    // Clear DSP state (voices, delay lines, reverb tails) so a later restart
+    // does not resume stale audio. The caller must ensure no render is in flight.
+    if (instance) {
+        auto result = AudioUnitReset(instance, kAudioUnitScope_Global, 0);
+        if (result)
+            logger()->logWarning("%s: PluginInstanceAUv2::stopProcessing failed to reset instance: OSStatus %d", name.c_str(), result);
+    }
     return StatusCode::OK;
 }
 

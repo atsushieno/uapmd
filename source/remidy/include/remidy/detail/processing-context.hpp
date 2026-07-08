@@ -288,6 +288,13 @@ namespace remidy {
             event_out.position(0);
         }
 
+        void clearAudioInputs() {
+            for (auto* bus : audio_in)
+                if (bus)
+                    bus->clear();
+            event_in.position(0);
+        }
+
         void advanceToNextNode();
     };
 

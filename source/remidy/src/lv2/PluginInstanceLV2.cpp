@@ -14,12 +14,11 @@ remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFo
 }
 
 remidy::PluginInstanceLV2::~PluginInstanceLV2() {
-    processing_requested_.store(false, std::memory_order_release);
+    processing_requested_.store(false, std::memory_order_seq_cst);
     if (instance) {
-        if (processing_active_) {
+        bool expected = true;
+        if (processing_active_.compare_exchange_strong(expected, false, std::memory_order_acq_rel))
             lilv_instance_deactivate(instance);
-            processing_active_ = false;
-        }
         lilv_instance_free(instance);
     }
     instance = nullptr;
@@ -174,7 +173,17 @@ remidy::StatusCode remidy::PluginInstanceLV2::startProcessing() {
 remidy::StatusCode remidy::PluginInstanceLV2::stopProcessing() {
     if (!instance)
         return StatusCode::ALREADY_INVALID_STATE;
-    processing_requested_.store(false, std::memory_order_release);
+    processing_requested_.store(false, std::memory_order_seq_cst);
+    // If no run() is in flight after the flag flip (e.g. the audio callback has been
+    // stopped), deactivate synchronously so the plugin actually resets its DSP state
+    // (LV2 activate()/deactivate() cycles reset history-dependent state per spec);
+    // otherwise the next process() call performs the deactivation on the audio thread.
+    // The CAS on processing_active_ guarantees only one path runs it.
+    if (!in_audio_process.load(std::memory_order_seq_cst)) {
+        bool expected = true;
+        if (processing_active_.compare_exchange_strong(expected, false, std::memory_order_acq_rel))
+            lilv_instance_deactivate(instance);
+    }
     return StatusCode::OK;
 }
 
@@ -182,20 +191,27 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
     if (!instance)
         return StatusCode::ALREADY_INVALID_STATE;
 
-    auto shouldProcess = processing_requested_.load(std::memory_order_acquire);
-    if (shouldProcess && !processing_active_) {
+    // Mark this call in flight before reading processing_requested_ so that
+    // stopProcessing() from a non-audio thread defers the deactivation to us
+    // instead of racing with lilv_instance_run().
+    in_audio_process.store(true, std::memory_order_seq_cst);
+
+    auto shouldProcess = processing_requested_.load(std::memory_order_seq_cst);
+    if (shouldProcess && !processing_active_.load(std::memory_order_acquire)) {
         lilv_instance_activate(instance);
-        processing_active_ = true;
-    } else if (!shouldProcess && processing_active_) {
-        lilv_instance_deactivate(instance);
-        processing_active_ = false;
+        processing_active_.store(true, std::memory_order_release);
+    } else if (!shouldProcess) {
+        bool expected = true;
+        if (processing_active_.compare_exchange_strong(expected, false, std::memory_order_acq_rel))
+            lilv_instance_deactivate(instance);
     }
 
-    if (!shouldProcess)
+    if (!shouldProcess) {
+        in_audio_process.store(false, std::memory_order_seq_cst);
         return StatusCode::OK;
+    }
 
     // FIXME: is there 64-bit float audio support?
-    in_audio_process.store(true, std::memory_order_release);
 
     for (size_t i = 0; i < audio_in_port_mapping.size(); ++i) {
         auto& m = audio_in_port_mapping[i];

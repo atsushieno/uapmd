@@ -197,6 +197,10 @@ namespace uapmd {
         // connect before lazy-initialized statics are guaranteed to be ready).
         std::atomic<bool> engine_active_{false};
 
+        // Output mute flag: when true, the graph still processes every cycle (plugin
+        // tails render out, spectra update) but the device output bus is silenced.
+        std::atomic<bool> output_muted_{false};
+
         // Track processing flags for safe deletion (parallel to tracks_ vector)
         // Note: std::atomic is not copyable, so we use unique_ptr
         std::vector<std::unique_ptr<std::atomic<bool>>> track_processing_flags_;
@@ -338,6 +342,12 @@ namespace uapmd {
         void setEngineActive(bool active) override {
             engine_active_.store(active, std::memory_order_release);
         }
+
+        void setOutputMuted(bool muted) override {
+            output_muted_.store(muted, std::memory_order_release);
+        }
+
+        void resetProcessingState() override;
 
         void cleanupEmptyTracks() override;
 
@@ -817,6 +827,61 @@ namespace uapmd {
             delayLine.reset();
     }
 
+    void SequencerEngineImpl::resetProcessingState() {
+        auto clearContextBuffers = [](AudioProcessContext* ctx) {
+            if (!ctx)
+                return;
+            ctx->clearAudioInputs();
+            ctx->clearAudioOutputs();
+        };
+
+        // Drain pump rings: return filled slots to the free queue and clear every slot.
+        for (auto& ring : pump_rings_) {
+            if (!ring)
+                continue;
+            size_t idx;
+            while (ring->filled.try_dequeue(idx))
+                ring->free_slots.try_enqueue(idx);
+            for (auto& slot : ring->slots)
+                clearContextBuffers(slot.ctx.get());
+        }
+
+        // sequence.tracks entries point at ring slots (already cleared above) or at the
+        // default track contexts; pump_sequence_ mirrors them for the pump side.
+        for (auto* ctx : sequence.tracks)
+            clearContextBuffers(ctx);
+        for (auto* ctx : pump_sequence_.tracks)
+            clearContextBuffers(ctx);
+        clearContextBuffers(mix_bus_context_.get());
+        clearContextBuffers(master_track_context_.get());
+
+        resetOutputAlignmentBuffers();
+
+        // Reset any leftover tail-drain state so a restart does not continue a drain.
+        latency_drain_active_.store(false, std::memory_order_release);
+        latency_drain_remaining_samples_.store(0, std::memory_order_release);
+        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
+
+        // Drop events that were queued for plugins but never delivered; replaying them
+        // on restart would trigger stale notes and parameter changes.
+        auto clearTrackEvents = [](SequencerTrack* track) {
+            if (!track)
+                return;
+            for (auto& entry : track->graph().plugins())
+                if (entry.second)
+                    entry.second->clearQueuedEvents();
+        };
+        for (auto& track : tracks_)
+            clearTrackEvents(track.get());
+        clearTrackEvents(master_track_.get());
+
+        // Clear spectrum visualization buffers.
+        std::fill(std::begin(rt_input_spectrum_), std::end(rt_input_spectrum_), 0.0f);
+        std::fill(std::begin(rt_output_spectrum_), std::end(rt_output_spectrum_), 0.0f);
+        std::fill(std::begin(shared_input_spectrum_), std::end(shared_input_spectrum_), 0.0f);
+        std::fill(std::begin(shared_output_spectrum_), std::end(shared_output_spectrum_), 0.0f);
+    }
+
     void SequencerEngineImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
         latency_drain_active_.store(false, std::memory_order_release);
         latency_drain_remaining_samples_.store(0, std::memory_order_release);
@@ -1175,6 +1240,13 @@ namespace uapmd {
                 std::copy(rt_output_spectrum_, rt_output_spectrum_ + kSpectrumBars, shared_output_spectrum_);
                 // No need to release the flag - we keep it at false for next write
             }
+        }
+
+        // Muted drain: silence the device output *after* the spectrum was computed so
+        // the shutdown sequence can still observe how much tail audio remains.
+        if (output_muted_.load(std::memory_order_acquire) && process.audioOutBusCount() > 0) {
+            for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++)
+                memset(process.getFloatOutBuffer(0, ch), 0, process.frameCount() * sizeof(float));
         }
 
         if (isPlaybackActive) {

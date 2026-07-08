@@ -94,6 +94,18 @@ namespace uapmd {
 
         virtual void setEngineActive(bool active) = 0;
 
+        // When muted, the graph keeps processing (so plugin release/reverb tails can
+        // render out and the output spectrum stays observable) but the device output
+        // is silenced. Used for the inaudible drain phase of the engine-off sequence.
+        virtual void setOutputMuted(bool muted) = 0;
+
+        // Clear all intermediate processing buffers: pump ring slots, track/mix/master
+        // contexts, output alignment delay lines, latency drain state, spectra, and
+        // queued plugin-node events. Must only be called while the audio callback is
+        // stopped (typically right after the audio engine has been turned off), so that
+        // a later engine restart does not resume stale audio or replay stale events.
+        virtual void resetProcessingState() = 0;
+
         // Audio preprocessing callback (called before track processing)
         using AudioPreprocessCallback = std::function<void(AudioProcessContext& process)>;
         virtual void setAudioPreprocessCallback(AudioPreprocessCallback callback) = 0;

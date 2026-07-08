@@ -372,7 +372,7 @@ namespace remidy {
 
         std::atomic<bool> in_audio_process{false};
         std::atomic<bool> processing_requested_{false};
-        bool processing_active_{false};
+        std::atomic<bool> processing_active_{false};
 
         struct RemidyToLV2PortMapping {
             size_t bus;
