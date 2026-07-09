@@ -166,11 +166,27 @@ void BeatsSequenceEditor::renderNavigator(const RenderContext& context, float ba
         ? secondsToBeats(context, bounds.durationSeconds) : 0.0;
     const double playheadBeats = sampleRate > 0
         ? secondsToBeats(context, appModel.timeline().playheadPosition.toSeconds(sampleRate)) : -1.0;
+
+    // Whole-song overview lanes, in the same track order the timeline sections use
+    // (sorted track index; kMasterTrackIndex naturally sorts first).
+    std::vector<int32_t> sortedTracks;
+    sortedTracks.reserve(tracks_.size());
+    for (const auto& [trackIndex, _] : tracks_)
+        sortedTracks.push_back(trackIndex);
+    std::sort(sortedTracks.begin(), sortedTracks.end());
+    std::vector<NavigatorClip> overview;
+    for (size_t row = 0; row < sortedTracks.size(); ++row)
+        for (const auto& clip : tracks_[sortedTracks[row]].displayClips)
+            overview.push_back({static_cast<int>(row),
+                                static_cast<double>(clip.timelineStartTicks),
+                                static_cast<double>(clip.timelineEndTicks)});
+
     renderTimelineNavigator(*unified_.timeline, unified_.hasExplicitZoom,
                             context.uiScale, barStartScreenX,
                             contentBeats * kTicksPerBeatDisplay,
                             playheadBeats * kTicksPerBeatDisplay,
-                            unified_.lastVisibleWidthPixels);
+                            unified_.lastVisibleWidthPixels,
+                            overview, static_cast<int>(sortedTracks.size()));
 }
 
 void BeatsSequenceEditor::renderUnifiedTimeline(const RenderContext& context, float availableHeight) {

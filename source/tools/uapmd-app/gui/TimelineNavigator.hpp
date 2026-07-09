@@ -1,10 +1,21 @@
 #pragma once
 
+#include <vector>
+
 namespace ImTimeline {
     class Timeline;
 }
 
 namespace uapmd::gui {
+
+// One clip in the navigator's whole-song overview: which track lane it sits on (0-based, top
+// to bottom, in the same order the timeline lists its sections) and its extent in the active
+// timeline's units (seconds, or display ticks).
+struct NavigatorClip {
+    int row{0};
+    double start{0.0};
+    double end{0.0};
+};
 
 // ImTimeline's HorizontalNodeView used to truncate GetScale() to s32 before use, so any scale
 // below 1.0 collapsed every clip to zero width -- that's now patched (see imtimeline.patch) to use
@@ -38,9 +49,13 @@ constexpr float kNavigatorHeightPt = 50.0f;
 // barStartScreenX anchors the controller's left edge absolutely (screen space) so it aligns
 // with the track content column below regardless of what else precedes it on the toolbar row;
 // the zoom slider fills whatever remains between the current cursor and that boundary.
+//
+// The controller doubles as a whole-song overview: `clips` are drawn as per-track bars
+// (rowCount lanes stacked top to bottom) underneath the translucent visible-region rectangle.
 void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZoom,
                              float uiScale, float barStartScreenX,
                              double contentFrames, double playheadFrame,
-                             float visibleWidthPixels);
+                             float visibleWidthPixels,
+                             const std::vector<NavigatorClip>& clips, int rowCount);
 
 } // namespace uapmd::gui

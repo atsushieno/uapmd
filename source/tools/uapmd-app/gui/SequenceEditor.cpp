@@ -310,10 +310,26 @@ void SequenceEditor::renderNavigator(const RenderContext& context, float barStar
     const int32_t sampleRate = appModel.sampleRate();
     const double playheadSeconds = sampleRate > 0
         ? appModel.timeline().playheadPosition.toSeconds(sampleRate) : -1.0;
+
+    // Whole-song overview lanes, in the same track order the timeline sections use
+    // (sorted track index; kMasterTrackIndex naturally sorts first).
+    std::vector<int32_t> sortedTracks;
+    sortedTracks.reserve(windows_.size());
+    for (const auto& [trackIndex, _] : windows_)
+        sortedTracks.push_back(trackIndex);
+    std::sort(sortedTracks.begin(), sortedTracks.end());
+    std::vector<NavigatorClip> overview;
+    for (size_t row = 0; row < sortedTracks.size(); ++row)
+        for (const auto& clip : windows_[sortedTracks[row]].displayClips)
+            overview.push_back({static_cast<int>(row),
+                                static_cast<double>(clip.timelineStart),
+                                static_cast<double>(clip.timelineEnd)});
+
     renderTimelineNavigator(*unified_.timeline, unified_.hasExplicitZoom,
                             context.uiScale, barStartScreenX,
                             bounds.hasContent ? bounds.durationSeconds : 0.0,
-                            playheadSeconds, unified_.lastVisibleWidthPixels);
+                            playheadSeconds, unified_.lastVisibleWidthPixels,
+                            overview, static_cast<int>(sortedTracks.size()));
 }
 
 void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float availableHeight) {

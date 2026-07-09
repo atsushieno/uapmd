@@ -11,7 +11,8 @@ namespace uapmd::gui {
 void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZoom,
                              float uiScale, float barStartScreenX,
                              double contentFrames, double playheadFrame,
-                             float visibleWidthPixels) {
+                             float visibleWidthPixels,
+                             const std::vector<NavigatorClip>& clips, int rowCount) {
     const float rowHeight = kNavigatorHeightPt * uiScale;
     const ImGuiStyle& style = ImGui::GetStyle();
     ImGuiIO& io = ImGui::GetIO();
@@ -56,6 +57,26 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
         : domain;
 
     if (domain > 0.0) {
+        // Whole-song overview: one lane per track, each clip a small bar, drawn underneath the
+        // translucent visible-region rectangle so the region stays readable on top of them.
+        if (rowCount > 0 && !clips.empty()) {
+            const float lanePad = 3.0f * uiScale;
+            const float laneAreaTop = barMin.y + lanePad;
+            const float laneHeight = (rowHeight - 2.0f * lanePad) / static_cast<float>(rowCount);
+            const ImU32 clipColor = ImGui::GetColorU32(ImGuiCol_PlotHistogram, 0.75f);
+            for (const auto& clip : clips) {
+                if (clip.end <= clip.start || clip.row < 0 || clip.row >= rowCount)
+                    continue;
+                const float cx0 = barMin.x + static_cast<float>(std::clamp(clip.start / domain, 0.0, 1.0)) * barWidth;
+                float cx1 = barMin.x + static_cast<float>(std::clamp(clip.end / domain, 0.0, 1.0)) * barWidth;
+                cx1 = std::max(cx1, cx0 + 2.0f); // keep tiny clips visible
+                const float cy0 = laneAreaTop + laneHeight * static_cast<float>(clip.row) + 1.0f;
+                const float cy1 = std::max(cy0 + 1.0f, cy0 + laneHeight - 2.0f);
+                drawList->AddRectFilled(ImVec2(cx0, cy0), ImVec2(std::min(cx1, barMax.x), cy1),
+                                        clipColor, 2.0f);
+            }
+        }
+
         const double startFrame = timeline.GetStartTimestamp();
         float x0 = barMin.x + static_cast<float>(std::clamp(startFrame / domain, 0.0, 1.0)) * barWidth;
         float x1 = barMin.x + static_cast<float>(std::clamp((startFrame + visibleFrames) / domain, 0.0, 1.0)) * barWidth;
@@ -67,7 +88,10 @@ void renderTimelineNavigator(ImTimeline::Timeline& timeline, bool& hasExplicitZo
             x0 = mid - minRectWidth * 0.5f;
             x1 = mid + minRectWidth * 0.5f;
         }
+        // Translucent so the clip overview underneath stays visible inside the region.
         drawList->AddRectFilled(ImVec2(x0, barMin.y), ImVec2(x1, barMax.y),
+            ImGui::GetColorU32(hovered ? ImGuiCol_ScrollbarGrabHovered : ImGuiCol_ScrollbarGrab, 0.55f), 4.0f);
+        drawList->AddRect(ImVec2(x0, barMin.y), ImVec2(x1, barMax.y),
             ImGui::GetColorU32(hovered ? ImGuiCol_ScrollbarGrabHovered : ImGuiCol_ScrollbarGrab), 4.0f);
 
         if (playheadFrame >= 0.0 && playheadFrame <= domain) {
