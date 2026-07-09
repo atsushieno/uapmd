@@ -1137,7 +1137,8 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
         beatsSequenceEditor_.renderNavigator(beatsContext, navBarStartX);
     ImGui::Spacing();
 
-    ImGui::BeginChild("TrackListScroll", ImVec2(0, 0), true, ImGuiWindowFlags_None);
+    const float footerHeight = ImGui::GetFrameHeightWithSpacing();
+    ImGui::BeginChild("TrackListScroll", ImVec2(0, -footerHeight), true, ImGuiWindowFlags_None);
 
     // Update master track clips if snapshot changed (runs every frame, cheap)
     renderMasterTrackRow(context);
@@ -1150,7 +1151,8 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
         beatsSequenceEditor_.renderUnifiedTimeline(beatsContext, totalHeight);
     }
 
-    ImGui::Spacing();
+    ImGui::EndChild();
+
     if (ImGui::Button(icons::Plus)) {
         int32_t newIndex = appModel.addTrack();
         if (newIndex >= 0)
@@ -1168,7 +1170,6 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
         if (ImGui::Button("Plugin Instances"))
             callbacks_.showPluginInstances();
     }
-    ImGui::EndChild();
 }
 
 void TimelineEditor::renderMasterTrackRow(const SequenceEditor::RenderContext& context) {
