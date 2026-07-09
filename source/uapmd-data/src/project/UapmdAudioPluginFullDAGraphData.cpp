@@ -8,6 +8,7 @@ class UapmdAudioPluginFullDAGraphDataImpl : public UapmdAudioPluginFullDAGraphDa
     std::vector<UapmdProjectPluginNodeData> plugins_{};
     std::vector<AudioGraphNodeDescriptor> generic_nodes_{};
     std::vector<UapmdProjectPluginGraphConnectionData> connections_{};
+    std::map<std::string, std::string> properties_{};
 
 public:
     std::string graphType() override { return graph_type_; }
@@ -15,6 +16,7 @@ public:
     std::vector<UapmdProjectPluginNodeData> plugins() override { return plugins_; }
     std::vector<AudioGraphNodeDescriptor> genericNodes() override { return generic_nodes_; }
     std::vector<UapmdProjectPluginGraphConnectionData> connections() override { return connections_; }
+    std::map<std::string, std::string> properties() override { return properties_; }
 
     void graphType(const std::string& type) override { graph_type_ = type; }
     void externalFile(const std::filesystem::path& f) override { external_file_ = f; }
@@ -27,6 +29,7 @@ public:
     void addConnection(UapmdProjectPluginGraphConnectionData connection) override { connections_.push_back(std::move(connection)); }
     void setConnections(std::vector<UapmdProjectPluginGraphConnectionData> connections) override { connections_ = std::move(connections); }
     void clearConnections() override { connections_.clear(); }
+    void properties(std::map<std::string, std::string> values) override { properties_ = std::move(values); }
 };
 
 std::unique_ptr<UapmdAudioPluginFullDAGraphData> UapmdAudioPluginFullDAGraphData::create() {

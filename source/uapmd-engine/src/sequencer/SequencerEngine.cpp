@@ -265,6 +265,7 @@ namespace uapmd {
         void ensureContextBusConfiguration(AudioProcessContext* ctx, remidy::PluginAudioBuses* pluginBuses);
         std::vector<remidy::AudioBusSpec> mergeBusSpecs(const std::vector<remidy::AudioBusSpec>& current,
                                                         const std::vector<remidy::AudioBusConfiguration*>& pluginBuses);
+        OutputRoutingExtension* outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const;
 
         // Timeline facade (owns timeline tracks, clips, project loading)
         std::unique_ptr<TimelineFacade> timeline_;
@@ -291,6 +292,10 @@ namespace uapmd {
         uint32_t trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) override;
         uint32_t trackOutputBusAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) override;
         TrackOutputRoutingTarget trackOutputBusRoutingTarget(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) override;
+        std::vector<TrackOutputRoutingRule> trackOutputRoutingRules(uapmd_track_index_t trackIndex) override;
+        void setTrackOutputRoutingRules(
+            uapmd_track_index_t trackIndex,
+            const std::vector<TrackOutputRoutingRule>& rules) override;
         bool isOutputAlignmentActive() override;
         OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const override;
         void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) override;
@@ -426,6 +431,16 @@ namespace uapmd {
         uint32_t maxRenderLeadInSamples() const;
         uint32_t maxLiveInputRenderLeadInSamples() const;
         uint32_t maxOutputAlignmentHoldbackInSamples() const;
+        TrackOutputRoutingTarget authoredTrackOutputBusRoutingTarget(
+            uapmd_track_index_t trackIndex,
+            uint32_t outputBusIndex) const;
+        TrackOutputRoutingTarget effectiveTrackOutputBusRoutingTarget(
+            uapmd_track_index_t trackIndex,
+            uint32_t outputBusIndex) const;
+        uint32_t downstreamLatencyInSamplesForTarget(const TrackOutputRoutingTarget& target) const;
+        double downstreamTailLengthInSecondsForTarget(const TrackOutputRoutingTarget& target) const;
+        uint32_t trackOutputBusPathLatencyInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
+        uint32_t trackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const;
         uint32_t trackOutputAlignmentHoldbackInSamplesImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
         TrackOutputRoutingTarget trackOutputBusRoutingTargetImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
         int64_t maxStopDrainInSamples() const;
@@ -683,10 +698,7 @@ namespace uapmd {
     }
 
     uint32_t SequencerEngineImpl::trackRenderLeadInSamples(uapmd_track_index_t trackIndex) {
-        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
-            return 0;
-        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
-        return track ? track->renderLeadInSamples() : 0;
+        return trackAudibleRenderLeadInSamples(trackIndex);
     }
 
     uint32_t SequencerEngineImpl::masterTrackRenderLeadInSamples() {
@@ -708,7 +720,33 @@ namespace uapmd {
     }
 
     TrackOutputRoutingTarget SequencerEngineImpl::trackOutputBusRoutingTarget(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) {
-        return trackOutputBusRoutingTargetImpl(trackIndex, outputBusIndex);
+        return effectiveTrackOutputBusRoutingTarget(trackIndex, outputBusIndex);
+    }
+
+    OutputRoutingExtension* SequencerEngineImpl::outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return nullptr;
+        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+        return track ? track->graph().getExtension<OutputRoutingExtension>() : nullptr;
+    }
+
+    std::vector<TrackOutputRoutingRule> SequencerEngineImpl::trackOutputRoutingRules(uapmd_track_index_t trackIndex) {
+        auto* extension = outputRoutingExtensionForTrackIndex(trackIndex);
+        return extension ? extension->outputRoutingRules() : std::vector<TrackOutputRoutingRule>{};
+    }
+
+    void SequencerEngineImpl::setTrackOutputRoutingRules(
+        uapmd_track_index_t trackIndex,
+        const std::vector<TrackOutputRoutingRule>& rules) {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return;
+        StructureMutationGuard mutationGuard(*this);
+        if (auto* extension = outputRoutingExtensionForTrackIndex(trackIndex))
+            extension->outputRoutingRules(rules);
+        reconfigureMixBusContext();
+        reconfigureMasterTrackInputBuses();
+        reconfigureOutputAlignmentBuffers();
+        applyLatencyCompensationTimingUpdateLocked();
     }
 
     bool SequencerEngineImpl::isOutputAlignmentActive() {
@@ -742,21 +780,106 @@ namespace uapmd {
         realtime_infinite_tail_policy_.store(policy, std::memory_order_release);
     }
 
+    TrackOutputRoutingTarget SequencerEngineImpl::authoredTrackOutputBusRoutingTarget(
+        uapmd_track_index_t trackIndex,
+        uint32_t outputBusIndex) const {
+        auto* extension = outputRoutingExtensionForTrackIndex(trackIndex);
+        if (!extension)
+            return {};
+        return extension->outputRoutingTarget(outputBusIndex);
+    }
+
+    TrackOutputRoutingTarget SequencerEngineImpl::effectiveTrackOutputBusRoutingTarget(
+        uapmd_track_index_t trackIndex,
+        uint32_t outputBusIndex) const {
+        const auto authored = authoredTrackOutputBusRoutingTarget(trackIndex, outputBusIndex);
+        if (authored.type != TrackOutputRoutingTargetType::DISABLED) {
+            if (authored.type == TrackOutputRoutingTargetType::MASTER_INPUT_BUS) {
+                if (master_track_ && master_track_context_ && !master_track_->orderedInstanceIds().empty() &&
+                    master_track_context_->audioInBusCount() > 0) {
+                    const auto busIndex = std::min<uint32_t>(
+                        authored.bus_index,
+                        static_cast<uint32_t>(master_track_context_->audioInBusCount() - 1));
+                    return {
+                        TrackOutputRoutingTargetType::MASTER_INPUT_BUS,
+                        busIndex,
+                        authored.bus_index >= static_cast<uint32_t>(master_track_context_->audioInBusCount()),
+                    };
+                }
+                return {
+                    TrackOutputRoutingTargetType::MAIN_MIX_BUS,
+                    0,
+                    true,
+                };
+            }
+
+            return {
+                TrackOutputRoutingTargetType::MAIN_MIX_BUS,
+                0,
+                authored.bus_index != 0,
+            };
+        }
+
+        return trackOutputBusRoutingTargetImpl(trackIndex, outputBusIndex);
+    }
+
+    uint32_t SequencerEngineImpl::downstreamLatencyInSamplesForTarget(const TrackOutputRoutingTarget& target) const {
+        return target.type == TrackOutputRoutingTargetType::MASTER_INPUT_BUS
+            ? (master_track_ ? master_track_->renderLeadInSamples() : 0)
+            : 0;
+    }
+
+    double SequencerEngineImpl::downstreamTailLengthInSecondsForTarget(const TrackOutputRoutingTarget& target) const {
+        return target.type == TrackOutputRoutingTargetType::MASTER_INPUT_BUS
+            ? (master_track_ ? master_track_->tailLengthInSeconds() : 0.0)
+            : 0.0;
+    }
+
+    uint32_t SequencerEngineImpl::trackOutputBusPathLatencyInSamples(
+        uapmd_track_index_t trackIndex,
+        uint32_t outputBusIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return 0;
+        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+        if (!track || outputBusIndex >= track->graph().outputBusCount())
+            return 0;
+        const auto target = effectiveTrackOutputBusRoutingTarget(trackIndex, outputBusIndex);
+        if (target.type == TrackOutputRoutingTargetType::DISABLED)
+            return 0;
+        return track->graph().outputLatencyInSamples(outputBusIndex) + downstreamLatencyInSamplesForTarget(target);
+    }
+
+    uint32_t SequencerEngineImpl::trackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return 0;
+        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
+        if (!track)
+            return 0;
+        uint32_t maxLead = 0;
+        for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex) {
+            const auto target = effectiveTrackOutputBusRoutingTarget(trackIndex, busIndex);
+            if (target.type == TrackOutputRoutingTargetType::DISABLED)
+                continue;
+            maxLead = std::max(maxLead, trackOutputBusPathLatencyInSamples(trackIndex, busIndex));
+        }
+        return maxLead;
+    }
+
     uint32_t SequencerEngineImpl::maxTrackRenderLeadInSamples() const {
         uint32_t maxTrackLatency = 0;
         for (size_t i = 0; i < tracks_.size(); ++i) {
             auto* track = tracks_[i].get();
             if (!track)
                 continue;
-            maxTrackLatency = std::max(maxTrackLatency, track->renderLeadInSamples());
+            maxTrackLatency = std::max(
+                maxTrackLatency,
+                trackAudibleRenderLeadInSamples(static_cast<uapmd_track_index_t>(i)));
         }
         return maxTrackLatency;
     }
 
     uint32_t SequencerEngineImpl::maxRenderLeadInSamples() const {
-        const uint32_t maxTrackLatency = maxTrackRenderLeadInSamples();
-        const uint32_t masterLatency = master_track_ ? master_track_->renderLeadInSamples() : 0;
-        return maxTrackLatency + masterLatency;
+        return std::max(maxTrackRenderLeadInSamples(), master_track_ ? master_track_->renderLeadInSamples() : 0);
     }
 
     uint32_t SequencerEngineImpl::maxLiveInputRenderLeadInSamples() const {
@@ -769,7 +892,7 @@ namespace uapmd {
             auto* track = tracks_[i].get();
             if (!track)
                 continue;
-            maxLead = std::max(maxLead, track->renderLeadInSamples());
+            maxLead = std::max(maxLead, trackAudibleRenderLeadInSamples(static_cast<uapmd_track_index_t>(i)));
         }
         return maxLead;
     }
@@ -797,9 +920,9 @@ namespace uapmd {
         if (outputBusIndex >= track->graph().outputBusCount())
             return 0;
 
-        const uint32_t trackLead = track->renderLeadInSamples();
-        const uint32_t outputLatency = track->graph().outputLatencyInSamples(outputBusIndex);
-        const uint32_t intraTrackHoldback = trackLead > outputLatency ? trackLead - outputLatency : 0;
+        const uint32_t trackLead = trackAudibleRenderLeadInSamples(trackIndex);
+        const uint32_t pathLatency = trackOutputBusPathLatencyInSamples(trackIndex, outputBusIndex);
+        const uint32_t intraTrackHoldback = trackLead > pathLatency ? trackLead - pathLatency : 0;
         if (output_alignment_monitoring_policy_.load(std::memory_order_acquire) !=
             OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT)
             return intraTrackHoldback;
@@ -821,8 +944,7 @@ namespace uapmd {
         if (!track || outputBusIndex >= track->graph().outputBusCount())
             return {};
 
-        if (master_track_ && master_track_context_ && !master_track_->orderedInstanceIds().empty() &&
-            master_track_context_->audioInBusCount() > 0) {
+        if (master_track_ && master_track_context_ && master_track_context_->audioInBusCount() > 0) {
             if (outputBusIndex < static_cast<uint32_t>(master_track_context_->audioInBusCount()))
                 return {
                     TrackOutputRoutingTargetType::MASTER_INPUT_BUS,
@@ -852,27 +974,33 @@ namespace uapmd {
     }
 
     int64_t SequencerEngineImpl::maxStopDrainInSamples() const {
-        const double masterPathSamples =
+        double totalDrainSamples =
             static_cast<double>(master_track_ ? master_track_->renderLeadInSamples() : 0) +
             tailLengthSecondsToSamples(master_track_ ? master_track_->tailLengthInSeconds() : 0.0);
 
-        double maxTrackPathSamples = 0.0;
-        for (const auto& track : tracks_) {
+        for (size_t trackIndex = 0; trackIndex < tracks_.size(); ++trackIndex) {
+            auto* track = tracks_[trackIndex].get();
             if (!track)
                 continue;
-            const double trackPathSamples =
-                static_cast<double>(track->renderLeadInSamples()) +
-                tailLengthSecondsToSamples(track->tailLengthInSeconds());
-            if (!std::isfinite(trackPathSamples) || !std::isfinite(masterPathSamples))
-                return realtime_infinite_tail_policy_.load(std::memory_order_acquire) ==
-                    RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
-                    ? 0
-                    : static_cast<int64_t>(maxRenderLeadInSamples());
-            maxTrackPathSamples = std::max(maxTrackPathSamples, trackPathSamples);
+
+            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex) {
+                const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
+                if (target.type == TrackOutputRoutingTargetType::DISABLED)
+                    continue;
+
+                const double trackPathSamples =
+                    static_cast<double>(trackOutputBusPathLatencyInSamples(static_cast<uapmd_track_index_t>(trackIndex), busIndex)) +
+                    tailLengthSecondsToSamples(track->tailLengthInSeconds()) +
+                    tailLengthSecondsToSamples(downstreamTailLengthInSecondsForTarget(target));
+                if (!std::isfinite(trackPathSamples))
+                    return realtime_infinite_tail_policy_.load(std::memory_order_acquire) ==
+                        RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
+                        ? 0
+                        : static_cast<int64_t>(maxRenderLeadInSamples());
+                totalDrainSamples = std::max(totalDrainSamples, trackPathSamples);
+            }
         }
 
-        const double totalDrainSamples =
-            tracks_.empty() ? masterPathSamples : maxTrackPathSamples + masterPathSamples;
         if (!std::isfinite(totalDrainSamples))
             return realtime_infinite_tail_policy_.load(std::memory_order_acquire) ==
                 RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
@@ -892,19 +1020,30 @@ namespace uapmd {
         std::vector<remidy::AudioBusSpec> mergedInputSpecs(
             master_track_context_->audioInputSpecs().begin(),
             master_track_context_->audioInputSpecs().end());
-        const auto& mixOutputSpecs = mix_bus_context_->audioOutputSpecs();
-        for (size_t busIndex = 0; busIndex < mixOutputSpecs.size(); ++busIndex) {
-            const auto& mixSpec = mixOutputSpecs[busIndex];
-            if (busIndex >= mergedInputSpecs.size()) {
-                mergedInputSpecs.push_back(mixSpec);
+        for (size_t trackIndex = 0; trackIndex < sequence.tracks.size() && trackIndex < tracks_.size(); ++trackIndex) {
+            auto* ctx = sequence.tracks[trackIndex];
+            auto* track = tracks_[trackIndex].get();
+            if (!ctx || !track)
                 continue;
+            const auto& outputSpecs = ctx->audioOutputSpecs();
+            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount() && busIndex < outputSpecs.size(); ++busIndex) {
+                const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
+                if (target.type != TrackOutputRoutingTargetType::MASTER_INPUT_BUS)
+                    continue;
+                const auto& outputSpec = outputSpecs[busIndex];
+                const auto targetBusIndex = static_cast<size_t>(target.bus_index);
+                if (targetBusIndex >= mergedInputSpecs.size()) {
+                    mergedInputSpecs.resize(targetBusIndex + 1, outputSpec);
+                    mergedInputSpecs[targetBusIndex] = outputSpec;
+                    continue;
+                }
+                mergedInputSpecs[targetBusIndex].channels = std::max(mergedInputSpecs[targetBusIndex].channels, outputSpec.channels);
+                mergedInputSpecs[targetBusIndex].bufferCapacityFrames = std::max(
+                    mergedInputSpecs[targetBusIndex].bufferCapacityFrames,
+                    outputSpec.bufferCapacityFrames);
+                if (outputSpec.role == remidy::AudioBusRole::Main)
+                    mergedInputSpecs[targetBusIndex].role = remidy::AudioBusRole::Main;
             }
-            mergedInputSpecs[busIndex].channels = std::max(mergedInputSpecs[busIndex].channels, mixSpec.channels);
-            mergedInputSpecs[busIndex].bufferCapacityFrames = std::max(
-                mergedInputSpecs[busIndex].bufferCapacityFrames,
-                mixSpec.bufferCapacityFrames);
-            if (mixSpec.role == remidy::AudioBusRole::Main)
-                mergedInputSpecs[busIndex].role = remidy::AudioBusRole::Main;
         }
 
         if (mergedInputSpecs != master_track_context_->audioInputSpecs())
@@ -923,22 +1062,29 @@ namespace uapmd {
             return;
 
         std::vector<remidy::AudioBusSpec> mixSpecs;
-        for (const auto* ctx : sequence.tracks) {
-            if (!ctx)
+        for (size_t trackIndex = 0; trackIndex < sequence.tracks.size() && trackIndex < tracks_.size(); ++trackIndex) {
+            const auto* ctx = sequence.tracks[trackIndex];
+            auto* track = tracks_[trackIndex].get();
+            if (!ctx || !track)
                 continue;
             const auto& outputSpecs = ctx->audioOutputSpecs();
-            for (size_t busIndex = 0; busIndex < outputSpecs.size(); ++busIndex) {
+            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount() && busIndex < outputSpecs.size(); ++busIndex) {
+                const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
+                if (target.type != TrackOutputRoutingTargetType::MAIN_MIX_BUS)
+                    continue;
                 const auto& spec = outputSpecs[busIndex];
-                if (busIndex >= mixSpecs.size()) {
-                    mixSpecs.push_back(spec);
+                const auto targetBusIndex = static_cast<size_t>(target.bus_index);
+                if (targetBusIndex >= mixSpecs.size()) {
+                    mixSpecs.resize(targetBusIndex + 1, spec);
+                    mixSpecs[targetBusIndex] = spec;
                     continue;
                 }
-                mixSpecs[busIndex].channels = std::max(mixSpecs[busIndex].channels, spec.channels);
-                mixSpecs[busIndex].bufferCapacityFrames = std::max(
-                    mixSpecs[busIndex].bufferCapacityFrames,
+                mixSpecs[targetBusIndex].channels = std::max(mixSpecs[targetBusIndex].channels, spec.channels);
+                mixSpecs[targetBusIndex].bufferCapacityFrames = std::max(
+                    mixSpecs[targetBusIndex].bufferCapacityFrames,
                     spec.bufferCapacityFrames);
                 if (spec.role == remidy::AudioBusRole::Main)
-                    mixSpecs[busIndex].role = remidy::AudioBusRole::Main;
+                    mixSpecs[targetBusIndex].role = remidy::AudioBusRole::Main;
             }
         }
 
@@ -1278,6 +1424,15 @@ namespace uapmd {
             mixCtx->clearAudioOutputs();
         }
 
+        auto* masterCtx = master_track_context_.get();
+        if (master_track_ && masterCtx) {
+            masterCtx->frameCount(trackFrameCount);
+            masterCtx->eventIn().position(0);
+            masterCtx->eventOut().position(0);
+            clearAudioInputBuses(*masterCtx);
+            masterCtx->clearAudioOutputs();
+        }
+
         // Stage compensated track output buses into a dedicated mixer context so
         // downstream processing can still see per-bus structure before the final
         // master/device fold.
@@ -1290,10 +1445,22 @@ namespace uapmd {
             if (track_output_handler_ && track_output_handler_(static_cast<int32_t>(t), *tracks_[t], *ctx))
                 continue;
 
-            if (!mixCtx)
-                continue;
-            for (uint32_t busIndex = 0; busIndex < ctx->audioOutBusCount(); ++busIndex)
-                accumulateAudioBus(*mixCtx, busIndex, *ctx, busIndex, trackFrameCount);
+            for (uint32_t busIndex = 0; busIndex < ctx->audioOutBusCount(); ++busIndex) {
+                const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(t), busIndex);
+                switch (target.type) {
+                    case TrackOutputRoutingTargetType::MASTER_INPUT_BUS:
+                        if (masterCtx)
+                            accumulateAudioBusToInput(*masterCtx, target.bus_index, *ctx, busIndex, trackFrameCount);
+                        break;
+                    case TrackOutputRoutingTargetType::MAIN_MIX_BUS:
+                        if (mixCtx)
+                            accumulateAudioBus(*mixCtx, target.bus_index, *ctx, busIndex, trackFrameCount);
+                        break;
+                    case TrackOutputRoutingTargetType::DISABLED:
+                    default:
+                        break;
+                }
+            }
         }
 
         // Return consumed pump slots to the free queue so the pump can reuse them.
@@ -1307,21 +1474,6 @@ namespace uapmd {
         // master GainNode (always present) applies the master volume even when no
         // plugins have been added to the master track.
         if (master_track_ && master_track_context_) {
-            auto* masterCtx = master_track_context_.get();
-            masterCtx->frameCount(trackFrameCount);
-            masterCtx->eventIn().position(0);
-            masterCtx->eventOut().position(0);
-            clearAudioInputBuses(*masterCtx);
-            masterCtx->clearAudioOutputs();
-
-            if (mixCtx && masterCtx->audioInBusCount() > 0) {
-                for (uint32_t busIndex = 0; busIndex < static_cast<uint32_t>(mixCtx->audioOutBusCount()); ++busIndex) {
-                    const uint32_t targetBus =
-                        busIndex < static_cast<uint32_t>(masterCtx->audioInBusCount()) ? busIndex : 0;
-                    accumulateAudioBusToInput(*masterCtx, targetBus, *mixCtx, busIndex, trackFrameCount);
-                }
-            }
-
             master_track_->graph().processAudio(*masterCtx);
 
             if (masterCtx->audioOutBusCount() > 0 && process.audioOutBusCount() > 0) {

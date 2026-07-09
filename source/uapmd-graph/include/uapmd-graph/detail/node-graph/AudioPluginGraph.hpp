@@ -41,6 +41,8 @@ namespace uapmd {
 
         virtual std::map<int32_t, AudioPluginNode*> plugins() = 0;
         virtual AudioPluginNode* getPluginNode(int32_t instanceId) = 0;
+        virtual void saveTo(std::map<std::string, std::string>& entries) = 0;
+        virtual void loadFrom(const std::map<std::string, std::string>& entries) = 0;
 
         static std::unique_ptr<AudioPluginGraph> create(size_t eventBufferSizeInBytes);
         static bool migrate(AudioPluginGraph& to, AudioPluginGraph& from);

@@ -33,36 +33,43 @@ int64_t computeOfflineStopDrainFrames(SequencerEngine& engine,
                                       int32_t sampleRate,
                                       OfflineInfiniteTailPolicy infiniteTailPolicy) {
     auto* masterTrack = engine.masterTrack();
-    uint32_t maxTrackRenderLead = 0;
     auto& tracks = engine.tracks();
-    for (size_t i = 0; i < tracks.size(); ++i)
-        maxTrackRenderLead = std::max(
-            maxTrackRenderLead,
-            engine.trackRenderLeadInSamples(static_cast<uapmd_track_index_t>(i)));
-    const double masterPathSamples =
-        static_cast<double>(engine.masterTrackRenderLeadInSamples()) +
+    const uint32_t masterLead = engine.masterTrackRenderLeadInSamples();
+    double totalSamples =
+        static_cast<double>(masterLead) +
         tailLengthSecondsToSamples(masterTrack ? masterTrack->tailLengthInSeconds() : 0.0, sampleRate);
-
-    double maxTrackPathSamples = 0.0;
+    uint32_t maxTrackRenderLead = 0;
     for (size_t i = 0; i < tracks.size(); ++i) {
         auto* track = tracks[i];
         if (!track)
             continue;
-        const double trackPathSamples =
-            static_cast<double>(engine.trackRenderLeadInSamples(static_cast<uapmd_track_index_t>(i))) +
-            tailLengthSecondsToSamples(track->tailLengthInSeconds(), sampleRate);
-        if (!std::isfinite(trackPathSamples) || !std::isfinite(masterPathSamples))
-            return infiniteTailPolicy == OfflineInfiniteTailPolicy::LATENCY_FALLBACK
-                ? static_cast<int64_t>(maxTrackRenderLead + engine.masterTrackRenderLeadInSamples())
-                : 0;
-        maxTrackPathSamples = std::max(maxTrackPathSamples, trackPathSamples);
+        const auto trackLead = engine.trackRenderLeadInSamples(static_cast<uapmd_track_index_t>(i));
+        maxTrackRenderLead = std::max(maxTrackRenderLead, trackLead);
+        for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex) {
+            const auto target = engine.trackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(i), busIndex);
+            if (target.type == TrackOutputRoutingTargetType::DISABLED)
+                continue;
+
+            const bool routesThroughMaster = target.type == TrackOutputRoutingTargetType::MASTER_INPUT_BUS;
+            const uint32_t outputLatency = track->graph().outputLatencyInSamples(busIndex);
+            const uint32_t pathLatency = outputLatency + (routesThroughMaster ? masterLead : 0);
+            const double pathTail =
+                tailLengthSecondsToSamples(track->tailLengthInSeconds(), sampleRate) +
+                tailLengthSecondsToSamples(
+                    routesThroughMaster && masterTrack ? masterTrack->tailLengthInSeconds() : 0.0,
+                    sampleRate);
+            const double trackPathSamples = static_cast<double>(pathLatency) + pathTail;
+            if (!std::isfinite(trackPathSamples))
+                return infiniteTailPolicy == OfflineInfiniteTailPolicy::LATENCY_FALLBACK
+                    ? static_cast<int64_t>(std::max(maxTrackRenderLead, masterLead))
+                    : 0;
+            totalSamples = std::max(totalSamples, trackPathSamples);
+        }
     }
 
-    const double totalSamples =
-        tracks.empty() ? masterPathSamples : maxTrackPathSamples + masterPathSamples;
     if (!std::isfinite(totalSamples))
         return infiniteTailPolicy == OfflineInfiniteTailPolicy::LATENCY_FALLBACK
-            ? static_cast<int64_t>(maxTrackRenderLead + engine.masterTrackRenderLeadInSamples())
+            ? static_cast<int64_t>(std::max(maxTrackRenderLead, masterLead))
             : 0;
     if (totalSamples <= 0.0)
         return 0;

@@ -1,6 +1,7 @@
 #include "uapmd/uapmd.hpp"
 #include "uapmd-graph/detail/node-graph/AudioPluginFullDAGraph.hpp"
 #include "uapmd-graph/detail/node-graph/AudioBusesLayoutExtension.hpp"
+#include "uapmd-graph/detail/node-graph/OutputRoutingExtension.hpp"
 #include "uapmd-graph/detail/node-graph/AudioGraphRegistry.hpp"
 #include "farbot/RealtimeObject.hpp"
 #include "AudioPluginNodeImpl.hpp"
@@ -13,6 +14,7 @@
 #include <memory>
 #include <queue>
 #include <ranges>
+#include <sstream>
 #include <unordered_map>
 
 namespace uapmd {
@@ -302,14 +304,77 @@ namespace uapmd {
                 : state.runtime_layout.event_output_bus_count;
         }
 
+        constexpr auto kOutputRoutingPropertyKey = "output_routing";
+
+        const char* outputRoutingTypeToString(TrackOutputRoutingTargetType type) {
+            switch (type) {
+                case TrackOutputRoutingTargetType::MASTER_INPUT_BUS:
+                    return "master_input_bus";
+                case TrackOutputRoutingTargetType::MAIN_MIX_BUS:
+                    return "main_mix_bus";
+                case TrackOutputRoutingTargetType::DISABLED:
+                default:
+                    return "disabled";
+            }
+        }
+
+        TrackOutputRoutingTargetType parseOutputRoutingType(std::string_view value) {
+            if (value == "master_input_bus")
+                return TrackOutputRoutingTargetType::MASTER_INPUT_BUS;
+            if (value == "main_mix_bus")
+                return TrackOutputRoutingTargetType::MAIN_MIX_BUS;
+            return TrackOutputRoutingTargetType::DISABLED;
+        }
+
+        std::string serializeOutputRoutingRules(const std::vector<TrackOutputRoutingRule>& rules) {
+            std::ostringstream stream;
+            for (size_t i = 0; i < rules.size(); ++i) {
+                const auto& rule = rules[i];
+                if (i > 0)
+                    stream << ';';
+                stream << rule.source_bus_index
+                       << ','
+                       << outputRoutingTypeToString(rule.target.type)
+                       << ','
+                       << rule.target.bus_index;
+            }
+            return stream.str();
+        }
+
+        std::vector<TrackOutputRoutingRule> parseOutputRoutingRules(const std::string& text) {
+            std::vector<TrackOutputRoutingRule> rules;
+            std::stringstream stream(text);
+            std::string item;
+            while (std::getline(stream, item, ';')) {
+                if (item.empty())
+                    continue;
+                std::stringstream itemStream(item);
+                std::string sourceBusIndexText, typeText, targetBusIndexText;
+                if (!std::getline(itemStream, sourceBusIndexText, ',') ||
+                    !std::getline(itemStream, typeText, ',') ||
+                    !std::getline(itemStream, targetBusIndexText, ','))
+                    continue;
+                try {
+                    TrackOutputRoutingRule rule;
+                    rule.source_bus_index = static_cast<uint32_t>(std::stoul(sourceBusIndexText));
+                    rule.target.type = parseOutputRoutingType(typeText);
+                    rule.target.bus_index = static_cast<uint32_t>(std::stoul(targetBusIndexText));
+                    rules.push_back(rule);
+                } catch (...) {
+                }
+            }
+            return rules;
+        }
+
     } // namespace
 
-    class AudioPluginFullDAGraphImpl : public AudioPluginFullDAGraph, public AudioBusesLayoutExtension {
+    class AudioPluginFullDAGraphImpl : public AudioPluginFullDAGraph, public AudioBusesLayoutExtension, public OutputRoutingExtension {
         RTGraphState state_;
         std::unique_ptr<AudioGraphRegistry> registry_;
         size_t event_buffer_size_in_bytes_;
         std::function<uint8_t(int32_t)> group_resolver_;
         std::function<void(int32_t, const uapmd_ump_t*, size_t)> event_output_callback_;
+        std::vector<TrackOutputRoutingRule> output_routing_rules_{};
 
         NodePtr findNode(const GraphState& state, int32_t instanceId) const;
         bool endpointExists(const GraphState& state, const AudioPluginGraphEndpoint& endpoint, AudioPluginGraphBusType busType) const;
@@ -339,6 +404,11 @@ namespace uapmd {
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
         std::vector<AudioPluginGraphConnection> connections() override;
+        void saveTo(std::map<std::string, std::string>& entries) override;
+        void loadFrom(const std::map<std::string, std::string>& entries) override;
+        std::vector<TrackOutputRoutingRule> outputRoutingRules() const override;
+        void outputRoutingRules(const std::vector<TrackOutputRoutingRule>& rules) override;
+        TrackOutputRoutingTarget outputRoutingTarget(uint32_t outputBusIndex) const override;
         uapmd_status_t connect(const AudioPluginGraphConnection& connection) override;
         bool disconnect(int64_t connectionId) override;
         void clearConnections() override;
@@ -360,12 +430,16 @@ namespace uapmd {
     AudioGraphExtension* AudioPluginFullDAGraphImpl::getExtension(const std::type_info& type) {
         if (type == typeid(AudioBusesLayoutExtension))
             return static_cast<AudioBusesLayoutExtension*>(this);
+        if (type == typeid(OutputRoutingExtension))
+            return static_cast<OutputRoutingExtension*>(this);
         return nullptr;
     }
 
     const AudioGraphExtension* AudioPluginFullDAGraphImpl::getExtension(const std::type_info& type) const {
         if (type == typeid(AudioBusesLayoutExtension))
             return static_cast<const AudioBusesLayoutExtension*>(this);
+        if (type == typeid(OutputRoutingExtension))
+            return static_cast<const OutputRoutingExtension*>(this);
         return nullptr;
     }
 
@@ -778,6 +852,35 @@ namespace uapmd {
     std::vector<AudioPluginGraphConnection> AudioPluginFullDAGraphImpl::connections() {
         RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
         return access->connections;
+    }
+
+    void AudioPluginFullDAGraphImpl::saveTo(std::map<std::string, std::string>& entries) {
+        entries.clear();
+        if (!output_routing_rules_.empty())
+            entries[kOutputRoutingPropertyKey] = serializeOutputRoutingRules(output_routing_rules_);
+    }
+
+    void AudioPluginFullDAGraphImpl::loadFrom(const std::map<std::string, std::string>& entries) {
+        auto it = entries.find(kOutputRoutingPropertyKey);
+        output_routing_rules_ = it != entries.end()
+            ? parseOutputRoutingRules(it->second)
+            : std::vector<TrackOutputRoutingRule>{};
+    }
+
+    std::vector<TrackOutputRoutingRule> AudioPluginFullDAGraphImpl::outputRoutingRules() const {
+        return output_routing_rules_;
+    }
+
+    void AudioPluginFullDAGraphImpl::outputRoutingRules(const std::vector<TrackOutputRoutingRule>& rules) {
+        output_routing_rules_ = rules;
+    }
+
+    TrackOutputRoutingTarget AudioPluginFullDAGraphImpl::outputRoutingTarget(uint32_t outputBusIndex) const {
+        const auto it = std::find_if(output_routing_rules_.begin(), output_routing_rules_.end(),
+            [outputBusIndex](const TrackOutputRoutingRule& rule) {
+                return rule.source_bus_index == outputBusIndex;
+            });
+        return it != output_routing_rules_.end() ? it->target : TrackOutputRoutingTarget{};
     }
 
     uapmd_status_t AudioPluginFullDAGraphImpl::connect(const AudioPluginGraphConnection& connection) {

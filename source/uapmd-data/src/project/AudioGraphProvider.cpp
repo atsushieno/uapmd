@@ -261,6 +261,18 @@ bool loadPluginListGraphJsonFile(UapmdProjectPluginListGraphData* graph, const s
     auto root = parseGraphJsonObject(bytes);
     if (!root)
         return false;
+    if (root->hasObjectMember("properties") && (*root)["properties"].isObject()) {
+        std::map<std::string, std::string> properties;
+        auto propertiesObj = (*root)["properties"];
+        for (uint32_t i = 0; i < propertiesObj.size(); ++i) {
+            auto member = propertiesObj[i];
+            if (!member.isString())
+                continue;
+            properties.emplace(std::string(propertiesObj.getObjectMemberAt(i).name), std::string(member.getString()));
+        }
+        graph->properties(std::move(properties));
+    } else
+        graph->properties({});
     parsePluginListPayload(*root, *graph);
     return true;
 }
@@ -268,7 +280,15 @@ bool loadPluginListGraphJsonFile(UapmdProjectPluginListGraphData* graph, const s
 bool savePluginListGraphJsonFile(UapmdProjectPluginListGraphData* graph, std::vector<uint8_t>& bytes) {
     if (!graph)
         return false;
-    writeGraphJsonObject(serializePluginListPayload(*graph), bytes);
+    auto obj = serializePluginListPayload(*graph);
+    auto properties = graph->properties();
+    if (!properties.empty()) {
+        auto propertiesObj = choc::value::createObject("GraphProperties");
+        for (const auto& [key, value] : properties)
+            propertiesObj.addMember(key, value);
+        obj.addMember("properties", propertiesObj);
+    }
+    writeGraphJsonObject(obj, bytes);
     return true;
 }
 
@@ -281,6 +301,18 @@ bool loadFullDAGGraphJsonFile(UapmdAudioPluginFullDAGraphData* graph, const std:
 
     parsePluginListPayload(*root, *graph);
     graph->clearConnections();
+    if (root->hasObjectMember("properties") && (*root)["properties"].isObject()) {
+        std::map<std::string, std::string> properties;
+        auto propertiesObj = (*root)["properties"];
+        for (uint32_t i = 0; i < propertiesObj.size(); ++i) {
+            auto member = propertiesObj[i];
+            if (!member.isString())
+                continue;
+            properties.emplace(std::string(propertiesObj.getObjectMemberAt(i).name), std::string(member.getString()));
+        }
+        graph->properties(std::move(properties));
+    } else
+        graph->properties({});
 
     if (root->hasObjectMember("connections") && (*root)["connections"].isArray()) {
         for (const auto& connectionObj : (*root)["connections"]) {
@@ -327,6 +359,13 @@ bool saveFullDAGGraphJsonFile(UapmdAudioPluginFullDAGraphData* graph, std::vecto
         return false;
 
     auto obj = serializePluginListPayload(*graph);
+    auto properties = graph->properties();
+    if (!properties.empty()) {
+        auto propertiesObj = choc::value::createObject("GraphProperties");
+        for (const auto& [key, value] : properties)
+            propertiesObj.addMember(key, value);
+        obj.addMember("properties", propertiesObj);
+    }
     auto connections = graph->connections();
     if (!connections.empty()) {
         auto connectionArray = choc::value::createEmptyArray();
@@ -373,7 +412,10 @@ public:
         UapmdProjectPluginGraphData* data,
         AudioPluginGraph& graph,
         const std::vector<int32_t>& orderedInstanceIds) const override {
-        return UapmdPluginGraphBuilder::build(data, graph, orderedInstanceIds);
+        auto built = UapmdPluginGraphBuilder::build(data, graph, orderedInstanceIds);
+        if (built && data)
+            graph.loadFrom(data->properties());
+        return built;
     }
 
     bool loadProjectGraph(
@@ -397,6 +439,9 @@ public:
             return;
         (void) instanceToIndex;
         populateProjectGraphGenericNodes(*pluginListGraph, runtimeGraph);
+        auto properties = pluginListGraph->properties();
+        runtimeGraph.saveTo(properties);
+        pluginListGraph->properties(std::move(properties));
     }
 
     bool saveProjectGraph(
@@ -423,7 +468,10 @@ public:
         UapmdProjectPluginGraphData* data,
         AudioPluginGraph& graph,
         const std::vector<int32_t>& orderedInstanceIds) const override {
-        return UapmdAudioPluginFullDAGraphBuilder::build(data, graph, orderedInstanceIds);
+        auto built = UapmdAudioPluginFullDAGraphBuilder::build(data, graph, orderedInstanceIds);
+        if (built && data)
+            graph.loadFrom(data->properties());
+        return built;
     }
 
     bool loadProjectGraph(
@@ -452,6 +500,9 @@ public:
 
         dagData->clearConnections();
         populateProjectGraphGenericNodes(*dagData, runtimeGraph);
+        auto properties = dagData->properties();
+        runtimeGraph.saveTo(properties);
+        dagData->properties(std::move(properties));
 
         for (const auto& connection : fullGraph->connections()) {
             auto toProjectEndpoint = [&](const AudioPluginGraphEndpoint& endpoint)

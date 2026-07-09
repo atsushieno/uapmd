@@ -50,6 +50,8 @@ namespace uapmd {
         AudioGraphNode* getNode(const std::string& nodeId) override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
+        void saveTo(std::map<std::string, std::string>& entries) override;
+        void loadFrom(const std::map<std::string, std::string>& entries) override;
         std::vector<std::shared_ptr<AudioGraphNode>> releaseNodesForMigration() override;
         bool adoptNodesFromMigration(std::vector<std::shared_ptr<AudioGraphNode>>&& nodes) override;
     };
@@ -305,6 +307,14 @@ namespace uapmd {
                 pluginNode && pluginNode->instanceId() == instanceId)
                 return pluginNode.get();
         return nullptr;
+    }
+
+    void AudioPluginGraphImpl::saveTo(std::map<std::string, std::string>& entries) {
+        entries.clear();
+    }
+
+    void AudioPluginGraphImpl::loadFrom(const std::map<std::string, std::string>& entries) {
+        (void) entries;
     }
 
     std::vector<std::shared_ptr<AudioGraphNode>> AudioPluginGraphImpl::releaseNodesForMigration() {

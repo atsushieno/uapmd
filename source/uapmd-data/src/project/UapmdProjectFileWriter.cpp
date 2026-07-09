@@ -35,6 +35,7 @@ namespace uapmd {
                     return "manual";
             }
         }
+
     }
 
     // Helper to generate unique anchor IDs for tracks and clips
@@ -153,6 +154,14 @@ namespace uapmd {
         auto extFile = graph->externalFile();
         if (!extFile.empty())
             obj.addMember("external_file", extFile.string());
+
+        auto properties = graph->properties();
+        if (!properties.empty()) {
+            auto propertiesObj = choc::value::createObject("GraphProperties");
+            for (const auto& [key, value] : properties)
+                propertiesObj.addMember(key, value);
+            obj.addMember("properties", propertiesObj);
+        }
 
         return obj;
     }

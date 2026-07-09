@@ -1641,8 +1641,9 @@ namespace uapmd {
                         applyGraphConnections(masterProjectTrack, engine_.masterTrack());
 
                     for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i) {
-                        if (tracks[i] && engine_.tracks()[i])
+                        if (tracks[i] && engine_.tracks()[i]) {
                             engine_.tracks()[i]->trackGain(tracks[i]->volume());
+                        }
                     }
                     if (masterProjectTrack && engine_.masterTrack())
                         engine_.masterTrack()->trackGain(masterProjectTrack->volume());

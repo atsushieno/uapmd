@@ -62,6 +62,7 @@ namespace uapmd {
                 return AudioWarpReferenceType::MasterMarker;
             return AudioWarpReferenceType::Manual;
         }
+
     }
 
     // Helper to resolve clip anchors after all tracks and clips are loaded
@@ -258,6 +259,18 @@ namespace uapmd {
         if (graphObj.hasObjectMember("external_file")) {
             auto file_view = graphObj["external_file"].getString();
             graph->externalFile(std::string(file_view));
+        }
+
+        if (graphObj.hasObjectMember("properties") && graphObj["properties"].isObject()) {
+            std::map<std::string, std::string> properties;
+            auto propertiesObj = graphObj["properties"];
+            for (uint32_t i = 0; i < propertiesObj.size(); ++i) {
+                auto member = propertiesObj[i];
+                if (!member.isString())
+                    continue;
+                properties.emplace(std::string(propertiesObj.getObjectMemberAt(i).name), std::string(member.getString()));
+            }
+            graph->properties(std::move(properties));
         }
 
         if (hasPlugins) {
