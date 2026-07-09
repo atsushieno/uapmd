@@ -139,6 +139,7 @@ namespace uapmd {
         virtual void playbackPosition(int64_t samples) = 0;
         virtual int64_t playbackPosition() const = 0;
         virtual int64_t renderPlaybackPosition() const = 0;
+        virtual void jumpPlayback(double positionSeconds) = 0;
         virtual void startPlayback() = 0;
         virtual void stopPlayback() = 0;
         virtual void pausePlayback() = 0;

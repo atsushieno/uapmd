@@ -401,6 +401,20 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
         if (clipAreaMaxX > clipAreaMinX && clipAreaMinY > winPos.y)
             drawPlayheadIndicator(clipAreaMinX, winPos.y, clipAreaMaxX, clipAreaMinY);
 
+        const ImVec2 headerMousePos = ImGui::GetMousePos();
+        if (timelineHovered &&
+            headerMousePos.x >= clipAreaMinX && headerMousePos.x <= clipAreaMaxX &&
+            headerMousePos.y >= winPos.y && headerMousePos.y < clipAreaMinY &&
+            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            const float scale = unified_.timeline->GetScale();
+            if (scale > 0.0f) {
+                const double positionSeconds =
+                    static_cast<double>(unified_.timeline->GetStartTimestamp()) +
+                    static_cast<double>((headerMousePos.x - clipAreaMinX) / scale);
+                uapmd::AppModel::instance().transport().jump(positionSeconds);
+            }
+        }
+
         // Drag tracking
         if (unified_.timeline->mDragData.DragState == eDragState::DragNode &&
             unified_.activeDragNodeId == InvalidNodeID && !shouldBlockInput && timelineHovered)

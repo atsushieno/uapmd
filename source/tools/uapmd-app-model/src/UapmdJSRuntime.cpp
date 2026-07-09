@@ -12,6 +12,7 @@
 #include <atomic>
 #include <filesystem>
 #include <future>
+#include <limits>
 
 namespace uapmd {
 
@@ -609,6 +610,12 @@ void UapmdJSRuntime::registerSequencerTransportAPI()
         auto& sequencer = uapmd::AppModel::instance().sequencer();
         auto position = sequencer.engine()->playbackPosition();
         return choc::value::createInt64 (position);
+    });
+
+    jsContext_.registerFunction ("__remidy_sequencer_jumpPlayback", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        uapmd::AppModel::instance().transport().jump (args.get<double> (0, std::numeric_limits<double>::quiet_NaN()));
+        return choc::value::Value();
     });
 }
 

@@ -256,6 +256,10 @@ export const sequencer = {
         __remidy_sequencer_resumePlayback();
     },
 
+    jumpPlayback: function(positionSeconds) {
+        __remidy_sequencer_jumpPlayback(positionSeconds);
+    },
+
     getPlaybackPosition: function() {
         return __remidy_sequencer_getPlaybackPosition();
     },

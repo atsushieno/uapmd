@@ -1357,6 +1357,10 @@ void uapmd::TransportController::resume() {
     isPaused_ = false;
 }
 
+void uapmd::TransportController::jump(double positionSeconds) {
+    sequencer_->engine()->jumpPlayback(positionSeconds);
+}
+
 void uapmd::TransportController::record() {
     isRecording_ = !isRecording_;
 

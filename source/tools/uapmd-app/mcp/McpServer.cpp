@@ -18,6 +18,7 @@
 #include <functional>
 #include <future>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <queue>
@@ -429,6 +430,12 @@ static choc::value::Value buildToolDefinitions()
             "stop",
             "Stop timeline playback.",
             R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "jump",
+            "Move timeline playback to a position in seconds after sending all notes off. "
+            "Negative positions are clamped to zero; non-finite positions do nothing.",
+            R"j({"type":"object","required":["positionSeconds"],"properties":{"positionSeconds":{"type":"number"}}})j"
         },
         {
             "run_script",
@@ -966,6 +973,21 @@ static choc::value::Value toolStop(const choc::value::Value&)
     return result;
 }
 
+static choc::value::Value toolJump(const choc::value::Value& args)
+{
+    const auto positionSeconds = getDoubleArg (
+        args, "positionSeconds", std::numeric_limits<double>::quiet_NaN());
+    auto& appModel = AppModel::instance();
+    appModel.transport().jump (positionSeconds);
+    auto result = choc::value::createObject ("");
+    result.setMember (
+        "positionSeconds",
+        static_cast<double> (appModel.sequencer().engine()->playbackPosition())
+            / static_cast<double> (appModel.sampleRate()));
+    result.setMember ("playing", appModel.sequencer().engine()->isPlaybackActive());
+    return result;
+}
+
 static choc::value::Value toolGetPresets(const choc::value::Value& args)
 {
     auto instanceId = getIntArg (args, "instanceId");
@@ -1258,6 +1280,7 @@ struct McpServer::Impl {
             else if (toolName == "create_empty_midi_clip")   toolResult = toolCreateEmptyMidiClip (args);
             else if (toolName == "play")                     toolResult = toolPlay (args);
             else if (toolName == "stop")                     toolResult = toolStop (args);
+            else if (toolName == "jump")                     toolResult = toolJump (args);
             else if (toolName == "get_presets")             toolResult = toolGetPresets (args);
             else if (toolName == "load_preset")             toolResult = toolLoadPreset (args);
             else if (toolName == "run_script")

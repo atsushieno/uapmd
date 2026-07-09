@@ -212,6 +212,7 @@ globalThis.uapmd = {
         stopPlayback: () => __remidy_sequencer_stopPlayback(),
         pausePlayback: () => __remidy_sequencer_pausePlayback(),
         resumePlayback: () => __remidy_sequencer_resumePlayback(),
+        jumpPlayback: (positionSeconds) => __remidy_sequencer_jumpPlayback(positionSeconds),
         getPlaybackPosition: () => __remidy_sequencer_getPlaybackPosition(),
 
         // Instance queries

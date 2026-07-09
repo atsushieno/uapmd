@@ -54,6 +54,7 @@ namespace uapmd {
         void stop();
         void pause();
         void resume();
+        void jump(double positionSeconds);
         void record();
     };
 

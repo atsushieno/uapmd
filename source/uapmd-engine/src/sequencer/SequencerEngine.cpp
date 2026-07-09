@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstring>
 #include <chrono>
+#include <iostream>
 #include <umppi/umppi.hpp>
 
 #include <remidy/detail/event-loop.hpp>
@@ -32,6 +33,7 @@ namespace uapmd {
 
     struct PumpSlot {
         std::unique_ptr<AudioProcessContext> ctx;
+        uint64_t transport_generation{0};
     };
 
     struct PumpTrackRing {
@@ -160,6 +162,7 @@ namespace uapmd {
         std::atomic<bool> latency_drain_active_{false};
         std::atomic<int64_t> latency_drain_remaining_samples_{0};
         std::atomic<bool> reset_to_start_after_latency_drain_{false};
+        std::atomic<uint64_t> transport_generation_{0};
 
         // Audio preprocessing callback (for app-level source nodes)
         AudioPreprocessCallback audio_preprocess_callback_;
@@ -310,6 +313,7 @@ namespace uapmd {
         void playbackPosition(int64_t samples) override;
         int64_t playbackPosition() const override;
         int64_t renderPlaybackPosition() const override;
+        void jumpPlayback(double positionSeconds) override;
         void startPlayback() override;
         void stopPlayback() override;
         void pausePlayback() override;
@@ -370,6 +374,7 @@ namespace uapmd {
 
         // Output dispatch
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
+        void requestAllNotesOff();
         void schedulePrerollFromAudiblePosition(int64_t samples);
         uint32_t maxTrackRenderLeadInSamples() const;
         uint32_t maxRenderLeadInSamples() const;
@@ -913,6 +918,8 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {
+        const auto transportGeneration =
+            transport_generation_.load(std::memory_order_acquire);
         const auto trackFrameCount = static_cast<int32_t>(
             std::min(static_cast<size_t>(process.frameCount()), audio_buffer_size_in_frames));
 
@@ -933,7 +940,9 @@ namespace uapmd {
             size_t idx;
             if (pump_rings_[t]->free_slots.try_dequeue(idx)) {
                 pump_slot_indices_[t] = idx;
-                auto* ctx = pump_rings_[t]->slots[idx].ctx.get();
+                auto& slot = pump_rings_[t]->slots[idx];
+                slot.transport_generation = transportGeneration;
+                auto* ctx = slot.ctx.get();
                 ctx->eventOut().position(0);
                 ctx->frameCount(trackFrameCount);
                 pump_sequence_.tracks[t] = ctx;
@@ -1027,7 +1036,15 @@ namespace uapmd {
             size_t idx;
             if (pump_rings_[t]->filled.try_dequeue(idx)) {
                 rt_dequeued_slots_[t] = idx;
-                sequence.tracks[t] = pump_rings_[t]->slots[idx].ctx.get();
+                auto& slot = pump_rings_[t]->slots[idx];
+                sequence.tracks[t] = slot.ctx.get();
+                if (slot.transport_generation !=
+                    transport_generation_.load(std::memory_order_acquire)) {
+                    sequence.tracks[t]->clearAudioInputs();
+                    sequence.tracks[t]->clearAudioOutputs();
+                    sequence.tracks[t]->eventIn().position(0);
+                    sequence.tracks[t]->eventOut().position(0);
+                }
             }
             // If no slot available: keep sequence.tracks[t] as-is (stale fallback).
         }
@@ -1586,6 +1603,35 @@ namespace uapmd {
         return render_playback_position_samples_.load(std::memory_order_acquire);
     }
 
+    void SequencerEngineImpl::requestAllNotesOff() {
+        auto flushTrackNotes = [](SequencerTrack* track) {
+            if (!track)
+                return;
+            for (auto& entry : track->graph().plugins())
+                if (entry.second)
+                    entry.second->requestStopFlush();
+        };
+        for (auto& track : tracks_)
+            flushTrackNotes(track.get());
+        flushTrackNotes(master_track_.get());
+    }
+
+    void SequencerEngineImpl::jumpPlayback(double positionSeconds) {
+        if (!std::isfinite(positionSeconds))
+            return;
+        if (positionSeconds < 0.0) {
+            std::cerr << "Warning: Negative playback jump position " << positionSeconds
+                      << " seconds; clamping to 0." << std::endl;
+            positionSeconds = 0.0;
+        }
+
+        const auto samples = static_cast<int64_t>(std::llround(
+            positionSeconds * static_cast<double>(sampleRate)));
+        requestAllNotesOff();
+        playbackPosition(samples);
+        transport_generation_.fetch_add(1, std::memory_order_release);
+    }
+
     void uapmd::SequencerEngineImpl::startPlayback() {
         resetOutputAlignmentBuffers();
         schedulePrerollFromAudiblePosition(0);
@@ -1609,18 +1655,7 @@ namespace uapmd {
             latency_drain_remaining_samples_.store(0, std::memory_order_release);
             reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
         }
-        auto flushTrackNotes = [](SequencerTrack* track) {
-            if (!track)
-                return;
-            auto plugin_nodes = track->graph().plugins();
-            for (auto& entry : plugin_nodes) {
-                if (entry.second)
-                    entry.second->requestStopFlush();
-            }
-        };
-        for (auto& track : tracks_)
-            flushTrackNotes(track.get());
-        flushTrackNotes(master_track_.get());
+        requestAllNotesOff();
     }
 
     void uapmd::SequencerEngineImpl::pausePlayback() {
@@ -1631,18 +1666,7 @@ namespace uapmd {
         render_playback_position_samples_.store(playback_position_samples_.load(std::memory_order_acquire),
                                                 std::memory_order_release);
         resetOutputAlignmentBuffers();
-        auto flushTrackNotes = [](SequencerTrack* track) {
-            if (!track)
-                return;
-            auto plugin_nodes = track->graph().plugins();
-            for (auto& entry : plugin_nodes) {
-                if (entry.second)
-                    entry.second->requestStopFlush();
-            }
-        };
-        for (auto& track : tracks_)
-            flushTrackNotes(track.get());
-        flushTrackNotes(master_track_.get());
+        requestAllNotesOff();
     }
 
     void uapmd::SequencerEngineImpl::resumePlayback() {
