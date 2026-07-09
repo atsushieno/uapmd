@@ -224,7 +224,7 @@ void SequenceEditor::renderWindow(int32_t trackIndex, SequenceEditorState& state
 
         // Action buttons
         if (trackIndex >= 0) {
-            if (ImGui::Button("New Clip")) {
+            if (ImGui::Button("Add an Empty MIDI2 Clip")) {
                 if (context.addBlankMidiClipAtPosition)
                     context.addBlankMidiClipAtPosition(trackIndex, 0.0);
             }
@@ -506,7 +506,7 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                     requestedContextTrack = hoveredTrackIndex;
                 }
             }
-            // Always record the clicked timeline position so "Add New Clip Here" works
+            // Always record the clicked timeline position so "Add an Empty MIDI2 Clip Here" works
             // even when the click lands on an existing clip.
             if (scale > 0.0f) {
                 const float clippedX = std::clamp(mousePos.x, clipAreaMinX, clipAreaMaxX);
@@ -623,12 +623,12 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
 
                     if (!contextClip->isMasterTrack) {
                         ImGui::Separator();
-                        if (contextActionMenuItem("New Clip Here")) {
+                        if (contextActionMenuItem("Add an Empty MIDI2 Clip Here")) {
                             if (context.addBlankMidiClipAtPosition)
                                 context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
                             ImGui::CloseCurrentPopup();
                         }
-                        if (contextActionMenuItem("Import Audio Clip Here...")) {
+                        if (contextActionMenuItem("Add Audio Clip from File Here...")) {
                             if (context.addAudioClip)
                                 context.addAudioClip(trackIndex, trackState.requestedAddPosition);
                             ImGui::CloseCurrentPopup();
@@ -650,26 +650,26 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                     if (context.refreshClips) context.refreshClips(trackIndex);
                     ImGui::CloseCurrentPopup();
                 }
+                ImGui::Separator();
+                if (contextActionMenuItem("Add an Empty MIDI2 Clip")) {
+                    if (context.addBlankMidiClipAtPosition)
+                        context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
+                    ImGui::CloseCurrentPopup();
+                }
                 if (!isMasterTrack) {
                     ImGui::Separator();
-                    if (contextActionMenuItem("New Clip")) {
-                        if (context.addBlankMidiClipAtPosition)
-                            context.addBlankMidiClipAtPosition(trackIndex, trackState.requestedAddPosition);
-                        ImGui::CloseCurrentPopup();
-                    }
-                    ImGui::Separator();
-                    if (contextActionMenuItem("Import Audio Clip...")) {
+                    if (contextActionMenuItem("Add Audio Clip from File...")) {
                         if (context.addAudioClip) context.addAudioClip(trackIndex, trackState.requestedAddPosition);
                         ImGui::CloseCurrentPopup();
                     }
                 }
                 ImGui::Separator();
-                if (contextActionMenuItem("Import SMF as Clip...")) {
+                if (contextActionMenuItem("Add a MIDI Clip from File...")) {
                     if (context.addSmfClip) context.addSmfClip(trackIndex, trackState.requestedAddPosition);
                     ImGui::CloseCurrentPopup();
                 }
                 if (!isMasterTrack) {
-                    if (contextActionMenuItem("Import SMF2Clip...")) {
+                    if (contextActionMenuItem("Add MIDI2 Clip from File...")) {
                         if (context.addSmf2Clip) context.addSmf2Clip(trackIndex);
                         ImGui::CloseCurrentPopup();
                     }

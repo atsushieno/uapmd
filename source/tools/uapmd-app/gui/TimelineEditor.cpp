@@ -779,13 +779,14 @@ SequenceEditor::RenderContext TimelineEditor::buildRenderContext(float uiScale) 
         ImGui::CalcTextSize(icons::DeleteTrack).x,
     }) + framePadX * 2.0f;
     const float row1W = pad + 4.5f * iconBtnW + 3.0f * gap + pad;
-    // Row 2: "⋮ Add Plugin" plus optional delete button on the right.
-    const std::string minPluginLabel = std::format("{} Add Plugin", icons::ContextMenu);
-    const float pluginTextW = ImGui::CalcTextSize(minPluginLabel.c_str()).x + framePadX * 2.0f;
-    const float pluginMaxW = std::max(0.0f, row1W - pad - gap - iconBtnW - pad);
-    const float pluginMinW = std::min(pluginTextW, pluginMaxW);
-    const float row2W = pad + pluginMinW + gap + iconBtnW + pad;
-    const float legendWidth = std::max(row1W, row2W);
+    // Row 2 must fit the master label, or the regular label plus its delete button.
+    const std::string masterPluginLabel = std::format("{} Add Master Plugin", icons::ContextMenu);
+    const std::string trackPluginLabel = std::format("{} Add Plugin", icons::ContextMenu);
+    const float masterPluginWidth = ImGui::CalcTextSize(masterPluginLabel.c_str()).x + framePadX * 2.0f;
+    const float trackPluginWidth = ImGui::CalcTextSize(trackPluginLabel.c_str()).x + framePadX * 2.0f;
+    const float masterRow2W = pad + masterPluginWidth + pad;
+    const float trackRow2W = pad + trackPluginWidth + gap + iconBtnW + pad;
+    const float legendWidth = std::max({row1W, masterRow2W, trackRow2W});
 
     return SequenceEditor::RenderContext{
         .refreshClips = [this](int32_t trackIndex) {
@@ -1326,7 +1327,9 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
                 validInstances.push_back(instanceId);
     }
 
-    std::string pluginLabel = "Add Plugin";
+    std::string pluginLabel = trackIndex == uapmd::kMasterTrackIndex
+        ? "Add Master Plugin"
+        : "Add Plugin";
     if (!validInstances.empty())
         if (auto* instance = sequencer.engine()->getPluginInstance(validInstances.front()))
             pluginLabel = instance->displayName();
@@ -1414,19 +1417,19 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             sequenceEditor_.showWindow(trackIndex);
             refreshSequenceEditorForTrack(trackIndex);
         }
+        ImGui::Separator();
+        if (contextActionMenuItem("Add an Empty MIDI2 Clip"))
+            addBlankMidi2ClipToTrack(trackIndex);
         if (!isMasterTrack) {
             ImGui::Separator();
-            if (contextActionMenuItem("New Clip"))
-                addBlankMidi2ClipToTrack(trackIndex);
-            ImGui::Separator();
-            if (contextActionMenuItem("Import Audio Clip..."))
+            if (contextActionMenuItem("Add Audio Clip from File..."))
                 addAudioClipToTrack(trackIndex);
         }
         ImGui::Separator();
-        if (contextActionMenuItem("Import SMF as Clip..."))
+        if (contextActionMenuItem("Add a MIDI Clip from File..."))
             addSmfClipToTrack(trackIndex);
         if (!isMasterTrack) {
-            if (contextActionMenuItem("Import SMF2Clip..."))
+            if (contextActionMenuItem("Add MIDI2 Clip from File..."))
                 addSmf2ClipToTrack(trackIndex);
             ImGui::Separator();
             if (contextActionMenuItem("Clear All"))
@@ -1489,7 +1492,10 @@ void TimelineEditor::renderTrackLegendContent(int32_t trackIndex, const ImRect& 
             }
         }
 
-        if (contextActionMenuItem("Add Plugin")) {
+        const char* addPluginLabel = trackIndex == uapmd::kMasterTrackIndex
+            ? "Add Master Plugin"
+            : "Add Plugin";
+        if (contextActionMenuItem(addPluginLabel)) {
             if (trackIndex == uapmd::kMasterTrackIndex)
                 pluginSelector_.setTargetMasterTrack(trackIndex);
             else
