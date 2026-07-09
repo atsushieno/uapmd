@@ -183,7 +183,12 @@ void remidy::PluginInstanceAUv2::ParameterSupport::rebuildParameterList(bool not
         parameterMetadataChangeEvent().notify();
 
     if (parameter_listener) {
-        EventLoop::enqueueTaskOnMainThread([this]() {
+        // The task can outlive this ParameterSupport (a project reload destroys all plugin
+        // instances, and the queue may still hold this task) -- bail out via the lifetime
+        // token instead of dereferencing a freed `this`.
+        EventLoop::enqueueTaskOnMainThread([this, alive = alive_]() {
+            if (!alive->load(std::memory_order_acquire))
+                return;
             uninstallParameterListener();
             installParameterListener();
         });
@@ -197,6 +202,7 @@ remidy::PluginInstanceAUv2::ParameterSupport::ParameterSupport(remidy::PluginIns
 }
 
 remidy::PluginInstanceAUv2::ParameterSupport::~ParameterSupport() {
+    alive_->store(false, std::memory_order_release);
     uninstallParameterListener();
     clearParameterList();
 }

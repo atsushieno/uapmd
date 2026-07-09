@@ -1,5 +1,7 @@
 #pragma once
+#include <atomic>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -344,6 +346,11 @@ namespace remidy {
             std::vector<PluginParameter*> scoped_parameter_list{};
             AUEventListenerRef parameter_listener{nullptr};
             std::unordered_map<AudioUnitParameterID, uint32_t> parameter_id_to_index{};
+            // Lifetime token for main-thread tasks deferred via EventLoop: they capture this
+            // token instead of trusting a raw `this`, and bail out if the ParameterSupport was
+            // destroyed before the queue drained (e.g. a project reload tearing all plugin
+            // instances down with a rebuild task still pending).
+            std::shared_ptr<std::atomic<bool>> alive_{std::make_shared<std::atomic<bool>>(true)};
 
         public:
             explicit ParameterSupport(PluginInstanceAUv2* owner);
@@ -419,10 +426,15 @@ namespace remidy {
         class PresetsSupport : public PluginPresetsSupport {
             PluginInstanceAUv2 *owner;
             std::vector<PresetInfo> items{};
+            // Lifetime token for main-thread tasks deferred via EventLoop: they capture this
+            // token instead of trusting a raw `this`, and bail out if the PresetsSupport was
+            // destroyed before the queue drained (e.g. a project reload tearing all plugin
+            // instances down with a preset-load task still pending).
+            std::shared_ptr<std::atomic<bool>> alive_{std::make_shared<std::atomic<bool>>(true)};
 
         public:
             explicit PresetsSupport(PluginInstanceAUv2* owner);
-            ~PresetsSupport() override = default;
+            ~PresetsSupport() override { alive_->store(false, std::memory_order_release); }
 
             bool isIndexStable() override { return false; }
             bool isIndexId() override { return false; }

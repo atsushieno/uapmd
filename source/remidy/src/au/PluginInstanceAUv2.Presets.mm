@@ -79,7 +79,12 @@ void PluginInstanceAUv2::PresetsSupport::loadPreset(int32_t index, std::function
         return;
     }
 
-    auto impl = [this, index, completed = std::move(completed)]() mutable {
+    auto impl = [this, alive = alive_, index, completed = std::move(completed)]() mutable {
+        // The task can outlive this PresetsSupport (a project reload destroys all plugin
+        // instances, and the queue may still hold this task) -- bail out via the lifetime
+        // token instead of dereferencing a freed `this`.
+        if (!alive->load(std::memory_order_acquire))
+            return;
         auto& preset = items[(size_t) index];
         AUPreset auPreset{};
         auPreset.presetNumber = preset.index();
