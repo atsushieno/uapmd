@@ -32,7 +32,7 @@ constexpr float kMaxTimelineScale = 400.0f;
 constexpr float kZoomWheelSensitivity = 0.2f;
 
 // Height of the navigation row (zoom slider + position controller) above the track list.
-constexpr float kNavigatorHeightPt = 50.0f;
+constexpr float kNavigatorHeightPt = 40.0f;
 
 // Renders the navigation row above the timeline:
 //
