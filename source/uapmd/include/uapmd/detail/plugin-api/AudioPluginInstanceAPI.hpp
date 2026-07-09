@@ -122,6 +122,9 @@ namespace uapmd {
         virtual void clearDirty() = 0;
         virtual remidy::EventListenerId addDirtyStateListener(std::function<void(bool)> listener) = 0;
         virtual void removeDirtyStateListener(remidy::EventListenerId listenerId) = 0;
+        virtual remidy::EventListenerId addTimingInfoChangeListener(
+            std::function<void(remidy::PluginTimingInfoChange)> listener) = 0;
+        virtual void removeTimingInfoChangeListener(remidy::EventListenerId listenerId) = 0;
 
         virtual AudioPluginInstanceExtension* extension(std::string_view extensionId) {
             (void) extensionId;

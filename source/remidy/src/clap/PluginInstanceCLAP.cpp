@@ -130,13 +130,17 @@ namespace remidy {
     }
 
     void PluginInstanceCLAP::refreshLatencyOnMainThread() {
+        const auto previousLatency = cached_latency_samples_.load(std::memory_order_acquire);
         uint32_t latency = 0;
         if (plugin && plugin->canUseLatency())
             latency = plugin->latencyGet();
         cached_latency_samples_.store(latency, std::memory_order_release);
+        if (latency != previousLatency)
+            notifyTimingInfoChanged({.latency_changed = true, .tail_changed = false});
     }
 
     void PluginInstanceCLAP::refreshTailOnMainThread() {
+        const auto previousTail = cached_tail_seconds_.load(std::memory_order_acquire);
         double tail = 0.0;
         if (plugin && plugin->canUseTail()) {
             const auto tailSamples = plugin->tailGet();
@@ -148,6 +152,8 @@ namespace remidy {
                     : 0.0;
         }
         cached_tail_seconds_.store(tail, std::memory_order_release);
+        if (tail != previousTail)
+            notifyTimingInfoChanged({.latency_changed = false, .tail_changed = true});
     }
 
     StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {

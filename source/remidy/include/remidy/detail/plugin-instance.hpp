@@ -9,6 +9,11 @@
 
 namespace remidy {
     using PluginDirtyStateChangeEvent = ParameterEventBase<void, bool>;
+    struct PluginTimingInfoChange {
+        bool latency_changed{false};
+        bool tail_changed{false};
+    };
+    using PluginTimingInfoChangeEvent = ParameterEventBase<void, PluginTimingInfoChange>;
 
     // [flags]
     enum PluginUIThreadRequirement : uint32_t {
@@ -26,6 +31,7 @@ namespace remidy {
         PluginCatalogEntry* entry;
         std::atomic<bool> dirty_{false};
         PluginDirtyStateChangeEvent dirty_state_change_event_{};
+        PluginTimingInfoChangeEvent timing_info_change_event_{};
 
     protected:
         explicit PluginInstance(PluginCatalogEntry* entry) : entry(entry) {}
@@ -34,6 +40,12 @@ namespace remidy {
             const bool previous = dirty_.exchange(dirty, std::memory_order_acq_rel);
             if (previous != dirty)
                 dirty_state_change_event_.notify(dirty);
+        }
+
+        void notifyTimingInfoChanged(PluginTimingInfoChange change) {
+            if (!change.latency_changed && !change.tail_changed)
+                return;
+            timing_info_change_event_.notify(change);
         }
 
     public:
@@ -54,6 +66,7 @@ namespace remidy {
         void markDirty() { setDirtyState(true); }
         void clearDirty() { setDirtyState(false); }
         PluginDirtyStateChangeEvent& dirtyStateChangeEvent() { return dirty_state_change_event_; }
+        PluginTimingInfoChangeEvent& timingInfoChangeEvent() { return timing_info_change_event_; }
 
         virtual PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) {
             (void) extensionId;

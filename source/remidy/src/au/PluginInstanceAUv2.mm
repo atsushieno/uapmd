@@ -17,9 +17,11 @@ remidy::PluginInstanceAUv2::PluginInstanceAUv2(
     setCurrentThreadNameIfPossible("remidy.AU.instance." + name);
     audio_buses = new AudioBuses(this);
     initializeHostCallbacks();
+    installTimingInfoListener();
 }
 
 remidy::PluginInstanceAUv2::~PluginInstanceAUv2() {
+    uninstallTimingInfoListener();
     if (options.uiThreadRequirement & PluginUIThreadRequirement::InstanceControl)
         EventLoop::runTaskOnMainThread([&] {
             AudioComponentInstanceDispose(instance);
@@ -56,6 +58,84 @@ void remidy::PluginInstanceAUv2::initializeHostCallbacks() {
     if (status != noErr) {
         logger()->logWarning("%s: failed to set kAudioUnitProperty_HostCallbacks. Status: %d", name.c_str(), status);
     }
+}
+
+void remidy::PluginInstanceAUv2::installTimingInfoListener() {
+    auto install = [this] {
+        if (!instance || timing_info_listener)
+            return;
+        if (AUEventListenerCreate(&PluginInstanceAUv2::timingInfoEventCallback,
+                                  this,
+                                  CFRunLoopGetMain(),
+                                  kCFRunLoopDefaultMode,
+                                  0.1f,
+                                  0.1f,
+                                  &timing_info_listener) != noErr)
+            timing_info_listener = nullptr;
+        if (!timing_info_listener)
+            return;
+
+        AudioUnitEvent latencyEvent{};
+        latencyEvent.mEventType = kAudioUnitEvent_PropertyChange;
+        latencyEvent.mArgument.mProperty.mAudioUnit = instance;
+        latencyEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_Latency;
+        latencyEvent.mArgument.mProperty.mScope = kAudioUnitScope_Global;
+        latencyEvent.mArgument.mProperty.mElement = 0;
+        AUEventListenerAddEventType(timing_info_listener, this, &latencyEvent);
+
+        AudioUnitEvent tailEvent = latencyEvent;
+        tailEvent.mArgument.mProperty.mPropertyID = kAudioUnitProperty_TailTime;
+        AUEventListenerAddEventType(timing_info_listener, this, &tailEvent);
+    };
+
+    if (options.uiThreadRequirement & PluginUIThreadRequirement::InstanceControl)
+        EventLoop::runTaskOnMainThread(std::move(install));
+    else
+        install();
+}
+
+void remidy::PluginInstanceAUv2::uninstallTimingInfoListener() {
+    auto uninstall = [this] {
+        if (!timing_info_listener)
+            return;
+        AUListenerDispose(timing_info_listener);
+        timing_info_listener = nullptr;
+    };
+
+    if (options.uiThreadRequirement & PluginUIThreadRequirement::InstanceControl)
+        EventLoop::runTaskOnMainThread(std::move(uninstall));
+    else
+        uninstall();
+}
+
+void remidy::PluginInstanceAUv2::handleTimingInfoEvent(const AudioUnitEvent* event) {
+    if (!event || event->mEventType != kAudioUnitEvent_PropertyChange)
+        return;
+
+    switch (event->mArgument.mProperty.mPropertyID) {
+        case kAudioUnitProperty_Latency:
+            notifyTimingInfoChanged({.latency_changed = true, .tail_changed = false});
+            break;
+        case kAudioUnitProperty_TailTime:
+            notifyTimingInfoChanged({.latency_changed = false, .tail_changed = true});
+            break;
+        default:
+            break;
+    }
+}
+
+void remidy::PluginInstanceAUv2::timingInfoEventCallback(
+    void* refCon,
+    void* object,
+    const AudioUnitEvent* event,
+    UInt64 hostTime,
+    Float32 value) {
+    (void)object;
+    (void)hostTime;
+    (void)value;
+    auto* owner = static_cast<PluginInstanceAUv2*>(refCon);
+    if (owner)
+        owner->handleTimingInfoEvent(event);
 }
 
 OSStatus remidy::PluginInstanceAUv2::audioInputRenderCallback(

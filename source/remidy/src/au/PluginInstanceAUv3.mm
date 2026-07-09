@@ -14,6 +14,37 @@ namespace {
     constexpr size_t kMidiEventListCapacityBytes = 65536;
 }
 
+static void* kAUTimingInfoKVOContext = &kAUTimingInfoKVOContext;
+
+@interface AUTimingInfoObserver : NSObject {
+@public
+    remidy::PluginInstanceAUv3* owner;
+}
+@end
+
+@implementation AUTimingInfoObserver
+
+- (void)observeValueForKeyPath:(NSString*)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary<NSKeyValueChangeKey, id>*)change
+                       context:(void*)context {
+    (void)object;
+    (void)change;
+    if (context != kAUTimingInfoKVOContext) {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+        return;
+    }
+    if (!owner || keyPath == nil)
+        return;
+
+    if ([keyPath isEqualToString:@"latency"])
+        owner->handleTimingInfoChanged(true, false);
+    else if ([keyPath isEqualToString:@"tailTime"])
+        owner->handleTimingInfoChanged(false, true);
+}
+
+@end
+
 remidy::PluginInstanceAUv3::PluginInstanceAUv3(
         PluginFormatAUImpl *format,
         PluginFormat::PluginInstantiationOptions options,
@@ -36,11 +67,13 @@ remidy::PluginInstanceAUv3::PluginInstanceAUv3(
         midi_event_list_capacity = kMidiEventListCapacityBytes;
         midi_event_list = static_cast<MIDIEventList*>(std::calloc(1, midi_event_list_capacity));
         initializeHostCallbacks();
+        installTimingInfoObserver();
     }
 }
 
 remidy::PluginInstanceAUv3::~PluginInstanceAUv3() {
     @autoreleasepool {
+        uninstallTimingInfoObserver();
         auto releaseAudioObjects = [&] {
             if (audioUnit != nil) {
                 [audioUnit release];
@@ -68,6 +101,60 @@ remidy::PluginInstanceAUv3::~PluginInstanceAUv3() {
             midi_event_list_capacity = 0;
         }
     }
+}
+
+void remidy::PluginInstanceAUv3::installTimingInfoObserver() {
+    auto installTask = [this] {
+        @autoreleasepool {
+            if (audioUnit == nil || timing_info_observer != nullptr)
+                return;
+
+            auto observer = [[AUTimingInfoObserver alloc] init];
+            observer->owner = this;
+            [audioUnit addObserver:observer
+                        forKeyPath:@"latency"
+                           options:NSKeyValueObservingOptionNew
+                           context:kAUTimingInfoKVOContext];
+            [audioUnit addObserver:observer
+                        forKeyPath:@"tailTime"
+                           options:NSKeyValueObservingOptionNew
+                           context:kAUTimingInfoKVOContext];
+            timing_info_observer = observer;
+        }
+    };
+
+    EventLoop::runTaskOnMainThread(std::move(installTask));
+}
+
+void remidy::PluginInstanceAUv3::uninstallTimingInfoObserver() {
+    auto uninstallTask = [this] {
+        @autoreleasepool {
+            if (timing_info_observer == nullptr)
+                return;
+
+            auto observer = static_cast<AUTimingInfoObserver*>(timing_info_observer);
+            if (audioUnit != nil) {
+                @try {
+                    [audioUnit removeObserver:observer forKeyPath:@"latency"];
+                } @catch(NSException* exception) {
+                    (void)exception;
+                }
+                @try {
+                    [audioUnit removeObserver:observer forKeyPath:@"tailTime"];
+                } @catch(NSException* exception) {
+                    (void)exception;
+                }
+            }
+            [observer release];
+            timing_info_observer = nullptr;
+        }
+    };
+
+    EventLoop::runTaskOnMainThread(std::move(uninstallTask));
+}
+
+void remidy::PluginInstanceAUv3::handleTimingInfoChanged(bool latencyChanged, bool tailChanged) {
+    notifyTimingInfoChanged({.latency_changed = latencyChanged, .tail_changed = tailChanged});
 }
 
 void remidy::PluginInstanceAUv3::initializeHostCallbacks() {

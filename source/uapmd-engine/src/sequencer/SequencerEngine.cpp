@@ -3,6 +3,7 @@
 #include <format>
 #include <mutex>
 #include <thread>
+#include <unordered_set>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -183,6 +184,7 @@ namespace uapmd {
 
         // Plugin instance management
         std::unordered_map<int32_t, AudioPluginInstanceAPI*> plugin_instances_;
+        std::unordered_map<int32_t, remidy::EventListenerId> plugin_timing_listener_ids_;
         std::mutex instance_map_mutex_;
 
 
@@ -416,6 +418,10 @@ namespace uapmd {
         void dispatchPluginOutput(int32_t instanceId, const uapmd_ump_t* data, size_t bytes);
         void requestAllNotesOff();
         void schedulePrerollFromAudiblePosition(int64_t samples);
+        void handlePluginTimingInfoChange(int32_t instanceId, remidy::PluginTimingInfoChange change);
+        void syncPluginTimingListeners();
+        void clearPluginTimingListeners();
+        void applyLatencyCompensationTimingUpdateLocked();
         uint32_t maxTrackRenderLeadInSamples() const;
         uint32_t maxRenderLeadInSamples() const;
         uint32_t maxLiveInputRenderLeadInSamples() const;
@@ -477,6 +483,7 @@ namespace uapmd {
     }
 
     SequencerEngineImpl::~SequencerEngineImpl() {
+        clearPluginTimingListeners();
         // Detach output mappers while plugin instances are still alive. This is a separate
         // step from clearAllDevices() because AppModel::DeviceState holds shared_ptrs to
         // UapmdFunctionBlock that may outlive the engine — detaching now ensures those
@@ -487,6 +494,93 @@ namespace uapmd {
         // AudioPluginNodeImpl destructors can still touch the live instances.
         tracks_.clear();
         master_track_.reset();
+    }
+
+    void SequencerEngineImpl::handlePluginTimingInfoChange(
+        int32_t instanceId,
+        remidy::PluginTimingInfoChange change) {
+        if (!change.latency_changed && !change.tail_changed)
+            return;
+        if (!remidy::EventLoop::runningOnMainThread()) {
+            remidy::EventLoop::enqueueTaskOnMainThread([this, instanceId, change] {
+                handlePluginTimingInfoChange(instanceId, change);
+            });
+            return;
+        }
+
+        if (findTrackIndexForInstance(instanceId) < 0)
+            return;
+
+        StructureMutationGuard mutationGuard(*this);
+        applyLatencyCompensationTimingUpdateLocked();
+    }
+
+    void SequencerEngineImpl::syncPluginTimingListeners() {
+        std::unordered_set<int32_t> activeInstanceIds;
+        activeInstanceIds.reserve(plugin_instances_.size());
+        for (const auto& track : tracks_)
+            if (track)
+                for (const auto instanceId : track->orderedInstanceIds())
+                    activeInstanceIds.insert(instanceId);
+        if (master_track_)
+            for (const auto instanceId : master_track_->orderedInstanceIds())
+                activeInstanceIds.insert(instanceId);
+
+        std::lock_guard<std::mutex> lock(instance_map_mutex_);
+        for (auto it = plugin_timing_listener_ids_.begin(); it != plugin_timing_listener_ids_.end();) {
+            const auto instanceId = it->first;
+            const auto instanceIt = plugin_instances_.find(instanceId);
+            if (activeInstanceIds.contains(instanceId) && instanceIt != plugin_instances_.end() && instanceIt->second) {
+                ++it;
+                continue;
+            }
+
+            if (instanceIt != plugin_instances_.end() && instanceIt->second)
+                instanceIt->second->removeTimingInfoChangeListener(it->second);
+            it = plugin_timing_listener_ids_.erase(it);
+        }
+
+        for (const auto instanceId : activeInstanceIds) {
+            if (plugin_timing_listener_ids_.contains(instanceId))
+                continue;
+            const auto instanceIt = plugin_instances_.find(instanceId);
+            if (instanceIt == plugin_instances_.end() || !instanceIt->second)
+                continue;
+            plugin_timing_listener_ids_.emplace(
+                instanceId,
+                instanceIt->second->addTimingInfoChangeListener(
+                    [this, instanceId](remidy::PluginTimingInfoChange change) {
+                        handlePluginTimingInfoChange(instanceId, change);
+                    }));
+        }
+    }
+
+    void SequencerEngineImpl::clearPluginTimingListeners() {
+        std::lock_guard<std::mutex> lock(instance_map_mutex_);
+        for (const auto& [instanceId, listenerId] : plugin_timing_listener_ids_) {
+            const auto instanceIt = plugin_instances_.find(instanceId);
+            if (instanceIt != plugin_instances_.end() && instanceIt->second)
+                instanceIt->second->removeTimingInfoChangeListener(listenerId);
+        }
+        plugin_timing_listener_ids_.clear();
+    }
+
+    void SequencerEngineImpl::applyLatencyCompensationTimingUpdateLocked() {
+        requestAllNotesOff();
+        reconfigureOutputAlignmentBuffers();
+        resetOutputAlignmentBuffers();
+        transport_generation_.fetch_add(1, std::memory_order_release);
+
+        const auto audiblePosition = playback_position_samples_.load(std::memory_order_acquire);
+        if (is_playback_active_.load(std::memory_order_acquire)) {
+            schedulePrerollFromAudiblePosition(audiblePosition);
+            return;
+        }
+
+        latency_drain_active_.store(false, std::memory_order_release);
+        latency_drain_remaining_samples_.store(0, std::memory_order_release);
+        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
+        render_playback_position_samples_.store(audiblePosition, std::memory_order_release);
     }
 
     std::vector<remidy::AudioBusSpec> SequencerEngineImpl::mergeBusSpecs(
@@ -1408,6 +1502,7 @@ namespace uapmd {
             static_cast<double>(sampleRate),
             static_cast<uint32_t>(audio_buffer_size_in_frames)
         );
+        syncPluginTimingListeners();
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
 
@@ -1428,6 +1523,7 @@ namespace uapmd {
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
         rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
         timeline_->onTrackRemoved(static_cast<size_t>(index));
+        syncPluginTimingListeners();
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
         return true;
@@ -1460,6 +1556,7 @@ namespace uapmd {
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
         timeline_->onTrackGraphChanged(trackIndex);
+        syncPluginTimingListeners();
         return true;
     }
 
@@ -1545,6 +1642,7 @@ namespace uapmd {
                     std::lock_guard<std::mutex> lock(instance_map_mutex_);
                     plugin_instances_[instanceId] = instance;
                 }
+                syncPluginTimingListeners();
 
                 // Parameter metadata change events are now handled in AudioPluginNode directly
 
@@ -1584,6 +1682,10 @@ namespace uapmd {
         // Plugin instance cleanup
         {
             std::lock_guard<std::mutex> lock(instance_map_mutex_);
+            const auto listenerIt = plugin_timing_listener_ids_.find(instanceId);
+            if (listenerIt != plugin_timing_listener_ids_.end() && instance)
+                instance->removeTimingInfoChangeListener(listenerIt->second);
+            plugin_timing_listener_ids_.erase(instanceId);
             plugin_instances_.erase(instanceId);
         }
 
@@ -1598,6 +1700,7 @@ namespace uapmd {
                 // They have minimal overhead (no plugins to process) and can be removed manually
                 // by calling removeTrack() from a non-audio thread when appropriate.
                 refreshFunctionBlockMappings();
+                syncPluginTimingListeners();
                 reconfigureMixBusContext();
                 reconfigureOutputAlignmentBuffers();
                 timeline_->onTrackGraphChanged(static_cast<int32_t>(i));
@@ -1607,6 +1710,7 @@ namespace uapmd {
         if (master_track_ && master_track_->graph().removeNodeSimple(instanceId)) {
             master_track_->removeInstance(instanceId);
             refreshFunctionBlockMappings();
+            syncPluginTimingListeners();
             reconfigureMixBusContext();
             reconfigureOutputAlignmentBuffers();
             timeline_->onTrackGraphChanged(kMasterTrackIndex);
@@ -1627,6 +1731,7 @@ namespace uapmd {
         }
         track_processing_flags_.erase(track_processing_flags_.begin() + static_cast<long>(index));
         timeline_->onTrackRemoved(index);
+        syncPluginTimingListeners();
         reconfigureMixBusContext();
         reconfigureOutputAlignmentBuffers();
     }

@@ -717,12 +717,13 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
         }
 
         if (flags & Vst::RestartFlags::kLatencyChanged) {
-            // Latency changed - query new latency
-            logger->logInfo("%s: Handling kLatencyChanged - querying new latency (not implemented)", pluginName.c_str());
+            logger->logInfo("%s: Handling kLatencyChanged - querying new latency", pluginName.c_str());
             if (processor) {
+                const uint32_t previousLatency = latencyInSamples();
                 uint32 newLatency = processor->getLatencySamples();
                 logger->logInfo("%s: New latency: %u samples", pluginName.c_str(), newLatency);
-                // TODO: Update host's delay compensation if needed
+                if (newLatency != previousLatency)
+                    notifyTimingInfoChanged({.latency_changed = true, .tail_changed = false});
             }
         }
 

@@ -436,6 +436,18 @@ namespace uapmd {
                 instance->dirtyStateChangeEvent().removeListener(listenerId);
         }
 
+        remidy::EventListenerId addTimingInfoChangeListener(
+            std::function<void(remidy::PluginTimingInfoChange)> listener) override {
+            if (!instance)
+                return 0;
+            return instance->timingInfoChangeEvent().addListener(std::move(listener));
+        }
+
+        void removeTimingInfoChangeListener(remidy::EventListenerId listenerId) override {
+            if (instance)
+                instance->timingInfoChangeEvent().removeListener(listenerId);
+        }
+
         bool requiresReplacingProcess() const override {
             return instance && instance->requiresReplacingProcess();
         }

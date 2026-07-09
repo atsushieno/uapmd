@@ -230,6 +230,8 @@ namespace remidy {
         };
 
         void initializeHostCallbacks();
+        void installTimingInfoObserver();
+        void uninstallTimingInfoObserver();
 
         ParameterSupport* _parameters{nullptr};
         PluginStatesAUv3* _states{};
@@ -237,6 +239,7 @@ namespace remidy {
         PluginUISupport* _ui{};
         AudioBuses* audio_buses{};
         HostTransportInfo host_transport_info{};
+        void* timing_info_observer{nullptr};
 
         // MIDI event converter - converts UMP to AURenderEvent
         MIDIEventConverter* midiConverter{nullptr};
@@ -268,6 +271,7 @@ namespace remidy {
                            AUAudioUnit* audioUnit);
         ~PluginInstanceAUv3() override;
         Logger* logger() { return logger_; }
+        void handleTimingInfoChanged(bool latencyChanged, bool tailChanged);
 
         PluginExtensibility<PluginInstance>* getExtensibility(std::string_view extensionId) override {
 #ifdef UAPMD_HAS_ARA
@@ -497,6 +501,10 @@ namespace remidy {
         };
 
         void initializeHostCallbacks();
+        void installTimingInfoListener();
+        void uninstallTimingInfoListener();
+        void handleTimingInfoEvent(const AudioUnitEvent* event);
+        static void timingInfoEventCallback(void* refCon, void* object, const AudioUnitEvent* event, UInt64 hostTime, Float32 value);
         static OSStatus hostCallbackGetBeatAndTempo(void* inHostUserData, Float64* outCurrentBeat, Float64* outCurrentTempo);
         static OSStatus hostCallbackGetMusicalTimeLocation(void* inHostUserData, UInt32* outDeltaSampleOffsetToNextBeat, Float32* outTimeSigNumerator, UInt32* outTimeSigDenominator, Float64* outCurrentMeasureDownBeat);
         static OSStatus hostCallbackGetTransportState(void* inHostUserData, Boolean* outIsPlaying, Boolean* outTransportStateChanged, Float64* outCurrentSampleInTimeline, Boolean* outIsCycling, Float64* outCycleStartBeat, Float64* outCycleEndBeat);
@@ -526,6 +534,7 @@ namespace remidy {
         AUUmpInputDispatcher ump_input_dispatcher{this};
         HostTransportInfo host_transport_info{};
         HostCallbackInfo host_callback_info{};
+        AUEventListenerRef timing_info_listener{nullptr};
 
         // Temporary buffer for MIDI output events during processing (as uint32_t words)
         std::vector<uint32_t> midi_output_buffer{};
