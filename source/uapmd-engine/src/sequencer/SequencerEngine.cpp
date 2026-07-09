@@ -204,6 +204,46 @@ namespace uapmd {
         // tails render out, spectra update) but the device output bus is silenced.
         std::atomic<bool> output_muted_{false};
 
+        // Structural-mutation handshake (Dekker pattern). Main-thread mutations of the
+        // parallel per-track vectors (tracks_ / sequence.tracks / track_processing_flags_ /
+        // pump_*) must never overlap a processAudio() walk: vector erase/emplace invalidates
+        // the storage processAudio() is indexing, which crashes on e.g. project reload where
+        // loadProject() removes every track while audio keeps running. Mutators raise
+        // structure_mutation_active_ and spin until the audio thread is observed outside
+        // processAudio(); processAudio() announces itself via in_process_audio_ FIRST, then
+        // re-checks the mutation flag and backs out with silence if one is (or went) in
+        // flight. Both sides use seq_cst on the store->load pair so the store-load ordering
+        // that the handshake depends on cannot be broken.
+        std::atomic<bool> structure_mutation_active_{false};
+        std::atomic<bool> in_process_audio_{false};
+
+        // RAII for the mutator side. Held only on the main thread, never nested by the
+        // current call graph (no track mutator calls another). The spin is bounded by one
+        // audio callback duration (a few ms at most); cleanupEmptyTracks() already relies on
+        // the same busy-wait idiom.
+        struct StructureMutationGuard {
+            SequencerEngineImpl& engine;
+            explicit StructureMutationGuard(SequencerEngineImpl& e) : engine(e) {
+                engine.structure_mutation_active_.store(true, std::memory_order_seq_cst);
+                while (engine.in_process_audio_.load(std::memory_order_seq_cst))
+                    std::this_thread::yield();
+            }
+            ~StructureMutationGuard() {
+                engine.structure_mutation_active_.store(false, std::memory_order_release);
+            }
+        };
+
+        // RAII for the audio-thread side, so every return path in processAudio() clears it.
+        struct InProcessAudioScope {
+            std::atomic<bool>& flag;
+            explicit InProcessAudioScope(std::atomic<bool>& f) : flag(f) {
+                flag.store(true, std::memory_order_seq_cst);
+            }
+            ~InProcessAudioScope() {
+                flag.store(false, std::memory_order_release);
+            }
+        };
+
         // Track processing flags for safe deletion (parallel to tracks_ vector)
         // Note: std::atomic is not copyable, so we use unique_ptr
         std::vector<std::unique_ptr<std::atomic<bool>>> track_processing_flags_;
@@ -985,6 +1025,18 @@ namespace uapmd {
         // Record start time for deadline tracking
         auto startTime = std::chrono::steady_clock::now();
 
+        // Structural-mutation handshake: announce we're inside the audio walk before
+        // anything touches the per-track vectors, then back out with silence if a
+        // main-thread mutation is in flight (see structure_mutation_active_).
+        InProcessAudioScope inProcessAudio(in_process_audio_);
+        if (structure_mutation_active_.load(std::memory_order_seq_cst)) {
+            if (process.audioOutBusCount() > 0) {
+                for (uint32_t ch = 0; ch < process.outputChannelCount(0); ch++)
+                    memset(process.getFloatOutBuffer(0, ch), 0, process.frameCount() * sizeof(float));
+            }
+            return 0;
+        }
+
         if (tracks_.size() != sequence.tracks.size())
             // FIXME: define status codes
             return 1;
@@ -1323,6 +1375,7 @@ namespace uapmd {
             timeline_->audioGraphProviderRegistry(),
             ump_buffer_size_in_ints,
             "");
+        StructureMutationGuard mutationGuard(*this);
         tracks_.emplace_back(std::move(tr));
         sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
         track_processing_flags_.emplace_back(std::make_unique<std::atomic<bool>>(false));
@@ -1364,6 +1417,7 @@ namespace uapmd {
     bool SequencerEngineImpl::removeTrack(uapmd_track_index_t index) {
         if (index >= tracks_.size())
             return false;
+        StructureMutationGuard mutationGuard(*this);
         tracks_.erase(tracks_.begin() + static_cast<long>(index));
         sequence.tracks.erase(sequence.tracks.begin() + static_cast<long>(index));
         track_processing_flags_.erase(track_processing_flags_.begin() + static_cast<long>(index));
@@ -1564,6 +1618,7 @@ namespace uapmd {
     void SequencerEngineImpl::removeTrack(size_t index) {
         if (index >= tracks_.size())
             return;
+        StructureMutationGuard mutationGuard(*this);
         tracks_.erase(tracks_.begin() + static_cast<long>(index));
         if (index < sequence.tracks.size()) {
             auto* ctx = sequence.tracks[index];
