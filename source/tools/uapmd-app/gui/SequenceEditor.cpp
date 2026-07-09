@@ -1016,18 +1016,20 @@ bool SequenceEditor::renderPositionInput(int32_t trackIndex, const ClipRow& clip
 
 bool SequenceEditor::renderNameInput(int32_t trackIndex, const ClipRow& clip, const RenderContext& context) {
     bool changed = false;
-    static std::map<int32_t, std::array<char, 256>> nameBuffers;
-    if (nameBuffers.find(clip.clipId) == nameBuffers.end()) {
-        nameBuffers[clip.clipId] = {};
-        strncpy(nameBuffers[clip.clipId].data(), clip.name.c_str(), nameBuffers[clip.clipId].size() - 1);
+    using ClipBufferKey = std::pair<int32_t, int32_t>;
+    static std::map<ClipBufferKey, std::array<char, 256>> nameBuffers;
+    const ClipBufferKey bufferKey{trackIndex, clip.clipId};
+    if (nameBuffers.find(bufferKey) == nameBuffers.end()) {
+        nameBuffers[bufferKey] = {};
+        strncpy(nameBuffers[bufferKey].data(), clip.name.c_str(), nameBuffers[bufferKey].size() - 1);
     }
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    std::string nameInputId = std::format("##NameInput{}", clip.clipId);
-    if (ImGui::InputText(nameInputId.c_str(), nameBuffers[clip.clipId].data(),
-                        nameBuffers[clip.clipId].size(), ImGuiInputTextFlags_EnterReturnsTrue)) {
+    std::string nameInputId = std::format("##NameInput{}_{}", trackIndex, clip.clipId);
+    if (ImGui::InputText(nameInputId.c_str(), nameBuffers[bufferKey].data(),
+                        nameBuffers[bufferKey].size(), ImGuiInputTextFlags_EnterReturnsTrue)) {
         if (context.updateClipName) {
-            context.updateClipName(trackIndex, clip.clipId, std::string(nameBuffers[clip.clipId].data()));
+            context.updateClipName(trackIndex, clip.clipId, std::string(nameBuffers[bufferKey].data()));
             changed = true;
         }
     }
