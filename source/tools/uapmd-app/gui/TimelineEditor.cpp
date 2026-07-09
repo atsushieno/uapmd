@@ -1112,8 +1112,14 @@ void TimelineEditor::renderPluginGraphWindow(float uiScale) {
 
 void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& context, const BeatsSequenceEditor::RenderContext& beatsContext) {
     auto& appModel = uapmd::AppModel::instance();
-    ImGui::TextUnformatted("Track List");
-    ImGui::SameLine();
+    // Toolbar row: view switcher + navigation controls (zoom slider, position controller).
+    // Rendered outside TrackListScroll so they stay visible regardless of track scrolling;
+    // the button is vertically centered against the taller navigator row. The position
+    // controller is anchored to the track content column (row left + legend width) so it
+    // lines up with the clips below; the zoom slider gets only what remains after the button.
+    const float navRowTopY = ImGui::GetCursorPosY();
+    const float navBarStartX = ImGui::GetCursorScreenPos().x + context.legendWidth;
+    ImGui::SetCursorPosY(navRowTopY + (kNavigatorHeightPt * context.uiScale - ImGui::GetFrameHeight()) * 0.5f);
     if (ImGui::Button(timelineViewMode_ == TimelineViewMode::AbsoluteTime ? "View: Seconds" : "View: Beats")) {
         timelineViewMode_ = (timelineViewMode_ == TimelineViewMode::AbsoluteTime)
             ? TimelineViewMode::BeatsTicks : TimelineViewMode::AbsoluteTime;
@@ -1122,6 +1128,12 @@ void TimelineEditor::renderTrackList(const SequenceEditor::RenderContext& contex
     }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Switch between absolute-time and beats/ticks track list views");
+    ImGui::SameLine();
+    ImGui::SetCursorPosY(navRowTopY);
+    if (timelineViewMode_ == TimelineViewMode::AbsoluteTime)
+        sequenceEditor_.renderNavigator(context, navBarStartX);
+    else
+        beatsSequenceEditor_.renderNavigator(beatsContext, navBarStartX);
     ImGui::Spacing();
 
     ImGui::BeginChild("TrackListScroll", ImVec2(0, 0), true, ImGuiWindowFlags_None);

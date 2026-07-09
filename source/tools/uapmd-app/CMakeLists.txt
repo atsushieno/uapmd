@@ -74,6 +74,7 @@ set(UAPMD_APP_COMMON_SOURCE_FILES
         gui/SequenceEditor.cpp
         gui/BeatsSequenceEditor.cpp
         gui/TimelineEditor.cpp
+        gui/TimelineNavigator.cpp
         gui/ClipPreview.cpp
         gui/AudioEventListEditor.cpp
         gui/MidiDumpWindow.cpp

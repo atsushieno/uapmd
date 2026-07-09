@@ -297,6 +297,25 @@ void SequenceEditor::renderClipTable(int32_t trackIndex, SequenceEditorState& st
     ImGui::EndChild();
 }
 
+void SequenceEditor::renderNavigator(const RenderContext& context, float barStartScreenX) {
+    // Rebuild eagerly so the navigator works even when it renders before the timeline widget
+    // (it lives in the always-visible toolbar row, outside the track scroll area).
+    if (unified_.dirty)
+        rebuildUnifiedTimeline(context);
+    if (!unified_.timeline)
+        return;
+
+    auto& appModel = uapmd::AppModel::instance();
+    const auto bounds = appModel.timelineContentBounds();
+    const int32_t sampleRate = appModel.sampleRate();
+    const double playheadSeconds = sampleRate > 0
+        ? appModel.timeline().playheadPosition.toSeconds(sampleRate) : -1.0;
+    renderTimelineNavigator(*unified_.timeline, unified_.hasExplicitZoom,
+                            context.uiScale, barStartScreenX,
+                            bounds.hasContent ? bounds.durationSeconds : 0.0,
+                            playheadSeconds, unified_.lastVisibleWidthPixels);
+}
+
 void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float availableHeight) {
     if (availableHeight <= 0.0f)
         availableHeight = ImGui::GetContentRegionAvail().y;
@@ -347,24 +366,6 @@ void SequenceEditor::renderUnifiedTimeline(const RenderContext& context, float a
                     break;
                 }
         const bool shouldBlockInput = !scrollbarDragging && (popupBlocking || (!timelineItemActive && !timelineHovered && anyMouseActivity));
-
-        // Vertical mouse-wheel/trackpad scroll over the header zooms. ImTimeline never reads
-        // io.MouseWheel itself (only io.MouseWheelH, for its own horizontal pan), so this doesn't
-        // need to suppress or fight the library's own input handling at all -- just consume the
-        // vertical wheel delta before DrawTimeline() sees it.
-        const bool overHeader = timelineHovered && io.MousePos.x >= clipAreaMinX && io.MousePos.x <= clipAreaMaxX &&
-                                io.MousePos.y >= winPos.y && io.MousePos.y <= clipAreaMinY;
-        if (overHeader && isIntentionalZoomWheel(io.MouseWheel, io.MouseWheelH)) {
-            const float newScale = unified_.timeline->GetScale() * std::pow(2.0f, io.MouseWheel * kZoomWheelSensitivity);
-            unified_.timeline->SetScale(std::clamp(newScale, kMinSafeTimelineScale, kMaxTimelineScale));
-            unified_.hasExplicitZoom = true;
-            io.MouseWheel = 0.0f;
-        }
-        // Touch path to the same zoom: press-and-hold on the header opens a slider popup.
-        updateZoomHoldPopup("##TimelineZoomPopup", overHeader, *unified_.timeline,
-                            unified_.hasExplicitZoom, context.uiScale);
-        // Touch path to horizontal pan: drag on the header (wheelH never fires on touch).
-        updateHeaderPan(unified_.headerPan, overHeader, *unified_.timeline, context.uiScale);
 
         bool savedMouseDown[5];
         float savedMouseWheel = 0.0f, savedMouseWheelH = 0.0f;
@@ -718,6 +719,10 @@ void SequenceEditor::rebuildUnifiedTimeline(const RenderContext& context) {
     style.ScrollbarThickness = static_cast<int>(12.0f * context.uiScale);
     style.SeekbarWidth = 2.0f * context.uiScale;
     style.HasSeekbar = false;
+    // The position controller in the navigation row above the timeline supersedes ImTimeline's
+    // built-in bottom scrollbar (its thumb drag was the same operation); disable to avoid two
+    // competing pan controls and reclaim the vertical space.
+    style.HasScrollbar = false;
     style.HeaderBackgroundColor = ImGui::GetColorU32(mixColor(frameBg, windowBg, 0.35f));
     style.HeaderTimeStampColor = ImGui::GetColorU32(withAlpha(textDisabled, 1.0f));
     style.LegendTextColor = ImGui::GetColorU32(withAlpha(textDisabled, 1.0f));

@@ -13,7 +13,7 @@
 #include <uapmd-data/uapmd-data.hpp>
 #include "ClipPreview.hpp"
 #include "TimelineRangeSelection.hpp"
-#include "TimelineZoomDrag.hpp"
+#include "TimelineNavigator.hpp"
 
 namespace uapmd::gui {
 
@@ -77,6 +77,10 @@ public:
     void invalidateTimeline();
     void reset();
 
+    // Navigation row (zoom slider + position controller); lives in the always-visible toolbar,
+    // so it renders separately from (and typically before) renderUnifiedTimeline.
+    // barStartScreenX anchors the controller's left edge to the track content column.
+    void renderNavigator(const RenderContext& context, float barStartScreenX);
     void renderUnifiedTimeline(const RenderContext& context, float availableHeight);
     float getUnifiedTimelineHeight(float uiScale) const;
 
@@ -121,7 +125,6 @@ private:
         bool hasPendingFit = false;  // fitToContent was called before any width was known yet
         double pendingFitDurationSeconds = 0.0;
         float pendingFitUiScale = 1.0f;
-        HeaderPanState headerPan;
     };
     UnifiedTimelineState unified_;
 
