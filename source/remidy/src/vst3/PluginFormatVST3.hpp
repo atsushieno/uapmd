@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -454,6 +455,7 @@ namespace remidy {
         VST3UmpInputDispatcher ump_input_dispatcher{this};
         bool componentActive{false};
         bool processingActive{false};
+        std::atomic<uint32_t> cached_latency_samples_{0};
 
         // Cached MIDI mappings (retrieved on UI thread, used on audio thread)
         // From IMidiMapping2 (VST3.8.0+)

@@ -31,6 +31,9 @@ remidy::PluginInstanceVST3::PluginInstanceVST3(
     isControllerDistinctFromComponent(isControllerDistinctFromComponent), instance(instance) {
 
     pluginName = info->displayName();
+    cached_latency_samples_.store(
+        processor ? processor->getLatencySamples() : 0,
+        std::memory_order_release);
 
     component_handler = std::make_unique<ComponentHandlerImpl>(owner->getHost());
 
@@ -293,6 +296,12 @@ remidy::StatusCode remidy::PluginInstanceVST3::startProcessing() {
         owner->getLogger()->logInfo("%s: setting up processing", pluginName.c_str());
         setupResult = processor->setupProcessing(last_process_setup);
         if (setupResult == kResultOk) {
+            const auto previousLatency = cached_latency_samples_.exchange(
+                processor->getLatencySamples(),
+                std::memory_order_acq_rel);
+            if (const auto newLatency = cached_latency_samples_.load(std::memory_order_acquire);
+                newLatency != previousLatency)
+                notifyTimingInfoChanged({.latency_changed = true, .tail_changed = false});
             owner->getLogger()->logInfo("%s: activating component", pluginName.c_str());
             activationResult = component->setActive(true);
             attemptedActivation = true;
@@ -618,7 +627,7 @@ remidy::StatusCode remidy::PluginInstanceVST3::process(AudioProcessContext &proc
 }
 
 uint32_t remidy::PluginInstanceVST3::latencyInSamples() const {
-    return processor ? processor->getLatencySamples() : 0;
+    return cached_latency_samples_.load(std::memory_order_acquire);
 }
 
 double remidy::PluginInstanceVST3::tailLengthInSeconds() const {
@@ -719,8 +728,10 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
         if (flags & Vst::RestartFlags::kLatencyChanged) {
             logger->logInfo("%s: Handling kLatencyChanged - querying new latency", pluginName.c_str());
             if (processor) {
-                const uint32_t previousLatency = latencyInSamples();
-                uint32 newLatency = processor->getLatencySamples();
+                const uint32_t previousLatency =
+                    cached_latency_samples_.load(std::memory_order_acquire);
+                const uint32 newLatency = processor->getLatencySamples();
+                cached_latency_samples_.store(newLatency, std::memory_order_release);
                 logger->logInfo("%s: New latency: %u samples", pluginName.c_str(), newLatency);
                 if (newLatency != previousLatency)
                     notifyTimingInfoChanged({.latency_changed = true, .tail_changed = false});
