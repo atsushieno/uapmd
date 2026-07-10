@@ -19,11 +19,34 @@ namespace remidy {
         EventLoop::enqueueTaskOnMainThread([instance, callbacksAlive] {
             if (!callbacksAlive->load(std::memory_order_acquire))
                 return;
+            instance->restartForTimingChangeOnMainThread();
+        });
+    }
+
+    void RemidyCLAPHost::latencyChanged() noexcept {
+        auto* instance = attached_instance.load();
+        if (!instance)
+            return;
+
+        auto callbacksAlive = instance->callbacks_alive_;
+        EventLoop::enqueueTaskOnMainThread([instance, callbacksAlive] {
+            if (!callbacksAlive->load(std::memory_order_acquire))
+                return;
             instance->refreshLatencyOnMainThread();
+        });
+    }
+
+    void RemidyCLAPHost::tailChanged() noexcept {
+        auto* instance = attached_instance.load();
+        if (!instance)
+            return;
+
+        auto callbacksAlive = instance->callbacks_alive_;
+        EventLoop::enqueueTaskOnMainThread([instance, callbacksAlive] {
+            if (!callbacksAlive->load(std::memory_order_acquire))
+                return;
             instance->refreshTailOnMainThread();
         });
-
-        Logger::global()->logInfo("RemidyCLAPHost::requestRestart() is not implemented");
     }
 
     void RemidyCLAPHost::requestProcess() noexcept {

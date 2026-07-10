@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <thread>
 
 namespace remidy {
     PluginInstanceCLAP::PluginInstanceCLAP(
@@ -156,6 +157,52 @@ namespace remidy {
             notifyTimingInfoChanged({.latency_changed = false, .tail_changed = true});
     }
 
+    void PluginInstanceCLAP::refreshTimingInfoOnMainThread() {
+        refreshLatencyOnMainThread();
+        refreshTailOnMainThread();
+    }
+
+    void PluginInstanceCLAP::restartForTimingChangeOnMainThread() {
+        if (!plugin || !activated_)
+            return;
+
+        auto expectedState = ProcessingState::Idle;
+        while (!processing_state_.compare_exchange_weak(
+                expectedState,
+                ProcessingState::Restarting,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+            expectedState = ProcessingState::Idle;
+            std::this_thread::yield();
+        }
+
+        struct RestartGuard {
+            std::atomic<ProcessingState>& state;
+            ~RestartGuard() { state.store(ProcessingState::Idle, std::memory_order_release); }
+        } restartGuard{processing_state_};
+
+        const bool wasProcessing = is_processing.exchange(false, std::memory_order_seq_cst);
+        bool expectedProcessing = true;
+        if (processing_active_.compare_exchange_strong(
+                expectedProcessing,
+                false,
+                std::memory_order_acq_rel)) {
+            plugin->stopProcessing();
+            plugin->reset();
+        }
+
+        plugin->deactivate();
+        activated_ = plugin->activate(sample_rate_, 1, buffer_size_);
+        if (!activated_) {
+            owner->getLogger()->logError("%s: failed to reactivate after timing change", info()->displayName().c_str());
+            return;
+        }
+
+        refreshTimingInfoOnMainThread();
+        if (wasProcessing)
+            is_processing.store(true, std::memory_order_release);
+    }
+
     StatusCode PluginInstanceCLAP::configure(ConfigurationRequest &configuration) {
         bool useDouble = configuration.dataType == AudioContentType::Float64;
         is_offline_ = configuration.offlineMode;
@@ -191,11 +238,13 @@ namespace remidy {
         transports_events.resize(0x1000);
 
         // It seems we have to activate plugin buses first.
+        buffer_size_ = configuration.bufferSizeInSamples;
         EventLoop::runTaskOnMainThread([&] {
-            plugin->activate(configuration.sampleRate, 1, configuration.bufferSizeInSamples);
-            refreshLatencyOnMainThread();
-            refreshTailOnMainThread();
+            activated_ = plugin->activate(configuration.sampleRate, 1, configuration.bufferSizeInSamples);
+            refreshTimingInfoOnMainThread();
         });
+        if (!activated_)
+            return StatusCode::FAILED_TO_CONFIGURE;
         applyOfflineRenderingMode();
 
         requires_replacing_process_ = false;
@@ -420,6 +469,19 @@ namespace remidy {
     }
 
     StatusCode PluginInstanceCLAP::process(AudioProcessContext &process) {
+        auto expectedState = ProcessingState::Idle;
+        if (!processing_state_.compare_exchange_strong(
+                expectedState,
+                ProcessingState::Processing,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire))
+            return StatusCode::OK;
+
+        struct ProcessingStateGuard {
+            std::atomic<ProcessingState>& state;
+            ~ProcessingStateGuard() { state.store(ProcessingState::Idle, std::memory_order_release); }
+        } processingStateGuard{processing_state_};
+
         // Mark this call in flight so that stopProcessing() from a non-audio thread
         // defers the actual stop to us instead of racing with plugin->process().
         struct InProcessGuard {

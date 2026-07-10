@@ -42,6 +42,12 @@ namespace remidy {
         void paramsClear(clap_id paramId, clap_param_clear_flags flags) noexcept override;
         void paramsRequestFlush() noexcept override;
 
+        // clap_host_latency / clap_host_tail
+        bool implementsLatency() const noexcept override { return true; }
+        void latencyChanged() noexcept override;
+        bool implementsTail() const noexcept override { return true; }
+        void tailChanged() noexcept override;
+
     public:
         RemidyCLAPHost(
             const char* name = "remidy",

@@ -309,10 +309,18 @@ namespace remidy {
         std::unique_ptr<RemidyCLAPHost> host{};
         bool is_offline_{false};
         double sample_rate_{48000.0};
+        uint32_t buffer_size_{4096};
+        bool activated_{false};
         std::atomic<bool> flush_requested_{false};
         std::atomic<bool> is_processing{false};
         std::atomic<bool> processing_active_{false};
         std::atomic<bool> in_process_{false};
+        enum class ProcessingState : uint8_t {
+            Idle,
+            Processing,
+            Restarting
+        };
+        std::atomic<ProcessingState> processing_state_{ProcessingState::Idle};
         std::shared_ptr<std::atomic<bool>> callbacks_alive_{std::make_shared<std::atomic<bool>>(true)};
 
         void remidyProcessContextToClapProcess(clap_process_t& dst, AudioProcessContext& src);
@@ -323,6 +331,8 @@ namespace remidy {
         void applyOfflineRenderingMode();
         void refreshLatencyOnMainThread();
         void refreshTailOnMainThread();
+        void refreshTimingInfoOnMainThread();
+        void restartForTimingChangeOnMainThread();
         void processParamsFlush();
 
     public:
