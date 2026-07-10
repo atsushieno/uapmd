@@ -1393,6 +1393,18 @@ namespace uapmd {
     bool SequencerEngineImpl::removeTrack(uapmd_track_index_t index) {
         if (index >= tracks_.size())
             return false;
+        if (tracks_[index]) {
+            std::lock_guard<std::mutex> lock(instance_map_mutex_);
+            for (const auto instanceId : tracks_[index]->orderedInstanceIds()) {
+                const auto instanceIt = plugin_instances_.find(instanceId);
+                const auto listenerIt = plugin_timing_listener_ids_.find(instanceId);
+                if (instanceIt != plugin_instances_.end() && instanceIt->second &&
+                    listenerIt != plugin_timing_listener_ids_.end())
+                    instanceIt->second->removeTimingInfoChangeListener(listenerIt->second);
+                plugin_timing_listener_ids_.erase(instanceId);
+                plugin_instances_.erase(instanceId);
+            }
+        }
         StructureMutationGuard mutationGuard(*this);
         tracks_.erase(tracks_.begin() + static_cast<long>(index));
         sequence.tracks.erase(sequence.tracks.begin() + static_cast<long>(index));
