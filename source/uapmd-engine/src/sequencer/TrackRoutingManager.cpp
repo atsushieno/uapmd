@@ -40,6 +40,86 @@ namespace uapmd {
         , timeline_(timeline)
         , output_alignment_monitoring_policy_(outputAlignmentMonitoringPolicy)
         , realtime_infinite_tail_policy_(realtimeInfiniteTailPolicy) {
+        rebuildRoutingCaches();
+    }
+
+    void TrackRoutingManager::rebuildRoutingCaches() {
+        track_routing_caches_.assign(tracks_.size(), {});
+        max_track_render_lead_in_samples_ = 0;
+        max_live_input_render_lead_in_samples_ = 0;
+        max_output_alignment_holdback_in_samples_ = 0;
+        output_alignment_active_ = false;
+
+        for (size_t trackIndex = 0; trackIndex < tracks_.size(); ++trackIndex) {
+            auto* track = tracks_[trackIndex].get();
+            auto& cache = track_routing_caches_[trackIndex];
+            if (!track)
+                continue;
+
+            const auto outputBusCount = track->graph().outputBusCount();
+            cache.effective_targets.resize(outputBusCount);
+            cache.path_latencies_in_samples.resize(outputBusCount);
+            cache.output_alignment_holdbacks_in_samples.resize(outputBusCount);
+
+            for (uint32_t busIndex = 0; busIndex < outputBusCount; ++busIndex) {
+                const auto target = resolveEffectiveTrackOutputBusRoutingTargetUncached(
+                    static_cast<uapmd_track_index_t>(trackIndex),
+                    busIndex);
+                cache.effective_targets[busIndex] = target;
+                if (target.type == TrackOutputRoutingTargetType::DISABLED)
+                    continue;
+
+                const auto pathLatency =
+                    track->graph().outputLatencyInSamples(busIndex) +
+                    downstreamLatencyInSamplesForTarget(target);
+                cache.path_latencies_in_samples[busIndex] = pathLatency;
+                cache.audible_render_lead_in_samples = std::max(
+                    cache.audible_render_lead_in_samples,
+                    pathLatency);
+            }
+
+            max_track_render_lead_in_samples_ = std::max(
+                max_track_render_lead_in_samples_,
+                cache.audible_render_lead_in_samples);
+        }
+
+        if (timeline_)
+            for (size_t trackIndex = 0; trackIndex < tracks_.size(); ++trackIndex)
+                if (timeline_->trackHasLiveInput(static_cast<int32_t>(trackIndex)))
+                    max_live_input_render_lead_in_samples_ = std::max(
+                        max_live_input_render_lead_in_samples_,
+                        track_routing_caches_[trackIndex].audible_render_lead_in_samples);
+
+        const bool alignToLiveInput =
+            output_alignment_monitoring_policy_.load(std::memory_order_acquire) ==
+            OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT;
+        for (size_t trackIndex = 0; trackIndex < tracks_.size(); ++trackIndex) {
+            auto* track = tracks_[trackIndex].get();
+            auto& cache = track_routing_caches_[trackIndex];
+            if (!track)
+                continue;
+
+            const bool hasLiveInput = timeline_ && timeline_->trackHasLiveInput(static_cast<int32_t>(trackIndex));
+            for (uint32_t busIndex = 0; busIndex < cache.output_alignment_holdbacks_in_samples.size(); ++busIndex) {
+                const auto target = cache.effective_targets[busIndex];
+                if (target.type == TrackOutputRoutingTargetType::DISABLED)
+                    continue;
+
+                const uint32_t pathLatency = cache.path_latencies_in_samples[busIndex];
+                const uint32_t intraTrackHoldback =
+                    cache.audible_render_lead_in_samples > pathLatency
+                    ? cache.audible_render_lead_in_samples - pathLatency
+                    : 0;
+                uint32_t holdback = intraTrackHoldback;
+                if (alignToLiveInput && max_live_input_render_lead_in_samples_ > 0 && !hasLiveInput)
+                    holdback += max_live_input_render_lead_in_samples_;
+                cache.output_alignment_holdbacks_in_samples[busIndex] = holdback;
+                max_output_alignment_holdback_in_samples_ = std::max(
+                    max_output_alignment_holdback_in_samples_,
+                    holdback);
+                output_alignment_active_ = output_alignment_active_ || holdback > 0;
+            }
+        }
     }
 
     OutputRoutingExtension* TrackRoutingManager::outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const {
@@ -73,6 +153,19 @@ namespace uapmd {
     TrackOutputRoutingTarget TrackRoutingManager::effectiveTrackOutputBusRoutingTarget(
         uapmd_track_index_t trackIndex,
         uint32_t outputBusIndex) const {
+        if (trackIndex >= 0 && static_cast<size_t>(trackIndex) < track_routing_caches_.size()) {
+            const auto& cache = track_routing_caches_[static_cast<size_t>(trackIndex)];
+            if (outputBusIndex < cache.effective_targets.size())
+                return cache.effective_targets[outputBusIndex];
+        }
+
+        return resolveEffectiveTrackOutputBusRoutingTargetUncached(trackIndex, outputBusIndex);
+    }
+
+    TrackOutputRoutingTarget TrackRoutingManager::resolveEffectiveTrackOutputBusRoutingTargetUncached(
+        uapmd_track_index_t trackIndex,
+        uint32_t outputBusIndex) const {
+
         const auto authored = authoredTrackOutputBusRoutingTarget(trackIndex, outputBusIndex);
         if (authored.type != TrackOutputRoutingTargetType::DISABLED) {
             if (authored.type == TrackOutputRoutingTargetType::MASTER_INPUT_BUS) {
@@ -116,7 +209,7 @@ namespace uapmd {
             : 0.0;
     }
 
-    uint32_t TrackRoutingManager::trackOutputBusPathLatencyInSamples(
+    uint32_t TrackRoutingManager::fallbackTrackOutputBusPathLatencyInSamples(
         uapmd_track_index_t trackIndex,
         uint32_t outputBusIndex) const {
         if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
@@ -130,7 +223,7 @@ namespace uapmd {
         return track->graph().outputLatencyInSamples(outputBusIndex) + downstreamLatencyInSamplesForTarget(target);
     }
 
-    uint32_t TrackRoutingManager::trackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const {
+    uint32_t TrackRoutingManager::fallbackTrackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const {
         if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
             return 0;
         auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
@@ -141,54 +234,24 @@ namespace uapmd {
             const auto target = effectiveTrackOutputBusRoutingTarget(trackIndex, busIndex);
             if (target.type == TrackOutputRoutingTargetType::DISABLED)
                 continue;
-            maxLead = std::max(maxLead, trackOutputBusPathLatencyInSamples(trackIndex, busIndex));
+            maxLead = std::max(maxLead, fallbackTrackOutputBusPathLatencyInSamples(trackIndex, busIndex));
         }
         return maxLead;
     }
 
     uint32_t TrackRoutingManager::maxTrackRenderLeadInSamples() const {
-        uint32_t maxTrackLatency = 0;
-        for (size_t i = 0; i < tracks_.size(); ++i) {
-            auto* track = tracks_[i].get();
-            if (!track)
-                continue;
-            maxTrackLatency = std::max(
-                maxTrackLatency,
-                trackAudibleRenderLeadInSamples(static_cast<uapmd_track_index_t>(i)));
-        }
-        return maxTrackLatency;
+        return max_track_render_lead_in_samples_;
     }
 
     uint32_t TrackRoutingManager::maxLiveInputRenderLeadInSamples() const {
-        uint32_t maxLead = 0;
-        if (!timeline_)
-            return 0;
-        for (size_t i = 0; i < tracks_.size(); ++i) {
-            if (!timeline_->trackHasLiveInput(static_cast<int32_t>(i)))
-                continue;
-            auto* track = tracks_[i].get();
-            if (!track)
-                continue;
-            maxLead = std::max(maxLead, trackAudibleRenderLeadInSamples(static_cast<uapmd_track_index_t>(i)));
-        }
-        return maxLead;
+        return max_live_input_render_lead_in_samples_;
     }
 
     uint32_t TrackRoutingManager::maxOutputAlignmentHoldbackInSamples() const {
-        uint32_t maxHoldback = 0;
-        for (size_t i = 0; i < tracks_.size(); ++i) {
-            auto* track = tracks_[i].get();
-            if (!track)
-                continue;
-            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex)
-                maxHoldback = std::max(
-                    maxHoldback,
-                    trackOutputAlignmentHoldbackInSamples(static_cast<uapmd_track_index_t>(i), busIndex));
-        }
-        return maxHoldback;
+        return max_output_alignment_holdback_in_samples_;
     }
 
-    uint32_t TrackRoutingManager::trackOutputAlignmentHoldbackInSamples(
+    uint32_t TrackRoutingManager::fallbackTrackOutputAlignmentHoldbackInSamples(
         uapmd_track_index_t trackIndex,
         uint32_t outputBusIndex) const {
         if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size() || !timeline_)
@@ -197,8 +260,8 @@ namespace uapmd {
         if (!track || outputBusIndex >= track->graph().outputBusCount())
             return 0;
 
-        const uint32_t trackLead = trackAudibleRenderLeadInSamples(trackIndex);
-        const uint32_t pathLatency = trackOutputBusPathLatencyInSamples(trackIndex, outputBusIndex);
+        const uint32_t trackLead = fallbackTrackAudibleRenderLeadInSamples(trackIndex);
+        const uint32_t pathLatency = fallbackTrackOutputBusPathLatencyInSamples(trackIndex, outputBusIndex);
         const uint32_t intraTrackHoldback = trackLead > pathLatency ? trackLead - pathLatency : 0;
         if (output_alignment_monitoring_policy_.load(std::memory_order_acquire) !=
             OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT)
@@ -213,17 +276,35 @@ namespace uapmd {
     }
 
     bool TrackRoutingManager::isOutputAlignmentActive() const {
-        if (!timeline_)
-            return false;
-        for (size_t i = 0; i < tracks_.size(); ++i) {
-            auto* track = tracks_[i].get();
-            if (!track)
-                continue;
-            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex)
-                if (trackOutputAlignmentHoldbackInSamples(static_cast<uapmd_track_index_t>(i), busIndex) > 0)
-                    return true;
-        }
-        return false;
+        return output_alignment_active_;
+    }
+
+    uint32_t TrackRoutingManager::cachedTrackOutputBusPathLatencyInSamples(
+        uapmd_track_index_t trackIndex,
+        uint32_t outputBusIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= track_routing_caches_.size())
+            return 0;
+        const auto& cache = track_routing_caches_[static_cast<size_t>(trackIndex)];
+        if (outputBusIndex >= cache.path_latencies_in_samples.size())
+            return 0;
+        return cache.path_latencies_in_samples[outputBusIndex];
+    }
+
+    uint32_t TrackRoutingManager::trackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= track_routing_caches_.size())
+            return 0;
+        return track_routing_caches_[static_cast<size_t>(trackIndex)].audible_render_lead_in_samples;
+    }
+
+    uint32_t TrackRoutingManager::trackOutputAlignmentHoldbackInSamples(
+        uapmd_track_index_t trackIndex,
+        uint32_t outputBusIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= track_routing_caches_.size())
+            return 0;
+        const auto& cache = track_routing_caches_[static_cast<size_t>(trackIndex)];
+        if (outputBusIndex >= cache.output_alignment_holdbacks_in_samples.size())
+            return 0;
+        return cache.output_alignment_holdbacks_in_samples[outputBusIndex];
     }
 
     TrackOutputRoutingTarget TrackRoutingManager::trackOutputBusRoutingTargetImpl(
@@ -280,7 +361,7 @@ namespace uapmd {
                     continue;
 
                 const double trackPathSamples =
-                    static_cast<double>(trackOutputBusPathLatencyInSamples(static_cast<uapmd_track_index_t>(trackIndex), busIndex)) +
+                    static_cast<double>(cachedTrackOutputBusPathLatencyInSamples(static_cast<uapmd_track_index_t>(trackIndex), busIndex)) +
                     tailLengthSecondsToSamples(track->tailLengthInSeconds()) +
                     tailLengthSecondsToSamples(downstreamTailLengthInSecondsForTarget(target));
                 if (!std::isfinite(trackPathSamples))
@@ -311,6 +392,7 @@ namespace uapmd {
     void TrackRoutingManager::reconfigureMasterTrackInputBuses() {
         if (!master_track_context_ || !mix_bus_context_)
             return;
+        rebuildRoutingCaches();
 
         std::vector<remidy::AudioBusSpec> mergedInputSpecs(
             master_track_context_->audioInputSpecs().begin(),
@@ -355,6 +437,7 @@ namespace uapmd {
     void TrackRoutingManager::reconfigureMixBusContext() {
         if (!mix_bus_context_)
             return;
+        rebuildRoutingCaches();
 
         std::vector<remidy::AudioBusSpec> mixSpecs;
         for (size_t trackIndex = 0; trackIndex < sequence_.tracks.size() && trackIndex < tracks_.size(); ++trackIndex) {

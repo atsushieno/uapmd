@@ -9,6 +9,13 @@
 namespace uapmd {
 
     class TrackRoutingManager {
+        struct TrackRoutingCache {
+            std::vector<TrackOutputRoutingTarget> effective_targets{};
+            std::vector<uint32_t> path_latencies_in_samples{};
+            std::vector<uint32_t> output_alignment_holdbacks_in_samples{};
+            uint32_t audible_render_lead_in_samples{0};
+        };
+
         size_t& audio_buffer_size_in_frames_;
         int32_t& sample_rate_;
         uint32_t& default_output_channels_;
@@ -20,8 +27,16 @@ namespace uapmd {
         TimelineFacade* timeline_{};
         std::atomic<OutputAlignmentMonitoringPolicy>& output_alignment_monitoring_policy_;
         std::atomic<RealtimeInfiniteTailPolicy>& realtime_infinite_tail_policy_;
+        std::vector<TrackRoutingCache> track_routing_caches_{};
+        uint32_t max_track_render_lead_in_samples_{0};
+        uint32_t max_live_input_render_lead_in_samples_{0};
+        uint32_t max_output_alignment_holdback_in_samples_{0};
+        bool output_alignment_active_{false};
 
         TrackOutputRoutingTarget authoredTrackOutputBusRoutingTarget(
+            uapmd_track_index_t trackIndex,
+            uint32_t outputBusIndex) const;
+        TrackOutputRoutingTarget resolveEffectiveTrackOutputBusRoutingTargetUncached(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
         TrackOutputRoutingTarget trackOutputBusRoutingTargetImpl(
@@ -29,10 +44,17 @@ namespace uapmd {
             uint32_t outputBusIndex) const;
         uint32_t downstreamLatencyInSamplesForTarget(const TrackOutputRoutingTarget& target) const;
         double downstreamTailLengthInSecondsForTarget(const TrackOutputRoutingTarget& target) const;
-        uint32_t trackOutputBusPathLatencyInSamples(
+        double tailLengthSecondsToSamples(double seconds) const;
+        uint32_t cachedTrackOutputBusPathLatencyInSamples(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
-        double tailLengthSecondsToSamples(double seconds) const;
+        uint32_t fallbackTrackOutputBusPathLatencyInSamples(
+            uapmd_track_index_t trackIndex,
+            uint32_t outputBusIndex) const;
+        uint32_t fallbackTrackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const;
+        uint32_t fallbackTrackOutputAlignmentHoldbackInSamples(
+            uapmd_track_index_t trackIndex,
+            uint32_t outputBusIndex) const;
 
     public:
         TrackRoutingManager(
@@ -48,6 +70,7 @@ namespace uapmd {
             std::atomic<OutputAlignmentMonitoringPolicy>& outputAlignmentMonitoringPolicy,
             std::atomic<RealtimeInfiniteTailPolicy>& realtimeInfiniteTailPolicy);
 
+        void rebuildRoutingCaches();
         OutputRoutingExtension* outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const;
         std::vector<TrackOutputRoutingRule> trackOutputRoutingRules(uapmd_track_index_t trackIndex) const;
         void setTrackOutputRoutingRules(

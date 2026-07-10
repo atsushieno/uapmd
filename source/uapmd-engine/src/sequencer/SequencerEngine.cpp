@@ -570,6 +570,8 @@ namespace uapmd {
     void SequencerEngineImpl::applyLatencyCompensationTimingUpdateLocked() {
         requestAllNotesOff();
         transport_generation_.fetch_add(1, std::memory_order_release);
+        if (track_routing_manager_)
+            track_routing_manager_->rebuildRoutingCaches();
         if (latency_compensation_manager_)
             latency_compensation_manager_->applyLatencyCompensationTimingUpdate(
                 is_playback_active_.load(std::memory_order_acquire));
@@ -731,7 +733,11 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) {
+        StructureMutationGuard mutationGuard(*this);
         output_alignment_monitoring_policy_.store(policy, std::memory_order_release);
+        if (track_routing_manager_)
+            track_routing_manager_->rebuildRoutingCaches();
+        reconfigureOutputAlignmentBuffers();
         resetOutputAlignmentBuffers();
     }
 

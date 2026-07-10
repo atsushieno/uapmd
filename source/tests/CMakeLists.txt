@@ -1,8 +1,3 @@
-cmake_minimum_required(VERSION 3.18)
-project(uapmd-tests)
-set(CMAKE_CXX_STANDARD 23)
-
-# Enable testing
 enable_testing()
 
 # Find or add GoogleTest
@@ -21,7 +16,23 @@ add_executable(uapmd-project-file-tests
     UapmdProjectFileTest.cpp
 )
 
+add_executable(uapmd-engine-output-tests
+    SequencerEngineOutputTest.cpp
+)
+
 target_include_directories(uapmd-project-file-tests PRIVATE
+        ../remidy/include
+        ../remidy-tooling/include
+        ../uapmd/include
+        ../uapmd-graph/include
+        ../uapmd-file/include
+        ../uapmd-data/include
+        ../uapmd-engine/include
+        ${choc_SOURCE_DIR}
+        ${midicci_SOURCE_DIR}/include
+)
+
+target_include_directories(uapmd-engine-output-tests PRIVATE
         ../remidy/include
         ../remidy-tooling/include
         ../uapmd/include
@@ -39,6 +50,13 @@ target_link_libraries(uapmd-project-file-tests
     GTest::gtest
 )
 
+target_link_libraries(uapmd-engine-output-tests
+    uapmd-engine
+    GTest::gtest_main
+    GTest::gtest
+)
+
 # Discover tests
 include(GoogleTest)
 gtest_discover_tests(uapmd-project-file-tests)
+gtest_discover_tests(uapmd-engine-output-tests)
