@@ -198,6 +198,7 @@ target_sources(uapmd-engine PRIVATE
         src/sequencer/RealtimeSequencer.cpp
         src/sequencer/SequencerEngine.cpp
         src/sequencer/SequencerTrack.cpp
+        src/sequencer/TrackRoutingManager.cpp
         src/sequencer/TimelineFacade.cpp
 )
 

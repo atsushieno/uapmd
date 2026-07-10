@@ -14,6 +14,7 @@
 #include <remidy/detail/event-loop.hpp>
 #include <remidy/remidy.hpp>
 #include "uapmd-engine/uapmd-engine.hpp"
+#include "TrackRoutingManager.hpp"
 #include "readerwriterqueue.h"
 
 namespace uapmd {
@@ -260,12 +261,12 @@ namespace uapmd {
         std::vector<size_t> pump_slot_indices_;   // pump thread: slot acquired per track
         std::vector<size_t> rt_dequeued_slots_;   // RT thread: slot dequeued per track
         std::vector<OutputAlignmentDelayLine> output_alignment_delay_lines_;
+        std::unique_ptr<TrackRoutingManager> track_routing_manager_{};
 
         void ensureTrackBusConfiguration(int32_t trackIndex, remidy::PluginAudioBuses* pluginBuses);
         void ensureContextBusConfiguration(AudioProcessContext* ctx, remidy::PluginAudioBuses* pluginBuses);
         std::vector<remidy::AudioBusSpec> mergeBusSpecs(const std::vector<remidy::AudioBusSpec>& current,
                                                         const std::vector<remidy::AudioBusConfiguration*>& pluginBuses);
-        OutputRoutingExtension* outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const;
 
         // Timeline facade (owns timeline tracks, clips, project loading)
         std::unique_ptr<TimelineFacade> timeline_;
@@ -431,20 +432,12 @@ namespace uapmd {
         uint32_t maxRenderLeadInSamples() const;
         uint32_t maxLiveInputRenderLeadInSamples() const;
         uint32_t maxOutputAlignmentHoldbackInSamples() const;
-        TrackOutputRoutingTarget authoredTrackOutputBusRoutingTarget(
-            uapmd_track_index_t trackIndex,
-            uint32_t outputBusIndex) const;
         TrackOutputRoutingTarget effectiveTrackOutputBusRoutingTarget(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
-        uint32_t downstreamLatencyInSamplesForTarget(const TrackOutputRoutingTarget& target) const;
-        double downstreamTailLengthInSecondsForTarget(const TrackOutputRoutingTarget& target) const;
-        uint32_t trackOutputBusPathLatencyInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
         uint32_t trackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const;
         uint32_t trackOutputAlignmentHoldbackInSamplesImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
-        TrackOutputRoutingTarget trackOutputBusRoutingTargetImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
         int64_t maxStopDrainInSamples() const;
-        double tailLengthSecondsToSamples(double seconds) const;
         void reconfigureMasterTrackInputBuses();
         void updateLatencyDrainState(int32_t frameCount);
         void reconfigureMixBusContext();
@@ -486,6 +479,18 @@ namespace uapmd {
                 1,
             });
         }
+        track_routing_manager_ = std::make_unique<TrackRoutingManager>(
+            audio_buffer_size_in_frames,
+            sampleRate,
+            default_output_channels_,
+            tracks_,
+            master_track_,
+            master_track_context_,
+            mix_bus_context_,
+            sequence,
+            timeline_.get(),
+            output_alignment_monitoring_policy_,
+            realtime_infinite_tail_policy_);
         reconfigureMixBusContext();
         configureTrackRouting(master_track_.get());
 
@@ -723,16 +728,10 @@ namespace uapmd {
         return effectiveTrackOutputBusRoutingTarget(trackIndex, outputBusIndex);
     }
 
-    OutputRoutingExtension* SequencerEngineImpl::outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const {
-        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
-            return nullptr;
-        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
-        return track ? track->graph().getExtension<OutputRoutingExtension>() : nullptr;
-    }
-
     std::vector<TrackOutputRoutingRule> SequencerEngineImpl::trackOutputRoutingRules(uapmd_track_index_t trackIndex) {
-        auto* extension = outputRoutingExtensionForTrackIndex(trackIndex);
-        return extension ? extension->outputRoutingRules() : std::vector<TrackOutputRoutingRule>{};
+        return track_routing_manager_
+            ? track_routing_manager_->trackOutputRoutingRules(trackIndex)
+            : std::vector<TrackOutputRoutingRule>{};
     }
 
     void SequencerEngineImpl::setTrackOutputRoutingRules(
@@ -741,8 +740,8 @@ namespace uapmd {
         if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
             return;
         StructureMutationGuard mutationGuard(*this);
-        if (auto* extension = outputRoutingExtensionForTrackIndex(trackIndex))
-            extension->outputRoutingRules(rules);
+        if (track_routing_manager_)
+            track_routing_manager_->setTrackOutputRoutingRules(trackIndex, rules);
         reconfigureMixBusContext();
         reconfigureMasterTrackInputBuses();
         reconfigureOutputAlignmentBuffers();
@@ -750,17 +749,7 @@ namespace uapmd {
     }
 
     bool SequencerEngineImpl::isOutputAlignmentActive() {
-        if (!timeline_)
-            return false;
-        for (size_t i = 0; i < tracks_.size(); ++i) {
-            auto* track = tracks_[i].get();
-            if (!track)
-                continue;
-            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex)
-                if (trackOutputAlignmentHoldbackInSamplesImpl(static_cast<uapmd_track_index_t>(i), busIndex) > 0)
-                    return true;
-        }
-        return false;
+        return track_routing_manager_ && track_routing_manager_->isOutputAlignmentActive();
     }
 
     OutputAlignmentMonitoringPolicy SequencerEngineImpl::outputAlignmentMonitoringPolicy() const {
@@ -780,102 +769,24 @@ namespace uapmd {
         realtime_infinite_tail_policy_.store(policy, std::memory_order_release);
     }
 
-    TrackOutputRoutingTarget SequencerEngineImpl::authoredTrackOutputBusRoutingTarget(
-        uapmd_track_index_t trackIndex,
-        uint32_t outputBusIndex) const {
-        auto* extension = outputRoutingExtensionForTrackIndex(trackIndex);
-        if (!extension)
-            return {};
-        return extension->outputRoutingTarget(outputBusIndex);
-    }
-
     TrackOutputRoutingTarget SequencerEngineImpl::effectiveTrackOutputBusRoutingTarget(
         uapmd_track_index_t trackIndex,
         uint32_t outputBusIndex) const {
-        const auto authored = authoredTrackOutputBusRoutingTarget(trackIndex, outputBusIndex);
-        if (authored.type != TrackOutputRoutingTargetType::DISABLED) {
-            if (authored.type == TrackOutputRoutingTargetType::MASTER_INPUT_BUS) {
-                if (master_track_ && master_track_context_ && !master_track_->orderedInstanceIds().empty() &&
-                    master_track_context_->audioInBusCount() > 0) {
-                    const auto busIndex = std::min<uint32_t>(
-                        authored.bus_index,
-                        static_cast<uint32_t>(master_track_context_->audioInBusCount() - 1));
-                    return {
-                        TrackOutputRoutingTargetType::MASTER_INPUT_BUS,
-                        busIndex,
-                        authored.bus_index >= static_cast<uint32_t>(master_track_context_->audioInBusCount()),
-                    };
-                }
-                return {
-                    TrackOutputRoutingTargetType::MAIN_MIX_BUS,
-                    0,
-                    true,
-                };
-            }
-
-            return {
-                TrackOutputRoutingTargetType::MAIN_MIX_BUS,
-                0,
-                authored.bus_index != 0,
-            };
-        }
-
-        return trackOutputBusRoutingTargetImpl(trackIndex, outputBusIndex);
-    }
-
-    uint32_t SequencerEngineImpl::downstreamLatencyInSamplesForTarget(const TrackOutputRoutingTarget& target) const {
-        return target.type == TrackOutputRoutingTargetType::MASTER_INPUT_BUS
-            ? (master_track_ ? master_track_->renderLeadInSamples() : 0)
-            : 0;
-    }
-
-    double SequencerEngineImpl::downstreamTailLengthInSecondsForTarget(const TrackOutputRoutingTarget& target) const {
-        return target.type == TrackOutputRoutingTargetType::MASTER_INPUT_BUS
-            ? (master_track_ ? master_track_->tailLengthInSeconds() : 0.0)
-            : 0.0;
-    }
-
-    uint32_t SequencerEngineImpl::trackOutputBusPathLatencyInSamples(
-        uapmd_track_index_t trackIndex,
-        uint32_t outputBusIndex) const {
-        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
-            return 0;
-        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
-        if (!track || outputBusIndex >= track->graph().outputBusCount())
-            return 0;
-        const auto target = effectiveTrackOutputBusRoutingTarget(trackIndex, outputBusIndex);
-        if (target.type == TrackOutputRoutingTargetType::DISABLED)
-            return 0;
-        return track->graph().outputLatencyInSamples(outputBusIndex) + downstreamLatencyInSamplesForTarget(target);
+        return track_routing_manager_
+            ? track_routing_manager_->effectiveTrackOutputBusRoutingTarget(trackIndex, outputBusIndex)
+            : TrackOutputRoutingTarget{};
     }
 
     uint32_t SequencerEngineImpl::trackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const {
-        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
-            return 0;
-        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
-        if (!track)
-            return 0;
-        uint32_t maxLead = 0;
-        for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex) {
-            const auto target = effectiveTrackOutputBusRoutingTarget(trackIndex, busIndex);
-            if (target.type == TrackOutputRoutingTargetType::DISABLED)
-                continue;
-            maxLead = std::max(maxLead, trackOutputBusPathLatencyInSamples(trackIndex, busIndex));
-        }
-        return maxLead;
+        return track_routing_manager_
+            ? track_routing_manager_->trackAudibleRenderLeadInSamples(trackIndex)
+            : 0;
     }
 
     uint32_t SequencerEngineImpl::maxTrackRenderLeadInSamples() const {
-        uint32_t maxTrackLatency = 0;
-        for (size_t i = 0; i < tracks_.size(); ++i) {
-            auto* track = tracks_[i].get();
-            if (!track)
-                continue;
-            maxTrackLatency = std::max(
-                maxTrackLatency,
-                trackAudibleRenderLeadInSamples(static_cast<uapmd_track_index_t>(i)));
-        }
-        return maxTrackLatency;
+        return track_routing_manager_
+            ? track_routing_manager_->maxTrackRenderLeadInSamples()
+            : 0;
     }
 
     uint32_t SequencerEngineImpl::maxRenderLeadInSamples() const {
@@ -883,219 +794,37 @@ namespace uapmd {
     }
 
     uint32_t SequencerEngineImpl::maxLiveInputRenderLeadInSamples() const {
-        uint32_t maxLead = 0;
-        if (!timeline_)
-            return 0;
-        for (size_t i = 0; i < tracks_.size(); ++i) {
-            if (!timeline_->trackHasLiveInput(static_cast<int32_t>(i)))
-                continue;
-            auto* track = tracks_[i].get();
-            if (!track)
-                continue;
-            maxLead = std::max(maxLead, trackAudibleRenderLeadInSamples(static_cast<uapmd_track_index_t>(i)));
-        }
-        return maxLead;
+        return track_routing_manager_
+            ? track_routing_manager_->maxLiveInputRenderLeadInSamples()
+            : 0;
     }
 
     uint32_t SequencerEngineImpl::maxOutputAlignmentHoldbackInSamples() const {
-        uint32_t maxHoldback = 0;
-        for (size_t i = 0; i < tracks_.size(); ++i) {
-            auto* track = tracks_[i].get();
-            if (!track)
-                continue;
-            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex)
-                maxHoldback = std::max(
-                    maxHoldback,
-                    trackOutputAlignmentHoldbackInSamplesImpl(static_cast<uapmd_track_index_t>(i), busIndex));
-        }
-        return maxHoldback;
+        return track_routing_manager_
+            ? track_routing_manager_->maxOutputAlignmentHoldbackInSamples()
+            : 0;
     }
 
     uint32_t SequencerEngineImpl::trackOutputAlignmentHoldbackInSamplesImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const {
-        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size() || !timeline_)
-            return 0;
-        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
-        if (!track)
-            return 0;
-        if (outputBusIndex >= track->graph().outputBusCount())
-            return 0;
-
-        const uint32_t trackLead = trackAudibleRenderLeadInSamples(trackIndex);
-        const uint32_t pathLatency = trackOutputBusPathLatencyInSamples(trackIndex, outputBusIndex);
-        const uint32_t intraTrackHoldback = trackLead > pathLatency ? trackLead - pathLatency : 0;
-        if (output_alignment_monitoring_policy_.load(std::memory_order_acquire) !=
-            OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT)
-            return intraTrackHoldback;
-
-        const uint32_t liveInputReferenceLead = maxLiveInputRenderLeadInSamples();
-        if (liveInputReferenceLead == 0)
-            return intraTrackHoldback;
-        if (timeline_->trackHasLiveInput(trackIndex))
-            return 0;
-        return liveInputReferenceLead + intraTrackHoldback;
-    }
-
-    TrackOutputRoutingTarget SequencerEngineImpl::trackOutputBusRoutingTargetImpl(
-        uapmd_track_index_t trackIndex,
-        uint32_t outputBusIndex) const {
-        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
-            return {};
-        auto* track = tracks_[static_cast<size_t>(trackIndex)].get();
-        if (!track || outputBusIndex >= track->graph().outputBusCount())
-            return {};
-
-        if (master_track_ && master_track_context_ && master_track_context_->audioInBusCount() > 0) {
-            if (outputBusIndex < static_cast<uint32_t>(master_track_context_->audioInBusCount()))
-                return {
-                    TrackOutputRoutingTargetType::MASTER_INPUT_BUS,
-                    outputBusIndex,
-                    false,
-                };
-            return {
-                TrackOutputRoutingTargetType::MASTER_INPUT_BUS,
-                0,
-                true,
-            };
-        }
-
-        return {
-            TrackOutputRoutingTargetType::MAIN_MIX_BUS,
-            0,
-            outputBusIndex != 0,
-        };
-    }
-
-    double SequencerEngineImpl::tailLengthSecondsToSamples(double seconds) const {
-        if (!(seconds > 0.0))
-            return 0.0;
-        if (!std::isfinite(seconds))
-            return std::numeric_limits<double>::infinity();
-        return std::ceil(seconds * static_cast<double>(sampleRate));
+        return track_routing_manager_
+            ? track_routing_manager_->trackOutputAlignmentHoldbackInSamples(trackIndex, outputBusIndex)
+            : 0;
     }
 
     int64_t SequencerEngineImpl::maxStopDrainInSamples() const {
-        double totalDrainSamples =
-            static_cast<double>(master_track_ ? master_track_->renderLeadInSamples() : 0) +
-            tailLengthSecondsToSamples(master_track_ ? master_track_->tailLengthInSeconds() : 0.0);
-
-        for (size_t trackIndex = 0; trackIndex < tracks_.size(); ++trackIndex) {
-            auto* track = tracks_[trackIndex].get();
-            if (!track)
-                continue;
-
-            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount(); ++busIndex) {
-                const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
-                if (target.type == TrackOutputRoutingTargetType::DISABLED)
-                    continue;
-
-                const double trackPathSamples =
-                    static_cast<double>(trackOutputBusPathLatencyInSamples(static_cast<uapmd_track_index_t>(trackIndex), busIndex)) +
-                    tailLengthSecondsToSamples(track->tailLengthInSeconds()) +
-                    tailLengthSecondsToSamples(downstreamTailLengthInSecondsForTarget(target));
-                if (!std::isfinite(trackPathSamples))
-                    return realtime_infinite_tail_policy_.load(std::memory_order_acquire) ==
-                        RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
-                        ? 0
-                        : static_cast<int64_t>(maxRenderLeadInSamples());
-                totalDrainSamples = std::max(totalDrainSamples, trackPathSamples);
-            }
-        }
-
-        if (!std::isfinite(totalDrainSamples))
-            return realtime_infinite_tail_policy_.load(std::memory_order_acquire) ==
-                RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
-                ? 0
-                : static_cast<int64_t>(maxRenderLeadInSamples());
-        if (totalDrainSamples <= 0.0)
-            return 0;
-        if (totalDrainSamples >= static_cast<double>(std::numeric_limits<int64_t>::max()))
-            return std::numeric_limits<int64_t>::max();
-        return static_cast<int64_t>(totalDrainSamples);
+        return track_routing_manager_
+            ? track_routing_manager_->maxStopDrainInSamples()
+            : 0;
     }
 
     void SequencerEngineImpl::reconfigureMasterTrackInputBuses() {
-        if (!master_track_context_ || !mix_bus_context_)
-            return;
-
-        std::vector<remidy::AudioBusSpec> mergedInputSpecs(
-            master_track_context_->audioInputSpecs().begin(),
-            master_track_context_->audioInputSpecs().end());
-        for (size_t trackIndex = 0; trackIndex < sequence.tracks.size() && trackIndex < tracks_.size(); ++trackIndex) {
-            auto* ctx = sequence.tracks[trackIndex];
-            auto* track = tracks_[trackIndex].get();
-            if (!ctx || !track)
-                continue;
-            const auto& outputSpecs = ctx->audioOutputSpecs();
-            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount() && busIndex < outputSpecs.size(); ++busIndex) {
-                const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
-                if (target.type != TrackOutputRoutingTargetType::MASTER_INPUT_BUS)
-                    continue;
-                const auto& outputSpec = outputSpecs[busIndex];
-                const auto targetBusIndex = static_cast<size_t>(target.bus_index);
-                if (targetBusIndex >= mergedInputSpecs.size()) {
-                    mergedInputSpecs.resize(targetBusIndex + 1, outputSpec);
-                    mergedInputSpecs[targetBusIndex] = outputSpec;
-                    continue;
-                }
-                mergedInputSpecs[targetBusIndex].channels = std::max(mergedInputSpecs[targetBusIndex].channels, outputSpec.channels);
-                mergedInputSpecs[targetBusIndex].bufferCapacityFrames = std::max(
-                    mergedInputSpecs[targetBusIndex].bufferCapacityFrames,
-                    outputSpec.bufferCapacityFrames);
-                if (outputSpec.role == remidy::AudioBusRole::Main)
-                    mergedInputSpecs[targetBusIndex].role = remidy::AudioBusRole::Main;
-            }
-        }
-
-        if (mergedInputSpecs != master_track_context_->audioInputSpecs())
-            master_track_context_->configureAudioInputBuses(mergedInputSpecs);
-        if (master_track_)
-            applyTrackBusesLayout(master_track_.get(), AudioGraphBusesLayout{
-                static_cast<uint32_t>(master_track_context_->audioInBusCount()),
-                static_cast<uint32_t>(master_track_context_->audioOutBusCount()),
-                1,
-                1,
-            });
+        if (track_routing_manager_)
+            track_routing_manager_->reconfigureMasterTrackInputBuses();
     }
 
     void SequencerEngineImpl::reconfigureMixBusContext() {
-        if (!mix_bus_context_)
-            return;
-
-        std::vector<remidy::AudioBusSpec> mixSpecs;
-        for (size_t trackIndex = 0; trackIndex < sequence.tracks.size() && trackIndex < tracks_.size(); ++trackIndex) {
-            const auto* ctx = sequence.tracks[trackIndex];
-            auto* track = tracks_[trackIndex].get();
-            if (!ctx || !track)
-                continue;
-            const auto& outputSpecs = ctx->audioOutputSpecs();
-            for (uint32_t busIndex = 0; busIndex < track->graph().outputBusCount() && busIndex < outputSpecs.size(); ++busIndex) {
-                const auto target = effectiveTrackOutputBusRoutingTarget(static_cast<uapmd_track_index_t>(trackIndex), busIndex);
-                if (target.type != TrackOutputRoutingTargetType::MAIN_MIX_BUS)
-                    continue;
-                const auto& spec = outputSpecs[busIndex];
-                const auto targetBusIndex = static_cast<size_t>(target.bus_index);
-                if (targetBusIndex >= mixSpecs.size()) {
-                    mixSpecs.resize(targetBusIndex + 1, spec);
-                    mixSpecs[targetBusIndex] = spec;
-                    continue;
-                }
-                mixSpecs[targetBusIndex].channels = std::max(mixSpecs[targetBusIndex].channels, spec.channels);
-                mixSpecs[targetBusIndex].bufferCapacityFrames = std::max(
-                    mixSpecs[targetBusIndex].bufferCapacityFrames,
-                    spec.bufferCapacityFrames);
-                if (spec.role == remidy::AudioBusRole::Main)
-                    mixSpecs[targetBusIndex].role = remidy::AudioBusRole::Main;
-            }
-        }
-
-        if (mixSpecs.empty())
-            mixSpecs.push_back(
-                remidy::AudioBusSpec{
-                    remidy::AudioBusRole::Main,
-                    default_output_channels_,
-                    audio_buffer_size_in_frames});
-        mix_bus_context_->configureAudioOutputBuses(mixSpecs);
-        reconfigureMasterTrackInputBuses();
+        if (track_routing_manager_)
+            track_routing_manager_->reconfigureMixBusContext();
     }
 
     void SequencerEngineImpl::reconfigureOutputAlignmentBuffers() {
