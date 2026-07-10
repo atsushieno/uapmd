@@ -14,7 +14,7 @@
 #include <remidy/detail/event-loop.hpp>
 #include <remidy/remidy.hpp>
 #include "uapmd-engine/uapmd-engine.hpp"
-#include "LatencyCompensationManager.hpp"
+#include "LatencyCompensationManagerImpl.hpp"
 #include "TrackRoutingManager.hpp"
 #include "readerwriterqueue.h"
 
@@ -129,10 +129,6 @@ namespace uapmd {
         int32_t sampleRate;
         std::unique_ptr<AudioPluginHostingAPI> plugin_host;
         UapmdFunctionBlockManager function_block_manager{};
-        std::atomic<OutputAlignmentMonitoringPolicy> output_alignment_monitoring_policy_{
-            OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT};
-        std::atomic<RealtimeInfiniteTailPolicy> realtime_infinite_tail_policy_{
-            RealtimeInfiniteTailPolicy::LATENCY_FALLBACK};
 
         // Playback state (managed by RealtimeSequencer)
         std::atomic<bool> is_playback_active_{false};
@@ -238,7 +234,7 @@ namespace uapmd {
         std::vector<size_t> pump_slot_indices_;   // pump thread: slot acquired per track
         std::vector<size_t> rt_dequeued_slots_;   // RT thread: slot dequeued per track
         std::unique_ptr<TrackRoutingManager> track_routing_manager_{};
-        std::unique_ptr<LatencyCompensationManager> latency_compensation_manager_{};
+        std::unique_ptr<LatencyCompensationManagerImpl> latency_compensation_manager_{};
 
         void ensureTrackBusConfiguration(int32_t trackIndex, remidy::PluginAudioBuses* pluginBuses);
         void ensureContextBusConfiguration(AudioProcessContext* ctx, remidy::PluginAudioBuses* pluginBuses);
@@ -267,6 +263,7 @@ namespace uapmd {
         uint32_t trackRenderLeadInSamples(uapmd_track_index_t trackIndex) override;
         uint32_t masterTrackRenderLeadInSamples() override;
         bool trackHasLiveInput(uapmd_track_index_t trackIndex) override;
+        LatencyCompensationManager* latencyCompensationManager() override;
         uint32_t trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) override;
         uint32_t trackOutputBusAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) override;
         TrackOutputRoutingTarget trackOutputBusRoutingTarget(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) override;
@@ -275,10 +272,6 @@ namespace uapmd {
             uapmd_track_index_t trackIndex,
             const std::vector<TrackOutputRoutingRule>& rules) override;
         bool isOutputAlignmentActive() override;
-        OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const override;
-        void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) override;
-        RealtimeInfiniteTailPolicy realtimeInfiniteTailPolicy() const override;
-        void realtimeInfiniteTailPolicy(RealtimeInfiniteTailPolicy policy) override;
 
         void setDefaultChannels(uint32_t inputChannels, uint32_t outputChannels) override;
         void setSampleRate(int32_t newSampleRate) override;
@@ -450,6 +443,21 @@ namespace uapmd {
                 1,
             });
         }
+        latency_compensation_manager_ = std::make_unique<LatencyCompensationManagerImpl>(
+            audio_buffer_size_in_frames,
+            tracks_,
+            master_track_,
+            sequence,
+            is_playback_active_,
+            playback_position_samples_,
+            render_playback_position_samples_,
+            latency_drain_active_,
+            latency_drain_remaining_samples_,
+            reset_to_start_after_latency_drain_,
+            [this](const std::function<void()>& mutation) {
+                StructureMutationGuard mutationGuard(*this);
+                mutation();
+            });
         track_routing_manager_ = std::make_unique<TrackRoutingManager>(
             audio_buffer_size_in_frames,
             sampleRate,
@@ -460,19 +468,8 @@ namespace uapmd {
             mix_bus_context_,
             sequence,
             timeline_.get(),
-            output_alignment_monitoring_policy_,
-            realtime_infinite_tail_policy_);
-        latency_compensation_manager_ = std::make_unique<LatencyCompensationManager>(
-            audio_buffer_size_in_frames,
-            tracks_,
-            master_track_,
-            sequence,
-            *track_routing_manager_,
-            playback_position_samples_,
-            render_playback_position_samples_,
-            latency_drain_active_,
-            latency_drain_remaining_samples_,
-            reset_to_start_after_latency_drain_);
+            *latency_compensation_manager_);
+        latency_compensation_manager_->attachTrackRoutingManager(*track_routing_manager_);
         reconfigureMixBusContext();
         configureTrackRouting(master_track_.get());
 
@@ -728,25 +725,8 @@ namespace uapmd {
         return track_routing_manager_ && track_routing_manager_->isOutputAlignmentActive();
     }
 
-    OutputAlignmentMonitoringPolicy SequencerEngineImpl::outputAlignmentMonitoringPolicy() const {
-        return output_alignment_monitoring_policy_.load(std::memory_order_acquire);
-    }
-
-    void SequencerEngineImpl::outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) {
-        StructureMutationGuard mutationGuard(*this);
-        output_alignment_monitoring_policy_.store(policy, std::memory_order_release);
-        if (track_routing_manager_)
-            track_routing_manager_->rebuildRoutingCaches();
-        reconfigureOutputAlignmentBuffers();
-        resetOutputAlignmentBuffers();
-    }
-
-    RealtimeInfiniteTailPolicy SequencerEngineImpl::realtimeInfiniteTailPolicy() const {
-        return realtime_infinite_tail_policy_.load(std::memory_order_acquire);
-    }
-
-    void SequencerEngineImpl::realtimeInfiniteTailPolicy(RealtimeInfiniteTailPolicy policy) {
-        realtime_infinite_tail_policy_.store(policy, std::memory_order_release);
+    LatencyCompensationManager* SequencerEngineImpl::latencyCompensationManager() {
+        return latency_compensation_manager_.get();
     }
 
     TrackOutputRoutingTarget SequencerEngineImpl::effectiveTrackOutputBusRoutingTarget(
@@ -1242,6 +1222,8 @@ namespace uapmd {
         tracks_.emplace_back(std::move(tr));
         sequence.tracks.emplace_back(new AudioProcessContext(sequence.masterContext(), ump_buffer_size_in_ints));
         track_processing_flags_.emplace_back(std::make_unique<std::atomic<bool>>(false));
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->onTrackAdded();
         auto trackIndex = static_cast<uapmd_track_index_t>(tracks_.size() - 1);
 
         // Configure main bus (moved from RealtimeSequencer)
@@ -1301,6 +1283,8 @@ namespace uapmd {
             pump_rings_.erase(pump_rings_.begin() + static_cast<long>(index));
         if (static_cast<size_t>(index) < pump_sequence_.tracks.size())
             pump_sequence_.tracks.erase(pump_sequence_.tracks.begin() + static_cast<long>(index));
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->onTrackRemoved(index);
         pump_slot_indices_.resize(tracks_.size(), SIZE_MAX);
         rt_dequeued_slots_.resize(tracks_.size(), SIZE_MAX);
         timeline_->onTrackRemoved(static_cast<size_t>(index));

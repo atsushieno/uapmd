@@ -243,6 +243,8 @@ globalThis.uapmd = {
     // Timeline API - Clip and playback state management
     timeline: {
         getState: () => __remidy_timeline_get_state(),
+        getLatencyCompensationState: () => __remidy_timeline_get_latency_compensation_state(),
+        setLatencyCompensationState: (payload) => __remidy_timeline_set_latency_compensation_state(payload),
         setTempo: (bpm) => __remidy_timeline_set_tempo(bpm),
         getClips: (trackIndex) => __remidy_timeline_get_clips(trackIndex),
         getClipAudioEvents: (trackIndex, clipId) => __remidy_timeline_get_clip_audio_events(trackIndex, clipId),

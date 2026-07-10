@@ -207,6 +207,14 @@ export const timeline = {
         return new TimelineState(__remidy_timeline_get_state());
     },
 
+    getLatencyCompensationState: function() {
+        return __remidy_timeline_get_latency_compensation_state();
+    },
+
+    setLatencyCompensationState: function(payload) {
+        return __remidy_timeline_set_latency_compensation_state(payload);
+    },
+
     setTempo: function(bpm) {
         __remidy_timeline_set_tempo(bpm);
     },

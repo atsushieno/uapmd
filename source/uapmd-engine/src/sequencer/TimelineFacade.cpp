@@ -700,6 +700,8 @@ namespace uapmd {
                 operation->plugin_state_dir = operation->project_dir / "plugin_states";
                 operation->graph_dir = operation->project_dir / "graphs";
                 operation->project = UapmdProjectData::create();
+                if (auto* latencyManager = engine_.latencyCompensationManager())
+                    operation->project->latencyCompensationSettings(latencyManager->projectSettings());
 
                 std::unordered_set<int32_t> excludedTrackIndexes(
                     options.excludedTrackIndexes.begin(),
@@ -1639,6 +1641,16 @@ namespace uapmd {
                         applyGraphConnections(tracks[i], engine_.tracks()[i]);
                     if (masterProjectTrack)
                         applyGraphConnections(masterProjectTrack, engine_.masterTrack());
+
+                    if (auto* latencyManager = engine_.latencyCompensationManager()) {
+                        std::string latencySettingsError;
+                        if (!latencyManager->applyProjectSettings(
+                                sharedProject->latencyCompensationSettings(),
+                                latencySettingsError)) {
+                            callback({false, std::move(latencySettingsError)});
+                            return;
+                        }
+                    }
 
                     for (size_t i = 0; i < tracks.size() && i < engine_.tracks().size(); ++i) {
                         if (tracks[i] && engine_.tracks()[i]) {

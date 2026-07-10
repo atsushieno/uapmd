@@ -1,17 +1,20 @@
-#include "LatencyCompensationManager.hpp"
+#include "LatencyCompensationManagerImpl.hpp"
 
 #include <algorithm>
+#include <format>
+
+#include "TrackRoutingManager.hpp"
 
 namespace uapmd {
 
-    void LatencyCompensationManager::OutputAlignmentDelayLine::reset() {
+    void LatencyCompensationManagerImpl::OutputAlignmentDelayLine::reset() {
         write_position = 0;
         for (auto& bus : buses)
             for (auto& channel : bus)
                 std::fill(channel.begin(), channel.end(), 0.0f);
     }
 
-    void LatencyCompensationManager::OutputAlignmentDelayLine::configure(
+    void LatencyCompensationManagerImpl::OutputAlignmentDelayLine::configure(
         AudioProcessContext* ctx,
         size_t delayFrames) {
         capacity_frames = std::max<size_t>(1, delayFrames + 1);
@@ -24,51 +27,214 @@ namespace uapmd {
         write_position = 0;
     }
 
-    LatencyCompensationManager::LatencyCompensationManager(
+    LatencyCompensationManagerImpl::LatencyCompensationManagerImpl(
         size_t& audioBufferSizeInFrames,
         std::vector<std::unique_ptr<SequencerTrack>>& tracks,
         std::unique_ptr<SequencerTrack>& masterTrack,
         SequenceProcessContext& sequence,
-        TrackRoutingManager& trackRoutingManager,
+        std::atomic<bool>& isPlaybackActive,
         std::atomic<int64_t>& playbackPositionSamples,
         std::atomic<int64_t>& renderPlaybackPositionSamples,
         std::atomic<bool>& latencyDrainActive,
         std::atomic<int64_t>& latencyDrainRemainingSamples,
-        std::atomic<bool>& resetToStartAfterLatencyDrain)
+        std::atomic<bool>& resetToStartAfterLatencyDrain,
+        std::function<void(const std::function<void()>&)> runMutation)
         : audio_buffer_size_in_frames_(audioBufferSizeInFrames)
         , tracks_(tracks)
         , master_track_(masterTrack)
         , sequence_(sequence)
-        , track_routing_manager_(trackRoutingManager)
+        , is_playback_active_(isPlaybackActive)
         , playback_position_samples_(playbackPositionSamples)
         , render_playback_position_samples_(renderPlaybackPositionSamples)
         , latency_drain_active_(latencyDrainActive)
         , latency_drain_remaining_samples_(latencyDrainRemainingSamples)
-        , reset_to_start_after_latency_drain_(resetToStartAfterLatencyDrain) {
+        , reset_to_start_after_latency_drain_(resetToStartAfterLatencyDrain)
+        , run_mutation_(std::move(runMutation)) {
     }
 
-    int64_t LatencyCompensationManager::alignToQuantum(int64_t samples) const {
+    void LatencyCompensationManagerImpl::attachTrackRoutingManager(TrackRoutingManager& trackRoutingManager) {
+        track_routing_manager_ = &trackRoutingManager;
+        if (track_record_armed_.size() != tracks_.size())
+            track_record_armed_.resize(tracks_.size(), 0);
+        if (track_monitoring_enabled_.size() != tracks_.size())
+            track_monitoring_enabled_.resize(tracks_.size(), 0);
+    }
+
+    void LatencyCompensationManagerImpl::applyStateChange() {
+        if (track_routing_manager_)
+            track_routing_manager_->rebuildRoutingCaches();
+        reconfigureOutputAlignmentBuffers();
+        resetOutputAlignmentBuffers();
+        applyLatencyCompensationTimingUpdate(is_playback_active_.load(std::memory_order_acquire));
+    }
+
+    bool LatencyCompensationManagerImpl::trackRecordArmed(uapmd_track_index_t trackIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= track_record_armed_.size())
+            return false;
+        return track_record_armed_[static_cast<size_t>(trackIndex)] != 0;
+    }
+
+    void LatencyCompensationManagerImpl::trackRecordArmed(uapmd_track_index_t trackIndex, bool armed) {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return;
+        run_mutation_([&]() {
+            if (static_cast<size_t>(trackIndex) >= track_record_armed_.size())
+                track_record_armed_.resize(tracks_.size(), 0);
+            track_record_armed_[static_cast<size_t>(trackIndex)] = armed ? 1 : 0;
+            applyStateChange();
+        });
+    }
+
+    bool LatencyCompensationManagerImpl::trackMonitoringEnabled(uapmd_track_index_t trackIndex) const {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= track_monitoring_enabled_.size())
+            return false;
+        return track_monitoring_enabled_[static_cast<size_t>(trackIndex)] != 0;
+    }
+
+    void LatencyCompensationManagerImpl::trackMonitoringEnabled(uapmd_track_index_t trackIndex, bool enabled) {
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return;
+        run_mutation_([&]() {
+            if (static_cast<size_t>(trackIndex) >= track_monitoring_enabled_.size())
+                track_monitoring_enabled_.resize(tracks_.size(), 0);
+            track_monitoring_enabled_[static_cast<size_t>(trackIndex)] = enabled ? 1 : 0;
+            applyStateChange();
+        });
+    }
+
+    PlaybackCompensationMode LatencyCompensationManagerImpl::playbackCompensationMode() const {
+        return playback_compensation_mode_.load(std::memory_order_acquire);
+    }
+
+    void LatencyCompensationManagerImpl::playbackCompensationMode(PlaybackCompensationMode mode) {
+        run_mutation_([&]() {
+            playback_compensation_mode_.store(mode, std::memory_order_release);
+            applyStateChange();
+        });
+    }
+
+    InputMonitoringPolicy LatencyCompensationManagerImpl::inputMonitoringPolicy() const {
+        return input_monitoring_policy_.load(std::memory_order_acquire);
+    }
+
+    void LatencyCompensationManagerImpl::inputMonitoringPolicy(InputMonitoringPolicy policy) {
+        run_mutation_([&]() {
+            input_monitoring_policy_.store(policy, std::memory_order_release);
+            applyStateChange();
+        });
+    }
+
+    LatencyCompensationProjectSettings LatencyCompensationManagerImpl::projectSettings() const {
+        LatencyCompensationProjectSettings settings;
+        settings.implementation_id = "default";
+        settings.playback_compensation_mode = playbackCompensationMode();
+        settings.input_monitoring_policy = inputMonitoringPolicy();
+        for (size_t i = 0; i < track_record_armed_.size(); ++i)
+            if (track_record_armed_[i] != 0)
+                settings.record_armed_track_indexes.push_back(static_cast<int32_t>(i));
+        for (size_t i = 0; i < track_monitoring_enabled_.size(); ++i)
+            if (track_monitoring_enabled_[i] != 0)
+                settings.monitored_track_indexes.push_back(static_cast<int32_t>(i));
+        return settings;
+    }
+
+    bool LatencyCompensationManagerImpl::applyProjectSettings(
+        const LatencyCompensationProjectSettings& settings,
+        std::string& error) {
+        if (!settings.implementation_id.empty() && settings.implementation_id != "default") {
+            error = std::format(
+                "Unsupported latency compensation implementation: {}",
+                settings.implementation_id);
+            return false;
+        }
+
+        run_mutation_([&]() {
+            playback_compensation_mode_.store(
+                settings.playback_compensation_mode,
+                std::memory_order_release);
+            input_monitoring_policy_.store(
+                settings.input_monitoring_policy,
+                std::memory_order_release);
+            track_record_armed_.assign(tracks_.size(), 0);
+            for (auto trackIndex : settings.record_armed_track_indexes) {
+                if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+                    continue;
+                track_record_armed_[static_cast<size_t>(trackIndex)] = 1;
+            }
+            track_monitoring_enabled_.assign(tracks_.size(), 0);
+            for (auto trackIndex : settings.monitored_track_indexes) {
+                if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+                    continue;
+                track_monitoring_enabled_[static_cast<size_t>(trackIndex)] = 1;
+            }
+            applyStateChange();
+        });
+        return true;
+    }
+
+    OutputAlignmentMonitoringPolicy LatencyCompensationManagerImpl::outputAlignmentMonitoringPolicy() const {
+        return playbackCompensationMode() == PlaybackCompensationMode::LOW_LATENCY
+            ? OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT
+            : OutputAlignmentMonitoringPolicy::FULLY_COMPENSATED;
+    }
+
+    void LatencyCompensationManagerImpl::outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) {
+        run_mutation_([&]() {
+            playback_compensation_mode_.store(
+                policy == OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT
+                    ? PlaybackCompensationMode::LOW_LATENCY
+                    : PlaybackCompensationMode::COMPENSATED,
+                std::memory_order_release);
+            output_alignment_monitoring_policy_.store(policy, std::memory_order_release);
+            applyStateChange();
+        });
+    }
+
+    RealtimeInfiniteTailPolicy LatencyCompensationManagerImpl::realtimeInfiniteTailPolicy() const {
+        return realtime_infinite_tail_policy_.load(std::memory_order_acquire);
+    }
+
+    void LatencyCompensationManagerImpl::realtimeInfiniteTailPolicy(RealtimeInfiniteTailPolicy policy) {
+        realtime_infinite_tail_policy_.store(policy, std::memory_order_release);
+    }
+
+    void LatencyCompensationManagerImpl::onTrackAdded() {
+        track_record_armed_.push_back(0);
+        track_monitoring_enabled_.push_back(0);
+    }
+
+    void LatencyCompensationManagerImpl::onTrackRemoved(uapmd_track_index_t trackIndex) {
+        if (trackIndex >= 0 && static_cast<size_t>(trackIndex) < track_record_armed_.size())
+            track_record_armed_.erase(
+                track_record_armed_.begin() + static_cast<long>(trackIndex));
+        if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= track_monitoring_enabled_.size())
+            return;
+        track_monitoring_enabled_.erase(
+            track_monitoring_enabled_.begin() + static_cast<long>(trackIndex));
+    }
+
+    int64_t LatencyCompensationManagerImpl::alignToQuantum(int64_t samples) const {
         const auto quantum = static_cast<int64_t>(audio_buffer_size_in_frames_ > 0 ? audio_buffer_size_in_frames_ : 1);
         return ((samples + quantum - 1) / quantum) * quantum;
     }
 
-    void LatencyCompensationManager::clearDrainState() {
+    void LatencyCompensationManagerImpl::clearDrainState() {
         latency_drain_active_.store(false, std::memory_order_release);
         latency_drain_remaining_samples_.store(0, std::memory_order_release);
         reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
     }
 
-    uint32_t LatencyCompensationManager::maxRenderLeadInSamples() const {
+    uint32_t LatencyCompensationManagerImpl::maxRenderLeadInSamples() const {
         return std::max(
-            track_routing_manager_.maxTrackRenderLeadInSamples(),
+            track_routing_manager_ ? track_routing_manager_->maxTrackRenderLeadInSamples() : 0,
             master_track_ ? master_track_->renderLeadInSamples() : 0);
     }
 
-    int64_t LatencyCompensationManager::maxStopDrainInSamples() const {
-        return track_routing_manager_.maxStopDrainInSamples();
+    int64_t LatencyCompensationManagerImpl::maxStopDrainInSamples() const {
+        return track_routing_manager_ ? track_routing_manager_->maxStopDrainInSamples() : 0;
     }
 
-    void LatencyCompensationManager::schedulePrerollFromAudiblePosition(int64_t samples) {
+    void LatencyCompensationManagerImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
         clearDrainState();
         playback_position_samples_.store(samples, std::memory_order_release);
         render_playback_position_samples_.store(
@@ -76,10 +242,12 @@ namespace uapmd {
             std::memory_order_release);
     }
 
-    void LatencyCompensationManager::reconfigureOutputAlignmentBuffers() {
+    void LatencyCompensationManagerImpl::reconfigureOutputAlignmentBuffers() {
         output_alignment_delay_lines_.resize(tracks_.size());
+        if (!track_routing_manager_)
+            return;
         const size_t delayCapacityFrames =
-            static_cast<size_t>(track_routing_manager_.maxOutputAlignmentHoldbackInSamples()) +
+            static_cast<size_t>(track_routing_manager_->maxOutputAlignmentHoldbackInSamples()) +
             audio_buffer_size_in_frames_;
         for (size_t i = 0; i < output_alignment_delay_lines_.size(); ++i) {
             auto* ctx = i < sequence_.tracks.size() ? sequence_.tracks[i] : nullptr;
@@ -87,12 +255,12 @@ namespace uapmd {
         }
     }
 
-    void LatencyCompensationManager::resetOutputAlignmentBuffers() {
+    void LatencyCompensationManagerImpl::resetOutputAlignmentBuffers() {
         for (auto& delayLine : output_alignment_delay_lines_)
             delayLine.reset();
     }
 
-    void LatencyCompensationManager::applyLatencyCompensationTimingUpdate(bool isPlaybackActive) {
+    void LatencyCompensationManagerImpl::applyLatencyCompensationTimingUpdate(bool isPlaybackActive) {
         reconfigureOutputAlignmentBuffers();
         resetOutputAlignmentBuffers();
 
@@ -106,7 +274,7 @@ namespace uapmd {
         render_playback_position_samples_.store(audiblePosition, std::memory_order_release);
     }
 
-    void LatencyCompensationManager::setPlaybackPosition(int64_t samples, bool isPlaybackActive) {
+    void LatencyCompensationManagerImpl::setPlaybackPosition(int64_t samples, bool isPlaybackActive) {
         if (isPlaybackActive) {
             resetOutputAlignmentBuffers();
             schedulePrerollFromAudiblePosition(samples);
@@ -119,12 +287,12 @@ namespace uapmd {
         resetOutputAlignmentBuffers();
     }
 
-    void LatencyCompensationManager::startPlayback() {
+    void LatencyCompensationManagerImpl::startPlayback() {
         resetOutputAlignmentBuffers();
         schedulePrerollFromAudiblePosition(0);
     }
 
-    void LatencyCompensationManager::stopPlayback() {
+    void LatencyCompensationManagerImpl::stopPlayback() {
         resetOutputAlignmentBuffers();
         const auto tailSamples = maxStopDrainInSamples();
         if (tailSamples > 0) {
@@ -139,7 +307,7 @@ namespace uapmd {
         clearDrainState();
     }
 
-    void LatencyCompensationManager::pausePlayback() {
+    void LatencyCompensationManagerImpl::pausePlayback() {
         clearDrainState();
         render_playback_position_samples_.store(
             playback_position_samples_.load(std::memory_order_acquire),
@@ -147,12 +315,12 @@ namespace uapmd {
         resetOutputAlignmentBuffers();
     }
 
-    void LatencyCompensationManager::resumePlayback() {
+    void LatencyCompensationManagerImpl::resumePlayback() {
         resetOutputAlignmentBuffers();
         schedulePrerollFromAudiblePosition(playback_position_samples_.load(std::memory_order_acquire));
     }
 
-    void LatencyCompensationManager::updateLatencyDrainState(int32_t frameCount) {
+    void LatencyCompensationManagerImpl::updateLatencyDrainState(int32_t frameCount) {
         if (!latency_drain_active_.load(std::memory_order_acquire))
             return;
 
@@ -170,7 +338,7 @@ namespace uapmd {
         }
     }
 
-    void LatencyCompensationManager::applyOutputAlignment(
+    void LatencyCompensationManagerImpl::applyOutputAlignment(
         uapmd_track_index_t trackIndex,
         AudioProcessContext& ctx,
         int32_t trackFrameCount) {
@@ -183,9 +351,11 @@ namespace uapmd {
 
         bool usedDelay = false;
         const size_t startWritePosition = delayLine.write_position;
+        if (!track_routing_manager_)
+            return;
         for (uint32_t busIndex = 0; busIndex < ctx.audioOutBusCount(); ++busIndex) {
             const uint32_t outputAlignmentDelay =
-                track_routing_manager_.trackOutputAlignmentHoldbackInSamples(trackIndex, busIndex);
+                track_routing_manager_->trackOutputAlignmentHoldbackInSamples(trackIndex, busIndex);
             if (outputAlignmentDelay == 0 || busIndex >= delayLine.buses.size())
                 continue;
 
@@ -219,15 +389,15 @@ namespace uapmd {
                 (startWritePosition + static_cast<size_t>(trackFrameCount)) % delayLine.capacity_frames;
     }
 
-    bool LatencyCompensationManager::latencyDrainActive() const {
+    bool LatencyCompensationManagerImpl::latencyDrainActive() const {
         return latency_drain_active_.load(std::memory_order_acquire);
     }
 
-    int64_t LatencyCompensationManager::playbackPosition() const {
+    int64_t LatencyCompensationManagerImpl::playbackPosition() const {
         return playback_position_samples_.load(std::memory_order_acquire);
     }
 
-    int64_t LatencyCompensationManager::renderPlaybackPosition() const {
+    int64_t LatencyCompensationManagerImpl::renderPlaybackPosition() const {
         return render_playback_position_samples_.load(std::memory_order_acquire);
     }
 

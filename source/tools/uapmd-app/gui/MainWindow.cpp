@@ -25,6 +25,20 @@ namespace {
 constexpr std::array<float, 7> kUiScaleOptions{0.5f, 0.8f, 1.0f, 1.2f, 1.5f, 2.0f, 4.0f};
 constexpr std::array<const char*, 7> kUiScaleLabels{"x0.5", "x0.8", "x1.0", "x1.2", "x1.5", "x2.0", "x4.0"};
 
+const char* inputMonitoringPolicyHint(uapmd::InputMonitoringPolicy policy) {
+    switch (policy) {
+        case uapmd::InputMonitoringPolicy::TAPE_STYLE:
+            return "Prefer monitored live input over fully compensated playback on that path "
+                   "when the track is both record-armed and monitor-enabled.";
+        case uapmd::InputMonitoringPolicy::OFF:
+            return "Disable live-input monitoring through the latency-compensation layer.";
+        case uapmd::InputMonitoringPolicy::AUTO:
+        default:
+            return "Use low-latency monitoring only for tracks that have live input and are "
+                   "explicitly monitor-enabled. Other playback remains compensated.";
+    }
+}
+
 float snapScaleToOption(float scale) {
     float snapped = kUiScaleOptions.front();
     float bestDiff = std::numeric_limits<float>::max();
@@ -768,11 +782,23 @@ void MainWindow::renderMixerMonitorWindow() {
         const bool prerollActive = playbackActive && renderPosition < audiblePosition;
         const bool latencyDrainActive = !playbackActive && renderPosition > audiblePosition;
         const bool outputAlignmentActive = engine->isOutputAlignmentActive();
-        int monitoringPolicy = static_cast<int>(engine->outputAlignmentMonitoringPolicy());
-        int realtimeInfiniteTailPolicy = static_cast<int>(engine->realtimeInfiniteTailPolicy());
-        const char* monitoringPolicyItems[] = {
-            "Low-Latency Live Input",
-            "Fully Compensated",
+        auto* latencyManager = engine->latencyCompensationManager();
+        if (!latencyManager) {
+            ImGui::TextDisabled("Latency compensation manager is not available.");
+            ImGui::End();
+            return;
+        }
+        int playbackCompMode = static_cast<int>(latencyManager->playbackCompensationMode());
+        int inputMonitoringPolicy = static_cast<int>(latencyManager->inputMonitoringPolicy());
+        int realtimeInfiniteTailPolicy = static_cast<int>(latencyManager->realtimeInfiniteTailPolicy());
+        const char* playbackCompItems[] = {
+            "Compensated",
+            "Low-Latency",
+        };
+        const char* inputMonitoringItems[] = {
+            "Tape Style",
+            "Auto",
+            "Off",
         };
         const char* realtimeInfiniteTailPolicyItems[] = {
             "Latency Fallback",
@@ -789,26 +815,39 @@ void MainWindow::renderMixerMonitorWindow() {
         ImGui::Text("Latency Drain: %s", latencyDrainActive ? "active" : "inactive");
         ImGui::SameLine();
         ImGui::Text("Output Alignment: %s", outputAlignmentActive ? "active" : "inactive");
-        if (ImGui::Combo("Monitoring Policy", &monitoringPolicy, monitoringPolicyItems, IM_ARRAYSIZE(monitoringPolicyItems)))
-            engine->outputAlignmentMonitoringPolicy(static_cast<uapmd::OutputAlignmentMonitoringPolicy>(monitoringPolicy));
-        if (ImGui::Combo("Realtime Infinite Tail", &realtimeInfiniteTailPolicy, realtimeInfiniteTailPolicyItems, IM_ARRAYSIZE(realtimeInfiniteTailPolicyItems)))
-            engine->realtimeInfiniteTailPolicy(static_cast<uapmd::RealtimeInfiniteTailPolicy>(realtimeInfiniteTailPolicy));
+        if (ImGui::Combo("Playback Compensation", &playbackCompMode, playbackCompItems, IM_ARRAYSIZE(playbackCompItems))) {
+            latencyManager->playbackCompensationMode(static_cast<uapmd::PlaybackCompensationMode>(playbackCompMode));
+            uapmd::AppModel::instance().markProjectDirty();
+        }
+        if (ImGui::Combo("Input Monitoring", &inputMonitoringPolicy, inputMonitoringItems, IM_ARRAYSIZE(inputMonitoringItems))) {
+            latencyManager->inputMonitoringPolicy(static_cast<uapmd::InputMonitoringPolicy>(inputMonitoringPolicy));
+            uapmd::AppModel::instance().markProjectDirty();
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip(
+                "%s",
+                inputMonitoringPolicyHint(
+                    static_cast<uapmd::InputMonitoringPolicy>(inputMonitoringPolicy)));
+        if (ImGui::Combo("DEBUG Realtime Infinite Tail", &realtimeInfiniteTailPolicy, realtimeInfiniteTailPolicyItems, IM_ARRAYSIZE(realtimeInfiniteTailPolicyItems)))
+            latencyManager->realtimeInfiniteTailPolicy(static_cast<uapmd::RealtimeInfiniteTailPolicy>(realtimeInfiniteTailPolicy));
 
         ImGui::Separator();
 
-        if (ImGui::BeginTable("MixerMonitorTable", 9, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY)) {
+        if (ImGui::BeginTable("MixerMonitorTable", 11, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY)) {
             ImGui::TableSetupColumn("Track", ImGuiTableColumnFlags_WidthFixed, 110.0f * uiScale_);
             ImGui::TableSetupColumn("Plugins", ImGuiTableColumnFlags_WidthStretch, 0.9f);
             ImGui::TableSetupColumn("Main Latency", ImGuiTableColumnFlags_WidthFixed, 95.0f * uiScale_);
             ImGui::TableSetupColumn("Render Lead", ImGuiTableColumnFlags_WidthFixed, 95.0f * uiScale_);
             ImGui::TableSetupColumn("Live Input", ImGuiTableColumnFlags_WidthFixed, 72.0f * uiScale_);
+            ImGui::TableSetupColumn("Record", ImGuiTableColumnFlags_WidthFixed, 72.0f * uiScale_);
+            ImGui::TableSetupColumn("Monitor", ImGuiTableColumnFlags_WidthFixed, 76.0f * uiScale_);
             ImGui::TableSetupColumn("Holdback", ImGuiTableColumnFlags_WidthFixed, 95.0f * uiScale_);
             ImGui::TableSetupColumn("Tail", ImGuiTableColumnFlags_WidthFixed, 85.0f * uiScale_);
             ImGui::TableSetupColumn("Out Buses", ImGuiTableColumnFlags_WidthFixed, 68.0f * uiScale_);
             ImGui::TableSetupColumn("Per-Bus Timing / Route", ImGuiTableColumnFlags_WidthStretch, 1.8f);
             ImGui::TableHeadersRow();
 
-            auto renderTrackRow = [engine, this](const char* label, int32_t trackIndex, uapmd::SequencerTrack* track, uint32_t mainLatency, uint32_t renderLead, uint32_t outputHoldback, double tailSeconds) {
+            auto renderTrackRow = [engine, latencyManager, this](const char* label, int32_t trackIndex, uapmd::SequencerTrack* track, uint32_t mainLatency, uint32_t renderLead, uint32_t outputHoldback, double tailSeconds) {
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::TextUnformatted(label);
@@ -840,19 +879,43 @@ void MainWindow::renderMixerMonitorWindow() {
                 ImGui::TextUnformatted((trackIndex >= 0 && engine->trackHasLiveInput(static_cast<uapmd_track_index_t>(trackIndex))) ? "yes" : "no");
 
                 ImGui::TableSetColumnIndex(5);
-                ImGui::Text("%u samples", outputHoldback);
+                if (trackIndex >= 0) {
+                    bool recordArmed = latencyManager->trackRecordArmed(static_cast<uapmd_track_index_t>(trackIndex));
+                    const std::string checkboxId = std::format("##record-track-{}", trackIndex);
+                    if (ImGui::Checkbox(checkboxId.c_str(), &recordArmed)) {
+                        latencyManager->trackRecordArmed(static_cast<uapmd_track_index_t>(trackIndex), recordArmed);
+                        uapmd::AppModel::instance().markProjectDirty();
+                    }
+                } else {
+                    ImGui::TextUnformatted("-");
+                }
 
                 ImGui::TableSetColumnIndex(6);
+                if (trackIndex >= 0) {
+                    bool monitorEnabled = latencyManager->trackMonitoringEnabled(static_cast<uapmd_track_index_t>(trackIndex));
+                    const std::string checkboxId = std::format("##monitor-track-{}", trackIndex);
+                    if (ImGui::Checkbox(checkboxId.c_str(), &monitorEnabled)) {
+                        latencyManager->trackMonitoringEnabled(static_cast<uapmd_track_index_t>(trackIndex), monitorEnabled);
+                        uapmd::AppModel::instance().markProjectDirty();
+                    }
+                } else {
+                    ImGui::TextUnformatted("-");
+                }
+
+                ImGui::TableSetColumnIndex(7);
+                ImGui::Text("%u samples", outputHoldback);
+
+                ImGui::TableSetColumnIndex(8);
                 if (std::isinf(tailSeconds))
                     ImGui::TextUnformatted("infinite");
                 else
                     ImGui::Text("%.3f s", tailSeconds);
 
-                ImGui::TableSetColumnIndex(7);
+                ImGui::TableSetColumnIndex(9);
                 const uint32_t outputBusCount = track ? track->graph().outputBusCount() : 0;
                 ImGui::Text("%u", outputBusCount);
 
-                ImGui::TableSetColumnIndex(8);
+                ImGui::TableSetColumnIndex(10);
                 std::string busLatencySummary;
                 if (track) {
                     for (uint32_t busIndex = 0; busIndex < outputBusCount; ++busIndex) {

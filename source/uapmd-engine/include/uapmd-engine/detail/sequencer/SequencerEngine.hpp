@@ -4,22 +4,14 @@
 #include <vector>
 
 #include <uapmd/uapmd.hpp>
+#include <uapmd-data/detail/project/LatencyCompensationTypes.hpp>
 #include <uapmd-graph/uapmd-graph.hpp>
+#include "LatencyCompensationManager.hpp"
 #include "TimelineFacade.hpp"
 
 namespace uapmd {
     inline constexpr int32_t kMasterTrackIndex = std::numeric_limits<int32_t>::min();
     typedef int32_t uapmd_track_index_t;
-
-    enum class OutputAlignmentMonitoringPolicy {
-        LOW_LATENCY_LIVE_INPUT = 0,
-        FULLY_COMPENSATED = 1,
-    };
-
-    enum class RealtimeInfiniteTailPolicy {
-        LATENCY_FALLBACK = 0,
-        IMMEDIATE_STOP = 1,
-    };
 
     class AudioPluginHostingAPI;
 
@@ -50,6 +42,7 @@ namespace uapmd {
         virtual uint32_t trackRenderLeadInSamples(uapmd_track_index_t trackIndex) = 0;
         virtual uint32_t masterTrackRenderLeadInSamples() = 0;
         virtual bool trackHasLiveInput(uapmd_track_index_t trackIndex) = 0;
+        virtual LatencyCompensationManager* latencyCompensationManager() = 0;
         virtual uint32_t trackOutputAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex) = 0;
         virtual uint32_t trackOutputBusAlignmentHoldbackInSamples(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) = 0;
         virtual TrackOutputRoutingTarget trackOutputBusRoutingTarget(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) = 0;
@@ -58,10 +51,6 @@ namespace uapmd {
             uapmd_track_index_t trackIndex,
             const std::vector<TrackOutputRoutingRule>& rules) = 0;
         virtual bool isOutputAlignmentActive() = 0;
-        virtual OutputAlignmentMonitoringPolicy outputAlignmentMonitoringPolicy() const = 0;
-        virtual void outputAlignmentMonitoringPolicy(OutputAlignmentMonitoringPolicy policy) = 0;
-        virtual RealtimeInfiniteTailPolicy realtimeInfiniteTailPolicy() const = 0;
-        virtual void realtimeInfiniteTailPolicy(RealtimeInfiniteTailPolicy policy) = 0;
         // Create track with plugin + configure bus (replaces manual addSimpleTrack + configureMainBus pattern)
         virtual uapmd_track_index_t addEmptyTrack() = 0;
         // Add plugin to existing track

@@ -134,6 +134,7 @@ namespace uapmd {
     class UapmdProjectDataImpl : public UapmdProjectData {
         std::vector<std::unique_ptr<UapmdProjectTrackData>> tracks_{};
         std::unique_ptr<UapmdProjectTrackData> master_track_{};
+        LatencyCompensationProjectSettings latency_compensation_settings_{};
 
     public:
         UapmdProjectDataImpl()
@@ -163,6 +164,10 @@ namespace uapmd {
         }
 
         UapmdProjectTrackData* masterTrack() override { return master_track_.get(); }
+        LatencyCompensationProjectSettings latencyCompensationSettings() override { return latency_compensation_settings_; }
+        void latencyCompensationSettings(LatencyCompensationProjectSettings settings) override {
+            latency_compensation_settings_ = std::move(settings);
+        }
 
         // Direct access for internal use
         std::vector<std::unique_ptr<UapmdProjectTrackData>>& tracksOwned() { return tracks_; }

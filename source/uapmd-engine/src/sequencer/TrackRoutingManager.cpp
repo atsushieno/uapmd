@@ -4,6 +4,8 @@
 #include <cmath>
 #include <limits>
 
+#include "LatencyCompensationManagerImpl.hpp"
+
 namespace uapmd {
 
     namespace {
@@ -27,8 +29,7 @@ namespace uapmd {
         std::unique_ptr<AudioProcessContext>& mixBusContext,
         SequenceProcessContext& sequence,
         TimelineFacade* timeline,
-        std::atomic<OutputAlignmentMonitoringPolicy>& outputAlignmentMonitoringPolicy,
-        std::atomic<RealtimeInfiniteTailPolicy>& realtimeInfiniteTailPolicy)
+        LatencyCompensationManager& latencyCompensationManager)
         : audio_buffer_size_in_frames_(audioBufferSizeInFrames)
         , sample_rate_(sampleRate)
         , default_output_channels_(defaultOutputChannels)
@@ -38,15 +39,14 @@ namespace uapmd {
         , mix_bus_context_(mixBusContext)
         , sequence_(sequence)
         , timeline_(timeline)
-        , output_alignment_monitoring_policy_(outputAlignmentMonitoringPolicy)
-        , realtime_infinite_tail_policy_(realtimeInfiniteTailPolicy) {
+        , latency_compensation_manager_(latencyCompensationManager) {
         rebuildRoutingCaches();
     }
 
     void TrackRoutingManager::rebuildRoutingCaches() {
         track_routing_caches_.assign(tracks_.size(), {});
         max_track_render_lead_in_samples_ = 0;
-        max_live_input_render_lead_in_samples_ = 0;
+        max_monitored_live_input_render_lead_in_samples_ = 0;
         max_output_alignment_holdback_in_samples_ = 0;
         output_alignment_active_ = false;
 
@@ -85,21 +85,21 @@ namespace uapmd {
 
         if (timeline_)
             for (size_t trackIndex = 0; trackIndex < tracks_.size(); ++trackIndex)
-                if (timeline_->trackHasLiveInput(static_cast<int32_t>(trackIndex)))
-                    max_live_input_render_lead_in_samples_ = std::max(
-                        max_live_input_render_lead_in_samples_,
+                if (trackUsesLowLatencyMonitoring(static_cast<int32_t>(trackIndex)))
+                    max_monitored_live_input_render_lead_in_samples_ = std::max(
+                        max_monitored_live_input_render_lead_in_samples_,
                         track_routing_caches_[trackIndex].audible_render_lead_in_samples);
 
-        const bool alignToLiveInput =
-            output_alignment_monitoring_policy_.load(std::memory_order_acquire) ==
-            OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT;
+        const bool compensateAgainstMonitoredLiveInput =
+            latency_compensation_manager_.playbackCompensationMode() ==
+            PlaybackCompensationMode::COMPENSATED;
         for (size_t trackIndex = 0; trackIndex < tracks_.size(); ++trackIndex) {
             auto* track = tracks_[trackIndex].get();
             auto& cache = track_routing_caches_[trackIndex];
             if (!track)
                 continue;
 
-            const bool hasLiveInput = timeline_ && timeline_->trackHasLiveInput(static_cast<int32_t>(trackIndex));
+            const bool lowLatencyMonitored = trackUsesLowLatencyMonitoring(static_cast<int32_t>(trackIndex));
             for (uint32_t busIndex = 0; busIndex < cache.output_alignment_holdbacks_in_samples.size(); ++busIndex) {
                 const auto target = cache.effective_targets[busIndex];
                 if (target.type == TrackOutputRoutingTargetType::DISABLED)
@@ -111,8 +111,10 @@ namespace uapmd {
                     ? cache.audible_render_lead_in_samples - pathLatency
                     : 0;
                 uint32_t holdback = intraTrackHoldback;
-                if (alignToLiveInput && max_live_input_render_lead_in_samples_ > 0 && !hasLiveInput)
-                    holdback += max_live_input_render_lead_in_samples_;
+                if (compensateAgainstMonitoredLiveInput &&
+                    max_monitored_live_input_render_lead_in_samples_ > 0 &&
+                    !lowLatencyMonitored)
+                    holdback += max_monitored_live_input_render_lead_in_samples_;
                 cache.output_alignment_holdbacks_in_samples[busIndex] = holdback;
                 max_output_alignment_holdback_in_samples_ = std::max(
                     max_output_alignment_holdback_in_samples_,
@@ -120,6 +122,21 @@ namespace uapmd {
                 output_alignment_active_ = output_alignment_active_ || holdback > 0;
             }
         }
+    }
+
+    bool TrackRoutingManager::trackUsesLowLatencyMonitoring(uapmd_track_index_t trackIndex) const {
+        if (!timeline_ || trackIndex < 0 || static_cast<size_t>(trackIndex) >= tracks_.size())
+            return false;
+        if (!timeline_->trackHasLiveInput(trackIndex))
+            return false;
+        if (latency_compensation_manager_.inputMonitoringPolicy() == InputMonitoringPolicy::OFF)
+            return false;
+        if (latency_compensation_manager_.playbackCompensationMode() == PlaybackCompensationMode::LOW_LATENCY)
+            return true;
+        if (latency_compensation_manager_.inputMonitoringPolicy() == InputMonitoringPolicy::TAPE_STYLE)
+            return latency_compensation_manager_.trackRecordArmed(trackIndex) &&
+                   latency_compensation_manager_.trackMonitoringEnabled(trackIndex);
+        return latency_compensation_manager_.trackMonitoringEnabled(trackIndex);
     }
 
     OutputRoutingExtension* TrackRoutingManager::outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const {
@@ -244,7 +261,7 @@ namespace uapmd {
     }
 
     uint32_t TrackRoutingManager::maxLiveInputRenderLeadInSamples() const {
-        return max_live_input_render_lead_in_samples_;
+        return max_monitored_live_input_render_lead_in_samples_;
     }
 
     uint32_t TrackRoutingManager::maxOutputAlignmentHoldbackInSamples() const {
@@ -263,14 +280,14 @@ namespace uapmd {
         const uint32_t trackLead = fallbackTrackAudibleRenderLeadInSamples(trackIndex);
         const uint32_t pathLatency = fallbackTrackOutputBusPathLatencyInSamples(trackIndex, outputBusIndex);
         const uint32_t intraTrackHoldback = trackLead > pathLatency ? trackLead - pathLatency : 0;
-        if (output_alignment_monitoring_policy_.load(std::memory_order_acquire) !=
-            OutputAlignmentMonitoringPolicy::LOW_LATENCY_LIVE_INPUT)
+        if (latency_compensation_manager_.playbackCompensationMode() !=
+            PlaybackCompensationMode::COMPENSATED)
             return intraTrackHoldback;
 
         const uint32_t liveInputReferenceLead = maxLiveInputRenderLeadInSamples();
         if (liveInputReferenceLead == 0)
             return intraTrackHoldback;
-        if (timeline_->trackHasLiveInput(trackIndex))
+        if (trackUsesLowLatencyMonitoring(trackIndex))
             return 0;
         return liveInputReferenceLead + intraTrackHoldback;
     }
@@ -365,7 +382,7 @@ namespace uapmd {
                     tailLengthSecondsToSamples(track->tailLengthInSeconds()) +
                     tailLengthSecondsToSamples(downstreamTailLengthInSecondsForTarget(target));
                 if (!std::isfinite(trackPathSamples))
-                    return realtime_infinite_tail_policy_.load(std::memory_order_acquire) ==
+                    return latency_compensation_manager_.realtimeInfiniteTailPolicy() ==
                         RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
                         ? 0
                         : static_cast<int64_t>(std::max(
@@ -376,7 +393,7 @@ namespace uapmd {
         }
 
         if (!std::isfinite(totalDrainSamples))
-            return realtime_infinite_tail_policy_.load(std::memory_order_acquire) ==
+            return latency_compensation_manager_.realtimeInfiniteTailPolicy() ==
                 RealtimeInfiniteTailPolicy::IMMEDIATE_STOP
                 ? 0
                 : static_cast<int64_t>(std::max(

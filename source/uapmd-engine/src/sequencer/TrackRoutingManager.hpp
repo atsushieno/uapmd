@@ -7,6 +7,7 @@
 #include "uapmd-engine/uapmd-engine.hpp"
 
 namespace uapmd {
+    class LatencyCompensationManager;
 
     class TrackRoutingManager {
         struct TrackRoutingCache {
@@ -25,11 +26,10 @@ namespace uapmd {
         std::unique_ptr<AudioProcessContext>& mix_bus_context_;
         SequenceProcessContext& sequence_;
         TimelineFacade* timeline_{};
-        std::atomic<OutputAlignmentMonitoringPolicy>& output_alignment_monitoring_policy_;
-        std::atomic<RealtimeInfiniteTailPolicy>& realtime_infinite_tail_policy_;
+        LatencyCompensationManager& latency_compensation_manager_;
         std::vector<TrackRoutingCache> track_routing_caches_{};
         uint32_t max_track_render_lead_in_samples_{0};
-        uint32_t max_live_input_render_lead_in_samples_{0};
+        uint32_t max_monitored_live_input_render_lead_in_samples_{0};
         uint32_t max_output_alignment_holdback_in_samples_{0};
         bool output_alignment_active_{false};
 
@@ -67,8 +67,7 @@ namespace uapmd {
             std::unique_ptr<AudioProcessContext>& mixBusContext,
             SequenceProcessContext& sequence,
             TimelineFacade* timeline,
-            std::atomic<OutputAlignmentMonitoringPolicy>& outputAlignmentMonitoringPolicy,
-            std::atomic<RealtimeInfiniteTailPolicy>& realtimeInfiniteTailPolicy);
+            LatencyCompensationManager& latencyCompensationManager);
 
         void rebuildRoutingCaches();
         OutputRoutingExtension* outputRoutingExtensionForTrackIndex(uapmd_track_index_t trackIndex) const;
@@ -79,6 +78,7 @@ namespace uapmd {
         TrackOutputRoutingTarget effectiveTrackOutputBusRoutingTarget(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
+        bool trackUsesLowLatencyMonitoring(uapmd_track_index_t trackIndex) const;
         uint32_t trackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const;
         uint32_t maxTrackRenderLeadInSamples() const;
         uint32_t maxLiveInputRenderLeadInSamples() const;

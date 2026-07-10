@@ -36,6 +36,28 @@ namespace uapmd {
             }
         }
 
+        std::string playbackCompensationModeToString(PlaybackCompensationMode mode) {
+            switch (mode) {
+                case PlaybackCompensationMode::LOW_LATENCY:
+                    return "low_latency";
+                case PlaybackCompensationMode::COMPENSATED:
+                default:
+                    return "compensated";
+            }
+        }
+
+        std::string inputMonitoringPolicyToString(InputMonitoringPolicy policy) {
+            switch (policy) {
+                case InputMonitoringPolicy::TAPE_STYLE:
+                    return "tape_style";
+                case InputMonitoringPolicy::OFF:
+                    return "off";
+                case InputMonitoringPolicy::AUTO:
+                default:
+                    return "auto";
+            }
+        }
+
     }
 
     // Helper to generate unique anchor IDs for tracks and clips
@@ -229,6 +251,34 @@ namespace uapmd {
 
         // Create root JSON object
         auto root = choc::value::createObject("UapmdProject");
+        auto settingsObj = choc::value::createObject("ProjectSettings");
+        auto latencySettingsObj = choc::value::createObject("LatencyCompensationSettings");
+        auto latencySettings = data->latencyCompensationSettings();
+        latencySettingsObj.addMember("implementation", latencySettings.implementation_id);
+        latencySettingsObj.addMember("playback_compensation_mode",
+                                     playbackCompensationModeToString(latencySettings.playback_compensation_mode));
+        latencySettingsObj.addMember("input_monitoring_policy",
+                                     inputMonitoringPolicyToString(latencySettings.input_monitoring_policy));
+        if (!latencySettings.monitored_track_indexes.empty()) {
+            auto monitoredTracksArray = choc::value::createEmptyArray();
+            for (auto trackIndex : latencySettings.monitored_track_indexes)
+                monitoredTracksArray.addArrayElement(trackIndex);
+            latencySettingsObj.addMember("monitored_tracks", monitoredTracksArray);
+        }
+        if (!latencySettings.record_armed_track_indexes.empty()) {
+            auto recordArmedTracksArray = choc::value::createEmptyArray();
+            for (auto trackIndex : latencySettings.record_armed_track_indexes)
+                recordArmedTracksArray.addArrayElement(trackIndex);
+            latencySettingsObj.addMember("record_armed_tracks", recordArmedTracksArray);
+        }
+        if (!latencySettings.implementation_properties.empty()) {
+            auto propertiesObj = choc::value::createObject("LatencyCompensationProperties");
+            for (const auto& [key, value] : latencySettings.implementation_properties)
+                propertiesObj.addMember(key, value);
+            latencySettingsObj.addMember("properties", propertiesObj);
+        }
+        settingsObj.addMember("latency_compensation", latencySettingsObj);
+        root.addMember("settings", settingsObj);
 
         // Serialize tracks
         auto& tracks = data->tracks();

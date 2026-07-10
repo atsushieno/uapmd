@@ -238,6 +238,78 @@ bool parseGraphBusType(std::string_view text, uapmd::AudioPluginGraphBusType& ty
     return false;
 }
 
+std::string playbackCompensationModeToString(uapmd::PlaybackCompensationMode mode)
+{
+    switch (mode) {
+        case uapmd::PlaybackCompensationMode::COMPENSATED: return "compensated";
+        case uapmd::PlaybackCompensationMode::LOW_LATENCY: return "lowLatency";
+    }
+    return "compensated";
+}
+
+bool parsePlaybackCompensationMode(std::string_view text, uapmd::PlaybackCompensationMode& mode)
+{
+    if (text == "compensated") { mode = uapmd::PlaybackCompensationMode::COMPENSATED; return true; }
+    if (text == "lowLatency") { mode = uapmd::PlaybackCompensationMode::LOW_LATENCY; return true; }
+    return false;
+}
+
+std::string inputMonitoringPolicyToString(uapmd::InputMonitoringPolicy policy)
+{
+    switch (policy) {
+        case uapmd::InputMonitoringPolicy::TAPE_STYLE: return "tapeStyle";
+        case uapmd::InputMonitoringPolicy::AUTO: return "auto";
+        case uapmd::InputMonitoringPolicy::OFF: return "off";
+    }
+    return "auto";
+}
+
+bool parseInputMonitoringPolicy(std::string_view text, uapmd::InputMonitoringPolicy& policy)
+{
+    if (text == "tapeStyle") { policy = uapmd::InputMonitoringPolicy::TAPE_STYLE; return true; }
+    if (text == "auto") { policy = uapmd::InputMonitoringPolicy::AUTO; return true; }
+    if (text == "off") { policy = uapmd::InputMonitoringPolicy::OFF; return true; }
+    return false;
+}
+
+std::string realtimeInfiniteTailPolicyToString(uapmd::RealtimeInfiniteTailPolicy policy)
+{
+    switch (policy) {
+        case uapmd::RealtimeInfiniteTailPolicy::LATENCY_FALLBACK: return "latencyFallback";
+        case uapmd::RealtimeInfiniteTailPolicy::IMMEDIATE_STOP: return "immediateStop";
+    }
+    return "latencyFallback";
+}
+
+bool parseRealtimeInfiniteTailPolicy(std::string_view text, uapmd::RealtimeInfiniteTailPolicy& policy)
+{
+    if (text == "latencyFallback") { policy = uapmd::RealtimeInfiniteTailPolicy::LATENCY_FALLBACK; return true; }
+    if (text == "immediateStop") { policy = uapmd::RealtimeInfiniteTailPolicy::IMMEDIATE_STOP; return true; }
+    return false;
+}
+
+choc::value::Value serializeLatencyCompensationState(uapmd::LatencyCompensationManager& manager,
+                                                     int32_t trackCount)
+{
+    auto result = choc::value::createObject("");
+    result.setMember("playbackCompensationMode",
+                     playbackCompensationModeToString(manager.playbackCompensationMode()));
+    result.setMember("inputMonitoringPolicy",
+                     inputMonitoringPolicyToString(manager.inputMonitoringPolicy()));
+    result.setMember("debugRealtimeInfiniteTailPolicy",
+                     realtimeInfiniteTailPolicyToString(manager.realtimeInfiniteTailPolicy()));
+    auto tracks = choc::value::createEmptyArray();
+    for (int32_t trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
+        auto track = choc::value::createObject("");
+        track.setMember("trackIndex", trackIndex);
+        track.setMember("recordArmed", manager.trackRecordArmed(trackIndex));
+        track.setMember("monitoringEnabled", manager.trackMonitoringEnabled(trackIndex));
+        tracks.addArrayElement(track);
+    }
+    result.setMember("tracks", tracks);
+    return result;
+}
+
 choc::value::Value serializeGraphEndpoint(const uapmd::AudioPluginGraphEndpoint& endpoint)
 {
     auto obj = choc::value::createObject ("");
@@ -354,6 +426,16 @@ static choc::value::Value buildToolDefinitions()
             "get_timeline_state",
             "Get tempo, time signature, playback position, and loop settings.",
             R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "get_latency_compensation_state",
+            "Get project latency-compensation settings and per-track monitor/record states.",
+            R"j({"type":"object","properties":{}})j"
+        },
+        {
+            "set_latency_compensation_state",
+            "Update latency-compensation settings. String enums: playbackCompensationMode=compensated|lowLatency, inputMonitoringPolicy=tapeStyle|auto|off, debugRealtimeInfiniteTailPolicy=latencyFallback|immediateStop.",
+            R"j({"type":"object","properties":{"playbackCompensationMode":{"type":"string"},"inputMonitoringPolicy":{"type":"string"},"debugRealtimeInfiniteTailPolicy":{"type":"string"},"tracks":{"type":"array","items":{"type":"object","required":["trackIndex"],"properties":{"trackIndex":{"type":"integer"},"recordArmed":{"type":"boolean"},"monitoringEnabled":{"type":"boolean"}}}}}})j"
         },
         {
             "set_tempo",
@@ -741,6 +823,71 @@ static choc::value::Value toolSetTempo(const choc::value::Value& args)
     AppModel::instance().timeline().tempo = bpm;
     auto result = choc::value::createObject ("");
     result.setMember ("tempo", bpm);
+    return result;
+}
+
+static choc::value::Value toolGetLatencyCompensationState(const choc::value::Value&)
+{
+    auto& sequencer = AppModel::instance().sequencer();
+    auto* engine = sequencer.engine();
+    auto* manager = engine ? engine->latencyCompensationManager() : nullptr;
+    if (!manager)
+        throw std::runtime_error("latency compensation manager is unavailable");
+    return serializeLatencyCompensationState(*manager, static_cast<int32_t>(engine->tracks().size()));
+}
+
+static choc::value::Value toolSetLatencyCompensationState(const choc::value::Value& args)
+{
+    if (!args.isObject())
+        throw std::invalid_argument("payload must be an object");
+
+    auto& appModel = AppModel::instance();
+    auto* engine = appModel.sequencer().engine();
+    auto* manager = engine ? engine->latencyCompensationManager() : nullptr;
+    if (!manager)
+        throw std::runtime_error("latency compensation manager is unavailable");
+
+    bool markProjectDirty = false;
+    if (args.hasObjectMember("playbackCompensationMode")) {
+        uapmd::PlaybackCompensationMode mode;
+        if (!parsePlaybackCompensationMode(args["playbackCompensationMode"].get<std::string>(), mode))
+            throw std::invalid_argument("playbackCompensationMode is invalid");
+        manager->playbackCompensationMode(mode);
+        markProjectDirty = true;
+    }
+    if (args.hasObjectMember("inputMonitoringPolicy")) {
+        uapmd::InputMonitoringPolicy policy;
+        if (!parseInputMonitoringPolicy(args["inputMonitoringPolicy"].get<std::string>(), policy))
+            throw std::invalid_argument("inputMonitoringPolicy is invalid");
+        manager->inputMonitoringPolicy(policy);
+        markProjectDirty = true;
+    }
+    if (args.hasObjectMember("debugRealtimeInfiniteTailPolicy")) {
+        uapmd::RealtimeInfiniteTailPolicy policy;
+        if (!parseRealtimeInfiniteTailPolicy(args["debugRealtimeInfiniteTailPolicy"].get<std::string>(), policy))
+            throw std::invalid_argument("debugRealtimeInfiniteTailPolicy is invalid");
+        manager->realtimeInfiniteTailPolicy(policy);
+    }
+    if (args.hasObjectMember("tracks")) {
+        auto tracks = args["tracks"];
+        if (!tracks.isArray())
+            throw std::invalid_argument("tracks must be an array");
+        for (const auto& trackValue : tracks) {
+            if (!trackValue.isObject() || !trackValue.hasObjectMember("trackIndex"))
+                throw std::invalid_argument("track entry must contain trackIndex");
+            const auto trackIndex = trackValue["trackIndex"].get<int32_t>();
+            if (trackValue.hasObjectMember("recordArmed"))
+                manager->trackRecordArmed(trackIndex, trackValue["recordArmed"].get<bool>());
+            if (trackValue.hasObjectMember("monitoringEnabled"))
+                manager->trackMonitoringEnabled(trackIndex, trackValue["monitoringEnabled"].get<bool>());
+        }
+        markProjectDirty = true;
+    }
+
+    if (markProjectDirty)
+        appModel.markProjectDirty();
+    auto result = choc::value::createObject("");
+    result.setMember("success", true);
     return result;
 }
 
@@ -1266,6 +1413,8 @@ struct McpServer::Impl {
             else if (toolName == "disconnect_track_graph_connection") toolResult = toolDisconnectTrackGraphConnection (args);
             else if (toolName == "revert_track_graph_to_simple") toolResult = toolRevertTrackGraphToSimple (args);
             else if (toolName == "get_timeline_state")  toolResult = toolGetTimelineState (args);
+            else if (toolName == "get_latency_compensation_state") toolResult = toolGetLatencyCompensationState (args);
+            else if (toolName == "set_latency_compensation_state") toolResult = toolSetLatencyCompensationState (args);
             else if (toolName == "set_tempo")           toolResult = toolSetTempo (args);
             else if (toolName == "list_clips")               toolResult = toolListClips (args);
             else if (toolName == "get_clip_audio_events")    toolResult = toolGetClipAudioEvents (args);

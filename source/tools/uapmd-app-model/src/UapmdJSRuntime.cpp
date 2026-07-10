@@ -1260,6 +1260,92 @@ uapmd::AudioPluginGraphEndpoint makeGraphEndpoint(
     };
 }
 
+std::string playbackCompensationModeToString(uapmd::PlaybackCompensationMode mode) {
+    switch (mode) {
+        case uapmd::PlaybackCompensationMode::COMPENSATED: return "compensated";
+        case uapmd::PlaybackCompensationMode::LOW_LATENCY: return "lowLatency";
+    }
+    return "compensated";
+}
+
+bool parsePlaybackCompensationMode(std::string_view text, uapmd::PlaybackCompensationMode& mode) {
+    if (text == "compensated") {
+        mode = uapmd::PlaybackCompensationMode::COMPENSATED;
+        return true;
+    }
+    if (text == "lowLatency") {
+        mode = uapmd::PlaybackCompensationMode::LOW_LATENCY;
+        return true;
+    }
+    return false;
+}
+
+std::string inputMonitoringPolicyToString(uapmd::InputMonitoringPolicy policy) {
+    switch (policy) {
+        case uapmd::InputMonitoringPolicy::TAPE_STYLE: return "tapeStyle";
+        case uapmd::InputMonitoringPolicy::AUTO: return "auto";
+        case uapmd::InputMonitoringPolicy::OFF: return "off";
+    }
+    return "auto";
+}
+
+bool parseInputMonitoringPolicy(std::string_view text, uapmd::InputMonitoringPolicy& policy) {
+    if (text == "tapeStyle") {
+        policy = uapmd::InputMonitoringPolicy::TAPE_STYLE;
+        return true;
+    }
+    if (text == "auto") {
+        policy = uapmd::InputMonitoringPolicy::AUTO;
+        return true;
+    }
+    if (text == "off") {
+        policy = uapmd::InputMonitoringPolicy::OFF;
+        return true;
+    }
+    return false;
+}
+
+std::string realtimeInfiniteTailPolicyToString(uapmd::RealtimeInfiniteTailPolicy policy) {
+    switch (policy) {
+        case uapmd::RealtimeInfiniteTailPolicy::LATENCY_FALLBACK: return "latencyFallback";
+        case uapmd::RealtimeInfiniteTailPolicy::IMMEDIATE_STOP: return "immediateStop";
+    }
+    return "latencyFallback";
+}
+
+bool parseRealtimeInfiniteTailPolicy(std::string_view text, uapmd::RealtimeInfiniteTailPolicy& policy) {
+    if (text == "latencyFallback") {
+        policy = uapmd::RealtimeInfiniteTailPolicy::LATENCY_FALLBACK;
+        return true;
+    }
+    if (text == "immediateStop") {
+        policy = uapmd::RealtimeInfiniteTailPolicy::IMMEDIATE_STOP;
+        return true;
+    }
+    return false;
+}
+
+choc::value::Value serializeLatencyCompensationState(uapmd::LatencyCompensationManager& manager,
+                                                     int32_t trackCount) {
+    auto result = choc::value::createObject("LatencyCompensationState");
+    result.setMember("playbackCompensationMode",
+                     playbackCompensationModeToString(manager.playbackCompensationMode()));
+    result.setMember("inputMonitoringPolicy",
+                     inputMonitoringPolicyToString(manager.inputMonitoringPolicy()));
+    result.setMember("debugRealtimeInfiniteTailPolicy",
+                     realtimeInfiniteTailPolicyToString(manager.realtimeInfiniteTailPolicy()));
+    auto tracks = choc::value::createEmptyArray();
+    for (int32_t trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
+        auto track = choc::value::createObject("LatencyCompensationTrackState");
+        track.setMember("trackIndex", trackIndex);
+        track.setMember("recordArmed", manager.trackRecordArmed(trackIndex));
+        track.setMember("monitoringEnabled", manager.trackMonitoringEnabled(trackIndex));
+        tracks.addArrayElement(track);
+    }
+    result.setMember("tracks", tracks);
+    return result;
+}
+
 } // namespace
 
 void UapmdJSRuntime::registerTimelineAPI()
@@ -1277,6 +1363,97 @@ void UapmdJSRuntime::registerTimelineAPI()
         obj.setMember ("loopStartSamples", choc::value::createInt64 (state.loopStart.samples));
         obj.setMember ("loopEndSamples", choc::value::createInt64 (state.loopEnd.samples));
         return obj;
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_get_latency_compensation_state", [] (choc::javascript::ArgumentList) -> choc::value::Value
+    {
+        auto& appModel = uapmd::AppModel::instance();
+        auto* engine = appModel.sequencer().engine();
+        if (!engine || !engine->latencyCompensationManager())
+            return choc::value::createObject("LatencyCompensationState");
+        const auto trackCount = static_cast<int32_t>(engine->tracks().size());
+        return serializeLatencyCompensationState(*engine->latencyCompensationManager(), trackCount);
+    });
+
+    jsContext_.registerFunction ("__remidy_timeline_set_latency_compensation_state", [] (choc::javascript::ArgumentList args) -> choc::value::Value
+    {
+        auto result = choc::value::createObject("LatencyCompensationMutation");
+        if (args.size() < 1 || args[0] == nullptr || !args[0]->isObject()) {
+            result.setMember("success", false);
+            result.setMember("error", "payload must be an object");
+            return result;
+        }
+
+        auto& appModel = uapmd::AppModel::instance();
+        auto* engine = appModel.sequencer().engine();
+        auto* manager = engine ? engine->latencyCompensationManager() : nullptr;
+        if (!manager) {
+            result.setMember("success", false);
+            result.setMember("error", "latency compensation manager is unavailable");
+            return result;
+        }
+
+        bool markProjectDirty = false;
+        auto payload = args[0]->getView();
+        if (payload.hasObjectMember("playbackCompensationMode")) {
+            uapmd::PlaybackCompensationMode mode;
+            const auto text = payload["playbackCompensationMode"].get<std::string>();
+            if (!parsePlaybackCompensationMode(text, mode)) {
+                result.setMember("success", false);
+                result.setMember("error", "playbackCompensationMode is invalid");
+                return result;
+            }
+            manager->playbackCompensationMode(mode);
+            markProjectDirty = true;
+        }
+        if (payload.hasObjectMember("inputMonitoringPolicy")) {
+            uapmd::InputMonitoringPolicy policy;
+            const auto text = payload["inputMonitoringPolicy"].get<std::string>();
+            if (!parseInputMonitoringPolicy(text, policy)) {
+                result.setMember("success", false);
+                result.setMember("error", "inputMonitoringPolicy is invalid");
+                return result;
+            }
+            manager->inputMonitoringPolicy(policy);
+            markProjectDirty = true;
+        }
+        if (payload.hasObjectMember("debugRealtimeInfiniteTailPolicy")) {
+            uapmd::RealtimeInfiniteTailPolicy policy;
+            const auto text = payload["debugRealtimeInfiniteTailPolicy"].get<std::string>();
+            if (!parseRealtimeInfiniteTailPolicy(text, policy)) {
+                result.setMember("success", false);
+                result.setMember("error", "debugRealtimeInfiniteTailPolicy is invalid");
+                return result;
+            }
+            manager->realtimeInfiniteTailPolicy(policy);
+        }
+        if (payload.hasObjectMember("tracks")) {
+            auto tracks = payload["tracks"];
+            if (!tracks.isArray()) {
+                result.setMember("success", false);
+                result.setMember("error", "tracks must be an array");
+                return result;
+            }
+            for (uint32_t i = 0; i < tracks.size(); ++i) {
+                const auto& trackValue = tracks[i];
+                if (!trackValue.isObject() || !trackValue.hasObjectMember("trackIndex")) {
+                    result.setMember("success", false);
+                    result.setMember("error", "track entry must contain trackIndex");
+                    return result;
+                }
+                const auto trackIndex = trackValue["trackIndex"].get<int32_t>();
+                if (trackValue.hasObjectMember("recordArmed"))
+                    manager->trackRecordArmed(trackIndex, trackValue["recordArmed"].get<bool>());
+                if (trackValue.hasObjectMember("monitoringEnabled"))
+                    manager->trackMonitoringEnabled(trackIndex, trackValue["monitoringEnabled"].get<bool>());
+            }
+            markProjectDirty = true;
+        }
+
+        if (markProjectDirty)
+            appModel.markProjectDirty();
+        result.setMember("success", true);
+        return result;
     });
 
     jsContext_.registerFunction ("__remidy_timeline_set_tempo", [] (choc::javascript::ArgumentList args) -> choc::value::Value
