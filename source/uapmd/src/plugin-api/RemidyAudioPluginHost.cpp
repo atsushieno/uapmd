@@ -19,6 +19,22 @@
 namespace uapmd {
     int32_t instanceIdSerial{0};
 
+    namespace {
+        void notifyTimingInfoChangeIfNeeded(
+            remidy::PluginInstance& instance,
+            uint32_t previousLatency,
+            double previousTail) {
+            const auto currentLatency = instance.latencyInSamples();
+            const auto currentTail = instance.tailLengthInSeconds();
+            if (currentLatency == previousLatency && currentTail == previousTail)
+                return;
+            instance.timingInfoChangeEvent().notify({
+                .latency_changed = currentLatency != previousLatency,
+                .tail_changed = currentTail != previousTail,
+            });
+        }
+    }
+
     static remidy::PluginStateSupport::StateContextType toRemidyStateContextType(uapmd::StateContextType type) {
         switch (type) {
             case uapmd::StateContextType::Remember:
@@ -251,12 +267,19 @@ namespace uapmd {
         std::string& pluginId() const override { return instance->info()->pluginId(); }
 
         void loadPreset(int32_t presetIndex) override {
+            const auto previousLatency = instance->latencyInSamples();
+            const auto previousTail = instance->tailLengthInSeconds();
             instance->presets()->loadPreset(presetIndex);
+            notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
             instance->markDirty();
         }
 
         void loadPreset(int32_t presetIndex, std::function<void(std::string error, void* callbackContext)> completed) override {
-            instance->presets()->loadPreset(presetIndex, [this, completed = std::move(completed)](std::string error, void* callbackContext) mutable {
+            const auto previousLatency = instance->latencyInSamples();
+            const auto previousTail = instance->tailLengthInSeconds();
+            instance->presets()->loadPreset(presetIndex, [this, previousLatency, previousTail, completed = std::move(completed)](std::string error, void* callbackContext) mutable {
+                if (error.empty())
+                    notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
                 if (error.empty())
                     instance->markDirty();
                 if (completed)
@@ -269,7 +292,10 @@ namespace uapmd {
         }
 
         void loadStateSync(std::vector<uint8_t> &state) override {
+            const auto previousLatency = instance->latencyInSamples();
+            const auto previousTail = instance->tailLengthInSeconds();
             instance->states()->setState(state, remidy::PluginStateSupport::StateContextType::Project, false);
+            notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
         }
 
         void requestState(StateContextType stateContextType, bool includeUiState, void* callbackContext,
@@ -279,7 +305,19 @@ namespace uapmd {
 
         void loadState(std::vector<uint8_t> state, StateContextType stateContextType, bool includeUiState, void* callbackContext,
                        std::function<void(std::string error, void* callbackContext)> completed) override {
-            instance->states()->loadState(std::move(state), toRemidyStateContextType(stateContextType), includeUiState, callbackContext, std::move(completed));
+            const auto previousLatency = instance->latencyInSamples();
+            const auto previousTail = instance->tailLengthInSeconds();
+            instance->states()->loadState(
+                std::move(state),
+                toRemidyStateContextType(stateContextType),
+                includeUiState,
+                callbackContext,
+                [this, previousLatency, previousTail, completed = std::move(completed)](std::string error, void* callbackContext) mutable {
+                    if (error.empty())
+                        notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
+                    if (completed)
+                        completed(std::move(error), callbackContext);
+                });
         }
 
         double getParameterValue(int32_t index) override {
@@ -289,7 +327,10 @@ namespace uapmd {
         }
 
         void setParameterValue(int32_t index, double value) override {
+            const auto previousLatency = instance->latencyInSamples();
+            const auto previousTail = instance->tailLengthInSeconds();
             instance->parameters()->setParameter(index, value);
+            notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
             instance->markDirty();
         }
 
@@ -302,7 +343,10 @@ namespace uapmd {
         }
 
         void setPerNoteControllerValue(uint8_t note, uint8_t index, double value) override {
+            const auto previousLatency = instance->latencyInSamples();
+            const auto previousTail = instance->tailLengthInSeconds();
             instance->parameters()->setPerNoteController({.note = note }, index, value);
+            notifyTimingInfoChangeIfNeeded(*instance, previousLatency, previousTail);
             instance->markDirty();
         }
 

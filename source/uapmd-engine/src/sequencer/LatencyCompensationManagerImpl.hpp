@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <uapmd/uapmd.hpp>
@@ -47,6 +48,16 @@ namespace uapmd {
         std::atomic<bool>& reset_to_start_after_latency_drain_;
         std::vector<OutputAlignmentDelayLine> output_alignment_delay_lines_{};
         std::function<void(const std::function<void()>&)> run_mutation_{};
+        std::function<AudioPluginInstanceAPI*(int32_t)> resolve_plugin_instance_{};
+        std::function<void()> prepare_for_timing_change_{};
+        std::unordered_map<int32_t, remidy::EventListenerId> timing_listener_ids_{};
+        std::unordered_map<int32_t, AudioPluginInstanceAPI*> timing_listener_instances_{};
+        struct TimingSnapshot {
+            uint32_t latency_in_samples{0};
+            double tail_length_in_seconds{0.0};
+        };
+        std::unordered_map<int32_t, TimingSnapshot> timing_snapshots_{};
+        std::shared_ptr<std::atomic<bool>> callbacks_alive_{std::make_shared<std::atomic<bool>>(true)};
 
         int64_t alignToQuantum(int64_t samples) const;
         void clearDrainState();
@@ -54,6 +65,8 @@ namespace uapmd {
         int64_t maxStopDrainInSamples() const;
         void schedulePrerollFromAudiblePosition(int64_t samples);
         void applyStateChange();
+        void handlePluginTimingInfoChange(int32_t instanceId, remidy::PluginTimingInfoChange change);
+        bool refreshGraphTimingInfo(int32_t instanceId);
 
     public:
         LatencyCompensationManagerImpl(
@@ -67,9 +80,14 @@ namespace uapmd {
             std::atomic<bool>& latencyDrainActive,
             std::atomic<int64_t>& latencyDrainRemainingSamples,
             std::atomic<bool>& resetToStartAfterLatencyDrain,
-            std::function<void(const std::function<void()>&)> runMutation);
+            std::function<void(const std::function<void()>&)> runMutation,
+            std::function<AudioPluginInstanceAPI*(int32_t)> resolvePluginInstance,
+            std::function<void()> prepareForTimingChange);
 
         void attachTrackRoutingManager(TrackRoutingManager& trackRoutingManager);
+        void syncPluginTimingListeners();
+        void removePluginTimingListener(int32_t instanceId);
+        void clearPluginTimingListeners();
         bool trackRecordArmed(uapmd_track_index_t trackIndex) const override;
         void trackRecordArmed(uapmd_track_index_t trackIndex, bool armed) override;
         bool trackMonitoringEnabled(uapmd_track_index_t trackIndex) const override;

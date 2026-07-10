@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <unordered_set>
 
 #include "TrackRoutingManager.hpp"
 
@@ -38,7 +39,9 @@ namespace uapmd {
         std::atomic<bool>& latencyDrainActive,
         std::atomic<int64_t>& latencyDrainRemainingSamples,
         std::atomic<bool>& resetToStartAfterLatencyDrain,
-        std::function<void(const std::function<void()>&)> runMutation)
+        std::function<void(const std::function<void()>&)> runMutation,
+        std::function<AudioPluginInstanceAPI*(int32_t)> resolvePluginInstance,
+        std::function<void()> prepareForTimingChange)
         : audio_buffer_size_in_frames_(audioBufferSizeInFrames)
         , tracks_(tracks)
         , master_track_(masterTrack)
@@ -49,7 +52,146 @@ namespace uapmd {
         , latency_drain_active_(latencyDrainActive)
         , latency_drain_remaining_samples_(latencyDrainRemainingSamples)
         , reset_to_start_after_latency_drain_(resetToStartAfterLatencyDrain)
-        , run_mutation_(std::move(runMutation)) {
+        , run_mutation_(std::move(runMutation))
+        , resolve_plugin_instance_(std::move(resolvePluginInstance))
+        , prepare_for_timing_change_(std::move(prepareForTimingChange)) {
+    }
+
+    void LatencyCompensationManagerImpl::clearPluginTimingListeners() {
+        callbacks_alive_->store(false, std::memory_order_release);
+        while (!timing_listener_ids_.empty())
+            removePluginTimingListener(timing_listener_ids_.begin()->first);
+    }
+
+    void LatencyCompensationManagerImpl::removePluginTimingListener(int32_t instanceId) {
+        const auto listenerIt = timing_listener_ids_.find(instanceId);
+        const auto instanceIt = timing_listener_instances_.find(instanceId);
+        if (listenerIt != timing_listener_ids_.end() &&
+            instanceIt != timing_listener_instances_.end() && instanceIt->second)
+            instanceIt->second->removeTimingInfoChangeListener(listenerIt->second);
+        timing_listener_ids_.erase(instanceId);
+        timing_listener_instances_.erase(instanceId);
+        timing_snapshots_.erase(instanceId);
+    }
+
+    void LatencyCompensationManagerImpl::syncPluginTimingListeners() {
+        std::unordered_set<int32_t> activeInstanceIds;
+        for (const auto& track : tracks_)
+            if (track)
+                for (const auto instanceId : track->orderedInstanceIds())
+                    activeInstanceIds.insert(instanceId);
+        if (master_track_)
+            for (const auto instanceId : master_track_->orderedInstanceIds())
+                activeInstanceIds.insert(instanceId);
+
+        for (auto it = timing_listener_ids_.begin(); it != timing_listener_ids_.end();) {
+            const auto instanceId = it->first;
+            const auto instanceIt = timing_listener_instances_.find(instanceId);
+            if (activeInstanceIds.contains(instanceId) &&
+                instanceIt != timing_listener_instances_.end() && instanceIt->second) {
+                ++it;
+                continue;
+            }
+
+            if (instanceIt != timing_listener_instances_.end() && instanceIt->second)
+                instanceIt->second->removeTimingInfoChangeListener(it->second);
+            timing_listener_instances_.erase(instanceId);
+            timing_snapshots_.erase(instanceId);
+            it = timing_listener_ids_.erase(it);
+        }
+
+        for (const auto instanceId : activeInstanceIds) {
+            auto* instance = resolve_plugin_instance_ ? resolve_plugin_instance_(instanceId) : nullptr;
+            if (!instance)
+                continue;
+
+            const auto listenerIt = timing_listener_ids_.find(instanceId);
+            const auto registeredInstanceIt = timing_listener_instances_.find(instanceId);
+            if (listenerIt != timing_listener_ids_.end() &&
+                registeredInstanceIt != timing_listener_instances_.end() &&
+                registeredInstanceIt->second == instance)
+                continue;
+
+            if (listenerIt != timing_listener_ids_.end() &&
+                registeredInstanceIt != timing_listener_instances_.end() &&
+                registeredInstanceIt->second) {
+                registeredInstanceIt->second->removeTimingInfoChangeListener(listenerIt->second);
+                timing_listener_ids_.erase(listenerIt);
+                timing_listener_instances_.erase(registeredInstanceIt);
+            }
+
+            const auto alive = callbacks_alive_;
+            const auto listenerId = instance->addTimingInfoChangeListener(
+                [this, alive, instanceId](remidy::PluginTimingInfoChange change) {
+                    if (!alive->load(std::memory_order_acquire))
+                        return;
+                    handlePluginTimingInfoChange(instanceId, change);
+                });
+            if (listenerId == 0)
+                continue;
+
+            timing_listener_ids_[instanceId] = listenerId;
+            timing_listener_instances_[instanceId] = instance;
+            timing_snapshots_[instanceId] = TimingSnapshot{
+                instance->latencyInSamples(),
+                instance->tailLengthInSeconds(),
+            };
+        }
+    }
+
+    bool LatencyCompensationManagerImpl::refreshGraphTimingInfo(int32_t instanceId) {
+        for (const auto& track : tracks_) {
+            if (!track || !track->graph().getPluginNode(instanceId))
+                continue;
+            track->graph().refreshTimingInfo();
+            return true;
+        }
+        if (master_track_ && master_track_->graph().getPluginNode(instanceId)) {
+            master_track_->graph().refreshTimingInfo();
+            return true;
+        }
+        return false;
+    }
+
+    void LatencyCompensationManagerImpl::handlePluginTimingInfoChange(
+        int32_t instanceId,
+        remidy::PluginTimingInfoChange change) {
+        if (!change.latency_changed && !change.tail_changed)
+            return;
+        if (!remidy::EventLoop::runningOnMainThread()) {
+            const auto alive = callbacks_alive_;
+            remidy::EventLoop::enqueueTaskOnMainThread([this, alive, instanceId, change] {
+                if (alive->load(std::memory_order_acquire))
+                    handlePluginTimingInfoChange(instanceId, change);
+            });
+            return;
+        }
+
+        auto* instance = resolve_plugin_instance_ ? resolve_plugin_instance_(instanceId) : nullptr;
+        if (!instance)
+            return;
+
+        const TimingSnapshot current{
+            instance->latencyInSamples(),
+            instance->tailLengthInSeconds(),
+        };
+        const auto previousIt = timing_snapshots_.find(instanceId);
+        if (previousIt != timing_snapshots_.end() &&
+            previousIt->second.latency_in_samples == current.latency_in_samples &&
+            previousIt->second.tail_length_in_seconds == current.tail_length_in_seconds)
+            return;
+        timing_snapshots_[instanceId] = current;
+
+        run_mutation_([&]() {
+            if (!refreshGraphTimingInfo(instanceId))
+                return;
+            if (prepare_for_timing_change_)
+                prepare_for_timing_change_();
+            if (track_routing_manager_)
+                track_routing_manager_->rebuildRoutingCaches();
+            applyLatencyCompensationTimingUpdate(
+                is_playback_active_.load(std::memory_order_acquire));
+        });
     }
 
     void LatencyCompensationManagerImpl::attachTrackRoutingManager(TrackRoutingManager& trackRoutingManager) {

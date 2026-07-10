@@ -404,6 +404,7 @@ namespace uapmd {
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
         std::vector<AudioPluginGraphConnection> connections() override;
+        void refreshTimingInfo() override;
         void saveTo(std::map<std::string, std::string>& entries) override;
         void loadFrom(const std::map<std::string, std::string>& entries) override;
         std::vector<TrackOutputRoutingRule> outputRoutingRules() const override;
@@ -847,6 +848,14 @@ namespace uapmd {
         RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
         auto node = findNode(*access, instanceId);
         return node ? node.get() : nullptr;
+    }
+
+    void AudioPluginFullDAGraphImpl::refreshTimingInfo() {
+        RTGraphState::ScopedAccess<farbot::ThreadType::nonRealtime> access(state_);
+        if (access->custom_topology)
+            rebuildCompiledState(*access);
+        else
+            rebuildSimpleConnections(*access);
     }
 
     std::vector<AudioPluginGraphConnection> AudioPluginFullDAGraphImpl::connections() {

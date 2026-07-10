@@ -50,6 +50,7 @@ namespace uapmd {
         AudioGraphNode* getNode(const std::string& nodeId) override;
         std::map<int32_t, AudioPluginNode*> plugins() override;
         AudioPluginNode* getPluginNode(int32_t instanceId) override;
+        void refreshTimingInfo() override;
         void saveTo(std::map<std::string, std::string>& entries) override;
         void loadFrom(const std::map<std::string, std::string>& entries) override;
         std::vector<std::shared_ptr<AudioGraphNode>> releaseNodesForMigration() override;
@@ -72,6 +73,11 @@ namespace uapmd {
 
     void AudioPluginGraphImpl::setEventOutputCallback(std::function<void(int32_t, const uapmd_ump_t*, size_t)> callback) {
         event_output_callback_ = std::move(callback);
+    }
+
+    void AudioPluginGraphImpl::refreshTimingInfo() {
+        // Linear graphs query node timing values directly, so there is no derived
+        // timing state to rebuild here.
     }
 
     int32_t AudioPluginGraphImpl::processAudio(AudioProcessContext& process) {

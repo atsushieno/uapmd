@@ -41,6 +41,9 @@ namespace uapmd {
 
         virtual std::map<int32_t, AudioPluginNode*> plugins() = 0;
         virtual AudioPluginNode* getPluginNode(int32_t instanceId) = 0;
+        // Refresh timing values reported by existing nodes without changing graph topology.
+        // This is a non-realtime operation used after a plugin changes latency or tail.
+        virtual void refreshTimingInfo() = 0;
         virtual void saveTo(std::map<std::string, std::string>& entries) = 0;
         virtual void loadFrom(const std::map<std::string, std::string>& entries) = 0;
 
