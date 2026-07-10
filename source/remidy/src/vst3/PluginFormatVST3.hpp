@@ -465,6 +465,7 @@ namespace remidy {
         std::vector<Midi1ControllerParamIDAssignment> cached_midi1_mappings_from_mapping{};
 
         void refreshMidiMappings();
+        void refreshTimingInfoOnMainThread();
 
     public:
         explicit PluginInstanceVST3(

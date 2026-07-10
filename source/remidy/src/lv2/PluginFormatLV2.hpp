@@ -3,6 +3,7 @@
 #include <atomic>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 
 #include "remidy/remidy.hpp"
@@ -355,6 +356,9 @@ namespace remidy {
         int32_t control_atom_port_index{-1};
         int32_t latency_port_index_{-1};
         std::atomic<uint32_t> cached_latency_samples_{0};
+        std::atomic<bool> timing_monitor_running_{true};
+        std::atomic<bool> timing_change_pending_{false};
+        std::thread timing_monitor_thread_{};
         struct PendingParameterChange {
             uint32_t index;
             double value;
@@ -396,6 +400,7 @@ namespace remidy {
         void flushPendingParameterChanges();
         void enqueueAtomEvent(uint32_t port_index, uint32_t buffer_size, uint32_t port_protocol, const void* buffer);
         void flushPendingAtomEvents();
+        void updateLatencyFromPort(bool notifyChange);
 
         int32_t portIndexForAtomGroupIndex(bool isInput, uint8_t atomGroup) {
             for (int i = 0, n = lv2_ports.size(); i < n; i++)

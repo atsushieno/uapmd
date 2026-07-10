@@ -1,6 +1,7 @@
 #include "PluginFormatLV2.hpp"
 #include <umppi/umppi.hpp>
 #include <algorithm>
+#include <chrono>
 #include <vector>
 #include <cstring>
 #include <lv2/atom/util.h>
@@ -11,9 +12,23 @@ remidy::PluginInstanceLV2::PluginInstanceLV2(PluginCatalogEntry* entry, PluginFo
         audio_buses(new AudioBuses(this)) {
     if (plugin && lilv_plugin_has_latency(plugin))
         latency_port_index_ = static_cast<int32_t>(lilv_plugin_get_latency_port_index(plugin));
+
+    if (latency_port_index_ >= 0) {
+        timing_monitor_thread_ = std::thread([this] {
+            while (timing_monitor_running_.load(std::memory_order_acquire)) {
+                if (timing_change_pending_.exchange(false, std::memory_order_acq_rel))
+                    notifyTimingInfoChanged({.latency_changed = true, .tail_changed = false});
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        });
+    }
 }
 
 remidy::PluginInstanceLV2::~PluginInstanceLV2() {
+    timing_monitor_running_.store(false, std::memory_order_release);
+    if (timing_monitor_thread_.joinable())
+        timing_monitor_thread_.join();
+
     processing_requested_.store(false, std::memory_order_seq_cst);
     if (instance) {
         bool expected = true;
@@ -146,11 +161,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
         lv2_ports.emplace_back(lv2Port);
     }
 
-    if (latency_port_index_ >= 0 && static_cast<size_t>(latency_port_index_) < lv2_ports.size()) {
-        auto* buffer = static_cast<float*>(lv2_ports[static_cast<size_t>(latency_port_index_)].port_buffer);
-        if (buffer)
-            cached_latency_samples_.store(static_cast<uint32_t>(std::max(0.0f, *buffer)), std::memory_order_release);
-    }
+    updateLatencyFromPort(false);
 
     auto ensureFallbackSize = [&](std::vector<std::vector<float>>& buffers, size_t count) {
         buffers.resize(count);
@@ -161,6 +172,20 @@ remidy::StatusCode remidy::PluginInstanceLV2::configure(ConfigurationRequest& co
     ensureFallbackSize(audio_out_fallback_buffers, audio_out_port_mapping.size());
 
     return StatusCode::OK;
+}
+
+void remidy::PluginInstanceLV2::updateLatencyFromPort(bool notifyChange) {
+    if (latency_port_index_ < 0 || static_cast<size_t>(latency_port_index_) >= lv2_ports.size())
+        return;
+
+    auto* buffer = static_cast<float*>(lv2_ports[static_cast<size_t>(latency_port_index_)].port_buffer);
+    if (!buffer)
+        return;
+
+    const auto latency = static_cast<uint32_t>(std::max(0.0f, *buffer));
+    const auto previousLatency = cached_latency_samples_.exchange(latency, std::memory_order_acq_rel);
+    if (notifyChange && latency != previousLatency)
+        timing_change_pending_.store(true, std::memory_order_release);
 }
 
 remidy::StatusCode remidy::PluginInstanceLV2::startProcessing() {
@@ -257,11 +282,7 @@ remidy::StatusCode remidy::PluginInstanceLV2::process(AudioProcessContext &proce
 
     lilv_instance_run(instance, process.frameCount());
 
-    if (latency_port_index_ >= 0 && static_cast<size_t>(latency_port_index_) < lv2_ports.size()) {
-        auto* buffer = static_cast<float*>(lv2_ports[static_cast<size_t>(latency_port_index_)].port_buffer);
-        if (buffer)
-            cached_latency_samples_.store(static_cast<uint32_t>(std::max(0.0f, *buffer)), std::memory_order_release);
-    }
+    updateLatencyFromPort(true);
 
     // Deliver any LV2 worker responses generated during this cycle
     remidy_lv2::jalv_worker_emit_responses(&implContext.worker, instance);

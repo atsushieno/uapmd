@@ -942,8 +942,12 @@ void PluginInstanceWebCLAP::updateCapabilities(const WebClapCapabilities& capabi
     has_event_outputs_ = capabilities.hasEventOutputs;
     has_state_support_ = capabilities.hasState;
     has_preset_load_support_ = capabilities.hasPresetLoad;
-    latency_in_samples_.store(capabilities.latencyInSamples);
-    tail_length_in_seconds_.store(capabilities.tailLengthInSeconds);
+    const auto previousLatency = latency_in_samples_.exchange(capabilities.latencyInSamples);
+    const auto previousTail = tail_length_in_seconds_.exchange(capabilities.tailLengthInSeconds);
+    notifyTimingInfoChanged({
+        .latency_changed = previousLatency != capabilities.latencyInSamples,
+        .tail_changed = previousTail != capabilities.tailLengthInSeconds,
+    });
 }
 
 bool PluginInstanceWebCLAP::getCachedParameterValue(uint32_t index, double* plainValue) const {

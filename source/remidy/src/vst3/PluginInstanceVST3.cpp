@@ -726,16 +726,7 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
         }
 
         if (flags & Vst::RestartFlags::kLatencyChanged) {
-            logger->logInfo("%s: Handling kLatencyChanged - querying new latency", pluginName.c_str());
-            if (processor) {
-                const uint32_t previousLatency =
-                    cached_latency_samples_.load(std::memory_order_acquire);
-                const uint32 newLatency = processor->getLatencySamples();
-                cached_latency_samples_.store(newLatency, std::memory_order_release);
-                logger->logInfo("%s: New latency: %u samples", pluginName.c_str(), newLatency);
-                if (newLatency != previousLatency)
-                    notifyTimingInfoChanged({.latency_changed = true, .tail_changed = false});
-            }
+            logger->logInfo("%s: Handling kLatencyChanged", pluginName.c_str());
         }
 
         if (flags & Vst::RestartFlags::kMidiCCAssignmentChanged) {
@@ -798,6 +789,26 @@ void remidy::PluginInstanceVST3::handleRestartComponent(int32 flags) {
             if (paramSupport)
                 paramSupport->refreshAllParameterMetadata();
         }
+
+        // Any restart request can change timing, even when the format-specific flag does
+        // not mention latency explicitly. Query after all restart work has completed.
+        refreshTimingInfoOnMainThread();
+    });
+}
+
+void remidy::PluginInstanceVST3::refreshTimingInfoOnMainThread() {
+    if (!processor)
+        return;
+
+    const auto previousLatency = cached_latency_samples_.load(std::memory_order_acquire);
+    const auto previousTail = tailLengthInSeconds();
+    const auto newLatency = processor->getLatencySamples();
+    cached_latency_samples_.store(newLatency, std::memory_order_release);
+    const auto newTail = tailLengthInSeconds();
+
+    notifyTimingInfoChanged({
+        .latency_changed = newLatency != previousLatency,
+        .tail_changed = newTail != previousTail,
     });
 }
 
