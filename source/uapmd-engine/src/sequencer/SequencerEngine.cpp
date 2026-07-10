@@ -14,6 +14,7 @@
 #include <remidy/detail/event-loop.hpp>
 #include <remidy/remidy.hpp>
 #include "uapmd-engine/uapmd-engine.hpp"
+#include "LatencyCompensationManager.hpp"
 #include "TrackRoutingManager.hpp"
 #include "readerwriterqueue.h"
 
@@ -48,30 +49,6 @@ namespace uapmd {
                 slots[i].ctx = std::make_unique<AudioProcessContext>(mc, umpBufSizeInInts);
                 free_slots.try_enqueue(i);
             }
-        }
-    };
-
-    struct OutputAlignmentDelayLine {
-        std::vector<std::vector<std::vector<float>>> buses;
-        size_t write_position{0};
-        size_t capacity_frames{0};
-
-        void reset() {
-            write_position = 0;
-            for (auto& bus : buses)
-                for (auto& channel : bus)
-                    std::fill(channel.begin(), channel.end(), 0.0f);
-        }
-
-        void configure(AudioProcessContext* ctx, size_t delayFrames) {
-            capacity_frames = std::max<size_t>(1, delayFrames + 1);
-            const uint32_t busCount = ctx ? ctx->audioOutBusCount() : 0;
-            buses.assign(busCount, {});
-            for (uint32_t busIndex = 0; busIndex < busCount; ++busIndex) {
-                const uint32_t channelCount = ctx->outputChannelCount(busIndex);
-                buses[busIndex].assign(channelCount, std::vector<float>(capacity_frames, 0.0f));
-            }
-            write_position = 0;
         }
     };
 
@@ -260,8 +237,8 @@ namespace uapmd {
         // hot paths never allocate.
         std::vector<size_t> pump_slot_indices_;   // pump thread: slot acquired per track
         std::vector<size_t> rt_dequeued_slots_;   // RT thread: slot dequeued per track
-        std::vector<OutputAlignmentDelayLine> output_alignment_delay_lines_;
         std::unique_ptr<TrackRoutingManager> track_routing_manager_{};
+        std::unique_ptr<LatencyCompensationManager> latency_compensation_manager_{};
 
         void ensureTrackBusConfiguration(int32_t trackIndex, remidy::PluginAudioBuses* pluginBuses);
         void ensureContextBusConfiguration(AudioProcessContext* ctx, remidy::PluginAudioBuses* pluginBuses);
@@ -428,16 +405,10 @@ namespace uapmd {
         void syncPluginTimingListeners();
         void clearPluginTimingListeners();
         void applyLatencyCompensationTimingUpdateLocked();
-        uint32_t maxTrackRenderLeadInSamples() const;
-        uint32_t maxRenderLeadInSamples() const;
-        uint32_t maxLiveInputRenderLeadInSamples() const;
-        uint32_t maxOutputAlignmentHoldbackInSamples() const;
         TrackOutputRoutingTarget effectiveTrackOutputBusRoutingTarget(
             uapmd_track_index_t trackIndex,
             uint32_t outputBusIndex) const;
-        uint32_t trackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const;
         uint32_t trackOutputAlignmentHoldbackInSamplesImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const;
-        int64_t maxStopDrainInSamples() const;
         void reconfigureMasterTrackInputBuses();
         void updateLatencyDrainState(int32_t frameCount);
         void reconfigureMixBusContext();
@@ -491,6 +462,17 @@ namespace uapmd {
             timeline_.get(),
             output_alignment_monitoring_policy_,
             realtime_infinite_tail_policy_);
+        latency_compensation_manager_ = std::make_unique<LatencyCompensationManager>(
+            audio_buffer_size_in_frames,
+            tracks_,
+            master_track_,
+            sequence,
+            *track_routing_manager_,
+            playback_position_samples_,
+            render_playback_position_samples_,
+            latency_drain_active_,
+            latency_drain_remaining_samples_,
+            reset_to_start_after_latency_drain_);
         reconfigureMixBusContext();
         configureTrackRouting(master_track_.get());
 
@@ -587,20 +569,10 @@ namespace uapmd {
 
     void SequencerEngineImpl::applyLatencyCompensationTimingUpdateLocked() {
         requestAllNotesOff();
-        reconfigureOutputAlignmentBuffers();
-        resetOutputAlignmentBuffers();
         transport_generation_.fetch_add(1, std::memory_order_release);
-
-        const auto audiblePosition = playback_position_samples_.load(std::memory_order_acquire);
-        if (is_playback_active_.load(std::memory_order_acquire)) {
-            schedulePrerollFromAudiblePosition(audiblePosition);
-            return;
-        }
-
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
-        render_playback_position_samples_.store(audiblePosition, std::memory_order_release);
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->applyLatencyCompensationTimingUpdate(
+                is_playback_active_.load(std::memory_order_acquire));
     }
 
     std::vector<remidy::AudioBusSpec> SequencerEngineImpl::mergeBusSpecs(
@@ -703,7 +675,9 @@ namespace uapmd {
     }
 
     uint32_t SequencerEngineImpl::trackRenderLeadInSamples(uapmd_track_index_t trackIndex) {
-        return trackAudibleRenderLeadInSamples(trackIndex);
+        return track_routing_manager_
+            ? track_routing_manager_->trackAudibleRenderLeadInSamples(trackIndex)
+            : 0;
     }
 
     uint32_t SequencerEngineImpl::masterTrackRenderLeadInSamples() {
@@ -777,43 +751,9 @@ namespace uapmd {
             : TrackOutputRoutingTarget{};
     }
 
-    uint32_t SequencerEngineImpl::trackAudibleRenderLeadInSamples(uapmd_track_index_t trackIndex) const {
-        return track_routing_manager_
-            ? track_routing_manager_->trackAudibleRenderLeadInSamples(trackIndex)
-            : 0;
-    }
-
-    uint32_t SequencerEngineImpl::maxTrackRenderLeadInSamples() const {
-        return track_routing_manager_
-            ? track_routing_manager_->maxTrackRenderLeadInSamples()
-            : 0;
-    }
-
-    uint32_t SequencerEngineImpl::maxRenderLeadInSamples() const {
-        return std::max(maxTrackRenderLeadInSamples(), master_track_ ? master_track_->renderLeadInSamples() : 0);
-    }
-
-    uint32_t SequencerEngineImpl::maxLiveInputRenderLeadInSamples() const {
-        return track_routing_manager_
-            ? track_routing_manager_->maxLiveInputRenderLeadInSamples()
-            : 0;
-    }
-
-    uint32_t SequencerEngineImpl::maxOutputAlignmentHoldbackInSamples() const {
-        return track_routing_manager_
-            ? track_routing_manager_->maxOutputAlignmentHoldbackInSamples()
-            : 0;
-    }
-
     uint32_t SequencerEngineImpl::trackOutputAlignmentHoldbackInSamplesImpl(uapmd_track_index_t trackIndex, uint32_t outputBusIndex) const {
         return track_routing_manager_
             ? track_routing_manager_->trackOutputAlignmentHoldbackInSamples(trackIndex, outputBusIndex)
-            : 0;
-    }
-
-    int64_t SequencerEngineImpl::maxStopDrainInSamples() const {
-        return track_routing_manager_
-            ? track_routing_manager_->maxStopDrainInSamples()
             : 0;
     }
 
@@ -828,17 +768,13 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::reconfigureOutputAlignmentBuffers() {
-        output_alignment_delay_lines_.resize(tracks_.size());
-        const size_t delayCapacityFrames = static_cast<size_t>(maxOutputAlignmentHoldbackInSamples()) + audio_buffer_size_in_frames;
-        for (size_t i = 0; i < output_alignment_delay_lines_.size(); ++i) {
-            auto* ctx = i < sequence.tracks.size() ? sequence.tracks[i] : nullptr;
-            output_alignment_delay_lines_[i].configure(ctx, delayCapacityFrames);
-        }
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->reconfigureOutputAlignmentBuffers();
     }
 
     void SequencerEngineImpl::resetOutputAlignmentBuffers() {
-        for (auto& delayLine : output_alignment_delay_lines_)
-            delayLine.reset();
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->resetOutputAlignmentBuffers();
     }
 
     void SequencerEngineImpl::resetProcessingState() {
@@ -897,33 +833,13 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::schedulePrerollFromAudiblePosition(int64_t samples) {
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
-        playback_position_samples_.store(samples, std::memory_order_release);
-        const auto prerollSamples = static_cast<int64_t>(maxRenderLeadInSamples());
-        const auto quantum = static_cast<int64_t>(audio_buffer_size_in_frames > 0 ? audio_buffer_size_in_frames : 1);
-        const auto alignedPreroll =
-            ((prerollSamples + quantum - 1) / quantum) * quantum;
-        render_playback_position_samples_.store(samples - alignedPreroll, std::memory_order_release);
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->setPlaybackPosition(samples, true);
     }
 
     void SequencerEngineImpl::updateLatencyDrainState(int32_t frameCount) {
-        if (!latency_drain_active_.load(std::memory_order_acquire))
-            return;
-
-        const auto remaining =
-            latency_drain_remaining_samples_.fetch_sub(frameCount, std::memory_order_acq_rel) - frameCount;
-        render_playback_position_samples_.fetch_add(frameCount, std::memory_order_release);
-        if (remaining > 0)
-            return;
-
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        if (reset_to_start_after_latency_drain_.exchange(false, std::memory_order_acq_rel)) {
-            playback_position_samples_.store(0, std::memory_order_release);
-            render_playback_position_samples_.store(0, std::memory_order_release);
-        }
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->updateLatencyDrainState(frameCount);
     }
 
     void SequencerEngineImpl::pumpAudio(AudioProcessContext& process) {
@@ -1095,45 +1011,11 @@ namespace uapmd {
             auto* ctx = sequence.tracks[i];
             if (!track || !ctx)
                 continue;
-            auto* delayLine = i < output_alignment_delay_lines_.size()
-                ? &output_alignment_delay_lines_[i]
-                : nullptr;
-            if (!delayLine || delayLine->capacity_frames == 0)
-                continue;
-
-            bool usedDelay = false;
-            const size_t startWritePosition = delayLine->write_position;
-            for (uint32_t busIndex = 0; busIndex < ctx->audioOutBusCount(); ++busIndex) {
-                const uint32_t outputAlignmentDelay =
-                    trackOutputAlignmentHoldbackInSamplesImpl(static_cast<uapmd_track_index_t>(i), busIndex);
-                if (outputAlignmentDelay == 0 || busIndex >= delayLine->buses.size())
-                    continue;
-
-                auto& busStorage = delayLine->buses[busIndex];
-                const size_t maxDelayFrames = delayLine->capacity_frames > 0 ? delayLine->capacity_frames - 1 : 0;
-                const size_t appliedDelayFrames = std::min<size_t>(outputAlignmentDelay, maxDelayFrames);
-                size_t writePosition = startWritePosition;
-                const uint32_t numChannels = std::min<uint32_t>(ctx->outputChannelCount(busIndex), static_cast<uint32_t>(busStorage.size()));
-                for (uint32_t ch = 0; ch < numChannels; ++ch) {
-                    auto& delayChannel = busStorage[ch];
-                    float* buffer = ctx->getFloatOutBuffer(busIndex, ch);
-                    if (!buffer)
-                        continue;
-                    writePosition = startWritePosition;
-                    for (int32_t frame = 0; frame < trackFrameCount; ++frame) {
-                        const float inputSample = buffer[frame];
-                        delayChannel[writePosition] = inputSample;
-                        const size_t readPosition =
-                            (writePosition + delayLine->capacity_frames - appliedDelayFrames) %
-                            delayLine->capacity_frames;
-                        buffer[frame] = delayChannel[readPosition];
-                        writePosition = (writePosition + 1) % delayLine->capacity_frames;
-                    }
-                }
-                usedDelay = true;
-            }
-            if (usedDelay)
-                delayLine->write_position = (startWritePosition + static_cast<size_t>(trackFrameCount)) % delayLine->capacity_frames;
+            if (latency_compensation_manager_)
+                latency_compensation_manager_->applyOutputAlignment(
+                    static_cast<uapmd_track_index_t>(i),
+                    *ctx,
+                    trackFrameCount);
         }
 
         const auto audiblePosition = playback_position_samples_.load(std::memory_order_acquire);
@@ -1635,25 +1517,22 @@ namespace uapmd {
     }
 
     void SequencerEngineImpl::playbackPosition(int64_t samples) {
-        if (is_playback_active_.load(std::memory_order_acquire)) {
-            resetOutputAlignmentBuffers();
-            schedulePrerollFromAudiblePosition(samples);
-            return;
-        }
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
-        playback_position_samples_.store(samples, std::memory_order_release);
-        render_playback_position_samples_.store(samples, std::memory_order_release);
-        resetOutputAlignmentBuffers();
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->setPlaybackPosition(
+                samples,
+                is_playback_active_.load(std::memory_order_acquire));
     }
 
     int64_t SequencerEngineImpl::playbackPosition() const {
-        return playback_position_samples_.load(std::memory_order_acquire);
+        return latency_compensation_manager_
+            ? latency_compensation_manager_->playbackPosition()
+            : playback_position_samples_.load(std::memory_order_acquire);
     }
 
     int64_t SequencerEngineImpl::renderPlaybackPosition() const {
-        return render_playback_position_samples_.load(std::memory_order_acquire);
+        return latency_compensation_manager_
+            ? latency_compensation_manager_->renderPlaybackPosition()
+            : render_playback_position_samples_.load(std::memory_order_acquire);
     }
 
     void SequencerEngineImpl::requestAllNotesOff() {
@@ -1686,45 +1565,28 @@ namespace uapmd {
     }
 
     void uapmd::SequencerEngineImpl::startPlayback() {
-        resetOutputAlignmentBuffers();
-        schedulePrerollFromAudiblePosition(0);
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->startPlayback();
         is_playback_active_.store(true, std::memory_order_release);
     }
 
     void uapmd::SequencerEngineImpl::stopPlayback() {
         is_playback_active_.store(false, std::memory_order_release);
-        resetOutputAlignmentBuffers();
-        const auto tailSamples = maxStopDrainInSamples();
-        if (tailSamples > 0) {
-            const auto quantum = static_cast<int64_t>(audio_buffer_size_in_frames > 0 ? audio_buffer_size_in_frames : 1);
-            const auto alignedTail = ((tailSamples + quantum - 1) / quantum) * quantum;
-            latency_drain_active_.store(true, std::memory_order_release);
-            latency_drain_remaining_samples_.store(alignedTail, std::memory_order_release);
-            reset_to_start_after_latency_drain_.store(true, std::memory_order_release);
-        } else {
-            playback_position_samples_.store(0, std::memory_order_release);
-            render_playback_position_samples_.store(0, std::memory_order_release);
-            latency_drain_active_.store(false, std::memory_order_release);
-            latency_drain_remaining_samples_.store(0, std::memory_order_release);
-            reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
-        }
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->stopPlayback();
         requestAllNotesOff();
     }
 
     void uapmd::SequencerEngineImpl::pausePlayback() {
         is_playback_active_.store(false, std::memory_order_release);
-        latency_drain_active_.store(false, std::memory_order_release);
-        latency_drain_remaining_samples_.store(0, std::memory_order_release);
-        reset_to_start_after_latency_drain_.store(false, std::memory_order_release);
-        render_playback_position_samples_.store(playback_position_samples_.load(std::memory_order_acquire),
-                                                std::memory_order_release);
-        resetOutputAlignmentBuffers();
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->pausePlayback();
         requestAllNotesOff();
     }
 
     void uapmd::SequencerEngineImpl::resumePlayback() {
-        resetOutputAlignmentBuffers();
-        schedulePrerollFromAudiblePosition(playback_position_samples_.load(std::memory_order_acquire));
+        if (latency_compensation_manager_)
+            latency_compensation_manager_->resumePlayback();
         is_playback_active_.store(true, std::memory_order_release);
     }
 
