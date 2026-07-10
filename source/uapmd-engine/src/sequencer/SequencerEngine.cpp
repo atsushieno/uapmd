@@ -1295,6 +1295,8 @@ namespace uapmd {
     }
 
     bool SequencerEngineImpl::replaceTrackGraph(uapmd_track_index_t trackIndex, std::unique_ptr<AudioPluginGraph>&& graph) {
+        StructureMutationGuard mutationGuard(*this);
+
         SequencerTrack* track = nullptr;
         AudioProcessContext* context = nullptr;
         if (trackIndex == kMasterTrackIndex) {

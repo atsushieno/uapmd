@@ -42,7 +42,7 @@ namespace uapmd {
     void UapmdNodeUmpInputMapper::drainPresetRequests() {
         uint32_t index;
         while (preset_load_queue_.try_dequeue(index))
-            plugin->loadPreset(index);
+            plugin->loadPreset(static_cast<int32_t>(index), nullptr);
     }
 
     UapmdNodeUmpOutputMapper::UapmdNodeUmpOutputMapper(MidiIOFeature* device, AudioPluginInstanceAPI* plugin)
